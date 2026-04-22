@@ -404,8 +404,13 @@ func validateStates(
 //   - "." → self; always valid.
 //   - ".." prefixes → relative paths resolved against the current state path.
 //   - Otherwise treated as an absolute state path.
+//   - Targets containing "{{" are template expressions evaluated at runtime; skip validation.
 func validateTransitionTarget(file, statePath, target string, allPaths map[string]struct{}) error {
 	if target == "" || target == "." {
+		return nil
+	}
+	// Template expressions are evaluated at runtime; cannot validate statically.
+	if strings.Contains(target, "{{") {
 		return nil
 	}
 	// Resolve relative targets ("../../foyer").

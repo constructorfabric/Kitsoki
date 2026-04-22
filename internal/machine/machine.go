@@ -497,7 +497,16 @@ func (m *machineImpl) Turn(ctx context.Context, cur app.StatePath, w world.World
 	}
 
 	// 4. Resolve the target state path.
-	targetPath := resolveTarget(winningPath, winningTr.tr.Target)
+	// Target may be a template expression like "{{ world.prev_state }}"; evaluate it first.
+	rawTarget := winningTr.tr.Target
+	if strings.Contains(rawTarget, "{{") {
+		rendered, renderErr := expr.Render(rawTarget, env)
+		if renderErr != nil {
+			return TurnResult{}, fmt.Errorf("render transition target %q: %w", rawTarget, renderErr)
+		}
+		rawTarget = strings.TrimSpace(rendered)
+	}
+	targetPath := resolveTarget(winningPath, rawTarget)
 
 	// 5. For compound states, resolve the initial child.
 	resolvedTarget, err := m.resolveInitial(targetPath, env)
@@ -512,10 +521,42 @@ func (m *machineImpl) Turn(ctx context.Context, cur app.StatePath, w world.World
 		slog.String("intent", call.Intent),
 	)
 
-	// 6. Apply effects.
+	// 6. Apply transition effects.
 	newWorld, hostCalls, saySB, effectEvents, err := m.applyEffectsTraced(ctx, winningTr.tr.Effects, w, env)
 	if err != nil {
 		return TurnResult{}, err
+	}
+
+	// 6b. Apply on_enter effects of the target state (and any entered ancestors).
+	// on_enter fires whenever a state is newly entered (not on self-transitions).
+	if resolvedTarget != string(cur) {
+		entered := stateEnterPaths(string(cur), resolvedTarget)
+		for _, enteredPath := range entered {
+			cs, ok := m.states[enteredPath]
+			if !ok || cs.s == nil || len(cs.s.OnEnter) == 0 {
+				continue
+			}
+			// Build an updated env with the latest world state.
+			enterEnv := expr.Env{
+				Slots: env.Slots,
+				World: newWorld.Vars,
+				Event: env.Event,
+				Run:   env.Run,
+			}
+			newWorld2, enterHostCalls, enterSaySB, enterEffEvents, enterErr := m.applyEffectsTraced(ctx, cs.s.OnEnter, newWorld, enterEnv)
+			if enterErr != nil {
+				return TurnResult{}, fmt.Errorf("on_enter effects for %q: %w", enteredPath, enterErr)
+			}
+			newWorld = newWorld2
+			hostCalls = append(hostCalls, enterHostCalls...)
+			if enterSaySB.Len() > 0 {
+				if saySB.Len() > 0 {
+					saySB.WriteString("\n")
+				}
+				saySB.WriteString(enterSaySB.String())
+			}
+			effectEvents = append(effectEvents, enterEffEvents...)
+		}
 	}
 
 	// 7. Render view.
