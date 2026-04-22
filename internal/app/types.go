@@ -54,6 +54,9 @@ type WorldSchema map[string]VarDef
 type State struct {
 	// Type is "atomic" (default), "compound", or "parallel".
 	Type string `yaml:"type,omitempty"`
+	// Mode declares a special harness mode for this state.
+	// "conversational" enables the Oracle Room free-form harness (§7).
+	Mode string `yaml:"mode,omitempty"`
 	// Description is shown in the §7.1 location indicator.
 	Description string `yaml:"description,omitempty"`
 	// View is the render template shown to the user on arrival.
