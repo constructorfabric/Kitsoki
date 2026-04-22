@@ -161,7 +161,7 @@ func (h *ClaudeCLIHarness) RunTurn(ctx context.Context, in TurnInput) (mcp.CallT
 		slog.String("state_path", string(in.StatePath)),
 	)
 
-	dynamic := buildDynamicSuffix(in)
+	dynamic := buildDynamicSuffix(h.appDef, in)
 	basePrompt := h.stablePrefix + dynamic + jsonInstruction +
 		"\n## User Input\n\n" + in.UserText + "\n"
 

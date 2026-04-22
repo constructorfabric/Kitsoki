@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"hally/internal/app"
+	"hally/internal/expr"
+	"hally/internal/world"
 )
 
 // buildStablePrefix renders the stable portion of the system prompt.
@@ -78,10 +80,32 @@ func buildStablePrefix(appDef *app.AppDef) string {
 }
 
 // buildDynamicSuffix builds the per-turn portion of the system prompt.
-func buildDynamicSuffix(in TurnInput) string {
+//
+// appDef is consulted to emit the current state's description and view text.
+// The view is what the user sees on screen — including the menu labels that
+// *define* how free-text maps to intents in this state (e.g. a main-room view
+// saying "Start a new task (jira search)" tells the router that
+// "start a new task" → `go_jira`). Without this, the router only has generic
+// intent descriptions and misroutes state-specific phrasing.
+func buildDynamicSuffix(appDef *app.AppDef, in TurnInput) string {
 	var sb strings.Builder
 	sb.WriteString("\n---\n\n## Current Turn Context\n\n")
 	sb.WriteString(fmt.Sprintf("**Current state:** `%s`\n\n", in.StatePath))
+
+	if state := lookupState(appDef, in.StatePath); state != nil {
+		if state.Description != "" {
+			sb.WriteString(fmt.Sprintf("**State description:** %s\n\n", state.Description))
+		}
+		if rendered := renderViewForPrompt(state.View, in.World); rendered != "" {
+			sb.WriteString("**Current view (what the user sees — treat menu labels as authoritative for this state):**\n")
+			sb.WriteString("```\n")
+			sb.WriteString(rendered)
+			if !strings.HasSuffix(rendered, "\n") {
+				sb.WriteString("\n")
+			}
+			sb.WriteString("```\n\n")
+		}
+	}
 
 	if len(in.AllowedIntents) > 0 {
 		sb.WriteString("**Allowed intents in this state:**\n")
@@ -105,4 +129,39 @@ func buildDynamicSuffix(in TurnInput) string {
 	}
 
 	return sb.String()
+}
+
+// lookupState walks a dot-separated StatePath through AppDef's nested States
+// map. Returns nil if the path is empty or any segment misses.
+func lookupState(appDef *app.AppDef, path app.StatePath) *app.State {
+	if appDef == nil || path == "" {
+		return nil
+	}
+	segments := strings.Split(string(path), ".")
+	states := appDef.States
+	var st *app.State
+	for _, seg := range segments {
+		s, ok := states[seg]
+		if !ok || s == nil {
+			return nil
+		}
+		st = s
+		states = s.States
+	}
+	return st
+}
+
+// renderViewForPrompt expands a view template against the world snapshot for
+// inclusion in the LLM prompt. Best-effort: on render errors we return the
+// literal template so the LLM at least sees the menu labels.
+func renderViewForPrompt(view string, w world.World) string {
+	view = strings.TrimSpace(view)
+	if view == "" {
+		return ""
+	}
+	rendered, err := expr.Render(view, expr.Env{World: w.Vars, Slots: map[string]any{}})
+	if err != nil || rendered == "" {
+		return view
+	}
+	return strings.TrimSpace(rendered)
 }

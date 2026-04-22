@@ -1,0 +1,96 @@
+package harness_test
+
+import (
+	"strings"
+	"testing"
+
+	"hally/internal/app"
+	"hally/internal/harness"
+	"hally/internal/world"
+)
+
+// TestBuildDynamicSuffix_IncludesStateViewAndDescription locks in that the
+// current state's description and user-facing view text reach the prompt.
+// Without these, the router only sees generic intent descriptions and
+// misroutes state-specific phrasing — see the "start a new task" → jira regression.
+func TestBuildDynamicSuffix_IncludesStateViewAndDescription(t *testing.T) {
+	def := &app.AppDef{
+		App: app.AppMeta{ID: "x", Title: "X"},
+		States: map[string]*app.State{
+			"main": {
+				Description: "Main Room — your daily HQ.",
+				View: strings.Join([]string{
+					"Welcome to dev-story.",
+					"",
+					"  - Start a new task          (jira search)",
+					"  - Continue existing task    (workspace manager)",
+				}, "\n"),
+			},
+		},
+	}
+
+	in := harness.TurnInput{
+		StatePath:      "main",
+		AllowedIntents: []string{"go_jira", "go_workspace_manager"},
+		World:          world.World{Vars: map[string]any{}},
+	}
+
+	out := harness.BuildDynamicSuffixForTest(def, in)
+
+	if !strings.Contains(out, "Main Room — your daily HQ.") {
+		t.Errorf("expected state description in prompt, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Start a new task") || !strings.Contains(out, "(jira search)") {
+		t.Errorf("expected menu labels from the view in prompt, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Continue existing task") {
+		t.Errorf("expected second menu label in prompt, got:\n%s", out)
+	}
+}
+
+// TestBuildDynamicSuffix_RendersWorldTemplates verifies that world templates
+// inside the view (e.g. {{ world.inbox_unread }}) are expanded so the LLM
+// sees the same concrete labels the user sees, not raw template syntax.
+func TestBuildDynamicSuffix_RendersWorldTemplates(t *testing.T) {
+	def := &app.AppDef{
+		App: app.AppMeta{ID: "x"},
+		States: map[string]*app.State{
+			"main": {
+				Description: "Main",
+				View:        "Inbox: {{ world.inbox_unread }} unread.",
+			},
+		},
+	}
+
+	in := harness.TurnInput{
+		StatePath: "main",
+		World:     world.World{Vars: map[string]any{"inbox_unread": 3}},
+	}
+
+	out := harness.BuildDynamicSuffixForTest(def, in)
+
+	if !strings.Contains(out, "Inbox: 3 unread.") {
+		t.Errorf("expected rendered world template in prompt, got:\n%s", out)
+	}
+	if strings.Contains(out, "{{") {
+		t.Errorf("expected template syntax to be expanded, got:\n%s", out)
+	}
+}
+
+// TestBuildDynamicSuffix_UnknownStateIsSafe asserts the function does not
+// panic or error when the state path is unknown — it just omits the
+// description/view section.
+func TestBuildDynamicSuffix_UnknownStateIsSafe(t *testing.T) {
+	def := &app.AppDef{
+		App:    app.AppMeta{ID: "x"},
+		States: map[string]*app.State{},
+	}
+	in := harness.TurnInput{StatePath: "nonexistent"}
+	out := harness.BuildDynamicSuffixForTest(def, in)
+	if !strings.Contains(out, "Current state") {
+		t.Errorf("expected 'Current state' header even for unknown state, got:\n%s", out)
+	}
+	if strings.Contains(out, "State description") {
+		t.Errorf("should not emit State description for unknown state, got:\n%s", out)
+	}
+}

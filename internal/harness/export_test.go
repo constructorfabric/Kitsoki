@@ -12,6 +12,11 @@ func BuildStablePrefixForTest(appDef *app.AppDef) string {
 	return buildStablePrefix(appDef)
 }
 
+// BuildDynamicSuffixForTest exposes buildDynamicSuffix for testing.
+func BuildDynamicSuffixForTest(appDef *app.AppDef, in TurnInput) string {
+	return buildDynamicSuffix(appDef, in)
+}
+
 // ParseTransitionArgsForTest exposes parseTransitionArgs for testing.
 func ParseTransitionArgsForTest(p mcp.CallToolParams) (intent string, slots map[string]any, confidence float64) {
 	return parseTransitionArgs(p)

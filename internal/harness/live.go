@@ -128,7 +128,7 @@ func (h *LiveHarness) RunTurn(ctx context.Context, in TurnInput) (mcp.CallToolPa
 
 	// Build system prompt.
 	stable := h.stablePrefix
-	dynamic := buildDynamicSuffix(in)
+	dynamic := buildDynamicSuffix(h.appDef, in)
 
 	// Tool definition for the local (non-MCP) Anthropic tool call.
 	// The input schema is passed via ExtraFields so we can embed the full JSON schema
