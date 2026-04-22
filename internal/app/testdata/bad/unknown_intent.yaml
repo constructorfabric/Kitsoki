@@ -1,0 +1,31 @@
+app:
+  id: test-unknown-intent
+  version: 0.1.0
+
+world:
+  count: { type: int, default: 0 }
+
+intents:
+  go:
+    title: "Go"
+    slots:
+      direction:
+        type: enum
+        values: [north, south]
+        required: true
+
+root: room_a
+
+states:
+  room_a:
+    view: "You are in room A."
+    on:
+      go:
+        - when: "slots.direction == 'south'"
+          target: room_b
+      # 'nonexistent_intent' is NOT declared in intents; should trigger error.
+      nonexistent_intent:
+        - target: room_a
+
+  room_b:
+    view: "You are in room B."

@@ -1,0 +1,55 @@
+# Mode 1 pass-rate fixtures for the bar states (bar.dark and bar.lit).
+test_kind: intents
+app: cloak-of-darkness
+state: bar.dark
+defaults:
+  runs: 20
+  min_pass_rate: 0.85
+  temperature: 0.2
+
+fixtures:
+
+  - id: leave-north
+    intent: { name: go, slots: { direction: north } }
+    inputs:
+      - "go north"
+      - "back to the foyer"
+      - "leave"
+      - "n"
+
+  - id: adversarial-dark-fumble
+    # In the dark, any non-go action falls through to the wildcard handler
+    # (§3.1) and increments disturbance. The LLM should still extract a
+    # plausible intent; we validate that the wildcard path was taken.
+    expect_fallthrough: true
+    runs: 20
+    inputs:
+      - "read the message"
+      - "look around"
+
+---
+# Fixtures for bar.lit — separate defaults block.
+test_kind: intents
+app: cloak-of-darkness
+state: bar.lit
+defaults:
+  runs: 25
+  min_pass_rate: 0.90
+  temperature: 0.2
+
+fixtures:
+
+  - id: read-message-canonical
+    intent: { name: read_message, slots: {} }
+    inputs:
+      - "read the message"
+      - "read the writing"
+      - "read it"
+      - "examine the floor"
+
+  - id: go-north-from-lit-bar
+    intent: { name: go, slots: { direction: north } }
+    inputs:
+      - "go north"
+      - "head back to the foyer"
+      - "leave the bar"

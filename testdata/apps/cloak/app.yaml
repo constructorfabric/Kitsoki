@@ -1,0 +1,233 @@
+# Cloak of Darkness, by Roger Firth. Specification is public; this YAML port is CC0.
+#
+# STAGE 2 NOTE: chose dot-separated compound-state paths (e.g. "bar.dark") as
+# canonical internal identifiers, consistent with §3's StatePath definition.
+# In on: transition targets we use the slash-based relative form from §3.1
+# (e.g. "../../foyer") which the loader resolves to dotted form at load time.
+#
+# STAGE 2 NOTE: chose "look" intent behaviour in bar.dark to route through the
+# wildcard "*" handler (not a dedicated look handler), so every non-go action
+# in the dark increments disturbance, consistent with §3.1's "any non-movement
+# intent in the dark bumps disturbance" comment.
+#
+# STAGE 2 NOTE: rejected intents (intent not bound in the current state) surface
+# as INTENT_NOT_ALLOWED_IN_STATE (§5.2); they do NOT emit a ValidationFailed
+# event themselves — that event is emitted by the machine after the MCP
+# transition tool returns an error envelope (§8 event kinds).
+
+app:
+  id: cloak-of-darkness
+  version: 0.1.0
+  title: "Cloak of Darkness"
+  author: "Roger Firth (spec), ported to Hally"
+  license: "Spec in public domain; this port CC0"
+
+# Top-level world schema. Every variable is typed and has a default.
+world:
+  wearing_cloak: { type: bool, default: true }
+  disturbance: { type: int, default: 0 }    # counts dark fumbling
+  message_rumpled: { type: bool, default: false }
+
+# Intent library — reusable intent definitions that states reference.
+# Each intent carries the §7 feedback fields: title, description, examples,
+# priority, hidden.
+intents:
+  go:
+    title: "Go"
+    description: "Move in a compass direction."
+    examples: ["go south", "head north", "walk east", "n"]
+    priority: 100
+    slots:
+      direction:
+        type: enum
+        values: [north, south, east, west, up, down]
+        required: true
+        description: "Which compass direction to move."
+        examples: ["south", "n", "east"]
+        format_hint: "One of n/s/e/w/up/down, spelled out or abbreviated."
+        prompt: "Which direction?"
+
+  hang_cloak:
+    title: "Hang the cloak"
+    description: "Hang the cloak on the hook in the cloakroom."
+    examples: ["hang the cloak", "hang my cloak on the hook", "put the cloak up"]
+    priority: 80
+
+  drop_cloak:
+    title: "Drop the cloak"
+    description: "Drop the cloak on the floor wherever you're standing."
+    examples: ["drop the cloak", "discard the cloak"]
+    hidden: true       # spoiler-ish; available but not listed in the primary menu
+    priority: 10
+
+  wear_cloak:
+    title: "Wear the cloak"
+    description: "Put the cloak back on."
+    examples: ["wear the cloak", "put on the cloak", "take the cloak"]
+    priority: 70
+
+  read_message:
+    title: "Read the message"
+    description: "Read the message scrawled in the sawdust on the bar floor."
+    examples: ["read the message", "read the writing", "read it"]
+    priority: 90
+
+  look:
+    title: "Look around"
+    description: "Describe the current room again."
+    examples: ["look", "look around", "describe the room"]
+    priority: 20
+
+# The state graph. `root` is the initial state.
+root: foyer
+
+states:
+  foyer:
+    description: "The entrance hall of the opera house. South leads to the bar; west to the cloakroom."
+    relevant_world: [wearing_cloak]
+    relevant_slots: []
+    view: |
+      You are in a spacious hall, splendidly decorated in red and gold,
+      with glittering chandeliers overhead. The entrance from the street
+      is to the north, and there are doorways south and west.
+    on:
+      go:
+        - when: "slots.direction == 'south'"
+          target: bar
+        - when: "slots.direction == 'west'"
+          target: cloakroom
+        - when: "slots.direction == 'north'"
+          # Dead-end: stay here but say something.
+          target: foyer
+          guard_hint: "The weather outside is awful -- you've only just arrived."
+          effects:
+            - say: "You've only just arrived, and besides, the weather outside seems to be getting worse."
+        - default: true
+          target: foyer
+          effects:
+            - say: "You can't go that way."
+      look:
+        - target: foyer   # self-transition; re-renders the view.
+
+  cloakroom:
+    description: "A small cloakroom with a single hook. Exit east."
+    relevant_world: [wearing_cloak]
+    relevant_slots: []
+    view: |
+      The walls of this small room were clearly once lined with hooks,
+      though now only one remains. The exit is a door to the east.
+      {{ if world.wearing_cloak }}You are wearing a velvet cloak.{{ end }}
+      {{ if not world.wearing_cloak }}A velvet cloak hangs on the hook.{{ end }}
+    on:
+      go:
+        - when: "slots.direction == 'east'"
+          target: foyer
+        - default: true
+          target: cloakroom
+          effects:
+            - say: "You can't go that way from here."
+      hang_cloak:
+        - when: "world.wearing_cloak == true"
+          target: cloakroom
+          effects:
+            - set: { wearing_cloak: false }
+            - say: "You hang the cloak on the hook."
+        - default: true
+          target: cloakroom
+          guard_hint: "You aren't wearing the cloak -- nothing to hang."
+          effects:
+            - say: "You aren't wearing the cloak."
+      wear_cloak:
+        - when: "world.wearing_cloak == false"
+          target: cloakroom
+          effects:
+            - set: { wearing_cloak: true }
+            - say: "You take the cloak from the hook."
+        - default: true
+          target: cloakroom
+          guard_hint: "You're already wearing the cloak."
+          effects:
+            - say: "You're already wearing the cloak."
+      look:
+        - target: cloakroom   # self-transition; re-renders the view.
+
+  bar:
+    # Compound state: behaviour depends on whether cloak is worn.
+    type: compound
+    description: "A small bar off the foyer. Lit when the cloak is hung up; dark otherwise."
+    relevant_world: [wearing_cloak, disturbance]
+    relevant_slots: []
+    # STAGE 2 NOTE: initial is a template expression; the loader skips literal
+    # validation for expressions containing "{{".  The runtime will evaluate
+    # this at session start to determine the initial child state.
+    initial: "{{ world.wearing_cloak ? 'dark' : 'lit' }}"
+    states:
+      dark:
+        description: "Too dark to see. Fumbling around increases disturbance."
+        relevant_world: [disturbance]
+        relevant_slots: []
+        view: |
+          It's pitch dark in here. You can just make out a message
+          on the floor, but can't read it without more light.
+        on:
+          go:
+            - when: "slots.direction == 'north'"
+              target: ../../foyer
+            - default: true
+              target: .    # stay put
+              guard_hint: "You can't see well enough in the dark to head that way. Try going north, or finding a way to make light."
+              effects:
+                - increment: { disturbance: 1 }
+                - say: "Blundering around in the dark isn't a good idea."
+          # Wildcard: catches any intent not otherwise handled (§3.1).
+          "*":
+            - target: .
+              guard_hint: "It's pitch dark -- you can't see to do that."
+              effects:
+                - increment: { disturbance: 1 }
+                - say: "You can't see a thing."
+
+      lit:
+        description: "The bar, lit now the cloak is hung up. A message is scrawled on the floor."
+        relevant_world: [disturbance]
+        relevant_slots: []
+        view: |
+          The bar, much rougher than you'd have guessed after the
+          opulence of the foyer, is completely empty. There seems
+          to be some sort of message scrawled in the sawdust on the
+          floor.
+        on:
+          go:
+            - when: "slots.direction == 'north'"
+              target: ../../foyer
+            - default: true
+              target: .
+              effects:
+                - say: "You can't go that way from the bar."
+          read_message:
+            - target: ended
+              effects:
+                - set: { message_rumpled: "{{ world.disturbance > 2 }}" }
+          look:
+            - target: .   # self-transition; re-renders the view.
+
+  ended:
+    terminal: true
+    description: "The journey is over."
+    relevant_world: [message_rumpled, disturbance]
+    relevant_slots: []
+    view: |
+      {{ if world.message_rumpled }}
+      The message, now little more than a dusty blur, appears to say:
+      "You have lost."
+      {{ else }}
+      The message, neatly marked in the sawdust, reads:
+      "You have won."
+      {{ end }}
+
+# Off-path escape hatch. When triggered, the LLM runs unconstrained and
+# the TUI marks the session visually. Nothing persists to world.
+off_path:
+  trigger: "/freeform"
+  banner: "*** off the path -- responses do not affect your story ***"
+  return: "/onpath"

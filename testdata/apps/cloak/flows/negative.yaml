@@ -1,0 +1,42 @@
+# Negative / rejected-intent flow: exercise intent-not-allowed-in-state errors
+# and confirm that state and world remain unchanged on rejection.
+test_kind: flow
+app: cloak-of-darkness
+oracle: ../oracle.yaml
+initial_state: foyer
+initial_world:
+  wearing_cloak: true
+  disturbance: 0
+  message_rumpled: false
+
+turns:
+
+  # Turn 1: hang_cloak is NOT bound in foyer; must be rejected.
+  - intent: { name: hang_cloak, slots: {} }
+    expect_error:
+      code: INTENT_NOT_ALLOWED_IN_STATE
+      allowed_contains: [go, look]
+    expect_state: foyer
+    expect_world_unchanged: true
+
+  # Turn 2: read_message is NOT bound in foyer; must be rejected.
+  - intent: { name: read_message, slots: {} }
+    expect_error:
+      code: INTENT_NOT_ALLOWED_IN_STATE
+      allowed_contains: [go, look]
+    expect_state: foyer
+    expect_world_unchanged: true
+
+  # Turn 3: go south (while still wearing cloak) → bar.dark.
+  - intent: { name: go, slots: { direction: south } }
+    expect_state: bar.dark
+
+  # Turn 4: read_message is also not valid in bar.dark (only go and wildcard
+  # are handled explicitly; read_message falls through to wildcard which stays
+  # in place and increments disturbance, not a hard rejection error).
+  # This demonstrates the wildcard path, not INTENT_NOT_ALLOWED_IN_STATE.
+  - intent: { name: read_message, slots: {} }
+    expect_state: bar.dark
+    expect_world: { disturbance: 1 }
+
+expect_no_errors: false

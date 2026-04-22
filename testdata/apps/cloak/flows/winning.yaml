@@ -1,0 +1,49 @@
+# Canonical minimal winning path for Cloak of Darkness.
+# foyer → cloakroom (hang cloak) → foyer → bar.lit → read_message → ended (won)
+test_kind: flow
+app: cloak-of-darkness
+oracle: ../oracle.yaml
+initial_state: foyer
+initial_world:
+  wearing_cloak: true
+  disturbance: 0
+  message_rumpled: false
+
+turns:
+
+  # Turn 1: go west from foyer to cloakroom.
+  - intent: { name: go, slots: { direction: west } }
+    expect_state: cloakroom
+    expect_events:
+      - kind: TransitionApplied
+        from: foyer
+        to: cloakroom
+
+  # Turn 2: hang the cloak. Sets wearing_cloak to false.
+  - intent: { name: hang_cloak, slots: {} }
+    expect_state: cloakroom
+    expect_world:
+      wearing_cloak: false
+    expect_events:
+      - kind: EffectApplied
+        effect: { set: { wearing_cloak: false } }
+
+  # Turn 3: use oracle-backed free text to go back east.
+  - input: "head east"
+    expect_state: foyer
+
+  # Turn 4: go south. Because wearing_cloak == false, bar resolves to 'lit'.
+  - intent: { name: go, slots: { direction: south } }
+    expect_state: bar.lit
+    expect_not_state: bar.dark
+
+  # Turn 5: read the message. disturbance == 0 so message_rumpled stays false.
+  - intent: { name: read_message, slots: {} }
+    expect_state: ended
+    expect_world:
+      message_rumpled: false
+    expect_view_matches: "You have won"
+
+expect_terminal: true
+expect_events_count_atleast: 5
+expect_no_errors: true

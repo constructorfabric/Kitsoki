@@ -1,0 +1,60 @@
+# Losing path: enter the dark bar, accumulate disturbance > 2, then read the
+# message and get the "You have lost" ending.
+test_kind: flow
+app: cloak-of-darkness
+oracle: ../oracle.yaml
+initial_state: foyer
+initial_world:
+  wearing_cloak: true
+  disturbance: 0
+  message_rumpled: false
+
+turns:
+
+  # Turn 1: go south while wearing cloak — bar resolves to dark.
+  - intent: { name: go, slots: { direction: south } }
+    expect_state: bar.dark
+
+  # Turn 2: non-movement intent (look) in the dark — wildcard fires, +1 disturbance.
+  - intent: { name: look, slots: {} }
+    expect_state: bar.dark
+    expect_world: { disturbance: 1 }
+
+  # Turn 3: try to go east (invalid direction in the dark) — default go branch, +1.
+  - intent: { name: go, slots: { direction: east } }
+    expect_state: bar.dark
+    expect_world: { disturbance: 2 }
+
+  # Turn 4: try to go west (another invalid direction) — default go branch, +1.
+  - intent: { name: go, slots: { direction: west } }
+    expect_state: bar.dark
+    expect_world: { disturbance: 3 }
+
+  # Turn 5: escape north from the dark.
+  - intent: { name: go, slots: { direction: north } }
+    expect_state: foyer
+
+  # Turn 6: head to cloakroom to hang the cloak.
+  - intent: { name: go, slots: { direction: west } }
+    expect_state: cloakroom
+
+  # Turn 7: hang the cloak.
+  - intent: { name: hang_cloak, slots: {} }
+    expect_world: { wearing_cloak: false }
+
+  # Turn 8: go back east to foyer.
+  - intent: { name: go, slots: { direction: east } }
+    expect_state: foyer
+
+  # Turn 9: go south — bar is now lit because cloak is hung.
+  - intent: { name: go, slots: { direction: south } }
+    expect_state: bar.lit
+
+  # Turn 10: read the message. disturbance == 3 > 2 => message_rumpled = true.
+  - intent: { name: read_message, slots: {} }
+    expect_state: ended
+    expect_world: { message_rumpled: true }
+    expect_view_matches: "You have lost"
+
+expect_terminal: true
+expect_no_errors: true

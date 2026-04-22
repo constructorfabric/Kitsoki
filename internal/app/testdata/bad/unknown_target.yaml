@@ -1,0 +1,24 @@
+app:
+  id: test-unknown-target
+  version: 0.1.0
+
+world: {}
+
+intents:
+  go:
+    title: "Go"
+    slots:
+      direction:
+        type: enum
+        values: [north, south]
+        required: true
+
+root: room_a
+
+states:
+  room_a:
+    view: "You are in room A."
+    on:
+      go:
+        # 'nonexistent_room' is NOT in states; should trigger error.
+        - target: nonexistent_room

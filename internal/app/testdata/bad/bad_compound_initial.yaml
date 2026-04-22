@@ -1,0 +1,29 @@
+app:
+  id: test-bad-compound-initial
+  version: 0.1.0
+
+world: {}
+
+intents:
+  go:
+    title: "Go"
+
+root: lobby
+
+states:
+  lobby:
+    view: "Lobby."
+    on:
+      go:
+        - target: area
+
+  area:
+    type: compound
+    description: "An area."
+    # 'nonexistent_child' does not exist as a child state; should trigger error.
+    initial: nonexistent_child
+    states:
+      north_wing:
+        view: "North wing."
+      south_wing:
+        view: "South wing."

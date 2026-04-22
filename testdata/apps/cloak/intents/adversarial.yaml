@@ -1,0 +1,48 @@
+# Adversarial Mode 1 fixtures: inputs that must NOT produce a valid transition.
+# Per §10.2.1, expected outcomes are declared explicitly.
+test_kind: intents
+app: cloak-of-darkness
+state: foyer
+defaults:
+  runs: 25
+  min_pass_rate: 0.95
+  temperature: 0.2
+
+fixtures:
+
+  - id: completely-off-topic
+    expect_failure:
+      any_of: [UNKNOWN_INTENT, INTENT_NOT_ALLOWED_IN_STATE]
+    inputs:
+      - "buy a ticket"
+      - "call the police"
+      - "search the internet"
+      - "what is the meaning of life"
+
+  - id: wrong-state-intents
+    # These intents exist in the library but are NOT bound in foyer.
+    expect_failure:
+      any_of: [INTENT_NOT_ALLOWED_IN_STATE]
+    inputs:
+      - "hang up my cloak"
+      - "read the message on the floor"
+      - "put the cloak on the hook"
+
+  - id: missing-slot
+    # 'go' without a direction should trigger slot-fill or clarify, not a
+    # hard routing error. We accept either MISSING_SLOTS or clarify.
+    expect_failure:
+      any_of: [MISSING_SLOTS, clarify]
+    inputs:
+      - "go"
+      - "move"
+      - "walk somewhere"
+
+  - id: ambiguous-direction
+    # The LLM cannot determine a compass direction; clarify is expected.
+    expect_failure:
+      any_of: [MISSING_SLOTS, clarify, AMBIGUOUS_INTENT]
+    min_pass_rate: 0.80
+    inputs:
+      - "head over there"
+      - "move to the other room"

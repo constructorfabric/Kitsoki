@@ -1,0 +1,25 @@
+# Compiled binary
+/hally
+
+# Test binaries and coverage
+*.test
+coverage.out
+coverage.html
+
+# Go workspace
+/vendor/
+
+# macOS
+.DS_Store
+
+# Editor directories
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Session data (local only)
+~/.hally/
+
+# Build output
+dist/

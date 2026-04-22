@@ -1,0 +1,21 @@
+app:
+  id: test-bad-relevant-world
+  version: 0.1.0
+
+world:
+  health: { type: int, default: 100 }
+
+intents:
+  look:
+    title: "Look"
+
+root: room
+
+states:
+  room:
+    view: "A room."
+    # 'stamina' is NOT declared in world schema; should trigger error.
+    relevant_world: [health, stamina]
+    on:
+      look:
+        - target: room

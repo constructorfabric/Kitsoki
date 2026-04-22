@@ -1,0 +1,253 @@
+// Package mcp implements the MCP server exposing the `transition` tool to external
+// MCP clients (Claude Desktop, Claude Code, etc.) per §5. It uses the official
+// github.com/modelcontextprotocol/go-sdk v1.0.0.
+//
+// # Single `transition` tool
+//
+// Design §5 mandates one generic tool rather than per-intent tools. The intent and
+// slots arrive as arguments; the server resolves the session, validates via the
+// Machine, applies the transition, persists events, and returns TransitionOK or
+// a structured error envelope (§5.2).
+//
+// # Session identity
+//
+// For MVP, the caller supplies a `session_id` argument. A production-grade design
+// would use MCP resource/session concepts; that is deferred to Stage 7.
+package mcp
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"hally/internal/app"
+	"hally/internal/intent"
+	"hally/internal/machine"
+	"hally/internal/store"
+	"hally/internal/world"
+)
+
+// TransitionArgs is the typed input to the transition tool (§5.1).
+// The Go SDK auto-generates JSON Schema from struct tags.
+// Note: the jsonschema tag here is just the description text (no "key=value" format).
+type TransitionArgs struct {
+	// Intent is the allowed intent name for the current state.
+	Intent string `json:"intent" jsonschema:"allowed intent name for the current state"`
+	// Slots holds intent-specific slot values; keys match the intent's declared slot names.
+	Slots map[string]any `json:"slots,omitempty" jsonschema:"intent-specific slot values"`
+	// Confidence is the LLM's self-reported extraction confidence (0–1, optional).
+	Confidence float64 `json:"confidence,omitempty"`
+	// SessionID identifies the hally session to operate on.
+	SessionID string `json:"session_id" jsonschema:"hally session identifier"`
+}
+
+// TransitionOK is the success response of the transition tool.
+// JSON tags are load-bearing: read by the LLM harness.
+type TransitionOK struct {
+	OK    bool     `json:"ok"`    // always true on this branch
+	State string   `json:"state"` // new current state path
+	View  string   `json:"view"`  // rendered narrative
+	Menu  []string `json:"menu"`  // currently-allowed intent names
+	World any      `json:"world,omitempty"` // updated world snapshot (optional, for debugging)
+}
+
+// TransitionError is the structured error payload per §5.2.
+type TransitionError struct {
+	OK    bool                    `json:"ok"` // always false on this branch
+	Error *intent.ValidationError `json:"error"`
+}
+
+// ClarifyArgs is the typed input to the clarify tool (§5.1).
+type ClarifyArgs struct {
+	// Question is the natural-language clarification to show the user.
+	Question string `json:"question"`
+	// Candidates lists intent candidates driving the disambiguation UI (§7.4).
+	Candidates []struct {
+		Intent string `json:"intent"`
+		Why    string `json:"why,omitempty"`
+	} `json:"candidates,omitempty"`
+}
+
+// OffPathArgs is the typed input to the off_path tool (§5.1).
+type OffPathArgs struct {
+	// Reason explains why the harness is triggering off-path mode.
+	Reason string `json:"reason"`
+}
+
+// Server is the concrete MCP server wrapping the Go SDK.
+// Construct with NewServer; serve with Serve or Run.
+type Server struct {
+	mcpSrv *mcpsdk.Server
+	m      machine.Machine
+	s      store.Store
+	appDef *app.AppDef
+}
+
+// NewServer constructs an MCP Server with the given Machine, Store, and AppDef.
+// The server registers the `transition` tool and is ready to call Serve or Run.
+func NewServer(m machine.Machine, s store.Store, appDef *app.AppDef) *Server {
+	srv := &Server{m: m, s: s, appDef: appDef}
+	srv.mcpSrv = mcpsdk.NewServer(&mcpsdk.Implementation{
+		Name:    "hally",
+		Version: "0.0.1",
+	}, nil)
+
+	// Register the single `transition` tool using the generic AddTool (typed args).
+	mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
+		Name:        "transition",
+		Description: "Map the user utterance to one allowed intent with filled slots. Returns ok+next-state on success or a structured error envelope listing missing slots and suggestions.",
+	}, srv.handleTransition)
+
+	return srv
+}
+
+// Run starts the MCP server on the StdioTransport and blocks until the context
+// is done or the peer disconnects. This is the main entry point for `hally serve`.
+func (srv *Server) Run(ctx context.Context) error {
+	return srv.mcpSrv.Run(ctx, &mcpsdk.StdioTransport{})
+}
+
+// Serve starts the MCP server on a custom r/w pair (for testing).
+func (srv *Server) Serve(ctx context.Context, r io.Reader, w io.Writer) error {
+	t := &mcpsdk.InMemoryTransport{} // type assertion — we wrap manually below
+	_ = t
+	// For stdio-like custom streams, use the StdioTransport's underlying ioConn
+	// approach. We achieve this via a pipe-based InMemoryTransport.
+	// In practice, callers use Run for production and Connect (via InMemoryTransports)
+	// for testing.
+	return fmt.Errorf("mcp: Serve(r, w) not directly supported; use Run or Connect")
+}
+
+// Connect exposes the underlying mcpsdk.Server so callers can use
+// mcpsdk.NewInMemoryTransports for in-process testing.
+func (srv *Server) Connect(ctx context.Context, t mcpsdk.Transport, opts *mcpsdk.ServerSessionOptions) (*mcpsdk.ServerSession, error) {
+	return srv.mcpSrv.Connect(ctx, t, opts)
+}
+
+// handleTransition is the tool handler for the `transition` tool.
+func (srv *Server) handleTransition(
+	ctx context.Context,
+	req *mcpsdk.CallToolRequest,
+	args TransitionArgs,
+) (*mcpsdk.CallToolResult, any, error) {
+	// 1. Validate session ID.
+	if args.SessionID == "" {
+		ve := &intent.ValidationError{
+			Code:    intent.ErrUnknownIntent,
+			Message: "session_id is required",
+		}
+		return buildErrorResult(ve), nil, nil
+	}
+
+	sessionID := app.SessionID(args.SessionID)
+
+	// 2. Load session history to reconstruct current state, world, and turn number.
+	js, err := srv.resolveJourney(sessionID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("mcp: resolve session %q: %w", sessionID, err)
+	}
+
+	// 3. Build the IntentCall.
+	call := intent.IntentCall{
+		Intent:     args.Intent,
+		Slots:      world.Slots(args.Slots),
+		Confidence: args.Confidence,
+	}
+
+	// 4. Validate via Machine (checks allowed intents + slot schema).
+	vr := srv.m.Validate(js.State, js.World, call)
+	if !vr.OK {
+		return buildErrorResult(vr.Err), nil, nil
+	}
+
+	// 5. Apply transition.
+	result, err := srv.m.Turn(ctx, js.State, js.World, vr.Accepted)
+	if err != nil {
+		return nil, nil, fmt.Errorf("mcp: machine.Turn: %w", err)
+	}
+
+	// 6. If the transition produced a validation error (guard failed, etc.), return it.
+	if result.ValidationError != nil {
+		return buildErrorResult(result.ValidationError), nil, nil
+	}
+
+	// 7. Assign turn numbers to events (next turn = last known turn + 1).
+	nextTurn := js.Turn + 1
+	for i := range result.Events {
+		result.Events[i].Turn = nextTurn
+	}
+
+	// 8. Persist events.
+	if err := srv.s.AppendEvents(sessionID, result.Events); err != nil {
+		return nil, nil, fmt.Errorf("mcp: append events: %w", err)
+	}
+
+	// 9. Return success.
+	ok := TransitionOK{
+		OK:    true,
+		State: string(result.NewState),
+		View:  result.View,
+		Menu:  result.Menu,
+		World: result.World.Vars,
+	}
+	return nil, ok, nil
+}
+
+// resolveJourney replays the event history for a session and returns the
+// current JourneyState (state path, world snapshot, and last turn number).
+func (srv *Server) resolveJourney(sessionID app.SessionID) (*store.JourneyState, error) {
+	history, err := srv.s.LoadHistory(sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("load history: %w", err)
+	}
+
+	// Determine the initial state from the app definition.
+	initialState := app.StatePath("")
+	if root, ok := srv.appDef.Root.(string); ok {
+		initialState = app.StatePath(root)
+	}
+
+	// Initialise world from schema defaults.
+	initialWorld := machine.WorldFromSchema(srv.appDef.World)
+
+	// Check if there is a snapshot to use as the base.
+	snap, hasSnap, err := srv.s.LatestSnapshot(sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("load snapshot: %w", err)
+	}
+	if hasSnap {
+		initialState = snap.StatePath
+		var vars map[string]any
+		if err := json.Unmarshal(snap.WorldJSON, &vars); err == nil {
+			initialWorld = world.World{Vars: vars}
+		}
+	}
+
+	js, err := store.BuildJourney(srv.appDef, initialState, initialWorld, history)
+	if err != nil {
+		return nil, fmt.Errorf("build journey: %w", err)
+	}
+
+	// If no transitions have been applied yet, use the initial state.
+	if js.State == "" {
+		js.State = initialState
+	}
+
+	return js, nil
+}
+
+// buildErrorResult wraps a ValidationError into a CallToolResult with IsError=true.
+// The structured JSON payload is placed in Content so the LLM can self-correct.
+func buildErrorResult(ve *intent.ValidationError) *mcpsdk.CallToolResult {
+	payload := TransitionError{OK: false, Error: ve}
+	b, _ := json.Marshal(payload)
+	return &mcpsdk.CallToolResult{
+		IsError: true,
+		Content: []mcpsdk.Content{
+			&mcpsdk.TextContent{Text: string(b)},
+		},
+	}
+}

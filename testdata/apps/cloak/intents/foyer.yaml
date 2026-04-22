@@ -1,0 +1,63 @@
+# Mode 1 pass-rate fixtures for the foyer state.
+test_kind: intents
+app: cloak-of-darkness
+state: foyer
+defaults:
+  runs: 25
+  min_pass_rate: 0.90
+  temperature: 0.2
+
+fixtures:
+
+  - id: go-south-canonical
+    intent: { name: go, slots: { direction: south } }
+    inputs:
+      - "go south"
+      - "head south"
+      - "walk south"
+      - "s"
+
+  - id: go-south-colloquial
+    intent: { name: go, slots: { direction: south } }
+    min_pass_rate: 0.80
+    inputs:
+      - "toward the bar"
+      - "into the south room"
+      - "let's try the south door"
+
+  - id: go-west-canonical
+    intent: { name: go, slots: { direction: west } }
+    inputs:
+      - "go west"
+      - "w"
+      - "head to the cloakroom"
+
+  - id: look-around
+    intent: { name: look, slots: {} }
+    inputs:
+      - "look"
+      - "what do I see"
+      - "describe the room"
+      - "look around"
+
+  - id: adversarial-out-of-scope
+    expect_failure:
+      any_of: [UNKNOWN_INTENT, INTENT_NOT_ALLOWED_IN_STATE]
+    inputs:
+      - "hack the mainframe"
+      - "order a drink"
+      - "teleport to the bar"
+
+  - id: adversarial-ambiguous
+    expect_failure:
+      any_of: [clarify]
+    inputs:
+      - "go"
+      - "move somewhere"
+
+  - id: adversarial-out-of-state
+    expect_failure:
+      any_of: [INTENT_NOT_ALLOWED_IN_STATE]
+    inputs:
+      - "hang up my cloak"
+      - "read the message"

@@ -1,0 +1,14 @@
+app:
+  id: test-missing-root
+  version: 0.1.0
+
+world: {}
+
+intents: {}
+
+# root references a state that does not exist.
+root: does_not_exist
+
+states:
+  some_state:
+    view: "A state."

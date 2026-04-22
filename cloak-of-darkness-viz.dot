@@ -1,0 +1,39 @@
+digraph  {
+	subgraph cluster_s5 {
+		color="grey50";fontname="Helvetica";label="bar";style="dashed";
+		n6[fontname="Helvetica",label="bar.dark",shape="box",style="rounded"];
+		n9[fontname="Helvetica",label="bar.lit",shape="box",style="rounded"];
+		
+	}
+	fontname="Helvetica";label="Cloak of Darkness";rankdir="LR";
+	n1[label="__start__",shape="point",style="invis"];
+	n3[label="bar"];
+	n7[label="bar_dark"];
+	n8[label="bar_dark_foyer"];
+	n10[label="bar_lit"];
+	n12[label="bar_lit_foyer"];
+	n4[fontname="Helvetica",label="cloakroom",shape="box",style="rounded"];
+	n11[fillcolor="lightyellow",fontname="Helvetica",label="ended",shape="doublecircle",style="filled"];
+	n2[fontname="Helvetica",label="foyer",shape="box",style="rounded"];
+	n1->n2;
+	n7->n8[fontname="Helvetica",fontsize="9",label="go\n[slots.direction == '…]"];
+	n7->n7[fontname="Helvetica",fontsize="9",label="go"];
+	n7->n7[fontname="Helvetica",fontsize="9",label="*(any)"];
+	n10->n11[fontname="Helvetica",fontsize="9",label="read_message"];
+	n10->n10[fontname="Helvetica",fontsize="9",label="look"];
+	n10->n12[fontname="Helvetica",fontsize="9",label="go\n[slots.direction == '…]"];
+	n10->n10[fontname="Helvetica",fontsize="9",label="go"];
+	n4->n2[fontname="Helvetica",fontsize="9",label="go\n[slots.direction == '…]"];
+	n4->n4[fontname="Helvetica",fontsize="9",label="go"];
+	n4->n4[fontname="Helvetica",fontsize="9",label="hang_cloak\n[world.wearing_cloak …]"];
+	n4->n4[fontname="Helvetica",fontsize="9",label="hang_cloak"];
+	n4->n4[fontname="Helvetica",fontsize="9",label="wear_cloak\n[world.wearing_cloak …]"];
+	n4->n4[fontname="Helvetica",fontsize="9",label="wear_cloak"];
+	n4->n4[fontname="Helvetica",fontsize="9",label="look"];
+	n2->n3[fontname="Helvetica",fontsize="9",label="go\n[slots.direction == '…]"];
+	n2->n4[fontname="Helvetica",fontsize="9",label="go\n[slots.direction == '…]"];
+	n2->n2[fontname="Helvetica",fontsize="9",label="go\n[slots.direction == '…]"];
+	n2->n2[fontname="Helvetica",fontsize="9",label="go"];
+	n2->n2[fontname="Helvetica",fontsize="9",label="look"];
+	
+}

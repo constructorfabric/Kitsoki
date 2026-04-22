@@ -1,0 +1,140 @@
+# Replay oracle for Cloak of Darkness — Mode 2 flow fixtures.
+# Hand-authored bootstrap oracle (§10.4); replace with a Mode-1-generated
+# oracle once the LLM harness is wired up (Stage 5).
+kind: oracle
+app_id: cloak-of-darkness
+app_version: 0.1.0
+generated_at: "2026-04-20T00:00:00Z"
+generator: "hand-authored (stage 2)"
+min_confidence: 1.00
+
+entries:
+  # ── foyer ──────────────────────────────────────────────────────────────────
+  - state: foyer
+    input: "go south"
+    intent: { name: go, slots: { direction: south } }
+    confidence: 1.00
+    majority_of: 1
+
+  - state: foyer
+    input: "head south"
+    intent: { name: go, slots: { direction: south } }
+    confidence: 1.00
+    majority_of: 1
+
+  - state: foyer
+    input: "s"
+    intent: { name: go, slots: { direction: south } }
+    confidence: 1.00
+    majority_of: 1
+
+  - state: foyer
+    input: "go west"
+    intent: { name: go, slots: { direction: west } }
+    confidence: 1.00
+    majority_of: 1
+
+  - state: foyer
+    input: "go to the cloakroom"
+    intent: { name: go, slots: { direction: west } }
+    confidence: 1.00
+    majority_of: 1
+
+  - state: foyer
+    input: "look"
+    intent: { name: look, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+
+  - state: foyer
+    input: "look around"
+    intent: { name: look, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+
+  # ── cloakroom ──────────────────────────────────────────────────────────────
+  - state: cloakroom
+    input: "hang the cloak"
+    intent: { name: hang_cloak, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+
+  - state: cloakroom
+    input: "hang my cloak on the hook"
+    intent: { name: hang_cloak, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+
+  - state: cloakroom
+    input: "put the cloak up"
+    intent: { name: hang_cloak, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+
+  - state: cloakroom
+    input: "head east"
+    intent: { name: go, slots: { direction: east } }
+    confidence: 1.00
+    majority_of: 1
+
+  - state: cloakroom
+    input: "go east"
+    intent: { name: go, slots: { direction: east } }
+    confidence: 1.00
+    majority_of: 1
+
+  - state: cloakroom
+    input: "wear the cloak"
+    intent: { name: wear_cloak, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+
+  - state: cloakroom
+    input: "look"
+    intent: { name: look, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+
+  # ── bar.dark ───────────────────────────────────────────────────────────────
+  - state: bar.dark
+    input: "go north"
+    intent: { name: go, slots: { direction: north } }
+    confidence: 1.00
+    majority_of: 1
+
+  - state: bar.dark
+    input: "n"
+    intent: { name: go, slots: { direction: north } }
+    confidence: 1.00
+    majority_of: 1
+
+  - state: bar.dark
+    input: "leave"
+    intent: { name: go, slots: { direction: north } }
+    confidence: 1.00
+    majority_of: 1
+
+  - state: bar.dark
+    input: "look around"
+    intent: { name: look, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+
+  # ── bar.lit ────────────────────────────────────────────────────────────────
+  - state: bar.lit
+    input: "read the message"
+    intent: { name: read_message, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+
+  - state: bar.lit
+    input: "read it"
+    intent: { name: read_message, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+
+  - state: bar.lit
+    input: "go north"
+    intent: { name: go, slots: { direction: north } }
+    confidence: 1.00
+    majority_of: 1
