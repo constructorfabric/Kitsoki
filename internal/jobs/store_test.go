@@ -21,6 +21,21 @@ func openTestDB(t *testing.T) *sql.DB {
 	return db
 }
 
+func makeTestJob(id string, status jobs.JobStatus) *jobs.Job {
+	now := time.Now()
+	return &jobs.Job{
+		ID:          id,
+		SessionID:   "sess-test",
+		Kind:        "host.test",
+		Status:      status,
+		OriginState: "terminal",
+		Payload:     map[string]any{},
+		CreatedAt:   now,
+		UpdatedAt:   now,
+		StartedAt:   &now,
+	}
+}
+
 func TestJobStore_UpsertAndList(t *testing.T) {
 	db := openTestDB(t)
 	js, err := jobs.NewJobStore(db)
