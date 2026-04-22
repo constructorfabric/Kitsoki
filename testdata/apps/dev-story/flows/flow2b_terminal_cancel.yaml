@@ -1,0 +1,32 @@
+# Flow 2b: Terminal — cancel path
+# Exercises: propose → review → cancel returns to idle.
+test_kind: flow
+app: ../app.yaml
+initial_state: terminal_idle
+initial_world:
+  prev_state: "workspace_room"
+  current_workspace: "my-project"
+  proposal_cmd: ""
+  proposal_status: "idle"
+
+turns:
+  # Propose a command
+  - intent:
+      name: propose
+      slots:
+        cmd: "rm -rf /tmp/test"
+    expect_state: terminal_reviewing
+    expect_world:
+      proposal_cmd: "rm -rf /tmp/test"
+      proposal_status: "reviewing"
+
+  # Cancel the proposal
+  - intent:
+      name: cancel
+      slots: {}
+    expect_state: terminal_idle
+    expect_world:
+      proposal_status: "cancelled"
+      proposal_cmd: ""
+
+expect_no_errors: true

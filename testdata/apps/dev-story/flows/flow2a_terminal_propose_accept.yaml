@@ -1,0 +1,59 @@
+# Flow 2a: Terminal — propose command → refine → accept → execute → review result → accept/stay
+# Exercises: full proposal lifecycle happy path.
+test_kind: flow
+app: ../app.yaml
+initial_state: terminal_idle
+initial_world:
+  prev_state: "workspace_room"
+  current_workspace: "my-project"
+  proposal_cmd: ""
+  proposal_status: "idle"
+  proposal_result: ""
+
+turns:
+  # Propose a command
+  - intent:
+      name: propose
+      slots:
+        cmd: "git status"
+    expect_state: terminal_reviewing
+    expect_world:
+      proposal_cmd: "git status"
+      proposal_status: "reviewing"
+
+  # Refine the command with feedback
+  - intent:
+      name: refine
+      slots:
+        feedback: "git status --short"
+    expect_state: terminal_reviewing
+    expect_world:
+      proposal_cmd: "git status --short"
+      proposal_status: "reviewing"
+
+  # Accept the proposal — transitions to executing
+  - intent:
+      name: accept
+      slots: {}
+    expect_state: terminal_executing
+    expect_world:
+      proposal_status: "executing"
+
+  # Accept again to progress to result (simulates execute completion)
+  - intent:
+      name: accept
+      slots: {}
+    expect_state: terminal_result
+    expect_world:
+      proposal_status: "reviewing_result"
+
+  # Return to idle from result
+  - intent:
+      name: cancel
+      slots: {}
+    expect_state: terminal_idle
+    expect_world:
+      proposal_status: "idle"
+      proposal_cmd: ""
+
+expect_no_errors: true

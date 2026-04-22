@@ -1,0 +1,51 @@
+# Flow 1: Main → Workspace Manager → create workspace → Workspace Room → back to Main
+# Exercises: navigation, workspace creation, history (prev_state) back-navigation.
+test_kind: flow
+app: ../app.yaml
+initial_state: main
+initial_world:
+  prev_state: "main"
+  current_workspace: ""
+  inbox_unread: 0
+
+turns:
+  # Navigate to workspace manager from main
+  - intent:
+      name: go_workspace_manager
+      slots: {}
+    expect_state: workspace_manager
+    expect_world:
+      prev_state: "main"
+
+  # Create a new workspace called "my-project"
+  - intent:
+      name: create_workspace
+      slots:
+        name: "my-project"
+    expect_state: workspace_creating
+    expect_world:
+      current_workspace: "my-project"
+      prev_state: "workspace_manager"
+
+  # Enter the workspace room from workspace_creating
+  - intent:
+      name: enter_workspace
+      slots:
+        name: "my-project"
+    expect_state: workspace_room
+    expect_world:
+      prev_state: "workspace_manager"
+
+  # Go back to the previous state (workspace_manager) via prev_state
+  - intent:
+      name: go_back
+      slots: {}
+    expect_state: workspace_manager
+
+  # Go back to main
+  - intent:
+      name: go_main
+      slots: {}
+    expect_state: main
+
+expect_no_errors: true

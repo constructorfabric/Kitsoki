@@ -1,0 +1,48 @@
+# Flow 5: Clarification — background job requests clarification →
+# inbox shows action_required → answer it → job resumes.
+# Uses the inbox room's clarification path.
+test_kind: flow
+app: ../app.yaml
+initial_state: inbox
+initial_world:
+  prev_state: "workspace_room"
+  clarification_asked: true
+  inbox_unread: 1
+  proposal_cmd: "deploy to production"
+  job_bg_running: true
+  job_bg_result: ""
+
+turns:
+  # Inbox shows action_required: clarification needed
+  - intent:
+      name: show_inbox
+      slots: {}
+    expect_state: inbox
+    expect_world:
+      clarification_asked: true
+      inbox_unread: 1
+
+  # Open the clarification item (item_id=2)
+  - intent:
+      name: open_inbox_item
+      slots:
+        item_id: "2"
+    expect_state: inbox_clarifying
+
+  # Answer the clarification — "staging"
+  - intent:
+      name: answer_clarification
+      slots:
+        answer: "staging"
+    expect_state: inbox_clarification_answered
+    expect_world:
+      clarification_answer: "staging"
+      clarification_asked: false
+
+  # Navigate back to previous work via go_back
+  - intent:
+      name: go_back
+      slots: {}
+    expect_state: workspace_room
+
+expect_no_errors: true

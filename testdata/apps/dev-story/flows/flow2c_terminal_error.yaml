@@ -1,0 +1,50 @@
+# Flow 2c: Terminal — error path
+# Exercises: terminal_error state, retry from error, cancel from error.
+# The terminal_error state is reached when on_enter invoke fails (on_error: terminal_error).
+# In tests, we jump directly to terminal_error to test the error path intents.
+test_kind: flow
+app: ../app.yaml
+initial_state: terminal_error
+initial_world:
+  prev_state: "workspace_room"
+  current_workspace: "my-project"
+  proposal_cmd: "git push --force"
+  proposal_status: "failed"
+  last_error: "exit code 1: push rejected (non-fast-forward)"
+
+turns:
+  # Retry from error state — goes back to executing
+  - intent:
+      name: retry
+      slots: {}
+    expect_state: terminal_executing
+    expect_world:
+      proposal_status: "executing"
+
+  # Go back from executing to idle
+  - intent:
+      name: go_back
+      slots: {}
+    expect_state: terminal_idle
+    expect_world:
+      proposal_status: "cancelled"
+
+  # Now propose again to re-enter error state via a new proposal
+  - intent:
+      name: propose
+      slots:
+        cmd: "git push origin main"
+    expect_state: terminal_reviewing
+    expect_world:
+      proposal_cmd: "git push origin main"
+      proposal_status: "reviewing"
+
+  # Cancel from reviewing
+  - intent:
+      name: cancel
+      slots: {}
+    expect_state: terminal_idle
+    expect_world:
+      proposal_status: "cancelled"
+
+expect_no_errors: true

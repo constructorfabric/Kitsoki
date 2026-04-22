@@ -1,0 +1,41 @@
+# Flow 4: Oracle Room — enter → ask a question → get stub reply → exit → history returns.
+# Oracle entry uses push_history: false (stackless), so back returns to the caller.
+# ConversationalHarness is a stub; this tests structural transitions only.
+test_kind: flow
+app: ../app.yaml
+initial_state: main
+initial_world:
+  prev_state: "main"
+
+turns:
+  # Go to the Oracle Room from main
+  - intent:
+      name: go_oracle
+      slots: {}
+    expect_state: oracle
+    expect_world:
+      prev_state: "main"
+
+  # Ask a general question
+  - intent:
+      name: ask_question
+      slots:
+        question: "How does the auth token refresh work?"
+    expect_state: oracle_answering
+    expect_world:
+      proposal_cmd: "How does the auth token refresh work?"
+
+  # Ask another question (staying in oracle)
+  - intent:
+      name: ask_question
+      slots:
+        question: "What are the trade-offs between Option A and B?"
+    expect_state: oracle_answering
+
+  # Exit Oracle — should return to prev_state (main)
+  - intent:
+      name: go_back
+      slots: {}
+    expect_state: main
+
+expect_no_errors: true

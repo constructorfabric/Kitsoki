@@ -1,0 +1,61 @@
+# Flow 3: Background job — kick off a long command, get control back, open Inbox,
+# see notification, teleport to result, $proposal_result is rehydrated.
+test_kind: flow
+app: ../app.yaml
+initial_state: terminal_background
+initial_world:
+  prev_state: "workspace_room"
+  current_workspace: "my-project"
+  proposal_cmd: ""
+  proposal_status: "idle"
+  job_bg_running: false
+  job_bg_result: ""
+  inbox_unread: 0
+
+turns:
+  # Propose a background command
+  - intent:
+      name: propose
+      slots:
+        cmd: "go test ./... -count=5"
+    expect_state: terminal_bg_reviewing
+    expect_world:
+      proposal_cmd: "go test ./... -count=5"
+      proposal_status: "reviewing"
+
+  # Accept — submits as background job, gets control back immediately
+  - intent:
+      name: accept
+      slots: {}
+    expect_state: terminal_bg_submitted
+    expect_world:
+      job_bg_running: true
+      proposal_status: "executing"
+      # job_bg_result set as stub in transition effects
+      job_bg_result: "[stub] Background job completed for: go test ./... -count=5"
+
+  # Navigate to inbox — should show unread notification
+  - intent:
+      name: go_inbox
+      slots: {}
+    expect_state: inbox
+    expect_world:
+      inbox_unread: 1
+      prev_state: "terminal_bg_submitted"
+
+  # Open the job result item (item_id=1)
+  - intent:
+      name: open_inbox_item
+      slots:
+        item_id: "1"
+    expect_state: terminal_bg_result_view
+    expect_world:
+      inbox_unread: 0
+
+  # Verify the result is visible (job_bg_result is rehydrated in world)
+  - intent:
+      name: go_back
+      slots: {}
+    expect_state: terminal_bg_submitted
+
+expect_no_errors: true
