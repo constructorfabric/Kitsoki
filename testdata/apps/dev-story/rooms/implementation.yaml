@@ -1,0 +1,125 @@
+# Implementation Room — build a new feature or complete a Jira task.
+
+states:
+  implementation:
+    description: "Implementation Room — build a feature or complete a task."
+    view: |
+      Implementation Room.
+      Workspace: {{ world.current_workspace }}
+
+      Steps: review task → plan → write code → write tests → open PR
+
+      Options: review task, plan approach, write code, write tests, open pr, go back.
+    relevant_world: [current_workspace]
+    relevant_slots: []
+    on:
+      review_task:
+        - target: impl_reviewing_task
+
+      go_planning:
+        - target: planning_room
+          effects:
+            - set: { prev_state: "implementation" }
+
+      write_code:
+        - target: impl_writing_code
+
+      go_test:
+        - target: test_room
+          effects:
+            - set: { prev_state: "implementation" }
+
+      open_pr:
+        - target: pr_room
+          effects:
+            - set: { prev_state: "implementation" }
+
+      go_back:
+        - target: "{{ world.prev_state }}"
+
+      go_main:
+        - target: main
+
+      go_inbox:
+        - target: inbox
+          push_history: false
+
+  impl_reviewing_task:
+    description: "Loading task details from Jira..."
+    view: |
+      Task Details:
+
+      [stub] PROJ-101: Implement auth refresh token rotation
+        Priority: High
+        Assignee: You
+        Sprint: Sprint 42
+        Story Points: 5
+
+        Acceptance Criteria:
+          - Tokens must auto-refresh when within 5 minutes of expiry
+          - Refresh must be transparent to the API consumer
+          - Add unit tests with >80% coverage
+          - No breaking changes to the token schema
+
+        Linked designs: auth-design.confluence.io/refresh-tokens
+    relevant_world: [current_workspace]
+    relevant_slots: []
+    on:
+      go_planning:
+        - target: planning_room
+          effects:
+            - set: { prev_state: "implementation" }
+
+      write_code:
+        - target: impl_writing_code
+
+      go_back:
+        - target: implementation
+
+      go_main:
+        - target: main
+
+      go_inbox:
+        - target: inbox
+          push_history: false
+
+  impl_writing_code:
+    description: "Writing code — iterative edit/run/test loop."
+    view: |
+      Code Writing Session — {{ world.current_workspace }}
+
+      [stub] LLM-assisted coding:
+        → Editing auth/token.go
+        → Adding RefreshIfExpiring(ctx) method
+        → Editing api/middleware.go
+        → Adding refresh middleware before route handlers
+
+      Use the terminal to run tests and see output.
+      Use go terminal to switch to the terminal room.
+    relevant_world: [current_workspace]
+    relevant_slots: []
+    on:
+      go_terminal:
+        - target: terminal_idle
+          effects:
+            - set: { prev_state: "implementation" }
+
+      go_test:
+        - target: test_room
+          effects:
+            - set: { prev_state: "implementation" }
+
+      open_pr:
+        - target: pr_room
+          effects:
+            - set: { prev_state: "implementation" }
+
+      go_back:
+        - target: implementation
+
+      go_main:
+        - target: main
+
+      go_inbox:
+        - target: inbox
+          push_history: false

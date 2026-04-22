@@ -1,0 +1,104 @@
+# Planning Room — break down issues into actionable plans.
+
+states:
+  planning_room:
+    description: "Planning Room — break down epics, design approaches, estimate effort."
+    view: |
+      Planning Room.
+      Workspace: {{ world.current_workspace }}
+
+      Options: break down epic, design approach, estimate effort, save plan, go back.
+    relevant_world: [current_workspace]
+    relevant_slots: []
+    on:
+      break_down_epic:
+        - target: planning_breakdown
+
+      design_approach:
+        - target: planning_design
+
+      save_plan:
+        - target: planning_room
+          effects:
+            - say: "[stub] Plan saved to Jira issue and workspace."
+
+      go_back:
+        - target: "{{ world.prev_state }}"
+
+      go_main:
+        - target: main
+
+      go_inbox:
+        - target: inbox
+          push_history: false
+
+  planning_breakdown:
+    description: "Breaking down the epic into child issues..."
+    view: |
+      Epic Breakdown: {{ slots.epic }}
+
+      [stub] Child issues:
+        1. PROJ-201: Set up token schema (1 SP)
+        2. PROJ-202: Implement token refresh logic (3 SP)
+        3. PROJ-203: Add middleware integration (2 SP)
+        4. PROJ-204: Write unit tests (2 SP)
+        5. PROJ-205: Write integration tests (2 SP)
+
+      Total: 10 story points, 2 sprints estimated.
+
+      Save this plan?
+    relevant_world: []
+    relevant_slots: []
+    on:
+      save_plan:
+        - target: planning_room
+          effects:
+            - say: "[stub] Plan saved to Jira."
+
+      go_back:
+        - target: planning_room
+
+      go_main:
+        - target: main
+
+      go_inbox:
+        - target: inbox
+          push_history: false
+
+  planning_design:
+    description: "Designing the architectural approach..."
+    view: |
+      Design Discussion: {{ slots.task }}
+
+      [stub] Architectural options:
+
+      Option A: Middleware-based refresh (recommended)
+        Pros: Transparent to route handlers, single responsibility
+        Cons: Adds 1 round-trip per request when token is near-expiry
+
+      Option B: Token manager singleton
+        Pros: Reusable across handlers
+        Cons: Global state, harder to test
+
+      Option C: Per-request refresh check
+        Pros: Simple
+        Cons: Duplicates refresh logic across handlers
+
+      Recommendation: Option A — add RefreshMiddleware before your router.
+    relevant_world: []
+    relevant_slots: []
+    on:
+      save_plan:
+        - target: planning_room
+          effects:
+            - say: "[stub] Design decision saved."
+
+      go_back:
+        - target: planning_room
+
+      go_main:
+        - target: main
+
+      go_inbox:
+        - target: inbox
+          push_history: false

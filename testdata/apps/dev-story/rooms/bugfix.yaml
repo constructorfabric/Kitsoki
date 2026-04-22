@@ -1,0 +1,185 @@
+# Bug Fix Room — reproduce, localize, fix, and verify a bug.
+
+states:
+  bugfix:
+    description: "Bug Fix Room — work through the reproduce-localize-fix-verify cycle."
+    view: |
+      Bug Fix Room.
+      Workspace: {{ world.current_workspace }}
+
+      Steps: reproduce → localize → apply fix → verify → open PR
+
+      Options: reproduce bug, localize bug, apply fix, verify fix, open pr, go back.
+    relevant_world: [current_workspace, proposal_result]
+    relevant_slots: []
+    on:
+      reproduce_bug:
+        - target: bugfix_reproducing
+
+      localize_bug:
+        - target: bugfix_localizing
+
+      apply_fix:
+        - target: bugfix_applying
+
+      verify_fix:
+        - target: bugfix_verifying
+
+      open_pr:
+        - target: pr_room
+          effects:
+            - set: { prev_state: "bugfix" }
+
+      go_back:
+        - target: "{{ world.prev_state }}"
+
+      go_main:
+        - target: main
+
+      go_inbox:
+        - target: inbox
+          push_history: false
+
+  bugfix_reproducing:
+    description: "Reproducing the bug..."
+    view: |
+      Reproducing bug in workspace: {{ world.current_workspace }}
+
+      [stub] Running repro script...
+        FAIL: TestAuthRefresh (0.23s)
+          auth_test.go:45: expected status 200, got 401
+          auth_test.go:46: response body: {"error":"token_expired"}
+
+      Bug reproduced. Proceed to localize root cause?
+    relevant_world: [current_workspace]
+    relevant_slots: []
+    on_enter:
+      - invoke: host.run
+        with:
+          cmd: "echo 'FAIL: TestAuthRefresh - expected 200 got 401'"
+        bind:
+          proposal_result: "stdout"
+        on_error: bugfix_error
+    on:
+      localize_bug:
+        - target: bugfix_localizing
+
+      go_back:
+        - target: bugfix
+
+      go_main:
+        - target: main
+
+      go_inbox:
+        - target: inbox
+          push_history: false
+
+  bugfix_localizing:
+    description: "Localizing the root cause..."
+    view: |
+      Root Cause Analysis:
+
+      [stub] Tracing auth flow...
+        auth/token.go:123: Token.Validate() returns expired=true for tokens > 24h
+        auth/refresh.go:45: RefreshToken() not called before Validate()
+        → Root cause: Token refresh is not triggered before validation in the
+          request handler at api/auth_handler.go:78
+
+      Suggested fix: Call RefreshToken() in the middleware before route handlers.
+    relevant_world: [current_workspace]
+    relevant_slots: []
+    on:
+      apply_fix:
+        - target: bugfix_applying
+
+      go_back:
+        - target: bugfix
+
+      go_main:
+        - target: main
+
+      go_inbox:
+        - target: inbox
+          push_history: false
+
+  bugfix_applying:
+    description: "Applying the fix..."
+    view: |
+      Applying fix to: {{ world.current_workspace }}
+
+      [stub] Change applied to api/auth_handler.go:78
+        + refreshErr := token.RefreshToken(ctx, r.Header.Get("Authorization"))
+        + if refreshErr != nil {
+        +     http.Error(w, "token refresh failed", http.StatusUnauthorized)
+        +     return
+        + }
+
+      Fix applied. Verify next?
+    relevant_world: [current_workspace]
+    relevant_slots: []
+    on_enter:
+      - invoke: host.run
+        with:
+          cmd: "echo 'Fix applied: auth_handler.go patched'"
+        on_error: bugfix_error
+    on:
+      verify_fix:
+        - target: bugfix_verifying
+
+      go_back:
+        - target: bugfix
+
+      go_main:
+        - target: main
+
+      go_inbox:
+        - target: inbox
+          push_history: false
+
+  bugfix_verifying:
+    description: "Verifying the fix..."
+    view: |
+      Verifying fix in {{ world.current_workspace }}:
+
+      [stub] Running: go test ./... -run TestAuth
+        ok  auth/token_test.go (0.15s)
+        ok  auth/refresh_test.go (0.18s)
+        ok  api/auth_handler_test.go (0.22s)
+        PASS: 3 suites, 12 tests
+
+      Fix verified! Ready to open a PR.
+    relevant_world: [current_workspace]
+    relevant_slots: []
+    on_enter:
+      - invoke: host.run
+        with:
+          cmd: "echo 'go test: PASS 3 suites 12 tests'"
+        on_error: bugfix_error
+    on:
+      open_pr:
+        - target: pr_room
+          effects:
+            - set: { prev_state: "bugfix" }
+
+      go_back:
+        - target: bugfix
+
+      go_main:
+        - target: main
+
+      go_inbox:
+        - target: inbox
+          push_history: false
+
+  bugfix_error:
+    description: "Bug fix operation failed."
+    view: |
+      Error: {{ world.last_error }}
+    relevant_world: [last_error]
+    relevant_slots: []
+    on:
+      go_back:
+        - target: bugfix
+
+      go_main:
+        - target: main

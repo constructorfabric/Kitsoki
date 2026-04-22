@@ -1,0 +1,149 @@
+# Test Room — write, run, and maintain tests.
+
+states:
+  test_room:
+    description: "Test Room — run tests, write new ones, fix flaky ones."
+    view: |
+      Test Room.
+      Workspace: {{ world.current_workspace }}
+
+      Options: run suite, run focused test, write new tests, go back.
+    relevant_world: [current_workspace, proposal_result]
+    relevant_slots: []
+    on:
+      run_suite:
+        - target: test_running_suite
+
+      run_focused_test:
+        - target: test_running_focused
+
+      write_new_tests:
+        - target: test_writing
+
+      go_back:
+        - target: "{{ world.prev_state }}"
+
+      go_main:
+        - target: main
+
+      go_inbox:
+        - target: inbox
+          push_history: false
+
+  test_running_suite:
+    description: "Running the full test suite..."
+    view: |
+      Running tests in {{ world.current_workspace }}:
+
+      [stub] go test ./... -v
+        ok   auth/token_test.go     (0.15s)
+        ok   auth/refresh_test.go   (0.18s)
+        ok   api/auth_handler_test.go (0.22s)
+        FAIL api/billing_test.go    (0.31s)
+          billing_test.go:67: unexpected nil pointer in invoice calculation
+
+      Summary: 3 pass, 1 fail. Run focused test on billing_test.go?
+    relevant_world: [current_workspace]
+    relevant_slots: []
+    on_enter:
+      - invoke: host.run
+        with:
+          cmd: "echo 'go test ./...: 3 pass 1 fail (billing_test.go:67 nil pointer)'"
+        bind:
+          proposal_result: "stdout"
+        on_error: test_error
+    on:
+      run_focused_test:
+        - target: test_running_focused
+
+      go_back:
+        - target: test_room
+
+      go_main:
+        - target: main
+
+      go_inbox:
+        - target: inbox
+          push_history: false
+
+  test_running_focused:
+    description: "Running focused test..."
+    view: |
+      Running focused test: {{ slots.test_name }}
+
+      [stub] go test -v -run {{ slots.test_name }}
+        --- FAIL: TestBillingInvoice (0.05s)
+            billing_test.go:67: expected invoice total 150.00, got <nil>
+            billing_test.go:68: stacktrace:
+              billing/invoice.go:23: (*Invoice).Calculate() panic: nil pointer
+
+        To fix: add nil guard in billing/invoice.go:23
+    relevant_world: [current_workspace]
+    relevant_slots: []
+    on:
+      hand_off_bugfix:
+        - target: bugfix
+          effects:
+            - set: { prev_state: "test_room" }
+
+      go_back:
+        - target: test_room
+
+      go_main:
+        - target: main
+
+      go_inbox:
+        - target: inbox
+          push_history: false
+
+  test_writing:
+    description: "Generating new tests for uncovered code paths..."
+    view: |
+      Writing tests for {{ world.current_workspace }}:
+
+      [stub] Coverage analysis:
+        billing/invoice.go:  45% covered (target: 80%)
+        Uncovered paths:
+          - Invoice.Calculate() with nil items
+          - Invoice.ApplyDiscount() with negative values
+          - Invoice.Export() with empty items
+
+      Generated tests:
+        - TestCalculateWithNilItems
+        - TestApplyNegativeDiscount
+        - TestExportEmpty
+
+      Add these to billing/invoice_test.go?
+    relevant_world: [current_workspace]
+    relevant_slots: []
+    on:
+      accept:
+        - target: test_room
+          effects:
+            - say: "[stub] Tests written to billing/invoice_test.go"
+
+      cancel:
+        - target: test_room
+
+      go_back:
+        - target: test_room
+
+      go_main:
+        - target: main
+
+      go_inbox:
+        - target: inbox
+          push_history: false
+
+  test_error:
+    description: "Test operation failed."
+    view: |
+      Test error: {{ world.last_error }}
+    relevant_world: [last_error]
+    relevant_slots: []
+    on:
+      go_back:
+        - target: test_room
+
+      go_main:
+        - target: main

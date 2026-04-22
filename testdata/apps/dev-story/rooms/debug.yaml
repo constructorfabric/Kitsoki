@@ -1,0 +1,125 @@
+# Debug Room — investigate failures without committing fixes.
+
+states:
+  debug_room:
+    description: "Debug Room — investigate failures: stack traces, logs, bisect, state inspection."
+    view: |
+      Debug Room.
+      Workspace: {{ world.current_workspace }}
+
+      Tools: analyze stack trace, search logs, bisect regression, inspect state.
+
+      Options: analyze trace, search logs, bisect, hand off to bug fix, go back.
+    relevant_world: [current_workspace, proposal_result]
+    relevant_slots: []
+    on:
+      analyze_trace:
+        - target: debug_analyzing
+
+      search_logs:
+        - target: debug_searching_logs
+
+      hand_off_bugfix:
+        - target: bugfix
+          effects:
+            - set: { prev_state: "debug_room" }
+
+      go_terminal:
+        - target: terminal_idle
+          effects:
+            - set: { prev_state: "debug_room" }
+
+      go_back:
+        - target: "{{ world.prev_state }}"
+
+      go_main:
+        - target: main
+
+      go_inbox:
+        - target: inbox
+          push_history: false
+
+  debug_analyzing:
+    description: "Analyzing the stack trace..."
+    view: |
+      Stack Trace Analysis:
+
+      Input: {{ slots.trace }}
+
+      [stub] Analysis:
+        Exception type: NullPointerException (or equivalent)
+        Likely cause: Uninitialized token object in auth/token.go:123
+        Related code: auth/token.go line 123, auth/refresh.go line 45
+        Similar issues: PROJ-98 (resolved), PROJ-102 (open)
+
+        Suggested investigation:
+          1. Check token initialization in auth/token.go
+          2. Add nil guard before Token.Validate() call
+          3. Add logging at auth/token.go:120 to trace token lifecycle
+    relevant_world: [current_workspace]
+    relevant_slots: []
+    on:
+      hand_off_bugfix:
+        - target: bugfix
+          effects:
+            - set: { prev_state: "debug_room" }
+
+      go_back:
+        - target: debug_room
+
+      go_main:
+        - target: main
+
+      go_inbox:
+        - target: inbox
+          push_history: false
+
+  debug_searching_logs:
+    description: "Searching logs..."
+    view: |
+      Log Search Results:
+
+      [stub] Querying observability backend...
+        Found 23 matching log lines in the last hour:
+        2024-01-15T10:23:45Z WARN auth: token validation failed user=u123 reason=expired
+        2024-01-15T10:23:45Z ERROR api: 401 unauthorized path=/api/v1/data user=u123
+        2024-01-15T10:23:46Z INFO auth: token refresh attempted user=u123 success=false
+
+        Pattern: Token refresh fails silently when token > 24h old.
+    relevant_world: [current_workspace]
+    relevant_slots: []
+    on_enter:
+      - invoke: host.run
+        with:
+          cmd: "echo '23 log lines found matching pattern auth token validation failed'"
+        bind:
+          proposal_result: "stdout"
+        on_error: debug_error
+    on:
+      hand_off_bugfix:
+        - target: bugfix
+          effects:
+            - set: { prev_state: "debug_room" }
+
+      go_back:
+        - target: debug_room
+
+      go_main:
+        - target: main
+
+      go_inbox:
+        - target: inbox
+          push_history: false
+
+  debug_error:
+    description: "Debug operation failed."
+    view: |
+      Debug error: {{ world.last_error }}
+    relevant_world: [last_error]
+    relevant_slots: []
+    on:
+      go_back:
+        - target: debug_room
+
+      go_main:
+        - target: main
