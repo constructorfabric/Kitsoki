@@ -1,0 +1,648 @@
+# dev-story — A text-adventure-style interface for a software engineer's day.
+# Built on hally. All rooms are states; intents are the user's actions.
+# External tools are invoked as stub host calls that return canned JSON.
+
+app:
+  id: dev-story
+  version: 0.1.0
+  title: "dev-story: Engineer's Day"
+  author: "Anthropic"
+
+hosts:
+  - host.run
+  - host.workspace_manager.get
+
+# World schema: typed variables used across all rooms.
+world:
+  prev_state:          { type: string, default: "main" }
+  current_workspace:   { type: string, default: "" }
+  workspace_root:      { type: string, default: "" }
+  jira_query:          { type: string, default: "" }
+  jira_results:        { type: string, default: "" }
+  proposal_cmd:        { type: string, default: "" }
+  proposal_status:     { type: string, default: "idle" }
+  proposal_result:     { type: string, default: "" }
+  last_error:          { type: string, default: "" }
+  inbox_unread:        { type: int,    default: 0 }
+  standup_summary:     { type: string, default: "" }
+  pr_status:           { type: string, default: "" }
+  deploy_env:          { type: string, default: "" }
+  deploy_status:       { type: string, default: "" }
+  incident_title:      { type: string, default: "" }
+  job_bg_running:      { type: bool,   default: false }
+  job_bg_result:       { type: string, default: "" }
+  clarification_asked:  { type: bool,   default: false }
+  clarification_answer: { type: string, default: "" }
+
+# Root state is the Main Room.
+root: main
+
+# Shared global intents used across multiple rooms.
+intents:
+  go_main:
+    title: "Go to Main Room"
+    description: "Return to the main landing area."
+    examples: ["main", "home", "go home", "go to main"]
+    priority: 10
+
+  go_back:
+    title: "Go Back"
+    description: "Return to the previous room."
+    examples: ["back", "go back", "return"]
+    priority: 15
+
+  go_inbox:
+    title: "Check Inbox"
+    description: "Open the inbox to see notifications and background job results."
+    examples: ["inbox", "check inbox", "open inbox"]
+    priority: 20
+
+  go_oracle:
+    title: "Consult the Oracle"
+    description: "Open the Oracle Room for free-form Q&A with Claude."
+    examples: ["oracle", "ask claude", "consult oracle"]
+    priority: 18
+
+  go_terminal:
+    title: "Open Terminal"
+    description: "Go to the terminal room to run shell commands."
+    examples: ["terminal", "open terminal", "shell"]
+    priority: 50
+
+  # Navigation from workspace
+  go_workspace_manager:
+    title: "Workspace Manager"
+    description: "Open the workspace manager to find or create workspaces."
+    examples: ["workspaces", "workspace manager", "list workspaces"]
+    priority: 30
+
+  go_jira:
+    title: "Search Jira"
+    description: "Go to the Jira search room."
+    examples: ["jira", "search jira", "find ticket"]
+    priority: 40
+
+  # Proposal intents (shared across terminal and other proposal-using rooms)
+  propose:
+    title: "Propose a command"
+    description: "Draft a new shell command to run."
+    examples: ["run ls", "propose git status", "run echo hello"]
+    priority: 100
+    slots:
+      cmd:
+        type: string
+        required: true
+        description: "Natural language description of what to run, or the command itself."
+        examples: ["list files in /tmp", "git status", "echo hello world"]
+
+  accept:
+    title: "Accept and run"
+    description: "Accept the proposed command and execute it."
+    examples: ["accept", "run it", "yes do it", "execute"]
+    priority: 90
+
+  cancel:
+    title: "Cancel"
+    description: "Cancel the current proposal or operation."
+    examples: ["cancel", "abort", "never mind", "stop"]
+    priority: 50
+
+  retry:
+    title: "Retry"
+    description: "Retry the last failed command."
+    examples: ["retry", "try again"]
+    priority: 85
+
+  refine:
+    title: "Refine"
+    description: "Provide feedback to improve the proposed command."
+    examples: ["refine with sudo", "change the command to...", "update it to use..."]
+    priority: 80
+    slots:
+      feedback:
+        type: string
+        required: true
+        description: "Feedback to improve the proposal."
+
+  # Workspace actions
+  open_vscode:
+    title: "Open VS Code"
+    description: "Open a new VS Code instance in the workspace root."
+    examples: ["open vscode", "open code", "vscode"]
+    priority: 70
+
+  sync_workspace:
+    title: "Sync Workspace"
+    description: "Pull latest, update submodules, rebase in-progress branches."
+    examples: ["sync", "pull latest", "git pull", "update"]
+    priority: 60
+
+  check_pr:
+    title: "Check PR Status"
+    description: "Check the PR status for this workspace."
+    examples: ["pr status", "check prs", "check pull requests"]
+    priority: 65
+
+  # Room-specific navigations
+  go_bugfix:
+    title: "Fix a Bug"
+    description: "Enter the bug fix room to work on a specific bug."
+    examples: ["fix bug", "bug fix", "work on bug"]
+    priority: 55
+
+  go_implement:
+    title: "Implement a Task"
+    description: "Enter the implementation room to build a feature."
+    examples: ["implement", "work on feature", "build feature"]
+    priority: 54
+
+  go_debug:
+    title: "Debug"
+    description: "Enter the debug room to investigate a failure."
+    examples: ["debug", "investigate", "trace issue"]
+    priority: 53
+
+  go_test:
+    title: "Write/Run Tests"
+    description: "Enter the test room to write or run tests."
+    examples: ["test", "run tests", "write tests"]
+    priority: 52
+
+  go_docs:
+    title: "Update Docs"
+    description: "Enter the docs room to write or update documentation."
+    examples: ["docs", "update docs", "documentation"]
+    priority: 51
+
+  go_refactor:
+    title: "Refactor Code"
+    description: "Enter the refactor room to propose structural changes."
+    examples: ["refactor", "clean up code", "restructure"]
+    priority: 49
+
+  go_planning:
+    title: "Plan Approach"
+    description: "Enter the planning room to break down an issue."
+    examples: ["plan", "planning", "break down issue"]
+    priority: 48
+
+  go_deploy:
+    title: "Deploy"
+    description: "Enter the deploy room to ship changes."
+    examples: ["deploy", "ship it", "push to prod"]
+    priority: 47
+
+  go_observability:
+    title: "View Logs/Metrics"
+    description: "Enter the observability room to check logs and metrics."
+    examples: ["logs", "metrics", "observability", "check logs"]
+    priority: 46
+
+  go_pr_room:
+    title: "Go to PR Room"
+    description: "Enter the PR room to review your PR."
+    examples: ["pr room", "my prs", "pull requests"]
+    priority: 45
+
+  go_code_review:
+    title: "Code Review"
+    description: "Enter the code review room to review teammates' PRs."
+    examples: ["code review", "review prs", "teammate prs"]
+    priority: 44
+
+  go_standup:
+    title: "Prep for Standup"
+    description: "Enter the standup room to prepare your daily update."
+    examples: ["standup", "daily", "prep standup"]
+    priority: 43
+
+  go_incident:
+    title: "Triage Incident"
+    description: "Enter the incident room to respond to a production issue."
+    examples: ["incident", "on call", "production issue", "alert"]
+    priority: 42
+
+  # Jira-specific
+  search_jira:
+    title: "Search Jira"
+    description: "Run a Jira search for tickets."
+    examples: ["search for auth bugs", "find sprint tickets", "JQL: project=FOO"]
+    priority: 100
+    slots:
+      query:
+        type: string
+        required: true
+        description: "Search query or JQL string."
+
+  create_workspace_for_ticket:
+    title: "Create Workspace for Ticket"
+    description: "Create a new workspace and go work on this Jira ticket."
+    examples: ["create workspace for this ticket", "start working on it", "open workspace"]
+    priority: 90
+
+  # Workspace Manager specific
+  list_workspaces:
+    title: "List Workspaces"
+    description: "List all existing workspaces."
+    examples: ["list", "show workspaces", "what workspaces exist"]
+    priority: 100
+
+  create_workspace:
+    title: "Create Workspace"
+    description: "Create a new workspace for an idea or task."
+    examples: ["create workspace", "new workspace", "create project"]
+    priority: 90
+    slots:
+      name:
+        type: string
+        required: true
+        description: "Name for the new workspace."
+
+  enter_workspace:
+    title: "Enter Workspace"
+    description: "Enter an existing workspace by name."
+    examples: ["enter my-project", "open my-project", "switch to my-project"]
+    priority: 95
+    slots:
+      name:
+        type: string
+        required: true
+        description: "Name of the workspace to enter."
+
+  # Inbox-specific
+  show_inbox:
+    title: "Show Inbox"
+    description: "Show all unread inbox items."
+    examples: ["show items", "list notifications", "what's new"]
+    priority: 100
+
+  open_inbox_item:
+    title: "Open Item"
+    description: "Open a specific inbox item and teleport to its origin."
+    examples: ["open item 1", "open notification", "open job result"]
+    priority: 90
+    slots:
+      item_id:
+        type: string
+        required: true
+        description: "ID or number of the inbox item to open."
+
+  answer_clarification:
+    title: "Answer Clarification"
+    description: "Provide the answer to a clarification request from a background job."
+    examples: ["answer yes", "clarify with: production", "reply to job"]
+    priority: 95
+    slots:
+      answer:
+        type: string
+        required: true
+        description: "Your answer to the clarification question."
+
+  dismiss_item:
+    title: "Dismiss Item"
+    description: "Mark an inbox item as read and dismiss it."
+    examples: ["dismiss", "mark read", "archive this"]
+    priority: 80
+
+  cancel_job:
+    title: "Cancel Job"
+    description: "Cancel a running background job."
+    examples: ["cancel job", "stop background job", "kill job"]
+    priority: 75
+
+  # Oracle-specific
+  ask_question:
+    title: "Ask a Question"
+    description: "Ask Claude a general question."
+    examples: ["how does X work", "explain Y", "what is Z"]
+    priority: 100
+    slots:
+      question:
+        type: string
+        required: true
+        description: "Your question for the Oracle."
+
+  explore_area:
+    title: "Explore an Area"
+    description: "Get a guided walkthrough of a module, service, or code flow."
+    examples: ["explore the auth module", "walk me through the deploy pipeline"]
+    priority: 90
+    slots:
+      area:
+        type: string
+        required: true
+        description: "What area to explore."
+
+  brainstorm:
+    title: "Brainstorm Approach"
+    description: "Discuss trade-offs before committing to a plan."
+    examples: ["brainstorm how to refactor X", "discuss options for Y"]
+    priority: 85
+    slots:
+      topic:
+        type: string
+        required: true
+        description: "Topic to brainstorm about."
+
+  # PR Room specific
+  fix_ci:
+    title: "Fix CI Issues"
+    description: "Use LLM assistance to resolve CI failures and bot comments."
+    examples: ["fix ci", "fix failing tests", "resolve lint errors"]
+    priority: 90
+
+  resolve_comments:
+    title: "Resolve Comments"
+    description: "Address reviewer comments on the PR."
+    examples: ["resolve comments", "address feedback", "reply to reviewers"]
+    priority: 85
+
+  update_pr_description:
+    title: "Update PR Description"
+    description: "Regenerate the PR summary and test plan."
+    examples: ["update description", "regenerate summary", "update pr body"]
+    priority: 75
+
+  merge_pr:
+    title: "Merge PR"
+    description: "Merge the PR after checks pass."
+    examples: ["merge", "merge pr", "land it"]
+    priority: 70
+
+  # Bug fix specific
+  reproduce_bug:
+    title: "Reproduce Bug"
+    description: "Write or run a failing test or repro script."
+    examples: ["reproduce", "repro bug", "write repro"]
+    priority: 100
+
+  localize_bug:
+    title: "Localize Root Cause"
+    description: "Trace through logs, stack traces, and code to find the cause."
+    examples: ["localize", "find root cause", "trace the bug"]
+    priority: 90
+
+  apply_fix:
+    title: "Apply Fix"
+    description: "Make the minimal change that resolves the root cause."
+    examples: ["apply fix", "fix it", "make the change"]
+    priority: 85
+
+  verify_fix:
+    title: "Verify Fix"
+    description: "Re-run the repro and related tests to confirm the fix."
+    examples: ["verify", "test the fix", "confirm fix works"]
+    priority: 80
+
+  # Debug specific
+  analyze_trace:
+    title: "Analyze Stack Trace"
+    description: "Paste and get a guided explanation of a stack trace or error."
+    examples: ["analyze this trace", "explain this error", "what does this stack trace mean"]
+    priority: 100
+    slots:
+      trace:
+        type: string
+        required: true
+        description: "The stack trace or error message to analyze."
+
+  search_logs:
+    title: "Search Logs"
+    description: "Query the observability backend for related log lines."
+    examples: ["search logs", "find logs for", "query logs"]
+    priority: 90
+
+  hand_off_bugfix:
+    title: "Hand Off to Bug Fix"
+    description: "Carry findings into the bug fix room."
+    examples: ["go to bug fix", "fix it now", "hand off"]
+    priority: 75
+
+  # Test room specific
+  run_suite:
+    title: "Run Test Suite"
+    description: "Run unit and integration tests with streamed output."
+    examples: ["run tests", "run suite", "go test"]
+    priority: 100
+
+  run_focused_test:
+    title: "Run Focused Test"
+    description: "Run a single failing test with verbose output."
+    examples: ["run test X", "run TestFoo", "focused test"]
+    priority: 90
+    slots:
+      test_name:
+        type: string
+        required: true
+        description: "Name of the test to run."
+
+  write_new_tests:
+    title: "Write New Tests"
+    description: "Generate tests for uncovered code paths."
+    examples: ["write tests", "generate tests", "add test coverage"]
+    priority: 85
+
+  # Planning specific
+  break_down_epic:
+    title: "Break Down Epic"
+    description: "Produce a list of child issues with scope and dependencies."
+    examples: ["break down epic", "decompose", "split into stories"]
+    priority: 100
+    slots:
+      epic:
+        type: string
+        required: true
+        description: "The epic or large task to break down."
+
+  design_approach:
+    title: "Design Approach"
+    description: "Discuss architecture and interfaces for a task."
+    examples: ["design approach", "architect solution", "how to implement"]
+    priority: 90
+    slots:
+      task:
+        type: string
+        required: true
+        description: "Task to design approach for."
+
+  save_plan:
+    title: "Save Plan"
+    description: "Attach the plan to the Jira issue or workspace."
+    examples: ["save plan", "attach to jira", "save the plan"]
+    priority: 75
+
+  # Standup specific
+  summarize_yesterday:
+    title: "Summarize Yesterday"
+    description: "Aggregate commits, PRs, and Jira transitions from the last day."
+    examples: ["summarize yesterday", "what did I do yesterday", "daily summary"]
+    priority: 100
+
+  plan_today:
+    title: "Plan Today"
+    description: "Surface in-progress workspaces and assigned Jira issues."
+    examples: ["plan today", "what's up today", "today's tasks"]
+    priority: 90
+
+  post_to_slack:
+    title: "Post to Slack"
+    description: "Send the generated standup update to the team channel."
+    examples: ["post to slack", "send update", "post standup"]
+    priority: 75
+
+  # Code review specific
+  list_review_prs:
+    title: "List PRs Awaiting Review"
+    description: "Pull PRs assigned to you for review from GitHub."
+    examples: ["list prs to review", "what needs review", "assigned reviews"]
+    priority: 100
+
+  review_pr:
+    title: "Review PR"
+    description: "Get a summary, diff walkthrough, and suggested comments."
+    examples: ["review PR 123", "review this PR", "walk me through the diff"]
+    priority: 90
+    slots:
+      pr_id:
+        type: string
+        required: true
+        description: "PR number or URL to review."
+
+  approve_pr:
+    title: "Approve PR"
+    description: "Submit an approval for the PR."
+    examples: ["approve", "lgtm", "approve the pr"]
+    priority: 80
+
+  # Deploy specific
+  check_deployed:
+    title: "Check What's Deployed"
+    description: "Compare deployed revision to main across environments."
+    examples: ["check deployed", "what's deployed", "deployment status"]
+    priority: 100
+
+  trigger_deploy:
+    title: "Trigger Deploy"
+    description: "Kick off the pipeline for a target environment."
+    examples: ["deploy to staging", "trigger deploy", "ship to prod"]
+    priority: 90
+    slots:
+      environment:
+        type: string
+        required: true
+        description: "Target environment (staging/prod/dev)."
+
+  rollback:
+    title: "Roll Back"
+    description: "Revert to the previous known-good revision."
+    examples: ["rollback", "revert deployment", "undo deploy"]
+    priority: 80
+
+  # Observability specific
+  tail_logs:
+    title: "Tail Logs"
+    description: "Stream logs for a pod/service with optional filter."
+    examples: ["tail logs", "stream logs", "follow logs"]
+    priority: 100
+    slots:
+      service:
+        type: string
+        required: true
+        description: "Service or pod name to tail logs for."
+
+  check_dashboard:
+    title: "Check Dashboard"
+    description: "Open the relevant Grafana/metrics dashboard."
+    examples: ["check dashboard", "grafana", "metrics"]
+    priority: 90
+
+  check_alerts:
+    title: "Check Alerts"
+    description: "See firing alerts relevant to the workspace's services."
+    examples: ["check alerts", "firing alerts", "pagerduty"]
+    priority: 85
+
+  # Incident specific
+  load_incident:
+    title: "Load Incident Context"
+    description: "Pull the alert, recent deploys, and related dashboards."
+    examples: ["load incident", "get context", "what's happening"]
+    priority: 100
+
+  mitigate:
+    title: "Mitigate"
+    description: "Roll back, toggle a feature flag, or scale a service."
+    examples: ["mitigate", "rollback", "toggle feature flag", "scale up"]
+    priority: 90
+
+  update_stakeholders:
+    title: "Update Stakeholders"
+    description: "Post status to the incident Slack channel."
+    examples: ["update slack", "post status", "notify stakeholders"]
+    priority: 80
+
+  open_postmortem:
+    title: "Open Postmortem"
+    description: "Create the postmortem doc seeded with timeline."
+    examples: ["open postmortem", "create postmortem", "incident report"]
+    priority: 75
+
+  # Docs specific
+  update_inline_docs:
+    title: "Update In-Repo Docs"
+    description: "Edit Markdown/README files alongside a code change."
+    examples: ["update readme", "edit docs", "fix documentation"]
+    priority: 100
+
+  generate_docs:
+    title: "Generate Docs from Code"
+    description: "Produce an initial draft from source (API, module, flow)."
+    examples: ["generate docs", "doc this module", "auto-document"]
+    priority: 90
+
+  # Refactor specific
+  propose_refactor:
+    title: "Propose Refactor"
+    description: "Describe the intent and get a change plan."
+    examples: ["propose refactor", "plan refactor", "how to refactor X"]
+    priority: 100
+    slots:
+      intent:
+        type: string
+        required: true
+        description: "Description of the refactor intent."
+
+  apply_refactor:
+    title: "Apply Refactor"
+    description: "Execute the changes with test guards."
+    examples: ["apply refactor", "make the changes", "execute refactor"]
+    priority: 90
+
+  verify_behavior:
+    title: "Verify Behavior Unchanged"
+    description: "Run full test suite and compare outputs."
+    examples: ["verify", "check nothing broke", "run tests after refactor"]
+    priority: 85
+
+  # Implementation specific
+  review_task:
+    title: "Review Task"
+    description: "Load the Jira issue, linked designs, and acceptance criteria."
+    examples: ["review task", "load issue", "show acceptance criteria"]
+    priority: 100
+
+  write_code:
+    title: "Write Code"
+    description: "Iterative edit/run/test loop with LLM assistance."
+    examples: ["write code", "implement it", "start coding"]
+    priority: 90
+
+  open_pr:
+    title: "Open PR"
+    description: "Hand off to the PR room with the feature branch."
+    examples: ["open pr", "create pull request", "submit pr"]
+    priority: 80
+
+# Include room definitions from separate files.
+include:
+  - rooms/*.yaml
