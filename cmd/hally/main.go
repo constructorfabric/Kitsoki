@@ -156,6 +156,16 @@ See 'hally docs llm-guide' for the full operator guide.`,
 			}
 			defer traceCleanup()
 
+			// Redirect the package-level slog sink through the trace logger
+			// so slog.Warn / slog.Error from deep in the harness stack
+			// (e.g. retry-after-parse-failure in claude_cli.go) reach the
+			// --trace file rather than stderr, which the alt-screen TUI
+			// swallows. This is a no-op when tracing is disabled because
+			// BuildTraceLogger returns slog.Default() in that case.
+			prevDefault := slog.Default()
+			slog.SetDefault(logger)
+			defer slog.SetDefault(prevDefault)
+
 			// Build machine.
 			m, err := machine.New(def, machine.WithMachineLogger(logger))
 			if err != nil {

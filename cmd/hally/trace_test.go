@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"log/slog"
+	"os"
 	"strings"
 	"testing"
 
@@ -58,6 +60,24 @@ func TestPrettyPrintStructure(t *testing.T) {
 	assert.Contains(t, out, "\n\n", "expected blank line between turns")
 }
 
+// TestPrettyPrintWarnRecords renders WARN and ERROR slog records with a
+// distinct visual treatment so they stand out from the DEBUG firehose.
+// The bridge from slog.Default() into the trace logger means harness Warns
+// (e.g. retry-after-parse-failure) now flow through here.
+func TestPrettyPrintWarnRecords(t *testing.T) {
+	input := `{"time":"2026-04-23T07:00:00Z","level":"WARN","msg":"harness/claude-cli: retrying after parse failure","attempt":1}
+{"time":"2026-04-23T07:00:01Z","level":"ERROR","msg":"something exploded","cause":"boom"}
+`
+	var buf bytes.Buffer
+	err := prettyPrint(strings.NewReader(input), &buf)
+	require.NoError(t, err)
+	out := buf.String()
+	assert.Contains(t, out, "WARN", "WARN label should be present")
+	assert.Contains(t, out, "retrying after parse failure")
+	assert.Contains(t, out, "ERROR", "ERROR label should be present")
+	assert.Contains(t, out, "something exploded")
+}
+
 // TestPrettyPrintEmptyInput produces no output (no error) for empty input.
 func TestPrettyPrintEmptyInput(t *testing.T) {
 	r := strings.NewReader("")
@@ -85,4 +105,80 @@ func TestBuildTraceLoggerNoConfig(t *testing.T) {
 	require.NotNil(t, logger)
 	require.NotNil(t, cleanup)
 	cleanup()
+}
+
+// TestBuildTraceLoggerBridgesBothSinks verifies that a package-level
+// slog.Warn reaches both the JSONL and the pretty sinks after the trace
+// logger is installed as slog.Default(), matching what runCmd does.
+func TestBuildTraceLoggerBridgesBothSinks(t *testing.T) {
+	dir := t.TempDir()
+	jsonlPath := dir + "/trace.jsonl"
+	prettyPath := dir + "/trace.log"
+
+	logger, cleanup, err := BuildTraceLogger(TraceConfig{
+		JSONLPath:  jsonlPath,
+		PrettyPath: prettyPath,
+		Level:      slog.LevelInfo,
+	})
+	require.NoError(t, err)
+
+	prev := slog.Default()
+	slog.SetDefault(logger)
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	slog.Warn("harness/claude-cli: retrying after parse failure",
+		"attempt", 1, "err", "fake parse error")
+
+	cleanup()
+
+	jsonl, err := os.ReadFile(jsonlPath)
+	require.NoError(t, err)
+	require.Contains(t, string(jsonl), "retrying after parse failure")
+	require.Contains(t, string(jsonl), `"level":"WARN"`)
+
+	pretty, err := os.ReadFile(prettyPath)
+	require.NoError(t, err)
+	require.Contains(t, string(pretty), "retrying after parse failure",
+		"expected the WARN message to also reach the pretty sink")
+}
+
+// TestBuildTraceLoggerBridgesSlogDefault verifies that after SetDefault-ing
+// the trace logger, a package-level slog.Warn reaches the JSONL sink. This
+// is what lets fence/retry warnings from deep in the harness stack land in
+// --trace rather than disappearing into the TUI-swallowed stderr.
+func TestBuildTraceLoggerBridgesSlogDefault(t *testing.T) {
+	dir := t.TempDir()
+	jsonlPath := dir + "/trace.jsonl"
+
+	logger, cleanup, err := BuildTraceLogger(TraceConfig{
+		JSONLPath: jsonlPath,
+		Level:     slog.LevelInfo,
+	})
+	require.NoError(t, err)
+	t.Cleanup(cleanup)
+
+	// Swap slog.Default() to the trace logger, emulating what runCmd does.
+	prev := slog.Default()
+	slog.SetDefault(logger)
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	// Fire a package-level warn. If the bridge works, this line lands in
+	// the JSONL regardless of caller passing the logger around.
+	slog.Warn("harness/test: probe warning", "kind", "probe")
+
+	// Flush by running cleanup once; but t.Cleanup defers it. Force sync by
+	// reading after a microsleep isn't reliable — rely on the bufio.Writer's
+	// auto-flush on close, so we explicitly run cleanup here then re-skip it.
+	cleanup()
+	// Prevent double-close in the t.Cleanup above by swapping it to a noop.
+	// (Test helpers in this package don't expose a re-runnable cleanup, so
+	// just accept a second call is a no-op on closed *os.File.)
+
+	data, err := os.ReadFile(jsonlPath)
+	require.NoError(t, err)
+	require.Contains(t, string(data), "harness/test: probe warning",
+		"expected slog.Warn to reach the JSONL sink via SetDefault bridge; got:\n%s",
+		string(data))
+	require.Contains(t, string(data), `"level":"WARN"`,
+		"expected WARN level in JSONL; got:\n%s", string(data))
 }

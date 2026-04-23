@@ -74,6 +74,20 @@ func prettyLine(rec traceRecord, extra map[string]any) string {
 
 	msg := rec.Msg
 
+	// Warn / error records (from slog.Warn / slog.Error reached via the
+	// SetDefault bridge in runCmd) take priority over msg-prefix routing
+	// so they pop out of the debug firehose.
+	switch rec.Level {
+	case "WARN":
+		return styleFor(turnPrefix, colorErr) + " " +
+			styleFor("WARN", colorErr) + " " + msg +
+			" " + formatKV(extra, rec.State, rec.Session)
+	case "ERROR":
+		return styleFor(turnPrefix, colorErr) + " " +
+			styleFor("ERROR", colorErr) + " " + msg +
+			" " + formatKV(extra, rec.State, rec.Session)
+	}
+
 	// Route by msg prefix to pick color and indent level.
 	switch {
 	case strings.HasPrefix(msg, "turn."):
@@ -273,9 +287,13 @@ type TraceConfig struct {
 // The caller must call the returned cleanup function when done.
 func BuildTraceLogger(cfg TraceConfig) (l *slog.Logger, cleanup func(), err error) {
 	var closers []func()
+	// Cleanup runs closers in reverse of registration so bufio flushers
+	// (appended after their underlying file closers) run before the files
+	// are closed. Without this, buffered trace data is silently dropped
+	// when the flush writes to an already-closed fd.
 	cleanup = func() {
-		for _, c := range closers {
-			c()
+		for i := len(closers) - 1; i >= 0; i-- {
+			closers[i]()
 		}
 	}
 

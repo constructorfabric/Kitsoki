@@ -2,6 +2,7 @@ package harness_test
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -41,14 +42,52 @@ func TestParseClaudeEnvelope_WithConfidence(t *testing.T) {
 }
 
 // TestParseClaudeEnvelope_FencedJSON tests that a ```json ... ``` fence in the
-// result is stripped with a warning (we just check it still works here).
+// result is stripped and parsing still works. The stripped-fence log is at
+// Debug level (not Warn) — Haiku 4.5 routinely fences despite strong anti-
+// fence prompt instructions, and surfacing it as a Warn every turn was just
+// noise. This test asserts no Warn-or-higher record is emitted on the
+// fence path.
 func TestParseClaudeEnvelope_FencedJSON(t *testing.T) {
 	raw := []byte(`{"type":"result","subtype":"success","is_error":false,"result":"` + "```json\\n{\\\"intent\\\":\\\"look\\\",\\\"slots\\\":{}}\\n```" + `"}`)
+
+	var captured []slog.Record
+	capture := &captureHandler{records: &captured, level: slog.LevelDebug}
+	prev := slog.Default()
+	slog.SetDefault(slog.New(capture))
+	defer slog.SetDefault(prev)
+
 	params, err := harness.ParseClaudeEnvelopeForTest(raw)
 	require.NoError(t, err)
 	intent, _, _ := harness.ParseTransitionArgsForTest(params)
 	assert.Equal(t, "look", intent)
+
+	// Fence stripping must not emit Warn-or-higher; it should be Debug.
+	var warns []string
+	for _, r := range captured {
+		if r.Level >= slog.LevelWarn {
+			warns = append(warns, r.Message)
+		}
+	}
+	assert.Empty(t, warns,
+		"fence-stripped path should not emit Warn or higher; got: %v", warns)
 }
+
+// captureHandler is a slog.Handler that appends records to a slice for
+// assertion. Thread-unsafe; tests are serial.
+type captureHandler struct {
+	records *[]slog.Record
+	level   slog.Level
+}
+
+func (h *captureHandler) Enabled(_ context.Context, l slog.Level) bool { return l >= h.level }
+
+func (h *captureHandler) Handle(_ context.Context, r slog.Record) error {
+	*h.records = append(*h.records, r)
+	return nil
+}
+
+func (h *captureHandler) WithAttrs(_ []slog.Attr) slog.Handler { return h }
+func (h *captureHandler) WithGroup(_ string) slog.Handler      { return h }
 
 // TestParseClaudeEnvelope_LeadingProse tests that leading prose before the JSON
 // object is tolerated.

@@ -117,15 +117,22 @@ type claudeResponseSchema struct {
 	Confidence float64        `json:"confidence,omitempty"`
 }
 
-// jsonInstruction is appended to every prompt to tell the LLM the exact output format.
+// jsonInstruction is appended to every prompt to tell the LLM the exact
+// output format. The prose below is deliberately emphatic and repeats the
+// "no fences" rule several times because Haiku 4.5 (the default intent
+// router) has been observed to wrap JSON in ` + "```" + `json fences even when told
+// not to — seeing fenced code blocks earlier in the prompt (the rendered
+// view is wrapped in fences by buildDynamicSuffix) primes the model to
+// mirror that style on output. Leaving the stripper as a safety net.
 const jsonInstruction = `
 ---
 
 ## CRITICAL OUTPUT INSTRUCTION
 
 You are acting as a JSON API endpoint, not a conversational assistant.
-Respond with ONLY a single JSON object and nothing else. No markdown fences,
-no prose, no explanation. The JSON must match this exact schema:
+Your ENTIRE response must be a single raw JSON object. Nothing else.
+
+The JSON must match this exact schema:
 
 {
   "intent": "<one of the allowed intent names above>",
@@ -134,7 +141,28 @@ no prose, no explanation. The JSON must match this exact schema:
 }
 
 The "slots" field is required (use {} if no slots). The "confidence" field is optional.
-Do not wrap the JSON in ` + "```" + `json fences. Do not add any text before or after the JSON object.
+
+### OUTPUT FORMAT RULES — READ CAREFULLY
+
+- Your response starts with the character ` + "`{`" + ` and ends with the character ` + "`}`" + `.
+- Do NOT wrap the output in ` + "`" + "```" + "`" + ` fences of any kind.
+- Do NOT prefix the output with ` + "`" + "```" + "json`" + ` or any language tag.
+- Do NOT add any prose, explanation, heading, or commentary before or after the JSON.
+- Do NOT mirror the fenced code blocks that appear in the context above —
+  those are the USER's view, not a template for your reply.
+
+### Examples
+
+CORRECT output (copy this style):
+{"intent":"go","slots":{"direction":"south"},"confidence":0.9}
+
+WRONG — do not do this:
+` + "```" + `json
+{"intent":"go","slots":{"direction":"south"}}
+` + "```" + `
+
+WRONG — do not do this either:
+Here is the JSON: {"intent":"go","slots":{"direction":"south"}}
 `
 
 // retryInstruction is prepended when a previous attempt produced invalid JSON.
@@ -286,7 +314,11 @@ func parseClaudeEnvelope(raw []byte) (mcp.CallToolParams, error) {
 	// Extract the JSON object from the result string.
 	resultText, fenced := stripFence(strings.TrimSpace(env.Result))
 	if fenced {
-		slog.Warn("harness/claude-cli: result contained markdown fence; stripped (model should not fence the JSON)")
+		// Demoted from Warn to Debug: Haiku 4.5 routinely wraps JSON in
+		// ```json fences despite explicit anti-fence prompt instructions.
+		// The stripper is doing the right thing; the event is not an
+		// author error worth surfacing every turn.
+		slog.Debug("harness/claude-cli: result contained markdown fence; stripped")
 	}
 
 	// Find the JSON object boundaries.
