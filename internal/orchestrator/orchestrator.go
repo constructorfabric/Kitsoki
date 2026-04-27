@@ -307,6 +307,7 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 	tl.Debug(ctx, trace.EvTurnDone,
 		slog.String("mode", mode.String()),
 		slog.Int("view_bytes", len(result.View)),
+		slog.String("view_rendered", result.View),
 		slog.String("new_state", string(result.NewState)),
 	)
 
@@ -533,6 +534,7 @@ func (o *Orchestrator) SubmitDirect(ctx context.Context, sid app.SessionID, inte
 	tl.Debug(ctx, trace.EvTurnDone,
 		slog.String("mode", mode.String()),
 		slog.Int("view_bytes", len(result.View)),
+		slog.String("view_rendered", result.View),
 		slog.String("new_state", string(result.NewState)),
 	)
 
@@ -544,6 +546,232 @@ func (o *Orchestrator) SubmitDirect(ctx context.Context, sid app.SessionID, inte
 		AllowedIntents: newAllowedNames,
 		TurnNumber:     turnNum,
 	}, nil
+}
+
+// OneShot runs a single turn against (state, world) without touching the
+// store: no journey load, no event append, no snapshot. It is the building
+// block for `hally turn`. Returns the diff (state, world, events, host calls,
+// rendered view) so callers can answer "what happens if I do X in state Y
+// with world Z?" without spinning up a real session.
+//
+// Routing:
+//   - in.Intent set → direct path: the call goes straight to the machine.
+//   - in.Input set  → LLM path: harness.RunTurn is called first to translate
+//     the free text into an intent. Requires the orchestrator to be built
+//     with a real harness (the replay harness works fine for tests).
+//
+// Host calls are dispatched the same way Turn dispatches them, so binding
+// effects on world are visible in WorldAfter and the View reflects the
+// post-binding state.
+func (o *Orchestrator) OneShot(ctx context.Context, in OneShotInput) (*OneShotResult, error) {
+	w := world.World{Vars: make(map[string]any, len(in.World))}
+	for k, v := range in.World {
+		w.Vars[k] = v
+	}
+	worldBefore := make(map[string]any, len(w.Vars))
+	for k, v := range w.Vars {
+		worldBefore[k] = v
+	}
+
+	var (
+		call intent.IntentCall
+		err  error
+	)
+	switch {
+	case in.Intent != "":
+		call = intent.IntentCall{
+			Intent: in.Intent,
+			Slots:  world.Slots(in.Slots),
+		}
+	case in.Input != "":
+		allowed := o.machine.AllowedIntents(in.State, w)
+		allowedNames := make([]string, len(allowed))
+		for i, a := range allowed {
+			allowedNames[i] = a.Name
+		}
+		params, runErr := o.harness.RunTurn(ctx, harness.TurnInput{
+			SessionID:      app.SessionID("oneshot"),
+			TurnNumber:     1,
+			UserText:       in.Input,
+			StatePath:      in.State,
+			World:          w,
+			AllowedIntents: allowedNames,
+		})
+		if runErr != nil {
+			return nil, fmt.Errorf("orchestrator: OneShot: harness.RunTurn: %w", runErr)
+		}
+		call, err = parseIntentCall(params)
+		if err != nil {
+			return nil, fmt.Errorf("orchestrator: OneShot: parse intent call: %w", err)
+		}
+	default:
+		return nil, fmt.Errorf("orchestrator: OneShot: exactly one of Intent or Input must be set")
+	}
+
+	result, machineErr := o.machine.Turn(ctx, in.State, w, call)
+	if machineErr != nil {
+		return nil, fmt.Errorf("orchestrator: OneShot: machine.Turn: %w", machineErr)
+	}
+
+	out := &OneShotResult{
+		Intent:      call.Intent,
+		Slots:       slotsToMap(call.Slots),
+		PrevState:   in.State,
+		NextState:   result.NewState,
+		WorldBefore: worldBefore,
+	}
+
+	if result.ValidationError != nil {
+		ve := result.ValidationError
+		if ve.Code == intent.ErrMissingSlots {
+			clarification := ComputeClarification(o.def, in.State, call.Intent, ve.MissingSlots)
+			out.Mode = ModeClarify
+			out.SlotsNeeded = clarification.Slots
+		} else {
+			out.Mode = ModeRejected
+		}
+		out.ErrorCode = string(ve.Code)
+		out.ErrorMessage = ve.Message
+		out.GuardHint = ve.GuardHint
+		out.NextState = in.State
+		out.WorldAfter = worldBefore
+		out.AllowedIntents = allowedNamesFromMachine(o.machine, in.State, w)
+		// View is whatever the unchanged state would render.
+		view, _ := o.machine.RenderState(in.State, w)
+		out.View = view
+		return out, nil
+	}
+
+	// Capture EffectApplied events from the machine before host dispatch so
+	// `hally turn` can show effect-by-effect diffs.
+	out.Effects = effectsFromEvents(result.Events)
+
+	hostSummaries, hostEvents, hostWorld, hostView, hostErr := o.dispatchHostCallsDetailed(ctx, result.HostCalls, result.World, result.NewState)
+	if hostErr != nil {
+		return nil, fmt.Errorf("orchestrator: OneShot: %w", hostErr)
+	}
+	if len(hostEvents) > 0 {
+		result.Events = append(result.Events, hostEvents...)
+		// Re-collect effects after host dispatch produced more EffectApplied events.
+		out.Effects = effectsFromEvents(result.Events)
+		result.World = hostWorld
+		if hostView != "" {
+			result.View = hostView
+		}
+	}
+
+	out.HostCalls = hostSummaries
+
+	out.Mode = ModeTransitioned
+	if newState := lookupStateByPath(o.def, result.NewState); newState != nil && newState.Terminal {
+		out.Mode = ModeCompleted
+	}
+	out.View = result.View
+
+	out.WorldAfter = make(map[string]any, len(result.World.Vars))
+	for k, v := range result.World.Vars {
+		out.WorldAfter[k] = v
+	}
+	out.AllowedIntents = allowedNamesFromMachine(o.machine, result.NewState, result.World)
+
+	return out, nil
+}
+
+// dispatchHostCallsDetailed is the same dispatch loop as dispatchHostCalls
+// but additionally returns one HostCallSummary per invocation so callers
+// (currently OneShot) can surface args/data/error to the user. The events
+// returned here are identical to what dispatchHostCalls would have produced.
+func (o *Orchestrator) dispatchHostCallsDetailed(ctx context.Context, calls []machine.HostInvocation, w world.World, state app.StatePath) ([]HostCallSummary, []store.Event, world.World, string, error) {
+	if o.hosts == nil || len(calls) == 0 {
+		return nil, nil, w, "", nil
+	}
+
+	summaries := make([]HostCallSummary, 0, len(calls))
+	var events []store.Event
+	applied := false
+
+	for _, hc := range calls {
+		summary := HostCallSummary{Namespace: hc.Namespace, Args: hc.Args}
+		res, err := o.hosts.Invoke(ctx, hc.Namespace, hc.Args)
+		if err != nil {
+			summary.Error = err.Error()
+			summaries = append(summaries, summary)
+			w.Vars["last_error"] = err.Error()
+			events = append(events, newOrchestratorEvent(store.HostReturned, map[string]any{
+				"namespace": hc.Namespace,
+				"error":     err.Error(),
+			}, 0))
+			applied = true
+			continue
+		}
+		if res.Error != "" {
+			w.Vars["last_error"] = res.Error
+			summary.Error = res.Error
+		}
+		if res.Data != nil {
+			summary.Data = res.Data
+		}
+		summaries = append(summaries, summary)
+
+		for wkey, dkey := range hc.Bind {
+			if res.Data == nil {
+				continue
+			}
+			val, ok := res.Data[dkey]
+			if !ok {
+				continue
+			}
+			w.Vars[wkey] = val
+			events = append(events, newOrchestratorEvent(store.EffectApplied, map[string]any{
+				"set": map[string]any{wkey: val},
+			}, 0))
+			applied = true
+		}
+
+		payload := map[string]any{"namespace": hc.Namespace}
+		if res.Error != "" {
+			payload["error"] = res.Error
+		}
+		if res.Data != nil {
+			payload["data"] = res.Data
+		}
+		events = append(events, newOrchestratorEvent(store.HostReturned, payload, 0))
+	}
+
+	if !applied {
+		return summaries, events, w, "", nil
+	}
+	view, err := o.machine.RenderState(state, w)
+	if err != nil {
+		return summaries, events, w, "", fmt.Errorf("re-render after host dispatch: %w", err)
+	}
+	return summaries, events, w, view, nil
+}
+
+// effectsFromEvents flattens EffectApplied events into EffectSummary form.
+func effectsFromEvents(events []store.Event) []EffectSummary {
+	var out []EffectSummary
+	for _, ev := range events {
+		if ev.Kind != store.EffectApplied {
+			continue
+		}
+		var es EffectSummary
+		if err := json.Unmarshal(ev.Payload, &es); err != nil {
+			continue
+		}
+		out = append(out, es)
+	}
+	return out
+}
+
+// allowedNamesFromMachine collects intent names allowed in (state, world).
+func allowedNamesFromMachine(m machine.Machine, state app.StatePath, w world.World) []string {
+	allowed := m.AllowedIntents(state, w)
+	out := make([]string, len(allowed))
+	for i, ai := range allowed {
+		out[i] = ai.Name
+	}
+	return out
 }
 
 // ContinueTurn retries the pending intent with supplemental slot values
@@ -693,6 +921,7 @@ func (o *Orchestrator) ContinueTurn(ctx context.Context, sid app.SessionID, supp
 	tl.Debug(ctx, trace.EvTurnDone,
 		slog.String("mode", mode.String()),
 		slog.Int("view_bytes", len(result.View)),
+		slog.String("view_rendered", result.View),
 		slog.String("new_state", string(result.NewState)),
 	)
 

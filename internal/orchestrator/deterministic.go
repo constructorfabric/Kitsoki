@@ -102,6 +102,71 @@ func buildDeterministicLookup(o *Orchestrator, state app.StatePath, primary []Me
 	return deterministicLookup{byDisplay: byDisplay, byExample: byExample}
 }
 
+// MatchDeterministic checks whether the input matches a primary menu entry
+// without dispatching the resulting transition. It is the cheap, side-effect
+// free half of TryDeterministic: callers that want to run the dispatch on a
+// background goroutine (e.g. so the TUI can show a spinner during slow
+// on_enter host calls) call MatchDeterministic synchronously, then invoke
+// SubmitDirect themselves.
+//
+// Returns:
+//   - (intent, slots, true, nil) — matched; caller should call SubmitDirect.
+//   - ("", nil, false, nil)      — no match; caller should call Turn.
+//   - ("", nil, false, err)      — error loading journey.
+func (o *Orchestrator) MatchDeterministic(ctx context.Context, sid app.SessionID, input string) (string, map[string]any, bool, error) {
+	journey, err := o.loadJourney(sid)
+	if err != nil {
+		return "", nil, false, fmt.Errorf("orchestrator: MatchDeterministic: load journey: %w", err)
+	}
+
+	menu := ComputeMenu(o.def, o.machine, journey.State, journey.World)
+	if len(menu.Primary) == 0 {
+		return "", nil, false, nil
+	}
+
+	lookup := buildDeterministicLookup(o, journey.State, menu.Primary)
+	normInput := normalizeInput(input)
+
+	turnNum := journey.Turn + 1
+	tl := trace.NewTurnLogger(o.logger, sid, turnNum, journey.State)
+
+	if idx, ok := lookup.byDisplay[normInput]; ok && idx >= 0 {
+		entry := menu.Primary[idx]
+		tl.Debug(ctx, trace.EvTurnDeterministicHit,
+			slog.String("match_type", "display"),
+			slog.String("input", input),
+			slog.String("display", entry.Display),
+			slog.String("intent", entry.Intent),
+		)
+		slots := entry.PrefilledSlots
+		if slots == nil {
+			slots = make(map[string]any)
+		}
+		return entry.Intent, slots, true, nil
+	}
+
+	if idx, ok := lookup.byExample[normInput]; ok && idx >= 0 {
+		entry := menu.Primary[idx]
+		tl.Debug(ctx, trace.EvTurnDeterministicHit,
+			slog.String("match_type", "example"),
+			slog.String("input", input),
+			slog.String("display", entry.Display),
+			slog.String("intent", entry.Intent),
+		)
+		slots := entry.PrefilledSlots
+		if slots == nil {
+			slots = make(map[string]any)
+		}
+		return entry.Intent, slots, true, nil
+	}
+
+	tl.Debug(ctx, trace.EvTurnDeterministicMiss,
+		slog.String("input", input),
+		slog.String("state", string(journey.State)),
+	)
+	return "", nil, false, nil
+}
+
 // TryDeterministic attempts to route the input without calling the LLM.
 // It recomputes the current menu and tries to match the input against:
 //  1. Display strings of primary entries (exact match after normalization).

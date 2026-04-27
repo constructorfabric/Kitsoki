@@ -177,7 +177,7 @@ states:
 
       Error: {{ world.last_error }}
 
-      Options: retry (same command), refine (new command), cancel.
+      Options: retry (same command), refine (new command), fix (ask Claude), cancel.
     relevant_world: [proposal_cmd, last_error]
     relevant_slots: []
     on:
@@ -195,6 +195,24 @@ states:
         - default: true
           target: terminal_reviewing
           effects:
+            - set: { proposal_status: "reviewing" }
+
+      # Repair path — send the failed command, error, and stdout to Claude
+      # via a one-shot prompt file. The binary's stdout replaces
+      # proposal_cmd and the user lands on terminal_reviewing to confirm.
+      fix:
+        - target: terminal_reviewing
+          effects:
+            - invoke: host.oracle.ask
+              with:
+                prompt_path: "prompts/shell_repair.md"
+                failed_cmd: "{{ world.proposal_cmd }}"
+                last_error: "{{ world.last_error }}"
+                last_stdout: "{{ world.proposal_result }}"
+                exit_code: 1
+              bind:
+                proposal_cmd: "stdout"
+              on_error: terminal_error
             - set: { proposal_status: "reviewing" }
 
       cancel:

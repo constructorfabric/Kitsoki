@@ -303,33 +303,32 @@ func BuildTraceLogger(cfg TraceConfig) (l *slog.Logger, cleanup func(), err erro
 
 	var handlers []slog.Handler
 
-	// JSONL sink.
+	// JSONL sink. We write directly to the underlying file (no bufio wrapper)
+	// so each event lands on disk as soon as slog calls Write — supporting
+	// `tail -f` of the trace file in real time. slog.JSONHandler emits one
+	// Write per record so there is no atomicity concern.
 	if cfg.JSONLPath != "" {
 		w, closer, err := openSink(cfg.JSONLPath)
 		if err != nil {
 			return nil, cleanup, fmt.Errorf("trace: open JSONL sink %q: %w", cfg.JSONLPath, err)
 		}
 		closers = append(closers, closer)
-		// Use a line-buffered writer so each record is flushed atomically.
-		bw := bufio.NewWriter(w)
-		closers = append(closers, func() { _ = bw.Flush() })
-		jsonHandler := slog.NewJSONHandler(bw, &slog.HandlerOptions{
+		jsonHandler := slog.NewJSONHandler(w, &slog.HandlerOptions{
 			Level:     cfg.Level,
 			AddSource: false,
 		})
 		handlers = append(handlers, jsonHandler)
 	}
 
-	// Pretty-print sink.
+	// Pretty-print sink. Same reasoning — write straight through so the
+	// pretty log is followable live.
 	if cfg.PrettyPath != "" {
 		w, closer, err := openSink(cfg.PrettyPath)
 		if err != nil {
 			return nil, cleanup, fmt.Errorf("trace: open pretty sink %q: %w", cfg.PrettyPath, err)
 		}
 		closers = append(closers, closer)
-		bw := bufio.NewWriter(w)
-		closers = append(closers, func() { _ = bw.Flush() })
-		handlers = append(handlers, &prettyHandler{w: bw, level: cfg.Level, redact: cfg.Redact})
+		handlers = append(handlers, &prettyHandler{w: w, level: cfg.Level, redact: cfg.Redact})
 	}
 
 	if len(handlers) == 0 {

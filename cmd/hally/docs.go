@@ -28,6 +28,8 @@ type docTopic struct {
 var docTopics = []docTopic{
 	{"llm-guide", "Condensed manual for an LLM driving the hally CLI"},
 	{"app-schema", "Authoritative reference for app.yaml (all fields, validation rules)"},
+	{"render-format", "Shape of the Markdown produced by 'hally render'"},
+	{"apply-proposal", "LLM guide for implementing a prose proposal against app.yaml"},
 }
 
 func docsCmd() *cobra.Command {

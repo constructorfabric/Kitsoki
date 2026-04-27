@@ -1,8 +1,11 @@
-// Package host — host.oracle.ask handler for the Oracle Room.
+// Package host — host.oracle.talk handler for conversational Claude sessions.
 //
 // Backs a conversational Claude-Code-clone session via `claude -p`. The session
 // ID is round-tripped through args/result so the calling state can persist it
 // in world and resume across turns (and across room exits/re-entries).
+//
+// For one-shot Claude calls driven by a prompt file, see host.oracle.ask
+// (oracle_ask.go).
 package host
 
 import (
@@ -20,9 +23,9 @@ import (
 const OracleBinEnv = "HALLY_ORACLE_CLAUDE_BIN"
 
 // ErrOracleUnavailable is returned when the `claude` binary is not on PATH.
-var ErrOracleUnavailable = errors.New("host.oracle.ask: `claude` binary not found on PATH; install Claude Code from https://claude.ai/download")
+var ErrOracleUnavailable = errors.New("host.oracle.talk: `claude` binary not found on PATH; install Claude Code from https://claude.ai/download")
 
-// OracleAskHandler implements host.oracle.ask.
+// OracleTalkHandler implements host.oracle.talk.
 //
 // Args:
 //   - question (string, required): the user's prompt for Claude
@@ -36,10 +39,10 @@ var ErrOracleUnavailable = errors.New("host.oracle.ask: `claude` binary not foun
 // If the claude binary is unavailable, returns Result{Error: ...} rather than
 // a Go error so app flow tests continue to pass; the state machine surfaces
 // the error via on_error:.
-func OracleAskHandler(ctx context.Context, args map[string]any) (Result, error) {
+func OracleTalkHandler(ctx context.Context, args map[string]any) (Result, error) {
 	question, _ := args["question"].(string)
 	if strings.TrimSpace(question) == "" {
-		return Result{Error: "host.oracle.ask: question argument is required"}, nil
+		return Result{Error: "host.oracle.talk: question argument is required"}, nil
 	}
 
 	sessionID, _ := args["session_id"].(string)
@@ -85,7 +88,7 @@ func OracleAskHandler(ctx context.Context, args map[string]any) (Result, error) 
 			return Result{}, ctx.Err()
 		}
 		stderrText := strings.TrimSpace(stderr.String())
-		msg := fmt.Sprintf("host.oracle.ask: claude exited with error: %v", err)
+		msg := fmt.Sprintf("host.oracle.talk: claude exited with error: %v", err)
 		if stderrText != "" {
 			msg = fmt.Sprintf("%s\nstderr: %s", msg, stderrText)
 		}

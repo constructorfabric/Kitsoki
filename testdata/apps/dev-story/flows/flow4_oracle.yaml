@@ -1,6 +1,6 @@
 # Flow 4: Oracle Room — enter → ask a question → session persists → exit → history returns.
 # Oracle entry uses push_history: false (stackless), so back returns to the caller.
-# The host.oracle.ask on_enter invocation is a no-op under the testrunner
+# The host.oracle.talk on_enter invocation is a no-op under the testrunner
 # (result binding is not applied in replay), so oracle_answer remains empty —
 # but oracle_question and oracle_session_id are set via effects and persist.
 test_kind: flow

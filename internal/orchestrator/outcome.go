@@ -77,6 +77,59 @@ type TurnOutcome struct {
 	TurnNumber app.TurnNumber
 }
 
+// OneShotInput configures a stateless one-shot turn (Orchestrator.OneShot).
+//
+// Exactly one of Intent or Input must be set. With Intent, the call goes
+// directly to the machine (no harness, no LLM). With Input, the harness
+// routes the free-text first.
+type OneShotInput struct {
+	State  app.StatePath
+	World  map[string]any
+	Intent string
+	Slots  map[string]any
+	Input  string
+}
+
+// HostCallSummary captures one host.* invocation made during a OneShot turn,
+// in a form convenient for JSON output.
+type HostCallSummary struct {
+	Namespace string         `json:"namespace"`
+	Args      map[string]any `json:"args,omitempty"`
+	Data      map[string]any `json:"data,omitempty"`
+	Error     string         `json:"error,omitempty"`
+}
+
+// EffectSummary captures one EffectApplied event in a flattened form.
+type EffectSummary struct {
+	Set       map[string]any `json:"set,omitempty"`
+	Increment map[string]int `json:"increment,omitempty"`
+	Say       string         `json:"say,omitempty"`
+}
+
+// OneShotResult is the rich, persistence-free outcome of Orchestrator.OneShot.
+//
+// `hally turn` serialises this directly as JSON: the field set is designed
+// to give an outside observer (an AI collaborator, a flow-test author, a
+// CI compliance check) everything they need to answer "what happened?"
+// without re-running the turn.
+type OneShotResult struct {
+	Mode           OutcomeMode       `json:"mode"`
+	Intent         string            `json:"intent"`
+	Slots          map[string]any    `json:"slots,omitempty"`
+	PrevState      app.StatePath     `json:"prev_state"`
+	NextState      app.StatePath     `json:"next_state"`
+	WorldBefore    map[string]any    `json:"world_before"`
+	WorldAfter     map[string]any    `json:"world_after"`
+	Effects        []EffectSummary   `json:"effects_applied,omitempty"`
+	HostCalls      []HostCallSummary `json:"host_calls,omitempty"`
+	View           string            `json:"view_rendered"`
+	AllowedIntents []string          `json:"allowed_intents,omitempty"`
+	ErrorCode      string            `json:"error_code,omitempty"`
+	ErrorMessage   string            `json:"error_message,omitempty"`
+	GuardHint      string            `json:"guard_hint,omitempty"`
+	SlotsNeeded    []SlotNeed        `json:"slots_needed,omitempty"`
+}
+
 // SlotNeed describes a single missing slot for the clarification UI (§7.3).
 type SlotNeed struct {
 	// Name is the slot name.

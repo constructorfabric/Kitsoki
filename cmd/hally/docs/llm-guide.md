@@ -6,8 +6,10 @@ guessing at flags.
 
 Companion docs (run `hally docs <topic>`):
 
-- `app-schema` — authoritative reference for `app.yaml`
-- `llm-guide`  — this document
+- `app-schema`     — authoritative reference for `app.yaml`
+- `render-format`  — shape of the Markdown produced by `hally render`
+- `apply-proposal` — LLM guide for implementing a prose proposal against `app.yaml`
+- `llm-guide`      — this document
 
 ## 1. What hally is (one paragraph)
 
@@ -37,9 +39,12 @@ hally run     <app.yaml>  [--harness ...] [--trace ...]   # interactive TUI sess
 hally serve   <app.yaml>  [--db ...]                      # MCP server on stdio
 hally viz     <app.yaml>  [--out ...]                     # emit Graphviz DOT
 hally trace   <file.jsonl>                                # pretty-print a JSONL trace
+hally inspect <app.yaml>  --session-id <sid>              # JSON snapshot of a stored session
+hally turn    <app.yaml>  --state <S> (--intent | --input ...)  # one stateless turn → JSON
 hally replay  <session>                                   # (stub — not implemented)
 hally test flows   <app.yaml>  [--flows <glob>]           # Mode 2: deterministic, no LLM
 hally test intents <app.yaml>  [--harness live|static]    # Mode 1: intent pass-rate
+hally render  <app.yaml>       [-o <APP.md>]              # render Markdown docs from YAML
 hally docs    [topic]                                     # print embedded docs
 hally version
 ```
@@ -165,6 +170,84 @@ are both logged.
 `hally trace <file.jsonl>` pretty-prints coloured by component. `NO_COLOR=1`
 disables colour.
 
+`turn.done` events also carry `view_rendered` — the full pre-Glamour view
+text the user saw at the end of that turn. This makes a `--trace` JSONL a
+complete after-the-fact transcript: when you need to know what the human
+saw, grep for `turn.done` and read `view_rendered`.
+
+## 6.1 Inspecting a live or stored session
+
+```sh
+hally inspect <app.yaml> --session-id <sid> [--db <path>] [--last-turns N]
+```
+
+Read-only JSON snapshot of a session — does not lock it, so it is safe to
+run alongside an active `hally run`. Output shape:
+
+```json
+{
+  "session_id": "...",
+  "app_id": "...", "app_version": "...",
+  "status": "active",
+  "current_state": "terminal_result",
+  "world": {...},
+  "allowed_intents": ["..."],
+  "last_view_bytes": 1842,
+  "last_view": "Terminal › Result\n\n$ ...",
+  "last_turns": [
+    { "turn": 17, "input": "accept", "intent": "...",
+      "from_state": "...", "to_state": "...",
+      "outcome": "transitioned",
+      "host_calls": ["host.run", "host.workspace_manager.get"] }
+  ]
+}
+```
+
+Use this when the human says "something just broke" — point it at the live
+session id and read what hally thinks is going on.
+
+## 6.2 One-shot stateless turns (`hally turn`)
+
+```sh
+hally turn <app.yaml> --state <S> [--world @file.json] [--slots @file.json] \
+           (--intent <name> | --input "<text>")
+           [--harness replay --oracle <path>]
+```
+
+Runs exactly one turn against an app definition without persisting anything
+(no SQLite, no journey, no event log). Outputs JSON describing the turn:
+`prev_state`, `next_state`, `intent`, `slots`, `world_before`, `world_after`,
+`effects_applied`, `host_calls` (with args/data), `view_rendered`,
+`allowed_intents`. On rejection, also `error_code` / `error_message` /
+`guard_hint`.
+
+Use cases:
+
+- **Probe**: "what happens if I do X in state Y with world Z?" without
+  spinning up a real session. `--intent` is the cheap path; `--input`
+  routes through the harness (and bills accordingly).
+- **CI sweep**: shell-loop over every `(state × intent)` pair to surface
+  `INTENT_NOT_ALLOWED_IN_STATE` mismatches before they reach the user.
+- **View regression check**: assert that for every state, a noop turn
+  renders a non-empty view of bounded size.
+
+```sh
+# direct intent (no LLM)
+hally turn app.yaml --state cloakroom --intent hang_cloak
+
+# routed input via replay oracle
+hally turn app.yaml --state foyer \
+    --input "go west" --harness replay --oracle oracle.yaml
+
+# world override
+hally turn app.yaml --state cloakroom --intent look \
+    --world '{"wearing_cloak": false}'
+```
+
+Both `--world` and `--slots` accept either inline JSON or `@path` to a
+file. Schema defaults from `world:` are applied first; `--world` overrides
+on top.
+
 ## 7. Test fixtures
 
 ### 7.1 Flow fixtures (Mode 2, deterministic)
@@ -268,8 +351,30 @@ hally test intents myapp.yaml --harness live --emit-oracle oracle.yaml
 
 ## 9. Authoring apps — survival guide
 
-See `hally docs app-schema` for the complete reference. The shortest possible
-mental model:
+**YAML is the source of truth.** `app.yaml` is the only file the engine
+reads. For reviewability and LLM-assisted editing:
+
+- `hally render <app.yaml> -o APP.md` produces a human-readable Markdown
+  document — overview, Mermaid state diagram, transition tables. One-way:
+  the Markdown never feeds back into the engine. See `hally docs
+  render-format` for what's in the output.
+- To change an app, the human writes a prose proposal referencing engine
+  names (rooms, intents, world vars). An LLM implements the proposal
+  against `app.yaml` directly, guided by `hally docs apply-proposal`.
+  The human re-runs `hally render` to refresh the docs.
+- **In-TUI Edit mode.** While playing in `hally run`, press `Esc` and pick
+  **Edit mode** to author a change without leaving the session. Type a
+  free-text proposal; the TUI shells out to `claude -p` (same prompt
+  surface as `apply-proposal`), shows a unified diff for review, and
+  on `[a]pply` writes the new YAML to `app.yaml` and hot-reloads the
+  orchestrator. If the user's current state still exists in the new
+  graph, it is preserved; otherwise a notice tells them to restart.
+  Requires the `claude` binary on `PATH`. The harness's cached system
+  prompt is rebuilt as part of the reload, so the LLM router sees the
+  new states and intents on the very next turn.
+
+See `hally docs app-schema` for the complete YAML reference. The shortest
+possible mental model:
 
 ```yaml
 app: { id: myapp, version: 0.1.0, title: "My App" }
@@ -348,13 +453,91 @@ Built-ins (`internal/host/`):
 
 - **`host.run`** — run a shell command. Args `cmd` (required), `cwd`.
   Returns `{stdout, exit_code, ok}`.
-- **`host.oracle.ask`** — ask Claude a free-text question via `claude -p`.
-  Args `question`, `session_id` (optional, round-tripped for multi-turn),
-  `working_dir`. Returns `{answer, session_id}`.
+- **`host.oracle.ask`** — one-shot Claude call driven by a prompt template
+  file. Args `prompt_path` (required, relative paths resolve against the
+  app dir), `working_dir` (optional, defaults to the prompt's directory),
+  and any other keys you add — those become `{{ args.X }}` inside the
+  prompt. Returns `{stdout, exit_code, ok}`. See "LLM-backed effects"
+  below for the common patterns.
+- **`host.oracle.talk`** — conversational Claude session via `claude -p
+  --session-id`. Args `question` (required), `session_id` (optional;
+  round-tripped so the caller can persist it in world and resume the
+  session), `working_dir`. Returns `{answer, session_id}`. Use this when
+  the user is having a multi-turn conversation; use `host.oracle.ask`
+  when you want a one-shot response derived from a named prompt file.
 - **`host.workspace_manager.get`** — shell out to a `workspace-manager` CLI
   and parse JSON. Args `workspace_id`. Returns the parsed object.
 
 To call these, the app must declare them in its top-level `hosts:` list.
+
+### 11.1 LLM-backed effects (`host.oracle.ask`)
+
+`host.oracle.ask` is the primitive behind "draft", "refine", and "repair"
+style effects. The shape is:
+
+1. You author a prompt template file on disk (conventionally under
+   `<app-dir>/prompts/<name>.md`).
+2. The template uses `{{ args.X }}` placeholders — those map 1:1 to the
+   extra keys you pass in the effect's `with:` block.
+3. At runtime, hally renders the prompt against those args and pipes it
+   to `claude -p --permission-mode bypassPermissions`. Claude's final
+   text message is returned as `stdout` and can be bound back into the
+   world.
+
+Example — repair a failed shell command:
+
+```yaml
+# prompts/shell_repair.md
+Original command:
+{{ args.failed_cmd }}
+
+Exit: {{ args.exit_code }}
+Error:
+{{ args.last_error }}
+
+Produce the corrected command. Your final message is the literal
+replacement command and nothing else.
+```
+
+```yaml
+# rooms/terminal.yaml — in terminal_error state
+fix:
+  - target: terminal_reviewing
+    effects:
+      - invoke: host.oracle.ask
+        with:
+          prompt_path: "prompts/shell_repair.md"
+          failed_cmd: "{{ world.proposal_cmd }}"
+          last_error: "{{ world.last_error }}"
+          exit_code: 1
+        bind:
+          proposal_cmd: stdout
+        on_error: terminal_error
+      - set: { proposal_status: "reviewing" }
+```
+
+Notes:
+
+- **Where are prompts found?** Relative `prompt_path` values resolve
+  against the directory containing `app.yaml` (set internally as
+  `HALLY_APP_DIR`). Absolute paths are used as-is.
+- **What can the prompt reference?** Only `{{ args.X }}`. To surface a
+  world var or slot, add it explicitly to `with:` — e.g.
+  `failed_cmd: "{{ world.proposal_cmd }}"`. This keeps the prompt
+  contract local to the `with:` block.
+- **Tool access.** The spawned `claude` runs with
+  `--permission-mode bypassPermissions`, so Bash/Read/Grep/Glob/Web
+  tools are available. Your prompt should tell Claude to investigate
+  (verify flags via `--help`, confirm paths with `ls`) before emitting
+  the final answer.
+- **Output contract.** The handler strips one trailing newline from
+  stdout. Everything else is yours to define in the prompt. A common
+  pattern is "final message is the literal result, no prose, no fences"
+  so binding `stdout` into a world var gives a clean value.
+- **Failure handling.** Non-zero exit populates `exit_code`, sets `ok`
+  to false, and produces `Result.Error` (so `on_error:` fires). Missing
+  binary returns a Result.Error with the install hint; missing prompt
+  file returns Result.Error with the resolved path.
 
 ## 12. Common pitfalls
 

@@ -83,6 +83,24 @@ func NewClaudeCLI(appDef *app.AppDef, cfg ClaudeCLIConfig) (*ClaudeCLIHarness, e
 	}, nil
 }
 
+// AppDef returns the app definition this harness is currently using.
+// Provided so tests and external callers can verify a hot-swap took
+// effect after orchestrator.Reload.
+func (h *ClaudeCLIHarness) AppDef() *app.AppDef { return h.appDef }
+
+// SetAppDef swaps the app definition this harness uses to build prompts
+// and recomputes the cached stable prefix. Used by orchestrator.Reload
+// when the user authors changes via the in-TUI Edit mode. Not safe to
+// call concurrently with RunTurn — Reload's own concurrency invariant
+// (no in-flight turn while reloading) guards this.
+func (h *ClaudeCLIHarness) SetAppDef(appDef *app.AppDef) {
+	if appDef == nil {
+		return
+	}
+	h.appDef = appDef
+	h.stablePrefix = buildStablePrefix(appDef)
+}
+
 // WithClaudeModel returns a copy of the harness using the given model.
 // Pass an empty string to reset to DefaultClaudeModel.
 func (h *ClaudeCLIHarness) WithClaudeModel(model string) *ClaudeCLIHarness {

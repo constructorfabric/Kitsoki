@@ -37,6 +37,42 @@ func GetMenuPrimaryItems(m RootModel) []string {
 	return items
 }
 
+// IsScrollKey exposes isScrollKey for testing.
+func IsScrollKey(msg tea.KeyMsg) bool { return isScrollKey(msg) }
+
+// TranscriptYOffset returns the transcript viewport's current scroll offset.
+func TranscriptYOffset(m RootModel) int { return m.transcript.vp.YOffset }
+
+// TranscriptAtBottom reports whether the transcript viewport is scrolled
+// all the way to the bottom.
+func TranscriptAtBottom(m RootModel) bool { return m.transcript.vp.AtBottom() }
+
+// AppendTranscriptForTest appends a system message to the transcript,
+// bypassing the turn pipeline. Used to set up scrollable history in tests.
+func AppendTranscriptForTest(m *RootModel, body string) {
+	m.transcript.AppendSystem(body)
+}
+
+// AppendTurnForTest appends a user turn with header + view, bypassing the
+// orchestrator. Lets tests exercise view-rendering behaviour in isolation.
+func AppendTurnForTest(m *RootModel, input, view string) {
+	m.transcript.AppendTurn(input, view)
+}
+
+// SetTranscriptSizeForTest resizes the transcript viewport directly.
+// Goes through SetSize so the Glamour renderer is rebuilt at the new wrap
+// width — matches what resize() does in production.
+func SetTranscriptSizeForTest(m *RootModel, width, height int) {
+	m.transcript.SetSize(width, height, width, height)
+	m.transcript.vp.GotoBottom()
+}
+
+// PreserveLeadingIndent exposes the internal leading-indent preprocessor.
+func PreserveLeadingIndent(s string) string { return preserveLeadingIndent(s) }
+
+// MouseOn reports whether the TUI currently has mouse capture enabled.
+func MouseOn(m RootModel) bool { return m.mouseOn }
+
 // IsInFlight returns true if the model is in ModeAwaitingLLM.
 func IsInFlight(m RootModel) bool {
 	return m.mode == ModeAwaitingLLM
@@ -70,10 +106,11 @@ func CancelInFlight(m RootModel) bool {
 	return false
 }
 
-// StartLLMTurnForTest calls the internal startLLMTurn function so tests can
-// exercise the full async path without going through submitInput.
+// StartLLMTurnForTest calls the internal async-turn helper for the LLM
+// router path so tests can exercise the full async path without going
+// through submitInput.
 func StartLLMTurnForTest(m RootModel, input string) (RootModel, tea.Cmd) {
-	return startLLMTurn(m, input)
+	return startAsyncTurn(m, input, asyncTurn(m.orch, m.sid, input), pendingLLM)
 }
 
 // MockCancelCtx creates a context that is already cancelled, useful for tests.
@@ -120,6 +157,36 @@ func (w *TestClarifyModelWrapper) View() string {
 func (w *TestClarifyModelWrapper) IsUsingHuhForm() bool {
 	return w.m.huhForm != nil
 }
+
+// ── System menu test helpers ──────────────────────────────────────────────────
+
+// MenuSystemActive reports whether the Esc-triggered system menu overlay is open.
+func MenuSystemActive(m RootModel) bool { return m.menuSystem.IsActive() }
+
+// MenuSystemView returns the rendered overlay (empty when inactive).
+func MenuSystemView(m RootModel) string { return m.menuSystem.View() }
+
+// SetPromptValue sets the prompt input value for tests that need to start
+// with pre-filled text (e.g. Ctrl+C clears the prompt).
+func SetPromptValue(m *RootModel, v string) { m.prompt.SetValue(v) }
+
+// GetPromptValue returns the current prompt input value.
+func GetPromptValue(m RootModel) string { return m.prompt.Value() }
+
+// ── Edit-mode test helpers ────────────────────────────────────────────────────
+
+// EditPhaseInput / Thinking / Review / Applying re-export the unexported
+// editPhase constants for use by tui_test code.
+const (
+	EditPhaseInput     = int(editPhaseInput)
+	EditPhaseThinking  = int(editPhaseThinking)
+	EditPhaseReview    = int(editPhaseReview)
+	EditPhaseApplying  = int(editPhaseApplying)
+)
+
+// EditPhase returns the current edit-overlay phase as an int (cast to
+// EditPhase* constants for assertions).
+func EditPhase(m RootModel) int { return int(m.edit.phase) }
 
 // ── Disambiguation test helpers ───────────────────────────────────────────────
 

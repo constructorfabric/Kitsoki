@@ -48,11 +48,13 @@ import (
 //   - World   map[string]any  — the current world snapshot
 //   - Event   map[string]any  — the triggering event (if any)
 //   - Run     RunCtx          — run-level metadata (id, turn, timestamps)
+//   - Args    map[string]any  — handler-local arguments (host invocations, prompt files)
 type Env struct {
 	Slots map[string]any `expr:"slots"`
 	World map[string]any `expr:"world"`
 	Event map[string]any `expr:"event"`
 	Run   RunCtx         `expr:"run"`
+	Args  map[string]any `expr:"args"`
 }
 
 // RunCtx holds the run-level metadata visible in expressions.
@@ -105,6 +107,7 @@ var allowedRoots = map[string]bool{
 	"world":    true,
 	"event":    true,
 	"run":      true,
+	"args":     true, // handler-local args (host invocations, prompt files)
 	"proposal": true, // $proposal slot (§3)
 	"inbox":    true, // $inbox slot (§4)
 	"workspace": true, // $workspace slot (§6)
@@ -158,7 +161,7 @@ func (v *memberRootVisitor) Visit(node *ast.Node) {
 		root := identifierRootOf(mem.Node)
 		if root != "" && !allowedRoots[root] {
 			v.violations = append(v.violations,
-				fmt.Sprintf("member access on forbidden root %q (allowed: slots, world, event, run)", root))
+				fmt.Sprintf("member access on forbidden root %q (allowed: slots, world, event, run, args)", root))
 		}
 	}
 }

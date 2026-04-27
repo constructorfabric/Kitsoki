@@ -252,3 +252,58 @@ func countMsg(records []slog.Record, msg string) int {
 	}
 	return n
 }
+
+// TestTurnDoneCarriesRenderedView asserts that turn.done events embed the
+// rendered view string under view_rendered. This is the asymmetric-win
+// observability surface from ai-collaboration-proposal.md §1: any --trace
+// consumer (AI collaborator, future analytics, flow-test assertions) gets
+// the rendered narrative for free, by-byte reproducible.
+func TestTurnDoneCarriesRenderedView(t *testing.T) {
+	def, err := app.Load("../../testdata/apps/cloak/app.yaml")
+	require.NoError(t, err)
+
+	handler := newCapturingHandler(slog.LevelDebug)
+	logger := slog.New(handler)
+
+	m, err := machine.New(def, machine.WithMachineLogger(logger))
+	require.NoError(t, err)
+
+	s, err := store.OpenMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	h, err := harness.NewReplay("../../testdata/apps/cloak/oracle.yaml")
+	require.NoError(t, err)
+	h.WithLogger(logger)
+
+	orch := orchestrator.New(def, m, s, h, orchestrator.WithLogger(logger))
+	ctx := context.Background()
+
+	sid, err := orch.NewSession(ctx)
+	require.NoError(t, err)
+
+	out, err := orch.Turn(ctx, sid, "go west")
+	require.NoError(t, err)
+	require.Equal(t, orchestrator.ModeTransitioned, out.Mode)
+	require.NotEmpty(t, out.View, "turn outcome should carry rendered view for cloak go-west")
+
+	var (
+		gotView   string
+		foundDone bool
+	)
+	for _, r := range handler.allRecords() {
+		if r.Message != trace.EvTurnDone {
+			continue
+		}
+		foundDone = true
+		r.Attrs(func(a slog.Attr) bool {
+			if a.Key == "view_rendered" {
+				gotView = a.Value.String()
+			}
+			return true
+		})
+	}
+	require.True(t, foundDone, "expected turn.done event")
+	assert.Equal(t, out.View, gotView,
+		"view_rendered on turn.done should match the outcome's view byte-for-byte")
+}

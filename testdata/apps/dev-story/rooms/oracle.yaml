@@ -1,6 +1,6 @@
 # Oracle Room — interactive Claude Code session that persists across turns.
 #
-# Each ask_question / explore_area / brainstorm invokes `host.oracle.ask`
+# Each ask_question / explore_area / brainstorm invokes `host.oracle.talk`
 # (backed by the `claude -p --session-id <uuid>` CLI). The session_id is
 # stored in world so subsequent turns resume the same Claude session — tools,
 # context, and memory all carry over. Exiting the room (go_back / go_main)
@@ -66,7 +66,7 @@ states:
     relevant_world: [oracle_question, oracle_answer, oracle_session_id, oracle_turns]
     relevant_slots: []
     on_enter:
-      - invoke: host.oracle.ask
+      - invoke: host.oracle.talk
         with:
           question: "{{ world.oracle_question }}"
           session_id: "{{ world.oracle_session_id }}"

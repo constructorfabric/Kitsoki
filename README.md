@@ -138,6 +138,57 @@ hally test intents testdata/apps/cloak/app.yaml --harness static
 # Summary: 15/15 fixtures pass
 ```
 
+## Demo recording (`hally record`)
+
+`hally record` replays a deterministic flow through the state machine and
+encodes each state's view as an animated GIF.  The same flow YAML that drives
+`hally test flows` also drives `hally record` — one source of truth.
+
+```sh
+hally record <app.yaml> --flow <flow.yaml|dir> [-o out.gif] [flags]
+```
+
+### Flags
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--flow` | (required) | flow YAML file or directory |
+| `-o` / `--out` | `<flow>.gif` | output path |
+| `--width` | 2560 | frame width px |
+| `--height` | 1800 | frame height px |
+| `--theme` | molokai | `molokai`, `dracula`, or `light` |
+| `--frame-ms` | 2500 | how long each frame shows (ms) |
+| `--settle-ms` | 1500 | pause after each frame (ms) |
+| `--oracle` | (optional) | oracle YAML for `input:` turns |
+
+### Example
+
+```sh
+# Record the cloak-of-darkness winning path:
+hally record testdata/apps/cloak/app.yaml \
+  --flow testdata/apps/cloak/flows/winning.yaml \
+  -o /tmp/cloak-win.gif
+
+# Record all flows in a directory:
+hally record myapp.yaml --flow myapp/flows/ -o demo.gif --theme dracula
+```
+
+### Rasterisation
+
+Path B (minimal deps): `golang.org/x/image/font/basicfont` at 2× scale draws
+monospace text onto an RGBA canvas.  ANSI escapes in view templates are stripped
+before rendering.  Output is byte-reproducible: same flow + same flags = same
+GIF bytes.
+
+### vs. VHS
+
+| | VHS | hally record |
+|---|---|---|
+| Source of truth | `.tape` + `oracle.yaml` (two files) | single flow YAML |
+| External deps | vhs, ttyd, ffmpeg | none |
+| Font/timing variance | yes | no |
+| Also runs as test | no | yes (`hally test flows`) |
+
 ## Package layout
 
 ```

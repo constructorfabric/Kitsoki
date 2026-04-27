@@ -53,7 +53,11 @@ See also the full design document (design.md) in the repo.`,
 	root.AddCommand(replayCmd())
 	root.AddCommand(testCmd())
 	root.AddCommand(serveCmd())
+	root.AddCommand(renderCmd())
 	root.AddCommand(docsCmd())
+	root.AddCommand(recordCmd())
+	root.AddCommand(inspectCmd())
+	root.AddCommand(turnCmd())
 
 	if err := root.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -112,6 +116,12 @@ See 'hally docs llm-guide' for the full operator guide.`,
 			def, err := app.Load(appPath)
 			if err != nil {
 				return fmt.Errorf("load app %q: %w", appPath, err)
+			}
+
+			// Publish the app's base directory so host handlers (e.g.
+			// host.oracle.ask) can resolve relative prompt paths against it.
+			if absPath, absErr := filepath.Abs(appPath); absErr == nil {
+				_ = os.Setenv(host.AppDirEnv, filepath.Dir(absPath))
 			}
 
 			// Determine DB path.
@@ -209,8 +219,15 @@ See 'hally docs llm-guide' for the full operator guide.`,
 			}
 
 			// Launch TUI.
-			rootModel := tui.NewRootModel(orch, sid, initialView)
-			p := tea.NewProgram(rootModel, tea.WithAltScreen())
+			// WithMouseCellMotion enables scroll-wheel events on the
+			// transcript viewport. Copying text then requires Option
+			// (macOS) or Shift (Linux) held during selection to bypass
+			// mouse capture.
+			rootModel := tui.NewRootModel(orch, sid, appPath, initialView)
+			p := tea.NewProgram(rootModel,
+				tea.WithAltScreen(),
+				tea.WithMouseCellMotion(),
+			)
 			_, err = p.Run()
 			return err
 		},

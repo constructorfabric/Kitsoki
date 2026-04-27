@@ -88,6 +88,21 @@ func NewLive(client *anthropic.Client, model string, appDef *app.AppDef) (*LiveH
 	return h, nil
 }
 
+// AppDef returns the app definition this harness is currently using.
+func (h *LiveHarness) AppDef() *app.AppDef { return h.appDef }
+
+// SetAppDef swaps the app definition this harness uses to build prompts
+// and recomputes the cached stable prefix. Used by orchestrator.Reload
+// after the user authors changes via the in-TUI Edit mode. Not safe to
+// call concurrently with RunTurn.
+func (h *LiveHarness) SetAppDef(appDef *app.AppDef) {
+	if appDef == nil {
+		return
+	}
+	h.appDef = appDef
+	h.stablePrefix = buildStablePrefix(appDef)
+}
+
 // WithLogger sets the logger for trace emission.
 func (h *LiveHarness) WithLogger(l *slog.Logger) {
 	if l != nil {

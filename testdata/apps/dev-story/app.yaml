@@ -12,6 +12,7 @@ hosts:
   - host.run
   - host.workspace_manager.get
   - host.oracle.ask
+  - host.oracle.talk
 
 # World schema: typed variables used across all rooms.
 world:
@@ -128,6 +129,12 @@ intents:
         type: string
         required: true
         description: "Feedback to improve the proposal."
+
+  fix:
+    title: "Fix with Claude"
+    description: "Ask Claude to repair the failed command using the error output."
+    examples: ["fix", "have claude fix it", "repair", "ask claude"]
+    priority: 82
 
   # Workspace actions
   open_vscode:
