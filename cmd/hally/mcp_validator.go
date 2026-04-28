@@ -26,6 +26,7 @@ import (
 func mcpValidatorCmd() *cobra.Command {
 	var (
 		schemaPath  string
+		outputPath  string
 		toolName    string
 		description string
 	)
@@ -74,6 +75,7 @@ The schema must be a JSON Schema object whose top-level "type" is
 				SchemaJSON:      raw,
 				ToolName:        toolName,
 				ToolDescription: description,
+				OutputPath:      outputPath,
 			})
 			if err != nil {
 				return fmt.Errorf("build validator: %w", err)
@@ -87,6 +89,8 @@ The schema must be a JSON Schema object whose top-level "type" is
 		},
 	}
 	cmd.Flags().StringVar(&schemaPath, "schema", "", "path to a JSON Schema (required)")
+	cmd.Flags().StringVar(&outputPath, "output", "",
+		"on each successful submit, write the validated JSON to this path (atomic; last call wins)")
 	cmd.Flags().StringVar(&toolName, "tool-name", "", `override the tool name (default: "submit")`)
 	cmd.Flags().StringVar(&description, "tool-description", "",
 		"override the tool description shown to the LLM")

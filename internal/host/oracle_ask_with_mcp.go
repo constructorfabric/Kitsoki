@@ -25,9 +25,12 @@ import (
 const hallyBinaryEnv = "HALLY_BIN"
 
 // buildValidatorMCPServer constructs an mcp_servers entry that runs
-// `hally mcp-validator --schema <abs-path>`. The schema path is resolved
-// against HALLY_APP_DIR if relative, mirroring resolvePromptPath.
-func buildValidatorMCPServer(schemaPath string) (map[string]any, error) {
+// `hally mcp-validator --schema <abs-path> [--output <path>]`. The schema
+// path is resolved against HALLY_APP_DIR if relative, mirroring
+// resolvePromptPath. When outputPath is non-empty the validator will
+// write each successful submit's payload to that file (atomic, last-call
+// wins) so the parent can recover the canonical JSON.
+func buildValidatorMCPServer(schemaPath, outputPath string) (map[string]any, error) {
 	resolved := resolvePromptPath(schemaPath)
 	if _, err := os.Stat(resolved); err != nil {
 		return nil, fmt.Errorf("schema %q not found: %w", resolved, err)
@@ -41,12 +44,13 @@ func buildValidatorMCPServer(schemaPath string) (map[string]any, error) {
 		}
 		bin = exe
 	}
+	cliArgs := []any{"mcp-validator", "--schema", resolved}
+	if outputPath != "" {
+		cliArgs = append(cliArgs, "--output", outputPath)
+	}
 	return map[string]any{
 		"command": bin,
-		"args": []any{
-			"mcp-validator",
-			"--schema", resolved,
-		},
+		"args":    cliArgs,
 	}, nil
 }
 
@@ -138,9 +142,34 @@ func OracleAskWithMCPHandler(ctx context.Context, args map[string]any) (Result, 
 	if mcpServers == nil {
 		mcpServers = map[string]any{}
 	}
+
+	// validatorOutputPath is set when we auto-attach the validator. It's
+	// the path the validator subprocess writes the schema-validated payload
+	// to on each successful submit. We read it back after `claude -p` exits
+	// and bind the result as Result.Data["submitted"], so authors can
+	// `bind: foo: submitted` and get the canonical, validated JSON instead
+	// of relying on the LLM's final stdout text.
+	var validatorOutputPath string
 	if schemaArg, _ := args["schema"].(string); strings.TrimSpace(schemaArg) != "" {
 		if _, alreadyHasValidator := mcpServers["validator"]; !alreadyHasValidator {
-			validatorEntry, vErr := buildValidatorMCPServer(schemaArg)
+			outFile, ofErr := os.CreateTemp("", "hally-validated-*.json")
+			if ofErr != nil {
+				return Result{Error: fmt.Sprintf("host.oracle.ask_with_mcp: create validator output tempfile: %v", ofErr)}, nil
+			}
+			validatorOutputPath = outFile.Name()
+			_ = outFile.Close()
+			// Remove the empty tempfile so we can detect "validator never
+			// captured anything" by os.Stat returning ErrNotExist after
+			// claude exits — the validator will recreate it via atomic
+			// rename on its first successful submit.
+			_ = os.Remove(validatorOutputPath)
+			defer func() {
+				if validatorOutputPath != "" {
+					_ = os.Remove(validatorOutputPath)
+				}
+			}()
+
+			validatorEntry, vErr := buildValidatorMCPServer(schemaArg, validatorOutputPath)
 			if vErr != nil {
 				return Result{Error: fmt.Sprintf("host.oracle.ask_with_mcp: %v", vErr)}, nil
 			}
@@ -217,6 +246,30 @@ func OracleAskWithMCPHandler(ctx context.Context, args map[string]any) (Result, 
 			// remains available for diagnostics.
 			res.Data["stdout_json_parse_error"] = jErr.Error()
 		}
+	}
+
+	// If we auto-attached the validator, read back the canonical payload it
+	// captured from the LLM's submit() call. This is the schema-validated
+	// JSON, independent of whatever final prose claude wrote — bind to
+	// `submitted` for the typed-output path.
+	if validatorOutputPath != "" {
+		if vBytes, vErr := os.ReadFile(validatorOutputPath); vErr == nil && len(vBytes) > 0 {
+			var parsed any
+			if jErr := json.Unmarshal(vBytes, &parsed); jErr == nil {
+				res.Data["submitted"] = parsed
+			} else {
+				// The validator only writes payloads that already passed
+				// schema validation, so a parse error here is a real bug.
+				// Surface it through the handler error path so on_error:
+				// can route.
+				if res.Error == "" {
+					res.Error = fmt.Sprintf("host.oracle.ask_with_mcp: parse validator output: %v", jErr)
+				}
+			}
+		}
+		// Note: file-not-found is the normal "LLM never made a successful
+		// submit" case. We leave Result.Data["submitted"] unset; the
+		// state machine handles its absence via guard / on_error.
 	}
 
 	if exitCode != 0 {

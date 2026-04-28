@@ -391,6 +391,77 @@ func TestOracleAskWithMCP_SchemaResolvedAgainstAppDir(t *testing.T) {
 	assert.Equal(t, filepath.Join(appDir, "schemas/p.json"), args[2])
 }
 
+// TestOracleAskWithMCP_SubmittedBindCapturesValidatedPayload verifies the
+// canonical-payload side channel: when the auto-attached validator captures
+// a submit() to its --output file, the host handler reads it back and
+// exposes it as Result.Data["submitted"], which authors bind to e.g.
+// `proposal: submitted` instead of relying on the LLM's stdout text.
+func TestOracleAskWithMCP_SubmittedBindCapturesValidatedPayload(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake-oneshot-mcp.sh requires bash")
+	}
+	t.Setenv(host.OracleBinEnv, fakeOneShotMCPBin(t))
+	t.Setenv("HALLY_BIN", "/usr/local/bin/hally")
+
+	dir := t.TempDir()
+	schemaPath := filepath.Join(dir, "schema.json")
+	require.NoError(t, os.WriteFile(schemaPath, []byte(`{"type":"object"}`), 0o644))
+
+	// The fake binary reads SIMULATE_SUBMIT=<json> from the prompt and
+	// writes that JSON to the validator's --output path, mimicking what
+	// claude does when it makes a successful submit() call.
+	promptPath := filepath.Join(dir, "p.md")
+	require.NoError(t, os.WriteFile(promptPath, []byte(
+		`propose a fix SIMULATE_SUBMIT={"summary":"fix double-Close","confidence":"high","files_changed":["a.go"]}`,
+	), 0o644))
+
+	res, err := host.OracleAskWithMCPHandler(context.Background(), map[string]any{
+		"prompt_path":   promptPath,
+		"schema":        schemaPath,
+		"output_format": "json",
+	})
+	require.NoError(t, err)
+	require.Empty(t, res.Error, "no error expected, got: %s", res.Error)
+
+	submitted, ok := res.Data["submitted"].(map[string]any)
+	require.True(t, ok, "Result.Data[\"submitted\"] missing or wrong shape: %T %v",
+		res.Data["submitted"], res.Data["submitted"])
+	assert.Equal(t, "fix double-Close", submitted["summary"])
+	assert.Equal(t, "high", submitted["confidence"])
+	files, _ := submitted["files_changed"].([]any)
+	require.Len(t, files, 1)
+	assert.Equal(t, "a.go", files[0])
+}
+
+// TestOracleAskWithMCP_NoSubmittedKeyWhenLLMNeverCalledSubmit verifies that
+// if the LLM never makes a successful submit, Result.Data["submitted"] is
+// absent — letting on_error: routing or guards observe "validator never
+// captured" as a missing-binding condition.
+func TestOracleAskWithMCP_NoSubmittedKeyWhenLLMNeverCalledSubmit(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake-oneshot-mcp.sh requires bash")
+	}
+	t.Setenv(host.OracleBinEnv, fakeOneShotMCPBin(t))
+	t.Setenv("HALLY_BIN", "/usr/local/bin/hally")
+
+	dir := t.TempDir()
+	schemaPath := filepath.Join(dir, "schema.json")
+	require.NoError(t, os.WriteFile(schemaPath, []byte(`{"type":"object"}`), 0o644))
+	promptPath := filepath.Join(dir, "p.md")
+	require.NoError(t, os.WriteFile(promptPath, []byte("just a prompt, no SIMULATE_SUBMIT"), 0o644))
+
+	res, err := host.OracleAskWithMCPHandler(context.Background(), map[string]any{
+		"prompt_path":   promptPath,
+		"schema":        schemaPath,
+		"output_format": "json",
+	})
+	require.NoError(t, err)
+	require.Empty(t, res.Error)
+
+	_, present := res.Data["submitted"]
+	assert.False(t, present, "submitted key must be absent when validator never captured anything")
+}
+
 // TestOracleAskWithMCP_MissingSchemaFile errors cleanly.
 func TestOracleAskWithMCP_MissingSchemaFile(t *testing.T) {
 	if runtime.GOOS == "windows" {

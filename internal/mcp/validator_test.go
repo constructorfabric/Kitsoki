@@ -3,6 +3,9 @@ package mcp_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io/fs"
+	"os"
 	"strings"
 	"testing"
 
@@ -12,6 +15,10 @@ import (
 
 	hallymcp "hally/internal/mcp"
 )
+
+func osStat(p string) (os.FileInfo, error)    { return os.Stat(p) }
+func osReadFile(p string) ([]byte, error)     { return os.ReadFile(p) }
+func isNotExist(err error) bool               { return errors.Is(err, fs.ErrNotExist) }
 
 // fixProposalSchema is a wiggum-style schema for a phase 3 "fix proposal"
 // artifact. The required fields and enum constraints are typical of the
@@ -97,8 +104,134 @@ func TestValidator_AcceptsValidPayload(t *testing.T) {
 	textContent, ok := res.Content[0].(*mcpsdk.TextContent)
 	require.True(t, ok)
 	assert.Contains(t, textContent.Text, "OK:")
-	// The handler echoes the validated JSON so the LLM can mirror it back.
-	assert.Contains(t, textContent.Text, `"confidence": "high"`)
+	assert.Contains(t, textContent.Text, "captured")
+}
+
+// TestValidator_WritesOutputOnSuccessfulSubmit verifies that the
+// side-channel --output file gets written atomically with the submitted
+// JSON when the payload passes validation.
+func TestValidator_WritesOutputOnSuccessfulSubmit(t *testing.T) {
+	dir := t.TempDir()
+	outPath := dir + "/captured.json"
+
+	srv, err := hallymcp.NewValidatorServer(hallymcp.ValidatorConfig{
+		SchemaJSON: fixProposalSchema,
+		OutputPath: outPath,
+	})
+	require.NoError(t, err)
+
+	clientT, serverT := mcpsdk.NewInMemoryTransports()
+	ctx := context.Background()
+	go func() { _, _ = srv.Connect(ctx, serverT, nil) }()
+	client := mcpsdk.NewClient(&mcpsdk.Implementation{Name: "test", Version: "0"}, nil)
+	cs, err := client.Connect(ctx, clientT, nil)
+	require.NoError(t, err)
+	defer cs.Close()
+
+	// File must NOT exist yet.
+	_, err = osStat(outPath)
+	require.True(t, isNotExist(err), "output file must not exist before submit")
+
+	res, err := cs.CallTool(ctx, &mcpsdk.CallToolParams{
+		Name: "submit",
+		Arguments: map[string]any{
+			"summary":       "fix double-Close on rpc client",
+			"confidence":    "high",
+			"files_changed": []string{"a.go"},
+		},
+	})
+	require.NoError(t, err)
+	require.False(t, res.IsError)
+
+	// Read back and verify it's valid JSON matching what we sent.
+	raw, err := osReadFile(outPath)
+	require.NoError(t, err)
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(raw, &got))
+	assert.Equal(t, "high", got["confidence"])
+	assert.Equal(t, "fix double-Close on rpc client", got["summary"])
+}
+
+// TestValidator_DoesNotWriteOutputOnInvalidSubmit verifies that a
+// validation failure leaves the side-channel file untouched.
+func TestValidator_DoesNotWriteOutputOnInvalidSubmit(t *testing.T) {
+	dir := t.TempDir()
+	outPath := dir + "/captured.json"
+
+	srv, err := hallymcp.NewValidatorServer(hallymcp.ValidatorConfig{
+		SchemaJSON: fixProposalSchema,
+		OutputPath: outPath,
+	})
+	require.NoError(t, err)
+
+	clientT, serverT := mcpsdk.NewInMemoryTransports()
+	ctx := context.Background()
+	go func() { _, _ = srv.Connect(ctx, serverT, nil) }()
+	client := mcpsdk.NewClient(&mcpsdk.Implementation{Name: "test", Version: "0"}, nil)
+	cs, err := client.Connect(ctx, clientT, nil)
+	require.NoError(t, err)
+	defer cs.Close()
+
+	res, err := cs.CallTool(ctx, &mcpsdk.CallToolParams{
+		Name: "submit",
+		Arguments: map[string]any{
+			"summary":    "missing files_changed",
+			"confidence": "high",
+		},
+	})
+	require.NoError(t, err)
+	require.True(t, res.IsError)
+
+	_, err = osStat(outPath)
+	require.True(t, isNotExist(err), "output file must not exist after a rejected submit")
+}
+
+// TestValidator_LastSuccessfulSubmitWins covers the case where the LLM
+// makes one bad submit, sees the error, then a good submit. The
+// side-channel must hold the second (valid) payload.
+func TestValidator_LastSuccessfulSubmitWins(t *testing.T) {
+	dir := t.TempDir()
+	outPath := dir + "/captured.json"
+
+	srv, err := hallymcp.NewValidatorServer(hallymcp.ValidatorConfig{
+		SchemaJSON: fixProposalSchema,
+		OutputPath: outPath,
+	})
+	require.NoError(t, err)
+
+	clientT, serverT := mcpsdk.NewInMemoryTransports()
+	ctx := context.Background()
+	go func() { _, _ = srv.Connect(ctx, serverT, nil) }()
+	client := mcpsdk.NewClient(&mcpsdk.Implementation{Name: "test", Version: "0"}, nil)
+	cs, err := client.Connect(ctx, clientT, nil)
+	require.NoError(t, err)
+	defer cs.Close()
+
+	// First call: invalid (missing files_changed).
+	r1, err := cs.CallTool(ctx, &mcpsdk.CallToolParams{
+		Name:      "submit",
+		Arguments: map[string]any{"summary": "bad attempt", "confidence": "low"},
+	})
+	require.NoError(t, err)
+	require.True(t, r1.IsError)
+
+	// Second call: valid.
+	r2, err := cs.CallTool(ctx, &mcpsdk.CallToolParams{
+		Name: "submit",
+		Arguments: map[string]any{
+			"summary":       "good attempt now with all required fields",
+			"confidence":    "medium",
+			"files_changed": []string{"x.go"},
+		},
+	})
+	require.NoError(t, err)
+	require.False(t, r2.IsError)
+
+	raw, err := osReadFile(outPath)
+	require.NoError(t, err)
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(raw, &got))
+	assert.Equal(t, "medium", got["confidence"])
 }
 
 func TestValidator_RejectsMissingRequired(t *testing.T) {

@@ -21,6 +21,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -40,6 +42,13 @@ type ValidatorServer struct {
 	toolName string
 	// description is the tool description shown to the LLM.
 	description string
+	// outputPath, when non-empty, receives the validated JSON every time
+	// `submit` is called with a payload that passes schema validation.
+	// The file is overwritten (last-call-wins). This is the side channel
+	// host.oracle.ask_with_mcp uses to recover the canonical, validated
+	// payload after `claude -p` exits — independent of whatever the model
+	// chooses to write as its final response.
+	outputPath string
 }
 
 // ValidatorConfig configures a ValidatorServer.
@@ -50,6 +59,11 @@ type ValidatorConfig struct {
 	ToolName string
 	// ToolDescription overrides the default description shown to the LLM.
 	ToolDescription string
+	// OutputPath, when non-empty, instructs the validator to write the
+	// validated JSON to that path on each successful submit. Used by
+	// host.oracle.ask_with_mcp to capture the canonical payload from the
+	// tool call rather than from the LLM's final stdout text.
+	OutputPath string
 }
 
 // NewValidatorServer constructs a ValidatorServer from a raw JSON Schema.
@@ -86,8 +100,9 @@ func NewValidatorServer(cfg ValidatorConfig) (*ValidatorServer, error) {
 	if desc == "" {
 		desc = "Submit a JSON object that conforms to the input schema. " +
 			"Validation runs server-side; any errors are returned inline so you can " +
-			"correct the payload and call this tool again. Once the call returns " +
-			"without error, write the same JSON as your final response."
+			"correct the payload and call this tool again. Once submit returns " +
+			"successfully, the validated payload has been captured — your final " +
+			"response can be a brief confirmation; you do not need to repeat the JSON."
 	}
 
 	srv := &ValidatorServer{
@@ -95,6 +110,7 @@ func NewValidatorServer(cfg ValidatorConfig) (*ValidatorServer, error) {
 		compiled:    compiled,
 		toolName:    toolName,
 		description: desc,
+		outputPath:  cfg.OutputPath,
 	}
 
 	srv.mcpSrv = mcpsdk.NewServer(&mcpsdk.Implementation{
@@ -124,9 +140,10 @@ func (v *ValidatorServer) Connect(ctx context.Context, t mcpsdk.Transport, opts 
 
 // handleSubmit validates the incoming arguments against the compiled schema.
 // On validation failure returns isError: true with a multi-line error list.
-// On success returns a short OK message; the LLM is instructed by the tool
-// description to also write the JSON as its final response, which hally
-// then captures via stdout_json.
+// On success the validated JSON is captured to outputPath (when set) so the
+// parent process can recover the canonical payload from the tool call —
+// independent of whatever text the LLM eventually writes as its final
+// response.
 func (v *ValidatorServer) handleSubmit(ctx context.Context, req *mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
 	raw := req.Params.Arguments
 	if len(raw) == 0 {
@@ -143,16 +160,46 @@ func (v *ValidatorServer) handleSubmit(ctx context.Context, req *mcpsdk.CallTool
 		return errorResult(msg), nil
 	}
 
-	pretty, _ := json.MarshalIndent(instance, "", "  ")
+	// Capture to the side-channel file. We use the raw arguments rather
+	// than re-marshalling the parsed instance so byte-level fidelity is
+	// preserved (numeric precision, key order from the LLM, etc.).
+	if v.outputPath != "" {
+		if err := writeOutputAtomically(v.outputPath, raw); err != nil {
+			return errorResult(fmt.Sprintf("submit: capture validated payload: %v", err)), nil
+		}
+	}
+
 	return &mcpsdk.CallToolResult{
 		Content: []mcpsdk.Content{
 			&mcpsdk.TextContent{
-				Text: "OK: payload validated against the schema.\n\n" +
-					"Final step: write this exact JSON as your response (no extra prose):\n\n" +
-					string(pretty),
+				Text: "OK: payload validated against the schema and captured. " +
+					"You may end your turn now; no need to repeat the JSON.",
 			},
 		},
 	}, nil
+}
+
+// writeOutputAtomically writes data to path via a temp file + rename, so
+// readers (the parent process) never observe a partial write.
+func writeOutputAtomically(path string, data []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".hally-validator-*.tmp")
+	if err != nil {
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmp.Name())
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmp.Name())
+		return err
+	}
+	if err := os.Rename(tmp.Name(), path); err != nil {
+		_ = os.Remove(tmp.Name())
+		return err
+	}
+	return nil
 }
 
 // errorResult wraps an error message as an MCP tool failure that the LLM

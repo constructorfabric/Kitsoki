@@ -40,6 +40,29 @@ if [ -n "$mcp_config" ] && [ -r "$mcp_config" ]; then
   mcp_body="$(cat "$mcp_config")"
 fi
 
+# If the prompt contains the sentinel "SIMULATE_SUBMIT={...}" the fake
+# binary writes that JSON to the validator's --output path, simulating
+# what claude would do when it calls the validator's submit() tool.
+# This exercises host.oracle.ask_with_mcp's read-back of Result.Data["submitted"]
+# without needing a real MCP roundtrip.
+sentinel="$(printf '%s' "$stdin" | grep -o 'SIMULATE_SUBMIT=.*' || true)"
+if [ -n "$sentinel" ] && [ -n "$mcp_body" ]; then
+  payload="${sentinel#SIMULATE_SUBMIT=}"
+  output_path="$(python3 -c '
+import json, sys
+cfg = json.loads(sys.argv[1])
+v = cfg.get("mcpServers", {}).get("validator", {})
+args = v.get("args", [])
+for i, a in enumerate(args):
+    if a == "--output" and i + 1 < len(args):
+        print(args[i + 1])
+        break
+' "$mcp_body")"
+  if [ -n "$output_path" ]; then
+    printf '%s' "$payload" > "$output_path"
+  fi
+fi
+
 if [ "$output_format" = "json" ]; then
   # Emit a JSON envelope that includes everything the test needs to verify.
   python3 -c '
