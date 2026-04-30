@@ -110,26 +110,6 @@ func (h *LiveHarness) WithLogger(l *slog.Logger) {
 	}
 }
 
-// transitionToolInputSchema is the JSON schema for the local transition tool.
-var transitionToolInputSchema = map[string]any{
-	"type": "object",
-	"properties": map[string]any{
-		"intent": map[string]any{
-			"type":        "string",
-			"description": "One of the currently-allowed intent names (see system context).",
-		},
-		"slots": map[string]any{
-			"type":        "object",
-			"description": "Intent-specific slot values. Keys match the intent's declared slot names.",
-		},
-		"confidence": map[string]any{
-			"type":        "number",
-			"description": "0..1 self-reported extraction confidence (optional).",
-		},
-	},
-	"required": []string{"intent"},
-}
-
 // RunTurn sends the user utterance to the Anthropic API and extracts the
 // tool_use block as a mcp.CallToolParams.
 //
@@ -145,18 +125,28 @@ func (h *LiveHarness) RunTurn(ctx context.Context, in TurnInput) (mcp.CallToolPa
 	stable := h.stablePrefix
 	dynamic := buildDynamicSuffix(h.appDef, in)
 
-	// Tool definition for the local (non-MCP) Anthropic tool call.
-	// The input schema is passed via ExtraFields so we can embed the full JSON schema
-	// structure directly.
+	// Generate the per-turn tool schema. BuildTransitionSchema bakes the
+	// allowed intents and any declared slot formats (e.g. `format: jql`)
+	// directly into the tool's input schema so Anthropic enforces them
+	// before we even see the tool_use block.
+	schemaBytes, err := BuildTransitionSchema(h.appDef, in.AllowedIntents)
+	if err != nil {
+		return mcp.CallToolParams{}, fmt.Errorf("harness/live: build transition schema: %w", err)
+	}
+	var schemaMap map[string]any
+	if err := json.Unmarshal(schemaBytes, &schemaMap); err != nil {
+		return mcp.CallToolParams{}, fmt.Errorf("harness/live: decode transition schema: %w", err)
+	}
+	// Anthropic's ToolInputSchemaParam injects "type": "object" itself; we
+	// pass the rest of the document via ExtraFields.
+	delete(schemaMap, "type")
+
 	tool := anthropic.ToolUnionParam{
 		OfTool: &anthropic.ToolParam{
 			Name:        "transition",
 			Description: param.NewOpt("Map the user utterance to one allowed intent with filled slots."),
 			InputSchema: anthropic.ToolInputSchemaParam{
-				ExtraFields: map[string]any{
-					"properties": transitionToolInputSchema["properties"],
-					"required":   transitionToolInputSchema["required"],
-				},
+				ExtraFields: schemaMap,
 			},
 		},
 	}
