@@ -19,7 +19,7 @@
 //
 //     1. An Effect.Increment on the arc transition's effects, against
 //        a counter `cycle__<phase_id>__<arc>` in world.
-//     2. A `when:` guard `cycle__<phase_id>__<arc> < N` on the arc.
+//     2. A `when:` guard `world.cycle__<phase_id>__<arc> < N` on the arc.
 //     3. A trailing fall-through transition with `default: true` and
 //        target `<phase_id>_error`, carrying the guard hint.
 //
@@ -34,6 +34,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	goyaml "github.com/goccy/go-yaml"
 )
 
 // expandPhases populates def.States from def.PhaseTemplates + def.Phases.
@@ -99,7 +101,7 @@ func expandOnePhase(def *AppDef, file string, tpl *PhaseTemplate, phaseID string
 	// Override with entry values, except for the structured keys.
 	for k, v := range entry {
 		switch k {
-		case "next", "cycle_budgets":
+		case "next", "cycle_budgets", "on_enter":
 			// Structured; not a template param.
 			continue
 		default:
@@ -137,6 +139,21 @@ func expandOnePhase(def *AppDef, file string, tpl *PhaseTemplate, phaseID string
 	// Pull structured next/cycle_budgets.
 	next := pullStringMap(entry, "next")
 	cycles := pullIntMap(entry, "cycle_budgets")
+
+	// Pull the optional per-phase on_enter override. When present, it
+	// REPLACES the template's on_enter on the {id}_executing state. This is
+	// how script-driven phases (e.g. host.run) override LLM-driven templates
+	// without having to declare a separate phase template. Substitution
+	// against `params` and `next` still applies — the override may reference
+	// `{{ tpl.X }}` and `{{ phase.next.X }}` like the template body.
+	onEnterOverride, oeErr := pullEffectList(entry, "on_enter")
+	if oeErr != nil {
+		errs = append(errs, &ValidationError{
+			File:    file,
+			Message: fmt.Sprintf("phases.graph[%q]: on_enter: %v", phaseID, oeErr),
+		})
+		return errs
+	}
 
 	// Iterate template state names in deterministic order.
 	tplStateNames := make([]string, 0, len(tpl.States))
@@ -184,6 +201,18 @@ func expandOnePhase(def *AppDef, file string, tpl *PhaseTemplate, phaseID string
 					Message: fmt.Sprintf("phases.graph[%q]: %v", phaseID, cerr),
 				})
 				continue
+			}
+
+			// Apply per-phase on_enter override (if any). Substitution
+			// is applied against the phase's params + next-arc graph so
+			// the override may use `{{ tpl.X }}` / `{{ world.X }}` / etc.
+			// just like the template body.
+			if onEnterOverride != nil {
+				out := make([]Effect, 0, len(onEnterOverride))
+				for _, eff := range onEnterOverride {
+					out = append(out, substEffect(eff, params, next))
+				}
+				instance.OnEnter = out
 			}
 		}
 
@@ -439,7 +468,12 @@ func applyCycleBudgets(state *State, phaseID string, cycles map[string]int, next
 			continue
 		}
 		counter := "cycle__" + phaseID + "__" + arc
-		guard := counter + " < " + strconv.Itoa(n)
+		// expr-lang's whitelist requires bare identifiers to live under
+		// one of the allowed roots (slots/world/event/run/args). The
+		// counter slot lives in `world`, so prefix the guard with
+		// `world.` — without the prefix expr.Render fails at eval-time
+		// with "cannot fetch <counter> from expr.Env".
+		guard := "world." + counter + " < " + strconv.Itoa(n)
 		errorTarget := phaseID + "_error"
 
 		existing, present := state.On[arc]
@@ -518,6 +552,37 @@ func combineGuards(a, b string) string {
 	default:
 		return "(" + a + ") && (" + b + ")"
 	}
+}
+
+// pullEffectList reads m[key] (expected to be a list of effect maps) and
+// re-marshals through goccy/go-yaml so the result is typed as []Effect.
+//
+// Returns (nil, nil) when the key is absent. When the key is present but
+// not a list, returns an error so the load fails loudly with a useful
+// message instead of silently dropping the override.
+func pullEffectList(m map[string]any, key string) ([]Effect, error) {
+	v, ok := m[key]
+	if !ok {
+		return nil, nil
+	}
+	if v == nil {
+		return nil, nil
+	}
+	if _, ok := v.([]any); !ok {
+		return nil, fmt.Errorf("expected a list of effects, got %T", v)
+	}
+	// Round-trip through YAML so goccy/go-yaml does the typed decoding for
+	// us. Cheaper than reimplementing the Effect schema by hand and keeps
+	// behaviour aligned with the loader's primary parse.
+	b, err := goyaml.Marshal(v)
+	if err != nil {
+		return nil, fmt.Errorf("marshal: %w", err)
+	}
+	var out []Effect
+	if err := goyaml.UnmarshalWithOptions(b, &out, goyaml.Strict()); err != nil {
+		return nil, fmt.Errorf("unmarshal: %w", err)
+	}
+	return out, nil
 }
 
 // pullStringMap reads m[key] and returns it as map[string]string.

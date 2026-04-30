@@ -87,7 +87,8 @@ func TestPhases_CycleBudgetsSynthesis(t *testing.T) {
 	// First entry: the synthesized increment + guard.
 	first := arc[0]
 	require.False(t, first.Default)
-	assert.Contains(t, first.When, "cycle__phase_c__on_failure")
+	assert.Contains(t, first.When, "world.cycle__phase_c__on_failure",
+		"guard must be rooted under world. so expr-lang can resolve it at eval time")
 	assert.Contains(t, first.When, " < 2")
 	require.NotEmpty(t, first.Effects)
 	assert.Equal(t, 1, first.Effects[0].Increment["cycle__phase_c__on_failure"])
@@ -116,6 +117,54 @@ func TestPhases_CheckpointIntentsMerged(t *testing.T) {
 	require.NotNil(t, exec)
 	_, hasContinue := exec.Intents["continue"]
 	require.False(t, hasContinue, "_executing must not receive checkpoint_intents")
+}
+
+// TestPhases_OnEnterOverride verifies that a per-phase `on_enter:` list on
+// the graph entry REPLACES the template's on_enter on the {id}_executing
+// state, with `{{ tpl.X }}` and `{{ phase.next.X }}` substitution applied
+// to the override body. The phase that does NOT declare an override must
+// still inherit the template's default on_enter unchanged.
+//
+// This is the substrate for script-driven phases (host.run) coexisting in
+// a room whose template defaults to host.oracle.ask_with_mcp — see
+// stories/bugfix/app.yaml's phase_0 / phase_0_5 / phase_9_5 / phase_9_6 /
+// phase_12 entries.
+func TestPhases_OnEnterOverride(t *testing.T) {
+	def, err := app.Load(filepath.Join("testdata", "phases", "on-enter-override.yaml"))
+	require.NoError(t, err)
+
+	// LLM phase: no override; the template's default on_enter applies.
+	llm := def.States["phase_llm_executing"]
+	require.NotNil(t, llm)
+	require.Len(t, llm.OnEnter, 1, "phase_llm must inherit the template's single default on_enter effect")
+	assert.Equal(t, "host.oracle.ask_with_mcp", llm.OnEnter[0].Invoke,
+		"phase_llm must call the template's host.oracle.ask_with_mcp")
+	// `{{ tpl.id }}_artifact` substitution must run in the inherited body.
+	assert.Equal(t, "submitted", llm.OnEnter[0].Bind["phase_llm_artifact"],
+		"template substitution must apply to the inherited bind keys")
+
+	// Script phase: graph entry declared its own on_enter; that REPLACES
+	// the template default rather than appending to it.
+	scr := def.States["phase_script_executing"]
+	require.NotNil(t, scr)
+	require.Len(t, scr.OnEnter, 1,
+		"phase_script must have exactly the override's effect — replacement, not merge")
+	assert.Equal(t, "host.run", scr.OnEnter[0].Invoke,
+		"phase_script must call host.run from the override; the template's host.oracle.ask_with_mcp must NOT bleed through")
+
+	// `{{ tpl.id }}` and `{{ world.X }}` substitutions must apply to the
+	// override body (the latter passes through unchanged at expansion
+	// time — it's evaluated at runtime).
+	cmd, ok := scr.OnEnter[0].With["cmd"].(string)
+	require.True(t, ok, "host.run override must declare cmd")
+	assert.Contains(t, cmd, "phase_script",
+		"`{{ tpl.id }}` must expand to the phase id in the override")
+	assert.Contains(t, cmd, "{{ world.ticket }}",
+		"`{{ world.X }}` references must pass through expansion unchanged for runtime eval")
+	assert.Equal(t, "stdout", scr.OnEnter[0].Bind["phase_script_artifact"],
+		"override bind keys must have `{{ tpl.id }}` substituted")
+	assert.Equal(t, "phase_script_error", scr.OnEnter[0].OnError,
+		"override on_error must have `{{ tpl.id }}` substituted")
 }
 
 // TestPhases_CycleBudgetSynthesisMissingArcCreatesErrorRoute verifies that

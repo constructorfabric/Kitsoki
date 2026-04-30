@@ -1,0 +1,96 @@
+# Phase template with a default on_enter (LLM-style host call), one phase
+# entry that inherits the default, and one phase entry that REPLACES the
+# default with a host.run invocation. Exercises the per-phase on_enter
+# override added on top of the v1 phase-template machinery.
+
+app:
+  id: on-enter-override
+  version: 0.1.0
+  title: "on_enter override fixture"
+
+hosts:
+  - host.oracle.ask_with_mcp
+  - host.run
+  - host.transport.post
+
+world:
+  ticket:        { type: string, default: "" }
+  stand:         { type: string, default: "" }
+  llm_artifact:  { type: string, default: "" }
+  scr_artifact:  { type: string, default: "" }
+  transport:     { type: string, default: "tui" }
+  thread:        { type: string, default: "" }
+
+intents:
+  done:
+    title: "Phase finished"
+    priority: 100
+  continue:
+    title: "Continue"
+    priority: 90
+  retry:
+    title: "Retry"
+    priority: 50
+
+root: phase_llm_executing
+
+phase_templates:
+  reviewed_phase:
+    parameters:
+      id:    { type: string,  required: true }
+      title: { type: string,  required: true }
+      checkpoint:
+        type: boolean
+        required: false
+        default: false
+    states:
+      "{id}_executing":
+        description: "Executing {{ tpl.title }}"
+        on_enter:
+          - invoke: host.oracle.ask_with_mcp
+            with:
+              prompt:        "default-prompt"
+              ticket:        "{{ world.ticket }}"
+            bind:
+              "{{ tpl.id }}_artifact": submitted
+            on_error: "{{ tpl.id }}_error"
+        on:
+          done:
+            - target: "{{ phase.next.continue }}"
+              default: true
+      "{id}_awaiting_reply":
+        description: "Awaiting reply for {{ tpl.title }}"
+      "{id}_error":
+        description: "Error in {{ tpl.title }}"
+        on:
+          retry:
+            - target: "{{ tpl.id }}_executing"
+
+phases:
+  template: reviewed_phase
+  graph:
+
+    # Inherits the template's default on_enter (LLM call).
+    phase_llm:
+      title: "LLM phase"
+      next:
+        continue: phase_script
+
+    # Overrides on_enter with a script invocation. The override must
+    # replace (not merge with) the template's on_enter list.
+    phase_script:
+      title: "Script phase"
+      next:
+        continue: terminated
+      on_enter:
+        - invoke: host.run
+          with:
+            cmd: "scripts/run-phase.sh {{ tpl.id }} {{ world.ticket }} {{ world.stand }}"
+          bind:
+            "{{ tpl.id }}_artifact": stdout
+          on_error: "{{ tpl.id }}_error"
+
+states:
+  terminated:
+    terminal: true
+    description: "Done"
