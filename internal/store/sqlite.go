@@ -351,6 +351,42 @@ func (s *sqliteStore) MarkAbandoned(ctx context.Context, session app.SessionID) 
 	return s.setStatus(ctx, session, "abandoned")
 }
 
+// DeleteSession removes a session and all rows that reference it
+// (events, snapshots, external_keys, session_locks) atomically.  The
+// row in `sessions` is deleted last so a partial failure leaves the
+// session id resolvable for retry.
+func (s *sqliteStore) DeleteSession(ctx context.Context, session app.SessionID) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("store.DeleteSession: begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	sid := string(session)
+	for _, q := range []string{
+		`DELETE FROM events         WHERE session_id = ?`,
+		`DELETE FROM snapshots      WHERE session_id = ?`,
+		`DELETE FROM external_keys  WHERE session_id = ?`,
+		`DELETE FROM session_locks  WHERE session_id = ?`,
+	} {
+		if _, err := tx.ExecContext(ctx, q, sid); err != nil {
+			return fmt.Errorf("store.DeleteSession: %s: %w", q, err)
+		}
+	}
+	res, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE id = ?`, sid)
+	if err != nil {
+		return fmt.Errorf("store.DeleteSession: DELETE sessions: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrSessionNotFound
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("store.DeleteSession: commit: %w", err)
+	}
+	return nil
+}
+
 func (s *sqliteStore) setStatus(ctx context.Context, session app.SessionID, status string) error {
 	res, err := s.db.ExecContext(ctx,
 		`UPDATE sessions SET status = ? WHERE id = ?`,

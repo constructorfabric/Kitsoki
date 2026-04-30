@@ -364,6 +364,55 @@ func TestMarkCompleted_SessionNotFound(t *testing.T) {
 	require.ErrorIs(t, err, store.ErrSessionNotFound)
 }
 
+// ─── DeleteSession ────────────────────────────────────────────────────────────
+
+func TestDeleteSession_RemovesAllRelatedRows(t *testing.T) {
+	st, err := store.OpenMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = st.Close() })
+
+	def := makeAppDef("test-app", "1.0.0")
+	sid, err := st.CreateSession(context.Background(), def)
+	require.NoError(t, err)
+
+	// Populate every session-scoped table.
+	require.NoError(t, st.AppendEvents(sid, makeEvents(1, 2)))
+	require.NoError(t, st.Snapshot(sid, 1, store.Snapshot{}))
+	require.NoError(t, st.BindExternalKey(context.Background(), sid, "jira", "TEST-1"))
+
+	require.NoError(t, st.DeleteSession(context.Background(), sid))
+
+	// Sessions list no longer reports it.
+	sessions, err := st.ListSessions(context.Background(), "test-app", 0)
+	require.NoError(t, err)
+	for _, s := range sessions {
+		require.NotEqual(t, sid, s.ID)
+	}
+
+	// External-key lookup returns ErrSessionNotFound (not the stale id).
+	_, err = st.LookupByKey(context.Background(), "jira", "TEST-1")
+	require.ErrorIs(t, err, store.ErrSessionNotFound)
+
+	// History load returns no events — the prior turn rows were deleted.
+	hist, err := st.LoadHistory(sid)
+	require.NoError(t, err)
+	require.Empty(t, hist)
+
+	// The id can be re-bound to a freshly-created session.
+	sid2, err := st.CreateSession(context.Background(), def)
+	require.NoError(t, err)
+	require.NoError(t, st.BindExternalKey(context.Background(), sid2, "jira", "TEST-1"))
+}
+
+func TestDeleteSession_NotFound(t *testing.T) {
+	st, err := store.OpenMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = st.Close() })
+
+	err = st.DeleteSession(context.Background(), "nosuchsession")
+	require.ErrorIs(t, err, store.ErrSessionNotFound)
+}
+
 // ─── ListSessions ─────────────────────────────────────────────────────────────
 
 func TestListSessions(t *testing.T) {

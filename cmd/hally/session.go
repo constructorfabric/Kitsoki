@@ -10,12 +10,15 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -61,6 +64,54 @@ Exit codes:
 	cmd.AddCommand(sessionShowCmd())
 	cmd.AddCommand(sessionListCmd())
 	cmd.AddCommand(sessionBindKeyCmd())
+	cmd.AddCommand(sessionDeleteCmd())
+	return cmd
+}
+
+// ─── session delete ───────────────────────────────────────────────────────────
+
+func sessionDeleteCmd() *cobra.Command {
+	var (
+		dbPath string
+		key    string
+		idFlag string
+	)
+	cmd := &cobra.Command{
+		Use:   "delete",
+		Short: "Delete a session and all of its associated rows",
+		Long: `Delete removes a session — its events, snapshots, external-key bindings,
+and locks — atomically.  Intended for testing and operator-driven cleanup
+of abandoned sessions; production code should prefer ` + "`session continue --intent quit`" + `
+or the equivalent terminal-state path so the audit trail is preserved.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if (key == "") == (idFlag == "") {
+				return fmt.Errorf("exactly one of --key or --id must be set")
+			}
+
+			s, err := openSessionStore(dbPath)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = s.Close() }()
+
+			ctx := cmd.Context()
+			sid, err := resolveSessionID(ctx, s, key, idFlag)
+			if err != nil {
+				return err
+			}
+
+			if err := s.DeleteSession(ctx, sid); err != nil {
+				return fmt.Errorf("delete session %s: %w", sid, err)
+			}
+			return writeJSON(cmd.OutOrStdout(), map[string]any{
+				"deleted":    true,
+				"session_id": string(sid),
+			})
+		},
+	}
+	cmd.Flags().StringVar(&dbPath, "db", "", "session SQLite database (default: $XDG_DATA_HOME/hally/sessions.db)")
+	cmd.Flags().StringVar(&key, "key", "", "external key transport:thread")
+	cmd.Flags().StringVar(&idFlag, "id", "", "session ID")
 	return cmd
 }
 
@@ -221,7 +272,18 @@ another process holds it, this command exits 75 (EX_TEMPFAIL).`,
 				if intentName != "" {
 					outcome, inner = orch.SubmitDirect(ctx, sid, intentName, slotVals)
 				} else {
-					outcome, inner = orch.Turn(ctx, sid, rawText)
+					// --slots, when provided alongside --raw, is forwarded
+					// as supplemental slots: the harness still classifies
+					// the text and resolves the intent, but the supplied
+					// slots are merged into the resulting call (without
+					// overwriting any keys the harness produced).  Lets an
+					// orchestrator attach per-turn metadata such as
+					// `last_reply_author` for ACL guards.
+					var turnOpts []orchestrator.TurnOption
+					if len(slotVals) > 0 {
+						turnOpts = append(turnOpts, orchestrator.WithSupplementSlots(slotVals))
+					}
+					outcome, inner = orch.Turn(ctx, sid, rawText, turnOpts...)
 				}
 				return inner
 			})
@@ -241,7 +303,7 @@ another process holds it, this command exits 75 (EX_TEMPFAIL).`,
 	cmd.Flags().StringVar(&key, "key", "", "external key transport:thread (e.g. jira:PLTFRM-12345)")
 	cmd.Flags().StringVar(&idFlag, "id", "", "session ID (alternative to --key)")
 	cmd.Flags().StringVar(&intentName, "intent", "", "intent name to dispatch directly (no LLM)")
-	cmd.Flags().StringVar(&slotsFlag, "slots", "", "intent slots as JSON or @file (only with --intent)")
+	cmd.Flags().StringVar(&slotsFlag, "slots", "", "intent slots as JSON or @file. With --intent: full slot set passed to SubmitDirect. With --raw: supplemental slots merged into the harness-resolved intent (existing keys are preserved).")
 	cmd.Flags().StringVar(&rawText, "raw", "", "raw inbound reply body, routed through the harness")
 	cmd.Flags().StringVar(&harnessType, "harness", "", "harness for --raw: claude|live|replay (default auto)")
 	cmd.Flags().StringVar(&claudeModel, "claude-model", "", "model passed to claude -p --model")
@@ -509,6 +571,12 @@ func externalKeysView(keys []store.ExternalKey) []map[string]any {
 // `hally session continue` invocation. Always includes a TUITransport
 // (in-process buffer); adds a JiraTransport when the JIRA_URL,
 // JIRA_USERNAME, and JIRA_API_TOKEN env vars are all set.
+//
+// Setting JIRA_INSECURE_SKIP_VERIFY=1 disables TLS verification on the
+// Jira HTTP client.  This is needed for internal/self-hosted instances
+// behind a proxy with a self-signed certificate (e.g. Acronis's ZTA
+// proxy at 127.0.0.1:3128 with `zta-proxy-ca.crt` not on the system
+// trust store).  Off by default — only opt in deliberately.
 func buildTransportRegistry() (*transport.Registry, error) {
 	reg := transport.NewRegistry()
 	reg.Register(transport.NewTUITransport())
@@ -517,11 +585,20 @@ func buildTransportRegistry() (*transport.Registry, error) {
 	jiraUser := os.Getenv("JIRA_USERNAME")
 	jiraToken := os.Getenv("JIRA_API_TOKEN")
 	if jiraURL != "" && jiraUser != "" && jiraToken != "" {
-		jt, err := transport.NewJiraTransport(transport.JiraConfig{
+		cfg := transport.JiraConfig{
 			BaseURL:  jiraURL,
 			Username: jiraUser,
 			APIToken: jiraToken,
-		})
+		}
+		if os.Getenv("JIRA_INSECURE_SKIP_VERIFY") == "1" {
+			cfg.HTTPClient = &http.Client{
+				Timeout: 30 * time.Second,
+				Transport: &http.Transport{
+					TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+				},
+			}
+		}
+		jt, err := transport.NewJiraTransport(cfg)
 		if err != nil {
 			return nil, fmt.Errorf("build jira transport: %w", err)
 		}

@@ -40,6 +40,14 @@ type Store interface {
 	// MarkAbandoned marks a session as abandoned. After this, AppendEvents returns ErrSessionClosed.
 	MarkAbandoned(ctx context.Context, session app.SessionID) error
 
+	// DeleteSession removes a session and all of its associated rows
+	// (events, snapshots, external_keys, session_locks) inside a single
+	// transaction.  Returns ErrSessionNotFound if no session exists with
+	// the given id.  Intended for testing and operator-driven cleanup of
+	// abandoned sessions; production code should prefer MarkAbandoned to
+	// preserve the audit trail.
+	DeleteSession(ctx context.Context, session app.SessionID) error
+
 	// ListSessions returns up to limit sessions for the given app ID, newest first.
 	// Pass limit=0 for no limit.
 	ListSessions(ctx context.Context, appID string, limit int) ([]SessionSummary, error)
