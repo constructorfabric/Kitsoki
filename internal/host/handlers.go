@@ -40,28 +40,67 @@ func WorkspaceManagerGetHandler(ctx context.Context, args map[string]any) (Resul
 	return Result{Data: data}, nil
 }
 
-// RunHandler implements host.run — executes an arbitrary shell command via bash.
+// RunHandler implements host.run — executes either a shell command via bash
+// or a program with an explicit argv list (no shell).
+//
 // Args:
-//   - cmd (string, required): the shell command to run
-//   - cwd (string, optional): working directory
+//   - cmd  (string, required): the program (argv-mode) or shell command (bash-mode)
+//   - args ([]any, optional):  if present, exec `cmd` directly with these
+//     positional arguments — no shell, no word-splitting, no glob/tilde
+//     expansion.  Use this whenever any argument is templated from world or
+//     slot data: it passes the value through as a single argv element no
+//     matter what shell metacharacters it contains.  Each element is
+//     coerced to its string form (numbers/bools become their decimal/`true`
+//     representation, nil becomes the empty string).
+//   - cwd          (string, optional): working directory
+//   - fail_on_error (bool, optional, default false): when true, a non-zero
+//     exit code populates Result.Error so the on_enter `on_error:` arc
+//     fires instead of the success `done` arc.  Off by default for
+//     backwards compatibility — callers that want to inspect exit_code as
+//     data leave it false; callers that treat the script as pass/fail
+//     (e.g. the bugfix room's script-driven phases) set it true so a
+//     failed deploy doesn't get treated as success.
 //
 // Returns Result.Data with:
-//   - stdout (string): combined stdout
-//   - exit_code (int): exit code
-//   - ok (bool): true if exit code == 0
+//   - stdout (string):    combined stdout
+//   - exit_code (int):    exit code
+//   - ok (bool):          true if exit code == 0
+//   - stdout_json (any):  parsed JSON when stdout's last non-empty line is
+//                         a single JSON document and parse succeeds.  Lets
+//                         CLI subcommands that emit a structured envelope
+//                         on their last stdout line (e.g.
+//                         tools/loopy/bugfix's `python3 -m bugfix <cmd>`)
+//                         be bound directly into a world slot via
+//                         `bind: <slot>: stdout_json`.  Mirrors the same
+//                         field exposed by host.oracle.ask_with_mcp.
+//   - stdout_json_parse_error (string): present (and stdout_json absent)
+//                         when the last line looked like JSON but couldn't
+//                         be parsed; useful for diagnosing envelope drift.
+//
+// When fail_on_error=true and exit_code != 0, Result.Error is also set
+// (Data is preserved so the error state can render stdout/exit_code).
 func RunHandler(ctx context.Context, args map[string]any) (Result, error) {
 	cmd, ok := args["cmd"].(string)
 	if !ok || cmd == "" {
 		return Result{Error: "host.run: cmd argument is required"}, nil
 	}
 
-	bashCmd := exec.CommandContext(ctx, "bash", "-c", cmd)
-
-	if cwd, ok := args["cwd"].(string); ok && cwd != "" {
-		bashCmd.Dir = cwd
+	var execCmd *exec.Cmd
+	if rawArgs, hasArgs := args["args"]; hasArgs && rawArgs != nil {
+		argv, err := coerceArgs(rawArgs)
+		if err != nil {
+			return Result{Error: fmt.Sprintf("host.run: %v", err)}, nil
+		}
+		execCmd = exec.CommandContext(ctx, cmd, argv...)
+	} else {
+		execCmd = exec.CommandContext(ctx, "bash", "-c", cmd)
 	}
 
-	out, err := bashCmd.CombinedOutput()
+	if cwd, ok := args["cwd"].(string); ok && cwd != "" {
+		execCmd.Dir = cwd
+	}
+
+	out, err := execCmd.CombinedOutput()
 	exitCode := 0
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
@@ -71,13 +110,103 @@ func RunHandler(ctx context.Context, args map[string]any) (Result, error) {
 		}
 	}
 
-	return Result{
+	stdout := string(out)
+	res := Result{
 		Data: map[string]any{
-			"stdout":    string(out),
+			"stdout":    stdout,
 			"exit_code": exitCode,
 			"ok":        exitCode == 0,
 		},
-	}, nil
+	}
+
+	// Best-effort JSON envelope parse off the *last non-empty line* of
+	// stdout.  Subcommands that follow the envelope contract emit logs
+	// to stderr and a single JSON line on stdout; this lets the bound
+	// world slot carry a structured object instead of a raw blob.
+	// Failure here is not an error — `bind: <slot>: stdout_json` is
+	// silently absent so `on_error` stays pinned to real failures.
+	if last := lastNonEmptyLine(stdout); last != "" {
+		var parsed any
+		if jErr := json.Unmarshal([]byte(last), &parsed); jErr == nil {
+			res.Data["stdout_json"] = parsed
+		} else if looksLikeJSON(last) {
+			res.Data["stdout_json_parse_error"] = jErr.Error()
+		}
+	}
+
+	if exitCode != 0 {
+		failOnError, _ := args["fail_on_error"].(bool)
+		if failOnError {
+			res.Error = fmt.Sprintf("host.run: command exited %d", exitCode)
+		}
+	}
+
+	return res, nil
+}
+
+// lastNonEmptyLine returns the last line of s that contains non-whitespace,
+// or "" if there is none.  Used by host.run's stdout_json parse to skip
+// trailing newlines without scanning the whole output.
+func lastNonEmptyLine(s string) string {
+	if s == "" {
+		return ""
+	}
+	// Walk backwards through the string, splitting on '\n' so we don't
+	// allocate a slice for every line.
+	end := len(s)
+	for end > 0 {
+		// Find the start of the current line.
+		start := strings.LastIndexByte(s[:end], '\n') + 1
+		line := strings.TrimSpace(s[start:end])
+		if line != "" {
+			return line
+		}
+		end = start - 1
+		if end < 0 {
+			return ""
+		}
+	}
+	return ""
+}
+
+// coerceArgs converts a YAML-decoded args list into the []string form
+// exec.CommandContext expects.  Accepts a Go []any (the shape produced by
+// goccy/go-yaml for sequence nodes) and stringifies each element with
+// fmt.Sprint, so numeric/boolean YAML scalars don't require explicit
+// stringification by the author.  A nil element becomes the empty string.
+// Any non-list value (or a list whose elements aren't scalars) yields an
+// error so misuse is loud rather than silent.
+func coerceArgs(raw any) ([]string, error) {
+	list, ok := raw.([]any)
+	if !ok {
+		return nil, fmt.Errorf("args must be a list, got %T", raw)
+	}
+	out := make([]string, len(list))
+	for i, v := range list {
+		switch x := v.(type) {
+		case nil:
+			out[i] = ""
+		case string:
+			out[i] = x
+		case bool, int, int64, float64:
+			out[i] = fmt.Sprint(x)
+		default:
+			return nil, fmt.Errorf("args[%d]: unsupported type %T", i, v)
+		}
+	}
+	return out, nil
+}
+
+// looksLikeJSON reports whether s looks JSON-ish enough that a parse
+// failure is interesting to surface as stdout_json_parse_error.  Avoids
+// noisy errors when stdout is plain text — only interesting when the
+// caller plausibly intended a JSON envelope.
+func looksLikeJSON(s string) bool {
+	if s == "" {
+		return false
+	}
+	c := s[0]
+	return c == '{' || c == '[' || c == '"'
 }
 
 // RegisterBuiltins registers all built-in host handlers into the registry.

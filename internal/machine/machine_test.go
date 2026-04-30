@@ -399,6 +399,70 @@ func TestEffectsApplied(t *testing.T) {
 	require.Equal(t, int64(2), res2.World.Vars["counter"])
 }
 
+// TestEffectInvokeWithTemplatedListArgs covers the recursive resolution of
+// invoke `with:` values: a templated string nested inside a list (e.g.
+// host.run's `args:`) must be rendered, not passed through verbatim.  This
+// is the regression guard for the jira_search bug where
+// `args: ["{{ world.jira_query }}"]` left the template unexpanded and the
+// handler received the literal string `{{ world.jira_query }}`.
+func TestEffectInvokeWithTemplatedListArgs(t *testing.T) {
+	def := &app.AppDef{
+		App:  app.AppMeta{ID: "test"},
+		Root: "start",
+		World: map[string]app.VarDef{
+			"q": {Type: "string", Default: "hello world"},
+		},
+		Intents: map[string]app.Intent{
+			"go": {},
+		},
+		Hosts: []string{"host.run"},
+		States: map[string]*app.State{
+			"start": {
+				On: map[string][]app.Transition{
+					"go": {
+						{
+							Target: "start",
+							Effects: []app.Effect{
+								{
+									Invoke: "host.run",
+									With: map[string]any{
+										"cmd": "python3",
+										"args": []any{
+											"script.py",
+											"{{ world.q }}",
+											"--limit",
+											"25",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	m := mustNew(t, def)
+	w := world.World{Vars: map[string]any{"q": "hello world"}}
+
+	res, err := m.Turn(context.Background(), "start", w, intent.IntentCall{
+		Intent: "go",
+		Slots:  world.Slots{},
+	})
+	require.NoError(t, err)
+	require.Nil(t, res.ValidationError)
+	require.Len(t, res.HostCalls, 1, "expected one host invocation")
+
+	hc := res.HostCalls[0]
+	require.Equal(t, "host.run", hc.Namespace)
+	require.Equal(t, "python3", hc.Args["cmd"])
+
+	gotArgs, ok := hc.Args["args"].([]any)
+	require.True(t, ok, "args should be []any, got %T", hc.Args["args"])
+	require.Equal(t, []any{"script.py", "hello world", "--limit", "25"}, gotArgs)
+}
+
 // ─── parallel state rejection ─────────────────────────────────────────────────
 
 func TestParallelStatesRejected(t *testing.T) {

@@ -88,3 +88,59 @@ func TestTransportPost_RequiredArgs(t *testing.T) {
 		assert.NotEmpty(t, res.Error)
 	}
 }
+
+// TestTransportPost_BodyAcceptsStructuredPayload covers the production case
+// where `bind` writes a host-result object (e.g. the validated submit() dict
+// from `host.oracle.ask_with_mcp`) into a world slot, and the next checkpoint
+// effect's `body:` template renders that slot.  Without the JSON-coercion
+// fallback in `bodyArg`, the type assertion silently drops the dict and the
+// transport receives an empty body — the bug discovered live on PLTFRM-89912.
+// The handler must coerce maps to JSON so the comment is non-empty.
+func TestTransportPost_BodyAcceptsStructuredPayload(t *testing.T) {
+	tt := transport.NewTUITransport()
+	reg := transport.NewRegistry()
+	reg.Register(tt)
+	t.Cleanup(func() { _ = reg.Close() })
+	ctx := transport.WithRegistry(context.Background(), reg)
+
+	bodyDict := map[string]any{
+		"summary_markdown": "## Phase complete\nAll checks pass.",
+		"verdict":          "approved",
+	}
+	res, err := host.TransportPostHandler(ctx, map[string]any{
+		"transport": "tui",
+		"thread":    "S-1",
+		"title":     "Coverage Review",
+		"body":      bodyDict, // structured payload, not a string
+	})
+	require.NoError(t, err)
+	assert.Empty(t, res.Error)
+	posts := tt.Drain()
+	require.Len(t, posts, 1)
+	got := posts[0].Msg.Body
+	assert.NotEmpty(t, got, "body must not silently drop a structured payload")
+	assert.Contains(t, got, "summary_markdown", "JSON serialization preserves keys")
+	assert.Contains(t, got, "approved", "JSON serialization preserves values")
+}
+
+// TestTransportPost_BodyAcceptsStringVerbatim confirms the common case still
+// works after the type-coercion change: a plain string body passes through
+// unmodified (no JSON wrapping).
+func TestTransportPost_BodyAcceptsStringVerbatim(t *testing.T) {
+	tt := transport.NewTUITransport()
+	reg := transport.NewRegistry()
+	reg.Register(tt)
+	t.Cleanup(func() { _ = reg.Close() })
+	ctx := transport.WithRegistry(context.Background(), reg)
+
+	res, err := host.TransportPostHandler(ctx, map[string]any{
+		"transport": "tui",
+		"thread":    "S-1",
+		"body":      "hello world",
+	})
+	require.NoError(t, err)
+	assert.Empty(t, res.Error)
+	posts := tt.Drain()
+	require.Len(t, posts, 1)
+	assert.Equal(t, "hello world", posts[0].Msg.Body)
+}

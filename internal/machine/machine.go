@@ -77,6 +77,21 @@ type ValidationResult struct {
 type HostInvocation struct {
 	Namespace string            `json:"namespace"`
 	Args      map[string]any    `json:"args,omitempty"`
+	// RawWith carries the *unresolved* `with:` templates from the YAML so the
+	// orchestrator can re-render them at dispatch time, after any earlier host
+	// call's `bind:` has updated the world.  This makes 2-step `on_enter:`
+	// blocks work — e.g. step 1 binds a context envelope into
+	// `world.<id>_context`, step 2's `args.context: "{{ world.<id>_context.data }}"`
+	// resolves against the *post-step-1* world rather than the snapshot the
+	// machine had when it queued the host calls.  Args is still populated with
+	// the best-effort up-front resolution so callers that don't re-render get
+	// reasonable behaviour.
+	RawWith   map[string]any    `json:"raw_with,omitempty"`
+	// Env is the expression-evaluation environment to use for re-rendering
+	// RawWith.  Captured from the machine's effect-walk so the orchestrator
+	// has access to the same slots/event/run scope (the World is overridden
+	// at re-render time with the latest world).
+	Env       any               `json:"-"`
 	// Bind maps world variable names to keys in the host result's Data map.
 	// e.g. bind: {workspace: "id"} copies result.Data["id"] into world["workspace"].
 	Bind      map[string]string `json:"bind,omitempty"`
@@ -768,7 +783,11 @@ func (m *machineImpl) applyEffectsTraced(ctx context.Context, effects []app.Effe
 			}))
 
 		case eff.Invoke != "":
-			// Resolve with: args (templated values).
+			// Resolve with: args (templated values).  `resolvedArgs` is the
+			// best-effort up-front resolution against the world snapshot at
+			// machine-time; the orchestrator re-renders RawWith using the
+			// post-bind world before each invocation, so a downstream step
+			// in the same `on_enter:` can see an earlier step's binds.
 			resolvedArgs := make(map[string]any, len(eff.With))
 			for k, v := range eff.With {
 				resolved, err := resolveEffectValue(v, env, newWorld)
@@ -777,9 +796,16 @@ func (m *machineImpl) applyEffectsTraced(ctx context.Context, effects []app.Effe
 				}
 				resolvedArgs[k] = resolved
 			}
+			// Snapshot the raw `with:` block so dispatch can re-render it.
+			rawWith := make(map[string]any, len(eff.With))
+			for k, v := range eff.With {
+				rawWith[k] = v
+			}
 			hc := HostInvocation{
 				Namespace: eff.Invoke,
 				Args:      resolvedArgs,
+				RawWith:   rawWith,
+				Env:       env,
 				Bind:      eff.Bind,
 				OnError:   eff.OnError,
 				EmitEvent: eff.Emit,
@@ -971,7 +997,11 @@ func (m *machineImpl) applyEffects(effects []app.Effect, w world.World, env expr
 			}))
 
 		case eff.Invoke != "":
-			// Resolve with: args (templated values).
+			// Resolve with: args (templated values).  `resolvedArgs` is the
+			// best-effort up-front resolution against the world snapshot at
+			// machine-time; the orchestrator re-renders RawWith using the
+			// post-bind world before each invocation, so a downstream step
+			// in the same `on_enter:` can see an earlier step's binds.
 			resolvedArgs := make(map[string]any, len(eff.With))
 			for k, v := range eff.With {
 				resolved, err := resolveEffectValue(v, env, newWorld)
@@ -980,9 +1010,16 @@ func (m *machineImpl) applyEffects(effects []app.Effect, w world.World, env expr
 				}
 				resolvedArgs[k] = resolved
 			}
+			// Snapshot the raw `with:` block so dispatch can re-render it.
+			rawWith := make(map[string]any, len(eff.With))
+			for k, v := range eff.With {
+				rawWith[k] = v
+			}
 			hc := HostInvocation{
 				Namespace: eff.Invoke,
 				Args:      resolvedArgs,
+				RawWith:   rawWith,
+				Env:       env,
 				Bind:      eff.Bind,
 				OnError:   eff.OnError,
 				EmitEvent: eff.Emit,
@@ -1012,19 +1049,45 @@ func (m *machineImpl) RenderState(cur app.StatePath, w world.World) (string, err
 	return expr.Render(cs.s.View, env)
 }
 
-// resolveEffectValue evaluates an effect value. If it's a string template, run
-// RenderValue to preserve the typed result (e.g. bool from "{{ expr }}").
-// Otherwise, use the literal value.
+// resolveEffectValue evaluates an effect value.
+//
+//   - String values run through RenderValue so single-expression templates
+//     preserve their typed result (e.g. bool from "{{ expr }}").
+//   - Lists and maps recurse so templated string elements inside structured
+//     values (e.g. host.run's `args: [...]`) are rendered too.  Without this,
+//     `{{ world.jira_query }}` inside a list passes through verbatim and the
+//     handler receives an unexpanded template.
+//   - Other scalars are returned as-is.
 func resolveEffectValue(v any, env expr.Env, w world.World) (any, error) {
-	s, ok := v.(string)
-	if !ok {
+	switch val := v.(type) {
+	case string:
+		if !strings.Contains(val, "{{") {
+			return val, nil
+		}
+		return expr.RenderValue(val, env)
+	case []any:
+		out := make([]any, len(val))
+		for i, item := range val {
+			r, err := resolveEffectValue(item, env, w)
+			if err != nil {
+				return nil, err
+			}
+			out[i] = r
+		}
+		return out, nil
+	case map[string]any:
+		out := make(map[string]any, len(val))
+		for k, item := range val {
+			r, err := resolveEffectValue(item, env, w)
+			if err != nil {
+				return nil, err
+			}
+			out[k] = r
+		}
+		return out, nil
+	default:
 		return v, nil
 	}
-	if !strings.Contains(s, "{{") {
-		return s, nil
-	}
-	// Use RenderValue to preserve typed results from single-expression templates.
-	return expr.RenderValue(s, env)
 }
 
 // renderView computes the view text for a turn per §7.6 precedence:

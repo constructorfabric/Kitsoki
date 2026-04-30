@@ -9,6 +9,8 @@ package host
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 
 	"hally/internal/transport"
 )
@@ -47,7 +49,7 @@ func TransportPostHandler(ctx context.Context, args map[string]any) (Result, err
 	msg := transport.Message{
 		PhaseID:   stringArg(args, "phase_id"),
 		Title:     stringArg(args, "title"),
-		Body:      stringArg(args, "body"),
+		Body:      bodyArg(args, "body"),
 		BotMarker: stringArg(args, "bot_marker"),
 	}
 
@@ -64,4 +66,32 @@ func TransportPostHandler(ctx context.Context, args map[string]any) (Result, err
 func stringArg(args map[string]any, key string) string {
 	v, _ := args[key].(string)
 	return v
+}
+
+// bodyArg coerces the body argument into a string suitable for posting to a
+// transport.  Strings pass through verbatim.  Maps and slices are pretty-
+// printed as JSON so a structured artifact (e.g. the validator-captured
+// dict bound from `submitted`) renders meaningfully in a Jira/Bitbucket
+// comment instead of silently disappearing through a failed type assertion.
+// Nil renders as the empty string.  Anything else is rendered via fmt.Sprint
+// so the human reader at least sees the type's stringification rather than
+// dropping the post.
+func bodyArg(args map[string]any, key string) string {
+	v, ok := args[key]
+	if !ok || v == nil {
+		return ""
+	}
+	switch x := v.(type) {
+	case string:
+		return x
+	case map[string]any, []any:
+		// Pretty-print structured payloads so the comment is readable.
+		// json.MarshalIndent is deterministic for the same input shape.
+		if data, err := json.MarshalIndent(x, "", "  "); err == nil {
+			return string(data)
+		}
+		return fmt.Sprint(x)
+	default:
+		return fmt.Sprint(x)
+	}
 }
