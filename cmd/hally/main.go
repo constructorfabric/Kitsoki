@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -356,22 +357,31 @@ func defaultDBPath() string {
 
 func vizCmd() *cobra.Command {
 	var (
-		outPath string
-		doDot   bool
+		outPath   string
+		doMermaid bool
+		byRoom    bool
 	)
 
 	cmd := &cobra.Command{
 		Use:   "viz <app.yaml>",
-		Short: "Emit a Graphviz DOT graph for an app",
-		Long: `Emit a Graphviz DOT graph for the given app definition. Useful for
+		Short: "Emit a graph diagram (Graphviz DOT or Mermaid) for an app",
+		Long: `Emit a graph diagram for the given app definition. Useful for
 getting a visual overview of a state machine before authoring/debugging.
 
-The output is written to <appname>-viz.dot by default, or to --out.
-Render it with: dot -Tpng <appname>-viz.dot -o graph.png
+Default: Graphviz DOT to <appname>-viz.dot.
+--mermaid: Mermaid stateDiagram-v2 to <appname>-viz.mmd (or '-' for stdout).
+--rooms (with --mermaid): split into one diagram per room + an overview,
+    written to a directory (default <appname>-viz/). A "room" is the
+    top-level compound state if any, else the prefix before the first '_'
+    in the state name. Useful for apps with many states (devstory, etc.)
+    where the single all-up diagram is unreadable.
 
 Examples:
   hally viz testdata/apps/cloak/app.yaml
-  hally viz myapp.yaml --out /tmp/g.dot && dot -Tsvg /tmp/g.dot -o /tmp/g.svg`,
+  hally viz myapp.yaml --out /tmp/g.dot && dot -Tsvg /tmp/g.dot -o /tmp/g.svg
+  hally viz testdata/apps/cloak/app.yaml --mermaid --out -
+  hally viz myapp.yaml --mermaid --rooms --out viz/
+  hally viz myapp.yaml --mermaid | mmdc -i - -o graph.svg`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			appPath := args[0]
@@ -381,28 +391,72 @@ Examples:
 				return fmt.Errorf("load app %q: %w", appPath, err)
 			}
 
+			if byRoom {
+				if !doMermaid {
+					return fmt.Errorf("--rooms requires --mermaid")
+				}
+				if outPath == "" {
+					outPath = def.App.ID + "-viz"
+				}
+				err := viz.ExportMermaidRooms(def, outPath,
+					func(p string) error { return os.MkdirAll(p, 0755) },
+					func(p string, data []byte) error { return os.WriteFile(p, data, 0644) },
+				)
+				if err != nil {
+					return fmt.Errorf("export rooms: %w", err)
+				}
+				fmt.Printf("wrote %s/{index.md,_overview.mmd,*.mmd}\n", outPath)
+				fmt.Printf("render: see %s/index.md for the per-room render command\n", outPath)
+				return nil
+			}
+
+			ext := ".dot"
+			if doMermaid {
+				ext = ".mmd"
+			}
 			if outPath == "" {
-				outPath = def.App.ID + "-viz.dot"
+				outPath = def.App.ID + "-viz" + ext
 			}
 
-			f, err := os.Create(outPath)
-			if err != nil {
-				return fmt.Errorf("create %q: %w", outPath, err)
+			var w io.Writer
+			if outPath == "-" {
+				w = cmd.OutOrStdout()
+			} else {
+				f, err := os.Create(outPath)
+				if err != nil {
+					return fmt.Errorf("create %q: %w", outPath, err)
+				}
+				defer func() { _ = f.Close() }()
+				w = f
 			}
-			defer func() { _ = f.Close() }()
 
-			if err := viz.Export(def, f); err != nil {
-				return fmt.Errorf("export DOT: %w", err)
+			if doMermaid {
+				if err := viz.ExportMermaid(def, w); err != nil {
+					return fmt.Errorf("export Mermaid: %w", err)
+				}
+			} else {
+				if err := viz.Export(def, w); err != nil {
+					return fmt.Errorf("export DOT: %w", err)
+				}
 			}
 
-			fmt.Printf("wrote %s\n", outPath)
-			fmt.Printf("render: dot -Tpng %s -o graph.png\n", outPath)
+			if outPath != "-" {
+				fmt.Printf("wrote %s\n", outPath)
+				if doMermaid {
+					fmt.Printf("render: mmdc -i %s -o graph.svg\n", outPath)
+					fmt.Printf("        # for large apps, raise mermaid-cli's text/edge caps:\n")
+					fmt.Printf("        # mmdc -c <(echo '{\"maxTextSize\":5000000,\"maxEdges\":50000}') -i %s -o graph.svg\n", outPath)
+				} else {
+					fmt.Printf("render: dot -Tpng %s -o graph.png\n", outPath)
+				}
+			}
 			return nil
 		},
 	}
 
-	cmd.Flags().StringVar(&outPath, "out", "", "output file (default: <appid>-viz.dot)")
-	cmd.Flags().BoolVar(&doDot, "dot", true, "emit Graphviz DOT (default and only format)")
+	cmd.Flags().StringVar(&outPath, "out", "", `output file or directory (default: <appid>-viz.{dot,mmd} or <appid>-viz/ with --rooms; "-" for stdout)`)
+	cmd.Flags().BoolVar(&doMermaid, "mermaid", false, "emit Mermaid stateDiagram-v2 instead of Graphviz DOT")
+	cmd.Flags().BoolVar(&byRoom, "rooms", false, "split into per-room files plus an overview (requires --mermaid)")
 	return cmd
 }
 
