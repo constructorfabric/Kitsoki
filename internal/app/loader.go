@@ -284,6 +284,34 @@ func validateDef(def *AppDef, file string) (*AppDef, []error) {
 	// ── 8. relevant_world keys exist in world schema ──────────────────────────
 	// (already done inside validateStates, which recurses into nested states)
 
+	// ── 9. proposal execute effect validation ─────────────────────────────────
+	// ProposalExecute.Background and ProposalExecute.OnComplete are not covered
+	// by validateStates (proposals live outside the state tree).  Apply the same
+	// rules here: background: true requires invoke:; on_complete: cannot nest
+	// background: true; on_complete: invoke: must be in the allow-list.
+	for pname, pk := range def.Proposals {
+		if pk == nil || pk.Execute == nil {
+			continue
+		}
+		ex := pk.Execute
+		loc := fmt.Sprintf("proposal %q execute", pname)
+		if ex.Background && ex.Invoke == "" {
+			addErr(fmt.Sprintf("%s: background: true requires invoke: to be set", loc))
+		}
+		for i, child := range ex.OnComplete {
+			childLoc := fmt.Sprintf("%s on_complete[%d]", loc, i)
+			if child.Background {
+				addErr(fmt.Sprintf("%s: background: true is not allowed inside on_complete:", childLoc))
+			}
+			if child.Invoke != "" && len(allowedHosts) > 0 {
+				if _, ok := allowedHosts[child.Invoke]; !ok {
+					addErr(fmt.Sprintf("%s: invoke %q is not declared in app hosts", childLoc, child.Invoke))
+				}
+			}
+			validateBackgroundEffect(file, childLoc, child, allowedHosts, &errs)
+		}
+	}
+
 	return def, errs
 }
 
@@ -368,22 +396,24 @@ func validateStates(
 					*errs = append(*errs, err)
 				}
 				// Validate invoke: host.* effects against the allow-list.
-				for _, eff := range tr.Effects {
+				for i, eff := range tr.Effects {
 					if eff.Invoke != "" && len(allowedHosts) > 0 {
 						if _, ok := allowedHosts[eff.Invoke]; !ok {
 							addErr(fmt.Sprintf("state %q intent %q: effect invoke %q is not declared in app hosts", statePath, intentName, eff.Invoke))
 						}
 					}
+					validateBackgroundEffect(file, fmt.Sprintf("state %q intent %q effects[%d]", statePath, intentName, i), eff, allowedHosts, errs)
 				}
 			}
 		}
 		// Validate on_enter effects.
-		for _, eff := range s.OnEnter {
+		for i, eff := range s.OnEnter {
 			if eff.Invoke != "" && len(allowedHosts) > 0 {
 				if _, ok := allowedHosts[eff.Invoke]; !ok {
 					addErr(fmt.Sprintf("state %q: on_enter invoke %q is not declared in app hosts", statePath, eff.Invoke))
 				}
 			}
+			validateBackgroundEffect(file, fmt.Sprintf("state %q on_enter[%d]", statePath, i), eff, allowedHosts, errs)
 		}
 
 		// Validate compound state's initial child.
@@ -454,6 +484,34 @@ func resolveTarget(statePath, target string) string {
 		}
 	}
 	return strings.Join(parts, ".")
+}
+
+// validateBackgroundEffect checks load-time rules for background: and on_complete:.
+//
+//   - background: true requires invoke: to be non-empty.
+//   - effects inside on_complete: must NOT have background: true (recursively).
+//   - invoke: inside on_complete: must reference only declared hosts (allowedHosts).
+func validateBackgroundEffect(file, location string, eff Effect, allowedHosts map[string]struct{}, errs *[]error) {
+	addErr := func(msg string) {
+		*errs = append(*errs, &ValidationError{File: file, Message: msg})
+	}
+	if eff.Background && eff.Invoke == "" {
+		addErr(fmt.Sprintf("%s: background: true requires invoke: to be set", location))
+	}
+	for i, child := range eff.OnComplete {
+		loc := fmt.Sprintf("%s on_complete[%d]", location, i)
+		if child.Background {
+			addErr(fmt.Sprintf("%s: background: true is not allowed inside on_complete:", loc))
+		}
+		// Validate invoke: host.* inside on_complete: against the allow-list.
+		if child.Invoke != "" && len(allowedHosts) > 0 {
+			if _, ok := allowedHosts[child.Invoke]; !ok {
+				addErr(fmt.Sprintf("%s: invoke %q is not declared in app hosts", loc, child.Invoke))
+			}
+		}
+		// Recursively reject nested on_complete with background.
+		validateBackgroundEffect(file, loc, child, allowedHosts, errs)
+	}
 }
 
 // sortedKeys returns the keys of any map[string]T sorted alphabetically.

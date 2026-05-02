@@ -135,14 +135,35 @@ Fields (any subset):
 
 | Field       | Purpose                                                           |
 |-------------|-------------------------------------------------------------------|
-| `set`       | Assign world variables (value may be expr, literal, or templated) |
-| `increment` | Integer delta on numeric world variables                          |
-| `say`       | Append narrative line (Go template over world/slots)              |
-| `invoke`    | Call a host handler; must appear in top-level `hosts:` list       |
-| `with`      | Arguments for `invoke`                                            |
-| `bind`      | `{ world_key: result_key }` — copy host result into world         |
-| `on_error`  | Transition target if host invoke errors; sets `$host_error`       |
-| `emit`      | Broadcast named event to parallel regions                         |
+| `set`         | Assign world variables (value may be expr, literal, or templated) |
+| `increment`   | Integer delta on numeric world variables                          |
+| `say`         | Append narrative line (Go template over world/slots)              |
+| `invoke`      | Call a host handler; must appear in top-level `hosts:` list       |
+| `with`        | Arguments for `invoke`                                            |
+| `bind`        | `{ world_key: result_key }` — copy host result into world         |
+| `on_error`    | Transition target if host invoke errors; sets `$host_error`       |
+| `emit`        | Broadcast named event to parallel regions                         |
+| `background`  | When `true`, dispatches `invoke` as a background job instead of running synchronously. Requires `invoke:` to be set (validated at load time). Binds the job ID into world — use `bind: {last_job_id: job_id}` to choose the world key, or the default `last_job_id` is used. |
+| `on_complete` | Ordered `Effect` list fired in the originating state's context when the background job terminates (done, failed, or cancelled). Has access to `world.last_job_id`, `world.last_job_status`, and `world.last_job_result` (the host result data). Cannot itself contain `background: true` (validated at load time). |
+
+**Background dispatch example:**
+
+```yaml
+on_enter:
+  - invoke:     host.run_tests
+    with:        { suite: "{{ world.selected_suite }}" }
+    background:  true
+    bind:        { last_job_id: job_id }
+    on_complete:
+      - set:     { test_result: "{{ world.last_job_result.exit_code }}" }
+      - say:     "Tests finished with exit code {{ world.test_result }}."
+```
+
+**Same-turn race note:** a `background: true` effect followed by another effect
+in the same `on_enter:` block executes in the same turn and sees `world.last_job_id`
+(which is set immediately when the job is submitted), but does **NOT** see
+`world.last_job_result` — the result is only available in the `on_complete:`
+chain, which runs in a later synthetic turn once the job terminates.
 
 Conventional order within a single effect: `set` → `increment` → `say` →
 `invoke` → `emit`.

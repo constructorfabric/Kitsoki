@@ -1,0 +1,137 @@
+// Package orchestrator — background-effect dispatch helpers.
+package orchestrator
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log/slog"
+
+	"hally/internal/app"
+	"hally/internal/host"
+	"hally/internal/jobs"
+	"hally/internal/machine"
+	"hally/internal/store"
+	"hally/internal/world"
+)
+
+// dispatchBackground submits hc to the scheduler, binds the JobID into world
+// per hc.Bind ("job_id" → last_job_id by default if no Bind entry maps to
+// "job_id"), posts an info notification, and returns the events and updated
+// world for the current turn.
+//
+// The on_complete chain is serialised into Payload["__on_complete"] so a
+// future restart can rehydrate it from the job row.
+func (o *Orchestrator) dispatchBackground(
+	ctx context.Context,
+	sid app.SessionID,
+	state app.StatePath,
+	hc machine.HostInvocation,
+	w world.World,
+) ([]store.Event, world.World, error) {
+	// Re-render args against the current world (same as the synchronous path).
+	invokeArgs := rerenderHostArgs(hc, w)
+
+	// Copy into a mutable map (rerenderHostArgs may return hc.Args directly).
+	payload := make(map[string]any, len(invokeArgs))
+	for k, v := range invokeArgs {
+		payload[k] = v
+	}
+
+	// Stash on_complete into the payload so it can be rehydrated after a restart.
+	if len(hc.OnComplete) > 0 {
+		b, err := json.Marshal(hc.OnComplete)
+		if err != nil {
+			return nil, w, fmt.Errorf("dispatchBackground: marshal on_complete: %w", err)
+		}
+		payload["__on_complete"] = string(b)
+	}
+
+	// Capture the registry reference and namespace so the closure doesn't
+	// capture the whole orchestrator.
+	hosts := o.hosts
+	namespace := hc.Namespace
+
+	spec := jobs.JobSpec{
+		SessionID:   sid,
+		Kind:        hc.Namespace,
+		OriginState: state,
+		Payload:     payload,
+		Handler: func(jobCtx context.Context, args map[string]any) (host.Result, error) {
+			if hosts == nil {
+				return host.Result{Error: "no host registry: cannot run " + namespace + " as background job"}, nil
+			}
+			// Strip internal keys before passing to the handler.
+			cleanArgs := make(map[string]any, len(args))
+			for k, v := range args {
+				if k == "__on_complete" {
+					continue
+				}
+				cleanArgs[k] = v
+			}
+			return hosts.Invoke(jobCtx, namespace, cleanArgs)
+		},
+	}
+
+	jobID, err := o.scheduler.Submit(ctx, spec)
+	if err != nil {
+		return nil, w, fmt.Errorf("dispatchBackground: scheduler.Submit: %w", err)
+	}
+
+	// Bind the job ID into world.
+	// Walk hc.Bind: if any entry maps dkey=="job_id", use that world key.
+	// Otherwise default to "last_job_id".
+	bindKey := "last_job_id"
+	for wkey, dkey := range hc.Bind {
+		if dkey == "job_id" {
+			bindKey = wkey
+			break
+		}
+	}
+	w.Vars[bindKey] = jobID
+
+	// Always keep last_job_id up to date even if a custom key was used.
+	if bindKey != "last_job_id" {
+		w.Vars["last_job_id"] = jobID
+	}
+
+	// dispatchBackground always binds the job ID under bindKey AND under
+	// "last_job_id" (an unconditional convenience binding).  We emit a
+	// separate EffectApplied for each key so that on replay both are
+	// restored.  When bindKey == "last_job_id" a single event covers both.
+	var events []store.Event
+	events = append(events, newOrchestratorEvent(store.EffectApplied, map[string]any{
+		"set": map[string]any{bindKey: jobID},
+	}, 0))
+	if bindKey != "last_job_id" {
+		events = append(events, newOrchestratorEvent(store.EffectApplied, map[string]any{
+			"set": map[string]any{"last_job_id": jobID},
+		}, 0))
+	}
+	events = append(events, newOrchestratorEvent(store.JobSubmitted, map[string]any{
+		"namespace": hc.Namespace,
+		"job_id":    jobID,
+		"state":     string(state),
+	}, 0))
+
+	// Post an info notification (non-fatal: log and continue on error).
+	if o.jobStore != nil {
+		notifyErr := jobs.Notify(ctx, o.jobStore, &jobs.Notification{
+			SessionID:     sid,
+			Severity:      jobs.SeverityInfo,
+			Title:         "Job submitted: " + hc.Namespace,
+			TeleportState: string(state),
+			TeleportJobID: jobID,
+			OriginKind:    "job",
+			OriginRef:     "job:" + jobID,
+		})
+		if notifyErr != nil {
+			o.logger.Warn("dispatchBackground: post notification",
+				slog.String("job_id", jobID),
+				slog.String("err", notifyErr.Error()),
+			)
+		}
+	}
+
+	return events, w, nil
+}

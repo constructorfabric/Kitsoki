@@ -161,6 +161,14 @@ type Effect struct {
 	OnError string `yaml:"on_error,omitempty"`
 	// Emit sends a named event to parallel regions.
 	Emit string `yaml:"emit,omitempty"`
+	// Background, when true, dispatches Invoke as a job and binds job_id
+	// (or default last_job_id) instead of running synchronously. Requires
+	// Invoke to be non-empty; validated at load time.
+	Background bool `yaml:"background,omitempty"`
+	// OnComplete fires after the job terminates. Effects in this list run in
+	// the originating state's context. Cannot itself contain background: true
+	// (validated at load time).
+	OnComplete []Effect `yaml:"on_complete,omitempty"`
 }
 
 // ProposalKind declares a named proposal kind (§3).

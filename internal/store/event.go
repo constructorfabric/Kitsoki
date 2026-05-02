@@ -45,6 +45,12 @@ const (
 	IntentAccepted EventKind = "IntentAccepted"
 	// GuardRejected is appended when all guards for a transition failed.
 	GuardRejected EventKind = "GuardRejected"
+	// JobSubmitted is appended when a background job is dispatched to the
+	// scheduler (background: true effect).
+	JobSubmitted EventKind = "JobSubmitted"
+	// JobCompleted is appended in the synthetic background-completion turn
+	// when a background job reaches a terminal state (done/failed/cancelled).
+	JobCompleted EventKind = "JobCompleted"
 )
 
 // Event is one row in the append-only event log (§8 DDL).

@@ -138,6 +138,26 @@ func (js *JobStore) UpdateJobStatus(ctx context.Context, id JobID, status JobSta
 	return err
 }
 
+// GetJob returns the job with the given ID, or ErrJobNotFound if it does not exist.
+func (js *JobStore) GetJob(ctx context.Context, id JobID) (*Job, error) {
+	rows, err := js.db.QueryContext(ctx, `
+		SELECT id, kind, status, origin_state, origin_proposal_id,
+		       payload, error, retry_count, created_at, updated_at, started_at, finished_at
+		FROM jobs WHERE id=?`, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	jobs, err := scanJobs(rows)
+	if err != nil {
+		return nil, err
+	}
+	if len(jobs) == 0 {
+		return nil, ErrJobNotFound
+	}
+	return &jobs[0], nil
+}
+
 // ListJobsByStatus returns jobs for a session matching a status.
 func (js *JobStore) ListJobsByStatus(ctx context.Context, sessionID app.SessionID, status JobStatus) ([]Job, error) {
 	rows, err := js.db.QueryContext(ctx, `

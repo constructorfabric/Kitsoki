@@ -150,10 +150,8 @@ See 'hally docs llm-guide' for the full operator guide.`,
 				return fmt.Errorf("open job store: %w", err)
 			}
 			jobScheduler := jobs.NewScheduler(jobStore)
-			// TODO(slice-1): orchestrator.WithScheduler(jobScheduler) — pass
-			// the scheduler into the orchestrator once the option is wired.
-			_ = jobScheduler // suppress unused-variable error until Slice 1
-			_ = jobStore     // exposed via context injection once Slice 1 lands
+			// Slice-1: scheduler and job store are now wired into the orchestrator
+			// via WithScheduler / WithJobStore options below.
 
 			// Build trace logger.
 			var level slog.Level
@@ -218,6 +216,8 @@ See 'hally docs llm-guide' for the full operator guide.`,
 			orch := orchestrator.New(def, m, s, h,
 				orchestrator.WithLogger(logger),
 				orchestrator.WithHostRegistry(hostReg),
+				orchestrator.WithScheduler(jobScheduler),
+				orchestrator.WithJobStore(jobStore),
 			)
 
 			// Create a new session.

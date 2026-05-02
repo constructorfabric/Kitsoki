@@ -533,3 +533,68 @@ func TestTryGuardsMatchedDefault(t *testing.T) {
 	require.True(t, res.Primary, "east should be primary (default: fires)")
 	require.True(t, res.MatchedDefault, "east only matched default: arm")
 }
+
+// ─── TestRunEffects ───────────────────────────────────────────────────────────
+
+// TestRunEffects verifies Machine.RunEffects: a small chain of set + say +
+// invoke (synchronous host call collected as HostInvocation) is applied and
+// returns the expected world/sayText/hostCalls/effectEvents.
+//
+// RunEffects is the on_complete bridge entry-point. It must:
+//   - Apply set effects (updates world).
+//   - Collect say text.
+//   - Collect HostInvocation entries for invoke effects (not dispatch them).
+//   - Return EffectApplied events for set effects.
+func TestRunEffects(t *testing.T) {
+	def := &app.AppDef{
+		App:   app.AppMeta{ID: "run-effects-test"},
+		Root:  "s",
+		Hosts: []string{"host.noop"},
+		World: map[string]app.VarDef{
+			"counter": {Type: "integer", Default: 0},
+			"label":   {Type: "string", Default: ""},
+		},
+		Intents: map[string]app.Intent{},
+		States: map[string]*app.State{
+			"s": {View: "state s"},
+		},
+	}
+	m := mustNew(t, def)
+
+	w := world.New()
+	w.Vars["counter"] = 0
+	w.Vars["label"] = ""
+
+	effects := []app.Effect{
+		{Set: map[string]any{"counter": 42, "label": "hi"}},
+		{Say: "you said {{ world.label }}"},
+		{Invoke: "host.noop", With: map[string]any{"arg": "val"}},
+	}
+
+	newWorld, hostCalls, sayText, evts, err := m.RunEffects(
+		context.Background(), "s", w, effects,
+	)
+	require.NoError(t, err)
+
+	// Set effects.
+	require.Equal(t, 42, newWorld.Vars["counter"])
+	require.Equal(t, "hi", newWorld.Vars["label"])
+
+	// Say text interpolated against the updated world.
+	require.Contains(t, sayText, "you said hi")
+
+	// Invoke effect was collected as HostInvocation, not dispatched.
+	require.Len(t, hostCalls, 1, "RunEffects should collect host calls, not dispatch them")
+	require.Equal(t, "host.noop", hostCalls[0].Namespace)
+	require.Equal(t, "val", hostCalls[0].Args["arg"])
+
+	// EffectApplied events for the set effect.
+	foundEffApplied := false
+	for _, ev := range evts {
+		if ev.Kind == store.EffectApplied {
+			foundEffApplied = true
+			break
+		}
+	}
+	require.True(t, foundEffApplied, "EffectApplied event should be emitted for set effects")
+}

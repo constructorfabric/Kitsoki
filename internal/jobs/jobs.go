@@ -123,6 +123,10 @@ type Scheduler interface {
 	// the unsubscribe function to release resources.  Events are dropped
 	// (not buffered to infinity) when the channel is full.
 	SubscribeSession(sessionID app.SessionID) (<-chan JobEvent, func())
+	// Get returns a snapshot of the job identified by id.  Returns (Job{}, false)
+	// when id is unknown.  The returned Job is a copy and is safe to read; callers
+	// must not mutate it.
+	Get(id JobID) (Job, bool)
 }
 
 // ErrJobNotFound is returned when a job ID is not known.

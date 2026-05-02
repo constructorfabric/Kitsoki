@@ -100,6 +100,13 @@ type HostInvocation struct {
 	// rather than erroring out. The $host_error slot will be set.
 	OnError   string            `json:"on_error,omitempty"`
 	EmitEvent string            `json:"emit_event,omitempty"`
+	// Background, when true, signals that the orchestrator should submit
+	// this invocation to the scheduler instead of dispatching synchronously.
+	Background bool             `json:"background,omitempty"`
+	// OnComplete is the saved effect chain to run when the job terminates.
+	// The orchestrator persists these alongside the job spec; the machine
+	// does not consume them.
+	OnComplete []app.Effect     `json:"on_complete,omitempty"`
 }
 
 // TurnResult is returned by Machine.Turn after a successful transition.
@@ -135,6 +142,12 @@ type Machine interface {
 	// Callers should treat unresolved as primary (passes by default): the guard
 	// will be checked at submission time when all slots are present.
 	TryGuards(cur app.StatePath, w world.World, intentName string, prefillSlots map[string]any) GuardDryRunResult
+	// RunEffects walks effects and returns the new world, any host calls
+	// collected, the accumulated say-text, the effect events, and an error.
+	// State path is used purely for the env snapshot (slots, etc.).
+	// This is the on_complete bridge entry-point: the orchestrator calls it
+	// with the post-job world to apply the on_complete effect chain.
+	RunEffects(ctx context.Context, state app.StatePath, w world.World, effects []app.Effect) (world.World, []HostInvocation, string, []store.Event, error)
 }
 
 // GuardDryRunResult is the result of TryGuards.
@@ -802,13 +815,15 @@ func (m *machineImpl) applyEffectsTraced(ctx context.Context, effects []app.Effe
 				rawWith[k] = v
 			}
 			hc := HostInvocation{
-				Namespace: eff.Invoke,
-				Args:      resolvedArgs,
-				RawWith:   rawWith,
-				Env:       env,
-				Bind:      eff.Bind,
-				OnError:   eff.OnError,
-				EmitEvent: eff.Emit,
+				Namespace:  eff.Invoke,
+				Args:       resolvedArgs,
+				RawWith:    rawWith,
+				Env:        env,
+				Bind:       eff.Bind,
+				OnError:    eff.OnError,
+				EmitEvent:  eff.Emit,
+				Background: eff.Background,
+				OnComplete: eff.OnComplete,
 			}
 			hostCalls = append(hostCalls, hc)
 			m.logger.DebugContext(ctx, trace.EvMachineEffectApplied,
@@ -816,8 +831,9 @@ func (m *machineImpl) applyEffectsTraced(ctx context.Context, effects []app.Effe
 				slog.String("namespace", eff.Invoke),
 			)
 			effectEvents = append(effectEvents, newEvent(store.HostInvoked, map[string]any{
-				"namespace": eff.Invoke,
-				"args":      resolvedArgs,
+				"namespace":  eff.Invoke,
+				"args":       resolvedArgs,
+				"background": eff.Background,
 			}))
 		}
 	}
@@ -1016,18 +1032,21 @@ func (m *machineImpl) applyEffects(effects []app.Effect, w world.World, env expr
 				rawWith[k] = v
 			}
 			hc := HostInvocation{
-				Namespace: eff.Invoke,
-				Args:      resolvedArgs,
-				RawWith:   rawWith,
-				Env:       env,
-				Bind:      eff.Bind,
-				OnError:   eff.OnError,
-				EmitEvent: eff.Emit,
+				Namespace:  eff.Invoke,
+				Args:       resolvedArgs,
+				RawWith:    rawWith,
+				Env:        env,
+				Bind:       eff.Bind,
+				OnError:    eff.OnError,
+				EmitEvent:  eff.Emit,
+				Background: eff.Background,
+				OnComplete: eff.OnComplete,
 			}
 			hostCalls = append(hostCalls, hc)
 			effectEvents = append(effectEvents, newEvent(store.HostInvoked, map[string]any{
-				"namespace": eff.Invoke,
-				"args":      resolvedArgs,
+				"namespace":  eff.Invoke,
+				"args":       resolvedArgs,
+				"background": eff.Background,
 			}))
 		}
 	}
@@ -1047,6 +1066,20 @@ func (m *machineImpl) RenderState(cur app.StatePath, w world.World) (string, err
 		World: w.Vars,
 	}
 	return expr.Render(cs.s.View, env)
+}
+
+// RunEffects walks effects and returns the new world, host calls collected,
+// accumulated say-text, effect events, and an error. It builds the same
+// expr.Env that applyEffectsTraced uses (empty slots, empty event), so
+// on_complete effects have access to world.* as expected.
+func (m *machineImpl) RunEffects(ctx context.Context, state app.StatePath, w world.World, effects []app.Effect) (world.World, []HostInvocation, string, []store.Event, error) {
+	env := expr.Env{
+		Slots: map[string]any{},
+		World: w.Vars,
+		Event: map[string]any{},
+	}
+	newWorld, hostCalls, saySB, evts, err := m.applyEffectsTraced(ctx, effects, w, env)
+	return newWorld, hostCalls, saySB.String(), evts, err
 }
 
 // resolveEffectValue evaluates an effect value.

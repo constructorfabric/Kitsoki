@@ -19,6 +19,7 @@ import (
 	"hally/internal/harness"
 	"hally/internal/host"
 	"hally/internal/intent"
+	"hally/internal/jobs"
 	"hally/internal/machine"
 	"hally/internal/store"
 	"hally/internal/trace"
@@ -33,6 +34,19 @@ type pendingClarify struct {
 	slots      map[string]any // already-collected slots
 }
 
+// listenerState tracks the idle state for one session's listener goroutine.
+type listenerState struct {
+	mu           sync.Mutex
+	cond         *sync.Cond
+	dispatchCount int // number of events currently being processed
+}
+
+func newListenerState() *listenerState {
+	ls := &listenerState{}
+	ls.cond = sync.NewCond(&ls.mu)
+	return ls
+}
+
 // Orchestrator drives a single session from raw input to applied events.
 type Orchestrator struct {
 	def        *app.AppDef
@@ -42,21 +56,34 @@ type Orchestrator struct {
 	hosts      *host.Registry
 	transports *transport.Registry
 	logger     *slog.Logger
+	// scheduler is the background-job scheduler (optional; nil means background
+	// effects are ignored and the invocation is dispatched synchronously).
+	scheduler jobs.Scheduler
+	// jobStore is the SQLite-backed job store used to load job rows for
+	// on_complete processing and to post notifications.
+	jobStore *jobs.JobStore
 
 	// pending tracks in-flight clarifications keyed by session ID.
-	mu      sync.Mutex
-	pending map[app.SessionID]*pendingClarify
+	mu              sync.Mutex
+	pending         map[app.SessionID]*pendingClarify
+	// cancelListeners holds the cancel funcs for per-session listener goroutines.
+	// Goroutines are torn down when the session is closed.
+	cancelListeners map[app.SessionID]context.CancelFunc
+	// listenerStates tracks per-session listener idle state for WaitListenerIdle.
+	listenerStates map[app.SessionID]*listenerState
 }
 
 // New creates an Orchestrator.
 func New(def *app.AppDef, m machine.Machine, s store.Store, h harness.Harness, opts ...Option) *Orchestrator {
 	o := &Orchestrator{
-		def:     def,
-		machine: m,
-		store:   s,
-		harness: h,
-		logger:  slog.Default(),
-		pending: make(map[app.SessionID]*pendingClarify),
+		def:             def,
+		machine:         m,
+		store:           s,
+		harness:         h,
+		logger:          slog.Default(),
+		pending:         make(map[app.SessionID]*pendingClarify),
+		cancelListeners: make(map[app.SessionID]context.CancelFunc),
+		listenerStates:  make(map[app.SessionID]*listenerState),
 	}
 	for _, opt := range opts {
 		opt(o)
@@ -96,9 +123,149 @@ func WithTransportRegistry(r *transport.Registry) Option {
 	}
 }
 
+// WithScheduler wires a background-job scheduler into the orchestrator.
+// When set, effects with background: true are submitted to the scheduler
+// instead of being dispatched synchronously. When nil (the default),
+// background effects are dispatched synchronously and the Background flag
+// is silently ignored.
+func WithScheduler(s jobs.Scheduler) Option {
+	return func(o *Orchestrator) {
+		o.scheduler = s
+	}
+}
+
+// WithJobStore wires a *jobs.JobStore so the orchestrator can load job rows
+// for on_complete processing and post notifications on job termination.
+func WithJobStore(js *jobs.JobStore) Option {
+	return func(o *Orchestrator) {
+		o.jobStore = js
+	}
+}
+
 // NewSession opens a session in the store and returns its ID.
+// If a background-job scheduler is configured, it also spawns a per-session
+// listener goroutine that forwards terminal JobEvents to handleJobTerminal.
 func (o *Orchestrator) NewSession(ctx context.Context) (app.SessionID, error) {
-	return o.store.CreateSession(ctx, o.def)
+	sid, err := o.store.CreateSession(ctx, o.def)
+	if err != nil {
+		return "", err
+	}
+	if o.scheduler != nil {
+		o.startSessionListener(sid)
+	}
+	return sid, nil
+}
+
+// startSessionListener subscribes to terminal job events for sid and routes
+// them to handleJobTerminal in a background goroutine. The goroutine exits
+// when the cancel func stored in cancelListeners is called.
+func (o *Orchestrator) startSessionListener(sid app.SessionID) {
+	listenerCtx, cancel := context.WithCancel(context.Background())
+	ls := newListenerState()
+	o.mu.Lock()
+	o.cancelListeners[sid] = cancel
+	o.listenerStates[sid] = ls
+	o.mu.Unlock()
+
+	ch, unsub := o.scheduler.SubscribeSession(sid)
+	go func() {
+		defer unsub()
+		for {
+			select {
+			case <-listenerCtx.Done():
+				return
+			case ev, ok := <-ch:
+				if !ok {
+					return
+				}
+				// Increment dispatch counter before processing.
+				ls.mu.Lock()
+				ls.dispatchCount++
+				ls.mu.Unlock()
+
+				// Decrement and broadcast when the dispatch finishes, including
+				// when listenerCtx is cancelled mid-dispatch.  Using defer inside
+				// the select arm ensures the counter is always decremented.
+				func() {
+					defer func() {
+						ls.mu.Lock()
+						ls.dispatchCount--
+						ls.cond.Broadcast()
+						ls.mu.Unlock()
+					}()
+
+					// Route event by status.
+					switch ev.Status {
+					case jobs.JobDone, jobs.JobFailed, jobs.JobCancelled:
+						if err := o.handleJobTerminal(listenerCtx, sid, ev); err != nil {
+							o.logger.Error("orchestrator: handleJobTerminal",
+								slog.String("session", string(sid)),
+								slog.String("job_id", ev.JobID),
+								slog.String("err", err.Error()),
+							)
+						}
+					case jobs.JobAwaitingInput:
+						if err := o.handleJobAwaitingInput(listenerCtx, sid, ev); err != nil {
+							o.logger.Error("orchestrator: handleJobAwaitingInput",
+								slog.String("session", string(sid)),
+								slog.String("job_id", ev.JobID),
+								slog.String("err", err.Error()),
+							)
+						}
+					}
+				}()
+			}
+		}
+	}()
+}
+
+// WaitListenerIdle blocks until the session listener goroutine for sid has
+// finished processing all in-flight events AND the subscription channel is
+// empty (i.e. dispatchCount == 0).  Returns ctx.Err() if cancelled first.
+//
+// The typical call sequence in a test is:
+//
+//	sched.WaitIdle(ctx)            // scheduler goroutines have all terminated
+//	orch.WaitListenerIdle(ctx, sid) // orchestrator has processed all terminal events
+func (o *Orchestrator) WaitListenerIdle(ctx context.Context, sid app.SessionID) error {
+	o.mu.Lock()
+	ls, ok := o.listenerStates[sid]
+	o.mu.Unlock()
+	if !ok {
+		// No listener was started for this session (no scheduler configured).
+		return nil
+	}
+
+	done := make(chan struct{})
+	go func() {
+		ls.mu.Lock()
+		for ls.dispatchCount > 0 {
+			ls.cond.Wait()
+		}
+		ls.mu.Unlock()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		ls.cond.Broadcast()
+		return ctx.Err()
+	}
+}
+
+// stopSessionListener cancels the listener goroutine for sid (if any).
+func (o *Orchestrator) stopSessionListener(sid app.SessionID) {
+	o.mu.Lock()
+	cancel, ok := o.cancelListeners[sid]
+	if ok {
+		delete(o.cancelListeners, sid)
+	}
+	o.mu.Unlock()
+	if ok {
+		cancel()
+	}
 }
 
 // TurnOption configures a Turn call.
@@ -304,7 +471,7 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 	// Success path: dispatch any host calls collected by the machine, apply
 	// their bindings to world, and refresh the view so the user sees the
 	// updated state on the same turn.
-	hostEvents, hostWorld, hostView, hostErr := o.dispatchHostCalls(ctx, result.HostCalls, result.World, result.NewState)
+	hostEvents, hostWorld, hostView, hostErr := o.dispatchHostCalls(ctx, sid, result.HostCalls, result.World, result.NewState)
 	if hostErr != nil {
 		tl.Debug(ctx, trace.EvHarnessError, slog.String("host_dispatch_error", hostErr.Error()))
 	}
@@ -355,6 +522,8 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 	newState := lookupStateByPath(o.def, result.NewState)
 	if newState != nil && newState.Terminal {
 		mode = ModeCompleted
+		// Tear down the session's background-job listener goroutine.
+		o.stopSessionListener(sid)
 	}
 
 	tl.Debug(ctx, trace.EvTurnDone,
@@ -383,7 +552,7 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 //
 // When o.hosts is nil (deterministic flow tests), returns no events and the
 // original world unchanged.
-func (o *Orchestrator) dispatchHostCalls(ctx context.Context, calls []machine.HostInvocation, w world.World, state app.StatePath) ([]store.Event, world.World, string, error) {
+func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID, calls []machine.HostInvocation, w world.World, state app.StatePath) ([]store.Event, world.World, string, error) {
 	if o.hosts == nil || len(calls) == 0 {
 		return nil, w, "", nil
 	}
@@ -396,6 +565,23 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, calls []machine.Ho
 	applied := false
 
 	for _, hc := range calls {
+		// Background invocations go to the scheduler; foreground go to the host registry.
+		if hc.Background && o.scheduler != nil {
+			bgEvents, bgWorld, bgErr := o.dispatchBackground(ctx, sid, state, hc, w)
+			if bgErr != nil {
+				o.logger.Error("orchestrator: dispatchBackground failed",
+					slog.String("namespace", hc.Namespace),
+					slog.String("err", bgErr.Error()),
+				)
+				w.Vars["last_error"] = bgErr.Error()
+			} else {
+				w = bgWorld
+			}
+			events = append(events, bgEvents...)
+			applied = true
+			continue
+		}
+
 		// Re-render RawWith against the current world so downstream
 		// effects in the same `on_enter:` block see prior binds.  Falls
 		// back to hc.Args if RawWith isn't set (older HostInvocation
@@ -668,7 +854,7 @@ func (o *Orchestrator) SubmitDirect(ctx context.Context, sid app.SessionID, inte
 		"direct": true,
 	}, turnNum)
 
-	hostEvents, hostWorld, hostView, hostErr := o.dispatchHostCalls(ctx, result.HostCalls, result.World, result.NewState)
+	hostEvents, hostWorld, hostView, hostErr := o.dispatchHostCalls(ctx, sid, result.HostCalls, result.World, result.NewState)
 	if hostErr != nil {
 		tl.Debug(ctx, trace.EvHarnessError, slog.String("host_dispatch_error", hostErr.Error()))
 	}
@@ -713,6 +899,9 @@ func (o *Orchestrator) SubmitDirect(ctx context.Context, sid app.SessionID, inte
 	newStateDef := lookupStateByPath(o.def, result.NewState)
 	if newStateDef != nil && newStateDef.Terminal {
 		mode = ModeCompleted
+		// Tear down the session's background-job listener goroutine, mirroring
+		// the equivalent call in Turn's terminal-state branch.
+		o.stopSessionListener(sid)
 	}
 
 	tl.Debug(ctx, trace.EvTurnDone,
@@ -1054,7 +1243,7 @@ func (o *Orchestrator) ContinueTurn(ctx context.Context, sid app.SessionID, supp
 	}
 
 	// Success: dispatch host calls then persist events.
-	hostEvents, hostWorld, hostView, hostErr := o.dispatchHostCalls(ctx, result.HostCalls, result.World, result.NewState)
+	hostEvents, hostWorld, hostView, hostErr := o.dispatchHostCalls(ctx, sid, result.HostCalls, result.World, result.NewState)
 	if hostErr != nil {
 		tl.Debug(ctx, trace.EvHarnessError, slog.String("host_dispatch_error", hostErr.Error()))
 	}
