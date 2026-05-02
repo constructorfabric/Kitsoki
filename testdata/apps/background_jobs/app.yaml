@@ -1,0 +1,60 @@
+# background_jobs — minimal demo app for the background job lifecycle.
+#
+# Demonstrates:
+#   - on_enter: firing host.run as background: true
+#   - bind: capturing last_job_id synchronously in the same turn
+#   - on_complete: reading last_job_result.stdout and writing world.result
+#
+# See cmd/hally/docs/app-schema.md §Background jobs for full field documentation.
+
+app:
+  id: background-jobs-demo
+  version: 0.1.0
+  title: "Background Jobs Demo"
+
+hosts:
+  - host.run
+
+world:
+  result: { type: string, default: "" }
+  last_job_id: { type: string, default: "" }
+
+intents:
+  enter:
+    title: "Start"
+    description: "Enter the running state and kick off the background job."
+    examples: ["start", "run", "go"]
+
+root: lobby
+
+states:
+  lobby:
+    description: "Lobby — press start to launch a background job."
+    view: |
+      Lobby. Type 'start' to kick off the job.
+    on:
+      enter:
+        - target: running
+
+  running:
+    description: "Running — the background job is in progress."
+    view: |
+      Running… job id: {{ world.last_job_id }}
+      Result so far: {{ world.result }}
+    on_enter:
+      - invoke: host.run
+        with:
+          cmd: "sleep 1 && echo done"
+        background: true
+        bind:
+          last_job_id: job_id
+        on_complete:
+          - set:
+              result: "{{ world.last_job_result.stdout }}"
+          - say: "Job complete. Output: {{ world.result }}"
+
+  done:
+    terminal: true
+    description: "Done — job finished."
+    view: |
+      Done. Result: {{ world.result }}

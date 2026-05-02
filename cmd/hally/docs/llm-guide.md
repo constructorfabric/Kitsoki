@@ -423,6 +423,11 @@ What to remember when writing apps:
   is the convention inside one effect block.
 - **`default: true` on a transition = catch-all.** Put it last in the list for
   an intent; the first matching guard wins.
+- **Background jobs** (`background: true` on an `invoke:` effect) dispatch the
+  handler asynchronously and fire `on_complete:` effects in a later synthetic
+  turn. See `hally docs app-schema §Background jobs` for the lifecycle,
+  injected world variables (`last_job_id`, `last_job_status`, `last_job_result`),
+  the same-turn race, and the mid-flight clarification flow.
 
 ## 10. Error codes you will see (and how to react)
 

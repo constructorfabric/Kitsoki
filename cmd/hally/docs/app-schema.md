@@ -133,48 +133,100 @@ effects:
 
 Fields (any subset):
 
-| Field       | Purpose                                                           |
-|-------------|-------------------------------------------------------------------|
-| `set`         | Assign world variables (value may be expr, literal, or templated) |
-| `increment`   | Integer delta on numeric world variables                          |
-| `say`         | Append narrative line (Go template over world/slots)              |
-| `invoke`      | Call a host handler; must appear in top-level `hosts:` list       |
-| `with`        | Arguments for `invoke`                                            |
-| `bind`        | `{ world_key: result_key }` — copy host result into world         |
-| `on_error`    | Transition target if host invoke errors; sets `$host_error`       |
-| `emit`        | Broadcast named event to parallel regions                         |
-| `background`  | When `true`, dispatches `invoke` as a background job instead of running synchronously. Requires `invoke:` to be set (validated at load time). Binds the job ID into world — use `bind: {last_job_id: job_id}` to choose the world key, or the default `last_job_id` is used. |
-| `on_complete` | Ordered `Effect` list fired in the originating state's context when the background job terminates (done, failed, or cancelled). Has access to `world.last_job_id`, `world.last_job_status`, and `world.last_job_result` (the host result data). Cannot itself contain `background: true` (validated at load time). |
-
-**Background dispatch example:**
-
-```yaml
-on_enter:
-  - invoke:     host.run_tests
-    with:        { suite: "{{ world.selected_suite }}" }
-    background:  true
-    bind:        { last_job_id: job_id }
-    on_complete:
-      - set:     { test_result: "{{ world.last_job_result.exit_code }}" }
-      - say:     "Tests finished with exit code {{ world.test_result }}."
-```
-
-**Same-turn race note:** a `background: true` effect followed by another effect
-in the same `on_enter:` block executes in the same turn and sees `world.last_job_id`
-(which is set immediately when the job is submitted), but does **NOT** see
-`world.last_job_result` — the result is only available in the `on_complete:`
-chain, which runs in a later synthetic turn once the job terminates.
+| Field         | Purpose                                                              |
+|---------------|----------------------------------------------------------------------|
+| `set`         | Assign world variables (value may be expr, literal, or templated)    |
+| `increment`   | Integer delta on numeric world variables                             |
+| `say`         | Append narrative line (Go template over world/slots)                 |
+| `invoke`      | Call a host handler; must appear in top-level `hosts:` list          |
+| `with`        | Arguments for `invoke`                                               |
+| `bind`        | `{ world_key: result_key }` — copy host result into world            |
+| `on_error`    | Transition target if host invoke errors; sets `$host_error`          |
+| `emit`        | Broadcast named event to parallel regions                            |
+| `background`  | `true` → dispatch `invoke` as a background job (see §Background jobs) |
+| `on_complete` | Effect list fired when the background job terminates (see §Background jobs) |
 
 Conventional order within a single effect: `set` → `increment` → `say` →
 `invoke` → `emit`.
 
-## Clarifications mid-flight
+## Background jobs
 
-A background handler can pause mid-execution to ask the user a question.
-The machinery is transparent to the room YAML author once the clarifying
-sub-state is wired.
+Background jobs let a state machine fire a long-running shell command or LLM
+call without blocking the current turn. The job runs in a goroutine; when it
+finishes a synthetic turn fires `on_complete:` effects in the originating
+state's context and posts an inbox notification.
 
-### Handler side (Go)
+### Lifecycle
+
+```
+submit turn              on_complete turn (synthetic, later)
+──────────────────────   ─────────────────────────────────────
+on_enter: fires          job goroutine exits (done/failed/cancelled)
+  background: true   →   orchestrator listener wakes
+  bind: last_job_id      world.last_job_id   = <id>      (re-set)
+  job starts async       world.last_job_status = "done"  (new)
+                         world.last_job_result = <data>  (new)
+                         on_complete: effects fire
+                         inbox notification posted
+```
+
+### Effect fields for background dispatch
+
+| Field         | Purpose                                                                     |
+|---------------|-----------------------------------------------------------------------------|
+| `background`  | `true` → dispatch the `invoke:` handler as a background job. Requires `invoke:` (validated at load time). |
+| `bind`        | `{ world_key: job_id }` — captures the job ID synchronously into world. Omit to use the default key `last_job_id`. |
+| `on_complete` | Ordered `Effect` list fired once the job terminates. May not itself contain `background: true` (validated at load time). |
+
+### World variables injected on_complete
+
+These are set by the orchestrator's synthetic turn and available inside
+`on_complete:` effects (and the state's view template on the next render):
+
+| Variable            | Type              | Value                                        |
+|---------------------|-------------------|----------------------------------------------|
+| `last_job_id`       | string            | Job ULID (same value bound at dispatch)      |
+| `last_job_status`   | string            | `"done"` / `"failed"` / `"cancelled"`        |
+| `last_job_result`   | map (any)         | `Result.Data` from the handler — e.g. `{stdout, exit_code, ok}` for `host.run` |
+
+`last_job_result` is not declared in the app's `world:` schema; it is injected
+dynamically and accessible only inside `on_complete:` templates. Do not
+reference it in a regular state `view:` — it will be empty outside of the
+synthetic turn.
+
+### Same-turn race
+
+A `background: true` effect followed by another effect in the same
+`on_enter:` or `effects:` block executes in the **same turn** and sees
+`world.last_job_id` (bound synchronously when the job is submitted), but does
+**not** see `world.last_job_result` — the result is only available in the
+`on_complete:` chain, which runs in a later synthetic turn once the job
+terminates.
+
+### Minimal runnable example
+
+```yaml
+# See also: testdata/apps/background_jobs/app.yaml
+on_enter:
+  - invoke:     host.run
+    with:       { cmd: "sleep 1 && echo done" }
+    background: true
+    bind:       { last_job_id: job_id }
+    on_complete:
+      - set:    { result: "{{ world.last_job_result.stdout }}" }
+      - say:    "Job complete. Output: {{ world.result }}"
+```
+
+A full three-state example (lobby → running → done) lives at
+`testdata/apps/background_jobs/app.yaml`.
+
+### Mid-flight clarifications
+
+A background handler can pause mid-execution to ask the user a question
+before resuming. The machinery is transparent to the room YAML author once
+the clarifying sub-state is wired.
+
+#### Handler side (Go)
 
 ```go
 // Inside a host.Handler running as a background job:
@@ -190,15 +242,15 @@ rawJSON, err := host.RequestClarification(ctx, jobs.ClarificationSchema{
 2. Signals the scheduler to fan out a `JobAwaitingInput` event.
 3. Polls every 200 ms until the answer is stored, then returns the raw JSON.
 
-### Orchestrator side (automatic)
+#### Orchestrator side (automatic)
 
 When the orchestrator's session listener receives `JobAwaitingInput` it calls
 `handleJobAwaitingInput`, which fetches the schema and posts an
-`action_required` notification.  The notification's `TeleportJobID` and
+`action_required` notification. The notification's `TeleportJobID` and
 `TeleportState` carry the job ID and origin state so the TUI can surface a
 banner and teleport the user back.
 
-### YAML side (app author)
+#### YAML side (app author)
 
 Add a `*_clarifying` sub-state to the originating room with an
 `answer_clarification` intent:
@@ -223,7 +275,6 @@ states:
         bind: { last_job_id: job_id }
         on_complete:
           - say: "Done!"
-          - go: lobby_done
 
   lobby_clarifying:
     view: |
@@ -239,7 +290,7 @@ states:
                 answer: "{{ slots.answer }}"
 ```
 
-### Round-trip summary
+#### Round-trip summary
 
 1. Handler calls `host.RequestClarification(ctx, schema)` and blocks.
 2. User sees an `action_required` banner in the inbox.
@@ -250,7 +301,7 @@ states:
 7. On completion, `on_complete` effects fire normally.
 
 **Important:** the `*_clarifying` state must be reachable from the origin
-state or be a distinct state with the `answer_clarification` intent.  The
+state or be a distinct state with the `answer_clarification` intent. The
 TeleportState in the notification is set to the job's `OriginState` — the
 state where the job was submitted — so make sure that state (or a teleport
 alias) handles `answer_clarification`.
