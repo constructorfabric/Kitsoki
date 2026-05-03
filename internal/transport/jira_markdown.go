@@ -32,7 +32,16 @@ func sanitizeForJira(text string) string {
 	// 1. Strip 4-byte UTF-8 codepoints (emojis) — Jira MySQL utf8 rejects them.
 	text = stripWideCodepoints(text)
 
-	// 1a. Defensively close any unclosed ``` block so the regex below
+	// 1a. Unescape common Markdown backslash escapes that LLMs emit
+	//     defensively when they think they're "safely" producing Markdown
+	//     for downstream rendering.  Without this, `\*\*bold\*\*` survives
+	//     past the bold regex (which expects literal `**...**`) and lands
+	//     in Jira as backslash-asterisk pairs that render as plain text.
+	//     The eight characters here are the Markdown special set; we strip
+	//     the leading backslash, leaving the literal char.
+	text = mdEscapeRe.ReplaceAllString(text, "$1")
+
+	// 1b. Defensively close any unclosed ``` block so the regex below
 	//     wraps the whole block in {code} instead of leaking backticks.
 	text = closeUnclosedFences(text)
 
@@ -318,4 +327,9 @@ var (
 
 	tableRowRe = regexp.MustCompile(`^\s*\|.*\|\s*$`)
 	tableSepRe = regexp.MustCompile(`^\s*\|?\s*:?-+:?(\s*\|\s*:?-+:?)+\s*\|?\s*$`)
+
+	// Markdown backslash escapes — strip the leading `\` and keep the
+	// literal special character.  Covers the canonical CommonMark set
+	// that LLMs over-escape when emitting Markdown inside JSON strings.
+	mdEscapeRe = regexp.MustCompile("\\\\([*_#\\[\\]()`~|>!\\-])")
 )
