@@ -32,6 +32,7 @@ import (
 	"time"
 
 	"hally/internal/app"
+	"hally/internal/clock"
 	"hally/internal/host"
 	"hally/internal/ulid"
 )
@@ -131,6 +132,20 @@ type Scheduler interface {
 	// loop in host.RequestClarification waiting for the answer.
 	// Returns ErrJobNotFound when id is unknown.
 	Awaiting(id JobID) error
+	// Resumed re-increments runningCount after a job returns from
+	// JobAwaitingInput.  It must be called by host.RequestClarification
+	// immediately after reading the user's answer and before returning to the
+	// handler, so that WaitIdle correctly blocks while the resumed handler is
+	// doing its remaining work.  Fans out a JobEvent{Status: JobRunning} so
+	// orchestrator listeners can update state if needed.
+	// Returns ErrJobNotFound when id is unknown.
+	Resumed(id JobID) error
+	// WaitIdle blocks until every job tracked by the scheduler has reached a
+	// terminal or awaiting-input state (JobDone, JobFailed, JobCancelled, or
+	// JobAwaitingInput).  JobAwaitingInput counts as idle because the scheduler
+	// goroutine is blocked waiting on user input rather than on in-flight work.
+	// Returns ctx.Err() if the context is cancelled before the scheduler drains.
+	WaitIdle(ctx context.Context) error
 	// Get returns a snapshot of the job identified by id.  Returns (Job{}, false)
 	// when id is unknown.  The returned Job is a copy and is safe to read; callers
 	// must not mutate it.
@@ -148,6 +163,20 @@ var ErrJobNotFound = fmt.Errorf("jobs: job not found")
 // both satisfy the flush condition within the same lock acquisition.
 const heartbeatFlushInterval = 500 * time.Millisecond
 
+// Option is a functional option for constructing an inMemoryScheduler.
+type Option func(*inMemoryScheduler)
+
+// WithClock injects a clock.Clock into the scheduler.  Defaults to
+// clock.Real() when not supplied.  Use clock.NewFake in tests to drive time
+// deterministically.
+func WithClock(c clock.Clock) Option {
+	return func(s *inMemoryScheduler) {
+		if c != nil {
+			s.clock = c
+		}
+	}
+}
+
 // inMemoryScheduler is a goroutine-per-job in-memory implementation.
 // When js is non-nil, every state transition is written through to SQLite.
 type inMemoryScheduler struct {
@@ -159,6 +188,13 @@ type inMemoryScheduler struct {
 	sessionSubs map[app.SessionID][]chan JobEvent
 	// js is the optional SQLite write-through layer; nil means pure in-memory.
 	js *JobStore
+	// clock is the injectable time source; defaults to clock.Real().
+	clock clock.Clock
+	// idle tracking: runningCount is the number of jobs that are neither
+	// terminal nor awaiting-input. WaitIdle blocks until this reaches zero.
+	idleMu       sync.Mutex
+	runningCount int
+	idleCond     *sync.Cond
 }
 
 // runningJob holds runtime state for one job.
@@ -168,35 +204,50 @@ type runningJob struct {
 	subMu     sync.Mutex
 	done      chan struct{}
 	lastFlush time.Time // guards Heartbeat debounce
+	// awaitingCounted is true when Awaiting has already decremented
+	// runningCount for this job.  The terminal-block in the goroutine checks
+	// this flag and skips a second decrement if Awaiting fired first, so
+	// runningCount never goes negative through the awaiting→terminal path.
+	// Protected by s.idleMu.
+	awaitingCounted bool
 }
 
-// NewInMemoryScheduler creates a pure in-memory Scheduler with no persistence.
-// Existing in-package tests use this constructor; it is guaranteed to keep
-// working without a SQLite dependency.
-func NewInMemoryScheduler() Scheduler {
-	return newScheduler(nil)
+// NewInMemoryScheduler is a thin wrapper over NewScheduler(nil, opts...).
+// Preserved for tests and legacy callers that don't need SQLite persistence.
+// Prefer NewScheduler(nil, ...) when the distinction matters at the call site.
+// Optional Option values (e.g. WithClock) may be supplied.
+func NewInMemoryScheduler(opts ...Option) Scheduler {
+	return NewScheduler(nil, opts...)
 }
 
-// NewScheduler creates a Scheduler backed by js for SQLite write-through.
-// Submit writes the initial job row; Heartbeat debounces flushes to ≤ 2/s;
-// terminal transitions (done/failed/cancelled) are committed immediately.
-// When js is nil the behaviour is identical to NewInMemoryScheduler.
-func NewScheduler(js *JobStore) Scheduler {
-	return newScheduler(js)
+// NewScheduler is the canonical constructor.  When js is non-nil every state
+// transition is written through to SQLite (Submit writes the initial row;
+// Heartbeat debounces flushes to ≤ 2/s; terminal transitions are committed
+// immediately).  When js is nil the scheduler runs entirely in-memory —
+// identical behaviour to NewInMemoryScheduler(opts...).
+// Optional Option values (e.g. WithClock) may be supplied.
+func NewScheduler(js *JobStore, opts ...Option) Scheduler {
+	return newScheduler(js, opts...)
 }
 
-func newScheduler(js *JobStore) *inMemoryScheduler {
-	return &inMemoryScheduler{
+func newScheduler(js *JobStore, opts ...Option) *inMemoryScheduler {
+	s := &inMemoryScheduler{
 		jobs:        make(map[JobID]*runningJob),
 		cancels:     make(map[JobID]context.CancelFunc),
 		sessionSubs: make(map[app.SessionID][]chan JobEvent),
 		js:          js,
+		clock:       clock.Real(),
 	}
+	s.idleCond = sync.NewCond(&s.idleMu)
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 func (s *inMemoryScheduler) Submit(ctx context.Context, spec JobSpec) (JobID, error) {
 	id := ulid.New()
-	now := time.Now()
+	now := s.clock.Now()
 
 	rj := &runningJob{
 		job: Job{
@@ -221,6 +272,11 @@ func (s *inMemoryScheduler) Submit(ctx context.Context, spec JobSpec) (JobID, er
 	s.cancels[id] = cancel
 	s.mu.Unlock()
 
+	// Track this job as active for WaitIdle.
+	s.idleMu.Lock()
+	s.runningCount++
+	s.idleMu.Unlock()
+
 	// Persist initial job row if write-through is enabled.
 	if s.js != nil {
 		if err := s.js.UpsertJob(ctx, &rj.job); err != nil {
@@ -238,11 +294,15 @@ func (s *inMemoryScheduler) Submit(ctx context.Context, spec JobSpec) (JobID, er
 		// and the store at this moment, so it builds the context here.
 		handlerCtx := jobCtx
 		if s.js != nil {
-			jc := host.NewJobContext(s.js, id, func(jid string) error {
-				return s.Awaiting(jid)
-			})
+			jc := host.NewJobContext(s.js, id,
+				func(jid string) error { return s.Awaiting(jid) },
+				func(jid string) error { return s.Resumed(jid) },
+			)
 			handlerCtx = host.WithJobContext(handlerCtx, jc)
 		}
+		// Inject the scheduler's clock so clarification poll loops and other
+		// time-dependent handler code can use the same fake clock in tests.
+		handlerCtx = host.WithClock(handlerCtx, s.clock)
 
 		// Inject __job_id into args as a convenience for orchestrator-side
 		// handler wrappers that need to build the JobContext from args rather
@@ -254,7 +314,7 @@ func (s *inMemoryScheduler) Submit(ctx context.Context, spec JobSpec) (JobID, er
 		argsWithID["__job_id"] = id
 
 		result, err := spec.Handler(handlerCtx, argsWithID)
-		now := time.Now()
+		now := s.clock.Now()
 
 		s.mu.Lock()
 		rj.job.FinishedAt = &now
@@ -305,6 +365,18 @@ func (s *inMemoryScheduler) Submit(ctx context.Context, spec JobSpec) (JobID, er
 		s.mu.Lock()
 		delete(s.cancels, id)
 		s.mu.Unlock()
+
+		// Signal WaitIdle: the job has reached a terminal state.
+		// Skip the decrement when Awaiting already decremented runningCount for
+		// this job (awaitingCounted==true); decrementing again would make the
+		// counter go negative, causing WaitIdle to return prematurely for
+		// subsequent submits.
+		s.idleMu.Lock()
+		if !rj.awaitingCounted {
+			s.runningCount--
+		}
+		s.idleCond.Broadcast()
+		s.idleMu.Unlock()
 	}()
 
 	return id, nil
@@ -383,7 +455,7 @@ func (s *inMemoryScheduler) Heartbeat(id JobID, progress any) error {
 		s.mu.Unlock()
 		return ErrJobNotFound
 	}
-	now := time.Now()
+	now := s.clock.Now()
 	rj.job.Progress = progress
 	rj.job.UpdatedAt = now
 
@@ -391,7 +463,7 @@ func (s *inMemoryScheduler) Heartbeat(id JobID, progress any) error {
 	s.fanoutLocked(rj, ev)
 
 	// Debounced write-through: flush to SQLite at most every heartbeatFlushInterval.
-	shouldFlush := s.js != nil && now.Sub(rj.lastFlush) >= heartbeatFlushInterval
+	shouldFlush := s.js != nil && s.clock.Since(rj.lastFlush) >= heartbeatFlushInterval
 	var jobSnapshot Job
 	if shouldFlush {
 		rj.lastFlush = now
@@ -422,7 +494,7 @@ func (s *inMemoryScheduler) Awaiting(id JobID) error {
 		return ErrJobNotFound
 	}
 	rj.job.Status = JobAwaitingInput
-	rj.job.UpdatedAt = time.Now()
+	rj.job.UpdatedAt = s.clock.Now()
 	sessionID := rj.job.SessionID
 	ev := JobEvent{JobID: id, Status: JobAwaitingInput}
 	s.fanoutLocked(rj, ev)
@@ -430,7 +502,85 @@ func (s *inMemoryScheduler) Awaiting(id JobID) error {
 
 	// Fan out to session subscribers (the orchestrator's listener goroutine).
 	s.fanoutSession(sessionID, ev)
+
+	// JobAwaitingInput counts as idle: the scheduler is no longer actively
+	// running work for this job (it's waiting on the user).
+	// Record awaitingCounted under idleMu so the terminal-block goroutine
+	// can see it and skip its own decrement.
+	s.idleMu.Lock()
+	rj.awaitingCounted = true
+	s.runningCount--
+	s.idleCond.Broadcast()
+	s.idleMu.Unlock()
+
 	return nil
+}
+
+// Resumed re-increments runningCount after a job returns from awaiting_input,
+// clears awaitingCounted so the terminal block can decrement correctly, and
+// fans out a JobEvent{Status: JobRunning}.
+//
+// host.RequestClarification calls this after reading the answer and before
+// returning to the handler so WaitIdle correctly blocks while the resumed
+// handler continues its work.
+func (s *inMemoryScheduler) Resumed(id JobID) error {
+	s.mu.Lock()
+	rj, ok := s.jobs[id]
+	if !ok {
+		s.mu.Unlock()
+		return ErrJobNotFound
+	}
+	rj.job.Status = JobRunning
+	rj.job.UpdatedAt = s.clock.Now()
+	sessionID := rj.job.SessionID
+	ev := JobEvent{JobID: id, Status: JobRunning}
+	s.fanoutLocked(rj, ev)
+	s.mu.Unlock()
+
+	s.fanoutSession(sessionID, ev)
+
+	// Re-increment: the job is actively running again.
+	s.idleMu.Lock()
+	rj.awaitingCounted = false
+	s.runningCount++
+	s.idleMu.Unlock()
+	// No broadcast here — runningCount just went up (WaitIdle is not waiting
+	// for it to increase, so no listeners need waking).
+
+	return nil
+}
+
+// WaitIdle blocks until all jobs the scheduler is tracking have reached a
+// terminal state (JobDone, JobFailed, JobCancelled) or JobAwaitingInput.
+// Returns ctx.Err() if the context is cancelled first.
+//
+// The implementation uses a single goroutine that holds idleMu while waiting.
+// A cancel flag (protected by idleMu) is set when ctx is cancelled so the
+// cond loop exits cleanly — preventing a goroutine leak on cancellation.
+func (s *inMemoryScheduler) WaitIdle(ctx context.Context) error {
+	cancelled := false
+	done := make(chan struct{})
+	go func() {
+		s.idleMu.Lock()
+		for s.runningCount > 0 && !cancelled {
+			s.idleCond.Wait()
+		}
+		s.idleMu.Unlock()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		// Set the cancel flag and broadcast so the waiting goroutine exits.
+		s.idleMu.Lock()
+		cancelled = true
+		s.idleMu.Unlock()
+		s.idleCond.Broadcast()
+		// Wait for the goroutine to exit before returning so we don't leak it.
+		<-done
+		return ctx.Err()
+	}
 }
 
 // Get returns a snapshot of the job (safe to read, not modify).

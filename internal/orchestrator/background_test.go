@@ -120,17 +120,14 @@ func TestBackgroundJobEndToEnd(t *testing.T) {
 	lastJobID, _ := journey.World.Vars["last_job_id"].(string)
 	require.NotEmpty(t, lastJobID, "last_job_id should be set after background dispatch")
 
-	// Poll up to 2 s for handleJobTerminal to apply the on_complete effects and
-	// commit the background-completion turn.
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		j2, loadErr := orch.LoadJourney(sid)
-		require.NoError(t, loadErr)
-		if x, _ := j2.World.Vars["x"].(string); x == "hello" {
-			break
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
+	// Wait for the scheduler to drain: all job goroutines have terminated.
+	waitCtx, waitCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer waitCancel()
+	require.NoError(t, sched.WaitIdle(waitCtx), "scheduler did not go idle in time")
+
+	// Wait for the orchestrator's session listener to finish processing the
+	// terminal event (applies on_complete, posts notification, writes turn).
+	require.NoError(t, orch.WaitListenerIdle(waitCtx, sid), "listener did not go idle in time")
 
 	// Assert world.x == "hello" (on_complete ran and resolved the template from
 	// last_job_result.output, confirming the JSON round-trip of on_complete works).

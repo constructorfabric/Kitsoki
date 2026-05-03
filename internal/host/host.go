@@ -27,6 +27,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"hally/internal/clock"
 )
 
 // Handler is the callable unit for a host invocation.
@@ -164,17 +166,26 @@ type JobContext struct {
 	// awaiting signals the scheduler that the job has entered awaiting_input.
 	// Called automatically by the host.RequestClarification helper.
 	awaiting func(id string) error
+	// resume signals the scheduler that the job has received its answer and is
+	// running again (re-increments runningCount).  Called automatically by
+	// host.RequestClarification after reading the answer.
+	resume func(id string) error
 }
 
-// NewJobContext constructs a JobContext with the given store, job ID, and
-// awaiting signaller.  The awaiting func is called by host.RequestClarification
-// after the DB row has been flipped so the scheduler can fan out a
-// JobAwaitingInput event.  Pass nil when no scheduler signal is needed.
-func NewJobContext(store ClarificationRequester, jobID string, awaiting func(id string) error) JobContext {
+// NewJobContext constructs a JobContext with the given store, job ID,
+// awaiting signaller, and resume signaller.  The awaiting func is called by
+// host.RequestClarification after the DB row has been flipped to
+// awaiting_input so the scheduler can fan out a JobAwaitingInput event.
+// The resume func is called after the answer arrives so the scheduler
+// re-increments runningCount and WaitIdle correctly blocks while the resumed
+// handler continues working.  Pass nil for either when no scheduler signal is
+// needed (e.g. in tests that use a no-op scheduler).
+func NewJobContext(store ClarificationRequester, jobID string, awaiting, resume func(id string) error) JobContext {
 	return JobContext{
 		Store:    store,
 		JobID:    jobID,
 		awaiting: awaiting,
+		resume:   resume,
 	}
 }
 
@@ -194,6 +205,26 @@ func JobContextFromContext(ctx context.Context) JobContext {
 	return JobContext{}
 }
 
+// ─── Clock context ────────────────────────────────────────────────────────────
+
+// clockKey is the unexported context key for an injected clock.Clock.
+type clockKey struct{}
+
+// WithClock injects a clock.Clock into ctx so that clarification poll loops
+// and other time-dependent handler code can use a fake clock in tests.
+func WithClock(ctx context.Context, c clock.Clock) context.Context {
+	return context.WithValue(ctx, clockKey{}, c)
+}
+
+// ClockFromContext retrieves the clock.Clock from ctx.
+// Returns clock.Real() when no clock has been injected.
+func ClockFromContext(ctx context.Context) clock.Clock {
+	if c, ok := ctx.Value(clockKey{}).(clock.Clock); ok && c != nil {
+		return c
+	}
+	return clock.Real()
+}
+
 // RequestClarification is the high-level helper that handler authors call to
 // pause the job and ask the user a question. It:
 //  1. Calls jc.Store.RequestClarification to write the schema to the DB and
@@ -210,7 +241,10 @@ func JobContextFromContext(ctx context.Context) JobContext {
 // Returns an error when:
 //   - the context is cancelled (ctx.Err() wrapped),
 //   - Store == nil (not a background job — use in foreground handler),
-//   - RequestClarification fails (e.g. collision).
+//   - RequestClarification fails (e.g. collision),
+//   - the scheduler signaller fails: the clarification request is in the
+//     JobStore but the inbox notification will NOT be posted automatically;
+//     surface this error to the caller as any other infrastructure failure.
 func RequestClarification(ctx context.Context, schema any) (string, error) {
 	jc := JobContextFromContext(ctx)
 	if jc.Store == nil {
@@ -219,27 +253,39 @@ func RequestClarification(ctx context.Context, schema any) (string, error) {
 	if err := jc.Store.RequestClarificationAny(ctx, jc.JobID, schema); err != nil {
 		return "", fmt.Errorf("host.RequestClarification: %w", err)
 	}
-	// Notify the scheduler that we are now awaiting input.
+	// Notify the scheduler that we are now awaiting input. If this fails, the
+	// DB row is already flipped to awaiting_input but no JobAwaitingInput event
+	// will be fanned out — the orchestrator session listener won't post the
+	// action_required notification. Return the error so the caller can propagate
+	// it rather than silently leaving the user without a notification.
 	if jc.awaiting != nil {
 		if err := jc.awaiting(jc.JobID); err != nil {
-			// Non-fatal: the job is already in awaiting_input in the DB; the
-			// scheduler just won't fan out the event. Log and continue.
-			_ = err
+			return "", fmt.Errorf("host.RequestClarification: signal scheduler: %w", err)
 		}
 	}
-	// Poll for the answer.
+	// Poll for the answer using the injectable clock so tests can drive time
+	// deterministically without a real 200 ms wall-clock wait.
 	const pollInterval = 200 * time.Millisecond
+	clk := ClockFromContext(ctx)
 	for {
 		select {
 		case <-ctx.Done():
 			return "", fmt.Errorf("host.RequestClarification: context cancelled while waiting for answer: %w", ctx.Err())
-		case <-time.After(pollInterval):
+		case <-clk.After(pollInterval):
 		}
 		raw, err := jc.Store.AnswerClarificationRaw(ctx, jc.JobID)
 		if err != nil {
 			return "", fmt.Errorf("host.RequestClarification: poll answer: %w", err)
 		}
 		if raw != "" {
+			// Signal the scheduler that the job is running again so WaitIdle
+			// correctly blocks while the resumed handler continues its work.
+			if jc.resume != nil {
+				if resumeErr := jc.resume(jc.JobID); resumeErr != nil {
+					// Non-fatal: the handler will continue regardless; log only.
+					_ = resumeErr
+				}
+			}
 			return raw, nil
 		}
 	}

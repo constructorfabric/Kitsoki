@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"hally/internal/clock"
 	"hally/internal/host"
 	"hally/internal/jobs"
 )
@@ -70,14 +71,28 @@ func TestSubmitAndSubscribe_Failure(t *testing.T) {
 }
 
 func TestCancel(t *testing.T) {
-	sched := jobs.NewInMemoryScheduler()
+	fc := clock.NewFake(time.Unix(0, 0))
+	sched := jobs.NewInMemoryScheduler(jobs.WithClock(fc))
+
 	id, err := sched.Submit(context.Background(), jobs.JobSpec{
-		Kind:    "host.slow",
-		Handler: slowHandler(10*time.Second, "never"),
+		Kind: "host.slow",
+		// Handler blocks on the fake clock until cancelled.
+		Handler: func(ctx context.Context, args map[string]any) (host.Result, error) {
+			select {
+			case <-ctx.Done():
+				return host.Result{}, ctx.Err()
+			case <-fc.After(10 * time.Second):
+				return host.Result{Data: map[string]any{"output": "never"}}, nil
+			}
+		},
 	})
 	if err != nil {
 		t.Fatalf("submit: %v", err)
 	}
+
+	// Wait until the handler goroutine is parked on the fake clock.
+	fc.BlockUntil(1)
+
 	ch, unsub := sched.Subscribe(id)
 	defer unsub()
 
@@ -85,42 +100,62 @@ func TestCancel(t *testing.T) {
 		t.Fatalf("cancel: %v", err)
 	}
 
+	// Cancel wakes the handler via context; the event should arrive quickly.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 	select {
 	case ev := <-ch:
 		if ev.Status != jobs.JobCancelled {
 			t.Fatalf("expected cancelled, got %s", ev.Status)
 		}
-	case <-time.After(2 * time.Second):
+	case <-ctx.Done():
 		t.Fatal("timeout waiting for cancellation")
 	}
 }
 
 func TestHeartbeat(t *testing.T) {
-	sched := jobs.NewInMemoryScheduler()
+	fc := clock.NewFake(time.Unix(0, 0))
+	sched := jobs.NewInMemoryScheduler(jobs.WithClock(fc))
+
 	id, err := sched.Submit(context.Background(), jobs.JobSpec{
-		Kind:    "host.slow",
-		Handler: slowHandler(500*time.Millisecond, "done"),
+		Kind: "host.slow",
+		Handler: func(ctx context.Context, args map[string]any) (host.Result, error) {
+			select {
+			case <-ctx.Done():
+				return host.Result{}, ctx.Err()
+			case <-fc.After(500 * time.Millisecond):
+				return host.Result{Data: map[string]any{"output": "done"}}, nil
+			}
+		},
 	})
 	if err != nil {
 		t.Fatalf("submit: %v", err)
 	}
+
+	// Wait until the handler goroutine is parked on the fake clock.
+	fc.BlockUntil(1)
+
 	ch, unsub := sched.Subscribe(id)
 	defer unsub()
 
-	// Send a heartbeat.
+	// Send a heartbeat while the job is in-flight.
 	if err := sched.Heartbeat(id, map[string]any{"progress": 50}); err != nil {
 		t.Fatalf("heartbeat: %v", err)
 	}
 
+	// Advance the fake clock past the handler's delay.
+	fc.Advance(600 * time.Millisecond)
+
 	// Drain the channel until done.
-	deadline := time.After(2 * time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 	for {
 		select {
 		case ev := <-ch:
 			if ev.Status == jobs.JobDone {
 				return
 			}
-		case <-deadline:
+		case <-ctx.Done():
 			t.Fatal("timeout waiting for job completion")
 		}
 	}
@@ -131,6 +166,74 @@ func TestCancelUnknownJob(t *testing.T) {
 	err := sched.Cancel(context.Background(), "nonexistent-id")
 	if err == nil {
 		t.Fatal("expected error for unknown job")
+	}
+}
+
+// TestWaitIdle_FakeClock spawns 5 jobs with fake-clock delays, advances past
+// all deadlines, and verifies WaitIdle returns without real-time waiting.
+func TestWaitIdle_FakeClock(t *testing.T) {
+	fc := clock.NewFake(time.Unix(0, 0))
+	sched := jobs.NewInMemoryScheduler(jobs.WithClock(fc))
+
+	const n = 5
+	for i := 0; i < n; i++ {
+		dur := time.Duration(i+1) * 100 * time.Millisecond
+		d := dur // capture loop variable
+		_, err := sched.Submit(context.Background(), jobs.JobSpec{
+			Kind: "host.slow",
+			Handler: func(ctx context.Context, args map[string]any) (host.Result, error) {
+				// Use the fake clock directly (same instance injected into context).
+				select {
+				case <-ctx.Done():
+					return host.Result{}, ctx.Err()
+				case <-fc.After(d):
+					return host.Result{Data: map[string]any{"ok": true}}, nil
+				}
+			},
+		})
+		if err != nil {
+			t.Fatalf("Submit %d: %v", i, err)
+		}
+	}
+
+	// Wait until all 5 goroutines are parked on the fake clock.
+	fc.BlockUntil(n)
+	// Advance past the longest delay (500 ms).
+	fc.Advance(600 * time.Millisecond)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := sched.WaitIdle(ctx); err != nil {
+		t.Fatalf("WaitIdle returned error: %v", err)
+	}
+}
+
+// TestWaitIdle_Cancelled verifies that WaitIdle respects context cancellation.
+func TestWaitIdle_Cancelled(t *testing.T) {
+	fc := clock.NewFake(time.Unix(0, 0))
+	sched := jobs.NewInMemoryScheduler(jobs.WithClock(fc))
+
+	_, err := sched.Submit(context.Background(), jobs.JobSpec{
+		Kind: "host.slow",
+		Handler: func(ctx context.Context, args map[string]any) (host.Result, error) {
+			select {
+			case <-ctx.Done():
+				return host.Result{}, ctx.Err()
+			case <-fc.After(10 * time.Second):
+				return host.Result{}, nil
+			}
+		},
+	})
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	fc.BlockUntil(1)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel immediately
+
+	if err := sched.WaitIdle(ctx); err == nil {
+		t.Fatal("WaitIdle should return error when context is cancelled")
 	}
 }
 
@@ -275,6 +378,45 @@ func TestResume_ReIncrementsRunningCount(t *testing.T) {
 	}
 }
 
+// TestWaitIdle_NoGoroutineLeak verifies P1-5: cancelling WaitIdle's context
+// does not leak the internal waiting goroutine.
+func TestWaitIdle_NoGoroutineLeak(t *testing.T) {
+	fc := clock.NewFake(time.Unix(0, 0))
+	sched := jobs.NewInMemoryScheduler(jobs.WithClock(fc))
+
+	_, err := sched.Submit(context.Background(), jobs.JobSpec{
+		Kind: "host.slow",
+		Handler: func(ctx context.Context, args map[string]any) (host.Result, error) {
+			select {
+			case <-ctx.Done():
+				return host.Result{}, ctx.Err()
+			case <-fc.After(10 * time.Second):
+				return host.Result{}, nil
+			}
+		},
+	})
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	fc.BlockUntil(1)
+
+	before := runtime.NumGoroutine()
+
+	// Cancel immediately.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_ = sched.WaitIdle(ctx) // should return ctx.Err()
+
+	// Allow a brief window for the goroutine to exit.
+	time.Sleep(20 * time.Millisecond)
+	after := runtime.NumGoroutine()
+
+	// The leak would add a permanent goroutine; allow +1 for scheduler noise.
+	if after > before+1 {
+		t.Fatalf("goroutine leak: before=%d after=%d", before, after)
+	}
+}
+
 // TestHeartbeatDebounce verifies the write-through debounce behaviour:
 // firing many heartbeats in a short burst should result in fewer SQLite
 // writes than the number of calls, and the persisted progress should
@@ -287,37 +429,44 @@ func TestHeartbeatDebounce(t *testing.T) {
 		t.Fatalf("NewJobStore: %v", err)
 	}
 
-	sched := jobs.NewScheduler(js)
+	fc := clock.NewFake(time.Unix(0, 0))
+	sched := jobs.NewScheduler(js, jobs.WithClock(fc))
 
-	// Use a slow handler so we can heartbeat while the job is running.
+	// Handler blocks on the fake clock so we can heartbeat while it runs.
 	id, err := sched.Submit(context.Background(), jobs.JobSpec{
 		SessionID: "sess-hb",
 		Kind:      "host.slow",
-		Handler:   slowHandler(2*time.Second, "ok"),
+		Handler: func(ctx context.Context, args map[string]any) (host.Result, error) {
+			select {
+			case <-ctx.Done():
+				return host.Result{}, ctx.Err()
+			case <-fc.After(2 * time.Second):
+				return host.Result{Data: map[string]any{"output": "ok"}}, nil
+			}
+		},
 	})
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
 
-	// Fire 10 heartbeats within ~50 ms — well within the 500 ms debounce.
+	// Wait until the handler goroutine is parked on the fake clock.
+	fc.BlockUntil(1)
+
+	// Fire 10 heartbeats with no clock advance — all within the 500 ms debounce.
 	for i := 0; i < 10; i++ {
 		if err := sched.Heartbeat(id, map[string]any{"pct": i * 10}); err != nil {
 			t.Fatalf("Heartbeat %d: %v", i, err)
 		}
-		time.Sleep(5 * time.Millisecond)
 	}
 
-	// Wait longer than the debounce interval to guarantee one flush.
-	time.Sleep(600 * time.Millisecond)
+	// Advance past the debounce interval to guarantee one flush on the next heartbeat.
+	fc.Advance(600 * time.Millisecond)
 
-	// Send one more heartbeat with a known final progress value.
+	// Send one more heartbeat — this one must flush because interval has elapsed.
 	finalProgress := map[string]any{"pct": 99}
 	if err := sched.Heartbeat(id, finalProgress); err != nil {
 		t.Fatalf("final Heartbeat: %v", err)
 	}
-
-	// Allow the flush to reach SQLite.
-	time.Sleep(20 * time.Millisecond)
 
 	// The persisted row should exist (was written at submit time and
 	// at least once during/after the burst).
