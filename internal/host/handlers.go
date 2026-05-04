@@ -174,8 +174,16 @@ func lastNonEmptyLine(s string) string {
 // goccy/go-yaml for sequence nodes) and stringifies each element with
 // fmt.Sprint, so numeric/boolean YAML scalars don't require explicit
 // stringification by the author.  A nil element becomes the empty string.
-// Any non-list value (or a list whose elements aren't scalars) yields an
-// error so misuse is loud rather than silent.
+//
+// Map/slice values (i.e. world-slot objects bound from a previous
+// host.oracle.ask_with_mcp call) are serialised to compact JSON.  This
+// lets phase-runner cmds receive structured data on argv without the
+// author having to pre-stringify it themselves — the bugfix room's
+// `verify-impl` step depends on this so the post-submission verifier
+// can read `world.phase_6_5_submitted` directly off the command line.
+//
+// Any non-list value, or a list element whose Go type is none of the
+// above, yields an error so misuse is loud rather than silent.
 func coerceArgs(raw any) ([]string, error) {
 	list, ok := raw.([]any)
 	if !ok {
@@ -190,6 +198,12 @@ func coerceArgs(raw any) ([]string, error) {
 			out[i] = x
 		case bool, int, int64, float64:
 			out[i] = fmt.Sprint(x)
+		case map[string]any, []any:
+			b, jErr := json.Marshal(x)
+			if jErr != nil {
+				return nil, fmt.Errorf("args[%d]: json marshal: %w", i, jErr)
+			}
+			out[i] = string(b)
 		default:
 			return nil, fmt.Errorf("args[%d]: unsupported type %T", i, v)
 		}

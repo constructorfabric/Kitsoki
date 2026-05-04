@@ -298,6 +298,83 @@ func TestRunHandler_ArgsArgvMode(t *testing.T) {
 	}
 }
 
+// TestRunHandler_ArgsMapJSONSerialised covers the world-slot-on-argv path:
+// when an args list element is a Go map (i.e. an `obj`-typed world slot
+// like `phase_6_5_submitted`), it's serialised to compact JSON before
+// reaching argv.  Without this, `args: ["{{ world.payload }}"]` would
+// fail with "unsupported type map[string]interface {}".  The bugfix
+// room's verify-impl step relies on this contract.
+func TestRunHandler_ArgsMapJSONSerialised(t *testing.T) {
+	r := host.NewRegistry()
+	host.RegisterBuiltins(r)
+
+	payload := map[string]any{
+		"summary":       "fixed",
+		"commit_hashes": []any{"deadbeef"},
+		"files_changed": []any{
+			map[string]any{"path": "x.go", "action": "modified"},
+		},
+	}
+
+	result, err := r.Invoke(context.Background(), "host.run", map[string]any{
+		"cmd":  "printf",
+		"args": []any{"%s", payload},
+	})
+	if err != nil {
+		t.Fatalf("host.run infra error: %v", err)
+	}
+	if result.Error != "" {
+		t.Fatalf("unexpected domain error: %v", result.Error)
+	}
+	stdout, _ := result.Data["stdout"].(string)
+	// Output is the JSON-encoded payload — confirm a couple of keys
+	// survived to the argv element.
+	if stdout == "" {
+		t.Fatalf("expected JSON payload on stdout, got empty")
+	}
+	for _, want := range []string{`"summary":"fixed"`, `"commit_hashes":["deadbeef"]`, `"path":"x.go"`} {
+		if !contains(stdout, want) {
+			t.Fatalf("stdout missing %q\nstdout: %s", want, stdout)
+		}
+	}
+}
+
+func TestRunHandler_ArgsSliceJSONSerialised(t *testing.T) {
+	r := host.NewRegistry()
+	host.RegisterBuiltins(r)
+
+	payload := []any{"a", "b", "c"}
+	result, err := r.Invoke(context.Background(), "host.run", map[string]any{
+		"cmd":  "printf",
+		"args": []any{"%s", payload},
+	})
+	if err != nil {
+		t.Fatalf("host.run infra error: %v", err)
+	}
+	if result.Error != "" {
+		t.Fatalf("unexpected domain error: %v", result.Error)
+	}
+	stdout, _ := result.Data["stdout"].(string)
+	if stdout != `["a","b","c"]` {
+		t.Fatalf("slice arg: stdout mismatch\n got: %q\nwant: %q", stdout, `["a","b","c"]`)
+	}
+}
+
+// contains is a tiny strings.Contains shim so the test file doesn't
+// import strings just for one call.
+func contains(s, sub string) bool {
+	return len(sub) == 0 || (len(s) >= len(sub) && (s == sub || hasSubstr(s, sub)))
+}
+
+func hasSubstr(s, sub string) bool {
+	for i := 0; i+len(sub) <= len(s); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
+}
+
 // TestRunHandler_ArgsRejectsNonList confirms that `args:` must be a list.
 // A scalar (or other shape) is a domain error rather than a silent fallback
 // to bash-mode, so authors can't accidentally pass `args: foo` and have it
