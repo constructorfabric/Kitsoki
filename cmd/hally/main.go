@@ -239,7 +239,7 @@ See 'hally docs llm-guide' for the full operator guide.`,
 			// transcript viewport. Copying text then requires Option
 			// (macOS) or Shift (Linux) held during selection to bypass
 			// mouse capture.
-			rootModel := tui.NewRootModelWithJobs(orch, sid, appPath, initialView, jobStore)
+			rootModel := tui.NewRootModel(orch, sid, appPath, initialView, tui.WithJobStore(jobStore))
 			p := tea.NewProgram(rootModel,
 				tea.WithAltScreen(),
 				tea.WithMouseCellMotion(),

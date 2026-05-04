@@ -1,0 +1,80 @@
+# clarification — tests the mid-flight clarification round-trip.
+#
+# The fixture uses request_clarification: in the host stub to make the handler
+# pause and wait for a user answer before completing. This exercises the path:
+#   1. enter    → running; on_enter dispatches the background job.
+#               The stub immediately calls host.RequestClarification and blocks.
+#               advance_clock: "10ms" drains the scheduler (job is awaiting_input)
+#               and the orchestrator listener (posts action_required notification).
+#   2. answer_clarification → slots.job_id from world.last_job_id (slot template).
+#               advance_clock: "300ms" advances past the 200ms clarification poll
+#               interval so the stub wakes, reads the answer, completes the job,
+#               and on_complete fires setting world.result.
+#
+# No real wall-clock time is used: all timing is driven by the fake clock.
+#
+# To run:
+#   hally test flows testdata/apps/background_jobs/app.yaml
+test_kind: flow
+app: ../app.yaml
+initial_state: lobby
+initial_world:
+  result: ""
+  last_job_id: ""
+
+host_handlers:
+  host.run:
+    # request_clarification: causes the stub to call host.RequestClarification
+    # and block until the user submits answer_clarification.
+    request_clarification: "Which environment?"
+    # data is returned after the clarification answer is received.
+    data:
+      stdout: "clarification-done"
+      exit: 0
+
+turns:
+  # Turn 1: fire 'enter' → lobby transitions to 'running'.
+  # The on_enter: dispatches host.run as a background job. The stub immediately
+  # calls host.RequestClarification and blocks on the fake clock's After(200ms).
+  # advance_clock: "10ms" is smaller than the 200ms poll interval so the stub
+  # stays blocked, but it is enough to trigger advanceAndWait which drains the
+  # scheduler (runningCount==0 after awaiting_input) and the session listener
+  # (processes JobAwaitingInput, posts action_required notification).
+  - intent:
+      name: enter
+      slots: {}
+    advance_clock: "10ms"
+    expect_state: running
+    # last_job_id is bound by on_enter:bind: to the background job's ULID — we
+    # don't assert the exact value here since it's a random ULID.  We verify it
+    # is used correctly in the next turn's slot template ({{ world.last_job_id }}).
+    expect_inbox:
+      unread: 2
+      needs_attention: 1
+      severities: ["action_required", "info"]
+
+  # Turn 2: answer the clarification.
+  # slots.job_id is resolved from world.last_job_id via {{ world.last_job_id }}
+  # template expansion (slot templating feature added in T4).
+  # advance_clock: "300ms" advances past the 200ms clarification poll interval so
+  # the stub's RequestClarification poll fires, the answer is read, the stub
+  # returns, the job completes, and on_complete fires (setting world.result).
+  - intent:
+      name: answer_clarification
+      slots:
+        job_id: "{{ world.last_job_id }}"
+        answer: "prod"
+    advance_clock: "300ms"
+    expect_state: running
+    expect_world:
+      result: "clarification-done"
+    # TODO(P3-7): assert the on_complete say: text appears in session output.
+    # on_complete say: is emitted by the background listener path and does not
+    # flow into the intent-turn view checked by expect_view_matches.
+    # A dedicated expect_say or expect_events assertion is needed.
+    expect_inbox:
+      unread: 3
+      needs_attention: 1
+      severities: ["action_required", "info", "success"]
+
+expect_no_errors: true

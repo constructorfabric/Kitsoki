@@ -23,6 +23,7 @@ import (
 
 	"hally/internal/app"
 	"hally/internal/authoring"
+	"hally/internal/clock"
 	"hally/internal/inbox"
 	"hally/internal/jobs"
 	"hally/internal/orchestrator"
@@ -107,6 +108,11 @@ type RootModel struct {
 	edit           editModel
 	prompt         textinput.Model
 
+	// clk is the injectable time source used by the inbox polling ticker.
+	// When nil, clock.Real() is used. Tests inject a *clock.Fake so they can
+	// drive ticks deterministically without wall-clock waits.
+	clk clock.Clock
+
 	// jobStore is the SQLite-backed notification store.  When nil (headless
 	// tests, serve mode) the inbox ticker is a no-op and the panel stays
 	// hidden so no database is required.
@@ -149,18 +155,36 @@ type RootModel struct {
 	mouseOn bool
 }
 
-// NewRootModel creates the root TUI model. appPath is the path to the
-// app.yaml backing this session — required for the Esc-menu "Edit mode"
-// reload flow. Pass "" to disable edit mode (e.g., from tests).
-// The inbox panel is disabled (no polling) when no jobStore is provided.
-func NewRootModel(orch *orchestrator.Orchestrator, sid app.SessionID, appPath, initialView string) RootModel {
-	return NewRootModelWithJobs(orch, sid, appPath, initialView, nil)
+// RootModelOption is a functional option for RootModel construction.
+type RootModelOption func(*RootModel)
+
+// WithTUIClock injects an alternative clock.Clock into the RootModel's inbox
+// polling path.  Under the real application clock.Real() is used (the default
+// when this option is omitted).  Tests inject a *clock.Fake so they can drive
+// inbox ticks deterministically without any wall-clock waits:
+//
+//	fakeClk := clock.NewFake(time.Now())
+//	m := NewRootModel(orch, sid, "", "", WithJobStore(store), WithTUIClock(fakeClk))
+//	fakeClk.Advance(2 * time.Second) // fires the pending inbox tick
+func WithTUIClock(c clock.Clock) RootModelOption {
+	return func(m *RootModel) { m.clk = c }
 }
 
-// NewRootModelWithJobs creates the root TUI model with a *jobs.JobStore wired
-// in for the inbox panel.  When jobStore is nil the inbox panel stays hidden
-// and the polling ticker is a no-op, so headless tests do not need a database.
-func NewRootModelWithJobs(orch *orchestrator.Orchestrator, sid app.SessionID, appPath, initialView string, jobStore *jobs.JobStore) RootModel {
+// WithJobStore wires a *jobs.JobStore into the RootModel for inbox panel
+// polling.  When omitted (or nil), the inbox panel stays hidden and no
+// database connection is required (headless tests, serve mode).
+func WithJobStore(js *jobs.JobStore) RootModelOption {
+	return func(m *RootModel) { m.jobStore = js }
+}
+
+// NewRootModel creates the root TUI model.  appPath is the path to the
+// app.yaml backing this session — required for the Esc-menu "Edit mode"
+// reload flow.  Pass "" to disable edit mode (e.g., from tests).
+//
+// Optional RootModelOption values control additional wiring:
+//   - WithJobStore — enables the inbox panel (background-job notifications).
+//   - WithTUIClock — replaces the real wall clock for deterministic tests.
+func NewRootModel(orch *orchestrator.Orchestrator, sid app.SessionID, appPath, initialView string, opts ...RootModelOption) RootModel {
 	const defaultWidth = 120
 	const defaultHeight = 40
 	const menuWidth = 30
@@ -194,8 +218,7 @@ func NewRootModelWithJobs(orch *orchestrator.Orchestrator, sid app.SessionID, ap
 		edit:           newEditModel(),
 		prompt:         ti,
 		spinner:        sp,
-		mouseOn:        true,
-		jobStore:       jobStore,
+		mouseOn: true,
 	}
 
 	// Set initial state.
@@ -215,6 +238,11 @@ func NewRootModelWithJobs(orch *orchestrator.Orchestrator, sid app.SessionID, ap
 	loc := orchestrator.ComputeLocation(orch.AppDef(), m.currentState, w, 0)
 	m.location, _ = m.location.Update(locationUpdated{loc: loc})
 
+	// Apply functional options (e.g. WithTUIClock from tests).
+	for _, opt := range opts {
+		opt(&m)
+	}
+
 	return m
 }
 
@@ -230,11 +258,25 @@ func (m RootModel) Init() tea.Cmd {
 // inboxPollMsg is the internal tick message fired by the inbox poller.
 type inboxPollMsg struct{}
 
+// inboxClock returns the clock to use for inbox polling.  clock.Real() is the
+// default; tests inject a *clock.Fake via WithTUIClock.
+func (m RootModel) inboxClock() clock.Clock {
+	if m.clk != nil {
+		return m.clk
+	}
+	return clock.Real()
+}
+
 // scheduleInboxPoll returns a tea.Cmd that fires inboxPollMsg after delay.
+// It uses the model's injectable clock (real by default, fake in tests) so
+// unit tests can drive ticks deterministically with Fake.Advance instead of
+// sleeping real wall-clock time.
 func (m RootModel) scheduleInboxPoll(delay time.Duration) tea.Cmd {
-	return tea.Tick(delay, func(t time.Time) tea.Msg {
+	clk := m.inboxClock()
+	return func() tea.Msg {
+		<-clk.After(delay)
 		return inboxPollMsg{}
-	})
+	}
 }
 
 // pollInbox reads notifications from the job store and returns an inboxRefreshed

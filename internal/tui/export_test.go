@@ -8,6 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"hally/internal/clock"
 	"hally/internal/jobs"
 	"hally/internal/orchestrator"
 )
@@ -266,4 +267,22 @@ func InboxActionRequiredBannerForTest(width, height int, ns []jobs.Notification)
 // HumanizeDurationForTest exposes the package-private humanizeDuration helper.
 func HumanizeDurationForTest(d time.Duration) string {
 	return humanizeDuration(d)
+}
+
+// ── Clock / inbox-ticker test helpers ────────────────────────────────────────
+
+// InboxPollMsg returns a synthetic inboxPollMsg for injection into Update().
+// This lets tests simulate the polling tick without waiting for a real or
+// fake-clock timer to fire.
+func InboxPollMsg() tea.Msg { return inboxPollMsg{} }
+
+// RootModelClock returns the clock stored in m.clk, or nil if none was set.
+// Used by inbox_clock_test.go to verify that WithTUIClock was applied.
+func RootModelClock(m RootModel) clock.Clock { return m.clk }
+
+// ScheduleInboxPollForTest exposes scheduleInboxPoll so tests can call it
+// directly and capture the returned tea.Cmd (which wraps the fake-clock
+// After channel).
+func ScheduleInboxPollForTest(m RootModel, d time.Duration) tea.Cmd {
+	return m.scheduleInboxPoll(d)
 }
