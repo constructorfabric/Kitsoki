@@ -11,7 +11,8 @@
 - visually distinguish between user commands that were interpreted deterministically vs those that use the LLM, when the LLM is used show the actual filled intent that was selected w/ confidence level
 - cache of natural language to intents to avoid calling claude again
 - expose oracle API so scripts can funnel their LLM usage via the standard interface instead of invoking claude -p individually, possibly bypassing configuration.  this would mean that scripts can use a generic API, and the interface can choose codex vs claude (in the future), and handle the tracing, playback and testing with a standardized mechanism.  scripts would then never use claude directly.
-
+- background jobs on VMs, dispatch and track, survive intermittent connectivity (dev laptop to VM w/ VPN and closed lid issues)
+- react UI
 
 ## Tech debt
 
