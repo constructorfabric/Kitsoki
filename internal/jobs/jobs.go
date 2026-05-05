@@ -119,11 +119,31 @@ type Scheduler interface {
 	// Returns ErrJobNotFound if the job doesn't exist.
 	Heartbeat(id JobID, progress any) error
 	// SubscribeSession returns a buffered channel that receives terminal
-	// JobEvents for every job belonging to sessionID, and an unsubscribe
-	// function.  The channel is never explicitly closed; callers must call
-	// the unsubscribe function to release resources.  Events are dropped
-	// (not buffered to infinity) when the channel is full.
-	SubscribeSession(sessionID app.SessionID) (<-chan JobEvent, func())
+	// JobEvents for every job belonging to sessionID, an ack callback that the
+	// consumer must invoke once per event AFTER it has finished processing the
+	// event, and an unsubscribe function.
+	//
+	// The ack callback is the signal that closes the receive→process race
+	// window: every event handed to the channel increments an internal pending
+	// counter; ack decrements it.  WaitSessionDrained blocks while pending > 0,
+	// so callers using `WaitIdle + WaitSessionDrained` (in that order) get
+	// race-free quiescence: WaitIdle returns once the scheduler has fanned out
+	// all events; WaitSessionDrained returns once the consumer has acked every
+	// fanned-out event.  Forgetting to ack permanently parks WaitSessionDrained.
+	//
+	// The channel is never explicitly closed; callers must call unsubscribe to
+	// release resources.  Events are dropped (not buffered to infinity) when
+	// the channel is full; dropped events are not counted against pending.
+	SubscribeSession(sessionID app.SessionID) (events <-chan JobEvent, ack func(), unsub func())
+	// WaitSessionDrained blocks until every subscriber for sid has acked every
+	// JobEvent the scheduler has fanned out for that session.  Returns ctx.Err()
+	// if the context is cancelled first.
+	//
+	// Typical use:
+	//
+	//	sched.WaitIdle(ctx)               // scheduler-side: jobs all terminal
+	//	sched.WaitSessionDrained(ctx, sid) // consumer-side: events all processed
+	WaitSessionDrained(ctx context.Context, sid app.SessionID) error
 	// Awaiting transitions an in-memory job to JobAwaitingInput and fans out
 	// a JobEvent{Status: JobAwaitingInput} on all per-job and per-session
 	// subscribers.  It is called by the handler (via host.RequestClarification)
@@ -140,6 +160,10 @@ type Scheduler interface {
 	// orchestrator listeners can update state if needed.
 	// Returns ErrJobNotFound when id is unknown.
 	Resumed(id JobID) error
+	// IsIdle returns true if no jobs are currently running (runningCount == 0).
+	// JobAwaitingInput counts as idle.  This is a non-blocking snapshot used by
+	// drain loops to detect cascading dispatches without race-prone polling.
+	IsIdle() bool
 	// WaitIdle blocks until every job tracked by the scheduler has reached a
 	// terminal or awaiting-input state (JobDone, JobFailed, JobCancelled, or
 	// JobAwaitingInput).  JobAwaitingInput counts as idle because the scheduler
@@ -177,15 +201,42 @@ func WithClock(c clock.Clock) Option {
 	}
 }
 
+// sessionSub is one per-session subscription created by SubscribeSession.
+//
+// pending tracks events that fanoutSession has handed to ch but the consumer
+// has not yet acknowledged via ack().  It closes the race window between
+// fanoutSession's send and the consumer's receive+process: a caller of
+// WaitSessionDrained sees pending > 0 from the moment fanoutSession decides to
+// deliver an event until the consumer signals completion, regardless of where
+// in the send→receive→process pipeline the event currently sits.
+//
+// pending is incremented under mu before the channel send; the consumer's ack
+// callback decrements it.  cond is broadcast on every change so
+// WaitSessionDrained re-evaluates.
+type sessionSub struct {
+	ch      chan JobEvent
+	mu      sync.Mutex
+	cond    *sync.Cond
+	pending int
+}
+
+func newSessionSub() *sessionSub {
+	s := &sessionSub{ch: make(chan JobEvent, 16)}
+	s.cond = sync.NewCond(&s.mu)
+	return s
+}
+
 // inMemoryScheduler is a goroutine-per-job in-memory implementation.
 // When js is non-nil, every state transition is written through to SQLite.
 type inMemoryScheduler struct {
 	mu      sync.RWMutex
 	jobs    map[JobID]*runningJob
 	cancels map[JobID]context.CancelFunc
-	// sessionSubs maps session IDs to a set of subscriber channels that receive
-	// terminal JobEvents for any job in that session.
-	sessionSubs map[app.SessionID][]chan JobEvent
+	// sessionSubs maps session IDs to per-session subscriber records that
+	// receive terminal JobEvents for any job in that session.  Each record
+	// carries its own pending counter so WaitSessionDrained can detect
+	// quiescence without racing the consumer's receive→process pipeline.
+	sessionSubs map[app.SessionID][]*sessionSub
 	// js is the optional SQLite write-through layer; nil means pure in-memory.
 	js *JobStore
 	// clock is the injectable time source; defaults to clock.Real().
@@ -234,7 +285,7 @@ func newScheduler(js *JobStore, opts ...Option) *inMemoryScheduler {
 	s := &inMemoryScheduler{
 		jobs:        make(map[JobID]*runningJob),
 		cancels:     make(map[JobID]context.CancelFunc),
-		sessionSubs: make(map[app.SessionID][]chan JobEvent),
+		sessionSubs: make(map[app.SessionID][]*sessionSub),
 		js:          js,
 		clock:       clock.Real(),
 	}
@@ -583,6 +634,15 @@ func (s *inMemoryScheduler) WaitIdle(ctx context.Context) error {
 	}
 }
 
+// IsIdle returns true when no jobs are currently in the running state
+// (JobAwaitingInput counts as idle).  Non-blocking snapshot intended for
+// drain-loop quiescence checks.
+func (s *inMemoryScheduler) IsIdle() bool {
+	s.idleMu.Lock()
+	defer s.idleMu.Unlock()
+	return s.runningCount == 0
+}
+
 // Get returns a snapshot of the job (safe to read, not modify).
 func (s *inMemoryScheduler) Get(id JobID) (Job, bool) {
 	s.mu.RLock()
@@ -621,46 +681,125 @@ func (s *inMemoryScheduler) fanoutLocked(rj *runningJob, ev JobEvent) {
 }
 
 // SubscribeSession returns a buffered channel (capacity 16) that receives
-// terminal JobEvents for every job belonging to sessionID.  The returned
-// unsubscribe function removes the subscription and should always be called
+// terminal JobEvents for every job belonging to sessionID.  The ack callback
+// must be invoked once per event AFTER processing — it decrements the
+// per-subscription pending counter that WaitSessionDrained waits on.  The
+// unsubscribe function removes the subscription and must always be called
 // (defer is fine).  Events are dropped silently when the buffer is full so
-// that a slow consumer cannot stall the scheduler goroutine.
-func (s *inMemoryScheduler) SubscribeSession(sessionID app.SessionID) (<-chan JobEvent, func()) {
-	ch := make(chan JobEvent, 16)
+// that a slow consumer cannot stall the scheduler goroutine; dropped events
+// are not counted against pending.
+//
+// See sessionSub for the rationale on why this returns ack rather than
+// relying on len(channel) — the receive→process window cannot be observed
+// safely without a sender-side counter.
+func (s *inMemoryScheduler) SubscribeSession(sessionID app.SessionID) (<-chan JobEvent, func(), func()) {
+	sub := newSessionSub()
 
 	s.mu.Lock()
-	s.sessionSubs[sessionID] = append(s.sessionSubs[sessionID], ch)
+	s.sessionSubs[sessionID] = append(s.sessionSubs[sessionID], sub)
 	s.mu.Unlock()
+
+	ack := func() {
+		sub.mu.Lock()
+		if sub.pending > 0 {
+			sub.pending--
+		}
+		sub.cond.Broadcast()
+		sub.mu.Unlock()
+	}
 
 	unsub := func() {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		subs := s.sessionSubs[sessionID]
-		for i, sub := range subs {
-			if sub == ch {
+		for i, candidate := range subs {
+			if candidate == sub {
 				s.sessionSubs[sessionID] = append(subs[:i], subs[i+1:]...)
 				break
 			}
 		}
+		// Wake any WaitSessionDrained caller so it can re-evaluate (this
+		// subscriber is gone; pending no longer matters for it).
+		sub.mu.Lock()
+		sub.cond.Broadcast()
+		sub.mu.Unlock()
 	}
-	return ch, unsub
+	return sub.ch, ack, unsub
+}
+
+// WaitSessionDrained blocks until every subscriber registered for sid has a
+// pending counter of zero — i.e. the consumer has called ack for every event
+// the scheduler has fanned out so far.  Returns ctx.Err() if the context is
+// cancelled before the drain completes.
+//
+// The typical sequence (e.g. inside the testrunner's advanceAndWait or the
+// orchestrator's WaitListenerIdle) is:
+//
+//	sched.WaitIdle(ctx)               // jobs are all terminal/awaiting
+//	sched.WaitSessionDrained(ctx, sid) // events all processed by listener
+func (s *inMemoryScheduler) WaitSessionDrained(ctx context.Context, sid app.SessionID) error {
+	// Snapshot the current set of subscribers; new subscribers added after the
+	// snapshot don't have any events fanned out for this drain wave.
+	s.mu.RLock()
+	subs := make([]*sessionSub, len(s.sessionSubs[sid]))
+	copy(subs, s.sessionSubs[sid])
+	s.mu.RUnlock()
+
+	for _, sub := range subs {
+		done := make(chan struct{})
+		go func(sub *sessionSub) {
+			sub.mu.Lock()
+			for sub.pending > 0 {
+				sub.cond.Wait()
+			}
+			sub.mu.Unlock()
+			close(done)
+		}(sub)
+
+		select {
+		case <-done:
+		case <-ctx.Done():
+			// Wake the cond goroutine so it can exit.
+			sub.mu.Lock()
+			sub.cond.Broadcast()
+			sub.mu.Unlock()
+			return ctx.Err()
+		}
+	}
+	return nil
 }
 
 // fanoutSession fans a terminal event out to all session-level subscribers
 // (must be called without holding s.mu).
+//
+// For each subscriber it increments pending BEFORE the channel send so
+// WaitSessionDrained sees a non-zero counter from the moment delivery is
+// attempted.  If the buffered send fails (consumer too slow, buffer full),
+// pending is rolled back — dropped events don't park WaitSessionDrained.
 func (s *inMemoryScheduler) fanoutSession(sessionID app.SessionID, ev JobEvent) {
 	s.mu.RLock()
 	subs := s.sessionSubs[sessionID]
 	// Copy slice so we can release the lock before sending.
-	snapshot := make([]chan JobEvent, len(subs))
+	snapshot := make([]*sessionSub, len(subs))
 	copy(snapshot, subs)
 	s.mu.RUnlock()
 
-	for _, ch := range snapshot {
+	for _, sub := range snapshot {
+		sub.mu.Lock()
+		sub.pending++
+		sub.mu.Unlock()
+
 		select {
-		case ch <- ev:
+		case sub.ch <- ev:
+			// Delivered: ack will decrement pending after the consumer
+			// finishes processing.
 		default:
-			// Drop: subscriber buffer is full.
+			// Drop: subscriber buffer is full.  Roll back the increment so a
+			// dropped event does not park WaitSessionDrained.
+			sub.mu.Lock()
+			sub.pending--
+			sub.cond.Broadcast()
+			sub.mu.Unlock()
 		}
 	}
 }

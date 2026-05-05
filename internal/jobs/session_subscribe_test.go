@@ -19,7 +19,7 @@ func TestSubscribeSession(t *testing.T) {
 	sessB := app.SessionID("sess-B")
 
 	// Subscribe to session A before submitting any jobs.
-	chA, unsubA := sched.SubscribeSession(sessA)
+	chA, ackA, unsubA := sched.SubscribeSession(sessA)
 	defer unsubA()
 
 	// Submit two jobs for session A.
@@ -57,6 +57,7 @@ func TestSubscribeSession(t *testing.T) {
 	for received < 2 {
 		select {
 		case ev := <-chA:
+			ackA()
 			if ev.Status != jobs.JobDone {
 				t.Fatalf("expected done, got %s", ev.Status)
 			}

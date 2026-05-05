@@ -1160,63 +1160,30 @@ func injectWorldOverride(ctx context.Context, rig *orchRig, overrides map[string
 // The outer context (typically 5 s) is the hard deadline; ctx.Err() is
 // returned if it fires before the drain completes.
 func advanceAndWait(ctx context.Context, rig *orchRig, d time.Duration) error {
-	// Step 1: subscribe before advancing so we cannot race with fanoutSession.
-	sessionCh, unsub := rig.sched.SubscribeSession(rig.sid)
-	defer unsub()
-
-	// Step 2: advance the fake clock.
 	rig.clk.Advance(d)
 
-	// Steps 3–6: event-driven quiescence loop.
-	//
-	// We loop: first drain WaitIdle + WaitListenerIdle, then check whether
-	// any new terminal events arrived in sessionCh during that wait (e.g.
-	// cascading on_complete dispatched a second job).  We exit only when both
-	// barriers have cleared AND the channel was empty on the non-blocking
-	// drain attempt.
-	for {
-		// Wait for the scheduler to be idle.
+	// Drain loop: WaitIdle + WaitListenerIdle each cover one barrier; together
+	// they guarantee "no jobs running" + "all events fanned out have been
+	// processed by the listener".  Cascading on_complete chains can dispatch
+	// new jobs during the wait, so we loop until IsIdle() reports a stable
+	// no-running state after both barriers cleared.
+	const maxIter = 32
+	for i := 0; i < maxIter; i++ {
 		if err := rig.sched.WaitIdle(ctx); err != nil {
 			return fmt.Errorf("scheduler WaitIdle: %w", err)
 		}
-		// Wait for the listener to finish processing all queued events.
 		if err := rig.orch.WaitListenerIdle(ctx, rig.sid); err != nil {
 			return fmt.Errorf("listener WaitListenerIdle: %w", err)
 		}
-		// After on_complete, new jobs may have been dispatched; check for
-		// cascading events without blocking.  If the channel is empty we are
-		// done.  If not, consume the event and repeat the idle checks.
-		drained := false
-		for !drained {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case ev := <-sessionCh:
-				// A cascading event arrived — process it and re-drain.
-				_ = ev
-			default:
-				drained = true
-			}
-		}
-		// Non-blocking drain found nothing; do one final WaitIdle +
-		// WaitListenerIdle in case a job completed between the non-blocking
-		// check and the previous WaitListenerIdle return.
-		if err := rig.sched.WaitIdle(ctx); err != nil {
-			return fmt.Errorf("final scheduler WaitIdle: %w", err)
-		}
-		if err := rig.orch.WaitListenerIdle(ctx, rig.sid); err != nil {
-			return fmt.Errorf("final listener WaitListenerIdle: %w", err)
-		}
-		// Check once more: if still empty we are truly quiescent.
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-sessionCh:
-			// Another event arrived — loop again.
-		default:
+		// If on_complete didn't dispatch any new background work during the
+		// listener's processing, runningCount is still zero and we are done.
+		// Otherwise loop: the next WaitIdle blocks until the cascading job
+		// finishes; the next WaitListenerIdle drains its event.
+		if rig.sched.IsIdle() {
 			return nil
 		}
 	}
+	return fmt.Errorf("advanceAndWait: drain did not stabilize after %d iterations", maxIter)
 }
 
 // assertInbox checks inbox notification counts against the expectation.

@@ -34,17 +34,20 @@ type pendingClarify struct {
 	slots      map[string]any // already-collected slots
 }
 
-// listenerState tracks the idle state for one session's listener goroutine.
+// listenerState tracks per-session listener bookkeeping.
+//
+// Idle detection lives on the scheduler side via WaitSessionDrained — see
+// jobs.sessionSub for why a sender-side counter is required to close the
+// receive→process race window.  This struct retains only the cancel func
+// (now tracked via the orchestrator's cancelListeners map) and is currently
+// vestigial; it remains in place so the per-session bookkeeping has a
+// natural extension point.
 type listenerState struct {
-	mu           sync.Mutex
-	cond         *sync.Cond
-	dispatchCount int // number of events currently being processed
+	// reserved for future per-session bookkeeping.
 }
 
 func newListenerState() *listenerState {
-	ls := &listenerState{}
-	ls.cond = sync.NewCond(&ls.mu)
-	return ls
+	return &listenerState{}
 }
 
 // Orchestrator drives a single session from raw input to applied events.
@@ -167,7 +170,7 @@ func (o *Orchestrator) startSessionListener(sid app.SessionID) {
 	o.listenerStates[sid] = ls
 	o.mu.Unlock()
 
-	ch, unsub := o.scheduler.SubscribeSession(sid)
+	ch, ack, unsub := o.scheduler.SubscribeSession(sid)
 	go func() {
 		defer unsub()
 		for {
@@ -178,23 +181,13 @@ func (o *Orchestrator) startSessionListener(sid app.SessionID) {
 				if !ok {
 					return
 				}
-				// Increment dispatch counter before processing.
-				ls.mu.Lock()
-				ls.dispatchCount++
-				ls.mu.Unlock()
-
-				// Decrement and broadcast when the dispatch finishes, including
-				// when listenerCtx is cancelled mid-dispatch.  Using defer inside
-				// the select arm ensures the counter is always decremented.
+				// Process the event, then ack via the scheduler so
+				// WaitSessionDrained can detect quiescence.  ack is called in a
+				// defer so it fires even if a handler panics or listenerCtx
+				// is cancelled mid-dispatch.
 				func() {
-					defer func() {
-						ls.mu.Lock()
-						ls.dispatchCount--
-						ls.cond.Broadcast()
-						ls.mu.Unlock()
-					}()
+					defer ack()
 
-					// Route event by status.
 					switch ev.Status {
 					case jobs.JobDone, jobs.JobFailed, jobs.JobCancelled:
 						if err := o.handleJobTerminal(listenerCtx, sid, ev); err != nil {
@@ -219,40 +212,25 @@ func (o *Orchestrator) startSessionListener(sid app.SessionID) {
 	}()
 }
 
-// WaitListenerIdle blocks until the session listener goroutine for sid has
-// finished processing all in-flight events AND the subscription channel is
-// empty (i.e. dispatchCount == 0).  Returns ctx.Err() if cancelled first.
+// WaitListenerIdle blocks until the session listener has finished processing
+// all events the scheduler has fanned out for sid.  Returns ctx.Err() if the
+// context is cancelled first.
+//
+// Implemented as a thin wrapper over Scheduler.WaitSessionDrained: the
+// scheduler tracks per-subscription pending counts (incremented before each
+// channel send, decremented when the consumer's ack callback fires after
+// processing), which closes the receive→process race window that a
+// listener-side counter alone cannot.
 //
 // The typical call sequence in a test is:
 //
-//	sched.WaitIdle(ctx)            // scheduler goroutines have all terminated
-//	orch.WaitListenerIdle(ctx, sid) // orchestrator has processed all terminal events
+//	sched.WaitIdle(ctx)            // scheduler-side: jobs all terminal/awaiting
+//	orch.WaitListenerIdle(ctx, sid) // consumer-side: events all processed
 func (o *Orchestrator) WaitListenerIdle(ctx context.Context, sid app.SessionID) error {
-	o.mu.Lock()
-	ls, ok := o.listenerStates[sid]
-	o.mu.Unlock()
-	if !ok {
-		// No listener was started for this session (no scheduler configured).
+	if o.scheduler == nil {
 		return nil
 	}
-
-	done := make(chan struct{})
-	go func() {
-		ls.mu.Lock()
-		for ls.dispatchCount > 0 {
-			ls.cond.Wait()
-		}
-		ls.mu.Unlock()
-		close(done)
-	}()
-
-	select {
-	case <-done:
-		return nil
-	case <-ctx.Done():
-		ls.cond.Broadcast()
-		return ctx.Err()
-	}
+	return o.scheduler.WaitSessionDrained(ctx, sid)
 }
 
 // stopSessionListener cancels the listener goroutine for sid (if any).

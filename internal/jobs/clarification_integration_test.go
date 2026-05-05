@@ -36,7 +36,7 @@ func TestClarificationRoundTrip(t *testing.T) {
 	sessID := app.SessionID("sess-clar-roundtrip")
 
 	// Subscribe to the session before submitting so we see every event.
-	sessCh, unsub := sched.SubscribeSession(sessID)
+	sessCh, ack, unsub := sched.SubscribeSession(sessID)
 	defer unsub()
 
 	// Handler: calls host.RequestClarification, then echoes the answer as result.
@@ -68,6 +68,7 @@ func TestClarificationRoundTrip(t *testing.T) {
 	for {
 		select {
 		case ev := <-sessCh:
+			ack()
 			if ev.JobID == jobID && ev.Status == jobs.JobAwaitingInput {
 				awaitingEv = ev
 				goto gotAwaiting
@@ -105,6 +106,7 @@ gotAwaiting:
 	for {
 		select {
 		case ev := <-sessCh:
+			ack()
 			if ev.JobID == jobID && (ev.Status == jobs.JobDone || ev.Status == jobs.JobFailed) {
 				doneEv = ev
 				goto gotDone
