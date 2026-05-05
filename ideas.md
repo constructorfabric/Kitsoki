@@ -1,5 +1,4 @@
-- add a menu mode
-- add authoring/improvement mode - add new rooms/intents/actions on the fly
+
 - add bug report mode
 - generate test from trace
 - in proposal review mode, make the input and proposal different colors from the rest of the text
@@ -13,6 +12,10 @@
 - expose oracle API so scripts can funnel their LLM usage via the standard interface instead of invoking claude -p individually, possibly bypassing configuration.  this would mean that scripts can use a generic API, and the interface can choose codex vs claude (in the future), and handle the tracing, playback and testing with a standardized mechanism.  scripts would then never use claude directly.
 - background jobs on VMs, dispatch and track, survive intermittent connectivity (dev laptop to VM w/ VPN and closed lid issues)
 - react UI
+- meta mode: ask questions or improve the story itself (replace edit mode).
+- self mode: ask questions or improve hally itself.
+- better testing for proposal mode - should work like conversation (w/ peristent convo)
+- remote job mode: monitor and control sessions on VMs
 
 ## Tech debt
 
