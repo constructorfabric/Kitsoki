@@ -695,6 +695,65 @@ func TestOracleAskWithMCP_ValidatorBlockMalformed(t *testing.T) {
 	assert.Contains(t, res.Error, "validator.max_retries")
 }
 
+// TestOracleAskWithMCP_ValidatorMaxRetriesIntegerWidths is a regression test
+// for the bug observed in PLTFRM-89912 where a YAML `max_retries: 5` arrived
+// at parseValidatorOptions as uint64 (because goccy/go-yaml's IntegerNode
+// stores positive integers as uint64) and the type switch rejected it with
+// "validator.max_retries: must be a number (got uint64)".
+//
+// The handler must accept every common Go integer width that a YAML loader
+// might produce (int, int64, uint64, float64, etc.) without erroring.
+func TestOracleAskWithMCP_ValidatorMaxRetriesIntegerWidths(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake-oneshot-mcp.sh requires bash")
+	}
+	t.Setenv(host.OracleBinEnv, fakeOneShotMCPBin(t))
+	t.Setenv("HALLY_BIN", "/usr/local/bin/hally")
+
+	dir := t.TempDir()
+	promptPath := filepath.Join(dir, "p.md")
+	require.NoError(t, os.WriteFile(promptPath, []byte(
+		`propose a fix SIMULATE_SUBMIT={"summary":"x","confidence":"high","files_changed":["a.go"]}`,
+	), 0o644))
+	schemaPath := filepath.Join(dir, "schema.json")
+	require.NoError(t, os.WriteFile(schemaPath, []byte(`{"type":"object"}`), 0o644))
+
+	cases := []struct {
+		name string
+		val  any
+	}{
+		{"int", int(5)},
+		{"int8", int8(5)},
+		{"int16", int16(5)},
+		{"int32", int32(5)},
+		{"int64", int64(5)},
+		{"uint", uint(5)},
+		{"uint8", uint8(5)},
+		{"uint16", uint16(5)},
+		{"uint32", uint32(5)},
+		{"uint64", uint64(5)}, // PLTFRM-89912 regression: goccy/go-yaml produces this
+		{"float32", float32(5)},
+		{"float64", float64(5)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			res, err := host.OracleAskWithMCPHandler(context.Background(), map[string]any{
+				"prompt_path": promptPath,
+				"schema":      schemaPath,
+				"validator": map[string]any{
+					"post_cmd":    "python3 -m bugfix verify-impl",
+					"max_retries": tc.val,
+				},
+				"output_format": "json",
+			})
+			require.NoError(t, err)
+			require.Empty(t, res.Error,
+				"max_retries of type %T (%v) should parse cleanly, got: %s",
+				tc.val, tc.val, res.Error)
+		})
+	}
+}
+
 // TestOracleAskWithMCP_ValidatorBlockArgsTemplated verifies the contract
 // with the orchestrator: by the time the handler sees post_cmd_args, any
 // `{{ world.X }}` placeholders have already been resolved (the

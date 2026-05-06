@@ -106,7 +106,28 @@ func parseValidatorOptions(args map[string]any) (validatorOptions, string) {
 	switch v := blk["max_retries"].(type) {
 	case int:
 		opts.MaxRetries = v
+	case int8:
+		opts.MaxRetries = int(v)
+	case int16:
+		opts.MaxRetries = int(v)
+	case int32:
+		opts.MaxRetries = int(v)
 	case int64:
+		opts.MaxRetries = int(v)
+	case uint:
+		opts.MaxRetries = int(v)
+	case uint8:
+		opts.MaxRetries = int(v)
+	case uint16:
+		opts.MaxRetries = int(v)
+	case uint32:
+		opts.MaxRetries = int(v)
+	case uint64:
+		// goccy/go-yaml stores positive YAML integers as uint64 in
+		// IntegerNode.Value (see ast.IntegerNode godoc: "int64 or uint64").
+		// `max_retries: 5` arrives here as uint64.
+		opts.MaxRetries = int(v)
+	case float32:
 		opts.MaxRetries = int(v)
 	case float64:
 		// YAML ints often arrive as float64 through JSON-shaped paths.
