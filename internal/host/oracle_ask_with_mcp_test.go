@@ -3,6 +3,7 @@ package host_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -547,6 +548,206 @@ func TestOracleAskWithMCP_MissingSchemaFile(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, res.Error)
 	assert.Contains(t, res.Error, "missing.json")
+}
+
+// TestOracleAskWithMCP_ValidatorBlockParsed verifies that a `validator:`
+// sub-block on the call args is forwarded to the auto-attached
+// `hally mcp-validator` argv as --post-cmd / --post-cmd-arg /
+// --post-cmd-cwd / --max-retries. The fake claude binary echoes the
+// MCP config back to us so we can assert on the rendered argv.
+func TestOracleAskWithMCP_ValidatorBlockParsed(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake-oneshot-mcp.sh requires bash")
+	}
+	t.Setenv(host.OracleBinEnv, fakeOneShotMCPBin(t))
+	t.Setenv("HALLY_BIN", "/usr/local/bin/hally")
+
+	dir := t.TempDir()
+	promptPath := filepath.Join(dir, "p.md")
+	require.NoError(t, os.WriteFile(promptPath, []byte("propose a fix"), 0o644))
+	schemaPath := filepath.Join(dir, "schema.json")
+	require.NoError(t, os.WriteFile(schemaPath, []byte(`{"type":"object"}`), 0o644))
+
+	res, err := host.OracleAskWithMCPHandler(context.Background(), map[string]any{
+		"prompt_path": promptPath,
+		"schema":      schemaPath,
+		"validator": map[string]any{
+			"post_cmd": "python3 -m bugfix verify-impl",
+			"post_cmd_args": map[string]any{
+				"ticket":   "PLTFRM-89912",
+				"worktree": "/tmp/work",
+			},
+			"post_cmd_cwd": "/tmp/loopy",
+			"max_retries": 7,
+		},
+		"output_format": "json",
+	})
+	require.NoError(t, err)
+	require.Empty(t, res.Error, "unexpected Result.Error: %s", res.Error)
+
+	parsed, ok := res.Data["stdout_json"].(map[string]any)
+	require.True(t, ok)
+	body, _ := parsed["mcp_body"].(map[string]any)
+	servers, _ := body["mcpServers"].(map[string]any)
+	v, ok := servers["validator"].(map[string]any)
+	require.True(t, ok, "validator entry missing: %v", servers)
+
+	argv, _ := v["args"].([]any)
+	// Walk argv and convert to []string so we can assert on the contents.
+	var got []string
+	for _, a := range argv {
+		got = append(got, fmt.Sprint(a))
+	}
+	// Expected argv (sorted by post_cmd_args key):
+	//   mcp-validator --schema <schema> --output <out>
+	//   --post-cmd "python3 -m bugfix verify-impl"
+	//   --post-cmd-arg ticket=PLTFRM-89912
+	//   --post-cmd-arg worktree=/tmp/work
+	//   --post-cmd-cwd /tmp/loopy
+	//   --max-retries 7
+	require.Contains(t, got, "--post-cmd")
+	require.Contains(t, got, "python3 -m bugfix verify-impl")
+	require.Contains(t, got, "--post-cmd-arg")
+	require.Contains(t, got, "ticket=PLTFRM-89912")
+	require.Contains(t, got, "worktree=/tmp/work")
+	require.Contains(t, got, "--post-cmd-cwd")
+	require.Contains(t, got, "/tmp/loopy")
+	require.Contains(t, got, "--max-retries")
+	require.Contains(t, got, "7")
+
+	// Args must be sorted: ticket=... before worktree=... so the validator
+	// sees a deterministic argv across iterations.
+	tIdx := indexOfString(got, "ticket=PLTFRM-89912")
+	wIdx := indexOfString(got, "worktree=/tmp/work")
+	require.GreaterOrEqual(t, tIdx, 0)
+	require.GreaterOrEqual(t, wIdx, 0)
+	assert.Less(t, tIdx, wIdx, "post_cmd_args entries must be argv-sorted by key")
+}
+
+// TestOracleAskWithMCP_NoValidatorBlock_BackwardCompat verifies that a
+// schema-only call (no `validator:` block) still produces an mcp-validator
+// argv that does NOT include any post-cmd / max-retries flags. This
+// guards against regressing existing rooms that don't yet use the
+// validator: block.
+func TestOracleAskWithMCP_NoValidatorBlock_BackwardCompat(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake-oneshot-mcp.sh requires bash")
+	}
+	t.Setenv(host.OracleBinEnv, fakeOneShotMCPBin(t))
+	t.Setenv("HALLY_BIN", "/usr/local/bin/hally")
+
+	dir := t.TempDir()
+	promptPath := filepath.Join(dir, "p.md")
+	require.NoError(t, os.WriteFile(promptPath, []byte("x"), 0o644))
+	schemaPath := filepath.Join(dir, "schema.json")
+	require.NoError(t, os.WriteFile(schemaPath, []byte(`{"type":"object"}`), 0o644))
+
+	res, err := host.OracleAskWithMCPHandler(context.Background(), map[string]any{
+		"prompt_path":   promptPath,
+		"schema":        schemaPath,
+		"output_format": "json",
+	})
+	require.NoError(t, err)
+	require.Empty(t, res.Error)
+
+	parsed, _ := res.Data["stdout_json"].(map[string]any)
+	body, _ := parsed["mcp_body"].(map[string]any)
+	servers, _ := body["mcpServers"].(map[string]any)
+	v, _ := servers["validator"].(map[string]any)
+	argv, _ := v["args"].([]any)
+	var got []string
+	for _, a := range argv {
+		got = append(got, fmt.Sprint(a))
+	}
+	assert.NotContains(t, got, "--post-cmd", "back-compat: no validator: block must mean no --post-cmd")
+	assert.NotContains(t, got, "--max-retries", "back-compat: no validator: block must mean no --max-retries")
+	assert.NotContains(t, got, "--post-cmd-arg")
+}
+
+// TestOracleAskWithMCP_ValidatorBlockMalformed surfaces a clean error
+// when validator.max_retries has the wrong type.
+func TestOracleAskWithMCP_ValidatorBlockMalformed(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake-oneshot-mcp.sh requires bash")
+	}
+	t.Setenv(host.OracleBinEnv, fakeOneShotMCPBin(t))
+	t.Setenv("HALLY_BIN", "/usr/local/bin/hally")
+
+	dir := t.TempDir()
+	promptPath := filepath.Join(dir, "p.md")
+	require.NoError(t, os.WriteFile(promptPath, []byte("x"), 0o644))
+	schemaPath := filepath.Join(dir, "schema.json")
+	require.NoError(t, os.WriteFile(schemaPath, []byte(`{"type":"object"}`), 0o644))
+
+	res, err := host.OracleAskWithMCPHandler(context.Background(), map[string]any{
+		"prompt_path": promptPath,
+		"schema":      schemaPath,
+		"validator": map[string]any{
+			"max_retries": "not-a-number",
+		},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, res.Error)
+	assert.Contains(t, res.Error, "validator.max_retries")
+}
+
+// TestOracleAskWithMCP_ValidatorBlockArgsTemplated verifies the contract
+// with the orchestrator: by the time the handler sees post_cmd_args, any
+// `{{ world.X }}` placeholders have already been resolved (the
+// orchestrator's RawWith re-render handles nested-map recursion). The
+// handler itself does *not* re-render — that would double-render and is
+// the orchestrator's job. We assert the documented contract by passing
+// already-resolved values and confirming they pass through unchanged.
+func TestOracleAskWithMCP_ValidatorBlockArgsTemplated(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake-oneshot-mcp.sh requires bash")
+	}
+	t.Setenv(host.OracleBinEnv, fakeOneShotMCPBin(t))
+	t.Setenv("HALLY_BIN", "/usr/local/bin/hally")
+
+	dir := t.TempDir()
+	promptPath := filepath.Join(dir, "p.md")
+	require.NoError(t, os.WriteFile(promptPath, []byte("x"), 0o644))
+	schemaPath := filepath.Join(dir, "schema.json")
+	require.NoError(t, os.WriteFile(schemaPath, []byte(`{"type":"object"}`), 0o644))
+
+	res, err := host.OracleAskWithMCPHandler(context.Background(), map[string]any{
+		"prompt_path": promptPath,
+		"schema":      schemaPath,
+		"validator": map[string]any{
+			"post_cmd": "true",
+			"post_cmd_args": map[string]any{
+				// Already resolved — orchestrator did its job up-stream.
+				"ticket":   "PLTFRM-12345",
+				"worktree": "/tmp/PLTFRM-12345-3/worktree",
+			},
+		},
+		"output_format": "json",
+	})
+	require.NoError(t, err)
+	require.Empty(t, res.Error)
+
+	parsed, _ := res.Data["stdout_json"].(map[string]any)
+	body, _ := parsed["mcp_body"].(map[string]any)
+	servers, _ := body["mcpServers"].(map[string]any)
+	v, _ := servers["validator"].(map[string]any)
+	argv, _ := v["args"].([]any)
+	var got []string
+	for _, a := range argv {
+		got = append(got, fmt.Sprint(a))
+	}
+	assert.Contains(t, got, "ticket=PLTFRM-12345")
+	assert.Contains(t, got, "worktree=/tmp/PLTFRM-12345-3/worktree")
+}
+
+// indexOfString returns the index of needle in haystack, or -1 if absent.
+func indexOfString(haystack []string, needle string) int {
+	for i, s := range haystack {
+		if s == needle {
+			return i
+		}
+	}
+	return -1
 }
 
 // TestOracleAskWithMCP_StdoutJSONParseError surfaces a parse-error sentinel

@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"hally/internal/expr"
@@ -23,13 +24,123 @@ import (
 // set it if `hally` is not the running binary's name.
 const hallyBinaryEnv = "HALLY_BIN"
 
+// validatorOptions bundles the optional validator configuration plumbed
+// through from a `validator:` sub-block on the YAML `with:` map. All
+// fields are optional; when the entire validator: block is absent the
+// caller passes a zero value and the validator runs schema-only as
+// before. Templating of post_cmd_args (`{{ world.X }}`) is handled
+// up-stream by the orchestrator's RawWith re-render machinery — by the
+// time these strings reach the handler they are already resolved.
+type validatorOptions struct {
+	// PostCmd is the verifier command (e.g. "python3 -m bugfix verify-impl").
+	// Empty = schema-only.
+	PostCmd string
+	// PostCmdArgs is an ordered list of key=value pairs forwarded to the
+	// post-cmd subprocess as `--key value`. Order is preserved so argv
+	// composition is deterministic across iterations.
+	PostCmdArgs []postCmdKV
+	// PostCmdCwd is the working directory for the verifier subprocess
+	// (relative paths resolved against HALLY_APP_DIR via resolvePromptPath).
+	// Empty = inherit hally's cwd.
+	PostCmdCwd string
+	// MaxRetries caps the inner submit-retry budget. Zero = let the
+	// validator pick its default (5).
+	MaxRetries int
+	// StateFilePath, when non-empty, is forwarded to the validator's
+	// --state-file flag. The host handler creates the path itself when
+	// running multi-iteration retry loops so counters span re-engagements.
+	StateFilePath string
+}
+
+// postCmdKV is a key/value pair forwarded as `--<key> <value>` to the
+// validator's --post-cmd subprocess.
+type postCmdKV struct {
+	Key   string
+	Value string
+}
+
+// parseValidatorOptions extracts a `validator:` sub-block from the
+// handler's call args. Returns the zero value when the block is absent,
+// or an error message when fields are present but malformed (the
+// caller surfaces these as Result.Error so on_error: can route).
+//
+// Expected YAML shape:
+//
+//	validator:
+//	  post_cmd: "python3 -m bugfix verify-impl"
+//	  post_cmd_args:
+//	    ticket: "{{ world.ticket }}"
+//	    worktree: ".bug-fix/{{ world.ticket }}/worktree"
+//	  post_cmd_cwd: "tools/loopy"
+//	  max_retries: 5
+//
+// post_cmd_args is a map; iteration order through Go maps is non-
+// deterministic but the resulting argv is sorted by key so the
+// validator subprocess sees a stable argv across iterations.
+func parseValidatorOptions(args map[string]any) (validatorOptions, string) {
+	rawBlock, ok := args["validator"]
+	if !ok || rawBlock == nil {
+		return validatorOptions{}, ""
+	}
+	blk, ok := rawBlock.(map[string]any)
+	if !ok {
+		return validatorOptions{}, "validator: must be a mapping"
+	}
+
+	var opts validatorOptions
+	if v, _ := blk["post_cmd"].(string); strings.TrimSpace(v) != "" {
+		opts.PostCmd = v
+	}
+	if v, _ := blk["post_cmd_cwd"].(string); strings.TrimSpace(v) != "" {
+		opts.PostCmdCwd = v
+	}
+	switch v := blk["max_retries"].(type) {
+	case int:
+		opts.MaxRetries = v
+	case int64:
+		opts.MaxRetries = int(v)
+	case float64:
+		// YAML ints often arrive as float64 through JSON-shaped paths.
+		opts.MaxRetries = int(v)
+	case nil:
+		// absent — leave as zero
+	default:
+		return validatorOptions{}, fmt.Sprintf("validator.max_retries: must be a number (got %T)", v)
+	}
+
+	if rawArgs, present := blk["post_cmd_args"]; present && rawArgs != nil {
+		argsMap, ok := rawArgs.(map[string]any)
+		if !ok {
+			return validatorOptions{}, "validator.post_cmd_args: must be a mapping of string→string"
+		}
+		// Sort keys so argv composition is deterministic across iterations
+		// (matters for the state-file resume path: identical claude
+		// invocations across restarts).
+		keys := make([]string, 0, len(argsMap))
+		for k := range argsMap {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			val, ok := argsMap[k].(string)
+			if !ok {
+				return validatorOptions{}, fmt.Sprintf("validator.post_cmd_args[%q]: must be a string (got %T)", k, argsMap[k])
+			}
+			opts.PostCmdArgs = append(opts.PostCmdArgs, postCmdKV{Key: k, Value: val})
+		}
+	}
+
+	return opts, ""
+}
+
 // buildValidatorMCPServer constructs an mcp_servers entry that runs
-// `hally mcp-validator --schema <abs-path> [--output <path>]`. The schema
-// path is resolved against HALLY_APP_DIR if relative, mirroring
+// `hally mcp-validator --schema <abs-path> [--output <path>]
+// [--post-cmd ... --post-cmd-arg k=v ... --max-retries N --state-file <path>]`.
+// The schema path is resolved against HALLY_APP_DIR if relative, mirroring
 // resolvePromptPath. When outputPath is non-empty the validator will
 // write each successful submit's payload to that file (atomic, last-call
 // wins) so the parent can recover the canonical JSON.
-func buildValidatorMCPServer(schemaPath, outputPath string) (map[string]any, error) {
+func buildValidatorMCPServer(schemaPath, outputPath string, opts validatorOptions) (map[string]any, error) {
 	resolved := resolvePromptPath(schemaPath)
 	if _, err := os.Stat(resolved); err != nil {
 		return nil, fmt.Errorf("schema %q not found: %w", resolved, err)
@@ -46,6 +157,22 @@ func buildValidatorMCPServer(schemaPath, outputPath string) (map[string]any, err
 	cliArgs := []any{"mcp-validator", "--schema", resolved}
 	if outputPath != "" {
 		cliArgs = append(cliArgs, "--output", outputPath)
+	}
+	if opts.PostCmd != "" {
+		cliArgs = append(cliArgs, "--post-cmd", opts.PostCmd)
+		for _, kv := range opts.PostCmdArgs {
+			cliArgs = append(cliArgs, "--post-cmd-arg", kv.Key+"="+kv.Value)
+		}
+		if opts.PostCmdCwd != "" {
+			cwd := resolvePromptPath(opts.PostCmdCwd)
+			cliArgs = append(cliArgs, "--post-cmd-cwd", cwd)
+		}
+	}
+	if opts.MaxRetries > 0 {
+		cliArgs = append(cliArgs, "--max-retries", fmt.Sprintf("%d", opts.MaxRetries))
+	}
+	if opts.StateFilePath != "" {
+		cliArgs = append(cliArgs, "--state-file", opts.StateFilePath)
 	}
 	return map[string]any{
 		"command": bin,
@@ -166,6 +293,15 @@ func OracleAskWithMCPHandler(ctx context.Context, args map[string]any) (Result, 
 		mcpServers[k] = v
 	}
 
+	// Parse the optional `validator:` sub-block. When absent the
+	// resulting validatorOptions is the zero value and the validator
+	// runs schema-only (the v0 behaviour). Errors here are user-visible
+	// (malformed YAML); surface as Result.Error so on_error: routes.
+	vopts, vparseErr := parseValidatorOptions(args)
+	if vparseErr != "" {
+		return Result{Error: fmt.Sprintf("host.oracle.ask_with_mcp: %s", vparseErr)}, nil
+	}
+
 	// validatorOutputPath is set when we auto-attach the validator. It's
 	// the path the validator subprocess writes the schema-validated payload
 	// to on each successful submit. We read it back after `claude -p` exits
@@ -188,7 +324,7 @@ func OracleAskWithMCPHandler(ctx context.Context, args map[string]any) (Result, 
 			_ = os.Remove(validatorOutputPath)
 			defer os.Remove(validatorOutputPath)
 
-			validatorEntry, vErr := buildValidatorMCPServer(schemaArg, validatorOutputPath)
+			validatorEntry, vErr := buildValidatorMCPServer(schemaArg, validatorOutputPath, vopts)
 			if vErr != nil {
 				return Result{Error: fmt.Sprintf("host.oracle.ask_with_mcp: %v", vErr)}, nil
 			}
