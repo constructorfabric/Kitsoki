@@ -200,19 +200,40 @@ func (v *ValidatorServer) Connect(ctx context.Context, t mcpsdk.Transport, opts 
 // parent process can recover the canonical payload from the tool call —
 // independent of whatever text the LLM eventually writes as its final
 // response.
+//
+// Session state is tracked across calls within a single Run(ctx): every
+// invocation increments `attempts`; a successful submit (schema-pass +
+// post-cmd-accept, when configured) increments `successfulSubmits`. Once
+// `attempts >= maxRetries` and `successfulSubmits == 0`, all subsequent
+// calls return a final-error response signalling exhaustion to the LLM.
 func (v *ValidatorServer) handleSubmit(ctx context.Context, req *mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+	v.mu.Lock()
+	// Exhaustion check before incrementing: once we've returned the
+	// "MAX RETRIES EXHAUSTED" sentinel, every subsequent call returns it
+	// too. This is the only path that does not increment `attempts`.
+	if v.maxRetries > 0 && v.attempts >= v.maxRetries && v.successfulSubmits == 0 {
+		v.mu.Unlock()
+		return errorResult(maxRetriesExhaustedMessage(v.lastError)), nil
+	}
+	v.attempts++
+	v.mu.Unlock()
+
 	raw := req.Params.Arguments
 	if len(raw) == 0 {
+		v.recordFailure("submit: no arguments provided")
 		return errorResult("submit: no arguments provided; pass the JSON payload as the tool arguments"), nil
 	}
 
 	var instance any
 	if err := json.Unmarshal(raw, &instance); err != nil {
-		return errorResult(fmt.Sprintf("submit: arguments are not valid JSON: %v", err)), nil
+		msg := fmt.Sprintf("submit: arguments are not valid JSON: %v", err)
+		v.recordFailure(msg)
+		return errorResult(msg), nil
 	}
 
 	if err := v.compiled.Validate(instance); err != nil {
 		msg := formatValidationError(err)
+		v.recordFailure(msg)
 		return errorResult(msg), nil
 	}
 
@@ -221,10 +242,13 @@ func (v *ValidatorServer) handleSubmit(ctx context.Context, req *mcpsdk.CallTool
 	// preserved (numeric precision, key order from the LLM, etc.).
 	if v.outputPath != "" {
 		if err := writeOutputAtomically(v.outputPath, raw); err != nil {
-			return errorResult(fmt.Sprintf("submit: capture validated payload: %v", err)), nil
+			msg := fmt.Sprintf("submit: capture validated payload: %v", err)
+			v.recordFailure(msg)
+			return errorResult(msg), nil
 		}
 	}
 
+	v.recordSuccess()
 	return &mcpsdk.CallToolResult{
 		Content: []mcpsdk.Content{
 			&mcpsdk.TextContent{
@@ -233,6 +257,36 @@ func (v *ValidatorServer) handleSubmit(ctx context.Context, req *mcpsdk.CallTool
 			},
 		},
 	}, nil
+}
+
+// recordSuccess increments successfulSubmits under the lock.
+func (v *ValidatorServer) recordSuccess() {
+	v.mu.Lock()
+	v.successfulSubmits++
+	v.lastError = ""
+	v.mu.Unlock()
+}
+
+// recordFailure stores the most recent rejection reason so subsequent
+// "max retries exhausted" responses can echo it for diagnostics.
+func (v *ValidatorServer) recordFailure(reason string) {
+	v.mu.Lock()
+	v.lastError = reason
+	v.mu.Unlock()
+}
+
+// maxRetriesExhaustedMessage is the LLM-facing sentinel returned once the
+// session has burned through its retry budget. The text is deliberately
+// blunt so the LLM stops trying; the orchestrator decides what to do via
+// Outcome().
+func maxRetriesExhaustedMessage(lastErr string) string {
+	msg := "submit: MAX RETRIES EXHAUSTED — the validator has rejected too many " +
+		"submissions and will not accept more. The orchestrator will route this phase " +
+		"to its error state."
+	if strings.TrimSpace(lastErr) != "" {
+		msg += "\n\nLast rejection reason:\n" + lastErr
+	}
+	return msg
 }
 
 // writeOutputAtomically writes data to path via a temp file + rename, so
