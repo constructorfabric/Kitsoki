@@ -1,0 +1,176 @@
+# Transports & Sessions
+
+A **transport** is an output adapter onto an external surface. The TUI
+transcript is one transport; Jira ticket comments are another (and a
+Bitbucket transport is on the roadmap). The same room — state graph,
+intents, phases, checkpoints — works no matter which transport
+carries the conversation.
+
+A **session** is one running instance of a state machine for one app.
+Sessions are persistent and are addressed two ways:
+
+- by **session ID** — an internal ULID; the canonical key.
+- by **external key** — `transport:thread`, e.g. `jira:PLTFRM-12345`,
+  `tui:<uuid>`. The `(transport, thread)` index in the store makes
+  singleton lookup cheap, and the session writer lock guarantees
+  serial execution.
+
+This is what makes hally usable as the conversation engine behind a
+comment-thread bot.
+
+---
+
+## 1. The Transport interface
+
+```go
+type Transport interface {
+    ID() string                           // "tui", "jira", "bitbucket", …
+    Post(ctx, key SessionKey, msg Message) (string, error)
+    Close() error
+}
+```
+
+`SessionKey` is `(Transport, Thread)`. `Message` carries `PhaseID`,
+`Title`, `Body`, `Attachments`, and a `BotMarker` (default `"[hally]"`)
+that polling external drivers use to filter their own output.
+
+The interface is deliberately output-only in v1. Inbound events come
+in via `cmd/hally session continue` — an external driver (today
+`loop.py`) handles polling and posts each new comment as a session
+turn. Webhooks are a future inbound surface.
+
+Source: [`internal/transport/transport.go`](../internal/transport/transport.go).
+
+---
+
+## 2. Built-in transports
+
+| ID | Implementation | Notes |
+|---|---|---|
+| `tui` | `internal/transport/tui_transport.go` | Local mirror of the transcript pane. Used by `hally run`. |
+| `jira` | `internal/transport/jira_transport.go` | Posts via the Jira REST API. Uses `internal/transport/jira_markdown.go` to convert Markdown → Jira wiki markup. De-dups by `PhaseID` so re-running a phase doesn't double-post. |
+| `bitbucket` | *not yet implemented* | Targeted by the bug-fix-room proposal; a session can already be keyed by `bitbucket:<thread>` for migration. |
+
+Each implementation reads its config (URL, auth, default account) from
+environment variables; see the source file's package comment for the
+exact list.
+
+To add another transport, see
+[`developer-guide.md` §5.3](developer-guide.md#53-adding-a-new-transport).
+
+---
+
+## 3. Posting from a state machine
+
+Use `host.transport.post` from inside an effect:
+
+```yaml
+hosts:
+  - host.transport.post
+
+effects:
+  - invoke: host.transport.post
+    with:
+      transport: "{{ world.transport }}"
+      thread:    "{{ world.thread }}"
+      phase_id:  "phase_a"
+      title:     "Phase A complete"
+      body:      "Result: {{ world.result }}"
+```
+
+This is the path used by phase templates — the template substitutes
+`{{ tpl.id }}` into `phase_id:` so every instantiation gets a unique,
+de-duppable ID.
+
+The TUI transport is special-cased: when `hally run` is in the
+foreground, the orchestrator renders the new state's `view:` template
+into the TUI transcript pane every turn. External transports
+(`jira`, future `bitbucket`) are explicit — only fired by
+`host.transport.post` invocations declared in the app's effects.
+
+---
+
+## 4. Sessions keyed by transport
+
+```sh
+# Create a session keyed by an external thread.
+hally session create --app app.yaml --key jira:PLTFRM-12345
+
+# Drive one turn from the outside.
+hally session continue --app app.yaml --key jira:PLTFRM-12345 \
+    --raw "Looks good. Continue."
+
+# Or with a structured intent.
+hally session continue --app app.yaml --key jira:PLTFRM-12345 \
+    --intent continue --slots '{}'
+
+# Inspect.
+hally session show --app app.yaml --key jira:PLTFRM-12345
+
+# Rebind: attach an additional external key to the same session.
+hally session bind-key --app app.yaml --id <session-id> \
+    --key bitbucket:DBI/repo/pulls/42
+```
+
+Exit codes for `hally session continue`:
+
+| Code | Meaning |
+|---|---|
+| 0 | Turn applied. |
+| 1 | Generic error (parse, validation, host failure). |
+| 75 | `EX_TEMPFAIL` — another process holds the writer lock. Back off and retry. |
+
+External drivers (`loop.py`, future webhook receivers) treat 75 as a
+"come back later" signal — exactly the contract Postfix and other Unix
+tools use for the same reason.
+
+---
+
+## 5. Phases that pause for an external reply
+
+The phase-template `checkpoint:` flag marks a phase as one that
+*waits* for an inbound reply before advancing. After the executing
+state posts its message, the phase moves to `<id>_awaiting_reply` —
+where the only intents available are the **checkpoint intents**
+declared at the top level:
+
+```yaml
+checkpoint_intents:
+  continue:
+    description: "Approve this phase and advance."
+  refine:
+    description: "Re-run this phase with feedback."
+```
+
+When a comment arrives via `hally session continue`, the harness
+translates it into one of those intents and the phase resumes.
+This is how a single-process hally instance can host a multi-day
+conversation across a handful of Jira tickets.
+
+---
+
+## 6. Bot output filtering
+
+When hally posts to Jira via `host.transport.post`, the Body is
+prepended with `BotMarker` (default `[hally]`). Polling external
+drivers — anything that fetches the comment thread and feeds new
+comments back into hally — must filter on the marker so they don't
+echo hally's own output back as user input.
+
+This is the single most-bitten gotcha when wiring up an external
+transport. The marker is configurable per-transport in `app.yaml`;
+when you change it, also change the corresponding filter in the
+external driver.
+
+---
+
+## 7. Pointers
+
+- Source: [`internal/transport/`](../internal/transport/).
+- Session store: [`internal/store/`](../internal/store/) and
+  [`internal/store/external_keys.go`](../internal/store/external_keys.go).
+- The `loop.py` external driver lives in a separate repo and is the
+  reference inbound poller; check the bug-fix-room proposal in
+  [`docs/proposals/bugfix-room-proposal.md`](proposals/bugfix-room-proposal.md)
+  for the full design.
+- CLI reference: `hally session --help`, `hally chat --help`.

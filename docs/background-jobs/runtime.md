@@ -4,54 +4,44 @@ How the background-jobs subsystem is wired together.
 
 ## Component diagram
 
-```
-YAML author
-  background: true
-        │
-        ▼
-machine.HostInvocation{Background: true, OnComplete: [...]}
-        │
-        ▼  (orchestrator.dispatchHostCalls detects Background flag)
-orchestrator.dispatchBackground(ctx, sid, state, hc, world)
-  ├─ serialises hc.OnComplete → Payload["__on_complete"] (JSON)
-  ├─ calls scheduler.Submit(JobSpec{Handler: hosts.Invoke(...)})
-  ├─ binds JobID → world.last_job_id (or custom key)
-  ├─ appends JobSubmitted event to event log
-  └─ posts info notification → jobs table
+```mermaid
+flowchart TD
+    YAML["YAML author<br/>background: true"]
+    HOSTINVOKE["machine.HostInvocation<br/>{Background: true, OnComplete: [...]}"]
 
-        ┌── handler goroutine ───────────────────────────────────┐
-        │  spec.Handler(jobCtx, argsWithID)                      │
-        │    ├─ host.JobContext injected in ctx                   │
-        │    ├─ clock.Clock injected in ctx (for poll loops)      │
-        │    └─ (optional) host.RequestClarification(ctx, schema) │
-        │         ├─ JobStore.RequestClarificationAny → DB write  │
-        │         ├─ scheduler.Awaiting → JobAwaitingInput event  │
-        │         └─ polls AnswerClarificationRaw every 200 ms    │
-        └────────────────────────────────────────────────────────┘
-                                 │
-                                 ▼ handler returns (Result, error)
-        scheduler fans out terminal JobEvent on:
-          ├─ per-job subscriber channel
-          └─ per-session subscriber channel (capacity 16)
+    subgraph dispatch["orchestrator.dispatchBackground"]
+        D1["serialise hc.OnComplete → Payload['__on_complete']"]
+        D2["scheduler.Submit(JobSpec)"]
+        D3["bind JobID → world.last_job_id"]
+        D4["append JobSubmitted event"]
+        D5["post info notification"]
+    end
 
-        ┌── session listener goroutine (one per session) ─────────┐
-        │  receives ev from SubscribeSession channel               │
-        │  ev.Status == done|failed|cancelled                      │
-        │    → orchestrator.handleJobTerminal(ctx, sid, ev)        │
-        │         ├─ loadJourney(sid) — replay event log           │
-        │         ├─ recover on_complete from Payload["__on_complete"]
-        │         ├─ set world.last_job_id/status/result           │
-        │         ├─ RunEffects(on_complete) → effect events       │
-        │         ├─ dispatchHostCalls(foreground host calls)       │
-        │         ├─ append JobCompleted event                      │
-        │         ├─ inbox.RefreshSummary → EffectApplied($inbox)   │
-        │         ├─ append TurnEnded{outcome: background_completion}
-        │         └─ inbox.PostJobNotification (success/error/warn)│
-        │  ev.Status == awaiting_input                             │
-        │    → orchestrator.handleJobAwaitingInput(ctx, sid, ev)   │
-        │         ├─ loads clarification schema from DB            │
-        │         └─ posts action_required notification            │
-        └──────────────────────────────────────────────────────────┘
+    subgraph handler["handler goroutine"]
+        H1["spec.Handler(jobCtx, args)"]
+        H2["host.JobContext + clock.Clock injected"]
+        H3["optional: host.RequestClarification(schema)<br/>writes DB · scheduler.Awaiting<br/>polls AnswerClarificationRaw every 200ms"]
+        H1 --> H2 --> H3
+    end
+
+    subgraph fanout["scheduler fan-out"]
+        F1["per-job subscriber channel"]
+        F2["per-session subscriber channel (cap 16)"]
+    end
+
+    subgraph listener["session listener goroutine"]
+        L1{"ev.Status"}
+        L2["handleJobTerminal:<br/>loadJourney · restore on_complete<br/>set world.last_job_id/status/result<br/>RunEffects · dispatchHostCalls<br/>append JobCompleted · refresh inbox<br/>append TurnEnded · post notification"]
+        L3["handleJobAwaitingInput:<br/>load clarification schema<br/>post action_required notification"]
+        L1 -- "done / failed / cancelled" --> L2
+        L1 -- "awaiting_input" --> L3
+    end
+
+    YAML --> HOSTINVOKE
+    HOSTINVOKE --> dispatch
+    dispatch --> handler
+    handler -- "Result, error" --> fanout
+    fanout --> listener
 ```
 
 ## Persistence model

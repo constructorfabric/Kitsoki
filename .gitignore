@@ -23,3 +23,7 @@ coverage.html
 
 # Build output
 dist/
+
+# Generated visualisations from `hally viz`
+*-viz.dot
+*-viz.mmd

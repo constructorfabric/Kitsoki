@@ -1,233 +1,136 @@
 # hally
 
-Hally is a deterministic LLM orchestrator: a CLI tool that lets a human drive a
-structured application with free-text input. The LLM translates natural language
-into a finite alphabet of intents defined by the application author; a pure Go
-state machine decides what happens next.
+A deterministic conversation engine. The user (or an external
+orchestrator) drives a finite-state application with free text; an LLM
+is used only to translate that text into one of a finite alphabet of
+intents declared by the application author. Every transition, every
+guard, every world mutation is in YAML. No hallucinated flags. No
+out-of-state actions.
 
-**Free-text in, deterministic transitions out.** No hallucinated flags, no
-out-of-state actions, no surprise mutations. Every transition, guard, and world
-effect is declared by the author in YAML.
-
-Full design: [`design.md`](design.md).
-
-Background jobs (long-running handlers, inbox notifications, clarification
-mid-flight): [`docs/background-jobs/`](docs/background-jobs/README.md).
-
-Persistent chats (multi-thread agent rooms with transcripts, forks, and a
-singleton lock so the TUI and orchestrators don't race): the `host.chat.*`
-built-ins, the chat-aware `host.oracle.{talk,ask_with_mcp}` paths, and the
-`hally chat list|new|continue|show|fork|archive|unlock` CLI surface.
-
-## Status
-
-**PoC — Stage 7 of 7 complete.** All core features are implemented:
-working TUI, Cloak of Darkness demo, Mode 1/2 test runners, DOT visualizer.
-
-## Quickstart
+**Free-text in, deterministic transitions out.**
 
 ```sh
 go build -o hally ./cmd/hally
-
-# Play Cloak of Darkness — hally auto-selects the harness:
-#   • If `claude` CLI is installed and logged in → uses ClaudeCLIHarness (no API key needed)
-#   • Else if ANTHROPIC_API_KEY is set           → uses LiveHarness (direct SDK)
-#   • Else                                       → needs --harness replay + --oracle
 ./hally run testdata/apps/cloak/app.yaml
+```
 
-# Explicitly use the claude CLI harness (recommended):
+## What hally is good for
+
+- Building a structured CLI/TUI that accepts natural language without
+  giving up on determinism.
+- Hosting one conversation per session across many surfaces — local
+  TUI, Jira ticket comments, Bitbucket PR comments — with a shared
+  state machine driving all of them.
+- Long-running background work (LLM calls, builds) that pauses for a
+  human reply and resumes, all from declarative YAML.
+- Replayable, testable, demo-able LLM-driven flows. Mode 2 flow tests
+  run with zero LLM cost and exit non-zero on regression.
+
+It is **not** a chat agent. The LLM has no latitude to invent actions
+outside the intent alphabet you declare.
+
+## Quickstart
+
+### 1. Build
+
+```sh
+go build -o hally ./cmd/hally
+```
+
+Requires Go 1.25+. Single static binary; no CGO, no system libraries.
+
+### 2. Pick a harness
+
+`hally run` auto-selects:
+
+| Available | Harness | What |
+|---|---|---|
+| `claude` CLI on `PATH` | `claude` | Shells out to `claude -p` using your existing Claude Code login. **Default.** |
+| `ANTHROPIC_API_KEY` set | `live` | Direct Anthropic SDK calls. |
+| Neither | `replay` | Deterministic; needs an `--oracle` YAML. |
+
+Force one:
+
+```sh
 ./hally run testdata/apps/cloak/app.yaml --harness claude
-
-# Use the replay harness (deterministic, no LLM, requires oracle):
-./hally run testdata/apps/cloak/app.yaml \
-    --harness replay \
-    --oracle testdata/apps/cloak/oracle.yaml
-
-# Run Mode 2 flow tests (deterministic, no LLM, no cost)
-./hally test flows testdata/apps/cloak/app.yaml
-
-# Run Mode 1 intent tests (static harness — no LLM in PoC)
-./hally test intents testdata/apps/cloak/app.yaml --harness static
-
-# Emit a DOT graph of the app
-./hally viz testdata/apps/cloak/app.yaml
-dot -Tpng cloak-of-darkness-viz.dot -o graph.png
-```
-
-## Authentication
-
-### Using Claude Code login (default)
-
-If you have the `claude` CLI installed and are logged in (`claude login`), hally
-uses it automatically via `claude -p`. No `ANTHROPIC_API_KEY` is needed. The
-model and auth come from your standard Claude Code login. This is the default
-when `claude` is on your `PATH`.
-
-```sh
-# No setup needed beyond having Claude Code installed and logged in:
-./hally run testdata/apps/cloak/app.yaml
-```
-
-### Using the Anthropic API directly
-
-Set `ANTHROPIC_API_KEY` to use the SDK directly and bypass the Claude CLI:
-
-```sh
-export ANTHROPIC_API_KEY=sk-ant-...
 ./hally run testdata/apps/cloak/app.yaml --harness live
-```
-
-### Static / offline (no LLM)
-
-Use `--harness static` (for `hally test intents`) or `--harness replay` (for
-`hally run`) to run fully deterministically without any LLM calls:
-
-```sh
 ./hally run testdata/apps/cloak/app.yaml \
     --harness replay --oracle testdata/apps/cloak/oracle.yaml
-./hally test intents testdata/apps/cloak/app.yaml --harness static
 ```
 
-## Cloak of Darkness demo
-
-The demo app (`testdata/apps/cloak/app.yaml`) is the "hello world" of
-interactive fiction — three rooms, a velvet cloak, and a win/lose ending
-determined by how many times you bumbled around in the dark.
-
-```
-demo/cloak.tape   — VHS tape for recording the demo GIF
-demo/cloak.gif    — rendered GIF (generate with: vhs demo/cloak.tape)
-```
-
-VHS (`charmbracelet/vhs`) is required to generate the GIF. It was not
-installed on the build machine; the `.tape` file is checked in instead.
-Install VHS with: `go install github.com/charmbracelet/vhs@latest`
-(also requires ffmpeg and chromium).
-
-## Testing
-
-Hally has two test modes:
-
-### Mode 2: Deterministic flow tests (no LLM)
+### 3. Play
 
 ```sh
-hally test flows <app.yaml> [--flows <glob>] [--oracle <path>] [--json <out>]
+./hally run testdata/apps/cloak/app.yaml
 ```
 
-- Zero cost, runs on every PR.
-- Each fixture is a YAML file (`test_kind: flow`) with a sequence of turns
-  and per-turn assertions (`expect_state`, `expect_world`, `expect_view_matches`, etc.).
-- Uses a replay oracle for `input:`-based turns; or structured `intent:` blocks
-  that bypass the oracle entirely.
+The TUI opens with a transcript pane, action menu, and inbox panel.
+Type free text or pick an action. Sessions persist in
+`$XDG_DATA_HOME/hally/sessions.db`.
 
-Example:
+### 4. Test
 
 ```sh
-hally test flows testdata/apps/cloak/app.yaml
-# Summary: 3/3 flows pass
+./hally test flows testdata/apps/cloak/app.yaml          # deterministic, no LLM
+./hally test intents testdata/apps/cloak/app.yaml \      # intent pass-rate (free w/ Claude Code)
+    --harness static
 ```
 
-### Mode 1: Intent pass-rate tests (LLM or static harness)
+### 5. Visualise
 
 ```sh
-hally test intents <app.yaml> [--harness live|static] [--runs N] \
-    [--dry-run] [--only <state>] [--emit-oracle <path>] [--baseline <path>]
+./hally viz testdata/apps/cloak/app.yaml | dot -Tpng -o /tmp/cloak.png
+./hally viz testdata/apps/cloak/app.yaml --mermaid > /tmp/cloak.mmd
 ```
 
-- Measures how reliably the LLM maps user phrasings to the correct intents.
-- Default harness: `static` (seeded from oracle, no LLM calls) when
-  `ANTHROPIC_API_KEY` is not set; `live` otherwise.
-- `--emit-oracle` compiles majority-vote results into a replay oracle for Mode 2.
+## Documentation
 
-Example:
+| Doc | What |
+|---|---|
+| **[`docs/architecture.md`](docs/architecture.md)** | Layers, packages, data flow, persistence model, conversation surfaces. |
+| **[`docs/state-machine.md`](docs/state-machine.md)** | Rooms, phases, states, intents, slots, world, guards, the turn loop. The directed cyclic graph in detail. |
+| **[`docs/authoring.md`](docs/authoring.md)** | How to write an `app.yaml`. Patterns, scaling-up, pitfalls. |
+| **[`docs/developer-guide.md`](docs/developer-guide.md)** | For contributors: build, test, debug, add features. |
+| **[`docs/testing.md`](docs/testing.md)** | Mode 1 (intent pass-rate) and Mode 2 (deterministic flow) tests. |
+| **[`docs/hosts.md`](docs/hosts.md)** | Every built-in `host.*` handler with input/output contracts. |
+| **[`docs/transports.md`](docs/transports.md)** | TUI / Jira / Bitbucket transports; sessions keyed by external thread. |
+| **[`docs/background-jobs/`](docs/background-jobs/README.md)** | Long-running handlers, notifications, clarifications. |
+| `hally docs llm-guide` | Embedded operator manual aimed at an LLM driving hally. |
+| `hally docs app-schema` | Authoritative `app.yaml` schema reference. |
+| **[`design.md`](design.md)** | Long-form design rationale (~2000 lines). |
 
-```sh
-hally test intents testdata/apps/cloak/app.yaml --harness static
-# Summary: 15/15 fixtures pass
-```
-
-## Demo recording (`hally record`)
-
-`hally record` replays a deterministic flow through the state machine and
-encodes each state's view as an animated GIF.  The same flow YAML that drives
-`hally test flows` also drives `hally record` — one source of truth.
-
-```sh
-hally record <app.yaml> --flow <flow.yaml|dir> [-o out.gif] [flags]
-```
-
-### Flags
-
-| Flag | Default | Meaning |
-|---|---|---|
-| `--flow` | (required) | flow YAML file or directory |
-| `-o` / `--out` | `<flow>.gif` | output path |
-| `--width` | 2560 | frame width px |
-| `--height` | 1800 | frame height px |
-| `--theme` | molokai | `molokai`, `dracula`, or `light` |
-| `--frame-ms` | 2500 | how long each frame shows (ms) |
-| `--settle-ms` | 1500 | pause after each frame (ms) |
-| `--oracle` | (optional) | oracle YAML for `input:` turns |
-
-### Example
-
-```sh
-# Record the cloak-of-darkness winning path:
-hally record testdata/apps/cloak/app.yaml \
-  --flow testdata/apps/cloak/flows/winning.yaml \
-  -o /tmp/cloak-win.gif
-
-# Record all flows in a directory:
-hally record myapp.yaml --flow myapp/flows/ -o demo.gif --theme dracula
-```
-
-### Rasterisation
-
-Path B (minimal deps): `golang.org/x/image/font/basicfont` at 2× scale draws
-monospace text onto an RGBA canvas.  ANSI escapes in view templates are stripped
-before rendering.  Output is byte-reproducible: same flow + same flags = same
-GIF bytes.
-
-### vs. VHS
-
-| | VHS | hally record |
-|---|---|---|
-| Source of truth | `.tape` + `oracle.yaml` (two files) | single flow YAML |
-| External deps | vhs, ttyd, ffmpeg | none |
-| Font/timing variance | yes | no |
-| Also runs as test | no | yes (`hally test flows`) |
-
-## Package layout
+## Project layout
 
 ```
 hally/
-  cmd/hally/            CLI entrypoint (cobra: run, viz, trace, replay, test, serve)
-  internal/
-    app/                YAML loader, types, schema validation
-    machine/            Pure state machine (XState-flavored, compound states)
-    intent/             IntentCall, ValidationError, error-code enum
-    expr/               expr-lang/expr wrapper + AST whitelist
-    world/              Typed world snapshot
-    store/              Event store + snapshots (modernc.org/sqlite, pure-Go)
-    mcp/                MCP server (modelcontextprotocol/go-sdk v1)
-    harness/            Live / Replay / Recording harness implementations
-    tui/                Bubble Tea TUI (bubbletea + lipgloss + huh + glamour)
-    viz/                Graphviz DOT exporter (emicklei/dot)
-    testrunner/         Mode 1 + Mode 2 test runners + StaticHarness
-    trace/              Replay + diff
-  pkg/hallytest/        Public testing helpers for app authors
-  demo/                 VHS tape + GIF
-  testdata/             App definitions, flow fixtures, intent fixtures, oracle
+├── cmd/hally/             CLI: run, serve, viz, trace, replay, test,
+│                          record, session, chat, inspect, turn, render,
+│                          mcp-validator, docs, version
+├── internal/              platform packages — see docs/architecture.md
+├── pkg/hallytest/         public testing helpers for app authors
+├── docs/                  narrative documentation
+├── testdata/apps/         example apps: cloak, dev-story,
+│                          background_jobs, proposal_smoke
+├── demo/                  VHS tapes and recorded GIFs
+├── design.md              long-form design
+├── ideas.md               working notes / backlog
+└── README.md              you are here
 ```
 
-## Build
+## Status
 
-Requires Go 1.25+. Single static binary; no CGO, no external runtime.
+PoC. The core platform is stable: orchestrator, state machine, harness
+abstraction, persistent SQLite store, MCP server, multi-transport
+output, background jobs with mid-flight clarifications, persistent
+chat threads, virtual clock, deterministic flow tests, intent
+pass-rate tests, hot-reload edit mode in the TUI. All four example
+apps under `testdata/apps/` have green flow tests; `go test ./...`
+finishes in under 10 seconds.
 
-```sh
-go build ./...          # build all packages
-go vet ./...            # vet all packages
-go test ./...           # run all tests
-go test -race ./...     # run with race detector
-go mod tidy             # keep go.mod clean
-```
+The current frontier is multi-transport sessions driven from external
+orchestrators (Jira, Bitbucket); see
+[`docs/proposals/bugfix-room-proposal.md`](docs/proposals/bugfix-room-proposal.md).
+
+## License
+
+TBD.

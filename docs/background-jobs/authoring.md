@@ -191,13 +191,19 @@ states:
 
 ## Walk-through: `testdata/apps/background_jobs/app.yaml`
 
-```
-lobby ──(enter)──► running
-                     on_enter fires host.run as background job
-                     last_job_id bound synchronously
-                     job delay: 1s (simulated in tests via clock)
-                     on_complete: sets world.result = stdout
-                                  says "Job complete. Output: ..."
+```mermaid
+stateDiagram-v2
+    [*] --> lobby
+    lobby --> running: enter
+
+    state running
+    note right of running
+        on_enter fires host.run as a background job
+        last_job_id bound synchronously
+        job delay: 1s (simulated in tests via clock)
+        on_complete: sets world.result = stdout
+                     says "Job complete. Output: ..."
+    end note
 ```
 
 Full source: [`testdata/apps/background_jobs/app.yaml`](../../testdata/apps/background_jobs/app.yaml)

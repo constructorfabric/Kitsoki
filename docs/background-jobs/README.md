@@ -54,27 +54,30 @@ hally test flows testdata/apps/background_jobs/app.yaml
 
 ## Lifecycle diagram
 
-```
-App author turn                   Background goroutine (later)
-─────────────────────────────     ────────────────────────────────────────
-on_enter: effect fires
-  background: true             →  handler goroutine starts
-  bind: last_job_id set            │
-  JobSubmitted event logged        │  (optionally: RequestClarification ──►
-  info notification posted         │               awaiting_input event  ◄──
-                                   │               action_required notif   │
-                                   │               user answers ──────────►│
-                                   │               handler resumes)
-                                   │
-                                   ▼ handler returns result
-                                scheduler fans out terminal JobEvent
-                                session listener wakes
-                                  ├─ on_complete effects applied
-                                  ├─ JobCompleted event logged
-                                  ├─ $inbox refreshed
-                                  └─ success/error notification posted
-                                synthetic TurnStarted{kind: background_completion}
-                                  appended to event log
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Turn as App-author turn
+    participant Job as Background goroutine
+    participant Sched as Scheduler
+    participant Listener as Session listener
+    participant User
+
+    Turn->>Job: on_enter fires<br/>background: true<br/>bind: last_job_id
+    activate Job
+    Note over Turn: JobSubmitted event logged<br/>info notification posted
+    opt mid-flight clarification
+        Job->>Sched: RequestClarification(schema)
+        Sched->>Listener: JobAwaitingInput event
+        Listener->>User: action_required notification
+        User->>Sched: answer_clarification
+        Sched->>Job: resume with answer
+    end
+    Job-->>Sched: result (done / failed / cancelled)
+    deactivate Job
+    Sched->>Listener: terminal JobEvent
+    Listener->>Listener: apply on_complete effects<br/>log JobCompleted<br/>refresh inbox<br/>post success/error notification
+    Note over Listener: synthetic TurnStarted{kind: background_completion}<br/>appended to event log
 ```
 
 ## Files in this folder
