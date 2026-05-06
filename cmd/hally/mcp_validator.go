@@ -8,6 +8,16 @@
 //
 // Auto-attached by host.oracle.ask_with_mcp when the effect declares a
 // `schema:` arg without an `mcp_servers:` block (see oracle_ask_with_mcp.go).
+//
+// Optional `--post-cmd` plumbing layers a semantic verifier on top of the
+// schema check: after schema-pass, the validator spawns the configured
+// command with the submitted JSON as `--submitted-json <tmp>` (plus any
+// `--post-cmd-arg key=value` entries forwarded as `--key value`). A
+// non-zero exit is treated as a verifier rejection — the captured stderr
+// (ANSI-stripped, capped at 2000 chars) is returned to the LLM so it can
+// re-submit. `--max-retries` caps total submit attempts; on exhaustion the
+// validator marks the session as RetriesExhausted and the next caller can
+// route to error.
 package main
 
 import (
@@ -16,6 +26,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/spf13/cobra"
@@ -25,10 +36,14 @@ import (
 
 func mcpValidatorCmd() *cobra.Command {
 	var (
-		schemaPath  string
-		outputPath  string
-		toolName    string
-		description string
+		schemaPath   string
+		outputPath   string
+		toolName     string
+		description  string
+		postCmd      string
+		postCmdArgs  []string
+		postCmdCwd   string
+		maxRetries   int
 	)
 	cmd := &cobra.Command{
 		Use:   "mcp-validator",
@@ -71,11 +86,25 @@ The schema must be a JSON Schema object whose top-level "type" is
 				return fmt.Errorf("read schema %q: %w", abs, err)
 			}
 
+			// Parse --post-cmd-arg key=value pairs into an ordered slice.
+			parsedArgs := make([]hallymcp.PostCmdArg, 0, len(postCmdArgs))
+			for _, kv := range postCmdArgs {
+				k, v, ok := strings.Cut(kv, "=")
+				if !ok || strings.TrimSpace(k) == "" {
+					return fmt.Errorf("--post-cmd-arg %q: must be in key=value form", kv)
+				}
+				parsedArgs = append(parsedArgs, hallymcp.PostCmdArg{Key: k, Value: v})
+			}
+
 			srv, err := hallymcp.NewValidatorServer(hallymcp.ValidatorConfig{
 				SchemaJSON:      raw,
 				ToolName:        toolName,
 				ToolDescription: description,
 				OutputPath:      outputPath,
+				PostCmd:         postCmd,
+				PostCmdArgs:     parsedArgs,
+				PostCmdCwd:      postCmdCwd,
+				MaxRetries:      maxRetries,
 			})
 			if err != nil {
 				return fmt.Errorf("build validator: %w", err)
@@ -94,5 +123,16 @@ The schema must be a JSON Schema object whose top-level "type" is
 	cmd.Flags().StringVar(&toolName, "tool-name", "", `override the tool name (default: "submit")`)
 	cmd.Flags().StringVar(&description, "tool-description", "",
 		"override the tool description shown to the LLM")
+	cmd.Flags().StringVar(&postCmd, "post-cmd", "",
+		"shell-quoted command run after schema-pass (e.g. \"python3 -m bugfix verify-impl\"). "+
+			"Receives --submitted-json <tmp> plus any --post-cmd-arg key=value entries as --key value. "+
+			"Exit 0 = accept; non-zero = LLM-visible reject with stderr returned (capped at 2000 chars).")
+	cmd.Flags().StringArrayVar(&postCmdArgs, "post-cmd-arg", nil,
+		"repeatable key=value forwarded to --post-cmd as --key value (e.g. ticket=PLTFRM-89912)")
+	cmd.Flags().StringVar(&postCmdCwd, "post-cmd-cwd", "",
+		"working directory for the --post-cmd subprocess (default: hally's cwd)")
+	cmd.Flags().IntVar(&maxRetries, "max-retries", 5,
+		"max submit attempts (schema-fail + post-cmd-fail combined). On exhaustion the next call "+
+			"returns a final-error response and Run() reports OutcomeRetriesExhausted.")
 	return cmd
 }

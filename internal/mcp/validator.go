@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	jsonschema "github.com/santhosh-tekuri/jsonschema/v6"
@@ -49,6 +50,32 @@ type ValidatorServer struct {
 	// payload after `claude -p` exits — independent of whatever the model
 	// chooses to write as its final response.
 	outputPath string
+
+	// postCmd, when non-empty, is run after schema-pass to layer a
+	// semantic verifier on top of the structural check. See ValidatorConfig.
+	postCmd     string
+	postCmdArgs []PostCmdArg
+	postCmdCwd  string
+	maxRetries  int
+
+	// Session state — protected by mu. Each `submit` call mutates these;
+	// Outcome() reads them. The validator instance is shared across calls
+	// within a single Run(ctx), so this state is the source of truth for
+	// "have we successfully captured a payload yet" and "are we out of
+	// retries".
+	mu                sync.Mutex
+	attempts          int    // total submit calls (any outcome)
+	successfulSubmits int    // submits that passed schema + post-cmd
+	lastError         string // most recent rejection reason (for diagnostics)
+}
+
+// PostCmdArg is a single key/value pair forwarded to the --post-cmd
+// subprocess as `--<Key> <Value>`. The CLI parses --post-cmd-arg
+// key=value flags into a slice of these (preserving order so deterministic
+// argv composition is possible).
+type PostCmdArg struct {
+	Key   string
+	Value string
 }
 
 // ValidatorConfig configures a ValidatorServer.
@@ -64,6 +91,21 @@ type ValidatorConfig struct {
 	// host.oracle.ask_with_mcp to capture the canonical payload from the
 	// tool call rather than from the LLM's final stdout text.
 	OutputPath string
+
+	// PostCmd is the shell-quoted command run after schema-pass. Empty =
+	// schema-only validation (backwards-compatible behaviour).
+	PostCmd string
+	// PostCmdArgs are repeatable key/value pairs forwarded as
+	// --<Key> <Value>. Order is preserved.
+	PostCmdArgs []PostCmdArg
+	// PostCmdCwd is the working directory for the post-cmd subprocess.
+	// Empty = inherit hally's cwd.
+	PostCmdCwd string
+	// MaxRetries caps the total number of submit attempts (schema-fail +
+	// post-cmd-fail combined). Zero or negative is treated as the default
+	// (5). On exhaustion the validator returns a final-error response and
+	// Run() reports OutcomeRetriesExhausted.
+	MaxRetries int
 }
 
 // NewValidatorServer constructs a ValidatorServer from a raw JSON Schema.
@@ -110,12 +152,21 @@ func NewValidatorServer(cfg ValidatorConfig) (*ValidatorServer, error) {
 			"response can be a brief confirmation; you do not need to repeat the JSON."
 	}
 
+	maxRetries := cfg.MaxRetries
+	if maxRetries <= 0 {
+		maxRetries = 5
+	}
+
 	srv := &ValidatorServer{
 		schemaRaw:   append(json.RawMessage(nil), cfg.SchemaJSON...),
 		compiled:    compiled,
 		toolName:    toolName,
 		description: desc,
 		outputPath:  cfg.OutputPath,
+		postCmd:     strings.TrimSpace(cfg.PostCmd),
+		postCmdArgs: append([]PostCmdArg(nil), cfg.PostCmdArgs...),
+		postCmdCwd:  cfg.PostCmdCwd,
+		maxRetries:  maxRetries,
 	}
 
 	srv.mcpSrv = mcpsdk.NewServer(&mcpsdk.Implementation{
