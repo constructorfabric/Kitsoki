@@ -1,5 +1,5 @@
-// trace.go — implements the `hally trace` subcommand (pretty-printer for JSONL
-// trace files) and the trace-sink setup used by `hally run --trace`.
+// trace.go — implements the `kitsoki trace` subcommand (pretty-printer for JSONL
+// trace files) and the trace-sink setup used by `kitsoki run --trace`.
 package main
 
 import (
@@ -205,11 +205,11 @@ func traceCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "trace [path]",
 		Short: "Pretty-print a JSONL trace file or reconstruct from stored events",
-		Long: `Pretty-print a JSONL trace file produced by 'hally run --trace <path>'.
+		Long: `Pretty-print a JSONL trace file produced by 'kitsoki run --trace <path>'.
 
 Examples:
-  hally trace /tmp/cloak.jsonl
-  hally trace --session <id> --db sessions.db   # reconstruct from store (limited)
+  kitsoki trace /tmp/cloak.jsonl
+  kitsoki trace --session <id> --db sessions.db   # reconstruct from store (limited)
 
 If path is '-', reads from stdin.`,
 		Args: cobra.MaximumNArgs(1),
@@ -268,7 +268,7 @@ func reconstructFromDB(sessionID, dbPath string, w io.Writer) error {
 	return printSessionEvents(s, sessionID, w)
 }
 
-// ─── Trace sink setup for 'hally run' ────────────────────────────────────────
+// ─── Trace sink setup for 'kitsoki run' ────────────────────────────────────────
 
 // TraceConfig holds the parsed trace flags.
 type TraceConfig struct {

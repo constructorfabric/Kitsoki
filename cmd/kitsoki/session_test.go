@@ -16,8 +16,8 @@ func cloakAppFlag() string {
 	return filepath.Join("..", "..", "testdata", "apps", "cloak", "app.yaml")
 }
 
-// runHally executes the root cobra command in-process and returns stdout.
-func runHally(t *testing.T, args ...string) (string, error) {
+// runKitsoki executes the root cobra command in-process and returns stdout.
+func runKitsoki(t *testing.T, args ...string) (string, error) {
 	t.Helper()
 	cmd := rootForTest()
 	var out, errBuf bytes.Buffer
@@ -31,7 +31,7 @@ func runHally(t *testing.T, args ...string) (string, error) {
 
 // rootForTest mirrors main()'s root construction without calling Execute.
 func rootForTest() *cobra.Command {
-	root := &cobra.Command{Use: "hally"}
+	root := &cobra.Command{Use: "kitsoki"}
 	root.AddCommand(versionCmd())
 	root.AddCommand(sessionCmd())
 	root.AddCommand(turnCmd())
@@ -45,7 +45,7 @@ func TestSession_CreateAndShowByKey(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "sessions.db")
 
-	stdout, err := runHally(t, "session", "create",
+	stdout, err := runKitsoki(t, "session", "create",
 		"--app", cloakAppFlag(),
 		"--db", dbPath,
 		"--key", "jira:CLOAK-1",
@@ -61,7 +61,7 @@ func TestSession_CreateAndShowByKey(t *testing.T) {
 	assert.Equal(t, "CLOAK-1", created["thread"])
 
 	// Show via key.
-	stdout, err = runHally(t, "session", "show",
+	stdout, err = runKitsoki(t, "session", "show",
 		"--app", cloakAppFlag(),
 		"--db", dbPath,
 		"--key", "jira:CLOAK-1",
@@ -81,14 +81,14 @@ func TestSession_ContinueDirectIntent(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "sessions.db")
 
-	_, err := runHally(t, "session", "create",
+	_, err := runKitsoki(t, "session", "create",
 		"--app", cloakAppFlag(),
 		"--db", dbPath,
 		"--key", "jira:CLOAK-2",
 	)
 	require.NoError(t, err)
 
-	stdout, err := runHally(t, "session", "continue",
+	stdout, err := runKitsoki(t, "session", "continue",
 		"--app", cloakAppFlag(),
 		"--db", dbPath,
 		"--key", "jira:CLOAK-2",
@@ -102,7 +102,7 @@ func TestSession_ContinueDirectIntent(t *testing.T) {
 	assert.Equal(t, "cloakroom", outcome["new_state"])
 
 	// Show should reflect the new state.
-	stdout, err = runHally(t, "session", "show",
+	stdout, err = runKitsoki(t, "session", "show",
 		"--app", cloakAppFlag(),
 		"--db", dbPath,
 		"--key", "jira:CLOAK-2",
@@ -119,7 +119,7 @@ func TestSession_List(t *testing.T) {
 	dbPath := filepath.Join(dir, "sessions.db")
 
 	for _, k := range []string{"jira:A-1", "jira:A-2", "bitbucket:repo/pulls/3"} {
-		_, err := runHally(t, "session", "create",
+		_, err := runKitsoki(t, "session", "create",
 			"--app", cloakAppFlag(),
 			"--db", dbPath,
 			"--key", k,
@@ -127,7 +127,7 @@ func TestSession_List(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	stdout, err := runHally(t, "session", "list",
+	stdout, err := runKitsoki(t, "session", "list",
 		"--app", cloakAppFlag(),
 		"--db", dbPath,
 		"--transport", "jira",
@@ -138,7 +138,7 @@ func TestSession_List(t *testing.T) {
 	rows, _ := listed["sessions"].([]any)
 	assert.Len(t, rows, 2)
 
-	stdout, err = runHally(t, "session", "list",
+	stdout, err = runKitsoki(t, "session", "list",
 		"--app", cloakAppFlag(),
 		"--db", dbPath,
 	)
@@ -153,7 +153,7 @@ func TestSession_BindKey(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "sessions.db")
 
-	stdout, err := runHally(t, "session", "create",
+	stdout, err := runKitsoki(t, "session", "create",
 		"--app", cloakAppFlag(),
 		"--db", dbPath,
 		"--key", "jira:LINK-1",
@@ -164,7 +164,7 @@ func TestSession_BindKey(t *testing.T) {
 	sid, _ := created["session_id"].(string)
 	require.NotEmpty(t, sid)
 
-	_, err = runHally(t, "session", "bind-key",
+	_, err = runKitsoki(t, "session", "bind-key",
 		"--app", cloakAppFlag(),
 		"--db", dbPath,
 		"--id", sid,
@@ -173,7 +173,7 @@ func TestSession_BindKey(t *testing.T) {
 	require.NoError(t, err)
 
 	// show via the second key resolves to the same session.
-	stdout, err = runHally(t, "session", "show",
+	stdout, err = runKitsoki(t, "session", "show",
 		"--app", cloakAppFlag(),
 		"--db", dbPath,
 		"--key", "bitbucket:repo/pulls/77",

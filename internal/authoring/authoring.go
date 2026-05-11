@@ -29,8 +29,8 @@ import (
 
 	"github.com/pmezard/go-difflib/difflib"
 
-	"hally/internal/app"
-	"hally/internal/host"
+	"kitsoki/internal/app"
+	"kitsoki/internal/host"
 )
 
 //go:embed prompt.md
@@ -110,7 +110,7 @@ func Propose(ctx context.Context, appPath, proposalText string, runCtx *Context)
 		return nil, err
 	}
 
-	shadowDir, err := os.MkdirTemp("", "hally-edit-")
+	shadowDir, err := os.MkdirTemp("", "kitsoki-edit-")
 	if err != nil {
 		return nil, fmt.Errorf("authoring: mkdir shadow: %w", err)
 	}
@@ -172,7 +172,7 @@ func Propose(ctx context.Context, appPath, proposalText string, runCtx *Context)
 
 	// Validate the YAML side: load the shadow app to ensure the edit
 	// didn't break the manifest. Script/prompt edits aren't checked
-	// here — they're not hally's responsibility.
+	// here — they're not kitsoki's responsibility.
 	if _, err := app.Load(filepath.Join(shadowDir, appName)); err != nil {
 		return nil, fmt.Errorf("authoring: edit does not validate: %w", err)
 	}

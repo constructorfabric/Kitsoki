@@ -16,11 +16,11 @@ import (
 	goyaml "github.com/goccy/go-yaml"
 	"github.com/stretchr/testify/require"
 
-	"hally/internal/app"
-	"hally/internal/intent"
-	"hally/internal/machine"
-	"hally/internal/store"
-	"hally/internal/world"
+	"kitsoki/internal/app"
+	"kitsoki/internal/intent"
+	"kitsoki/internal/machine"
+	"kitsoki/internal/store"
+	"kitsoki/internal/world"
 )
 
 // ─── minimal fixture types ────────────────────────────────────────────────────

@@ -218,7 +218,7 @@ When a `host.oracle.talk` or `host.oracle.ask_with_mcp` invocation carries a
 (`orchestrator.WithChatStore(...)`), the handler runs in chat-aware mode:
 the user message and assistant reply are persisted to a transcript, the
 Claude session ID is reused across turns, and a per-chat singleton lock
-serialises concurrent drivers (TUI vs orchestrator vs `hally chat
+serialises concurrent drivers (TUI vs orchestrator vs `kitsoki chat
 continue`). The `last_job_result` payload carries `chat_id`,
 `claude_session_id`, `transcript_seq`, and `answer` (or `stdout`).
 
@@ -236,4 +236,4 @@ distinguishing it from generic "Job done: <kind>" notifications.
 - [`recipes.md`](recipes.md) — runnable patterns including the chat-aware turn.
 - [`testing.md`](testing.md) — how to test background jobs in flow fixtures.
 - [`runtime.md`](runtime.md) — how the orchestrator processes these fields at runtime.
-- [`cmd/hally/docs/app-schema.md` §Background jobs](../../cmd/hally/docs/app-schema.md#background-jobs) — field reference table.
+- [`cmd/kitsoki/docs/app-schema.md` §Background jobs](../../cmd/kitsoki/docs/app-schema.md#background-jobs) — field reference table.

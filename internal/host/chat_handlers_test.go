@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"hally/internal/chathost"
-	"hally/internal/chats"
-	"hally/internal/host"
-	"hally/internal/store"
+	"kitsoki/internal/chathost"
+	"kitsoki/internal/chats"
+	"kitsoki/internal/host"
+	"kitsoki/internal/store"
 )
 
 // realChatStoreForTest returns a host.ChatStore backed by a real chats.Store
@@ -1275,7 +1275,7 @@ func TestChatResolveRefHandler_SkipLLM(t *testing.T) {
 }
 
 func TestChatResolveRefHandler_LLMUnavailable(t *testing.T) {
-	// No HALLY_ORACLE_CLAUDE_BIN, no claude on PATH (or whatever PATH yields)
+	// No KITSOKI_ORACLE_CLAUDE_BIN, no claude on PATH (or whatever PATH yields)
 	// → llmPickChat returns (nil, "", "", nil) and we surface a no-match error.
 	// t.Setenv with empty value clears + restores cleanly via Cleanup.
 	t.Setenv(host.OracleBinEnv, "")

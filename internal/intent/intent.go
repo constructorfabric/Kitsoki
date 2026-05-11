@@ -3,7 +3,7 @@
 package intent
 
 import (
-	"hally/internal/world"
+	"kitsoki/internal/world"
 
 	// Blank import keeps santhosh-tekuri/jsonschema/v6 in go.mod after tidy.
 	_ "github.com/santhosh-tekuri/jsonschema/v6"

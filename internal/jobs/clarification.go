@@ -15,7 +15,7 @@ import (
 	"fmt"
 	"time"
 
-	"hally/internal/app"
+	"kitsoki/internal/app"
 )
 
 // ClarificationSchema describes the fields required for a clarification answer.

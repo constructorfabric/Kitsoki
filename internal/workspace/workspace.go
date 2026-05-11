@@ -26,8 +26,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"hally/internal/host"
-	"hally/internal/world"
+	"kitsoki/internal/host"
+	"kitsoki/internal/world"
 )
 
 const (

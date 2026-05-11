@@ -1,4 +1,4 @@
-// Package chats implements persistent agent-room chat threads for hally.
+// Package chats implements persistent agent-room chat threads for kitsoki.
 //
 // # Prompt-injection threat model (LLM picker)
 //
@@ -17,9 +17,9 @@
 // # Model
 //
 // A chat is a conversation thread within a room (e.g. "oracle",
-// "bugfix.phase_3"). Chats are global: they are not tied to a hally session
+// "bugfix.phase_3"). Chats are global: they are not tied to a kitsoki session
 // and survive process restarts. The same chat can be driven from the TUI,
-// from `hally chat continue`, or as a background job.
+// from `kitsoki chat continue`, or as a background job.
 //
 // Each chat row carries:
 //
@@ -32,7 +32,7 @@
 //   - status            active|paused|completed|archived
 //   - claude_session_id the Claude-side session ID for `claude -p --session-id`
 //   - parent_chat_id    set on forks (otherwise NULL)
-//   - session_id        last hally session that drove the chat (audit only)
+//   - session_id        last kitsoki session that drove the chat (audit only)
 //
 // Messages are stored in chat_messages (chat_id, seq, role, content,
 // metadata) with monotonically-increasing seq per chat, computed atomically
@@ -63,10 +63,10 @@
 // probe liveness across hosts) and same-host stale locks are reaped only
 // when both heartbeat_at is older than 30s and the owner pid is no longer
 // alive (kill -0 check). Operators have an escape hatch via
-// `hally chat unlock --force`.
+// `kitsoki chat unlock --force`.
 //
 // On lock contention the call returns ErrChatBusy. CLI wrappers (loop.py,
-// hally chat continue) translate this into exit code 75 (EX_TEMPFAIL).
+// kitsoki chat continue) translate this into exit code 75 (EX_TEMPFAIL).
 //
 // # Construction
 //

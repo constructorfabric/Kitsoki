@@ -1,19 +1,19 @@
-# Hally — LLM Operator Guide
+# Kitsoki — LLM Operator Guide
 
-This guide is written for an LLM that is driving the `hally` CLI. Read it once
-and you should be able to run, test, debug, and author hally apps without
+This guide is written for an LLM that is driving the `kitsoki` CLI. Read it once
+and you should be able to run, test, debug, and author kitsoki apps without
 guessing at flags.
 
-Companion docs (run `hally docs <topic>`):
+Companion docs (run `kitsoki docs <topic>`):
 
 - `app-schema`     — authoritative reference for `app.yaml`
-- `render-format`  — shape of the Markdown produced by `hally render`
+- `render-format`  — shape of the Markdown produced by `kitsoki render`
 - `apply-proposal` — LLM guide for implementing a prose proposal against `app.yaml`
 - `llm-guide`      — this document
 
-## 1. What hally is (one paragraph)
+## 1. What kitsoki is (one paragraph)
 
-Hally is a deterministic LLM orchestrator. An **application** is a YAML file
+Kitsoki is a deterministic LLM orchestrator. An **application** is a YAML file
 that declares a finite **state machine**: states, transitions, world variables,
 and a finite alphabet of **intents** (the only actions the user can take). At
 runtime, user free-text is sent to an LLM **harness** whose only job is to
@@ -30,24 +30,24 @@ Consequences you must internalise:
   `world` and `slots`; effects are a small declarative vocabulary (`set`,
   `increment`, `say`, `invoke`, `emit`).
 - **Everything is replayable.** Given the same app + same recording (or
-  same event log), hally produces byte-identical views. This is the whole
+  same event log), kitsoki produces byte-identical views. This is the whole
   point.
 
 ## 2. Commands at a glance
 
 ```
-hally run     <app.yaml>  [--harness ...] [--trace ...]   # interactive TUI session
-hally serve   <app.yaml>  [--db ...]                      # MCP server on stdio
-hally viz     <app.yaml>  [--out ...]                     # emit Graphviz DOT
-hally trace   <file.jsonl>                                # pretty-print a JSONL trace
-hally inspect <app.yaml>  --session-id <sid>              # JSON snapshot of a stored session
-hally turn    <app.yaml>  --state <S> (--intent | --input ...)  # one stateless turn → JSON
-hally replay  <session>                                   # (stub — not implemented)
-hally test flows   <app.yaml>  [--flows <glob>]           # Mode 2: deterministic, no LLM
-hally test intents <app.yaml>  [--harness live|static]    # Mode 1: intent pass-rate
-hally render  <app.yaml>       [-o <APP.md>]              # render Markdown docs from YAML
-hally docs    [topic]                                     # print embedded docs
-hally version
+kitsoki run     <app.yaml>  [--harness ...] [--trace ...]   # interactive TUI session
+kitsoki serve   <app.yaml>  [--db ...]                      # MCP server on stdio
+kitsoki viz     <app.yaml>  [--out ...]                     # emit Graphviz DOT
+kitsoki trace   <file.jsonl>                                # pretty-print a JSONL trace
+kitsoki inspect <app.yaml>  --session-id <sid>              # JSON snapshot of a stored session
+kitsoki turn    <app.yaml>  --state <S> (--intent | --input ...)  # one stateless turn → JSON
+kitsoki replay  <session>                                   # (stub — not implemented)
+kitsoki test flows   <app.yaml>  [--flows <glob>]           # Mode 2: deterministic, no LLM
+kitsoki test intents <app.yaml>  [--harness live|static]    # Mode 1: intent pass-rate
+kitsoki render  <app.yaml>       [-o <APP.md>]              # render Markdown docs from YAML
+kitsoki docs    [topic]                                     # print embedded docs
+kitsoki version
 ```
 
 Every subcommand supports `--help`. Flags shown below are the ones you will
@@ -55,8 +55,8 @@ actually reach for.
 
 ## 3. Picking a harness (this is the most common stumble)
 
-`hally run --harness <type>` selects the LLM backend. If `--harness` is omitted,
-hally auto-selects using this exact precedence:
+`kitsoki run --harness <type>` selects the LLM backend. If `--harness` is omitted,
+kitsoki auto-selects using this exact precedence:
 
 1. **`claude` binary on `PATH`** → `claude` harness (shells out to
    `claude -p --output-format json --model <model>`, uses existing Claude Code
@@ -87,16 +87,16 @@ a recording later to replay deterministically.
 ### 4.1 Play a demo
 
 ```sh
-hally run testdata/apps/cloak/app.yaml
+kitsoki run testdata/apps/cloak/app.yaml
 ```
 
 That's it — auto-selects the harness, opens the TUI, persists the session to
-`$XDG_DATA_HOME/hally/sessions.db`.
+`$XDG_DATA_HOME/kitsoki/sessions.db`.
 
 ### 4.2 Run deterministically (no LLM, no cost)
 
 ```sh
-hally run testdata/apps/cloak/app.yaml \
+kitsoki run testdata/apps/cloak/app.yaml \
     --harness replay \
     --recording testdata/apps/cloak/recording.yaml
 ```
@@ -104,16 +104,16 @@ hally run testdata/apps/cloak/app.yaml \
 ### 4.3 Iterate on an app with full tracing
 
 ```sh
-hally run myapp.yaml --trace /tmp/myapp.jsonl --trace-pretty -
+kitsoki run myapp.yaml --trace /tmp/myapp.jsonl --trace-pretty -
 ```
 
 `--trace` writes JSONL. `--trace-pretty` writes human-readable trace; `-`
-means stderr. Replay the JSONL later with `hally trace /tmp/myapp.jsonl`.
+means stderr. Replay the JSONL later with `kitsoki trace /tmp/myapp.jsonl`.
 
 ### 4.4 CI: deterministic flow tests (every PR)
 
 ```sh
-hally test flows <app.yaml>
+kitsoki test flows <app.yaml>
 ```
 
 Runs every `*.yaml` under `<app-dir>/flows/` against a recording. Zero
@@ -122,7 +122,7 @@ LLM calls, fast, exits non-zero on regression. See §7 for fixture shape.
 ### 4.5 Expose to an external MCP client
 
 ```sh
-hally serve <app.yaml> --db sessions.db
+kitsoki serve <app.yaml> --db sessions.db
 ```
 
 Advertises a single `transition` tool over MCP stdio. Claude Desktop or any
@@ -133,13 +133,13 @@ Without `--db`, sessions are in-memory (ephemeral).
 ### 4.6 Visualise the state graph
 
 ```sh
-hally viz <app.yaml>
+kitsoki viz <app.yaml>
 dot -Tpng <appid>-viz.dot -o graph.png
 ```
 
 ## 5. Global flags that matter
 
-`hally run` flags you will reach for:
+`kitsoki run` flags you will reach for:
 
 | Flag                    | Purpose                                                  |
 |-------------------------|----------------------------------------------------------|
@@ -147,7 +147,7 @@ dot -Tpng <appid>-viz.dot -o graph.png
 | `--claude-model <id>`   | Model for the `claude` harness (default: Haiku).         |
 | `--recording <path>`       | Recording file. Required for `--harness replay`.         |
 | `--record <path>`       | JSONL output for `--harness recording`.                  |
-| `--db <path>`           | SQLite session DB (default `$XDG_DATA_HOME/hally/`).     |
+| `--db <path>`           | SQLite session DB (default `$XDG_DATA_HOME/kitsoki/`).     |
 | `--trace <path>`        | JSONL trace. `-` = stderr.                               |
 | `--trace-pretty <path>` | Human-readable trace in parallel. `-` = stderr.          |
 | `--trace-level <lvl>`   | `debug \| info \| warn \| error` (default: debug).       |
@@ -168,7 +168,7 @@ When you are debugging why the LLM picked the "wrong" intent, grep for
 `harness.request` and `harness.response` — the prompt and the parsed tool call
 are both logged.
 
-`hally trace <file.jsonl>` pretty-prints coloured by component. `NO_COLOR=1`
+`kitsoki trace <file.jsonl>` pretty-prints coloured by component. `NO_COLOR=1`
 disables colour.
 
 `turn.done` events also carry `view_rendered` — the full pre-Glamour view
@@ -179,11 +179,11 @@ saw, grep for `turn.done` and read `view_rendered`.
 ## 6.1 Inspecting a live or stored session
 
 ```sh
-hally inspect <app.yaml> --session-id <sid> [--db <path>] [--last-turns N]
+kitsoki inspect <app.yaml> --session-id <sid> [--db <path>] [--last-turns N]
 ```
 
 Read-only JSON snapshot of a session — does not lock it, so it is safe to
-run alongside an active `hally run`. Output shape:
+run alongside an active `kitsoki run`. Output shape:
 
 ```json
 {
@@ -205,12 +205,12 @@ run alongside an active `hally run`. Output shape:
 ```
 
 Use this when the human says "something just broke" — point it at the live
-session id and read what hally thinks is going on.
+session id and read what kitsoki thinks is going on.
 
-## 6.2 One-shot stateless turns (`hally turn`)
+## 6.2 One-shot stateless turns (`kitsoki turn`)
 
 ```sh
-hally turn <app.yaml> --state <S> [--world @file.json] [--slots @file.json] \
+kitsoki turn <app.yaml> --state <S> [--world @file.json] [--slots @file.json] \
            (--intent <name> | --input "<text>")
            [--harness replay --recording <path>]
 ```
@@ -234,14 +234,14 @@ Use cases:
 
 ```sh
 # direct intent (no LLM)
-hally turn app.yaml --state cloakroom --intent hang_cloak
+kitsoki turn app.yaml --state cloakroom --intent hang_cloak
 
 # routed input via replay (against a recording)
-hally turn app.yaml --state foyer \
+kitsoki turn app.yaml --state foyer \
     --input "go west" --harness replay --recording recording.yaml
 
 # world override
-hally turn app.yaml --state cloakroom --intent look \
+kitsoki turn app.yaml --state cloakroom --intent look \
     --world '{"wearing_cloak": false}'
 ```
 
@@ -349,7 +349,7 @@ Note: a background job produces **two** notifications — an `info` notification
 when the job is submitted and a `success` or `error` notification when it
 terminates.
 
-Run: `hally test flows <app.yaml>`. Exit codes: `0` pass, `1` fail, `2` setup
+Run: `kitsoki test flows <app.yaml>`. Exit codes: `0` pass, `1` fail, `2` setup
 error.
 
 ### 7.2 Intent fixtures (Mode 1, pass-rate)
@@ -378,7 +378,7 @@ fixtures:
 Each `input` is run `runs` times; the fixture passes if ≥ `min_pass_rate` of
 runs match the expected intent/slots (or one of the expected error codes).
 
-Run: `hally test intents <app.yaml> --harness static` (seeded from a
+Run: `kitsoki test intents <app.yaml> --harness static` (seeded from a
 recording, deterministic) or `--harness live` (real LLM, costs money). Default is
 `static` unless `ANTHROPIC_API_KEY` is set.
 
@@ -408,7 +408,7 @@ returns an unknown-intent error to the machine.
 To bootstrap a recording from real LLM traffic:
 
 ```sh
-hally run myapp.yaml --harness recording --record /tmp/rec.jsonl
+kitsoki run myapp.yaml --harness recording --record /tmp/rec.jsonl
 # play through desired inputs…
 # (JSONL → recording YAML conversion is the intended workflow)
 ```
@@ -416,7 +416,7 @@ hally run myapp.yaml --harness recording --record /tmp/rec.jsonl
 Or emit from an intent-test run:
 
 ```sh
-hally test intents myapp.yaml --harness live --emit-recording recording.yaml
+kitsoki test intents myapp.yaml --harness live --emit-recording recording.yaml
 ```
 
 ## 9. Authoring apps — survival guide
@@ -424,15 +424,15 @@ hally test intents myapp.yaml --harness live --emit-recording recording.yaml
 **YAML is the source of truth.** `app.yaml` is the only file the engine
 reads. For reviewability and LLM-assisted editing:
 
-- `hally render <app.yaml> -o APP.md` produces a human-readable Markdown
+- `kitsoki render <app.yaml> -o APP.md` produces a human-readable Markdown
   document — overview, Mermaid state diagram, transition tables. One-way:
-  the Markdown never feeds back into the engine. See `hally docs
+  the Markdown never feeds back into the engine. See `kitsoki docs
   render-format` for what's in the output.
 - To change an app, the human writes a prose proposal referencing engine
   names (rooms, intents, world vars). An LLM implements the proposal
-  against `app.yaml` directly, guided by `hally docs apply-proposal`.
-  The human re-runs `hally render` to refresh the docs.
-- **In-TUI Edit mode.** While playing in `hally run`, press `Esc` and pick
+  against `app.yaml` directly, guided by `kitsoki docs apply-proposal`.
+  The human re-runs `kitsoki render` to refresh the docs.
+- **In-TUI Edit mode.** While playing in `kitsoki run`, press `Esc` and pick
   **Edit mode** to author a change without leaving the session. Type a
   free-text proposal; the TUI snapshots the story directory, runs
   `claude -p` (with full Read/Edit/Write tool access) inside the shadow
@@ -447,7 +447,7 @@ reads. For reviewability and LLM-assisted editing:
   system prompt is rebuilt as part of the reload, so the LLM router
   sees new states and intents on the very next turn.
 
-See `hally docs app-schema` for the complete YAML reference. The shortest
+See `kitsoki docs app-schema` for the complete YAML reference. The shortest
 possible mental model:
 
 ```yaml
@@ -491,14 +491,14 @@ What to remember when writing apps:
   an intent; the first matching guard wins.
 - **Background jobs** (`background: true` on an `invoke:` effect) dispatch the
   handler asynchronously and fire `on_complete:` effects in a later synthetic
-  turn. See `hally docs app-schema §Background jobs` for the lifecycle,
+  turn. See `kitsoki docs app-schema §Background jobs` for the lifecycle,
   injected world variables (`last_job_id`, `last_job_status`, `last_job_result`),
   the same-turn race, and the mid-flight clarification flow.
 
 ## 10. Error codes you will see (and how to react)
 
 From the intent validation pipeline — these appear in trace output and in
-`hally serve`'s MCP error envelope:
+`kitsoki serve`'s MCP error envelope:
 
 | Code                           | What it means                                              |
 |--------------------------------|------------------------------------------------------------|
@@ -588,7 +588,7 @@ style effects. The shape is:
    `<app-dir>/prompts/<name>.md`).
 2. The template uses `{{ args.X }}` placeholders — those map 1:1 to the
    extra keys you pass in the effect's `with:` block.
-3. At runtime, hally renders the prompt against those args and pipes it
+3. At runtime, kitsoki renders the prompt against those args and pipes it
    to `claude -p --permission-mode bypassPermissions`. Claude's final
    text message is returned as `stdout` and can be bound back into the
    world.
@@ -629,7 +629,7 @@ Notes:
 
 - **Where are prompts found?** Relative `prompt_path` values resolve
   against the directory containing `app.yaml` (set internally as
-  `HALLY_APP_DIR`). Absolute paths are used as-is.
+  `KITSOKI_APP_DIR`). Absolute paths are used as-is.
 - **What can the prompt reference?** Only `{{ args.X }}`. To surface a
   world var or slot, add it explicitly to `with:` — e.g.
   `failed_cmd: "{{ world.proposal_cmd }}"`. This keeps the prompt
@@ -663,7 +663,7 @@ Notes:
   state's `on:` map does not bind it. Either add the binding or route it via
   a parent compound state.
 - **"DB locked" error** — only one writer at a time. Do not run two
-  `hally run` invocations against the same `--db` concurrently.
+  `kitsoki run` invocations against the same `--db` concurrently.
 - **Session store gotcha** — once a session is marked `completed` or
   `abandoned`, it refuses further appends (`ErrSessionClosed`). Start a new
   session.
@@ -687,24 +687,24 @@ Default globs in test commands assume this layout. Override with `--flows` /
 |---------------------|---------------------------------------------------------------|
 | `ANTHROPIC_API_KEY` | Enables `--harness live`; also flips intent-test default.     |
 | `XDG_DATA_HOME`     | Location of default session DB.                               |
-| `NO_COLOR`          | Disables colour in `hally trace` pretty-printer.              |
+| `NO_COLOR`          | Disables colour in `kitsoki trace` pretty-printer.              |
 | `TERM=dumb`         | Also disables colour.                                         |
 
 ## 15. One-liner reference
 
 ```sh
 # Discover an app's shape without reading the YAML:
-hally viz app.yaml && dot -Tpng $(basename app.yaml .yaml)-viz.dot -o g.png
+kitsoki viz app.yaml && dot -Tpng $(basename app.yaml .yaml)-viz.dot -o g.png
 
 # Print all the docs an LLM needs:
-hally docs llm-guide
-hally docs app-schema
+kitsoki docs llm-guide
+kitsoki docs app-schema
 
 # Test, then ship:
-hally test flows   app.yaml && \
-hally test intents app.yaml --harness static && \
+kitsoki test flows   app.yaml && \
+kitsoki test intents app.yaml --harness static && \
 echo OK
 
 # Watch a session stream:
-hally run app.yaml --trace-pretty -
+kitsoki run app.yaml --trace-pretty -
 ```

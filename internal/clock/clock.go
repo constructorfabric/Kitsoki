@@ -1,4 +1,4 @@
-// Package clock provides an injectable time source for use across the hally
+// Package clock provides an injectable time source for use across the kitsoki
 // runtime.
 //
 // # When to use Real vs Fake

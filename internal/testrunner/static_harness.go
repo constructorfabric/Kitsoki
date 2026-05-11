@@ -14,7 +14,7 @@ import (
 	"github.com/goccy/go-yaml"
 	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"hally/internal/harness"
+	"kitsoki/internal/harness"
 )
 
 // staticKey is the lookup key for StaticHarness entries.

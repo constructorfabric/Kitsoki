@@ -1,6 +1,6 @@
-// docs.go — implements the `hally docs` subcommand. Markdown docs are
+// docs.go — implements the `kitsoki docs` subcommand. Markdown docs are
 // embedded at compile time so the binary is self-contained: LLMs and humans
-// can learn how to use hally directly from the CLI, no repo checkout needed.
+// can learn how to use kitsoki directly from the CLI, no repo checkout needed.
 package main
 
 import (
@@ -20,15 +20,15 @@ var docsFS embed.FS
 // docTopic is one embedded document.
 type docTopic struct {
 	Name    string // topic name (without .md, without docs/ prefix)
-	Summary string // one-line summary for `hally docs list`
+	Summary string // one-line summary for `kitsoki docs list`
 }
 
-// docTopics is the ordered catalog shown by `hally docs` and `hally docs list`.
+// docTopics is the ordered catalog shown by `kitsoki docs` and `kitsoki docs list`.
 // Keep this hand-curated so the ordering reflects "read me first → reference".
 var docTopics = []docTopic{
-	{"llm-guide", "Condensed manual for an LLM driving the hally CLI"},
+	{"llm-guide", "Condensed manual for an LLM driving the kitsoki CLI"},
 	{"app-schema", "Authoritative reference for app.yaml (all fields, validation rules)"},
-	{"render-format", "Shape of the Markdown produced by 'hally render'"},
+	{"render-format", "Shape of the Markdown produced by 'kitsoki render'"},
 	{"apply-proposal", "LLM guide for implementing a prose proposal against app.yaml"},
 }
 
@@ -36,21 +36,21 @@ func docsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "docs [topic]",
 		Short: "Print embedded documentation",
-		Long: `Print embedded documentation. The docs ship inside the hally binary so
+		Long: `Print embedded documentation. The docs ship inside the kitsoki binary so
 LLMs and humans can learn the tool without a repo checkout.
 
 Examples:
-  hally docs               # list available topics
-  hally docs list          # same
-  hally docs llm-guide     # condensed LLM operator guide
-  hally docs app-schema    # full app.yaml schema reference
-  hally docs all           # print every topic, concatenated
+  kitsoki docs               # list available topics
+  kitsoki docs list          # same
+  kitsoki docs llm-guide     # condensed LLM operator guide
+  kitsoki docs app-schema    # full app.yaml schema reference
+  kitsoki docs all           # print every topic, concatenated
 
 Pipe into a pager:
-  hally docs llm-guide | less
+  kitsoki docs llm-guide | less
 
 Or pipe into a model as context:
-  hally docs llm-guide | claude -p 'help me author a new hally app that...'`,
+  kitsoki docs llm-guide | claude -p 'help me author a new kitsoki app that...'`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 || args[0] == "list" {
@@ -67,7 +67,7 @@ Or pipe into a model as context:
 }
 
 func printDocsList(w io.Writer) error {
-	fmt.Fprintln(w, "Available topics (hally docs <topic>):")
+	fmt.Fprintln(w, "Available topics (kitsoki docs <topic>):")
 	fmt.Fprintln(w)
 	maxLen := 0
 	for _, t := range docTopics {

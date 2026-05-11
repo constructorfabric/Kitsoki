@@ -7,14 +7,14 @@ import (
 	"testing"
 )
 
-// TestRecordEndToEnd verifies the hally record pipeline end-to-end:
+// TestRecordEndToEnd verifies the kitsoki record pipeline end-to-end:
 //   - Loads the cloak-of-darkness app
 //   - Replays the "winning" flow (structured intents, no oracle needed)
 //   - Writes to a temp GIF file
 //   - Asserts the GIF is non-empty and has at least 2 frames
 func TestRecordEndToEnd(t *testing.T) {
 	// Locate testdata relative to the module root.
-	// This test runs from cmd/hally/ so we walk up two levels.
+	// This test runs from cmd/kitsoki/ so we walk up two levels.
 	appYAML := filepath.Join("..", "..", "testdata", "apps", "cloak", "app.yaml")
 	flowYAML := filepath.Join("..", "..", "testdata", "apps", "cloak", "flows", "winning.yaml")
 

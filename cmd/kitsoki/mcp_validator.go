@@ -1,4 +1,4 @@
-// mcp_validator.go — implements `hally mcp-validator --schema <path>`.
+// mcp_validator.go — implements `kitsoki mcp-validator --schema <path>`.
 //
 // Runs an MCP stdio server whose single `submit` tool validates incoming
 // JSON arguments against the schema at <path>. Used by Claude (or any
@@ -31,7 +31,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	hallymcp "hally/internal/mcp"
+	kitsokimcp "kitsoki/internal/mcp"
 )
 
 func mcpValidatorCmd() *cobra.Command {
@@ -65,7 +65,7 @@ Example claude --mcp-config entry:
   {
     "mcpServers": {
       "validator": {
-        "command": "hally",
+        "command": "kitsoki",
         "args": ["mcp-validator", "--schema", "schemas/03-fix-proposal.json"]
       }
     }
@@ -88,16 +88,16 @@ The schema must be a JSON Schema object whose top-level "type" is
 			}
 
 			// Parse --post-cmd-arg key=value pairs into an ordered slice.
-			parsedArgs := make([]hallymcp.PostCmdArg, 0, len(postCmdArgs))
+			parsedArgs := make([]kitsokimcp.PostCmdArg, 0, len(postCmdArgs))
 			for _, kv := range postCmdArgs {
 				k, v, ok := strings.Cut(kv, "=")
 				if !ok || strings.TrimSpace(k) == "" {
 					return fmt.Errorf("--post-cmd-arg %q: must be in key=value form", kv)
 				}
-				parsedArgs = append(parsedArgs, hallymcp.PostCmdArg{Key: k, Value: v})
+				parsedArgs = append(parsedArgs, kitsokimcp.PostCmdArg{Key: k, Value: v})
 			}
 
-			srv, err := hallymcp.NewValidatorServer(hallymcp.ValidatorConfig{
+			srv, err := kitsokimcp.NewValidatorServer(kitsokimcp.ValidatorConfig{
 				SchemaJSON:      raw,
 				ToolName:        toolName,
 				ToolDescription: description,
@@ -115,7 +115,7 @@ The schema must be a JSON Schema object whose top-level "type" is
 			ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 			defer cancel()
 
-			fmt.Fprintf(os.Stderr, "hally: mcp-validator stdio server (schema=%s)\n", abs)
+			fmt.Fprintf(os.Stderr, "kitsoki: mcp-validator stdio server (schema=%s)\n", abs)
 			runErr := srv.Run(ctx)
 			// Surface the outcome to stderr so an external orchestrator
 			// (one that's not using the in-process API) can observe what
@@ -124,12 +124,12 @@ The schema must be a JSON Schema object whose top-level "type" is
 			outcome := srv.Outcome()
 			attempts, successful, lastErr := srv.Stats()
 			fmt.Fprintf(os.Stderr,
-				"hally: mcp-validator outcome=%s attempts=%d successful_submits=%d last_error=%q\n",
+				"kitsoki: mcp-validator outcome=%s attempts=%d successful_submits=%d last_error=%q\n",
 				outcome, attempts, successful, lastErr)
 			if runErr != nil {
 				return runErr
 			}
-			if outcome == hallymcp.OutcomeRetriesExhausted {
+			if outcome == kitsokimcp.OutcomeRetriesExhausted {
 				return fmt.Errorf("mcp-validator: max retries exhausted (%d attempts, no successful submit)", attempts)
 			}
 			return nil
@@ -148,7 +148,7 @@ The schema must be a JSON Schema object whose top-level "type" is
 	cmd.Flags().StringArrayVar(&postCmdArgs, "post-cmd-arg", nil,
 		"repeatable key=value forwarded to --post-cmd as --key value (e.g. ticket=PLTFRM-89912)")
 	cmd.Flags().StringVar(&postCmdCwd, "post-cmd-cwd", "",
-		"working directory for the --post-cmd subprocess (default: hally's cwd)")
+		"working directory for the --post-cmd subprocess (default: kitsoki's cwd)")
 	cmd.Flags().IntVar(&maxRetries, "max-retries", 5,
 		"max submit attempts (schema-fail + post-cmd-fail combined). On exhaustion the next call "+
 			"returns a final-error response and Run() reports OutcomeRetriesExhausted.")

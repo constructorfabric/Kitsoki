@@ -1,8 +1,8 @@
 # Architecture
 
-This document describes hally as a **system** — what it is, what it
+This document describes kitsoki as a **system** — what it is, what it
 believes, and how the pieces of the model fit together. It is meant
-for someone trying to understand hally, not for someone working in
+for someone trying to understand kitsoki, not for someone working in
 the code; the implementation map at the end points to where each idea
 lives.
 
@@ -15,7 +15,7 @@ state-machine vocabulary in detail, see
 
 ## 1. The shape of the system
 
-Hally sits between two surfaces of common pain.
+Kitsoki sits between two surfaces of common pain.
 
 **Traditional CLIs** demand exact syntax. `kubectl patch deployment foo
 -p '{"spec":{"replicas":3}}' --type=merge` is unforgiving — one missing
@@ -29,7 +29,7 @@ The compensating cost is that it might also figure out something
 *adjacent* — restart pods, edit your manifest, page the on-call —
 because no surface boundary tells it not to.
 
-Hally is neither. Hally is a conversation **engine** that splits the
+Kitsoki is neither. Kitsoki is a conversation **engine** that splits the
 difference: free text in, but a declared, finite alphabet of
 **intents** decides what can happen next.
 
@@ -60,7 +60,7 @@ Three things follow:
   can only translate that into one of the verbs the current room
   exposes. If no such verb exists, the user gets told "no".
 - **The state machine is pure.** Given the same world and the same
-  intent, hally always picks the same transition. Replay is mechanical.
+  intent, kitsoki always picks the same transition. Replay is mechanical.
 - **The author is in charge.** What can happen, in what room, with
   what guards, with what effects — all of it is in YAML, all of it is
   reviewable, none of it is a surprise.
@@ -69,7 +69,7 @@ Three things follow:
 
 ## 2. The domain model
 
-Six concepts cover almost everything hally does.
+Six concepts cover almost everything kitsoki does.
 
 | Concept | What it is |
 |---|---|
@@ -182,7 +182,7 @@ trade-offs:
 | `recording` | Wraps another | Wraps another | Capture an LLM session to a recording file for later replay. |
 
 The fact that one of these modes is fully deterministic is what makes
-hally testable. The same flow YAML that drives the `replay` harness
+kitsoki testable. The same flow YAML that drives the `replay` harness
 in CI also drives the `record` command that produces a reproducible
 demo GIF. There is no "recording drift" because there is no second
 implementation to drift from.
@@ -192,7 +192,7 @@ implementation to drift from.
 ## 5. Conversations across surfaces
 
 A conversation has to live somewhere — a TUI window, a Jira ticket
-comment thread, a Bitbucket PR, a Slack thread. Hally calls each of
+comment thread, a Bitbucket PR, a Slack thread. Kitsoki calls each of
 these a **surface** (or, viewed from inside, a **transport**), and
 the same application works across all of them.
 
@@ -205,7 +205,7 @@ flowchart LR
         MCP["MCP client<br/>(Claude Desktop, etc.)"]
     end
 
-    subgraph Hally
+    subgraph Kitsoki
         S["one session<br/>per (transport, thread)"]
         APP["application<br/>state graph"]
     end
@@ -222,10 +222,10 @@ between surfaces without losing state.** A bug-fix room driven from a
 Jira ticket can be inspected from the local TUI on the developer's
 laptop; the same session ID resolves both ways. An external
 orchestrator (today `loop.py`) drives the session by feeding inbound
-comments to hally one at a time; output flows to whichever transports
+comments to kitsoki one at a time; output flows to whichever transports
 the application has wired up.
 
-This is what makes hally usable as the **conversation engine behind a
+This is what makes kitsoki usable as the **conversation engine behind a
 ticket-thread bot**. The state machine is identical; only the surface
 moves.
 
@@ -237,7 +237,7 @@ Many useful things take longer than a turn — a build, a deploy, a
 deep LLM analysis. If the conversation blocked while they ran, the
 user would either wait or give up.
 
-Hally handles this with **background jobs**. An effect marked
+Kitsoki handles this with **background jobs**. An effect marked
 `background: true` spawns a goroutine; the user gets back to the
 conversation immediately. When the job finishes, three things happen:
 
@@ -287,7 +287,7 @@ The user-facing consequences:
 
 - **Sessions survive.** Close the TUI, reopen it the next day; the
   conversation picks up where it left off. The session lives in
-  `$XDG_DATA_HOME/hally/sessions.db`.
+  `$XDG_DATA_HOME/kitsoki/sessions.db`.
 - **The transcript is real.** What the user saw on screen is
   reconstructable from the event log, byte-for-byte.
 - **Bugs are diagnosable.** When something goes wrong, an operator
@@ -305,7 +305,7 @@ happened doesn't have to be online.
 
 ## 8. Trust and authoring
 
-A hally application is one YAML file (or a tree of them via
+A kitsoki application is one YAML file (or a tree of them via
 `include:`). That YAML declares:
 
 - the **rooms** and their connections,
@@ -335,7 +335,7 @@ cycle is in-process — no checkout, no restart.
 
 ## 9. Determinism boundary (where surprise is allowed)
 
-Hally is deliberate about where non-determinism can live.
+Kitsoki is deliberate about where non-determinism can live.
 
 | Layer | Deterministic? | Notes |
 |---|---|---|
@@ -362,7 +362,7 @@ recordings — which is what makes the test pyramid possible:
 
 ## 10. Putting it together
 
-A useful summary frame: hally is what you get when you take three
+A useful summary frame: kitsoki is what you get when you take three
 things — a state-graph application engine, a structured-output LLM
 adapter, and a multi-surface conversation runtime — and decide that
 the *application author*, not the LLM, is in charge.
@@ -392,7 +392,7 @@ the operator gets a replayable log.
 ## 11. Implementation map
 
 The conceptual model above is realised by a small set of Go packages
-under `internal/`. This section is for someone working on hally
+under `internal/`. This section is for someone working on kitsoki
 itself; if you're an application author or a user, you can stop
 here and head to [`authoring.md`](authoring.md) or
 [`developer-guide.md`](developer-guide.md).
@@ -402,9 +402,9 @@ here and head to [`authoring.md`](authoring.md) or
 ```mermaid
 flowchart TD
     subgraph Surfaces["Surfaces (one or many, concurrent)"]
-        TUI["TUI<br/>cmd/hally run"]
-        MCP["MCP server<br/>cmd/hally serve"]
-        EXT["External driver<br/>cmd/hally session continue"]
+        TUI["TUI<br/>cmd/kitsoki run"]
+        MCP["MCP server<br/>cmd/kitsoki serve"]
+        EXT["External driver<br/>cmd/kitsoki session continue"]
     end
 
     subgraph Orch["Orchestrator (internal/orchestrator)"]
@@ -481,7 +481,7 @@ Surfaces:
 | Package | Purpose |
 |---|---|
 | `internal/tui` | Bubble Tea TUI. |
-| `internal/mcp` | MCP server (`hally serve`). |
+| `internal/mcp` | MCP server (`kitsoki serve`). |
 | `internal/viz` | Graphviz DOT and Mermaid emitters. |
 | `internal/trace` | Structured slog-based event tracing. |
 
@@ -491,19 +491,19 @@ Authoring & testing:
 |---|---|
 | `internal/authoring` | Edit-mode flow — shadow-copy app, run `claude -p`, diff, apply. |
 | `internal/testrunner` | Mode 1 (intent pass-rate) and Mode 2 (deterministic flow) test runners. |
-| `pkg/hallytest` | Public testing helpers for app authors. |
+| `pkg/kitsokitest` | Public testing helpers for app authors. |
 
 CLI:
 
 | Package | Purpose |
 |---|---|
-| `cmd/hally` | Cobra root + every subcommand. |
+| `cmd/kitsoki` | Cobra root + every subcommand. |
 | `cmd/devstory_loader` | One-off utility to seed a sample `dev-story` session. |
 
 ### 11.4 Persistence schema
 
 Three concerns share one SQLite file (default
-`$XDG_DATA_HOME/hally/sessions.db`):
+`$XDG_DATA_HOME/kitsoki/sessions.db`):
 
 ```
 sessions       one row per session         (id, app_id, state_path, world_json, …)
@@ -523,9 +523,9 @@ is defined in [`internal/store/event.go`](../internal/store/event.go).
 - **Trace** — `--trace file.jsonl --trace-pretty -` writes one JSON
   object per event (`turn.*`, `harness.*`, `machine.*`, `store.*`,
   `host.*`, `jobs.*`).
-- **Inspect** — `hally inspect --session-id <id>` prints a read-only
+- **Inspect** — `kitsoki inspect --session-id <id>` prints a read-only
   JSON snapshot of a stored session.
-- **Visualise** — `hally viz` emits Graphviz DOT or Mermaid.
+- **Visualise** — `kitsoki viz` emits Graphviz DOT or Mermaid.
 
 The `turn.done` events carry `view_rendered`, so a `--trace` JSONL
 file is a complete after-the-fact transcript.
@@ -535,7 +535,7 @@ file is a complete after-the-fact transcript.
 ## 12. Where to go next
 
 - **Authoring an app** → [`authoring.md`](authoring.md) and
-  `hally docs app-schema`.
+  `kitsoki docs app-schema`.
 - **State machine vocabulary** → [`state-machine.md`](state-machine.md).
 - **Building or contributing** → [`developer-guide.md`](developer-guide.md).
 - **Testing** → [`testing.md`](testing.md).

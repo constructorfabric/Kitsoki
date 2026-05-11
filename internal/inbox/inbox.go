@@ -41,9 +41,9 @@ package inbox
 import (
 	"context"
 
-	"hally/internal/app"
-	"hally/internal/jobs"
-	"hally/internal/world"
+	"kitsoki/internal/app"
+	"kitsoki/internal/jobs"
+	"kitsoki/internal/world"
 )
 
 const (

@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"hally/internal/app"
-	"hally/internal/inbox"
-	"hally/internal/store"
+	"kitsoki/internal/app"
+	"kitsoki/internal/inbox"
+	"kitsoki/internal/store"
 )
 
 // Teleport jumps the session to the given target state with the slot bag

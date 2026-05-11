@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"hally/internal/chats"
-	"hally/internal/clock"
-	"hally/internal/store"
+	"kitsoki/internal/chats"
+	"kitsoki/internal/clock"
+	"kitsoki/internal/store"
 )
 
 func openStoreForLock(t *testing.T, fake *clock.Fake) *chats.Store {
@@ -200,7 +200,7 @@ func TestLock_ErrChatBusy_ErrorsIs(t *testing.T) {
 // TestLock_ContentionTwoStores verifies that two chats.Store instances over
 // the same SQLite DB file race correctly: only one acquires the lock, the
 // other receives ErrChatBusy. Mirrors the two-process scenario when both
-// drivers happen to run inside the same OS process (e.g. a single hally
+// drivers happen to run inside the same OS process (e.g. a single kitsoki
 // binary holding the TUI connection while a goroutine drives a background
 // chat turn).
 func TestLock_ContentionTwoStores(t *testing.T) {

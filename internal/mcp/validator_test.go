@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	hallymcp "hally/internal/mcp"
+	kitsokimcp "kitsoki/internal/mcp"
 )
 
 // fixProposalSchema is a wiggum-style schema for a phase 3 "fix proposal"
@@ -37,7 +37,7 @@ var fixProposalSchema = []byte(`{
 // subprocess.
 func connectValidator(t *testing.T, schema []byte) (*mcpsdk.ClientSession, func()) {
 	t.Helper()
-	srv, err := hallymcp.NewValidatorServer(hallymcp.ValidatorConfig{SchemaJSON: schema})
+	srv, err := kitsokimcp.NewValidatorServer(kitsokimcp.ValidatorConfig{SchemaJSON: schema})
 	require.NoError(t, err)
 
 	clientT, serverT := mcpsdk.NewInMemoryTransports()
@@ -108,7 +108,7 @@ func TestValidator_WritesOutputOnSuccessfulSubmit(t *testing.T) {
 	dir := t.TempDir()
 	outPath := dir + "/captured.json"
 
-	srv, err := hallymcp.NewValidatorServer(hallymcp.ValidatorConfig{
+	srv, err := kitsokimcp.NewValidatorServer(kitsokimcp.ValidatorConfig{
 		SchemaJSON: fixProposalSchema,
 		OutputPath: outPath,
 	})
@@ -152,7 +152,7 @@ func TestValidator_DoesNotWriteOutputOnInvalidSubmit(t *testing.T) {
 	dir := t.TempDir()
 	outPath := dir + "/captured.json"
 
-	srv, err := hallymcp.NewValidatorServer(hallymcp.ValidatorConfig{
+	srv, err := kitsokimcp.NewValidatorServer(kitsokimcp.ValidatorConfig{
 		SchemaJSON: fixProposalSchema,
 		OutputPath: outPath,
 	})
@@ -187,7 +187,7 @@ func TestValidator_LastSuccessfulSubmitWins(t *testing.T) {
 	dir := t.TempDir()
 	outPath := dir + "/captured.json"
 
-	srv, err := hallymcp.NewValidatorServer(hallymcp.ValidatorConfig{
+	srv, err := kitsokimcp.NewValidatorServer(kitsokimcp.ValidatorConfig{
 		SchemaJSON: fixProposalSchema,
 		OutputPath: outPath,
 	})
@@ -292,7 +292,7 @@ func TestValidator_RejectsAdditionalProperty(t *testing.T) {
 }
 
 func TestValidator_RejectsNonObjectSchema(t *testing.T) {
-	_, err := hallymcp.NewValidatorServer(hallymcp.ValidatorConfig{
+	_, err := kitsokimcp.NewValidatorServer(kitsokimcp.ValidatorConfig{
 		SchemaJSON: []byte(`{"type": "array"}`),
 	})
 	require.Error(t, err)
@@ -357,7 +357,7 @@ func TestValidator_AcceptsValidJQL(t *testing.T) {
 }
 
 func TestValidator_CustomToolName(t *testing.T) {
-	srv, err := hallymcp.NewValidatorServer(hallymcp.ValidatorConfig{
+	srv, err := kitsokimcp.NewValidatorServer(kitsokimcp.ValidatorConfig{
 		SchemaJSON: fixProposalSchema,
 		ToolName:   "submit_phase_3",
 	})

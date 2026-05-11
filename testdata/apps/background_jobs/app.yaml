@@ -6,7 +6,7 @@
 #   - on_complete: reading last_job_result.stdout and writing world.result
 #   - answer_clarification: mid-flight clarification round-trip
 #
-# See cmd/hally/docs/app-schema.md §Background jobs for full field documentation.
+# See cmd/kitsoki/docs/app-schema.md §Background jobs for full field documentation.
 
 app:
   id: background-jobs-demo

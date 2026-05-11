@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"hally/internal/app"
+	"kitsoki/internal/app"
 )
 
 // TestPhases_LoadAndExpand verifies that phase templates expand into the

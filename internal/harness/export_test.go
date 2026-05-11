@@ -4,7 +4,7 @@ package harness
 
 import (
 	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
-	"hally/internal/app"
+	"kitsoki/internal/app"
 )
 
 // BuildStablePrefixForTest exposes buildStablePrefix for testing.

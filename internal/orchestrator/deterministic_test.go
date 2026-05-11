@@ -6,11 +6,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"hally/internal/app"
-	"hally/internal/harness"
-	"hally/internal/machine"
-	"hally/internal/orchestrator"
-	"hally/internal/store"
+	"kitsoki/internal/app"
+	"kitsoki/internal/harness"
+	"kitsoki/internal/machine"
+	"kitsoki/internal/orchestrator"
+	"kitsoki/internal/store"
 )
 
 // ─── helpers ─────────────────────────────────────────────────────────────────

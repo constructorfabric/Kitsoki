@@ -3,7 +3,7 @@ package expr_test
 import (
 	"testing"
 
-	"hally/internal/expr"
+	"kitsoki/internal/expr"
 
 	"github.com/stretchr/testify/require"
 )

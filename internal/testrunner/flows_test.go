@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"hally/internal/testrunner"
+	"kitsoki/internal/testrunner"
 )
 
 const (

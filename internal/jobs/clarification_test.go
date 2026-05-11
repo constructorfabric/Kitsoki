@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"hally/internal/jobs"
+	"kitsoki/internal/jobs"
 )
 
 func TestClarification_RequestAndAnswer(t *testing.T) {

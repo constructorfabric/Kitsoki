@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"hally/internal/clock"
+	"kitsoki/internal/clock"
 )
 
 // ─── Real clock smoke test ───────────────────────────────────────────────────

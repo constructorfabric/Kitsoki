@@ -20,18 +20,18 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	hallymcp "hally/internal/mcp"
+	kitsokimcp "kitsoki/internal/mcp"
 )
 
 // connectValidatorWithCfg wires up an in-process client+server pair like
 // connectValidator, but accepts the full ValidatorConfig so post-cmd
 // tests can drive the new flags.
-func connectValidatorWithCfg(t *testing.T, cfg hallymcp.ValidatorConfig) (*mcpsdk.ClientSession, *hallymcp.ValidatorServer, func()) {
+func connectValidatorWithCfg(t *testing.T, cfg kitsokimcp.ValidatorConfig) (*mcpsdk.ClientSession, *kitsokimcp.ValidatorServer, func()) {
 	t.Helper()
 	if cfg.SchemaJSON == nil {
 		cfg.SchemaJSON = fixProposalSchema
 	}
-	srv, err := hallymcp.NewValidatorServer(cfg)
+	srv, err := kitsokimcp.NewValidatorServer(cfg)
 	require.NoError(t, err)
 
 	clientT, serverT := mcpsdk.NewInMemoryTransports()
@@ -102,7 +102,7 @@ exit "${EXIT_CODE:-0}"
 // returns an error response. Outcome() reports Success after one good
 // submit.
 func TestValidator_SchemaOnly_BackwardsCompat(t *testing.T) {
-	cs, srv, done := connectValidatorWithCfg(t, hallymcp.ValidatorConfig{})
+	cs, srv, done := connectValidatorWithCfg(t, kitsokimcp.ValidatorConfig{})
 	defer done()
 
 	res, err := cs.CallTool(context.Background(), &mcpsdk.CallToolParams{
@@ -115,7 +115,7 @@ func TestValidator_SchemaOnly_BackwardsCompat(t *testing.T) {
 	attempts, successful, _ := srv.Stats()
 	assert.Equal(t, 1, attempts)
 	assert.Equal(t, 1, successful)
-	assert.Equal(t, hallymcp.OutcomeSuccess, srv.Outcome())
+	assert.Equal(t, kitsokimcp.OutcomeSuccess, srv.Outcome())
 }
 
 // TestValidator_SchemaPass_PostCmdAccept — schema passes, post-cmd exits 0,
@@ -124,7 +124,7 @@ func TestValidator_SchemaPass_PostCmdAccept(t *testing.T) {
 	script := writePostCmdScript(t)
 	t.Setenv("EXIT_CODE", "0")
 
-	cs, srv, done := connectValidatorWithCfg(t, hallymcp.ValidatorConfig{
+	cs, srv, done := connectValidatorWithCfg(t, kitsokimcp.ValidatorConfig{
 		PostCmd: script,
 	})
 	defer done()
@@ -139,7 +139,7 @@ func TestValidator_SchemaPass_PostCmdAccept(t *testing.T) {
 	attempts, successful, _ := srv.Stats()
 	assert.Equal(t, 1, attempts)
 	assert.Equal(t, 1, successful)
-	assert.Equal(t, hallymcp.OutcomeSuccess, srv.Outcome())
+	assert.Equal(t, kitsokimcp.OutcomeSuccess, srv.Outcome())
 }
 
 // TestValidator_SchemaPass_PostCmdReject — schema passes, post-cmd exits 1
@@ -150,7 +150,7 @@ func TestValidator_SchemaPass_PostCmdReject(t *testing.T) {
 	t.Setenv("EXIT_CODE", "1")
 	t.Setenv("STDERR_PAYLOAD", "ImplVerifier: file foo.go did not change")
 
-	cs, srv, done := connectValidatorWithCfg(t, hallymcp.ValidatorConfig{
+	cs, srv, done := connectValidatorWithCfg(t, kitsokimcp.ValidatorConfig{
 		PostCmd: script,
 	})
 	defer done()
@@ -176,7 +176,7 @@ func TestValidator_SchemaPass_PostCmdReject(t *testing.T) {
 // TestValidator_SchemaFailFirst_ThenPass — first submit fails schema,
 // second submits a valid payload. attempts == 2, successfulSubmits == 1.
 func TestValidator_SchemaFailFirst_ThenPass(t *testing.T) {
-	cs, srv, done := connectValidatorWithCfg(t, hallymcp.ValidatorConfig{})
+	cs, srv, done := connectValidatorWithCfg(t, kitsokimcp.ValidatorConfig{})
 	defer done()
 
 	r1, err := cs.CallTool(context.Background(), &mcpsdk.CallToolParams{
@@ -196,14 +196,14 @@ func TestValidator_SchemaFailFirst_ThenPass(t *testing.T) {
 	attempts, successful, _ := srv.Stats()
 	assert.Equal(t, 2, attempts)
 	assert.Equal(t, 1, successful)
-	assert.Equal(t, hallymcp.OutcomeSuccess, srv.Outcome())
+	assert.Equal(t, kitsokimcp.OutcomeSuccess, srv.Outcome())
 }
 
 // TestValidator_PostCmdRejectThenAccept — first post-cmd rejects, second
 // accepts. attempts == 2, successfulSubmits == 1.
 func TestValidator_PostCmdRejectThenAccept(t *testing.T) {
 	script := writePostCmdScript(t)
-	cs, srv, done := connectValidatorWithCfg(t, hallymcp.ValidatorConfig{
+	cs, srv, done := connectValidatorWithCfg(t, kitsokimcp.ValidatorConfig{
 		PostCmd: script,
 	})
 	defer done()
@@ -229,7 +229,7 @@ func TestValidator_PostCmdRejectThenAccept(t *testing.T) {
 	attempts, successful, _ := srv.Stats()
 	assert.Equal(t, 2, attempts)
 	assert.Equal(t, 1, successful)
-	assert.Equal(t, hallymcp.OutcomeSuccess, srv.Outcome())
+	assert.Equal(t, kitsokimcp.OutcomeSuccess, srv.Outcome())
 }
 
 // TestValidator_MaxRetriesExhausted — 5 rejections in a row, the 6th call
@@ -239,7 +239,7 @@ func TestValidator_MaxRetriesExhausted(t *testing.T) {
 	t.Setenv("EXIT_CODE", "1")
 	t.Setenv("STDERR_PAYLOAD", "always reject")
 
-	cs, srv, done := connectValidatorWithCfg(t, hallymcp.ValidatorConfig{
+	cs, srv, done := connectValidatorWithCfg(t, kitsokimcp.ValidatorConfig{
 		PostCmd:    script,
 		MaxRetries: 5,
 	})
@@ -269,7 +269,7 @@ func TestValidator_MaxRetriesExhausted(t *testing.T) {
 	attempts, successful, _ := srv.Stats()
 	assert.Equal(t, 5, attempts, "exhaustion check must NOT increment attempts on the post-exhaustion call")
 	assert.Equal(t, 0, successful)
-	assert.Equal(t, hallymcp.OutcomeRetriesExhausted, srv.Outcome())
+	assert.Equal(t, kitsokimcp.OutcomeRetriesExhausted, srv.Outcome())
 }
 
 // TestValidator_PostCmdArgsForwarded — the post-cmd subprocess sees the
@@ -281,9 +281,9 @@ func TestValidator_PostCmdArgsForwarded(t *testing.T) {
 	t.Setenv("EXIT_CODE", "0")
 	t.Setenv("ARGV_OUT", argvOut)
 
-	cs, _, done := connectValidatorWithCfg(t, hallymcp.ValidatorConfig{
+	cs, _, done := connectValidatorWithCfg(t, kitsokimcp.ValidatorConfig{
 		PostCmd: script,
-		PostCmdArgs: []hallymcp.PostCmdArg{
+		PostCmdArgs: []kitsokimcp.PostCmdArg{
 			{Key: "ticket", Value: "PLTFRM-89912"},
 			{Key: "worktree", Value: "/tmp/work"},
 		},
@@ -322,7 +322,7 @@ func TestValidator_PostCmdCwd(t *testing.T) {
 	t.Setenv("EXIT_CODE", "0")
 	t.Setenv("CWD_OUT", cwdOut)
 
-	cs, _, done := connectValidatorWithCfg(t, hallymcp.ValidatorConfig{
+	cs, _, done := connectValidatorWithCfg(t, kitsokimcp.ValidatorConfig{
 		PostCmd:    script,
 		PostCmdCwd: cwdDir,
 	})
@@ -359,7 +359,7 @@ func TestValidator_PostCmdStderrCapped(t *testing.T) {
 	t.Setenv("EXIT_CODE", "1")
 	t.Setenv("STDERR_PAYLOAD", payload)
 
-	cs, _, done := connectValidatorWithCfg(t, hallymcp.ValidatorConfig{
+	cs, _, done := connectValidatorWithCfg(t, kitsokimcp.ValidatorConfig{
 		PostCmd: script,
 	})
 	defer done()
@@ -392,7 +392,7 @@ func TestValidator_PostCmdStderrCapped(t *testing.T) {
 // state-machine semantics of Outcome don't depend on Close having
 // been observed by the validator.
 func TestValidator_AbandonedOutcome(t *testing.T) {
-	cs, srv, done := connectValidatorWithCfg(t, hallymcp.ValidatorConfig{
+	cs, srv, done := connectValidatorWithCfg(t, kitsokimcp.ValidatorConfig{
 		MaxRetries: 5,
 	})
 	defer done()
@@ -409,7 +409,7 @@ func TestValidator_AbandonedOutcome(t *testing.T) {
 	attempts, successful, _ := srv.Stats()
 	assert.Equal(t, 2, attempts)
 	assert.Equal(t, 0, successful)
-	assert.Equal(t, hallymcp.OutcomeAbandoned, srv.Outcome(),
+	assert.Equal(t, kitsokimcp.OutcomeAbandoned, srv.Outcome(),
 		"low attempt count + no success must report Abandoned")
 }
 
@@ -417,7 +417,7 @@ func TestValidator_AbandonedOutcome(t *testing.T) {
 // without ever calling submit at all. Outcome must be Abandoned (zero
 // attempts, zero successes).
 func TestValidator_AbandonedOutcome_NoCalls(t *testing.T) {
-	_, srv, done := connectValidatorWithCfg(t, hallymcp.ValidatorConfig{
+	_, srv, done := connectValidatorWithCfg(t, kitsokimcp.ValidatorConfig{
 		MaxRetries: 5,
 	})
 	defer done()
@@ -425,7 +425,7 @@ func TestValidator_AbandonedOutcome_NoCalls(t *testing.T) {
 	attempts, successful, _ := srv.Stats()
 	assert.Equal(t, 0, attempts)
 	assert.Equal(t, 0, successful)
-	assert.Equal(t, hallymcp.OutcomeAbandoned, srv.Outcome())
+	assert.Equal(t, kitsokimcp.OutcomeAbandoned, srv.Outcome())
 }
 
 // TestServerRun_OutcomeSurfaced — Outcome() is reachable via the server
@@ -433,7 +433,7 @@ func TestValidator_AbandonedOutcome_NoCalls(t *testing.T) {
 // is exercised end-to-end by the CLI itself; here we just confirm the
 // API surface that sub-task B will consume.)
 func TestServerRun_OutcomeSurfaced(t *testing.T) {
-	cs, srv, done := connectValidatorWithCfg(t, hallymcp.ValidatorConfig{})
+	cs, srv, done := connectValidatorWithCfg(t, kitsokimcp.ValidatorConfig{})
 	defer done()
 
 	_, err := cs.CallTool(context.Background(), &mcpsdk.CallToolParams{
@@ -443,7 +443,7 @@ func TestServerRun_OutcomeSurfaced(t *testing.T) {
 	require.NoError(t, err)
 
 	// Outcome() must be callable any time and reflect the latest state.
-	assert.Equal(t, hallymcp.OutcomeSuccess, srv.Outcome())
+	assert.Equal(t, kitsokimcp.OutcomeSuccess, srv.Outcome())
 	// String() round-trips for logging.
 	assert.Equal(t, "success", srv.Outcome().String())
 }
@@ -452,10 +452,10 @@ func TestServerRun_OutcomeSurfaced(t *testing.T) {
 // renders human-readable strings used in log lines and the CLI's exit
 // banner.
 func TestValidator_OutcomeStringRendering(t *testing.T) {
-	assert.Equal(t, "success", hallymcp.OutcomeSuccess.String())
-	assert.Equal(t, "retries_exhausted", hallymcp.OutcomeRetriesExhausted.String())
-	assert.Equal(t, "abandoned", hallymcp.OutcomeAbandoned.String())
-	assert.Equal(t, "unknown", hallymcp.OutcomeUnknown.String())
+	assert.Equal(t, "success", kitsokimcp.OutcomeSuccess.String())
+	assert.Equal(t, "retries_exhausted", kitsokimcp.OutcomeRetriesExhausted.String())
+	assert.Equal(t, "abandoned", kitsokimcp.OutcomeAbandoned.String())
+	assert.Equal(t, "unknown", kitsokimcp.OutcomeUnknown.String())
 }
 
 // TestValidator_PostCmdSubmittedJSONFile — verify that the file pointed
@@ -486,7 +486,7 @@ exit 0
 `
 	require.NoError(t, os.WriteFile(script, []byte(body), 0o755))
 
-	cs, srv, done := connectValidatorWithCfg(t, hallymcp.ValidatorConfig{
+	cs, srv, done := connectValidatorWithCfg(t, kitsokimcp.ValidatorConfig{
 		PostCmd: script,
 	})
 	defer done()
@@ -497,5 +497,5 @@ exit 0
 	})
 	require.NoError(t, err)
 	require.False(t, res.IsError, "verifier should accept the payload")
-	assert.Equal(t, hallymcp.OutcomeSuccess, srv.Outcome())
+	assert.Equal(t, kitsokimcp.OutcomeSuccess, srv.Outcome())
 }

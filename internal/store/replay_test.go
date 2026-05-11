@@ -5,9 +5,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"hally/internal/app"
-	"hally/internal/store"
-	"hally/internal/world"
+	"kitsoki/internal/app"
+	"kitsoki/internal/store"
+	"kitsoki/internal/world"
 )
 
 // mkPayload is a helper to create a JSON payload for test events.

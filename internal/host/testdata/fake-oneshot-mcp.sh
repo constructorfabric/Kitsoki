@@ -96,9 +96,9 @@ fi
 # The reject-then-ok scenario is sticky across iterations because the
 # nudge prompt (iter 1+) won't carry the SIMULATE_REJECT_THEN_OK
 # sentinel — only iter 0's user-authored prompt does. Tests opt in
-# via env var HALLY_FAKE_REJECT_THEN_OK=1 (set with t.Setenv) so the
+# via env var KITSOKI_FAKE_REJECT_THEN_OK=1 (set with t.Setenv) so the
 # behaviour persists across the host's claude restarts.
-reject_then_ok="${HALLY_FAKE_REJECT_THEN_OK:-}"
+reject_then_ok="${KITSOKI_FAKE_REJECT_THEN_OK:-}"
 if [ -z "$reject_then_ok" ] && printf '%s' "$stdin" | grep -q SIMULATE_REJECT_THEN_OK; then
   reject_then_ok="1"
 fi
@@ -163,12 +163,12 @@ for i, a in enumerate(v.get("args", [])):
   fi
 fi
 
-# HALLY_FAKE_RECORD=<path> — append the stdin prompt and argv to
+# KITSOKI_FAKE_RECORD=<path> — append the stdin prompt and argv to
 # <path>, one entry per invocation. Used by retry-loop tests to assert
 # the nudge-prompt content on iteration 1 (we can't carry a sentinel
 # in the prompt because iter 1's prompt is the host-rendered nudge,
 # not the original prompt). Set via t.Setenv.
-record_path="${HALLY_FAKE_RECORD:-}"
+record_path="${KITSOKI_FAKE_RECORD:-}"
 if [ -n "$record_path" ]; then
   {
     printf '%s\n' '----iteration----'

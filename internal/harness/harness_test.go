@@ -12,9 +12,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"hally/internal/app"
-	"hally/internal/harness"
-	"hally/internal/world"
+	"kitsoki/internal/app"
+	"kitsoki/internal/harness"
+	"kitsoki/internal/world"
 )
 
 // ─── helpers ─────────────────────────────────────────────────────────────────

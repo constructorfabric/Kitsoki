@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"hally/internal/host"
-	"hally/internal/transport"
+	"kitsoki/internal/host"
+	"kitsoki/internal/transport"
 )
 
 func TestTransportPost_RegisteredAsBuiltin(t *testing.T) {

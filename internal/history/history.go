@@ -21,8 +21,8 @@
 package history
 
 import (
-	"hally/internal/app"
-	"hally/internal/world"
+	"kitsoki/internal/app"
+	"kitsoki/internal/world"
 )
 
 const (

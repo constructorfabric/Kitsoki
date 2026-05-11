@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"hally/internal/app"
-	"hally/internal/jobs"
+	"kitsoki/internal/app"
+	"kitsoki/internal/jobs"
 )
 
 // TestSubscribeSession verifies that a session-level subscription receives

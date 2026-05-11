@@ -12,7 +12,7 @@ import (
 	"github.com/goccy/go-yaml"
 	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"hally/internal/trace"
+	"kitsoki/internal/trace"
 )
 
 // recordingFile is the parsed recording YAML structure (§10.4).

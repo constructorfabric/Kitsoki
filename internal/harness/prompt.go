@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"strings"
 
-	"hally/internal/app"
-	"hally/internal/expr"
-	"hally/internal/world"
+	"kitsoki/internal/app"
+	"kitsoki/internal/expr"
+	"kitsoki/internal/world"
 )
 
 // buildStablePrefix renders the stable portion of the system prompt.
@@ -21,7 +21,7 @@ import (
 func buildStablePrefix(appDef *app.AppDef) string {
 	var sb strings.Builder
 
-	sb.WriteString("# Hally Intent Router\n\n")
+	sb.WriteString("# Kitsoki Intent Router\n\n")
 	sb.WriteString("You are an intent-routing assistant for a structured application.\n")
 	sb.WriteString("Your ONLY job is to call the `transition` tool exactly once with the\n")
 	sb.WriteString("user's intent and any required slots. Do not explain. Do not converse.\n\n")

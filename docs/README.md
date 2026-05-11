@@ -1,4 +1,4 @@
-# Hally documentation
+# Kitsoki documentation
 
 Welcome. This is the navigation hub for the documentation tree.
 
@@ -32,10 +32,10 @@ see [`../design.md`](../design.md).
 
 | Topic | Where |
 |---|---|
-| Authoritative `app.yaml` schema | `hally docs app-schema` (or [`../cmd/hally/docs/app-schema.md`](../cmd/hally/docs/app-schema.md)) |
-| LLM-facing operator manual | `hally docs llm-guide` (or [`../cmd/hally/docs/llm-guide.md`](../cmd/hally/docs/llm-guide.md)) |
-| Implement a prose proposal against `app.yaml` | `hally docs apply-proposal` |
-| Markdown shape produced by `hally render` | `hally docs render-format` |
+| Authoritative `app.yaml` schema | `kitsoki docs app-schema` (or [`../cmd/kitsoki/docs/app-schema.md`](../cmd/kitsoki/docs/app-schema.md)) |
+| LLM-facing operator manual | `kitsoki docs llm-guide` (or [`../cmd/kitsoki/docs/llm-guide.md`](../cmd/kitsoki/docs/llm-guide.md)) |
+| Implement a prose proposal against `app.yaml` | `kitsoki docs apply-proposal` |
+| Markdown shape produced by `kitsoki render` | `kitsoki docs render-format` |
 
 ## Historical material
 

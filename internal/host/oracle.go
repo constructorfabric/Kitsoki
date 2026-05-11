@@ -25,7 +25,7 @@ import (
 )
 
 // OracleBinEnv overrides the `claude` binary path for tests.
-const OracleBinEnv = "HALLY_ORACLE_CLAUDE_BIN"
+const OracleBinEnv = "KITSOKI_ORACLE_CLAUDE_BIN"
 
 // ErrOracleUnavailable is returned when the `claude` binary is not on PATH.
 var ErrOracleUnavailable = errors.New("host.oracle.talk: `claude` binary not found on PATH; install Claude Code from https://claude.ai/download")

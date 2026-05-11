@@ -1,6 +1,6 @@
 # Testing
 
-Hally has two test modes — together they let an app author exercise both
+Kitsoki has two test modes — together they let an app author exercise both
 the **state logic** (does the right transition fire?) and the **LLM
 intent recognition** (does free text reach the right intent?) without
 paying for tokens.
@@ -11,7 +11,7 @@ paying for tokens.
 | **Mode 1 — intent tests** | Variable | Optional | LLM pass-rate on natural-language inputs. Run on demand. |
 
 Both modes live in `internal/testrunner/` and are exposed via
-`hally test flows` and `hally test intents`.
+`kitsoki test flows` and `kitsoki test intents`.
 
 ---
 
@@ -64,9 +64,9 @@ recording file and exercises the routing). Mix freely.
 ### Running
 
 ```sh
-hally test flows testdata/apps/cloak/app.yaml
-hally test flows testdata/apps/cloak/app.yaml --flows "flows/winning*.yaml"
-hally test flows testdata/apps/cloak/app.yaml --json /tmp/results.json
+kitsoki test flows testdata/apps/cloak/app.yaml
+kitsoki test flows testdata/apps/cloak/app.yaml --flows "flows/winning*.yaml"
+kitsoki test flows testdata/apps/cloak/app.yaml --json /tmp/results.json
 ```
 
 Exit codes: `0` pass, `1` fail, `2` setup error.
@@ -197,15 +197,15 @@ code).
 ### Running
 
 ```sh
-hally test intents testdata/apps/cloak/app.yaml --harness static
-hally test intents testdata/apps/cloak/app.yaml --harness live --runs 10
+kitsoki test intents testdata/apps/cloak/app.yaml --harness static
+kitsoki test intents testdata/apps/cloak/app.yaml --harness live --runs 10
 
 # Compile a live run into a recording for use by Mode 2 / static
-hally test intents testdata/apps/cloak/app.yaml \
+kitsoki test intents testdata/apps/cloak/app.yaml \
     --harness live --emit-recording testdata/apps/cloak/recording.yaml
 
 # Compare against a baseline pass-rate file
-hally test intents testdata/apps/cloak/app.yaml \
+kitsoki test intents testdata/apps/cloak/app.yaml \
     --harness live --baseline /tmp/baseline.json
 ```
 
@@ -223,10 +223,10 @@ that can be compiled into one.
 
 ```sh
 # Capture a real LLM session as JSONL while you play the app
-hally run myapp.yaml --harness recording --record /tmp/rec.jsonl
+kitsoki run myapp.yaml --harness recording --record /tmp/rec.jsonl
 
 # Compile a live intent-test run directly into a YAML recording
-hally test intents myapp.yaml --harness live --emit-recording recording.yaml
+kitsoki test intents myapp.yaml --harness live --emit-recording recording.yaml
 ```
 
 The JSONL recording is one object per turn:
@@ -236,17 +236,17 @@ The JSONL recording is one object per turn:
 
 ## 5. Recording demo GIFs
 
-`hally record` replays a flow YAML through the state machine and
+`kitsoki record` replays a flow YAML through the state machine and
 encodes each state's view as an animated GIF — the same flow file
-that drives `hally test flows`.
+that drives `kitsoki test flows`.
 
 ```sh
-hally record testdata/apps/cloak/app.yaml \
+kitsoki record testdata/apps/cloak/app.yaml \
     --flow testdata/apps/cloak/flows/winning.yaml \
     -o /tmp/cloak-win.gif
 
 # All flows in a directory, dracula theme, custom timing
-hally record myapp.yaml --flow myapp/flows/ -o demo.gif \
+kitsoki record myapp.yaml --flow myapp/flows/ -o demo.gif \
     --theme dracula --frame-ms 3000
 ```
 
@@ -255,12 +255,12 @@ GIF bytes. No external dependencies (no VHS, no ttyd, no ffmpeg).
 
 ---
 
-## 6. Public testing helpers (`pkg/hallytest`)
+## 6. Public testing helpers (`pkg/kitsokitest`)
 
-For Go-level tests that drive a hally machine directly,
-`pkg/hallytest` exposes a thin wrapper over `internal/testrunner`.
+For Go-level tests that drive a kitsoki machine directly,
+`pkg/kitsokitest` exposes a thin wrapper over `internal/testrunner`.
 It's still small — most of the value today is in declarative YAML
-fixtures — but it's the right entry point if you're embedding hally
+fixtures — but it's the right entry point if you're embedding kitsoki
 into another binary.
 
 ---
@@ -270,11 +270,11 @@ into another binary.
 ```sh
 go vet ./...                                    # fast static check
 go test -race ./...                             # unit + integration
-hally test flows testdata/apps/cloak/app.yaml   # deterministic flows
-hally test flows testdata/apps/dev-story/app.yaml
-hally test flows testdata/apps/background_jobs/app.yaml
-hally test flows testdata/apps/proposal_smoke/app.yaml
-hally test intents testdata/apps/cloak/app.yaml --harness static
+kitsoki test flows testdata/apps/cloak/app.yaml   # deterministic flows
+kitsoki test flows testdata/apps/dev-story/app.yaml
+kitsoki test flows testdata/apps/background_jobs/app.yaml
+kitsoki test flows testdata/apps/proposal_smoke/app.yaml
+kitsoki test intents testdata/apps/cloak/app.yaml --harness static
 ```
 
 Total runtime under 30 seconds on a modern laptop. Every step exits

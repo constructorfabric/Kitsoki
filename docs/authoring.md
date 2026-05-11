@@ -1,9 +1,9 @@
 # Authoring Guide
 
-How to write a hally application. The companion documents:
+How to write a kitsoki application. The companion documents:
 
 - [`state-machine.md`](state-machine.md) — the conceptual model.
-- `hally docs app-schema` — the authoritative YAML reference.
+- `kitsoki docs app-schema` — the authoritative YAML reference.
 - [`testing.md`](testing.md) — flow and intent fixtures.
 - [`hosts.md`](hosts.md) — every built-in host handler.
 
@@ -26,7 +26,7 @@ testdata/apps/cloak/
     └── shell_repair.md
 ```
 
-Hally reads only the YAMLs. Markdown prompts under `prompts/` are
+Kitsoki reads only the YAMLs. Markdown prompts under `prompts/` are
 referenced by `host.oracle.ask` via relative path. Anything else is
 your test/documentation infrastructure.
 
@@ -69,9 +69,9 @@ states:
 Save as `tiny.yaml`, then:
 
 ```sh
-hally run tiny.yaml                    # opens TUI; auto-picks harness
-hally test flows tiny.yaml             # no fixtures yet → exits 0
-hally viz tiny.yaml                    # writes tiny-viz.dot
+kitsoki run tiny.yaml                    # opens TUI; auto-picks harness
+kitsoki test flows tiny.yaml             # no fixtures yet → exits 0
+kitsoki viz tiny.yaml                    # writes tiny-viz.dot
 ```
 
 ---
@@ -82,16 +82,16 @@ The loop most authors settle into:
 
 1. **Sketch the graph in YAML.** Start with rooms and intents. Use
    placeholder views.
-2. **`hally inspect`** or **`hally turn`** to probe. `hally turn` is
+2. **`kitsoki inspect`** or **`kitsoki turn`** to probe. `kitsoki turn` is
    especially useful — one stateless turn, no DB, JSON output.
 3. **Add a flow fixture** under `flows/`. Use `intent:` blocks (no LLM
    needed) to lock the state logic.
-4. **`hally test flows`** until green.
+4. **`kitsoki test flows`** until green.
 5. **Add intent fixtures** for natural-language inputs. Run
-   `hally test intents --harness static` to lock pass-rates.
-6. **`hally viz`** to sanity-check the graph shape.
-7. **`hally render -o APP.md`** to produce review-friendly docs.
-8. **`hally run`** to play it for real.
+   `kitsoki test intents --harness static` to lock pass-rates.
+6. **`kitsoki viz`** to sanity-check the graph shape.
+7. **`kitsoki render -o APP.md`** to produce review-friendly docs.
+8. **`kitsoki run`** to play it for real.
 
 The first four steps catch the vast majority of mistakes before the
 LLM ever sees the app.
@@ -100,7 +100,7 @@ LLM ever sees the app.
 
 ## 4. Top-level fields (cheat sheet)
 
-The full reference is `hally docs app-schema`. The high-altitude shape:
+The full reference is `kitsoki docs app-schema`. The high-altitude shape:
 
 ```yaml
 app:        { id, version, title, author, license }
@@ -297,16 +297,16 @@ Don't use them on a five-state app.
 
 | Command | What it does |
 |---|---|
-| `hally inspect` | Read-only JSON snapshot of a stored session. |
-| `hally turn` | One stateless turn. Great for probing (`--state X --intent Y --world …`). |
-| `hally viz` | DOT or Mermaid graph of the state machine. |
-| `hally render -o APP.md` | Markdown documentation derived from the YAML — overview, Mermaid diagram, transition tables. |
-| `hally test flows` | Mode 2 deterministic tests. |
-| `hally test intents` | Mode 1 intent pass-rate tests. |
-| `hally docs apply-proposal` | LLM-facing guide for "implement this prose proposal against `app.yaml`". |
+| `kitsoki inspect` | Read-only JSON snapshot of a stored session. |
+| `kitsoki turn` | One stateless turn. Great for probing (`--state X --intent Y --world …`). |
+| `kitsoki viz` | DOT or Mermaid graph of the state machine. |
+| `kitsoki render -o APP.md` | Markdown documentation derived from the YAML — overview, Mermaid diagram, transition tables. |
+| `kitsoki test flows` | Mode 2 deterministic tests. |
+| `kitsoki test intents` | Mode 1 intent pass-rate tests. |
+| `kitsoki docs apply-proposal` | LLM-facing guide for "implement this prose proposal against `app.yaml`". |
 | In-TUI `Edit mode` | Hot-reload editing — see [`developer-guide.md` §8](developer-guide.md#8-hot-reload-edit-mode). |
 
-`hally render` is one-way: the Markdown never feeds back into the
+`kitsoki render` is one-way: the Markdown never feeds back into the
 engine. Re-run after every change to keep `APP.md` in sync.
 
 ---
@@ -330,14 +330,14 @@ engine. Re-run after every change to keep `APP.md` in sync.
 - **Editing `app.yaml` while a session runs without saving.** Hot
   reload triggers on the watched file's `mtime`; if your editor writes
   through a temp file (vim by default), enable backup-style writes or
-  run `hally run --no-watch` (when implemented) and reload by hand.
+  run `kitsoki run --no-watch` (when implemented) and reload by hand.
 
 ---
 
 ## 9. Where to next
 
-- **The schema** — `hally docs app-schema`.
+- **The schema** — `kitsoki docs app-schema`.
 - **Worked examples** — `testdata/apps/cloak`, `testdata/apps/dev-story`,
   `testdata/apps/proposal_smoke`, `testdata/apps/background_jobs`.
-- **Embedded operator manual** — `hally docs llm-guide`.
+- **Embedded operator manual** — `kitsoki docs llm-guide`.
 - **The state machine in depth** — [`state-machine.md`](state-machine.md).

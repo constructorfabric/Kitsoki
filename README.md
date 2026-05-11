@@ -1,4 +1,4 @@
-# hally
+# kitsoki
 
 A deterministic conversation engine. The user (or an external
 orchestrator) drives a finite-state application with free text; an LLM
@@ -10,11 +10,11 @@ out-of-state actions.
 **Free-text in, deterministic transitions out.**
 
 ```sh
-go build -o hally ./cmd/hally
-./hally run testdata/apps/cloak/app.yaml
+go build -o kitsoki ./cmd/kitsoki
+./kitsoki run testdata/apps/cloak/app.yaml
 ```
 
-## What hally is good for
+## What kitsoki is good for
 
 - Building a structured CLI/TUI that accepts natural language without
   giving up on determinism.
@@ -34,14 +34,14 @@ outside the intent alphabet you declare.
 ### 1. Build
 
 ```sh
-go build -o hally ./cmd/hally
+go build -o kitsoki ./cmd/kitsoki
 ```
 
 Requires Go 1.25+. Single static binary; no CGO, no system libraries.
 
 ### 2. Pick a harness
 
-`hally run` auto-selects:
+`kitsoki run` auto-selects:
 
 | Available | Harness | What |
 |---|---|---|
@@ -52,35 +52,35 @@ Requires Go 1.25+. Single static binary; no CGO, no system libraries.
 Force one:
 
 ```sh
-./hally run testdata/apps/cloak/app.yaml --harness claude
-./hally run testdata/apps/cloak/app.yaml --harness live
-./hally run testdata/apps/cloak/app.yaml \
+./kitsoki run testdata/apps/cloak/app.yaml --harness claude
+./kitsoki run testdata/apps/cloak/app.yaml --harness live
+./kitsoki run testdata/apps/cloak/app.yaml \
     --harness replay --recording testdata/apps/cloak/recording.yaml
 ```
 
 ### 3. Play
 
 ```sh
-./hally run testdata/apps/cloak/app.yaml
+./kitsoki run testdata/apps/cloak/app.yaml
 ```
 
 The TUI opens with a transcript pane, action menu, and inbox panel.
 Type free text or pick an action. Sessions persist in
-`$XDG_DATA_HOME/hally/sessions.db`.
+`$XDG_DATA_HOME/kitsoki/sessions.db`.
 
 ### 4. Test
 
 ```sh
-./hally test flows testdata/apps/cloak/app.yaml          # deterministic, no LLM
-./hally test intents testdata/apps/cloak/app.yaml \      # intent pass-rate (free w/ Claude Code)
+./kitsoki test flows testdata/apps/cloak/app.yaml          # deterministic, no LLM
+./kitsoki test intents testdata/apps/cloak/app.yaml \      # intent pass-rate (free w/ Claude Code)
     --harness static
 ```
 
 ### 5. Visualise
 
 ```sh
-./hally viz testdata/apps/cloak/app.yaml | dot -Tpng -o /tmp/cloak.png
-./hally viz testdata/apps/cloak/app.yaml --mermaid > /tmp/cloak.mmd
+./kitsoki viz testdata/apps/cloak/app.yaml | dot -Tpng -o /tmp/cloak.png
+./kitsoki viz testdata/apps/cloak/app.yaml --mermaid > /tmp/cloak.mmd
 ```
 
 ## Documentation
@@ -95,19 +95,19 @@ Type free text or pick an action. Sessions persist in
 | **[`docs/hosts.md`](docs/hosts.md)** | Every built-in `host.*` handler with input/output contracts. |
 | **[`docs/transports.md`](docs/transports.md)** | TUI / Jira / Bitbucket transports; sessions keyed by external thread. |
 | **[`docs/background-jobs/`](docs/background-jobs/README.md)** | Long-running handlers, notifications, clarifications. |
-| `hally docs llm-guide` | Embedded operator manual aimed at an LLM driving hally. |
-| `hally docs app-schema` | Authoritative `app.yaml` schema reference. |
+| `kitsoki docs llm-guide` | Embedded operator manual aimed at an LLM driving kitsoki. |
+| `kitsoki docs app-schema` | Authoritative `app.yaml` schema reference. |
 | **[`design.md`](design.md)** | Long-form design rationale (~2000 lines). |
 
 ## Project layout
 
 ```
-hally/
-├── cmd/hally/             CLI: run, serve, viz, trace, replay, test,
+kitsoki/
+├── cmd/kitsoki/           CLI: run, serve, viz, trace, replay, test,
 │                          record, session, chat, inspect, turn, render,
 │                          mcp-validator, docs, version
 ├── internal/              platform packages — see docs/architecture.md
-├── pkg/hallytest/         public testing helpers for app authors
+├── pkg/kitsokitest/       public testing helpers for app authors
 ├── docs/                  narrative documentation
 ├── testdata/apps/         example apps: cloak, dev-story,
 │                          background_jobs, proposal_smoke
@@ -116,6 +116,42 @@ hally/
 ├── ideas.md               working notes / backlog
 └── README.md              you are here
 ```
+
+## About the name
+
+**Kitsoki** (*kit-soh-kee*) is a Hopi word for a contemporary
+settlement — a collection of houses, ceremonial chambers, and public
+plazas arranged into one living whole. The metaphor fits a
+conversation engine that hosts many surfaces (TUI, daemon, Jira,
+Bitbucket) as connected rooms under one architecture.
+
+Greek mythology is exhausted as a source of software names. Every
+other tool is *Hermes*, *Hydra*, *Apollo*, *Athena*, *Pythia*, or some
+flavor of *Oracle*. The Hopi word is a small reminder that other
+civilizations were doing serious intellectual work too — and that the
+Western canon is not the only well to draw from.
+
+The Chacoan ancestors of today's Pueblo peoples were practicing
+astronomy at a level modern archaeologists still find striking:
+
+- Great houses at Chaco Canyon are oriented to the cardinal directions
+  and to the 18.6-year lunar standstill cycle — an astronomical
+  pattern subtle enough that detecting it requires sustained
+  observation across more than a human generation.
+- The Sun Dagger on Fajada Butte uses three rock slabs to cast
+  light-and-shadow markers onto a spiral petroglyph at the solstices
+  and equinoxes.
+- The Great North Road runs almost exactly due north from Chaco
+  for about sixty kilometers across broken terrain — a deliberate
+  engineering project that required sustained surveying.
+
+This is pre-Columbian scientific work, encoded into the built
+landscape. The name is a small acknowledgment.
+
+Sources for the term and the architectural vocabulary it sits in:
+
+- Whiteley, Peter. *[Chacoan Kinship](https://www.amnh.org/content/download/67776/1174292/file/chacoan-kinship.pdf)*. American Museum of Natural History.
+- Kuwanwisiwma, Leigh J., T. J. Ferguson, and Chip Colwell, eds. (2018). *[Footprints of Hopi History: Hopihiniwtiput Kukveni'at](https://uapress.arizona.edu/book/footprints-of-hopi-history)*. University of Arizona Press.
 
 ## Status
 

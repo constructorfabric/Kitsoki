@@ -11,7 +11,7 @@ your own handler, see
 [`developer-guide.md` §5.2](developer-guide.md#52-adding-a-new-built-in-host-handler).
 
 For the effect-level shape (`invoke:`, `with:`, `bind:`, `on_error:`,
-`background:`, `on_complete:`) see `hally docs app-schema`.
+`background:`, `on_complete:`) see `kitsoki docs app-schema`.
 
 ---
 
@@ -109,7 +109,7 @@ Returns:
 | Field | Type | Notes |
 |---|---|---|
 | `answer` | string | Claude's reply text. |
-| `session_id` | string | Claude's session ID (the SDK's, not hally's). |
+| `session_id` | string | Claude's session ID (the SDK's, not kitsoki's). |
 | `chat_id` | string | Echoes the input. |
 | `claude_session_id` | string | Same as `session_id`; named for clarity. |
 | `transcript_seq` | int | The transcript row sequence — useful for clients tracking position. |
@@ -128,7 +128,7 @@ One-shot Claude call with MCP servers attached. Same shape as
 |---|---|---|---|
 | `prompt_path` | string | yes | Same semantics as `host.oracle.ask`. |
 | `mcp_servers` | map | no | `{ <name>: { command, args, env } }` — passed to `claude --mcp-config`. |
-| `validator` | string | no | When set, runs `hally mcp-validator` on Claude's tool output and retries on schema failure. |
+| `validator` | string | no | When set, runs `kitsoki mcp-validator` on Claude's tool output and retries on schema failure. |
 | `chat_id` | string | no | Same chat-aware semantics as `host.oracle.talk`. |
 | `working_dir` | string | no | CWD for the spawned `claude`. |
 | any other key | any | no | Surfaced as `{{ args.<key> }}` in the prompt. |
@@ -156,7 +156,7 @@ Post a message to a registered transport.
 | `body` | string | yes | Markdown by convention; the transport converts to its native markup. Maps and slices are pretty-printed as JSON. |
 | `phase_id` | string | no | Identifies the originating phase; transports use it for de-dup. |
 | `title` | string | no | Used as a section header where the transport supports it. |
-| `bot_marker` | string | no | Prepended to the body so polling drivers can filter their own output (default `"[hally]"`). |
+| `bot_marker` | string | no | Prepended to the body so polling drivers can filter their own output (default `"[kitsoki]"`). |
 
 Returns: `{ message_id }` — opaque, transport-specific.
 
@@ -203,7 +203,7 @@ Chats are global, persistent multi-turn conversations scoped by
 lock so the TUI and an external driver can both interact with the
 same session without racing on a chat. Backed by `internal/chats/`.
 
-The full CLI surface is `hally chat new|list|show|continue|fork|archive|unlock`.
+The full CLI surface is `kitsoki chat new|list|show|continue|fork|archive|unlock`.
 
 ### host.chat.resolve
 

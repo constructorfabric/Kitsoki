@@ -20,7 +20,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"hally/internal/authoring"
+	"kitsoki/internal/authoring"
 )
 
 type editPhase int

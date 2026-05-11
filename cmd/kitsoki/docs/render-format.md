@@ -1,6 +1,6 @@
-# Hally — Rendered-Docs Format
+# Kitsoki — Rendered-Docs Format
 
-`hally render <app.yaml>` produces a Markdown document describing the app.
+`kitsoki render <app.yaml>` produces a Markdown document describing the app.
 The output is a **one-way work product**: the engine never reads it back.
 `app.yaml` stays the source of truth. This doc describes what's in the
 output so humans reading it and LLMs acting on proposals about it know
@@ -121,11 +121,11 @@ same names.
 
 ```sh
 # Pre-commit hook (shell):
-hally render path/to/app.yaml -o path/to/APP.md
+kitsoki render path/to/app.yaml -o path/to/APP.md
 git add path/to/APP.md
 
 # Or via go:generate in a Go package that hosts the app:
-//go:generate hally render app.yaml -o APP.md
+//go:generate kitsoki render app.yaml -o APP.md
 ```
 
 ---

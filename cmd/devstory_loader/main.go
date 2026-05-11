@@ -3,12 +3,12 @@ package main
 import (
 	"fmt"
 	"os"
-	"hally/internal/app"
-	"hally/internal/machine"
+	"kitsoki/internal/app"
+	"kitsoki/internal/machine"
 )
 
 func main() {
-	path := "/home/cloud-user/code/hally-devstory/testdata/apps/dev-story/app.yaml"
+	path := "/home/cloud-user/code/kitsoki-devstory/testdata/apps/dev-story/app.yaml"
 	if len(os.Args) > 1 {
 		path = os.Args[1]
 	}

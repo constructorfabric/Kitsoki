@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"hally/internal/app"
-	"hally/internal/host"
-	"hally/internal/jobs"
+	"kitsoki/internal/app"
+	"kitsoki/internal/host"
+	"kitsoki/internal/jobs"
 )
 
 // TestWriteThrough_SubmitPersistsRunning verifies that submitting a job through

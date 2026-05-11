@@ -8,10 +8,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"hally/internal/testrunner"
+	"kitsoki/internal/testrunner"
 )
 
-// testIntentsCmd implements `hally test intents`.
+// testIntentsCmd implements `kitsoki test intents`.
 //
 // Default harness:
 //   - "static" when ANTHROPIC_API_KEY is not set (uses a recording as the
@@ -89,14 +89,14 @@ Exit codes:
 				var err error
 				sh, err = testrunner.NewStaticHarnessFromRecording(recordingPath)
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "hally test intents: %v\n", err)
+					fmt.Fprintf(os.Stderr, "kitsoki test intents: %v\n", err)
 					os.Exit(2)
 				}
 			case "live":
-				fmt.Fprintf(os.Stderr, "hally test intents: live harness not implemented in PoC; use --harness static\n")
+				fmt.Fprintf(os.Stderr, "kitsoki test intents: live harness not implemented in PoC; use --harness static\n")
 				os.Exit(2)
 			default:
-				fmt.Fprintf(os.Stderr, "hally test intents: unknown harness %q (use live|static)\n", harnessType)
+				fmt.Fprintf(os.Stderr, "kitsoki test intents: unknown harness %q (use live|static)\n", harnessType)
 				os.Exit(2)
 			}
 
@@ -122,7 +122,7 @@ Exit codes:
 			ctx := context.Background()
 			report, err := testrunner.RunIntents(ctx, appPath, opts)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "hally test intents: %v\n", err)
+				fmt.Fprintf(os.Stderr, "kitsoki test intents: %v\n", err)
 				os.Exit(2)
 			}
 

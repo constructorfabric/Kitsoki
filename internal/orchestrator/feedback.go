@@ -5,9 +5,9 @@ import (
 	"sort"
 	"strings"
 
-	"hally/internal/app"
-	"hally/internal/machine"
-	"hally/internal/world"
+	"kitsoki/internal/app"
+	"kitsoki/internal/machine"
+	"kitsoki/internal/world"
 )
 
 // Location is the computed "where am I" context for §7.1.

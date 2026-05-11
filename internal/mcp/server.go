@@ -23,11 +23,11 @@ import (
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"hally/internal/app"
-	"hally/internal/intent"
-	"hally/internal/machine"
-	"hally/internal/store"
-	"hally/internal/world"
+	"kitsoki/internal/app"
+	"kitsoki/internal/intent"
+	"kitsoki/internal/machine"
+	"kitsoki/internal/store"
+	"kitsoki/internal/world"
 )
 
 // TransitionArgs is the typed input to the transition tool (§5.1).
@@ -40,8 +40,8 @@ type TransitionArgs struct {
 	Slots map[string]any `json:"slots,omitempty" jsonschema:"intent-specific slot values"`
 	// Confidence is the LLM's self-reported extraction confidence (0–1, optional).
 	Confidence float64 `json:"confidence,omitempty"`
-	// SessionID identifies the hally session to operate on.
-	SessionID string `json:"session_id" jsonschema:"hally session identifier"`
+	// SessionID identifies the kitsoki session to operate on.
+	SessionID string `json:"session_id" jsonschema:"kitsoki session identifier"`
 }
 
 // TransitionOK is the success response of the transition tool.
@@ -91,7 +91,7 @@ type Server struct {
 func NewServer(m machine.Machine, s store.Store, appDef *app.AppDef) *Server {
 	srv := &Server{m: m, s: s, appDef: appDef}
 	srv.mcpSrv = mcpsdk.NewServer(&mcpsdk.Implementation{
-		Name:    "hally",
+		Name:    "kitsoki",
 		Version: "0.0.1",
 	}, nil)
 
@@ -105,7 +105,7 @@ func NewServer(m machine.Machine, s store.Store, appDef *app.AppDef) *Server {
 }
 
 // Run starts the MCP server on the StdioTransport and blocks until the context
-// is done or the peer disconnects. This is the main entry point for `hally serve`.
+// is done or the peer disconnects. This is the main entry point for `kitsoki serve`.
 func (srv *Server) Run(ctx context.Context) error {
 	return srv.mcpSrv.Run(ctx, &mcpsdk.StdioTransport{})
 }

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"hally/internal/jobs"
+	"kitsoki/internal/jobs"
 
 	_ "modernc.org/sqlite"
 )

@@ -7,13 +7,13 @@ import (
 	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
 
-	"hally/internal/app"
-	"hally/internal/harness"
-	"hally/internal/intent"
-	"hally/internal/machine"
-	"hally/internal/orchestrator"
-	"hally/internal/store"
-	"hally/internal/world"
+	"kitsoki/internal/app"
+	"kitsoki/internal/harness"
+	"kitsoki/internal/intent"
+	"kitsoki/internal/machine"
+	"kitsoki/internal/orchestrator"
+	"kitsoki/internal/store"
+	"kitsoki/internal/world"
 )
 
 // ─── helpers ─────────────────────────────────────────────────────────────────

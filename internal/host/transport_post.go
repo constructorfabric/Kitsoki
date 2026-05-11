@@ -12,7 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"hally/internal/transport"
+	"kitsoki/internal/transport"
 )
 
 // TransportPostHandler implements host.transport.post.
@@ -25,7 +25,7 @@ import (
 // Optional args:
 //   - title      (string): short heading; some transports surface this.
 //   - phase_id   (string): originating phase ID (for orchestrator-side dedup).
-//   - bot_marker (string): prefix for inbound-polling filters; default "[hally]".
+//   - bot_marker (string): prefix for inbound-polling filters; default "[kitsoki]".
 //
 // Returns Result.Data with:
 //   - message_id (string): transport-assigned message identifier.

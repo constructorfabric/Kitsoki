@@ -6,7 +6,7 @@
 // idioms into the wiki-markup Jira understands.
 //
 // The conversion rules and ordering mirror tools/loopy/bugfix/lib/jira.py
-// `_sanitize_for_jira` so the two surfaces (loopy direct-post and hally
+// `_sanitize_for_jira` so the two surfaces (loopy direct-post and kitsoki
 // transport) produce identical output for the same input.
 
 package transport

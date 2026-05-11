@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"hally/internal/app"
+	"kitsoki/internal/app"
 )
 
 // BuildTransitionSchema returns a JSON Schema (draft 2020-12) describing the

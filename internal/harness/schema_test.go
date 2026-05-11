@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"hally/internal/app"
-	"hally/internal/harness"
+	"kitsoki/internal/app"
+	"kitsoki/internal/harness"
 )
 
 // compileSchema compiles raw bytes via santhosh-tekuri/jsonschema to confirm

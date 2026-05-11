@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"strings"
 
-	"hally/internal/app"
-	"hally/internal/trace"
+	"kitsoki/internal/app"
+	"kitsoki/internal/trace"
 )
 
 // normalizeInput trims whitespace and lowercases a string for matching.

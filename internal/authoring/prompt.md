@@ -1,4 +1,4 @@
-You are improving a hally story. A "story" is a directory tree the
+You are improving a kitsoki story. A "story" is a directory tree the
 running engine treats as a single app. The pieces:
 
   {{APP_FILE}}                The app manifest YAML (state machine root).
@@ -34,7 +34,7 @@ Don't refactor unrelated code. Don't reorganize files. Don't move
 things between layers unless the proposal explicitly asks. If the
 proposal really only needs one file changed, change one file.
 
-# Hally schema invariants (relevant when editing YAML)
+# Kitsoki schema invariants (relevant when editing YAML)
 
 - Every `invoke: host.x` must be in the top-level `hosts:` allow-list.
 - Every `world.*` reference (in views, effects, guards) must exist in

@@ -3,7 +3,7 @@ package ulid_test
 import (
 	"testing"
 
-	"hally/internal/ulid"
+	"kitsoki/internal/ulid"
 )
 
 func TestNew_Length(t *testing.T) {

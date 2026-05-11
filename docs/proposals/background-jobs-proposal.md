@@ -9,13 +9,13 @@ blocks the entire room while it runs.
 **TL;DR:** the `internal/jobs/` package is ~70% built — schema, store,
 scheduler interface, lifecycle types, notification table, dedup index,
 clarification semantics — but **it isn't wired anywhere**.  YAML can
-declare `background: true` on an effect today and hally silently ignores
+declare `background: true` on an effect today and kitsoki silently ignores
 it.  The TUI has no notification panel.  This proposal connects the
 parts.
 
 ---
 
-## 1. What's already in hally
+## 1. What's already in kitsoki
 
 ### `internal/jobs/`
 
@@ -49,7 +49,7 @@ on_enter:
       - say: "long thing done"
 ```
 
-…and hally will run `long_thing.py` synchronously, blocking the room
+…and kitsoki will run `long_thing.py` synchronously, blocking the room
 until exit.  Notifications are never posted.  No panel renders them.
 
 ---
@@ -145,7 +145,7 @@ when the panel is collapsed:
 [main]  inbox: 2 unread · 1 action_required          turn 27
 ```
 
-This is design.md §4.1 — already in HALLY-GAPS as a known gap from
+This is design.md §4.1 — already in KITSOKI-GAPS as a known gap from
 the devstory story.  Cheap to ship alongside the panel.
 
 ---
@@ -224,7 +224,7 @@ clarification schema column.  Wire is straightforward:
 
 - Job submit + completion + notification post are recorded as events in
   the existing event log.
-- `hally replay` substitutes the recorded result for the host call
+- `kitsoki replay` substitutes the recorded result for the host call
   (this works today for synchronous calls; same machinery applies).
 - Flow tests need a way to advance virtual time so a `background: true`
   effect's `on_complete` can be exercised without real wall-clock wait.
@@ -264,7 +264,7 @@ clarification schema column.  Wire is straightforward:
   - status-line badge in the existing turn-counter row.
   - tea.Cmd ticker, debounced (only re-render when notifications
     delta is non-empty).
-- `cmd/hally/run.go`:
+- `cmd/kitsoki/run.go`:
   - construct `jobs.Scheduler`, pass to orchestrator.
   - inject `jobs.Store` handle into `host.Registry`'s context.
 - Tests:
@@ -325,5 +325,5 @@ block.  No further consumer changes required.
 - Replacing `host.run` — synchronous path remains the default.
 - Real-time streaming of job stdout to the inbox panel.  That's the
   separate "streaming host results" gap (§7.1 in the cyber-repo
-  HALLY-GAPS).  This proposal makes "submit and notify on done" work;
+  KITSOKI-GAPS).  This proposal makes "submit and notify on done" work;
   streaming is a follow-up.

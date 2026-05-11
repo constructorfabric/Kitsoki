@@ -1,8 +1,8 @@
-// Package main — record.go implements `hally record`.
+// Package main — record.go implements `kitsoki record`.
 //
-// # hally record — flow-driven GIF recording
+// # kitsoki record — flow-driven GIF recording
 //
-// hally record replays a deterministic flow through the state machine, renders
+// kitsoki record replays a deterministic flow through the state machine, renders
 // each state's view as a text frame, rasterises the frames to images, and
 // encodes them as an animated GIF.  The result is deterministic: the same
 // flow YAML + the same flags always produce the same GIF bytes.
@@ -14,8 +14,8 @@
 //   - VHS + headless ttyd + ffmpeg installed and working
 //   - Font rendering that varied by machine / container image
 //
-// With hally record, the flow YAML is the single source of truth.  The same
-// file drives both `hally test flows` (correctness) and `hally record`
+// With kitsoki record, the flow YAML is the single source of truth.  The same
+// file drives both `kitsoki test flows` (correctness) and `kitsoki record`
 // (demo animation).  No external tools, no font rendering variance.
 //
 // # Rasterisation approach
@@ -29,8 +29,8 @@
 //
 // # Usage
 //
-//	hally record app.yaml --flow flows/main.yaml -o out.gif
-//	hally record app.yaml --flow flows/         # all flows in dir
+//	kitsoki record app.yaml --flow flows/main.yaml -o out.gif
+//	kitsoki record app.yaml --flow flows/         # all flows in dir
 package main
 
 import (
@@ -52,11 +52,11 @@ import (
 	"golang.org/x/image/font/basicfont"
 	"golang.org/x/image/math/fixed"
 
-	"hally/internal/app"
-	"hally/internal/harness"
-	"hally/internal/intent"
-	"hally/internal/machine"
-	"hally/internal/world"
+	"kitsoki/internal/app"
+	"kitsoki/internal/harness"
+	"kitsoki/internal/intent"
+	"kitsoki/internal/machine"
+	"kitsoki/internal/world"
 )
 
 // ─── theme ────────────────────────────────────────────────────────────────────
@@ -103,7 +103,7 @@ func recordCmd() *cobra.Command {
 render each state's view as a text frame, and encode the sequence as an
 animated GIF.
 
-The same flow YAML that drives 'hally test flows' also drives 'hally record'.
+The same flow YAML that drives 'kitsoki test flows' also drives 'kitsoki record'.
 No VHS, no headless browser, no font rendering variance.
 
 Rasterisation uses basicfont from golang.org/x/image (Path B — no heavy deps).
@@ -117,9 +117,9 @@ Exit codes:
   2  I/O error (bad paths, write failure)
 
 Examples:
-  hally record testdata/apps/cloak/app.yaml --flow testdata/apps/cloak/flows/winning.yaml
-  hally record app.yaml --flow flows/ -o demo.gif --theme dracula
-  hally record app.yaml --flow flows/main.yaml --recording recording.yaml --frame-ms 3000`,
+  kitsoki record testdata/apps/cloak/app.yaml --flow testdata/apps/cloak/flows/winning.yaml
+  kitsoki record app.yaml --flow flows/ -o demo.gif --theme dracula
+  kitsoki record app.yaml --flow flows/main.yaml --recording recording.yaml --frame-ms 3000`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			appPath := args[0]
@@ -132,7 +132,7 @@ Examples:
 			// Collect flow files.
 			flowFiles, err := resolveFlowPaths(flowPath)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "hally record: resolve flows: %v\n", err)
+				fmt.Fprintf(os.Stderr, "kitsoki record: resolve flows: %v\n", err)
 				os.Exit(2)
 			}
 
@@ -157,10 +157,10 @@ Examples:
 			if err := runRecord(cfg); err != nil {
 				// Distinguish I/O errors (exit 2) from flow errors (exit 1).
 				if isRecordIOError(err) {
-					fmt.Fprintf(os.Stderr, "hally record: I/O error: %v\n", err)
+					fmt.Fprintf(os.Stderr, "kitsoki record: I/O error: %v\n", err)
 					os.Exit(2)
 				}
-				fmt.Fprintf(os.Stderr, "hally record: %v\n", err)
+				fmt.Fprintf(os.Stderr, "kitsoki record: %v\n", err)
 				os.Exit(1)
 			}
 			return nil
@@ -292,7 +292,7 @@ func runRecord(cfg recordConfig) error {
 		return fmt.Errorf("encode GIF %q: %w", cfg.outPath, err)
 	}
 
-	fmt.Printf("hally record: wrote %d frames → %s\n", len(anim.Image), cfg.outPath)
+	fmt.Printf("kitsoki record: wrote %d frames → %s\n", len(anim.Image), cfg.outPath)
 	return nil
 }
 

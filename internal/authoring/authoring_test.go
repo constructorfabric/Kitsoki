@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"hally/internal/authoring"
-	"hally/internal/host"
+	"kitsoki/internal/authoring"
+	"kitsoki/internal/host"
 )
 
 // fakeClaudeBin returns the absolute path to internal/authoring/

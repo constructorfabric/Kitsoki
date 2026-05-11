@@ -8,8 +8,8 @@ import (
 
 	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"hally/internal/app"
-	"hally/internal/world"
+	"kitsoki/internal/app"
+	"kitsoki/internal/world"
 
 	// Blank import keeps anthropic-sdk-go in go.mod after tidy.
 	_ "github.com/anthropics/anthropic-sdk-go"

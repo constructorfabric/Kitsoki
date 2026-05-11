@@ -9,10 +9,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"hally/internal/testrunner"
+	"kitsoki/internal/testrunner"
 )
 
-// testFlowsCmd implements `hally test flows`.
+// testFlowsCmd implements `kitsoki test flows`.
 //
 // Default flow glob: if <app.yaml> lives at testdata/apps/cloak/app.yaml,
 // the default glob is testdata/apps/cloak/flows/*.yaml. If the directory
@@ -65,7 +65,7 @@ Exit codes:
 			ctx := context.Background()
 			report, err := testrunner.RunFlows(ctx, appPath, flowsGlob, opts)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "hally test flows: %v\n", err)
+				fmt.Fprintf(os.Stderr, "kitsoki test flows: %v\n", err)
 				os.Exit(2)
 			}
 

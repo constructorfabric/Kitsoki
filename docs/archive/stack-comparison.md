@@ -1,17 +1,17 @@
-# Hally — Implementation Stack Comparison
+# Kitsoki — Implementation Stack Comparison
 
 **Status:** Draft v0.1
 **Author:** Brad Smith
 **Date:** 2026-04-20
 **Scope:** Implementation stacks only. See `design.md` for the conceptual model, YAML DSL, MCP contract, and determinism story.
 
-This document compares three candidate stacks for building the Hally PoC: (A) a clean-room Go implementation, (B) a LangGraph-anchored Python implementation, and (C) an assembled-from-pieces Python implementation without LangGraph. It is deliberately opinionated.
+This document compares three candidate stacks for building the Kitsoki PoC: (A) a clean-room Go implementation, (B) a LangGraph-anchored Python implementation, and (C) an assembled-from-pieces Python implementation without LangGraph. It is deliberately opinionated.
 
 ---
 
 ## TL;DR
 
-**Recommendation: Approach A (Go, Charm-ecosystem TUI).** Hally is a deterministic orchestrator that spends almost all of its CPU on two things — running a pure state machine and rendering a multi-pane TUI — with the LLM call dominating wall-clock latency. The hard requirements (single-binary distribution, a native TUI with a transcript / menu / graph layout, a mature MCP server that the user hosts and agents connect into, sandboxed expression evaluation with fast compile+eval, embedded SQLite) land squarely in Go's sweet spot. Bubble Tea v2 ([v2.0.0-rc.2, March 2026](https://github.com/charmbracelet/bubbletea/releases)) plus the Charm ecosystem (Bubbles, Lipgloss, Huh, Glamour, VHS) is the state of the art for programmable terminal UIs, and the official MCP Go SDK shipped a stable v1.0 with semver guarantees in late 2025 ([modelcontextprotocol/go-sdk](https://github.com/modelcontextprotocol/go-sdk)). **The single most important tiebreaker is distribution + determinism**: a statically-linked `hally` binary with no Python runtime is the difference between an evangelizable tool and a demo.
+**Recommendation: Approach A (Go, Charm-ecosystem TUI).** Kitsoki is a deterministic orchestrator that spends almost all of its CPU on two things — running a pure state machine and rendering a multi-pane TUI — with the LLM call dominating wall-clock latency. The hard requirements (single-binary distribution, a native TUI with a transcript / menu / graph layout, a mature MCP server that the user hosts and agents connect into, sandboxed expression evaluation with fast compile+eval, embedded SQLite) land squarely in Go's sweet spot. Bubble Tea v2 ([v2.0.0-rc.2, March 2026](https://github.com/charmbracelet/bubbletea/releases)) plus the Charm ecosystem (Bubbles, Lipgloss, Huh, Glamour, VHS) is the state of the art for programmable terminal UIs, and the official MCP Go SDK shipped a stable v1.0 with semver guarantees in late 2025 ([modelcontextprotocol/go-sdk](https://github.com/modelcontextprotocol/go-sdk)). **The single most important tiebreaker is distribution + determinism**: a statically-linked `kitsoki` binary with no Python runtime is the difference between an evangelizable tool and a demo.
 
 ---
 
@@ -56,13 +56,13 @@ Aggregate: **A wins 7, C wins 1, ties on 4.** That's a landslide for Go — but 
 | JSON Schema | [santhosh-tekuri/jsonschema/v6](https://pkg.go.dev/github.com/santhosh-tekuri/jsonschema/v6) | v6.x | Draft 2020-12 validation for slot payloads |
 | SQLite | [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite) | 1.46+ | Pure-Go, no cgo — enables `GOOS=windows` static cross-compile |
 | Graph | [dominikbraun/graph](https://github.com/dominikbraun/graph) + [emicklei/dot](https://github.com/emicklei/dot) | latest | In-memory graph + DOT export |
-| CLI | [spf13/cobra](https://github.com/spf13/cobra) | latest | Subcommands (`hally run`, `hally viz`, `hally trace`) |
+| CLI | [spf13/cobra](https://github.com/spf13/cobra) | latest | Subcommands (`kitsoki run`, `kitsoki viz`, `kitsoki trace`) |
 
 ### What you get free
 
 - **Single static binary**. `go build` with CGO_ENABLED=0 and modernc.org/sqlite yields a ~15 MB self-contained executable. No CPython, no venvs, no wheels. Operators download and run — this matters more than anything else on a tool pitched at local CLI use.
 - **Goroutines for IO + TUI concurrency**. The TUI program runs in a goroutine; MCP stdio handlers run in another; the orchestrator goroutine glues them. No `asyncio` coloring.
-- **Native stdio MCP transport**. The official Go SDK handles stdio and streamable HTTP; we flip the normal embedding pattern (host embeds server) by making Hally the server and `claude -p` the embedder.
+- **Native stdio MCP transport**. The official Go SDK handles stdio and streamable HTTP; we flip the normal embedding pattern (host embeds server) by making Kitsoki the server and `claude -p` the embedder.
 - **Compile-time enforcement** of the interfaces declared in `design.md` §12 (`App`, `Machine`, `Store`, `Harness`, `Visualizer`). A refactor breaks the build, not the CI run.
 - **Expr's AST whitelist** is trivial — pass an `ast.Node` visitor that rejects everything outside our approved set, per the technique the Expr README documents.
 
@@ -124,7 +124,7 @@ func (m *machine) Validate(cur StatePath, w World, call IntentCall) Result {
 
 ## B. LangGraph (Python)
 
-LangGraph 1.1.6 (April 2026) is the flagship Python graph orchestrator for LLM workflows ([LangGraph 1.0 GA, late 2025](https://github.com/langchain-ai/langgraph)). If Hally's graph semantics overlap, we inherit a lot: checkpointers, mermaid rendering, LangSmith tracing, HITL, streaming, time travel. The question is whether the overlap is real or deceptive.
+LangGraph 1.1.6 (April 2026) is the flagship Python graph orchestrator for LLM workflows ([LangGraph 1.0 GA, late 2025](https://github.com/langchain-ai/langgraph)). If Kitsoki's graph semantics overlap, we inherit a lot: checkpointers, mermaid rendering, LangSmith tracing, HITL, streaming, time travel. The question is whether the overlap is real or deceptive.
 
 ### Stack pieces
 
@@ -152,7 +152,7 @@ LangGraph 1.1.6 (April 2026) is the flagship Python graph orchestrator for LLM w
 
 ### What you still build
 
-- A YAML DSL → `StateGraph` *compiler*. LangGraph is a Python builder API, not a declarative schema loader. Every Hally state becomes a node, every transition becomes a conditional edge, and the compiler emits them.
+- A YAML DSL → `StateGraph` *compiler*. LangGraph is a Python builder API, not a declarative schema loader. Every Kitsoki state becomes a node, every transition becomes a conditional edge, and the compiler emits them.
 - The MCP server, because LangGraph is not itself an MCP server.
 - Intent-extraction node template (one function called from every state node).
 - Slot-filling semantics — LangGraph has no concept of forms or re-prompting for missing slots.
@@ -166,13 +166,13 @@ LangGraph 1.1.6 (April 2026) is the flagship Python graph orchestrator for LLM w
 
 LangGraph is optimized for *heterogeneous* DAGs: a classifier node, a retrieval node, a draft node, a review node, each doing a qualitatively different thing, wired by conditional edges. Its killer feature is that you write node bodies in arbitrary Python and compose them with `Send`, `Command`, interrupts, and parallelism.
 
-Hally's graph is *homogeneous*: every state does the same three-step loop — (1) accept an intent + slot payload from the MCP tool call, (2) validate against the state's declared intents and guards, (3) apply effects and transition. The "node body" is a fixed function parameterized by the state's intent catalog. Nothing in LangGraph's API helps you express this; you end up wrapping every node with the same `lambda state: _run_intent(state, STATE_CATALOG["foyer"])`, at which point LangGraph is a dispatch table with extra checkpointer semantics.
+Kitsoki's graph is *homogeneous*: every state does the same three-step loop — (1) accept an intent + slot payload from the MCP tool call, (2) validate against the state's declared intents and guards, (3) apply effects and transition. The "node body" is a fixed function parameterized by the state's intent catalog. Nothing in LangGraph's API helps you express this; you end up wrapping every node with the same `lambda state: _run_intent(state, STATE_CATALOG["foyer"])`, at which point LangGraph is a dispatch table with extra checkpointer semantics.
 
 Concretely:
 
-- `StateGraph` wants a shared `TypedDict` / Pydantic state with reducers. Hally's `world` is per-app, typed at YAML load time, not at graph-construction time. You compile to Pydantic dynamically (possible, ugly).
+- `StateGraph` wants a shared `TypedDict` / Pydantic state with reducers. Kitsoki's `world` is per-app, typed at YAML load time, not at graph-construction time. You compile to Pydantic dynamically (possible, ugly).
 - Conditional edges return the next node's string name. That's fine, but it means *every* transition — including guard-failure self-loops — becomes a conditional edge. The graph blows up visually when you export it.
-- LangGraph's checkpointer stores the state dict per super-step. Hally's event log is *append-only per event kind* (§8), not a series of state snapshots. You'd adapt by writing custom events *inside* nodes, which means you've reimplemented the store anyway and the checkpointer becomes redundant.
+- LangGraph's checkpointer stores the state dict per super-step. Kitsoki's event log is *append-only per event kind* (§8), not a series of state snapshots. You'd adapt by writing custom events *inside* nodes, which means you've reimplemented the store anyway and the checkpointer becomes redundant.
 - `Command` objects and interrupts are subtly harmful here: they introduce non-obvious control-flow paths. Our determinism table (design §6) wants the MCP tool call to be the one and only boundary between nondeterminism and deterministic logic. LangGraph encourages you to blur that.
 
 **Conclusion: LangGraph solves a problem we don't have (durable heterogeneous agent workflows) and doesn't solve the problems we do have (YAML DSL compilation, slot filling, progressive disclosure menus).** Its checkpointer is the only genuine win, and we can replicate it in ~200 lines of SQLite.
@@ -184,14 +184,14 @@ from langgraph.graph import StateGraph, END
 from pydantic import BaseModel
 from typing import Literal, Annotated, Any
 
-class HallyState(BaseModel):
+class KitsokiState(BaseModel):
     current: str
     world: dict[str, Any]
     pending_intent: dict | None = None
 
 # One node per YAML state. Every node body is structurally identical.
 def make_state_node(state_name: str, catalog: dict):
-    def node(s: HallyState) -> HallyState:
+    def node(s: KitsokiState) -> KitsokiState:
         call = s.pending_intent
         handlers = catalog[state_name].get(call["intent"], [])
         for tr in handlers:
@@ -202,10 +202,10 @@ def make_state_node(state_name: str, catalog: dict):
         raise InvalidIntent(state_name, call["intent"])
     return node
 
-def route(s: HallyState) -> str:
+def route(s: KitsokiState) -> str:
     return s.current  # conditional edge returns next node name
 
-g = StateGraph(HallyState)
+g = StateGraph(KitsokiState)
 for name, handlers in compile_yaml("cloak.yaml").items():
     g.add_node(name, make_state_node(name, handlers))
     g.add_conditional_edges(name, route)   # every state routes via current
@@ -245,7 +245,7 @@ This is what you build if you want Python's ergonomics without grafting onto a f
 **Key library calls:**
 
 - **FastMCP 3.0** vs **official python-sdk v1**: the [official python-sdk](https://github.com/modelcontextprotocol/python-sdk) originally absorbed FastMCP 1.0 in 2024, but jlowin's standalone FastMCP forked and pushed ahead. FastMCP 3.0 (Feb 2026) rebuilt its core around Providers and Transforms, and per its [announcement](https://pypi.org/project/fastmcp/) powers ~70% of MCP servers across all languages. **Use FastMCP 3.0 for Python**. It's ergonomically ahead of the official SDK and the maintainer has Anthropic's support.
-- **simpleeval vs cel-python**: `simpleeval` is smaller, friendlier, has been actively released through 2025-2026, and is the faster path for "just evaluate `slots.direction == 'south'`." `cel-python` is more portable and matches what [cel-go](https://github.com/google/cel-go) does on the Go side, which matters if we want apps authored for Hally-Go to also run on Hally-Python. **Pick `simpleeval` for the PoC; plan to switch to `cel-python` if cross-runtime portability becomes a requirement.**
+- **simpleeval vs cel-python**: `simpleeval` is smaller, friendlier, has been actively released through 2025-2026, and is the faster path for "just evaluate `slots.direction == 'south'`." `cel-python` is more portable and matches what [cel-go](https://github.com/google/cel-go) does on the Go side, which matters if we want apps authored for Kitsoki-Go to also run on Kitsoki-Python. **Pick `simpleeval` for the PoC; plan to switch to `cel-python` if cross-runtime portability becomes a requirement.**
 - **ruamel.yaml vs PyYAML**: ruamel preserves comments and round-trips cleanly ([ruamel docs](https://yaml.readthedocs.io/)), which matters when authoring tools modify YAML. PyYAML does not.
 - **sqlite3 stdlib vs SQLModel**: stdlib is plenty. SQLModel is ORM sugar we don't need; event sourcing fits `cursor.execute("INSERT INTO events ...")` better than ORM models anyway.
 
@@ -254,7 +254,7 @@ This is what you build if you want Python's ergonomics without grafting onto a f
 - **Pydantic v2 validation** is the best structured-error story in any ecosystem. Throw it at a slot payload and `ValidationError.errors()` gives us exactly the payload shape design §5.2 demands.
 - **`rich` / `textual.markdown`** render the view templates. Free.
 - **Anthropic Python SDK** has the most complete surface: prompt caching, tool use, streaming, beta headers — fastest path to depending on a new feature Anthropic ships. Prompt caching shipped first on Python and TypeScript; the Go SDK followed ([Anthropic docs](https://platform.claude.com/docs/en/build-with-claude/prompt-caching)).
-- **pipx / uv tool install** puts `hally` on a user's path with one command. Not a static binary, but not terrible.
+- **pipx / uv tool install** puts `kitsoki` on a user's path with one command. Not a static binary, but not terrible.
 
 ### What you still build
 
@@ -303,15 +303,15 @@ This is the cleanest sketch of the three. Pydantic does the slot-shape validatio
 
 ### Risks / friction points
 
-- **Distribution** is the Achilles heel. `pipx install hally` requires a working Python 3.11+, and Windows users hit PTY quirks with Textual.
+- **Distribution** is the Achilles heel. `pipx install kitsoki` requires a working Python 3.11+, and Windows users hit PTY quirks with Textual.
 - **Startup cost** — importing anthropic, pydantic, textual, networkx, and simpleeval is ~400 ms on a cold VM. Go is sub-10ms. For a CLI tool, that difference is felt on every invocation.
-- **Simpleeval security caveat**: the library's own README says ["many very clever people think the whole idea of trying to sandbox CPython is impossible"](https://github.com/danthedeckie/simpleeval). For Hally's trust model (YAML authors may not be operators, §11), we need a whitelist approach that treats the expression string as data. simpleeval does this; we still need a policy review.
+- **Simpleeval security caveat**: the library's own README says ["many very clever people think the whole idea of trying to sandbox CPython is impossible"](https://github.com/danthedeckie/simpleeval). For Kitsoki's trust model (YAML authors may not be operators, §11), we need a whitelist approach that treats the expression string as data. simpleeval does this; we still need a policy review.
 
 ---
 
 ## CLI/TUI Deep Dive
 
-This is the dimension the user flagged as critical. Hally's TUI needs:
+This is the dimension the user flagged as critical. Kitsoki's TUI needs:
 
 1. A persistent **transcript pane** (scrollable, markdown-rendered, with distinct styling for user vs. system vs. LLM).
 2. A **menu pane** that updates every turn with the currently-allowed intents (the progressive-disclosure surface from design §7).
@@ -322,16 +322,16 @@ This is the dimension the user flagged as critical. Hally's TUI needs:
 
 ### Bubble Tea (Go)
 
-Bubble Tea uses the Elm Architecture: a `Model` (your state), `Update(msg) (Model, Cmd)`, and `View() string`. It is deeply event-driven — which maps directly onto Hally's event-sourced core. Every `tea.Msg` is structurally a `hally.Event` in our architecture; the same `Update` function that drives the TUI also writes to the event store.
+Bubble Tea uses the Elm Architecture: a `Model` (your state), `Update(msg) (Model, Cmd)`, and `View() string`. It is deeply event-driven — which maps directly onto Kitsoki's event-sourced core. Every `tea.Msg` is structurally a `kitsoki.Event` in our architecture; the same `Update` function that drives the TUI also writes to the event store.
 
-- [**bubbles**](https://github.com/charmbracelet/bubbles) ships `viewport` (scrollable transcript), `list` (menu), `textinput` / `textarea` (prompt), `spinner`, `table`, `help`. All of these compose into a `tea.Model`. Coverage for Hally's panes: **complete**.
+- [**bubbles**](https://github.com/charmbracelet/bubbles) ships `viewport` (scrollable transcript), `list` (menu), `textinput` / `textarea` (prompt), `spinner`, `table`, `help`. All of these compose into a `tea.Model`. Coverage for Kitsoki's panes: **complete**.
 - [**lipgloss**](https://github.com/charmbracelet/lipgloss) v2 is a layout + styling DSL: `lipgloss.JoinHorizontal(lipgloss.Top, transcript, menu, graph)` literally writes the three-pane layout. Truecolor and adaptive (light/dark terminal) styling are first-class.
 - [**glamour**](https://github.com/charmbracelet/glamour) renders the markdown view templates inside the transcript pane. Syntax highlighting via `chroma` comes free.
 - [**huh**](https://pkg.go.dev/github.com/charmbracelet/huh/v2) is a form library specifically for slot-filling modals. It composes with Bubble Tea (`form.Run()` or embedded as a submodel). This matches design §7's slot-by-slot progressive disclosure exactly.
 - [**vhs**](https://github.com/charmbracelet/vhs) is declarative terminal recording. A `.tape` file runs a scripted demo and emits a GIF; great for docs and CI-asserted screenshots.
 - **Bubble Tea v2** (RC2 in March 2026) adds the **Cursed Renderer**, a ncurses-algorithm-inspired diff renderer, plus kitty-keyboard-protocol input handling (super+space, shift+enter, release events), and synchronized output (Mode 2026, discussed in [this GitHub discussion](https://github.com/charmbracelet/bubbletea/discussions/1320)). This matters because Claude Code-style shells depend on detecting modifier-heavy keybinds for navigation.
 
-Most importantly: **Bubble Tea is what OpenCode is built with** ([per the v1.2.15 release notes, Feb 2026](https://opencode.ai/docs/tui/)) — the same class of product Hally targets. OpenCode has 100k+ stars and works across platforms; that is a powerful validation.
+Most importantly: **Bubble Tea is what OpenCode is built with** ([per the v1.2.15 release notes, Feb 2026](https://opencode.ai/docs/tui/)) — the same class of product Kitsoki targets. OpenCode has 100k+ stars and works across platforms; that is a powerful validation.
 
 Notable Go TUI alternatives:
 
@@ -346,9 +346,9 @@ Textual 7.0 (Jan 2026) is a serious competitor. It uses:
 - **Reactive attributes** via descriptors (`watch_current_state`, `compute_menu`). This matches the design's "menu is derived per turn" semantics better than Bubble Tea's explicit update loop.
 - **Screens + modal screens** — first-class for the slot-filling overlay.
 - **DataTable, Tree, Markdown, Syntax** widgets — rich enough for the transcript pane and graph-viz pane (though graph rendering needs custom drawing).
-- Textual apps can **also run in the browser** via `textual-serve`. That is a free demo page for Hally, which is genuinely cool.
+- Textual apps can **also run in the browser** via `textual-serve`. That is a free demo page for Kitsoki, which is genuinely cool.
 
-Textual's DX is superb — hot reload, inline dev console, type hints throughout, `pyproject.toml` config — and the [widget catalog](https://textual.textualize.io/guide/widgets/) covers everything Hally needs except ad-hoc graph drawing, which needs a custom `Widget` with a `render()` that emits styled `rich.segment.Segment`s.
+Textual's DX is superb — hot reload, inline dev console, type hints throughout, `pyproject.toml` config — and the [widget catalog](https://textual.textualize.io/guide/widgets/) covers everything Kitsoki needs except ad-hoc graph drawing, which needs a custom `Widget` with a `render()` that emits styled `rich.segment.Segment`s.
 
 Mermaid/graph rendering: neither stack renders mermaid *in-terminal* natively. Both ship a workaround (Bubble Tea: embed a DOT/mermaid text pane; Textual: same, or shell out to a headless render). Textual has an edge here via `rich`'s native Tree widget, which gives us a reasonable state-graph rendering without external tooling.
 
@@ -361,7 +361,7 @@ Mermaid/graph rendering: neither stack renders mermaid *in-terminal* natively. B
 
 - **Claude Code**: a custom React + Ink fork, with a full TypeScript Yoga layout port, per the [leaked source analysis](https://dev.to/minnzen/i-studied-claude-codes-leaked-source-and-built-a-terminal-ui-toolkit-from-it-4poh) and [this deep dive](https://deepwiki.com/farion1231/claude-code/10-ui-layer-(inkreact-terminal)). Not a framework we can adopt, but an architectural reference.
 - **OpenCode**: [Bubble Tea](https://opencode.ai/docs/tui/), ~100k GitHub stars — the closest adjacent product we can compare to, built on the same stack we're evaluating.
-- **Aider**: `rich` (not Textual) for prompt formatting + markdown rendering, driven as a plain CLI app rather than a full TUI. A CLI-first aesthetic; Hally is TUI-first.
+- **Aider**: `rich` (not Textual) for prompt formatting + markdown rendering, driven as a plain CLI app rather than a full TUI. A CLI-first aesthetic; Kitsoki is TUI-first.
 - **OpenAI Codex CLI**: Rust, full-screen TUI, custom rendering. Not relevant for either candidate stack.
 
 ### Concrete answers to the dedicated sub-questions
@@ -374,7 +374,7 @@ Mermaid/graph rendering: neither stack renders mermaid *in-terminal* natively. B
 
 ### TUI verdict
 
-**Bubble Tea wins on distribution, recording, and existing-product validation (OpenCode).** Textual wins on developer ergonomics (hot reload, CSS, browser-export). For Hally specifically — a product with a demo story (GIFs in README), a determinism story (event-driven update loop), and an OpenCode-shaped aesthetic — Bubble Tea is the better fit.
+**Bubble Tea wins on distribution, recording, and existing-product validation (OpenCode).** Textual wins on developer ergonomics (hot reload, CSS, browser-export). For Kitsoki specifically — a product with a demo story (GIFs in README), a determinism story (event-driven update loop), and an OpenCode-shaped aesthetic — Bubble Tea is the better fit.
 
 ---
 
@@ -399,11 +399,11 @@ Mermaid/graph rendering: neither stack renders mermaid *in-terminal* natively. B
 
 ## Recommendation
 
-**Build Hally in Go with Bubble Tea v2, expr-lang, the official MCP Go SDK, and modernc.org/sqlite.**
+**Build Kitsoki in Go with Bubble Tea v2, expr-lang, the official MCP Go SDK, and modernc.org/sqlite.**
 
 ### Criteria
 
-- Single-binary distribution is non-negotiable. Hally is pitched at local-CLI operators; requiring a Python environment is a 10× adoption tax.
+- Single-binary distribution is non-negotiable. Kitsoki is pitched at local-CLI operators; requiring a Python environment is a 10× adoption tax.
 - The state machine is the system. Go's type system enforces the `Machine`/`Store`/`Harness` interfaces from design §12 at compile time; Python's would enforce them at runtime (at best) or never (at worst).
 - Bubble Tea v2 is the most TUI-mature stack in any language today for a Claude-Code-adjacent product. OpenCode's success with the same stack validates this.
 - The MCP Go SDK v1 hit stable semver in late 2025 and continues active development in collaboration with Google ([release notes](https://github.com/modelcontextprotocol/go-sdk/releases)), which eliminates a previous concern about Go-side MCP tooling being behind Python.
@@ -416,7 +416,7 @@ Mermaid/graph rendering: neither stack renders mermaid *in-terminal* natively. B
 
 ### What would flip the decision
 
-- **If** we decided Hally needed to be embeddable in Jupyter notebooks or a Python-first analytical workflow — **switch to C**. The assembled Python stack loses on distribution but wins on the embed-in-another-tool axis.
+- **If** we decided Kitsoki needed to be embeddable in Jupyter notebooks or a Python-first analytical workflow — **switch to C**. The assembled Python stack loses on distribution but wins on the embed-in-another-tool axis.
 - **If** we decided the demo apps would be authored *in Python* (via a Python DSL instead of YAML) — **switch to C**. Bridging Python-authored apps into a Go runtime is painful.
 - **If** the MCP Go SDK regressed or froze — **switch to C with FastMCP 3.0**, which remains the most active MCP server framework in any language.
 - **If** Anthropic shipped a feature in Python that we couldn't reproduce in Go within a release cycle — **re-evaluate**. Today this is a non-issue; the Go SDK has caught up for everything except the newest betas.

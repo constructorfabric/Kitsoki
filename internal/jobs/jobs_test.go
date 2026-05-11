@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"hally/internal/clock"
-	"hally/internal/host"
-	"hally/internal/jobs"
+	"kitsoki/internal/clock"
+	"kitsoki/internal/host"
+	"kitsoki/internal/jobs"
 )
 
 func echoHandler(output string) host.Handler {

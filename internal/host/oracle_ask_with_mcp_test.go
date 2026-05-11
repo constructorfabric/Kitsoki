@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"hally/internal/host"
+	"kitsoki/internal/host"
 )
 
 // fakeOneShotMCPBin returns the path to testdata/fake-oneshot-mcp.sh.
@@ -326,9 +326,9 @@ func TestOracleAskWithMCP_AutoAttachesValidatorForSchema(t *testing.T) {
 		t.Skip("fake-oneshot-mcp.sh requires bash")
 	}
 	t.Setenv(host.OracleBinEnv, fakeOneShotMCPBin(t))
-	// Pretend hally lives at /usr/local/bin/hally so we can assert the
+	// Pretend kitsoki lives at /usr/local/bin/kitsoki so we can assert the
 	// validator entry's command field deterministically.
-	t.Setenv("HALLY_BIN", "/usr/local/bin/hally")
+	t.Setenv("KITSOKI_BIN", "/usr/local/bin/kitsoki")
 
 	dir := t.TempDir()
 	promptPath := filepath.Join(dir, "p.md")
@@ -354,7 +354,7 @@ func TestOracleAskWithMCP_AutoAttachesValidatorForSchema(t *testing.T) {
 	servers, _ := body["mcpServers"].(map[string]any)
 	v, ok := servers["validator"].(map[string]any)
 	require.True(t, ok, "validator entry missing: %v", servers)
-	assert.Equal(t, "/usr/local/bin/hally", v["command"])
+	assert.Equal(t, "/usr/local/bin/kitsoki", v["command"])
 	args, _ := v["args"].([]any)
 	require.GreaterOrEqual(t, len(args), 3)
 	assert.Equal(t, "mcp-validator", args[0])
@@ -370,7 +370,7 @@ func TestOracleAskWithMCP_NoAutoAttachWhenMcpServersValidatorPresent(t *testing.
 		t.Skip("fake-oneshot-mcp.sh requires bash")
 	}
 	t.Setenv(host.OracleBinEnv, fakeOneShotMCPBin(t))
-	t.Setenv("HALLY_BIN", "/usr/local/bin/hally")
+	t.Setenv("KITSOKI_BIN", "/usr/local/bin/kitsoki")
 
 	dir := t.TempDir()
 	promptPath := filepath.Join(dir, "p.md")
@@ -425,13 +425,13 @@ func TestOracleAskWithMCP_NoSchemaMeansNoValidator(t *testing.T) {
 }
 
 // TestOracleAskWithMCP_SchemaResolvedAgainstAppDir verifies that a relative
-// schema path is resolved against HALLY_APP_DIR (mirroring resolvePromptPath).
+// schema path is resolved against KITSOKI_APP_DIR (mirroring resolvePromptPath).
 func TestOracleAskWithMCP_SchemaResolvedAgainstAppDir(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fake-oneshot-mcp.sh requires bash")
 	}
 	t.Setenv(host.OracleBinEnv, fakeOneShotMCPBin(t))
-	t.Setenv("HALLY_BIN", "/usr/local/bin/hally")
+	t.Setenv("KITSOKI_BIN", "/usr/local/bin/kitsoki")
 
 	appDir := t.TempDir()
 	t.Setenv(host.AppDirEnv, appDir)
@@ -469,7 +469,7 @@ func TestOracleAskWithMCP_SubmittedBindCapturesValidatedPayload(t *testing.T) {
 		t.Skip("fake-oneshot-mcp.sh requires bash")
 	}
 	t.Setenv(host.OracleBinEnv, fakeOneShotMCPBin(t))
-	t.Setenv("HALLY_BIN", "/usr/local/bin/hally")
+	t.Setenv("KITSOKI_BIN", "/usr/local/bin/kitsoki")
 
 	dir := t.TempDir()
 	schemaPath := filepath.Join(dir, "schema.json")
@@ -510,7 +510,7 @@ func TestOracleAskWithMCP_NoSubmittedKeyWhenLLMNeverCalledSubmit(t *testing.T) {
 		t.Skip("fake-oneshot-mcp.sh requires bash")
 	}
 	t.Setenv(host.OracleBinEnv, fakeOneShotMCPBin(t))
-	t.Setenv("HALLY_BIN", "/usr/local/bin/hally")
+	t.Setenv("KITSOKI_BIN", "/usr/local/bin/kitsoki")
 
 	dir := t.TempDir()
 	schemaPath := filepath.Join(dir, "schema.json")
@@ -552,7 +552,7 @@ func TestOracleAskWithMCP_MissingSchemaFile(t *testing.T) {
 
 // TestOracleAskWithMCP_ValidatorBlockParsed verifies that a `validator:`
 // sub-block on the call args is forwarded to the auto-attached
-// `hally mcp-validator` argv as --post-cmd / --post-cmd-arg /
+// `kitsoki mcp-validator` argv as --post-cmd / --post-cmd-arg /
 // --post-cmd-cwd / --max-retries. The fake claude binary echoes the
 // MCP config back to us so we can assert on the rendered argv.
 func TestOracleAskWithMCP_ValidatorBlockParsed(t *testing.T) {
@@ -560,7 +560,7 @@ func TestOracleAskWithMCP_ValidatorBlockParsed(t *testing.T) {
 		t.Skip("fake-oneshot-mcp.sh requires bash")
 	}
 	t.Setenv(host.OracleBinEnv, fakeOneShotMCPBin(t))
-	t.Setenv("HALLY_BIN", "/usr/local/bin/hally")
+	t.Setenv("KITSOKI_BIN", "/usr/local/bin/kitsoki")
 
 	dir := t.TempDir()
 	promptPath := filepath.Join(dir, "p.md")
@@ -638,7 +638,7 @@ func TestOracleAskWithMCP_NoValidatorBlock_BackwardCompat(t *testing.T) {
 		t.Skip("fake-oneshot-mcp.sh requires bash")
 	}
 	t.Setenv(host.OracleBinEnv, fakeOneShotMCPBin(t))
-	t.Setenv("HALLY_BIN", "/usr/local/bin/hally")
+	t.Setenv("KITSOKI_BIN", "/usr/local/bin/kitsoki")
 
 	dir := t.TempDir()
 	promptPath := filepath.Join(dir, "p.md")
@@ -675,7 +675,7 @@ func TestOracleAskWithMCP_ValidatorBlockMalformed(t *testing.T) {
 		t.Skip("fake-oneshot-mcp.sh requires bash")
 	}
 	t.Setenv(host.OracleBinEnv, fakeOneShotMCPBin(t))
-	t.Setenv("HALLY_BIN", "/usr/local/bin/hally")
+	t.Setenv("KITSOKI_BIN", "/usr/local/bin/kitsoki")
 
 	dir := t.TempDir()
 	promptPath := filepath.Join(dir, "p.md")
@@ -708,7 +708,7 @@ func TestOracleAskWithMCP_ValidatorMaxRetriesIntegerWidths(t *testing.T) {
 		t.Skip("fake-oneshot-mcp.sh requires bash")
 	}
 	t.Setenv(host.OracleBinEnv, fakeOneShotMCPBin(t))
-	t.Setenv("HALLY_BIN", "/usr/local/bin/hally")
+	t.Setenv("KITSOKI_BIN", "/usr/local/bin/kitsoki")
 
 	dir := t.TempDir()
 	promptPath := filepath.Join(dir, "p.md")
@@ -766,7 +766,7 @@ func TestOracleAskWithMCP_ValidatorBlockArgsTemplated(t *testing.T) {
 		t.Skip("fake-oneshot-mcp.sh requires bash")
 	}
 	t.Setenv(host.OracleBinEnv, fakeOneShotMCPBin(t))
-	t.Setenv("HALLY_BIN", "/usr/local/bin/hally")
+	t.Setenv("KITSOKI_BIN", "/usr/local/bin/kitsoki")
 
 	dir := t.TempDir()
 	promptPath := filepath.Join(dir, "p.md")
@@ -823,7 +823,7 @@ func TestOracleAskWithMCP_OutcomeSuccess_FirstIteration(t *testing.T) {
 		t.Skip("fake-oneshot-mcp.sh requires bash")
 	}
 	t.Setenv(host.OracleBinEnv, fakeOneShotMCPBin(t))
-	t.Setenv("HALLY_BIN", "/usr/local/bin/hally")
+	t.Setenv("KITSOKI_BIN", "/usr/local/bin/kitsoki")
 
 	dir := t.TempDir()
 	promptPath := filepath.Join(dir, "p.md")
@@ -858,12 +858,12 @@ func TestOracleAskWithMCP_OutcomeAbandoned_SecondIteration_Success(t *testing.T)
 		t.Skip("fake-oneshot-mcp.sh requires bash")
 	}
 	t.Setenv(host.OracleBinEnv, fakeOneShotMCPBin(t))
-	t.Setenv("HALLY_BIN", "/usr/local/bin/hally")
+	t.Setenv("KITSOKI_BIN", "/usr/local/bin/kitsoki")
 
 	dir := t.TempDir()
 	recordPath := filepath.Join(dir, "record.txt")
-	t.Setenv("HALLY_FAKE_RECORD", recordPath)
-	t.Setenv("HALLY_FAKE_REJECT_THEN_OK", "1")
+	t.Setenv("KITSOKI_FAKE_RECORD", recordPath)
+	t.Setenv("KITSOKI_FAKE_REJECT_THEN_OK", "1")
 	promptPath := filepath.Join(dir, "p.md")
 	prompt := "do the thing"
 	require.NoError(t, os.WriteFile(promptPath, []byte(prompt), 0o644))
@@ -907,11 +907,11 @@ func TestOracleAskWithMCP_AbandonmentExhausted(t *testing.T) {
 		t.Skip("fake-oneshot-mcp.sh requires bash")
 	}
 	t.Setenv(host.OracleBinEnv, fakeOneShotMCPBin(t))
-	t.Setenv("HALLY_BIN", "/usr/local/bin/hally")
+	t.Setenv("KITSOKI_BIN", "/usr/local/bin/kitsoki")
 
 	dir := t.TempDir()
 	recordPath := filepath.Join(dir, "record.txt")
-	t.Setenv("HALLY_FAKE_RECORD", recordPath)
+	t.Setenv("KITSOKI_FAKE_RECORD", recordPath)
 	promptPath := filepath.Join(dir, "p.md")
 	require.NoError(t, os.WriteFile(promptPath, []byte("do the thing"), 0o644))
 	schemaPath := filepath.Join(dir, "schema.json")
@@ -946,11 +946,11 @@ func TestOracleAskWithMCP_VerifierRejection_LeadsToRetriesExhausted(t *testing.T
 		t.Skip("fake-oneshot-mcp.sh requires bash")
 	}
 	t.Setenv(host.OracleBinEnv, fakeOneShotMCPBin(t))
-	t.Setenv("HALLY_BIN", "/usr/local/bin/hally")
+	t.Setenv("KITSOKI_BIN", "/usr/local/bin/kitsoki")
 
 	dir := t.TempDir()
 	recordPath := filepath.Join(dir, "record.txt")
-	t.Setenv("HALLY_FAKE_RECORD", recordPath)
+	t.Setenv("KITSOKI_FAKE_RECORD", recordPath)
 	promptPath := filepath.Join(dir, "p.md")
 	require.NoError(t, os.WriteFile(promptPath, []byte("propose SIMULATE_EXHAUST"), 0o644))
 	schemaPath := filepath.Join(dir, "schema.json")
@@ -991,13 +991,13 @@ func TestOracleAskWithMCP_NudgeIncludesLastError_AndOmitsItWhenAbsent(t *testing
 		t.Skip("fake-oneshot-mcp.sh requires bash")
 	}
 	t.Setenv(host.OracleBinEnv, fakeOneShotMCPBin(t))
-	t.Setenv("HALLY_BIN", "/usr/local/bin/hally")
+	t.Setenv("KITSOKI_BIN", "/usr/local/bin/kitsoki")
 
 	t.Run("with_last_error", func(t *testing.T) {
 		dir := t.TempDir()
 		recordPath := filepath.Join(dir, "record.txt")
-		t.Setenv("HALLY_FAKE_RECORD", recordPath)
-		t.Setenv("HALLY_FAKE_REJECT_THEN_OK", "1")
+		t.Setenv("KITSOKI_FAKE_RECORD", recordPath)
+		t.Setenv("KITSOKI_FAKE_REJECT_THEN_OK", "1")
 		promptPath := filepath.Join(dir, "p.md")
 		require.NoError(t, os.WriteFile(promptPath, []byte("do"), 0o644))
 		schemaPath := filepath.Join(dir, "schema.json")
@@ -1017,7 +1017,7 @@ func TestOracleAskWithMCP_NudgeIncludesLastError_AndOmitsItWhenAbsent(t *testing
 	t.Run("without_last_error", func(t *testing.T) {
 		dir := t.TempDir()
 		recordPath := filepath.Join(dir, "record.txt")
-		t.Setenv("HALLY_FAKE_RECORD", recordPath)
+		t.Setenv("KITSOKI_FAKE_RECORD", recordPath)
 		promptPath := filepath.Join(dir, "p.md")
 		// Plain abandonment: no SIMULATE_* sentinels means the fake
 		// writes nothing to the state file, so last_error stays empty.

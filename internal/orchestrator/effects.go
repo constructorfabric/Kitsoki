@@ -7,12 +7,12 @@ import (
 	"fmt"
 	"log/slog"
 
-	"hally/internal/app"
-	"hally/internal/host"
-	"hally/internal/jobs"
-	"hally/internal/machine"
-	"hally/internal/store"
-	"hally/internal/world"
+	"kitsoki/internal/app"
+	"kitsoki/internal/host"
+	"kitsoki/internal/jobs"
+	"kitsoki/internal/machine"
+	"kitsoki/internal/store"
+	"kitsoki/internal/world"
 )
 
 // dispatchBackground submits hc to the scheduler, binds the JobID into world

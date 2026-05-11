@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"hally/internal/chats"
-	"hally/internal/clock"
-	"hally/internal/jobs"
-	"hally/internal/store"
+	"kitsoki/internal/chats"
+	"kitsoki/internal/clock"
+	"kitsoki/internal/jobs"
+	"kitsoki/internal/store"
 
 	_ "modernc.org/sqlite"
 )

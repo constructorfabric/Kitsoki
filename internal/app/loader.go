@@ -1,4 +1,4 @@
-// Package app — YAML loader for Hally app definitions (Stage 2).
+// Package app — YAML loader for Kitsoki app definitions (Stage 2).
 //
 // Load reads an AppDef from disk; LoadBytes reads from an in-memory byte slice.
 // After parsing, both perform full referential-integrity validation and return

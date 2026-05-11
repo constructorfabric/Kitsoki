@@ -8,12 +8,12 @@ import (
 	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
 
-	"hally/internal/app"
-	"hally/internal/harness"
-	"hally/internal/host"
-	"hally/internal/machine"
-	"hally/internal/orchestrator"
-	"hally/internal/store"
+	"kitsoki/internal/app"
+	"kitsoki/internal/harness"
+	"kitsoki/internal/host"
+	"kitsoki/internal/machine"
+	"kitsoki/internal/orchestrator"
+	"kitsoki/internal/store"
 )
 
 // TestOrchestrator_HostDispatchBindsAndRefreshesView covers the orchestrator's
@@ -85,7 +85,7 @@ func TestOrchestrator_HostDispatchDisabledWhenNoRegistry(t *testing.T) {
 // error state — instead of leaving it stuck in the success target.
 //
 // Regression for the bugfix room's phase_6_5 verifier hang: the verifier
-// returned exit 1 but hally still advanced to the success state because
+// returned exit 1 but kitsoki still advanced to the success state because
 // the orchestrator captured `last_error` in world without consulting
 // hc.OnError to actually transition.
 func TestOrchestrator_HostDispatchOnError_RoutesToErrorState(t *testing.T) {

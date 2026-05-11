@@ -18,17 +18,17 @@ import (
 	"github.com/goccy/go-yaml"
 	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"hally/internal/app"
-	"hally/internal/clock"
-	"hally/internal/expr"
-	"hally/internal/harness"
-	"hally/internal/host"
-	"hally/internal/intent"
-	"hally/internal/jobs"
-	"hally/internal/machine"
-	"hally/internal/orchestrator"
-	"hally/internal/store"
-	"hally/internal/world"
+	"kitsoki/internal/app"
+	"kitsoki/internal/clock"
+	"kitsoki/internal/expr"
+	"kitsoki/internal/harness"
+	"kitsoki/internal/host"
+	"kitsoki/internal/intent"
+	"kitsoki/internal/jobs"
+	"kitsoki/internal/machine"
+	"kitsoki/internal/orchestrator"
+	"kitsoki/internal/store"
+	"kitsoki/internal/world"
 )
 
 // ─── Flow fixture YAML format (§10.3.1) ──────────────────────────────────────

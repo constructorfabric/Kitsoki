@@ -1,20 +1,20 @@
 # Developer Guide
 
-For people working *on* hally — not just authoring apps that run on it.
-If you want to write a hally app, see [`authoring.md`](authoring.md) and
-the embedded `hally docs app-schema`.
+For people working *on* kitsoki — not just authoring apps that run on it.
+If you want to write a kitsoki app, see [`authoring.md`](authoring.md) and
+the embedded `kitsoki docs app-schema`.
 
 ---
 
 ## 1. Repository tour
 
 ```
-hally/
+kitsoki/
 ├── cmd/
-│   ├── hally/             single CLI entrypoint, one Go file per subcommand
+│   ├── kitsoki/             single CLI entrypoint, one Go file per subcommand
 │   └── devstory_loader/   one-off helper used during dev-story bring-up
 ├── internal/              all platform packages (see architecture.md §3)
-├── pkg/hallytest/         public helpers for app authors writing tests
+├── pkg/kitsokitest/         public helpers for app authors writing tests
 ├── docs/                  this directory — narrative documentation
 ├── testdata/apps/         runnable example apps (cloak, dev-story, …)
 ├── demo/                  VHS tapes and recorded GIFs
@@ -25,7 +25,7 @@ hally/
 
 Anything imported under `internal/` is private to the binary by Go's
 visibility rules; that's deliberate. The only public Go surface is
-`pkg/hallytest`. Stable user surfaces are the `hally` CLI, the `app.yaml`
+`pkg/kitsokitest`. Stable user surfaces are the `kitsoki` CLI, the `app.yaml`
 schema, the MCP `transition` tool, and the JSONL trace format.
 
 ---
@@ -37,7 +37,7 @@ schema, the MCP `transition` tool, and the JSONL trace format.
 | Go 1.25+ | Generics in the orchestrator; `slog` everywhere |
 | `claude` CLI | Default LLM harness (recommended; optional if you set `ANTHROPIC_API_KEY`) |
 | SQLite | Embedded via `modernc.org/sqlite` (pure Go; no system library needed) |
-| `dot` | Optional; only for rendering DOT output of `hally viz` |
+| `dot` | Optional; only for rendering DOT output of `kitsoki viz` |
 | `vhs` | Optional; only for re-recording the demo GIF |
 
 No CGO, no managed services, no Docker required to develop.
@@ -48,7 +48,7 @@ No CGO, no managed services, no Docker required to develop.
 
 ```sh
 go build ./...          # build every package
-go build -o hally ./cmd/hally   # build the CLI
+go build -o kitsoki ./cmd/kitsoki   # build the CLI
 go vet ./...            # vet every package
 go test ./...           # run every test
 go test -race ./...     # plus the race detector (recommended in CI)
@@ -61,29 +61,29 @@ SQLite or a fake clock.
 
 ---
 
-## 4. Run hally locally
+## 4. Run kitsoki locally
 
 ```sh
 # Default: claude CLI harness if found, else live SDK if API key, else replay
-./hally run testdata/apps/cloak/app.yaml
+./kitsoki run testdata/apps/cloak/app.yaml
 
 # Force the deterministic replay path (no LLM at all)
-./hally run testdata/apps/cloak/app.yaml \
+./kitsoki run testdata/apps/cloak/app.yaml \
     --harness replay \
     --recording testdata/apps/cloak/recording.yaml
 
 # Verbose tracing, both JSONL and human-readable, to disk
-./hally run testdata/apps/cloak/app.yaml \
+./kitsoki run testdata/apps/cloak/app.yaml \
     --trace /tmp/cloak.jsonl \
     --trace-pretty /tmp/cloak.log
 
 # Visualise the state graph
-./hally viz testdata/apps/cloak/app.yaml | dot -Tpng -o /tmp/cloak.png
-./hally viz testdata/apps/cloak/app.yaml --mermaid > /tmp/cloak.mmd
+./kitsoki viz testdata/apps/cloak/app.yaml | dot -Tpng -o /tmp/cloak.png
+./kitsoki viz testdata/apps/cloak/app.yaml --mermaid > /tmp/cloak.mmd
 ```
 
 For the embedded LLM-operator manual (a complete tour of every flag and
-workflow), `hally docs llm-guide`.
+workflow), `kitsoki docs llm-guide`.
 
 ---
 
@@ -97,11 +97,11 @@ Almost always purely a YAML edit — no code change.
    `intents:` map). Add slot types if it carries arguments.
 2. Bind it from one or more states' `on:` map. Add `when:` guards or a
    `default: true` catch-all as needed.
-3. Run `./hally inspect testdata/apps/<app>/app.yaml --session-id <id>`
+3. Run `./kitsoki inspect testdata/apps/<app>/app.yaml --session-id <id>`
    on a stored session to check the new intent appears in
    `allowed_intents`.
 4. Add a flow fixture under `<app>/flows/` exercising the new path.
-5. `./hally test flows testdata/apps/<app>/app.yaml`.
+5. `./kitsoki test flows testdata/apps/<app>/app.yaml`.
 
 If you want the new intent to be reachable via natural language and not
 just structured `intent:` blocks, also add a Mode 1 fixture under
@@ -132,33 +132,33 @@ Transports are output adapters. See `internal/transport/`.
 1. Implement the `Transport` interface (`ID`, `Post`, `Close`) in a new
    file under `internal/transport/`.
 2. Wire it into the orchestrator's transport registry in
-   `cmd/hally/main.go` (read the relevant config from environment or
+   `cmd/kitsoki/main.go` (read the relevant config from environment or
    flags; transports are registered at process start).
-3. Convert hally's intermediate Markdown to the surface's native markup
+3. Convert kitsoki's intermediate Markdown to the surface's native markup
    if needed. The Jira transport's `jira_markdown.go` is a worked
    example of "Markdown in, Jira wiki out".
 4. Add a session-key parser if your transport invents a new
    `(transport:thread)` shape — see `internal/store/external_keys.go`.
-5. End-to-end test: drive a session with `hally session continue
+5. End-to-end test: drive a session with `kitsoki session continue
    --key <transport>:<thread>` and assert the transport's `Post` was
    called with the expected message.
 
 ### 5.4 Adding a new CLI subcommand
 
-1. Drop a new file under `cmd/hally/` named after the subcommand.
-2. Build a `cobra.Command` and register it in `cmd/hally/main.go`'s
+1. Drop a new file under `cmd/kitsoki/` named after the subcommand.
+2. Build a `cobra.Command` and register it in `cmd/kitsoki/main.go`'s
    root command.
-3. If the command needs read-only session access, use `hally inspect`
+3. If the command needs read-only session access, use `kitsoki inspect`
    as the worked example — it deliberately does **not** acquire the
    writer lock.
 4. If the command must mutate, acquire the writer lock and respect
-   `EX_TEMPFAIL` (75) on conflict, like `hally session continue`.
+   `EX_TEMPFAIL` (75) on conflict, like `kitsoki session continue`.
 
 ### 5.5 Changing the event log
 
 The `EventKind` enum in `internal/store/event.go` is part of the
 implicit public surface — flow tests, the trace pretty-printer, and
-`hally inspect` all key off it.
+`kitsoki inspect` all key off it.
 
 - Adding a new kind: append to the iota, never insert in the middle.
   Stored databases are forward-compatible.
@@ -174,11 +174,11 @@ implicit public surface — flow tests, the trace pretty-printer, and
 ### 6.1 The trace is your transcript
 
 ```sh
-hally run myapp.yaml --trace /tmp/run.jsonl --trace-pretty -
+kitsoki run myapp.yaml --trace /tmp/run.jsonl --trace-pretty -
 ```
 
 `--trace` writes one JSON object per event. `--trace-pretty -` mirrors
-to stderr in colour. After the fact, `hally trace /tmp/run.jsonl`
+to stderr in colour. After the fact, `kitsoki trace /tmp/run.jsonl`
 re-pretty-prints. Every event line carries `session_id`, `turn`, and
 the namespaced `event` name (e.g. `harness.response`,
 `machine.transition`, `host.invoke.return`). Grep is your friend.
@@ -193,29 +193,29 @@ The most diagnostic events:
 - `turn.done` — carries the rendered view, so the trace is a complete
   after-the-fact transcript.
 
-### 6.2 `hally inspect`
+### 6.2 `kitsoki inspect`
 
 A read-only JSON snapshot of a stored session. Safe to run alongside an
-active `hally run`:
+active `kitsoki run`:
 
 ```sh
-hally inspect path/to/app.yaml --session-id <id> [--last-turns 5]
+kitsoki inspect path/to/app.yaml --session-id <id> [--last-turns 5]
 ```
 
 Use it when the human says "something just broke" — point at the live
-session and read what hally thinks is going on (current state, world,
+session and read what kitsoki thinks is going on (current state, world,
 allowed intents, last view, last N turn summaries).
 
-### 6.3 `hally turn`
+### 6.3 `kitsoki turn`
 
 One-shot stateless turn against an app, no SQLite, no journey. Great
 for "what would happen if I did X in state Y with world Z?":
 
 ```sh
-hally turn app.yaml --state cloakroom --intent hang_cloak
-hally turn app.yaml --state foyer \
+kitsoki turn app.yaml --state cloakroom --intent hang_cloak
+kitsoki turn app.yaml --state foyer \
     --input "head south" --harness replay --recording recording.yaml
-hally turn app.yaml --state cloakroom --intent look \
+kitsoki turn app.yaml --state cloakroom --intent look \
     --world '{"wearing_cloak": false}'
 ```
 
@@ -225,7 +225,7 @@ host calls, view) and never touches the session DB.
 ### 6.4 Replaying a stored session
 
 ```sh
-hally replay <session-id> [--db <path>]
+kitsoki replay <session-id> [--db <path>]
 ```
 
 Replays the event log into a fresh state machine and diffs every
@@ -235,7 +235,7 @@ regressions in the machine after a code change.
 ### 6.5 The MCP validator
 
 ```sh
-hally mcp-validator --schema schema.json
+kitsoki mcp-validator --schema schema.json
 ```
 
 A standalone stdio MCP server that validates a JSON payload against a
@@ -276,7 +276,7 @@ debugging a schema-shaped prompt.
 
 ## 8. Hot-reload (edit-mode)
 
-While running `hally run`, press `Esc` to open the action menu, then
+While running `kitsoki run`, press `Esc` to open the action menu, then
 pick **Edit mode**. The TUI:
 
 1. Snapshots the app directory into a shadow copy.
@@ -298,10 +298,10 @@ problem.
 
 ## 9. Releases & versioning
 
-There is currently no formal release process. The CLI's `hally
-version` reads from `cmd/hally/main.go`'s `Version` constant. Once a
+There is currently no formal release process. The CLI's `kitsoki
+version` reads from `cmd/kitsoki/main.go`'s `Version` constant. Once a
 release process exists, this section will document it; until then,
-binaries are built ad hoc with `go build -o hally ./cmd/hally`.
+binaries are built ad hoc with `go build -o kitsoki ./cmd/kitsoki`.
 
 ---
 
@@ -313,6 +313,6 @@ binaries are built ad hoc with `go build -o hally ./cmd/hally`.
 - **Background jobs** → [`background-jobs/`](background-jobs/README.md)
 - **Hosts and transports** → [`hosts.md`](hosts.md), [`transports.md`](transports.md)
 - **Testing** → [`testing.md`](testing.md)
-- **Embedded LLM operator manual** → `hally docs llm-guide`
-- **Authoritative `app.yaml` schema** → `hally docs app-schema`
+- **Embedded LLM operator manual** → `kitsoki docs llm-guide`
+- **Authoritative `app.yaml` schema** → `kitsoki docs app-schema`
 - **Long-form design rationale** → [`../design.md`](../design.md)

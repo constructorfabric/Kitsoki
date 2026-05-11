@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"hally/internal/app"
+	"kitsoki/internal/app"
 )
 
 // EventKind is the discriminant of the event log. The exact set of values

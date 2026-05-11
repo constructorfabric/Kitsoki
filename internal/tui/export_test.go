@@ -8,9 +8,9 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"hally/internal/clock"
-	"hally/internal/jobs"
-	"hally/internal/orchestrator"
+	"kitsoki/internal/clock"
+	"kitsoki/internal/jobs"
+	"kitsoki/internal/orchestrator"
 )
 
 // GetTranscriptContent extracts the transcript content from a RootModel

@@ -6,11 +6,11 @@ import (
 	"context"
 	"testing"
 
-	"hally/internal/app"
-	"hally/internal/intent"
-	"hally/internal/machine"
-	"hally/internal/store"
-	"hally/internal/world"
+	"kitsoki/internal/app"
+	"kitsoki/internal/intent"
+	"kitsoki/internal/machine"
+	"kitsoki/internal/store"
+	"kitsoki/internal/world"
 
 	"github.com/stretchr/testify/require"
 )

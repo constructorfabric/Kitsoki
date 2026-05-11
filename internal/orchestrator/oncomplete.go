@@ -9,10 +9,10 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"hally/internal/app"
-	"hally/internal/inbox"
-	"hally/internal/jobs"
-	"hally/internal/store"
+	"kitsoki/internal/app"
+	"kitsoki/internal/inbox"
+	"kitsoki/internal/jobs"
+	"kitsoki/internal/store"
 )
 
 // handleJobTerminal is called by the per-session listener goroutine when a job

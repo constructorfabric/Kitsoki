@@ -1,4 +1,4 @@
-// Package jobs implements the background job scheduler for hally applications.
+// Package jobs implements the background job scheduler for kitsoki applications.
 //
 // # Architecture
 //

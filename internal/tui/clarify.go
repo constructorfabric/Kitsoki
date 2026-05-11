@@ -8,7 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
 
-	"hally/internal/orchestrator"
+	"kitsoki/internal/orchestrator"
 )
 
 // clarifyModel handles the §7.3 slot-fill clarification UI.

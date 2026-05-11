@@ -11,9 +11,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"hally/internal/app"
-	"hally/internal/harness"
-	"hally/internal/world"
+	"kitsoki/internal/app"
+	"kitsoki/internal/harness"
+	"kitsoki/internal/world"
 )
 
 // ─── parseValidatedPayload tests ──────────────────────────────────────────────
@@ -139,12 +139,12 @@ func TestClaudeCLIHarness_ExecPlumbing(t *testing.T) {
 		},
 	}
 
-	// HallyBin must point at *something* that exists; the stub doesn't
+	// KitsokiBin must point at *something* that exists; the stub doesn't
 	// actually spawn it, so we reuse the fake-claude binary to satisfy
 	// the existence check.
 	h, err := harness.NewClaudeCLI(appDef, harness.ClaudeCLIConfig{
 		ClaudeBin: fakeBin,
-		HallyBin:  fakeBin,
+		KitsokiBin:  fakeBin,
 	})
 	require.NoError(t, err)
 
@@ -187,7 +187,7 @@ func TestClaudeCLIHarness_NoSubmitError(t *testing.T) {
 	}
 	h, err := harness.NewClaudeCLI(appDef, harness.ClaudeCLIConfig{
 		ClaudeBin: fakeBin,
-		HallyBin:  fakeBin,
+		KitsokiBin:  fakeBin,
 	})
 	require.NoError(t, err)
 

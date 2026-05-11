@@ -13,7 +13,7 @@
 - background jobs on VMs, dispatch and track, survive intermittent connectivity (dev laptop to VM w/ VPN and closed lid issues)
 - react UI
 - meta mode: ask questions or improve the story itself (replace edit mode).
-- self mode: ask questions or improve hally itself.
+- self mode: ask questions or improve kitsoki itself.
 - better testing for proposal mode - should work like conversation (w/ peristent convo)
 - remote job mode: monitor and control sessions on VMs
 - pass request id to downstream CLI and API calls so that the session/trace can be correlated, so for instance mcp validator can log directly against the right session (is this racy?)
@@ -21,14 +21,14 @@
 ## Tech debt
 
 ### View rendering: unify structured + prose content
-➜  devstory git:(devstory) ✗ hally run stories/devstory/app.yaml --trace /tmp/devstory-trace.jsonl --trace-pretty /tmp/devstory-trace.log
+➜  devstory git:(devstory) ✗ kitsoki run stories/devstory/app.yaml --trace /tmp/devstory-trace.jsonl --trace-pretty /tmp/devstory-trace.log
 Error: validate hosts: host: unregistered hosts declared in app manifest: [host.oracle.talk]
 Usage:
-  hally run <app.yaml> [flags]
+  kitsoki run <app.yaml> [flags]
 
 Flags:
       --claude-model string   model passed to claude -p --model (default: claude-haiku-4-5-20251001); use 'opus' for higher quality at higher cost
-      --db string             path to SQLite session database (default: $XDG_DATA_HOME/hally/sessions.db)
+      --db string             path to SQLite session database (default: $XDG_DATA_HOME/kitsoki/sessions.db)
       --harness claude        harness type: claude|live|replay|recording (default: claude if claude binary on PATH, else live if ANTHROPIC_API_KEY set, else replay)
   -h, --help                  help for run
       --oracle string         path to oracle YAML file (required for --harness replay)

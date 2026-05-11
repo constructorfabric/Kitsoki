@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"hally/internal/app"
-	"hally/internal/host"
-	"hally/internal/proposal"
+	"kitsoki/internal/app"
+	"kitsoki/internal/host"
+	"kitsoki/internal/proposal"
 )
 
 func TestProposal_Lifecycle(t *testing.T) {

@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"hally/internal/clock"
-	"hally/internal/ulid"
+	"kitsoki/internal/clock"
+	"kitsoki/internal/ulid"
 
 	_ "modernc.org/sqlite"
 )
@@ -64,7 +64,7 @@ func NewStore(db *sql.DB, opts ...Option) (*Store, error) {
 	// reports 0 (the SQLite default); an existing one reports whatever the
 	// last writer stamped. We reject any non-zero value that doesn't match
 	// expectedSchemaVersion — that means the DB was written by a different
-	// hally build and we can't safely re-run our IF NOT EXISTS DDL on it
+	// kitsoki build and we can't safely re-run our IF NOT EXISTS DDL on it
 	// without corrupting state.
 	var gotVersion int
 	if err := db.QueryRow(`PRAGMA user_version`).Scan(&gotVersion); err != nil {
@@ -72,7 +72,7 @@ func NewStore(db *sql.DB, opts ...Option) (*Store, error) {
 	}
 	if gotVersion != 0 && gotVersion != expectedSchemaVersion {
 		return nil, fmt.Errorf(
-			"chats.NewStore: unexpected schema version %d (want %d) — DB written by a different hally build; refusing to open",
+			"chats.NewStore: unexpected schema version %d (want %d) — DB written by a different kitsoki build; refusing to open",
 			gotVersion, expectedSchemaVersion,
 		)
 	}

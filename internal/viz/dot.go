@@ -8,7 +8,7 @@ import (
 
 	dotlib "github.com/emicklei/dot"
 
-	"hally/internal/app"
+	"kitsoki/internal/app"
 )
 
 // Export writes a Graphviz DOT representation of the app to w.

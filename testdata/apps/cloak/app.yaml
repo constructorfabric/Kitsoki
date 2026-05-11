@@ -19,7 +19,7 @@ app:
   id: cloak-of-darkness
   version: 0.1.0
   title: "Cloak of Darkness"
-  author: "Roger Firth (spec), ported to Hally"
+  author: "Roger Firth (spec), ported to Kitsoki"
   license: "Spec in public domain; this port CC0"
 
 # Top-level world schema. Every variable is typed and has a default.

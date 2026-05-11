@@ -13,8 +13,8 @@ Set FontSize 14
 Set FontFamily "JetBrains Mono"
 Set Theme "Molokai"
 
-# Launch hally with the replay harness against the Cloak of Darkness recording.
-Type "hally run testdata/apps/cloak/app.yaml --harness replay --recording testdata/apps/cloak/recording.yaml"
+# Launch kitsoki with the replay harness against the Cloak of Darkness recording.
+Type "kitsoki run testdata/apps/cloak/app.yaml --harness replay --recording testdata/apps/cloak/recording.yaml"
 Enter
 Sleep 2s
 

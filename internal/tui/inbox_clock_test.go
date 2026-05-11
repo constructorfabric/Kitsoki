@@ -14,14 +14,14 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/require"
 
-	"hally/internal/app"
-	"hally/internal/clock"
-	"hally/internal/harness"
-	"hally/internal/jobs"
-	"hally/internal/machine"
-	"hally/internal/orchestrator"
-	"hally/internal/store"
-	tuipkg "hally/internal/tui"
+	"kitsoki/internal/app"
+	"kitsoki/internal/clock"
+	"kitsoki/internal/harness"
+	"kitsoki/internal/jobs"
+	"kitsoki/internal/machine"
+	"kitsoki/internal/orchestrator"
+	"kitsoki/internal/store"
+	tuipkg "kitsoki/internal/tui"
 )
 
 // buildModelWithFakeClock builds a RootModel wired with a *clock.Fake and a

@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"hally/internal/app"
-	"hally/internal/store"
+	"kitsoki/internal/app"
+	"kitsoki/internal/store"
 )
 
 // TestBindAndLookupExternalKey verifies the basic insert + lookup roundtrip.

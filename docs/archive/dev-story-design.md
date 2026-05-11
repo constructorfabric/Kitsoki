@@ -1,6 +1,6 @@
 # dev-story — Design Notes
 
-Living design document for the dev-story application and the hally platform additions it requires.  Companion to [dev-story.md](./dev-story.md) (the user-facing app description) and [design.md](./design.md) (the hally platform spec).
+Living design document for the dev-story application and the kitsoki platform additions it requires.  Companion to [dev-story.md](./dev-story.md) (the user-facing app description) and [design.md](./design.md) (the kitsoki platform spec).
 
 Status legend:
 
@@ -12,9 +12,9 @@ Status legend:
 
 ## 1. Purpose & scope
 
-dev-story is a text-adventure-style interface for a software engineer's daily work, built on hally.  Rooms are states, intents are intents, external tools (workspace-manager, gh, jira, kubectl, git, …) are invoked as host actions.
+dev-story is a text-adventure-style interface for a software engineer's daily work, built on kitsoki.  Rooms are states, intents are intents, external tools (workspace-manager, gh, jira, kubectl, git, …) are invoked as host actions.
 
-The app itself is mostly YAML + prompt templates + thin host handlers.  The work in this document is the **platform additions to hally** that dev-story needs.  Everything here is useful beyond dev-story and should be designed as general-purpose primitives.
+The app itself is mostly YAML + prompt templates + thin host handlers.  The work in this document is the **platform additions to kitsoki** that dev-story needs.  Everything here is useful beyond dev-story and should be designed as general-purpose primitives.
 
 ### 1.1 Summary of additions
 
@@ -63,7 +63,7 @@ Sections 1–4 are the spine.  Everything else layers on top or is room-specific
 - Effects that invoke hosts integrate with the machine's effect executor (today handles `set`/`say`/`emit`) in `internal/machine/`.
 - Reference handler for first integration: **workspace-manager**, since it's pre-existing and proves the loop end-to-end.
 - **Error handling.**  Handlers return `(Result, error)`.  YAML effect supports an optional `on_error:` transition target that fires when the handler returns a non-nil error.  Error details bind into a reserved `$host_error` slot (`code`, `message`) visible to the error transition's guard.  No per-error-code branching sugar in v1 — authors use expr guards on `$host_error.code`.
-- **Auth / secrets.**  Loaded at runtime from env + `~/.hally/secrets.yaml` and injected into handlers via the registry's context struct.  Never referenced from YAML.
+- **Auth / secrets.**  Loaded at runtime from env + `~/.kitsoki/secrets.yaml` and injected into handlers via the registry's context struct.  Never referenced from YAML.
 - **Allow-list per app.**  Apps declare required hosts in a top-level `hosts: [host.run, host.gh, ...]` manifest section.  Loader errors if YAML invokes an undeclared host.  Runtime errors at startup if a declared host isn't registered.
 - **Streaming results** are covered by §4 (jobs).  Synchronous hosts return the simple `Result` above.
 
@@ -451,7 +451,7 @@ Order is chosen so each step unlocks the next and produces something testable.
 9. **Oracle harness mode (§7)**.  Ships last; orthogonal to everything else.
 10. **Multi-modal view polish (§8)** as needed.
 
-Each step should land with: DSL example, at least one dev-story room using it, and a test fixture in hally's existing test runner.
+Each step should land with: DSL example, at least one dev-story room using it, and a test fixture in kitsoki's existing test runner.
 
 ---
 
@@ -459,7 +459,7 @@ Each step should land with: DSL example, at least one dev-story room using it, a
 
 ### 11.1 Determinism & replay
 
-Everything we add must flow through the event log so `hally replay` keeps working.  Specifically: job progress events, notification posts/reads, teleports, clarifications, proposal drafts/refines, history pushes/pops.  Host invocations are the one non-deterministic edge — the event log records inputs and outputs so replay substitutes the recorded output.
+Everything we add must flow through the event log so `kitsoki replay` keeps working.  Specifically: job progress events, notification posts/reads, teleports, clarifications, proposal drafts/refines, history pushes/pops.  Host invocations are the one non-deterministic edge — the event log records inputs and outputs so replay substitutes the recorded output.
 
 ### 11.2 Security
 
@@ -486,7 +486,7 @@ Needs extensions to `internal/testrunner/` — specifically, a virtual clock and
 
 ## 12. Glossary
 
-- **Room** — a state in the hally state machine, as seen by the user.
+- **Room** — a state in the kitsoki state machine, as seen by the user.
 - **Intent** — a named user action, declared in YAML, parsed from free text by the LLM.
 - **Proposal** — a draft-review-execute-result lifecycle attached to a state.  Standard intents come free.
 - **Repeatable** — a proposal property indicating whether its execute effect is safe to perform more than once after success.  Default false.

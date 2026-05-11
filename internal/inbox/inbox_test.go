@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"hally/internal/app"
-	"hally/internal/inbox"
-	"hally/internal/jobs"
-	"hally/internal/world"
+	"kitsoki/internal/app"
+	"kitsoki/internal/inbox"
+	"kitsoki/internal/jobs"
+	"kitsoki/internal/world"
 
 	_ "modernc.org/sqlite"
 )

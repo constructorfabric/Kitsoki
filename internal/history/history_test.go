@@ -3,9 +3,9 @@ package history_test
 import (
 	"testing"
 
-	"hally/internal/app"
-	"hally/internal/history"
-	"hally/internal/world"
+	"kitsoki/internal/app"
+	"kitsoki/internal/history"
+	"kitsoki/internal/world"
 )
 
 func TestStack_PushPop(t *testing.T) {

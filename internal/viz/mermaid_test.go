@@ -6,8 +6,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"hally/internal/app"
-	"hally/internal/viz"
+	"kitsoki/internal/app"
+	"kitsoki/internal/viz"
 )
 
 func TestMermaidExporterCloak(t *testing.T) {

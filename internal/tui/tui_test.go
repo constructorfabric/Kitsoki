@@ -13,12 +13,12 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/require"
 
-	"hally/internal/app"
-	"hally/internal/harness"
-	"hally/internal/machine"
-	"hally/internal/orchestrator"
-	"hally/internal/store"
-	tuipkg "hally/internal/tui"
+	"kitsoki/internal/app"
+	"kitsoki/internal/harness"
+	"kitsoki/internal/machine"
+	"kitsoki/internal/orchestrator"
+	"kitsoki/internal/store"
+	tuipkg "kitsoki/internal/tui"
 )
 
 var flagUpdate = flag.Bool("update", false, "update golden files")
@@ -313,7 +313,7 @@ func TestEditModeFullFlow(t *testing.T) {
 	fi, err := os.Stat(abs)
 	require.NoError(t, err, "fake-claude.sh missing")
 	require.NotZero(t, fi.Mode()&0o111, "fake-claude.sh not executable")
-	t.Setenv("HALLY_ORACLE_CLAUDE_BIN", abs)
+	t.Setenv("KITSOKI_ORACLE_CLAUDE_BIN", abs)
 
 	// Copy the cloak app.yaml into a temp dir so the test doesn't
 	// mutate the repo; build the orchestrator against the copy.

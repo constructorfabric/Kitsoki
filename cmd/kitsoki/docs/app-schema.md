@@ -1,6 +1,6 @@
 # `app.yaml` Schema Reference
 
-The authoritative reference for a hally application definition. Generated
+The authoritative reference for a kitsoki application definition. Generated
 from the Go types in `internal/app/types.go` — if something here disagrees
 with that file, the Go types win.
 

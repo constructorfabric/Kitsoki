@@ -4,10 +4,10 @@
 the human author on cyber-repo's `devstory` story.
 
 **Problem:** an AI agent reading/editing this codebase can build rooms,
-write flows, and modify hally itself without much friction.  But it
+write flows, and modify kitsoki itself without much friction.  But it
 cannot *experience* the running app the way a human does:
 
-- `hally run` requires a TTY.
+- `kitsoki run` requires a TTY.
 - The `--trace` file captures internal events (turns, harness calls,
   machine transitions) but not the rendered view — so the AI has no
   way to see what the human actually saw on screen.
@@ -19,11 +19,11 @@ cannot *experience* the running app the way a human does:
   can't test those paths without invoking the real LLM.
 
 Bugs fall through the gap.  The most recent example: the Terminal Room
-hung forever at "Please wait…" after `accept`, because hally's `Effect`
+hung forever at "Please wait…" after `accept`, because kitsoki's `Effect`
 has no `on_success` hook.  The AI had written and tested the room but
 couldn't see this — it only surfaced when the human actually drove it.
 
-This proposal adds five small hally surfaces that turn the blind spots
+This proposal adds five small kitsoki surfaces that turn the blind spots
 into shared context.  Each is independently useful.  The first two are
 the highest-leverage; the rest are progressively bigger.
 
@@ -47,7 +47,7 @@ plain text.
 The human runs:
 
 ```
-hally run app.yaml --trace /tmp/t.jsonl --trace-pretty /tmp/t.log
+kitsoki run app.yaml --trace /tmp/t.jsonl --trace-pretty /tmp/t.log
 ```
 
 today.  With this change the trace file becomes a complete after-the-
@@ -56,7 +56,7 @@ wrong" the AI can read the trace and see exactly what the view was.
 No re-running, no mystery.  Byte-for-byte reproducibility of the human
 experience.
 
-Bonus: `hally record` and `hally test flows` get strictly richer data
+Bonus: `kitsoki record` and `kitsoki test flows` get strictly richer data
 for free — flows could assert against the rendered text, not just the
 state name.
 
@@ -80,12 +80,12 @@ dict-typed.
 
 ---
 
-## 2. `hally turn` — stateless one-shot turn execution  *(~200 LoC)*
+## 2. `kitsoki turn` — stateless one-shot turn execution  *(~200 LoC)*
 
 ### Command
 
 ```
-hally turn <app.yaml> --state <S> [--world @file.json] [--slots @file.json] \
+kitsoki turn <app.yaml> --state <S> [--world @file.json] [--slots @file.json] \
            (--intent <name> | --input "<text>") \
            [--harness replay --oracle <path>]
 ```
@@ -129,19 +129,19 @@ Reuse existing machinery:
 - `internal/orchestrator` to fire one turn
 - Skip TUI entirely — dump the orchestrator's turn result as JSON.
 
-Cost: one new `cmd/hally/turn.go` (~150 LoC) plus a small reshape of
+Cost: one new `cmd/kitsoki/turn.go` (~150 LoC) plus a small reshape of
 orchestrator to expose a `SingleTurn(state, world, input)` entry point
 (~50 LoC).  Both already exist in slightly-different shapes for the
 test runner.
 
 ---
 
-## 3. `hally inspect --session-id <id>`  *(~150 LoC)*
+## 3. `kitsoki inspect --session-id <id>`  *(~150 LoC)*
 
 ### Command
 
 ```
-hally inspect --session-id brad-devstory-2026-04-23
+kitsoki inspect --session-id brad-devstory-2026-04-23
 ```
 
 Output: JSON snapshot of the live session.
@@ -167,7 +167,7 @@ Read-only.  Does not take a lock.  Doesn't disturb the live session.
 ### Why
 
 When the human says "something just broke", the AI can run this
-against the live session-id and see exactly what hally thinks is
+against the live session-id and see exactly what kitsoki thinks is
 going on — current state, last few inputs, world-slot values, last
 rendered view.  Like `tmux attach` but read-only and JSON-structured.
 
@@ -176,18 +176,18 @@ inspect captures the *now*.
 
 ### Implementation sketch
 
-`cmd/hally/inspect.go` opens the SQLite session store read-only,
+`cmd/kitsoki/inspect.go` opens the SQLite session store read-only,
 joins the relevant events, formats as JSON.  Everything it needs is
 already persisted — nothing new to capture.
 
 ---
 
-## 4. `hally drive` — headless scripted driver  *(~300 LoC)*
+## 4. `kitsoki drive` — headless scripted driver  *(~300 LoC)*
 
 ### Command
 
 ```
-hally drive <app.yaml> --script inputs.txt --transcript out.md \
+kitsoki drive <app.yaml> --script inputs.txt --transcript out.md \
             [--harness claude|replay --oracle <path>]
 ```
 
@@ -218,7 +218,7 @@ view:
 
 Until now the AI has no way to test the claude-harness path end-to-end.
 Flow tests route structured intents directly; they never exercise "does
-Claude-haiku route 'go to debug room' to go_debug?".  `hally drive`
+Claude-haiku route 'go to debug room' to go_debug?".  `kitsoki drive`
 gives the AI a headless but end-to-end driver.  When the AI changes a
 room's intent examples, it can re-drive a known input script and
 confirm the routing didn't regress — at real cost (claude billable
@@ -228,9 +228,9 @@ Also useful as a "smoke test the full app" harness in CI.
 
 ### Implementation sketch
 
-Similar to `hally record` (which already does this up to a point, but
+Similar to `kitsoki record` (which already does this up to a point, but
 consumes a pre-routed flow YAML).  Refactor: move the turn-loop core
-out of `cmd/hally/run.go` so both `run` (interactive) and `drive`
+out of `cmd/kitsoki/run.go` so both `run` (interactive) and `drive`
 (scripted) share it.
 
 ---
@@ -291,13 +291,13 @@ handlers.
 
 ## Non-goals
 
-- A web UI for hally.
+- A web UI for kitsoki.
 - A plugin system.  The AI works fine with Go code; it doesn't need
   dynamic loading.
-- Read-write session inspection.  `hally inspect` stays read-only;
+- Read-write session inspection.  `kitsoki inspect` stays read-only;
   mutating a live session from another process is a recipe for sadness.
-- Replacing `hally test flows` — they stay the primary correctness
-  harness.  `hally turn` / `hally drive` are complementary tools.
+- Replacing `kitsoki test flows` — they stay the primary correctness
+  harness.  `kitsoki turn` / `kitsoki drive` are complementary tools.
 
 ---
 

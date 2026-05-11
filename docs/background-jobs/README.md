@@ -1,6 +1,6 @@
 # Background Jobs
 
-Background jobs let a hally state machine invoke a long-running host handler
+Background jobs let a kitsoki state machine invoke a long-running host handler
 without blocking the turn loop. The handler runs in a goroutine; when it
 finishes, a synthetic turn fires the `on_complete:` effect list in the
 originating state's context and posts an inbox notification. The TUI surfaces
@@ -38,7 +38,7 @@ states:
 Run the flow test that exercises the full lifecycle deterministically:
 
 ```sh
-hally test flows testdata/apps/background_jobs/app.yaml
+kitsoki test flows testdata/apps/background_jobs/app.yaml
 ```
 
 ## Glossary
@@ -93,6 +93,6 @@ sequenceDiagram
 
 ## See also
 
-- [`cmd/hally/docs/app-schema.md` §Background jobs](../../cmd/hally/docs/app-schema.md#background-jobs) — inline summary and field table.
+- [`cmd/kitsoki/docs/app-schema.md` §Background jobs](../../cmd/kitsoki/docs/app-schema.md#background-jobs) — inline summary and field table.
 - [`internal/jobs/doc.go`](../../internal/jobs/doc.go) — package-level architecture overview.
 - [`testdata/apps/background_jobs/flows/happy_path.yaml`](../../testdata/apps/background_jobs/flows/happy_path.yaml) — the canonical flow fixture.

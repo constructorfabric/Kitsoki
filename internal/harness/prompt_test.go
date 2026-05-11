@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"hally/internal/app"
-	"hally/internal/harness"
-	"hally/internal/world"
+	"kitsoki/internal/app"
+	"kitsoki/internal/harness"
+	"kitsoki/internal/world"
 )
 
 // TestBuildDynamicSuffix_IncludesStateViewAndDescription locks in that the

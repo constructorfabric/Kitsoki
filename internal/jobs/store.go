@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"time"
 
-	"hally/internal/app"
-	"hally/internal/ulid"
+	"kitsoki/internal/app"
+	"kitsoki/internal/ulid"
 
 	_ "modernc.org/sqlite"
 )

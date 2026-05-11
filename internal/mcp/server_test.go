@@ -9,10 +9,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"hally/internal/app"
-	hallymcp "hally/internal/mcp"
-	"hally/internal/machine"
-	"hally/internal/store"
+	"kitsoki/internal/app"
+	kitsokimcp "kitsoki/internal/mcp"
+	"kitsoki/internal/machine"
+	"kitsoki/internal/store"
 )
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -45,7 +45,7 @@ func createTestSession(t *testing.T, s store.Store, def *app.AppDef) app.Session
 
 // connectInProcess creates an in-process MCP client-server pair using
 // the SDK's InMemoryTransports. Returns the client session.
-func connectInProcess(ctx context.Context, t *testing.T, srv *hallymcp.Server) *mcpsdk.ClientSession {
+func connectInProcess(ctx context.Context, t *testing.T, srv *kitsokimcp.Server) *mcpsdk.ClientSession {
 	t.Helper()
 	t1, t2 := mcpsdk.NewInMemoryTransports()
 	_, err := srv.Connect(ctx, t1, nil)
@@ -58,7 +58,7 @@ func connectInProcess(ctx context.Context, t *testing.T, srv *hallymcp.Server) *
 }
 
 // callTransition issues a transition tool call and returns the raw result.
-func callTransition(ctx context.Context, cs *mcpsdk.ClientSession, args hallymcp.TransitionArgs) (*mcpsdk.CallToolResult, error) {
+func callTransition(ctx context.Context, cs *mcpsdk.ClientSession, args kitsokimcp.TransitionArgs) (*mcpsdk.CallToolResult, error) {
 	argsJSON, err := json.Marshal(args)
 	if err != nil {
 		return nil, err
@@ -74,19 +74,19 @@ func callTransition(ctx context.Context, cs *mcpsdk.ClientSession, args hallymcp
 }
 
 // parseOK unmarshals a successful TransitionOK from the tool result content.
-func parseOK(t *testing.T, res *mcpsdk.CallToolResult) hallymcp.TransitionOK {
+func parseOK(t *testing.T, res *mcpsdk.CallToolResult) kitsokimcp.TransitionOK {
 	t.Helper()
 	require.False(t, res.IsError, "expected ok result, got error: %v", contentText(res))
-	var ok hallymcp.TransitionOK
+	var ok kitsokimcp.TransitionOK
 	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &ok))
 	return ok
 }
 
 // parseError unmarshals a TransitionError from an error tool result.
-func parseError(t *testing.T, res *mcpsdk.CallToolResult) hallymcp.TransitionError {
+func parseError(t *testing.T, res *mcpsdk.CallToolResult) kitsokimcp.TransitionError {
 	t.Helper()
 	require.True(t, res.IsError, "expected error result, got ok: %v", contentText(res))
-	var te hallymcp.TransitionError
+	var te kitsokimcp.TransitionError
 	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &te))
 	return te
 }
@@ -110,7 +110,7 @@ func TestTransition_ValidIntent(t *testing.T) {
 	s := openInMemoryStore(t)
 	m, err := machine.New(def)
 	require.NoError(t, err)
-	srv := hallymcp.NewServer(m, s, def)
+	srv := kitsokimcp.NewServer(m, s, def)
 
 	ctx := context.Background()
 	cs := connectInProcess(ctx, t, srv)
@@ -118,7 +118,7 @@ func TestTransition_ValidIntent(t *testing.T) {
 	sid := createTestSession(t, s, def)
 
 	// go west from foyer to cloakroom.
-	res, err := callTransition(ctx, cs, hallymcp.TransitionArgs{
+	res, err := callTransition(ctx, cs, kitsokimcp.TransitionArgs{
 		SessionID: string(sid),
 		Intent:    "go",
 		Slots:     map[string]any{"direction": "west"},
@@ -139,7 +139,7 @@ func TestTransition_MissingRequiredSlot(t *testing.T) {
 	s := openInMemoryStore(t)
 	m, err := machine.New(def)
 	require.NoError(t, err)
-	srv := hallymcp.NewServer(m, s, def)
+	srv := kitsokimcp.NewServer(m, s, def)
 
 	ctx := context.Background()
 	cs := connectInProcess(ctx, t, srv)
@@ -147,7 +147,7 @@ func TestTransition_MissingRequiredSlot(t *testing.T) {
 	sid := createTestSession(t, s, def)
 
 	// Call `go` without the required `direction` slot.
-	res, err := callTransition(ctx, cs, hallymcp.TransitionArgs{
+	res, err := callTransition(ctx, cs, kitsokimcp.TransitionArgs{
 		SessionID: string(sid),
 		Intent:    "go",
 		Slots:     map[string]any{}, // missing direction
@@ -168,7 +168,7 @@ func TestTransition_IntentNotAllowed(t *testing.T) {
 	s := openInMemoryStore(t)
 	m, err := machine.New(def)
 	require.NoError(t, err)
-	srv := hallymcp.NewServer(m, s, def)
+	srv := kitsokimcp.NewServer(m, s, def)
 
 	ctx := context.Background()
 	cs := connectInProcess(ctx, t, srv)
@@ -176,7 +176,7 @@ func TestTransition_IntentNotAllowed(t *testing.T) {
 	sid := createTestSession(t, s, def)
 
 	// `hang_cloak` is only allowed in the cloakroom, not in the foyer.
-	res, err := callTransition(ctx, cs, hallymcp.TransitionArgs{
+	res, err := callTransition(ctx, cs, kitsokimcp.TransitionArgs{
 		SessionID: string(sid),
 		Intent:    "hang_cloak",
 		Slots:     map[string]any{},
@@ -197,7 +197,7 @@ func TestTransition_MultipleSteps(t *testing.T) {
 	s := openInMemoryStore(t)
 	m, err := machine.New(def)
 	require.NoError(t, err)
-	srv := hallymcp.NewServer(m, s, def)
+	srv := kitsokimcp.NewServer(m, s, def)
 
 	ctx := context.Background()
 	cs := connectInProcess(ctx, t, srv)
@@ -205,7 +205,7 @@ func TestTransition_MultipleSteps(t *testing.T) {
 	sid := createTestSession(t, s, def)
 
 	// Step 1: go west → cloakroom.
-	res, err := callTransition(ctx, cs, hallymcp.TransitionArgs{
+	res, err := callTransition(ctx, cs, kitsokimcp.TransitionArgs{
 		SessionID: string(sid),
 		Intent:    "go",
 		Slots:     map[string]any{"direction": "west"},
@@ -215,7 +215,7 @@ func TestTransition_MultipleSteps(t *testing.T) {
 	assert.Equal(t, "cloakroom", ok1.State)
 
 	// Step 2: hang the cloak.
-	res, err = callTransition(ctx, cs, hallymcp.TransitionArgs{
+	res, err = callTransition(ctx, cs, kitsokimcp.TransitionArgs{
 		SessionID: string(sid),
 		Intent:    "hang_cloak",
 		Slots:     map[string]any{},
@@ -231,12 +231,12 @@ func TestTransition_MissingSessionID(t *testing.T) {
 	s := openInMemoryStore(t)
 	m, err := machine.New(def)
 	require.NoError(t, err)
-	srv := hallymcp.NewServer(m, s, def)
+	srv := kitsokimcp.NewServer(m, s, def)
 
 	ctx := context.Background()
 	cs := connectInProcess(ctx, t, srv)
 
-	res, err := callTransition(ctx, cs, hallymcp.TransitionArgs{
+	res, err := callTransition(ctx, cs, kitsokimcp.TransitionArgs{
 		SessionID: "", // missing
 		Intent:    "go",
 		Slots:     map[string]any{"direction": "west"},

@@ -13,9 +13,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"hally/internal/chats"
-	"hally/internal/host"
-	"hally/internal/store"
+	"kitsoki/internal/chats"
+	"kitsoki/internal/host"
+	"kitsoki/internal/store"
 )
 
 // openChatStoreForTest opens the SQLite session store at dbPath, applies the
@@ -31,12 +31,12 @@ func openChatStoreForTest(t *testing.T, dbPath string) (*chats.Store, func()) {
 }
 
 // fakeOracleBinForCmdTest returns the path to internal/host/testdata/fake-oracle.sh
-// so `hally chat continue` can be exercised in-process without a real `claude`.
+// so `kitsoki chat continue` can be exercised in-process without a real `claude`.
 func fakeOracleBinForCmdTest(t *testing.T) string {
 	t.Helper()
 	_, thisFile, _, ok := runtime.Caller(0)
 	require.True(t, ok, "runtime.Caller failed")
-	// thisFile is .../cmd/hally/chat_test.go ; go up two levels to repo root.
+	// thisFile is .../cmd/kitsoki/chat_test.go ; go up two levels to repo root.
 	repoRoot := filepath.Join(filepath.Dir(thisFile), "..", "..")
 	return filepath.Join(repoRoot, "internal", "host", "testdata", "fake-oracle.sh")
 }
@@ -46,7 +46,7 @@ func fakeOracleBinForCmdTest(t *testing.T) string {
 func TestChat_New_HappyPath(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "sessions.db")
 
-	stdout, err := runHally(t, "chat", "new",
+	stdout, err := runKitsoki(t, "chat", "new",
 		"--db", dbPath,
 		"--app", "dev-story",
 		"--room", "oracle",
@@ -73,7 +73,7 @@ func TestChat_New_HappyPath(t *testing.T) {
 func TestChat_New_DefaultTitle(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "sessions.db")
 
-	stdout, err := runHally(t, "chat", "new",
+	stdout, err := runKitsoki(t, "chat", "new",
 		"--db", dbPath,
 		"--app", "dev-story",
 		"--room", "oracle",
@@ -100,7 +100,7 @@ func TestChat_List_HappyPath(t *testing.T) {
 	require.NoError(t, err)
 	cleanup() // close so the CLI can open a fresh handle.
 
-	stdout, err := runHally(t, "chat", "list",
+	stdout, err := runKitsoki(t, "chat", "list",
 		"--db", dbPath,
 		"--app", "dev-story",
 		"--room", "oracle",
@@ -130,7 +130,7 @@ func TestChat_List_ScopeKeyFilter(t *testing.T) {
 	require.NoError(t, err)
 	cleanup()
 
-	stdout, err := runHally(t, "chat", "list",
+	stdout, err := runKitsoki(t, "chat", "list",
 		"--db", dbPath,
 		"--app", "dev-story",
 		"--room", "oracle",
@@ -158,7 +158,7 @@ func TestChat_List_AllStatusFilter(t *testing.T) {
 	cleanup()
 
 	// Without --all-status: archived is filtered out.
-	stdout, err := runHally(t, "chat", "list",
+	stdout, err := runKitsoki(t, "chat", "list",
 		"--db", dbPath,
 		"--app", "dev-story",
 		"--room", "oracle",
@@ -172,7 +172,7 @@ func TestChat_List_AllStatusFilter(t *testing.T) {
 	assert.Equal(t, active.ID, first["id"])
 
 	// With --all-status: both visible.
-	stdout, err = runHally(t, "chat", "list",
+	stdout, err = runKitsoki(t, "chat", "list",
 		"--db", dbPath,
 		"--app", "dev-story",
 		"--room", "oracle",
@@ -200,7 +200,7 @@ func TestChat_Show_JSON(t *testing.T) {
 	}
 	cleanup()
 
-	stdout, err := runHally(t, "chat", "show",
+	stdout, err := runKitsoki(t, "chat", "show",
 		"--db", dbPath,
 		c.ID,
 	)
@@ -212,7 +212,7 @@ func TestChat_Show_JSON(t *testing.T) {
 	assert.Len(t, msgs, 3)
 
 	// --since 1 returns only seq>=1 (i.e. 2 messages).
-	stdout, err = runHally(t, "chat", "show",
+	stdout, err = runKitsoki(t, "chat", "show",
 		"--db", dbPath,
 		"--since", "1",
 		c.ID,
@@ -237,7 +237,7 @@ func TestChat_Show_Markdown(t *testing.T) {
 	require.NoError(t, err)
 	cleanup()
 
-	stdout, err := runHally(t, "chat", "show",
+	stdout, err := runKitsoki(t, "chat", "show",
 		"--db", dbPath,
 		"--format", "markdown",
 		c.ID,
@@ -256,7 +256,7 @@ func TestChat_Show_NotFound(t *testing.T) {
 	_, cleanup := openChatStoreForTest(t, dbPath)
 	cleanup()
 
-	_, err := runHally(t, "chat", "show",
+	_, err := runKitsoki(t, "chat", "show",
 		"--db", dbPath,
 		"NONEXISTENT",
 	)
@@ -280,7 +280,7 @@ func TestChat_Fork(t *testing.T) {
 	require.NoError(t, cs.SetClaudeSessionID(ctx, parent.ID, "11111111-2222-4333-8444-555555555555"))
 	cleanup()
 
-	stdout, err := runHally(t, "chat", "fork",
+	stdout, err := runKitsoki(t, "chat", "fork",
 		"--db", dbPath,
 		"--title", "child",
 		parent.ID,
@@ -316,7 +316,7 @@ func TestChat_Archive(t *testing.T) {
 	require.NoError(t, err)
 	cleanup()
 
-	stdout, err := runHally(t, "chat", "archive",
+	stdout, err := runKitsoki(t, "chat", "archive",
 		"--db", dbPath,
 		c.ID,
 	)
@@ -355,7 +355,7 @@ func TestChat_Unlock_Force(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, s.Close())
 
-	stdout, err := runHally(t, "chat", "unlock",
+	stdout, err := runKitsoki(t, "chat", "unlock",
 		"--db", dbPath,
 		"--force",
 		c.ID,
@@ -380,7 +380,7 @@ func TestChat_Unlock_NoForce(t *testing.T) {
 	_, cleanup := openChatStoreForTest(t, dbPath)
 	cleanup()
 
-	_, err := runHally(t, "chat", "unlock",
+	_, err := runKitsoki(t, "chat", "unlock",
 		"--db", dbPath,
 		"some-id",
 	)
@@ -420,7 +420,7 @@ func TestChat_Continue_LockContention(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, s.Close())
 
-	_, err = runHally(t, "chat", "continue",
+	_, err = runKitsoki(t, "chat", "continue",
 		"--db", dbPath,
 		"--raw", "hi",
 		c.ID,
@@ -449,7 +449,7 @@ func TestChat_Continue_HappyPath(t *testing.T) {
 	require.NoError(t, err)
 	cleanup()
 
-	stdout, err := runHally(t, "chat", "continue",
+	stdout, err := runKitsoki(t, "chat", "continue",
 		"--db", dbPath,
 		"--raw", "what is up",
 		c.ID,
@@ -484,7 +484,7 @@ func TestChat_Continue_MissingRaw(t *testing.T) {
 	_, cleanup := openChatStoreForTest(t, dbPath)
 	cleanup()
 
-	_, err := runHally(t, "chat", "continue",
+	_, err := runKitsoki(t, "chat", "continue",
 		"--db", dbPath,
 		"some-id",
 	)
@@ -498,7 +498,7 @@ func TestChat_Continue_NotFound(t *testing.T) {
 	_, cleanup := openChatStoreForTest(t, dbPath)
 	cleanup()
 
-	_, err := runHally(t, "chat", "continue",
+	_, err := runKitsoki(t, "chat", "continue",
 		"--db", dbPath,
 		"--raw", "hi",
 		"DOES-NOT-EXIST",
@@ -508,19 +508,19 @@ func TestChat_Continue_NotFound(t *testing.T) {
 }
 
 // TestChat_Continue_SignalCleanup is intended to verify cross-process SIGINT
-// cleanup of chat_locks rows: spawn `go run ./cmd/hally chat continue <id>
+// cleanup of chat_locks rows: spawn `go run ./cmd/kitsoki chat continue <id>
 // --raw "..."` against a real DB, send SIGINT mid-call, reopen the DB, and
 // assert no chat_locks row remains.
 //
 // This is currently SKIPPED because cross-process testing in Go's test
 // framework is genuinely tricky:
 //
-//  1. `go run ./cmd/hally` spawns a build helper that itself fork/execs the
+//  1. `go run ./cmd/kitsoki` spawns a build helper that itself fork/execs the
 //     compiled binary; SIGINT to the `go run` PID does not always reach the
-//     final `hally` PID, so the cleanup path under test may never fire
+//     final `kitsoki` PID, so the cleanup path under test may never fire
 //     (process group setup also matters here).
 //  2. To reliably exercise the lock-cleanup code, we'd need to spawn the
-//     compiled hally binary directly (not via `go run`) and send SIGINT to
+//     compiled kitsoki binary directly (not via `go run`) and send SIGINT to
 //     the right process; that adds a build step + binary path discovery.
 //  3. The fake-oracle stub used by the other Continue tests exits ~immediately,
 //     so there's a small window in which to deliver SIGINT. A reliable test
@@ -539,11 +539,11 @@ func TestChat_Continue_SignalCleanup(t *testing.T) {
 	t.Skip("TODO: cross-process SIGINT cleanup test — see comment above for why this is hard")
 }
 
-// ─── runHally helper that returns combined err/stderr ───────────────────────
+// ─── runKitsoki helper that returns combined err/stderr ───────────────────────
 
-// runHallyCapturingStderr is a variant of runHally for cases that need both
+// runKitsokiCapturingStderr is a variant of runKitsoki for cases that need both
 // stdout and stderr. Currently unused but available for future tests.
-func runHallyCapturingStderr(t *testing.T, args ...string) (stdout, stderr string, err error) {
+func runKitsokiCapturingStderr(t *testing.T, args ...string) (stdout, stderr string, err error) {
 	t.Helper()
 	cmd := rootForTest()
 	var outBuf, errBuf bytes.Buffer

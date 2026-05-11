@@ -1,9 +1,9 @@
 package orchestrator
 
 import (
-	"hally/internal/app"
-	"hally/internal/expr"
-	"hally/internal/world"
+	"kitsoki/internal/app"
+	"kitsoki/internal/expr"
+	"kitsoki/internal/world"
 )
 
 // renderStateView renders the view template for a state using the given world.

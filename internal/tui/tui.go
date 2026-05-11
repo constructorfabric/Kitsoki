@@ -21,13 +21,13 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"hally/internal/app"
-	"hally/internal/authoring"
-	"hally/internal/clock"
-	"hally/internal/inbox"
-	"hally/internal/jobs"
-	"hally/internal/orchestrator"
-	"hally/internal/viz"
+	"kitsoki/internal/app"
+	"kitsoki/internal/authoring"
+	"kitsoki/internal/clock"
+	"kitsoki/internal/inbox"
+	"kitsoki/internal/jobs"
+	"kitsoki/internal/orchestrator"
+	"kitsoki/internal/viz"
 )
 
 // Mode describes which interaction mode the TUI is currently in (§7.3, §7.7).
@@ -785,7 +785,7 @@ func (m RootModel) handleTraceToggle() RootModel {
 	}
 
 	// Open a new temp file.
-	f, err := os.CreateTemp("", "hally-trace-*.jsonl")
+	f, err := os.CreateTemp("", "kitsoki-trace-*.jsonl")
 	if err != nil {
 		m.transcript.AppendSystem(fmt.Sprintf("(trace: could not create temp file: %v)", err))
 		return m

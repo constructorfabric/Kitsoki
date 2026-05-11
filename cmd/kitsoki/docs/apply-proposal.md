@@ -1,7 +1,7 @@
-# Hally — Apply-Proposal Workflow (LLM Guide)
+# Kitsoki — Apply-Proposal Workflow (LLM Guide)
 
 This doc is written for an LLM (e.g., Claude via Claude Code) that has been
-handed a **proposal** for changing a hally app. Your job is to translate the
+handed a **proposal** for changing a kitsoki app. Your job is to translate the
 human's prose into a minimal, correct edit to `app.yaml` without breaking
 the engine's schema or the app's semantics.
 
@@ -16,7 +16,7 @@ Pair this doc with:
 ## 1. The workflow (you are step 3)
 
 ```
-1. Human runs:  hally render app.yaml -o APP.md
+1. Human runs:  kitsoki render app.yaml -o APP.md
 2. Human reads APP.md and writes a prose proposal referring to engine
    names (e.g. "in room `foyer`, change the north-exit message").
 3. Human invokes you with:
@@ -24,7 +24,7 @@ Pair this doc with:
       - the current app.yaml
       - this doc (as context)
 4. You produce a minimal YAML diff that implements the proposal.
-5. Human reviews the diff, commits, and re-runs `hally render`.
+5. Human reviews the diff, commits, and re-runs `kitsoki render`.
 ```
 
 You do **not** modify `APP.md`. It is a derived artifact; regeneration is
@@ -140,12 +140,12 @@ shoehorning.
 After writing the diff, ask the human to run:
 
 ```sh
-hally viz app.yaml            # parses + validates; errors printed
-hally render app.yaml -o APP.md   # re-render the docs
-hally test flows app.yaml     # if Mode-2 flows exist, run them
+kitsoki viz app.yaml            # parses + validates; errors printed
+kitsoki render app.yaml -o APP.md   # re-render the docs
+kitsoki test flows app.yaml     # if Mode-2 flows exist, run them
 ```
 
-`hally viz` is the fastest way to verify the YAML still parses. It's
+`kitsoki viz` is the fastest way to verify the YAML still parses. It's
 effectively a "does this load cleanly?" check.
 
 ---

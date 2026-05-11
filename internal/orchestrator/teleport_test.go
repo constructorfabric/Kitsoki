@@ -6,11 +6,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"hally/internal/app"
-	"hally/internal/inbox"
-	"hally/internal/machine"
-	"hally/internal/orchestrator"
-	"hally/internal/store"
+	"kitsoki/internal/app"
+	"kitsoki/internal/inbox"
+	"kitsoki/internal/machine"
+	"kitsoki/internal/orchestrator"
+	"kitsoki/internal/store"
 )
 
 // TestTeleport_ReplayDeterministic verifies P0-3: after a Teleport call the

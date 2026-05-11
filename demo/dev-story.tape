@@ -3,7 +3,7 @@
 # Showcases: the Oracle Room's persistent Claude Code session, then
 # workspace navigation, the proposal lifecycle, and the inbox.
 #
-# The tape points HALLY_ORACLE_CLAUDE_BIN at demo/fake-oracle-claude.sh so the
+# The tape points KITSOKI_ORACLE_CLAUDE_BIN at demo/fake-oracle-claude.sh so the
 # Oracle Room response is deterministic and does not depend on a live Claude
 # CLI during recording.
 #
@@ -19,10 +19,10 @@ Set FontFamily "JetBrains Mono"
 Set Theme "Molokai"
 Set TypingSpeed 110ms
 
-Env HALLY_ORACLE_CLAUDE_BIN "demo/fake-oracle-claude.sh"
+Env KITSOKI_ORACLE_CLAUDE_BIN "demo/fake-oracle-claude.sh"
 
 # Launch dev-story with the replay harness.
-Type "./hally run testdata/apps/dev-story/app.yaml --harness replay --recording testdata/apps/dev-story/recording.yaml"
+Type "./kitsoki run testdata/apps/dev-story/app.yaml --harness replay --recording testdata/apps/dev-story/recording.yaml"
 Enter
 Sleep 4s
 

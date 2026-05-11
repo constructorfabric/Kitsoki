@@ -3,9 +3,9 @@
 package orchestrator
 
 import (
-	"hally/internal/app"
-	"hally/internal/intent"
-	"hally/internal/store"
+	"kitsoki/internal/app"
+	"kitsoki/internal/intent"
+	"kitsoki/internal/store"
 )
 
 // OutcomeMode is the discriminant of a TurnOutcome (§5.3).
@@ -108,7 +108,7 @@ type EffectSummary struct {
 
 // OneShotResult is the rich, persistence-free outcome of Orchestrator.OneShot.
 //
-// `hally turn` serialises this directly as JSON: the field set is designed
+// `kitsoki turn` serialises this directly as JSON: the field set is designed
 // to give an outside observer (an AI collaborator, a flow-test author, a
 // CI compliance check) everything they need to answer "what happened?"
 // without re-running the turn.

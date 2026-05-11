@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"hally/internal/transport"
+	"kitsoki/internal/transport"
 )
 
 // fakeTransport is a minimal Transport for registry tests.

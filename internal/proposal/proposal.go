@@ -29,7 +29,7 @@ import (
 	"fmt"
 	"time"
 
-	"hally/internal/app"
+	"kitsoki/internal/app"
 )
 
 // Status is the lifecycle phase of a proposal.

@@ -3,7 +3,7 @@
 package viz
 
 import (
-	"hally/internal/app"
+	"kitsoki/internal/app"
 
 	// Blank import keeps emicklei/dot in go.mod after tidy.
 	_ "github.com/emicklei/dot"

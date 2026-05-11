@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"time"
 
-	"hally/internal/app"
+	"kitsoki/internal/app"
 
 	// Blank import to ensure modernc.org/sqlite stays in go.mod after tidy.
 	_ "modernc.org/sqlite"

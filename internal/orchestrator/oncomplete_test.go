@@ -9,8 +9,8 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"hally/internal/host"
-	"hally/internal/jobs"
+	"kitsoki/internal/host"
+	"kitsoki/internal/jobs"
 )
 
 // TestCompletionNotification_ChatAware exercises the chat-aware branches

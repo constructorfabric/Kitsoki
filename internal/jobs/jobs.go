@@ -31,10 +31,10 @@ import (
 	"sync"
 	"time"
 
-	"hally/internal/app"
-	"hally/internal/clock"
-	"hally/internal/host"
-	"hally/internal/ulid"
+	"kitsoki/internal/app"
+	"kitsoki/internal/clock"
+	"kitsoki/internal/host"
+	"kitsoki/internal/ulid"
 )
 
 // JobID is a ULID string uniquely identifying a job.

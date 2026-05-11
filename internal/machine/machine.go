@@ -45,12 +45,12 @@ import (
 	"sort"
 	"strings"
 
-	"hally/internal/app"
-	"hally/internal/expr"
-	"hally/internal/intent"
-	"hally/internal/store"
-	"hally/internal/trace"
-	"hally/internal/world"
+	"kitsoki/internal/app"
+	"kitsoki/internal/expr"
+	"kitsoki/internal/intent"
+	"kitsoki/internal/store"
+	"kitsoki/internal/trace"
+	"kitsoki/internal/world"
 )
 
 // AllowedIntent describes one intent that is currently valid for the user,

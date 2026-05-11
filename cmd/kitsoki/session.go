@@ -1,6 +1,6 @@
-// session.go — implements `hally session ...` subcommands (proposal §3.4).
+// session.go — implements `kitsoki session ...` subcommands (proposal §3.4).
 //
-// The `loop.py` ↔ hally contract is exactly these subcommands, keyed by
+// The `loop.py` ↔ kitsoki contract is exactly these subcommands, keyed by
 // (transport, thread). One session per (transport, thread); a writer lock
 // serializes concurrent invocations.
 //
@@ -22,14 +22,14 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"hally/internal/app"
-	"hally/internal/chathost"
-	"hally/internal/chats"
-	"hally/internal/host"
-	"hally/internal/machine"
-	"hally/internal/orchestrator"
-	"hally/internal/store"
-	"hally/internal/transport"
+	"kitsoki/internal/app"
+	"kitsoki/internal/chathost"
+	"kitsoki/internal/chats"
+	"kitsoki/internal/host"
+	"kitsoki/internal/machine"
+	"kitsoki/internal/orchestrator"
+	"kitsoki/internal/store"
+	"kitsoki/internal/transport"
 )
 
 // EX_TEMPFAIL is the BSD/sysexits.h "temporary failure" exit code that
@@ -44,16 +44,16 @@ func sessionCmd() *cobra.Command {
 		Short: "Manage persistent singleton sessions keyed by (transport, thread)",
 		Long: `Sessions are persistent singletons addressed by an external key of
 the form transport:thread (e.g. jira:PLTFRM-12345). Used as the
-contract between hally and external orchestrators (loop.py, future
+contract between kitsoki and external orchestrators (loop.py, future
 webhook receivers).
 
 Subcommands:
-  hally session create   --app <path> --key <transport:thread>
-  hally session continue --app <path> --key <transport:thread> --intent <name> [--slots JSON]
-  hally session continue --app <path> --key <transport:thread> --raw "<reply body>"
-  hally session show     --app <path> (--key <transport:thread> | --id <session-id>)
-  hally session list     --app <path> [--transport <name>]
-  hally session bind-key --app <path> --id <session-id> --key <transport:thread>
+  kitsoki session create   --app <path> --key <transport:thread>
+  kitsoki session continue --app <path> --key <transport:thread> --intent <name> [--slots JSON]
+  kitsoki session continue --app <path> --key <transport:thread> --raw "<reply body>"
+  kitsoki session show     --app <path> (--key <transport:thread> | --id <session-id>)
+  kitsoki session list     --app <path> [--transport <name>]
+  kitsoki session bind-key --app <path> --id <session-id> --key <transport:thread>
 
 Exit codes:
   0   success
@@ -111,7 +111,7 @@ or the equivalent terminal-state path so the audit trail is preserved.`,
 			})
 		},
 	}
-	cmd.Flags().StringVar(&dbPath, "db", "", "session SQLite database (default: $XDG_DATA_HOME/hally/sessions.db)")
+	cmd.Flags().StringVar(&dbPath, "db", "", "session SQLite database (default: $XDG_DATA_HOME/kitsoki/sessions.db)")
 	cmd.Flags().StringVar(&key, "key", "", "external key transport:thread")
 	cmd.Flags().StringVar(&idFlag, "id", "", "session ID")
 	return cmd
@@ -169,7 +169,7 @@ func sessionCreateCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&appPath, "app", "", "path to app.yaml (required)")
-	cmd.Flags().StringVar(&dbPath, "db", "", "session SQLite database (default: $XDG_DATA_HOME/hally/sessions.db)")
+	cmd.Flags().StringVar(&dbPath, "db", "", "session SQLite database (default: $XDG_DATA_HOME/kitsoki/sessions.db)")
 	cmd.Flags().StringVar(&key, "key", "", "external key transport:thread (e.g. jira:PLTFRM-12345)")
 	_ = cmd.MarkFlagRequired("app")
 	return cmd
@@ -200,7 +200,7 @@ or --id. Exactly one of --intent or --raw must be set.
 straight to the machine, bypassing the LLM harness. Use this when the
 orchestrator has already mapped the inbound event to a known intent.
 
---raw "<body>" takes the LLM-routed path: hally's harness maps the
+--raw "<body>" takes the LLM-routed path: kitsoki's harness maps the
 text to one of the current state's allowed intents using each intent's
 examples and slot schema. Use this for free-form replies (Jira/Bitbucket
 comment bodies).
@@ -311,7 +311,7 @@ another process holds it, this command exits 75 (EX_TEMPFAIL).`,
 		},
 	}
 	cmd.Flags().StringVar(&appPath, "app", "", "path to app.yaml (required)")
-	cmd.Flags().StringVar(&dbPath, "db", "", "session SQLite database (default: $XDG_DATA_HOME/hally/sessions.db)")
+	cmd.Flags().StringVar(&dbPath, "db", "", "session SQLite database (default: $XDG_DATA_HOME/kitsoki/sessions.db)")
 	cmd.Flags().StringVar(&key, "key", "", "external key transport:thread (e.g. jira:PLTFRM-12345)")
 	cmd.Flags().StringVar(&idFlag, "id", "", "session ID (alternative to --key)")
 	cmd.Flags().StringVar(&intentName, "intent", "", "intent name to dispatch directly (no LLM)")
@@ -389,7 +389,7 @@ func sessionShowCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&appPath, "app", "", "path to app.yaml (required)")
-	cmd.Flags().StringVar(&dbPath, "db", "", "session SQLite database (default: $XDG_DATA_HOME/hally/sessions.db)")
+	cmd.Flags().StringVar(&dbPath, "db", "", "session SQLite database (default: $XDG_DATA_HOME/kitsoki/sessions.db)")
 	cmd.Flags().StringVar(&key, "key", "", "external key transport:thread")
 	cmd.Flags().StringVar(&idFlag, "id", "", "session ID")
 	_ = cmd.MarkFlagRequired("app")
@@ -449,7 +449,7 @@ func sessionListCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&appPath, "app", "", "path to app.yaml (required)")
-	cmd.Flags().StringVar(&dbPath, "db", "", "session SQLite database (default: $XDG_DATA_HOME/hally/sessions.db)")
+	cmd.Flags().StringVar(&dbPath, "db", "", "session SQLite database (default: $XDG_DATA_HOME/kitsoki/sessions.db)")
 	cmd.Flags().StringVar(&transport, "transport", "", "filter by transport (e.g. jira)")
 	cmd.Flags().IntVar(&limit, "limit", 0, "max rows to return (0 = no limit)")
 	_ = cmd.MarkFlagRequired("app")
@@ -501,7 +501,7 @@ func sessionBindKeyCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&appPath, "app", "", "path to app.yaml (required)")
-	cmd.Flags().StringVar(&dbPath, "db", "", "session SQLite database (default: $XDG_DATA_HOME/hally/sessions.db)")
+	cmd.Flags().StringVar(&dbPath, "db", "", "session SQLite database (default: $XDG_DATA_HOME/kitsoki/sessions.db)")
 	cmd.Flags().StringVar(&idFlag, "id", "", "session ID (required)")
 	cmd.Flags().StringVar(&key, "key", "", "external key transport:thread (required)")
 	_ = cmd.MarkFlagRequired("app")
@@ -537,7 +537,7 @@ func resolveSessionID(ctx context.Context, s store.Store, key, idFlag string) (a
 	return sid, err
 }
 
-// publishAppDir sets HALLY_APP_DIR so host handlers can resolve relative paths.
+// publishAppDir sets KITSOKI_APP_DIR so host handlers can resolve relative paths.
 func publishAppDir(appPath string) {
 	if absPath, err := filepath.Abs(appPath); err == nil {
 		_ = os.Setenv(host.AppDirEnv, filepath.Dir(absPath))
@@ -580,7 +580,7 @@ func externalKeysView(keys []store.ExternalKey) []map[string]any {
 }
 
 // buildTransportRegistry constructs the transport.Registry used during a
-// `hally session continue` invocation. Always includes a TUITransport
+// `kitsoki session continue` invocation. Always includes a TUITransport
 // (in-process buffer); adds a JiraTransport when the JIRA_URL,
 // JIRA_USERNAME, and JIRA_API_TOKEN env vars are all set.
 //

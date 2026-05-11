@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"testing"
 
-	"hally/internal/host"
-	"hally/internal/world"
-	"hally/internal/workspace"
+	"kitsoki/internal/host"
+	"kitsoki/internal/world"
+	"kitsoki/internal/workspace"
 )
 
 func fakeWorkspaceHandler(ws *workspace.Workspace) host.Handler {

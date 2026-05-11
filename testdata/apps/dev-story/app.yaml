@@ -1,5 +1,5 @@
 # dev-story — A text-adventure-style interface for a software engineer's day.
-# Built on hally. All rooms are states; intents are the user's actions.
+# Built on kitsoki. All rooms are states; intents are the user's actions.
 # External tools are invoked as stub host calls that return canned JSON.
 
 app:

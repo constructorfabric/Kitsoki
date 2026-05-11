@@ -28,7 +28,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"hally/internal/jobs"
+	"kitsoki/internal/jobs"
 )
 
 // inboxView is the display mode for the inbox panel.

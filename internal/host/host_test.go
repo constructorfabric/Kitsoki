@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"hally/internal/host"
+	"kitsoki/internal/host"
 )
 
 func TestRegistry_RegisterAndGet(t *testing.T) {

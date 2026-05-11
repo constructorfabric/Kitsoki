@@ -13,11 +13,11 @@ import (
 
 	"github.com/goccy/go-yaml"
 
-	"hally/internal/app"
-	"hally/internal/harness"
-	"hally/internal/intent"
-	"hally/internal/machine"
-	"hally/internal/world"
+	"kitsoki/internal/app"
+	"kitsoki/internal/harness"
+	"kitsoki/internal/intent"
+	"kitsoki/internal/machine"
+	"kitsoki/internal/world"
 )
 
 // ─── Recording YAML types (local copies matching harness.recordingFile) ─────────────
@@ -352,7 +352,7 @@ func RunIntents(ctx context.Context, appPath string, opts IntentOptions) (*Inten
 			AppID:         def.App.ID,
 			AppVersion:    def.App.Version,
 			GeneratedAt:   time.Now().UTC().Format(time.RFC3339),
-			Generator:     "hally test intents",
+			Generator:     "kitsoki test intents",
 			MinConfidence: 0.80,
 			Entries:       recordingEntries,
 		}
@@ -377,7 +377,7 @@ func RunIntents(ctx context.Context, appPath string, opts IntentOptions) (*Inten
 		}
 		path := opts.BaselinePath
 		if path == "" {
-			path = ".hally/intents-baseline.json"
+			path = ".kitsoki/intents-baseline.json"
 		}
 		b, _ := json.MarshalIndent(newBaseline, "", "  ")
 		if err := os.MkdirAll(filepath.Dir(path), 0755); err == nil {

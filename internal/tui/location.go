@@ -7,7 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"hally/internal/orchestrator"
+	"kitsoki/internal/orchestrator"
 )
 
 // locationModel renders the §7.1 location indicator (breadcrumb + state description).

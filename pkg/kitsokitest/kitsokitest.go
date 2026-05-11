@@ -1,6 +1,6 @@
-// Package hallytest provides testing helpers for Hally app authors (§10, §12).
+// Package kitsokitest provides testing helpers for Kitsoki app authors (§10, §12).
 // It is a public package (pkg/) so app authors can import it in their own test suites.
-package hallytest
+package kitsokitest
 
 import (
 	// Blank import keeps testify in go.mod after tidy.

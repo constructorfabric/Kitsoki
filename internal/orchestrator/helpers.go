@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"log/slog"
 
-	"hally/internal/app"
-	"hally/internal/intent"
-	"hally/internal/machine"
-	"hally/internal/store"
-	"hally/internal/trace"
-	"hally/internal/world"
+	"kitsoki/internal/app"
+	"kitsoki/internal/intent"
+	"kitsoki/internal/machine"
+	"kitsoki/internal/store"
+	"kitsoki/internal/trace"
+	"kitsoki/internal/world"
 )
 
 // AppDef returns the app definition for this orchestrator.
@@ -53,8 +53,8 @@ func (o *Orchestrator) SetLogger(l *slog.Logger) {
 // RunIntent submits an intent call directly to the machine, bypassing the LLM
 // harness entirely. This is the programmatic dispatch path used by tooling and
 // test consumers that already know the exact intent name and slots — for
-// example, the flow runner in internal/testrunner (which backs `hally test
-// flows`) and the `hally turn` CLI command.
+// example, the flow runner in internal/testrunner (which backs `kitsoki test
+// flows`) and the `kitsoki turn` CLI command.
 //
 // The method mirrors the full success path of Turn — load journey, run machine,
 // dispatch host calls, persist events, stop the session listener on terminal
@@ -64,7 +64,7 @@ func (o *Orchestrator) SetLogger(l *slog.Logger) {
 //
 // Guaranteed use cases:
 //   - Flow-fixture turns declared as intent: (not input:) in YAML fixtures.
-//   - Programmatic one-shot dispatches from `hally turn` / `hally test`.
+//   - Programmatic one-shot dispatches from `kitsoki turn` / `kitsoki test`.
 //
 // If you are writing user-facing conversation handling, use Turn instead so the
 // LLM harness participates in routing.

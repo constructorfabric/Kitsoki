@@ -24,8 +24,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"hally/internal/app"
-	"hally/internal/world"
+	"kitsoki/internal/app"
+	"kitsoki/internal/world"
 )
 
 // JourneyState is the reconstructed journey after replaying an event history.

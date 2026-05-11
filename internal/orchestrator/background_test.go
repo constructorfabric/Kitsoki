@@ -9,13 +9,13 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"hally/internal/app"
-	"hally/internal/host"
-	"hally/internal/inbox"
-	"hally/internal/jobs"
-	"hally/internal/machine"
-	"hally/internal/orchestrator"
-	"hally/internal/store"
+	"kitsoki/internal/app"
+	"kitsoki/internal/host"
+	"kitsoki/internal/inbox"
+	"kitsoki/internal/jobs"
+	"kitsoki/internal/machine"
+	"kitsoki/internal/orchestrator"
+	"kitsoki/internal/store"
 )
 
 // TestBackgroundJobEndToEnd verifies the full background-job lifecycle:

@@ -1,22 +1,22 @@
-# Proposal — Host bug-fix and PR-refine as hally rooms driven by Jira and Bitbucket
+# Proposal — Host bug-fix and PR-refine as kitsoki rooms driven by Jira and Bitbucket
 
 **Status:** Draft v2.  Authored from the cyber-repo `devstory` story
 consumer side.  Supersedes v1, which was written against an older
 snapshot of `tools/loopy/bug-fix.py` (14 raw phases, no stage groups)
-and assumed hally would absorb the orchestrator role wholesale.
+and assumed kitsoki would absorb the orchestrator role wholesale.
 
-**v2 reframing.**  Per `design.md` §1.4, hally is a multi-transport
+**v2 reframing.**  Per `design.md` §1.4, kitsoki is a multi-transport
 conversation engine: the TUI is one surface, Jira ticket comments and
 Bitbucket PR comments are equivalent peers.  The current bug-fix
 pipeline (`tools/loopy/bug-fix.py`, 10,573 LoC; `loop.py`, 5,042 LoC)
 already implements the conversation against Jira at coarse stage
 granularity.  The goal of this proposal is to push the *conversation
-state machine* down into hally at fine-grained phase granularity, while
+state machine* down into kitsoki at fine-grained phase granularity, while
 **leaving `loop.py` as the orchestrator** — it keeps ticket selection,
 polling, knowledge extraction, capability boundaries, metrics,
 cross-run analysis, and dashboards.
 
-**TL;DR.**  Hally needs five things, in priority order:
+**TL;DR.**  Kitsoki needs five things, in priority order:
 
 1. **Persistent singleton sessions keyed by external ID** — one session
    per `(transport, thread)` such as `jira:PLTFRM-12345`, with a
@@ -30,14 +30,14 @@ cross-run analysis, and dashboards.
    Cycle budgets per arc.
 4. **Room-extensible reply vocabulary** — each checkpoint declares its
    own intent menu (`continue`, `quit`, `refine`, `restart_from`,
-   `jump_to`, `block_on`, anything the room needs); hally's existing
+   `jump_to`, `block_on`, anything the room needs); kitsoki's existing
    intent-router parses raw reply bodies against that menu.  No fixed
    framework triple.
 5. **Sub-room composition** — import bug-fix into devstory cleanly
    (namespacing, intent shims, world scoping, exit contract).  Last
    priority; doesn't block bug-fix shipping standalone.
 
-Daemon mode, webhook receivers, and `hally serve` are **out of scope
+Daemon mode, webhook receivers, and `kitsoki serve` are **out of scope
 for v1** while `loop.py` is the orchestrator.
 
 ---
@@ -87,7 +87,7 @@ batches the 14 phases into **4 stages**:
 
 The Jira comment pause happens **between stages**, not between phases.
 This is a UX choice — reviewers don't want 14 pings — not a model
-truth.  Hally must support both: model phases at fine grain, surface
+truth.  Kitsoki must support both: model phases at fine grain, surface
 checkpoints at whatever cadence the transport configuration chooses.
 
 `loop.py` further owns:
@@ -103,12 +103,12 @@ checkpoints at whatever cadence the transport configuration chooses.
 - capability boundaries, metrics, cross-run analysis
 - dashboards (`dashboard.py`)
 - L4 self-improvement (rewriting `bug-fix.py` source on recurring
-  failures; out of scope for hally)
+  failures; out of scope for kitsoki)
 
-`loop.py` stays as the orchestrator.  Hally hosts the per-ticket
+`loop.py` stays as the orchestrator.  Kitsoki hosts the per-ticket
 conversation only.
 
-## 2.  What's already in hally
+## 2.  What's already in kitsoki
 
 Capabilities relevant to this proposal that are **already wired**:
 
@@ -116,7 +116,7 @@ Capabilities relevant to this proposal that are **already wired**:
 - Event-sourced session persistence with periodic snapshots
   (`internal/store/`).  Resume from snapshot + replay events works.
 - `host.oracle.ask` (one-shot prompt-file invocation, resolved per
-  HALLY-GAPS §7.4).
+  KITSOKI-GAPS §7.4).
 - `timeout: { after: "10s", target: ... }` per-state timer.
 - `Effect.Increment` (`internal/app/types.go:113`) — already covers
   the v1 "increment a cycle counter" need; supersedes the original
@@ -155,7 +155,7 @@ proposal:
 
 `loop.py` dispatches per ticket and per inbound comment.  It needs:
 
-- A way to address a session by `(transport, thread)` so `hally session
+- A way to address a session by `(transport, thread)` so `kitsoki session
   continue --key jira:PLTFRM-12345` finds the right session.
 - A guarantee that two concurrent invocations against the same key
   serialize cleanly.
@@ -201,12 +201,12 @@ commit → release.  Long-paused sessions hold no lock.
 ### 3.4  CLI surface
 
 ```bash
-hally session create   --app stories/bugfix/app.yaml --key jira:PLTFRM-12345
-hally session continue --key jira:PLTFRM-12345 --intent <name> --slots <json>
-hally session continue --key jira:PLTFRM-12345 --raw "<reply body>"
-hally session show     --key jira:PLTFRM-12345
-hally session list     --transport jira
-hally tui              --key jira:PLTFRM-12345    # attended attach
+kitsoki session create   --app stories/bugfix/app.yaml --key jira:PLTFRM-12345
+kitsoki session continue --key jira:PLTFRM-12345 --intent <name> --slots <json>
+kitsoki session continue --key jira:PLTFRM-12345 --raw "<reply body>"
+kitsoki session show     --key jira:PLTFRM-12345
+kitsoki session list     --transport jira
+kitsoki tui              --key jira:PLTFRM-12345    # attended attach
 ```
 
 `session list` returns one row per session with last-active time,
@@ -225,7 +225,7 @@ sessions.WithWriterLock(id, fn) error                 // new; returns ErrSession
 ### 3.6  Resolves
 
 - The "session keying" gap from the bug-fix analysis.
-- Provides the `loop.py` ↔ hally contract per `design.md` §1.4.
+- Provides the `loop.py` ↔ kitsoki contract per `design.md` §1.4.
 
 ---
 
@@ -249,7 +249,7 @@ type Transport interface {
     ID() string
 
     // Post sends a message to the external thread.  body is rendered
-    // by hally from a per-transport template (Jira wiki, markdown,
+    // by kitsoki from a per-transport template (Jira wiki, markdown,
     // ANSI for TUI).  Returns the posted message ID for traceability.
     Post(ctx context.Context, key SessionKey, msg Message) (string, error)
 }
@@ -266,7 +266,7 @@ type Message struct {
     Title       string
     Body        string
     Attachments []Attachment
-    BotMarker   string         // e.g. "[hally]" — prepended for inbound filtering
+    BotMarker   string         // e.g. "[kitsoki]" — prepended for inbound filtering
 }
 ```
 
@@ -285,7 +285,7 @@ as the first concrete driver.  No external behavior change.
 
 ### 4.3  Bot-output marker
 
-Every `Post` prepends `BotMarker` (default `[hally]`) to the message
+Every `Post` prepends `BotMarker` (default `[kitsoki]`) to the message
 body.  `loop.py`'s existing `[Bot]` filter generalizes — orchestrators
 filter their own outputs by prefix on inbound polling.  Configured
 per-transport in `app.yaml`:
@@ -297,19 +297,19 @@ transports:
     auth:        basic
     user_env:    JIRA_USERNAME
     token_env:   JIRA_API_TOKEN
-    bot_marker:  "[hally]"      # default
+    bot_marker:  "[kitsoki]"      # default
   bitbucket:
     base_url:    "https://127.0.0.1:3128/bitbucket"
     auth:        bearer
     token_file:  "~/.config/acronis/bitbucket-token"
-    bot_marker:  "[hally]"
+    bot_marker:  "[kitsoki]"
 ```
 
 ### 4.4  Resolves
 
-- The "multi-transport" gap from question 3 of the devstory hally
+- The "multi-transport" gap from question 3 of the devstory kitsoki
   survey.
-- HALLY-GAPS §7.11 (plugin / external-host extension): partial — only
+- KITSOKI-GAPS §7.11 (plugin / external-host extension): partial — only
   the output side.
 
 ---
@@ -318,7 +318,7 @@ transports:
 
 ### 5.1  Why
 
-A naive port of bug-fix to flat hally states is roughly 14 phases ×
+A naive port of bug-fix to flat kitsoki states is roughly 14 phases ×
 {executing, awaiting_reply, error} ≈ 42 states, each with the same
 shape, plus the L2 feedback arcs.  Authoring this by hand is
 unmaintainable.  What we have is one *shape* (a phase) repeated N
@@ -473,7 +473,7 @@ the runtime synthesizes, for each declared arc:
 
 The counter is written through the normal event log
 (`EffectApplied{Set: cycle__phase_9_7__on_validation_fail = 2}`), so
-replay is deterministic and the budget can be inspected via `hally
+replay is deterministic and the budget can be inspected via `kitsoki
 session show`.
 
 Authors never write the increment or the guard themselves — the
@@ -484,7 +484,7 @@ explicitly and omits `cycle_budgets:`.
 ### 5.5  Resolves
 
 - The "phase-template / sub-room composition" gap from question 7 of
-  the devstory hally survey.  This proposal picks templates over full
+  the devstory kitsoki survey.  This proposal picks templates over full
   sub-room composition for §5.  Sub-rooms are §8 (last priority).
 - The "retry-budget primitive" listed as gap #2 in the bug-fix
   analysis — folded into `cycle_budgets:` here.
@@ -517,7 +517,7 @@ either:
 
 1. Pre-parses well-known keywords and passes
    `--intent <name> --slots <json>`, OR
-2. Passes the raw reply body via `--raw "<body>"` and lets hally's
+2. Passes the raw reply body via `--raw "<body>"` and lets kitsoki's
    existing intent-router map the body to one of the menu's intents
    using each intent's `examples:` and slot schema.
 
@@ -603,14 +603,14 @@ world slots after schema validation by the named MCP server:
     proposal: "stdout_json"
 ```
 
-Resolves a portion of HALLY-GAPS §7.10 (typed `host.run_json`).
+Resolves a portion of KITSOKI-GAPS §7.10 (typed `host.run_json`).
 Required by every LLM-driven phase in bug-fix.
 
 ### 7.2  `world_override` in flow tests
 
 Implement the existing-but-ignored key in `internal/testrunner/`.
 Per-turn world mutations applied before guard evaluation.  Resolves
-HALLY-GAPS §7.19.  Required to test the L2 feedback arcs without
+KITSOKI-GAPS §7.19.  Required to test the L2 feedback arcs without
 hand-stitching a full preceding flow.
 
 ### 7.3  `Effect.Increment` — already done
@@ -620,8 +620,8 @@ The original v1 proposal asked for a new `Increment` effect.
 
 ### 7.4  Streaming `host.run_stream`
 
-Per HALLY-GAPS §7.1.  Lower priority — bug-fix doesn't need it (Jira
-comments are batch-posted, not streamed).  Useful later for `hally tui
+Per KITSOKI-GAPS §7.1.  Lower priority — bug-fix doesn't need it (Jira
+comments are batch-posted, not streamed).  Useful later for `kitsoki tui
 --key X` attach-mode showing live progress.  Defer.
 
 ---
@@ -633,7 +633,7 @@ comments are batch-posted, not streamed).  Useful later for `hally tui
 `stories/devstory/rooms/bugfix.yaml` (618 LoC) wraps `bug-fix.py` as
 three thin proposals (repro/apply/verify) inside the wider devstory
 app.  After §3-§7 land, the bug-fix room has its own complete YAML
-that exists as a standalone hally app.  The devstory app should be
+that exists as a standalone kitsoki app.  The devstory app should be
 able to import it as a sub-room rather than duplicating its content.
 
 The existing `include:` (`internal/app/types.go:31`) is a glob-pattern
@@ -692,26 +692,26 @@ states:
 ### 8.4  Resolves
 
 - The "phase-template / sub-room composition" gap from question 7 of
-  the devstory hally survey — the *sub-room* half.
+  the devstory kitsoki survey — the *sub-room* half.
 
 ---
 
 ## 9.  Out of scope (explicit non-goals for v1)
 
-- **Daemon mode (`hally serve`).**  `loop.py` is the orchestrator; no
-  long-running hally process.  Re-evaluate if the orchestrator boundary
+- **Daemon mode (`kitsoki serve`).**  `loop.py` is the orchestrator; no
+  long-running kitsoki process.  Re-evaluate if the orchestrator boundary
   moves.
 - **Webhook receivers / HTTP listener.**  Polling-only via `loop.py`.
 - **Inbound `Transport.Open(handler)` loop.**  Inbound is the
   orchestrator's job.
 - **L4 self-improvement.**  bug-fix.py editing its own source code on
-  recurring failure stays in `loop.py`'s wrapper.  Hally hosts the
+  recurring failure stays in `loop.py`'s wrapper.  Kitsoki hosts the
   phase pipeline; it does not need to know about pipeline self-edits.
 - **Knowledge subsystem, capability boundaries, metrics, dashboards.**
-  All stay in `loop.py`.  Hally has no opinion on them.
+  All stay in `loop.py`.  Kitsoki has no opinion on them.
 - **Multi-tenant cloud sync.**  Sessions live in local SQLite.
 - **L1 within-phase LLM retry.**  Handled by the LLM oracle host
-  (`claude -p --resume`), not by hally state machinery.
+  (`claude -p --resume`), not by kitsoki state machinery.
 
 ---
 
@@ -721,25 +721,25 @@ states:
 |---|---|---|
 | **A. Charter update** *(done)* | `design.md` §1.2 (relaxed "not a workflow engine" framing), new §1.4 (conversation surfaces, orchestrator boundary, singleton sessions, phase/checkpoint distinction, room-extensible reply parsing), §4.1 (per-event invocation note), §8 (external_keys schema + writer-lock semantics). | ½ day |
 | **B. Quick wins** | `world_override` in flow tests (§7.2); `host.oracle.ask_with_mcp` (§7.1); validate `Effect.Increment` covers cycle-counter need. | ~1 week |
-| **C. Persistent singleton sessions + external keys** | external_keys table, `LookupByKey`, `BindExternalKey`, writer lock, `hally session create/continue/show/list/attach` CLI (§3). | ~1 week |
+| **C. Persistent singleton sessions + external keys** | external_keys table, `LookupByKey`, `BindExternalKey`, writer lock, `kitsoki session create/continue/show/list/attach` CLI (§3). | ~1 week |
 | **D. Output `Transport.Post` + TUI as first impl** | Refactor TUI render path to implement `Transport.Post`; bot-marker convention; transport registry (§4).  No external behavior change. | ~3-4 days |
 | **E. Phase template + checkpoint marker + cycle budgets** | Template expansion, checkpoint flag, event-sourced cycle counters via `Effect.Increment`, room-extensible intent menus per checkpoint (§5, §6). | ~2 weeks |
 | **F. Jira `Transport.Post` driver** | Comment-create against Jira REST.  Bot-marker output prefix.  Reply-attribution slot. | ~3-4 days |
 | **G. Bitbucket `Transport.Post` driver + PR-refine room** | Validates abstraction across two transports.  PR-refine room is the second concrete user. | ~1-2 weeks |
 | **H. Sub-room composition** | Namespacing, intent shims, world scoping, exit contract (§8). | ~2 weeks |
 
-Total hally-side: **~6-8 weeks** for A-H.
+Total kitsoki-side: **~6-8 weeks** for A-H.
 
 In parallel (cyber-repo):
 
 - **bug-fix.py decomposition.**  Per-phase scripts replace the
   10,573-line mega-script.  Lives in cyber-repo.  Multi-month, not
-  blocking hally work — phase G can land against the existing
+  blocking kitsoki work — phase G can land against the existing
   monolithic `bug-fix.py --from-phase N --to-phase M` interface.
 
 ---
 
-## 11.  Migration — how bug-fix lands on hally
+## 11.  Migration — how bug-fix lands on kitsoki
 
 After phases A-G:
 
@@ -752,9 +752,9 @@ After phases A-G:
     block.  ~250 lines of YAML.
 4.  `loop.py` shrinks: ticket selection, polling, comment dispatch,
     knowledge subsystem stay.  Stage-group dispatch (`dispatch_stage`)
-    is replaced by `hally session continue --key jira:<TICKET> --raw
+    is replaced by `kitsoki session continue --key jira:<TICKET> --raw
     "<comment body>"`.  Per-stage `bug-fix.py --from-phase N --to-phase
-    M` invocations move into hally's phase-runner.
+    M` invocations move into kitsoki's phase-runner.
 5.  `bug-fix.py` is decomposed into per-phase scripts invoked by the
     room's `host.oracle.ask_with_mcp` effect (parallel cyber-repo
     work).
@@ -763,7 +763,7 @@ After phases A-G:
     is replaced by a thin `imports:` declaration.
 
 End state: bug-fix runs as `loop.py` orchestrating per-event invocations
-of `hally session continue`, addressable by ticket key, posting per-
+of `kitsoki session continue`, addressable by ticket key, posting per-
 phase (or per-stage, depending on `checkpoint:` flags) comments to
 Jira, accepting room-extensible reply vocabularies, retrying with
 event-sourced cycle budgets, opening a Bitbucket PR, attaching the PR
@@ -777,7 +777,7 @@ through PR-refine on Bitbucket.
 - `background-jobs-proposal.md` — orthogonal to this proposal.  Useful
   if a per-phase script exceeds a soft duration cap and needs to run
   asynchronously, but not on the bug-fix critical path.
-- `ai-collaboration-proposal.md` — relevant if hally itself uses LLMs
+- `ai-collaboration-proposal.md` — relevant if kitsoki itself uses LLMs
   to author or maintain phase graphs.
 - `design.md` §1.4 — defines the conversation-surfaces /
   orchestrator-boundary framing this proposal stacks on.
@@ -785,7 +785,7 @@ through PR-refine on Bitbucket.
   existing primitives we extend, not replace.
 - `dev-story-design.md` — the original devstory design that this
   proposal grew out of.
-- cyber-repo `stories/devstory/HALLY-GAPS.md` — the per-room gap log.
+- cyber-repo `stories/devstory/KITSOKI-GAPS.md` — the per-room gap log.
   Items resolved or partially-resolved by this proposal:
   §7.1 (streaming, deferred), §7.10 (host.run_json; via MCP-aware
   oracle), §7.11 (plugin / external-host extension; **partially
@@ -803,7 +803,7 @@ through PR-refine on Bitbucket.
 2.  **Writer-lock timeout default.**  5s is a starting guess.  Real
     answer comes from observing `loop.py`'s dispatch cadence (currently
     60s polling, ~30s dispatch delay) — collisions should be rare.
-3.  **`hally tui --key X` UX when an orchestrator is actively driving
+3.  **`kitsoki tui --key X` UX when an orchestrator is actively driving
     the same key.**  Recommendation: TUI shows a banner ("Jira-driven
     session — your input may collide with reviewer comments") and
     competes for the writer-lock like any other invocation.

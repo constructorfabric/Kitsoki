@@ -45,7 +45,7 @@ type Message struct {
 	// Attachments are optional inline assets (file references, screenshots).
 	Attachments []Attachment
 	// BotMarker is prepended to the body so polling orchestrators can filter
-	// their own output. Defaults to "[hally]" when empty (set per-transport
+	// their own output. Defaults to "[kitsoki]" when empty (set per-transport
 	// in app.yaml).
 	BotMarker string
 	// Timestamp is the wall-clock time at which the message was created.
@@ -170,7 +170,7 @@ var ErrTransportNotFound = fmt.Errorf("transport: not found")
 // DefaultBotMarker is the prefix every transport prepends to its Post bodies
 // so orchestrators can filter their own output on inbound polling. Per
 // proposal §4.3.
-const DefaultBotMarker = "[hally]"
+const DefaultBotMarker = "[kitsoki]"
 
 // registryKey is the context key used by WithRegistry / FromContext.
 type registryKey struct{}

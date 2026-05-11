@@ -3,7 +3,7 @@
 // internal/chats and internal/host; everything else in the codebase uses
 // host.ChatStore directly so there is no import cycle.
 //
-// Usage (in cmd/hally/main.go or similar wiring):
+// Usage (in cmd/kitsoki/main.go or similar wiring):
 //
 //	chatStore, err := chats.NewStore(db, chats.WithClock(clk))
 //	adapter := chathost.NewAdapter(chatStore)
@@ -14,8 +14,8 @@ import (
 	"context"
 	"errors"
 
-	"hally/internal/chats"
-	"hally/internal/host"
+	"kitsoki/internal/chats"
+	"kitsoki/internal/host"
 )
 
 // NewAdapter wraps s as a host.ChatStore.

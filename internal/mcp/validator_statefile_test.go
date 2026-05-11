@@ -21,7 +21,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	hallymcp "hally/internal/mcp"
+	kitsokimcp "kitsoki/internal/mcp"
 )
 
 // TestValidator_StateFile_PersistsAcrossInstances drives a fail-then-success
@@ -32,7 +32,7 @@ func TestValidator_StateFile_PersistsAcrossInstances(t *testing.T) {
 	stateFile := filepath.Join(t.TempDir(), "state.json")
 
 	// Iteration 1: one schema-failing submit.
-	cs1, _, done1 := connectValidatorWithCfg(t, hallymcp.ValidatorConfig{
+	cs1, _, done1 := connectValidatorWithCfg(t, kitsokimcp.ValidatorConfig{
 		StateFilePath: stateFile,
 	})
 	r1, err := cs1.CallTool(context.Background(), &mcpsdk.CallToolParams{
@@ -58,7 +58,7 @@ func TestValidator_StateFile_PersistsAcrossInstances(t *testing.T) {
 
 	// Iteration 2: a fresh ValidatorServer reading the same state file.
 	// The counters from iteration 1 must be restored.
-	cs2, srv2, done2 := connectValidatorWithCfg(t, hallymcp.ValidatorConfig{
+	cs2, srv2, done2 := connectValidatorWithCfg(t, kitsokimcp.ValidatorConfig{
 		StateFilePath: stateFile,
 	})
 	defer done2()
@@ -79,7 +79,7 @@ func TestValidator_StateFile_PersistsAcrossInstances(t *testing.T) {
 	attemptsEnd, successEnd, _ := srv2.Stats()
 	assert.Equal(t, 2, attemptsEnd, "iteration 2 increments the resumed counter")
 	assert.Equal(t, 1, successEnd)
-	assert.Equal(t, hallymcp.OutcomeSuccess, srv2.Outcome())
+	assert.Equal(t, kitsokimcp.OutcomeSuccess, srv2.Outcome())
 
 	// State file is rewritten with the latest values.
 	raw, err = os.ReadFile(stateFile)
@@ -99,7 +99,7 @@ func TestValidator_StateFile_PersistsAcrossInstances(t *testing.T) {
 func TestValidator_StateFile_MissingFileIsFreshSession(t *testing.T) {
 	stateFile := filepath.Join(t.TempDir(), "does-not-exist-yet.json")
 
-	cs, srv, done := connectValidatorWithCfg(t, hallymcp.ValidatorConfig{
+	cs, srv, done := connectValidatorWithCfg(t, kitsokimcp.ValidatorConfig{
 		StateFilePath: stateFile,
 	})
 	defer done()
@@ -125,7 +125,7 @@ func TestValidator_StateFile_MalformedFileTreatedAsFresh(t *testing.T) {
 	stateFile := filepath.Join(t.TempDir(), "garbage.json")
 	require.NoError(t, os.WriteFile(stateFile, []byte("not json"), 0o644))
 
-	_, srv, done := connectValidatorWithCfg(t, hallymcp.ValidatorConfig{
+	_, srv, done := connectValidatorWithCfg(t, kitsokimcp.ValidatorConfig{
 		StateFilePath: stateFile,
 	})
 	defer done()
@@ -141,7 +141,7 @@ func TestValidator_StateFile_MalformedFileTreatedAsFresh(t *testing.T) {
 // regress.
 func TestValidator_StateFile_EmptyPathIsVolatile(t *testing.T) {
 	dir := t.TempDir()
-	cs, _, done := connectValidatorWithCfg(t, hallymcp.ValidatorConfig{})
+	cs, _, done := connectValidatorWithCfg(t, kitsokimcp.ValidatorConfig{})
 	defer done()
 	_, err := cs.CallTool(context.Background(), &mcpsdk.CallToolParams{
 		Name:      "submit",

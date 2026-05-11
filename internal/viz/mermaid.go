@@ -18,7 +18,7 @@ import (
 	"sort"
 	"strings"
 
-	"hally/internal/app"
+	"kitsoki/internal/app"
 )
 
 // ExportMermaid writes a Mermaid stateDiagram-v2 representation of the app to w.

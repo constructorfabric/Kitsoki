@@ -20,7 +20,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"hally/internal/expr"
+	"kitsoki/internal/expr"
 )
 
 // OracleAskHandler implements host.oracle.ask.
@@ -28,7 +28,7 @@ import (
 // Required args:
 //   - prompt_path (string): path to a prompt template file. If relative, it
 //     is resolved against the directory containing app.yaml (set by the loader
-//     via HALLY_APP_DIR) or the process working directory as a fallback.
+//     via KITSOKI_APP_DIR) or the process working directory as a fallback.
 //
 // Optional args:
 //   - working_dir (string): cwd passed to the claude subprocess (scopes
@@ -106,10 +106,10 @@ func OracleAskHandler(ctx context.Context, args map[string]any) (Result, error) 
 
 // AppDirEnv is the env var loaders set to the directory containing app.yaml,
 // so handlers can resolve relative paths (prompt files, scripts) deterministically.
-const AppDirEnv = "HALLY_APP_DIR"
+const AppDirEnv = "KITSOKI_APP_DIR"
 
 // resolvePromptPath expands a prompt_path arg to an absolute path.
-// Relative paths are resolved against HALLY_APP_DIR when set, otherwise
+// Relative paths are resolved against KITSOKI_APP_DIR when set, otherwise
 // against the current working directory.
 func resolvePromptPath(p string) string {
 	if filepath.IsAbs(p) {

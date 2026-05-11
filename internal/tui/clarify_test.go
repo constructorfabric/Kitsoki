@@ -5,8 +5,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"hally/internal/orchestrator"
-	"hally/internal/tui"
+	"kitsoki/internal/orchestrator"
+	"kitsoki/internal/tui"
 )
 
 // TestClarifyEnumSlotUsesSelect verifies that a slot with enum values causes

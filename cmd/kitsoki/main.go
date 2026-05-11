@@ -1,4 +1,4 @@
-// Command hally is the CLI entrypoint for the Hally deterministic LLM orchestrator.
+// Command kitsoki is the CLI entrypoint for the Kitsoki deterministic LLM orchestrator.
 // Subcommands: run, viz, trace, replay, test, serve (§9a, §12).
 package main
 
@@ -17,35 +17,35 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 
-	"hally/internal/app"
-	"hally/internal/chathost"
-	"hally/internal/chats"
-	"hally/internal/harness"
-	"hally/internal/host"
-	"hally/internal/jobs"
-	hallymcp "hally/internal/mcp"
-	"hally/internal/machine"
-	"hally/internal/orchestrator"
-	"hally/internal/store"
-	"hally/internal/tui"
-	"hally/internal/viz"
+	"kitsoki/internal/app"
+	"kitsoki/internal/chathost"
+	"kitsoki/internal/chats"
+	"kitsoki/internal/harness"
+	"kitsoki/internal/host"
+	"kitsoki/internal/jobs"
+	kitsokimcp "kitsoki/internal/mcp"
+	"kitsoki/internal/machine"
+	"kitsoki/internal/orchestrator"
+	"kitsoki/internal/store"
+	"kitsoki/internal/tui"
+	"kitsoki/internal/viz"
 )
 
 const version = "0.0.1-scaffold"
 
 func main() {
 	root := &cobra.Command{
-		Use:   "hally",
-		Short: "Hally — deterministic LLM orchestrator",
-		Long: `Hally lets a human drive a structured application with free-text input.
+		Use:   "kitsoki",
+		Short: "Kitsoki — deterministic LLM orchestrator",
+		Long: `Kitsoki lets a human drive a structured application with free-text input.
 The LLM translates natural language into a finite alphabet of intents defined
 by the application; the state machine decides what happens next.
 
 Embedded documentation (ships inside this binary):
-  hally docs             list available topics
-  hally docs llm-guide   condensed manual for an LLM driving hally
-  hally docs app-schema  authoritative reference for app.yaml
-  hally docs all         print every topic, concatenated
+  kitsoki docs             list available topics
+  kitsoki docs llm-guide   condensed manual for an LLM driving kitsoki
+  kitsoki docs app-schema  authoritative reference for app.yaml
+  kitsoki docs all         print every topic, concatenated
 
 See also the full design document (design.md) in the repo.`,
 	}
@@ -81,9 +81,9 @@ See also the full design document (design.md) in the repo.`,
 func versionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
-		Short: "Print the hally version",
+		Short: "Print the kitsoki version",
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Printf("hally %s\n", version)
+			fmt.Printf("kitsoki %s\n", version)
 		},
 	}
 }
@@ -114,13 +114,13 @@ Harness auto-selection (when --harness is omitted):
   3. otherwise                     → replay (requires --recording)
 
 Examples:
-  hally run testdata/apps/cloak/app.yaml
-  hally run myapp.yaml --harness claude --claude-model opus
-  hally run myapp.yaml --harness replay --recording recording.yaml
-  hally run myapp.yaml --harness recording --record /tmp/rec.jsonl
-  hally run myapp.yaml --trace /tmp/t.jsonl --trace-pretty -
+  kitsoki run testdata/apps/cloak/app.yaml
+  kitsoki run myapp.yaml --harness claude --claude-model opus
+  kitsoki run myapp.yaml --harness replay --recording recording.yaml
+  kitsoki run myapp.yaml --harness recording --record /tmp/rec.jsonl
+  kitsoki run myapp.yaml --trace /tmp/t.jsonl --trace-pretty -
 
-See 'hally docs llm-guide' for the full operator guide.`,
+See 'kitsoki docs llm-guide' for the full operator guide.`,
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			appPath := args[0]
@@ -276,7 +276,7 @@ See 'hally docs llm-guide' for the full operator guide.`,
 	cmd.Flags().StringVar(&recordPath, "record", "",
 		"path to output JSONL recording (for --harness recording)")
 	cmd.Flags().StringVar(&dbPath, "db", "",
-		"path to SQLite session database (default: $XDG_DATA_HOME/hally/sessions.db)")
+		"path to SQLite session database (default: $XDG_DATA_HOME/kitsoki/sessions.db)")
 	cmd.Flags().StringVar(&tracePath, "trace", "",
 		"write JSONL trace events to this file; '-' writes to stderr")
 	cmd.Flags().StringVar(&tracePretty, "trace-pretty", "",
@@ -374,16 +374,16 @@ func buildHarness(harnessType, claudeModel, recordingPath, recordPath string, de
 
 // defaultDBPath returns the default SQLite database path.
 func defaultDBPath() string {
-	// Use $XDG_DATA_HOME/hally/sessions.db or ~/.local/share/hally/sessions.db.
+	// Use $XDG_DATA_HOME/kitsoki/sessions.db or ~/.local/share/kitsoki/sessions.db.
 	xdgDataHome := os.Getenv("XDG_DATA_HOME")
 	if xdgDataHome != "" {
-		return filepath.Join(xdgDataHome, "hally", "sessions.db")
+		return filepath.Join(xdgDataHome, "kitsoki", "sessions.db")
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return filepath.Join(os.TempDir(), "hally-sessions.db")
+		return filepath.Join(os.TempDir(), "kitsoki-sessions.db")
 	}
-	return filepath.Join(home, ".local", "share", "hally", "sessions.db")
+	return filepath.Join(home, ".local", "share", "kitsoki", "sessions.db")
 }
 
 func vizCmd() *cobra.Command {
@@ -408,11 +408,11 @@ Default: Graphviz DOT to <appname>-viz.dot.
     where the single all-up diagram is unreadable.
 
 Examples:
-  hally viz testdata/apps/cloak/app.yaml
-  hally viz myapp.yaml --out /tmp/g.dot && dot -Tsvg /tmp/g.dot -o /tmp/g.svg
-  hally viz testdata/apps/cloak/app.yaml --mermaid --out -
-  hally viz myapp.yaml --mermaid --rooms --out viz/
-  hally viz myapp.yaml --mermaid | mmdc -i - -o graph.svg`,
+  kitsoki viz testdata/apps/cloak/app.yaml
+  kitsoki viz myapp.yaml --out /tmp/g.dot && dot -Tsvg /tmp/g.dot -o /tmp/g.svg
+  kitsoki viz testdata/apps/cloak/app.yaml --mermaid --out -
+  kitsoki viz myapp.yaml --mermaid --rooms --out viz/
+  kitsoki viz myapp.yaml --mermaid | mmdc -i - -o graph.svg`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			appPath := args[0]
@@ -510,36 +510,36 @@ func testCmd() *cobra.Command {
 		Use:   "test",
 		Short: "Run Mode 1 and Mode 2 tests for an app",
 		Long: `Test sub-commands:
-  hally test flows   <app.yaml>   — Mode 2: deterministic flow tests (no LLM)
-  hally test intents <app.yaml>   — Mode 1: intent pass-rate tests
+  kitsoki test flows   <app.yaml>   — Mode 2: deterministic flow tests (no LLM)
+  kitsoki test intents <app.yaml>   — Mode 1: intent pass-rate tests
 
 Fixture layout (defaults):
   <app-dir>/flows/*.yaml      — flow fixtures (run under 'test flows')
   <app-dir>/intents/*.yaml    — intent fixtures (run under 'test intents')
   <app-dir>/recording.yaml       — recording YAML (seeds replay/static harness)
 
-See 'hally docs llm-guide' §7 for fixture shape.`,
+See 'kitsoki docs llm-guide' §7 for fixture shape.`,
 	}
 	cmd.AddCommand(testFlowsCmd())
 	cmd.AddCommand(testIntentsCmd())
 	return cmd
 }
 
-// serveCmd starts the hally MCP server on stdio for a given app.
-// Usage: hally serve <app.yaml> [--db <path>]
+// serveCmd starts the kitsoki MCP server on stdio for a given app.
+// Usage: kitsoki serve <app.yaml> [--db <path>]
 //
 // The server exposes the single `transition` tool to any MCP client
 // (Claude Desktop, Claude Code, etc.) that connects via stdio.
 //
 // Example (smoke test via shell):
 //
-//	echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{...}}' | hally serve cloak.yaml
+//	echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{...}}' | kitsoki serve cloak.yaml
 func serveCmd() *cobra.Command {
 	var dbPath string
 	cmd := &cobra.Command{
 		Use:   "serve <app.yaml>",
 		Short: "Start the MCP server on stdio for an app",
-		Long: `Start the hally MCP server on stdin/stdout. External MCP clients
+		Long: `Start the kitsoki MCP server on stdin/stdout. External MCP clients
 (Claude Desktop, Claude Code) can connect and drive the app via the
 single 'transition' tool.
 
@@ -556,7 +556,7 @@ or:
 
 Without --db, sessions are in-memory and lost on exit.
 
-See 'hally docs llm-guide' for the full operator guide.`,
+See 'kitsoki docs llm-guide' for the full operator guide.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			appPath := args[0]
@@ -587,13 +587,13 @@ See 'hally docs llm-guide' for the full operator guide.`,
 			}
 
 			// Construct the MCP server.
-			srv := hallymcp.NewServer(m, s, def)
+			srv := kitsokimcp.NewServer(m, s, def)
 
 			// Run until stdin closes or signal received.
 			ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 			defer cancel()
 
-			fmt.Fprintf(os.Stderr, "hally: serving app %q via MCP stdio\n", def.App.ID)
+			fmt.Fprintf(os.Stderr, "kitsoki: serving app %q via MCP stdio\n", def.App.ID)
 			return srv.Run(ctx)
 		},
 	}

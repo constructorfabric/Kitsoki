@@ -7,7 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"hally/internal/orchestrator"
+	"kitsoki/internal/orchestrator"
 )
 
 // menuModel renders the §7.2 available-actions menu (primary + blocked intents).

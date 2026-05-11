@@ -5,7 +5,7 @@
 // their inbound surface — e.g. ("jira", "PLTFRM-12345") or
 // ("bitbucket", "DBI/repo/pulls/42"). Proposal §3.
 //
-// The writer lock serializes concurrent `hally session continue` invocations
+// The writer lock serializes concurrent `kitsoki session continue` invocations
 // against the same session. The lock is row-keyed by session_id in
 // session_locks; stale locks (owner pid not alive) are reaped.
 package store
@@ -20,7 +20,7 @@ import (
 	"syscall"
 	"time"
 
-	"hally/internal/app"
+	"kitsoki/internal/app"
 )
 
 // ErrExternalKeyTaken is returned when a (transport, thread) pair is already

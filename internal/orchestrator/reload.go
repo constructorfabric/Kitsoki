@@ -3,8 +3,8 @@ package orchestrator
 import (
 	"fmt"
 
-	"hally/internal/app"
-	"hally/internal/machine"
+	"kitsoki/internal/app"
+	"kitsoki/internal/machine"
 )
 
 // ReloadResult reports the outcome of a Reload call. It tells the

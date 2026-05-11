@@ -1,9 +1,9 @@
-// render.go — implements `hally render`: produces one-way Markdown
+// render.go — implements `kitsoki render`: produces one-way Markdown
 // documentation from an app.yaml. YAML stays the source of truth; the
 // rendered doc is a read-only work product.
 //
-// See `hally docs render-format` for the output shape and
-// `hally docs apply-proposal` for the LLM-driven proposal workflow.
+// See `kitsoki docs render-format` for the output shape and
+// `kitsoki docs apply-proposal` for the LLM-driven proposal workflow.
 package main
 
 import (
@@ -13,8 +13,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"hally/internal/app"
-	"hally/internal/app/render"
+	"kitsoki/internal/app"
+	"kitsoki/internal/app/render"
 )
 
 func renderCmd() *cobra.Command {
@@ -27,14 +27,14 @@ diagram, world-variable table, intent catalogue, and per-room transition
 tables. The output is a one-way work product — edit app.yaml, then
 re-render; the Markdown never feeds back into the engine.
 
-See 'hally docs render-format' for the output shape and
-'hally docs apply-proposal' for the LLM-driven proposal workflow that lets
+See 'kitsoki docs render-format' for the output shape and
+'kitsoki docs apply-proposal' for the LLM-driven proposal workflow that lets
 humans propose changes in prose and have an LLM implement them in YAML.
 
 Examples:
-  hally render testdata/apps/cloak/app.yaml -o testdata/apps/cloak/APP.md
-  hally render myapp.yaml | less
-  hally render myapp.yaml | claude -p 'add a settings room that...'`,
+  kitsoki render testdata/apps/cloak/app.yaml -o testdata/apps/cloak/APP.md
+  kitsoki render myapp.yaml | less
+  kitsoki render myapp.yaml | claude -p 'add a settings room that...'`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			appPath := args[0]

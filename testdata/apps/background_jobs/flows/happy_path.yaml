@@ -13,7 +13,7 @@
 #      expect_world and expect_inbox see the post-completion state.
 #
 # To run:
-#   hally test flows testdata/apps/background_jobs/app.yaml
+#   kitsoki test flows testdata/apps/background_jobs/app.yaml
 test_kind: flow
 app: ../app.yaml
 initial_state: lobby

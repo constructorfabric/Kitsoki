@@ -7,11 +7,11 @@
 // self-correct and call again — all within the same `claude -p` conversation.
 //
 // Used by `host.oracle.ask_with_mcp` (auto-attached when the effect declares
-// a `schema:` arg) and exposed standalone via `hally mcp-validator`.
+// a `schema:` arg) and exposed standalone via `kitsoki mcp-validator`.
 //
 // Compared to cyber-repo's `tools/loopy/wiggum-mcp.py`:
 //   - No artifact directory side-effect: claude's stdout carries the
-//     validated payload back to hally via `output_format: json` →
+//     validated payload back to kitsoki via `output_format: json` →
 //     `bind: stdout_json`.
 //   - Schema is per-invocation, not phase-keyed; one server, one schema.
 package mcp
@@ -126,7 +126,7 @@ type ValidatorConfig struct {
 	// --<Key> <Value>. Order is preserved.
 	PostCmdArgs []PostCmdArg
 	// PostCmdCwd is the working directory for the post-cmd subprocess.
-	// Empty = inherit hally's cwd.
+	// Empty = inherit kitsoki's cwd.
 	PostCmdCwd string
 	// MaxRetries caps the total number of submit attempts (schema-fail +
 	// post-cmd-fail combined). Zero or negative is treated as the default
@@ -140,7 +140,7 @@ type ValidatorConfig struct {
 	// exists) to seed its counters; after every submit it rewrites the
 	// file atomically. host.oracle.ask_with_mcp uses this to keep one
 	// logical "validator session" across multiple `claude --resume`
-	// re-engagements (each re-engagement spawns a fresh hally
+	// re-engagements (each re-engagement spawns a fresh kitsoki
 	// mcp-validator subprocess but they all share the same state file).
 	// Empty = volatile in-memory counters only (the default).
 	StateFilePath string
@@ -224,7 +224,7 @@ func NewValidatorServer(cfg ValidatorConfig) (*ValidatorServer, error) {
 	}
 
 	srv.mcpSrv = mcpsdk.NewServer(&mcpsdk.Implementation{
-		Name:    "hally-validator",
+		Name:    "kitsoki-validator",
 		Version: "0.1.0",
 	}, nil)
 
@@ -476,7 +476,7 @@ func maxRetriesExhaustedMessage(lastErr string) string {
 // `--key value` (two argv slots).
 func (v *ValidatorServer) runPostCmd(ctx context.Context, submittedJSON []byte) (string, error) {
 	// Write the submitted JSON to a tempfile that the verifier will read.
-	tmp, err := os.CreateTemp("", "hally-validator-submitted-*.json")
+	tmp, err := os.CreateTemp("", "kitsoki-validator-submitted-*.json")
 	if err != nil {
 		return "", fmt.Errorf("create tempfile: %w", err)
 	}
@@ -550,7 +550,7 @@ func capStderr(s string, maxBytes int) string {
 // writeOutputAtomically writes data to path via a temp file + rename, so
 // readers (the parent process) never observe a partial write.
 func writeOutputAtomically(path string, data []byte) error {
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".hally-validator-*.tmp")
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".kitsoki-validator-*.tmp")
 	if err != nil {
 		return err
 	}

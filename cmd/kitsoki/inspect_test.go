@@ -8,19 +8,19 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"hally/internal/app"
-	"hally/internal/harness"
-	"hally/internal/host"
-	"hally/internal/machine"
-	"hally/internal/orchestrator"
-	"hally/internal/store"
+	"kitsoki/internal/app"
+	"kitsoki/internal/harness"
+	"kitsoki/internal/host"
+	"kitsoki/internal/machine"
+	"kitsoki/internal/orchestrator"
+	"kitsoki/internal/store"
 )
 
 // TestInspect_PopulatedSession drives a few real turns of the cloak-of-darkness
 // app via the orchestrator, then asserts that buildInspectOutput returns a
 // snapshot that matches what just happened.
 //
-// This is the only integration test we need for `hally inspect`: the surface
+// This is the only integration test we need for `kitsoki inspect`: the surface
 // is read-only and the failure modes (missing session, render error) are tiny
 // enough to cover with the smoke test below.
 func TestInspect_PopulatedSession(t *testing.T) {

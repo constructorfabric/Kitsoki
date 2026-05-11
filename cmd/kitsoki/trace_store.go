@@ -7,8 +7,8 @@ import (
 	"io"
 	"strings"
 
-	"hally/internal/app"
-	"hally/internal/store"
+	"kitsoki/internal/app"
+	"kitsoki/internal/store"
 )
 
 // openStoreForTrace opens the SQLite store at path.

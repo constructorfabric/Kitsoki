@@ -9,9 +9,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/require"
 
-	"hally/internal/app"
-	"hally/internal/jobs"
-	tuipkg "hally/internal/tui"
+	"kitsoki/internal/app"
+	"kitsoki/internal/jobs"
+	tuipkg "kitsoki/internal/tui"
 
 	_ "modernc.org/sqlite"
 )

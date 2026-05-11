@@ -14,17 +14,17 @@ import (
 
 	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"hally/internal/app"
-	"hally/internal/expr"
-	"hally/internal/harness"
-	"hally/internal/host"
-	"hally/internal/intent"
-	"hally/internal/jobs"
-	"hally/internal/machine"
-	"hally/internal/store"
-	"hally/internal/trace"
-	"hally/internal/transport"
-	"hally/internal/world"
+	"kitsoki/internal/app"
+	"kitsoki/internal/expr"
+	"kitsoki/internal/harness"
+	"kitsoki/internal/host"
+	"kitsoki/internal/intent"
+	"kitsoki/internal/jobs"
+	"kitsoki/internal/machine"
+	"kitsoki/internal/store"
+	"kitsoki/internal/trace"
+	"kitsoki/internal/transport"
+	"kitsoki/internal/world"
 )
 
 // pendingClarify holds the in-flight slot-fill state while the TUI
@@ -1108,7 +1108,7 @@ func (o *Orchestrator) SubmitDirect(ctx context.Context, sid app.SessionID, inte
 
 // OneShot runs a single turn against (state, world) without touching the
 // store: no journey load, no event append, no snapshot. It is the building
-// block for `hally turn`. Returns the diff (state, world, events, host calls,
+// block for `kitsoki turn`. Returns the diff (state, world, events, host calls,
 // rendered view) so callers can answer "what happens if I do X in state Y
 // with world Z?" without spinning up a real session.
 //
@@ -1201,7 +1201,7 @@ func (o *Orchestrator) OneShot(ctx context.Context, in OneShotInput) (*OneShotRe
 	}
 
 	// Capture EffectApplied events from the machine before host dispatch so
-	// `hally turn` can show effect-by-effect diffs.
+	// `kitsoki turn` can show effect-by-effect diffs.
 	out.Effects = effectsFromEvents(result.Events)
 
 	hostSummaries, hostEvents, hostWorld, hostView, hostRedirect, hostErr := o.dispatchHostCallsDetailed(ctx, result.HostCalls, result.World, result.NewState)
@@ -1584,7 +1584,7 @@ func (o *Orchestrator) InitialWorld() world.World {
 }
 
 // LoadJourney reconstructs the current state and world from the store.
-// Exported for read-only callers (e.g. `hally session show`); the Turn-loop
+// Exported for read-only callers (e.g. `kitsoki session show`); the Turn-loop
 // path uses the unexported alias `loadJourney`.
 func (o *Orchestrator) LoadJourney(sid app.SessionID) (*store.JourneyState, error) {
 	return o.loadJourney(sid)

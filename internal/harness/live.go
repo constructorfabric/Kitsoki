@@ -16,8 +16,8 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/packages/param"
 	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"hally/internal/app"
-	"hally/internal/trace"
+	"kitsoki/internal/app"
+	"kitsoki/internal/trace"
 )
 
 // LiveConfig holds optional knobs for the LiveHarness.

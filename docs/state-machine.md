@@ -1,6 +1,6 @@
 # The State Machine — Rooms, Phases, and the Directed Cyclic Graph
 
-A hally application is a **state machine** with a deliberately small
+A kitsoki application is a **state machine** with a deliberately small
 vocabulary. This document walks the vocabulary end-to-end: the **graph**
 of states, the **intents** that drive transitions, the **slots** they
 carry, the **world** they read and write, and the **phase templates**
@@ -9,9 +9,9 @@ that compress repeated pipelines.
 If you have not already, skim [`architecture.md`](architecture.md) first
 to see where the machine sits in the larger picture.
 
-For the bytes-on-disk authoritative schema, run `hally docs app-schema`
+For the bytes-on-disk authoritative schema, run `kitsoki docs app-schema`
 or open
-[`cmd/hally/docs/app-schema.md`](../cmd/hally/docs/app-schema.md).
+[`cmd/kitsoki/docs/app-schema.md`](../cmd/kitsoki/docs/app-schema.md).
 
 ---
 
@@ -19,7 +19,7 @@ or open
 
 | Term | Meaning |
 |---|---|
-| **App** | One YAML manifest plus optional includes. The unit hally loads. |
+| **App** | One YAML manifest plus optional includes. The unit kitsoki loads. |
 | **State** | A node in the graph. Has an optional `view:` template, an `on:` map of intents → transitions, and an `on_enter:` effect list. |
 | **Room** | A user-facing name for a state — usually a compound (parent) state grouping a few atomic children. The TUI's location indicator displays the room name. |
 | **Phase** | A repeated room. The same template instantiated multiple times in a pipeline (e.g. `phase_a`, `phase_b`, `phase_c`). |
@@ -77,8 +77,8 @@ stateDiagram-v2
 
 (Cloak of Darkness — full source at
 [`testdata/apps/cloak/app.yaml`](../testdata/apps/cloak/app.yaml). To
-generate this graph for any app, run `hally viz app.yaml` and pipe to
-`dot`, or `hally viz --mermaid` for the same shape as above.)
+generate this graph for any app, run `kitsoki viz app.yaml` and pipe to
+`dot`, or `kitsoki viz --mermaid` for the same shape as above.)
 
 A few invariants the loader enforces (`internal/app/loader.go`):
 
@@ -542,7 +542,7 @@ for clarification.
 | Off-path | `internal/orchestrator/teleport.go` and `internal/inbox/` |
 | MCP transition tool | `internal/mcp/` |
 | Visualisation | `internal/viz/` |
-| YAML schema reference | `cmd/hally/docs/app-schema.md` |
+| YAML schema reference | `cmd/kitsoki/docs/app-schema.md` |
 
 Read those packages in that order if you want to see the machine
 end-to-end, top-down.

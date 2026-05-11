@@ -1,4 +1,4 @@
-// Package host — secrets loading from env and ~/.hally/secrets.yaml.
+// Package host — secrets loading from env and ~/.kitsoki/secrets.yaml.
 package host
 
 import (
@@ -8,7 +8,7 @@ import (
 	"github.com/goccy/go-yaml"
 )
 
-// LoadSecrets loads secrets from environment variables and ~/.hally/secrets.yaml.
+// LoadSecrets loads secrets from environment variables and ~/.kitsoki/secrets.yaml.
 // Environment variables take precedence over file values.
 // The returned map is safe to pass into WithSecrets().
 //
@@ -22,7 +22,7 @@ func LoadSecrets() map[string]string {
 	// Load from file first.
 	home, err := os.UserHomeDir()
 	if err == nil {
-		path := filepath.Join(home, ".hally", "secrets.yaml")
+		path := filepath.Join(home, ".kitsoki", "secrets.yaml")
 		if data, err := os.ReadFile(path); err == nil {
 			var fileSecrets map[string]string
 			if yaml.Unmarshal(data, &fileSecrets) == nil {

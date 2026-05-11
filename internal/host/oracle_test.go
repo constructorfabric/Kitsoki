@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"hally/internal/host"
+	"kitsoki/internal/host"
 )
 
 // fakeOracleBin returns the path to testdata/fake-oracle.sh.
@@ -204,7 +204,7 @@ func TestOracleAsk_RendersPromptWithArgs(t *testing.T) {
 }
 
 // TestOracleAsk_ResolvesRelativePath verifies that a prompt_path is resolved
-// relative to HALLY_APP_DIR when set.
+// relative to KITSOKI_APP_DIR when set.
 func TestOracleAsk_ResolvesRelativePath(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fake-oneshot.sh requires bash")

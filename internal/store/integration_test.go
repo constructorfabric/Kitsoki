@@ -16,11 +16,11 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"hally/internal/app"
-	"hally/internal/intent"
-	"hally/internal/machine"
-	"hally/internal/store"
-	"hally/internal/world"
+	"kitsoki/internal/app"
+	"kitsoki/internal/intent"
+	"kitsoki/internal/machine"
+	"kitsoki/internal/store"
+	"kitsoki/internal/world"
 )
 
 // winningPath enumerates the intent calls for the Cloak winning path, matching

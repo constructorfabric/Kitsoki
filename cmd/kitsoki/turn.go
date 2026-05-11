@@ -1,4 +1,4 @@
-// turn.go — implements the `hally turn` subcommand: a stateless one-shot
+// turn.go — implements the `kitsoki turn` subcommand: a stateless one-shot
 // turn execution (proposal §2 of ai-collaboration-proposal.md).
 //
 // Given an app, a state, an optional world override, and either an --intent
@@ -23,14 +23,14 @@ import (
 
 	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"hally/internal/app"
-	"hally/internal/chathost"
-	"hally/internal/chats"
-	"hally/internal/harness"
-	"hally/internal/host"
-	"hally/internal/machine"
-	"hally/internal/orchestrator"
-	"hally/internal/store"
+	"kitsoki/internal/app"
+	"kitsoki/internal/chathost"
+	"kitsoki/internal/chats"
+	"kitsoki/internal/harness"
+	"kitsoki/internal/host"
+	"kitsoki/internal/machine"
+	"kitsoki/internal/orchestrator"
+	"kitsoki/internal/store"
 )
 
 func turnCmd() *cobra.Command {
@@ -61,10 +61,10 @@ Worlds and slots can be inlined as JSON or read from a file with @file:
   --slots @slots.json
 
 Examples:
-  hally turn app.yaml --state foyer --intent go_west
-  hally turn app.yaml --state foyer --intent open --slots '{"door":"red"}'
-  hally turn app.yaml --state cloakroom --world @w.json --input "hang the cloak"
-  hally turn app.yaml --state foyer --intent take --harness replay --recording recording.yaml`,
+  kitsoki turn app.yaml --state foyer --intent go_west
+  kitsoki turn app.yaml --state foyer --intent open --slots '{"door":"red"}'
+  kitsoki turn app.yaml --state cloakroom --world @w.json --input "hang the cloak"
+  kitsoki turn app.yaml --state foyer --intent take --harness replay --recording recording.yaml`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			appPath := args[0]
@@ -131,7 +131,7 @@ Examples:
 			}
 
 			// Wire the chats store on the same in-memory DB so app YAMLs
-			// that invoke host.chat.* can be exercised via `hally turn`.
+			// that invoke host.chat.* can be exercised via `kitsoki turn`.
 			// The DB is discarded on return — every turn starts empty.
 			chatStore, err := chats.NewStore(s.DB())
 			if err != nil {
@@ -172,7 +172,7 @@ Examples:
 	return cmd
 }
 
-// turnOutput is the JSON shape printed by `hally turn`. It wraps OneShotResult
+// turnOutput is the JSON shape printed by `kitsoki turn`. It wraps OneShotResult
 // so we can fold the OutcomeMode (an int) into a stable string field.
 type turnOutput struct {
 	Mode string `json:"mode"`
@@ -208,7 +208,7 @@ func decodeJSONFlag(raw, fieldName string) (map[string]any, error) {
 	return out, nil
 }
 
-// buildTurnHarness chooses a harness for `hally turn`. When --intent is set
+// buildTurnHarness chooses a harness for `kitsoki turn`. When --intent is set
 // the harness is never invoked, so we hand back a no-op replay-ish harness
 // that errors loudly if anything tries to call it.
 func buildTurnHarness(harnessType, recordingPath string, def *app.AppDef, directIntent bool) (harness.Harness, error) {

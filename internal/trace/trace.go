@@ -1,4 +1,4 @@
-// Package trace provides structured JSONL tracing for hally sessions (§11).
+// Package trace provides structured JSONL tracing for kitsoki sessions (§11).
 //
 // Usage pattern: every component (orchestrator, harness, machine) receives a
 // *slog.Logger at construction time. When --trace is active the caller installs
@@ -23,7 +23,7 @@ import (
 	"log/slog"
 	"time"
 
-	"hally/internal/app"
+	"kitsoki/internal/app"
 )
 
 // ─── Event name constants ─────────────────────────────────────────────────────

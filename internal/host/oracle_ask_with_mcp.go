@@ -25,13 +25,13 @@ import (
 	"sort"
 	"strings"
 
-	"hally/internal/expr"
+	"kitsoki/internal/expr"
 )
 
-// hallyBinaryEnv overrides the path to the hally binary used to spawn the
+// kitsokiBinaryEnv overrides the path to the kitsoki binary used to spawn the
 // auto-attached validator. Set in tests; in production callers may also
-// set it if `hally` is not the running binary's name.
-const hallyBinaryEnv = "HALLY_BIN"
+// set it if `kitsoki` is not the running binary's name.
+const kitsokiBinaryEnv = "KITSOKI_BIN"
 
 // validatorOptions bundles the optional validator configuration plumbed
 // through from a `validator:` sub-block on the YAML `with:` map. All
@@ -49,8 +49,8 @@ type validatorOptions struct {
 	// composition is deterministic across iterations.
 	PostCmdArgs []postCmdKV
 	// PostCmdCwd is the working directory for the verifier subprocess
-	// (relative paths resolved against HALLY_APP_DIR via resolvePromptPath).
-	// Empty = inherit hally's cwd.
+	// (relative paths resolved against KITSOKI_APP_DIR via resolvePromptPath).
+	// Empty = inherit kitsoki's cwd.
 	PostCmdCwd string
 	// MaxRetries caps the inner submit-retry budget. Zero = let the
 	// validator pick its default (5).
@@ -164,9 +164,9 @@ func parseValidatorOptions(args map[string]any) (validatorOptions, string) {
 }
 
 // buildValidatorMCPServer constructs an mcp_servers entry that runs
-// `hally mcp-validator --schema <abs-path> [--output <path>]
+// `kitsoki mcp-validator --schema <abs-path> [--output <path>]
 // [--post-cmd ... --post-cmd-arg k=v ... --max-retries N --state-file <path>]`.
-// The schema path is resolved against HALLY_APP_DIR if relative, mirroring
+// The schema path is resolved against KITSOKI_APP_DIR if relative, mirroring
 // resolvePromptPath. When outputPath is non-empty the validator will
 // write each successful submit's payload to that file (atomic, last-call
 // wins) so the parent can recover the canonical JSON.
@@ -176,11 +176,11 @@ func buildValidatorMCPServer(schemaPath, outputPath string, opts validatorOption
 		return nil, fmt.Errorf("schema %q not found: %w", resolved, err)
 	}
 
-	bin := os.Getenv(hallyBinaryEnv)
+	bin := os.Getenv(kitsokiBinaryEnv)
 	if bin == "" {
 		exe, err := os.Executable()
 		if err != nil {
-			return nil, fmt.Errorf("locate hally binary: %w", err)
+			return nil, fmt.Errorf("locate kitsoki binary: %w", err)
 		}
 		bin = exe
 	}
@@ -214,7 +214,7 @@ func buildValidatorMCPServer(schemaPath, outputPath string, opts validatorOption
 //
 // Required args:
 //   - prompt_path | prompt (string): path to a prompt template file. If
-//     relative, resolved against HALLY_APP_DIR (set by the loader) or cwd.
+//     relative, resolved against KITSOKI_APP_DIR (set by the loader) or cwd.
 //
 // Optional args:
 //   - working_dir   (string): cwd for the claude subprocess.
@@ -436,8 +436,8 @@ func oracleAskWithMCPCore(ctx context.Context, rendered, resolvedPrompt string, 
 
 	// Build the merged mcp_servers map: caller-provided entries plus an
 	// auto-attached "validator" entry when `schema:` is set and the caller
-	// didn't already define one. The validator is the running hally binary
-	// invoked as `hally mcp-validator --schema <abs-path>`, which exposes a
+	// didn't already define one. The validator is the running kitsoki binary
+	// invoked as `kitsoki mcp-validator --schema <abs-path>`, which exposes a
 	// `submit` tool whose input schema is the user-provided schema. The LLM
 	// must call submit() and round-trip its JSON through it before answering;
 	// validation errors come back inline so the LLM self-corrects.
@@ -483,7 +483,7 @@ func oracleAskWithMCPCore(ctx context.Context, rendered, resolvedPrompt string, 
 	var validatorStateFilePath string
 	if schemaArg, _ := args["schema"].(string); strings.TrimSpace(schemaArg) != "" {
 		if _, alreadyHasValidator := mcpServers["validator"]; !alreadyHasValidator {
-			outFile, ofErr := os.CreateTemp("", "hally-validated-*.json")
+			outFile, ofErr := os.CreateTemp("", "kitsoki-validated-*.json")
 			if ofErr != nil {
 				return Result{Error: fmt.Sprintf("host.oracle.ask_with_mcp: create validator output tempfile: %v", ofErr)}, nil
 			}
@@ -502,7 +502,7 @@ func oracleAskWithMCPCore(ctx context.Context, rendered, resolvedPrompt string, 
 			// don't bother — the legacy single-shot path doesn't need
 			// cross-process state.
 			if validatorBlockPresent {
-				stFile, sfErr := os.CreateTemp("", "hally-validator-state-*.json")
+				stFile, sfErr := os.CreateTemp("", "kitsoki-validator-state-*.json")
 				if sfErr != nil {
 					return Result{Error: fmt.Sprintf("host.oracle.ask_with_mcp: create validator state tempfile: %v", sfErr)}, nil
 				}
@@ -529,7 +529,7 @@ func oracleAskWithMCPCore(ctx context.Context, rendered, resolvedPrompt string, 
 		if mErr != nil {
 			return Result{Error: fmt.Sprintf("host.oracle.ask_with_mcp: marshal mcp_servers: %v", mErr)}, nil
 		}
-		f, fErr := os.CreateTemp("", "hally-mcp-*.json")
+		f, fErr := os.CreateTemp("", "kitsoki-mcp-*.json")
 		if fErr != nil {
 			return Result{Error: fmt.Sprintf("host.oracle.ask_with_mcp: create mcp config tempfile: %v", fErr)}, nil
 		}

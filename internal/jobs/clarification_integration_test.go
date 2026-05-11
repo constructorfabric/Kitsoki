@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"hally/internal/app"
-	"hally/internal/host"
-	"hally/internal/jobs"
+	"kitsoki/internal/app"
+	"kitsoki/internal/host"
+	"kitsoki/internal/jobs"
 )
 
 // TestClarificationRoundTrip exercises the full clarification lifecycle under

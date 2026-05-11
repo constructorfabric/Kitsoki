@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # fake-claude.sh — emulates `claude -p` running with file-edit tools
 # enabled inside the shadow story directory. Tests place the binary
-# via $HALLY_ORACLE_CLAUDE_BIN.
+# via $KITSOKI_ORACLE_CLAUDE_BIN.
 #
 # Behaviour is dispatched by sentinel tokens in the user's PROPOSAL
 # section of the prompt (read from stdin). cwd is the shadow dir so

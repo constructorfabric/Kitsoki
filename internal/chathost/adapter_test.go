@@ -5,9 +5,9 @@ import (
 	"errors"
 	"testing"
 
-	"hally/internal/chathost"
-	"hally/internal/chats"
-	"hally/internal/host"
+	"kitsoki/internal/chathost"
+	"kitsoki/internal/chats"
+	"kitsoki/internal/host"
 
 	"database/sql"
 	_ "modernc.org/sqlite"

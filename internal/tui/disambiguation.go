@@ -6,7 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"hally/internal/intent"
+	"kitsoki/internal/intent"
 )
 
 // disambiguationModel handles the §7.4 disambiguation UI.

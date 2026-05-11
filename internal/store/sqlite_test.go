@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"hally/internal/app"
-	"hally/internal/store"
+	"kitsoki/internal/app"
+	"kitsoki/internal/store"
 )
 
 // makeAppDef creates a minimal AppDef for testing.

@@ -32,7 +32,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"hally/internal/app"
+	"kitsoki/internal/app"
 
 	_ "modernc.org/sqlite" // register "sqlite" driver
 )
@@ -170,7 +170,7 @@ func (s *sqliteStore) appendEventsCtx(ctx context.Context, session app.SessionID
 	defer func() { _ = tx.Rollback() }()
 
 	// Acquire write lock immediately.
-	if _, err := tx.ExecContext(ctx, "SAVEPOINT hally_append"); err != nil {
+	if _, err := tx.ExecContext(ctx, "SAVEPOINT kitsoki_append"); err != nil {
 		return fmt.Errorf("store.AppendEvents: savepoint: %w", err)
 	}
 

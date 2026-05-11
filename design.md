@@ -1,38 +1,38 @@
-# Hally — Design Document
+# Kitsoki — Design Document
 
 **Status:** Draft v0.1
 **Author:** Brad Smith
 **Date:** 2026-04-20
 
-Hally is a deterministic orchestrator that lets a human drive a structured application with free-text input. The LLM is not the decision maker: it is a *translator* between natural language and a finite alphabet of intents defined by the application. The application itself is a directed, possibly cyclic graph of states whose transitions, guards, and persistence are entirely deterministic.
+Kitsoki is a deterministic orchestrator that lets a human drive a structured application with free-text input. The LLM is not the decision maker: it is a *translator* between natural language and a finite alphabet of intents defined by the application. The application itself is a directed, possibly cyclic graph of states whose transitions, guards, and persistence are entirely deterministic.
 
-This document defines the conceptual model, the YAML authoring format, the runtime architecture, the MCP tool contract between Hally and the LLM harness, and the determinism and replay guarantees. It also picks a concrete demo application (a freely-licensed text adventure) and walks through how a single user turn maps onto the machinery.
+This document defines the conceptual model, the YAML authoring format, the runtime architecture, the MCP tool contract between Kitsoki and the LLM harness, and the determinism and replay guarantees. It also picks a concrete demo application (a freely-licensed text adventure) and walks through how a single user turn maps onto the machinery.
 
 ### Target platform
 
-Hally is implemented in **Go 1.23+** and ships as a **single statically-linked binary** with no CGO, no external runtime, and no managed service dependency. The CLI/TUI is built on [charmbracelet/bubbletea](https://github.com/charmbracelet/bubbletea) v2. The rationale for this stack — distribution, compile-time interface enforcement, the maturity of the Charm TUI ecosystem, and the stable MCP Go SDK v1 — is documented in `stack-comparison.md`; this document encodes the decision and uses Go-specific library names throughout. Where earlier drafts said "Go or Python" or "TBD," we now commit to Go.
+Kitsoki is implemented in **Go 1.23+** and ships as a **single statically-linked binary** with no CGO, no external runtime, and no managed service dependency. The CLI/TUI is built on [charmbracelet/bubbletea](https://github.com/charmbracelet/bubbletea) v2. The rationale for this stack — distribution, compile-time interface enforcement, the maturity of the Charm TUI ecosystem, and the stable MCP Go SDK v1 — is documented in `stack-comparison.md`; this document encodes the decision and uses Go-specific library names throughout. Where earlier drafts said "Go or Python" or "TBD," we now commit to Go.
 
 ---
 
 ## 1. Context and Positioning
 
-### 1.1 What problem is Hally actually solving?
+### 1.1 What problem is Kitsoki actually solving?
 
-Traditional CLIs demand exact syntax and memorization: `kubectl patch deployment foo -p '{"spec":{"replicas":3}}' --type=merge`. Chat agents accept anything but guarantee nothing: they hallucinate flags, invoke destructive operations from ambiguous prose, and have no concept of "you are currently inside the rollout wizard." Hally splits the difference: free-text in, but an explicit, author-defined state graph decides what can happen next.
+Traditional CLIs demand exact syntax and memorization: `kubectl patch deployment foo -p '{"spec":{"replicas":3}}' --type=merge`. Chat agents accept anything but guarantee nothing: they hallucinate flags, invoke destructive operations from ambiguous prose, and have no concept of "you are currently inside the rollout wizard." Kitsoki splits the difference: free-text in, but an explicit, author-defined state graph decides what can happen next.
 
 Concretely:
 
 - The application author writes a YAML definition describing *states*, *transitions*, the *intents* available in each state, and the *slots* each intent needs.
-- At runtime the user types free text. Hally forwards the text to an LLM harness (Claude Code `claude -p`, OpenCode, Codex-CLI) with an MCP server attached.
+- At runtime the user types free text. Kitsoki forwards the text to an LLM harness (Claude Code `claude -p`, OpenCode, Codex-CLI) with an MCP server attached.
 - The LLM's only permitted output is a call to an MCP tool that maps the free text onto one of the currently-valid intents with typed, validated arguments.
 - If the input is ambiguous, incomplete, or out-of-state, the MCP call returns a structured error payload that tells the LLM what was wrong. The LLM retries. After N retries we surface the problem to the human with a context-sensitive menu.
 - The state machine then applies the transition deterministically, producing the next state and a rendered view.
 
-### 1.2 What Hally is not
+### 1.2 What Kitsoki is not
 
 - **Not a chat agent.** The LLM has no latitude to "decide" what the user wants outside the intent alphabet.
-- **Not a general workflow engine.** We don't compete with Temporal or Step Functions on multi-worker durability, distributed activities, or scheduler timers. Hally hosts one conversation per session — but the surface that carries the conversation is plural: a local TUI, a Jira ticket comment thread, a Bitbucket PR comment thread, later a Slack thread. Long-pause sessions and per-event invocations are first-class. See §1.4.
-- **Not a wizard library.** Wizards are strictly linear; Hally models cyclic graphs, compound states, and free exploration.
+- **Not a general workflow engine.** We don't compete with Temporal or Step Functions on multi-worker durability, distributed activities, or scheduler timers. Kitsoki hosts one conversation per session — but the surface that carries the conversation is plural: a local TUI, a Jira ticket comment thread, a Bitbucket PR comment thread, later a Slack thread. Long-pause sessions and per-event invocations are first-class. See §1.4.
+- **Not a wizard library.** Wizards are strictly linear; Kitsoki models cyclic graphs, compound states, and free exploration.
 - **Not a natural language understanding framework in its own right.** NLU is outsourced to the LLM through a constrained tool surface.
 
 ### 1.3 Prior-art snapshot
@@ -52,7 +52,7 @@ Four bodies of work inform the design. In each, I extract concrete ideas to stea
 4. Parser fallbacks that say "I didn't understand" with targeted nudges — we need the same for the LLM retry loop.
 
 *Avoid:*
-1. Inform 7's natural-language rule-declaration aesthetic — readable to English speakers but famously hard for programmers to debug when precedence goes wrong. Hally's DSL is structured YAML, not prose.
+1. Inform 7's natural-language rule-declaration aesthetic — readable to English speakers but famously hard for programmers to debug when precedence goes wrong. Kitsoki's DSL is structured YAML, not prose.
 2. Twine's "everything is a macro in a passage" model — it leaks presentation into logic. We separate view from transition.
 
 #### Workflow and state-machine frameworks
@@ -78,11 +78,11 @@ Four bodies of work inform the design. In each, I extract concrete ideas to stea
 *Steal:*
 1. Page ≈ state with a form (Dialogflow CX). A state's slot list is first-class and the runtime loops until filled.
 2. Dynamic `required_slots` (Rasa) — the shape of the form can depend on previously filled values.
-3. Separation of *recognizer* (turns free text into intent+entities) from *dialog manager* (moves through states). Hally's LLM is the recognizer; our state machine is the dialog manager.
+3. Separation of *recognizer* (turns free text into intent+entities) from *dialog manager* (moves through states). Kitsoki's LLM is the recognizer; our state machine is the dialog manager.
 
 *Avoid:*
-1. Rasa's story/rule training data paradigm — it confuses "authoring" with "example data." Hally is author-first, not ML-first.
-2. Dialogflow's hidden built-in intents and implicit sys parameters — opaque magic. Every intent in Hally is declared by the author.
+1. Rasa's story/rule training data paradigm — it confuses "authoring" with "example data." Kitsoki is author-first, not ML-first.
+2. Dialogflow's hidden built-in intents and implicit sys parameters — opaque magic. Every intent in Kitsoki is declared by the author.
 
 #### LLM-specific orchestration
 
@@ -97,47 +97,47 @@ LangGraph's conditional edges run after a node and select the next node determin
 
 ### 1.4 Conversation surfaces and the orchestrator boundary
 
-Hally is a *conversation engine*. Conversations may be driven from different surfaces — a local TUI, a Jira ticket comment thread, a Bitbucket pull-request comment thread, later a Slack thread — and the same room (the same state graph, intents, phases, and checkpoints) must work driven from any of them. The TUI is one such surface; it is not privileged. The canonical examples in §1.1 are TUI-flavored, but every claim about "the user types" generalises to "the user replies via the surface."
+Kitsoki is a *conversation engine*. Conversations may be driven from different surfaces — a local TUI, a Jira ticket comment thread, a Bitbucket pull-request comment thread, later a Slack thread — and the same room (the same state graph, intents, phases, and checkpoints) must work driven from any of them. The TUI is one such surface; it is not privileged. The canonical examples in §1.1 are TUI-flavored, but every claim about "the user types" generalises to "the user replies via the surface."
 
 #### Transports
 
-A *transport* is the output adapter that translates a hally `Post(key, body)` call into the surface's native form: a TUI panel render, a Jira `POST /comment`, a Bitbucket PR comment-create. Transports own native markup rendering (Jira wiki vs. markdown), authentication, and rate-limiting against the external surface.
+A *transport* is the output adapter that translates a kitsoki `Post(key, body)` call into the surface's native form: a TUI panel render, a Jira `POST /comment`, a Bitbucket PR comment-create. Transports own native markup rendering (Jira wiki vs. markdown), authentication, and rate-limiting against the external surface.
 
-Inbound — turning an external reply into a hally intent — is *not* a transport responsibility in the v1 design (see "the orchestrator boundary" below). Transports may grow `Open(handler)` polling or webhook loops in a future revision; they do not have one yet.
+Inbound — turning an external reply into a kitsoki intent — is *not* a transport responsibility in the v1 design (see "the orchestrator boundary" below). Transports may grow `Open(handler)` polling or webhook loops in a future revision; they do not have one yet.
 
 #### The orchestrator boundary (v1)
 
-Hally hosts the per-session conversation. It does not poll Jira, watch Bitbucket webhooks, or schedule its own work. The *orchestrator* — for the bug-fix and PR-refine rooms today, `tools/loopy/loop.py` in `cyber-repo` — owns:
+Kitsoki hosts the per-session conversation. It does not poll Jira, watch Bitbucket webhooks, or schedule its own work. The *orchestrator* — for the bug-fix and PR-refine rooms today, `tools/loopy/loop.py` in `cyber-repo` — owns:
 
 - ticket / PR selection and dispatch
 - polling external surfaces for new replies
-- mapping a reply to a hally intent (or passing the raw body to hally's intent router)
+- mapping a reply to a kitsoki intent (or passing the raw body to kitsoki's intent router)
 - knowledge extraction, capability boundaries, metrics, dashboards, and other supervisor-level concerns that span sessions
 
-The contract between an orchestrator and hally is a small CLI surface keyed by external ID:
+The contract between an orchestrator and kitsoki is a small CLI surface keyed by external ID:
 
 ```bash
-hally session create   --app stories/bugfix/app.yaml --key jira:PLTFRM-12345
-hally session continue --key jira:PLTFRM-12345 --intent <name> --slots <json>
-hally session continue --key jira:PLTFRM-12345 --raw "<reply body>"
-hally session show     --key jira:PLTFRM-12345
-hally session list     --transport jira
-hally tui              --key jira:PLTFRM-12345    # attended attach
+kitsoki session create   --app stories/bugfix/app.yaml --key jira:PLTFRM-12345
+kitsoki session continue --key jira:PLTFRM-12345 --intent <name> --slots <json>
+kitsoki session continue --key jira:PLTFRM-12345 --raw "<reply body>"
+kitsoki session show     --key jira:PLTFRM-12345
+kitsoki session list     --transport jira
+kitsoki tui              --key jira:PLTFRM-12345    # attended attach
 ```
 
-Each invocation runs hally to a quiescent point — the next checkpoint or a terminal state — posts whatever output the room declares via the configured transport, then exits. State is event-sourced (§8) so no process needs to stay resident between events.
+Each invocation runs kitsoki to a quiescent point — the next checkpoint or a terminal state — posts whatever output the room declares via the configured transport, then exits. State is event-sourced (§8) so no process needs to stay resident between events.
 
-This keeps hally focused — one binary, one session per process, no in-process scheduler — and lets `loop.py` keep its accumulated features (knowledge subsystem, capability boundaries, metrics, cross-run analysis, dashboards) without re-homing them in hally. A future "orchestrator-in-hally" mode (e.g. `hally serve` with its own polling loops) is not ruled out, but it is **not v1**, and we will not design for it until a concrete need surfaces.
+This keeps kitsoki focused — one binary, one session per process, no in-process scheduler — and lets `loop.py` keep its accumulated features (knowledge subsystem, capability boundaries, metrics, cross-run analysis, dashboards) without re-homing them in kitsoki. A future "orchestrator-in-kitsoki" mode (e.g. `kitsoki serve` with its own polling loops) is not ruled out, but it is **not v1**, and we will not design for it until a concrete need surfaces.
 
 #### Sessions are persistent singletons
 
 A session is keyed by `(transport, thread)` — e.g. `jira:PLTFRM-12345`, `bitbucket:DBI/some-repo/pulls/123` — and persists indefinitely in the SQLite event store. A session may carry **multiple** external keys (a bug-fix session attached to both its Jira ticket and the Bitbucket PR it eventually opens); keys are bound as the session progresses.
 
-At most one process at a time may write to a given session. Concurrent invocations serialize on a row-level writer lock with a configurable retry deadline; the loser fails fast with `session busy`. This is what lets `hally tui --key X` and an orchestrator's `hally session continue --key X` co-exist safely against the same persistent session — first writer wins, second writer either waits or reports busy.
+At most one process at a time may write to a given session. Concurrent invocations serialize on a row-level writer lock with a configurable retry deadline; the loser fails fast with `session busy`. This is what lets `kitsoki tui --key X` and an orchestrator's `kitsoki session continue --key X` co-exist safely against the same persistent session — first writer wins, second writer either waits or reports busy.
 
 #### Phases are the model unit; checkpoints are a transport concern
 
-Hally models conversations at *phase* granularity, not at coarse stage granularity. Each phase is a state with its own artifacts, prompts, guards, history, and intent menu. A phase may be marked as a *checkpoint* — when entered, hally posts the phase output via the configured transport and the session pauses awaiting a reply. Non-checkpoint phases auto-advance.
+Kitsoki models conversations at *phase* granularity, not at coarse stage granularity. Each phase is a state with its own artifacts, prompts, guards, history, and intent menu. A phase may be marked as a *checkpoint* — when entered, kitsoki posts the phase output via the configured transport and the session pauses awaiting a reply. Non-checkpoint phases auto-advance.
 
 Whether a phase is a checkpoint is a **transport concern**, not a model concern. The bug-fix pipeline today batches 14 fine-grained phases into 4 stage-group checkpoints because human reviewers don't want to be pinged 14 times per ticket; that batching is a property of the Jira surface, not of the bug-fix room. A more verbose surface (e.g. an attended TUI session) may checkpoint every phase against the same room.
 
@@ -146,7 +146,7 @@ Whether a phase is a checkpoint is a **transport concern**, not a model concern.
 Replies are not constrained to a fixed framework vocabulary (no hardcoded `continue` / `refine` / `quit`). Each checkpoint state declares its own intent menu — `continue`, `quit`, `refine`, `restart_from(stage)`, `jump_to(phase)`, `block_on(reason)`, or anything else the room needs. The orchestrator either:
 
 1. Pre-parses well-known keywords and passes `--intent <name> --slots <json>`, or
-2. Passes the raw reply body via `--raw "<body>"` and lets hally's existing intent-router (the same one that parses TUI free text) map the body to one of the menu's intents using each intent's `examples:` and slot schema.
+2. Passes the raw reply body via `--raw "<body>"` and lets kitsoki's existing intent-router (the same one that parses TUI free text) map the body to one of the menu's intents using each intent's `examples:` and slot schema.
 
 Synonyms and aliases (`approve`/`lgtm`/`proceed` for `continue`; `skip`/`abandon`/`stop` for `quit`) are declared as intent `examples:`, not hardcoded in the parser. This keeps reply behavior room-specific and lets reviewers' historical vocabulary continue to work without framework changes.
 
@@ -216,15 +216,15 @@ Authors write YAML. The format is declarative, author-ergonomic, and carries no 
 
 ### 3.1 Complete annotated example: Cloak of Darkness
 
-This is a full, running app. *Cloak of Darkness* is the "hello world" of interactive fiction — three rooms, three objects, a winnable conclusion in about five moves ([IFWiki](https://www.ifwiki.org/index.php/Cloak_of_Darkness), [IF Archive spec](https://users.ox.ac.uk/~manc0049/TADSGuide/cloak.htm)). It was designed specifically as a benchmark for comparing IF authoring systems, which makes it the ideal first app for Hally.
+This is a full, running app. *Cloak of Darkness* is the "hello world" of interactive fiction — three rooms, three objects, a winnable conclusion in about five moves ([IFWiki](https://www.ifwiki.org/index.php/Cloak_of_Darkness), [IF Archive spec](https://users.ox.ac.uk/~manc0049/TADSGuide/cloak.htm)). It was designed specifically as a benchmark for comparing IF authoring systems, which makes it the ideal first app for Kitsoki.
 
 ```yaml
-# cloak-of-darkness.hally.yaml
+# cloak-of-darkness.kitsoki.yaml
 app:
   id: cloak-of-darkness
   version: 0.1.0
   title: "Cloak of Darkness"
-  author: "Roger Firth (spec), ported to Hally"
+  author: "Roger Firth (spec), ported to Kitsoki"
   license: "Spec in public domain; this port CC0"
 
 # Top-level world schema. Every variable is typed and has a default.
@@ -611,11 +611,11 @@ Slot payloads coming in from the MCP `transition` tool are first shape-checked a
 
 A single Go process, one statically-linked binary, no in-process scheduler, no resident server. Every component communicates in-process; the only external boundaries are the LLM harness subprocess and the MCP stdio/socket transport between the harness and our server.
 
-Hally is invoked **per session-event**. An attended TUI session is one continuous process for the duration of the user's seat at the keyboard; an orchestrator-driven session (Jira, Bitbucket — see §1.4) is invoked once per inbound reply via `hally session continue`, runs forward to the next checkpoint, posts via the configured transport, and exits. Durability across invocations is provided by the event-sourced SQLite store (§8). The diagram below depicts the attended (TUI) shape; in the orchestrator-driven shape the TUI box is absent and the orchestrator (e.g. `loop.py`) sits outside the diagram, invoking hally over the CLI.
+Kitsoki is invoked **per session-event**. An attended TUI session is one continuous process for the duration of the user's seat at the keyboard; an orchestrator-driven session (Jira, Bitbucket — see §1.4) is invoked once per inbound reply via `kitsoki session continue`, runs forward to the next checkpoint, posts via the configured transport, and exits. Durability across invocations is provided by the event-sourced SQLite store (§8). The diagram below depicts the attended (TUI) shape; in the orchestrator-driven shape the TUI box is absent and the orchestrator (e.g. `loop.py`) sits outside the diagram, invoking kitsoki over the CLI.
 
 ```
 +-------------------------------------------------------------------+
-|                        hally process (Go)                         |
+|                        kitsoki process (Go)                         |
 |                                                                   |
 |  +-----------+    +-----------+    +-----------+   +-----------+ |
 |  |    TUI    |<-->|  Orches-  |<-->|   State   |<->|  Journey  | |
@@ -651,7 +651,7 @@ Component-to-library mapping:
 - **LLM Harness**: pluggable via a `Harness` interface (§12). Default implementation spawns `claude -p` or `opencode` as a subprocess over stdio. An in-process fallback uses [anthropic-sdk-go](https://github.com/anthropics/anthropic-sdk-go) directly (Claude Opus 4.7, prompt caching, tool use).
 - **Journey Store**: [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite) — pure-Go SQLite, no cgo, which is what keeps the single static binary promise alive on every `GOOS`.
 
-The MCP server is embedded in the Hally binary and speaks stdio to a child harness process. That is how Claude Code spawns MCP servers today, so we invert the relationship: we *are* the MCP server, and the LLM harness connects to us over the transport it was given. Alternatively (and more robust for OpenCode-style harnesses), Hally starts the MCP server on a local socket and launches the harness with `--mcp-config` pointing at it.
+The MCP server is embedded in the Kitsoki binary and speaks stdio to a child harness process. That is how Claude Code spawns MCP servers today, so we invert the relationship: we *are* the MCP server, and the LLM harness connects to us over the transport it was given. Alternatively (and more robust for OpenCode-style harnesses), Kitsoki starts the MCP server on a local socket and launches the harness with `--mcp-config` pointing at it.
 
 ### 4.2 A single user turn
 
@@ -733,7 +733,7 @@ type TransitionOK struct {
     Menu  []string `json:"menu"`  // currently-allowed intents
 }
 
-func registerTools(srv *mcp.Server, h *hallyHandler) {
+func registerTools(srv *mcp.Server, h *kitsokiHandler) {
     mcp.AddTool(srv, &mcp.Tool{
         Name:        "transition",
         Description: "Map the user utterance to one allowed intent with filled slots.",
@@ -747,7 +747,7 @@ func registerTools(srv *mcp.Server, h *hallyHandler) {
 // Handler signature follows the Go SDK v1 convention: context, session, typed
 // args; return the structured result and either nil error (ok path) or an
 // error whose payload is serialized to the client as the ToolError body.
-func (h *hallyHandler) handleTransition(
+func (h *kitsokiHandler) handleTransition(
     ctx context.Context, sess *mcp.ServerSession, args TransitionArgs,
 ) (*mcp.CallToolResult, any, error) {
     res := h.machine.Validate(h.currentState(sess), h.world(sess),
@@ -1145,7 +1145,7 @@ The only always-on LLM feedback path is §7.3 sub-mode B, and it is gated behind
 
 **Decision: event-sourced, SQLite-backed, snapshot-on-every-N-events.**
 
-- **Storage:** `~/.hally/sessions/<session-id>.db`, one SQLite file per session.
+- **Storage:** `~/.kitsoki/sessions/<session-id>.db`, one SQLite file per session.
 - **Driver:** [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite). Pure-Go, CGO-free. This is load-bearing for the distribution story: with `CGO_ENABLED=0` we cross-compile a single static binary for `linux/amd64`, `linux/arm64`, `darwin/arm64`, and `windows/amd64` with one invocation of `go build`. Benchmarks show modernc within 1.5–2× of the mattn cgo driver on realistic workloads ([cvilsmeier/go-sqlite-bench](https://github.com/cvilsmeier/go-sqlite-bench)); for our write volume (single-digit events per user turn) that gap is invisible.
 - **Schema (DDL):**
   ```sql
@@ -1198,11 +1198,11 @@ CREATE TABLE external_keys (
 CREATE INDEX external_keys_session_idx ON external_keys(session_id);
 ```
 
-The first key is set on `hally session create --key X`; later keys are bound by an effect (e.g. `bind_external_key:` after a Bitbucket PR is opened by the room).
+The first key is set on `kitsoki session create --key X`; later keys are bound by an effect (e.g. `bind_external_key:` after a Bitbucket PR is opened by the room).
 
 #### Singleton writer-lock semantics
 
-At most one process at a time may write to a given session. Concurrent `hally session continue` (and TUI attach) invocations against the same key serialize on a row-level lock taken at session-load time, with a configurable retry deadline. The loser of the race fails fast with a `session busy` exit code so an orchestrator can choose to retry, queue, or skip.
+At most one process at a time may write to a given session. Concurrent `kitsoki session continue` (and TUI attach) invocations against the same key serialize on a row-level lock taken at session-load time, with a configurable retry deadline. The loser of the race fails fast with a `session busy` exit code so an orchestrator can choose to retry, queue, or skip.
 
 The lock is held for the duration of one event — load → run to next checkpoint → post → release — not for the lifetime of the session. A long-paused session sitting at `phase_8_awaiting_reply` holds no lock; the next `session continue` may come hours later.
 
@@ -1211,16 +1211,16 @@ The lock is held for the duration of one event — load → run to next checkpoi
 ## 9. Observability
 
 - **Structured logs** via the stdlib [`log/slog`](https://pkg.go.dev/log/slog) package (JSON handler to stderr) for every MCP tool call, every transition, every guard evaluation that changed the menu. Slow guards (> 10ms) are flagged. No third-party logging dependency.
-- **Trace view** in the TUI: `hally trace <session>` shows the event log as a table, turn by turn, with the LLM prompt/response excerpts. Rendered with `bubbles/table` inside a Bubble Tea sub-model.
-- **Graph visualization:** `hally viz <app.yaml>` emits Graphviz DOT via [emicklei/dot](https://github.com/emicklei/dot) and Mermaid source via a small templated string generator — nodes for states, labelled edges for transitions, dashed edges for off-path, dotted clusters for parallel regions. The same DOT output is rendered in-terminal inside a lipgloss pane (the `?` overlay) with the current state highlighted; operators can also `hally viz --mermaid app.yaml | mmdc` for external viewing.
-- **Replay-diff:** `hally replay <session>` runs the state machine against the event log and diffs intermediate state against recorded snapshots. The authoritative test that a change to an app is backward-compatible with old sessions.
+- **Trace view** in the TUI: `kitsoki trace <session>` shows the event log as a table, turn by turn, with the LLM prompt/response excerpts. Rendered with `bubbles/table` inside a Bubble Tea sub-model.
+- **Graph visualization:** `kitsoki viz <app.yaml>` emits Graphviz DOT via [emicklei/dot](https://github.com/emicklei/dot) and Mermaid source via a small templated string generator — nodes for states, labelled edges for transitions, dashed edges for off-path, dotted clusters for parallel regions. The same DOT output is rendered in-terminal inside a lipgloss pane (the `?` overlay) with the current state highlighted; operators can also `kitsoki viz --mermaid app.yaml | mmdc` for external viewing.
+- **Replay-diff:** `kitsoki replay <session>` runs the state machine against the event log and diffs intermediate state against recorded snapshots. The authoritative test that a change to an app is backward-compatible with old sessions.
 - **OpenTelemetry:** intentionally deferred. `slog`'s handler interface is the seam we'd extend later via an OTel bridge ([`go.opentelemetry.io/contrib/bridges/otelslog`](https://pkg.go.dev/go.opentelemetry.io/contrib/bridges/otelslog)). We add it when a concrete operator asks for it; we don't ship it by default because a zero-dependency PoC is the point.
 
 ---
 
 ## 9a. CLI and TUI
 
-The CLI is [spf13/cobra](https://github.com/spf13/cobra) with subcommands `hally run`, `hally viz`, `hally trace`, `hally replay`, `hally test`. The TUI is the full-screen surface invoked by `hally run`.
+The CLI is [spf13/cobra](https://github.com/spf13/cobra) with subcommands `kitsoki run`, `kitsoki viz`, `kitsoki trace`, `kitsoki replay`, `kitsoki test`. The TUI is the full-screen surface invoked by `kitsoki run`.
 
 ### 9a.1 Bubble Tea foundation
 
@@ -1280,7 +1280,7 @@ When the user picks an intent from the menu that has missing slots — or when t
 
 ### 9a.4 Markdown and graph rendering
 
-The view templates (§3) are rendered through [charmbracelet/glamour](https://github.com/charmbracelet/glamour) inside the transcript pane; syntax highlighting in fenced code blocks comes for free via `chroma`. Graphs render in-terminal as a DOT-to-ASCII pane (the DOT string is emitted by [emicklei/dot](https://github.com/emicklei/dot) and laid out by a small ASCII layout pass); for external viewing operators can `hally viz --dot` or `hally viz --mermaid`. Mermaid is the preferred export for pasting into PRs and README files.
+The view templates (§3) are rendered through [charmbracelet/glamour](https://github.com/charmbracelet/glamour) inside the transcript pane; syntax highlighting in fenced code blocks comes for free via `chroma`. Graphs render in-terminal as a DOT-to-ASCII pane (the DOT string is emitted by [emicklei/dot](https://github.com/emicklei/dot) and laid out by a small ASCII layout pass); for external viewing operators can `kitsoki viz --dot` or `kitsoki viz --mermaid`. Mermaid is the preferred export for pasting into PRs and README files.
 
 ### 9a.5 Off-path visual mode
 
@@ -1298,7 +1298,7 @@ Demos and README GIFs are authored in declarative [`.tape` files](https://github
 
 ## 10. Authoring and Testing
 
-Testing is a first-class concern in Hally, not a post-hoc concern for authors. Two distinct failure modes demand two distinct test modes, and the `Harness` seam from §12 is what makes the split cheap to implement.
+Testing is a first-class concern in Kitsoki, not a post-hoc concern for authors. Two distinct failure modes demand two distinct test modes, and the `Harness` seam from §12 is what makes the split cheap to implement.
 
 ### 10.1 Testing philosophy and the determinism boundary
 
@@ -1413,10 +1413,10 @@ The `expect_failure` and `expect_fallthrough` keys make the *expected outcome* e
 
 #### 10.2.2 Reporting format
 
-After a run, Hally emits a report in three tiers: per-input, per-fixture, per-state. The terminal output renders the per-fixture view by default:
+After a run, Kitsoki emits a report in three tiers: per-input, per-fixture, per-state. The terminal output renders the per-fixture view by default:
 
 ```
-$ hally test intents tests/intents/cloak/
+$ kitsoki test intents tests/intents/cloak/
 Running 2 files, 11 fixtures, 31 inputs x 25 runs = 775 LLM calls
 Est. cost: $0.47 (Claude Opus 4.7, prompt cache enabled)
 Proceed? [y/N] y
@@ -1441,7 +1441,7 @@ state: bar.dark
   adversarial-dark-fumble ....... 49/50 ( 98.0%)  PASS
 
 Summary: 8/8 fixtures pass, 775/775 calls made, total cost $0.46
-Regression vs. baseline (.hally/intents-baseline.json): no regressions
+Regression vs. baseline (.kitsoki/intents-baseline.json): no regressions
 ```
 
 A `--format json` flag emits the same data for machine consumption; `--format junit` emits JUnit XML for CI ingestion.
@@ -1449,7 +1449,7 @@ A `--format json` flag emits the same data for machine consumption; `--format ju
 #### 10.2.3 Cost controls and CLI
 
 ```
-hally test intents [flags] <path-or-app.yaml>
+kitsoki test intents [flags] <path-or-app.yaml>
 
   --dry-run            Print the plan (files, fixtures, call count, estimated cost) and exit 0.
   --max-cost <usd>     Refuse to start if the estimate exceeds this; default $2.00.
@@ -1458,10 +1458,10 @@ hally test intents [flags] <path-or-app.yaml>
   --parallel <n>       Concurrent LLM calls; default 4. Bounded by provider rate limits.
   --emit-oracle <path> Write majority-vote (state, input) -> (intent, slots) map to <path>
                        as a replay oracle for Mode 2 (§10.4). Only emitted on a passing run.
-  --baseline <path>    Compare results to a stored JSON; default .hally/intents-baseline.json.
+  --baseline <path>    Compare results to a stored JSON; default .kitsoki/intents-baseline.json.
   --fail-regression-at <pct>  Fail if any fixture's pass rate dropped by >pct from baseline; default 5.
   --format <fmt>       One of: text (default), json, junit.
-  --harness <live|replay>  Override HALLY_HARNESS. Running Mode 1 against `replay` is an
+  --harness <live|replay>  Override KITSOKI_HARNESS. Running Mode 1 against `replay` is an
                            explicit footgun (§10.8) and prints a red warning.
 ```
 
@@ -1472,9 +1472,9 @@ Parallelism is per-provider; we serialize calls per state (so cache entries are 
 #### 10.2.4 CI integration and regression tracking
 
 - **On every PR:** Mode 1 is NOT run. Mode 2 + unit tests + golden transcripts are the PR gate (§10.8).
-- **Nightly:** the full Mode 1 suite runs against `main` with `--runs 25`. Results are written to `.hally/intents-baseline.json` (majority-vote mapping + per-fixture pass rate + timestamp) and committed by a bot branch if anything changed. Regressions > 5% on any fixture open a GitHub issue tagged `intent-regression`.
+- **Nightly:** the full Mode 1 suite runs against `main` with `--runs 25`. Results are written to `.kitsoki/intents-baseline.json` (majority-vote mapping + per-fixture pass rate + timestamp) and committed by a bot branch if anything changed. Regressions > 5% on any fixture open a GitHub issue tagged `intent-regression`.
 - **Pre-release:** a release job runs with `--runs 100` and `--fail-regression-at 2`. The job is gated on the global pass-rate floor configured in the app's `release-gate.yaml`.
-- **On prompt/schema diff:** a git pre-push hook (installable via `hally install-hooks`) runs `hally test intents --runs 5 --only <states touched by the diff>` as a cheap smoke. The author can skip it with `git push --no-verify` when iterating locally.
+- **On prompt/schema diff:** a git pre-push hook (installable via `kitsoki install-hooks`) runs `kitsoki test intents --runs 5 --only <states touched by the diff>` as a cheap smoke. The author can skip it with `git push --no-verify` when iterating locally.
 
 The baseline JSON is the history. Its shape:
 
@@ -1637,7 +1637,7 @@ Session-level assertions (at the end of `turns:`): `expect_terminal`, `expect_ev
 #### 10.3.3 CLI
 
 ```
-hally test flows [flags] <path-or-app.yaml>
+kitsoki test flows [flags] <path-or-app.yaml>
 
   --only <pattern>       Run only test files matching glob.
   --fail-fast            Stop at first failure (default: run all).
@@ -1651,14 +1651,14 @@ hally test flows [flags] <path-or-app.yaml>
   --trace <session-dir>  Dump the full event log for each flow into <session-dir>/ for debug.
 ```
 
-Flow tests share the `hallytest` helper package (§12, `pkg/hallytest`): a flow fixture YAML is compiled into a Go test function via `hallytest.Flow(t, "path/to/flow.yaml")` for authors who want to embed flow tests inside their own Go test files.
+Flow tests share the `kitsokitest` helper package (§12, `pkg/kitsokitest`): a flow fixture YAML is compiled into a Go test function via `kitsokitest.Flow(t, "path/to/flow.yaml")` for authors who want to embed flow tests inside their own Go test files.
 
 ### 10.4 Mode 1 → Mode 2 composition
 
 Mode 1 produces a table of `(state, input text) → (intent, slots)` mappings with pass rates. That table is exactly what Mode 2 needs to resolve free-text `input:` turns without an LLM. We make the pipeline explicit:
 
 ```
-$ hally test intents tests/intents/cloak/ \
+$ kitsoki test intents tests/intents/cloak/ \
     --runs 50 \
     --emit-oracle tests/oracles/cloak-of-darkness.oracle.yaml
 ...
@@ -1674,7 +1674,7 @@ kind: oracle
 app_id: cloak-of-darkness
 app_version: 0.1.0
 generated_at: "2026-04-19T02:14:00Z"
-generator: "hally test intents --runs 50"
+generator: "kitsoki test intents --runs 50"
 min_confidence: 0.80
 entries:
   - state: foyer
@@ -1697,12 +1697,12 @@ entries:
 
 Oracles can also be hand-written — useful for the first pass before any real LLM run exists — but the long-term story is that oracles are generated from Mode 1 and regenerated whenever Mode 1 is re-run.
 
-**Staleness.** The oracle's `generated_at` field gates flow tests. On flow-test startup, if the oracle is older than the configured staleness window (default 30 days), `hally test flows` prints:
+**Staleness.** The oracle's `generated_at` field gates flow tests. On flow-test startup, if the oracle is older than the configured staleness window (default 30 days), `kitsoki test flows` prints:
 
 ```
 warning: oracle tests/oracles/cloak-of-darkness.oracle.yaml is 47 days old.
          Flow tests may pass against a routing the LLM no longer produces.
-         Regenerate with: hally test intents --runs 25 --emit-oracle <path>
+         Regenerate with: kitsoki test intents --runs 25 --emit-oracle <path>
 ```
 
 With `--fail-on-stale-oracle`, the warning becomes an error. The release gate sets this. PR CI emits it as a warning only, so day-to-day flow work isn't blocked by nightly Mode 1 lag.
@@ -1714,7 +1714,7 @@ An oracle miss (a flow test uses `input: "..."` that isn't in the oracle) is a h
 The `Harness` interface from §12 has exactly three implementations. Each is deliberately small. These make the interface concrete and show the seam between the two test modes:
 
 ```go
-// LiveHarness calls the real LLM. Used by `hally run` and by `hally test intents`.
+// LiveHarness calls the real LLM. Used by `kitsoki run` and by `kitsoki test intents`.
 type LiveHarness struct {
     client *anthropic.Client
     tools  []mcp.Tool    // the §5 tool catalog
@@ -1739,7 +1739,7 @@ func (h *LiveHarness) Close() error { return nil }
 
 ```go
 // ReplayHarness reads an oracle YAML and returns deterministic tool calls.
-// Used by `hally test flows` and by any non-LLM execution path.
+// Used by `kitsoki test flows` and by any non-LLM execution path.
 type ReplayHarness struct {
     oracle map[oracleKey]mcp.CallToolParams // keyed by (state, normalized user text)
 }
@@ -1758,7 +1758,7 @@ func (h *ReplayHarness) Close() error { return nil }
 
 ```go
 // RecordingHarness wraps a LiveHarness and writes every call to an output file,
-// so an interactive `hally run` session can be captured as a future test cassette.
+// so an interactive `kitsoki run` session can be captured as a future test cassette.
 type RecordingHarness struct {
     inner Harness
     w     *json.Encoder        // append-only JSONL writer
@@ -1774,7 +1774,7 @@ func (h *RecordingHarness) RunTurn(ctx context.Context, in TurnInput) (mcp.CallT
 func (h *RecordingHarness) Close() error { return h.inner.Close() }
 ```
 
-An env flag (`HALLY_HARNESS=live|replay|record`) selects at startup. These are the only places that distinguish "this run talks to an LLM" from "this run doesn't" — everything downstream (MCP validation, machine turn, store append, TUI rendering) is identical.
+An env flag (`KITSOKI_HARNESS=live|replay|record`) selects at startup. These are the only places that distinguish "this run talks to an LLM" from "this run doesn't" — everything downstream (MCP validation, machine turn, store append, TUI rendering) is identical.
 
 **ClaudeCLIHarness** is a fourth implementation that shells out to the `claude -p` CLI (Claude Code's non-interactive mode) instead of calling the Anthropic SDK directly. It pipes the full prompt — built from the same `buildStablePrefix`/`buildDynamicSuffix` helpers as `LiveHarness` — to `claude` via stdin and parses the JSON envelope (`{"type":"result","subtype":"success","result":"..."}`) emitted by `--output-format json`. This avoids the need for `ANTHROPIC_API_KEY`: auth comes from the user's existing Claude Code login. `ClaudeCLIHarness` is the default when the `claude` binary is on `PATH`; it falls back to `LiveHarness` when `ANTHROPIC_API_KEY` is set instead, and to `ReplayHarness` otherwise. Up to 2 parse-failure retries are attempted before the turn fails, each re-prompting the model with an explicit correction instruction.
 
@@ -1786,7 +1786,7 @@ These supplement the two primary modes; they are not replacements.
 
 ```go
 func TestCloakBarInitialExpr(t *testing.T) {
-    app := must(hallytest.LoadApp(t, "cloak-of-darkness.hally.yaml"))
+    app := must(kitsokitest.LoadApp(t, "cloak-of-darkness.kitsoki.yaml"))
     prog := app.CompiledExpr("states.bar.initial")
     cases := []struct{ wearing bool; want string }{
         {true, "dark"}, {false, "lit"},
@@ -1799,7 +1799,7 @@ func TestCloakBarInitialExpr(t *testing.T) {
 }
 ```
 
-**Snapshot/golden tests for transcripts.** A full journey is captured as a rendered transcript file (view text + menu + observable events) under `testdata/transcripts/<flow>.golden.txt`. `hally test flows --update-golden` rewrites them; CI fails on diff. These catch "my refactor changed the wording in a way players will notice" — useful for demo stability but secondary to flow tests, because transcripts are brittle under innocuous copy edits.
+**Snapshot/golden tests for transcripts.** A full journey is captured as a rendered transcript file (view text + menu + observable events) under `testdata/transcripts/<flow>.golden.txt`. `kitsoki test flows --update-golden` rewrites them; CI fails on diff. These catch "my refactor changed the wording in a way players will notice" — useful for demo stability but secondary to flow tests, because transcripts are brittle under innocuous copy edits.
 
 **Fuzzing.** `testing.F` fuzzes two surfaces: the JSON Schema slot validator (malformed slot payloads must never panic the MCP handler) and the guard evaluator (adversarial expressions must be rejected by the AST whitelist at compile time, never at eval time). Seeded with the Mode 1 adversarial fixtures.
 
@@ -1808,7 +1808,7 @@ func TestCloakBarInitialExpr(t *testing.T) {
 ### 10.7 What NOT to test (anti-patterns)
 
 - **Don't assert on LLM-generated prose.** View templates are deterministic (§6) and worth asserting on. LLM prose output — if we ever surface any beyond the structured tool call — is not. Mode 1 asserts on the *routing*, not on the phrasing the LLM chose.
-- **Don't run Mode 1 inside Mode 2.** Using `HALLY_HARNESS=live` under `hally test flows` silently turns every flow test into a flaky, expensive integration test. The CLI prints a red warning and requires `--i-know-what-i-am-doing` if this is attempted.
+- **Don't run Mode 1 inside Mode 2.** Using `KITSOKI_HARNESS=live` under `kitsoki test flows` silently turns every flow test into a flaky, expensive integration test. The CLI prints a red warning and requires `--i-know-what-i-am-doing` if this is attempted.
 - **Don't use Mode 2 to claim the LLM works.** Passing flow tests mean the app's logic is correct given the recorded oracle. They say nothing about whether the LLM, today, produces that oracle. Only Mode 1 answers that.
 - **Don't let the oracle silently drift.** The `generated_at` staleness gate is the enforcement. Disabling it is a documented footgun, not a supported configuration.
 - **Don't hand-author enormous oracles.** Anything over ~50 entries should be Mode-1-generated; hand-authored oracles are fine for the bootstrap phase and for adversarial inputs that shouldn't appear in Mode 1's majority-vote output.
@@ -1819,10 +1819,10 @@ The recommended pipeline:
 
 | Trigger | What runs | Cost | Gate |
 |---|---|---|---|
-| Every PR | `hally test flows` (all) + guard unit tests + golden transcripts + `testing.F` with `-fuzztime=10s` | $0 | Must pass to merge |
-| Pre-push hook (opt-in) | `hally test intents --runs 5 --only <touched-states>` | cents | Advisory; author can skip |
-| Nightly (cron) | `hally test intents --runs 25` over full suite; updates baseline; opens issue on >5% regression | ~$1 | Issue opens; doesn't block |
-| Pre-release | `hally test intents --runs 100 --fail-regression-at 2 --fail-on-stale-oracle` | ~$5 | Blocks release |
+| Every PR | `kitsoki test flows` (all) + guard unit tests + golden transcripts + `testing.F` with `-fuzztime=10s` | $0 | Must pass to merge |
+| Pre-push hook (opt-in) | `kitsoki test intents --runs 5 --only <touched-states>` | cents | Advisory; author can skip |
+| Nightly (cron) | `kitsoki test intents --runs 25` over full suite; updates baseline; opens issue on >5% regression | ~$1 | Issue opens; doesn't block |
+| Pre-release | `kitsoki test intents --runs 100 --fail-regression-at 2 --fail-on-stale-oracle` | ~$5 | Blocks release |
 | Weekly | Property tests; full golden-transcript regeneration with `--update-golden` on a bot branch | $0 | PR opened for review |
 
 Mode 2 is the correctness gate. Mode 1 is the quality gate. Neither subsumes the other, and CI should reflect that.
@@ -1837,7 +1837,7 @@ Since app authors write YAML and the author may not be the operator, we need a s
 - **Effects are enumerated.** `set`, `increment`, `append`, `say`, `emit`, `invoke: host.*`. The `host.*` namespace is a registry; the operator chooses which host capabilities are exposed (e.g., `host.run` for shell is off by default).
 - **Off-path is opt-in and marked.** Operators can turn off-path off entirely. When enabled, the TUI renders a red frame and the prompt mentions the app name so the user knows what they're outside of.
 - **LLM trust model.** The LLM is assumed to be adversarial. It can only cause effects the state machine permits. A malicious `slots` payload can't escape enum/regex validation. A malicious `invoke` can't happen because the LLM doesn't control effects — the *app author* does, via YAML.
-- **Secrets.** App definitions never contain secrets. Hosts may reference secrets from `~/.hally/secrets.yaml` (600-permissions). We will not ship a secrets manager; defer to OS keychain integrations.
+- **Secrets.** App definitions never contain secrets. Hosts may reference secrets from `~/.kitsoki/secrets.yaml` (600-permissions). We will not ship a secrets manager; defer to OS keychain integrations.
 - **App signing.** Future work: detached signatures on YAML, so a distributed app can be verified.
 
 ---
@@ -1847,8 +1847,8 @@ Since app authors write YAML and the author may not be the operator, we need a s
 Package layout:
 
 ```
-hally/
-  cmd/hally/                   # CLI entrypoint (spf13/cobra)
+kitsoki/
+  cmd/kitsoki/                   # CLI entrypoint (spf13/cobra)
   internal/
     app/                       # YAML loader (goccy/go-yaml), schema validation, linting
     machine/                   # pure state machine — custom, no third-party FSM
@@ -1861,7 +1861,7 @@ hally/
     tui/                       # bubbletea program, lipgloss styles, huh forms, glamour rendering
     viz/                       # emicklei/dot + templated mermaid emitter
     trace/                     # replay + diff
-  pkg/hallytest/               # testing helpers authors can import (testify-flavored)
+  pkg/kitsokitest/               # testing helpers authors can import (testify-flavored)
 ```
 
 ### 12.1 Core interfaces
@@ -1869,7 +1869,7 @@ hally/
 The design pins five interfaces. Everything else is a concrete type built on top of them.
 
 ```go
-package hally
+package kitsoki
 
 import (
     "context"
@@ -1914,9 +1914,9 @@ type Store interface {
 
 // Harness is the pluggable LLM runner. Three implementations ship (see §10.5):
 //   - Live:      anthropic-sdk-go client (or claude -p subprocess); used by
-//                `hally run` and by Mode 1 `hally test intents`.
+//                `kitsoki run` and by Mode 1 `kitsoki test intents`.
 //   - Replay:    reads a YAML oracle keyed by (state, user_text); used by
-//                Mode 2 `hally test flows` and by any fully-deterministic path.
+//                Mode 2 `kitsoki test flows` and by any fully-deterministic path.
 //   - Recording: wraps Live and writes every call to an oracle fixture, so an
 //                interactive session can seed future tests.
 type Harness interface {
@@ -1956,7 +1956,7 @@ Relationships: `Machine` is the kernel. The MCP server wraps it; the TUI asks th
 | SQLite | [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite) | Pure-Go; keeps CGO_ENABLED=0 |
 | Graph DOT | [emicklei/dot](https://github.com/emicklei/dot) | DOT emission for viz and highlight overlay |
 | Logging | stdlib [`log/slog`](https://pkg.go.dev/log/slog) | JSON to stderr |
-| CLI | [spf13/cobra](https://github.com/spf13/cobra) | `hally run`, `viz`, `trace`, `replay`, `test` |
+| CLI | [spf13/cobra](https://github.com/spf13/cobra) | `kitsoki run`, `viz`, `trace`, `replay`, `test` |
 | Testing | stdlib [`testing`](https://pkg.go.dev/testing) + [`testify/require`](https://github.com/stretchr/testify) | Table-driven + `testing.F` fuzz + cassettes |
 
 ---
@@ -1971,7 +1971,7 @@ The original idea doc had 12 open items. They map into the design as follows:
 4. **MCP tool surface** — §5 (one `transition` tool, plus `clarify`, `describe_state`, `off_path`; error payload shape).
 5. **LLM orchestration policy** — §5.3 (retry budget, augmented prompt on retry, surface to user after exhaustion) + §7.2 (LLM receives the allowed-intents list in system prompt) + §7.9 (which feedback surfaces fall back to the LLM and when).
 6. **UX & CLI grammar** — §4 (single-process TUI), §7 (location/menu/slot-fill/disambiguation/guard/narrative/off-path surfaces), §9a (pane rendering), slash commands `/freeform`, `/onpath`, `/menu`.
-7. **Persistence & resumption** — §8 (event-sourced + SQLite snapshots, `hally resume <session>`).
+7. **Persistence & resumption** — §8 (event-sourced + SQLite snapshots, `kitsoki resume <session>`).
 8. **Observability** — §9 (structured logs, trace view, graph viz, replay-diff).
 9. **Side effects & integrations** — §3.2 (`invoke: host.*`) + §6 (side effects logged at the boundary and replayed from logs) + §11 (host namespace is registry-opted-in).
 10. **Security/trust boundary** — §11 (expression whitelist, effect enumeration, off-path framing, LLM-adversarial model).
@@ -1981,7 +1981,7 @@ The original idea doc had 12 open items. They map into the design as follows:
     - *Timeouts:* §3.2 `timeout:` on state entry.
     - *Multi-turn clarification:* `clarify` MCP tool in §5.1.
     - *i18n:* out of scope for v0.1; view templates are strings, which can later be keys into a localization bundle.
-    - *Terminal reqs:* bubbletea targets 256-color, UTF-8 xterm-compatible terminals. Hally degrades gracefully — no ASCII-only mode yet but it's a clean option because the TUI is isolated from the core.
+    - *Terminal reqs:* bubbletea targets 256-color, UTF-8 xterm-compatible terminals. Kitsoki degrades gracefully — no ASCII-only mode yet but it's a clean option because the TUI is isolated from the core.
 
 ---
 
@@ -1995,17 +1995,17 @@ The implementation language is **closed** (Go 1.23+; see stack-comparison.md). T
 
 3. **Event-sourced vs. snapshot-only persistence.** Event-sourced is great for debugging and replay but heavier per turn. *Tip condition:* if average session length exceeds, say, 200 turns and write amplification becomes a problem on constrained devices, move to snapshot-only with opt-in tracing.
 
-4. **Where does the LLM live?** Current assumption: `claude -p` subprocess per turn, or a persistent OpenCode session. Fallback is direct `anthropic-sdk-go` calls inside Hally. *Tip condition:* if harness subprocess startup dominates turn latency (it will on cold start), flip the default to the in-process client for latency-sensitive apps, keeping the harness subprocess for dev/debug.
+4. **Where does the LLM live?** Current assumption: `claude -p` subprocess per turn, or a persistent OpenCode session. Fallback is direct `anthropic-sdk-go` calls inside Kitsoki. *Tip condition:* if harness subprocess startup dominates turn latency (it will on cold start), flip the default to the in-process client for latency-sensitive apps, keeping the harness subprocess for dev/debug.
 
 5. **How strict is the "first guard wins" rule?** XState picks first-match deterministically; SCXML picks first-match-in-source-order. This is fine for most apps but surprises authors when they reorder rules for readability. *Tip condition:* if lint warnings for "multiple guards could match" are common in real apps, consider requiring explicit priorities.
 
 6. **Is parallel-region support worth the complexity in v0.1?** It is elegant but SCXML-level semantics are subtle and authors will get confused. *Tip condition:* if the first five real apps all fit in flat compound-state-only graphs, defer parallel to v0.2 behind a flag.
 
-7. **Visual editor.** The user asked for graph visualization, which is a generator, not an editor. The question is whether we also ship a Graphviz-like bidirectional editor (à la Stately Editor). *Tip condition:* only if adoption takes off and YAML authorship becomes a barrier. Until then, `hally viz` is sufficient.
+7. **Visual editor.** The user asked for graph visualization, which is a generator, not an editor. The question is whether we also ship a Graphviz-like bidirectional editor (à la Stately Editor). *Tip condition:* only if adoption takes off and YAML authorship becomes a barrier. Until then, `kitsoki viz` is sufficient.
 
-8. **OpenTelemetry vs. `slog`-only.** We start with `slog` JSON-to-stderr and expose no OTel surface in v0.1. *Tip condition:* the first operator who wants to pipe Hally traces into their own observability stack. The seam is the `slog.Handler` interface, so adding `otelslog` later is additive, not a breaking change.
+8. **OpenTelemetry vs. `slog`-only.** We start with `slog` JSON-to-stderr and expose no OTel surface in v0.1. *Tip condition:* the first operator who wants to pipe Kitsoki traces into their own observability stack. The seam is the `slog.Handler` interface, so adding `otelslog` later is additive, not a breaking change.
 
-9. **Error-wrapping conventions.** Go has two live idioms: sentinel errors with `errors.Is`/`errors.As`, or typed error structs matched by `errors.As`. Hally's MCP tool layer needs structured errors in the protocol envelope, which argues for typed structs end-to-end. *Open:* codify the convention in `CONTRIBUTING.md` with `var ErrXxx = &hally.Err{Code: ...}` as the canonical form, or keep sentinels for simple cases. Pick before the first external contributor.
+9. **Error-wrapping conventions.** Go has two live idioms: sentinel errors with `errors.Is`/`errors.As`, or typed error structs matched by `errors.As`. Kitsoki's MCP tool layer needs structured errors in the protocol envelope, which argues for typed structs end-to-end. *Open:* codify the convention in `CONTRIBUTING.md` with `var ErrXxx = &kitsoki.Err{Code: ...}` as the canonical form, or keep sentinels for simple cases. Pick before the first external contributor.
 
 10. **Bubble Tea v2 GA timing.** We target v2 (RC2 as of March 2026) because the Cursed Renderer and kitty-keyboard support are meaningful upgrades, but v2 is not yet GA. *Tip condition:* if v2 GA slips past our M2 milestone, ship M2 on v1.3.10 stable and upgrade in a follow-up. The Bubble Tea model API is near-identical between v1 and v2; the migration cost is bounded.
 
@@ -2023,10 +2023,10 @@ The implementation language is **closed** (Go 1.23+; see stack-comparison.md). T
 |---|---|
 | M0 | Machine core, YAML loader, expression language, replay harness, no LLM. Passes Cloak of Darkness scripted tests. |
 | M1 | MCP server + `claude -p` integration. End-to-end free-text play of Cloak. |
-| M2 | TUI (bubbletea) with menu + trace view + `hally viz`. |
+| M2 | TUI (bubbletea) with menu + trace view + `kitsoki viz`. |
 | M3 | SQLite persistence, session resume, replay-diff. |
 | M4 | Parallel states, `host.*` effect registry, deploy-wizard sample. |
-| M5 | Authoring docs, `hallytest` package, first external author onboarded. |
+| M5 | Authoring docs, `kitsokitest` package, first external author onboarded. |
 
 ---
 

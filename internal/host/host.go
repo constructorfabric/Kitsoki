@@ -12,7 +12,7 @@
 //
 // # Auth / secrets
 //
-// Secrets are loaded from env and ~/.hally/secrets.yaml at registry creation
+// Secrets are loaded from env and ~/.kitsoki/secrets.yaml at registry creation
 // time and injected into every handler call via context.
 //
 // # Allow-list enforcement
@@ -28,7 +28,7 @@ import (
 	"sync"
 	"time"
 
-	"hally/internal/clock"
+	"kitsoki/internal/clock"
 )
 
 // Handler is the callable unit for a host invocation.

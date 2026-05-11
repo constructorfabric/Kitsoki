@@ -4,8 +4,8 @@
 // Claude Code login instead.
 //
 // Slot extraction goes through MCP tool-calling: the harness spawns the
-// hally binary itself as a `mcp-validator` subprocess, attaches it via
-// `--mcp-config`, and tells the LLM to call `mcp__hally-validator__submit`
+// kitsoki binary itself as a `mcp-validator` subprocess, attaches it via
+// `--mcp-config`, and tells the LLM to call `mcp__kitsoki-validator__submit`
 // with the routed payload. The validator captures the schema-validated
 // JSON to a side-channel file so we never have to scrape stdout for fences
 // or beg the model to "respond with raw JSON". Semantic formats declared
@@ -26,8 +26,8 @@ import (
 
 	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"hally/internal/app"
-	"hally/internal/trace"
+	"kitsoki/internal/app"
+	"kitsoki/internal/trace"
 )
 
 // ErrClaudeCLIUnavailable is returned when the `claude` binary is not on PATH.
@@ -37,13 +37,13 @@ var ErrClaudeCLIUnavailable = errors.New("harness/claude-cli: `claude` binary no
 
 // DefaultClaudeModel is the model used when ClaudeCLIConfig.Model is empty.
 // Haiku is faster and cheaper than Opus for intent-routing; users can override
-// via WithClaudeModel or the --claude-model flag on `hally run`.
+// via WithClaudeModel or the --claude-model flag on `kitsoki run`.
 const DefaultClaudeModel = "claude-haiku-4-5-20251001"
 
 // validatorServerName is the MCP server name advertised to claude. The
 // resulting tool name is `mcp__<server>__submit` — keep this in sync with
 // the prompt instruction below.
-const validatorServerName = "hally-validator"
+const validatorServerName = "kitsoki-validator"
 
 // validatorToolName is the full tool name the LLM must call. Built from
 // validatorServerName + the validator server's default `submit` tool.
@@ -56,10 +56,10 @@ type ClaudeCLIConfig struct {
 	// ClaudeBin overrides the path to the claude binary (used in tests).
 	// If empty, exec.LookPath("claude") is used.
 	ClaudeBin string
-	// HallyBin overrides the path to the hally binary used to spawn the
+	// KitsokiBin overrides the path to the kitsoki binary used to spawn the
 	// validator MCP server. If empty, os.Executable() is used. Tests set
 	// this to a stub that mimics the validator's capture behavior.
-	HallyBin string
+	KitsokiBin string
 }
 
 // ClaudeCLIHarness shells out to `claude -p` to route user text → IntentCall.
@@ -68,7 +68,7 @@ type ClaudeCLIConfig struct {
 //
 // Invocation: the complete prompt is piped to claude via stdin (avoids argv
 // size limits). A per-turn JSON Schema is written to a tempdir alongside
-// an --mcp-config file that points claude at `hally mcp-validator`. The
+// an --mcp-config file that points claude at `kitsoki mcp-validator`. The
 // validator captures the LLM's submit() payload to a file we read after
 // claude exits.
 type ClaudeCLIHarness struct {
@@ -177,7 +177,7 @@ func (h *ClaudeCLIHarness) RunTurn(ctx context.Context, in TurnInput) (mcp.CallT
 	if err != nil {
 		return mcp.CallToolParams{}, err
 	}
-	hallyBin, err := h.resolveHallyBin()
+	kitsokiBin, err := h.resolveKitsokiBin()
 	if err != nil {
 		return mcp.CallToolParams{}, err
 	}
@@ -195,7 +195,7 @@ func (h *ClaudeCLIHarness) RunTurn(ctx context.Context, in TurnInput) (mcp.CallT
 		return mcp.CallToolParams{}, fmt.Errorf("harness/claude-cli: build transition schema: %w", err)
 	}
 
-	tmpDir, err := os.MkdirTemp("", "hally-claude-cli-*")
+	tmpDir, err := os.MkdirTemp("", "kitsoki-claude-cli-*")
 	if err != nil {
 		return mcp.CallToolParams{}, fmt.Errorf("harness/claude-cli: mkdir tmp: %w", err)
 	}
@@ -214,7 +214,7 @@ func (h *ClaudeCLIHarness) RunTurn(ctx context.Context, in TurnInput) (mcp.CallT
 	mcpConfig := map[string]any{
 		"mcpServers": map[string]any{
 			validatorServerName: map[string]any{
-				"command": hallyBin,
+				"command": kitsokiBin,
 				"args": []any{
 					"mcp-validator",
 					"--schema", schemaPath,
@@ -376,18 +376,18 @@ func (h *ClaudeCLIHarness) resolveBin() (string, error) {
 	return path, nil
 }
 
-// resolveHallyBin returns the path used to spawn the validator MCP server.
-// Tests override via ClaudeCLIConfig.HallyBin; production uses os.Executable().
-func (h *ClaudeCLIHarness) resolveHallyBin() (string, error) {
-	if h.cfg.HallyBin != "" {
-		if _, err := os.Stat(h.cfg.HallyBin); err != nil {
-			return "", fmt.Errorf("harness/claude-cli: HallyBin=%q: %w", h.cfg.HallyBin, err)
+// resolveKitsokiBin returns the path used to spawn the validator MCP server.
+// Tests override via ClaudeCLIConfig.KitsokiBin; production uses os.Executable().
+func (h *ClaudeCLIHarness) resolveKitsokiBin() (string, error) {
+	if h.cfg.KitsokiBin != "" {
+		if _, err := os.Stat(h.cfg.KitsokiBin); err != nil {
+			return "", fmt.Errorf("harness/claude-cli: KitsokiBin=%q: %w", h.cfg.KitsokiBin, err)
 		}
-		return h.cfg.HallyBin, nil
+		return h.cfg.KitsokiBin, nil
 	}
 	exe, err := os.Executable()
 	if err != nil {
-		return "", fmt.Errorf("harness/claude-cli: locate hally binary: %w", err)
+		return "", fmt.Errorf("harness/claude-cli: locate kitsoki binary: %w", err)
 	}
 	return exe, nil
 }

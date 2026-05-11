@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"hally/internal/ulid"
+	"kitsoki/internal/ulid"
 )
 
 // TUITransport buffers Post calls for in-process consumption by a Bubble Tea

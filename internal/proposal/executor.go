@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"hally/internal/app"
-	"hally/internal/host"
+	"kitsoki/internal/app"
+	"kitsoki/internal/host"
 )
 
 // ExecuteResult is returned by Execute after a synchronous host invocation.

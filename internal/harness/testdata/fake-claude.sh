@@ -4,7 +4,7 @@
 # Reads stdin (the prompt) and discards it. Parses the --mcp-config path
 # from argv, extracts the validator's --output path from that config, and
 # writes a fixed validated payload there to simulate a successful
-# `mcp__hally-validator__submit` round trip.
+# `mcp__kitsoki-validator__submit` round trip.
 #
 # Outputs a minimal claude-style JSON envelope on stdout.
 set -e
@@ -27,7 +27,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Extract the validator --output path. The mcp-config json is shaped:
-# {"mcpServers": {"hally-validator": {"command": "...", "args": [..., "--output", "<path>", ...]}}}
+# {"mcpServers": {"kitsoki-validator": {"command": "...", "args": [..., "--output", "<path>", ...]}}}
 output_path=""
 if [[ -n "$config_path" && -f "$config_path" ]]; then
   # Use python for a robust JSON walk; available everywhere Go tests run.

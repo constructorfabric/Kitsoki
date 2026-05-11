@@ -1,11 +1,11 @@
-// inspect.go — implements the `hally inspect` subcommand: a read-only JSON
+// inspect.go — implements the `kitsoki inspect` subcommand: a read-only JSON
 // snapshot of a stored session (proposal §3 of ai-collaboration-proposal.md).
 //
 // Like `tmux attach` but read-only and structured: take an app.yaml + a
 // session id, replay its event log, render the current view, and dump
 // everything an outside observer needs to know about the session right now.
 //
-// Does not lock the session; safe to run alongside `hally run`.
+// Does not lock the session; safe to run alongside `kitsoki run`.
 package main
 
 import (
@@ -17,12 +17,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"hally/internal/app"
-	"hally/internal/machine"
-	"hally/internal/store"
+	"kitsoki/internal/app"
+	"kitsoki/internal/machine"
+	"kitsoki/internal/store"
 )
 
-// inspectOutput is the JSON shape printed by `hally inspect`.
+// inspectOutput is the JSON shape printed by `kitsoki inspect`.
 //
 // Field stability: this is a debugging surface, not a programmatic API.
 // Field names should be considered stable enough for shell scripts and
@@ -64,16 +64,16 @@ func inspectCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "inspect <app.yaml>",
 		Short: "Print a read-only JSON snapshot of a stored session",
-		Long: `Print a JSON snapshot of a hally session: current state, world,
+		Long: `Print a JSON snapshot of a kitsoki session: current state, world,
 allowed intents, last rendered view, and a tail of turn summaries.
 
 Read-only — does not lock the session, so it is safe to run while
-'hally run' is driving the same session.
+'kitsoki run' is driving the same session.
 
 Examples:
-  hally inspect app.yaml --session-id <sid>
-  hally inspect app.yaml --session-id <sid> --last-turns 20 | jq .world
-  hally inspect app.yaml --session-id <sid> --db /path/to/sessions.db`,
+  kitsoki inspect app.yaml --session-id <sid>
+  kitsoki inspect app.yaml --session-id <sid> --last-turns 20 | jq .world
+  kitsoki inspect app.yaml --session-id <sid> --db /path/to/sessions.db`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if sessionID == "" {
@@ -111,7 +111,7 @@ Examples:
 	}
 
 	cmd.Flags().StringVar(&sessionID, "session-id", "", "session ID to inspect (required)")
-	cmd.Flags().StringVar(&dbPath, "db", "", "path to SQLite session database (default: $XDG_DATA_HOME/hally/sessions.db)")
+	cmd.Flags().StringVar(&dbPath, "db", "", "path to SQLite session database (default: $XDG_DATA_HOME/kitsoki/sessions.db)")
 	cmd.Flags().IntVar(&lastTurns, "last-turns", 5, "number of recent turn summaries to include")
 
 	return cmd

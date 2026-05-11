@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"hally/internal/transport"
+	"kitsoki/internal/transport"
 )
 
 func TestJiraTransport_NewRequiresFields(t *testing.T) {
@@ -94,7 +94,7 @@ func TestJiraTransport_CustomBotMarker(t *testing.T) {
 		BaseURL:   srv.URL,
 		Username:  "u",
 		APIToken:  "t",
-		BotMarker: "[hally-test]",
+		BotMarker: "[kitsoki-test]",
 	})
 	require.NoError(t, err)
 
@@ -105,7 +105,7 @@ func TestJiraTransport_CustomBotMarker(t *testing.T) {
 	require.NoError(t, err)
 
 	body, _ := gotBody["body"].(string)
-	assert.True(t, strings.HasPrefix(body, "[hally-test] "), "custom bot marker not applied: %q", body)
+	assert.True(t, strings.HasPrefix(body, "[kitsoki-test] "), "custom bot marker not applied: %q", body)
 }
 
 func TestJiraTransport_ServerError(t *testing.T) {

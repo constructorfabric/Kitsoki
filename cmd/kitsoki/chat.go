@@ -1,9 +1,9 @@
-// chat.go — implements `hally chat ...` subcommands.
+// chat.go — implements `kitsoki chat ...` subcommands.
 //
 // Chats are persistent conversation threads within a room. They are global
 // (not session-scoped) and outlive individual sessions.
 //
-// `hally chat continue` drives one turn synchronously by invoking the
+// `kitsoki chat continue` drives one turn synchronously by invoking the
 // chat-aware host.oracle.talk handler. The chat-singleton lock guarantees
 // that a TUI driving the same chat will not race; on lock contention the
 // command exits 75 (EX_TEMPFAIL) so wrappers can back off and retry.
@@ -20,9 +20,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"hally/internal/chathost"
-	"hally/internal/chats"
-	"hally/internal/host"
+	"kitsoki/internal/chathost"
+	"kitsoki/internal/chats"
+	"kitsoki/internal/host"
 )
 
 // errTempFail is a sentinel returned from RunE when the operation should exit
@@ -33,7 +33,7 @@ var errTempFail = errors.New("EX_TEMPFAIL")
 
 // IsTempFail reports whether err originated from a chat-busy / session-busy
 // path that should map to BSD sysexits EX_TEMPFAIL=75.  Used by main() and by
-// in-process tests of `hally chat continue` / `hally session continue`.
+// in-process tests of `kitsoki chat continue` / `kitsoki session continue`.
 func IsTempFail(err error) bool {
 	return errors.Is(err, errTempFail)
 }
@@ -47,13 +47,13 @@ func chatCmd() *cobra.Command {
 (not session-scoped) and survive process restarts.
 
 Subcommands:
-  hally chat list      [--db <path>] [--app <id>] [--room <name>] [--scope <key>] [--all-status]
-  hally chat new       [--db <path>] --app <id> --room <name> [--scope <key>] [--title "..."]
-  hally chat show      [--db <path>] <chat-id> [--since <seq>] [--format json|markdown]
-  hally chat continue  [--db <path>] <chat-id> --raw "<question>" [--working-dir <path>]
-  hally chat fork      [--db <path>] <chat-id> [--title "..."]
-  hally chat archive   [--db <path>] <chat-id>
-  hally chat unlock    [--db <path>] <chat-id> --force
+  kitsoki chat list      [--db <path>] [--app <id>] [--room <name>] [--scope <key>] [--all-status]
+  kitsoki chat new       [--db <path>] --app <id> --room <name> [--scope <key>] [--title "..."]
+  kitsoki chat show      [--db <path>] <chat-id> [--since <seq>] [--format json|markdown]
+  kitsoki chat continue  [--db <path>] <chat-id> --raw "<question>" [--working-dir <path>]
+  kitsoki chat fork      [--db <path>] <chat-id> [--title "..."]
+  kitsoki chat archive   [--db <path>] <chat-id>
+  kitsoki chat unlock    [--db <path>] <chat-id> --force
 
 Exit codes:
   0   success
@@ -106,7 +106,7 @@ func chatListCmd() *cobra.Command {
 			return writeJSON(cmd.OutOrStdout(), map[string]any{"chats": rows})
 		},
 	}
-	cmd.Flags().StringVar(&dbPath, "db", "", "chat SQLite database (default: $XDG_DATA_HOME/hally/sessions.db)")
+	cmd.Flags().StringVar(&dbPath, "db", "", "chat SQLite database (default: $XDG_DATA_HOME/kitsoki/sessions.db)")
 	cmd.Flags().StringVar(&appID, "app", "", "filter by app ID")
 	cmd.Flags().StringVar(&room, "room", "", "filter by room name")
 	cmd.Flags().StringVar(&scopeKey, "scope", "", "filter by scope key")
@@ -154,7 +154,7 @@ func chatNewCmd() *cobra.Command {
 			return writeJSON(cmd.OutOrStdout(), chatView(c))
 		},
 	}
-	cmd.Flags().StringVar(&dbPath, "db", "", "chat SQLite database (default: $XDG_DATA_HOME/hally/sessions.db)")
+	cmd.Flags().StringVar(&dbPath, "db", "", "chat SQLite database (default: $XDG_DATA_HOME/kitsoki/sessions.db)")
 	cmd.Flags().StringVar(&appID, "app", "", "app ID (required)")
 	cmd.Flags().StringVar(&room, "room", "", "room name (required)")
 	cmd.Flags().StringVar(&scopeKey, "scope", "", "scope key (e.g. ticket ID)")
@@ -212,7 +212,7 @@ func chatShowCmd() *cobra.Command {
 			return writeJSON(cmd.OutOrStdout(), out)
 		},
 	}
-	cmd.Flags().StringVar(&dbPath, "db", "", "chat SQLite database (default: $XDG_DATA_HOME/hally/sessions.db)")
+	cmd.Flags().StringVar(&dbPath, "db", "", "chat SQLite database (default: $XDG_DATA_HOME/kitsoki/sessions.db)")
 	cmd.Flags().IntVar(&sinceSeq, "since", 0, "only return messages with seq >= this value")
 	cmd.Flags().StringVar(&format, "format", "json", "output format: json|markdown")
 	return cmd
@@ -239,8 +239,8 @@ or other driver attached to the same chat will not race. If another driver
 holds the lock, this command exits 75 (EX_TEMPFAIL) without writing anything.
 
 Examples:
-  hally chat continue ABC123 --raw "what does Foo do?"
-  hally chat continue ABC123 --raw "$(cat question.txt)" --working-dir /repo
+  kitsoki chat continue ABC123 --raw "what does Foo do?"
+  kitsoki chat continue ABC123 --raw "$(cat question.txt)" --working-dir /repo
 
 Exit codes:
   0   success
@@ -318,7 +318,7 @@ Exit codes:
 			return writeJSON(cmd.OutOrStdout(), out)
 		},
 	}
-	cmd.Flags().StringVar(&dbPath, "db", "", "chat SQLite database (default: $XDG_DATA_HOME/hally/sessions.db)")
+	cmd.Flags().StringVar(&dbPath, "db", "", "chat SQLite database (default: $XDG_DATA_HOME/kitsoki/sessions.db)")
 	cmd.Flags().StringVar(&raw, "raw", "", "the user message text to send (required)")
 	cmd.Flags().StringVar(&workingDir, "working-dir", "", "cwd passed to the claude subprocess (scopes tool access)")
 	_ = cmd.MarkFlagRequired("raw")
@@ -363,7 +363,7 @@ func chatForkCmd() *cobra.Command {
 			return writeJSON(cmd.OutOrStdout(), chatView(fork))
 		},
 	}
-	cmd.Flags().StringVar(&dbPath, "db", "", "chat SQLite database (default: $XDG_DATA_HOME/hally/sessions.db)")
+	cmd.Flags().StringVar(&dbPath, "db", "", "chat SQLite database (default: $XDG_DATA_HOME/kitsoki/sessions.db)")
 	cmd.Flags().StringVar(&title, "title", "", "title for the fork (default: '<parent title> (fork)')")
 	return cmd
 }
@@ -398,7 +398,7 @@ func chatArchiveCmd() *cobra.Command {
 			})
 		},
 	}
-	cmd.Flags().StringVar(&dbPath, "db", "", "chat SQLite database (default: $XDG_DATA_HOME/hally/sessions.db)")
+	cmd.Flags().StringVar(&dbPath, "db", "", "chat SQLite database (default: $XDG_DATA_HOME/kitsoki/sessions.db)")
 	return cmd
 }
 
@@ -443,7 +443,7 @@ The --force flag is required to prevent accidental use.`,
 			})
 		},
 	}
-	cmd.Flags().StringVar(&dbPath, "db", "", "chat SQLite database (default: $XDG_DATA_HOME/hally/sessions.db)")
+	cmd.Flags().StringVar(&dbPath, "db", "", "chat SQLite database (default: $XDG_DATA_HOME/kitsoki/sessions.db)")
 	cmd.Flags().BoolVar(&force, "force", false, "required: confirm you want to forcibly remove the lock")
 	return cmd
 }

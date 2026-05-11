@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"hally/internal/harness"
+	"kitsoki/internal/harness"
 )
 
 func TestConversationalHarness_ToolAllowList(t *testing.T) {

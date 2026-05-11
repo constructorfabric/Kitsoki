@@ -12,7 +12,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"hally/internal/testrunner"
+	"kitsoki/internal/testrunner"
 )
 
 // ─── TestRunFlows_OrchestratorPath_BackgroundJob ──────────────────────────────

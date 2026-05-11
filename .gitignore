@@ -1,5 +1,5 @@
 # Compiled binary
-/hally
+/kitsoki
 
 # Test binaries and coverage
 *.test
@@ -19,11 +19,11 @@ coverage.html
 *.swo
 
 # Session data (local only)
-~/.hally/
+~/.kitsoki/
 
 # Build output
 dist/
 
-# Generated visualisations from `hally viz`
+# Generated visualisations from `kitsoki viz`
 *-viz.dot
 *-viz.mmd
