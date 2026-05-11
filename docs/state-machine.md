@@ -479,7 +479,207 @@ verbs (`continue`, `refine`, …) that resume a paused phase.
 
 ---
 
-## 10. Off-path: the global escape hatch
+## 10. Controlled navigation: back-jumps, restart, and feedback arcs
+
+A common question once phases are in play: **"From phase 9, how do
+I let the user go back to phase 3 — but only with a reason, and only
+if certain conditions hold?"** This section explains the mechanism.
+The short version: kitsoki has no "jump anywhere" primitive. Every
+back-jump is the intersection of four declarations the author
+already wrote.
+
+### 10.1 The four mechanisms
+
+Working example — the validation phase from the bug-fix pipeline:
+
+```yaml
+phases:
+  template: reviewed_phase
+  graph:
+    phase_9_7:
+      title:      "Validation"
+      checkpoint: true
+      next:
+        continue:                 phase_12      # forward
+        on_validation_fail:       phase_3       # back to earlier phase
+        on_validation_fail_short: phase_6_5     # cheaper back-arc
+      cycle_budgets:
+        on_validation_fail:       3
+        on_validation_fail_short: 3
+```
+
+```yaml
+checkpoint_intents:
+  continue:
+    description: Approve this phase and advance.
+    examples: [continue, approve, lgtm, ok, yes]
+  quit:
+    description: Abandon this session.
+    examples: [quit, abandon, cancel]
+  refine:
+    description: Re-run this phase with feedback applied.
+    slots:
+      feedback: { type: text, required: true }
+    examples: ["please retry with X", "feedback: ..."]
+  restart_from:
+    description: Restart from an earlier stage.
+    slots:
+      stage:
+        type: enum
+        values: [reproduction, propose_fix, implement_review, validate]
+    examples: ["restart from propose_fix", "redo reproduction"]
+```
+
+Four mechanisms cooperate to make this safe:
+
+#### 1. `next:` enumerates every legal destination
+
+The phase template substitutes `{{ phase.next.<arc> }}` into every
+transition `target:`. The set of arcs a phase declares is the set of
+states reachable from it — full stop. From `phase_9_7` you can only
+land in `phase_12`, `phase_3`, or `phase_6_5`. There is no syntactic
+way to write a transition that goes elsewhere; an arc not in `next:`
+doesn't exist.
+
+This is the structural backbone. Every back-edge the author wants is
+declared as a named arc; arcs not declared are not possible.
+
+#### 2. `checkpoint_intents:` is the user-facing menu
+
+When a phase enters `<id>_awaiting_reply`, the **only** intents the
+LLM router is shown are the ones merged in from the top-level
+`checkpoint_intents:` block. The router can't invent a new verb
+because the harness's allowed-intents list literally does not contain
+one. A comment that doesn't match any declared intent triggers a
+retry (with a structured error), and ultimately a clarify prompt to
+the human.
+
+Translation from English to verb happens through `examples:`. The
+LLM sees `"please redo the implementation"` and maps it to
+`refine` — not because of hardcoded synonyms, but because `refine`'s
+`examples:` cover that phrasing.
+
+#### 3. Slot schemas force the context
+
+The "back" verbs each carry a required slot:
+
+| Intent | Required slot | What it does |
+|---|---|---|
+| `refine` | `feedback: text` | The retry can't fire without a written justification. |
+| `restart_from` | `stage: enum[...]` | The user can pick only one of the declared stages. |
+| `block_on` | `reason: text` | Pausing the session requires a reason in the log. |
+
+A request like `"refine"` with no feedback fails validation with
+`SLOT_MISSING_REQUIRED`. The harness sees that error, asks the LLM to
+fill the gap (or surfaces a slot-fill dialog to the human), and only
+re-submits once `feedback` is supplied. Same for `restart_from` — the
+enum constrains the destination set to four valid stages, and the
+transition for each stage maps to a specific phase entry point.
+
+This is why "you must provide context to go back" is enforced
+mechanically, not by author discipline. The intent simply does not
+validate without it.
+
+#### 4. Guards and cycle budgets cap who and how many times
+
+A `when:` guard can require a world condition before accepting a
+back-arc:
+
+```yaml
+phase_8_awaiting_reply:
+  on:
+    continue:
+      - target: phase_9
+        when:   "world.last_reply_author in world.allowed_authors"
+        guard_hint: "Only authorized reviewers may approve this phase."
+```
+
+And `cycle_budgets:` caps the number of times an arc can be taken:
+
+```yaml
+cycle_budgets:
+  on_validation_fail: 3       # after 3 retries, this arc fails out
+```
+
+The phase-template expander turns each budget entry into three things:
+
+1. an `increment:` effect on the arc's transition, against a
+   world counter `cycle__<phase>__<arc>`,
+2. a `when:` guard on the arc: `world.cycle__<phase>__<arc> < N`,
+3. a trailing `default: true` → `<phase>_error` carrying a
+   `guard_hint` of "cycle budget exceeded for {arc}".
+
+So the back-arc *works* the first N times and *fails into the error
+state* afterwards. No infinite loops.
+
+### 10.2 How one back-jump fires, end to end
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Router as LLM router
+    participant Validator as machine validator
+    participant Machine
+
+    User->>Router: "let's redo it with more tests"
+    Router->>Router: choose intent from<br/>checkpoint_intents menu
+    Router->>Validator: intent=refine, slots={}
+    Validator-->>Router: SLOT_MISSING_REQUIRED: feedback
+    Router->>User: ask for feedback (or LLM fills)
+    User->>Router: "the patch missed the IPv6 case"
+    Router->>Validator: intent=refine, slots={feedback: "..."}
+    Validator->>Machine: pick transition for `refine`
+    Machine->>Machine: evaluate when:<br/>(world.cycle__phase_9_7__refine < 3)
+    Machine->>Machine: apply effects:<br/>increment cycle counter<br/>set world.last_feedback
+    Machine-->>User: new state = phase_9_7_executing
+```
+
+Every step is declared by the author, validated by the machine, and
+written to the event log. Replay reconstructs it exactly.
+
+### 10.3 The same shape for non-phase rooms
+
+The mechanism isn't phase-specific. Any room can constrain its
+back-edges the same way:
+
+- Declare a `back` intent with an enum slot for the destination.
+- Bind it in `on:` with one transition per destination, each gated
+  by a `when:` over the world.
+- Add a cycle budget if you don't want a tight loop.
+
+The room-history stack (`internal/history`) is the *implicit* form
+of this — it tracks where the user came from for `back` to pop a
+single frame. For multi-level decisions you usually want the
+explicit phase-style declaration instead, because it makes both the
+graph and the context requirements visible to the author.
+
+### 10.4 What you cannot do
+
+These are the deliberate omissions — they would let the LLM (or the
+user) escape the controlled graph:
+
+- **No "jump to any state."** There is no `target:` value that
+  resolves at runtime to "wherever the LLM wants". Targets are
+  declared paths or `{{ phase.next.<arc> }}` substitutions; both are
+  enumerated at load time. Even the `jump_to` intent in bug-fix has
+  a `phase` slot whose values the transition maps explicitly.
+- **No state mutation without a declared intent.** The LLM cannot
+  write to `world` directly. Every change goes through an effect on
+  a transition the author bound.
+- **No guard bypass.** A `when:` that fails causes the next
+  transition (or `default:`) to be tried; the LLM cannot demand
+  that a guard be skipped. If every arm fails, the machine emits
+  `GUARD_FAILED` to the harness for a retry.
+
+The result is that "controlled jumps" are not a feature added on top
+of the state machine — they fall out of the machine's existing
+constraints. The author's job is to pick the right *combination* of
+`next:`, `checkpoint_intents:`, slot schemas, guards, and cycle
+budgets for the conversation they want to host.
+
+---
+
+## 11. Off-path: the global escape hatch
 
 ```yaml
 off_path:
@@ -500,7 +700,7 @@ where free-form chat is allowed.
 
 ---
 
-## 11. Worked example: one turn through Cloak of Darkness
+## 12. Worked example: one turn through Cloak of Darkness
 
 **Initial state.** `foyer`, world `{wearing_cloak: true, disturbance: 0,
 message_rumpled: false}`.
@@ -528,7 +728,7 @@ for clarification.
 
 ---
 
-## 12. Where the implementation lives
+## 13. Where the implementation lives
 
 | Concept | Code |
 |---|---|
