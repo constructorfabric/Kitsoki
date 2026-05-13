@@ -692,7 +692,7 @@ func (o *Orchestrator) fireTimeout(ctx context.Context, sid app.SessionID, fromS
 	}
 	// Site 14: dual-write journal entries for the timeout-fired synthetic turn.
 	ftJEntries := journalEntriesForEvents(sid, turnNum, time.Now(), events,
-		journey.World, w, "", target)
+		journey.World, w, "", target, "")
 	if err := o.store.AppendEventsAndJournal(sid, events, ftJEntries); err != nil {
 		return fmt.Errorf("fireTimeout: append events: %w", err)
 	}

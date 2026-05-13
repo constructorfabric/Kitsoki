@@ -603,7 +603,7 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 
 			// Site 1: dual-write journal entries for the rejection turn.
 			jEntries := journalEntriesForEvents(sid, turnNum, time.Now(), failureEvents,
-				journey.World, journey.World, "", journey.State)
+				journey.World, journey.World, "", journey.State, input)
 			if appendErr := o.store.AppendEventsAndJournal(sid, failureEvents, jEntries); appendErr != nil {
 				return nil, fmt.Errorf("orchestrator: append failure events: %w", appendErr)
 			}
@@ -667,7 +667,7 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 
 	// Site 2: dual-write journal entries for the success turn.
 	jEntries := journalEntriesForEvents(sid, turnNum, time.Now(), successEvents,
-		journey.World, result.World, result.View, result.NewState)
+		journey.World, result.World, result.View, result.NewState, input)
 	if appendErr := o.store.AppendEventsAndJournal(sid, successEvents, jEntries); appendErr != nil {
 		return nil, fmt.Errorf("orchestrator: append events: %w", appendErr)
 	}
@@ -1282,7 +1282,7 @@ func (o *Orchestrator) SubmitDirect(ctx context.Context, sid app.SessionID, inte
 		}
 		// Site 5: dual-write journal entries for the SubmitDirect rejection turn.
 		sdFailJEntries := journalEntriesForEvents(sid, turnNum, time.Now(), failureEvents,
-			journey.World, journey.World, "", journey.State)
+			journey.World, journey.World, "", journey.State, intentName)
 		if appendErr := o.store.AppendEventsAndJournal(sid, failureEvents, sdFailJEntries); appendErr != nil {
 			return nil, fmt.Errorf("orchestrator: SubmitDirect: append failure events: %w", appendErr)
 		}
@@ -1336,7 +1336,7 @@ func (o *Orchestrator) SubmitDirect(ctx context.Context, sid app.SessionID, inte
 
 	// Site 6: dual-write journal entries for the SubmitDirect success turn.
 	sdSuccJEntries := journalEntriesForEvents(sid, turnNum, time.Now(), successEvents,
-		journey.World, result.World, result.View, result.NewState)
+		journey.World, result.World, result.View, result.NewState, intentName)
 	if appendErr := o.store.AppendEventsAndJournal(sid, successEvents, sdSuccJEntries); appendErr != nil {
 		return nil, fmt.Errorf("orchestrator: SubmitDirect: append events: %w", appendErr)
 	}
@@ -1808,7 +1808,7 @@ func (o *Orchestrator) ContinueTurn(ctx context.Context, sid app.SessionID, supp
 	// Prepend a clarify.answered entry before the standard set.
 	ctNow := time.Now()
 	ctJEntries := journalEntriesForEvents(sid, turnNum, ctNow, successEvents,
-		journey.World, result.World, result.View, result.NewState)
+		journey.World, result.World, result.View, result.NewState, call.Intent)
 	// Prepend clarify.answered (seq 0; other entries shift up by bumping seq on the fly via the slice).
 	clarifyAnsweredEntry := journalEntry(sid, turnNum, 0, ctNow,
 		journal.KindClarifyAnswered, "",

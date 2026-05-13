@@ -299,7 +299,7 @@ func (o *Orchestrator) handleJobTerminal(ctx context.Context, sid app.SessionID,
 	// Pre-world is `journey.World` (captured before on_complete ran); post-world is `w`.
 	jcNow := time.Now()
 	jcJEntries := journalEntriesForEvents(sid, turnNum, jcNow, turnEvents,
-		journey.World, w, "", currentState)
+		journey.World, w, "", currentState, "")
 	if appendErr := o.store.AppendEventsAndJournal(sid, turnEvents, jcJEntries); appendErr != nil {
 		return fmt.Errorf("handleJobTerminal: append events: %w", appendErr)
 	}

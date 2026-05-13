@@ -44,6 +44,10 @@ import (
 // viewText is the rendered view string for the TurnEnded view.rendered entry
 // (pass "" if no view is available, e.g. rejected paths).
 // currentStatePath is the state path after the transition (for view.rendered body).
+// userInput is the user-facing input string that drove this turn (free-text input,
+// slot-fill answer, etc.). Empty for synthetic turns (bg-job completion, timeout).
+// Resume uses it to render the "> input" header on the resumed transcript row;
+// without it the user can't tell what they typed before the restart.
 // sid, turnNum, ts are used to populate every entry's identifying fields.
 func journalEntriesForEvents(
 	sid app.SessionID,
@@ -54,6 +58,7 @@ func journalEntriesForEvents(
 	postWorld world.World,
 	viewText string,
 	currentStatePath app.StatePath,
+	userInput string,
 ) []journal.Entry {
 	var entries []journal.Entry
 	seq := 0
@@ -217,6 +222,7 @@ func journalEntriesForEvents(
 		vrBody, _ := json.Marshal(map[string]any{
 			"view_text":  viewText,
 			"state_path": string(currentStatePath),
+			"user_input": userInput,
 		})
 		e := journal.Entry{
 			Ts:      ts,

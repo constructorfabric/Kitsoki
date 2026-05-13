@@ -239,6 +239,6 @@ func (o *Orchestrator) appendOffPathEvents(sid app.SessionID, events []store.Eve
 	// Off-path events never mutate world or state; use empty worlds for the diff.
 	emptyWorld := world.World{Vars: map[string]any{}}
 	opJEntries := journalEntriesForEvents(sid, offTurn, time.Now(), events,
-		emptyWorld, emptyWorld, "", "")
+		emptyWorld, emptyWorld, "", "", "")
 	return o.store.AppendEventsAndJournal(sid, events, opJEntries)
 }

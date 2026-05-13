@@ -561,14 +561,22 @@ func (m *transcriptModel) ReconstructFromEntries(entries []journal.Entry) {
 		switch e.Kind {
 		case journal.KindViewRendered:
 			var body struct {
-				ViewText string `json:"view_text"`
+				ViewText  string `json:"view_text"`
+				UserInput string `json:"user_input"`
 			}
 			if err := json.Unmarshal(e.Body, &body); err != nil {
 				slog.Debug("transcript: failed to decode view.rendered body",
 					"turn", e.Turn, "seq", e.Seq, "err", err)
 				continue
 			}
-			if body.ViewText != "" {
+			switch {
+			case body.UserInput != "":
+				// User-driven turn — render with the "> input" header so the
+				// resumed transcript matches what the user saw live.
+				m.AppendTurn(body.UserInput, body.ViewText)
+			case body.ViewText != "":
+				// Synthetic turn (bg-job completion, timeout) — no input header,
+				// just the new view. Matches live behaviour at those sites.
 				m.AppendSystem(body.ViewText)
 			}
 

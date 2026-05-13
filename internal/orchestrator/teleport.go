@@ -118,7 +118,7 @@ func (o *Orchestrator) Teleport(ctx context.Context, sid app.SessionID, target i
 	// Site 17: dual-write journal entries for the teleport synthetic turn.
 	// Pre-world is journey.World (before slot merge); post-world is the merged w.
 	tpJEntries := journalEntriesForEvents(sid, turnNum, time.Now(), events,
-		journey.World, w, view, target.State)
+		journey.World, w, view, target.State, "")
 	if appendErr := o.store.AppendEventsAndJournal(sid, events, tpJEntries); appendErr != nil {
 		return nil, fmt.Errorf("orchestrator.Teleport: append events: %w", appendErr)
 	}
