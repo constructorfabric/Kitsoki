@@ -112,6 +112,29 @@ State addressing:
 | `../foo` (from inside the child) | Sibling at the same nesting depth — the rewriter produces these for bare-name sibling refs in the child. |
 | `../../...` (from inside the child) | Allowed up to but not beyond the alias wrapper. Walking above the wrapper is a load error per proposal §8. |
 
+### `emit_intent:` across the fold boundary
+
+`emit_intent:` (and the runtime's synthetic-intent dispatcher) handles
+import compounds transparently:
+
+- The child's `emit_intent: "{{ world.foo.intent }}"` is left as-is
+  by the rewriter (only `world.<key>` refs inside the template
+  rewrite). The verdict-bearing world key has the alias prefix.
+- At runtime the template renders to the BARE intent name (e.g.
+  `"accept"`) — exactly what a live LLM-judge produces, because the
+  judge prompt doesn't know about the alias chain.
+- `internal/machine/machine.go::resolveEmittedIntentName` walks the
+  active state's leaf → root path consulting each compiled state's
+  `IntentAliases` map (populated by the rewriter — one entry per
+  rename). The first hit returns the renamed name (e.g.
+  `bf__accept`, or `core__bf__accept` after two folds). Misses fall
+  through to the bare name so standalone stories with no imports
+  behave unchanged.
+
+Authoring implication: an LLM-judge inside an imported child can
+emit verdicts using the child's own intent vocabulary (bare names);
+no per-import prompt wrapping is needed.
+
 ## Worked example: the Oregon Trail three-layer chain
 
 `stories/oregon-trail/` → imports `stories/frontier_event/` → imports

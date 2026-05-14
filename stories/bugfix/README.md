@@ -163,6 +163,14 @@ self-cycling verdict fails loud rather than spinning. See
 `internal/machine/machine.go::dispatchEmittedIntents` for the runtime
 and `internal/machine/emit_intent_test.go` for the regression suite.
 
+The judge auto-fire works whether bugfix runs **standalone** or
+**imported under an alias** (e.g. as `bf` under dev-story, or as
+`core.bf` under kitsoki-dev). The runtime resolves the LLM's bare
+intent name (`accept`) through the leaf state's `IntentAliases` map
+to the rewriter-renamed arc (`bf__accept` / `core__bf__accept`) at
+dispatch time — see `docs/imports.md` "emit_intent across the fold
+boundary" and `resolveEmittedIntentName` for the mechanism.
+
 ## Cycle budgets and shortcuts (Wave 3 / Phase 4)
 
 The L2 cycle-budget pattern from cyber-repo's 14-phase bugfix is wired

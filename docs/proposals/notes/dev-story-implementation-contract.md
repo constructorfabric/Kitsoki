@@ -1621,30 +1621,53 @@ types `impl__start` / `rev__start` to boot each story.
 
 ## W6.6 — Runtime observations
 
-1. **`emit_intent` does NOT auto-fire across import compound
-   boundaries.** The intent-name rewriter in
-   `internal/app/imports_rewriter.go` rewrites `world.<X>` references
-   inside the child, including the `emit_intent` value's
-   `{{ ... }}` interpolation. But the rendered intent name (e.g.
-   `"accept"`) is dispatched verbatim by
-   `internal/machine/machine.go::dispatchEmittedIntents`, which then
-   calls `findTransition` on the leaf state. After fold, that state's
-   `on:` map keys have been renamed to `<alias>__<intent>` — so the
-   bare emit name does not match. The dispatcher silently doesn't
-   find an arm and the auto-fire skips.
+1. **`emit_intent` auto-fires across import compound boundaries via
+   IntentAliases.** Originally a runtime gap (see "Original bug
+   description" below), now fixed at the dispatcher.
 
-   The implementation's `flows/happy_llm_then_human.yaml` documents
-   this gap and uses explicit `pr__accept` / `pr__proceed` once the
-   flow enters the pr-refinement import compound. The same gap
-   applies to the rev compound; standalone code-review flows
-   exercise auto-fire (the `llm_judge_approves.yaml` fixture),
-   inbox-routed flows in dev-story drive the tail with explicit
-   `rev__<intent>` calls.
+   Resolution mechanism. The imports rewriter at
+   `internal/app/imports_rewriter.go::rewriteState` records every
+   on-arc rename in a per-state `IntentAliases` map (declared on
+   `app.State`). On a single fold the entry is e.g.
+   `accept → bf__accept`; on a multi-layer fold the chain is updated
+   in place (`accept → core__bf__accept`) and the intermediate
+   spelling is also recorded (`bf__accept → core__bf__accept`) so a
+   state folded N times answers to any of N+1 names.
 
-   Tracked as a runtime gap to fix in a later wave; not strictly
-   blocking Phase 6 acceptance because the parent-level intents
-   (`start`, `accept`, `refine` …) inside the same compound depth do
-   auto-fire correctly.
+   At dispatch time, `internal/machine/machine.go::
+   resolveEmittedIntentName` walks the active leaf → root path
+   consulting each state's IntentAliases map. The first hit wins;
+   when no ancestor declares an alias for the emitted name, the bare
+   name is returned (back-compat for standalone stories without
+   imports). The resolved name is then passed to
+   `findTransitionTraced` as before — the rest of the dispatcher's
+   contract is unchanged.
+
+   Regression coverage:
+     - `internal/machine/emit_intent_test.go` —
+       TestEmitIntent_ResolvesThroughSingleImportAlias,
+       TestEmitIntent_ResolvesThroughNestedImportAliases,
+       TestEmitIntent_StandaloneNoAliasMap,
+       TestEmitIntent_NonexistentNameInsideAliasMapIsNoArm.
+     - `stories/dev-story/flows/bf_llm_auto_advance.yaml` —
+       single-layer fold (dev-story → bf).
+     - `stories/kitsoki-dev/flows/dogfood_autonomous_smoke.yaml` —
+       two-layer fold (kitsoki-dev → core → bf), bare `accept` in the
+       verdict stub.
+     - `stories/implementation/flows/happy_llm_then_human.yaml` was
+       SIMPLIFIED: the pr-compound tail no longer needs explicit
+       `pr__accept` / `pr__proceed` workarounds.
+
+   Original bug description (kept for archaeology). The intent-name
+   rewriter renames every child state's `on:` map keys to
+   `<alias>__<intent>`, but the dispatcher in
+   `internal/machine/machine.go::dispatchEmittedIntents` called
+   `findTransition` with the BARE emit name. Inside an import
+   compound the lookup silently no-op'd because the renamed key
+   never matched. Documented as the canonical example of "the
+   rewriter does its job; downstream needs to know about the
+   rename." Fixed by threading the rewriter's bookkeeping into the
+   dispatcher via `IntentAliases`.
 
 2. **`requires:` on import-projected `@exit:` arcs** is satisfied by
    the projection's `set:` clause. `internal/app/imports.go::checkExitRequiresRec`
