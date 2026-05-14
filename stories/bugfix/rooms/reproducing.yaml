@@ -185,6 +185,29 @@ states:
             - set:
                 abandon_reason: "jump_to_unknown_stage"
                 status:         "abandoned"
+      # Operator-driven mode switch from the first checkpoint. quick_fix
+      # flips bugfix_mode to "quick" without state movement — the operator
+      # then `accept`s and the rest of the pipeline collapses. skip_to_pr
+      # jumps directly into validating_executing (same shape as the idle
+      # arc, but reachable mid-flow if reproducing already established
+      # the bug is trivial). full_pipeline restores the default mode.
+      quick_fix:
+        - target: .
+          effects:
+            - set:
+                bugfix_mode: "quick"
+      full_pipeline:
+        - target: .
+          effects:
+            - set:
+                bugfix_mode: "full"
+      skip_to_pr:
+        - target: validating_executing
+          effects:
+            - set:
+                bugfix_mode:        "full"
+                restart_from_stage: "validate"
+                unsafe_jumps_made:  "{{ world.unsafe_jumps_made + 1 }}"
       quit:
         - target: "@exit:abandoned"
       look:

@@ -1,9 +1,22 @@
 # idle — entry room. Pipeline parked. The `start` intent boots the
 # pipeline; `quit` exits via @exit:abandoned.
 #
-# Wave 1 doesn't gate on bugfix_mode (full | quick); both fall straight to
-# reproducing_executing. Wave 2 may add a `quick_fix` branch that skips to
-# implementing_executing.
+# Wave 3 / Phase 4 adds the proposal §4.2 shortcut intents:
+#
+#   quick_fix     — bugfix_mode=quick; walk reproducing → proposing →
+#                   implementing → testing → done (skip reviewing +
+#                   validating). The mode flag drives the gate in
+#                   testing_awaiting_reply.accept.
+#   skip_to_pr    — jump straight into validating_executing with
+#                   restart_from_stage="validate"; the operator (or a
+#                   parent story) signalled the change is trivial.
+#   full_pipeline — explicit default; sets bugfix_mode=full and starts
+#                   from reproducing. Identical to `start` but useful
+#                   for autonomous callers that want to be unambiguous.
+#
+# `start` keeps its Wave 1 behaviour (mode-agnostic; enters reproducing)
+# because most flows / tests rely on it; quick_fix/skip_to_pr/
+# full_pipeline are additive.
 
 states:
 
@@ -16,11 +29,39 @@ states:
       Workspace: {{ world.workspace_id }}
       Mode:      {{ world.bugfix_mode }} bugfix, judge_mode={{ world.judge_mode }}
 
-      Actions: start, quit, look.
+      Actions: start, quick_fix, skip_to_pr, full_pipeline, quit, look.
     relevant_world: [ticket_id, ticket_title, bugfix_mode, judge_mode, workspace_id]
     on:
       start:
         - target: reproducing_executing
+      # Walk the full 7-room pipeline. Explicit alias for `start` that
+      # also pins bugfix_mode=full so a previously-set quick flag is
+      # cleared. Autonomous callers prefer this for unambiguity.
+      full_pipeline:
+        - target: reproducing_executing
+          effects:
+            - set:
+                bugfix_mode: "full"
+      # Quick path. Sets bugfix_mode=quick which the testing_awaiting_reply
+      # accept arm reads to skip reviewing + validating, jumping to
+      # done_executing instead. Still walks reproducing → proposing →
+      # implementing → testing so the artifact chain has a body.
+      quick_fix:
+        - target: reproducing_executing
+          effects:
+            - set:
+                bugfix_mode: "quick"
+      # Skip directly into validating_executing; reproducing/proposing/
+      # implementing/testing/reviewing don't run. restart_from_stage gets
+      # the value "validate" for audit. Use when the operator already
+      # has the fix in hand and just wants to re-validate / open the PR.
+      skip_to_pr:
+        - target: validating_executing
+          effects:
+            - set:
+                bugfix_mode:        "full"
+                restart_from_stage: "validate"
+                unsafe_jumps_made:  "{{ world.unsafe_jumps_made + 1 }}"
       quit:
         - target: "@exit:abandoned"
       look:
