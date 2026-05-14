@@ -152,7 +152,23 @@ type Machine interface {
 	// State path is used purely for the env snapshot (slots, etc.).
 	// This is the on_complete bridge entry-point: the orchestrator calls it
 	// with the post-job world to apply the on_complete effect chain.
+	//
+	// Note on emit_intent: any synthetic intents captured during the
+	// chain are dispatched against `state` BEFORE returning, and the
+	// events from those dispatches are folded into the returned event
+	// slice. The orchestrator caller still owns the "current state"
+	// — callers that need to advance the session after RunEffects fires
+	// an emit_intent should derive the new state from
+	// RunEffectsAndState (added in Wave 1 for emit_intent support).
 	RunEffects(ctx context.Context, state app.StatePath, w world.World, effects []app.Effect) (world.World, []HostInvocation, string, []store.Event, error)
+
+	// RunEffectsAndState is the emit_intent-aware variant of RunEffects.
+	// It additionally returns the leaf-state path after any synthetic
+	// emit_intent dispatches have settled. When no emit_intent fires,
+	// the returned state equals the input state. Callers that drive
+	// the session forward (oncomplete / timeout) use this to learn
+	// where the chain landed.
+	RunEffectsAndState(ctx context.Context, state app.StatePath, w world.World, effects []app.Effect) (app.StatePath, world.World, []HostInvocation, string, []store.Event, error)
 }
 
 // GuardDryRunResult is the result of TryGuards.
@@ -600,7 +616,7 @@ func (m *machineImpl) Turn(ctx context.Context, cur app.StatePath, w world.World
 	)
 
 	// 6. Apply transition effects.
-	newWorld, hostCalls, saySB, effectEvents, err := m.applyEffectsTraced(ctx, winningTr.tr.Effects, w, env)
+	newWorld, hostCalls, saySB, effectEvents, emits, err := m.applyEffectsTraced(ctx, winningTr.tr.Effects, w, env)
 	if err != nil {
 		return TurnResult{}, err
 	}
@@ -621,7 +637,7 @@ func (m *machineImpl) Turn(ctx context.Context, cur app.StatePath, w world.World
 				Event: env.Event,
 				Run:   env.Run,
 			}
-			newWorld2, enterHostCalls, enterSaySB, enterEffEvents, enterErr := m.applyEffectsTraced(ctx, cs.s.OnEnter, newWorld, enterEnv)
+			newWorld2, enterHostCalls, enterSaySB, enterEffEvents, enterEmits, enterErr := m.applyEffectsTraced(ctx, cs.s.OnEnter, newWorld, enterEnv)
 			if enterErr != nil {
 				return TurnResult{}, fmt.Errorf("on_enter effects for %q: %w", enteredPath, enterErr)
 			}
@@ -634,22 +650,12 @@ func (m *machineImpl) Turn(ctx context.Context, cur app.StatePath, w world.World
 				saySB.WriteString(enterSaySB.String())
 			}
 			effectEvents = append(effectEvents, enterEffEvents...)
+			emits = append(emits, enterEmits...)
 		}
 	}
 
-	// 7. Render view. When the target is parallel-encoded, compose region
-	//    leaf views; otherwise normal single-state render.
-	var renderedView string
-	if par := parseParallel(resolvedTarget); par.IsParallel {
-		renderedView, err = m.renderViewParallel(winningTr.tr, par.Root, sortedRegionNames(m.states[par.Root].s.States), resolvedTarget, newWorld, env, saySB.String(), false, resolvedTarget)
-	} else {
-		renderedView, err = m.renderView(winningTr.tr, resolvedTarget, newWorld, env, saySB.String())
-	}
-	if err != nil {
-		return TurnResult{}, err
-	}
-
-	// 8. Build event sequence:
+	// 8. Build event sequence (deferred view render to after emit chain
+	//    so the view reflects the FINAL settled state):
 	//    IntentAccepted → TransitionApplied → EffectApplied* → StateExited* → StateEntered*
 	var events []store.Event
 
@@ -678,9 +684,46 @@ func (m *machineImpl) Turn(ctx context.Context, cur app.StatePath, w world.World
 		events = append(events, newEvent(store.StateEntered, map[string]any{"state": p}))
 	}
 
+	// 6c. Dispatch any emit_intent: effects captured during the transition
+	//     effects or on_enter chain. Each emitted intent fires a synthetic
+	//     turn against the current resolved leaf, advancing the state path
+	//     and appending events / host calls / say text into the SAME
+	//     externally-initiated turn. Depth-capped at EmitIntentMaxDepth.
+	finalState := resolvedTarget
+	if len(emits) > 0 {
+		ds, dw, dhc, dssb, devs, derr := m.dispatchEmittedIntents(ctx, finalState, newWorld, emits, env, 0)
+		if derr != nil {
+			return TurnResult{}, derr
+		}
+		finalState = ds
+		newWorld = dw
+		hostCalls = append(hostCalls, dhc...)
+		if dssb != "" {
+			if saySB.Len() > 0 {
+				saySB.WriteString("\n")
+			}
+			saySB.WriteString(dssb)
+		}
+		events = append(events, devs...)
+	}
+
+	// 7. Render view. When the target is parallel-encoded, compose region
+	//    leaf views; otherwise normal single-state render. Use finalState
+	//    so the view reflects the settled state after any emit_intent
+	//    dispatches have transitioned further.
+	var renderedView string
+	if par := parseParallel(finalState); par.IsParallel {
+		renderedView, err = m.renderViewParallel(winningTr.tr, par.Root, sortedRegionNames(m.states[par.Root].s.States), finalState, newWorld, env, saySB.String(), false, finalState)
+	} else {
+		renderedView, err = m.renderView(winningTr.tr, finalState, newWorld, env, saySB.String())
+	}
+	if err != nil {
+		return TurnResult{}, err
+	}
+
 	// 9. Build menu for new state.  For parallel targets, union region menus.
 	var newMenu []string
-	if par := parseParallel(resolvedTarget); par.IsParallel {
+	if par := parseParallel(finalState); par.IsParallel {
 		seen := make(map[string]struct{})
 		for _, leaf := range par.RegionLeaves {
 			for _, n := range m.allowedIntentNames(app.StatePath(leaf)) {
@@ -693,17 +736,193 @@ func (m *machineImpl) Turn(ctx context.Context, cur app.StatePath, w world.World
 		}
 		sort.Strings(newMenu)
 	} else {
-		newMenu = m.allowedIntentNames(app.StatePath(resolvedTarget))
+		newMenu = m.allowedIntentNames(app.StatePath(finalState))
 	}
 
 	return TurnResult{
-		NewState:  app.StatePath(resolvedTarget),
+		NewState:  app.StatePath(finalState),
 		World:     newWorld,
 		View:      renderedView,
 		Menu:      newMenu,
 		Events:    events,
 		HostCalls: hostCalls,
 	}, nil
+}
+
+// dispatchEmittedIntents walks a list of synthetic intents captured by
+// emit_intent: effects and applies each one against curState as a
+// self-loop within the same turn. Each dispatch:
+//
+//   - Validates the intent is allowed in the current state (we walk
+//     the on: arcs ourselves rather than via Machine.Validate so we
+//     can stay inside the machine's transition apparatus and not
+//     emit ValidationFailed events for the synthetic intent — a
+//     dropped emit is an authoring bug surfaced by depth-cap / no-arc
+//     errors, not a user-level validation rejection).
+//   - Runs findTransitionTraced to pick the winning transition arm.
+//   - Applies the transition's effects (which may queue further emits).
+//   - Resolves the target leaf via resolveInitialAware.
+//   - Runs on_enter effects of newly-entered ancestors (recursive emit
+//     chain via depth+1).
+//   - Emits TransitionApplied / EffectApplied / HostInvoked /
+//     StateExited / StateEntered events the same way Turn does.
+//
+// Depth is bounded by EmitIntentMaxDepth — exceeding it surfaces an
+// error trace event (trace.EvIntentEmitDepthCap) and returns an error
+// so the surrounding Turn fails loud rather than looping silently.
+func (m *machineImpl) dispatchEmittedIntents(ctx context.Context, curState string, w world.World, emits []emittedIntent, parentEnv expr.Env, depth int) (string, world.World, []HostInvocation, string, []store.Event, error) {
+	if depth >= EmitIntentMaxDepth {
+		m.logger.DebugContext(ctx, trace.EvIntentEmitDepthCap,
+			slog.Int("depth", depth),
+			slog.String("state", curState),
+		)
+		return "", world.World{}, nil, "", nil, fmt.Errorf("emit_intent: dispatch exceeded max depth (%d) at state %q — likely a cyclic emit chain", EmitIntentMaxDepth, curState)
+	}
+
+	state := curState
+	newWorld := w
+	var hostCalls []HostInvocation
+	var saySB strings.Builder
+	var events []store.Event
+
+	for _, emit := range emits {
+		// Build the dispatch env so guards / templates in the
+		// destination's effects see the synthetic call's slots and
+		// the up-to-date world. Run carries over from the parent.
+		dispEnv := expr.Env{
+			Slots: emit.Slots,
+			World: newWorld.Vars,
+			Event: make(map[string]any),
+			Run:   parentEnv.Run,
+		}
+
+		m.logger.DebugContext(ctx, trace.EvIntentEmitted,
+			slog.String("intent", emit.Name),
+			slog.String("state", state),
+			slog.Int("depth", depth+1),
+		)
+
+		// Parallel-encoded paths are not supported as the *origin* of
+		// an emit_intent dispatch in this initial implementation —
+		// parallel.go's region semantics ride a separate event-bus
+		// (the propagateEmits path) and mixing the two would muddle
+		// the depth-cap accounting. The common authoring shape (a
+		// state's on_enter auto-firing a verdict) is unaffected.
+		if parseParallel(state).IsParallel {
+			return "", world.World{}, nil, "", nil, fmt.Errorf("emit_intent %q: synthetic dispatch from a parallel-encoded state %q is not supported", emit.Name, state)
+		}
+
+		winningTr, winningPath, _, err := m.findTransitionTraced(ctx, state, emit.Name, dispEnv)
+		if err != nil {
+			return "", world.World{}, nil, "", nil, fmt.Errorf("emit_intent %q at %q: find transition: %w", emit.Name, state, err)
+		}
+		if winningTr == nil {
+			return "", world.World{}, nil, "", nil, fmt.Errorf("emit_intent %q at %q: no transition arm matched (intent has no on: handler, or all guards failed)", emit.Name, state)
+		}
+
+		// Resolve target.
+		rawTarget := winningTr.tr.Target
+		if strings.Contains(rawTarget, "{{") {
+			rendered, renderErr := expr.Render(rawTarget, dispEnv)
+			if renderErr != nil {
+				return "", world.World{}, nil, "", nil, fmt.Errorf("emit_intent %q render target %q: %w", emit.Name, rawTarget, renderErr)
+			}
+			rawTarget = strings.TrimSpace(rendered)
+		}
+		targetPath := resolveTarget(winningPath, rawTarget)
+		resolvedTarget, err := m.resolveInitialAware(targetPath, dispEnv)
+		if err != nil {
+			return "", world.World{}, nil, "", nil, fmt.Errorf("emit_intent %q resolve initial for %q: %w", emit.Name, targetPath, err)
+		}
+
+		// Apply transition effects.
+		nw2, hc2, sb2, ev2, em2, applyErr := m.applyEffectsTraced(ctx, winningTr.tr.Effects, newWorld, dispEnv)
+		if applyErr != nil {
+			return "", world.World{}, nil, "", nil, fmt.Errorf("emit_intent %q apply effects: %w", emit.Name, applyErr)
+		}
+		newWorld = nw2
+		hostCalls = append(hostCalls, hc2...)
+		if sb2.Len() > 0 {
+			if saySB.Len() > 0 {
+				saySB.WriteString("\n")
+			}
+			saySB.WriteString(sb2.String())
+		}
+
+		// Fire on_enter of newly-entered ancestors. Mirror Turn's logic.
+		var enterEmits []emittedIntent
+		if resolvedTarget != state {
+			entered := stateEnterPathsAware(state, resolvedTarget)
+			for _, enteredPath := range entered {
+				cs, ok := m.states[enteredPath]
+				if !ok || cs.s == nil || len(cs.s.OnEnter) == 0 {
+					continue
+				}
+				enterEnv := expr.Env{Slots: dispEnv.Slots, World: newWorld.Vars, Event: dispEnv.Event, Run: dispEnv.Run}
+				nw3, hc3, sb3, ev3, em3, eErr := m.applyEffectsTraced(ctx, cs.s.OnEnter, newWorld, enterEnv)
+				if eErr != nil {
+					return "", world.World{}, nil, "", nil, fmt.Errorf("emit_intent %q on_enter %q: %w", emit.Name, enteredPath, eErr)
+				}
+				newWorld = nw3
+				hostCalls = append(hostCalls, hc3...)
+				if sb3.Len() > 0 {
+					if saySB.Len() > 0 {
+						saySB.WriteString("\n")
+					}
+					saySB.WriteString(sb3.String())
+				}
+				ev2 = append(ev2, ev3...)
+				enterEmits = append(enterEmits, em3...)
+			}
+		}
+
+		// Build event sequence for this synthetic transition.
+		slotBag := make(world.Slots, len(emit.Slots))
+		for k, v := range emit.Slots {
+			slotBag[k] = v
+		}
+		events = append(events, newEvent(store.TransitionApplied, map[string]any{
+			"from":      state,
+			"to":        resolvedTarget,
+			"intent":    emit.Name,
+			"slots":     map[string]any(slotBag),
+			"synthetic": true,
+		}))
+		events = append(events, ev2...)
+		for _, p := range stateExitPathsAware(state, resolvedTarget) {
+			events = append(events, newEvent(store.StateExited, map[string]any{"state": p}))
+		}
+		for _, p := range stateEnterPathsAware(state, resolvedTarget) {
+			events = append(events, newEvent(store.StateEntered, map[string]any{"state": p}))
+		}
+
+		// Combine all post-chain emits (transition + on_enter) for
+		// recursion. enterEmits is already in execution order behind
+		// em2 (transition emits → on_enter emits).
+		chainedEmits := append([]emittedIntent{}, em2...)
+		chainedEmits = append(chainedEmits, enterEmits...)
+
+		state = resolvedTarget
+
+		if len(chainedEmits) > 0 {
+			subState, subWorld, subHC, subSay, subEvs, subErr := m.dispatchEmittedIntents(ctx, state, newWorld, chainedEmits, parentEnv, depth+1)
+			if subErr != nil {
+				return "", world.World{}, nil, "", nil, subErr
+			}
+			state = subState
+			newWorld = subWorld
+			hostCalls = append(hostCalls, subHC...)
+			if subSay != "" {
+				if saySB.Len() > 0 {
+					saySB.WriteString("\n")
+				}
+				saySB.WriteString(subSay)
+			}
+			events = append(events, subEvs...)
+		}
+	}
+
+	return state, newWorld, hostCalls, saySB.String(), events, nil
 }
 
 // findTransitionTraced is findTransition with trace.EvMachineGuardEval / Winner emission.
@@ -805,12 +1024,27 @@ func (m *machineImpl) evaluateArmsTraced(ctx context.Context, arms []compiledTra
 	return nil, hint, nil
 }
 
+// emittedIntent is one synthetic-intent dispatch captured while walking
+// an effect chain. The intent name + slot values are resolved against
+// the world AT THE TIME the effect fired (post any preceding set: in
+// the same chain). The machine's emit_intent dispatcher consumes a
+// slice of these after the chain completes and walks each one
+// sequentially as a self-loop within the same turn.
+type emittedIntent struct {
+	Name  string
+	Slots map[string]any
+}
+
 // applyEffectsTraced is applyEffects with machine.effect.applied trace events.
-func (m *machineImpl) applyEffectsTraced(ctx context.Context, effects []app.Effect, w world.World, env expr.Env) (world.World, []HostInvocation, strings.Builder, []store.Event, error) {
+// It additionally collects emit_intent: effects into a slice of
+// emittedIntent records; the surrounding Turn / on_enter logic
+// dispatches them after the chain completes.
+func (m *machineImpl) applyEffectsTraced(ctx context.Context, effects []app.Effect, w world.World, env expr.Env) (world.World, []HostInvocation, strings.Builder, []store.Event, []emittedIntent, error) {
 	newWorld := cloneWorld(w)
 	var hostCalls []HostInvocation
 	var saySB strings.Builder
 	var effectEvents []store.Event
+	var emits []emittedIntent
 
 	for _, eff := range effects {
 		// Optional per-effect guard (§6.2.1, §9.6). An effect whose
@@ -825,11 +1059,11 @@ func (m *machineImpl) applyEffectsTraced(ctx context.Context, effects []app.Effe
 			env.World = newWorld.Vars
 			prog, cerr := expr.CompileBool(eff.When)
 			if cerr != nil {
-				return world.World{}, nil, saySB, nil, fmt.Errorf("effect when %q: compile: %w", eff.When, cerr)
+				return world.World{}, nil, saySB, nil, nil, fmt.Errorf("effect when %q: compile: %w", eff.When, cerr)
 			}
 			ok, eerr := expr.EvalBool(prog, env)
 			if eerr != nil {
-				return world.World{}, nil, saySB, nil, fmt.Errorf("effect when %q: eval: %w", eff.When, eerr)
+				return world.World{}, nil, saySB, nil, nil, fmt.Errorf("effect when %q: eval: %w", eff.When, eerr)
 			}
 			if !ok {
 				m.logger.DebugContext(ctx, trace.EvMachineEffectApplied,
@@ -844,7 +1078,7 @@ func (m *machineImpl) applyEffectsTraced(ctx context.Context, effects []app.Effe
 			for k, v := range eff.Set {
 				resolved, err := resolveEffectValue(v, env, newWorld)
 				if err != nil {
-					return world.World{}, nil, saySB, nil, fmt.Errorf("effect set %q: %w", k, err)
+					return world.World{}, nil, saySB, nil, nil, fmt.Errorf("effect set %q: %w", k, err)
 				}
 				before := newWorld.Vars[k]
 				newWorld.Vars[k] = resolved
@@ -879,7 +1113,7 @@ func (m *machineImpl) applyEffectsTraced(ctx context.Context, effects []app.Effe
 		case eff.Say != "":
 			text, err := expr.Render(eff.Say, env)
 			if err != nil {
-				return world.World{}, nil, saySB, nil, fmt.Errorf("effect say: %w", err)
+				return world.World{}, nil, saySB, nil, nil, fmt.Errorf("effect say: %w", err)
 			}
 			if saySB.Len() > 0 {
 				saySB.WriteString("\n")
@@ -903,7 +1137,7 @@ func (m *machineImpl) applyEffectsTraced(ctx context.Context, effects []app.Effe
 			for k, v := range eff.With {
 				resolved, err := resolveEffectValue(v, env, newWorld)
 				if err != nil {
-					return world.World{}, nil, saySB, nil, fmt.Errorf("effect invoke %q with %q: %w", eff.Invoke, k, err)
+					return world.World{}, nil, saySB, nil, nil, fmt.Errorf("effect invoke %q with %q: %w", eff.Invoke, k, err)
 				}
 				resolvedArgs[k] = resolved
 			}
@@ -934,8 +1168,50 @@ func (m *machineImpl) applyEffectsTraced(ctx context.Context, effects []app.Effe
 				"background": eff.Background,
 			}))
 		}
+
+		// emit_intent: capture the resolved intent name + slot values for
+		// post-chain dispatch. Template values are rendered against the
+		// world AT THE TIME the effect fires (post any preceding set: in
+		// the same chain). The actual dispatch happens once the entire
+		// effect chain (and any on_enter chain in the same call) has
+		// applied — see Turn / on_enter call sites for the dispatch
+		// invocation.
+		if eff.EmitIntent != "" {
+			env.World = newWorld.Vars
+			rendered := eff.EmitIntent
+			if strings.Contains(rendered, "{{") {
+				out, rerr := expr.Render(rendered, env)
+				if rerr != nil {
+					return world.World{}, nil, saySB, nil, nil, fmt.Errorf("effect emit_intent: render %q: %w", eff.EmitIntent, rerr)
+				}
+				rendered = strings.TrimSpace(out)
+			}
+			if rendered == "" {
+				// Treat empty-after-render as a no-op rather than an
+				// error — authors can guard with `when:` to make this
+				// explicit (the bugfix story does so on judge confidence).
+				m.logger.DebugContext(ctx, trace.EvMachineEffectApplied,
+					slog.String("type", "emit_intent_skipped"),
+					slog.String("source", eff.EmitIntent),
+				)
+			} else {
+				resolvedSlots := make(map[string]any, len(eff.EmitSlots))
+				for k, v := range eff.EmitSlots {
+					rv, rerr := resolveEffectValue(v, env, newWorld)
+					if rerr != nil {
+						return world.World{}, nil, saySB, nil, nil, fmt.Errorf("effect emit_intent %q slot %q: %w", rendered, k, rerr)
+					}
+					resolvedSlots[k] = rv
+				}
+				emits = append(emits, emittedIntent{Name: rendered, Slots: resolvedSlots})
+				m.logger.DebugContext(ctx, trace.EvMachineEffectApplied,
+					slog.String("type", "emit_intent"),
+					slog.String("intent", rendered),
+				)
+			}
+		}
 	}
-	return newWorld, hostCalls, saySB, effectEvents, nil
+	return newWorld, hostCalls, saySB, effectEvents, emits, nil
 }
 
 // findTransition walks the transition arms for a given intent in the state
@@ -1198,14 +1474,50 @@ func (m *machineImpl) RenderState(cur app.StatePath, w world.World) (string, err
 // accumulated say-text, effect events, and an error. It builds the same
 // expr.Env that applyEffectsTraced uses (empty slots, empty event), so
 // on_complete effects have access to world.* as expected.
+//
+// If the chain emits any synthetic intents via emit_intent: effects,
+// they are dispatched against `state` and their events / host calls /
+// say-text are folded into the returned values. Callers that need to
+// know the post-dispatch leaf state should use RunEffectsAndState.
 func (m *machineImpl) RunEffects(ctx context.Context, state app.StatePath, w world.World, effects []app.Effect) (world.World, []HostInvocation, string, []store.Event, error) {
+	_, nw, hc, say, evts, err := m.RunEffectsAndState(ctx, state, w, effects)
+	return nw, hc, say, evts, err
+}
+
+// RunEffectsAndState is the emit_intent-aware variant: see RunEffects for
+// the common semantics, with the added guarantee that the returned
+// app.StatePath reflects any synthetic intent dispatches the chain
+// triggered.
+func (m *machineImpl) RunEffectsAndState(ctx context.Context, state app.StatePath, w world.World, effects []app.Effect) (app.StatePath, world.World, []HostInvocation, string, []store.Event, error) {
 	env := expr.Env{
 		Slots: map[string]any{},
 		World: w.Vars,
 		Event: map[string]any{},
 	}
-	newWorld, hostCalls, saySB, evts, err := m.applyEffectsTraced(ctx, effects, w, env)
-	return newWorld, hostCalls, saySB.String(), evts, err
+	newWorld, hostCalls, saySB, evts, emits, err := m.applyEffectsTraced(ctx, effects, w, env)
+	if err != nil {
+		return state, newWorld, hostCalls, saySB.String(), evts, err
+	}
+	finalState := string(state)
+	sayOut := saySB.String()
+	if len(emits) > 0 && finalState != "" {
+		ds, dw, dhc, dsay, devs, derr := m.dispatchEmittedIntents(ctx, finalState, newWorld, emits, env, 0)
+		if derr != nil {
+			return state, newWorld, hostCalls, sayOut, evts, derr
+		}
+		finalState = ds
+		newWorld = dw
+		hostCalls = append(hostCalls, dhc...)
+		if dsay != "" {
+			if sayOut != "" {
+				sayOut = sayOut + "\n" + dsay
+			} else {
+				sayOut = dsay
+			}
+		}
+		evts = append(evts, devs...)
+	}
+	return app.StatePath(finalState), newWorld, hostCalls, sayOut, evts, nil
 }
 
 // resolveEffectValue evaluates an effect value.

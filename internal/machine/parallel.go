@@ -69,6 +69,7 @@ import (
 	"kitsoki/internal/expr"
 	"kitsoki/internal/intent"
 	"kitsoki/internal/store"
+	"kitsoki/internal/trace"
 	"kitsoki/internal/world"
 )
 
@@ -84,6 +85,11 @@ const (
 // so legitimate ~3-step cross-region chains pass; small enough that a YAML
 // bug forming a cycle fails loudly.
 const maxEmitDepth = 8
+
+// EmitIntentMaxDepth bounds re-entrant emit_intent dispatches within one
+// turn to prevent infinite chains. Matches the depth cap used for Emit
+// (event) propagation above.
+const EmitIntentMaxDepth = 8
 
 // parsedParallel is the decoded form of a parallel-encoded state path.
 //
@@ -404,9 +410,22 @@ func (m *machineImpl) turnParallel(ctx context.Context, par parsedParallel, w wo
 	)
 
 	// Apply the winning transition's effects.
-	newWorld, hostCalls, saySB, effectEvents, err := m.applyEffectsTraced(ctx, winningTr.tr.Effects, w, env)
+	// emit_intent: synthetic dispatch from a parallel-encoded state is
+	// not supported in this initial implementation (parallel regions
+	// have their own event-bus via propagateEmits; mixing the two
+	// would muddle depth-cap accounting). Any emits captured here are
+	// dropped with a warning trace — the loader still validates the
+	// intent reference, but the dispatch is a no-op.
+	newWorld, hostCalls, saySB, effectEvents, parEmits, err := m.applyEffectsTraced(ctx, winningTr.tr.Effects, w, env)
 	if err != nil {
 		return TurnResult{}, err
+	}
+	if len(parEmits) > 0 {
+		m.logger.WarnContext(ctx, trace.EvIntentEmitted,
+			slog.String("phase", "parallel_drop"),
+			slog.String("state", parRoot),
+			slog.Int("count", len(parEmits)),
+		)
 	}
 
 	// Build the new state-path (handling the exitedParallel case).
@@ -437,9 +456,16 @@ func (m *machineImpl) turnParallel(ctx context.Context, par parsedParallel, w wo
 				continue
 			}
 			enterEnv := expr.Env{Slots: env.Slots, World: newWorld.Vars, Event: env.Event, Run: env.Run}
-			nw2, hcs2, ssb2, ev2, eerr := m.applyEffectsTraced(ctx, cs.s.OnEnter, newWorld, enterEnv)
+			nw2, hcs2, ssb2, ev2, parEnterEmits, eerr := m.applyEffectsTraced(ctx, cs.s.OnEnter, newWorld, enterEnv)
 			if eerr != nil {
 				return TurnResult{}, fmt.Errorf("on_enter effects for %q: %w", ep, eerr)
+			}
+			if len(parEnterEmits) > 0 {
+				m.logger.WarnContext(ctx, trace.EvIntentEmitted,
+					slog.String("phase", "parallel_on_enter_drop"),
+					slog.String("state", ep),
+					slog.Int("count", len(parEnterEmits)),
+				)
 			}
 			newWorld = nw2
 			hostCalls = append(hostCalls, hcs2...)
@@ -628,7 +654,7 @@ func (m *machineImpl) propagateEmits(
 			if rerr != nil {
 				return nil, w, nil, "", nil, fmt.Errorf("emit %q: resolveInitial: %w", emitName, rerr)
 			}
-			nw, hcs, ssb, evs, eerr := m.applyEffectsTraced(ctx, tr.tr.Effects, curWorld, emitEnv)
+			nw, hcs, ssb, evs, _, eerr := m.applyEffectsTraced(ctx, tr.tr.Effects, curWorld, emitEnv)
 			if eerr != nil {
 				return nil, w, nil, "", nil, fmt.Errorf("emit %q: apply effects: %w", emitName, eerr)
 			}
@@ -650,7 +676,7 @@ func (m *machineImpl) propagateEmits(
 						continue
 					}
 					eEnv := expr.Env{Slots: env.Slots, World: curWorld.Vars, Event: env.Event, Run: env.Run}
-					nw2, hcs2, ssb2, evs2, e2 := m.applyEffectsTraced(ctx, cs.s.OnEnter, curWorld, eEnv)
+					nw2, hcs2, ssb2, evs2, _, e2 := m.applyEffectsTraced(ctx, cs.s.OnEnter, curWorld, eEnv)
 					if e2 != nil {
 						return nil, w, nil, "", nil, fmt.Errorf("emit %q on_enter for %q: %w", emitName, ep, e2)
 					}

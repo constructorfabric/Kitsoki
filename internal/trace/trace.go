@@ -62,6 +62,12 @@ const (
 	EvMachineTransition         = "machine.transition"
 	EvMachineValidationRejected = "machine.validation.rejected"
 
+	// Synthetic-intent dispatch (emit_intent effect; see machine.applyEffectsTraced).
+	// EvIntentEmitted records each successful self-dispatch; EvIntentEmitDepthCap
+	// records a depth-cap abort (machine.EmitIntentMaxDepth).
+	EvIntentEmitted       = "machine.intent.emitted"
+	EvIntentEmitDepthCap  = "machine.intent.emit.depth_cap"
+
 	// Expr.
 	EvExprCompileError = "expr.compile_error"
 	EvExprEvalError    = "expr.eval_error"
