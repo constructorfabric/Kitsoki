@@ -1,0 +1,142 @@
+# prd — PRD draft → analyze → validated.
+#
+# Produces the `prd_artifact`: a Product Requirements Document.  Two
+# substates:
+#
+#   prd_executing       — calls iface.artifact.create with kind=prd; the
+#                         cypilot_artifacts provider shells to
+#                         `cpt generate --kind prd --title ... --slug ...`.
+#                         Then immediately runs iface.artifact.validate to
+#                         attach a deterministic + semantic analyze report.
+#   prd_awaiting_reply  — canonical §6 checkpoint shape (proposal §4.4).
+#                         judge_mode=llm_then_human runs the LLM-judge over
+#                         the validate report; clean report → auto-accept;
+#                         findings → fall through to human.
+#
+# Accept → adr_executing (the proposal §3 sketch puts ADR and DESIGN in
+# parallel; we serialise them for v1 simplicity).
+
+states:
+
+  prd_executing:
+    description: "Producing the PRD via cpt generate."
+    view: |
+      Drafting PRD for {{ world.ticket_id }} — {{ world.ticket_title }}
+        feature_slug: {{ world.feature_slug }}
+
+      PRD id:       {{ world.prd_artifact.id ?? "(pending)" }}
+      Validate ok:  {{ world.validate_ok }}
+      Report:       {{ world.validate_report ?? "(none)" }}
+
+      Type `proceed` to deliver the PRD to the checkpoint,
+      or `refine` to re-run with feedback, or `quit` to abandon.
+    relevant_world: [ticket_id, ticket_title, feature_slug, prd_artifact, validate_ok, validate_report, cycle]
+    on_enter:
+      # 1. Create the PRD artifact via cpt generate.
+      - invoke: iface.artifact.create
+        with:
+          kind:    "prd"
+          title:   "{{ world.ticket_title }}"
+          slug:    "{{ world.feature_slug }}"
+          workdir: "{{ world.workdir }}"
+        bind:
+          prd_artifact: artifact
+          # Best-effort bind whether the provider emits an envelope or
+          # the legacy flat shape — both surface id+path.
+        on_error: idle
+      # 2. Run cpt analyze deterministically to surface a report.  We do
+      #    NOT gate the room transition on this; the LLM-judge at the
+      #    checkpoint reads the report and decides.
+      - invoke: iface.artifact.validate
+        with:
+          id:      "{{ world.prd_artifact.id }}"
+          mode:    "deterministic"
+          workdir: "{{ world.workdir }}"
+        bind:
+          validate_ok:     ok
+          validate_report: report
+    on:
+      proceed:
+        - target: prd_awaiting_reply
+      refine:
+        - target: prd_executing
+          effects:
+            - set:
+                refine_feedback: "{{ slots.feedback }}"
+                cycle:           "{{ world.cycle + 1 }}"
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .
+
+  # Canonical §6 checkpoint shape.  The judge prompt reads the analyze
+  # report from world.validate_report so it can answer "is this PRD any
+  # good?" without re-running cpt itself.
+  prd_awaiting_reply:
+    description: "PRD posted; awaiting validate verdict."
+    view: |
+      PRD checkpoint — {{ world.ticket_id }}
+
+      PRD: {{ world.prd_artifact.summary_title ?? world.prd_artifact.id ?? "(unknown)" }}
+      Validate ok: {{ world.validate_ok }}
+      Report excerpt:
+      {{ world.validate_report ?? "(no report)" }}
+
+      Verdict slot: {{ world.llm_verdict.verdict ?? "(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence ?? 0 }})
+      Reason:       {{ world.llm_verdict.reason ?? "" }}
+
+      Reply: accept | refine [feedback=...] | quit
+    relevant_world: [judge_mode, ticket_id, prd_artifact, validate_ok, validate_report, llm_verdict, cycle]
+    on_enter:
+      - invoke: iface.transport.post
+        with:
+          thread:   "{{ world.thread }}"
+          title:    "PRD artifact: {{ world.ticket_id }}"
+          body:     "{{ world.prd_artifact.summary_markdown ?? world.validate_report }}"
+          phase_id: "prd_{{ world.ticket_id }}_{{ world.cycle }}"
+      - invoke: host.inbox.add
+        with:
+          kind:   checkpoint
+          title:  "PRD artifact: {{ world.ticket_id }}"
+          thread: "{{ world.thread }}"
+          state:  prd_awaiting_reply
+          body:   "{{ world.prd_artifact.summary_markdown ?? world.validate_report }}"
+      - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
+        invoke: host.oracle.ask_with_mcp
+        with:
+          prompt: prompts/judge_prd.md
+          schema: schemas/judge_verdict.json
+          args:
+            ticket_id:       "{{ world.ticket_id }}"
+            artifact_id:     "{{ world.prd_artifact.id }}"
+            artifact_title:  "{{ world.prd_artifact.summary_title }}"
+            validate_ok:     "{{ world.validate_ok }}"
+            validate_report: "{{ world.validate_report }}"
+        bind:
+          llm_verdict: submitted
+      - when: |
+          world.judge_mode != 'human' &&
+          world.llm_verdict.confidence >= world.judge_confidence_threshold &&
+          world.llm_verdict.verdict != 'uncertain' &&
+          world.llm_verdict.intent != 'uncertain'
+        emit_intent: "{{ world.llm_verdict.intent }}"
+        slots:
+          feedback: "{{ world.llm_verdict.reason }}"
+    on:
+      accept:
+        - target: adr_executing
+          effects:
+            - set:
+                last_reply_author: "{{ slots.author ?? 'human' }}"
+                refine_feedback:   ""
+                cycle:             0
+      refine:
+        - target: prd_executing
+          effects:
+            - set:
+                refine_feedback: "{{ slots.feedback ?? world.llm_verdict.reason }}"
+                cycle:           "{{ world.cycle + 1 }}"
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .

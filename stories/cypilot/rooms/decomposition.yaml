@@ -1,0 +1,116 @@
+# decomposition — `cpt plan --task <PRD>` reduces the PRD into a phase
+# plan under .plans/<slug>/phase-NN-*.md.  Produces the
+# `decomposition_artifact`: { plan_path, phase_count }.  feature_count is
+# extracted from the artifact so the feature room knows when to stop.
+#
+# This room is shorter than the artifact rooms because cpt plan does not
+# have a separate semantic-validate step today — the plan files ARE the
+# output and the LLM-judge prompt reads the phase listing as its
+# verdict input.
+
+states:
+
+  decomposition_executing:
+    description: "Decomposing the PRD via cpt plan."
+    view: |
+      Decomposing PRD {{ world.prd_artifact.id ?? "(unknown)" }}
+
+      Plan path:    {{ world.decomposition_artifact.plan_path ?? "(pending)" }}
+      Phase count:  {{ world.decomposition_artifact.phase_count ?? 0 }}
+
+      Type `proceed` to deliver the plan, `refine` to re-run, `quit` to abandon.
+    relevant_world: [prd_artifact, decomposition_artifact, feature_count, cycle]
+    on_enter:
+      - invoke: iface.artifact.decompose
+        with:
+          id:      "{{ world.prd_artifact.id }}"
+          workdir: "{{ world.workdir }}"
+        bind:
+          decomposition_artifact: artifact
+          # Also bind the scalar phase_count so the feature room's
+          # `when:` predicate can compare feature_index < feature_count
+          # without indexing back into the artifact object.  Wave 1's
+          # bind: lands at orchestrator-dispatch time, post-bind, so
+          # downstream effects in the same on_enter still see the prior
+          # world; binding to a scalar slot here is the simplest fix.
+          feature_count: phase_count
+        on_error: design_awaiting_reply
+    on:
+      proceed:
+        - target: decomposition_awaiting_reply
+      refine:
+        - target: decomposition_executing
+          effects:
+            - set:
+                refine_feedback: "{{ slots.feedback }}"
+                cycle:           "{{ world.cycle + 1 }}"
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .
+
+  decomposition_awaiting_reply:
+    description: "Decomposition plan posted; awaiting verdict."
+    view: |
+      Decomposition checkpoint — {{ world.ticket_id }}
+
+      Plan path:    {{ world.decomposition_artifact.plan_path }}
+      Phase count:  {{ world.feature_count }}
+
+      Verdict slot: {{ world.llm_verdict.verdict ?? "(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence ?? 0 }})
+      Reason:       {{ world.llm_verdict.reason ?? "" }}
+
+      Reply: accept (advance to first feature) | refine | quit
+    relevant_world: [judge_mode, ticket_id, decomposition_artifact, feature_count, llm_verdict, cycle]
+    on_enter:
+      - invoke: iface.transport.post
+        with:
+          thread:   "{{ world.thread }}"
+          title:    "Decomposition: {{ world.ticket_id }}"
+          body:     "Plan path: {{ world.decomposition_artifact.plan_path }}\nPhase count: {{ world.feature_count }}"
+          phase_id: "decomposition_{{ world.ticket_id }}_{{ world.cycle }}"
+      - invoke: host.inbox.add
+        with:
+          kind:   checkpoint
+          title:  "Decomposition: {{ world.ticket_id }}"
+          thread: "{{ world.thread }}"
+          state:  decomposition_awaiting_reply
+          body:   "Plan path: {{ world.decomposition_artifact.plan_path }}, {{ world.feature_count }} phases."
+      - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
+        invoke: host.oracle.ask_with_mcp
+        with:
+          prompt: prompts/judge_decomposition.md
+          schema: schemas/judge_verdict.json
+          args:
+            ticket_id:    "{{ world.ticket_id }}"
+            plan_path:    "{{ world.decomposition_artifact.plan_path }}"
+            phase_count:  "{{ world.feature_count }}"
+        bind:
+          llm_verdict: submitted
+      - when: |
+          world.judge_mode != 'human' &&
+          world.llm_verdict.confidence >= world.judge_confidence_threshold &&
+          world.llm_verdict.verdict != 'uncertain' &&
+          world.llm_verdict.intent != 'uncertain'
+        emit_intent: "{{ world.llm_verdict.intent }}"
+        slots:
+          feedback: "{{ world.llm_verdict.reason }}"
+    on:
+      accept:
+        - target: feature_executing
+          effects:
+            - set:
+                feature_index:     0
+                refine_feedback:   ""
+                cycle:             0
+                last_reply_author: "{{ slots.author ?? 'human' }}"
+      refine:
+        - target: decomposition_executing
+          effects:
+            - set:
+                refine_feedback: "{{ slots.feedback ?? world.llm_verdict.reason }}"
+                cycle:           "{{ world.cycle + 1 }}"
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .

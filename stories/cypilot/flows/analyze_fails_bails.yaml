@@ -1,0 +1,93 @@
+# analyze_fails_bails — judge_mode=human; the validate step's report
+# carries findings, and the operator manually `refine`s the PRD.
+#
+# This is the "cpt analyze caught a real issue" path: the LLM-judge
+# would normally fall through to human (since the verdict's
+# confidence is low) and the operator chooses to refine.  Then a
+# second pass through the analyze step produces a clean report and
+# the operator `accept`s.
+#
+# Human mode is the simplest deterministic harness — the judge stub
+# is not consulted because `world.judge_mode == 'human'` short-circuits
+# the LLM-judge step in the §6 checkpoint.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  ticket_id:    "PRD-003"
+  ticket_title: "Auth flow refactor"
+  feature_slug: "auth-refactor"
+  thread:       "PRD-003"
+  workdir:      ".worktrees/prd-003"
+  judge_mode:   "human"      # human-driven; no auto-emit
+  judge_confidence_threshold: 0.8
+
+host_handlers:
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+  host.inbox.add:
+    data: { ok: true, id: "ib-1" }
+  host.cypilot_artifacts:
+    data:
+      # validate fails — cpt analyze returned findings.  The `ok: false`
+      # surfaces via the room's `bind: validate_ok: ok`, and the LLM-judge
+      # prompt (or the human operator) reads the report + findings to
+      # decide refine vs. accept.
+      ok: false
+      id: "prd-auth-refactor"
+      path: "cypilot/artifacts/prd/auth-refactor.md"
+      report: |
+        FAIL — 2 findings
+          - AP-005 (high): missing acceptance criteria
+          - PRD-CHECK-3 (medium): success metrics absent
+      findings:
+        - { id: "AP-005",       severity: "high",   message: "missing acceptance criteria" }
+        - { id: "PRD-CHECK-3",  severity: "medium", message: "success metrics absent" }
+      artifact:
+        id:               "prd-auth-refactor"
+        path:             "cypilot/artifacts/prd/auth-refactor.md"
+        kind:             "prd"
+        summary_title:    "PRD: Auth refactor"
+        summary_markdown: "Initial PRD draft (incomplete)."
+  host.oracle.ask_with_mcp:
+    # Not used in human mode; provided defensively so any incidental
+    # oracle call doesn't infrastructure-error.
+    data:
+      ok: true
+      submitted:
+        verdict:    "uncertain"
+        intent:     "uncertain"
+        reason:     "low confidence"
+        confidence: 0.4
+
+turns:
+  # idle → prd_executing.
+  - intent: { name: begin, slots: {} }
+    expect_state: prd_executing
+    expect_world:
+      # validate_ok bound from the cypilot_artifacts stub.
+      validate_ok: false
+
+  # proceed → prd_awaiting_reply.  Human mode: no auto-emit; the
+  # operator must explicitly fire refine / accept / quit.
+  - intent: { name: proceed, slots: {} }
+    expect_state: prd_awaiting_reply
+
+  # The findings made the PRD unfit; refine to re-run cpt generate.
+  - intent: { name: refine, slots: { feedback: "Add acceptance criteria + success metrics" } }
+    expect_state: prd_executing
+    expect_world:
+      refine_feedback: "Add acceptance criteria + success metrics"
+
+  # Second proceed → prd_awaiting_reply.  In a real run cpt would
+  # produce a new artifact with the gaps closed.
+  - intent: { name: proceed, slots: {} }
+    expect_state: prd_awaiting_reply
+
+  # Operator now manually accepts (still human mode — no auto-emit).
+  - intent: { name: accept, slots: {} }
+    expect_state: adr_executing
+
+expect_terminal: false
+expect_no_errors: true

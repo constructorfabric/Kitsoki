@@ -1,0 +1,263 @@
+# cypilot — SDLC waterfall (PRD → ADR/DESIGN → DECOMPOSITION → FEATURE → CODE)
+#
+# Wave 3 / Phase 5 of the dev-story unify proposal
+# (docs/proposals/dev-story-bugfix-unify-proposal.md §3, §5.5, §6.4).
+#
+# This story wraps cypilot's three workflows (`cypilot-generate`,
+# `cypilot-plan`, `cypilot-analyze`) as a kitsoki state machine.  The seven
+# visible rooms (`idle → prd → adr → design → decomposition → feature → code`)
+# walk a PRD-track ticket through the artifact production pipeline:
+#
+#   prd            — draft + analyze the PRD; the validate gate may use
+#                    `iface.artifact.validate.mode=semantic` for an LLM-judge
+#                    answer.
+#   adr / design   — independent artifacts derivable from a validated PRD;
+#                    the rooms are sequential here for v1 simplicity (the
+#                    proposal §3 sketch shows them parallel; that's a v2
+#                    follow-up).
+#   decomposition  — `cpt plan` reduces the PRD to a phase-by-phase plan
+#                    under `.plans/<slug>/phase-NN-*.md`.
+#   feature        — one feature artifact per phase the planner produced;
+#                    walked N times in autonomous mode.
+#   code           — `cpt generate` against the feature; emits a patch the
+#                    parent story carries into pr-refinement.
+#
+# # Autonomous-only for v1
+#
+# Per proposal §6.4 final paragraph, interactive drafting is OUT OF SCOPE for
+# v1: typing PRD prose into a TUI is a lousy UX.  The rooms' `_executing`
+# substates call `iface.artifact.create` (which shells to `cpt generate`) but
+# they do NOT expose an interactive prose editor.  Human supervision happens
+# at the validate checkpoints, where the canonical §6 judge polymorphism
+# shape lets `llm_then_human` route uncertain verdicts to a human.
+#
+# # Imports pr-refinement for the tail
+#
+# When the code room produces a working patch, the cypilot story exits
+# `@exit:code_ready` and a parent app (dev-story / kitsoki-dev) routes into
+# the pr-refinement import (open_pr → ci → merge).  The pr-refinement
+# integration is a parent-story responsibility; this app declares the exit
+# so the runtime synthesises a clean terminal in standalone runs.
+
+app:
+  id: cypilot
+  version: 0.1.0
+  title: "cypilot — SDLC waterfall (PRD → ADR/DESIGN → DECOMPOSITION → FEATURE → CODE)"
+  author: "Kitsoki"
+  license: "CC0"
+
+# Host allow-list.  iface.<name>.<op> dispatch sites union their bindings
+# into the hosts list implicitly through resolveAllInterfaces; bare calls
+# (host.inbox.add, host.oracle.ask_with_mcp, host.run) must be listed
+# explicitly.
+hosts:
+  - host.inbox.add
+  - host.oracle.ask_with_mcp
+  - host.run
+
+# Five host_interfaces — the four provider-neutral surfaces every parent
+# story binds (ticket, vcs, ci, transport) plus the NEW `artifact` iface
+# (proposal §2.6) backed by host.cypilot_artifacts.
+host_interfaces:
+
+  # Cypilot SDLC artifact store — the new iface for this story.  Each op
+  # maps onto one cpt subcommand per proposal §6.4 (the idealised form;
+  # the provider shells today's actual cpt CLI with best-effort flag
+  # adaptation — see internal/host/cypilot_artifacts.go).
+  artifact:
+    description: "Cypilot SDLC artifact store (PRD / ADR / DESIGN / DECOMPOSITION / FEATURE / CODE)."
+    operations:
+      list:
+        input:  { kind: string }
+        output: { artifacts: list }
+      get:
+        input:  { id: string }
+        output: { id: string, kind: string, title: string, body: string,
+                  frontmatter: object, path: string, depends_on: list }
+      create:
+        input:  { kind: string, title: string, slug: string, parent_id: string }
+        output: { ok: bool, id: string, path: string }
+      validate:
+        input:  { id: string, mode: string }
+        output: { ok: bool, findings: list, report: string }
+      decompose:
+        input:  { id: string }
+        output: { ok: bool, plan_path: string, phase_count: int }
+    default: host.cypilot_artifacts
+
+  # vcs — declared so a parent story rebinds one set of providers and the
+  # cypilot tail (handed off to pr-refinement) gets the rebind for free.
+  vcs:
+    description: "Branch / commit / PR abstraction (git / GitHub / Bitbucket)."
+    operations:
+      branch:
+        input:  { workdir: string, name: string, base: string }
+        output: { ok: bool, branch: string }
+      diff:
+        input:  { workdir: string }
+        output: { diff: string, files: list }
+      commit:
+        input:  { workdir: string, message: string, files: list }
+        output: { ok: bool, sha: string }
+      push:
+        input:  { workdir: string, remote: string }
+        output: { ok: bool, url: string }
+      open_pr:
+        input:  { workdir: string, title: string, body: string, base: string }
+        output: { ok: bool, url: string, pr_id: string }
+      pr_status:
+        input:  { pr_id: string }
+        output: { state: string, checks: list, comments: list }
+      pr_comment:
+        input:  { pr_id: string, body: string }
+        output: { ok: bool }
+      merge:
+        input:  { pr_id: string, strategy: string }
+        output: { ok: bool, sha: string }
+    default: host.git
+
+  # ci — same rationale as vcs.  The code room may run a local test pass
+  # against the generated feature.
+  ci:
+    description: "Build/test runner (local make/go test, GitHub Actions, Jenkins)."
+    operations:
+      run_tests:
+        input:  { workdir: string, target: string }
+        output: { ok: bool, passed: int, failed: int, log: string, junit: string }
+      build:
+        input:  { workdir: string, target: string }
+        output: { ok: bool, log: string }
+      remote_status:
+        input:  { pr_id: string }
+        output: { state: string, checks: list }
+    default: host.local
+
+  # transport — checkpoint artifacts go to the local bug file / Jira /
+  # GitHub comment; the default is host.append_to_file for dogfood mode.
+  transport:
+    description: "Out-of-band channel for posting proposals, checkpoints, status."
+    operations:
+      post:
+        input:  { thread: string, body: string }
+        output: { ok: bool, message_id: string }
+    default: host.append_to_file
+
+# World — the cypilot lingua franca.  Inherits the dev-story / bugfix world
+# keys (ticket_id, workdir, judge_mode) plus introduces the artifact-pipeline
+# state (feature_slug, prd_artifact, adr_artifact, design_artifact,
+# decomposition_artifact, feature_artifact, code_artifact, feature_phases).
+world:
+  # ── Identity / ticket ───────────────────────────────────────────────
+  ticket_id:        { type: string, default: "" }
+  ticket_title:     { type: string, default: "" }
+  ticket_url:       { type: string, default: "" }
+  thread:           { type: string, default: "" }
+
+  # ── Workspace ──────────────────────────────────────────────────────
+  workspace_id:     { type: string, default: "" }
+  workdir:          { type: string, default: "" }
+  base_branch:      { type: string, default: "main" }
+  feature_branch:   { type: string, default: "" }
+
+  # ── Pipeline control ──────────────────────────────────────────────
+  judge_mode:                 { type: string, default: "llm_then_human" } # autonomous default per §6.4
+  judge_confidence_threshold: { type: float,  default: 0.8 }
+  cycle:            { type: int,    default: 0 }
+  last_reply_author: { type: string, default: "" }
+  refine_feedback:   { type: string, default: "" }
+
+  # ── Artifact identity ─────────────────────────────────────────────
+  # feature_slug is the canonical hyphen-case identifier under which cpt
+  # writes its artifacts (PRD, ADR, DESIGN, …).  The operator seeds it
+  # from `world.ticket_title` or `world.ticket_id` at story entry.
+  feature_slug:     { type: string, default: "" }
+  feature_index:    { type: int,    default: 0 }    # which decomposed phase the feature room is on
+  feature_count:    { type: int,    default: 0 }    # total phases produced by decomposition
+
+  # ── Per-room artifacts (kept in lockstep with the §2.6 op outputs) ─
+  prd_artifact:           { type: object, default: {} }
+  adr_artifact:           { type: object, default: {} }
+  design_artifact:        { type: object, default: {} }
+  decomposition_artifact: { type: object, default: {} }
+  feature_artifact:       { type: object, default: {} }
+  code_artifact:          { type: object, default: {} }
+
+  # ── Validate report mirror ───────────────────────────────────────
+  # validate ops surface ok/findings/report; the LLM-judge prompt reads
+  # `world.validate_report` directly so a clean cpt analyze pass routes
+  # the verdict to `accept` rapidly.
+  validate_report:        { type: string, default: "" }
+  validate_ok:            { type: bool,   default: false }
+
+  # ── Judge state ──────────────────────────────────────────────────
+  llm_verdict:      { type: object, default: {} }
+
+  # ── PR (held for the pr-refinement handoff) ──────────────────────
+  pr_id:            { type: string, default: "" }
+  pr_url:           { type: string, default: "" }
+  pr_title:         { type: string, default: "" }
+  pr_body:          { type: string, default: "" }
+
+  # ── Story-level "done" sink ──────────────────────────────────────
+  status:           { type: string, default: "open" }    # open | shipped | abandoned
+
+# Intent vocabulary.  Most checkpoints expose accept / refine / quit /
+# look.  The `begin` intent boots from idle; `next_feature` rolls forward
+# through the per-phase feature room when feature_index < feature_count.
+intents:
+  begin:
+    description: "Begin the cypilot waterfall — kick off PRD draft."
+    examples: [begin, "start", "kick off"]
+    priority: 95
+  proceed:
+    description: "Advance the current room (after _executing)."
+    examples: [proceed, "next"]
+    priority: 85
+  accept:
+    description: "Accept the current checkpoint artifact; advance."
+    examples: [accept, "approve", "lgtm"]
+    priority: 80
+  refine:
+    description: "Re-execute the current room with feedback."
+    examples: [refine, "rework"]
+    priority: 70
+    slots:
+      feedback: { type: string, required: false }
+  next_feature:
+    description: "Advance to the next feature in the decomposition."
+    examples: [next, "next feature", "next phase"]
+    priority: 60
+  quit:
+    description: "Abandon the cypilot pipeline."
+    examples: [quit, "abort"]
+    priority: 50
+  look:
+    description: "Re-render the current view."
+    examples: [look, "what now?"]
+    priority: 10
+
+# Exports — lifted into a parent story's bare intent table when the parent
+# does `intents.import: [begin, next_feature]`.  Overlapping names
+# (accept/refine/quit/look/proceed) stay prefixed to avoid collisions
+# with sibling imports (bf, pr).
+exports:
+  intents: [begin, proceed, accept, refine, next_feature, quit, look]
+
+# Named return points.  A parent story maps each to one of its own
+# states.  Standalone load synthesises __exit__code_ready / __exit__abandoned
+# / __exit__validation_failed terminals.
+exits:
+  code_ready:
+    description: "Feature code generated and validated; ready to hand off to pr-refinement."
+    requires: [code_artifact]
+  abandoned:
+    description: "User or LLM bailed."
+  validation_failed:
+    description: "An artifact's validate gate failed and could not be refined within the cycle budget."
+
+# Root state.
+root: idle
+
+# Rooms live in rooms/*.yaml.
+include:
+  - rooms/*.yaml

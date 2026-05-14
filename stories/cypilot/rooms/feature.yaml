@@ -1,0 +1,152 @@
+# feature — one feature artifact per decomposed phase.  Walked N times for
+# N phases.  The `feature_index` counter advances each accept loop; when
+# feature_index == feature_count - 1 the accept transitions to
+# code_executing for the final implementation pass.
+#
+# The room is structurally one room — both interactive operator and
+# autonomous-mode walk the same `_executing` → `_awaiting_reply` cycle for
+# each phase.  This is the cleanest mapping of proposal §3's "one room,
+# walked N times for N features."
+
+states:
+
+  feature_executing:
+    description: "Producing feature artifact for phase {{ world.feature_index }}."
+    view: |
+      Generating feature {{ world.feature_index }}/{{ world.feature_count }} for {{ world.ticket_id }}
+        feature_slug: {{ world.feature_slug }}
+
+      Feature id:   {{ world.feature_artifact.id ?? "(pending)" }}
+      Validate ok:  {{ world.validate_ok }}
+
+      Type `proceed`, `refine`, or `quit`.
+    relevant_world: [ticket_id, feature_slug, feature_index, feature_count, feature_artifact, validate_ok, validate_report, cycle]
+    on_enter:
+      - invoke: iface.artifact.create
+        with:
+          kind:      "feature"
+          # Templates render once per `{{ ... }}` block; the runtime
+          # interpolates them as substrings of the surrounding literal
+          # text.  Multiple blocks in one string just concatenate.
+          title:     "Feature {{ world.feature_index }} for {{ world.ticket_title }}"
+          slug:      "{{ world.feature_slug }}"
+          parent_id: "{{ world.prd_artifact.id }}"
+          workdir:   "{{ world.workdir }}"
+        bind:
+          feature_artifact: artifact
+        on_error: decomposition_awaiting_reply
+      - invoke: iface.artifact.validate
+        with:
+          id:      "{{ world.feature_artifact.id }}"
+          mode:    "semantic"
+          workdir: "{{ world.workdir }}"
+        bind:
+          validate_ok:     ok
+          validate_report: report
+    on:
+      proceed:
+        - target: feature_awaiting_reply
+      refine:
+        - target: feature_executing
+          effects:
+            - set:
+                refine_feedback: "{{ slots.feedback }}"
+                cycle:           "{{ world.cycle + 1 }}"
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .
+
+  feature_awaiting_reply:
+    description: "Feature artifact posted; awaiting verdict."
+    view: |
+      Feature checkpoint — phase {{ world.feature_index }}/{{ world.feature_count }}
+
+      Feature: {{ world.feature_artifact.summary_title ?? world.feature_artifact.id ?? "(unknown)" }}
+      Validate ok: {{ world.validate_ok }}
+      Report excerpt:
+      {{ world.validate_report ?? "(no report)" }}
+
+      Verdict slot: {{ world.llm_verdict.verdict ?? "(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence ?? 0 }})
+      Reason:       {{ world.llm_verdict.reason ?? "" }}
+
+      Reply: accept (next feature or → code) | refine | quit
+    relevant_world: [judge_mode, ticket_id, feature_artifact, feature_index, feature_count, validate_ok, validate_report, llm_verdict, cycle]
+    on_enter:
+      - invoke: iface.transport.post
+        with:
+          thread:   "{{ world.thread }}"
+          title:    "Feature {{ world.feature_index }}/{{ world.feature_count }}: {{ world.ticket_id }}"
+          body:     "{{ world.feature_artifact.summary_markdown ?? world.validate_report }}"
+          phase_id: "feature_{{ world.ticket_id }}_{{ world.feature_index }}_{{ world.cycle }}"
+      - invoke: host.inbox.add
+        with:
+          kind:   checkpoint
+          title:  "Feature {{ world.feature_index }}/{{ world.feature_count }}: {{ world.ticket_id }}"
+          thread: "{{ world.thread }}"
+          state:  feature_awaiting_reply
+          body:   "{{ world.feature_artifact.summary_markdown ?? world.validate_report }}"
+      - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
+        invoke: host.oracle.ask_with_mcp
+        with:
+          prompt: prompts/judge_feature.md
+          schema: schemas/judge_verdict.json
+          args:
+            ticket_id:       "{{ world.ticket_id }}"
+            artifact_id:     "{{ world.feature_artifact.id }}"
+            phase:           "{{ world.feature_index }}"
+            validate_ok:     "{{ world.validate_ok }}"
+            validate_report: "{{ world.validate_report }}"
+        bind:
+          llm_verdict: submitted
+      - when: |
+          world.judge_mode != 'human' &&
+          world.llm_verdict.confidence >= world.judge_confidence_threshold &&
+          world.llm_verdict.verdict != 'uncertain' &&
+          world.llm_verdict.intent != 'uncertain'
+        emit_intent: "{{ world.llm_verdict.intent }}"
+        slots:
+          feedback: "{{ world.llm_verdict.reason }}"
+    on:
+      # Accept arc — branches on whether more features remain.  When
+      # feature_index + 1 < feature_count we cycle back to
+      # feature_executing with feature_index incremented.  When it's the
+      # last phase we transition straight into code_executing.
+      accept:
+        - when: "(world.feature_index + 1) < world.feature_count"
+          target: feature_executing
+          effects:
+            - set:
+                feature_index:     "{{ world.feature_index + 1 }}"
+                refine_feedback:   ""
+                cycle:             0
+                last_reply_author: "{{ slots.author ?? 'human' }}"
+        - target: code_executing
+          effects:
+            - set:
+                refine_feedback:   ""
+                cycle:             0
+                last_reply_author: "{{ slots.author ?? 'human' }}"
+      next_feature:
+        - when: "(world.feature_index + 1) < world.feature_count"
+          target: feature_executing
+          effects:
+            - set:
+                feature_index:     "{{ world.feature_index + 1 }}"
+                refine_feedback:   ""
+                cycle:             0
+        - target: code_executing
+          effects:
+            - set:
+                refine_feedback:   ""
+                cycle:             0
+      refine:
+        - target: feature_executing
+          effects:
+            - set:
+                refine_feedback: "{{ slots.feedback ?? world.llm_verdict.reason }}"
+                cycle:           "{{ world.cycle + 1 }}"
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .

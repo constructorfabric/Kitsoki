@@ -1,0 +1,30 @@
+# idle — entry room. cypilot waterfall parked. `begin` boots into prd_executing.
+#
+# Per proposal §6.4 / §5.5, the cypilot story is autonomous-only for v1:
+# `world.judge_mode` defaults to `llm_then_human` (the LLM-judge runs the
+# artifact through `cpt analyze`; if the report is clean it auto-accepts,
+# otherwise falls through to a human). The interactive operator's job is
+# really only to set the ticket_id / feature_slug at idle and pick up at
+# `_awaiting_reply` checkpoints when the LLM bails.
+
+states:
+
+  idle:
+    description: "cypilot waterfall parked. Waiting for `begin`."
+    view: |
+      cypilot waterfall — idle.
+
+      Ticket:        {{ world.ticket_id }} {{ world.ticket_title }}
+      Feature slug:  {{ world.feature_slug ?? "(pending — set from ticket on begin)" }}
+      Judge mode:    {{ world.judge_mode }}
+      Workspace:     {{ world.workdir }}
+
+      Actions: begin, quit, look.
+    relevant_world: [ticket_id, ticket_title, feature_slug, judge_mode, workdir]
+    on:
+      begin:
+        - target: prd_executing
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .

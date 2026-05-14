@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title":   "adr_artifact",
+  "description": "Architecture Decision Record. Produced by adr_executing via iface.artifact.create (cpt generate --kind adr), parent_id is the validated PRD's id.",
+  "type":    "object",
+  "required": ["id", "kind", "summary_title", "summary_markdown"],
+  "properties": {
+    "id":               { "type": "string", "minLength": 2 },
+    "kind":             { "type": "string", "enum": ["adr"] },
+    "path":             { "type": "string" },
+    "summary_title":    { "type": "string", "minLength": 4 },
+    "summary_markdown": { "type": "string", "minLength": 40 },
+    "title":            { "type": "string" },
+    "slug":             { "type": "string" },
+    "parent_id":        { "type": "string" },
+    "decision":         { "type": "string" },
+    "context":          { "type": "string" },
+    "consequences":     { "type": "string" }
+  },
+  "additionalProperties": true
+}

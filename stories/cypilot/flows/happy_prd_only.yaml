@@ -1,0 +1,78 @@
+# happy_prd_only — autonomous-only walk through PRD validate.
+#
+# judge_mode=llm_then_human; the LLM-judge stub returns a confident
+# `accept` after the PRD validates clean.  This proves the autonomous
+# loop: enter prd_awaiting_reply → judge fires → auto-emit accept →
+# next room's _executing.
+#
+# In confident-LLM mode the `proceed` turn from prd_executing lands
+# *two* states later (prd_awaiting_reply auto-emits accept → adr_executing)
+# in the same dispatch cycle — same pattern as bugfix's happy_llm flow.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  ticket_id:    "PRD-001"
+  ticket_title: "Multi-app mode for kitsoki"
+  feature_slug: "multi-app-mode"
+  thread:       "PRD-001"
+  workdir:      ".worktrees/prd-001"
+  judge_mode:   "llm_then_human"
+  judge_confidence_threshold: 0.8
+
+host_handlers:
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+  host.inbox.add:
+    data: { ok: true, id: "ib-1" }
+  # iface.artifact.* → host.cypilot_artifacts.<op>. prefix-fallback lets
+  # one stub cover create (returns id+path), validate (returns ok+findings+report),
+  # decompose (returns plan_path+phase_count).  The stub's data is rich
+  # enough that the room's bind: stdout_json captures id/path/summary_*.
+  host.cypilot_artifacts:
+    data:
+      # All ops use the same stub.  The `artifact:` nested object is what
+      # rooms bind into world.<kind>_artifact (see contract §3 — Wave 3
+      # introduces this convention for the artifact iface).
+      ok: true
+      id: "prd-multi-app-mode"
+      path: "cypilot/artifacts/prd/multi-app-mode.md"
+      report: "PASS — no findings"
+      findings: []
+      plan_path: ".plans/multi-app-mode"
+      phase_count: 3
+      artifact:
+        id:               "prd-multi-app-mode"
+        path:             "cypilot/artifacts/prd/multi-app-mode.md"
+        kind:             "prd"
+        summary_title:    "PRD: Multi-app mode"
+        summary_markdown: "PRD body covering the multi-app surface."
+        plan_path:        ".plans/multi-app-mode"
+        phase_count:      3
+  host.oracle.ask_with_mcp:
+    data:
+      ok: true
+      submitted:
+        # Confident accept verdict → auto-fires the `accept` intent.
+        # The same stub satisfies the artifact schema (additionalProperties:
+        # true) and judge_verdict; flow fixtures don't run the validator.
+        verdict:    "pass"
+        intent:     "accept"
+        reason:     "PRD validates clean, no findings."
+        confidence: 0.95
+
+turns:
+  # idle → prd_executing. on_enter runs iface.artifact.create then
+  # iface.artifact.validate; both bind from the cypilot_artifacts stub.
+  - intent: { name: begin, slots: {} }
+    expect_state: prd_executing
+
+  # proceed: prd_executing → prd_awaiting_reply →
+  # (LLM-judge binds verdict) → emit_intent auto-fires accept →
+  # adr_executing.  The whole hop is one turn (post-bind emit dispatch).
+  - intent: { name: proceed, slots: {} }
+    expect_state: adr_executing
+
+expect_terminal: false
+expect_no_errors: true

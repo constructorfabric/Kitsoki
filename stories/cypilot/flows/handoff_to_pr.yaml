@@ -1,0 +1,99 @@
+# handoff_to_pr — human-mode walk to demonstrate the @exit:code_ready
+# transition.  The terminal state pins pr_title / pr_body from the code
+# artifact so a parent story's pr-refinement import picks them up via
+# `exits.code_ready.set`.
+#
+# Why human mode?  We want to drive the full pipeline step-by-step (one
+# state transition per turn) so the test makes the pr_title / pr_body
+# projection explicit.  An llm_then_human variant with confident verdicts
+# would compress to one turn per room — that's prd_to_feature.yaml's job.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  ticket_id:    "PRD-004"
+  ticket_title: "Cypilot autonomous handoff"
+  feature_slug: "cypilot-handoff"
+  thread:       "PRD-004"
+  workdir:      ".worktrees/prd-004"
+  judge_mode:   "human"
+  judge_confidence_threshold: 0.8
+
+host_handlers:
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+  host.inbox.add:
+    data: { ok: true, id: "ib-1" }
+  host.cypilot_artifacts:
+    data:
+      ok: true
+      id: "art-handoff"
+      path: "cypilot/artifacts/handoff.md"
+      report: "PASS"
+      findings: []
+      plan_path: ".plans/cypilot-handoff"
+      phase_count: 1
+      artifact:
+        id:               "art-handoff"
+        path:             "cypilot/artifacts/handoff.md"
+        kind:             "code"
+        summary_title:    "Stub artifact"
+        summary_markdown: "Stub artifact body for handoff demo."
+        plan_path:        ".plans/cypilot-handoff"
+        phase_count:      1
+        # The code artifact's pr_title/pr_body must be present so the
+        # @exit:code_ready's `set: { pr_title, pr_body }` projection lands
+        # populated values on the parent.
+        pr_title:         "PRD-004: Cypilot autonomous handoff"
+        pr_body:          "Implements the cypilot waterfall handoff per PRD-004."
+        tests_passed:     8
+        tests_failed:     0
+  host.local:
+    data: { ok: true, log: "PASS: 8 tests", passed: 8, failed: 0 }
+  host.oracle.ask_with_mcp:
+    # Unused in human mode.
+    data: { ok: true, submitted: { verdict: "uncertain", intent: "uncertain", reason: "n/a", confidence: 0.0 } }
+
+turns:
+  # idle → prd_executing.
+  - intent: { name: begin, slots: {} }
+    expect_state: prd_executing
+
+  # Walk each room step-by-step in human mode.
+  - intent: { name: proceed, slots: {} }
+    expect_state: prd_awaiting_reply
+  - intent: { name: accept, slots: {} }
+    expect_state: adr_executing
+  - intent: { name: proceed, slots: {} }
+    expect_state: adr_awaiting_reply
+  - intent: { name: accept, slots: {} }
+    expect_state: design_executing
+  - intent: { name: proceed, slots: {} }
+    expect_state: design_awaiting_reply
+  - intent: { name: accept, slots: {} }
+    expect_state: decomposition_executing
+  - intent: { name: proceed, slots: {} }
+    expect_state: decomposition_awaiting_reply
+  - intent: { name: accept, slots: {} }
+    expect_state: feature_executing
+    expect_world:
+      feature_index: 0
+      feature_count: 1
+  - intent: { name: proceed, slots: {} }
+    expect_state: feature_awaiting_reply
+  # feature_index+1 == feature_count → accept → code_executing.
+  - intent: { name: accept, slots: {} }
+    expect_state: code_executing
+  - intent: { name: proceed, slots: {} }
+    expect_state: code_awaiting_reply
+  # @exit:code_ready — synthesised __exit__code_ready terminal in standalone load.
+  - intent: { name: accept, slots: {} }
+    expect_state: __exit__code_ready
+    expect_world:
+      status:    "shipped"
+      pr_title:  "PRD-004: Cypilot autonomous handoff"
+      pr_body:   "Implements the cypilot waterfall handoff per PRD-004."
+
+expect_terminal: true
+expect_no_errors: true

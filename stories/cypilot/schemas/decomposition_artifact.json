@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title":   "decomposition_artifact",
+  "description": "Output of iface.artifact.decompose (cpt plan --task <PRD>). Phase plan written under .plans/<slug>/phase-NN-*.md; phase_count drives how many times the feature room is walked.",
+  "type":    "object",
+  "required": ["plan_path", "phase_count"],
+  "properties": {
+    "id":               { "type": "string" },
+    "kind":             { "type": "string", "enum": ["decomposition"] },
+    "plan_path":        { "type": "string" },
+    "phase_count":      { "type": "integer", "minimum": 0 },
+    "summary_title":    { "type": "string" },
+    "summary_markdown": { "type": "string" }
+  },
+  "additionalProperties": true
+}

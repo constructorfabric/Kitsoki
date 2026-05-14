@@ -1,0 +1,120 @@
+# adr — ADR draft + validate.
+#
+# Architecture Decision Record.  parent_id is the validated PRD's id; the
+# room is otherwise structurally identical to prd.yaml.  Proposal §3
+# sketches ADR and DESIGN as parallel rooms after PRD; v1 serialises them
+# for simplicity (the runtime accepts the same shape either way).
+
+states:
+
+  adr_executing:
+    description: "Producing the ADR via cpt generate."
+    view: |
+      Drafting ADR for PRD {{ world.prd_artifact.id ?? "(unknown)" }}
+        feature_slug: {{ world.feature_slug }}
+
+      ADR id:       {{ world.adr_artifact.id ?? "(pending)" }}
+      Validate ok:  {{ world.validate_ok }}
+
+      Type `proceed`, `refine`, or `quit`.
+    relevant_world: [prd_artifact, feature_slug, adr_artifact, validate_ok, validate_report, cycle]
+    on_enter:
+      - invoke: iface.artifact.create
+        with:
+          kind:      "adr"
+          title:     "ADR for {{ world.ticket_title }}"
+          slug:      "{{ world.feature_slug }}"
+          parent_id: "{{ world.prd_artifact.id }}"
+          workdir:   "{{ world.workdir }}"
+        bind:
+          adr_artifact: artifact
+        on_error: prd_awaiting_reply
+      - invoke: iface.artifact.validate
+        with:
+          id:      "{{ world.adr_artifact.id }}"
+          mode:    "consistency"
+          workdir: "{{ world.workdir }}"
+        bind:
+          validate_ok:     ok
+          validate_report: report
+    on:
+      proceed:
+        - target: adr_awaiting_reply
+      refine:
+        - target: adr_executing
+          effects:
+            - set:
+                refine_feedback: "{{ slots.feedback }}"
+                cycle:           "{{ world.cycle + 1 }}"
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .
+
+  adr_awaiting_reply:
+    description: "ADR posted; awaiting validate verdict."
+    view: |
+      ADR checkpoint — {{ world.ticket_id }}
+
+      ADR: {{ world.adr_artifact.summary_title ?? world.adr_artifact.id ?? "(unknown)" }}
+      Validate ok: {{ world.validate_ok }}
+      Report excerpt:
+      {{ world.validate_report ?? "(no report)" }}
+
+      Verdict slot: {{ world.llm_verdict.verdict ?? "(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence ?? 0 }})
+      Reason:       {{ world.llm_verdict.reason ?? "" }}
+
+      Reply: accept | refine [feedback=...] | quit
+    relevant_world: [judge_mode, ticket_id, adr_artifact, validate_ok, validate_report, llm_verdict, cycle]
+    on_enter:
+      - invoke: iface.transport.post
+        with:
+          thread:   "{{ world.thread }}"
+          title:    "ADR artifact: {{ world.ticket_id }}"
+          body:     "{{ world.adr_artifact.summary_markdown ?? world.validate_report }}"
+          phase_id: "adr_{{ world.ticket_id }}_{{ world.cycle }}"
+      - invoke: host.inbox.add
+        with:
+          kind:   checkpoint
+          title:  "ADR artifact: {{ world.ticket_id }}"
+          thread: "{{ world.thread }}"
+          state:  adr_awaiting_reply
+          body:   "{{ world.adr_artifact.summary_markdown ?? world.validate_report }}"
+      - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
+        invoke: host.oracle.ask_with_mcp
+        with:
+          prompt: prompts/judge_adr.md
+          schema: schemas/judge_verdict.json
+          args:
+            ticket_id:       "{{ world.ticket_id }}"
+            artifact_id:     "{{ world.adr_artifact.id }}"
+            validate_ok:     "{{ world.validate_ok }}"
+            validate_report: "{{ world.validate_report }}"
+        bind:
+          llm_verdict: submitted
+      - when: |
+          world.judge_mode != 'human' &&
+          world.llm_verdict.confidence >= world.judge_confidence_threshold &&
+          world.llm_verdict.verdict != 'uncertain' &&
+          world.llm_verdict.intent != 'uncertain'
+        emit_intent: "{{ world.llm_verdict.intent }}"
+        slots:
+          feedback: "{{ world.llm_verdict.reason }}"
+    on:
+      accept:
+        - target: design_executing
+          effects:
+            - set:
+                last_reply_author: "{{ slots.author ?? 'human' }}"
+                refine_feedback:   ""
+                cycle:             0
+      refine:
+        - target: adr_executing
+          effects:
+            - set:
+                refine_feedback: "{{ slots.feedback ?? world.llm_verdict.reason }}"
+                cycle:           "{{ world.cycle + 1 }}"
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .

@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title":   "design_artifact",
+  "description": "Design doc. Produced by design_executing via iface.artifact.create (cpt generate --kind design), parent_id is the validated PRD's id.",
+  "type":    "object",
+  "required": ["id", "kind", "summary_title", "summary_markdown"],
+  "properties": {
+    "id":               { "type": "string", "minLength": 2 },
+    "kind":             { "type": "string", "enum": ["design"] },
+    "path":             { "type": "string" },
+    "summary_title":    { "type": "string", "minLength": 4 },
+    "summary_markdown": { "type": "string", "minLength": 40 },
+    "title":            { "type": "string" },
+    "slug":             { "type": "string" },
+    "parent_id":        { "type": "string" }
+  },
+  "additionalProperties": true
+}

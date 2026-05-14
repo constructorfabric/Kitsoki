@@ -1,0 +1,129 @@
+# code — per-feature implementation pass.  Produces the `code_artifact`,
+# which carries pr_title / pr_body fields for the pr-refinement handoff.
+#
+# Per proposal §3 the code room is one room per feature; in v1 we run it
+# once at the end of the feature chain (the LLM agent's actual code-write
+# work happens via iface.artifact.create + host.run rather than per-phase).
+# That's a simplification — v2 may parallelise.
+
+states:
+
+  code_executing:
+    description: "Generating code for {{ world.feature_slug }}."
+    view: |
+      Implementing {{ world.ticket_id }} — {{ world.ticket_title }}
+        feature_slug: {{ world.feature_slug }}
+        workdir:      {{ world.workdir }}
+
+      Code artifact: {{ world.code_artifact.summary_title ?? "(pending)" }}
+      Tests passed:  {{ world.code_artifact.tests_passed ?? 0 }}
+      Tests failed:  {{ world.code_artifact.tests_failed ?? 0 }}
+
+      Type `proceed`, `refine`, or `quit`.
+    relevant_world: [ticket_id, ticket_title, feature_slug, workdir, code_artifact, cycle]
+    on_enter:
+      - invoke: iface.artifact.create
+        with:
+          kind:      "code"
+          title:     "Code for {{ world.ticket_title }}"
+          slug:      "{{ world.feature_slug }}"
+          parent_id: "{{ world.feature_artifact.id }}"
+          workdir:   "{{ world.workdir }}"
+        bind:
+          code_artifact: artifact
+        on_error: feature_awaiting_reply
+      # Run a local test pass against the generated patch.  Non-zero exit
+      # is NOT fatal — the judge prompt at the checkpoint reads
+      # world.code_artifact.tests_failed and decides whether to refine.
+      - invoke: iface.ci.run_tests
+        with:
+          workdir: "{{ world.workdir }}"
+          target:  "default"
+        bind:
+          validate_ok:     ok
+          validate_report: log
+    on:
+      proceed:
+        - target: code_awaiting_reply
+      refine:
+        - target: code_executing
+          effects:
+            - set:
+                refine_feedback: "{{ slots.feedback }}"
+                cycle:           "{{ world.cycle + 1 }}"
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .
+
+  code_awaiting_reply:
+    description: "Code artifact posted; awaiting final verdict."
+    view: |
+      Code checkpoint — {{ world.ticket_id }}
+
+      {{ world.code_artifact.summary_markdown ?? "(artifact pending)" }}
+
+      Tests: {{ world.code_artifact.tests_passed ?? 0 }} passed / {{ world.code_artifact.tests_failed ?? 0 }} failed
+
+      Verdict slot: {{ world.llm_verdict.verdict ?? "(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence ?? 0 }})
+      Reason:       {{ world.llm_verdict.reason ?? "" }}
+
+      Reply: accept (hand off to pr-refinement) | refine | quit
+    relevant_world: [judge_mode, ticket_id, code_artifact, validate_ok, validate_report, llm_verdict, cycle]
+    on_enter:
+      - invoke: iface.transport.post
+        with:
+          thread:   "{{ world.thread }}"
+          title:    "Code ready: {{ world.ticket_id }}"
+          body:     "{{ world.code_artifact.summary_markdown }}"
+          phase_id: "code_{{ world.ticket_id }}_{{ world.cycle }}"
+      - invoke: host.inbox.add
+        with:
+          kind:   checkpoint
+          title:  "Code ready: {{ world.ticket_id }}"
+          thread: "{{ world.thread }}"
+          state:  code_awaiting_reply
+          body:   "{{ world.code_artifact.summary_markdown }}"
+      - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
+        invoke: host.oracle.ask_with_mcp
+        with:
+          prompt: prompts/judge_code.md
+          schema: schemas/judge_verdict.json
+          args:
+            ticket_id:       "{{ world.ticket_id }}"
+            artifact_id:     "{{ world.code_artifact.id }}"
+            artifact_title:  "{{ world.code_artifact.summary_title }}"
+            tests_failed:    "{{ world.code_artifact.tests_failed ?? 0 }}"
+            validate_report: "{{ world.validate_report }}"
+        bind:
+          llm_verdict: submitted
+      - when: |
+          world.judge_mode != 'human' &&
+          world.llm_verdict.confidence >= world.judge_confidence_threshold &&
+          world.llm_verdict.verdict != 'uncertain' &&
+          world.llm_verdict.intent != 'uncertain'
+        emit_intent: "{{ world.llm_verdict.intent }}"
+        slots:
+          feedback: "{{ world.llm_verdict.reason }}"
+    on:
+      accept:
+        # @exit:code_ready.requires: [code_artifact] — enforced at load.
+        # Project pr_title / pr_body from the code artifact for the
+        # parent story's pr-refinement handoff.
+        - target: "@exit:code_ready"
+          effects:
+            - set:
+                status:       "shipped"
+                code_artifact: "{{ world.code_artifact }}"
+                pr_title:     "{{ world.code_artifact.pr_title }}"
+                pr_body:      "{{ world.code_artifact.pr_body }}"
+      refine:
+        - target: code_executing
+          effects:
+            - set:
+                refine_feedback: "{{ slots.feedback ?? world.llm_verdict.reason }}"
+                cycle:           "{{ world.cycle + 1 }}"
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .

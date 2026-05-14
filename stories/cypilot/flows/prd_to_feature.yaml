@@ -1,0 +1,108 @@
+# prd_to_feature — full chain: PRD → ADR → DESIGN → DECOMP → FEATURE → CODE.
+#
+# Same llm_then_human + confident-verdict pattern as happy_prd_only,
+# but exercises the full pipeline.  feature_count is 1 so the
+# feature_executing → feature_awaiting_reply → accept arc cleanly
+# advances into code_executing (not into a second feature iteration).
+#
+# The final state at code_awaiting_reply is reached but NOT exited (a
+# separate flow `handoff_to_pr` exercises the @exit:code_ready
+# transition).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  ticket_id:    "PRD-002"
+  ticket_title: "Provider-neutral build pipeline"
+  feature_slug: "build-pipeline"
+  thread:       "PRD-002"
+  workdir:      ".worktrees/prd-002"
+  judge_mode:   "llm_then_human"
+  judge_confidence_threshold: 0.8
+
+host_handlers:
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+  host.inbox.add:
+    data: { ok: true, id: "ib-1" }
+  # phase_count: 1 → feature room runs once before transitioning to code.
+  host.cypilot_artifacts:
+    data:
+      ok: true
+      id: "art-build-pipeline"
+      path: "cypilot/artifacts/build-pipeline.md"
+      report: "PASS"
+      findings: []
+      plan_path: ".plans/build-pipeline"
+      phase_count: 1
+      # The `artifact:` nested object is what rooms bind into
+      # world.<kind>_artifact.  Same stub feeds every artifact op; each
+      # room reads only the fields it needs.
+      artifact:
+        id:               "art-build-pipeline"
+        path:             "cypilot/artifacts/build-pipeline.md"
+        kind:             "feature"
+        summary_title:    "Stub artifact"
+        summary_markdown: "Stub body for cypilot waterfall test."
+        plan_path:        ".plans/build-pipeline"
+        phase_count:      1
+        # code artifact fields — when code_executing binds
+        # code_artifact from this stub, pr_title/pr_body must be
+        # present so @exit:code_ready can project them.
+        pr_title:         "PRD-002: Provider-neutral build pipeline"
+        pr_body:          "Implements the build-pipeline feature per PRD-002."
+        tests_passed:     12
+        tests_failed:     0
+        files_changed:    ["internal/build/pipeline.go"]
+  # The local CI binding for code_executing's iface.ci.run_tests step.
+  host.local:
+    data:
+      ok: true
+      log: "PASS: 12 tests"
+      passed: 12
+      failed: 0
+  host.oracle.ask_with_mcp:
+    data:
+      ok: true
+      submitted:
+        verdict:    "pass"
+        intent:     "accept"
+        reason:     "Artifact validates clean."
+        confidence: 0.95
+
+turns:
+  # idle → prd_executing.
+  - intent: { name: begin, slots: {} }
+    expect_state: prd_executing
+
+  # proceed: prd_executing → prd_awaiting_reply → accept → adr_executing.
+  - intent: { name: proceed, slots: {} }
+    expect_state: adr_executing
+
+  # adr_executing → adr_awaiting_reply → accept → design_executing.
+  - intent: { name: proceed, slots: {} }
+    expect_state: design_executing
+
+  # design → decomposition.
+  - intent: { name: proceed, slots: {} }
+    expect_state: decomposition_executing
+
+  # decomposition → feature (feature_index reset to 0).
+  - intent: { name: proceed, slots: {} }
+    expect_state: feature_executing
+
+  # feature_executing → feature_awaiting_reply → accept → code_executing
+  # (because feature_index+1 == feature_count == 1).
+  - intent: { name: proceed, slots: {} }
+    expect_state: code_executing
+
+  # code_executing → code_awaiting_reply → accept (confident LLM) →
+  # @exit:code_ready.  Standalone load synthesises __exit__code_ready.
+  - intent: { name: proceed, slots: {} }
+    expect_state: __exit__code_ready
+    expect_world:
+      status: "shipped"
+
+expect_terminal: true
+expect_no_errors: true
