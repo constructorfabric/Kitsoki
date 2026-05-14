@@ -674,8 +674,9 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 	}
 
 	// Post-bind emit_intent dispatch (see settlePostBindEmits doc).
+	var harnessErrMsg string
 	if hostRedirect == "" && result.ValidationError == nil {
-		o.settlePostBindEmits(ctx, sid, &result, tl)
+		harnessErrMsg = o.settlePostBindEmits(ctx, sid, &result, tl, 0)
 	}
 
 	successEvents := append(prefix, result.Events...)
@@ -742,8 +743,26 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 		Events:         successEvents,
 		AllowedIntents: newAllowedNames,
 		TurnNumber:     turnNum,
+		HarnessError:   harnessErrMsg,
 	}, nil
 }
+
+// OrchestratorPostBindMaxDepth caps how deeply settlePostBindEmits may
+// recurse within a single turn.  Each iteration of the outer loop —
+// on_enter → host call → bind → emit_intent → target's on_enter →
+// host call → bind → emit_intent → … — re-enters settlePostBindEmits
+// against the freshly-bound world, which RESETS the machine-side
+// EmitIntentMaxDepth=8 counter (that cap only protects ONE
+// dispatchEmittedIntents chain).  Without this orchestrator-side cap
+// a YAML bug forming a cycle of "host call binds key, key gates
+// emit_intent, emit lands on state whose on_enter has another host
+// call that binds the same key" would loop until the turn timed out.
+//
+// 4 is a tight budget that still permits legitimate composition: the
+// machine cap of 8 multiplied by 4 outer iterations gives a total of
+// 32 emits per turn before we bail out — far above the deepest known
+// real story (the bugfix room's 2-step LLM-judge chain uses 1).
+const OrchestratorPostBindMaxDepth = 4
 
 // settlePostBindEmits re-evaluates emit_intent: effects on the
 // just-entered state's on_enter chain against the post-bind world,
@@ -759,16 +778,60 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 // state's on_enter may invoke); we dispatch those nested calls
 // synchronously so the whole chain settles in the same externally-
 // initiated turn.
-func (o *Orchestrator) settlePostBindEmits(ctx context.Context, sid app.SessionID, res *machine.TurnResult, tl *trace.TurnLogger) {
+//
+// `depth` is the recursion count of THIS outer settle pass.  When it
+// exceeds OrchestratorPostBindMaxDepth, the function appends a
+// HarnessError event to res.Events and returns the cap message —
+// the caller surfaces this in TurnOutcome.HarnessError so the
+// failure is loud rather than silently logged.
+//
+// When machine.DispatchPostBindEmits itself returns an error (e.g.
+// a `when:` guard that fails to evaluate against the post-bind
+// world), the function emits a HarnessError event for the journal
+// and returns the error message.  The turn continues — `res` is
+// left at the pre-emit resting place — so the session lands on a
+// known state instead of in a half-bound limbo. (P1-A / P1-B from
+// the dev-story-bugfix-unify Opus review.)
+func (o *Orchestrator) settlePostBindEmits(ctx context.Context, sid app.SessionID, res *machine.TurnResult, tl *trace.TurnLogger, depth int) string {
+	if depth > OrchestratorPostBindMaxDepth {
+		msg := fmt.Sprintf("settlePostBindEmits: orchestrator recursion depth %d exceeded cap %d (likely YAML cycle: host-call binds key that gates emit_intent that lands on state with another host-call binding the same key)", depth, OrchestratorPostBindMaxDepth)
+		if tl != nil {
+			tl.Debug(ctx, trace.EvHarnessError,
+				slog.String("phase", "settle_post_bind_emits"),
+				slog.Int("depth", depth),
+				slog.Int("max_depth", OrchestratorPostBindMaxDepth),
+				slog.String("error", msg),
+			)
+		}
+		res.Events = append(res.Events, newOrchestratorEvent(store.HarnessError, map[string]any{
+			"phase":     "settle_post_bind_emits",
+			"depth":     depth,
+			"max_depth": OrchestratorPostBindMaxDepth,
+			"error":     msg,
+		}, 0))
+		return msg
+	}
+
 	emState, emWorld, emHostCalls, emSay, emEvents, emErr := o.machine.DispatchPostBindEmits(ctx, res.NewState, res.World)
 	if emErr != nil {
+		msg := emErr.Error()
 		if tl != nil {
-			tl.Debug(ctx, trace.EvHarnessError, slog.String("emit_intent_dispatch_error", emErr.Error()))
+			tl.Debug(ctx, trace.EvHarnessError,
+				slog.String("phase", "dispatch_post_bind_emits"),
+				slog.String("error", msg),
+			)
 		}
-		return
+		// Surface in the event log so the journal captures the why.
+		// Continue: res still carries the pre-emit state, which is the
+		// known resting place rather than half-bound limbo.
+		res.Events = append(res.Events, newOrchestratorEvent(store.HarnessError, map[string]any{
+			"phase": "dispatch_post_bind_emits",
+			"error": msg,
+		}, 0))
+		return msg
 	}
 	if len(emEvents) == 0 {
-		return
+		return ""
 	}
 	res.NewState = emState
 	res.World = emWorld
@@ -787,9 +850,22 @@ func (o *Orchestrator) settlePostBindEmits(ctx context.Context, sid app.SessionI
 		}
 		// After nested host dispatch the new state may itself have an
 		// emit_intent waiting on a freshly-bound world key — recurse
-		// once. The machine's EmitIntentMaxDepth still caps each
-		// individual dispatch chain.
-		o.settlePostBindEmits(ctx, sid, res, tl)
+		// once, bumping depth.  The machine's EmitIntentMaxDepth still
+		// caps each individual dispatch chain; this cap protects the
+		// orchestrator-side loop that resets the inner counter.
+		if nestedErr := o.settlePostBindEmits(ctx, sid, res, tl, depth+1); nestedErr != "" {
+			// Refresh the view from whatever state we landed at before
+			// returning the nested error so the caller still has
+			// something to render.
+			if v, rErr := o.machine.RenderState(res.NewState, res.World); rErr == nil && v != "" {
+				if emSay != "" {
+					res.View = emSay + "\n\n" + v
+				} else {
+					res.View = v
+				}
+			}
+			return nestedErr
+		}
 	}
 	// Refresh the view so it reflects the final settled state.
 	if v, rErr := o.machine.RenderState(res.NewState, res.World); rErr == nil && v != "" {
@@ -799,6 +875,7 @@ func (o *Orchestrator) settlePostBindEmits(ctx context.Context, sid app.SessionI
 			res.View = v
 		}
 	}
+	return ""
 }
 
 // dispatchHostCalls invokes each HostInvocation, applies bindings to world,
@@ -1488,8 +1565,9 @@ func (o *Orchestrator) SubmitDirect(ctx context.Context, sid app.SessionID, inte
 	}
 
 	// Post-bind emit_intent dispatch — see settlePostBindEmits doc.
+	var harnessErrMsg string
 	if hostRedirect == "" && result.ValidationError == nil {
-		o.settlePostBindEmits(ctx, sid, &result, tl)
+		harnessErrMsg = o.settlePostBindEmits(ctx, sid, &result, tl, 0)
 	}
 
 	successEvents := append([]store.Event{startEvent}, result.Events...)
@@ -1550,6 +1628,7 @@ func (o *Orchestrator) SubmitDirect(ctx context.Context, sid app.SessionID, inte
 		Events:         successEvents,
 		AllowedIntents: newAllowedNames,
 		TurnNumber:     turnNum,
+		HarnessError:   harnessErrMsg,
 	}, nil
 }
 

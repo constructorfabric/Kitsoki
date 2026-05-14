@@ -343,8 +343,9 @@ func (o *Orchestrator) RunIntent(ctx context.Context, sid app.SessionID, intentN
 	}
 
 	// Post-bind emit_intent dispatch — see settlePostBindEmits doc.
+	var harnessErrMsg string
 	if hostRedirect == "" && result.ValidationError == nil {
-		o.settlePostBindEmits(ctx, sid, &result, tl)
+		harnessErrMsg = o.settlePostBindEmits(ctx, sid, &result, tl, 0)
 	}
 
 	successEvents := append([]store.Event{startEvent}, result.Events...)
@@ -400,5 +401,6 @@ func (o *Orchestrator) RunIntent(ctx context.Context, sid app.SessionID, intentN
 		Events:         successEvents,
 		AllowedIntents: newAllowed,
 		TurnNumber:     turnNum,
+		HarnessError:   harnessErrMsg,
 	}, nil
 }

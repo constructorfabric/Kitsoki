@@ -74,6 +74,15 @@ const (
 	// TimeoutFired is annotation-only so traces can distinguish a timeout
 	// from a user-driven transition.
 	TimeoutFired EventKind = "TimeoutFired"
+	// HarnessError is appended when an orchestrator-side dispatch loop
+	// fails loudly (e.g. settlePostBindEmits hit its recursion cap, or
+	// machine.DispatchPostBindEmits returned an error).  Carries
+	// payload{"phase": <string>, "error": <string>} so a journal reader
+	// can see why the turn settled where it did.  Replay treats it as a
+	// no-op — the accompanying TransitionApplied events (if any) are
+	// authoritative for state; HarnessError exists to surface the
+	// post-bind half-bound limbo case to operators.
+	HarnessError EventKind = "HarnessError"
 )
 
 // Event is one row in the append-only event log (§8 DDL).

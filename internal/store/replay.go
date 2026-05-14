@@ -127,6 +127,14 @@ func BuildJourney(def *app.AppDef, initialState app.StatePath, initialWorld worl
 			// Annotation-only event.  The accompanying TransitionApplied
 			// already updates state; nothing to do here.
 
+		case HarnessError:
+			// Annotation-only event recording an orchestrator-side
+			// dispatch-loop failure (e.g. settlePostBindEmits depth cap,
+			// DispatchPostBindEmits eval error).  Replay state is
+			// authoritative via the preceding TransitionApplied events;
+			// HarnessError surfaces the why-the-state-stopped story for
+			// operators reading the journal.
+
 		default:
 			// Forward-compatible: silently ignore unknown event kinds.
 		}

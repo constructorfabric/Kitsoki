@@ -80,6 +80,15 @@ type TurnOutcome struct {
 	PendingSlots map[string]any
 	// TurnNumber is the turn that just completed.
 	TurnNumber app.TurnNumber
+	// HarnessError is the (optional) human-readable description of an
+	// orchestrator-side dispatch loop failure that fired during this turn
+	// — e.g. settlePostBindEmits hit its recursion cap, or
+	// machine.DispatchPostBindEmits returned an error against a malformed
+	// guard.  When set, the corresponding store.HarnessError event is
+	// also recorded in Events.  The turn is NOT aborted; state settles
+	// at the pre-emit resting place rather than vanishing into a
+	// half-bound limbo (P1-A/B in the dev-story-bugfix-unify code review).
+	HarnessError string
 }
 
 // OneShotInput configures a stateless one-shot turn (Orchestrator.OneShot).
