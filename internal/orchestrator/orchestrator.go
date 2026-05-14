@@ -23,6 +23,7 @@ import (
 	"kitsoki/internal/expr"
 	"kitsoki/internal/harness"
 	"kitsoki/internal/host"
+	"kitsoki/internal/inbox"
 	"kitsoki/internal/intent"
 	"kitsoki/internal/jobs"
 	"kitsoki/internal/journal"
@@ -905,6 +906,14 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 	}
 	if o.jobStore != nil {
 		ctx = host.WithClarificationAnswerer(ctx, o.jobStore)
+		// Wire host.inbox.add to JobStore.InsertNotification.  The
+		// adapter is per-(orchestrator, session) and is rebuilt for
+		// each dispatch — cheap (two pointer copies) and avoids
+		// holding a stale session ID across long-lived orchestrator
+		// references.  Without this seam every host.inbox.add call
+		// returns persisted:false and the notification is dropped.
+		// (P1-C from the dev-story-bugfix-unify Opus review.)
+		ctx = host.WithInboxAdder(ctx, inbox.NewJobStoreAdder(o.jobStore, sid))
 	}
 	if o.chatStore != nil {
 		ctx = host.WithChatStore(ctx, o.chatStore)
