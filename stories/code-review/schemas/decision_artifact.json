@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title":   "decision_artifact",
+  "description": "Final review decision (approve / request_changes). Produced at decide_executing; pinned on the @exit:reviewed arc.",
+  "type":    "object",
+  "required": ["summary_title", "summary_markdown", "decision"],
+  "properties": {
+    "summary_title":    { "type": "string", "minLength": 4 },
+    "summary_markdown": { "type": "string", "minLength": 10 },
+    "decision":         { "type": "string", "enum": ["approve", "request_changes"] },
+    "rationale":        { "type": "string" },
+    "open_questions": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "additionalProperties": true
+}

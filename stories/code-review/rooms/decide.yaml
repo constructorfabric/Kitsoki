@@ -1,0 +1,178 @@
+# decide — record the binary review outcome (approve | request_changes).
+# Two intents fire on `decide_executing`:
+#
+#   approve         → post an approval via iface.vcs.pr_comment with
+#                     approve: true → @exit:reviewed.
+#   request_changes → post a "changes requested" via iface.vcs.pr_comment
+#                     with request_changes: true → @exit:reviewed.
+#
+# Both produce a `decision_artifact` (schemas/decision_artifact.json)
+# that the @exit:reviewed.requires: clause pins.
+
+states:
+
+  decide_executing:
+    description: "Recording the review decision."
+    view: |
+      Decision for PR {{ world.pr_id }} — {{ world.pr_title }}
+
+      Current decision: {{ world.decision ?? "(pending)" }}
+      Reviewer comment posted: {{ world.draft_comment ?? "" }}
+
+      Type `approve`, `request_changes`, or `quit`.
+    relevant_world: [pr_id, pr_title, decision, draft_comment]
+    on_enter:
+      # Produce the structured decision artifact; the verdict is
+      # informational (the actual decide intents below carry the
+      # approve / request_changes flag to iface.vcs.pr_comment).
+      - invoke: host.oracle.ask_with_mcp
+        with:
+          prompt: prompts/judge_decide.md
+          schema: schemas/decision_artifact.json
+          args:
+            pr_id:          "{{ world.pr_id }}"
+            review_summary: "{{ world.review_summary_artifact.summary_markdown }}"
+            draft_comment:  "{{ world.draft_comment }}"
+        bind:
+          decision_artifact: submitted
+        on_error: review_pr_executing
+    on:
+      proceed:
+        - target: decide_awaiting_reply
+      approve:
+        - target: decide_awaiting_reply
+          effects:
+            - set:
+                decision: "approve"
+      request_changes:
+        - target: decide_awaiting_reply
+          effects:
+            - set:
+                decision: "request_changes"
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .
+
+  # Canonical §6 checkpoint shape. The accept arc fires the final
+  # iface.vcs.pr_comment (with approve/request_changes flags) and
+  # transitions to @exit:reviewed.
+  decide_awaiting_reply:
+    description: "Final decision posted; awaiting confirmation."
+    view: |
+      Final-decision checkpoint — PR {{ world.pr_id }}
+
+      Decision: {{ world.decision }}
+
+      {{ world.decision_artifact.summary_markdown ?? "(artifact pending)" }}
+
+      Verdict slot: {{ world.llm_verdict.verdict ?? "(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence ?? 0 }})
+      Reason:       {{ world.llm_verdict.reason ?? "" }}
+
+      Reply: approve | request_changes | refine | quit
+    relevant_world: [judge_mode, pr_id, decision, decision_artifact, llm_verdict]
+    on_enter:
+      - invoke: iface.transport.post
+        with:
+          thread:    "{{ world.thread }}"
+          title:     "Decision: PR {{ world.pr_id }}"
+          body:      "{{ world.decision_artifact.summary_markdown }}"
+          phase_id:  "decide_{{ world.pr_id }}"
+      - invoke: host.inbox.add
+        with:
+          kind:    checkpoint
+          title:   "Decision: PR {{ world.pr_id }}"
+          thread:  "{{ world.thread }}"
+          state:   decide_awaiting_reply
+          body:    "{{ world.decision_artifact.summary_markdown }}"
+      - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
+        invoke: host.oracle.ask_with_mcp
+        with:
+          prompt: prompts/judge_decide.md
+          schema: schemas/judge_verdict.json
+          args:
+            pr_id:          "{{ world.pr_id }}"
+            artifact_title: "{{ world.decision_artifact.summary_title }}"
+            artifact_body:  "{{ world.decision_artifact.summary_markdown }}"
+        bind:
+          llm_verdict: submitted
+      - when: |
+          world.judge_mode != 'human' &&
+          world.llm_verdict.confidence >= world.judge_confidence_threshold &&
+          world.llm_verdict.verdict != 'uncertain' &&
+          world.llm_verdict.intent != 'uncertain'
+        emit_intent: "{{ world.llm_verdict.intent }}"
+        slots:
+          feedback: "{{ world.llm_verdict.reason }}"
+    on:
+      approve:
+        - target: "@exit:reviewed"
+          effects:
+            # Post final approve comment with approve: true flag.
+            - invoke: iface.vcs.pr_comment
+              with:
+                pr_id:    "{{ world.pr_id }}"
+                body:     "Approved."
+                approve:  true
+                request_changes: false
+            - set:
+                status:            "reviewed"
+                decision:          "approve"
+                # Re-pin decision_artifact on the @exit:reviewed arc
+                # so the static `requires: [decision_artifact]` check
+                # sees the key on this transition.
+                decision_artifact: "{{ world.decision_artifact }}"
+      request_changes:
+        - target: "@exit:reviewed"
+          effects:
+            - invoke: iface.vcs.pr_comment
+              with:
+                pr_id:           "{{ world.pr_id }}"
+                body:            "Changes requested."
+                approve:         false
+                request_changes: true
+            - set:
+                status:            "reviewed"
+                decision:          "request_changes"
+                decision_artifact: "{{ world.decision_artifact }}"
+      # accept routes the LLM-emitted intent through to approve /
+      # request_changes so the auto-fire path lands cleanly. The
+      # decision is read from the `decision_artifact.decision` field
+      # (the LLM populated it during decide_executing).
+      accept:
+        - when: "world.decision == 'request_changes' || world.decision_artifact.decision == 'request_changes'"
+          target: "@exit:reviewed"
+          effects:
+            - invoke: iface.vcs.pr_comment
+              with:
+                pr_id:           "{{ world.pr_id }}"
+                body:            "Changes requested (via LLM judge auto-fire)."
+                approve:         false
+                request_changes: true
+            - set:
+                status:            "reviewed"
+                decision:          "request_changes"
+                decision_artifact: "{{ world.decision_artifact }}"
+        - default: true
+          target: "@exit:reviewed"
+          effects:
+            - invoke: iface.vcs.pr_comment
+              with:
+                pr_id:           "{{ world.pr_id }}"
+                body:            "Approved (via LLM judge auto-fire)."
+                approve:         true
+                request_changes: false
+            - set:
+                status:            "reviewed"
+                decision:          "approve"
+                decision_artifact: "{{ world.decision_artifact }}"
+      refine:
+        - target: comment_executing
+          effects:
+            - set:
+                refine_feedback: "{{ slots.feedback ?? world.llm_verdict.reason }}"
+                cycle:           "{{ world.cycle + 1 }}"
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .

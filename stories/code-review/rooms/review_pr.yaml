@@ -1,0 +1,136 @@
+# review_pr — fetch the PR diff and review-comment state, then run
+# the LLM-reviewer prompt to produce a `review_summary_artifact`
+# (schemas/review_summary_artifact.json) capturing what the reviewer
+# read: high-level diff impressions, concerns, nits. Checkpoint gates
+# whether to advance to drafting a comment.
+
+states:
+
+  review_pr_executing:
+    description: "Reviewing PR diff via the oracle."
+    view: |
+      Reviewing PR {{ world.pr_id }} — {{ world.pr_title }} (author: {{ world.pr_author }})
+
+      Summary:    {{ world.review_summary_artifact.summary_title ?? "(pending)" }}
+      Confidence: {{ world.review_summary_artifact.confidence ?? "(pending)" }}
+
+      Type `proceed` to deliver the review summary,
+      `refine` to redo, or `quit` to abandon.
+    relevant_world: [pr_id, pr_title, pr_author, pr_diff, pr_comments, review_summary_artifact, cycle]
+    on_enter:
+      # Fetch the diff. iface.vcs.diff with pr_id (the host handler
+      # accepts pr_id in this story's iface contract; see app.yaml's
+      # vcs.diff op shape).
+      - invoke: iface.vcs.diff
+        with:
+          workdir: "{{ world.workdir ?? '' }}"
+          pr_id:   "{{ world.pr_id }}"
+        bind:
+          pr_diff: diff
+        on_error: idle
+      # Fetch existing comments / state.
+      - invoke: iface.vcs.pr_status
+        with:
+          pr_id: "{{ world.pr_id }}"
+        bind:
+          pr_comments: comments
+        on_error: idle
+      # LLM reviewer pass.
+      - invoke: host.oracle.ask_with_mcp
+        with:
+          prompt: prompts/review_pr_executing.md
+          schema: schemas/review_summary_artifact.json
+          args:
+            pr_id:           "{{ world.pr_id }}"
+            pr_title:        "{{ world.pr_title }}"
+            pr_author:       "{{ world.pr_author }}"
+            pr_diff:         "{{ world.pr_diff }}"
+            pr_comments:     "{{ world.pr_comments }}"
+            refine_feedback: "{{ world.refine_feedback }}"
+            cycle:           "{{ world.cycle }}"
+        bind:
+          review_summary_artifact: submitted
+        on_error: idle
+    on:
+      proceed:
+        - target: review_pr_awaiting_reply
+      refine:
+        - target: review_pr_executing
+          effects:
+            - set:
+                refine_feedback: "{{ slots.feedback }}"
+                cycle:           "{{ world.cycle + 1 }}"
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .
+
+  # Canonical §6 checkpoint shape.
+  review_pr_awaiting_reply:
+    description: "Review summary posted; awaiting verdict."
+    view: |
+      Review-summary checkpoint — PR {{ world.pr_id }}
+
+      {{ world.review_summary_artifact.summary_markdown ?? "(artifact pending)" }}
+
+      Verdict slot: {{ world.llm_verdict.verdict ?? "(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence ?? 0 }})
+      Reason:       {{ world.llm_verdict.reason ?? "" }}
+
+      Reply: accept | refine [feedback=...] | dismiss | quit
+    relevant_world: [judge_mode, pr_id, review_summary_artifact, llm_verdict, cycle]
+    on_enter:
+      - invoke: iface.transport.post
+        with:
+          thread:    "{{ world.thread }}"
+          title:     "Review summary: PR {{ world.pr_id }}"
+          body:      "{{ world.review_summary_artifact.summary_markdown }}"
+          phase_id:  "review_pr_{{ world.pr_id }}_{{ world.cycle }}"
+      - invoke: host.inbox.add
+        with:
+          kind:    checkpoint
+          title:   "Review summary: PR {{ world.pr_id }}"
+          thread:  "{{ world.thread }}"
+          state:   review_pr_awaiting_reply
+          body:    "{{ world.review_summary_artifact.summary_markdown }}"
+      - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
+        invoke: host.oracle.ask_with_mcp
+        with:
+          prompt: prompts/judge_review_pr.md
+          schema: schemas/judge_verdict.json
+          args:
+            pr_id:           "{{ world.pr_id }}"
+            artifact_title:  "{{ world.review_summary_artifact.summary_title }}"
+            artifact_body:   "{{ world.review_summary_artifact.summary_markdown }}"
+        bind:
+          llm_verdict: submitted
+      - when: |
+          world.judge_mode != 'human' &&
+          world.llm_verdict.confidence >= world.judge_confidence_threshold &&
+          world.llm_verdict.verdict != 'uncertain' &&
+          world.llm_verdict.intent != 'uncertain'
+        emit_intent: "{{ world.llm_verdict.intent }}"
+        slots:
+          feedback: "{{ world.llm_verdict.reason }}"
+    on:
+      accept:
+        - target: comment_executing
+          effects:
+            - set:
+                last_reply_author: "{{ slots.author ?? 'human' }}"
+                refine_feedback:   ""
+                cycle:             0
+      refine:
+        - target: review_pr_executing
+          effects:
+            - set:
+                refine_feedback: "{{ slots.feedback ?? world.llm_verdict.reason }}"
+                cycle:           "{{ world.cycle + 1 }}"
+      dismiss:
+        - target: "@exit:dismissed"
+          effects:
+            - set:
+                status: "dismissed"
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .

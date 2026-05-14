@@ -1,0 +1,69 @@
+# comment — draft and post the bulk of the review's commentary via
+# iface.vcs.pr_comment. The decision (approve / request changes) is
+# made in the next room (`decide`); `comment` is the prose-comment
+# step. No checkpoint inside the room — the operator delivers, then
+# moves to `decide` to record the binary decision.
+
+states:
+
+  comment_executing:
+    description: "Drafting the review comment."
+    view: |
+      Drafting comment for PR {{ world.pr_id }} — {{ world.pr_title }}
+
+      Draft:
+      {{ world.draft_comment ?? "(pending)" }}
+
+      Type `proceed` to post + advance to decide,
+      `refine` to redraft, or `quit` to abandon.
+    relevant_world: [pr_id, pr_title, draft_comment, review_summary_artifact, cycle, refine_feedback]
+    on_enter:
+      # LLM drafts the comment body. The draft itself is a free-form
+      # string (no schema); the LLM may take cues from
+      # review_summary_artifact.blockers / nits.
+      - invoke: host.oracle.ask_with_mcp
+        with:
+          prompt: prompts/comment_executing.md
+          args:
+            pr_id:           "{{ world.pr_id }}"
+            pr_title:        "{{ world.pr_title }}"
+            review_summary:  "{{ world.review_summary_artifact.summary_markdown }}"
+            refine_feedback: "{{ world.refine_feedback }}"
+            cycle:           "{{ world.cycle }}"
+        bind:
+          draft_comment: stdout
+        on_error: review_pr_executing
+      # Post the comment via the vcs iface (approve / request_changes
+      # are NOT signalled here — the comment is body-only; the next
+      # room's iface.vcs.pr_comment call carries the binary decision).
+      - invoke: iface.vcs.pr_comment
+        with:
+          pr_id: "{{ world.pr_id }}"
+          body:  "{{ world.draft_comment }}"
+        on_error: review_pr_executing
+      - invoke: iface.transport.post
+        with:
+          thread:    "{{ world.thread }}"
+          title:     "Comment posted: PR {{ world.pr_id }}"
+          body:      "{{ world.draft_comment }}"
+          phase_id:  "comment_{{ world.pr_id }}_{{ world.cycle }}"
+      - invoke: host.inbox.add
+        with:
+          kind:    info
+          title:   "Comment posted: PR {{ world.pr_id }}"
+          thread:  "{{ world.thread }}"
+          state:   comment_executing
+          body:    "{{ world.draft_comment }}"
+    on:
+      proceed:
+        - target: decide_executing
+      refine:
+        - target: comment_executing
+          effects:
+            - set:
+                refine_feedback: "{{ slots.feedback }}"
+                cycle:           "{{ world.cycle + 1 }}"
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .

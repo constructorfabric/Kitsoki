@@ -1,0 +1,88 @@
+# happy_human_approve — judge_mode=human, reviewer approves the PR
+# end to end. Walks idle → list_pending → review_pr → comment → decide
+# → @exit:reviewed with decision=approve.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  pr_id:        "PR-38"
+  pr_title:     "feat: billing-discounts"
+  pr_author:    "alice"
+  thread:       "PR-38"
+  judge_mode:   "human"
+  judge_confidence_threshold: 0.8
+
+host_handlers:
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+  host.inbox.add:
+    data: { ok: true, id: "ib-1" }
+  host.git:
+    data:
+      ok:       true
+      url:      "https://example/pr/38"
+      pr_id:    "PR-38"
+      state:    "open"
+      checks:   ""
+      comments: ""
+      diff:     "diff --git a/billing.go b/billing.go"
+  host.local_files.ticket:
+    data: { ok: true, tickets: "" }
+  host.oracle.ask_with_mcp:
+    data:
+      ok: true
+      stdout: "LGTM. One nit on the decimal precision."
+      submitted:
+        summary_title:    "LGTM with one nit"
+        summary_markdown: "Looks good. Nit on the decimal-precision in invoice.go line 45."
+        overall_impression: "lgtm"
+        nits:
+          - { file: "billing/invoice.go", line: 45, description: "Consider Decimal type" }
+        blockers:         []
+        confidence:       0.9
+        # decision artifact fields
+        decision:         "approve"
+        rationale:        "No blockers; nits are minor."
+        # judge verdict fields
+        verdict:    "pass"
+        intent:     "accept"
+        reason:     "Stub."
+
+turns:
+  # idle → list_pending. on_enter polls iface.vcs.pr_status.
+  - intent: { name: start, slots: {} }
+    expect_state: list_pending
+
+  # pr_id was seeded in initial_world, so `proceed` jumps straight
+  # to review_pr_executing.
+  - intent: { name: proceed, slots: {} }
+    expect_state: review_pr_executing
+
+  # proceed → review_pr_awaiting_reply.
+  - intent: { name: proceed, slots: {} }
+    expect_state: review_pr_awaiting_reply
+
+  # accept → comment_executing.
+  - intent: { name: accept, slots: {} }
+    expect_state: comment_executing
+
+  # proceed → decide_executing.
+  - intent: { name: proceed, slots: {} }
+    expect_state: decide_executing
+
+  # approve → decide_awaiting_reply with decision=approve.
+  - intent: { name: approve, slots: {} }
+    expect_state: decide_awaiting_reply
+    expect_world:
+      decision: "approve"
+
+  # approve again → @exit:reviewed.
+  - intent: { name: approve, slots: {} }
+    expect_state: __exit__reviewed
+    expect_world:
+      status:   "reviewed"
+      decision: "approve"
+
+expect_terminal: true
+expect_no_errors: true

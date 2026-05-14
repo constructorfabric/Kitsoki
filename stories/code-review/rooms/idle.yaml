@@ -1,0 +1,28 @@
+# idle — entry room. Standalone runs (or warp-basis tests) enter here;
+# parent stories that route via the inbox notification can also enter
+# here (the inbox-trigger flow seeds pr_id directly in world).
+
+states:
+
+  idle:
+    description: "Code-review pipeline parked. Waiting for `start`."
+    view: |
+      Code-review pipeline — idle.
+
+      Pending PRs awaiting your review: {{ world.pending_count }}
+      Currently picked: {{ world.pr_id ?? "(none)" }} {{ world.pr_title }}
+      Judge mode: {{ world.judge_mode }}
+
+      Actions: start, quit, look.
+    relevant_world: [pending_count, pr_id, pr_title, judge_mode]
+    on:
+      start:
+        # If the inbox-trigger flow seeded a pr_id directly, the user
+        # may want to skip the list_pending step. The default arc
+        # always walks list_pending first so the operator confirms
+        # the PR they're reviewing.
+        - target: list_pending
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .

@@ -1,0 +1,76 @@
+# happy_human_request_changes — judge_mode=human, reviewer requests
+# changes. Proves the request_changes arc routes through @exit:reviewed
+# with decision=request_changes and the final pr_comment carries the
+# request_changes flag.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  pr_id:      "PR-39"
+  pr_title:   "fix: login-redirect"
+  pr_author:  "bob"
+  thread:     "PR-39"
+  judge_mode: "human"
+
+host_handlers:
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+  host.inbox.add:
+    data: { ok: true, id: "ib-1" }
+  host.git:
+    data:
+      ok:    true
+      url:   "https://example/pr/39"
+      pr_id: "PR-39"
+      diff:  "diff --git a/login.go b/login.go"
+      state: "open"
+      checks: ""
+      comments: ""
+  host.local_files.ticket:
+    data: { ok: true }
+  host.oracle.ask_with_mcp:
+    data:
+      ok: true
+      stdout: "Login redirect missing CSRF guard; please add."
+      submitted:
+        summary_title:    "Needs CSRF guard"
+        summary_markdown: "The login-redirect path needs a CSRF guard before merging."
+        overall_impression: "needs_rework"
+        blockers:
+          - { file: "internal/auth/login.go", line: 78, description: "Missing CSRF check", severity: "blocker" }
+        nits:             []
+        confidence:       0.85
+        decision:         "request_changes"
+        rationale:        "Blocker on CSRF guard."
+        verdict:    "fail"
+        intent:     "refine"
+        reason:     "Block on CSRF."
+
+turns:
+  - intent: { name: start, slots: {} }
+    expect_state: list_pending
+  - intent: { name: proceed, slots: {} }
+    expect_state: review_pr_executing
+  - intent: { name: proceed, slots: {} }
+    expect_state: review_pr_awaiting_reply
+  - intent: { name: accept, slots: {} }
+    expect_state: comment_executing
+  - intent: { name: proceed, slots: {} }
+    expect_state: decide_executing
+
+  # request_changes → decide_awaiting_reply with decision flag.
+  - intent: { name: request_changes, slots: {} }
+    expect_state: decide_awaiting_reply
+    expect_world:
+      decision: "request_changes"
+
+  # request_changes again → @exit:reviewed.
+  - intent: { name: request_changes, slots: {} }
+    expect_state: __exit__reviewed
+    expect_world:
+      status:   "reviewed"
+      decision: "request_changes"
+
+expect_terminal: true
+expect_no_errors: true

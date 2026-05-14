@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title":   "judge_verdict",
+  "type":    "object",
+  "required": ["verdict", "intent", "reason", "confidence"],
+  "properties": {
+    "verdict":    { "type": "string", "enum": ["pass", "fail", "uncertain"] },
+    "intent":     { "type": "string", "enum": ["accept", "refine", "approve", "request_changes", "dismiss", "quit", "uncertain"] },
+    "reason":     { "type": "string", "minLength": 4 },
+    "confidence": { "type": "number", "minimum": 0.0, "maximum": 1.0 }
+  },
+  "additionalProperties": false
+}

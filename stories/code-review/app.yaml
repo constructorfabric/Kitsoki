@@ -1,0 +1,209 @@
+# code-review — review a teammate's open PR (Wave 3 / Phase 6 of the
+# dev-story-bugfix-unify proposal §4.3).
+#
+# This is the **reviewing-a-teammate** flavor — NOT a self-loop on your
+# own PR. The story is triggered from the dev-story inbox when an
+# external "PR awaiting your review" notification arrives. Walks:
+#
+#   idle → list_pending → review_pr → comment → decide
+#
+# `decide` posts the final approval / changes-requested via
+# iface.vcs.pr_comment and exits via @exit:reviewed.
+#
+# # Standalone-runnable
+#
+#   kitsoki run stories/code-review/app.yaml --warp scenarios/pr_142.yaml
+#
+# # Imported by dev-story
+#
+# dev-story's `inbox.yaml` room exposes a `pick_review` intent that
+# routes a selected "PR awaiting your review" notification into this
+# story (via the `rev` import alias) at entry: idle.
+#
+# # Judge polymorphism — same shape as bugfix/implementation
+#
+# `review_pr_awaiting_reply` and `decide_awaiting_reply` follow the
+# canonical §6 checkpoint shape; `world.judge_mode` flips one host
+# call to drive `human` / `llm` / `llm_then_human`.
+
+app:
+  id: code-review
+  version: 0.1.0
+  title: "Code review pipeline (teammate PRs)"
+  author: "Kitsoki"
+  license: "CC0"
+
+hosts:
+  - host.inbox.add
+  - host.oracle.ask_with_mcp
+
+# Four host_interfaces — code-review only needs ticket (optional, for
+# author lookups), vcs (diff, pr_status, pr_comment), and transport
+# (status updates).
+host_interfaces:
+
+  ticket:
+    description: "Issue tracker abstraction (file / GitHub Issues / Jira)."
+    operations:
+      search:
+        input:  { query: string, limit: int }
+        output: { tickets: list }
+      get:
+        input:  { id: string }
+        output: { id: string, title: string, body: string, status: string,
+                  priority: string, assignee: string, url: string, comments: list }
+      comment:
+        input:  { id: string, body: string, thread: string }
+        output: { ok: bool, comment_id: string }
+      transition:
+        input:  { id: string, to: string }
+        output: { ok: bool }
+      list_mine:
+        input:  { filter: string }
+        output: { tickets: list }
+    default: host.local_files.ticket
+
+  vcs:
+    description: "Branch / commit / PR abstraction (git / GitHub / Bitbucket)."
+    operations:
+      branch:
+        input:  { workdir: string, name: string, base: string }
+        output: { ok: bool, branch: string }
+      diff:
+        input:  { workdir: string, pr_id: string }
+        output: { diff: string, files: list }
+      commit:
+        input:  { workdir: string, message: string, files: list }
+        output: { ok: bool, sha: string }
+      push:
+        input:  { workdir: string, remote: string }
+        output: { ok: bool, url: string }
+      open_pr:
+        input:  { workdir: string, title: string, body: string, base: string }
+        output: { ok: bool, url: string, pr_id: string }
+      pr_status:
+        input:  { pr_id: string }
+        output: { state: string, checks: list, comments: list }
+      pr_comment:
+        input:  { pr_id: string, body: string, approve: bool, request_changes: bool }
+        output: { ok: bool }
+    default: host.git
+
+  transport:
+    description: "Out-of-band channel for posting proposals, checkpoints, status."
+    operations:
+      post:
+        input:  { thread: string, body: string }
+        output: { ok: bool, message_id: string }
+    default: host.append_to_file
+
+# World — Wave 3 keys for the code-review story.
+world:
+  # ── Identity / inbox-routed PR ───────────────────────────────────
+  pr_id:           { type: string, default: "" }
+  pr_url:          { type: string, default: "" }
+  pr_title:        { type: string, default: "" }
+  pr_author:       { type: string, default: "" }
+  thread:          { type: string, default: "" }
+  allowed_authors: { type: string, default: "" }
+
+  # ── Pending list (iface.vcs.pr_status / iface.ticket.list_mine) ──
+  pending_prs:     { type: string, default: "" }
+  pending_count:   { type: int,    default: 0 }
+
+  # ── Diff + comments (review_pr_executing populates these) ────────
+  pr_diff:         { type: string, default: "" }
+  pr_comments:     { type: string, default: "" }   # JSON-ish blob
+
+  # ── Pipeline control ─────────────────────────────────────────────
+  judge_mode:                  { type: string, default: "human" }
+  judge_confidence_threshold:  { type: float,  default: 0.8 }
+  cycle:                       { type: int,    default: 0 }
+  last_reply_author:           { type: string, default: "" }
+  refine_feedback:             { type: string, default: "" }
+
+  # ── Reviewer comment scratch (drafted by comment_executing) ──────
+  draft_comment:   { type: string, default: "" }
+
+  # ── Per-room artifacts ───────────────────────────────────────────
+  review_summary_artifact: { type: object, default: {} }
+  decision_artifact:       { type: object, default: {} }
+
+  # ── Decision state ───────────────────────────────────────────────
+  decision:        { type: string, default: "" }   # approve | request_changes | dismiss
+
+  # ── Judge state ──────────────────────────────────────────────────
+  llm_verdict:     { type: object, default: {} }
+
+  # ── Story-level "done" sink ──────────────────────────────────────
+  status:          { type: string, default: "open" }   # open | reviewed | dismissed | abandoned
+
+# Intent vocabulary.
+intents:
+  start:
+    description: "Begin the pipeline from idle."
+    examples: [start, "begin", "review"]
+    priority: 90
+  proceed:
+    description: "Advance the current room."
+    examples: [proceed, "next"]
+    priority: 85
+  accept:
+    description: "Accept the current checkpoint artifact; advance."
+    examples: [accept, "approve", "lgtm"]
+    priority: 80
+  refine:
+    description: "Refine the current checkpoint; re-execute with feedback."
+    examples: [refine, "rework"]
+    priority: 70
+    slots:
+      feedback: { type: string, required: false }
+  pick_pr:
+    description: "Pick a PR from the pending list."
+    examples: ["pick PR-38", "review pr 38"]
+    priority: 75
+    slots:
+      id: { type: string, required: true }
+  approve:
+    description: "Mark the PR as approved (final decision)."
+    examples: [approve, "lgtm", "ship it"]
+    priority: 65
+  request_changes:
+    description: "Mark the PR as requesting changes."
+    examples: ["request changes", "needs work", "changes requested"]
+    priority: 65
+  dismiss:
+    description: "Dismiss the review request (e.g. wrong reviewer)."
+    examples: [dismiss, "not for me", "wrong reviewer"]
+    priority: 40
+  quit:
+    description: "Abandon the review."
+    examples: [quit, "abort", "bail"]
+    priority: 50
+  look:
+    description: "Re-render the current view."
+    examples: [look, "what now?"]
+    priority: 10
+
+# Intents exposed to importing parent stories.
+exports:
+  intents: [start, proceed, accept, refine, pick_pr, approve, request_changes, dismiss, quit, look]
+
+# Named return points. A parent story maps each to one of its own
+# states. Standalone load synthesises `__exit__reviewed`,
+# `__exit__dismissed`, `__exit__abandoned` terminals.
+exits:
+  reviewed:
+    description: "Final review posted (approve / request_changes)."
+    requires: [decision_artifact]
+  dismissed:
+    description: "User explicitly dismissed the review request."
+  abandoned:
+    description: "User or LLM bailed."
+
+# Root state — the operator-controlled entry point.
+root: idle
+
+# Rooms live in rooms/*.yaml.
+include:
+  - rooms/*.yaml

@@ -1,0 +1,96 @@
+# inbox_trigger_smoke — simulates the dev-story inbox routing path
+# (Wave 3 / Phase 6 contract appendix §W3.5). The notification payload
+# is realised as initial_world seeding: pr_id, pr_title, pr_author,
+# thread arrive populated as if the dev-story `inbox.yaml` selected a
+# "PR awaiting your review" item and projected its fields here.
+#
+# The flow walks the standalone story end-to-end. The dev-story
+# inbox-route equivalent lives at stories/dev-story/flows/
+# inbox_review_pickup.yaml.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  # Notification payload — seeded as if dev-story inbox forwarded.
+  pr_id:       "PR-99"
+  pr_title:    "feat: timezone-aware reports"
+  pr_author:   "dana"
+  thread:      "PR-99"
+  judge_mode:  "human"
+  # The notification kind is implicit; the inbox-router projects
+  # status=open as the entry condition.
+  status:      "open"
+
+host_handlers:
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+  host.inbox.add:
+    data: { ok: true, id: "ib-1" }
+  host.git:
+    data:
+      ok:       true
+      url:      "https://example/pr/99"
+      pr_id:    "PR-99"
+      diff:     "diff --git a/reports.go b/reports.go"
+      state:    "open"
+      checks:   ""
+      comments: ""
+  host.local_files.ticket:
+    data: { ok: true }
+  host.oracle.ask_with_mcp:
+    data:
+      ok: true
+      stdout: "Looks fine."
+      submitted:
+        summary_title:    "Timezone-aware reports look fine"
+        summary_markdown: "Stub review summary; one nit on the docstring."
+        overall_impression: "lgtm"
+        blockers:         []
+        nits:             []
+        confidence:       0.8
+        decision:         "approve"
+        rationale:        "Stub."
+        verdict:    "pass"
+        intent:     "accept"
+        reason:     "Stub."
+
+turns:
+  # The inbox-routed entry: the dev-story inbox.yaml `pick_review`
+  # arc targeted `rev` (the import compound) with world_in: setting
+  # pr_id and pr_title. Standalone we seeded those in initial_world.
+  # Confirm idle reads the seeded values.
+  - intent: { name: look, slots: {} }
+    expect_state: idle
+    expect_world:
+      pr_id:    "PR-99"
+      pr_title: "feat: timezone-aware reports"
+
+  # start → list_pending; on_enter polls iface.vcs.pr_status.
+  - intent: { name: start, slots: {} }
+    expect_state: list_pending
+
+  # pr_id is already set so proceed advances straight to review_pr.
+  - intent: { name: proceed, slots: {} }
+    expect_state: review_pr_executing
+
+  - intent: { name: proceed, slots: {} }
+    expect_state: review_pr_awaiting_reply
+
+  - intent: { name: accept, slots: {} }
+    expect_state: comment_executing
+
+  - intent: { name: proceed, slots: {} }
+    expect_state: decide_executing
+
+  - intent: { name: approve, slots: {} }
+    expect_state: decide_awaiting_reply
+
+  - intent: { name: approve, slots: {} }
+    expect_state: __exit__reviewed
+    expect_world:
+      decision: "approve"
+      status:   "reviewed"
+
+expect_terminal: true
+expect_no_errors: true

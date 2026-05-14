@@ -1,0 +1,78 @@
+# llm_judge_approves — judge_mode=llm_then_human. The LLM-judge auto-fires
+# `accept` at review_pr_awaiting_reply (advances to comment_executing in
+# one turn), and at decide_awaiting_reply the LLM emits `accept` whose
+# arc routes through to @exit:reviewed via the polymorphic accept clause.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  pr_id:      "PR-40"
+  pr_title:   "docs: API guide"
+  pr_author:  "charlie"
+  thread:     "PR-40"
+  judge_mode: "llm_then_human"
+  judge_confidence_threshold: 0.8
+
+host_handlers:
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+  host.inbox.add:
+    data: { ok: true, id: "ib-1" }
+  host.git:
+    data:
+      ok:       true
+      url:      "https://example/pr/40"
+      pr_id:    "PR-40"
+      diff:     "diff --git a/docs/api.md b/docs/api.md"
+      state:    "open"
+      checks:   ""
+      comments: ""
+  host.local_files.ticket:
+    data: { ok: true }
+  host.oracle.ask_with_mcp:
+    data:
+      ok: true
+      stdout: "LGTM."
+      submitted:
+        summary_title:    "Docs LGTM"
+        summary_markdown: "Doc-only PR; no functional concerns."
+        overall_impression: "lgtm"
+        blockers:         []
+        nits:             []
+        confidence:       0.95
+        decision:         "approve"
+        rationale:        "Docs only."
+        verdict:    "pass"
+        intent:     "accept"
+        reason:     "Docs PR; LGTM."
+
+turns:
+  - intent: { name: start, slots: {} }
+    expect_state: list_pending
+
+  # proceed → review_pr_executing.
+  - intent: { name: proceed, slots: {} }
+    expect_state: review_pr_executing
+
+  # proceed → review_pr_awaiting_reply → LLM-judge auto-fires accept
+  # → comment_executing (one turn).
+  - intent: { name: proceed, slots: {} }
+    expect_state: comment_executing
+
+  # comment_executing has no checkpoint; proceed → decide_executing.
+  - intent: { name: proceed, slots: {} }
+    expect_state: decide_executing
+
+  # proceed → decide_awaiting_reply → LLM-judge fires accept, which
+  # routes through the polymorphic accept clause to @exit:reviewed
+  # with decision=approve (the LLM's intent was "accept" which maps
+  # to approve via the when-guarded accept arc).
+  - intent: { name: proceed, slots: {} }
+    expect_state: __exit__reviewed
+    expect_world:
+      status:   "reviewed"
+      decision: "approve"
+
+expect_terminal: true
+expect_no_errors: true
