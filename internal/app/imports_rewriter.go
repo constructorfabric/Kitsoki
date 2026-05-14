@@ -146,6 +146,25 @@ func (rw *childRewriter) rewriteEffect(eff *Effect) {
 	eff.When = rw.rewriteExpr(eff.When)
 	eff.Say = rw.rewriteExpr(eff.Say)
 
+	// emit_intent: the value is a template (e.g.
+	// "{{ world.llm_verdict.intent }}") whose evaluation result names
+	// the intent to dispatch. world.X refs inside MUST be rewritten so
+	// the rendered intent reads the prefixed world key after fold.
+	// Without this, an autonomous bugfix walk under dev-story / kitsoki-
+	// dev evaluates world.llm_verdict against an empty key and the
+	// auto-fire silently no-ops (Wave 3 / Phase 3 hit this on the
+	// pickup_autonomous_then_bail flow).
+	eff.EmitIntent = rw.rewriteExpr(eff.EmitIntent)
+
+	// emit_intent slot values are templates too; rewrite each.
+	if len(eff.EmitSlots) > 0 {
+		newSlots := make(map[string]any, len(eff.EmitSlots))
+		for k, v := range eff.EmitSlots {
+			newSlots[k] = rw.rewriteAny(v)
+		}
+		eff.EmitSlots = newSlots
+	}
+
 	// iface.<X>.<op> references: prefix the iface name with the alias so
 	// the deferred resolution at top-level Load() can find the lifted
 	// iface declaration under parent.HostInterfaces[<alias>__<X>].

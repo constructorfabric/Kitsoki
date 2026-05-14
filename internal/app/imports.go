@@ -766,10 +766,29 @@ func rewriteChildStateTransitionsAtDepth(s *State, alias string, imp *ImportDef,
 			}
 			return t
 		}
-		// Bare name: rewrite to relative sibling reference. Composes at
-		// arbitrary nesting depth because the path-walk in resolveTarget
-		// uses the runtime state path, not the load-time alias chain.
-		return "../" + t
+		// Bare name: rewrite to relative sibling reference that walks
+		// up to the alias wrapper's parent (where the sibling lives).
+		//
+		// The state being rewritten sits at `depth` levels of compound
+		// nesting BELOW the alias wrapper's immediate children (depth=0
+		// is a child of the wrapper itself; depth=1 is two levels in,
+		// etc.). To reach a sibling of the wrapper from depth N
+		// requires `N+1` `..` segments: N to climb out of nested
+		// compounds to the wrapper level, plus one more to climb past
+		// the wrapper itself.
+		//
+		// This composes correctly across multi-layer folds (Wave 3 /
+		// Phase 3 of the dev-story unify proposal): when the
+		// containing app is itself imported under another alias later,
+		// the recursive depth tracking on the second pass leaves these
+		// `..` chains alone (the `..`-overreach check tolerates them
+		// up to depth+1 at the new nesting), and the runtime
+		// resolveTarget pops the correct number of segments off the
+		// runtime state path to land on the desired sibling. A state
+		// at depth=1 inside bf (folded under dev-story) needs
+		// `../../pr` to reach the pr sibling at the top of dev-story
+		// after kitsoki-dev's second fold under `core`.
+		return strings.Repeat("../", depth+1) + t
 	}
 
 	// On: transitions.
