@@ -175,11 +175,53 @@ world:
   bugfix_mode:      { type: string, default: "full" }            # full | quick
   judge_mode:       { type: string, default: "human" }           # human | llm | llm_then_human
   judge_confidence_threshold: { type: float, default: 0.8 }
+
+  # Global cycle counter — tracks total refinements across the run. Per-phase
+  # counters (below) drive the L2 budget gates; this scalar is a coarse
+  # convenience for views / audit.
   cycle:            { type: int,    default: 0 }
+
+  # ── L2 cycle budgets — per-checkpoint refine counters + budgets ──────
+  #
+  # Wave 3 / Phase 4 — port of the cyber-repo bugfix's L2 cycle-budget
+  # pattern (HALLY-MIGRATION §2.6). Each checkpointed room maintains its
+  # own `<phase>_cycle` counter; when `refine` fires the counter increments
+  # and the room re-executes. When the counter hits `<phase>_budget` the
+  # refine arc redirects to `@exit:abandoned` with `abandon_reason:
+  # <phase>_cycle_budget_exhausted` — the operator gets one bail-out
+  # instead of an infinite loop.
+  #
+  # Budgets default to 3 (matches cyber-repo's L2 retry caps); operators
+  # can override per-session by setting `<phase>_budget` in initial_world.
+  # `cycle_budget` is the documented global default — kept here for parity
+  # with the proposal §4.2 vocabulary but not currently used directly by
+  # any arc (each phase reads its own `_budget` key).
+  reproducing_cycle:    { type: int, default: 0 }
+  proposing_cycle:      { type: int, default: 0 }
+  implementing_cycle:   { type: int, default: 0 }
+  testing_cycle:        { type: int, default: 0 }
+  reviewing_cycle:      { type: int, default: 0 }
+  validating_cycle:     { type: int, default: 0 }
+  done_cycle:           { type: int, default: 0 }
+  cycle_budget:         { type: int, default: 3 }   # documented global default
+  reproducing_budget:   { type: int, default: 3 }
+  proposing_budget:     { type: int, default: 3 }
+  implementing_budget:  { type: int, default: 3 }
+  testing_budget:       { type: int, default: 3 }
+  reviewing_budget:     { type: int, default: 3 }
+  validating_budget:    { type: int, default: 3 }
+  done_budget:          { type: int, default: 3 }
+
+  # Audit counter — incremented every time a `jump_to` arc fires. A non-zero
+  # value at @exit:done means the pipeline skipped phases; parent stories /
+  # post-mortems read this to know that, e.g., the testing phase didn't run.
+  unsafe_jumps_made:   { type: int, default: 0 }
+
   last_reply_author:   { type: string, default: "" }
   refine_feedback:     { type: string, default: "" }
   jump_to:             { type: string, default: "" }
   restart_from_stage:  { type: string, default: "" }
+  abandon_reason:      { type: string, default: "" }
 
   # ── Per-room artifacts (objects; each holds {summary_title, summary_markdown, …}) ─
   reproduction_artifact:     { type: object, default: {} }
@@ -224,11 +266,35 @@ intents:
     slots:
       feedback: { type: string, required: false }
   restart_from:
-    description: "Restart from a named prior stage."
+    description: "Restart from a named prior stage (resets that phase's cycle counter)."
     examples: [restart_from, "restart"]
     priority: 60
     slots:
       stage: { type: string, required: false }
+  jump_to:
+    description: "Jump forward to a later phase, skipping intermediate work. Increments world.unsafe_jumps_made."
+    examples: [jump_to, "jump"]
+    priority: 55
+    slots:
+      stage: { type: string, required: false }
+  # ── Interactive shortcuts (proposal §4.2). The three modes set
+  # world.bugfix_mode then advance directly into the appropriate _executing
+  # state. quick_fix collapses the pipeline to reproducing → proposing →
+  # implementing → testing → done (reviewing + validating skipped).
+  # skip_to_pr jumps straight into validating with restart_from_stage set
+  # so a parent (or post-validate review) can later wire back. ─────────
+  quick_fix:
+    description: "Shortcut from idle: walk reproducing → proposing → implementing → testing → done (skip reviewing + validating)."
+    examples: [quick_fix, "quick", "one shot"]
+    priority: 75
+  skip_to_pr:
+    description: "Shortcut from idle: skip reproducing/proposing/implementing/testing/reviewing, jump straight into validating."
+    examples: [skip_to_pr, "to pr", "skip ahead"]
+    priority: 75
+  full_pipeline:
+    description: "Default — walk all phases. Set bugfix_mode=full and start from reproducing."
+    examples: [full_pipeline, "full", "all phases"]
+    priority: 75
   quit:
     description: "Abandon the pipeline."
     examples: [quit, "abort", "bail"]
@@ -243,7 +309,7 @@ intents:
 # lifts these into the parent's bare intent table so an operator can
 # drive the imported pipeline without typing the `bf__` prefix.
 exports:
-  intents: [start, proceed, accept, refine, restart_from, quit, look]
+  intents: [start, proceed, accept, refine, restart_from, jump_to, quick_fix, skip_to_pr, full_pipeline, quit, look]
 
 # Named return points. A parent story (dev-story / kitsoki-dev / cyber-devstory)
 # maps each to one of its own states. Standalone load synthesises
