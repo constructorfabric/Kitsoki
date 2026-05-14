@@ -1132,3 +1132,248 @@ mock the `gh` / `cpt` CLIs via the shared `vcsExec` seam from
 `git_vcs.go` — no real binaries are required. The flow fixtures stub
 `host.cypilot_artifacts` per W3.6 above.
 
+# Wave 3 / Phase 4 — cycle budgets + full checkpoint-intent vocabulary
+
+Wave 1 shipped `stories/bugfix/` with `refine` / `accept` /
+`restart_from` as intent stubs and a single global `world.cycle`.
+Wave 3 / Phase 4 (this section) ports the cyber-repo L2 cycle-budget
+pattern and the full Phase 4 vocabulary from proposal §4.2 onto the
+provider-neutral story. Strictly additive — every Wave 1–3 contract
+clause still holds.
+
+## W4.1 — World keys
+
+The bugfix story's `world:` block adds the following keys. Every
+non-checkpoint room (idle, implementing, reviewing) and every
+checkpoint room (reproducing, proposing, testing, validating, done)
+participates.
+
+```yaml
+# Per-phase refine counters (one per checkpointed phase + per non-
+# checkpoint phase for symmetry). Reset to 0 when restart_from rewinds
+# into that phase; incremented on every successful refine.
+reproducing_cycle:    { type: int, default: 0 }
+proposing_cycle:      { type: int, default: 0 }
+implementing_cycle:   { type: int, default: 0 }
+testing_cycle:        { type: int, default: 0 }
+reviewing_cycle:      { type: int, default: 0 }
+validating_cycle:     { type: int, default: 0 }
+done_cycle:           { type: int, default: 0 }
+
+# Per-phase refine budgets. Operators override per-session via the
+# import's world_in: block or the flow fixture's initial_world.
+reproducing_budget:   { type: int, default: 3 }
+proposing_budget:     { type: int, default: 3 }
+implementing_budget:  { type: int, default: 3 }
+testing_budget:       { type: int, default: 3 }
+reviewing_budget:     { type: int, default: 3 }
+validating_budget:    { type: int, default: 3 }
+done_budget:          { type: int, default: 3 }
+cycle_budget:         { type: int, default: 3 }  # documented global default; no arc reads it
+
+# Audit + structured-abandon keys.
+unsafe_jumps_made:    { type: int,    default: 0 }
+abandon_reason:       { type: string, default: "" }
+```
+
+Wave 1's `world.cycle` (the global coarse counter) is preserved —
+every refine arc increments BOTH `<phase>_cycle` and `cycle`.
+
+## W4.2 — Refine budget gate
+
+Every `<phase>_awaiting_reply.on.refine` block has a two-arm shape.
+The first arm is the budget gate (a `when:` guard); the default arm
+is the re-execute path.
+
+```yaml
+refine:
+  - when: "world.<phase>_cycle >= world.<phase>_budget"
+    target: "@exit:abandoned"
+    effects:
+      - set:
+          abandon_reason: "<phase>_cycle_budget_exhausted"
+          status:         "abandoned"
+  - target: <phase>_executing
+    effects:
+      - set:
+          refine_feedback:  "{{ slots.feedback ?? world.llm_verdict.reason }}"
+          <phase>_cycle:    "{{ world.<phase>_cycle + 1 }}"
+          cycle:            "{{ world.cycle + 1 }}"
+```
+
+The gate fires for both human and LLM-driven refines — a runaway
+LLM-judge in `llm_then_human` mode is bounded by the same world
+counter as an operator hammering the refine button.
+
+## W4.3 — Restart-from semantics
+
+Every checkpoint and non-checkpoint room's `on.restart_from` is a
+`when:`-ladder across the well-known prior stages. Each successful
+arm:
+
+1. Targets the named `<stage>_executing` room.
+2. Sets `restart_from_stage` to the slot value (audit).
+3. Clears `refine_feedback`.
+4. Resets the target phase's `<phase>_cycle` to 0 (fresh budget).
+5. Resets the global `cycle` to 0.
+
+Stages recognised everywhere: `reproducing`, `proposing` (alias
+`propose_fix`), `implementing` (alias `implement_review`), `testing`
+(alias `test`), `validating` (alias `validate`). A room only lists
+the stages strictly *earlier* than itself; a stage already passed is
+the legal restart target. The default arm catches unrecognised
+stages and gracefully degrades to the previous-room `_executing` —
+no abandon, the operator simply sees they're one room back.
+
+## W4.4 — Jump-to semantics
+
+Every checkpoint's `on.jump_to` is a `when:`-ladder across well-known
+forward stages plus a default abandon arm:
+
+```yaml
+jump_to:
+  - when: "slots.stage == 'testing' || slots.stage == 'test'"
+    target: testing_executing
+    effects:
+      - set:
+          jump_to:           "{{ slots.stage }}"
+          unsafe_jumps_made: "{{ world.unsafe_jumps_made + 1 }}"
+  - when: "slots.stage == 'validating' || slots.stage == 'validate'"
+    target: validating_executing
+    effects: [...]
+  - when: "slots.stage == 'done' || slots.stage == 'pr'"
+    target: done_executing
+    effects: [...]
+  # Unknown stage → controlled abandon
+  - target: "@exit:abandoned"
+    effects:
+      - set:
+          abandon_reason: "jump_to_unknown_stage"
+          status:         "abandoned"
+```
+
+`jump_to` is unsafe by design: artifacts for the skipped rooms are
+not produced. Parent stories that need the artifact chain (e.g.
+pr-refinement consuming `done_artifact`) MUST NOT use `jump_to` to
+skip the artifact-producing phase.
+
+## W4.5 — Mode shortcuts (proposal §4.2)
+
+Three intents are exposed in `idle` and `reproducing_awaiting_reply`:
+
+| Intent | Effect |
+|---|---|
+| `quick_fix` | Set `bugfix_mode="quick"`. From idle, also lands at `reproducing_executing`; from the reproducing checkpoint, self-loops (just sets the flag). |
+| `skip_to_pr` | Set `bugfix_mode="full"`, `restart_from_stage="validate"`, increment `unsafe_jumps_made`; jump to `validating_executing`. |
+| `full_pipeline` | Set `bugfix_mode="full"`; lands at `reproducing_executing`. Useful when a previous run left `bugfix_mode="quick"` in the carried world. |
+
+`bugfix_mode="quick"` is read at one location only:
+`testing_awaiting_reply.on.accept`'s first arm:
+
+```yaml
+accept:
+  - when: "world.bugfix_mode == 'quick'"
+    target: done_executing
+    effects: [...]
+  - target: reviewing_executing  # full-mode default
+    effects: [...]
+```
+
+So the quick path walks reproducing → proposing → implementing →
+testing → done, skipping reviewing + validating (5 LLM calls instead
+of 7).
+
+## W4.6 — Intent surface in exports
+
+`stories/bugfix/app.yaml` exports the full Phase 4 surface:
+
+```yaml
+exports:
+  intents: [start, proceed, accept, refine, restart_from, jump_to,
+            quick_fix, skip_to_pr, full_pipeline, quit, look]
+```
+
+Importing parent stories' `imports.bugfix.intents.import: [...]`
+clauses pick the subset they want to surface bare in the parent's
+intent table. Most parents (dev-story, kitsoki-dev) import the full
+list; cyber-repo's devstory will likely add Jira-specific intents
+on top and import all of the above.
+
+## W4.7 — Flow fixtures (acceptance)
+
+The `stories/bugfix/flows/` directory ships 24 fixture files (42
+fixture documents after `---`-delimited splitting) covering:
+
+| Scenario | File |
+|---|---|
+| Refine budget exhaustion per phase | `refine_budget_exhaust_{reproducing,proposing,testing,validating,done}.yaml` |
+| Refine at each stage (counter increment) | `refine_at_each_stage.yaml` |
+| Restart-from each stage with cycle reset | `restart_from_each_stage.yaml`, `restart_from_resets_budget.yaml`, `restart_from_proposing.yaml` |
+| Jump-to each forward stage + unknown fallback | `jump_to_each_target.yaml` |
+| Quick-fix happy path | `happy_quick_fix.yaml` |
+| Skip-to-PR from idle | `skip_to_pr_from_idle.yaml` |
+| Full-pipeline override of carried quick mode | `full_pipeline_from_idle.yaml` |
+| Mode switch mid-flow (full → quick) | `mode_switch_full_to_quick.yaml` |
+| LLM verdict=refine fires the refine arc | `llm_then_human_refine_then_accept.yaml` |
+| Runaway LLM bounded by budget | `budget_exhaust_llm_then_human.yaml` |
+
+Pre-existing Wave 1/2 flows preserved: `happy_human`, `happy_llm`,
+`happy_llm_then_human`, `llm_uncertain_holds`,
+`refine_once_then_accept`, `mixed_judge_swap`, `quit_at_{idle,
+proposing, validating}`.
+
+Final flow count: **42/42 passing** (was 10/10 at Wave 2).
+
+## W4.8 — What Phase 4 does NOT include
+
+Explicit non-goals (deferred to later phases or out of scope):
+
+- **Per-cycle-arc budget counters.** Cyber-repo's L2 has counters
+  keyed on the arc that fired (e.g. `cycle__phase_9_7__on_validation_fail`
+  vs `cycle__phase_9_7__on_validation_fail_short`). Phase 4 ships
+  only a single per-phase counter — refine is the only arc that
+  triggers it. If future arcs need separate budgets, extend with
+  `<phase>_<arc>_cycle` keys following the same pattern.
+- **Free-form `jump_to.phase` slot.** Only the well-known aliases
+  are supported (matches cyber-repo's v1 contract). A
+  `slots.stage`-templated target would require runtime templating in
+  `target:` strings — out of scope.
+- **Automatic restart-from on judge=`refine` with stage hint.**
+  The runtime's `emit_intent` synthesises the intent name from
+  `world.llm_verdict.intent`; the LLM cannot currently steer
+  `slots.stage` for `restart_from` or `jump_to`. The LLM can emit
+  `refine` (which doesn't take a stage), and that's the autonomous
+  loop. A future runtime extension can pass the verdict's `stage`
+  into the synthesised slots.
+
+## W4.9 — Phase 4 test surface (acceptance)
+
+| Story / package | Flow / test count | Pass? |
+|---|---|---|
+| `stories/bugfix/` | 42 flows (10 Wave 1 → 42 Wave 3 / Phase 4) | yes |
+| `stories/pr-refinement/` | 4 flows (Wave 2 preserved) | yes |
+| `stories/dev-story/` | 4 flows (Wave 2 preserved) | yes |
+| `stories/kitsoki-dev/` | 4 flows (Phase 3 preserved) | yes |
+| `stories/cypilot/` | 4 flows (Phase 5 preserved) | yes |
+| `stories/oregon-trail/` | 28 flows (no regression) | yes |
+| `go test ./...` | all packages | yes |
+
+## W4.10 — Runtime observations
+
+No runtime patches were required for Phase 4. Two behaviours worth
+noting for future authors:
+
+1. **`world_override` in flow fixtures** is the canonical way to
+   seed `<phase>_cycle` at the budget for an exhaustion test. The
+   fixture runner applies `world_override` BEFORE guard evaluation
+   (`internal/testrunner/flows.go:573`) so the refine arc's `when:`
+   reads the seeded value on the same turn.
+
+2. **`emit_intent`** continues to behave as the W2.8 / W3 quirks
+   note documents. The Phase 4 budget-exhaust path under
+   `judge_mode=llm_then_human` exercises it directly: the LLM
+   verdict's `intent: refine` is dispatched in the same turn the
+   judge invoke binds `world.llm_verdict`, and the refine arc's
+   budget gate evaluates against the just-updated counter (which
+   the `world_override` seeded). No machine changes were needed.
+
