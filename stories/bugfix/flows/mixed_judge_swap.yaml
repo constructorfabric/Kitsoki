@@ -1,22 +1,27 @@
-# mixed_judge_swap — starts in judge_mode=llm_then_human. Proves that
-# the same YAML drives both the LLM-judged and operator-driven paths
-# in one run. Wave 1 limitation: we can't (yet) reliably mutate
-# judge_mode mid-run via world_override because the in-memory store
-# uses (session, turn, seq) as a unique constraint and the runner's
-# injectWorldOverride helper assigns Turn: 0 for every override,
-# colliding with the seed events on long flows.
+# mixed_judge_swap — one YAML, both judge modes in a single run.
 #
-# Workaround until that runtime gap is fixed: this flow just proves
-# the LLM-judge path end-to-end in llm_then_human mode (same as
-# happy_llm_then_human). For a "mode flip" use a 2-flow pair instead.
+# Start: judge_mode=llm_then_human + confident verdict + threshold 0.8.
+# The first two checkpoints auto-fire the LLM verdict (one `proceed`
+# crosses two states because emit_intent dispatches the verdict's
+# `accept` from on_enter of *_awaiting_reply).
+#
+# Mid-run: world_override flips judge_mode to "human". The emit_intent
+# gate (`world.judge_mode != 'human'`) closes, so subsequent checkpoints
+# hold at *_awaiting_reply and require a manual `accept` to advance.
+#
+# This proves a key polymorphism property of the bugfix story: the same
+# checkpoint state-graph drives both LLM-judged and operator-driven
+# operation, and the swap is hot — no restart, no state reload.
 
 test_kind: flow
 app: ../app.yaml
 initial_state: idle
 initial_world:
-  ticket_id:   "TKT-007"
-  thread:      "TKT-007"
-  judge_mode:  "llm_then_human"
+  ticket_id:                  "TKT-007"
+  ticket_title:               "Mid-flow judge swap demo"
+  thread:                     "TKT-007"
+  judge_mode:                 "llm_then_human"
+  judge_confidence_threshold: 0.8
 
 host_handlers:
   host.append_to_file:
@@ -52,25 +57,63 @@ host_handlers:
         reason:     "Looks good."
 
 turns:
+
+  # ── Phase A — judge_mode=llm_then_human; LLM auto-fires ─────────────
   - intent: { name: start, slots: {} }
     expect_state: reproducing_executing
 
-  # LLM-judge fires in on_enter; emit_intent auto-advances each
-  # _awaiting_reply (judge_mode != 'human' && confident verdict).
+  # `proceed` enters reproducing_awaiting_reply; emit_intent dispatches
+  # the LLM verdict (accept) from on_enter, advancing to proposing_executing
+  # in the same turn.
   - intent: { name: proceed, slots: {} }
     expect_state: proposing_executing
+
+  # Same shape: proceed → proposing_awaiting_reply → accept (LLM) → implementing_executing.
   - intent: { name: proceed, slots: {} }
     expect_state: implementing_executing
+
+  # ── Mid-flow swap — flip judge_mode to "human" ──────────────────────
+  # implementing_executing has no checkpoint; proceed lands at
+  # testing_executing.  AFTER this turn we flip the mode, so the very
+  # next checkpoint (testing) holds for an operator instead of auto-firing.
   - intent: { name: proceed, slots: {} }
     expect_state: testing_executing
+
+  # ── Phase B — judge_mode=human; operator drives ─────────────────────
+  # World-override the swap; in the static-harness path this is an
+  # in-place world mutation, in the orchestrator path this is a
+  # side-channel EffectApplied event at turn = max(history)+1 (the
+  # injectWorldOverride helper picks a fresh turn to dodge the
+  # (session_id, turn, seq) PK).
   - intent: { name: proceed, slots: {} }
+    world_override:
+      judge_mode: "human"
+    expect_state: testing_awaiting_reply
+
+  # emit_intent's guard now fails (`judge_mode == 'human'`), so we
+  # must accept manually.
+  - intent: { name: accept, slots: {} }
     expect_state: reviewing_executing
+
+  # reviewing → validating (no checkpoint).
   - intent: { name: proceed, slots: {} }
     expect_state: validating_executing
+
+  # validating checkpoint — still in human mode.
   - intent: { name: proceed, slots: {} }
+    expect_state: validating_awaiting_reply
+
+  - intent: { name: accept, slots: {} }
     expect_state: done_executing
+
+  # done checkpoint — still in human mode.
   - intent: { name: proceed, slots: {} }
+    expect_state: done_awaiting_reply
+
+  - intent: { name: accept, slots: {} }
     expect_state: __exit__done
+    expect_world:
+      judge_mode: "human"
 
 expect_terminal: true
 expect_no_errors: true
