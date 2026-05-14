@@ -1065,6 +1065,79 @@ func TestController_Send_DirectEdit_CreateTriggersReload(t *testing.T) {
 	}
 }
 
+// TestController_Send_ImportedManifestEditTriggersReload covers the
+// story-imports proposal §16.4 auto-watch surface: an edit to a file
+// in an IMPORTED sibling story's directory must trigger a reload,
+// even though that directory sits outside `filepath.Dir(turn.AppFile)`.
+// The TurnContext's ImportedManifestPaths threads the loader's list
+// through; the controller folds each parent dir into the snapshot tree
+// before/after the Oracle call.
+func TestController_Send_ImportedManifestEditTriggersReload(t *testing.T) {
+	dir := t.TempDir()
+
+	// Lay out: <dir>/main/app.yaml (root) + <dir>/imported/app.yaml
+	// (sibling story). Pretend the root imports the sibling — we don't
+	// actually invoke the loader here; we just plumb the manifest paths
+	// straight into TurnContext.
+	mainDir := filepath.Join(dir, "main")
+	importedDir := filepath.Join(dir, "imported")
+	if err := os.MkdirAll(mainDir, 0o755); err != nil {
+		t.Fatalf("mkdir main: %v", err)
+	}
+	if err := os.MkdirAll(importedDir, 0o755); err != nil {
+		t.Fatalf("mkdir imported: %v", err)
+	}
+	mainApp := filepath.Join(mainDir, "app.yaml")
+	importedApp := filepath.Join(importedDir, "app.yaml")
+	importedPrompt := filepath.Join(importedDir, "prompts", "intro.md")
+	if err := os.MkdirAll(filepath.Dir(importedPrompt), 0o755); err != nil {
+		t.Fatalf("mkdir imported/prompts: %v", err)
+	}
+	if err := os.WriteFile(mainApp, []byte("# main manifest\n"), 0o644); err != nil {
+		t.Fatalf("write main: %v", err)
+	}
+	if err := os.WriteFile(importedApp, []byte("# imported manifest\n"), 0o644); err != nil {
+		t.Fatalf("write imported app: %v", err)
+	}
+	if err := os.WriteFile(importedPrompt, []byte("# original\n"), 0o644); err != nil {
+		t.Fatalf("write imported prompt: %v", err)
+	}
+	// Pin all mtimes to the past so post-edit mtime moves forward
+	// deterministically.
+	old := time.Now().Add(-2 * time.Second)
+	for _, f := range []string{mainApp, importedApp, importedPrompt} {
+		if err := os.Chtimes(f, old, old); err != nil {
+			t.Fatalf("chtimes %s: %v", f, err)
+		}
+	}
+
+	c, _, _ := newTestController(t)
+	c.Oracle = oracleFunc(func(ctx context.Context, in AskInput) (AskOutput, error) {
+		// Simulate the agent editing the imported sibling's prompt.
+		if err := os.WriteFile(importedPrompt, []byte("# edited by agent\n"), 0o644); err != nil {
+			return AskOutput{}, err
+		}
+		return AskOutput{Reply: "patched the imported prompt"}, nil
+	})
+	s, err := c.Enter(context.Background(), makeSnapshot("main"), "story")
+	if err != nil {
+		t.Fatalf("Enter: %v", err)
+	}
+	res, err := c.Send(context.Background(), s, "edit the imported prompt", TurnContext{
+		AppFile:               mainApp,
+		ImportedManifestPaths: []string{importedApp},
+	})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if !res.ReloadRequested {
+		t.Fatal("ReloadRequested = false after agent edited a file in an imported sibling story; want true")
+	}
+	if len(res.ChangedFiles) == 0 {
+		t.Fatal("ChangedFiles = empty after agent edited imported prompt; want at least one entry")
+	}
+}
+
 // TestController_Send_NormalisesToolNames verifies that short-form
 // tool names from YAML ("authoring.propose") are normalised to the
 // fully-qualified form before being passed to the OracleCaller.

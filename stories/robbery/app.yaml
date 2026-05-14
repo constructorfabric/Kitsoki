@@ -1,0 +1,169 @@
+# Robbery — a reusable sub-story exemplifying the imports/extension
+# pattern (see docs/imports.md). A masked rider demands tribute
+# from the party. The player chooses to pay, fight, or flee; each path
+# has a named exit the importer maps to whatever follow-up state fits
+# the host game.
+#
+# Why a separate story directory: this is the public, reusable shape of
+# a "small bandit encounter" — anyone writing a frontier-era kitsoki game
+# can import it. The host game projects its own party-state through
+# `world_in:` and reads consequence keys back through `world_out:` on
+# the parent's exit mapping. The host game can also rebind the
+# `narrator` host_interface so encounter prose flows through whichever
+# voice / channel the host already uses (host.transport.post for a
+# diary, host.oracle.ask for a per-call LLM, plain host.run for a
+# headless echo).
+app:
+  id: robbery
+  version: 0.1.0
+  title: "The Robbery"
+  author: "Kitsoki sample"
+  license: "CC0"
+
+# Hosts the standalone sub-story uses. When imported, the parent unions
+# these into its own allow-list (or, with hosts: declared, the parent
+# must list them explicitly).
+hosts:
+  - host.run
+
+# Named capability the sub-story depends on. Two ops surface the
+# proposal §11.1 "multi-op host_interface" pattern: `announce` opens
+# the scene, `close` wraps it up after the encounter resolves. The
+# loader rewrites both as `<binding>.<op>` at top-level Load so the
+# runtime registry can dispatch each op to a separate handler when
+# one is registered, falling back to the bare binding handler when
+# only one is registered.
+host_interfaces:
+  narrator:
+    description: "Speak one line of prose at the open or close of the encounter."
+    operations:
+      announce:
+        input:  { message: string }
+        output: { ok: bool }
+      close:
+        input:  { summary: string }
+        output: { ok: bool }
+    default: host.run
+
+# Private world. Every key is encapsulated under the alias the importer
+# binds; oregon-trail reaches these via `world.<alias>__<key>`.
+world:
+  # Read-in keys (the importer projects via world_in:).
+  party_money:     { type: int,    default: 0 }
+  party_food_lbs:  { type: int,    default: 0 }
+  party_alive:     { type: int,    default: 5 }
+  threat_level:    { type: int,    default: 2 }   # 1 = mild, 3 = serious
+
+  # Internal / write-out keys (the importer lifts via world_out: on exit).
+  paid_amount:     { type: int,    default: 0 }
+  member_lost:     { type: bool,   default: false }
+  outcome:         { type: string, default: "" }
+
+intents:
+  pay:
+    description: "Pay the bandits off."
+    examples: [pay, "give them the money"]
+    priority: 80
+  fight:
+    description: "Fight the bandits."
+    examples: [fight, "shoot them"]
+    priority: 70
+  flee:
+    description: "Try to outrun them."
+    examples: [flee, "run", "ride off"]
+    priority: 60
+  look:
+    description: "Look around — re-render the scene."
+    examples: [look, "what now?"]
+    priority: 10
+
+# Importers may re-expose these names back into the parent's intent
+# table; useful for adding a "negotiate" shortcut a host game can fold
+# into its own checkpoint menu.
+exports:
+  intents: [pay, fight, flee]
+
+# Named return points. The parent maps each to a state of its own and
+# may attach world_out projections (per-exit) that lift this story's
+# private outcome into the host's world.
+exits:
+  paid:
+    description: "Tribute paid; party rides on."
+    requires: [paid_amount]
+  routed:
+    description: "Bandits driven off."
+  killed:
+    description: "A party member died in the fight."
+    requires: [member_lost]
+  fled:
+    description: "Escaped without a shot fired."
+
+root: encounter
+
+states:
+  encounter:
+    description: "A masked rider blocks the trail."
+    view: |
+      A masked rider on a sorrel pony blocks the road, rifle across the saddle.
+      "{{ world.threat_level * 50 }} dollars or there'll be trouble."
+
+      Party alive: {{ world.party_alive }}. Money: {{ world.party_money }}.
+      Threat: {{ world.threat_level }}/3.
+
+      Actions: pay, fight, flee, look.
+    relevant_world: [party_money, party_alive, threat_level]
+    on_enter:
+      # Exercises the multi-op host_interface (proposal §11.1):
+      # `announce` is rewritten to <binding>.announce at top-level Load.
+      # Override.prompts can target `prompts/encounter_intro.md` to swap
+      # the prose without forking the state body. The default handler
+      # (host.run) ignores the prompt arg; LLM-shaped handlers can
+      # honour it via with.prompt.
+      - invoke: iface.narrator.announce
+        with:
+          cmd:    "true # bandit shows up, threat={{ world.threat_level }}"
+          prompt: "prompts/encounter_intro.md"
+    on:
+      pay:
+        # Pay only if the party can afford it. On exit, also call the
+        # narrator's `close` op so the scene wraps cleanly — verifies
+        # multi-op dispatch works (announce + close on the same iface).
+        - when: "world.party_money >= world.threat_level * 50"
+          target: "@exit:paid"
+          effects:
+            - set:
+                paid_amount: "{{ world.threat_level * 50 }}"
+                outcome:     "paid"
+            - invoke: iface.narrator.close
+              with: { cmd: "true # paid {{ world.threat_level * 50 }}" }
+        - default: true
+          target: .
+          guard_hint: "Not enough money to buy them off."
+
+      fight:
+        # The party only wins if it's still healthy enough. Bandit
+        # difficulty scales with threat_level.
+        - when: "world.party_alive >= 2 + world.threat_level"
+          target: "@exit:routed"
+          effects:
+            - set: { outcome: "routed" }
+            - invoke: iface.narrator.close
+              with: { cmd: "true # routed" }
+        - default: true
+          target: "@exit:killed"
+          effects:
+            - set:
+                member_lost: true
+                outcome:     "killed"
+            - invoke: iface.narrator.close
+              with: { cmd: "true # killed" }
+
+      flee:
+        - target: "@exit:fled"
+          effects:
+            - set: { outcome: "fled" }
+            - invoke: iface.narrator.close
+              with: { cmd: "true # fled" }
+
+      look:
+        - target: .

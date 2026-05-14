@@ -127,6 +127,17 @@ type TurnContext struct {
 	// mutations). Empty when no trace ring is available (non-TUI
 	// callers like `kitsoki turn` and tests).
 	TracePath string
+
+	// ImportedManifestPaths is the absolute-path list of every
+	// imported child manifest the loader visited during the current
+	// AppDef's recursive load (story-imports proposal §16.4). The
+	// metamode controller folds the parent directories of each into
+	// its post-call snapshot tree so an edit in a sibling story (e.g.
+	// `stories/robbery/` while running `stories/oregon-trail/`)
+	// triggers an auto-reload. Empty when the app declares no imports
+	// or when the caller hasn't populated it; in either case the
+	// behaviour falls back to the single-root walk of AppFile's dir.
+	ImportedManifestPaths []string
 }
 
 // SendResult is the per-turn outcome surfaced to the TUI.

@@ -1,0 +1,41 @@
+# Winning path through the imported sub_story.
+# Asserts: namespace flattening (sub.idle / sub.working), world_in
+# projection (current_ticket → sub__ticket_id), the parent's state
+# override (working room comes from the override), and world_out
+# (sub__pr_url → last_pr_url on @exit:completed).
+test_kind: flow
+app: imports-smoke-parent
+initial_state: main
+initial_world:
+  current_ticket: ""
+
+turns:
+  # Turn 1: from main, begin_substory sets current_ticket and transitions
+  # into `sub` (the compound wrapper). Its OnEnter (world_in) sets
+  # sub__ticket_id from world.current_ticket, then drills into Initial=idle.
+  - intent: { name: begin_substory, slots: {} }
+    expect_state: sub.idle
+    expect_world:
+      current_ticket: "KIT-42"
+      sub__ticket_id: "KIT-42"
+
+  # Turn 2: inside the child, start_work is now sub__start_work (the
+  # child intent was renamed when folded). Move to working.
+  - intent: { name: sub__start_work, slots: {} }
+    expect_state: sub.working
+
+  # Turn 3: finish — the parent's override of `working` replaced the
+  # state but kept the @exit:completed transition. With slots.url it
+  # writes sub__pr_url and the world_out projection lifts that into
+  # last_pr_url.
+  - intent: { name: sub__finish, slots: { url: "https://example/pr/1" } }
+    expect_state: pr_landed
+    expect_world:
+      sub__pr_url: "https://example/pr/1"
+      last_pr_url: "https://example/pr/1"
+
+  # Turn 4: parent intent go_main returns home.
+  - intent: { name: go_main, slots: {} }
+    expect_state: main
+
+expect_no_errors: true

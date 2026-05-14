@@ -1,0 +1,71 @@
+# sub_story — a small self-contained child for exercising the
+# story-imports machinery. Standalone-loadable: runs to a synthesised
+# terminal __exit__<name> state when no parent maps the exits.
+app:
+  id: imports-smoke-sub
+  version: 0.1.0
+
+hosts:
+  - host.run
+
+host_interfaces:
+  reporter:
+    description: "Print a status line."
+    operations:
+      announce:
+        input: { message: string }
+        output: { ok: bool }
+    default: host.run
+
+world:
+  ticket_id:   { type: string, default: "" }
+  pr_url:      { type: string, default: "" }
+  fail_reason: { type: string, default: "" }
+
+intents:
+  start_work:
+    description: "Begin the work."
+    examples: ["start", "go"]
+  finish:
+    description: "Finish — produce pr_url."
+    slots:
+      url:
+        type: string
+        required: true
+  bail:
+    description: "Give up."
+
+exports:
+  intents: [start_work]
+
+exits:
+  completed:
+    requires: [pr_url]
+    description: "Work done; pr_url set."
+  abandoned:
+    description: "Bailed."
+
+root: idle
+
+states:
+  idle:
+    description: "Ready to work on ticket {{ world.ticket_id }}."
+    view: |
+      Ticket: {{ world.ticket_id }}. Ready.
+    on:
+      start_work:
+        - target: working
+      bail:
+        - target: "@exit:abandoned"
+
+  working:
+    description: "Working on {{ world.ticket_id }}."
+    view: |
+      Working: {{ world.ticket_id }}.
+    on:
+      finish:
+        - target: "@exit:completed"
+          effects:
+            - set: { pr_url: "{{ slots.url }}" }
+      bail:
+        - target: "@exit:abandoned"

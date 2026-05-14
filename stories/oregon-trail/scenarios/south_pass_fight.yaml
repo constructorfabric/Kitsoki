@@ -1,0 +1,35 @@
+# Warp basis: South Pass bandit ambush, threat tier 3, under-strength party.
+#
+# Threat scales with miles_traveled (≥1200 → 3). Party at 4 < 2+3=5 so the
+# fight default arm fires → @exit:killed. Used to smoke-test the
+# member-loss path of the imported robbery story.
+name:        "South Pass — bandit fight, party loses a member"
+description: "Threat tier 3, party of 4 — fighting falls into @exit:killed."
+
+state: leg_e_awaiting_reply
+
+world:
+  party_names:      "John,Sarah,Tom,Mary,Anne"
+  party_member_1:   "John"
+  party_member_2:   "Sarah"
+  party_member_3:   "Tom"
+  party_member_4:   "Mary"
+  party_member_5:   "Anne"
+  profession:       "banker"
+  month:            "august"
+  money:            200
+  oxen:             3
+  food_lbs:         500
+  bullets:          20
+  clothing_sets:    1
+  spare_wheels:     1
+  spare_axles:      1
+  spare_tongues:    1
+  pace:             "steady"
+  rations:          "filling"
+  party_alive:      4
+  health_avg:       50
+  narration:        false
+  current_landmark: "South Pass"
+  miles_traveled:   1400
+  day:              70

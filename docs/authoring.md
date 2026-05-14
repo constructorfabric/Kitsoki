@@ -309,12 +309,19 @@ Implemented in
 
 ---
 
-## 6. Scaling up: includes, phases, proposals
+## 6. Scaling up: includes, phases, proposals, imports
 
-For non-trivial apps, three features compress the YAML:
+For non-trivial apps, four features compress the YAML:
 
 - **Includes** — `include: ["rooms/*.yaml"]` merges other YAMLs into
-  the manifest. Duplicate state or intent names error at load.
+  the manifest. Duplicate state or intent names error at load. Use for
+  same-app file splitting.
+- **Imports** — `imports: { <alias>: { source: ./bugfix } }` embeds
+  another *app* as an aliased sub-story. Private world; explicit
+  projections through `world_in:` and per-exit `set:`; named exits;
+  state/intent/prompt overrides; rebindable `host_interfaces:`. Use
+  for cross-repo composition and reusable mini-stories. Full reference:
+  [`imports.md`](imports.md).
 - **Phase templates** — declare a reusable room shape once, instantiate
   it once per phase. See
   [`state-machine.md` §9](state-machine.md#9-phase-templates-compressing-repeated-rooms).
@@ -337,6 +344,8 @@ Don't use them on a five-state app.
 | `kitsoki render -o APP.md` | Markdown documentation derived from the YAML — overview, Mermaid diagram, transition tables. |
 | `kitsoki test flows` | Mode 2 deterministic tests. |
 | `kitsoki test intents` | Mode 1 intent pass-rate tests. |
+| `kitsoki run --warp <path>` | Boot the TUI directly into a primed mid-game state from a YAML "warp basis". See [`imports.md`](imports.md#operator-tooling-warp-and---warp). |
+| In-TUI `/warp` | Slash command equivalent. `/warp <state> world.X=Y` for inline; `/warp file:<path>` to load a basis. |
 | `kitsoki docs apply-proposal` | LLM-facing guide for "implement this prose proposal against `app.yaml`". |
 | In-TUI `Edit mode` | Hot-reload editing — see [`developer-guide.md` §8](developer-guide.md#8-hot-reload-edit-mode). |
 

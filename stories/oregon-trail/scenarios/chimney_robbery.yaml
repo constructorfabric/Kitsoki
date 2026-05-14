@@ -1,0 +1,40 @@
+# Warp basis: Chimney Rock bandit encounter, threat tier 2.
+#
+# Drops a primed banker party into leg_c_awaiting_reply (Chimney Rock)
+# with enough money to either pay the bandit's tribute (threat * 50 =
+# $100) or fight (party of 5 ≥ 2 + 2 threat). From the TUI:
+#
+#   /warp file:scenarios/chimney_robbery.yaml
+#
+# Then `face_robbery` (or `scout`) to enter the imported `frontier`
+# sub-story.
+name:        "Chimney Rock — bandit encounter (threat 2)"
+description: "Primed banker party at Chimney Rock for the robbery flow."
+
+state: leg_c_awaiting_reply
+
+world:
+  party_names:      "John,Sarah,Tom,Mary,Anne"
+  party_member_1:   "John"
+  party_member_2:   "Sarah"
+  party_member_3:   "Tom"
+  party_member_4:   "Mary"
+  party_member_5:   "Anne"
+  profession:       "banker"
+  month:            "june"
+  money:            400
+  oxen:             4
+  food_lbs:         1000
+  bullets:          100
+  clothing_sets:    2
+  spare_wheels:     1
+  spare_axles:      1
+  spare_tongues:    1
+  pace:             "steady"
+  rations:          "filling"
+  party_alive:      5
+  health_avg:       80
+  narration:        false
+  current_landmark: "Chimney Rock"
+  miles_traveled:   600
+  day:              22

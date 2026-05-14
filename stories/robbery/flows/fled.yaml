@@ -1,0 +1,21 @@
+test_kind: flow
+app: robbery
+initial_state: encounter
+initial_world:
+  party_money:  10
+  threat_level: 2
+  party_alive:  2
+
+host_handlers:
+  host.run:
+    data: { ok: true, exit_code: 0, stdout: "", stderr: "" }
+    delay: "0s"
+
+turns:
+  - intent: { name: flee, slots: {} }
+    expect_state: __exit__fled
+    expect_world:
+      outcome: "fled"
+
+expect_terminal: true
+expect_no_errors: true

@@ -16,6 +16,7 @@ import (
 	"log/slog"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -990,10 +991,226 @@ func (m RootModel) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 	case "/sessions":
 		return m.handleSessionsSlash(parts[1:])
 
+	case "/warp":
+		return m.handleWarpCommand(parts[1:])
+
 	default:
 		m.transcript.AppendSystem(fmt.Sprintf("(unknown command: %s)", parts[0]))
 		return m, nil
 	}
+}
+
+// handleWarpCommand implements `/warp`, a generic developer teleport for
+// smoke-testing flows. Three input shapes:
+//
+//  1. Inline:    /warp <state> [world.<k>=<v> ...]
+//  2. File:      /warp file:<path>     (or any arg ending in .yaml/.yml/.json)
+//  3. (Future) /warp trace:<path>      (planned: replay a trace.jsonl then warp)
+//
+// File form lets authors commit reusable "warp bases" alongside the app
+// — `/warp file:./scenarios/chimney-robbery.yaml` is a one-liner that
+// teleports into a fully-primed mid-game state. Same file YAML the
+// flow-test fixtures use for initial_state + initial_world, but
+// callable interactively against a live session.
+//
+// File schema:
+//
+//	# Optional: human-readable metadata
+//	name: "Chimney Rock encounter"
+//	description: "Primed party at Chimney Rock for the robbery flow."
+//
+//	# Required: destination state path (dot-separated)
+//	state: leg_c_awaiting_reply
+//
+//	# Optional: world overrides; merged via Teleport.Slots
+//	world:
+//	  money: 400
+//	  current_landmark: "Chimney Rock"
+//	  party_alive: 5
+//
+// Inline value parsing: int → bool → string. Quoted values for spaces.
+// Routes through Orchestrator.Teleport so world overrides become
+// EffectApplied events the replay path reconstructs deterministically.
+func (m RootModel) handleWarpCommand(args []string) (tea.Model, tea.Cmd) {
+	if len(args) == 0 {
+		m.transcript.AppendSystem("(warp: usage: /warp <state-path> [world.<k>=<v> ...]   or   /warp file:<path>)")
+		return m, nil
+	}
+
+	// Detect file form. `file:<path>` is the explicit prefix; anything
+	// else that looks like a YAML/JSON path falls through too so the
+	// common case `/warp scenarios/foo.yaml` works without ceremony.
+	first := args[0]
+	if strings.HasPrefix(first, "file:") || isWarpFilePath(first) {
+		path := strings.TrimPrefix(first, "file:")
+		return m.handleWarpFromFile(path)
+	}
+
+	// Inline form. Reassemble args into a single line so we can
+	// re-split with quote handling.
+	raw := strings.Join(args, " ")
+	tokens, err := shellLikeSplit(raw)
+	if err != nil {
+		m.transcript.AppendSystem(fmt.Sprintf("(warp: parse error: %v)", err))
+		return m, nil
+	}
+	if len(tokens) == 0 {
+		m.transcript.AppendSystem("(warp: missing state path)")
+		return m, nil
+	}
+
+	target := app.StatePath(tokens[0])
+	if !stateExistsInApp(m.orch.AppDef(), target) {
+		m.transcript.AppendSystem(fmt.Sprintf("(warp: state %q not found in app)", target))
+		return m, nil
+	}
+
+	slots := map[string]any{}
+	for _, arg := range tokens[1:] {
+		eq := strings.IndexByte(arg, '=')
+		if eq <= 0 {
+			m.transcript.AppendSystem(fmt.Sprintf("(warp: skipping %q — expected key=value)", arg))
+			continue
+		}
+		key := strings.TrimPrefix(arg[:eq], "world.")
+		val := parseWarpValue(arg[eq+1:])
+		slots[key] = val
+	}
+
+	return m.dispatchWarp(target, slots, fmt.Sprintf("/warp %s", target))
+}
+
+// handleWarpFromFile reads a warp-basis YAML at path, validates the
+// declared target state, and dispatches the teleport. The path is
+// resolved relative to the app directory first, then relative to cwd,
+// so `file:scenarios/foo.yaml` works both when run from the repo root
+// and when run from a checkout of the app.
+func (m RootModel) handleWarpFromFile(path string) (tea.Model, tea.Cmd) {
+	resolved, basis, err := loadWarpBasis(path, m.appPath)
+	if err != nil {
+		m.transcript.AppendSystem(fmt.Sprintf("(warp file: %v)", err))
+		return m, nil
+	}
+	if basis.State == "" {
+		m.transcript.AppendSystem(fmt.Sprintf("(warp file %s: missing required `state:` field)", resolved))
+		return m, nil
+	}
+	target := app.StatePath(basis.State)
+	if !stateExistsInApp(m.orch.AppDef(), target) {
+		m.transcript.AppendSystem(fmt.Sprintf("(warp file %s: state %q not found in app)", resolved, target))
+		return m, nil
+	}
+	slots := make(map[string]any, len(basis.World))
+	for k, v := range basis.World {
+		slots[k] = v
+	}
+	label := resolved
+	if basis.Name != "" {
+		label = fmt.Sprintf("%s — %s", resolved, basis.Name)
+	}
+	return m.dispatchWarp(target, slots, fmt.Sprintf("/warp file:%s", label))
+}
+
+// dispatchWarp is the shared finish-line for inline and file-based
+// warps. Appends the status line to the transcript and returns the
+// tea.Cmd that runs the orchestrator's Teleport off the event loop.
+func (m RootModel) dispatchWarp(target app.StatePath, slots map[string]any, inputLabel string) (tea.Model, tea.Cmd) {
+	tgt := inbox.TeleportTarget{State: target, Slots: slots}
+	m.transcript.AppendSystem(fmt.Sprintf("[/warp] → %s (world overrides: %d)", target, len(slots)))
+
+	orch := m.orch
+	sid := m.sid
+	return m, func() tea.Msg {
+		ctx := context.Background()
+		out, err := orch.Teleport(ctx, sid, tgt)
+		return turnOutcomeMsg{outcome: out, input: inputLabel, err: err}
+	}
+}
+
+// isWarpFilePath reports whether s looks like a path to a YAML/JSON
+// warp-basis file (used to detect the file form without the explicit
+// `file:` prefix). Conservative: only triggers on file extensions and
+// the presence of a path separator — bare names without an extension
+// fall through to state-path parsing.
+func isWarpFilePath(s string) bool {
+	if strings.HasSuffix(s, ".yaml") || strings.HasSuffix(s, ".yml") || strings.HasSuffix(s, ".json") {
+		return true
+	}
+	return false
+}
+
+// parseWarpValue coerces a raw `=`-separated value into the most natural Go
+// type: int → bool → fallback string. Authors writing `money=400` get an
+// int64; `bailed=true` becomes a bool; `current_landmark="Chimney Rock"`
+// retains its (already-unquoted) string form.
+func parseWarpValue(raw string) any {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if n, err := strconv.ParseInt(raw, 10, 64); err == nil {
+		return n
+	}
+	if raw == "true" {
+		return true
+	}
+	if raw == "false" {
+		return false
+	}
+	return raw
+}
+
+// shellLikeSplit splits a string into tokens, honoring double-quoted
+// segments. Single quotes are not treated specially. Escape sequences are
+// not interpreted — the only goal is to allow `key="value with spaces"`.
+func shellLikeSplit(s string) ([]string, error) {
+	var out []string
+	var cur strings.Builder
+	inQuote := false
+	flush := func() {
+		if cur.Len() > 0 {
+			out = append(out, cur.String())
+			cur.Reset()
+		}
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c == '"':
+			inQuote = !inQuote
+		case c == ' ' && !inQuote:
+			flush()
+		default:
+			cur.WriteByte(c)
+		}
+	}
+	if inQuote {
+		return nil, fmt.Errorf("unterminated quote")
+	}
+	flush()
+	return out, nil
+}
+
+// stateExistsInApp reports whether the given dot-separated state path
+// resolves through the AppDef's nested state tree. Used by /warp to reject
+// typos with a clear message instead of letting Teleport fail downstream.
+func stateExistsInApp(def *app.AppDef, path app.StatePath) bool {
+	if def == nil || path == "" {
+		return false
+	}
+	segments := strings.Split(string(path), ".")
+	states := def.States
+	for i, seg := range segments {
+		s, ok := states[seg]
+		if !ok || s == nil {
+			return false
+		}
+		if i == len(segments)-1 {
+			return true
+		}
+		states = s.States
+	}
+	return false
 }
 
 // handleMouseCommand toggles the TUI's mouse capture on or off at runtime.
@@ -1988,12 +2205,22 @@ func (m RootModel) buildMetaTurnContext() metamode.TurnContext {
 		}
 	}
 
+	// Surface the imported-manifest paths so the metamode controller's
+	// file-watch tree includes every sibling story's directory. Without
+	// this, an edit in stories/robbery/ while running stories/oregon-trail/
+	// would not auto-reload. (Story-imports proposal §16.4.)
+	var importedPaths []string
+	if def := m.orch.AppDef(); def != nil {
+		importedPaths = append(importedPaths, def.LoadedManifests...)
+	}
+
 	return metamode.TurnContext{
-		StatePath:    string(m.currentState),
-		AppFile:      m.appPath,
-		RenderedView: view,
-		World:        w.Vars,
-		TracePath:    tracePath,
+		StatePath:             string(m.currentState),
+		AppFile:               m.appPath,
+		RenderedView:          view,
+		World:                 w.Vars,
+		TracePath:             tracePath,
+		ImportedManifestPaths: importedPaths,
 	}
 }
 

@@ -1240,9 +1240,9 @@ This is **opt-in per chat**, with the default being safe
   [`ai-collaboration-proposal.md`](ai-collaboration-proposal.md).**
   That proposal makes kitsoki more inspectable; this one
   makes claude more controllable.
-- **Independent of
-  [`story-imports-proposal.md`](story-imports-proposal.md).**
-  Story composition is load-time; this is runtime.
+- **Independent of story imports (shipped; see
+  [`docs/imports.md`](../imports.md)).** Story composition is
+  load-time; this is runtime.
 
 ---
 

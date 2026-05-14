@@ -1,0 +1,23 @@
+# Standalone: pay the bandit, exit via @exit:paid → __exit__paid terminal.
+test_kind: flow
+app: robbery
+initial_state: encounter
+initial_world:
+  party_money:  500
+  threat_level: 2
+  party_alive:  5
+
+host_handlers:
+  host.run:
+    data: { ok: true, exit_code: 0, stdout: "", stderr: "" }
+    delay: "0s"
+
+turns:
+  - intent: { name: pay, slots: {} }
+    expect_state: __exit__paid
+    expect_world:
+      paid_amount: 100
+      outcome:     "paid"
+
+expect_terminal: true
+expect_no_errors: true

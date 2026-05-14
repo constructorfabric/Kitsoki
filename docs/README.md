@@ -27,6 +27,9 @@ see [`../design.md`](../design.md).
    sessions keyed by external thread; phase checkpoints.
 8. **[`background-jobs/`](background-jobs/README.md)** — long-running
    handlers, inbox notifications, mid-flight clarifications.
+9. **[`imports.md`](imports.md)** — composing apps across files and
+   repos via the `imports:` block; the `/warp` slash command and
+   `kitsoki run --warp` for operator smoke testing.
 
 ## Quick reference
 

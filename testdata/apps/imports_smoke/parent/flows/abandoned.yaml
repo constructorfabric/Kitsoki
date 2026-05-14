@@ -1,0 +1,20 @@
+# Abandoned path: child exits via @exit:abandoned, which the parent maps
+# to `main` with a world_out projection setting `bailed: true`.
+test_kind: flow
+app: imports-smoke-parent
+initial_state: main
+initial_world:
+  current_ticket: ""
+  bailed: false
+
+turns:
+  - intent: { name: begin_substory, slots: {} }
+    expect_state: sub.idle
+
+  # Bail directly from idle.
+  - intent: { name: sub__bail, slots: {} }
+    expect_state: main
+    expect_world:
+      bailed: true
+
+expect_no_errors: true

@@ -10,15 +10,19 @@ names below are the literal `yaml:"..."` tag names.
 ## Top level: `AppDef`
 
 ```yaml
-app:        <AppMeta>                  # required
-world:      { <name>: <VarDef>, ... }  # optional
-intents:    { <name>: <Intent>, ... }  # optional (global intent library)
-root:       <string> | <State>         # required — initial state name or inline state
-states:     { <name>: <State>, ... }   # optional
-off_path:   <OffPathDef>               # optional
-hosts:      [ <string>, ... ]          # optional allow-list of host handler names
-proposals:  { <name>: <ProposalKind> } # optional
-include:    [ <glob>, ... ]            # optional — merge other YAMLs relative to this file
+app:             <AppMeta>                       # required
+world:           { <name>: <VarDef>, ... }       # optional
+intents:         { <name>: <Intent>, ... }       # optional (global intent library)
+root:            <string> | <State>              # required — initial state name or inline state
+states:          { <name>: <State>, ... }        # optional
+off_path:        <OffPathDef>                    # optional
+hosts:           [ <string>, ... ]               # optional allow-list of host handler names
+proposals:       { <name>: <ProposalKind> }      # optional
+include:         [ <glob>, ... ]                 # optional — merge other YAMLs relative to this file
+imports:         { <alias>: <ImportDef>, ... }   # optional — aliased sub-story composition
+exits:           { <name>: <ExitDef>, ... }      # optional — child-side exit contract (only meaningful when this app is imported)
+exports:         <ExportsBlock>                  # optional — what an imported child surfaces (intents:)
+host_interfaces: { <name>: <HostInterfaceDef> }  # optional — named capability surfaces
 ```
 
 - `root` may be a string (name of a state in `states:`) or an inline `State`
@@ -26,6 +30,11 @@ include:    [ <glob>, ... ]            # optional — merge other YAMLs relative
 - `include` globs are expanded relative to the directory of the main YAML.
   Duplicate state/intent names across includes error out; the `hosts` list
   is unioned.
+- `imports:`, `exits:`, `exports:`, `host_interfaces:` together implement
+  the story-imports surface — aliased composition with private worlds,
+  projected world_in/world_out, named exits, intent re-export, and
+  rebindable host_interfaces. Full reference and worked examples in
+  [`docs/imports.md`](../../docs/imports.md).
 
 ## `AppMeta`
 
@@ -509,6 +518,64 @@ proposals:
 | `auto_accept_if`  | Expr over `{$proposal, $world, $slots}`; skips review when true  |
 | `require_confirm` | Always require explicit user confirmation before execute         |
 
+## `ImportDef` (story-imports composition)
+
+```yaml
+imports:
+  <alias>:
+    source:   <string>                    # required: ./path | @kitsoki/<name> | /abs
+    version:  <string>                    # optional metadata (v1: not enforced)
+    entry:    <child-state>               # required: where the child starts when invoked
+    world_in: { <child-key>: <expr> }     # parent → child projection (eval'd in parent scope)
+    exits:                                # child-exit → parent-state mapping
+      <child-exit>:
+        to: <parent-state>
+        set: { <parent-key>: <child-expr> }  # per-exit world_out projection
+    hosts: inherit | declared             # default: inherit
+    host_bindings: { <iface>: <handler> } # rebind a child or grandchild iface
+    intents:
+      export: [<parent-intent>, ...]      # parent → child intent re-export
+      import: [<child-intent>, ...]       # child → parent intent re-export
+    overrides:
+      states:  { <child-state>: <State> }   # whole-state replacement
+      intents: { <child-intent>: <Intent> } # whole-intent replacement
+      prompts: { <child-rel-path>: <parent-rel-path> }  # prompt-file substitution
+```
+
+## `ExitDef`
+
+```yaml
+exits:
+  <name>:
+    description: <string>          # optional
+    requires:    [<world-key>, ...] # optional, statically checked at load
+```
+
+Only meaningful when this app is imported by another. Standalone load
+synthesises `__exit__<name>` terminal states for any `@exit:<name>`
+target the app uses.
+
+## `HostInterfaceDef`
+
+```yaml
+host_interfaces:
+  <name>:
+    description: <string>
+    operations:
+      <op>:
+        input:  <shape>      # metadata; not validated against handler v1
+        output: <shape>
+    default: <handler>       # default binding when no importer overrides
+```
+
+Invoked from state effects via `invoke: iface.<name>.<op>`. At
+top-level Load, every `iface.<name>.<op>` is rewritten to
+`<binding>.<op>`; the runtime host registry's prefix-fallback maps
+`<binding>.<op>` → `<binding>` when no per-op handler is registered.
+
+Full reference, including the multi-layer composition surface, is in
+[`docs/imports.md`](../../docs/imports.md).
+
 ## Validation (what the loader enforces)
 
 The loader (`internal/app/loader.go`) performs these checks and collects all
@@ -526,6 +593,25 @@ errors with `errors.Join` so you see the complete problem set on first load:
   must exist. (Template `initial:` values skip the check.)
 - `include` globs cannot produce duplicate state/intent names (the `hosts`
   list is the only mergeable list).
+- For each `imports.<alias>`:
+  - the alias must not collide with an existing parent state name;
+  - every `@exit:<name>` in the child must be mapped in
+    `exits:`, unless the app is loaded standalone (where they
+    materialise as `__exit__<name>` terminals);
+  - `overrides.states.<X>` / `.intents.<X>` / `.prompts.<X>` keys must
+    name existing child elements;
+  - `intents.export` references must exist in the parent's `intents:`;
+  - `intents.import` references must be listed in the child's
+    `exports.intents`;
+  - `host_bindings.<name>` must match either an iface the immediate
+    child declares or one accessible by alias-prefix from a grandchild;
+  - `hosts: declared` mode requires every child host to be in the
+    parent's own `hosts:` list;
+  - every transition into `@exit:<name>` must set every key in the
+    child's `exits.<name>.requires`;
+  - `..` relative targets inside the child cannot walk above the
+    alias wrapper (cross-boundary parent targets are forbidden);
+  - import cycles (any number of layers) are detected and rejected.
 
 ## What the loader does **not** check (runtime only)
 

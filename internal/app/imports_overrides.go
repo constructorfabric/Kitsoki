@@ -1,0 +1,150 @@
+// Package app — story-imports overrides (§10).
+//
+// Overrides patch a child app's states / intents / prompts at import time.
+// The import declares:
+//
+//	imports:
+//	  bf:
+//	    overrides:
+//	      states:   { applying: {...replacement state...} }
+//	      intents:  { trigger_deploy: {...replacement intent...} }
+//	      prompts:  { shell_repair.md: ./prompts/custom_shell_repair.md }
+//
+// Semantics: whole-element replacement, not deep-merge. Validation fails
+// when an override targets a name the child does not actually declare —
+// this catches typos at load time rather than letting them silently no-op.
+//
+// Override is applied BEFORE the child is namespace-flattened so the
+// override.states / override.intents keys reference child-local names
+// (not <alias>/<name>). The child rewriter then walks the overridden
+// shape during the normal fold pass.
+package app
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+)
+
+// applyOverrides walks imp.Overrides and patches child in place. Errors
+// are aggregated.
+//
+//	parentBaseDir  — directory of the parent app.yaml (for prompt path
+//	                 resolution; override.prompts paths are author-relative
+//	                 to the parent).
+//	childBaseDir   — directory of the child app.yaml (where the prompt
+//	                 file would live unaltered; we replace its contents on
+//	                 disk-relative reads at load time by remapping the
+//	                 path the child loader reads from).
+func applyOverrides(child *AppDef, ov *ImportOverrides, file, alias, parentBaseDir, childBaseDir string) []error {
+	if child == nil || ov == nil {
+		return nil
+	}
+	var errs []error
+	addErr := func(msg string) {
+		errs = append(errs, &ValidationError{File: file, Message: fmt.Sprintf("imports.%s: overrides: %s", alias, msg)})
+	}
+
+	// State overrides — replace by child-local name. The match must exist
+	// somewhere in the child's state tree (top-level or nested); we only
+	// replace top-level matches in v1 because nested replacement gets
+	// surprising (the proposal §10 says "replaces the child's state of
+	// that name" without disambiguating nesting; we pick the safe rule).
+	for _, name := range sortedKeys(ov.States) {
+		newState := ov.States[name]
+		if _, ok := child.States[name]; !ok {
+			addErr(fmt.Sprintf("states.%s: child does not declare a top-level state named %q", name, name))
+			continue
+		}
+		child.States[name] = newState
+	}
+
+	// Intent overrides — replace named child intents. The intent must
+	// already exist in the child's library; if not, this is a typo.
+	for _, name := range sortedKeys(ov.Intents) {
+		if _, ok := child.Intents[name]; !ok {
+			addErr(fmt.Sprintf("intents.%s: child does not declare an intent named %q", name, name))
+			continue
+		}
+		if child.Intents == nil {
+			child.Intents = make(map[string]Intent)
+		}
+		child.Intents[name] = ov.Intents[name]
+	}
+
+	// Prompt overrides — copy parent's file into the location the child
+	// reads from. The simplest correct implementation: read the override
+	// file from the parent's dir, write it to the child's expected path
+	// in a temp area, then point any host.oracle.* invocation that reads
+	// that path at the override.
+	//
+	// In practice prompt-bearing invocations carry the path as a
+	// `with: { prompt: "<relative>" }` arg. We rewrite those arg values
+	// from <relative> to the override's resolved path when a match exists.
+	if len(ov.Prompts) > 0 {
+		// Validate every override path exists; resolve to absolute.
+		resolved := make(map[string]string, len(ov.Prompts))
+		for _, rel := range sortedKeys(ov.Prompts) {
+			overridePath := ov.Prompts[rel]
+			if !filepath.IsAbs(overridePath) {
+				overridePath = filepath.Join(parentBaseDir, overridePath)
+			}
+			if _, statErr := os.Stat(overridePath); statErr != nil {
+				addErr(fmt.Sprintf("prompts.%s: %v", rel, statErr))
+				continue
+			}
+			// child path resolves relative to childBaseDir for matching.
+			childRel := rel
+			if !filepath.IsAbs(childRel) {
+				childRel = filepath.Join(childBaseDir, rel)
+			}
+			resolved[childRel] = overridePath
+			// Also key by the bare relative form so authors can write
+			// either form in `with: { prompt: ... }`.
+			resolved[rel] = overridePath
+		}
+		if len(resolved) > 0 {
+			applyPromptOverridesToStates(child.States, resolved)
+		}
+	}
+
+	return errs
+}
+
+// applyPromptOverridesToStates walks every Effect.With["prompt"] in the
+// child's state tree and rewrites the value when a key matches `resolved`.
+// `resolved` keys are both the relative path the child author wrote and
+// the abs path the loader would resolve to; the lookup tries both.
+func applyPromptOverridesToStates(states map[string]*State, resolved map[string]string) {
+	for _, s := range states {
+		if s == nil {
+			continue
+		}
+		applyPromptOverridesToEffects(s.OnEnter, resolved)
+		for _, list := range s.On {
+			for i := range list {
+				applyPromptOverridesToEffects(list[i].Effects, resolved)
+			}
+		}
+		if len(s.States) > 0 {
+			applyPromptOverridesToStates(s.States, resolved)
+		}
+	}
+}
+
+func applyPromptOverridesToEffects(effs []Effect, resolved map[string]string) {
+	for i := range effs {
+		if len(effs[i].With) > 0 {
+			if raw, ok := effs[i].With["prompt"]; ok {
+				if s, isStr := raw.(string); isStr {
+					if newPath, hit := resolved[s]; hit {
+						effs[i].With["prompt"] = newPath
+					}
+				}
+			}
+		}
+		if len(effs[i].OnComplete) > 0 {
+			applyPromptOverridesToEffects(effs[i].OnComplete, resolved)
+		}
+	}
+}

@@ -1,0 +1,39 @@
+# Standalone: scout → proceed → pay → exit:resolved (terminal).
+# Verifies frontier_event's compound nesting + the inner robbery's
+# @exit:paid chains through frontier_event's @exit:resolved.
+test_kind: flow
+app: frontier-event
+initial_state: scouting
+initial_world:
+  party_money:    300
+  party_alive:    5
+  threat_level:   2
+
+host_handlers:
+  host.run:
+    data: { ok: true, exit_code: 0, stdout: "" }
+    delay: "0s"
+
+turns:
+  - intent: { name: scout, slots: {} }
+    expect_state: scouting
+    expect_world:
+      scout_finding: "Trail dust ahead — riders on the horizon."
+
+  - intent: { name: proceed, slots: {} }
+    expect_state: bandits.encounter
+    expect_world:
+      bandits__party_money:  300
+      bandits__party_alive:  5
+      bandits__threat_level: 2
+
+  - intent: { name: bandits__pay, slots: {} }
+    expect_state: __exit__resolved
+    expect_world:
+      encounter_kind: "paid"
+      paid_amount:    100
+      bandits__paid_amount: 100
+      bandits__outcome:     "paid"
+
+expect_terminal: true
+expect_no_errors: true

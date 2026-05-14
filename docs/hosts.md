@@ -13,6 +13,24 @@ your own handler, see
 For the effect-level shape (`invoke:`, `with:`, `bind:`, `on_error:`,
 `background:`, `on_complete:`) see `kitsoki docs app-schema`.
 
+For named-capability composition (`host_interfaces:` declared on a
+sub-story, rebound by importers) see [`imports.md`](imports.md) §11.
+
+## Registry dispatch and prefix-fallback
+
+The host registry resolves handler names via exact match first, then
+falls back to the longest registered prefix split on `.`. So
+`Get("host.diary.announce")` returns:
+
+1. The handler registered exactly at `host.diary.announce` if any.
+2. Otherwise the handler registered at `host.diary` if any.
+3. Otherwise not found.
+
+This makes multi-op `host_interface` dispatch work without forcing
+authors to register every `<binding>.<op>` combination. Register one
+handler per op when each op has a different surface; register a single
+carrier handler when the op name is dispatched from `with:` args.
+
 ---
 
 ## Cheat sheet

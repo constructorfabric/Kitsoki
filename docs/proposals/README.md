@@ -57,10 +57,6 @@ thought.
 - [`ai-collaboration-proposal.md`](ai-collaboration-proposal.md) —
   two remaining AI-collaborator surfaces (`kitsoki drive`,
   per-state `loading_view`). Most of v1 shipped.
-- [`story-imports-proposal.md`](story-imports-proposal.md) —
-  namespaced cross-repo composition via an `imports:` block on
-  AppDef. Supersedes the sub-room composition sketch that lived
-  in the bugfix-room proposal.
 - [`claude-code-sessions-proposal.md`](claude-code-sessions-proposal.md) —
   chats PTY mode, input queue, and multi-transport drive.
   Phases 0/A/B/C shipped (see `docs/meta-mode.md` §5 and

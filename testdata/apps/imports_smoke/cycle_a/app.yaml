@@ -1,0 +1,14 @@
+app: { id: cycle-a, version: 0.1.0 }
+hosts: [host.run]
+world: {}
+root: idle
+imports:
+  bcycle:
+    source: ../cycle_b
+    entry: idle
+states:
+  idle:
+    view: "A"
+    on:
+      go:
+        - target: bcycle

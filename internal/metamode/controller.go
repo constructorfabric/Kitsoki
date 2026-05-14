@@ -561,14 +561,20 @@ func (c *Controller) sendLocked(ctx context.Context, s *Session, userText string
 	// detect direct edits to ANY file in the story (app.yaml, includes,
 	// prompts, scripts) — not just the manifest — and trigger an
 	// orchestrator reload + surface the change list on the way out.
+	//
+	// Imported-manifest dirs (proposal §16.4) are folded in as extra
+	// roots so an edit in a sibling story (e.g. `stories/robbery/`
+	// while running `stories/oregon-trail/`) is detected the same way.
 	var (
 		preStat  appFileStat
 		preTree  storyTreeSnapshot
 		treeRoot string
+		extras   []string
 	)
 	if turn.AppFile != "" {
 		treeRoot = filepath.Dir(turn.AppFile)
-		preTree = snapshotStoryTree(treeRoot)
+		extras = importedDirsFor(turn.ImportedManifestPaths)
+		preTree = snapshotStoryTree(treeRoot, extras...)
 	}
 	preStat = statAppFile(turn.AppFile)
 
@@ -612,12 +618,13 @@ func (c *Controller) sendLocked(ctx context.Context, s *Session, userText string
 	}
 
 	// Reload trigger #1 (modern): the agent edited ANY file in the story
-	// directory tree (app.yaml, an include, a prompt, a script…).
+	// directory tree (app.yaml, an include, a prompt, a script…) — or
+	// in any imported child story's directory (proposal §16.4).
 	// Reload trigger #2 (legacy): the ledger flipped during the
 	// structured-token dispatch above. Either is sufficient.
 	var changedFiles []string
 	if treeRoot != "" {
-		postTree := snapshotStoryTree(treeRoot)
+		postTree := snapshotStoryTree(treeRoot, extras...)
 		changedFiles = storyTreeChanges(preTree, postTree)
 	}
 	_ = preStat // kept for symmetry with the legacy single-file diagnostic
@@ -666,18 +673,92 @@ func statAppFile(path string) appFileStat {
 // an empty map which means "no signal" — reload is not triggered.
 type storyTreeSnapshot map[string]appFileStat
 
+// importedDirsFor returns the unique parent directories of the given
+// imported-manifest paths. Used by the controller's reload watcher
+// to fold sibling stories into its file-snapshot tree.
+//
+// Duplicate dirs are collapsed (two imports from `stories/robbery/`
+// at different aliases yield one watched dir). Empty / unstatable
+// paths are silently dropped.
+func importedDirsFor(manifestPaths []string) []string {
+	if len(manifestPaths) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(manifestPaths))
+	var out []string
+	for _, p := range manifestPaths {
+		if p == "" {
+			continue
+		}
+		dir := filepath.Dir(p)
+		if _, dup := seen[dir]; dup {
+			continue
+		}
+		seen[dir] = struct{}{}
+		out = append(out, dir)
+	}
+	return out
+}
+
 // snapshotStoryTree walks rootDir (typically filepath.Dir(turn.AppFile))
 // and returns mtime + size for every file under it. Hidden dirs (.git,
 // .worktrees, …) are skipped so commit churn doesn't flap the
 // reload-detection. Symlinks are not followed.
-func snapshotStoryTree(rootDir string) storyTreeSnapshot {
+//
+// extraRoots is the optional list of additional directories to fold in:
+// every imported manifest's directory (story-imports proposal §16.4),
+// so an edit in a sibling story (`stories/robbery/` while running
+// `stories/oregon-trail/`) triggers reload. Each extra root is walked
+// the same way as the main root. Keys in the returned snapshot are
+// prefixed with the absolute path so two roots with same-named files
+// (`prompts/foo.md`) don't collide.
+func snapshotStoryTree(rootDir string, extraRoots ...string) storyTreeSnapshot {
 	out := storyTreeSnapshot{}
-	if rootDir == "" {
-		return out
+	if rootDir != "" {
+		walkOneRoot(rootDir, "", out)
 	}
+	// Skip extra roots that nest under rootDir (they'll be walked
+	// already), and dedupe siblings that share the same canonical path.
+	seen := map[string]struct{}{}
+	if rootDir != "" {
+		if abs, err := filepath.Abs(rootDir); err == nil {
+			seen[abs] = struct{}{}
+		}
+	}
+	for _, extra := range extraRoots {
+		if extra == "" {
+			continue
+		}
+		abs, err := filepath.Abs(extra)
+		if err != nil {
+			continue
+		}
+		if _, dup := seen[abs]; dup {
+			continue
+		}
+		// If extra is inside rootDir, walkOneRoot of rootDir already
+		// covered it.
+		if rootDir != "" {
+			rootAbs, _ := filepath.Abs(rootDir)
+			if rootAbs != "" && strings.HasPrefix(abs+string(filepath.Separator), rootAbs+string(filepath.Separator)) {
+				seen[abs] = struct{}{}
+				continue
+			}
+		}
+		seen[abs] = struct{}{}
+		// Key prefix = "@@abs@@" so the relative paths inside this
+		// extra root don't collide with the main tree's keys.
+		walkOneRoot(extra, "@@"+abs+"@@", out)
+	}
+	return out
+}
+
+// walkOneRoot is the per-root subroutine for snapshotStoryTree. The
+// `keyPrefix` is prepended to every map key so multiple roots can share
+// the same snapshot without filename collisions.
+func walkOneRoot(rootDir, keyPrefix string, out storyTreeSnapshot) {
 	_ = filepath.WalkDir(rootDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			// best-effort — skip this entry, continue the walk
 			if d != nil && d.IsDir() {
 				return filepath.SkipDir
 			}
@@ -685,15 +766,11 @@ func snapshotStoryTree(rootDir string) storyTreeSnapshot {
 		}
 		name := d.Name()
 		if d.IsDir() {
-			// Skip hidden / dotfile directories (.git, .worktrees, .venv, …)
-			// and node_modules unless the user explicitly opts in. Story
-			// content lives in regular subfolders.
 			if path != rootDir && (strings.HasPrefix(name, ".") || name == "node_modules") {
 				return filepath.SkipDir
 			}
 			return nil
 		}
-		// Skip dotfiles (lockfiles, swp, etc.) and editor temp files.
 		if strings.HasPrefix(name, ".") || strings.HasSuffix(name, "~") {
 			return nil
 		}
@@ -705,10 +782,9 @@ func snapshotStoryTree(rootDir string) storyTreeSnapshot {
 		if relErr != nil {
 			rel = path
 		}
-		out[rel] = appFileStat{exists: true, mtime: info.ModTime(), size: info.Size()}
+		out[keyPrefix+rel] = appFileStat{exists: true, mtime: info.ModTime(), size: info.Size()}
 		return nil
 	})
-	return out
 }
 
 // storyTreeChanges returns the relative paths whose stats differ
@@ -721,21 +797,45 @@ func storyTreeChanges(pre, post storyTreeSnapshot) []string {
 		seen[k] = struct{}{}
 		next, ok := post[k]
 		if !ok {
-			changed = append(changed, k) // deleted
+			changed = append(changed, displayKey(k)) // deleted
 			continue
 		}
 		if prev.size != next.size || !prev.mtime.Equal(next.mtime) {
-			changed = append(changed, k)
+			changed = append(changed, displayKey(k))
 		}
 	}
 	for k := range post {
 		if _, already := seen[k]; already {
 			continue
 		}
-		changed = append(changed, k) // created
+		changed = append(changed, displayKey(k)) // created
 	}
 	sort.Strings(changed)
 	return changed
+}
+
+// displayKey strips the multi-root snapshot's `@@<abs>@@` key prefix
+// (added by walkOneRoot to keep sibling roots disjoint) and re-attaches
+// the imported story's base directory name so a changed file in
+// `stories/robbery/prompts/intro.md` renders as
+// `robbery/prompts/intro.md` rather than the raw absolute path or a
+// bare `prompts/intro.md` that's indistinguishable from the main
+// story's own prompts. Keys without the prefix pass through unchanged.
+func displayKey(k string) string {
+	if !strings.HasPrefix(k, "@@") {
+		return k
+	}
+	end := strings.Index(k[2:], "@@")
+	if end < 0 {
+		return k
+	}
+	absRoot := k[2 : 2+end]
+	rel := k[2+end+2:]
+	base := filepath.Base(absRoot)
+	if base == "" || base == "." || base == string(filepath.Separator) {
+		return rel
+	}
+	return base + string(filepath.Separator) + rel
 }
 
 // dispatchAuthoringCalls scans the assistant reply for the Path-Y

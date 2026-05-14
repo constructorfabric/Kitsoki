@@ -1,0 +1,160 @@
+# Frontier Event — a wrapper sub-story that adds a scouting room
+# in front of the imported robbery. This story exists to demonstrate
+# the imports proposal's multi-layer composition (proposal §11.2,
+# §12, §16.5): three layers (consumer → frontier_event → robbery)
+# with bindings, projections, and exits that survive every fold.
+#
+# The wrapper pattern is the canonical way to add "preamble + sub-story
+# + epilogue" without forking the sub-story. Authors plug their own
+# scouting / lead-in beats into `scouting` and let the bandit
+# encounter (or whatever else is dropped in here) do the heavy lifting.
+app:
+  id: frontier-event
+  version: 0.1.0
+  title: "Frontier Event Wrapper"
+  author: "Kitsoki sample"
+  license: "CC0"
+
+hosts:
+  - host.run
+
+# frontier_event declares its OWN narrator interface, separate from the
+# imported robbery's. The parent (oregon-trail) rebinds this iface and,
+# via the alias-prefixed name, can ALSO rebind the inner robbery's
+# narrator with `host_bindings: { bandits__narrator: ... }`. This is
+# the §11.2 "bindings compose across layers" surface.
+host_interfaces:
+  narrator:
+    description: "One-line scene-setting prose for the scouting beat."
+    operations:
+      announce:
+        input:  { message: string }
+        output: { ok: bool }
+    default: host.run
+
+world:
+  # Read-in (importer projects from its own state via world_in:).
+  party_money:     { type: int,    default: 0 }
+  party_alive:     { type: int,    default: 5 }
+  threat_level:    { type: int,    default: 2 }
+  scouting_intel:  { type: string, default: "" }   # extra detail the parent can seed
+
+  # Set internally; lifted out via world_out: at exit time.
+  scout_finding:   { type: string, default: "" }
+  encounter_kind:  { type: string, default: "" }   # bubbled up from the inner robbery
+  member_lost:     { type: bool,   default: false }
+  paid_amount:     { type: int,    default: 0 }
+
+intents:
+  scout:
+    description: "Send a scout ahead before pressing on."
+    examples: [scout, "send a scout", "look ahead"]
+    priority: 80
+
+  proceed:
+    description: "Press forward into whatever the scout found."
+    examples: [proceed, "press on", "go"]
+    priority: 70
+
+  look:
+    description: "Look around."
+    priority: 10
+
+# Mark scout / proceed as exposed so the importer may import them into
+# its own intent table via intents.import. proceed stays internal —
+# only scout is exported.
+exports:
+  intents: [scout]
+
+# Three exit shapes; the importer maps each to one of its own states
+# and may attach world_out projections per-exit. requires: enforces
+# author hygiene (proposal §7).
+exits:
+  resolved:
+    description: "Encounter ended peaceably (paid or routed bandit)."
+    requires: [encounter_kind]
+  member_lost:
+    description: "A party member died in the encounter."
+    requires: [encounter_kind, member_lost]
+  fled:
+    description: "Fled the encounter without engaging."
+    requires: [encounter_kind]
+
+root: scouting
+
+# Imports the bandit encounter under alias `bandits`. The inner
+# robbery's @exit:{paid,routed,killed,fled} get rewritten to THIS
+# story's `@exit:{resolved,member_lost,fled}` at fold time, which
+# then get rewritten AGAIN to the outer consumer's states when
+# frontier_event is itself folded. Exit chaining composes across
+# layers.
+imports:
+  bandits:
+    source: ../robbery
+    entry: encounter
+    # Project this wrapper's own world into the robbery's private world.
+    # The expressions evaluate in frontier_event's scope; the LHS keys
+    # name child world keys (which the loader prefixes as
+    # `bandits__<key>` in the flat runtime world).
+    world_in:
+      party_money:    "{{ world.party_money }}"
+      party_food_lbs: "0"
+      party_alive:    "{{ world.party_alive }}"
+      threat_level:   "{{ world.threat_level }}"
+    exits:
+      # Robbery's `paid` and `routed` both look the same from above —
+      # the wrapper merges them into one `resolved` exit, carrying
+      # the inner outcome forward via world_out: `set:`. requires:
+      # [encounter_kind] is satisfied because the set: writes it.
+      paid:
+        to: "@exit:resolved"
+        set:
+          encounter_kind: "paid"
+          paid_amount:    "{{ world.bandits__paid_amount }}"
+      routed:
+        to: "@exit:resolved"
+        set:
+          encounter_kind: "routed"
+      killed:
+        to: "@exit:member_lost"
+        set:
+          encounter_kind: "killed"
+          member_lost:    true
+      fled:
+        to: "@exit:fled"
+        set:
+          encounter_kind: "fled"
+    # We do NOT rebind the inner narrator here — the outer
+    # consumer (oregon-trail) does that by spelling the prefixed
+    # name `bandits__narrator` in its own host_bindings, which is
+    # exactly the §11.2 "bindings compose" path.
+
+states:
+  scouting:
+    description: "Scout the trail ahead before pressing into the unknown."
+    view: |
+      Scout returns. {{ world.scouting_intel }}
+      Party: {{ world.party_alive }} alive, ${{ world.party_money }} in the strongbox.
+      Threat ahead: {{ world.threat_level }}/3.
+
+      Actions: scout, proceed, look.
+    relevant_world: [party_alive, party_money, threat_level, scouting_intel, scout_finding]
+    on_enter:
+      - invoke: iface.narrator.announce
+        with:
+          cmd:    "true # scouting"
+          # Prompt file the importer may override via overrides.prompts:
+          # to swap the scout-brief prose. host.run ignores the prompt
+          # arg; LLM-shaped handlers (override binding to host.oracle.ask)
+          # would consume it.
+          prompt: "prompts/scout_brief.md"
+    on:
+      scout:
+        - target: .
+          effects:
+            - set:
+                scout_finding: "Trail dust ahead — riders on the horizon."
+      proceed:
+        - target: bandits
+      look:
+        - target: .

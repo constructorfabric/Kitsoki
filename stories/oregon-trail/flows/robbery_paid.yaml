@@ -1,0 +1,91 @@
+# robbery_paid — exercise the FULL three-layer import composition:
+#
+#   oregon-trail  →  frontier_event  →  robbery
+#
+# At Chimney Rock the player invokes face_robbery (checkpoint intent
+# wired in phases.yaml). The phase template fires `target: frontier`
+# which enters the frontier_event compound wrapper. Its OnEnter
+# synthesised setters project oregon-trail's money / party_alive /
+# threat_level / scouting_intel into frontier_event's private world.
+# Initial=scouting drops us in scouting. The player types `scout`
+# (which oregon-trail imported into its own intent table) then
+# `proceed`, which transitions into the inner robbery's `bandits`
+# compound — whose OnEnter again projects frontier_event's keys
+# into the robbery's private world. paying triggers @exit:paid →
+# @exit:resolved (frontier_event chains it) → robbery_aftermath
+# (oregon-trail maps it), with money deducted via the world_out
+# projection at the outermost layer.
+test_kind: flow
+app: ../app.yaml
+initial_state: leg_c_awaiting_reply
+initial_world:
+  party_names:    "John,Sarah,Tom,Mary,Anne"
+  profession:     banker
+  month:          june
+  money:          400
+  oxen:           4
+  food_lbs:       1000
+  bullets:        100
+  pace:           steady
+  rations:        filling
+  party_alive:    5
+  health_avg:     80
+  narration:      false
+  current_landmark: "Chimney Rock"
+  miles_traveled: 600                # threat_level → 2
+  day:            22
+
+host_handlers:
+  host.run:
+    data: { ok: true, stdout: "", exit_code: 0 }
+    delay: "0s"
+
+turns:
+  # Turn 1: face_robbery → frontier compound. Initial=scouting drops in.
+  # world_in projection: oregon-trail keys → frontier_event-prefixed keys.
+  - intent: { name: face_robbery, slots: {} }
+    expect_state: frontier.scouting
+    expect_world:
+      frontier__party_money:    400
+      frontier__party_alive:    5
+      frontier__threat_level:   2
+
+  # Turn 2: scout from inside frontier — the child rewriter prefixed
+  # the intent name to frontier__scout. The override extended the
+  # intent's examples (priority/title preserved). The on_enter prompt
+  # path was substituted with oregon-trail's scout_brief_trail.md via
+  # overrides.prompts.
+  - intent: { name: frontier__scout, slots: {} }
+    expect_state: frontier.scouting
+    expect_world:
+      frontier__scout_finding: "Dust on the rise; riders in oilcloth, by the look of them."
+
+  # Turn 3: proceed transitions into the inner robbery. world_in fires
+  # AGAIN at the frontier_event → robbery boundary, projecting
+  # frontier-prefixed keys into bandits-prefixed keys.
+  - intent: { name: frontier__proceed, slots: {} }
+    expect_state: frontier.bandits.encounter
+    expect_world:
+      frontier__bandits__party_money:  400
+      frontier__bandits__party_alive:  5
+      frontier__bandits__threat_level: 2
+
+  # Turn 4: pay → @exit:paid → @exit:resolved → robbery_aftermath.
+  # Exits chain across two fold layers. The frontier_event projection
+  # sets encounter_kind + paid_amount on the middle layer; oregon's
+  # projection deducts paid_amount from money on the outer.
+  - intent: { name: frontier__bandits__pay, slots: {} }
+    expect_state: robbery_aftermath
+    expect_world:
+      money:                                  300       # 400 - 100
+      last_event:                             "bandit_resolved"
+      frontier__bandits__paid_amount:         100
+      frontier__bandits__outcome:             "paid"
+      frontier__paid_amount:                  100
+      frontier__encounter_kind:               "paid"
+
+  # Turn 5: continue routes back via current_landmark.
+  - intent: { name: continue, slots: {} }
+    expect_state: leg_c_awaiting_reply
+
+expect_no_errors: true

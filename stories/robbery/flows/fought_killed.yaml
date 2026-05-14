@@ -1,0 +1,23 @@
+# Standalone: tiny weak party fights a level-3 threat → loses a member.
+test_kind: flow
+app: robbery
+initial_state: encounter
+initial_world:
+  party_money:  500
+  threat_level: 3
+  party_alive:  3   # below 2 + 3 = 5, so default arm fires
+
+host_handlers:
+  host.run:
+    data: { ok: true, exit_code: 0, stdout: "", stderr: "" }
+    delay: "0s"
+
+turns:
+  - intent: { name: fight, slots: {} }
+    expect_state: __exit__killed
+    expect_world:
+      member_lost: true
+      outcome:     "killed"
+
+expect_terminal: true
+expect_no_errors: true

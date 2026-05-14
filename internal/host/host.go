@@ -72,22 +72,57 @@ func (r *Registry) Register(name string, h Handler) {
 }
 
 // Get returns the handler for the given name.
-// Returns (nil, false) if not found.
+//
+// Lookup tries an exact match first. If no handler is registered at
+// the full name, Get falls back to the longest registered prefix
+// (split on '.'). This is the dispatch surface for host_interface ops
+// (docs/imports.md, "host_interfaces"): a name like "host.diary.announce"
+// resolves to a registered "host.diary.announce" handler when one
+// exists, otherwise to a registered "host.diary" handler that takes
+// the op via args. Author convention: register per-op handlers when
+// each op has a meaningfully different surface; share one handler
+// when ops dispatch on payload.
+//
+// Returns (nil, false) if neither the exact name nor any prefix
+// resolves to a registered handler.
 func (r *Registry) Get(name string) (Handler, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	h, ok := r.handlers[name]
-	return h, ok
+	if h, ok := r.handlers[name]; ok {
+		return h, true
+	}
+	// Walk back from the end, stripping one dotted segment per iteration.
+	for cur := name; ; {
+		dot := lastDot(cur)
+		if dot < 0 {
+			return nil, false
+		}
+		cur = cur[:dot]
+		if h, ok := r.handlers[cur]; ok {
+			return h, true
+		}
+	}
 }
 
-// ValidateAllowList checks that every name in the allow-list is registered.
-// Returns an error listing all missing handlers.
+// lastDot returns the index of the last '.' in s, or -1 if absent.
+// Inlined to avoid importing strings into this file.
+func lastDot(s string) int {
+	for i := len(s) - 1; i >= 0; i-- {
+		if s[i] == '.' {
+			return i
+		}
+	}
+	return -1
+}
+
+// ValidateAllowList checks that every name in the allow-list is
+// resolvable via Get (i.e., either registered exactly or via the
+// prefix-fallback documented on Get). Returns one error listing all
+// missing handlers.
 func (r *Registry) ValidateAllowList(allowList []string) error {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
 	var missing []string
 	for _, name := range allowList {
-		if _, ok := r.handlers[name]; !ok {
+		if _, ok := r.Get(name); !ok {
 			missing = append(missing, name)
 		}
 	}

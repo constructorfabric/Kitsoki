@@ -47,7 +47,33 @@ func (v *ValidationError) Error() string {
 }
 
 // Load reads and validates an AppDef from the given file path.
-// If the app declares include: patterns, those files are merged first (§9).
+//
+// Pipeline (in order):
+//
+//  1. parseAndMerge — parse the root manifest; merge any `include:` glob
+//     matches into a single AppDef (cloak-style same-app file splitting).
+//  2. resolveImports — recursive depth-first: for each entry in
+//     def.Imports, load the child manifest (recursively resolving ITS
+//     imports first), then fold it under the alias. Folds states under
+//     a compound wrapper, prefixes world keys / intents / agents /
+//     interfaces, applies overrides, rewrites @exit: targets, and lifts
+//     iface declarations into parent.HostInterfaces. Cycles detected via
+//     a canonical-path stack and rejected with a clear error.
+//  3. expandPhases — instantiate phase templates into concrete states.
+//  4. resolveAllInterfaces — final pass: walk every remaining
+//     `iface.<name>.<op>` reference and rewrite to the concrete
+//     `<binding>.<op>` host invocation, looking up the binding from the
+//     merged def.HostInterfaces table. Concrete handler names are
+//     unioned into def.Hosts so the allow-list check passes.
+//  5. materialiseStandaloneExits — for the root manifest, any remaining
+//     `@exit:<name>` targets become synthesised `__exit__<name>` terminal
+//     states (the standalone exit sentinel).
+//  6. validateDef — referential-integrity pass over the merged tree:
+//     intent / state path / host / agent / requires references.
+//
+// All steps run their own error aggregation; the first stage that
+// finds errors short-circuits the rest and returns them via
+// errors.Join.
 func Load(path string) (*AppDef, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -59,6 +85,17 @@ func Load(path string) (*AppDef, error) {
 	merged, mergeErrs := parseAndMerge(b, path, baseDir)
 	if len(mergeErrs) > 0 {
 		return nil, errors.Join(mergeErrs...)
+	}
+
+	// Resolve imports recursively, folding each child into merged.
+	canonical := canonicalPath(path)
+	// Seed LoadedManifests with the root manifest's canonical path; each
+	// folded import appends itself + its own transitive manifests. The
+	// metamode controller reads this list to auto-watch every file the
+	// loader actually touched (proposal §16.4).
+	merged.LoadedManifests = appendUnique(merged.LoadedManifests, canonical)
+	if importErrs := resolveImports(merged, path, baseDir, []string{canonical}); len(importErrs) > 0 {
+		return nil, errors.Join(importErrs...)
 	}
 
 	// Expand phase templates into concrete states before validation so the
@@ -73,12 +110,105 @@ func Load(path string) (*AppDef, error) {
 	// modes.
 	injectBuiltinMetaModes(merged)
 
+	// Final host_interface resolution: rewrites every remaining
+	// iface.<name>.<op> reference to a concrete <binding>.<op> host
+	// invocation, after all imports have folded their iface declarations
+	// into def.HostInterfaces (under alias-prefixed names) and after
+	// each layer's host_bindings have had a chance to override defaults.
+	// This is the surface that makes multi-layer rebinding compose per
+	// proposal §11.2.
+	if ifaceErrs := resolveAllInterfaces(merged, path); len(ifaceErrs) > 0 {
+		return nil, errors.Join(ifaceErrs...)
+	}
+
+	// Rewrite any remaining @exit:<name> targets in the top-level app. For
+	// the root manifest these are terminal sentinels — the app is loaded
+	// standalone, so an exit means "stop here." We synthesise a terminal
+	// state per exit and rewrite refs accordingly.
+	if exitErrs := materialiseStandaloneExits(merged, path); len(exitErrs) > 0 {
+		return nil, errors.Join(exitErrs...)
+	}
+
 	// Now fully validate the merged definition.
 	_, validErrs := validateDef(merged, path)
 	if len(validErrs) > 0 {
 		return nil, errors.Join(validErrs...)
 	}
 	return merged, nil
+}
+
+// materialiseStandaloneExits walks the top-level app and replaces every
+// `@exit:<name>` transition target with a synthesised terminal state
+// `__exit__<name>`. This only fires for the root manifest — imported
+// children have their @exit: rewritten by foldChild.
+func materialiseStandaloneExits(def *AppDef, file string) []error {
+	if def == nil || len(def.Exits) == 0 {
+		return nil
+	}
+	// Collect references first so we know which exits are actually used.
+	used := make(map[string]bool)
+	walkStatesForExits(def.States, used)
+	for name := range used {
+		if _, ok := def.Exits[name]; !ok {
+			return []error{&ValidationError{File: file, Message: fmt.Sprintf("@exit:%s referenced but not declared in exits:", name)}}
+		}
+	}
+	if def.States == nil {
+		def.States = make(map[string]*State)
+	}
+	for name := range used {
+		terminalName := "__exit__" + name
+		if _, exists := def.States[terminalName]; !exists {
+			def.States[terminalName] = &State{Terminal: true, Description: fmt.Sprintf("Exit: %s", name)}
+		}
+	}
+	// Rewrite all targets.
+	rewriteExitsInStates(def.States)
+	return nil
+}
+
+func walkStatesForExits(states map[string]*State, used map[string]bool) {
+	for _, s := range states {
+		if s == nil {
+			continue
+		}
+		for _, list := range s.On {
+			for _, tr := range list {
+				if strings.HasPrefix(tr.Target, "@exit:") {
+					used[strings.TrimPrefix(tr.Target, "@exit:")] = true
+				}
+			}
+		}
+		if s.Timeout != nil && strings.HasPrefix(s.Timeout.Target, "@exit:") {
+			used[strings.TrimPrefix(s.Timeout.Target, "@exit:")] = true
+		}
+		if len(s.States) > 0 {
+			walkStatesForExits(s.States, used)
+		}
+	}
+}
+
+func rewriteExitsInStates(states map[string]*State) {
+	for _, s := range states {
+		if s == nil {
+			continue
+		}
+		for intent, list := range s.On {
+			for i, tr := range list {
+				if strings.HasPrefix(tr.Target, "@exit:") {
+					tr.Target = "__exit__" + strings.TrimPrefix(tr.Target, "@exit:")
+					list[i] = tr
+				}
+			}
+			s.On[intent] = list
+		}
+		if s.Timeout != nil && strings.HasPrefix(s.Timeout.Target, "@exit:") {
+			s.Timeout.Target = "__exit__" + strings.TrimPrefix(s.Timeout.Target, "@exit:")
+		}
+		if len(s.States) > 0 {
+			rewriteExitsInStates(s.States)
+		}
+	}
 }
 
 // parseAndMerge parses the main YAML file, resolves include: patterns, and
@@ -485,6 +615,20 @@ func validateDef(def *AppDef, file string) (*AppDef, []error) {
 	// ── 9b. cross-reference: every agent name referenced anywhere in the
 	// AppDef must resolve in AppDef.Agents or agents.BuiltinNames().
 	validateAgentReferences(file, def, &errs)
+
+	// ── 9c. reach-into-child guard (story-imports proposal §8 / §16.7).
+	// Reject parent transitions that target a deep state inside an
+	// imported child (any path of the form `<alias>.<X>` where <X> is
+	// not the import's declared entry). The import alias itself
+	// (`<alias>`) is fine — it's the canonical "invoke the child" form
+	// — and `<alias>.<entry>` is allowed too, since that's just the
+	// drill-down the alias would have done anyway. Anything deeper
+	// couples the parent to the child's internals and is forbidden.
+	//
+	// Targets inside the child (rewritten to relative `../X` form by
+	// the rewriter) are not affected; this guard only fires for
+	// authored absolute paths at the parent level.
+	validateNoReachIntoChild(file, def, &errs)
 
 	// ── 10. proposal execute effect validation ────────────────────────────────
 	// ProposalExecute.Background and ProposalExecute.OnComplete are not covered
@@ -978,6 +1122,116 @@ func validateAgentReferences(file string, def *AppDef, errs *[]error) {
 
 	// background_jobs.<name>.agent is intentionally absent: no first-class
 	// background_jobs YAML type exists today. Once it lands, walk it here.
+}
+
+// validateNoReachIntoChild implements story-imports proposal §8/§16.7.
+// A parent transition targeting `<alias>.<deeper>` couples the parent
+// to the child's internals, which the proposal forbids. The canonical
+// way to invoke a child is `target: <alias>` (the wrapper itself);
+// `target: <alias>.<entry>` is also allowed since it's equivalent.
+// Anything deeper is rejected with a clear message naming both the
+// offending transition and the import's alias.
+//
+// Only targets authored at the parent level are walked — child
+// transitions were rewritten to relative form (`../X`) by the
+// import rewriter and don't hit this check.
+func validateNoReachIntoChild(file string, def *AppDef, errs *[]error) {
+	if def == nil || len(def.ImportWrappers) == 0 {
+		return
+	}
+	walkTopLevelTargets(def.States, def.ImportWrappers, file, errs)
+}
+
+// walkTopLevelTargets visits every parent-level state (i.e. one that
+// is not itself nested inside an imported child) and checks each
+// transition target against the import-wrapper alias map.
+//
+// The "parent-level" distinction is by name: a top-level state that
+// matches a key in ImportWrappers IS the wrapper (its internals are
+// child-authored); every other top-level state is parent-authored.
+// Wrapper internals are skipped because the rewriter already
+// validated their relative refs at fold time.
+func walkTopLevelTargets(states map[string]*State, wrappers map[string]*ImportWrapperInfo, file string, errs *[]error) {
+	for name := range states {
+		if _, isWrapper := wrappers[name]; isWrapper {
+			continue
+		}
+		s := states[name]
+		if s == nil {
+			continue
+		}
+		checkStateTargetsAgainstWrappers(name, s, wrappers, file, errs)
+	}
+}
+
+// checkStateTargetsAgainstWrappers walks one parent state's
+// transitions, timeout, and on_enter on_error refs and rejects every
+// target that reaches deeper than `<alias>.<entry>` for any declared
+// import alias.
+func checkStateTargetsAgainstWrappers(statePath string, s *State, wrappers map[string]*ImportWrapperInfo, file string, errs *[]error) {
+	check := func(target, where string) {
+		if target == "" || target == "." {
+			return
+		}
+		if strings.Contains(target, "{{") {
+			return
+		}
+		// Normalise slashes to dots — same shape resolveTarget uses.
+		norm := strings.ReplaceAll(target, "/", ".")
+		// Strip a leading `..` walk: a parent state targeting `../foo`
+		// resolves to a sibling at the parent level, not into a child.
+		if strings.HasPrefix(target, "..") {
+			return
+		}
+		// Split into segments. Single-segment targets (`<alias>` alone)
+		// are the canonical wrapper-invoke form; allow them.
+		dot := strings.IndexByte(norm, '.')
+		if dot < 0 {
+			return
+		}
+		alias := norm[:dot]
+		rest := norm[dot+1:]
+		wrapper, isImported := wrappers[alias]
+		if !isImported {
+			return
+		}
+		// `<alias>.<entry>` is the entry; allow it. Anything past the
+		// entry (e.g., `<alias>.<entry>.<sub>` or `<alias>.<not-entry>`)
+		// is a reach-into-child.
+		if rest == wrapper.Entry {
+			return
+		}
+		*errs = append(*errs, &ValidationError{
+			File: file,
+			Message: fmt.Sprintf(
+				"state %q %s targets %q which reaches into the imported child %q past its entry %q; use target: %q to invoke the child or have the child expose a new exit (proposal §8/§16.7)",
+				statePath, where, target, alias, wrapper.Entry, alias,
+			),
+		})
+	}
+
+	for intent, list := range s.On {
+		for i, tr := range list {
+			check(tr.Target, fmt.Sprintf("on.%s[%d].target", intent, i))
+		}
+	}
+	if s.Timeout != nil {
+		check(s.Timeout.Target, "timeout.target")
+	}
+	for i, eff := range s.OnEnter {
+		if eff.OnError != "" {
+			check(eff.OnError, fmt.Sprintf("on_enter[%d].on_error", i))
+		}
+		if eff.Target != "" {
+			check(eff.Target, fmt.Sprintf("on_enter[%d].target", i))
+		}
+	}
+	for _, child := range s.States {
+		if child != nil {
+			// Nested parent compounds inherit the same rule.
+			checkStateTargetsAgainstWrappers(statePath, child, wrappers, file, errs)
+		}
+	}
 }
 
 // expandMetaCwd resolves `$VAR` / `${VAR}` tokens in s against os.Environ.

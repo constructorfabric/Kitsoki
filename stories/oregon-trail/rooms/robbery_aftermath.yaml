@@ -1,0 +1,45 @@
+# robbery_aftermath — re-entry stub after the imported `bandits`
+# sub-story exits. Every exit (paid/routed/killed/fled) is mapped to
+# this state in app.yaml's imports.bandits.exits block, with the
+# per-exit `set:` projections already having written the consequence
+# keys (money, party_alive, last_event) into the host's world. From
+# here we route back to whichever leg the player was on, mirroring
+# rest_room.rest_done's current_landmark switch.
+#
+# This is the canonical re-entry pattern for sub-stories that fire
+# from a checkpoint intent at any leg: one parent state collects all
+# named exits, then routes by current_landmark. The sub-story stays
+# unaware of its host's leg structure; the importer absorbs it here.
+
+states:
+
+  robbery_aftermath:
+    description: "Back on the trail after the bandit encounter."
+    view: |
+      {{ if world.last_event == 'bandit_paid' }}The bandit takes the coin and rides off. Money: {{ world.money }}.{{ end }}{{ if world.last_event == 'bandit_routed' }}You drove the bandit off without a scratch.{{ end }}{{ if world.last_event == 'bandit_killed_member' }}One of your party fell. Survivors: {{ world.party_alive }}.{{ end }}{{ if world.last_event == 'bandit_fled' }}You whipped the oxen and outran the rider.{{ end }}
+
+      Actions: continue.
+    relevant_world: [money, party_alive, last_event, current_landmark]
+    on:
+      # Route back to the same leg's awaiting_reply state. Same shape as
+      # rest_done.continue (rest_room.yaml).
+      continue:
+        - when: "world.current_landmark == 'Kansas River Crossing'"
+          target: leg_a_awaiting_reply
+        - when: "world.current_landmark == 'Fort Kearney'"
+          target: leg_b_awaiting_reply
+        - when: "world.current_landmark == 'Chimney Rock'"
+          target: leg_c_awaiting_reply
+        - when: "world.current_landmark == 'Fort Laramie'"
+          target: leg_d_awaiting_reply
+        - when: "world.current_landmark == 'South Pass'"
+          target: leg_e_awaiting_reply
+        - when: "world.current_landmark == 'Snake River Crossing'"
+          target: leg_f_awaiting_reply
+        - when: "world.current_landmark == 'Willamette Valley'"
+          target: leg_g_awaiting_reply
+        - default: true
+          target: leg_a_awaiting_reply
+          guard_hint: "Unknown landmark — returning to the first leg."
+      look:
+        - target: .

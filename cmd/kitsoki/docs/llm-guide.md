@@ -36,7 +36,7 @@ Consequences you must internalise:
 ## 2. Commands at a glance
 
 ```
-kitsoki run     <app.yaml>  [--harness ...] [--trace ...]   # interactive TUI session
+kitsoki run     <app.yaml>  [--harness ...] [--trace ...] [--warp <basis>]  # interactive TUI session
 kitsoki serve   <app.yaml>  [--db ...]                      # MCP server on stdio
 kitsoki viz     <app.yaml>  [--out ...]                     # emit Graphviz DOT
 kitsoki trace   <file.jsonl>                                # pretty-print a JSONL trace
@@ -49,6 +49,12 @@ kitsoki render  <app.yaml>       [-o <APP.md>]              # render Markdown do
 kitsoki docs    [topic]                                     # print embedded docs
 kitsoki version
 ```
+
+`--warp <path>` bootstraps a session directly into a primed mid-game
+state from a YAML "warp basis" — same file the TUI's `/warp file:<path>`
+slash command loads. Useful for smoke-testing an imported sub-story
+without playing through the intro. See `docs/imports.md`
+("Operator tooling: /warp and --warp") for the basis schema.
 
 Every subcommand supports `--help`. Flags shown below are the ones you will
 actually reach for.

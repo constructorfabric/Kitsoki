@@ -1,0 +1,54 @@
+# robbery_killed — fight a high-threat bandit with a weakened party.
+# Exercises @exit:killed → @exit:member_lost (chained at frontier_event)
+# → robbery_aftermath (chained at oregon-trail), with the world_out
+# projection decrementing party_alive on the outer layer.
+test_kind: flow
+app: ../app.yaml
+initial_state: leg_e_awaiting_reply
+initial_world:
+  party_names:    "John,Sarah,Tom,Mary,Anne"
+  profession:     banker
+  month:          august
+  money:          200
+  oxen:           3
+  food_lbs:       500
+  bullets:        20
+  pace:           steady
+  rations:        filling
+  party_alive:    4        # need >= 2 + 3 = 5 to win the fight; default arm fires
+  health_avg:     50
+  narration:      false
+  current_landmark: "South Pass"
+  miles_traveled: 1400      # threat_level → 3
+  day:            70
+
+host_handlers:
+  host.run:
+    data: { ok: true, stdout: "", exit_code: 0 }
+    delay: "0s"
+
+turns:
+  - intent: { name: face_robbery, slots: {} }
+    expect_state: frontier.scouting
+    expect_world:
+      frontier__threat_level: 3
+      frontier__party_alive:  4
+
+  - intent: { name: frontier__proceed, slots: {} }
+    expect_state: frontier.bandits.encounter
+
+  # Weak party fights threat 3 — falls into the default `killed` arm.
+  - intent: { name: frontier__bandits__fight, slots: {} }
+    expect_state: robbery_aftermath
+    expect_world:
+      party_alive:                            3        # was 4
+      last_event:                             "bandit_killed_member"
+      frontier__bandits__member_lost:         true
+      frontier__bandits__outcome:             "killed"
+      frontier__encounter_kind:               "killed"
+      frontier__member_lost:                  true
+
+  - intent: { name: continue, slots: {} }
+    expect_state: leg_e_awaiting_reply
+
+expect_no_errors: true

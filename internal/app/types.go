@@ -53,6 +53,157 @@ type AppDef struct {
 	// primitive any host.oracle.* call site can reference by name. Bound
 	// at startup via agents.BuildRegistry(def.AgentSpecs()) + host.SetAgentRegistry.
 	Agents map[string]*AgentDecl `yaml:"agents,omitempty"`
+
+	// Imports declares aliased composition with private worlds
+	// (see docs/imports.md §3). Each import binds a child app
+	// under a string alias; child states/world keys are namespaced
+	// under that alias at load time.
+	Imports map[string]*ImportDef `yaml:"imports,omitempty"`
+
+	// Exits declares the child-side exit contract — named return
+	// points the parent maps to its own states via imports.<alias>.exits.
+	// Standalone apps may declare exits for documentation but they have
+	// no runtime effect outside an import context.
+	Exits map[string]*ExitDef `yaml:"exits,omitempty"`
+
+	// Exports declares what the child app surfaces to importers.
+	// Currently only intents (see docs/imports.md §6).
+	Exports *ExportsBlock `yaml:"exports,omitempty"`
+
+	// HostInterfaces declares named capabilities the app depends on
+	// (see docs/imports.md §11). Importers rebind via
+	// imports.<alias>.host_bindings.
+	HostInterfaces map[string]*HostInterfaceDef `yaml:"host_interfaces,omitempty"`
+
+	// ImportWrappers records one entry per immediate import the loader
+	// folded into this AppDef. Populated by resolveImports; never set
+	// by YAML authors. Used by:
+	//   - validateDef to reject parent transitions targeting a deep
+	//     state inside an imported child (proposal §8 / §16.7);
+	//   - the metamode controller's file-watch tree to include every
+	//     imported manifest directory (proposal §16.4);
+	//   - the trace logger / future tooling to label states by the
+	//     import alias chain they live under (proposal §16.5).
+	ImportWrappers map[string]*ImportWrapperInfo `yaml:"-"`
+
+	// LoadedManifests is the set of absolute paths the loader read
+	// during this AppDef's recursive load: the root manifest plus
+	// every imported child's manifest at every depth. Used by the
+	// metamode controller's auto-watch so edits to a sibling
+	// imported story trigger reload.
+	LoadedManifests []string `yaml:"-"`
+}
+
+// ImportWrapperInfo carries the post-fold metadata for one import
+// alias. Populated by resolveImports.
+type ImportWrapperInfo struct {
+	// Alias is the prefix the importer chose (`bf`, `frontier`, …).
+	// Mirrors the map key but kept here so callers iterating values
+	// don't lose the key.
+	Alias string
+	// Entry is the child state the import was declared to start in
+	// (the import's `entry:` field). Used by §16.7 to allow
+	// `<alias>.<entry>` from the parent while rejecting deeper paths.
+	Entry string
+	// SourcePath is the absolute path to the child manifest.
+	// Used by §16.4 for auto-watch and for diagnostic messages.
+	SourcePath string
+}
+
+// ImportDef declares one entry in an AppDef's `imports:` block
+// (see docs/imports.md §3).
+type ImportDef struct {
+	// Source resolves to a child app.yaml. Forms:
+	//   - "./relative/path"          — relative to importer's dir
+	//   - "/absolute/path"           — absolute path (test escape hatch)
+	//   - "@kitsoki/<name>"          — under <repo-root>/stories/<name>
+	Source string `yaml:"source"`
+	// Version is optional metadata; v1 parses and stores it for
+	// traceability only — no semver resolution or compatibility check
+	// happens at load time. Reserved for a future registry / lockfile
+	// surface (proposal §4 and §16.2).
+	Version string `yaml:"version,omitempty"`
+	// Entry is the child's initial state when this import is invoked.
+	// Path is in the *child's* namespace (not alias-prefixed). Required
+	// unless the child declares a Root the parent accepts as entry.
+	Entry string `yaml:"entry,omitempty"`
+	// Exits maps the child's declared exit names to parent-side targets
+	// with optional projection effects (world_out per-exit).
+	Exits map[string]*ImportExit `yaml:"exits,omitempty"`
+	// WorldIn maps child world keys → parent expressions evaluated at
+	// entry. The LHS names child world keys; the RHS is parent-scope
+	// expr that resolves to the value pushed into the child's world.
+	WorldIn map[string]string `yaml:"world_in,omitempty"`
+	// Hosts controls how the child's host allow-list composes with the
+	// parent's. "inherit" (default) unions silently; "declared" requires
+	// the parent to list every child host explicitly.
+	Hosts string `yaml:"hosts,omitempty"`
+	// Intents declares parent↔child intent re-exports (§6).
+	Intents *ImportIntents `yaml:"intents,omitempty"`
+	// Overrides patches child states/intents/prompts at import time (§10).
+	Overrides *ImportOverrides `yaml:"overrides,omitempty"`
+	// HostBindings rebinds named child host_interfaces onto concrete
+	// handler names (§11).
+	HostBindings map[string]string `yaml:"host_bindings,omitempty"`
+}
+
+// ImportExit declares how a child exit maps to a parent state.
+type ImportExit struct {
+	// To is the parent-side state to transition into when the child
+	// exits via this name.
+	To string `yaml:"to"`
+	// Set is an optional projection — child-scope expressions evaluated
+	// at exit and written to parent world keys.
+	Set map[string]any `yaml:"set,omitempty"`
+}
+
+// ImportIntents declares per-import intent re-exports (§6).
+type ImportIntents struct {
+	// Export lists parent intent names made visible inside the child
+	// under the same name.
+	Export []string `yaml:"export,omitempty"`
+	// Import lists child intent names lifted into the parent (rare).
+	// The child must list these in its own exports.intents.
+	Import []string `yaml:"import,omitempty"`
+}
+
+// ImportOverrides patches a child app's states / intents / prompts (§10).
+type ImportOverrides struct {
+	// States replaces named child states whole-cloth. Each key must
+	// match an existing child state name; load fails otherwise.
+	States map[string]*State `yaml:"states,omitempty"`
+	// Intents replaces named child intent definitions (slots, examples).
+	Intents map[string]Intent `yaml:"intents,omitempty"`
+	// Prompts maps child-relative prompt paths → parent-relative paths.
+	// At load time the parent's file replaces the child's bytes.
+	Prompts map[string]string `yaml:"prompts,omitempty"`
+}
+
+// ExitDef declares one named exit the child app surfaces (§7).
+type ExitDef struct {
+	Description string `yaml:"description,omitempty"`
+	// Requires lists child world keys that must be set when this exit
+	// fires. Best-effort static check; runtime guard backs it up.
+	Requires []string `yaml:"requires,omitempty"`
+}
+
+// ExportsBlock declares what an app surfaces to importers (§6).
+type ExportsBlock struct {
+	Intents []string `yaml:"intents,omitempty"`
+}
+
+// HostInterfaceDef declares one named capability surface (§11.1).
+type HostInterfaceDef struct {
+	Description string                      `yaml:"description,omitempty"`
+	Operations  map[string]*HostInterfaceOp `yaml:"operations,omitempty"`
+	// Default is the handler name bound when no importer overrides.
+	Default string `yaml:"default,omitempty"`
+}
+
+// HostInterfaceOp declares one operation in a host interface (§11.1).
+type HostInterfaceOp struct {
+	Input  map[string]any `yaml:"input,omitempty"`
+	Output map[string]any `yaml:"output,omitempty"`
 }
 
 // PhaseTemplate is a reusable phase shape. It declares a parameter schema and

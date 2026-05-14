@@ -1,0 +1,74 @@
+# parent — imports sub_story under alias `sub`, exercising world_in /
+# world_out projection, exit mapping, host interface rebinding, intent
+# re-export, and a state override.
+app:
+  id: imports-smoke-parent
+  version: 0.1.0
+
+hosts:
+  - host.run
+
+world:
+  current_ticket: { type: string, default: "" }
+  last_pr_url:    { type: string, default: "" }
+  last_error:     { type: string, default: "" }
+  bailed:         { type: bool, default: false }
+
+intents:
+  begin_substory:
+    description: "Enter the sub_story."
+    examples: ["begin"]
+  go_main:
+    description: "Return to main."
+
+root: main
+
+imports:
+  sub:
+    source: ../sub_story
+    entry: idle
+    world_in:
+      ticket_id: "{{ world.current_ticket }}"
+    exits:
+      completed:
+        to: pr_landed
+        set:
+          last_pr_url: "{{ world.sub__pr_url }}"
+      abandoned:
+        to: main
+        set:
+          bailed: true
+    host_bindings:
+      reporter: host.run
+    intents:
+      export: [go_main]
+    overrides:
+      states:
+        working:
+          description: "Custom working state (overridden by parent)."
+          view: |
+            [override] Custom working room for {{ world.ticket_id }}.
+          on:
+            finish:
+              - target: "@exit:completed"
+                effects:
+                  - set: { pr_url: "{{ slots.url }}" }
+            bail:
+              - target: "@exit:abandoned"
+
+states:
+  main:
+    description: "Main."
+    view: "Hub. ticket={{ world.current_ticket }}."
+    on:
+      begin_substory:
+        - target: sub
+          effects:
+            - set: { current_ticket: "KIT-42" }
+
+  pr_landed:
+    description: "PR landed."
+    view: "PR landed: {{ world.last_pr_url }}."
+    on:
+      go_main:
+        - target: main

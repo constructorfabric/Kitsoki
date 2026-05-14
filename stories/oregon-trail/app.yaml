@@ -258,6 +258,142 @@ include:
   - proposals.yaml
   - rooms/*.yaml
 
+# ── Story imports (see docs/imports.md) ───────────────────────────────
+# Three-layer composition demonstrates every section of the proposal:
+#
+#   oregon-trail  ──imports──>  frontier_event  ──imports──>  robbery
+#
+# - §3 schema: alias-prefixed namespacing, private worlds, per-exit
+#   projections.
+# - §6 intent re-export: oregon-trail exports `look` down into frontier_event;
+#   imports `scout` from frontier_event up into its own intent table.
+# - §7 exits with `requires:`: frontier_event's exits.member_lost requires
+#   encounter_kind + member_lost — the inner robbery's effects on @exit:killed
+#   satisfy both.
+# - §9 hosts: declared mode — every host the imported tree uses is enumerated
+#   in oregon-trail's own hosts: list above. The loader cross-checks at fold.
+# - §10 overrides: scouting state replaced with trail-flavoured prose;
+#   scout intent extended with extra examples; scout_brief.md replaced
+#   with the trail-narrator version.
+# - §11 host_interfaces: oregon-trail rebinds frontier_event's `narrator`
+#   directly, and the inner robbery's `narrator` via the alias-prefixed
+#   binding `bandits__narrator` (the §11.2 "bindings compose across
+#   layers" surface).
+# - §12 multi-layer composition with cycle detection.
+imports:
+  frontier:
+    source: ../../stories/frontier_event
+    entry: scouting
+
+    # Strict-allow-list mode (proposal §9): every host the imported tree
+    # uses must appear in oregon-trail's own `hosts:` block above. The
+    # loader cross-checks at fold; missing entries fail the load with a
+    # named host. host.run is already listed; iface handlers (after
+    # final resolution) are unioned implicitly by resolveAllInterfaces
+    # so they don't need to be enumerated here.
+    hosts: declared
+
+    # Read-in projection: oregon-trail's world → frontier_event's
+    # private world. Evaluated in oregon-trail's scope.
+    world_in:
+      party_money:    "{{ world.money }}"
+      party_alive:    "{{ world.party_alive }}"
+      threat_level:   "{{ world.miles_traveled < 500 ? 1 : (world.miles_traveled < 1200 ? 2 : 3) }}"
+      scouting_intel: "{{ world.current_landmark }} country — open prairie ahead."
+
+    # Exits collapse frontier_event's three exits onto a single oregon-trail
+    # state (robbery_aftermath), which routes back to the current leg via
+    # world.current_landmark.
+    exits:
+      resolved:
+        to: robbery_aftermath
+        set:
+          # On a peaceful outcome (paid or routed), if the inner robbery
+          # paid tribute, deduct it from oregon-trail's money. The world_out
+          # expression reads frontier_event's flat-world key
+          # (frontier__paid_amount), which itself was set by the inner
+          # robbery via frontier_event's bandits-import exits set:.
+          money:      "{{ world.money - world.frontier__paid_amount }}"
+          last_event: "bandit_resolved"
+      member_lost:
+        to: robbery_aftermath
+        set:
+          party_alive: "{{ world.party_alive - 1 }}"
+          last_event:  "bandit_killed_member"
+      fled:
+        to: robbery_aftermath
+        set:
+          last_event: "bandit_fled"
+
+    # host_bindings compose across layers (proposal §11.2): the
+    # `narrator` key rebinds frontier_event's own iface; the
+    # `bandits__narrator` key reaches DOWN through the alias chain
+    # to rebind the inner robbery's iface. Both happen at oregon-trail's
+    # fold time so the wrapper's intermediate "default" never sticks.
+    host_bindings:
+      narrator:           host.run
+      bandits__narrator:  host.run
+
+    # Intent surface composition (§6):
+    #   - export: oregon-trail's `look` becomes available inside the
+    #     frontier states under the prefixed name `frontier__look`.
+    #   - import: frontier_event's `scout` (declared in its exports.intents)
+    #     is lifted into oregon-trail's own intent table at the bare name
+    #     so the player can use it from outside the frontier scope.
+    intents:
+      export: [look]
+      import: [scout]
+
+    # Overrides patch frontier_event in three ways (§10):
+    #   - states.scouting: whole-state replacement with trail-era prose.
+    #   - intents.scout: extends the scout intent's example list.
+    #   - prompts: replaces frontier_event's scout_brief.md with a
+    #     trail-narrator version. The rewrite walks every Effect.With.prompt
+    #     in the child's state tree and substitutes the parent's file.
+    overrides:
+      states:
+        scouting:
+          description: "A scout rides ahead to look the trail over."
+          view: |
+            {{ world.scouting_intel }}
+
+            The scout reins beside the wagon. Party: {{ world.party_alive }} alive,
+            strongbox: ${{ world.party_money }}. Threat ahead: {{ world.threat_level }}/3.
+
+            Actions: scout, proceed, look.
+          relevant_world: [party_alive, party_money, threat_level, scouting_intel, scout_finding]
+          on_enter:
+            - invoke: iface.narrator.announce
+              with:
+                cmd:    "true # trail-flavoured scouting"
+                prompt: "prompts/scout_brief.md"
+          on:
+            scout:
+              - target: .
+                effects:
+                  - set:
+                      scout_finding: "Dust on the rise; riders in oilcloth, by the look of them."
+            proceed:
+              - target: bandits
+            look:
+              - target: .
+      intents:
+        scout:
+          title: "Send a scout up the trail"
+          description: "Send a scout ahead to look the trail over before the wagons press on."
+          examples:
+            - scout
+            - "send a scout"
+            - "send a rider up the trail"
+            - "look the road over"
+            - "what's ahead"
+          priority: 80
+      prompts:
+        # Map: child-relative path → parent-relative path. The loader
+        # validates the parent file exists and walks every with.prompt:
+        # in the child's state tree, swapping matches.
+        "prompts/scout_brief.md": "prompts/scout_brief_trail.md"
+
 # Named Claude agents — first-class personas applied to host.oracle.*
 # invocations via `with: { agent: <name> }`. Generalisation of the
 # back-compat off_path.persona shortcut: the same primitive now powers
@@ -409,3 +545,12 @@ checkpoint_intents:
     description: "Ask the wagon master for advice — opens the persistent trail_guide chat room."
     examples: [advice, "ask the guide", "talk to wagon master"]
     priority: 55
+
+  # Stage a bandit encounter on demand — wired in phases.yaml's
+  # _awaiting_reply on:face_robbery arm to enter the imported `bandits`
+  # sub-story. The encounter resolves via @exit:{paid,routed,killed,fled}
+  # which the importer maps to robbery_aftermath.
+  face_robbery:
+    description: "A bandit appears on the trail."
+    examples: [robbery, "bandits", "stranger approaches"]
+    priority: 25

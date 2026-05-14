@@ -75,6 +75,20 @@ the canned-prose branch or the oracle-call branch. The graph is
 identical either way — narrated mode is decoration over a
 deterministic core.
 
+To skip the intro entirely and drop into a primed mid-game state for
+smoke testing (e.g. the imported bandit encounter at Chimney Rock),
+use a checked-in "warp basis":
+
+```bash
+go run ./cmd/kitsoki run stories/oregon-trail/app.yaml \
+    --warp scenarios/chimney_robbery.yaml
+```
+
+Available scenarios live in [`scenarios/`](./scenarios/); the same
+file can also be loaded interactively from the TUI via
+`/warp file:scenarios/chimney_robbery.yaml`. Both routes share the
+same loader — see [`../../docs/imports.md` §Operator tooling](../../docs/imports.md#operator-tooling-warp-and---warp).
+
 ---
 
 ## 2. Game model — at a glance
@@ -187,6 +201,7 @@ want to see the resulting compiled graph.
 
 | Surface | Kitsoki primitive | Where |
 |---|---|---|
+| Aliased sub-story composition with private worlds | `imports:` — Oregon Trail's `bandits` encounter is a three-layer chain (`oregon-trail` → `frontier_event` → `robbery`) with `world_in:` / per-exit `set:` projections, `host_bindings:` rebinding through to the grandchild, intent re-export both directions, and a state/intent/prompt override triplet. Full reference: [`../../docs/imports.md`](../../docs/imports.md). | [`app.yaml`](./app.yaml) §`imports.frontier`; flows `flows/robbery_*.yaml` |
 | Parallel state with cross-region `emit:` | `world_clock` compound with `type: parallel` and two sibling regions (`weather`, `calendar`); weather `on:` arms emit `precip_heavy` / `snow_starts`, calendar `on:` arms bind the witnesses into world | [`rooms/world_clock.yaml`](./rooms/world_clock.yaml); flow [`flows/parallel_weather.yaml`](./flows/parallel_weather.yaml) |
 | `Effect.When` for "only fire if narration is on" | `when:` on individual `on_enter` effects — paired with a `not world.narration` arm for the deterministic side | [`phases.yaml`](./phases.yaml) `event_*.on_enter` |
 | `Slot.Default` filling | `propose_crossing` declares `confidence` as `required: false, default: 50`; the engine fills the default into the slot bag before effects run so the templated cost math doesn't crash on a bare `slots.confidence` | [`intents.yaml`](./intents.yaml) `propose_crossing`; flow [`flows/river_ford_no_confidence.yaml`](./flows/river_ford_no_confidence.yaml) |

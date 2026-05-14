@@ -1,0 +1,43 @@
+# robbery_scout_intent — exercise the `scout` intent lifted into
+# oregon-trail's intent table via imports.frontier.intents.import.
+# The phase template binds `scout` as a checkpoint arm equivalent to
+# `face_robbery`; this verifies the intent name resolves at parent-state
+# scope (the §6 "child → parent" direction).
+test_kind: flow
+app: ../app.yaml
+initial_state: leg_b_awaiting_reply
+initial_world:
+  party_names:    "John,Sarah,Tom,Mary,Anne"
+  profession:     banker
+  month:          june
+  money:          400
+  party_alive:    5
+  current_landmark: "Fort Kearney"
+  miles_traveled: 320              # threat_level → 1
+  day:            15
+  health_avg:     90
+  food_lbs:       800
+
+host_handlers:
+  host.run:
+    data: { ok: true, stdout: "", exit_code: 0 }
+    delay: "0s"
+
+turns:
+  # Turn 1: scout (parent-state binding via intents.import) → frontier.
+  - intent: { name: scout, slots: {} }
+    expect_state: frontier.scouting
+
+  - intent: { name: frontier__proceed, slots: {} }
+    expect_state: frontier.bandits.encounter
+
+  - intent: { name: frontier__bandits__flee, slots: {} }
+    expect_state: robbery_aftermath
+    expect_world:
+      last_event:                          "bandit_fled"
+      frontier__encounter_kind:            "fled"
+
+  - intent: { name: continue, slots: {} }
+    expect_state: leg_b_awaiting_reply
+
+expect_no_errors: true

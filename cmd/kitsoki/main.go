@@ -23,6 +23,7 @@ import (
 
 	"kitsoki/internal/agents"
 	"kitsoki/internal/app"
+	"kitsoki/internal/inbox"
 	"kitsoki/internal/chathost"
 	"kitsoki/internal/chats"
 	"kitsoki/internal/harness"
@@ -117,6 +118,7 @@ func runCmd() *cobra.Command {
 		continueID       string
 		continueKey      string
 		noImplicitResume bool
+		warpBasisPath    string
 	)
 
 	cmd := &cobra.Command{
@@ -546,6 +548,36 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 				return fmt.Errorf("initial view: %w", err)
 			}
 
+			// --warp: bootstrap teleport. Applied BEFORE the TUI starts so
+			// the operator lands at the primed state on the first frame.
+			// Errors abort with a clear message (no half-warped session).
+			// The teleport's returned outcome carries the post-warp View,
+			// which we feed into the TUI's initialView so the first frame
+			// matches the post-warp state.
+			if warpBasisPath != "" {
+				resolved, basis, basisErr := tui.LoadWarpBasis(warpBasisPath, appPath)
+				if basisErr != nil {
+					return fmt.Errorf("--warp %q: %w", warpBasisPath, basisErr)
+				}
+				if basis.State == "" {
+					return fmt.Errorf("--warp %s: missing required `state:` field", resolved)
+				}
+				slots := make(map[string]any, len(basis.World))
+				for k, v := range basis.World {
+					slots[k] = v
+				}
+				out, warpErr := orch.Teleport(ctx, sid, inbox.TeleportTarget{
+					State: app.StatePath(basis.State),
+					Slots: slots,
+				})
+				if warpErr != nil {
+					return fmt.Errorf("--warp %s: teleport: %w", resolved, warpErr)
+				}
+				if out != nil && out.View != "" {
+					initialView = out.View
+				}
+			}
+
 			// Launch TUI.
 			// WithMouseCellMotion enables scroll-wheel events on the
 			// transcript viewport. Copying text then requires Option
@@ -606,6 +638,9 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 		"resume a specific session by external key transport:thread (requires --continue)")
 	cmd.Flags().BoolVar(&noImplicitResume, "no-implicit-resume", false,
 		"always start a fresh session even if exactly one active session exists for this app")
+
+	cmd.Flags().StringVar(&warpBasisPath, "warp", "",
+		"path to a warp-basis YAML (state + world overrides); applied as the first action after session create. Same file the TUI's /warp file:<path> loads. See stories/oregon-trail/scenarios/ for examples.")
 
 	return cmd
 }

@@ -1,0 +1,50 @@
+# robbery_flee — broke party flees the encounter.
+# Exercises @exit:fled → @exit:fled (chained at frontier_event)
+# → robbery_aftermath. No money lost, no member lost.
+test_kind: flow
+app: ../app.yaml
+initial_state: leg_a_awaiting_reply
+initial_world:
+  party_names:    "John,Sarah,Tom,Mary,Anne"
+  profession:     banker
+  month:          may
+  money:          5
+  oxen:           2
+  food_lbs:       100
+  bullets:        0
+  pace:           steady
+  rations:        meager
+  party_alive:    5
+  health_avg:     40
+  narration:      false
+  current_landmark: "Kansas River Crossing"
+  miles_traveled: 102               # threat_level → 1
+  day:            12
+
+host_handlers:
+  host.run:
+    data: { ok: true, stdout: "", exit_code: 0 }
+    delay: "0s"
+
+turns:
+  - intent: { name: face_robbery, slots: {} }
+    expect_state: frontier.scouting
+    expect_world:
+      frontier__threat_level: 1
+      frontier__party_money:  5
+
+  - intent: { name: frontier__proceed, slots: {} }
+    expect_state: frontier.bandits.encounter
+
+  - intent: { name: frontier__bandits__flee, slots: {} }
+    expect_state: robbery_aftermath
+    expect_world:
+      last_event:                          "bandit_fled"
+      frontier__bandits__outcome:          "fled"
+      frontier__encounter_kind:            "fled"
+      money:                               5             # unchanged
+
+  - intent: { name: continue, slots: {} }
+    expect_state: leg_a_awaiting_reply
+
+expect_no_errors: true

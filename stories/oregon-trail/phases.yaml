@@ -1101,6 +1101,29 @@ phase_templates:
                 - set:
                     last_job_originating_state: "{{ tpl.id }}_awaiting_reply"
 
+          # Imported wrapper sub-story (see docs/imports.md): the
+          # `frontier` compound state is the alias under which
+          # stories/frontier_event (which itself imports stories/robbery)
+          # is folded into oregon-trail. Targeting the compound enters
+          # its Initial=scouting; the synthesised world_in setters
+          # project oregon's money/party_alive/threat_level into
+          # frontier_event's private world. The encounter cascade
+          # routes through @exit:{resolved,member_lost,fled} (mapped by
+          # oregon-trail's imports.frontier.exits) back to
+          # robbery_aftermath, which routes by world.current_landmark.
+          face_robbery:
+            - target: frontier
+
+          # `scout` is lifted up from frontier_event into oregon-trail's
+          # own intent table via imports.frontier.intents.import. This
+          # arm lets the player invoke the scouted-encounter from any
+          # awaiting_reply by name — a parent-state binding that
+          # demonstrates the "child → parent" direction of §6 intent
+          # composition. Identical destination to face_robbery so the
+          # two surfaces converge on the same imported sub-story.
+          scout:
+            - target: frontier
+
           # restart_from — phase J wiring of the checkpoint_intents
           # declaration. checkpoint_intents (top-level on AppDef) only
           # gets *intents* merged into _awaiting_reply.Intents by the
