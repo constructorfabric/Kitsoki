@@ -1,0 +1,219 @@
+# pickup_self_bug_supervised — the canonical Phase 3 PoC walkthrough.
+#
+# Walks the full closed loop from §5.4 of the proposal:
+#   main → ticket_search → pick → bf.idle → bugfix pipeline (8 rooms)
+#       → @exit:done (hands off to pr) → open_pr → ci_monitoring →
+#         merge → @exit:merged → main(status=merged)
+#
+# judge_mode is human throughout; the operator (here, the flow runner)
+# accepts at every checkpoint. The stubbed host.local_files.ticket
+# returns the seed bug list; iface.transport.post (host.append_to_file)
+# is stubbed to ok:true. In a real run against the on-disk seed bug,
+# host.append_to_file appends `## Comment <iso> by <author>` blocks
+# into the bug file at each checkpoint, and the final `merged` arc
+# fires iface.ticket.transition(to: resolved) which the local-files
+# provider applies to the frontmatter in place.
+#
+# Why the flow can't ASSERT on-disk file state today:
+#   testrunner/flows.go's HostHandlers map only registers STUB
+#   handlers — there's no path to register the REAL
+#   host.local_files.ticket against a temp git repo from a fixture.
+#   The on-disk assertion is documented in the README's "Manual
+#   walkthrough" section and exercised by hand, not by this flow.
+#
+# What this flow DOES prove:
+#   - kitsoki-dev's import composition is valid end-to-end (no fold-
+#     time errors, all states reachable).
+#   - judge_mode=human runs every checkpoint through the supervised
+#     path (no auto-emit_intent firing).
+#   - iface.ticket.search / iface.transport.post / iface.vcs.commit /
+#     iface.vcs.open_pr / iface.vcs.merge all resolve correctly
+#     through the second-fold boundary (kitsoki-dev's host_bindings
+#     compose over dev-story's defaults).
+#   - the multi-state @exit:done → pr handoff fires across two
+#     import layers (bf inside dev-story inside core); the
+#     pr_title / pr_body lift through both layers' exits projections.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: core.main
+initial_world:
+  core__ticket_id:      "2026-05-14T103205Z-tui-view-render-before-bind"
+  core__ticket_title:   "TUI view templates render BEFORE on_enter binds"
+  core__ticket_url:     "issues/bugs/2026-05-14T103205Z-tui-view-render-before-bind.md"
+  core__thread:         "issues/bugs/2026-05-14T103205Z-tui-view-render-before-bind.md"
+  core__workdir:        ".worktrees/tui-view-render-before-bind"
+  core__workspace_id:   "ws-tui-view-render"
+  core__base_branch:    "main"
+  core__feature_branch: "fix/tui-view-render-before-bind"
+  core__bf__bugfix_mode: "full"
+  judge_mode:           "human"
+  judge_confidence_threshold: 0.8
+  core__merge_strategy: "squash"
+
+host_handlers:
+  # iface.transport.post → host.append_to_file (kitsoki-dev binding).
+  # Real handler appends a `## Comment <iso> by <author>` block to
+  # the file at `thread:`. Stub returns ok.
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+
+  # Inbox mirror.
+  host.inbox.add:
+    data: { ok: true, id: "ib-1" }
+
+  # Workspace iface — git_worktree. Single prefix-fallback stub.
+  host.git_worktree:
+    data: { ok: true, log: "synced" }
+
+  # VCS iface — host.git serves vcs.commit / vcs.diff / vcs.open_pr /
+  # vcs.pr_status / vcs.merge via prefix-fallback.
+  host.git:
+    data:
+      ok:       true
+      sha:      "abc123"
+      diff:     "diff --git a/internal/tui/transcript.go b/internal/tui/transcript.go\n@@ +deferred-render"
+      url:      "https://example/pr/103205"
+      pr_id:    "103205"
+      state:    "success"
+      checks:   ""
+      comments: ""
+
+  # CI iface — host.local serves ci.run_tests / ci.build / ci.remote_status.
+  host.local:
+    data: { ok: true, log: "PASS: 12 tests", passed: 12, failed: 0, state: "success" }
+
+  # Ticket iface — host.local_files.ticket. Returns the seed bug list
+  # for ticket.list_mine / ticket.search and ok for ticket.transition.
+  host.local_files.ticket:
+    data:
+      ok: true
+      tickets:
+        - { id: "2026-05-14T103205Z-tui-view-render-before-bind", title: "TUI view templates render BEFORE on_enter binds", status: "open", priority: "P2", assignee: "" }
+
+  # Oracle calls — single stub serves every executing room AND every
+  # judge prompt. The bf rooms each bind the whole `submitted:` blob
+  # into their own world key; judge prompts are NOT invoked in
+  # judge_mode=human (the `when:` clause skips them) so the verdict
+  # fields are inert here.
+  host.oracle.ask_with_mcp:
+    data:
+      ok: true
+      stdout: ""
+      submitted:
+        summary_title:    "TUI view render before bind — deferred-render fix"
+        summary_markdown: |
+          # Fix: defer first view render until on_enter binds complete
+
+          Hook the orchestrator's `runOnEnter` chain to suppress the
+          first frame until all synchronous binds in the chain land.
+          Adds a one-frame deferral; the operator never sees the
+          stale-default render.
+
+          Tests: `internal/tui/tui_test.go::TestDeferredFirstRender`
+          asserts the binding lands before the subscribe callback
+          fires.
+        bug_verified: true
+        steps:        ["author state with on_enter bind", "render shows default", "second turn shows bound value"]
+        involved_components:
+          - { name: "internal/tui/transcript.go", reason: "renderMarkdown is the first-frame render site" }
+          - { name: "internal/orchestrator/orchestrator.go", reason: "runOnEnter ordering vs subscribe notify" }
+        fix_description:        "Defer the first view-render until on_enter's synchronous bind chain completes."
+        root_cause:             "Subscribe callback fires before runOnEnter's bind block in the orchestrator dispatch path."
+        affected_files:         ["internal/orchestrator/orchestrator.go", "internal/tui/transcript.go"]
+        confidence:             0.9
+        reasoning:              "Trace shows the subscribe-notify lands at machine-dispatch time, but the bind block is part of the orchestrator's post-dispatch on_enter chain. Reorder."
+        status:                 "passed"
+        tests_added:            ["internal/tui/tui_test.go::TestDeferredFirstRender"]
+        tests_run:              { passed: 12, failed: 0, log: "PASS: 12 tests" }
+        outcome:                "pass"
+        evidence:               { build: "ok", api: "n/a", ui: "first frame shows bound value" }
+        next_action_hint:       ""
+        lessons:
+          - { category: "render-ordering", description: "Subscribe-notify vs runOnEnter ordering is a recurring trap; document the contract and add a lint.", severity: "high" }
+        # Judge-verdict fields are tolerated (additionalProperties: true)
+        # but inert in judge_mode=human.
+        verdict:    "pass"
+        intent:     "accept"
+        reason:     "Stub artifact passes the schema; accept advances."
+        confidence_pct: 90
+
+turns:
+  # core.main → core.bf.idle (dispatch into the bugfix sub-story).
+  # The go_bugfix intent at dev-story's main level lifts through
+  # core's import; the operator types `core__go_bugfix` from inside
+  # the import compound.
+  - intent: { name: core__go_bugfix, slots: {} }
+    expect_state: core.bf.idle
+    expect_world:
+      core__bf__ticket_id: "2026-05-14T103205Z-tui-view-render-before-bind"
+
+  # bf__start → reproducing. The bf__ prefix is set at fold time when
+  # dev-story imported bugfix; the further fold under core leaves
+  # bf__start intact (parent's import.intents.import only lifts to the
+  # parent's bare table without renaming the child arc dispatch
+  # target). So `core__bf__start` is the dispatched name.
+  - intent: { name: core__bf__start, slots: {} }
+    expect_state: core.bf.reproducing_executing
+
+  # Walk the bugfix pipeline. proceed / accept are bf-internal arcs
+  # that live in bf's intent table; they don't collide-lift to bare,
+  # so the dispatched form is core__bf__proceed / core__bf__accept.
+  - intent: { name: core__bf__proceed, slots: {} }
+    expect_state: core.bf.reproducing_awaiting_reply
+  - intent: { name: core__bf__accept, slots: {} }
+    expect_state: core.bf.proposing_executing
+  - intent: { name: core__bf__proceed, slots: {} }
+    expect_state: core.bf.proposing_awaiting_reply
+  - intent: { name: core__bf__accept, slots: {} }
+    expect_state: core.bf.implementing_executing
+  - intent: { name: core__bf__proceed, slots: {} }
+    expect_state: core.bf.testing_executing
+  - intent: { name: core__bf__proceed, slots: {} }
+    expect_state: core.bf.testing_awaiting_reply
+  - intent: { name: core__bf__accept, slots: {} }
+    expect_state: core.bf.reviewing_executing
+  - intent: { name: core__bf__proceed, slots: {} }
+    expect_state: core.bf.validating_executing
+  - intent: { name: core__bf__proceed, slots: {} }
+    expect_state: core.bf.validating_awaiting_reply
+  - intent: { name: core__bf__accept, slots: {} }
+    expect_state: core.bf.done_executing
+  - intent: { name: core__bf__proceed, slots: {} }
+    expect_state: core.bf.done_awaiting_reply
+
+  # bf.done_awaiting_reply.accept fires @exit:done. dev-story's
+  # imports.bf.exits.done.to = pr lifts done_artifact's summary_*
+  # fields into the dev-story-level pr_title / pr_body, then
+  # transitions into the pr import. Under kitsoki-dev's wrapper,
+  # this maps to core.pr.open_pr.
+  - intent: { name: core__bf__accept, slots: {} }
+    expect_state: core.pr.open_pr
+    expect_world:
+      core__pr_title:     "TUI view render before bind — deferred-render fix"
+      core__pr__pr_title: "TUI view render before bind — deferred-render fix"
+
+  # pr.open_pr's on_enter fired iface.vcs.open_pr → bound pr_id / pr_url.
+  - intent: { name: core__pr__proceed, slots: {} }
+    expect_state: core.pr.ci_monitoring
+    expect_world:
+      core__pr__pr_id:  "103205"
+      core__pr__pr_url: "https://example/pr/103205"
+
+  # ci_monitoring saw state=success, pending_comments=0 → merge_executing.
+  - intent: { name: core__pr__proceed, slots: {} }
+    expect_state: core.pr.merge_executing
+  - intent: { name: core__pr__proceed, slots: {} }
+    expect_state: core.pr.merge_awaiting_reply
+
+  # accept → @exit:merged. dev-story's imports.pr.exits.merged.to = main
+  # projects pr__pr_url into the parent's last_pr_url and sets
+  # status="merged". Under kitsoki-dev's wrapper, this lands at
+  # core.main with the projected world.
+  - intent: { name: core__pr__accept, slots: {} }
+    expect_state: core.main
+    expect_world:
+      core__status:      "merged"
+      core__last_pr_url: "https://example/pr/103205"
+
+expect_no_errors: true

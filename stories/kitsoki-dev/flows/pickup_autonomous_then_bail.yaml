@@ -1,0 +1,156 @@
+# pickup_autonomous_then_bail — judge_mode=llm_then_human with a
+# mid-flow bail-out. The LLM-judge auto-fires `accept` for the first
+# two checkpoints (confident verdict 0.9 >= threshold 0.8), then a
+# world_override flips judge_mode to `human` to simulate "operator
+# intervened because verdict looked dodgy". The next checkpoint HOLDS
+# at *_awaiting_reply (the emit_intent gate closes on
+# `judge_mode == 'human'`) and only resolves on a manual `accept`.
+#
+# Proves the autonomous loop bails cleanly to human in mid-stream
+# without restart, replay, or state reload — the same exact mechanism
+# kitsoki-dev uses when the autonomous variant of the dogfood loop
+# from proposal §5.4 hits an uncertain verdict and needs a human ack.
+#
+# Story shape borrowed from stories/bugfix/flows/mixed_judge_swap.yaml
+# (where it pins the bare bugfix story) and re-expressed through the
+# multi-layer kitsoki-dev wrapper.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: core.main
+initial_world:
+  core__ticket_id:      "2026-05-14T103205Z-tui-view-render-before-bind"
+  core__ticket_title:   "TUI view templates render BEFORE on_enter binds"
+  core__thread:         "issues/bugs/2026-05-14T103205Z-tui-view-render-before-bind.md"
+  core__workdir:        ".worktrees/tui-view-render-before-bind"
+  core__workspace_id:   "ws-tui-view-render"
+  core__base_branch:    "main"
+  core__feature_branch: "fix/tui-view-render-before-bind"
+  core__bf__bugfix_mode: "full"
+  # Autonomous defaults — proposal §5.2's autonomous_default_mode.
+  # Seed BOTH the top-level (kitsoki-dev) AND the projected (bf, pr)
+  # keys explicitly because the flow runner's initial_state set-path
+  # skips the wrapper compounds' OnEnter — so the world_in: projection
+  # chain doesn't fire until the operator transitions through the
+  # wrappers themselves. Direct seeding sidesteps that and gets the
+  # judge-mode polymorphism gate reading the right values from turn 1.
+  judge_mode:                       "llm_then_human"
+  judge_confidence_threshold:       0.8
+  core__judge_mode:                 "llm_then_human"
+  core__judge_confidence_threshold: 0.8
+  core__bf__judge_mode:             "llm_then_human"
+  core__bf__judge_confidence_threshold: 0.8
+  core__pr__judge_mode:             "llm_then_human"
+  core__pr__judge_confidence_threshold: 0.8
+  core__merge_strategy:             "squash"
+
+host_handlers:
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+  host.inbox.add:
+    data: { ok: true, id: "ib-1" }
+  host.git_worktree:
+    data: { ok: true, log: "synced" }
+  host.git:
+    data: { ok: true, sha: "abc123", diff: "", url: "https://example/pr/103205", pr_id: "103205", state: "success", checks: "", comments: "" }
+  host.local:
+    data: { ok: true, log: "PASS: 12 tests", passed: 12, failed: 0, state: "success" }
+  host.local_files.ticket:
+    data: { ok: true, tickets: "" }
+  # Confident verdict — every checkpoint where judge_mode is non-human
+  # will auto-fire `accept` until we flip the mode.
+  host.oracle.ask_with_mcp:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "TUI view render before bind — autonomous walk"
+        summary_markdown: "Confident artifact; the LLM auto-advances until the operator intervenes."
+        bug_verified:     true
+        involved_components: [{ name: "internal/tui/transcript.go" }]
+        fix_description:  "Defer first view-render until on_enter binds complete."
+        root_cause:       "Subscribe-notify fires before runOnEnter's bind block."
+        affected_files:   ["internal/orchestrator/orchestrator.go"]
+        confidence:       0.9
+        reasoning:        "Trace shows the ordering trap; the fix is mechanical."
+        status:           "passed"
+        tests_added:      ["internal/orchestrator/orchestrator_test.go::TestRunOnEnterOrdering"]
+        tests_run:        { passed: 12, failed: 0, log: "PASS: 12 tests" }
+        outcome:          "pass"
+        evidence:         { build: "ok" }
+        lessons:
+          - { category: "render-ordering", description: "Subscribe-notify ordering trap.", severity: "high" }
+        verdict:    "pass"
+        # NOTE: the emit_intent expression in bf's checkpoint rooms is
+        # `{{ world.llm_verdict.intent }}`, dispatched verbatim by the
+        # runtime. After bugfix is folded under dev-story (and then
+        # again under kitsoki-dev's `core`), the state's on-arc key is
+        # `core__bf__accept`. The verdict stub here supplies the
+        # prefixed name directly; a live LLM-judge will need a
+        # post-bind alias-rewriting hook (Wave 3.5 follow-up) to
+        # produce the bare `accept` and have it dispatched correctly.
+        # See README "Runtime gaps" for the full story.
+        intent:     "core__bf__accept"
+        reason:     "Confident; advance autonomously."
+        confidence_pct: 90
+
+turns:
+  # core.main → core.bf.idle.
+  - intent: { name: core__go_bugfix, slots: {} }
+    expect_state: core.bf.idle
+
+  # ── Phase A — autonomous walk (llm_then_human + confident) ──────────
+  # bf__start → reproducing_executing.
+  - intent: { name: core__bf__start, slots: {} }
+    expect_state: core.bf.reproducing_executing
+
+  # proceed → reproducing_awaiting_reply, but the LLM-judge auto-fires
+  # accept via emit_intent; we land at proposing_executing in one turn.
+  - intent: { name: core__bf__proceed, slots: {} }
+    expect_state: core.bf.proposing_executing
+
+  # Same shape — proceed → proposing_awaiting_reply → emit_intent → implementing_executing.
+  - intent: { name: core__bf__proceed, slots: {} }
+    expect_state: core.bf.implementing_executing
+
+  # ── Bail-out — operator flips judge_mode to "human" ─────────────────
+  # implementing_executing has no checkpoint; proceed lands at testing.
+  # AFTER this turn the override flips the mode, so the very next
+  # checkpoint (testing) holds for an operator instead of auto-firing.
+  - intent: { name: core__bf__proceed, slots: {} }
+    expect_state: core.bf.testing_executing
+
+  # ── Phase B — supervised; operator drives ────────────────────────────
+  # world_override flips judge_mode mid-flow. emit_intent's gate
+  # (`world.judge_mode != 'human'`) closes, so the next checkpoint
+  # HOLDS at testing_awaiting_reply waiting for a human.
+  - intent: { name: core__bf__proceed, slots: {} }
+    world_override:
+      # Flip ALL judge_mode keys (top-level + nested under core / bf
+      # / pr) because the emit_intent gate at the bf checkpoint reads
+      # `world.core__bf__judge_mode`. Without the prefixed override,
+      # the auto-emit keeps firing using its stale projected value.
+      judge_mode:           "human"
+      core__judge_mode:     "human"
+      core__bf__judge_mode: "human"
+      core__pr__judge_mode: "human"
+    expect_state: core.bf.testing_awaiting_reply
+
+  # Manual accept resolves the hold; pipeline resumes.
+  - intent: { name: core__bf__accept, slots: {} }
+    expect_state: core.bf.reviewing_executing
+
+  # ── Continue supervised to done ─────────────────────────────────────
+  - intent: { name: core__bf__proceed, slots: {} }
+    expect_state: core.bf.validating_executing
+  - intent: { name: core__bf__proceed, slots: {} }
+    expect_state: core.bf.validating_awaiting_reply
+  - intent: { name: core__bf__accept, slots: {} }
+    expect_state: core.bf.done_executing
+  - intent: { name: core__bf__proceed, slots: {} }
+    expect_state: core.bf.done_awaiting_reply
+
+  # done.accept → @exit:done → handoff to pr.open_pr.
+  - intent: { name: core__bf__accept, slots: {} }
+    expect_state: core.pr.open_pr
+
+expect_no_errors: true

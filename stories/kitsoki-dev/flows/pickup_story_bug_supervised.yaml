@@ -1,0 +1,146 @@
+# pickup_story_bug_supervised — same supervised walk as
+# pickup_self_bug_supervised.yaml, but the seed bug is a STORY-BUG
+# under stories/oregon-trail/issues/bugs/. Demonstrates the multi-glob
+# `ticket_globs:` covering BOTH kitsoki-self bugs and per-story bugs
+# in one pipeline.
+#
+# The state-machine walk is byte-identical to the self-bug case (same
+# 8-room bf pipeline → @exit:done → pr → @exit:merged → main); the
+# only difference is the seeded ticket_url + thread paths. This is
+# what the proposal §5.4 means by "the state graph doesn't care".
+
+test_kind: flow
+app: ../app.yaml
+initial_state: core.main
+initial_world:
+  core__ticket_id:      "2026-05-14T120000Z-scenarios-readme-warp-flag-misnamed"
+  core__ticket_title:   "scenarios/README.md says --warp but the boot-time flag path resolution is undocumented"
+  core__ticket_url:     "stories/oregon-trail/issues/bugs/2026-05-14T120000Z-scenarios-readme-warp-flag-misnamed.md"
+  core__thread:         "stories/oregon-trail/issues/bugs/2026-05-14T120000Z-scenarios-readme-warp-flag-misnamed.md"
+  core__workdir:        ".worktrees/oregon-trail-warp-flag-readme"
+  core__workspace_id:   "ws-ot-warp-readme"
+  core__base_branch:    "main"
+  core__feature_branch: "docs/oregon-trail-warp-flag-readme"
+  core__bf__bugfix_mode: "full"
+  judge_mode:           "human"
+  judge_confidence_threshold: 0.8
+  core__merge_strategy: "squash"
+
+host_handlers:
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+  host.inbox.add:
+    data: { ok: true, id: "ib-1" }
+  host.git_worktree:
+    data: { ok: true, log: "synced" }
+  host.git:
+    data:
+      ok:       true
+      sha:      "fedcba"
+      diff:     "diff --git a/stories/oregon-trail/scenarios/README.md b/stories/oregon-trail/scenarios/README.md\n@@ +path-resolution-note"
+      url:      "https://example/pr/120000"
+      pr_id:    "120000"
+      state:    "success"
+      checks:   ""
+      comments: ""
+  host.local:
+    data: { ok: true, log: "PASS: 28 tests", passed: 28, failed: 0, state: "success" }
+  host.local_files.ticket:
+    data:
+      ok: true
+      tickets:
+        - { id: "2026-05-14T120000Z-scenarios-readme-warp-flag-misnamed", title: "scenarios/README.md says --warp …", status: "open", priority: "P3", assignee: "" }
+  host.oracle.ask_with_mcp:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Oregon Trail scenarios README — clarify --warp path resolution"
+        summary_markdown: |
+          # Fix: clarify --warp path resolution in scenarios/README.md
+
+          Add a one-sentence note under the "At session boot" example
+          documenting that --warp paths resolve against cwd (not the
+          app dir).
+
+          Tests: none — pure docs fix. `kitsoki test flows
+          stories/oregon-trail/app.yaml` still passes 28/28 (the
+          change is in README.md only).
+        bug_verified: true
+        steps:        ["cd /tmp", "run kitsoki --warp scenarios/...", "observe ambiguous failure"]
+        involved_components:
+          - { name: "stories/oregon-trail/scenarios/README.md", reason: "the misleading doc" }
+        fix_description:        "Add a path-resolution note to the boot-time --warp example."
+        root_cause:             "README left path resolution implicit; doc nit."
+        affected_files:         ["stories/oregon-trail/scenarios/README.md"]
+        confidence:             0.95
+        reasoning:              "Pure docs fix; the analysis is in the bug file itself."
+        status:                 "passed"
+        tests_added:            []
+        tests_run:              { passed: 28, failed: 0, log: "PASS: 28 tests" }
+        outcome:                "pass"
+        evidence:               { build: "ok", api: "n/a", ui: "n/a" }
+        next_action_hint:       ""
+        lessons:
+          - { category: "docs", description: "When introducing a new path-aware flag, document its resolution semantics in the same example.", severity: "low" }
+        verdict:    "pass"
+        intent:     "accept"
+        reason:     "Stub artifact passes the schema; accept advances."
+        confidence_pct: 95
+
+turns:
+  - intent: { name: core__go_bugfix, slots: {} }
+    expect_state: core.bf.idle
+    expect_world:
+      core__bf__ticket_id: "2026-05-14T120000Z-scenarios-readme-warp-flag-misnamed"
+      # Confirm the story-bug path passes through to the bf child world.
+      core__bf__thread:    "stories/oregon-trail/issues/bugs/2026-05-14T120000Z-scenarios-readme-warp-flag-misnamed.md"
+
+  - intent: { name: core__bf__start, slots: {} }
+    expect_state: core.bf.reproducing_executing
+  - intent: { name: core__bf__proceed, slots: {} }
+    expect_state: core.bf.reproducing_awaiting_reply
+  - intent: { name: core__bf__accept, slots: {} }
+    expect_state: core.bf.proposing_executing
+  - intent: { name: core__bf__proceed, slots: {} }
+    expect_state: core.bf.proposing_awaiting_reply
+  - intent: { name: core__bf__accept, slots: {} }
+    expect_state: core.bf.implementing_executing
+  - intent: { name: core__bf__proceed, slots: {} }
+    expect_state: core.bf.testing_executing
+  - intent: { name: core__bf__proceed, slots: {} }
+    expect_state: core.bf.testing_awaiting_reply
+  - intent: { name: core__bf__accept, slots: {} }
+    expect_state: core.bf.reviewing_executing
+  - intent: { name: core__bf__proceed, slots: {} }
+    expect_state: core.bf.validating_executing
+  - intent: { name: core__bf__proceed, slots: {} }
+    expect_state: core.bf.validating_awaiting_reply
+  - intent: { name: core__bf__accept, slots: {} }
+    expect_state: core.bf.done_executing
+  - intent: { name: core__bf__proceed, slots: {} }
+    expect_state: core.bf.done_awaiting_reply
+
+  - intent: { name: core__bf__accept, slots: {} }
+    expect_state: core.pr.open_pr
+    expect_world:
+      core__pr_title:     "Oregon Trail scenarios README — clarify --warp path resolution"
+      core__pr__pr_title: "Oregon Trail scenarios README — clarify --warp path resolution"
+
+  - intent: { name: core__pr__proceed, slots: {} }
+    expect_state: core.pr.ci_monitoring
+    expect_world:
+      core__pr__pr_id:  "120000"
+      core__pr__pr_url: "https://example/pr/120000"
+
+  - intent: { name: core__pr__proceed, slots: {} }
+    expect_state: core.pr.merge_executing
+  - intent: { name: core__pr__proceed, slots: {} }
+    expect_state: core.pr.merge_awaiting_reply
+
+  - intent: { name: core__pr__accept, slots: {} }
+    expect_state: core.main
+    expect_world:
+      core__status:      "merged"
+      core__last_pr_url: "https://example/pr/120000"
+
+expect_no_errors: true

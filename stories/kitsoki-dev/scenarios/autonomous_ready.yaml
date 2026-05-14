@@ -1,0 +1,39 @@
+# Warp basis: same primed self-bug pickup as pickup_self_bug.yaml,
+# but flips `judge_mode` to `llm_then_human` so the bugfix pipeline
+# walks unattended through confident checkpoints and only stops for
+# human input on uncertain verdicts.
+#
+# Usage (from kitsoki repo root):
+#
+#   kitsoki run stories/kitsoki-dev/app.yaml \
+#       --warp scenarios/autonomous_ready.yaml
+#
+# In this mode, each `*_awaiting_reply` state's on_enter chain:
+#   1. Posts the artifact (host.append_to_file → appends a
+#      ## Comment block to the bug file)
+#   2. Mirrors into the local inbox
+#   3. Calls the judge oracle (because judge_mode != "human")
+#   4. If the verdict is confident (confidence >= threshold) AND
+#      neither verdict nor intent is "uncertain", emits the LLM's
+#      intent automatically — advancing the pipeline without a turn.
+#
+# The pipeline holds for human input only when the LLM hedges. See
+# `flows/pickup_autonomous_then_bail.yaml` for the deterministic
+# version of this scenario expressed as a flow fixture.
+
+name:        "kitsoki self-bug — autonomous LLM-then-human walk"
+description: "Same self-bug pickup as pickup_self_bug.yaml, but judge_mode=llm_then_human for unattended runs."
+
+state: core.main
+
+world:
+  core__ticket_id:      "2026-05-14T103205Z-tui-view-render-before-bind"
+  core__ticket_title:   "TUI view templates render BEFORE on_enter binds"
+  core__ticket_url:     "issues/bugs/2026-05-14T103205Z-tui-view-render-before-bind.md"
+  core__thread:         "issues/bugs/2026-05-14T103205Z-tui-view-render-before-bind.md"
+  core__base_branch:    "main"
+  core__feature_branch: "fix/tui-view-render-before-bind"
+  core__workdir:        ".worktrees/tui-view-render-before-bind"
+  core__workspace_id:   "ws-tui-view-render"
+  judge_mode:           "llm_then_human"
+  judge_confidence_threshold: 0.8
