@@ -157,13 +157,19 @@ func (o *Orchestrator) handleJobTerminal(ctx context.Context, sid app.SessionID,
 	onErrorRedirected := false
 
 	// Apply on_complete effects (may be empty if the app didn't declare any).
+	// RunEffectsAndState (not RunEffects) so an emit_intent inside the
+	// on_complete chain steers the final landing state.  Without this an
+	// emit fired during background-job completion would execute its host
+	// calls and apply its effects, but the orchestrator would still pin
+	// the synthetic turn's state to OriginState rather than the emit-
+	// resolved leaf.  (P1-D from the dev-story-bugfix-unify Opus review.)
 	if len(onComplete) > 0 {
 		o.logger.DebugContext(ctx, trace.EvJobOnCompleteRun,
 			slog.String("session_id", string(sid)),
 			slog.String("job_id", ev.JobID),
 			slog.Int("effect_count", len(onComplete)),
 		)
-		newWorld, hostCalls, sayText, effectEvents, runErr := o.machine.RunEffects(ctx, j.OriginState, w, onComplete)
+		emitState, newWorld, hostCalls, sayText, effectEvents, runErr := o.machine.RunEffectsAndState(ctx, j.OriginState, w, onComplete)
 		if runErr != nil {
 			// An on_complete effect failed (e.g. set: with a bad expr).
 			// Preserve the fail-fast invariant: skip the synthetic Target
@@ -176,6 +182,13 @@ func (o *Orchestrator) handleJobTerminal(ctx context.Context, sid app.SessionID,
 		}
 		turnEvents = append(turnEvents, effectEvents...)
 		w = newWorld
+		if emitState != "" && emitState != j.OriginState {
+			// on_complete chain emitted onward; the new leaf takes
+			// precedence over OriginState for the synthetic turn's
+			// reported NewState.  A subsequent Target effect (handled
+			// below) only fires when no emit_intent has already routed.
+			currentState = emitState
+		}
 
 		// If the on_complete chain included a say: effect the text is already
 		// captured as an EffectApplied{say: ...} event inside effectEvents.
@@ -527,12 +540,21 @@ func (o *Orchestrator) resolveAndApplyOnCompleteTarget(
 	// (background: true inside on_enter at the new state is fine when the
 	// state was entered by a regular turn, but it would cascade arbitrarily
 	// here; left as a known gap — see test coverage).
+	//
+	// RunEffectsAndState (not RunEffects) so an emit_intent inside the
+	// on_complete target's on_enter steers the final landing leaf —
+	// without this the session pins to `target` even when an emit has
+	// already routed it onward.  (P1-D from the dev-story-bugfix-unify
+	// Opus review.)
 	if len(tgtState.OnEnter) > 0 {
-		_, hostCalls, _, enterEvents, runErr := o.machine.RunEffects(ctx, target, w, tgtState.OnEnter)
+		emitState, _, hostCalls, _, enterEvents, runErr := o.machine.RunEffectsAndState(ctx, target, w, tgtState.OnEnter)
 		if runErr != nil {
 			return nil, originState, fmt.Errorf("on_complete target on_enter: %w", runErr)
 		}
 		events = append(events, enterEvents...)
+		if emitState != "" && emitState != target {
+			target = emitState
+		}
 		if len(hostCalls) > 0 {
 			hostEvts, _, _, _, hostErr := o.dispatchHostCalls(ctx, sid, hostCalls, w, target)
 			if hostErr != nil {

@@ -648,9 +648,14 @@ func (o *Orchestrator) fireTimeout(ctx context.Context, sid app.SessionID, fromS
 	}, turnNum))
 
 	// Run target.on_enter via the machine and dispatch any host calls.
+	// RunEffectsAndState (not RunEffects) so an emit_intent inside the
+	// timeout target's on_enter steers the final landing state — without
+	// this the session pins at `target` even when an emit_intent has
+	// already routed it onward.  (P1-D from the dev-story-bugfix-unify
+	// Opus review.)
 	w := journey.World
 	if len(tgtState.OnEnter) > 0 {
-		newWorld, hostCalls, _, effectEvents, runErr := o.machine.RunEffects(ctx, target, w, tgtState.OnEnter)
+		emitState, newWorld, hostCalls, _, effectEvents, runErr := o.machine.RunEffectsAndState(ctx, target, w, tgtState.OnEnter)
 		if runErr != nil {
 			return fmt.Errorf("fireTimeout: on_enter: %w", runErr)
 		}
@@ -659,6 +664,9 @@ func (o *Orchestrator) fireTimeout(ctx context.Context, sid app.SessionID, fromS
 			effectEvents[i].Turn = turnNum
 		}
 		events = append(events, effectEvents...)
+		if emitState != "" && emitState != target {
+			target = emitState
+		}
 
 		if len(hostCalls) > 0 {
 			hostEvents, hostWorld, _, redirect, hostErr := o.dispatchHostCalls(ctx, sid, hostCalls, w, target)

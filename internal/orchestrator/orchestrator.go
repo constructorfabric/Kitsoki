@@ -1065,8 +1065,10 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 		// Run the error state's on_enter chain and recursively dispatch
 		// any host calls it emits.  Append a TransitionApplied event so
 		// replay correctly lands the journey in the error state after a
-		// process restart.
-		errEvents, errWorld, errView, redirErr := o.enterRedirectState(ctx, sid, state, redirect, w)
+		// process restart.  resolvedRedirect captures the emit_intent-
+		// resolved leaf when the error state's on_enter chain emitted
+		// onward (P1-D); when no emit fired it equals `redirect`.
+		errEvents, errWorld, errView, resolvedRedirect, redirErr := o.enterRedirectState(ctx, sid, state, redirect, w)
 		if redirErr != nil {
 			return events, w, "", "", redirErr
 		}
@@ -1074,16 +1076,16 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 		w = errWorld
 		applied = true
 		if errView == "" {
-			// Fallback: render the error state's view against the
+			// Fallback: render the resolved error state's view against the
 			// post-on_enter world so callers always have a refreshed
 			// view to show the user.
-			v, rErr := o.machine.RenderState(redirect, w)
+			v, rErr := o.machine.RenderState(resolvedRedirect, w)
 			if rErr != nil {
-				return events, w, "", "", fmt.Errorf("orchestrator: render redirect state %q: %w", redirect, rErr)
+				return events, w, "", "", fmt.Errorf("orchestrator: render redirect state %q: %w", resolvedRedirect, rErr)
 			}
 			errView = v
 		}
-		return events, w, errView, redirect, nil
+		return events, w, errView, resolvedRedirect, nil
 	}
 
 	if !applied {
@@ -1105,12 +1107,21 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 // updates the journey state, plus StateExited/StateEntered events to mirror
 // the regular machine.Turn transition shape.  Returns the accumulated
 // events, the post-on_enter world, the rendered view (empty if rendering
-// is left to the caller), and a non-nil error only on infrastructure failure.
-func (o *Orchestrator) enterRedirectState(ctx context.Context, sid app.SessionID, prior, target app.StatePath, w world.World) ([]store.Event, world.World, string, error) {
+// is left to the caller), the resolved leaf state (which may differ from
+// `target` when the error state's on_enter chain emit_intented onward, or
+// when a nested on_error redirected to a deeper error state), and a
+// non-nil error only on infrastructure failure.
+//
+// Calls RunEffectsAndState (not RunEffects) so emit_intent dispatched
+// inside the error state's on_enter steers the resolved leaf — without
+// this the session would land at `target` even when an emit_intent has
+// already routed it onward.  (P1-D from the dev-story-bugfix-unify Opus
+// review.)
+func (o *Orchestrator) enterRedirectState(ctx context.Context, sid app.SessionID, prior, target app.StatePath, w world.World) ([]store.Event, world.World, string, app.StatePath, error) {
 	// Validate target exists; if not, surface as an infrastructure error.
 	tgtState := lookupStateByPath(o.def, target)
 	if tgtState == nil {
-		return nil, w, "", fmt.Errorf("orchestrator: on_error target state %q not found", target)
+		return nil, w, "", target, fmt.Errorf("orchestrator: on_error target state %q not found", target)
 	}
 
 	var events []store.Event
@@ -1135,22 +1146,31 @@ func (o *Orchestrator) enterRedirectState(ctx context.Context, sid app.SessionID
 		"state": string(target),
 	}, 0))
 
+	resolved := target
+
 	// Run the error state's on_enter via the machine.  This collects
-	// any nested host calls so we can recurse below.
+	// any nested host calls so we can recurse below.  RunEffectsAndState
+	// also returns the leaf state path the chain settled at — if the
+	// error state's on_enter contains an emit_intent that fires at
+	// machine time, the resolved leaf differs from target and the
+	// orchestrator must surface it as the post-redirect state.
 	if len(tgtState.OnEnter) > 0 {
-		newWorld, hostCalls, _, effEvents, runErr := o.machine.RunEffects(ctx, target, w, tgtState.OnEnter)
+		emitState, newWorld, hostCalls, _, effEvents, runErr := o.machine.RunEffectsAndState(ctx, target, w, tgtState.OnEnter)
 		if runErr != nil {
-			return events, w, "", fmt.Errorf("orchestrator: run on_enter for redirect %q: %w", target, runErr)
+			return events, w, "", target, fmt.Errorf("orchestrator: run on_enter for redirect %q: %w", target, runErr)
 		}
 		w = newWorld
 		events = append(events, effEvents...)
+		if emitState != "" && emitState != target {
+			resolved = emitState
+		}
 
 		// Recursively dispatch.  A nested on_error redirect supersedes
 		// this one — the caller will see the deepest target.
 		if len(hostCalls) > 0 {
-			nestedEvents, nestedWorld, nestedView, nestedRedirect, nestedErr := o.dispatchHostCalls(ctx, sid, hostCalls, w, target)
+			nestedEvents, nestedWorld, nestedView, nestedRedirect, nestedErr := o.dispatchHostCalls(ctx, sid, hostCalls, w, resolved)
 			if nestedErr != nil {
-				return events, w, "", nestedErr
+				return events, w, "", resolved, nestedErr
 			}
 			events = append(events, nestedEvents...)
 			w = nestedWorld
@@ -1160,17 +1180,17 @@ func (o *Orchestrator) enterRedirectState(ctx context.Context, sid app.SessionID
 				// deepest target, but otherwise let the
 				// nested events already capture the chain.
 				events = append(events, newOrchestratorEvent(store.TransitionApplied, map[string]any{
-					"from":   string(target),
+					"from":   string(resolved),
 					"to":     string(nestedRedirect),
 					"intent": "on_error",
 				}, 0))
-				return events, w, nestedView, nil
+				return events, w, nestedView, nestedRedirect, nil
 			}
-			return events, w, nestedView, nil
+			return events, w, nestedView, resolved, nil
 		}
 	}
 
-	return events, w, "", nil
+	return events, w, "", resolved, nil
 }
 
 // rerenderHostArgs re-renders the templates in hc.RawWith against the current
@@ -1870,7 +1890,7 @@ func (o *Orchestrator) dispatchHostCallsDetailed(ctx context.Context, calls []ma
 	}
 
 	if redirect != "" {
-		errEvents, errWorld, errView, redirErr := o.enterRedirectState(ctx, "", state, redirect, w)
+		errEvents, errWorld, errView, resolvedRedirect, redirErr := o.enterRedirectState(ctx, "", state, redirect, w)
 		if redirErr != nil {
 			return summaries, events, w, "", "", redirErr
 		}
@@ -1878,13 +1898,13 @@ func (o *Orchestrator) dispatchHostCallsDetailed(ctx context.Context, calls []ma
 		w = errWorld
 		applied = true
 		if errView == "" {
-			v, rErr := o.machine.RenderState(redirect, w)
+			v, rErr := o.machine.RenderState(resolvedRedirect, w)
 			if rErr != nil {
-				return summaries, events, w, "", "", fmt.Errorf("render redirect state %q: %w", redirect, rErr)
+				return summaries, events, w, "", "", fmt.Errorf("render redirect state %q: %w", resolvedRedirect, rErr)
 			}
 			errView = v
 		}
-		return summaries, events, w, errView, redirect, nil
+		return summaries, events, w, errView, resolvedRedirect, nil
 	}
 
 	if !applied {
