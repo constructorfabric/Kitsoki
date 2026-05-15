@@ -16,7 +16,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	anthropic "github.com/anthropics/anthropic-sdk-go"
 	"github.com/spf13/cobra"
@@ -85,15 +84,12 @@ Examples:
 				return err
 			}
 
-			def, err := app.Load(appPath)
+			// loadAppWithEnv publishes KITSOKI_APP_DIR before Load so
+			// the loader's env-var validator can resolve references in
+			// env-expanded fields (cwd, etc.) during validation.
+			def, err := loadAppWithEnv(appPath)
 			if err != nil {
-				return fmt.Errorf("load app %q: %w", appPath, err)
-			}
-
-			// Publish the app's base directory so host handlers (e.g.
-			// host.oracle.ask) can resolve relative prompt paths against it.
-			if absPath, absErr := filepath.Abs(appPath); absErr == nil {
-				_ = os.Setenv(host.AppDirEnv, filepath.Dir(absPath))
+				return err
 			}
 
 			// Default world: schema defaults, then user overrides.

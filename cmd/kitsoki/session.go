@@ -158,11 +158,10 @@ With --doc only that one document is checkpointed.`,
 				return fmt.Errorf("exactly one of --id or --key must be set")
 			}
 
-			def, err := app.Load(appPath)
+			def, err := loadAppWithEnv(appPath)
 			if err != nil {
-				return fmt.Errorf("load app %q: %w", appPath, err)
+				return err
 			}
-			publishAppDir(appPath)
 
 			s, err := openSessionStore(dbPath)
 			if err != nil {
@@ -705,11 +704,10 @@ func sessionCreateCmd() *cobra.Command {
 		Use:   "create",
 		Short: "Create a new session and optionally bind an external key",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			def, err := app.Load(appPath)
+			def, err := loadAppWithEnv(appPath)
 			if err != nil {
-				return fmt.Errorf("load app %q: %w", appPath, err)
+				return err
 			}
-			publishAppDir(appPath)
 
 			s, err := openSessionStore(dbPath)
 			if err != nil {
@@ -791,11 +789,10 @@ another process holds it, this command exits 75 (EX_TEMPFAIL).`,
 				return fmt.Errorf("exactly one of --key or --id must be set")
 			}
 
-			def, err := app.Load(appPath)
+			def, err := loadAppWithEnv(appPath)
 			if err != nil {
-				return fmt.Errorf("load app %q: %w", appPath, err)
+				return err
 			}
-			publishAppDir(appPath)
 
 			s, err := openSessionStore(dbPath)
 			if err != nil {
@@ -938,11 +935,10 @@ func sessionShowCmd() *cobra.Command {
 				return fmt.Errorf("exactly one of --key or --id must be set")
 			}
 
-			def, err := app.Load(appPath)
+			def, err := loadAppWithEnv(appPath)
 			if err != nil {
-				return fmt.Errorf("load app %q: %w", appPath, err)
+				return err
 			}
-			publishAppDir(appPath)
 
 			s, err := openSessionStore(dbPath)
 			if err != nil {
@@ -1006,11 +1002,10 @@ func sessionListCmd() *cobra.Command {
 		Use:   "list",
 		Short: "List sessions; optionally filtered by transport",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			def, err := app.Load(appPath)
+			def, err := loadAppWithEnv(appPath)
 			if err != nil {
-				return fmt.Errorf("load app %q: %w", appPath, err)
+				return err
 			}
-			publishAppDir(appPath)
 
 			s, err := openSessionStore(dbPath)
 			if err != nil {
@@ -1070,11 +1065,9 @@ func sessionBindKeyCmd() *cobra.Command {
 				return fmt.Errorf("--id and --key are both required")
 			}
 
-			_, err := app.Load(appPath)
-			if err != nil {
-				return fmt.Errorf("load app %q: %w", appPath, err)
+			if _, err := loadAppWithEnv(appPath); err != nil {
+				return err
 			}
-			publishAppDir(appPath)
 
 			s, err := openSessionStore(dbPath)
 			if err != nil {
@@ -1135,10 +1128,35 @@ func resolveSessionID(ctx context.Context, s store.Store, key, idFlag string) (a
 }
 
 // publishAppDir sets KITSOKI_APP_DIR so host handlers can resolve relative paths.
+//
+// IMPORTANT: call this BEFORE app.Load(appPath) when the app yaml may
+// reference ${KITSOKI_APP_DIR} in any env-expanded field (today: the
+// meta_modes[*].cwd and agents[*].cwd loader checks). The validator
+// fires during app.Load and errors out if KITSOKI_APP_DIR is unset,
+// so a post-load setenv is too late. The loadAppWithEnv helper below
+// orders the calls correctly — prefer it over hand-rolling the pair.
 func publishAppDir(appPath string) {
 	if absPath, err := filepath.Abs(appPath); err == nil {
 		_ = os.Setenv(host.AppDirEnv, filepath.Dir(absPath))
 	}
+}
+
+// loadAppWithEnv is the canonical "publish KITSOKI_APP_DIR, then load
+// the app yaml" sequence. Every cmd/kitsoki entry point that calls
+// app.Load(appPath) should go through this helper so authors can
+// safely write `cwd: "${KITSOKI_APP_DIR}/foo"` in app.yaml without
+// the loader's env-var validator (loader.go::expandMetaCwd) tripping
+// on a not-yet-set var.
+//
+// Errors are formatted identically to the previous inline "load app
+// %q: %w" wrapper so call-site diagnostics stay stable.
+func loadAppWithEnv(appPath string) (*app.AppDef, error) {
+	publishAppDir(appPath)
+	def, err := app.Load(appPath)
+	if err != nil {
+		return nil, fmt.Errorf("load app %q: %w", appPath, err)
+	}
+	return def, nil
 }
 
 // openSessionStore opens the session DB at the given path or the default.

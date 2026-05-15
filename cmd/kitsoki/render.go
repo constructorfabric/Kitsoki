@@ -13,7 +13,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"kitsoki/internal/app"
 	"kitsoki/internal/app/render"
 )
 
@@ -38,9 +37,12 @@ Examples:
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			appPath := args[0]
-			def, err := app.Load(appPath)
+			// loadAppWithEnv publishes KITSOKI_APP_DIR so authors can
+			// safely use `cwd: "${KITSOKI_APP_DIR}/..."` in app.yaml
+			// — the loader's env-var validator runs during Load.
+			def, err := loadAppWithEnv(appPath)
 			if err != nil {
-				return fmt.Errorf("load %s: %w", appPath, err)
+				return err
 			}
 			md, err := render.Markdown(def)
 			if err != nil {

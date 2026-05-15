@@ -31,6 +31,24 @@ import (
 	"kitsoki/internal/world"
 )
 
+// publishAppDirForTestrunner sets host.AppDirEnv to the absolute
+// directory containing appPath. Mirrors cmd/kitsoki/session.go's
+// publishAppDir but lives here so the testrunner package doesn't
+// pull cmd/kitsoki/* into its import graph. Both RunFlows and
+// RunIntents call this BEFORE app.Load so the loader's env-var
+// validator can resolve `${KITSOKI_APP_DIR}` references in fields
+// like meta_modes[*].cwd at validate time.
+//
+// Best-effort: a filepath.Abs failure (rare; only when the OS can't
+// get the cwd) simply skips the setenv — the loader will then
+// surface a clean "references unset env var KITSOKI_APP_DIR" error
+// rather than crash, which matches the bug-2 negative-path test.
+func publishAppDirForTestrunner(appPath string) {
+	if abs, err := filepath.Abs(appPath); err == nil {
+		_ = os.Setenv(host.AppDirEnv, filepath.Dir(abs))
+	}
+}
+
 // ─── Flow fixture YAML format (§10.3.1) ──────────────────────────────────────
 
 // FlowFixture is the top-level flow fixture document.
@@ -392,6 +410,14 @@ func shouldUseOrchestrator(fixture *FlowFixture) bool {
 // RunFlows loads the app, finds all flow fixtures matching the glob, and runs them.
 // Returns a FlowReport and non-nil error only for fatal startup errors.
 func RunFlows(ctx context.Context, appPath, glob string, opts FlowOptions) (*FlowReport, error) {
+	// Publish KITSOKI_APP_DIR BEFORE loading so the app yaml's loader-
+	// time env-var validator can resolve `${KITSOKI_APP_DIR}` in any
+	// env-expanded field (e.g. meta_modes[*].cwd). Setting the env var
+	// after Load was the bug-2 ordering issue — `hally test flows`
+	// then rejected a perfectly valid yaml because the var wasn't set
+	// yet at validation time.
+	publishAppDirForTestrunner(appPath)
+
 	// Load app.
 	def, err := app.Load(appPath)
 	if err != nil {

@@ -57,7 +57,7 @@ Embedded documentation (ships inside this binary):
   kitsoki docs app-schema  authoritative reference for app.yaml
   kitsoki docs all         print every topic, concatenated
 
-See also the full design document (design.md) in the repo.`,
+See docs/ in the repo for the narrative documentation.`,
 	}
 
 	root.AddCommand(versionCmd())
@@ -159,16 +159,14 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 
 			appPath := args[0]
 
-			// Load app definition.
-			def, err := app.Load(appPath)
+			// Load app definition. loadAppWithEnv publishes
+			// KITSOKI_APP_DIR FIRST so the loader's env-var validator
+			// can resolve `${KITSOKI_APP_DIR}` references in cwd: and
+			// other env-expanded fields. (Setting the env var after
+			// Load returned was the bug-2 ordering issue.)
+			def, err := loadAppWithEnv(appPath)
 			if err != nil {
-				return fmt.Errorf("load app %q: %w", appPath, err)
-			}
-
-			// Publish the app's base directory so host handlers (e.g.
-			// host.oracle.ask) can resolve relative prompt paths against it.
-			if absPath, absErr := filepath.Abs(appPath); absErr == nil {
-				_ = os.Setenv(host.AppDirEnv, filepath.Dir(absPath))
+				return err
 			}
 
 			// Determine DB path.
@@ -773,9 +771,12 @@ Examples:
 		RunE: func(cmd *cobra.Command, args []string) error {
 			appPath := args[0]
 
-			def, err := app.Load(appPath)
+			// loadAppWithEnv publishes KITSOKI_APP_DIR so the loader's
+			// env-var validator (e.g. cwd: "${KITSOKI_APP_DIR}/foo")
+			// can resolve references at validate time.
+			def, err := loadAppWithEnv(appPath)
 			if err != nil {
-				return fmt.Errorf("load app %q: %w", appPath, err)
+				return err
 			}
 
 			if byRoom {
@@ -917,10 +918,11 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			appPath := args[0]
 
-			// Load the app definition.
-			def, err := app.Load(appPath)
+			// Load the app definition. loadAppWithEnv publishes
+			// KITSOKI_APP_DIR first so env-expanded fields validate.
+			def, err := loadAppWithEnv(appPath)
 			if err != nil {
-				return fmt.Errorf("load app %q: %w", appPath, err)
+				return err
 			}
 
 			// Open the session store.

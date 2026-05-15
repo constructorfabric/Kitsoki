@@ -250,10 +250,12 @@ type recordConfig struct {
 // runRecord executes the full pipeline: load app → replay flows →
 // collect text frames → rasterise → encode GIF → write to disk.
 func runRecord(cfg recordConfig) error {
-	// 1. Load app.
-	def, err := app.Load(cfg.appPath)
+	// 1. Load app. loadAppWithEnv publishes KITSOKI_APP_DIR before
+	// Load so env-expanded fields (cwd:) validate against the live
+	// var rather than tripping the loader's missing-var check.
+	def, err := loadAppWithEnv(cfg.appPath)
 	if err != nil {
-		return fmt.Errorf("load app %q: %w", cfg.appPath, err)
+		return err
 	}
 
 	// 2. Build machine.

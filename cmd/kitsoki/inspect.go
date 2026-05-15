@@ -81,9 +81,9 @@ Examples:
 			}
 			appPath := args[0]
 
-			def, err := app.Load(appPath)
+			def, err := loadAppWithEnv(appPath)
 			if err != nil {
-				return fmt.Errorf("load app %q: %w", appPath, err)
+				return err
 			}
 
 			if dbPath == "" {

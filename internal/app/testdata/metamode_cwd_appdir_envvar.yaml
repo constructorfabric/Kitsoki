@@ -1,0 +1,25 @@
+app:
+  id: metamode-cwd-appdir
+  version: 0.1.0
+
+root: foyer
+
+states:
+  foyer:
+    description: "Foyer"
+    view: "You are in the foyer."
+
+agents:
+  kitsoki-engineer:
+    system_prompt: "You are the kitsoki engineer fixture."
+
+# Regression fixture for bug 2: the loader's env-var validator must
+# accept `${KITSOKI_APP_DIR}` when production sets the var BEFORE
+# calling app.Load (which it now does via loadAppWithEnv /
+# publishAppDirForTestrunner). The test toggles the env var to drive
+# both the success and failure branches.
+meta_modes:
+  self:
+    trigger: meta-kitsoki
+    agent: kitsoki-engineer
+    cwd: "${KITSOKI_APP_DIR}"

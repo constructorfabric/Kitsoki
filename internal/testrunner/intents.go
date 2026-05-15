@@ -169,6 +169,11 @@ type Baseline struct {
 
 // RunIntents runs Mode 1 pass-rate tests against all matching intent fixtures.
 func RunIntents(ctx context.Context, appPath string, opts IntentOptions) (*IntentReport, error) {
+	// Publish KITSOKI_APP_DIR before Load so env-expanded fields in
+	// the app yaml validate against the live var (bug 2 ordering fix
+	// — see flows.go for the canonical comment).
+	publishAppDirForTestrunner(appPath)
+
 	// Load app.
 	def, err := app.Load(appPath)
 	if err != nil {

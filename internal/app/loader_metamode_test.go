@@ -90,6 +90,38 @@ func TestMetaMode_CwdEnvExpansion(t *testing.T) {
 	})
 }
 
+// TestMetaMode_CwdEnvExpansion_KitsokiAppDir is the loader-side
+// regression test for bug 2: a `cwd: "${KITSOKI_APP_DIR}"` field must
+// validate successfully when the env var is set (production sets it
+// in cmd/kitsoki via loadAppWithEnv BEFORE calling Load) and must
+// produce a clean, named-var error when it is unset.
+//
+// The production fix is ordering — `os.Setenv(host.AppDirEnv, ...)`
+// happens before `app.Load(appPath)` rather than after. This test
+// pins both branches of expandMetaCwd's behaviour for KITSOKI_APP_DIR
+// specifically, so a future refactor that inadvertently re-orders
+// the setenv (or special-cases the var) trips it.
+func TestMetaMode_CwdEnvExpansion_KitsokiAppDir(t *testing.T) {
+	t.Run("env set", func(t *testing.T) {
+		t.Setenv("KITSOKI_APP_DIR", "/tmp/kitsoki-fake-appdir")
+		def, err := Load("testdata/metamode_cwd_appdir_envvar.yaml")
+		require.NoError(t, err)
+		self, ok := def.MetaModes["self"]
+		require.True(t, ok)
+		require.Equal(t, "/tmp/kitsoki-fake-appdir", self.Cwd,
+			"KITSOKI_APP_DIR must be expanded in place at load time")
+	})
+
+	t.Run("env unset", func(t *testing.T) {
+		require.NoError(t, os.Unsetenv("KITSOKI_APP_DIR"))
+		_, err := Load("testdata/metamode_cwd_appdir_envvar.yaml")
+		require.Error(t, err,
+			"loader must reject ${KITSOKI_APP_DIR} when the env var is unset (production sets it before Load)")
+		require.True(t, containsSubstring(err, "KITSOKI_APP_DIR"),
+			"error must name the missing var; got: %v", err)
+	})
+}
+
 // TestMetaMode_PersistFalse asserts that an explicit persist: false survives
 // the load and overrides the default.
 func TestMetaMode_PersistFalse(t *testing.T) {
