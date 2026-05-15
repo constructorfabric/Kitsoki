@@ -22,12 +22,12 @@ states:
     view: |
       Reproducing bug {{ world.ticket_id }} — {{ world.ticket_title }}
 
-      Artifact summary: {{ world.reproduction_artifact.summary_title ?? "(pending)" }}
-      Bug verified:     {{ world.reproduction_artifact.bug_verified ?? false }}
+      Artifact summary: {{ world.reproduction_artifact.summary_title }}
+      Bug verified:     {{ world.reproduction_artifact.bug_verified }}
 
       Type `proceed` to deliver the artifact to the transport / inbox,
       or `restart_from` to re-run, or `quit` to abandon.
-    relevant_world: [ticket_id, ticket_title, reproduction_artifact, cycle]
+    relevant_world: [ticket_id, ticket_title, workdir, reproduction_artifact, refine_feedback, cycle]
     on_enter:
       # Synchronous oracle call — the schema-validated payload lands at
       # Result.Data.submitted; bind: walks "submitted" and writes the whole
@@ -75,7 +75,7 @@ states:
       Reason:       {{ world.llm_verdict.reason ?? "" }}
 
       Reply: accept | refine [feedback=...] | restart_from [stage=...] | quit
-    relevant_world: [judge_mode, ticket_id, reproduction_artifact, llm_verdict, cycle]
+    relevant_world: [judge_mode, judge_confidence_threshold, ticket_id, thread, reproduction_artifact, llm_verdict, cycle]
     on_enter:
       # 1. Always: post the artifact to whichever transport is bound.
       - invoke: iface.transport.post

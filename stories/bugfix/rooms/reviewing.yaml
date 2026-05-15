@@ -11,7 +11,7 @@ states:
       Code-review status: {{ world.implement_review_artifact.status ?? "(pending)" }}
 
       Type `proceed` to advance to validating.
-    relevant_world: [ticket_id, ticket_title, implement_review_artifact]
+    relevant_world: [ticket_id, ticket_title, workdir, implement_review_artifact]
     on_enter:
       # iface.vcs.diff fetches the patch the reviewer reads. Slice β wires
       # host.git.diff to return the workspace diff; Wave 1 stub returns "".

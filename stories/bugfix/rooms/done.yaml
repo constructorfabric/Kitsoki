@@ -12,7 +12,7 @@ states:
     view: |
       Wrapping up {{ world.ticket_id }} — {{ world.ticket_title }}
 
-      Summary: {{ world.done_artifact.summary_title ?? "(pending)" }}
+      Summary: {{ world.done_artifact.summary_title }}
 
       Type `proceed` to deliver the final artifact.
     relevant_world: [ticket_id, ticket_title, done_artifact, validate_artifact, cycle]
@@ -48,7 +48,7 @@ states:
       Reason:       {{ world.llm_verdict.reason ?? "" }}
 
       Reply: accept (close out) | refine | quit
-    relevant_world: [judge_mode, ticket_id, done_artifact, llm_verdict]
+    relevant_world: [judge_mode, judge_confidence_threshold, ticket_id, thread, done_artifact, llm_verdict]
     on_enter:
       - invoke: iface.transport.post
         with:

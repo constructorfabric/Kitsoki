@@ -10,11 +10,11 @@ states:
     view: |
       Proposing fix for {{ world.ticket_id }} — {{ world.ticket_title }}
 
-      Summary:    {{ world.propose_fix_artifact.summary_title ?? "(pending)" }}
-      Confidence: {{ world.propose_fix_artifact.confidence ?? "(pending)" }}
+      Summary:    {{ world.propose_fix_artifact.summary_title }}
+      Confidence: {{ world.propose_fix_artifact.confidence }}
 
       Type `proceed` to deliver, `restart_from` to re-run, or `quit`.
-    relevant_world: [ticket_id, ticket_title, propose_fix_artifact, reproduction_artifact, cycle, refine_feedback]
+    relevant_world: [ticket_id, ticket_title, workdir, propose_fix_artifact, reproduction_artifact, cycle, refine_feedback]
     on_enter:
       - invoke: host.oracle.ask_with_mcp
         with:
@@ -69,7 +69,7 @@ states:
       Reason:       {{ world.llm_verdict.reason ?? "" }}
 
       Reply: accept | refine [feedback=...] | restart_from [stage=...] | quit
-    relevant_world: [judge_mode, ticket_id, propose_fix_artifact, llm_verdict, cycle]
+    relevant_world: [judge_mode, judge_confidence_threshold, ticket_id, thread, propose_fix_artifact, llm_verdict, cycle]
     on_enter:
       - invoke: iface.transport.post
         with:
