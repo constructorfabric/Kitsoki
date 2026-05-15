@@ -846,17 +846,46 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 		// Emit one EffectApplied event per binding so replay reconstructs
 		// the final world deterministically from the event log.
 		//
-		// `dkey` is a dot-separated path (e.g. `submitted.summary_markdown`)
-		// so apps can extract a specific field of a structured host result
-		// without an intermediate slot.  Top-level keys remain the common
-		// case; nested paths are opt-in via the dot syntax.
+		// `dkey` is either a dot-separated path (e.g. `submitted.names[0]`)
+		// resolved against res.Data, or — when it contains `{{` — an
+		// expr-lang template rendered against an env that exposes res.Data
+		// as the `result` root plus the current (post-prior-binds) world.
+		// The template form lets authors derive values at bind time without
+		// a follow-up subprocess (e.g.
+		// `party_names: "{{ join(result.submitted.names, ',') }}"`).
+		bindEnv, hasBindEnv := hc.Env.(expr.Env)
 		for wkey, dkey := range hc.Bind {
-			if res.Data == nil {
-				continue
-			}
-			val, ok := lookupBindPath(res.Data, dkey)
-			if !ok {
-				continue
+			var (
+				val any
+				ok  bool
+			)
+			if containsTemplate(dkey) {
+				if !hasBindEnv {
+					continue
+				}
+				bindEnv.World = w.Vars
+				bindEnv.Result = res.Data
+				rendered, err := expr.RenderValue(dkey, bindEnv)
+				if err != nil {
+					o.logger.WarnContext(ctx, trace.EvHostBindError,
+						slog.String("session_id", string(sid)),
+						slog.String("namespace", hc.Namespace),
+						slog.String("bind_key", wkey),
+						slog.String("template", dkey),
+						slog.String("err", err.Error()),
+					)
+					continue
+				}
+				val = rendered
+				ok = true
+			} else {
+				if res.Data == nil {
+					continue
+				}
+				val, ok = lookupBindPath(res.Data, dkey)
+				if !ok {
+					continue
+				}
 			}
 			w.Vars[wkey] = val
 			events = append(events, newOrchestratorEvent(store.EffectApplied, map[string]any{

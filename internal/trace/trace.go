@@ -99,6 +99,11 @@ const (
 	EvTeleportStart = "teleport.start"
 	EvTeleportDone  = "teleport.done"
 
+	// host.bind.error fires when a templated `bind:` value fails to render
+	// after a successful host call. The bind is skipped (world unchanged)
+	// rather than failing the turn.
+	EvHostBindError = "host.bind.error"
+
 	// Background-job lifecycle (orchestrator-side view; the scheduler has its
 	// own job-table events but the user-visible mode transitions go here).
 	EvJobSubmitted             = "job.submitted"

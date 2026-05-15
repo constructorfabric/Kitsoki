@@ -52,6 +52,11 @@ turns:
       party_member_3: "Han"
       party_member_4: "Chewie"
       party_member_5: "Yoda"
+      # Templated bind: party_names is the comma-joined roster, derived
+      # from result.submitted.names via the new {{ join(...) }} bind
+      # form. Keeps the legacy CSV consumers (phases.yaml illness pick,
+      # the start_journey guard) working from the narrated path.
+      party_names: "Luke,Leia,Han,Chewie,Yoda"
     # HostDispatched carries the *post-rerender* args, so this asserts
     # the engine resolved the templated `{{ slots.theme }}` AND kept
     # the literal `agent: party_namer` on the way down to the handler.

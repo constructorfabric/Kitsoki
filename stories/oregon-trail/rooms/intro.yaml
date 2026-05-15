@@ -172,6 +172,7 @@ states:
                 party_member_4:    "submitted.names[3]"
                 party_member_5:    "submitted.names[4]"
                 party_names_list:  "submitted.names"
+                party_names:       "{{ join(result.submitted.names, ',') }}"
               on_error: intro
             - say: "Named the wagon party from theme: {{ slots.theme }}."
         - default: true
@@ -211,7 +212,7 @@ states:
             - say: "Departure month set to {{ slots.month }}."
 
       start_journey:
-        - when: "world.party_member_1 != '' && world.profession != nil && world.month != nil"
+        - when: "world.party_names != '' && world.profession != nil && world.month != nil"
           target: general_store
           effects:
             - say: "Wagon's hitched. Off to the general store."

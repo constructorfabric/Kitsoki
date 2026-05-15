@@ -65,12 +65,13 @@ import (
 // helpers are exposed as function-typed fields on Env so expr-lang resolves
 // bare names like `available(...)` to method-style calls on the env value.
 type Env struct {
-	Slots map[string]any `expr:"slots"`
-	World map[string]any `expr:"world"`
-	Event map[string]any `expr:"event"`
-	Run   RunCtx         `expr:"run"`
-	Args  map[string]any `expr:"args"`
-	Menu  map[string]any `expr:"menu"`
+	Slots  map[string]any `expr:"slots"`
+	World  map[string]any `expr:"world"`
+	Event  map[string]any `expr:"event"`
+	Run    RunCtx         `expr:"run"`
+	Args   map[string]any `expr:"args"`
+	Menu   map[string]any `expr:"menu"`
+	Result map[string]any `expr:"result"`
 
 	// Helper functions for view templates. Bound at view-render time by
 	// PopulateMenuHelpers. When Menu is unset (effect evaluation, guard
@@ -207,6 +208,7 @@ var allowedRoots = map[string]bool{
 	"proposal":  true, // $proposal slot (§3)
 	"inbox":     true, // $inbox slot (§4)
 	"workspace": true, // $workspace slot (§6)
+	"result":    true, // host-call Result.Data, exposed to templated `bind:` values
 	// Boolean literals, which appear as identifiers in some expr-lang versions.
 	"true":  true,
 	"false": true,
