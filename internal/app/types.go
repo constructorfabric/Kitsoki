@@ -486,9 +486,28 @@ type AgentDecl struct {
 	Cwd   string   `yaml:"cwd,omitempty"`
 }
 
-// MetaModeDef declares one meta mode (meta-mode proposal §2).
+// MetaModeDef declares one meta mode.
+//
+// Group + Trigger form the `group + verb` namespacing scheme. Map keys
+// are `<group>.<verb>` (e.g. "story.bug"); the trigger parser splits
+// `/meta <group> <verb>` on whitespace and resolves via that key.
+// Exactly one mode per group may set Default:true — it is the verb
+// bare `/meta <group>` resolves to.
+//
+// Backward compat: an un-namespaced YAML mode (key has no `.`) is
+// treated by the loader as having Group == its key and no default-verb
+// rule (a single-mode group is implicitly default-able). See
+// docs/meta-mode.md §3.2 for the user-facing reference.
 type MetaModeDef struct {
-	Trigger string         `yaml:"trigger"`
+	Trigger string `yaml:"trigger"`
+	// Group is the namespace token (`story`, `kitsoki`, or an
+	// app-defined name). When set, the map key MUST be `Group.Trigger`.
+	// Optional for back-compat with un-namespaced YAML.
+	Group string `yaml:"group,omitempty"`
+	// Default flags the verb that bare `/meta <Group>` resolves to.
+	// Exactly one mode per group may set this; the validator enforces
+	// the rule for groups with ≥2 modes.
+	Default bool           `yaml:"default,omitempty"`
 	Label   string         `yaml:"label,omitempty"`
 	Banner  string         `yaml:"banner,omitempty"`
 	Agent   string         `yaml:"agent"`

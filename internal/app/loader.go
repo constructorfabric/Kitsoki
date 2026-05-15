@@ -1009,8 +1009,25 @@ func validateAgentRef(file, location string, eff Effect, declaredAgents map[stri
 var metaEnvVarRE = regexp.MustCompile(`\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?`)
 
 // validateMetaModes checks every entry in def.MetaModes for required fields,
-// trigger uniqueness, intent-name collisions, and resolves cwd: env vars.
-// Successful cwd expansion is written back into the struct.
+// per-group trigger uniqueness, intent-name collisions, default-verb
+// rules, and resolves cwd: env vars. Successful cwd expansion is
+// written back into the struct.
+//
+// Key grammar:
+//   - "group.verb" — grouped mode. The part before "." MUST equal
+//     m.Group and the part after MUST equal m.Trigger.
+//   - bare token (no ".") — back-compat path. m.Group is treated as
+//     the key itself if unset; the validator does not error on
+//     un-namespaced keys to keep older YAML loading.
+//
+// Trigger uniqueness is per-group: `story.bug` and `kitsoki.bug` may
+// both have Trigger=`bug`, but two modes inside the `story` group
+// claiming `bug` is an error.
+//
+// Default-verb rule: each group with ≥2 modes MUST have exactly one
+// mode flagged `default: true` so bare `/meta <group>` has an
+// unambiguous target. Groups with a single mode skip the rule (that
+// one mode is implicitly the default).
 func validateMetaModes(file string, def *AppDef, errs *[]error) {
 	if len(def.MetaModes) == 0 {
 		return
@@ -1019,9 +1036,17 @@ func validateMetaModes(file string, def *AppDef, errs *[]error) {
 		*errs = append(*errs, &ValidationError{File: file, Message: msg})
 	}
 
-	// Track triggers across modes to detect duplicates. Map trigger → first
-	// mode that claimed it, in declaration-sorted order for determinism.
-	triggerOwner := make(map[string]string, len(def.MetaModes))
+	// First pass: per-mode field validation, Group/key consistency, cwd
+	// expansion. Track triggers PER GROUP for the uniqueness check.
+	// Group → trigger → owning key.
+	triggerOwner := make(map[string]map[string]string, len(def.MetaModes))
+	// Track per-group census so the default-verb rule can run after.
+	type groupRow struct {
+		key       string
+		isDefault bool
+	}
+	groupRows := make(map[string][]groupRow)
+
 	for _, name := range sortedKeys(def.MetaModes) {
 		m := def.MetaModes[name]
 		if m == nil {
@@ -1034,16 +1059,60 @@ func validateMetaModes(file string, def *AppDef, errs *[]error) {
 		if m.Agent == "" {
 			addErr(fmt.Sprintf("meta_mode %q: agent is required", name))
 		}
+
+		// Determine the effective group key. If the map key contains
+		// ".", the part before "." must match m.Group and the part
+		// after must match m.Trigger.
+		effectiveGroup := m.Group
+		if dot := strings.Index(name, "."); dot >= 0 {
+			keyGroup := name[:dot]
+			keyTrigger := name[dot+1:]
+			if m.Group == "" {
+				// Auto-fill Group from the key. The user didn't bother
+				// to set it explicitly; the key supplies it.
+				m.Group = keyGroup
+				effectiveGroup = keyGroup
+			} else if m.Group != keyGroup {
+				addErr(fmt.Sprintf("meta_mode %q: group %q does not match key prefix %q (key must be %q.<trigger>)",
+					name, m.Group, keyGroup, m.Group))
+			}
+			if m.Trigger != "" && m.Trigger != keyTrigger {
+				addErr(fmt.Sprintf("meta_mode %q: trigger %q does not match key suffix %q (grouped key must be <group>.%q)",
+					name, m.Trigger, keyTrigger, m.Trigger))
+			}
+		} else if effectiveGroup == "" {
+			// Un-namespaced key: treat the key itself as the group for
+			// uniqueness / default bookkeeping. This is the back-compat
+			// path — an app declaring `meta_modes: { foo: {...} }`
+			// keeps working.
+			effectiveGroup = name
+		}
+
 		if m.Trigger != "" {
-			if prior, ok := triggerOwner[m.Trigger]; ok {
-				addErr(fmt.Sprintf("meta_mode %q: trigger %q already claimed by meta_mode %q", name, m.Trigger, prior))
+			byGroup := triggerOwner[effectiveGroup]
+			if byGroup == nil {
+				byGroup = make(map[string]string)
+				triggerOwner[effectiveGroup] = byGroup
+			}
+			if prior, ok := byGroup[m.Trigger]; ok {
+				addErr(fmt.Sprintf("meta_mode %q: trigger %q already claimed by meta_mode %q in group %q",
+					name, m.Trigger, prior, effectiveGroup))
 			} else {
-				triggerOwner[m.Trigger] = name
-				// Note: no warning channel exists in the loader. Per the
-				// meta-mode plan we error on collisions with the global
-				// intents library.
-				if _, clash := def.Intents[m.Trigger]; clash {
-					addErr(fmt.Sprintf("meta_mode %q: trigger %q collides with a declared intent of the same name", name, m.Trigger))
+				byGroup[m.Trigger] = name
+				// Intent-collision check: the trigger only competes
+				// with the global intent namespace for UN-NAMESPACED
+				// modes (where the user types `/meta <trigger>` as a
+				// single token). For grouped modes (`/meta <group>
+				// <verb>`) the verb cannot collide with an intent —
+				// the parse-time token order disambiguates. This lets
+				// a story declare an `ask` intent without it clashing
+				// with the builtin `story.ask` meta mode's `ask`
+				// trigger.
+				isGrouped := strings.Contains(name, ".") || m.Group != ""
+				if !isGrouped {
+					if _, clash := def.Intents[m.Trigger]; clash {
+						addErr(fmt.Sprintf("meta_mode %q: trigger %q collides with a declared intent of the same name", name, m.Trigger))
+					}
 				}
 			}
 		}
@@ -1054,6 +1123,43 @@ func validateMetaModes(file string, def *AppDef, errs *[]error) {
 				continue
 			}
 			m.Cwd = expanded
+		}
+
+		groupRows[effectiveGroup] = append(groupRows[effectiveGroup], groupRow{key: name, isDefault: m.Default})
+	}
+
+	// Second pass: default-verb rule. Run in sorted-group order so the
+	// error message order is deterministic.
+	groupKeys := make([]string, 0, len(groupRows))
+	for g := range groupRows {
+		groupKeys = append(groupKeys, g)
+	}
+	sort.Strings(groupKeys)
+	for _, g := range groupKeys {
+		rows := groupRows[g]
+		if len(rows) < 2 {
+			// Single-mode groups skip the rule — that one mode is the
+			// implicit default.
+			continue
+		}
+		defaults := 0
+		var defaultKeys []string
+		for _, r := range rows {
+			if r.isDefault {
+				defaults++
+				defaultKeys = append(defaultKeys, r.key)
+			}
+		}
+		switch defaults {
+		case 0:
+			addErr(fmt.Sprintf("meta_mode group %q: no default verb declared (one of %d modes must set default: true)",
+				g, len(rows)))
+		case 1:
+			// ok
+		default:
+			sort.Strings(defaultKeys)
+			addErr(fmt.Sprintf("meta_mode group %q: %d modes flagged default: true (%s) — exactly one allowed",
+				g, defaults, strings.Join(defaultKeys, ", ")))
 		}
 	}
 }

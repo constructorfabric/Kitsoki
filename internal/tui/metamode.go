@@ -275,12 +275,14 @@ func metaResumeCmd(ctx context.Context, ctrl *metamode.Controller, snap metamode
 // the same one the loader's validator uses (sortedKeys) so error
 // messages and runtime selection agree.
 //
-// Note: the proposal's wording is "first-declared", but Go's
-// map[string]*MetaModeDef does not preserve YAML order. Using
-// lexicographic order is the deterministic proxy we can implement
-// without a parallel ordered slice — every app today has at most one
-// meta mode so this is observable only when authors deliberately add a
-// second mode without naming it on `/meta`.
+// With grouped keys (`story.edit`, `kitsoki.bug`, …) the naive
+// "first lex key" would surface `kitsoki.ask` as the default for
+// `/meta` (no args) — surprising, since `ask` is the read-only verb.
+// The grouped-aware variant `firstMetaModeNameForDef` (preferred
+// entry-point below) prefers the lex-first GROUP's default verb. This
+// bare helper is kept for callers that already have just the sorted
+// name slice and accept the lex-first result; the TUI's startMetaMode
+// uses the def-aware variant.
 func firstMetaModeName(names []string) string {
 	if len(names) == 0 {
 		return ""

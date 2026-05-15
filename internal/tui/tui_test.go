@@ -409,7 +409,7 @@ func TestTUIQuit(t *testing.T) {
 // TestTUIMenuEscOpens verifies that pressing Esc from ModeOnPath opens the
 // menu overlay and enters ModeMenu. Cloak declares a meta_modes.story
 // block, so the meta-mode row appears alongside Exit and the builtin
-// `bug` mode row.
+// `story.bug` mode row.
 func TestTUIMenuEscOpens(t *testing.T) {
 	orch, sid := setupCloak(t)
 	m := buildModel(t, orch, sid)
@@ -423,10 +423,10 @@ func TestTUIMenuEscOpens(t *testing.T) {
 	view := tuipkg.MenuSystemView(rm)
 	require.Contains(t, view, "Exit")
 	require.Contains(t, view, "improve the story")
-	require.Contains(t, view, "File a bug",
-		"builtin bug meta mode must surface — it replaced the legacy 'Report bug' stub")
+	require.Contains(t, view, "Story bug",
+		"builtin story.bug meta mode must surface — it replaced the legacy 'Report bug' stub and the single-token /meta bug entry")
 	require.NotContains(t, view, "Report bug",
-		"the 'coming soon' stub is gone; /meta bug is the real flow now")
+		"the 'coming soon' stub is gone; /meta story bug is the real flow now")
 	require.NotContains(t, view, "Edit mode",
 		"edit mode entry should be gone (replaced by /meta:story)")
 }

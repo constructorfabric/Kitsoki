@@ -14,7 +14,9 @@ agents:
     system_prompt: "You are the kitsoki engineer fixture."
 
 meta_modes:
-  self:
-    trigger: meta-kitsoki
+  kitsoki.edit:
+    group: kitsoki
+    trigger: edit
+    default: true
     agent: kitsoki-engineer
     cwd: "${KITSOKI_REPO}"

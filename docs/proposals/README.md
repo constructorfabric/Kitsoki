@@ -57,6 +57,10 @@ thought.
 - [`ai-collaboration-proposal.md`](ai-collaboration-proposal.md) —
   two remaining AI-collaborator surfaces (`kitsoki drive`,
   per-state `loading_view`). Most of v1 shipped.
+- [`bug-sync-proposal.md`](bug-sync-proposal.md) — `kitsoki bug
+  sync` pushes local bug files to GitHub / Jira. Format support
+  shipped with the bug-filing CLI (see [`docs/bugs.md`](../bugs.md));
+  the command itself remains in design.
 - [`claude-code-sessions-proposal.md`](claude-code-sessions-proposal.md) —
   chats PTY mode, input queue, and multi-transport drive.
   Phases 0/A/B/C shipped (see `docs/meta-mode.md` §5 and

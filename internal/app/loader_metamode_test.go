@@ -32,17 +32,18 @@ func TestMetaMode_Minimal(t *testing.T) {
 
 // TestMetaMode_EmptyBlock verifies that an explicit `meta_modes: {}` parses
 // into a non-nil map and that builtin injection still runs (the app gets
-// the builtin `bug` mode without declaring anything). Apps that want to
-// suppress a builtin override it under the same name.
+// the builtin `story.*` modes without declaring anything). Apps that want to
+// suppress a builtin override it under the same `group.verb` key.
 func TestMetaMode_EmptyBlock(t *testing.T) {
 	def, err := Load("testdata/metamode_empty.yaml")
 	require.NoError(t, err)
 	require.NotNil(t, def.MetaModes, "explicit empty meta_modes: must yield a non-nil map")
 
-	bug, ok := def.MetaModes["bug"]
-	require.True(t, ok, "builtin `bug` mode must be injected for apps without their own declaration")
+	bug, ok := def.MetaModes["story.bug"]
+	require.True(t, ok, "builtin `story.bug` mode must be injected for apps without their own declaration")
 	require.Equal(t, "bug", bug.Trigger)
-	require.Equal(t, "bug-reporter", bug.Agent)
+	require.Equal(t, "story", bug.Group)
+	require.Equal(t, "story-bug-reporter", bug.Agent)
 }
 
 // TestMetaMode_DuplicateTrigger asserts that two meta modes claiming the same
@@ -76,9 +77,9 @@ func TestMetaMode_CwdEnvExpansion(t *testing.T) {
 		t.Setenv("KITSOKI_REPO", "/tmp/kitsoki-fake-repo")
 		def, err := Load("testdata/metamode_cwd_envvar.yaml")
 		require.NoError(t, err)
-		self, ok := def.MetaModes["self"]
+		m, ok := def.MetaModes["kitsoki.edit"]
 		require.True(t, ok)
-		require.Equal(t, "/tmp/kitsoki-fake-repo", self.Cwd, "cwd must be expanded in place")
+		require.Equal(t, "/tmp/kitsoki-fake-repo", m.Cwd, "cwd must be expanded in place")
 	})
 
 	t.Run("env unset", func(t *testing.T) {

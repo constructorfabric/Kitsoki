@@ -9,10 +9,15 @@ states:
     description: "Foyer"
     view: "You are in the foyer."
 
+# Two modes in the same `story` group both claim trigger `meta`.
+# Per-group trigger uniqueness must reject this.
 meta_modes:
-  story:
+  story.edit:
+    group: story
     trigger: meta
+    default: true
     agent: story-author
-  rival:
+  story.rival:
+    group: story
     trigger: meta
     agent: kitsoki-engineer

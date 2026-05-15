@@ -36,7 +36,10 @@ func NewBuiltins() Registry {
 	r.Register(defaultOracle())
 	r.Register(storyAuthor())
 	r.Register(kitsokiEngineer())
-	r.Register(bugReporter())
+	r.Register(storyBugReporter())
+	r.Register(kitsokiBugReporter())
+	r.Register(storyExplainer())
+	r.Register(kitsokiExplainer())
 	return r
 }
 
@@ -45,7 +48,15 @@ func NewBuiltins() Registry {
 // a full registry. Order matches NewBuiltins() registration; callers that
 // need a stable lexicographic order should sort the returned slice.
 func BuiltinNames() []string {
-	return []string{"default-oracle", "story-author", "kitsoki-engineer", "bug-reporter"}
+	return []string{
+		"default-oracle",
+		"story-author",
+		"kitsoki-engineer",
+		"story-bug-reporter",
+		"kitsoki-bug-reporter",
+		"story-explainer",
+		"kitsoki-explainer",
+	}
 }
 
 type registry struct {

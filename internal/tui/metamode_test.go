@@ -227,9 +227,9 @@ func buildMetaModeModel(t *testing.T, metaModes map[string]*app.MetaModeDef, ora
 			Name:         "story-author",
 			SystemPrompt: "you are the story author.",
 		},
-		"bug-reporter": {
-			Name:         "bug-reporter",
-			SystemPrompt: "you file bugs.",
+		"story-bug-reporter": {
+			Name:         "story-bug-reporter",
+			SystemPrompt: "you file story bugs.",
 		},
 	}}
 
@@ -282,22 +282,22 @@ func TestMetaMode_EnterViaSlash(t *testing.T) {
 	require.Equal(t, "meta:story", store.chat.room)
 }
 
-// TestMetaMode_EnterViaSlash_NamedMode declares two modes and dispatches
-// /meta bug. Asserts the controller resolved the bug mode (not the
-// lexicographically-first story mode).
+// TestMetaMode_EnterViaSlash_NamedMode declares two grouped modes and
+// dispatches `/meta story bug`. Asserts the controller resolved the
+// story.bug mode (not the lexicographically-first story.edit mode).
 func TestMetaMode_EnterViaSlash_NamedMode(t *testing.T) {
 	modes := map[string]*app.MetaModeDef{
-		"story": {Trigger: "meta", Banner: "*** story ***", Agent: "story-author"},
-		"bug":   {Trigger: "meta", Banner: "*** bug ***", Agent: "bug-reporter"},
+		"story.edit": {Group: "story", Trigger: "edit", Default: true, Banner: "*** story.edit ***", Agent: "story-author"},
+		"story.bug":  {Group: "story", Trigger: "bug", Banner: "*** story.bug ***", Agent: "story-bug-reporter"},
 	}
 	m, store, _ := buildMetaModeModel(t, modes, "noted")
 
-	m = runTurnBlocking(t, m, "/meta bug")
+	m = runTurnBlocking(t, m, "/meta story bug")
 	require.Equal(t, tuipkg.ModeMeta, extractMode(t, m))
 	require.NotNil(t, store.chat)
-	require.Equal(t, "meta:bug", store.chat.room,
-		"named /meta bug should resolve the bug mode, not story")
-	require.Contains(t, extractTranscript(t, m), "*** bug ***")
+	require.Equal(t, "meta:story.bug", store.chat.room,
+		"named /meta story bug should resolve story.bug, not story.edit")
+	require.Contains(t, extractTranscript(t, m), "*** story.bug ***")
 }
 
 // TestMetaMode_UnknownMode asserts /meta nonexistent stays in ModeOnPath

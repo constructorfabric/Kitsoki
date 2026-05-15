@@ -39,6 +39,16 @@ type menuSystemEntry struct {
 	modeName string // mode name for menuActionMetaMode entries; "" otherwise
 }
 
+// metaHintFromKey renders a `/meta <key>` hint for a meta-mode map key.
+// Grouped keys (`story.edit`) become `/meta story edit`; un-namespaced
+// keys (`story`) render unchanged.
+func metaHintFromKey(key string) string {
+	if dot := strings.Index(key, "."); dot > 0 {
+		return "/meta " + key[:dot] + " " + key[dot+1:]
+	}
+	return "/meta " + key
+}
+
 // menuSystemModel is the Esc-activated overlay that exposes session-level
 // actions (exit, report bug, and one row per declared meta mode). It
 // follows the same Open/Close + Update/View shape as disambiguationModel.
@@ -75,7 +85,7 @@ func newMenuSystemModel(metaEntries []metaMenuEntry) menuSystemModel {
 		entries = append(entries, menuSystemEntry{
 			action:   menuActionMetaMode,
 			label:    label,
-			hint:     "/meta " + me.Name,
+			hint:     metaHintFromKey(me.Name),
 			modeName: me.Name,
 		})
 	}

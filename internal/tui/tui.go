@@ -455,6 +455,11 @@ func NewRootModel(orch *orchestrator.Orchestrator, sid app.SessionID, appPath, i
 // metaMenuEntries enumerates every declared meta mode (sorted by name)
 // so the Esc-menu overlay can list one row per mode. Empty slice when
 // the AppDef declares (or has injected) no meta_modes.
+//
+// For grouped keys (`story.edit`, `kitsoki.bug`, …) the label
+// defaults to a `<Group> › <Verb>` breadcrumb when the mode declares no
+// explicit `label:`. Authors can still override via the YAML `label:`
+// field and that wins verbatim.
 func metaMenuEntries(def *app.AppDef) []metaMenuEntry {
 	if def == nil || len(def.MetaModes) == 0 {
 		return nil
@@ -468,11 +473,93 @@ func metaMenuEntries(def *app.AppDef) []metaMenuEntry {
 		}
 		label := mode.Label
 		if label == "" {
-			label = "meta: " + name
+			label = defaultMetaLabel(name, mode)
 		}
 		out = append(out, metaMenuEntry{Name: name, Label: label})
 	}
 	return out
+}
+
+// defaultMetaLabel synthesises a display label for a meta mode that
+// declares no explicit `label:`. Grouped keys render as
+// `<Group> › <Trigger>` (proposal §1.1 cosmetic), ungrouped keys keep
+// the legacy `meta: <name>` form so back-compat apps look the same.
+func defaultMetaLabel(name string, mode *app.MetaModeDef) string {
+	if mode != nil && mode.Group != "" && mode.Trigger != "" {
+		return titleCaseFirst(mode.Group) + " › " + titleCaseFirst(mode.Trigger)
+	}
+	// Grouped key without explicit Group field — fall back to splitting
+	// the map key on '.'.
+	if dot := strings.Index(name, "."); dot > 0 {
+		return titleCaseFirst(name[:dot]) + " › " + titleCaseFirst(name[dot+1:])
+	}
+	return "meta: " + name
+}
+
+// titleCaseFirst uppercases the first rune of s and lowercases the
+// rest. Tiny helper for human-facing labels — Go's strings package has
+// no equivalent that isn't deprecated.
+func titleCaseFirst(s string) string {
+	if s == "" {
+		return s
+	}
+	runes := []rune(s)
+	upper := strings.ToUpper(string(runes[0]))
+	if len(runes) == 1 {
+		return upper
+	}
+	return upper + strings.ToLower(string(runes[1:]))
+}
+
+// pickDefaultMetaMode chooses the meta-mode key that bare `/meta` (no
+// args) resolves to. Rules:
+//
+//   - If any grouped modes (Group set on the def) exist, prefer the
+//     lex-first GROUP's default verb. Without this special-case the
+//     raw-lex first key for the builtin set would be `kitsoki.ask` —
+//     surprising, since `ask` is the read-only sibling of `edit`.
+//   - Otherwise (or no group declares default), fall back to
+//     firstMetaModeName(names) — the legacy lex-first behaviour.
+//
+// names must be the def's keys in lex order (caller pre-sorts via
+// sortedMetaModeNames).
+func pickDefaultMetaMode(def *app.AppDef, names []string) string {
+	if def == nil || len(names) == 0 {
+		return ""
+	}
+	// Find lex-first group; map[Group] → default key.
+	type groupRow struct {
+		defaultKey string
+		anyKey     string
+	}
+	groups := map[string]*groupRow{}
+	var groupKeys []string
+	for _, n := range names {
+		mode := def.MetaModes[n]
+		if mode == nil || mode.Group == "" {
+			continue
+		}
+		row := groups[mode.Group]
+		if row == nil {
+			row = &groupRow{anyKey: n}
+			groups[mode.Group] = row
+			groupKeys = append(groupKeys, mode.Group)
+		}
+		if mode.Default && row.defaultKey == "" {
+			row.defaultKey = n
+		}
+	}
+	if len(groupKeys) > 0 {
+		sort.Strings(groupKeys)
+		first := groups[groupKeys[0]]
+		if first.defaultKey != "" {
+			return first.defaultKey
+		}
+		if first.anyKey != "" {
+			return first.anyKey
+		}
+	}
+	return firstMetaModeName(names)
 }
 
 // sortedMetaModeNames returns def.MetaModes keys in lexicographic
@@ -1637,8 +1724,16 @@ func (m RootModel) handleContinueTurnOutcome(msg continueTurnOutcomeMsg) (tea.Mo
 // handleMetaSlash dispatches the `/meta ...` family. Recognised forms
 // (all relative to the current app):
 //
-//	/meta                — enter the first declared meta mode
-//	/meta <name>         — enter the named meta mode
+//	/meta                — enter the lex-first group's default verb
+//	                       (back-compat: first lex meta-mode key when no
+//	                       grouped modes exist)
+//	/meta <group>        — enter the group's default verb (the mode
+//	                       flagged `default: true`). Falls back to a
+//	                       literal key match if no group named <group>
+//	                       exists — that's the un-namespaced back-compat
+//	                       path.
+//	/meta <group> <verb> — enter the named meta mode keyed
+//	                       `<group>.<verb>`
 //	/meta list           — inline-list this app's meta chats
 //	/meta new            — archive the active chat + open a fresh one
 //	/meta resume <id...> — resume a past meta chat by id prefix (≥3)
@@ -1663,8 +1758,48 @@ func (m RootModel) handleMetaSlash(args []string) (tea.Model, tea.Cmd) {
 	case "done":
 		return m.handleMetaDone()
 	}
-	// Anything else is treated as a mode name (legacy behaviour).
-	return m.startMetaMode(args[0])
+	// Resolve as `<group> [<verb>]`. For one arg, prefer the group's
+	// default verb; fall back to a literal map-key match (the
+	// un-namespaced back-compat path). For two args, always look up
+	// `<group>.<verb>`.
+	return m.startMetaMode(m.resolveMetaName(args))
+}
+
+// resolveMetaName converts a /meta <args> tail into a `MetaModes` map
+// key. Rules (proposal Phase B):
+//
+//   - len(args)==2 → "<group>.<verb>", verbatim. If not found,
+//     startMetaMode will print the standard "unknown mode" error.
+//   - len(args)==1 → if a mode literally keyed under args[0] exists,
+//     return that (un-namespaced back-compat). Otherwise look for the
+//     default verb of the group named args[0] and return its key.
+//     Falling through with args[0] preserves the unknown-mode error
+//     message the user expects to see.
+//
+// AppDef-less callers (no orchestrator AppDef yet) get the args joined
+// by "." so the downstream error path still names what they typed.
+func (m RootModel) resolveMetaName(args []string) string {
+	def := m.orch.AppDef()
+	if def == nil || len(args) == 0 {
+		return strings.Join(args, ".")
+	}
+	if len(args) >= 2 {
+		return args[0] + "." + args[1]
+	}
+	candidate := args[0]
+	if _, ok := def.MetaModes[candidate]; ok {
+		return candidate
+	}
+	// Look for `<candidate>.<verb>` where verb is the group's default.
+	for key, mode := range def.MetaModes {
+		if mode == nil {
+			continue
+		}
+		if mode.Group == candidate && mode.Default {
+			return key
+		}
+	}
+	return candidate
 }
 
 // handleMetaList kicks off a transcript-inline listing of this app's
@@ -1974,10 +2109,11 @@ func metaListingCells(l metamode.ChatListing) []string {
 }
 
 // startMetaMode dispatches a /meta <name> entry. When name is empty,
-// the lexicographically-first declared meta mode is chosen (see
-// firstMetaModeName for the deterministic-order rationale). Surfaces
-// a polite hint when the controller is not wired (no chat store, no
-// meta_modes declared, or no agent registry installed).
+// the lexicographically-first declared GROUP's default verb is chosen
+// (or, when no grouped modes exist, the lex-first key — back-compat
+// behaviour). Surfaces a polite hint when the controller is not wired
+// (no chat store, no meta_modes declared, or no agent registry
+// installed).
 func (m RootModel) startMetaMode(name string) (tea.Model, tea.Cmd) {
 	if m.metaController == nil {
 		m.transcript.AppendSystem("(meta mode: unavailable — no chat store or meta_modes wired to this session)")
@@ -1990,7 +2126,7 @@ func (m RootModel) startMetaMode(name string) (tea.Model, tea.Cmd) {
 	}
 	names := sortedMetaModeNames(def)
 	if name == "" {
-		name = firstMetaModeName(names)
+		name = pickDefaultMetaMode(def, names)
 	}
 	if _, ok := def.MetaModes[name]; !ok {
 		m.transcript.AppendSystem(fmt.Sprintf("(meta mode: unknown mode %q — declared: %s)",

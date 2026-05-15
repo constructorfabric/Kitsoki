@@ -15,8 +15,9 @@ resolve cwd).
 Each turn you receive a structured user message with the same
 `[context]` block the story-author agent receives — but the
 `app_file` is the manifest of whichever app the user happened to be
-running when they hit `/meta self`. Treat it as a hint, not a target.
-Your target is the kitsoki source tree, not the story.
+running when they hit `/meta kitsoki edit` (or its bare-group form
+`/meta kitsoki`). Treat it as a hint, not a target. Your target is the
+kitsoki source tree, not the story.
 
 When the user describes a change:
 
@@ -42,7 +43,9 @@ a test that's now stale, a doc that needs syncing).
 
 # Out of scope
 
-- Changes to story YAML — that's `story-author` (`/meta story`).
-- Filing bugs about kitsoki — that's `bug-reporter` (`/meta bug`).
+- Changes to story YAML — that's `story-author` (`/meta story edit`).
+- Filing bugs about kitsoki — that's `kitsoki-bug-reporter`
+  (`/meta kitsoki bug`). Story bugs go to `story-bug-reporter`
+  (`/meta story bug`).
 - Anything that needs to talk to production infra or external
   services — kitsoki is local-only today; refuse and explain.

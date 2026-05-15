@@ -1083,32 +1083,50 @@ func (c *Controller) newLedger(sid app.SessionID) *ProposalLedger {
 	return l
 }
 
-// SelfAppID is the synthetic app_id under which `self` meta chats are
-// stored. It is intentionally not a valid app YAML id (no app could
-// declare `app.id: kitsoki-self` and collide), so chats keyed against
-// it survive across every running app — a `self` conversation started
-// while playing cloak is the same row the user reopens while playing
-// dev-story. Cross-app keying is the proposal §1 design (option a).
+// SelfAppID is the synthetic app_id under which kitsoki-target meta
+// chats are stored. It is intentionally not a valid app YAML id (no app
+// could declare `app.id: kitsoki-self` and collide), so chats keyed
+// against it survive across every running app — a `kitsoki.edit`
+// conversation started while playing cloak is the same row the user
+// reopens while playing dev-story. Cross-app keying is the proposal §1
+// design (option a).
 const SelfAppID = "kitsoki-self"
 
-// metaAppID returns the app_id used to resolve a meta chat row for the
-// given mode. For `self` it ignores the running app and returns
-// SelfAppID so the conversation is cross-app; every other mode keys
-// under the running app's id.
-func metaAppID(modeName, runningAppID string) string {
+// isKitsokiTargetMode reports whether modeName addresses kitsoki itself
+// (the engine source / its own bug tracker) rather than the running
+// app. These modes are cross-app: their chat rows are stored under
+// SelfAppID so the conversation survives switching between stories.
+//
+// Covers both the new grouped keys (`kitsoki.edit`, `kitsoki.ask`,
+// `kitsoki.bug`) and the legacy single-token `self` key for any
+// in-flight back-compat callers — but the latter is no longer surfaced
+// by the trigger parser per proposal §7 clean break.
+func isKitsokiTargetMode(modeName string) bool {
 	if modeName == "self" {
+		return true
+	}
+	return strings.HasPrefix(modeName, "kitsoki.")
+}
+
+// metaAppID returns the app_id used to resolve a meta chat row for the
+// given mode. For kitsoki-target modes it ignores the running app and
+// returns SelfAppID so the conversation is cross-app; every other mode
+// keys under the running app's id.
+func metaAppID(modeName, runningAppID string) string {
+	if isKitsokiTargetMode(modeName) {
 		return SelfAppID
 	}
 	return runningAppID
 }
 
 // metaScopeKey returns the scope_key used to resolve a meta chat for
-// the given mode. The `self` mode is cross-app, so the user's current
-// state in their running app is irrelevant — one conversation per
-// user, period. Every other mode keys against the current state path
-// so a chat opened in `bar.dark` is distinct from one opened in `foyer`.
+// the given mode. Kitsoki-target modes are cross-app, so the user's
+// current state in their running app is irrelevant — one conversation
+// per (user, kitsoki verb), period. Every other mode keys against the
+// current state path so a chat opened in `bar.dark` is distinct from
+// one opened in `foyer`.
 func metaScopeKey(modeName, statePath string) string {
-	if modeName == "self" {
+	if isKitsokiTargetMode(modeName) {
 		return ""
 	}
 	return statePath

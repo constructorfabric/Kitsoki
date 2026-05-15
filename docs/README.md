@@ -35,6 +35,9 @@ orchestration), see [`prior-art.md`](prior-art.md).
     kitsoki borrows from (and rejects from) Inform/TADS/Ink/Yarn,
     XState/SCXML/Temporal/LangGraph, Rasa/Dialogflow/Bot Framework,
     and the MCP tool-shape conventions.
+11. **[`bugs.md`](bugs.md)** — filing story and kitsoki bug reports
+    (`/meta story bug`, `/meta kitsoki bug`, `kitsoki bug create`),
+    the on-disk markdown format, and the future `bug sync` design.
 
 ## Reference (embedded in the binary)
 

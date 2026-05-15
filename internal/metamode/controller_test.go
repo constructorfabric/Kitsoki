@@ -621,13 +621,15 @@ func TestController_Exit_KeepsDraftProposals(t *testing.T) {
 // directly to keep the chat identities cleanly separated.
 func TestController_Exit_ArchivesEphemeralChat(t *testing.T) {
 	c, store, _ := newTestController(t)
-	// Declare a second meta mode that opts out of persistence.
+	// Declare a second meta mode that opts out of persistence. Uses a
+	// synthetic `extra` key/agent — neutral name, no overlap with the
+	// builtin `story.*` / `kitsoki.*` namespaces.
 	ephemeral := false
-	c.Agents.Register(agents.Agent{Name: "bug-agent", SystemPrompt: "bugs."})
-	c.AppDef.MetaModes["bug"] = &app.MetaModeDef{
-		Trigger: "meta",
-		Label:   "report a bug",
-		Agent:   "bug-agent",
+	c.Agents.Register(agents.Agent{Name: "extra-agent", SystemPrompt: "ephemeral test agent."})
+	c.AppDef.MetaModes["extra"] = &app.MetaModeDef{
+		Trigger: "meta-extra",
+		Label:   "ephemeral test mode",
+		Agent:   "extra-agent",
 		Persist: &ephemeral,
 	}
 
@@ -638,18 +640,18 @@ func TestController_Exit_ArchivesEphemeralChat(t *testing.T) {
 		scopeKey: "forest/clearing",
 		title:    "improve the story",
 	}
-	bugChat := &fakeChat{
-		id:       "bug-chat-1",
+	extraChat := &fakeChat{
+		id:       "extra-chat-1",
 		appID:    c.AppDef.App.ID,
-		room:     "meta:bug",
+		room:     "meta:extra",
 		scopeKey: "forest/path",
-		title:    "report a bug",
+		title:    "ephemeral test mode",
 	}
 	store.seedChat(storyChat)
-	store.seedChat(bugChat)
+	store.seedChat(extraChat)
 
 	storyAgent, _ := c.Agents.Get("story-author")
-	bugAgent, _ := c.Agents.Get("bug-agent")
+	extraAgent, _ := c.Agents.Get("extra-agent")
 
 	storyS := &Session{
 		Mode:   c.AppDef.MetaModes["story"],
@@ -657,10 +659,10 @@ func TestController_Exit_ArchivesEphemeralChat(t *testing.T) {
 		Chat:   storyChat,
 		Ledger: NewProposalLedger(),
 	}
-	bugS := &Session{
-		Mode:   c.AppDef.MetaModes["bug"],
-		Agent:  bugAgent,
-		Chat:   bugChat,
+	extraS := &Session{
+		Mode:   c.AppDef.MetaModes["extra"],
+		Agent:  extraAgent,
+		Chat:   extraChat,
 		Ledger: NewProposalLedger(),
 	}
 
@@ -668,25 +670,25 @@ func TestController_Exit_ArchivesEphemeralChat(t *testing.T) {
 	if err := c.Exit(ctx, storyS); err != nil {
 		t.Fatalf("Exit story: %v", err)
 	}
-	if err := c.Exit(ctx, bugS); err != nil {
-		t.Fatalf("Exit bug: %v", err)
+	if err := c.Exit(ctx, extraS); err != nil {
+		t.Fatalf("Exit extra: %v", err)
 	}
 
 	// Assert: the persistent story chat was NOT archived; the
-	// ephemeral bug chat WAS archived.
+	// ephemeral extra chat WAS archived.
 	for _, id := range store.archivedIDs {
 		if id == storyChat.id {
 			t.Errorf("persistent story chat %q was archived on Exit; want preserved (archivedIDs=%v)", storyChat.id, store.archivedIDs)
 		}
 	}
-	bugArchived := false
+	extraArchived := false
 	for _, id := range store.archivedIDs {
-		if id == bugChat.id {
-			bugArchived = true
+		if id == extraChat.id {
+			extraArchived = true
 		}
 	}
-	if !bugArchived {
-		t.Errorf("ephemeral bug chat %q was not archived on Exit; archivedIDs=%v", bugChat.id, store.archivedIDs)
+	if !extraArchived {
+		t.Errorf("ephemeral extra chat %q was not archived on Exit; archivedIDs=%v", extraChat.id, store.archivedIDs)
 	}
 }
 
@@ -1668,13 +1670,14 @@ func TestController_EnterByChatID_NotMetaRoom(t *testing.T) {
 
 func TestController_EnterByChatID_ModeMismatch(t *testing.T) {
 	c, store, _ := newTestController(t)
-	// Add a "bug" agent + mode so the controller resolves both modes.
-	c.Agents.Register(agents.Agent{Name: "bug-agent", SystemPrompt: "bugs."})
-	c.AppDef.MetaModes["bug"] = &app.MetaModeDef{Trigger: "meta", Agent: "bug-agent"}
+	// Add a second "extra" agent + mode so the controller resolves both
+	// modes. Synthetic key — no overlap with builtin namespaces.
+	c.Agents.Register(agents.Agent{Name: "extra-agent", SystemPrompt: "extra."})
+	c.AppDef.MetaModes["extra"] = &app.MetaModeDef{Trigger: "meta-extra", Agent: "extra-agent"}
 	store.seedChat(&fakeChat{
 		id:       "abc1",
 		appID:    c.AppDef.App.ID,
-		room:     "meta:bug",
+		room:     "meta:extra",
 		scopeKey: "main",
 	})
 	_, err := c.EnterByChatID(context.Background(), makeSnapshot("main"), "story", "abc1")

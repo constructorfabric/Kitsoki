@@ -187,34 +187,67 @@ Three more agents ship pre-registered alongside `story-author`:
   the test suite, and (with user direction) opens PRs. Tool surface:
   claude's filesystem + shell built-ins (`Read`, `Write`, `Edit`,
   `Bash`, `Glob`, `Grep`). DefaultCwd is `${KITSOKI_REPO}`; the
-  agent is reached through the builtin `self` meta mode and is
-  silently omitted when that env var isn't set.
-- **`bug-reporter`** — gathers reproduction context and files a
-  bug report by invoking `kitsoki bug create` (see
+  agent is reached through the builtin `kitsoki.edit` meta mode and
+  is silently omitted when that env var isn't set.
+- **`kitsoki-explainer`** — read-only sibling of `kitsoki-engineer`
+  (`Read`, `Glob`, `Grep` only). Reached through `kitsoki.ask`.
+- **`story-bug-reporter`** — gathers reproduction context and files a
+  story bug by invoking `kitsoki bug create --target story` (see
   `cmd/kitsoki/bug.go`). Tool surface:
   `Bash(kitsoki bug create*)` — a single-command pattern that
   forbids the agent from running anything else. Reached through
-  the builtin `bug` meta mode.
+  the builtin `story.bug` meta mode.
+- **`kitsoki-bug-reporter`** — same shape against `--target kitsoki`,
+  reached through the builtin `kitsoki.bug` meta mode.
+- **`story-explainer`** — read-only sibling of `story-author`
+  (`Read`, `Glob`, `Grep` only). Reached through `story.ask`.
 
 ### 3.2 Builtin meta_modes
 
-The loader injects two meta_modes that every app gets without
+The loader injects six meta_modes that every app gets without
 declaring them in YAML (mirrors the agent-builtin pattern, see
-`internal/app/builtin_meta_modes.go`):
+`internal/app/builtin_meta_modes.go`). Map keys follow a
+`group.verb` convention so a single namespace (`story.*`,
+`kitsoki.*`) can carry multiple verbs (`edit`, `ask`, `bug`)
+without inventing ad-hoc names. Each group has a `default` verb
+that bare `/meta <group>` resolves to (`edit` for both builtin
+groups):
 
-- **`self`** — `/meta self`, agent `kitsoki-engineer`, cwd
-  `${KITSOKI_REPO}`. Chat row keys against the synthetic app_id
-  `kitsoki-self` so the conversation persists across every app:
-  a `self` session started while playing cloak is the same row
-  the user reopens while playing dev-story. `self` is omitted from
-  the injection set when `KITSOKI_REPO` is unset.
-- **`bug`** — `/meta bug`, agent `bug-reporter`, per-app keying.
-  Each app accumulates its own pile under `<app-dir>/bugs/`.
+- **`story.edit`** — `/meta story edit` (default verb for `story`,
+  so bare `/meta story` resolves here). Agent `story-author`.
+  Per-app keying.
+- **`story.ask`** — `/meta story ask`. Read-only Q&A about the
+  story, agent `story-explainer`, tools `Read`/`Glob`/`Grep`.
+- **`story.bug`** — `/meta story bug`. Files a story bug via
+  `kitsoki bug create --target story`; agent
+  `story-bug-reporter`.
+- **`kitsoki.edit`** — `/meta kitsoki edit` (default verb, so
+  bare `/meta kitsoki` resolves here). Agent `kitsoki-engineer`,
+  cwd `${KITSOKI_REPO}`. Chat row keys against the synthetic
+  app_id `kitsoki-self` so the conversation persists across every
+  app — a `kitsoki.edit` session started while playing cloak is
+  the same row the user reopens while playing dev-story.
+- **`kitsoki.ask`** — `/meta kitsoki ask`. Read-only Q&A about
+  kitsoki source, agent `kitsoki-explainer`.
+- **`kitsoki.bug`** — `/meta kitsoki bug`. Files a kitsoki bug
+  via `kitsoki bug create --target kitsoki`; agent
+  `kitsoki-bug-reporter`.
 
-An app suppresses or replaces either builtin by declaring its own
-`meta_modes.<self|bug>` with the same key. Trigger collisions
+The entire `kitsoki.*` group is omitted from the injection set
+when `KITSOKI_REPO` is unset.
+
+An app suppresses or replaces a builtin by declaring its own
+`meta_modes.<group.verb>` with the same key. Trigger collisions
 between a builtin and a user-declared mode surface through normal
 validation (the injection step runs before `validateMetaModes`).
+Trigger uniqueness is per-group, so `story.bug` and `kitsoki.bug`
+(both trigger `bug`) coexist.
+
+The single-token `/meta bug` and `/meta self` triggers from prior
+versions are gone — no aliases, no deprecation period. There was
+no user base to preserve, so the clean break is cheaper than
+carrying compatibility shims. Use `/meta story bug` /
+`/meta kitsoki bug` and `/meta kitsoki edit` instead.
 
 ---
 
@@ -516,17 +549,18 @@ eyes to these before designing a new app around them.
 
 What ships with kitsoki today (formerly under "Limitations"):
 
-- **`self` and `bug` meta modes are builtin** (see §3.4). `self`
-  uses the `kitsoki-engineer` agent rooted at `${KITSOKI_REPO}` and
-  keys its chat against a synthetic `app_id` so the conversation
-  is the same row across every running app; `bug` uses the
-  `bug-reporter` agent which files reports via
-  `kitsoki bug create` under the running app's `bugs/` directory.
-  Apps override either by declaring a `meta_modes.{self,bug}` with
-  the same key.
+- **The `story.*` and `kitsoki.*` groups are builtin** (see §3.2).
+  `kitsoki.edit` uses the `kitsoki-engineer` agent rooted at
+  `${KITSOKI_REPO}` and keys its chat against a synthetic `app_id`
+  so the conversation is the same row across every running app;
+  `story.bug` uses the `story-bug-reporter` agent which files
+  reports via `kitsoki bug create --target story` under the running
+  app's `issues/bugs/` directory (and `kitsoki.bug` does the same
+  against `${KITSOKI_REPO}/issues/bugs/`). Apps override any builtin
+  by declaring a `meta_modes.<group.verb>` with the same key.
 - **The foyer "meta sessions" panel** is available from the
   Esc-menu's "Meta sessions" entry. It lists every active meta
-  chat the controller can see — including cross-app `self` chats
+  chat the controller can see — including cross-app `kitsoki.*` chats
   merged in by `Controller.ListChats` — and resumes the picked
   row without typing `/meta resume <id>`.
 - **`/attach` hands the terminal to claude.** While `/meta`
