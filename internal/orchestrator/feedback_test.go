@@ -505,7 +505,7 @@ func TestComputeMenuSlotlessIntentBlockedByGuard(t *testing.T) {
 		},
 		States: map[string]*app.State{
 			"lobby": {
-				View: "Lobby.",
+				View: app.LegacyView("Lobby."),
 				On: map[string][]app.Transition{
 					"depart": {
 						{Target: "outside", When: "world.ready == true"},
@@ -514,7 +514,7 @@ func TestComputeMenuSlotlessIntentBlockedByGuard(t *testing.T) {
 					"look": {{Target: "lobby"}},
 				},
 			},
-			"outside": {View: "Outside."},
+			"outside": {View: app.LegacyView("Outside.")},
 		},
 	}
 	m, err := machine.New(def)

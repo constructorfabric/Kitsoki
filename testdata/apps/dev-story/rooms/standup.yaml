@@ -3,12 +3,22 @@
 states:
   standup:
     description: "Standup Room — summarize yesterday, plan today, list blockers."
-    view: |
-      Standup Room.
-
-      Current summary: {{ world.standup_summary }}
-
-      Options: summarize yesterday, plan today, list blockers, post to slack, go back.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Current summary: "{{ world.standup_summary|default:\"(none)\" }}"
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - { label: "summarize yesterday", hint: "aggregate commits, PRs, Jira" }
+                - { label: "plan today",          hint: "surface workspaces, issues" }
+                - { label: "list blockers",       hint: "stalled work" }
+                - { label: "post to slack",       hint: "send the update" }
+                - { label: "go back",             hint: "return to previous room" }
     relevant_world: [standup_summary]
     relevant_slots: []
     on:
@@ -39,23 +49,27 @@ states:
 
   standup_summarizing:
     description: "Aggregating yesterday's work..."
-    view: |
-      Yesterday's Summary:
-
-      [stub] Aggregated from commits, PRs, and Jira (last 24h):
-
-      Completed:
-        - Reviewed PR #38 (billing discounts) — left 2 comments
-        - Fixed auth token refresh bug (PROJ-102) — PR #42 open
-        - Joined incident call for prod database slow queries
-
-      In Progress:
-        - Implementing auth refresh token rotation (PROJ-101) — 60%
-        - PR #42 waiting for CI
-
-      Generated standup:
-        "Yesterday: Fixed auth token bug, reviewed billing PR. Today: Continue
-        PROJ-101, get PR #42 merged. Blockers: CI flaky on auth tests."
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Yesterday's summary"
+          - prose: "[stub] Aggregated from commits, PRs, and Jira (last 24h):"
+          - heading: "Completed"
+          - list:
+              items:
+                - { label: "Reviewed PR #38 (billing discounts)", hint: "left 2 comments" }
+                - { label: "Fixed auth token refresh bug (PROJ-102)", hint: "PR #42 open" }
+                - { label: "Joined incident call",                hint: "prod database slow queries" }
+          - heading: "In progress"
+          - list:
+              items:
+                - { label: "Implementing auth refresh token rotation (PROJ-101)", hint: "60%" }
+                - { label: "PR #42 waiting for CI" }
+          - heading: "Generated standup"
+          - code: |
+              "Yesterday: Fixed auth token bug, reviewed billing PR. Today: Continue
+              PROJ-101, get PR #42 merged. Blockers: CI flaky on auth tests."
     relevant_world: []
     relevant_slots: []
     on_enter:
@@ -84,23 +98,29 @@ states:
 
   standup_planning:
     description: "Planning today's work..."
-    view: |
-      Today's Plan:
-
-      [stub] Active workspaces and Jira assignments:
-
-      In-progress workspaces:
-        - feature-auth-v2: 60% complete, PR #42 open
-        - hotfix-billing: ready to merge
-
-      Assigned Jira issues:
-        - PROJ-101: Implement auth refresh (due: tomorrow)
-        - PROJ-104: Write billing module tests (due: this sprint)
-
-      Today's focus:
-        1. Merge PR #42 (auth fix) — unblock after CI passes
-        2. Continue PROJ-101 — get to 80% by EOD
-        3. Start PROJ-104 test writing
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Today's plan"
+          - prose: "[stub] Active workspaces and Jira assignments:"
+          - heading: "In-progress workspaces"
+          - list:
+              items:
+                - { label: "feature-auth-v2", hint: "60% complete, PR #42 open" }
+                - { label: "hotfix-billing",  hint: "ready to merge" }
+          - heading: "Assigned Jira issues"
+          - list:
+              items:
+                - { label: "PROJ-101: Implement auth refresh",         hint: "due: tomorrow" }
+                - { label: "PROJ-104: Write billing module tests",     hint: "due: this sprint" }
+          - heading: "Today's focus"
+          - list:
+              marker: "1."
+              items:
+                - { label: "Merge PR #42 (auth fix)", hint: "unblock after CI passes" }
+                - { label: "Continue PROJ-101",       hint: "get to 80% by EOD" }
+                - { label: "Start PROJ-104",          hint: "test writing" }
     relevant_world: []
     relevant_slots: []
     on:
@@ -119,13 +139,16 @@ states:
 
   standup_posting:
     description: "Posting standup to Slack..."
-    view: |
-      Standup posted to #eng-standup!
-
-      [stub] Slack message sent:
-        "Yesterday: {{ world.standup_summary }}
-         Today: Continue auth work, merge PR #42.
-         Blockers: CI flaky."
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Standup posted to #eng-standup"
+          - code: |
+              [stub] Slack message sent:
+                "Yesterday: {{ world.standup_summary }}
+                 Today: Continue auth work, merge PR #42.
+                 Blockers: CI flaky."
     relevant_world: [standup_summary]
     relevant_slots: []
     on_enter:
@@ -146,8 +169,13 @@ states:
 
   standup_error:
     description: "Standup operation failed."
-    view: |
-      Standup error: {{ world.last_error }}
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Error: "{{ world.last_error }}"
     relevant_world: [last_error]
     relevant_slots: []
     on:

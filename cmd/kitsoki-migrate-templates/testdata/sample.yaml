@@ -1,0 +1,58 @@
+# Sample fixture for kitsoki-migrate-templates. Exercises every row in
+# the proposal §3.1 translation table within realistic YAML field
+# shapes: a view literal block (if/else/end + helper), an inline ternary
+# in a set effect, a nullish-coalesce in a host with-arg, and a range
+# block. The matching expected-output file is sample.expected.yaml.
+#
+# Hand-curated rather than auto-generated so the diff between input and
+# expected is reviewable; the rewrite_test.go table verifies the
+# string-level rewrites; this fixture verifies the full file-level
+# walk, allowlist matching, byte-surgery splice, and comment preservation.
+app:
+  id: sample-codemod-fixture
+  version: 0.0.1
+
+states:
+  intro:
+    # Cloak-style if/else/end block in a literal view body.
+    view: |
+      Welcome.
+      {{ if world.first_visit }}First time here.{{ else }}Welcome back.{{ end }}
+      Members: {{ range world.party }}{{ .name }} {{ end }}
+
+    # Bare-expression initial: stays UNTOUCHED (no `{{` delimiters).
+    initial: idle
+    on:
+      go:
+        # `when:` is an expr-lang guard — pure expression, no `{{`.
+        # Must survive byte-identical.
+        - when: "slots.direction == 'east'"
+          target: foyer
+          guard_hint: "Cash on hand: ${{ world.money }}."
+          effects:
+            - set:
+                # Pragmatic split: set: stays on expr-lang
+                # (typed values). Byte-identical.
+                cost: "{{ int(slots.cost ?? 0) }}"
+                tier: "{{ world.kind == 'gold' ? 'A' : 'B' }}"
+              # Inner effect guard — pure expr, no rewrite.
+              when: "slots.kind != ''"
+            - invoke: host.oracle.ask
+              with:
+                # with: args stay on expr-lang too — byte-identical.
+                prompt: "Tell me about {{ slots.topic }}."
+              # Output bind keys — NOT templated, just strings.
+              bind:
+                result: stdout
+            - say: "Off you go: {{ slots.direction }}."
+
+  # Compound state nesting — leaf shape is recognised at any depth.
+  bar:
+    type: compound
+    # Templated initial selector — `{{ … }}`-delimited, rewriteable.
+    initial: "{{ world.cloaked ? 'dark' : 'lit' }}"
+    states:
+      dark:
+        description: "Pitch black."
+      lit:
+        description: "Now lit."

@@ -38,7 +38,7 @@ func TestSimpleLinearTransition(t *testing.T) {
 		},
 		States: map[string]*app.State{
 			"start": {
-				View: "You are at the start.",
+				View: app.LegacyView("You are at the start."),
 				On: map[string][]app.Transition{
 					"proceed": {
 						{Target: "finish"},
@@ -47,7 +47,7 @@ func TestSimpleLinearTransition(t *testing.T) {
 			},
 			"finish": {
 				Terminal: true,
-				View:     "You have finished.",
+				View:     app.LegacyView("You have finished."),
 			},
 		},
 	}
@@ -105,9 +105,9 @@ func TestFirstGuardWins(t *testing.T) {
 					},
 				},
 			},
-			"dest_a":       {View: "Destination A"},
-			"dest_b":       {View: "Destination B"},
-			"dest_default": {View: "Default destination"},
+			"dest_a":       {View: app.LegacyView("Destination A")},
+			"dest_b":       {View: app.LegacyView("Destination B")},
+			"dest_default": {View: app.LegacyView("Default destination")},
 		},
 	}
 
@@ -267,10 +267,10 @@ func TestCompoundStateInitialResolution(t *testing.T) {
 			},
 			"compound": {
 				Type:    "compound",
-				Initial: "{{ world.lit ? 'bright' : 'dim' }}",
+				Initial: "{% if world.lit %}bright{% else %}dim{% endif %}",
 				States: map[string]*app.State{
-					"bright": {View: "It's bright here."},
-					"dim":    {View: "It's dim here."},
+					"bright": {View: app.LegacyView("It's bright here.")},
+					"dim":    {View: app.LegacyView("It's dim here.")},
 				},
 			},
 		},
@@ -515,7 +515,7 @@ func TestTryGuardsMatchedDefault(t *testing.T) {
 					},
 				},
 			},
-			"north_room": {View: "North room."},
+			"north_room": {View: app.LegacyView("North room.")},
 		},
 	}
 
@@ -561,7 +561,7 @@ func TestRunEffects(t *testing.T) {
 		},
 		Intents: map[string]app.Intent{},
 		States: map[string]*app.State{
-			"s": {View: "state s"},
+			"s": {View: app.LegacyView("state s")},
 		},
 	}
 	m := mustNew(t, def)

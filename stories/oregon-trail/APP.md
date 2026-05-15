@@ -6,10 +6,10 @@
 
 - App ID: `oregon-trail`
 - Entry room: [`intro`](#room-intro)
-- Rooms: 100
-- Intents: 53
-- World variables: 70
-- Host allow-list: `host.run`, `host.jobs.answer_clarification`, `host.oracle.ask_with_mcp`, `host.oracle.ask`, `host.oracle.talk`, `host.chat.resolve`, `host.chat.list`, `host.chat.transcript`, `host.chat.create`, `host.chat.fork`, `host.chat.archive`, `host.chat.rename`, `host.chat.suggest_title`, `host.chat.resolve_ref`, `host.transport.post`
+- Rooms: 106
+- Intents: 65
+- World variables: 99
+- Host allow-list: `host.run`, `host.jobs.answer_clarification`, `host.oracle.ask_with_mcp`, `host.oracle.ask`, `host.oracle.talk`, `host.chat.resolve`, `host.chat.list`, `host.chat.transcript`, `host.chat.create`, `host.chat.fork`, `host.chat.archive`, `host.chat.rename`, `host.chat.suggest_title`, `host.chat.resolve_ref`, `host.transport.post`, `host.run.announce`, `host.run.close`
 
 ## State Diagram
 
@@ -21,6 +21,10 @@ flowchart LR
   fort__done["fort.done"]
   fort__idle["fort.idle"]
   fort__reviewing["fort.reviewing"]
+  frontier["frontier"]
+  frontier__bandits["frontier.bandits"]
+  frontier__bandits__encounter["frontier.bandits.encounter"]
+  frontier__scouting["frontier.scouting"]
   general_store["general_store"]
   general_store__done["general_store.done"]
   general_store__idle["general_store.idle"]
@@ -104,6 +108,8 @@ flowchart LR
   river_crossing__mid["river_crossing.mid"]
   river_crossing__reviewing["river_crossing.reviewing"]
   river_crossing__shallow["river_crossing.shallow"]
+  robbery_aftermath["robbery_aftermath"]
+  snow_blocked["snow_blocked"]
   trail_guide["trail_guide"]
   trail_guide__trail_guide_active["trail_guide.trail_guide_active"]
   trail_guide__trail_guide_active_new["trail_guide.trail_guide_active_new"]
@@ -130,7 +136,16 @@ flowchart LR
   fort__reviewing -->|accept_purchase| fort__done
   fort__reviewing -->|cancel_purchase| fort__idle
   fort__reviewing -->|look| fort__reviewing
-  fort__reviewing -->|refine_purchase| fort__idle
+  fort__reviewing -->|refine_purchase| fort__reviewing
+  frontier__bandits__encounter -->|frontier__bandits__fight [world.frontier__bandits__party_alive >= 2 + world.frontier__bandits__threat_level]| robbery_aftermath
+  frontier__bandits__encounter -->|frontier__bandits__fight (default)| robbery_aftermath
+  frontier__bandits__encounter -->|frontier__bandits__flee| robbery_aftermath
+  frontier__bandits__encounter -->|frontier__bandits__look| frontier__bandits__encounter
+  frontier__bandits__encounter -->|frontier__bandits__pay [world.frontier__bandits__party_money >= world.frontier__bandits__threat_level * 50]| robbery_aftermath
+  frontier__bandits__encounter -->|frontier__bandits__pay (default)| frontier__bandits__encounter
+  frontier__scouting -->|frontier__look| frontier__scouting
+  frontier__scouting -->|frontier__proceed| frontier__bandits
+  frontier__scouting -->|frontier__scout| frontier__scouting
   general_store__done -->|leave_store [world.oxen >= 2 && world.food_lbs >= 200]| leg_a_executing
   general_store__done -->|leave_store (default)| general_store__idle
   general_store__done -->|look| general_store__done
@@ -144,7 +159,7 @@ flowchart LR
   general_store__reviewing -->|accept_purchase| general_store__done
   general_store__reviewing -->|cancel_purchase| general_store__idle
   general_store__reviewing -->|look| general_store__reviewing
-  general_store__reviewing -->|refine_purchase| general_store__idle
+  general_store__reviewing -->|refine_purchase| general_store__reviewing
   hunt__hunt_done -->|continue [world.current_landmark == 'Kansas River Crossing']| leg_a_awaiting_reply
   hunt__hunt_done -->|continue [world.current_landmark == 'Fort Kearney']| leg_b_awaiting_reply
   hunt__hunt_done -->|continue [world.current_landmark == 'Chimney Rock']| leg_c_awaiting_reply
@@ -164,18 +179,28 @@ flowchart LR
   hunt__hunt_running -->|continue (default)| hunt__hunt_running
   hunt__hunt_running -->|look| hunt__hunt_running
   inbox -->|look| inbox
+  intro -->|generate_names [world.narration]| intro
+  intro -->|generate_names (default)| intro
   intro -->|look| intro
+  intro -->|name_member [slots.index == 1]| intro
+  intro -->|name_member [slots.index == 2]| intro
+  intro -->|name_member [slots.index == 3]| intro
+  intro -->|name_member [slots.index == 4]| intro
+  intro -->|name_member [slots.index == 5]| intro
+  intro -->|name_member (default)| intro
   intro -->|name_party| intro
   intro -->|pick_month| intro
   intro -->|pick_profession| intro
-  intro -->|start_journey [world.party_names != '' && world.profession != '' && world.month != '']| general_store
+  intro -->|start_journey [world.party_names != '' && world.profession != nil && world.month != nil]| general_store
   intro -->|start_journey (default)| intro
   leg_a_awaiting_reply -->|approach_river [true]| river_crossing
   leg_a_awaiting_reply -->|approach_river (default)| leg_a_awaiting_reply
   leg_a_awaiting_reply -->|consult_guide| trail_guide
-  leg_a_awaiting_reply -->|continue| leg_b_executing
+  leg_a_awaiting_reply -->|continue ['Kansas River Crossing' == 'South Pass' && (world.month == 'october' // world.month == 'november' // world.month == 'december' // world.month == 'january' // world.month == 'february')]| snow_blocked
+  leg_a_awaiting_reply -->|continue (default)| leg_b_executing
   leg_a_awaiting_reply -->|enter_fort [false]| fort
   leg_a_awaiting_reply -->|enter_fort (default)| leg_a_awaiting_reply
+  leg_a_awaiting_reply -->|face_robbery| frontier
   leg_a_awaiting_reply -->|give_up_leg [world.cycle__leg_a__on_failure < 2]| leg_a_executing
   leg_a_awaiting_reply -->|give_up_leg (default)| leg_a_error
   leg_a_awaiting_reply -->|hunt| hunt
@@ -188,6 +213,7 @@ flowchart LR
   leg_a_awaiting_reply -->|restart_from [slots.stage == 'south_pass']| leg_e_executing
   leg_a_awaiting_reply -->|restart_from [slots.stage == 'snake']| leg_f_executing
   leg_a_awaiting_reply -->|restart_from (default)| leg_a_awaiting_reply
+  leg_a_awaiting_reply -->|scout| frontier
   leg_a_error -->|quit| ended_lost
   leg_a_error -->|retry| leg_a_executing
   leg_a_executing -->|on_failure [world.cycle__leg_a__on_failure < 2]| leg_a_executing
@@ -221,7 +247,7 @@ flowchart LR
   leg_a_executing__event_weather -->|push_on| leg_a_executing__traveling
   leg_a_executing__event_weather -->|quit| ended_lost
   leg_a_executing__event_weather -->|wait_out| leg_a_executing__traveling
-  leg_a_executing__traveling -->|continue [world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) >= 102]| leg_a_awaiting_reply
+  leg_a_executing__traveling -->|continue [world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' // world.month == 'january' // world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' // world.month == 'october' ? 85 : (world.month == 'april' // world.month == 'september' ? 95 : 100)))) / 100) >= 102]| leg_a_awaiting_reply
   leg_a_executing__traveling -->|continue [world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) <= 0]| ended_lost
   leg_a_executing__traveling -->|continue [int(world.miles_traveled + world.rng_counter) % 100 >= 60 && int(world.miles_traveled + world.rng_counter) % 100 < 75]| leg_a_executing__event_disease
   leg_a_executing__traveling -->|continue [int(world.miles_traveled + world.rng_counter) % 100 >= 75 && int(world.miles_traveled + world.rng_counter) % 100 < 85]| leg_a_executing__event_breakdown
@@ -236,9 +262,11 @@ flowchart LR
   leg_b_awaiting_reply -->|approach_river [false]| river_crossing
   leg_b_awaiting_reply -->|approach_river (default)| leg_b_awaiting_reply
   leg_b_awaiting_reply -->|consult_guide| trail_guide
-  leg_b_awaiting_reply -->|continue| leg_c_executing
+  leg_b_awaiting_reply -->|continue ['Fort Kearney' == 'South Pass' && (world.month == 'october' // world.month == 'november' // world.month == 'december' // world.month == 'january' // world.month == 'february')]| snow_blocked
+  leg_b_awaiting_reply -->|continue (default)| leg_c_executing
   leg_b_awaiting_reply -->|enter_fort [true]| fort
   leg_b_awaiting_reply -->|enter_fort (default)| leg_b_awaiting_reply
+  leg_b_awaiting_reply -->|face_robbery| frontier
   leg_b_awaiting_reply -->|give_up_leg [world.cycle__leg_b__on_failure < 2]| leg_a_executing
   leg_b_awaiting_reply -->|give_up_leg (default)| leg_b_error
   leg_b_awaiting_reply -->|hunt| hunt
@@ -251,6 +279,7 @@ flowchart LR
   leg_b_awaiting_reply -->|restart_from [slots.stage == 'south_pass']| leg_e_executing
   leg_b_awaiting_reply -->|restart_from [slots.stage == 'snake']| leg_f_executing
   leg_b_awaiting_reply -->|restart_from (default)| leg_b_awaiting_reply
+  leg_b_awaiting_reply -->|scout| frontier
   leg_b_error -->|quit| ended_lost
   leg_b_error -->|retry| leg_b_executing
   leg_b_executing -->|on_failure [world.cycle__leg_b__on_failure < 2]| leg_a_executing
@@ -284,7 +313,7 @@ flowchart LR
   leg_b_executing__event_weather -->|push_on| leg_b_executing__traveling
   leg_b_executing__event_weather -->|quit| ended_lost
   leg_b_executing__event_weather -->|wait_out| leg_b_executing__traveling
-  leg_b_executing__traveling -->|continue [world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) >= 202]| leg_b_awaiting_reply
+  leg_b_executing__traveling -->|continue [world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' // world.month == 'january' // world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' // world.month == 'october' ? 85 : (world.month == 'april' // world.month == 'september' ? 95 : 100)))) / 100) >= 202]| leg_b_awaiting_reply
   leg_b_executing__traveling -->|continue [world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) <= 0]| ended_lost
   leg_b_executing__traveling -->|continue [int(world.miles_traveled + world.rng_counter) % 100 >= 60 && int(world.miles_traveled + world.rng_counter) % 100 < 75]| leg_b_executing__event_disease
   leg_b_executing__traveling -->|continue [int(world.miles_traveled + world.rng_counter) % 100 >= 75 && int(world.miles_traveled + world.rng_counter) % 100 < 85]| leg_b_executing__event_breakdown
@@ -299,9 +328,11 @@ flowchart LR
   leg_c_awaiting_reply -->|approach_river [false]| river_crossing
   leg_c_awaiting_reply -->|approach_river (default)| leg_c_awaiting_reply
   leg_c_awaiting_reply -->|consult_guide| trail_guide
-  leg_c_awaiting_reply -->|continue| leg_d_executing
+  leg_c_awaiting_reply -->|continue ['Chimney Rock' == 'South Pass' && (world.month == 'october' // world.month == 'november' // world.month == 'december' // world.month == 'january' // world.month == 'february')]| snow_blocked
+  leg_c_awaiting_reply -->|continue (default)| leg_d_executing
   leg_c_awaiting_reply -->|enter_fort [false]| fort
   leg_c_awaiting_reply -->|enter_fort (default)| leg_c_awaiting_reply
+  leg_c_awaiting_reply -->|face_robbery| frontier
   leg_c_awaiting_reply -->|give_up_leg [world.cycle__leg_c__on_failure < 2]| leg_b_executing
   leg_c_awaiting_reply -->|give_up_leg (default)| leg_c_error
   leg_c_awaiting_reply -->|hunt| hunt
@@ -314,6 +345,7 @@ flowchart LR
   leg_c_awaiting_reply -->|restart_from [slots.stage == 'south_pass']| leg_e_executing
   leg_c_awaiting_reply -->|restart_from [slots.stage == 'snake']| leg_f_executing
   leg_c_awaiting_reply -->|restart_from (default)| leg_c_awaiting_reply
+  leg_c_awaiting_reply -->|scout| frontier
   leg_c_error -->|quit| ended_lost
   leg_c_error -->|retry| leg_c_executing
   leg_c_executing -->|on_failure [world.cycle__leg_c__on_failure < 2]| leg_b_executing
@@ -347,7 +379,7 @@ flowchart LR
   leg_c_executing__event_weather -->|push_on| leg_c_executing__traveling
   leg_c_executing__event_weather -->|quit| ended_lost
   leg_c_executing__event_weather -->|wait_out| leg_c_executing__traveling
-  leg_c_executing__traveling -->|continue [world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) >= 250]| leg_c_awaiting_reply
+  leg_c_executing__traveling -->|continue [world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' // world.month == 'january' // world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' // world.month == 'october' ? 85 : (world.month == 'april' // world.month == 'september' ? 95 : 100)))) / 100) >= 250]| leg_c_awaiting_reply
   leg_c_executing__traveling -->|continue [world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) <= 0]| ended_lost
   leg_c_executing__traveling -->|continue [int(world.miles_traveled + world.rng_counter) % 100 >= 60 && int(world.miles_traveled + world.rng_counter) % 100 < 75]| leg_c_executing__event_disease
   leg_c_executing__traveling -->|continue [int(world.miles_traveled + world.rng_counter) % 100 >= 75 && int(world.miles_traveled + world.rng_counter) % 100 < 85]| leg_c_executing__event_breakdown
@@ -362,9 +394,11 @@ flowchart LR
   leg_d_awaiting_reply -->|approach_river [false]| river_crossing
   leg_d_awaiting_reply -->|approach_river (default)| leg_d_awaiting_reply
   leg_d_awaiting_reply -->|consult_guide| trail_guide
-  leg_d_awaiting_reply -->|continue| leg_e_executing
+  leg_d_awaiting_reply -->|continue ['Fort Laramie' == 'South Pass' && (world.month == 'october' // world.month == 'november' // world.month == 'december' // world.month == 'january' // world.month == 'february')]| snow_blocked
+  leg_d_awaiting_reply -->|continue (default)| leg_e_executing
   leg_d_awaiting_reply -->|enter_fort [true]| fort
   leg_d_awaiting_reply -->|enter_fort (default)| leg_d_awaiting_reply
+  leg_d_awaiting_reply -->|face_robbery| frontier
   leg_d_awaiting_reply -->|give_up_leg [world.cycle__leg_d__on_failure < 2]| leg_c_executing
   leg_d_awaiting_reply -->|give_up_leg (default)| leg_d_error
   leg_d_awaiting_reply -->|hunt| hunt
@@ -377,6 +411,7 @@ flowchart LR
   leg_d_awaiting_reply -->|restart_from [slots.stage == 'south_pass']| leg_e_executing
   leg_d_awaiting_reply -->|restart_from [slots.stage == 'snake']| leg_f_executing
   leg_d_awaiting_reply -->|restart_from (default)| leg_d_awaiting_reply
+  leg_d_awaiting_reply -->|scout| frontier
   leg_d_error -->|quit| ended_lost
   leg_d_error -->|retry| leg_d_executing
   leg_d_executing -->|on_failure [world.cycle__leg_d__on_failure < 2]| leg_c_executing
@@ -410,7 +445,7 @@ flowchart LR
   leg_d_executing__event_weather -->|push_on| leg_d_executing__traveling
   leg_d_executing__event_weather -->|quit| ended_lost
   leg_d_executing__event_weather -->|wait_out| leg_d_executing__traveling
-  leg_d_executing__traveling -->|continue [world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) >= 86]| leg_d_awaiting_reply
+  leg_d_executing__traveling -->|continue [world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' // world.month == 'january' // world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' // world.month == 'october' ? 85 : (world.month == 'april' // world.month == 'september' ? 95 : 100)))) / 100) >= 86]| leg_d_awaiting_reply
   leg_d_executing__traveling -->|continue [world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) <= 0]| ended_lost
   leg_d_executing__traveling -->|continue [int(world.miles_traveled + world.rng_counter) % 100 >= 60 && int(world.miles_traveled + world.rng_counter) % 100 < 75]| leg_d_executing__event_disease
   leg_d_executing__traveling -->|continue [int(world.miles_traveled + world.rng_counter) % 100 >= 75 && int(world.miles_traveled + world.rng_counter) % 100 < 85]| leg_d_executing__event_breakdown
@@ -425,9 +460,11 @@ flowchart LR
   leg_e_awaiting_reply -->|approach_river [false]| river_crossing
   leg_e_awaiting_reply -->|approach_river (default)| leg_e_awaiting_reply
   leg_e_awaiting_reply -->|consult_guide| trail_guide
-  leg_e_awaiting_reply -->|continue| leg_f_executing
+  leg_e_awaiting_reply -->|continue ['South Pass' == 'South Pass' && (world.month == 'october' // world.month == 'november' // world.month == 'december' // world.month == 'january' // world.month == 'february')]| snow_blocked
+  leg_e_awaiting_reply -->|continue (default)| leg_f_executing
   leg_e_awaiting_reply -->|enter_fort [false]| fort
   leg_e_awaiting_reply -->|enter_fort (default)| leg_e_awaiting_reply
+  leg_e_awaiting_reply -->|face_robbery| frontier
   leg_e_awaiting_reply -->|give_up_leg [world.cycle__leg_e__on_failure < 2]| leg_d_executing
   leg_e_awaiting_reply -->|give_up_leg (default)| leg_e_error
   leg_e_awaiting_reply -->|hunt| hunt
@@ -440,6 +477,7 @@ flowchart LR
   leg_e_awaiting_reply -->|restart_from [slots.stage == 'south_pass']| leg_e_executing
   leg_e_awaiting_reply -->|restart_from [slots.stage == 'snake']| leg_f_executing
   leg_e_awaiting_reply -->|restart_from (default)| leg_e_awaiting_reply
+  leg_e_awaiting_reply -->|scout| frontier
   leg_e_error -->|quit| ended_lost
   leg_e_error -->|retry| leg_e_executing
   leg_e_executing -->|on_failure [world.cycle__leg_e__on_failure < 2]| leg_d_executing
@@ -473,7 +511,7 @@ flowchart LR
   leg_e_executing__event_weather -->|push_on| leg_e_executing__traveling
   leg_e_executing__event_weather -->|quit| ended_lost
   leg_e_executing__event_weather -->|wait_out| leg_e_executing__traveling
-  leg_e_executing__traveling -->|continue [world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) >= 292]| leg_e_awaiting_reply
+  leg_e_executing__traveling -->|continue [world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' // world.month == 'january' // world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' // world.month == 'october' ? 85 : (world.month == 'april' // world.month == 'september' ? 95 : 100)))) / 100) >= 292]| leg_e_awaiting_reply
   leg_e_executing__traveling -->|continue [world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) <= 0]| ended_lost
   leg_e_executing__traveling -->|continue [int(world.miles_traveled + world.rng_counter) % 100 >= 60 && int(world.miles_traveled + world.rng_counter) % 100 < 75]| leg_e_executing__event_disease
   leg_e_executing__traveling -->|continue [int(world.miles_traveled + world.rng_counter) % 100 >= 75 && int(world.miles_traveled + world.rng_counter) % 100 < 85]| leg_e_executing__event_breakdown
@@ -488,9 +526,11 @@ flowchart LR
   leg_f_awaiting_reply -->|approach_river [true]| river_crossing
   leg_f_awaiting_reply -->|approach_river (default)| leg_f_awaiting_reply
   leg_f_awaiting_reply -->|consult_guide| trail_guide
-  leg_f_awaiting_reply -->|continue| leg_g_executing
+  leg_f_awaiting_reply -->|continue ['Snake River Crossing' == 'South Pass' && (world.month == 'october' // world.month == 'november' // world.month == 'december' // world.month == 'january' // world.month == 'february')]| snow_blocked
+  leg_f_awaiting_reply -->|continue (default)| leg_g_executing
   leg_f_awaiting_reply -->|enter_fort [false]| fort
   leg_f_awaiting_reply -->|enter_fort (default)| leg_f_awaiting_reply
+  leg_f_awaiting_reply -->|face_robbery| frontier
   leg_f_awaiting_reply -->|give_up_leg [world.cycle__leg_f__on_failure < 2]| leg_e_executing
   leg_f_awaiting_reply -->|give_up_leg (default)| leg_f_error
   leg_f_awaiting_reply -->|hunt| hunt
@@ -503,6 +543,7 @@ flowchart LR
   leg_f_awaiting_reply -->|restart_from [slots.stage == 'south_pass']| leg_e_executing
   leg_f_awaiting_reply -->|restart_from [slots.stage == 'snake']| leg_f_executing
   leg_f_awaiting_reply -->|restart_from (default)| leg_f_awaiting_reply
+  leg_f_awaiting_reply -->|scout| frontier
   leg_f_error -->|quit| ended_lost
   leg_f_error -->|retry| leg_f_executing
   leg_f_executing -->|on_failure [world.cycle__leg_f__on_failure < 2]| leg_e_executing
@@ -536,7 +577,7 @@ flowchart LR
   leg_f_executing__event_weather -->|push_on| leg_f_executing__traveling
   leg_f_executing__event_weather -->|quit| ended_lost
   leg_f_executing__event_weather -->|wait_out| leg_f_executing__traveling
-  leg_f_executing__traveling -->|continue [world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) >= 250]| leg_f_awaiting_reply
+  leg_f_executing__traveling -->|continue [world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' // world.month == 'january' // world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' // world.month == 'october' ? 85 : (world.month == 'april' // world.month == 'september' ? 95 : 100)))) / 100) >= 250]| leg_f_awaiting_reply
   leg_f_executing__traveling -->|continue [world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) <= 0]| ended_lost
   leg_f_executing__traveling -->|continue [int(world.miles_traveled + world.rng_counter) % 100 >= 60 && int(world.miles_traveled + world.rng_counter) % 100 < 75]| leg_f_executing__event_disease
   leg_f_executing__traveling -->|continue [int(world.miles_traveled + world.rng_counter) % 100 >= 75 && int(world.miles_traveled + world.rng_counter) % 100 < 85]| leg_f_executing__event_breakdown
@@ -551,9 +592,11 @@ flowchart LR
   leg_g_awaiting_reply -->|approach_river [false]| river_crossing
   leg_g_awaiting_reply -->|approach_river (default)| leg_g_awaiting_reply
   leg_g_awaiting_reply -->|consult_guide| trail_guide
-  leg_g_awaiting_reply -->|continue| ended_won
+  leg_g_awaiting_reply -->|continue ['Willamette Valley' == 'South Pass' && (world.month == 'october' // world.month == 'november' // world.month == 'december' // world.month == 'january' // world.month == 'february')]| snow_blocked
+  leg_g_awaiting_reply -->|continue (default)| ended_won
   leg_g_awaiting_reply -->|enter_fort [false]| fort
   leg_g_awaiting_reply -->|enter_fort (default)| leg_g_awaiting_reply
+  leg_g_awaiting_reply -->|face_robbery| frontier
   leg_g_awaiting_reply -->|give_up_leg [world.cycle__leg_g__on_failure < 2]| leg_f_executing
   leg_g_awaiting_reply -->|give_up_leg (default)| leg_g_error
   leg_g_awaiting_reply -->|hunt| hunt
@@ -566,6 +609,7 @@ flowchart LR
   leg_g_awaiting_reply -->|restart_from [slots.stage == 'south_pass']| leg_e_executing
   leg_g_awaiting_reply -->|restart_from [slots.stage == 'snake']| leg_f_executing
   leg_g_awaiting_reply -->|restart_from (default)| leg_g_awaiting_reply
+  leg_g_awaiting_reply -->|scout| frontier
   leg_g_error -->|quit| ended_lost
   leg_g_error -->|retry| leg_g_executing
   leg_g_executing -->|on_failure [world.cycle__leg_g__on_failure < 2]| leg_f_executing
@@ -599,7 +643,7 @@ flowchart LR
   leg_g_executing__event_weather -->|push_on| leg_g_executing__traveling
   leg_g_executing__event_weather -->|quit| ended_lost
   leg_g_executing__event_weather -->|wait_out| leg_g_executing__traveling
-  leg_g_executing__traveling -->|continue [world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) >= 318]| leg_g_awaiting_reply
+  leg_g_executing__traveling -->|continue [world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' // world.month == 'january' // world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' // world.month == 'october' ? 85 : (world.month == 'april' // world.month == 'september' ? 95 : 100)))) / 100) >= 318]| leg_g_awaiting_reply
   leg_g_executing__traveling -->|continue [world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) <= 0]| ended_lost
   leg_g_executing__traveling -->|continue [int(world.miles_traveled + world.rng_counter) % 100 >= 60 && int(world.miles_traveled + world.rng_counter) % 100 < 75]| leg_g_executing__event_disease
   leg_g_executing__traveling -->|continue [int(world.miles_traveled + world.rng_counter) % 100 >= 75 && int(world.miles_traveled + world.rng_counter) % 100 < 85]| leg_g_executing__event_breakdown
@@ -658,6 +702,20 @@ flowchart LR
   river_crossing__shallow -->|cancel_crossing (default)| ended_lost
   river_crossing__shallow -->|look| river_crossing__shallow
   river_crossing__shallow -->|propose_crossing| river_crossing__reviewing
+  robbery_aftermath -->|continue [world.current_landmark == 'Kansas River Crossing']| leg_a_awaiting_reply
+  robbery_aftermath -->|continue [world.current_landmark == 'Fort Kearney']| leg_b_awaiting_reply
+  robbery_aftermath -->|continue [world.current_landmark == 'Chimney Rock']| leg_c_awaiting_reply
+  robbery_aftermath -->|continue [world.current_landmark == 'Fort Laramie']| leg_d_awaiting_reply
+  robbery_aftermath -->|continue [world.current_landmark == 'South Pass']| leg_e_awaiting_reply
+  robbery_aftermath -->|continue [world.current_landmark == 'Snake River Crossing']| leg_f_awaiting_reply
+  robbery_aftermath -->|continue [world.current_landmark == 'Willamette Valley']| leg_g_awaiting_reply
+  robbery_aftermath -->|continue (default)| leg_a_awaiting_reply
+  robbery_aftermath -->|look| robbery_aftermath
+  snow_blocked -->|give_up| ended_lost
+  snow_blocked -->|look| snow_blocked
+  snow_blocked -->|wait_for_spring [world.food_lbs - 120 <= 0]| ended_lost
+  snow_blocked -->|wait_for_spring [world.month == 'march']| leg_e_awaiting_reply
+  snow_blocked -->|wait_for_spring (default)| snow_blocked
   trail_guide__trail_guide_active -->|ask_question| trail_guide__trail_guide_active
   trail_guide__trail_guide_active -->|back| trail_guide__trail_guide_list
   trail_guide__trail_guide_active -->|look| trail_guide__trail_guide_active
@@ -701,8 +759,24 @@ flowchart LR
 | `encounter_kind` | `string` | `` |  |
 | `event_kind` | `string` | `` |  |
 | `food_lbs` | `int` | `0` |  |
+| `frontier__bandits__member_lost` | `bool` | `false` |  |
+| `frontier__bandits__outcome` | `string` | `` |  |
+| `frontier__bandits__paid_amount` | `int` | `0` |  |
+| `frontier__bandits__party_alive` | `int` | `5` |  |
+| `frontier__bandits__party_food_lbs` | `int` | `0` |  |
+| `frontier__bandits__party_money` | `int` | `0` |  |
+| `frontier__bandits__threat_level` | `int` | `2` |  |
+| `frontier__encounter_kind` | `string` | `` |  |
+| `frontier__member_lost` | `bool` | `false` |  |
+| `frontier__paid_amount` | `int` | `0` |  |
+| `frontier__party_alive` | `int` | `5` |  |
+| `frontier__party_money` | `int` | `0` |  |
+| `frontier__scout_finding` | `string` | `` |  |
+| `frontier__scouting_intel` | `string` | `` |  |
+| `frontier__threat_level` | `int` | `2` |  |
 | `health_avg` | `int` | `100` |  |
 | `illness_kind` | `string` | `` |  |
+| `illness_member` | `string` | `` |  |
 | `illness_severity` | `int` | `0` |  |
 | `illness_treatment` | `string` | `` |  |
 | `inbox_unread` | `int` | `0` |  |
@@ -717,19 +791,32 @@ flowchart LR
 | `local_price_pct` | `int` | `100` |  |
 | `miles_traveled` | `int` | `0` |  |
 | `money` | `int` | `1600` |  |
-| `month` | `enum` | `march` | `march`, `april`, `may`, `june`, `july` |
+| `month` | `enum` |  | `march`, `april`, `may`, `june`, `july`, `august`, `september`, `october`, `november`, `december`, `january`, `february` |
 | `narration` | `bool` | `false` |  |
 | `oxen` | `int` | `0` |  |
 | `pace` | `enum` | `steady` | `steady`, `strenuous`, `grueling` |
 | `party_alive` | `int` | `5` |  |
+| `party_member_1` | `string` | `` |  |
+| `party_member_2` | `string` | `` |  |
+| `party_member_3` | `string` | `` |  |
+| `party_member_4` | `string` | `` |  |
+| `party_member_5` | `string` | `` |  |
 | `party_names` | `string` | `` |  |
+| `party_size` | `int` | `5` |  |
 | `pending_bullet_spend` | `int` | `0` |  |
 | `pending_rest_days` | `int` | `0` |  |
 | `precip_observed` | `bool` | `false` |  |
-| `profession` | `enum` | `banker` | `banker`, `carpenter`, `farmer` |
+| `profession` | `enum` |  | `banker`, `carpenter`, `farmer` |
+| `proposal_axles` | `int` | `0` |  |
+| `proposal_bullets` | `int` | `0` |  |
+| `proposal_clothing` | `int` | `0` |  |
+| `proposal_food` | `int` | `0` |  |
 | `proposal_items` | `string` | `` |  |
+| `proposal_oxen` | `int` | `0` |  |
 | `proposal_refine_count` | `int` | `0` |  |
+| `proposal_tongues` | `int` | `0` |  |
 | `proposal_total_cost` | `int` | `0` |  |
+| `proposal_wheels` | `int` | `0` |  |
 | `rations` | `enum` | `filling` | `filling`, `meager`, `bare_bones` |
 | `river_depth_ft` | `int` | `0` |  |
 | `river_outcome` | `string` | `` |  |
@@ -913,6 +1000,75 @@ Branch a wagon-master chat into a what-if scenario, starting from its current st
 | `chat_id` | `string` | yes |  |  | Chat to fork (list position or ULID). |
 | `title` | `string` | yes |  |  | Title for the new (forked) chat. |
 
+### <a id="intent-frontier--bandits--fight"></a> `frontier__bandits__fight` — frontier__bandits__fight
+
+Fight the bandits.
+
+- Priority **70**
+- Examples: `fight`, `shoot them`
+
+### <a id="intent-frontier--bandits--flee"></a> `frontier__bandits__flee` — frontier__bandits__flee
+
+Try to outrun them.
+
+- Priority **60**
+- Examples: `flee`, `run`, `ride off`
+
+### <a id="intent-frontier--bandits--look"></a> `frontier__bandits__look` — frontier__bandits__look
+
+Look around — re-render the scene.
+
+- Priority **10**
+- Examples: `look`, `what now?`
+
+### <a id="intent-frontier--bandits--pay"></a> `frontier__bandits__pay` — frontier__bandits__pay
+
+Pay the bandits off.
+
+- Priority **80**
+- Examples: `pay`, `give them the money`
+
+### <a id="intent-frontier--look"></a> `frontier__look` — Look around
+
+Re-render the current location and status.
+
+- Priority **20**
+- Examples: `look`, `look around`, `where am I`, `status`
+
+### <a id="intent-frontier--proceed"></a> `frontier__proceed` — frontier__proceed
+
+Press forward into whatever the scout found.
+
+- Priority **70**
+- Examples: `proceed`, `press on`, `go`
+
+### <a id="intent-frontier--scout"></a> `frontier__scout` — Send a scout up the trail
+
+Send a scout ahead to look the trail over before the wagons press on.
+
+- Priority **80**
+- Examples: `scout`, `send a scout`, `send a rider up the trail`, `look the road over`, `what's ahead`
+
+### <a id="intent-generate-names"></a> `generate_names` — Generate party names from a theme
+
+Auto-fill all party member names based on a theme (movie, era, mythology, ...).
+
+- Priority **40**
+- Examples: `generate names Western`, `name them all Star Wars`, `Norse mythology names`, `give us Lord of the Rings names`
+
+**Slots**:
+
+| Name | Type | Required | Default | Values | Description |
+|---|---|---|---|---|---|
+| `theme` | `string` | yes |  |  | A short theme description (movie, era, mythology, etc.). |
+
+### <a id="intent-give-up"></a> `give_up` — Turn back east
+
+Abandon the crossing and head back east. The journey ends here.
+
+- Priority **20**
+- Examples: `give up`, `turn back`, `go home`, `abandon the pass`
+
 ### <a id="intent-give-up-leg"></a> `give_up_leg` — Give up on this leg
 
 Retreat from this landmark back to the previous one (counts against the on_failure cycle budget).
@@ -955,18 +1111,32 @@ Push past the current event without resolving it.
 - Priority **70**
 - Examples: `move on`, `press on anyway`, `ignore and continue`, `keep going`
 
-### <a id="intent-name-party"></a> `name_party` — Name the party
+### <a id="intent-name-member"></a> `name_member` — Name a specific member
 
-Provide names for the five wagon members (you and four companions).
+Set the Nth party member's name (1-indexed).
 
-- Priority **100**
-- Examples: `we're John, Sarah, Tom, Mary, and Anne`, `name us Adam, Beth, Carol, Dave, Eve`, `John,Sarah,Tom,Mary,Anne`
+- Priority **45**
+- Examples: `name member 3 Carol`, `the leader is Adam`, `rename party member 2 to Sarah`
 
 **Slots**:
 
 | Name | Type | Required | Default | Values | Description |
 |---|---|---|---|---|---|
-| `names` | `string` | yes |  |  | Five names for the wagon party, in order (leader first). |
+| `index` | `int` | yes |  |  | Position in the party, 1-indexed (1 = leader). |
+| `name` | `string` | yes |  |  | The new name. |
+
+### <a id="intent-name-party"></a> `name_party` — Name the party
+
+Set every party member's name in one comma-separated list.
+
+- Priority **100**
+- Examples: `name the party Adam, Beth, Carol, Daniel, Edith`, `we're Adam, Beth, Carol, Daniel, Edith`, `John,Sarah,Tom,Mary,Anne`
+
+**Slots**:
+
+| Name | Type | Required | Default | Values | Description |
+|---|---|---|---|---|---|
+| `names` | `string` | yes |  |  | Comma-separated list of party member names, leader first. |
 
 ### <a id="intent-on-failure"></a> `on_failure` — Phase failure (internal)
 
@@ -1059,8 +1229,15 @@ Sketch a basket of supplies and a total cost to put in front of Matt.
 
 | Name | Type | Required | Default | Values | Description |
 |---|---|---|---|---|---|
+| `axles` | `int` |  | `0` |  | Number of spare axles in the basket. |
+| `bullets` | `int` |  | `0` |  | Number of bullets (rounds, not boxes) in the basket. |
+| `clothing` | `int` |  | `0` |  | Number of clothing sets in the basket. |
+| `food` | `int` |  | `0` |  | Pounds of food in the basket. |
 | `items` | `string` | yes |  |  | A short freeform description of the basket (item names + counts). |
+| `oxen` | `int` |  | `0` |  | Number of yokes of oxen in the basket. |
+| `tongues` | `int` |  | `0` |  | Number of spare wagon tongues in the basket. |
 | `total_cost` | `int` | yes |  |  | Total dollar cost of the basket (already accounting for the local price multiplier). |
+| `wheels` | `int` |  | `0` |  | Number of spare wagon wheels in the basket. |
 
 ### <a id="intent-push-on"></a> `push_on` — Push on
 
@@ -1085,16 +1262,25 @@ Pick a different method or confidence — re-enters drafting.
 
 ### <a id="intent-refine-purchase"></a> `refine_purchase` — Refine the proposal
 
-Tweak the basket — change items or shrink the total. Re-enters drafting.
+Tweak fields of the current draft. Any per-item slot you supply replaces that line in the existing basket; everything you omit stays. Self-stays in reviewing so you can read the new draft and accept or refine again.
 
 - Priority **80**
-- Examples: `refine`, `edit`, `change it`, `I want 7 oxen not 6`, `less food`
+- Examples: `refine`, `I want 7 oxen not 6`, `actually 250 lbs of food`, `add 50 bullets`, `make it 4 spare wheels and bump the cost to 400`
 
 **Slots**:
 
 | Name | Type | Required | Default | Values | Description |
 |---|---|---|---|---|---|
-| `feedback` | `string` |  | `` |  | Optional feedback string captured for narrated-mode refine prompts. |
+| `axles` | `int` |  |  |  | Replacement spare-axle count. |
+| `bullets` | `int` |  |  |  | Replacement bullet count. |
+| `clothing` | `int` |  |  |  | Replacement clothing-set count. |
+| `feedback` | `string` |  | `` |  | Optional free-form note (logged for diagnostics; narrated-mode redraft will use it as a prompt hint in the future). |
+| `food` | `int` |  |  |  | Replacement food (lbs). |
+| `items` | `string` |  |  |  | Replacement description of the basket (free-form prose). |
+| `oxen` | `int` |  |  |  | Replacement oxen count. |
+| `tongues` | `int` |  |  |  | Replacement spare-tongue count. |
+| `total_cost` | `int` |  |  |  | Replacement total cost. |
+| `wheels` | `int` |  |  |  | Replacement spare-wheel count. |
 
 ### <a id="intent-rename-chat"></a> `rename_chat` — Rename a wagon-master chat
 
@@ -1157,6 +1343,13 @@ Try the failed leg again from its starting landmark.
 - Priority **50**
 - Examples: `retry`, `try again`, `go back and try`
 
+### <a id="intent-scout"></a> `scout` — Send a scout up the trail
+
+Send a scout ahead to look the trail over before the wagons press on.
+
+- Priority **80**
+- Examples: `scout`, `send a scout`, `send a rider up the trail`, `look the road over`, `what's ahead`
+
 ### <a id="intent-set-pace"></a> `set_pace` — Set the pace
 
 Change the travelling pace. Faster wears out the party; slower eats more food per mile.
@@ -1207,7 +1400,7 @@ Synthetic emit fired by the weather region on entering snow.
 
 Leave the intro and proceed to the general store at Independence.
 
-- Priority **85**
+- Priority **150**
 - Examples: `start`, `let's go`, `begin`, `start the journey`, `depart`
 
 ### <a id="intent-treat"></a> `treat` — Treat the sick
@@ -1224,11 +1417,18 @@ Camp on this bank and wait for water levels to drop.
 - Priority **60**
 - Examples: `wait`, `wait for water to drop`, `camp here`, `delay crossing`
 
+### <a id="intent-wait-for-spring"></a> `wait_for_spring` — Wait out the winter
+
+Make winter camp and wait until spring opens South Pass. Burns food while you wait.
+
+- Priority **70**
+- Examples: `wait for spring`, `wait out the winter`, `winter camp`, `wait it out`
+
 ### <a id="intent-wait-out"></a> `wait_out` — Wait it out
 
 Sit tight until the current event passes (storm, illness, encounter).
 
-- Priority **70**
+- Priority **75**
 - Examples: `wait it out`, `ride it out`, `wait`, `hold up`
 
 ### <a id="intent-weather-advance"></a> `weather_advance` — Advance the weather
@@ -1247,18 +1447,6 @@ The journey ends short of Oregon.
 
 **Shows world**: `day`, `party_alive`, `current_landmark`, `miles_traveled`
 
-**View**:
-
-```
-The journey ends short of the Willamette Valley.
-
-Last known location: {{ world.current_landmark }} ({{ world.miles_traveled }} mi into the leg).
-Day:                 {{ world.day }}
-Party:               {{ world.party_alive }} alive
-
-The trail claims another wagon party.
-```
-
 **On enter**:
 
 1. invoke `host.transport.post` with `body = "Day {{ world.day }}, {{ world.year }}. The trail claims another wagon party.\n\n**Last known location:** {{ world.current_landmark }} ({{ world.miles_traveled }} mi into the leg).\n**Survivors at the end:** {{ world.party_alive }}.\n\nMay the trail remember them.\n"`, `phase_id = "ended_lost_{{ run.id }}"`, `thread = "{{ run.id }}"`, `title = "Obituary"`, `transport = "tui"`
@@ -1268,21 +1456,6 @@ The trail claims another wagon party.
 The wagon party has reached the Willamette Valley.
 
 **Shows world**: `day`, `party_alive`, `food_lbs`, `oxen`, `money`, `profession`
-
-**View**:
-
-```
-You have reached the Willamette Valley!
-
-Day:      {{ world.day }}
-Party:    {{ world.party_alive }} survivors
-Food:     {{ world.food_lbs }} lbs remaining
-Oxen:     {{ world.oxen }}
-Cash:     ${{ world.money }}
-Profession: {{ world.profession }}
-
-The journey is over.
-```
 
 **On enter**:
 
@@ -1306,14 +1479,6 @@ Purchase complete at {{ world.current_landmark }}.
 
 **Shows world**: `money`, `food_lbs`, `oxen`, `current_landmark`
 
-**View**:
-
-```
-Resupply done. ${{ world.money }} remaining.
-
-Actions: repeat_purchase, leave_fort, look.
-```
-
 **On enter**:
 
 1. invoke `host.transport.post` with `body = "Bought {{ world.proposal_items }} from the sutler at {{ world.current_landmark }} for ${{ world.proposal_total_cost }}. ${{ world.money }} cash left, {{ world.food_lbs }} lbs food, {{ world.oxen }} oxen."`, `phase_id = "fort_done_{{ world.current_landmark }}_{{ world.proposal_items }}_{{ world.proposal_total_cost }}"`, `thread = "{{ run.id }}"`, `title = "Resupplied at {{ world.current_landmark }}"`, `transport = "tui"`
@@ -1322,66 +1487,103 @@ Actions: repeat_purchase, leave_fort, look.
 
 | # | Intent | Guard | → | Effects |
 |---|---|---|---|---|
-| 1 | [`leave_fort`](#intent-leave-fort) | `world.current_landmark == 'Fort Kearney'` | [`leg_c_executing`](#room-leg-c-executing) | set `proposal_items = ""`, `proposal_refine_count = 0`, `proposal_total_cost = 0` · say "Back on the trail, heading for Chimney Rock." |
-| 2 | [`leave_fort`](#intent-leave-fort) | `world.current_landmark == 'Fort Laramie'` | [`leg_e_executing`](#room-leg-e-executing) | set `proposal_items = ""`, `proposal_refine_count = 0`, `proposal_total_cost = 0` · say "Back on the trail, heading for South Pass." |
+| 1 | [`leave_fort`](#intent-leave-fort) | `world.current_landmark == 'Fort Kearney'` | [`leg_c_executing`](#room-leg-c-executing) | set `proposal_axles = 0`, `proposal_bullets = 0`, `proposal_clothing = 0`, `proposal_food = 0`, `proposal_items = ""`, `proposal_oxen = 0`, `proposal_refine_count = 0`, `proposal_tongues = 0`, `proposal_total_cost = 0`, `proposal_wheels = 0` · say "Back on the trail, heading for Chimney Rock." |
+| 2 | [`leave_fort`](#intent-leave-fort) | `world.current_landmark == 'Fort Laramie'` | [`leg_e_executing`](#room-leg-e-executing) | set `proposal_axles = 0`, `proposal_bullets = 0`, `proposal_clothing = 0`, `proposal_food = 0`, `proposal_items = ""`, `proposal_oxen = 0`, `proposal_refine_count = 0`, `proposal_tongues = 0`, `proposal_total_cost = 0`, `proposal_wheels = 0` · say "Back on the trail, heading for South Pass." |
 | 3 | [`leave_fort`](#intent-leave-fort) | _default_ | [`ended_lost`](#room-ended-lost) | _hint: Lost track of which fort we're in — ending the run._ |
 | 4 | [`look`](#intent-look) |  | `.` |  |
-| 5 | [`repeat_purchase`](#intent-repeat-purchase) |  | `../idle` | set `proposal_items = ""`, `proposal_refine_count = 0`, `proposal_total_cost = 0` · say "Back to the sutler for another round?" |
+| 5 | [`repeat_purchase`](#intent-repeat-purchase) |  | `../idle` | set `proposal_axles = 0`, `proposal_bullets = 0`, `proposal_clothing = 0`, `proposal_food = 0`, `proposal_items = ""`, `proposal_oxen = 0`, `proposal_refine_count = 0`, `proposal_tongues = 0`, `proposal_total_cost = 0`, `proposal_wheels = 0` · say "The sutler raises an eyebrow, doesn't look up. 'Something else?'" |
 
 ### <a id="room-fort-idle"></a> `fort.idle`
 
 At the fort sutler ({{ world.current_landmark }}).
 
-**View**:
-
-```
-{{ world.current_landmark }} — supplies marked up 50%.
-
-Cash:    ${{ world.money }}
-Food:    {{ world.food_lbs }} lbs (fort price: $0.30 / lb)
-Oxen:    {{ world.oxen }} (fort price: $60 / head)
-
-Actions:
-  - propose_purchase items=... total_cost=...   (auto-accepts <$5)
-  - leave_fort                                  (return to the trail)
-```
-
 **Transitions**:
 
 | # | Intent | Guard | → | Effects |
 |---|---|---|---|---|
-| 1 | [`leave_fort`](#intent-leave-fort) | `world.current_landmark == 'Fort Kearney'` | [`leg_c_executing`](#room-leg-c-executing) | set `proposal_items = ""`, `proposal_refine_count = 0`, `proposal_total_cost = 0` · say "Back on the trail, heading for Chimney Rock." |
-| 2 | [`leave_fort`](#intent-leave-fort) | `world.current_landmark == 'Fort Laramie'` | [`leg_e_executing`](#room-leg-e-executing) | set `proposal_items = ""`, `proposal_refine_count = 0`, `proposal_total_cost = 0` · say "Back on the trail, heading for South Pass." |
+| 1 | [`leave_fort`](#intent-leave-fort) | `world.current_landmark == 'Fort Kearney'` | [`leg_c_executing`](#room-leg-c-executing) | set `proposal_axles = 0`, `proposal_bullets = 0`, `proposal_clothing = 0`, `proposal_food = 0`, `proposal_items = ""`, `proposal_oxen = 0`, `proposal_refine_count = 0`, `proposal_tongues = 0`, `proposal_total_cost = 0`, `proposal_wheels = 0` · say "Back on the trail, heading for Chimney Rock." |
+| 2 | [`leave_fort`](#intent-leave-fort) | `world.current_landmark == 'Fort Laramie'` | [`leg_e_executing`](#room-leg-e-executing) | set `proposal_axles = 0`, `proposal_bullets = 0`, `proposal_clothing = 0`, `proposal_food = 0`, `proposal_items = ""`, `proposal_oxen = 0`, `proposal_refine_count = 0`, `proposal_tongues = 0`, `proposal_total_cost = 0`, `proposal_wheels = 0` · say "Back on the trail, heading for South Pass." |
 | 3 | [`leave_fort`](#intent-leave-fort) | _default_ | [`ended_lost`](#room-ended-lost) | _hint: Lost track of which fort we're in — ending the run._ |
 | 4 | [`look`](#intent-look) |  | `.` |  |
-| 5 | [`propose_purchase`](#intent-propose-purchase) | `int(slots.total_cost) < 5 && world.money >= int(slots.total_cost)` | `../done` | set `food_lbs = "{{ world.food_lbs + int(slots.total_cost) }}"`, `money = "{{ world.money - int(slots.total_cost) }}"`, `proposal_items = "{{ slots.items }}"`, `proposal_refine_count = 0`, `proposal_total_cost = "{{ int(slots.total_cost) }}"` · say "Auto-accepted: {{ slots.items }} for ${{ slots.total_cost }}." |
-| 6 | [`propose_purchase`](#intent-propose-purchase) | `world.money >= int(slots.total_cost)` | `../reviewing` | set `proposal_items = "{{ slots.items }}"`, `proposal_refine_count = 0`, `proposal_total_cost = "{{ int(slots.total_cost) }}"` · say "Drafted: {{ slots.items }} at fort prices for ${{ slots.total_cost }}." |
+| 5 | [`propose_purchase`](#intent-propose-purchase) | `int(slots.total_cost) < 5 && world.money >= int(slots.total_cost)` | `../done` | set `bullets = "{{ world.bullets + int(slots.bullets ?? 0) }}"`, `clothing_sets = "{{ world.clothing_sets + int(slots.clothing ?? 0) }}"`, `food_lbs = "{{ world.food_lbs + int(slots.food ?? 0) }}"`, `money = "{{ world.money - int(slots.total_cost) }}"`, `oxen = "{{ world.oxen + int(slots.oxen ?? 0) }}"`, `proposal_axles = "{{ int(slots.axles ?? 0) }}"`, `proposal_bullets = "{{ int(slots.bullets ?? 0) }}"`, `proposal_clothing = "{{ int(slots.clothing ?? 0) }}"`, `proposal_food = "{{ int(slots.food ?? 0) }}"`, `proposal_items = "{{ slots.items }}"`, `proposal_oxen = "{{ int(slots.oxen ?? 0) }}"`, `proposal_refine_count = 0`, `proposal_tongues = "{{ int(slots.tongues ?? 0) }}"`, `proposal_total_cost = "{{ int(slots.total_cost) }}"`, `proposal_wheels = "{{ int(slots.wheels ?? 0) }}"`, `spare_axles = "{{ world.spare_axles + int(slots.axles ?? 0) }}"`, `spare_tongues = "{{ world.spare_tongues + int(slots.tongues ?? 0) }}"`, `spare_wheels = "{{ world.spare_wheels + int(slots.wheels ?? 0) }}"` · say "The sutler grunts, tosses a tin onto the counter — {{ slots.items }} — and palms the ${{ slots.total_cost }}." |
+| 6 | [`propose_purchase`](#intent-propose-purchase) | `world.money >= int(slots.total_cost)` | `../reviewing` | set `proposal_axles = "{{ int(slots.axles ?? 0) }}"`, `proposal_bullets = "{{ int(slots.bullets ?? 0) }}"`, `proposal_clothing = "{{ int(slots.clothing ?? 0) }}"`, `proposal_food = "{{ int(slots.food ?? 0) }}"`, `proposal_items = "{{ slots.items }}"`, `proposal_oxen = "{{ int(slots.oxen ?? 0) }}"`, `proposal_refine_count = 0`, `proposal_tongues = "{{ int(slots.tongues ?? 0) }}"`, `proposal_total_cost = "{{ int(slots.total_cost) }}"`, `proposal_wheels = "{{ int(slots.wheels ?? 0) }}"` · say "The sutler chalks it on the board behind him. '{{ slots.items }}. Fort price — ${{ slots.total_cost }}. Take it or leave it.'" |
 | 7 | [`propose_purchase`](#intent-propose-purchase) | _default_ | `.` | _hint: Not enough cash at fort prices._ · say "The sutler shrugs. 'You haven't got the coin, traveller.'" |
 
 ### <a id="room-fort-reviewing"></a> `fort.reviewing`
 
-Reviewing the fort purchase draft.
+The sutler reads the order back.
 
 **Shows world**: `proposal_items`, `proposal_total_cost`, `money`, `proposal_refine_count`, `current_landmark`
-
-**View**:
-
-```
-Sutler at {{ world.current_landmark }} reads back: {{ world.proposal_items }}
-for ${{ world.proposal_total_cost }}.
-(Cash on hand: ${{ world.money }}.)
-
-Actions: accept_purchase, refine_purchase, cancel_purchase, look.
-```
 
 **Transitions**:
 
 | # | Intent | Guard | → | Effects |
 |---|---|---|---|---|
-| 1 | [`accept_purchase`](#intent-accept-purchase) |  | `../done` | set `food_lbs = "{{ world.food_lbs + int((world.proposal_total_cost - int(world.proposal_total_cost / 2 / 60) * 60) * 10 / 3) }}"`, `money = "{{ world.money - world.proposal_total_cost }}"`, `oxen = "{{ world.oxen + int(world.proposal_total_cost / 2 / 60) }}"` · say "Wagon resupplied at {{ world.current_landmark }}. ${{ world.money }} left." |
-| 2 | [`cancel_purchase`](#intent-cancel-purchase) |  | `../idle` | set `proposal_items = ""`, `proposal_refine_count = 0`, `proposal_total_cost = 0` · say "Cancelled." |
+| 1 | [`accept_purchase`](#intent-accept-purchase) |  | `../done` | set `bullets = "{{ world.bullets + world.proposal_bullets }}"`, `clothing_sets = "{{ world.clothing_sets + world.proposal_clothing }}"`, `food_lbs = "{{ world.food_lbs + world.proposal_food }}"`, `money = "{{ world.money - world.proposal_total_cost }}"`, `oxen = "{{ world.oxen + world.proposal_oxen }}"`, `spare_axles = "{{ world.spare_axles + world.proposal_axles }}"`, `spare_tongues = "{{ world.spare_tongues + world.proposal_tongues }}"`, `spare_wheels = "{{ world.spare_wheels + world.proposal_wheels }}"` · say "The sutler swipes the coins off the counter and pushes the goods at you with the back of his hand. 'Done. {{ world.proposal_items }}. ${{ world.money }} left in your purse — and you'll need it before Oregon.'" |
+| 2 | [`cancel_purchase`](#intent-cancel-purchase) |  | `../idle` | set `proposal_axles = 0`, `proposal_bullets = 0`, `proposal_clothing = 0`, `proposal_food = 0`, `proposal_items = ""`, `proposal_oxen = 0`, `proposal_refine_count = 0`, `proposal_tongues = 0`, `proposal_total_cost = 0`, `proposal_wheels = 0` · say "The sutler erases the board with a damp rag, scowls. 'Suit yourself.'" |
 | 3 | [`look`](#intent-look) |  | `.` |  |
-| 4 | [`refine_purchase`](#intent-refine-purchase) |  | `../idle` | set `proposal_refine_count = "{{ world.proposal_refine_count + 1 }}"` · say "Reconsidering. (refine #{{ world.proposal_refine_count }})" |
+| 4 | [`refine_purchase`](#intent-refine-purchase) |  | `../reviewing` | set `proposal_axles = "{{ int(slots.axles    ?? world.proposal_axles) }}"`, `proposal_bullets = "{{ int(slots.bullets  ?? world.proposal_bullets) }}"`, `proposal_clothing = "{{ int(slots.clothing ?? world.proposal_clothing) }}"`, `proposal_food = "{{ int(slots.food     ?? world.proposal_food) }}"`, `proposal_items = "{{ slots.items ?? world.proposal_items }}"`, `proposal_oxen = "{{ int(slots.oxen     ?? world.proposal_oxen) }}"`, `proposal_refine_count = "{{ world.proposal_refine_count + 1 }}"`, `proposal_tongues = "{{ int(slots.tongues  ?? world.proposal_tongues) }}"`, `proposal_total_cost = "{{ int(slots.total_cost ?? world.proposal_total_cost) }}"`, `proposal_wheels = "{{ int(slots.wheels   ?? world.proposal_wheels) }}"` · say "The sutler rubs out a line of chalk and writes the new one. 'That's the order then. Same fort price.' (revision {{ world.proposal_refine_count }})" |
+
+### <a id="room-frontier"></a> `frontier`  _(compound)_
+
+**Initial child**: `scouting`
+
+**On enter**:
+
+1. set `frontier__party_alive = "{{ world.party_alive }}"`
+2. set `frontier__party_money = "{{ world.money }}"`
+3. set `frontier__scouting_intel = "{{ world.current_landmark }} country — open prairie ahead."`
+4. set `frontier__threat_level = "{{ world.miles_traveled < 500 ? 1 : (world.miles_traveled < 1200 ? 2 : 3) }}"`
+
+### <a id="room-frontier-bandits"></a> `frontier.bandits`  _(compound)_
+
+**Initial child**: `encounter`
+
+**On enter**:
+
+1. set `frontier__bandits__party_alive = "{{ world.frontier__party_alive }}"`
+2. set `frontier__bandits__party_food_lbs = "0"`
+3. set `frontier__bandits__party_money = "{{ world.frontier__party_money }}"`
+4. set `frontier__bandits__threat_level = "{{ world.frontier__threat_level }}"`
+
+### <a id="room-frontier-bandits-encounter"></a> `frontier.bandits.encounter`
+
+A masked rider blocks the trail.
+
+**Shows world**: `frontier__bandits__party_money`, `frontier__bandits__party_alive`, `frontier__bandits__threat_level`
+
+**On enter**:
+
+1. invoke `host.run.announce` with `cmd = "true # bandit shows up, threat={{ world.frontier__bandits__threat_level }}"`, `prompt = "prompts/encounter_intro.md"`
+
+**Transitions**:
+
+| # | Intent | Guard | → | Effects |
+|---|---|---|---|---|
+| 1 | [`frontier__bandits__fight`](#intent-frontier--bandits--fight) | `world.frontier__bandits__party_alive >= 2 + world.frontier__bandits__threat_level` | [`robbery_aftermath`](#room-robbery-aftermath) | set `frontier__bandits__outcome = "routed"` · invoke `host.run.close` with `cmd = "true # routed"` · set `frontier__encounter_kind = "routed"` · set `last_event = "bandit_resolved"`, `money = "{{ world.money - world.frontier__paid_amount }}"` |
+| 2 | [`frontier__bandits__fight`](#intent-frontier--bandits--fight) | _default_ | [`robbery_aftermath`](#room-robbery-aftermath) | set `frontier__bandits__member_lost = true`, `frontier__bandits__outcome = "killed"` · invoke `host.run.close` with `cmd = "true # killed"` · set `frontier__encounter_kind = "killed"`, `frontier__member_lost = true` · set `last_event = "bandit_killed_member"`, `party_alive = "{{ world.party_alive - 1 }}"` |
+| 3 | [`frontier__bandits__flee`](#intent-frontier--bandits--flee) |  | [`robbery_aftermath`](#room-robbery-aftermath) | set `frontier__bandits__outcome = "fled"` · invoke `host.run.close` with `cmd = "true # fled"` · set `frontier__encounter_kind = "fled"` · set `last_event = "bandit_fled"` |
+| 4 | [`frontier__bandits__look`](#intent-frontier--bandits--look) |  | `.` |  |
+| 5 | [`frontier__bandits__pay`](#intent-frontier--bandits--pay) | `world.frontier__bandits__party_money >= world.frontier__bandits__threat_level * 50` | [`robbery_aftermath`](#room-robbery-aftermath) | set `frontier__bandits__outcome = "paid"`, `frontier__bandits__paid_amount = "{{ world.frontier__bandits__threat_level * 50 }}"` · invoke `host.run.close` with `cmd = "true # paid {{ world.frontier__bandits__threat_level * 50 }}"` · set `frontier__encounter_kind = "paid"`, `frontier__paid_amount = "{{ world.frontier__bandits__paid_amount }}"` · set `last_event = "bandit_resolved"`, `money = "{{ world.money - world.frontier__paid_amount }}"` |
+| 6 | [`frontier__bandits__pay`](#intent-frontier--bandits--pay) | _default_ | `.` | _hint: Not enough money to buy them off._ |
+
+### <a id="room-frontier-scouting"></a> `frontier.scouting`
+
+A scout rides ahead to look the trail over.
+
+**Shows world**: `frontier__party_alive`, `frontier__party_money`, `frontier__threat_level`, `frontier__scouting_intel`, `frontier__scout_finding`
+
+**On enter**:
+
+1. invoke `host.run.announce` with `cmd = "true # trail-flavoured scouting"`, `prompt = "/home/cloud-user/code/kitsoki/.worktrees/view-elements-proposal/stories/oregon-trail/prompts/scout_brief_trail.md"`
+
+**Transitions**:
+
+| # | Intent | Guard | → | Effects |
+|---|---|---|---|---|
+| 1 | [`frontier__look`](#intent-frontier--look) |  | `.` |  |
+| 2 | [`frontier__proceed`](#intent-frontier--proceed) |  | `../bandits` |  |
+| 3 | [`frontier__scout`](#intent-frontier--scout) |  | `.` | set `frontier__scout_finding = "Dust on the rise; riders in oilcloth, by the look of them."` |
 
 ### <a id="room-general-store"></a> `general_store`  _(compound)_
 
@@ -1401,14 +1603,6 @@ Purchase complete.
 
 **Shows world**: `proposal_items`, `proposal_total_cost`, `money`, `oxen`, `food_lbs`
 
-**View**:
-
-```
-{{ world.proposal_items }} loaded onto the wagon. ${{ world.money }} remaining.
-
-Actions: repeat_purchase, leave_store, look.
-```
-
 **On enter**:
 
 1. invoke `host.transport.post` with `body = "Bought {{ world.proposal_items }} for ${{ world.proposal_total_cost }} at Matt's. ${{ world.money }} cash on hand, {{ world.oxen }} oxen yoked, {{ world.food_lbs }} lbs of food in the wagon."`, `phase_id = "general_store_done_{{ world.proposal_items }}_{{ world.proposal_total_cost }}"`, `thread = "{{ run.id }}"`, `title = "Wagon loaded at Independence"`, `transport = "tui"`
@@ -1417,70 +1611,40 @@ Actions: repeat_purchase, leave_store, look.
 
 | # | Intent | Guard | → | Effects |
 |---|---|---|---|---|
-| 1 | [`leave_store`](#intent-leave-store) | `world.oxen >= 2 && world.food_lbs >= 200` | [`leg_a_executing`](#room-leg-a-executing) | set `proposal_items = ""`, `proposal_refine_count = 0`, `proposal_total_cost = 0` · say "Wagon's loaded. Off to Oregon!" |
+| 1 | [`leave_store`](#intent-leave-store) | `world.oxen >= 2 && world.food_lbs >= 200` | [`leg_a_executing`](#room-leg-a-executing) | set `proposal_axles = 0`, `proposal_bullets = 0`, `proposal_clothing = 0`, `proposal_food = 0`, `proposal_items = ""`, `proposal_oxen = 0`, `proposal_refine_count = 0`, `proposal_tongues = 0`, `proposal_total_cost = 0`, `proposal_wheels = 0` · say "Matt walks out from behind the counter, claps the lead ox on the shoulder, and waves the wagon onto the road west. 'Mind the river bottoms.'" |
 | 2 | [`leave_store`](#intent-leave-store) | _default_ | `../idle` | _hint: Still need 2 oxen and 200 lbs food before leaving._ · say "Matt eyes your wagon. 'Need more before you go.'" |
 | 3 | [`look`](#intent-look) |  | `.` |  |
-| 4 | [`repeat_purchase`](#intent-repeat-purchase) |  | `../idle` | set `proposal_items = ""`, `proposal_refine_count = 0`, `proposal_total_cost = 0` · say "Another purchase, then?" |
+| 4 | [`repeat_purchase`](#intent-repeat-purchase) |  | `../idle` | set `proposal_axles = 0`, `proposal_bullets = 0`, `proposal_clothing = 0`, `proposal_food = 0`, `proposal_items = ""`, `proposal_oxen = 0`, `proposal_refine_count = 0`, `proposal_tongues = 0`, `proposal_total_cost = 0`, `proposal_wheels = 0` · say "Matt pulls a fresh leaf of paper off the spike. 'Right then — what else are we writing down?'" |
 
 ### <a id="room-general-store-idle"></a> `general_store.idle`
 
 At Matt's counter — propose a purchase or leave.
 
-**View**:
-
-```
-Matt's General Store. Stock up before you head out — once you
-leave Independence there's no road back, only forts with markup.
-
-Cash:      ${{ world.money }}
-Oxen:      {{ world.oxen }}    ($40 / yoke)
-Food:      {{ world.food_lbs }} lbs  ($0.20 / lb)
-Bullets:   {{ world.bullets }}    ($2.00 / box of 20)
-Clothing:  {{ world.clothing_sets }}  ($10.00 / set)
-Spare wheels:  {{ world.spare_wheels }}  ($10.00 each)
-Spare axles:   {{ world.spare_axles }}   ($10.00 each)
-Spare tongues: {{ world.spare_tongues }} ($10.00 each)
-
-Actions:
-  - propose_purchase items=... total_cost=...
-    (auto-accepts when total_cost < $5; otherwise review/refine)
-  - leave the store          (requires >= 2 oxen and >= 200 lbs food)
-```
-
 **Transitions**:
 
 | # | Intent | Guard | → | Effects |
 |---|---|---|---|---|
-| 1 | [`leave_store`](#intent-leave-store) | `world.oxen >= 2 && world.food_lbs >= 200` | [`leg_a_executing`](#room-leg-a-executing) | set `proposal_items = ""`, `proposal_refine_count = 0`, `proposal_total_cost = 0` · say "Wagon's loaded. Off to Oregon!" |
+| 1 | [`leave_store`](#intent-leave-store) | `world.oxen >= 2 && world.food_lbs >= 200` | [`leg_a_executing`](#room-leg-a-executing) | set `proposal_axles = 0`, `proposal_bullets = 0`, `proposal_clothing = 0`, `proposal_food = 0`, `proposal_items = ""`, `proposal_oxen = 0`, `proposal_refine_count = 0`, `proposal_tongues = 0`, `proposal_total_cost = 0`, `proposal_wheels = 0` · say "Matt walks out from behind the counter, claps the lead ox on the shoulder, and waves the wagon onto the road west. 'Mind the river bottoms.'" |
 | 2 | [`leave_store`](#intent-leave-store) | _default_ | `.` | _hint: Need at least 2 oxen and 200 lbs of food before leaving._ · say "Matt eyes your wagon. 'You won't make it to Kansas with that load — at least 2 oxen and 200 lbs of food.'" |
 | 3 | [`look`](#intent-look) |  | `.` |  |
-| 4 | [`propose_purchase`](#intent-propose-purchase) | `int(slots.total_cost) < 5 && world.money >= int(slots.total_cost)` | `../done` | set `food_lbs = "{{ world.food_lbs + int(slots.total_cost) }}"`, `money = "{{ world.money - int(slots.total_cost) }}"`, `proposal_items = "{{ slots.items }}"`, `proposal_refine_count = 0`, `proposal_total_cost = "{{ int(slots.total_cost) }}"` · say "Auto-accepted: {{ slots.items }} (cost ${{ slots.total_cost }})." |
-| 5 | [`propose_purchase`](#intent-propose-purchase) | `world.money >= int(slots.total_cost)` | `../reviewing` | set `proposal_items = "{{ slots.items }}"`, `proposal_refine_count = 0`, `proposal_total_cost = "{{ int(slots.total_cost) }}"` · say "Drafting: {{ slots.items }} for ${{ slots.total_cost }}. Confirm?" |
+| 4 | [`propose_purchase`](#intent-propose-purchase) | `int(slots.total_cost) < 5 && world.money >= int(slots.total_cost)` | `../done` | set `bullets = "{{ world.bullets + int(slots.bullets ?? 0) }}"`, `clothing_sets = "{{ world.clothing_sets + int(slots.clothing ?? 0) }}"`, `food_lbs = "{{ world.food_lbs + int(slots.food ?? 0) }}"`, `money = "{{ world.money - int(slots.total_cost) }}"`, `oxen = "{{ world.oxen + int(slots.oxen ?? 0) }}"`, `proposal_axles = "{{ int(slots.axles ?? 0) }}"`, `proposal_bullets = "{{ int(slots.bullets ?? 0) }}"`, `proposal_clothing = "{{ int(slots.clothing ?? 0) }}"`, `proposal_food = "{{ int(slots.food ?? 0) }}"`, `proposal_items = "{{ slots.items }}"`, `proposal_oxen = "{{ int(slots.oxen ?? 0) }}"`, `proposal_refine_count = 0`, `proposal_tongues = "{{ int(slots.tongues ?? 0) }}"`, `proposal_total_cost = "{{ int(slots.total_cost) }}"`, `proposal_wheels = "{{ int(slots.wheels ?? 0) }}"`, `spare_axles = "{{ world.spare_axles + int(slots.axles ?? 0) }}"`, `spare_tongues = "{{ world.spare_tongues + int(slots.tongues ?? 0) }}"`, `spare_wheels = "{{ world.spare_wheels + int(slots.wheels ?? 0) }}"` · say "Matt rings it up without a word — {{ slots.items }}, ${{ slots.total_cost }}. Hands it across the counter." |
+| 5 | [`propose_purchase`](#intent-propose-purchase) | `world.money >= int(slots.total_cost)` | `../reviewing` | set `proposal_axles = "{{ int(slots.axles ?? 0) }}"`, `proposal_bullets = "{{ int(slots.bullets ?? 0) }}"`, `proposal_clothing = "{{ int(slots.clothing ?? 0) }}"`, `proposal_food = "{{ int(slots.food ?? 0) }}"`, `proposal_items = "{{ slots.items }}"`, `proposal_oxen = "{{ int(slots.oxen ?? 0) }}"`, `proposal_refine_count = 0`, `proposal_tongues = "{{ int(slots.tongues ?? 0) }}"`, `proposal_total_cost = "{{ int(slots.total_cost) }}"`, `proposal_wheels = "{{ int(slots.wheels ?? 0) }}"` · say "Matt licks his pencil and writes it down. 'So that's {{ slots.items }} — comes to ${{ slots.total_cost }}. Speak up if I've got it wrong.'" |
 | 6 | [`propose_purchase`](#intent-propose-purchase) | _default_ | `.` | _hint: Not enough cash for that basket._ · say "Matt shakes his head. 'You haven't got the money for that, friend.'" |
 
 ### <a id="room-general-store-reviewing"></a> `general_store.reviewing`
 
-Reviewing the draft purchase.
+Matt reads back the order.
 
 **Shows world**: `proposal_items`, `proposal_total_cost`, `money`, `proposal_refine_count`
-
-**View**:
-
-```
-Confirm purchase: {{ world.proposal_items }} for ${{ world.proposal_total_cost }}?
-(Cash on hand: ${{ world.money }}.)
-
-Actions: accept_purchase, refine_purchase, cancel_purchase, look.
-```
 
 **Transitions**:
 
 | # | Intent | Guard | → | Effects |
 |---|---|---|---|---|
-| 1 | [`accept_purchase`](#intent-accept-purchase) |  | `../done` | set `food_lbs = "{{ world.food_lbs + int((world.proposal_total_cost - int(world.proposal_total_cost / 2 / 40) * 40) * 5) }}"`, `money = "{{ world.money - world.proposal_total_cost }}"`, `oxen = "{{ world.oxen + int(world.proposal_total_cost / 2 / 40) }}"` · say "Wagon loaded with {{ world.proposal_items }}. ${{ world.money }} remaining." |
-| 2 | [`cancel_purchase`](#intent-cancel-purchase) |  | `../idle` | set `proposal_items = ""`, `proposal_refine_count = 0`, `proposal_total_cost = 0` · say "Cancelled. Matt nods and steps back." |
+| 1 | [`accept_purchase`](#intent-accept-purchase) |  | `../done` | set `bullets = "{{ world.bullets + world.proposal_bullets }}"`, `clothing_sets = "{{ world.clothing_sets + world.proposal_clothing }}"`, `food_lbs = "{{ world.food_lbs + world.proposal_food }}"`, `money = "{{ world.money - world.proposal_total_cost }}"`, `oxen = "{{ world.oxen + world.proposal_oxen }}"`, `spare_axles = "{{ world.spare_axles + world.proposal_axles }}"`, `spare_tongues = "{{ world.spare_tongues + world.proposal_tongues }}"`, `spare_wheels = "{{ world.spare_wheels + world.proposal_wheels }}"` · say "Matt totals the slate and dusts his hands on his apron. 'Obliged for the ${{ world.proposal_total_cost }}. {{ world.proposal_items }} — all yours.' He nudges the parcel across." |
+| 2 | [`cancel_purchase`](#intent-cancel-purchase) |  | `../idle` | set `proposal_axles = 0`, `proposal_bullets = 0`, `proposal_clothing = 0`, `proposal_food = 0`, `proposal_items = ""`, `proposal_oxen = 0`, `proposal_refine_count = 0`, `proposal_tongues = 0`, `proposal_total_cost = 0`, `proposal_wheels = 0` · say "Matt nods, drops the slate under the counter, and goes back to sorting nails. 'Take your time.'" |
 | 3 | [`look`](#intent-look) |  | `.` |  |
-| 4 | [`refine_purchase`](#intent-refine-purchase) |  | `../idle` | set `proposal_refine_count = "{{ world.proposal_refine_count + 1 }}"` · say "Back to drafting. (refine #{{ world.proposal_refine_count }})" |
+| 4 | [`refine_purchase`](#intent-refine-purchase) |  | `../reviewing` | set `proposal_axles = "{{ int(slots.axles    ?? world.proposal_axles) }}"`, `proposal_bullets = "{{ int(slots.bullets  ?? world.proposal_bullets) }}"`, `proposal_clothing = "{{ int(slots.clothing ?? world.proposal_clothing) }}"`, `proposal_food = "{{ int(slots.food     ?? world.proposal_food) }}"`, `proposal_items = "{{ slots.items ?? world.proposal_items }}"`, `proposal_oxen = "{{ int(slots.oxen     ?? world.proposal_oxen) }}"`, `proposal_refine_count = "{{ world.proposal_refine_count + 1 }}"`, `proposal_tongues = "{{ int(slots.tongues  ?? world.proposal_tongues) }}"`, `proposal_total_cost = "{{ int(slots.total_cost ?? world.proposal_total_cost) }}"`, `proposal_wheels = "{{ int(slots.wheels   ?? world.proposal_wheels) }}"` · say "Matt licks his pencil, scratches out the line, writes the new one. 'Reckon that better suits you?' (revision {{ world.proposal_refine_count }})" |
 
 ### <a id="room-hunt"></a> `hunt`  _(compound)_
 
@@ -1499,16 +1663,6 @@ Hunting expedition.
 Hunting party returned.
 
 **Shows world**: `last_hunt_lbs`, `last_hunt_target`, `last_hunt_outcome`, `food_lbs`, `bullets`, `current_landmark`
-
-**View**:
-
-```
-Brought back {{ world.last_hunt_lbs }} lbs of {{ world.last_hunt_target }}.
-
-Food on hand: {{ world.food_lbs }} lbs. Bullets remaining: {{ world.bullets }}.
-
-Actions: continue (return to {{ world.current_landmark }}), look.
-```
 
 **Transitions**:
 
@@ -1530,15 +1684,6 @@ Choosing how many bullets to spend.
 
 **Shows world**: `bullets`, `food_lbs`, `month`, `current_landmark`
 
-**View**:
-
-```
-Hunting near {{ world.current_landmark }} ({{ world.month }}).
-You have {{ world.bullets }} bullets and {{ world.food_lbs }} lbs of food.
-
-Actions: shoot bullets=<n>, check_inbox, look.
-```
-
 **Transitions**:
 
 | # | Intent | Guard | → | Effects |
@@ -1553,15 +1698,6 @@ Actions: shoot bullets=<n>, check_inbox, look.
 Hunting party is out.
 
 **Shows world**: `last_job_id`, `pending_bullet_spend`, `current_landmark`, `last_hunt_outcome`
-
-**View**:
-
-```
-The hunting party is out near {{ world.current_landmark }}.
-(Job {{ world.last_job_id }} running. Spent {{ world.pending_bullet_spend }} bullets.)
-
-Actions: check_inbox, look.
-```
 
 **On enter**:
 
@@ -1584,20 +1720,6 @@ Inbox — pending background-job notifications.
 
 **Shows world**: `inbox_unread`, `last_job_id`, `last_hunt_target`, `last_hunt_lbs`, `last_hunt_outcome`, `last_job_originating_state`
 
-**View**:
-
-```
-Inbox ({{ world.inbox_unread }} unread).
-
-Last job: {{ world.last_job_id }}
-{{ if world.last_hunt_outcome }}Hunt result: {{ world.last_hunt_lbs }} lbs of {{ world.last_hunt_target }} ({{ world.last_hunt_outcome }}).{{ end }}
-
-Actions:
-  - answer_clarification job_id=... answer=...   (resolve a paused job)
-  - open_job job_id=...                          (teleport back to the originating room)
-  - look
-```
-
 **Transitions**:
 
 | # | Intent | Guard | → | Effects |
@@ -1610,86 +1732,64 @@ Actions:
 
 Independence, Missouri — preparing to leave for Oregon.
 
-**Shows world**: `party_names`, `profession`, `month`
-
-**View**:
-
-```
-It is {{ world.month }}, {{ world.year }}. You are in Independence, Missouri,
-preparing to lead a wagon party of five to the Willamette Valley in Oregon.
-
-Party:      {{ if world.party_names == "" }}(no names yet){{ else }}{{ world.party_names }}{{ end }}
-Profession: {{ world.profession }}
-Departure:  {{ world.month }}
-
-Choose:
-  - name the party
-  - pick a profession (banker / carpenter / farmer)
-  - pick a departure month (march / april / may / june / july)
-  - start the journey  (requires party named + profession picked + month picked)
-```
+**Shows world**: `party_names`, `party_size`, `party_member_1`, `party_member_2`, `party_member_3`, `party_member_4`, `party_member_5`, `profession`, `month`
 
 **Transitions**:
 
 | # | Intent | Guard | → | Effects |
 |---|---|---|---|---|
-| 1 | [`look`](#intent-look) |  | [`intro`](#room-intro) |  |
-| 2 | [`name_party`](#intent-name-party) |  | [`intro`](#room-intro) | set `party_names = "{{ slots.names }}"` · say "Party named: {{ slots.names }}." |
-| 3 | [`pick_month`](#intent-pick-month) |  | [`intro`](#room-intro) | set `month = "{{ slots.month }}"` · say "Departure month set to {{ slots.month }}." |
-| 4 | [`pick_profession`](#intent-pick-profession) |  | [`intro`](#room-intro) | set `money = "{{ slots.profession == 'banker' ? 1600 : (slots.profession == 'carpenter' ? 800 : 400) }}"`, `profession = "{{ slots.profession }}"` · say "Profession set to {{ slots.profession }}; starting cash ${{ world.money }}." |
-| 5 | [`start_journey`](#intent-start-journey) | `world.party_names != '' && world.profession != '' && world.month != ''` | [`general_store`](#room-general-store) | say "Wagon's hitched. Off to the general store." |
-| 6 | [`start_journey`](#intent-start-journey) | _default_ | [`intro`](#room-intro) | _hint: Name the party, pick a profession, and pick a month before you can leave._ · say "Not ready yet — name the party, pick a profession, and pick a departure month first." |
+| 1 | [`generate_names`](#intent-generate-names) | `world.narration` | [`intro`](#room-intro) | invoke `host.oracle.ask` with `agent = "party_namer"`, `args = map[theme:{{ slots.theme }}]`, `prompt_path = "prompts/name_party.md"`, bind `party_names ← stdout` · set `party_member_1 = "{{ trim(split(world.party_names, \",\")[0]) }}"`, `party_member_2 = "{{ trim(split(world.party_names, \",\")[1]) }}"`, `party_member_3 = "{{ trim(split(world.party_names, \",\")[2]) }}"`, `party_member_4 = "{{ trim(split(world.party_names, \",\")[3]) }}"`, `party_member_5 = "{{ trim(split(world.party_names, \",\")[4]) }}"` · say "Named the wagon party from theme: {{ slots.theme }}." |
+| 2 | [`generate_names`](#intent-generate-names) | _default_ | [`intro`](#room-intro) | set `party_names = "{{ hasPrefix(lower(slots.theme), \"west\") ? \"Hank,Jesse,Mary,Ezra,Sarah\" : (hasPrefix(lower(slots.theme), \"star wars\") ? \"Luke,Leia,Han,Chewie,Yoda\" : (hasPrefix(lower(slots.theme), \"norse\") ? \"Erik,Helga,Thor,Sigrid,Bjorn\" : (hasPrefix(lower(slots.theme), \"lord of the rings\") ? \"Frodo,Sam,Merry,Pippin,Bilbo\" : \"Adam,Beth,Carol,Daniel,Edith\"))) }}"` · set `party_member_1 = "{{ trim(split(world.party_names, \",\")[0]) }}"`, `party_member_2 = "{{ trim(split(world.party_names, \",\")[1]) }}"`, `party_member_3 = "{{ trim(split(world.party_names, \",\")[2]) }}"`, `party_member_4 = "{{ trim(split(world.party_names, \",\")[3]) }}"`, `party_member_5 = "{{ trim(split(world.party_names, \",\")[4]) }}"` · say "Named the wagon party from theme: {{ slots.theme }} → {{ world.party_names }}." |
+| 3 | [`look`](#intent-look) |  | [`intro`](#room-intro) |  |
+| 4 | [`name_member`](#intent-name-member) | `slots.index == 1` | [`intro`](#room-intro) | set `party_member_1 = "{{ slots.name }}"` · say "Member 1 (leader) named {{ slots.name }}." |
+| 5 | [`name_member`](#intent-name-member) | `slots.index == 2` | [`intro`](#room-intro) | set `party_member_2 = "{{ slots.name }}"` · say "Member 2 named {{ slots.name }}." |
+| 6 | [`name_member`](#intent-name-member) | `slots.index == 3` | [`intro`](#room-intro) | set `party_member_3 = "{{ slots.name }}"` · say "Member 3 named {{ slots.name }}." |
+| 7 | [`name_member`](#intent-name-member) | `slots.index == 4` | [`intro`](#room-intro) | set `party_member_4 = "{{ slots.name }}"` · say "Member 4 named {{ slots.name }}." |
+| 8 | [`name_member`](#intent-name-member) | `slots.index == 5` | [`intro`](#room-intro) | set `party_member_5 = "{{ slots.name }}"` · say "Member 5 named {{ slots.name }}." |
+| 9 | [`name_member`](#intent-name-member) | _default_ | [`intro`](#room-intro) | _hint: Index must be 1..{{ world.party_size }}._ · say "Index {{ slots.index }} is out of range — pick 1..{{ world.party_size }}." |
+| 10 | [`name_party`](#intent-name-party) |  | [`intro`](#room-intro) | set `party_member_1 = "{{ trim(split(slots.names, \",\")[0]) }}"`, `party_member_2 = "{{ trim(split(slots.names, \",\")[1]) }}"`, `party_member_3 = "{{ trim(split(slots.names, \",\")[2]) }}"`, `party_member_4 = "{{ trim(split(slots.names, \",\")[3]) }}"`, `party_member_5 = "{{ trim(split(slots.names, \",\")[4]) }}"`, `party_names = "{{ slots.names }}"` · say "Party named: {{ slots.names }}." |
+| 11 | [`pick_month`](#intent-pick-month) |  | [`intro`](#room-intro) | set `month = "{{ slots.month }}"` · say "Departure month set to {{ slots.month }}." |
+| 12 | [`pick_profession`](#intent-pick-profession) |  | [`intro`](#room-intro) | set `money = "{{ slots.profession == 'banker' ? 1600 : (slots.profession == 'carpenter' ? 800 : 400) }}"`, `profession = "{{ slots.profession }}"` · say "Profession set to {{ slots.profession }}; starting cash ${{ world.money }}." |
+| 13 | [`start_journey`](#intent-start-journey) | `world.party_names != '' && world.profession != nil && world.month != nil` | [`general_store`](#room-general-store) | say "Wagon's hitched. Off to the general store." |
+| 14 | [`start_journey`](#intent-start-journey) | _default_ | [`intro`](#room-intro) | _hint: Name the party, pick a profession, and pick a month before you can leave._ · say "Not ready yet — name the party, pick a profession, and pick a departure month first." |
 
 ### <a id="room-leg-a-awaiting-reply"></a> `leg_a_awaiting_reply`
 
 Arrived at Kansas River Crossing (prairie).
 
-**Shows world**: `day`, `miles_traveled`, `food_lbs`, `oxen`, `party_alive`, `health_avg`, `last_landmark_prose`
-
-**View**:
-
-```
-Arrived at Kansas River Crossing (prairie).
-
-Day:    {{ world.day }}
-Food:   {{ world.food_lbs }} lbs
-Oxen:   {{ world.oxen }}
-Party:  {{ world.party_alive }} alive
-Health: {{ world.health_avg }}
-
-{{ if world.last_landmark_prose != "" }}{{ world.last_landmark_prose }}{{ else }}A river bars the way — approach to assess the crossing.{{ end }}
-
-When you're ready, "continue" presses on toward the next landmark.
-```
+**Shows world**: `day`, `miles_traveled`, `food_lbs`, `oxen`, `party_alive`, `health_avg`, `illness_kind`, `illness_severity`, `illness_member`, `last_landmark_prose`
 
 **On enter**:
 
 1. set `last_landmark_prose = ""`
 2. invoke `host.transport.post` with `body = "Day {{ world.day }}, {{ world.month }} {{ world.year }}. We rolled into **Kansas River Crossing** (prairie) at last.\n\n- Food: {{ world.food_lbs }} lbs\n- Oxen: {{ world.oxen }}\n- Party: {{ world.party_alive }} alive\n- Health: {{ world.health_avg }}\n"`, `phase_id = "leg_a_arrival"`, `thread = "{{ run.id }}"`, `title = "Day {{ world.day }}: Kansas River Crossing"`, `transport = "tui"`
-3. invoke `host.oracle.ask` with `args = map[day:{{ world.day }} food_lbs:{{ world.food_lbs }} landmark:Kansas River Crossing miles_traveled:{{ world.miles_traveled }} month:{{ world.month }} party_alive:{{ world.party_alive }} year:{{ world.year }}]`, `prompt_path = "prompts/landmark_arrival.md"`, bind `last_landmark_prose ← stdout`
+3. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[day:{{ world.day }} food_lbs:{{ world.food_lbs }} landmark:Kansas River Crossing miles_traveled:{{ world.miles_traveled }} month:{{ world.month }} party_alive:{{ world.party_alive }} year:{{ world.year }}]`, `prompt_path = "prompts/landmark_arrival.md"`, bind `last_landmark_prose ← stdout`
 
 **Transitions**:
 
 | # | Intent | Guard | → | Effects |
 |---|---|---|---|---|
-| 1 | [`approach_river`](#intent-approach-river) | `true` | [`river_crossing`](#room-river-crossing) | set `current_landmark = "Kansas River Crossing"`, `river_depth_ft = "{{ tpl.to_landmark == 'Kansas River Crossing' ? 2 : 7 }}"`, `river_width_ft = "{{ tpl.to_landmark == 'Kansas River Crossing' ? 620 : 1000 }}"` |
+| 1 | [`approach_river`](#intent-approach-river) | `true` | [`river_crossing`](#room-river-crossing) | set `current_landmark = "Kansas River Crossing"`, `river_depth_ft = "{{ int(2 * (world.month == 'april' ? 160 : (world.month == 'march' ? 140 : (world.month == 'may' ? 130 : (world.month == 'june' ? 100 : (world.month == 'july' ? 80 : (world.month == 'august' ? 70 : (world.month == 'september' ? 80 : 100))))))) / 100) }}"`, `river_width_ft = "{{ int(620) }}"` |
 | 2 | [`approach_river`](#intent-approach-river) | _default_ | `.` | _hint: No river at this landmark._ |
 | 3 | [`consult_guide`](#intent-consult-guide) |  | [`trail_guide`](#room-trail-guide) | set `last_job_originating_state = "leg_a_awaiting_reply"` · _(no-history)_ |
-| 4 | [`continue`](#intent-continue) |  | [`leg_b_executing`](#room-leg-b-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `current_landmark = "Kansas River Crossing"`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` |
-| 5 | [`enter_fort`](#intent-enter-fort) | `false` | [`fort`](#room-fort) | set `current_landmark = "Kansas River Crossing"` |
-| 6 | [`enter_fort`](#intent-enter-fort) | _default_ | `.` | _hint: No fort at this landmark._ |
-| 7 | [`give_up_leg`](#intent-give-up-leg) | `world.cycle__leg_a__on_failure < 2` | [`leg_a_executing`](#room-leg-a-executing) | increment `cycle__leg_a__on_failure += 1` · set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party turns back toward Independence." |
-| 8 | [`give_up_leg`](#intent-give-up-leg) | _default_ | [`leg_a_error`](#room-leg-a-error) | say "The party has given up too many times — stranded." |
-| 9 | [`hunt`](#intent-hunt) |  | [`hunt`](#room-hunt) |  |
-| 10 | [`quit`](#intent-quit) |  | [`ended_lost`](#room-ended-lost) | say "The party abandons the journey at Kansas River Crossing." |
-| 11 | [`rest`](#intent-rest) |  | [`rest_room`](#room-rest-room) |  |
-| 12 | [`restart_from`](#intent-restart-from) | `slots.stage == 'independence' \|\| slots.stage == 'kansas'` | [`leg_a_executing`](#room-leg-a-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Independence to retry the run toward Kansas River." |
-| 13 | [`restart_from`](#intent-restart-from) | `slots.stage == 'kearney'` | [`leg_b_executing`](#room-leg-b-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Kansas River to retry the stretch toward Fort Kearney." |
-| 14 | [`restart_from`](#intent-restart-from) | `slots.stage == 'chimney'` | [`leg_c_executing`](#room-leg-c-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Fort Kearney to retry the stretch toward Chimney Rock." |
-| 15 | [`restart_from`](#intent-restart-from) | `slots.stage == 'laramie'` | [`leg_d_executing`](#room-leg-d-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Chimney Rock to retry the stretch toward Fort Laramie." |
-| 16 | [`restart_from`](#intent-restart-from) | `slots.stage == 'south_pass'` | [`leg_e_executing`](#room-leg-e-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Fort Laramie to retry the stretch toward South Pass." |
-| 17 | [`restart_from`](#intent-restart-from) | `slots.stage == 'snake'` | [`leg_f_executing`](#room-leg-f-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to South Pass to retry the stretch toward Snake River." |
-| 18 | [`restart_from`](#intent-restart-from) | _default_ | `.` | _hint: Unknown restart stage._ |
+| 4 | [`continue`](#intent-continue) | `'Kansas River Crossing' == 'South Pass' && (world.month == 'october' \|\| world.month == 'november' \|\| world.month == 'december' \|\| world.month == 'january' \|\| world.month == 'february')` | [`snow_blocked`](#room-snow-blocked) | set `current_landmark = "Kansas River Crossing"` · say "South Pass is snowed in. The wagons cannot get through." |
+| 5 | [`continue`](#intent-continue) | _default_ | [`leg_b_executing`](#room-leg-b-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `current_landmark = "Kansas River Crossing"`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` |
+| 6 | [`enter_fort`](#intent-enter-fort) | `false` | [`fort`](#room-fort) | set `current_landmark = "Kansas River Crossing"` |
+| 7 | [`enter_fort`](#intent-enter-fort) | _default_ | `.` | _hint: No fort at this landmark._ |
+| 8 | [`face_robbery`](#intent-face-robbery) |  | [`frontier`](#room-frontier) |  |
+| 9 | [`give_up_leg`](#intent-give-up-leg) | `world.cycle__leg_a__on_failure < 2` | [`leg_a_executing`](#room-leg-a-executing) | increment `cycle__leg_a__on_failure += 1` · set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party turns back toward Independence." |
+| 10 | [`give_up_leg`](#intent-give-up-leg) | _default_ | [`leg_a_error`](#room-leg-a-error) | say "The party has given up too many times — stranded." |
+| 11 | [`hunt`](#intent-hunt) |  | [`hunt`](#room-hunt) |  |
+| 12 | [`quit`](#intent-quit) |  | [`ended_lost`](#room-ended-lost) | say "The party abandons the journey at Kansas River Crossing." |
+| 13 | [`rest`](#intent-rest) |  | [`rest_room`](#room-rest-room) |  |
+| 14 | [`restart_from`](#intent-restart-from) | `slots.stage == 'independence' \|\| slots.stage == 'kansas'` | [`leg_a_executing`](#room-leg-a-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Independence to retry the run toward Kansas River." |
+| 15 | [`restart_from`](#intent-restart-from) | `slots.stage == 'kearney'` | [`leg_b_executing`](#room-leg-b-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Kansas River to retry the stretch toward Fort Kearney." |
+| 16 | [`restart_from`](#intent-restart-from) | `slots.stage == 'chimney'` | [`leg_c_executing`](#room-leg-c-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Fort Kearney to retry the stretch toward Chimney Rock." |
+| 17 | [`restart_from`](#intent-restart-from) | `slots.stage == 'laramie'` | [`leg_d_executing`](#room-leg-d-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Chimney Rock to retry the stretch toward Fort Laramie." |
+| 18 | [`restart_from`](#intent-restart-from) | `slots.stage == 'south_pass'` | [`leg_e_executing`](#room-leg-e-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Fort Laramie to retry the stretch toward South Pass." |
+| 19 | [`restart_from`](#intent-restart-from) | `slots.stage == 'snake'` | [`leg_f_executing`](#room-leg-f-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to South Pass to retry the stretch toward Snake River." |
+| 20 | [`restart_from`](#intent-restart-from) | _default_ | `.` | _hint: Unknown restart stage._ |
+| 21 | [`scout`](#intent-scout) |  | [`frontier`](#room-frontier) |  |
 
 **Timeout**: after `10d` → `leg_b_executing`
 
@@ -1698,16 +1798,6 @@ When you're ready, "continue" presses on toward the next landmark.
 Stranded between Independence and Kansas River Crossing.
 
 **Shows world**: `day`, `party_alive`, `current_landmark`
-
-**View**:
-
-```
-Stranded between Independence and Kansas River Crossing.
-
-The party has failed this leg too many times.
-
-Actions: retry (returns to Independence), quit.
-```
 
 **Transitions**:
 
@@ -1722,7 +1812,7 @@ On the trail from Independence to Kansas River Crossing (prairie).
 
 **Initial child**: `traveling`
 
-**Shows world**: `day`, `month`, `miles_traveled`, `food_lbs`, `oxen`, `party_alive`, `health_avg`, `pace`, `rations`, `current_landmark`, `event_kind`, `illness_kind`, `breakdown_part`, `weather_kind`, `encounter_kind`, `rng_last`, `rng_counter`
+**Shows world**: `day`, `month`, `miles_traveled`, `food_lbs`, `oxen`, `party_alive`, `health_avg`, `pace`, `rations`, `current_landmark`, `event_kind`, `illness_kind`, `illness_severity`, `illness_member`, `breakdown_part`, `weather_kind`, `encounter_kind`, `rng_last`, `rng_counter`
 
 **On enter**:
 
@@ -1741,21 +1831,10 @@ Wagon breakdown — {{ world.breakdown_part }}.
 
 **Shows world**: `breakdown_part`, `spare_wheels`, `spare_axles`, `spare_tongues`, `day`, `current_event_attempts`, `last_event_prose`
 
-**View**:
-
-```
-{{ if world.last_event_prose != "" }}{{ world.last_event_prose }}
-
-{{ end }}The wagon's {{ world.breakdown_part }} has broken.
-Spare wheels: {{ world.spare_wheels }}, axles: {{ world.spare_axles }}, tongues: {{ world.spare_tongues }}.
-
-Actions: repair (needs a matching spare), wait_out (5 days), look, quit.
-```
-
 **On enter**:
 
 1. set `breakdown_part = "{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }}"`, `current_event_attempts = 0`, `last_event_prose = ""`
-2. invoke `host.oracle.ask` with `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} part:{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }} spares_remaining:{{ world.rng_last % 3 == 0 ? world.spare_wheels : (world.rng_last % 3 == 1 ? world.spare_axles : world.spare_tongues) }}]`, `prompt_path = "prompts/event_breakdown.md"`, bind `last_event_prose ← stdout`
+2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} part:{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }} spares_remaining:{{ world.rng_last % 3 == 0 ? world.spare_wheels : (world.rng_last % 3 == 1 ? world.spare_axles : world.spare_tongues) }}]`, `prompt_path = "prompts/event_breakdown.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -1774,37 +1853,26 @@ Actions: repair (needs a matching spare), wait_out (5 days), look, quit.
 
 Illness has struck the party ({{ world.illness_kind }}).
 
-**Shows world**: `illness_kind`, `illness_severity`, `illness_treatment`, `health_avg`, `party_alive`, `food_lbs`, `clothing_sets`, `day`, `current_event_attempts`
-
-**View**:
-
-```
-Someone in the party has fallen ill.
-Illness: {{ world.illness_kind }}.
-Health: {{ world.health_avg }}.   Party: {{ world.party_alive }} alive.
-Supplies: {{ world.clothing_sets }} clothing sets, {{ world.food_lbs }} lbs food.
-
-Actions: treat, wait_out, move_on, look, quit.
-```
+**Shows world**: `illness_kind`, `illness_severity`, `illness_treatment`, `illness_member`, `health_avg`, `party_alive`, `food_lbs`, `clothing_sets`, `day`, `current_event_attempts`
 
 **On enter**:
 
-1. set `current_event_attempts = 0`, `health_avg = "{{ world.health_avg - 10 }}"`
+1. set `current_event_attempts = 0`, `health_avg = "{{ world.health_avg - 10 }}"`, `illness_member = "{{ split(world.party_names, ',')[world.rng_last % world.party_alive] }}"`
 2. set `illness_kind = "{{ if world.rng_last % 5 == 0 }}dysentery{{ else }}{{ if world.rng_last % 5 == 1 }}cholera{{ else }}{{ if world.rng_last % 5 == 2 }}typhoid{{ else }}{{ if world.rng_last % 5 == 3 }}measles{{ else }}exhaustion{{ end }}{{ end }}{{ end }}{{ end }}"`, `illness_severity = "{{ world.rng_last % 5 + 1 }}"`, `illness_treatment = "rest"`
-3. invoke `host.oracle.ask_with_mcp` with `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} food_lbs:{{ world.food_lbs }} health_avg:{{ world.health_avg }} party_alive:{{ world.party_alive }} rng_last:{{ world.rng_last }}]`, `prompt = "prompts/event_disease.md"`, `schema = "mcp/illness.json"`, bind `illness_kind ← submitted.illness`, `illness_severity ← submitted.severity`, `illness_treatment ← submitted.treatment`, on_error → `leg_a_error`
+3. invoke `host.oracle.ask_with_mcp` with `agent = "frontier_doctor"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} food_lbs:{{ world.food_lbs }} health_avg:{{ world.health_avg }} party_alive:{{ world.party_alive }} rng_last:{{ world.rng_last }}]`, `prompt = "prompts/event_disease.md"`, `schema = "mcp/illness.json"`, bind `illness_kind ← submitted.illness`, `illness_severity ← submitted.severity`, `illness_treatment ← submitted.treatment`, on_error → `leg_a_error`
 
 **Transitions**:
 
 | # | Intent | Guard | → | Effects |
 |---|---|---|---|---|
 | 1 | [`look`](#intent-look) |  | `.` |  |
-| 2 | [`move_on`](#intent-move-on) |  | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — pushed on through the {{ world.illness_kind }} rather than stop. Health is worse for it, but the wagon rolls."`, `phase_id = "leg_a_event_disease_moved_on_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Pressing on through illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `event_kind = ""`, `health_avg = "{{ world.health_avg - 15 }}"`, `illness_kind = ""` · say "The party presses on. Health worsens." |
+| 2 | [`move_on`](#intent-move-on) |  | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — pushed on through the {{ world.illness_kind }} rather than stop. Health is worse for it, but the wagon rolls."`, `phase_id = "leg_a_event_disease_moved_on_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Pressing on through illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `event_kind = ""`, `health_avg = "{{ world.health_avg - 15 }}"`, `illness_kind = ""`, `illness_member = ""`, `illness_severity = 0`, `illness_treatment = ""` · say "The party presses on. Health worsens." |
 | 3 | [`quit`](#intent-quit) |  | [`ended_lost`](#room-ended-lost) | say "The party gives up on the trail, broken by {{ world.illness_kind }}." |
-| 4 | [`treat`](#intent-treat) | `world.clothing_sets >= 1 && world.food_lbs >= 50 && world.current_event_attempts < 2` | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — the {{ world.illness_kind }} has passed. Rested up, one clothing set used and 50 lbs of food spent on broth and care. Spirits steady, on the move."`, `phase_id = "leg_a_event_disease_treated_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Disease treated"`, `transport = "tui"` · set `clothing_sets = "{{ world.clothing_sets - 1 }}"`, `current_event_attempts = 0`, `event_kind = ""`, `food_lbs = "{{ world.food_lbs - 50 }}"`, `health_avg = "{{ world.health_avg + 20 }}"`, `illness_kind = ""` · say "The party rests and treats the illness." |
+| 4 | [`treat`](#intent-treat) | `world.clothing_sets >= 1 && world.food_lbs >= 50 && world.current_event_attempts < 2` | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — the {{ world.illness_kind }} has passed. Rested up, one clothing set used and 50 lbs of food spent on broth and care. Spirits steady, on the move."`, `phase_id = "leg_a_event_disease_treated_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Disease treated"`, `transport = "tui"` · set `clothing_sets = "{{ world.clothing_sets - 1 }}"`, `current_event_attempts = 0`, `event_kind = ""`, `food_lbs = "{{ world.food_lbs - 50 }}"`, `health_avg = "{{ world.health_avg + 20 }}"`, `illness_kind = ""`, `illness_member = ""`, `illness_severity = 0`, `illness_treatment = ""` · say "The party rests and treats the illness." |
 | 5 | [`treat`](#intent-treat) | `(world.clothing_sets < 1 \|\| world.food_lbs < 50) && world.current_event_attempts < 2` | `.` | increment `current_event_attempts += 1` · say "Not enough supplies to treat the {{ world.illness_kind }} (need 1 clothing set + 50 lbs food). Try again or wait_out." |
-| 6 | [`treat`](#intent-treat) | _default_ | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — after repeated attempts, the {{ world.illness_kind }} took one of the party. May the trail remember them."`, `phase_id = "leg_a_event_disease_lost_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Lost to illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `event_kind = ""`, `illness_kind = ""`, `party_alive = "{{ world.party_alive - 1 }}"` · say "After repeated futile attempts, a party member has died of illness." |
-| 7 | [`wait_out`](#intent-wait-out) | `world.health_avg < 30` | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — the patient was too weak. {{ world.illness_kind }} claimed one of the party while we waited."`, `phase_id = "leg_a_event_disease_wait_lost_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Lost to illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `day = "{{ world.day + 1 }}"`, `event_kind = ""`, `illness_kind = ""`, `party_alive = "{{ world.party_alive - 1 }}"` · say "The patient was too weak. A party member dies of illness." |
-| 8 | [`wait_out`](#intent-wait-out) | _default_ | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — one day of rest and the {{ world.illness_kind }} let go. We move on tomorrow."`, `phase_id = "leg_a_event_disease_wait_ok_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Illness passed"`, `transport = "tui"` · set `current_event_attempts = 0`, `day = "{{ world.day + 1 }}"`, `event_kind = ""`, `illness_kind = ""` · say "The party rests a day. The illness passes." |
+| 6 | [`treat`](#intent-treat) | _default_ | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — after repeated attempts, the {{ world.illness_kind }} took one of the party. May the trail remember them."`, `phase_id = "leg_a_event_disease_lost_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Lost to illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `event_kind = ""`, `illness_kind = ""`, `illness_member = ""`, `illness_severity = 0`, `illness_treatment = ""`, `party_alive = "{{ world.party_alive - 1 }}"` · say "After repeated futile attempts, a party member has died of illness." |
+| 7 | [`wait_out`](#intent-wait-out) | `world.health_avg < 30` | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — the patient was too weak. {{ world.illness_kind }} claimed one of the party while we waited."`, `phase_id = "leg_a_event_disease_wait_lost_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Lost to illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `day = "{{ world.day + 1 }}"`, `event_kind = ""`, `illness_kind = ""`, `illness_member = ""`, `illness_severity = 0`, `illness_treatment = ""`, `party_alive = "{{ world.party_alive - 1 }}"` · say "The patient was too weak. A party member dies of illness." |
+| 8 | [`wait_out`](#intent-wait-out) | _default_ | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — one day of rest and the {{ world.illness_kind }} let go. We move on tomorrow."`, `phase_id = "leg_a_event_disease_wait_ok_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Illness passed"`, `transport = "tui"` · set `current_event_attempts = 0`, `day = "{{ world.day + 1 }}"`, `event_kind = ""`, `illness_kind = ""`, `illness_member = ""`, `illness_severity = 0`, `illness_treatment = ""` · say "The party rests a day. The illness passes." |
 
 ### <a id="room-leg-a-executing-event-encounter"></a> `leg_a_executing.event_encounter`
 
@@ -1812,22 +1880,10 @@ Encounter on the trail: {{ world.encounter_kind }}.
 
 **Shows world**: `encounter_kind`, `food_lbs`, `clothing_sets`, `last_event_prose`
 
-**View**:
-
-```
-{{ if world.last_event_prose != "" }}{{ world.last_event_prose }}
-
-{{ end }}You meet a {{ world.encounter_kind }} on the trail.
-They offer 1 clothing set in exchange for 50 lbs of food.
-You have {{ world.food_lbs }} lbs food, {{ world.clothing_sets }} clothing sets.
-
-Actions: accept_trade, decline_trade, move_on, look, quit.
-```
-
 **On enter**:
 
 1. set `current_event_attempts = 0`, `encounter_kind = "{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}"`, `last_event_prose = ""`
-2. invoke `host.oracle.ask` with `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} kind:{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}]`, `prompt_path = "prompts/event_encounter.md"`, bind `last_event_prose ← stdout`
+2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} kind:{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}]`, `prompt_path = "prompts/event_encounter.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -1846,22 +1902,11 @@ Supplies lost on the trail.
 
 **Shows world**: `food_lbs`, `oxen`, `rng_last`, `last_event_prose`
 
-**View**:
-
-```
-{{ if world.last_event_prose != "" }}{{ world.last_event_prose }}
-
-{{ end }}Supplies have been lost on the trail.
-Food: {{ world.food_lbs }} lbs.  Oxen: {{ world.oxen }}.
-
-Action: move_on.
-```
-
 **On enter**:
 
 1. set `current_event_attempts = 0`, `last_event = "{{ if world.rng_last % 2 == 0 }}food_loss{{ else }}ox_loss{{ end }}"`, `last_event_prose = ""`
 2. set `food_lbs = "{{ world.rng_last % 2 == 0 ? world.food_lbs - (10 + 10 * (world.rng_last % 4)) : world.food_lbs }}"`, `oxen = "{{ world.rng_last % 2 == 0 ? world.oxen : world.oxen - 1 }}"`
-3. invoke `host.oracle.ask` with `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} oxen:{{ world.oxen }} what:{{ world.rng_last % 2 == 0 ? 'food spoiled' : 'ox lame' }}]`, `prompt_path = "prompts/event_supply_loss.md"`, bind `last_event_prose ← stdout`
+3. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} oxen:{{ world.oxen }} what:{{ world.rng_last % 2 == 0 ? 'food spoiled' : 'ox lame' }}]`, `prompt_path = "prompts/event_supply_loss.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -1877,21 +1922,10 @@ Severe weather: {{ world.weather_kind }}.
 
 **Shows world**: `weather_kind`, `day`, `food_lbs`, `health_avg`, `last_event_prose`
 
-**View**:
-
-```
-{{ if world.last_event_prose != "" }}{{ world.last_event_prose }}
-
-{{ end }}Severe weather: {{ world.weather_kind }}.
-Health: {{ world.health_avg }}.   Food: {{ world.food_lbs }} lbs.   Day {{ world.day }}.
-
-Actions: wait_out, push_on, look, quit.
-```
-
 **On enter**:
 
-1. set `current_event_attempts = 0`, `last_event_prose = ""`, `weather_kind = "{{ if world.rng_last % 4 == 0 }}heavy_rain{{ else }}{{ if world.rng_last % 4 == 1 }}snow{{ else }}{{ if world.rng_last % 4 == 2 }}fog{{ else }}hail{{ end }}{{ end }}{{ end }}"`
-2. invoke `host.oracle.ask` with `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} kind:{{ if world.rng_last % 4 == 0 }}heavy_rain{{ else }}{{ if world.rng_last % 4 == 1 }}snow{{ else }}{{ if world.rng_last % 4 == 2 }}fog{{ else }}hail{{ end }}{{ end }}{{ end }} month:{{ world.month }} terrain:prairie]`, `prompt_path = "prompts/event_weather.md"`, bind `last_event_prose ← stdout`
+1. set `current_event_attempts = 0`, `last_event_prose = ""`, `weather_kind = "{{ world.month == 'november' || world.month == 'december' || world.month == 'january' || world.month == 'february' ? 'snow' : (world.month == 'march' || world.month == 'april' || world.month == 'may' ? 'heavy_rain' : (world.month == 'june' || world.month == 'july' || world.month == 'august' ? (world.rng_last % 2 == 0 ? 'hail' : 'fog') : (world.rng_last % 2 == 0 ? 'heavy_rain' : 'fog'))) }}"`
+2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} kind:{{ world.month == 'november' || world.month == 'december' || world.month == 'january' || world.month == 'february' ? 'snow' : (world.month == 'march' || world.month == 'april' || world.month == 'may' ? 'heavy_rain' : (world.month == 'june' || world.month == 'july' || world.month == 'august' ? (world.rng_last % 2 == 0 ? 'hail' : 'fog') : (world.rng_last % 2 == 0 ? 'heavy_rain' : 'fog'))) }} month:{{ world.month }} terrain:prairie]`, `prompt_path = "prompts/event_weather.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -1906,30 +1940,18 @@ Actions: wait_out, push_on, look, quit.
 
 Travelling — Independence → Kansas River Crossing.
 
-**View**:
-
-```
-Day {{ world.day }} on the trail. Heading for Kansas River Crossing (prairie).
-
-Miles travelled this leg: {{ world.miles_traveled }} / 102.
-Food: {{ world.food_lbs }} lbs. Oxen: {{ world.oxen }}. Party: {{ world.party_alive }} alive.
-Pace: {{ world.pace }}. Rations: {{ world.rations }}.
-
-Actions: continue, set_pace <pace>, set_rations <rations>, look, quit.
-```
-
 **Transitions**:
 
 | # | Intent | Guard | → | Effects |
 |---|---|---|---|---|
-| 1 | [`continue`](#intent-continue) | `world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) >= 102` | [`leg_a_awaiting_reply`](#room-leg-a-awaiting-reply) | set `day = "{{ world.day + 1 }}"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · say "Arrived at Kansas River Crossing." |
-| 2 | [`continue`](#intent-continue) | `world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) <= 0` | [`ended_lost`](#room-ended-lost) | set `day = "{{ world.day + 1 }}"`, `food_lbs = 0` · say "The party has run out of food between Independence and Kansas River Crossing. They starve on the trail." |
-| 3 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 60 && int(world.miles_traveled + world.rng_counter) % 100 < 75` | `../event_disease` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = "disease"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
-| 4 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 75 && int(world.miles_traveled + world.rng_counter) % 100 < 85` | `../event_breakdown` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = "breakdown"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
-| 5 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 85 && int(world.miles_traveled + world.rng_counter) % 100 < 92` | `../event_weather` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = "weather"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
-| 6 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 92 && int(world.miles_traveled + world.rng_counter) % 100 < 97` | `../event_encounter` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = "encounter"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
-| 7 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 97` | `../event_supply_loss` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = "supply_loss"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
-| 8 | [`continue`](#intent-continue) | _default_ | `.` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = ""`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
+| 1 | [`continue`](#intent-continue) | `world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' \|\| world.month == 'january' \|\| world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' \|\| world.month == 'october' ? 85 : (world.month == 'april' \|\| world.month == 'september' ? 95 : 100)))) / 100) >= 102` | [`leg_a_awaiting_reply`](#room-leg-a-awaiting-reply) | set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · say "Arrived at Kansas River Crossing." |
+| 2 | [`continue`](#intent-continue) | `world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) <= 0` | [`ended_lost`](#room-ended-lost) | set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `food_lbs = 0`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · say "The party has run out of food between Independence and Kansas River Crossing. They starve on the trail." |
+| 3 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 60 && int(world.miles_traveled + world.rng_counter) % 100 < 75` | `../event_disease` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = "disease"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
+| 4 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 75 && int(world.miles_traveled + world.rng_counter) % 100 < 85` | `../event_breakdown` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = "breakdown"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
+| 5 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 85 && int(world.miles_traveled + world.rng_counter) % 100 < 92` | `../event_weather` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = "weather"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
+| 6 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 92 && int(world.miles_traveled + world.rng_counter) % 100 < 97` | `../event_encounter` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = "encounter"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
+| 7 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 97` | `../event_supply_loss` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = "supply_loss"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
+| 8 | [`continue`](#intent-continue) | _default_ | `.` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = ""`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
 | 9 | [`look`](#intent-look) |  | `.` |  |
 | 10 | [`quit`](#intent-quit) |  | [`ended_lost`](#room-ended-lost) | say "The party abandons the journey between Independence and Kansas River Crossing." |
 | 11 | [`set_pace`](#intent-set-pace) |  | `.` | set `pace = "{{ slots.pace }}"` · say "Pace set to {{ slots.pace }}." |
@@ -1939,52 +1961,39 @@ Actions: continue, set_pace <pace>, set_rations <rations>, look, quit.
 
 Arrived at Fort Kearney (prairie).
 
-**Shows world**: `day`, `miles_traveled`, `food_lbs`, `oxen`, `party_alive`, `health_avg`, `last_landmark_prose`
-
-**View**:
-
-```
-Arrived at Fort Kearney (prairie).
-
-Day:    {{ world.day }}
-Food:   {{ world.food_lbs }} lbs
-Oxen:   {{ world.oxen }}
-Party:  {{ world.party_alive }} alive
-Health: {{ world.health_avg }}
-
-{{ if world.last_landmark_prose != "" }}{{ world.last_landmark_prose }}{{ else }}A fort lies ahead — enter to resupply.{{ end }}
-
-When you're ready, "continue" presses on toward the next landmark.
-```
+**Shows world**: `day`, `miles_traveled`, `food_lbs`, `oxen`, `party_alive`, `health_avg`, `illness_kind`, `illness_severity`, `illness_member`, `last_landmark_prose`
 
 **On enter**:
 
 1. set `last_landmark_prose = ""`
 2. invoke `host.transport.post` with `body = "Day {{ world.day }}, {{ world.month }} {{ world.year }}. We rolled into **Fort Kearney** (prairie) at last.\n\n- Food: {{ world.food_lbs }} lbs\n- Oxen: {{ world.oxen }}\n- Party: {{ world.party_alive }} alive\n- Health: {{ world.health_avg }}\n"`, `phase_id = "leg_b_arrival"`, `thread = "{{ run.id }}"`, `title = "Day {{ world.day }}: Fort Kearney"`, `transport = "tui"`
-3. invoke `host.oracle.ask` with `args = map[day:{{ world.day }} food_lbs:{{ world.food_lbs }} landmark:Fort Kearney miles_traveled:{{ world.miles_traveled }} month:{{ world.month }} party_alive:{{ world.party_alive }} year:{{ world.year }}]`, `prompt_path = "prompts/landmark_arrival.md"`, bind `last_landmark_prose ← stdout`
+3. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[day:{{ world.day }} food_lbs:{{ world.food_lbs }} landmark:Fort Kearney miles_traveled:{{ world.miles_traveled }} month:{{ world.month }} party_alive:{{ world.party_alive }} year:{{ world.year }}]`, `prompt_path = "prompts/landmark_arrival.md"`, bind `last_landmark_prose ← stdout`
 
 **Transitions**:
 
 | # | Intent | Guard | → | Effects |
 |---|---|---|---|---|
-| 1 | [`approach_river`](#intent-approach-river) | `false` | [`river_crossing`](#room-river-crossing) | set `current_landmark = "Fort Kearney"`, `river_depth_ft = "{{ tpl.to_landmark == 'Kansas River Crossing' ? 2 : 7 }}"`, `river_width_ft = "{{ tpl.to_landmark == 'Kansas River Crossing' ? 620 : 1000 }}"` |
+| 1 | [`approach_river`](#intent-approach-river) | `false` | [`river_crossing`](#room-river-crossing) | set `current_landmark = "Fort Kearney"`, `river_depth_ft = "{{ int(0 * (world.month == 'april' ? 160 : (world.month == 'march' ? 140 : (world.month == 'may' ? 130 : (world.month == 'june' ? 100 : (world.month == 'july' ? 80 : (world.month == 'august' ? 70 : (world.month == 'september' ? 80 : 100))))))) / 100) }}"`, `river_width_ft = "{{ int(0) }}"` |
 | 2 | [`approach_river`](#intent-approach-river) | _default_ | `.` | _hint: No river at this landmark._ |
 | 3 | [`consult_guide`](#intent-consult-guide) |  | [`trail_guide`](#room-trail-guide) | set `last_job_originating_state = "leg_b_awaiting_reply"` · _(no-history)_ |
-| 4 | [`continue`](#intent-continue) |  | [`leg_c_executing`](#room-leg-c-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `current_landmark = "Fort Kearney"`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` |
-| 5 | [`enter_fort`](#intent-enter-fort) | `true` | [`fort`](#room-fort) | set `current_landmark = "Fort Kearney"` |
-| 6 | [`enter_fort`](#intent-enter-fort) | _default_ | `.` | _hint: No fort at this landmark._ |
-| 7 | [`give_up_leg`](#intent-give-up-leg) | `world.cycle__leg_b__on_failure < 2` | [`leg_a_executing`](#room-leg-a-executing) | increment `cycle__leg_b__on_failure += 1` · set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party turns back toward Kansas River Crossing." |
-| 8 | [`give_up_leg`](#intent-give-up-leg) | _default_ | [`leg_b_error`](#room-leg-b-error) | say "The party has given up too many times — stranded." |
-| 9 | [`hunt`](#intent-hunt) |  | [`hunt`](#room-hunt) |  |
-| 10 | [`quit`](#intent-quit) |  | [`ended_lost`](#room-ended-lost) | say "The party abandons the journey at Fort Kearney." |
-| 11 | [`rest`](#intent-rest) |  | [`rest_room`](#room-rest-room) |  |
-| 12 | [`restart_from`](#intent-restart-from) | `slots.stage == 'independence' \|\| slots.stage == 'kansas'` | [`leg_a_executing`](#room-leg-a-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Independence to retry the run toward Kansas River." |
-| 13 | [`restart_from`](#intent-restart-from) | `slots.stage == 'kearney'` | [`leg_b_executing`](#room-leg-b-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Kansas River to retry the stretch toward Fort Kearney." |
-| 14 | [`restart_from`](#intent-restart-from) | `slots.stage == 'chimney'` | [`leg_c_executing`](#room-leg-c-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Fort Kearney to retry the stretch toward Chimney Rock." |
-| 15 | [`restart_from`](#intent-restart-from) | `slots.stage == 'laramie'` | [`leg_d_executing`](#room-leg-d-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Chimney Rock to retry the stretch toward Fort Laramie." |
-| 16 | [`restart_from`](#intent-restart-from) | `slots.stage == 'south_pass'` | [`leg_e_executing`](#room-leg-e-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Fort Laramie to retry the stretch toward South Pass." |
-| 17 | [`restart_from`](#intent-restart-from) | `slots.stage == 'snake'` | [`leg_f_executing`](#room-leg-f-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to South Pass to retry the stretch toward Snake River." |
-| 18 | [`restart_from`](#intent-restart-from) | _default_ | `.` | _hint: Unknown restart stage._ |
+| 4 | [`continue`](#intent-continue) | `'Fort Kearney' == 'South Pass' && (world.month == 'october' \|\| world.month == 'november' \|\| world.month == 'december' \|\| world.month == 'january' \|\| world.month == 'february')` | [`snow_blocked`](#room-snow-blocked) | set `current_landmark = "Fort Kearney"` · say "South Pass is snowed in. The wagons cannot get through." |
+| 5 | [`continue`](#intent-continue) | _default_ | [`leg_c_executing`](#room-leg-c-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `current_landmark = "Fort Kearney"`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` |
+| 6 | [`enter_fort`](#intent-enter-fort) | `true` | [`fort`](#room-fort) | set `current_landmark = "Fort Kearney"` |
+| 7 | [`enter_fort`](#intent-enter-fort) | _default_ | `.` | _hint: No fort at this landmark._ |
+| 8 | [`face_robbery`](#intent-face-robbery) |  | [`frontier`](#room-frontier) |  |
+| 9 | [`give_up_leg`](#intent-give-up-leg) | `world.cycle__leg_b__on_failure < 2` | [`leg_a_executing`](#room-leg-a-executing) | increment `cycle__leg_b__on_failure += 1` · set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party turns back toward Kansas River Crossing." |
+| 10 | [`give_up_leg`](#intent-give-up-leg) | _default_ | [`leg_b_error`](#room-leg-b-error) | say "The party has given up too many times — stranded." |
+| 11 | [`hunt`](#intent-hunt) |  | [`hunt`](#room-hunt) |  |
+| 12 | [`quit`](#intent-quit) |  | [`ended_lost`](#room-ended-lost) | say "The party abandons the journey at Fort Kearney." |
+| 13 | [`rest`](#intent-rest) |  | [`rest_room`](#room-rest-room) |  |
+| 14 | [`restart_from`](#intent-restart-from) | `slots.stage == 'independence' \|\| slots.stage == 'kansas'` | [`leg_a_executing`](#room-leg-a-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Independence to retry the run toward Kansas River." |
+| 15 | [`restart_from`](#intent-restart-from) | `slots.stage == 'kearney'` | [`leg_b_executing`](#room-leg-b-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Kansas River to retry the stretch toward Fort Kearney." |
+| 16 | [`restart_from`](#intent-restart-from) | `slots.stage == 'chimney'` | [`leg_c_executing`](#room-leg-c-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Fort Kearney to retry the stretch toward Chimney Rock." |
+| 17 | [`restart_from`](#intent-restart-from) | `slots.stage == 'laramie'` | [`leg_d_executing`](#room-leg-d-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Chimney Rock to retry the stretch toward Fort Laramie." |
+| 18 | [`restart_from`](#intent-restart-from) | `slots.stage == 'south_pass'` | [`leg_e_executing`](#room-leg-e-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Fort Laramie to retry the stretch toward South Pass." |
+| 19 | [`restart_from`](#intent-restart-from) | `slots.stage == 'snake'` | [`leg_f_executing`](#room-leg-f-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to South Pass to retry the stretch toward Snake River." |
+| 20 | [`restart_from`](#intent-restart-from) | _default_ | `.` | _hint: Unknown restart stage._ |
+| 21 | [`scout`](#intent-scout) |  | [`frontier`](#room-frontier) |  |
 
 **Timeout**: after `10d` → `leg_c_executing`
 
@@ -1993,16 +2002,6 @@ When you're ready, "continue" presses on toward the next landmark.
 Stranded between Kansas River Crossing and Fort Kearney.
 
 **Shows world**: `day`, `party_alive`, `current_landmark`
-
-**View**:
-
-```
-Stranded between Kansas River Crossing and Fort Kearney.
-
-The party has failed this leg too many times.
-
-Actions: retry (returns to Kansas River Crossing), quit.
-```
 
 **Transitions**:
 
@@ -2017,7 +2016,7 @@ On the trail from Kansas River Crossing to Fort Kearney (prairie).
 
 **Initial child**: `traveling`
 
-**Shows world**: `day`, `month`, `miles_traveled`, `food_lbs`, `oxen`, `party_alive`, `health_avg`, `pace`, `rations`, `current_landmark`, `event_kind`, `illness_kind`, `breakdown_part`, `weather_kind`, `encounter_kind`, `rng_last`, `rng_counter`
+**Shows world**: `day`, `month`, `miles_traveled`, `food_lbs`, `oxen`, `party_alive`, `health_avg`, `pace`, `rations`, `current_landmark`, `event_kind`, `illness_kind`, `illness_severity`, `illness_member`, `breakdown_part`, `weather_kind`, `encounter_kind`, `rng_last`, `rng_counter`
 
 **On enter**:
 
@@ -2036,21 +2035,10 @@ Wagon breakdown — {{ world.breakdown_part }}.
 
 **Shows world**: `breakdown_part`, `spare_wheels`, `spare_axles`, `spare_tongues`, `day`, `current_event_attempts`, `last_event_prose`
 
-**View**:
-
-```
-{{ if world.last_event_prose != "" }}{{ world.last_event_prose }}
-
-{{ end }}The wagon's {{ world.breakdown_part }} has broken.
-Spare wheels: {{ world.spare_wheels }}, axles: {{ world.spare_axles }}, tongues: {{ world.spare_tongues }}.
-
-Actions: repair (needs a matching spare), wait_out (5 days), look, quit.
-```
-
 **On enter**:
 
 1. set `breakdown_part = "{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }}"`, `current_event_attempts = 0`, `last_event_prose = ""`
-2. invoke `host.oracle.ask` with `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} part:{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }} spares_remaining:{{ world.rng_last % 3 == 0 ? world.spare_wheels : (world.rng_last % 3 == 1 ? world.spare_axles : world.spare_tongues) }}]`, `prompt_path = "prompts/event_breakdown.md"`, bind `last_event_prose ← stdout`
+2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} part:{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }} spares_remaining:{{ world.rng_last % 3 == 0 ? world.spare_wheels : (world.rng_last % 3 == 1 ? world.spare_axles : world.spare_tongues) }}]`, `prompt_path = "prompts/event_breakdown.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -2069,37 +2057,26 @@ Actions: repair (needs a matching spare), wait_out (5 days), look, quit.
 
 Illness has struck the party ({{ world.illness_kind }}).
 
-**Shows world**: `illness_kind`, `illness_severity`, `illness_treatment`, `health_avg`, `party_alive`, `food_lbs`, `clothing_sets`, `day`, `current_event_attempts`
-
-**View**:
-
-```
-Someone in the party has fallen ill.
-Illness: {{ world.illness_kind }}.
-Health: {{ world.health_avg }}.   Party: {{ world.party_alive }} alive.
-Supplies: {{ world.clothing_sets }} clothing sets, {{ world.food_lbs }} lbs food.
-
-Actions: treat, wait_out, move_on, look, quit.
-```
+**Shows world**: `illness_kind`, `illness_severity`, `illness_treatment`, `illness_member`, `health_avg`, `party_alive`, `food_lbs`, `clothing_sets`, `day`, `current_event_attempts`
 
 **On enter**:
 
-1. set `current_event_attempts = 0`, `health_avg = "{{ world.health_avg - 10 }}"`
+1. set `current_event_attempts = 0`, `health_avg = "{{ world.health_avg - 10 }}"`, `illness_member = "{{ split(world.party_names, ',')[world.rng_last % world.party_alive] }}"`
 2. set `illness_kind = "{{ if world.rng_last % 5 == 0 }}dysentery{{ else }}{{ if world.rng_last % 5 == 1 }}cholera{{ else }}{{ if world.rng_last % 5 == 2 }}typhoid{{ else }}{{ if world.rng_last % 5 == 3 }}measles{{ else }}exhaustion{{ end }}{{ end }}{{ end }}{{ end }}"`, `illness_severity = "{{ world.rng_last % 5 + 1 }}"`, `illness_treatment = "rest"`
-3. invoke `host.oracle.ask_with_mcp` with `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} food_lbs:{{ world.food_lbs }} health_avg:{{ world.health_avg }} party_alive:{{ world.party_alive }} rng_last:{{ world.rng_last }}]`, `prompt = "prompts/event_disease.md"`, `schema = "mcp/illness.json"`, bind `illness_kind ← submitted.illness`, `illness_severity ← submitted.severity`, `illness_treatment ← submitted.treatment`, on_error → `leg_b_error`
+3. invoke `host.oracle.ask_with_mcp` with `agent = "frontier_doctor"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} food_lbs:{{ world.food_lbs }} health_avg:{{ world.health_avg }} party_alive:{{ world.party_alive }} rng_last:{{ world.rng_last }}]`, `prompt = "prompts/event_disease.md"`, `schema = "mcp/illness.json"`, bind `illness_kind ← submitted.illness`, `illness_severity ← submitted.severity`, `illness_treatment ← submitted.treatment`, on_error → `leg_b_error`
 
 **Transitions**:
 
 | # | Intent | Guard | → | Effects |
 |---|---|---|---|---|
 | 1 | [`look`](#intent-look) |  | `.` |  |
-| 2 | [`move_on`](#intent-move-on) |  | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — pushed on through the {{ world.illness_kind }} rather than stop. Health is worse for it, but the wagon rolls."`, `phase_id = "leg_b_event_disease_moved_on_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Pressing on through illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `event_kind = ""`, `health_avg = "{{ world.health_avg - 15 }}"`, `illness_kind = ""` · say "The party presses on. Health worsens." |
+| 2 | [`move_on`](#intent-move-on) |  | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — pushed on through the {{ world.illness_kind }} rather than stop. Health is worse for it, but the wagon rolls."`, `phase_id = "leg_b_event_disease_moved_on_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Pressing on through illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `event_kind = ""`, `health_avg = "{{ world.health_avg - 15 }}"`, `illness_kind = ""`, `illness_member = ""`, `illness_severity = 0`, `illness_treatment = ""` · say "The party presses on. Health worsens." |
 | 3 | [`quit`](#intent-quit) |  | [`ended_lost`](#room-ended-lost) | say "The party gives up on the trail, broken by {{ world.illness_kind }}." |
-| 4 | [`treat`](#intent-treat) | `world.clothing_sets >= 1 && world.food_lbs >= 50 && world.current_event_attempts < 2` | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — the {{ world.illness_kind }} has passed. Rested up, one clothing set used and 50 lbs of food spent on broth and care. Spirits steady, on the move."`, `phase_id = "leg_b_event_disease_treated_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Disease treated"`, `transport = "tui"` · set `clothing_sets = "{{ world.clothing_sets - 1 }}"`, `current_event_attempts = 0`, `event_kind = ""`, `food_lbs = "{{ world.food_lbs - 50 }}"`, `health_avg = "{{ world.health_avg + 20 }}"`, `illness_kind = ""` · say "The party rests and treats the illness." |
+| 4 | [`treat`](#intent-treat) | `world.clothing_sets >= 1 && world.food_lbs >= 50 && world.current_event_attempts < 2` | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — the {{ world.illness_kind }} has passed. Rested up, one clothing set used and 50 lbs of food spent on broth and care. Spirits steady, on the move."`, `phase_id = "leg_b_event_disease_treated_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Disease treated"`, `transport = "tui"` · set `clothing_sets = "{{ world.clothing_sets - 1 }}"`, `current_event_attempts = 0`, `event_kind = ""`, `food_lbs = "{{ world.food_lbs - 50 }}"`, `health_avg = "{{ world.health_avg + 20 }}"`, `illness_kind = ""`, `illness_member = ""`, `illness_severity = 0`, `illness_treatment = ""` · say "The party rests and treats the illness." |
 | 5 | [`treat`](#intent-treat) | `(world.clothing_sets < 1 \|\| world.food_lbs < 50) && world.current_event_attempts < 2` | `.` | increment `current_event_attempts += 1` · say "Not enough supplies to treat the {{ world.illness_kind }} (need 1 clothing set + 50 lbs food). Try again or wait_out." |
-| 6 | [`treat`](#intent-treat) | _default_ | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — after repeated attempts, the {{ world.illness_kind }} took one of the party. May the trail remember them."`, `phase_id = "leg_b_event_disease_lost_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Lost to illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `event_kind = ""`, `illness_kind = ""`, `party_alive = "{{ world.party_alive - 1 }}"` · say "After repeated futile attempts, a party member has died of illness." |
-| 7 | [`wait_out`](#intent-wait-out) | `world.health_avg < 30` | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — the patient was too weak. {{ world.illness_kind }} claimed one of the party while we waited."`, `phase_id = "leg_b_event_disease_wait_lost_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Lost to illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `day = "{{ world.day + 1 }}"`, `event_kind = ""`, `illness_kind = ""`, `party_alive = "{{ world.party_alive - 1 }}"` · say "The patient was too weak. A party member dies of illness." |
-| 8 | [`wait_out`](#intent-wait-out) | _default_ | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — one day of rest and the {{ world.illness_kind }} let go. We move on tomorrow."`, `phase_id = "leg_b_event_disease_wait_ok_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Illness passed"`, `transport = "tui"` · set `current_event_attempts = 0`, `day = "{{ world.day + 1 }}"`, `event_kind = ""`, `illness_kind = ""` · say "The party rests a day. The illness passes." |
+| 6 | [`treat`](#intent-treat) | _default_ | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — after repeated attempts, the {{ world.illness_kind }} took one of the party. May the trail remember them."`, `phase_id = "leg_b_event_disease_lost_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Lost to illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `event_kind = ""`, `illness_kind = ""`, `illness_member = ""`, `illness_severity = 0`, `illness_treatment = ""`, `party_alive = "{{ world.party_alive - 1 }}"` · say "After repeated futile attempts, a party member has died of illness." |
+| 7 | [`wait_out`](#intent-wait-out) | `world.health_avg < 30` | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — the patient was too weak. {{ world.illness_kind }} claimed one of the party while we waited."`, `phase_id = "leg_b_event_disease_wait_lost_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Lost to illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `day = "{{ world.day + 1 }}"`, `event_kind = ""`, `illness_kind = ""`, `illness_member = ""`, `illness_severity = 0`, `illness_treatment = ""`, `party_alive = "{{ world.party_alive - 1 }}"` · say "The patient was too weak. A party member dies of illness." |
+| 8 | [`wait_out`](#intent-wait-out) | _default_ | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — one day of rest and the {{ world.illness_kind }} let go. We move on tomorrow."`, `phase_id = "leg_b_event_disease_wait_ok_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Illness passed"`, `transport = "tui"` · set `current_event_attempts = 0`, `day = "{{ world.day + 1 }}"`, `event_kind = ""`, `illness_kind = ""`, `illness_member = ""`, `illness_severity = 0`, `illness_treatment = ""` · say "The party rests a day. The illness passes." |
 
 ### <a id="room-leg-b-executing-event-encounter"></a> `leg_b_executing.event_encounter`
 
@@ -2107,22 +2084,10 @@ Encounter on the trail: {{ world.encounter_kind }}.
 
 **Shows world**: `encounter_kind`, `food_lbs`, `clothing_sets`, `last_event_prose`
 
-**View**:
-
-```
-{{ if world.last_event_prose != "" }}{{ world.last_event_prose }}
-
-{{ end }}You meet a {{ world.encounter_kind }} on the trail.
-They offer 1 clothing set in exchange for 50 lbs of food.
-You have {{ world.food_lbs }} lbs food, {{ world.clothing_sets }} clothing sets.
-
-Actions: accept_trade, decline_trade, move_on, look, quit.
-```
-
 **On enter**:
 
 1. set `current_event_attempts = 0`, `encounter_kind = "{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}"`, `last_event_prose = ""`
-2. invoke `host.oracle.ask` with `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} kind:{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}]`, `prompt_path = "prompts/event_encounter.md"`, bind `last_event_prose ← stdout`
+2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} kind:{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}]`, `prompt_path = "prompts/event_encounter.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -2141,22 +2106,11 @@ Supplies lost on the trail.
 
 **Shows world**: `food_lbs`, `oxen`, `rng_last`, `last_event_prose`
 
-**View**:
-
-```
-{{ if world.last_event_prose != "" }}{{ world.last_event_prose }}
-
-{{ end }}Supplies have been lost on the trail.
-Food: {{ world.food_lbs }} lbs.  Oxen: {{ world.oxen }}.
-
-Action: move_on.
-```
-
 **On enter**:
 
 1. set `current_event_attempts = 0`, `last_event = "{{ if world.rng_last % 2 == 0 }}food_loss{{ else }}ox_loss{{ end }}"`, `last_event_prose = ""`
 2. set `food_lbs = "{{ world.rng_last % 2 == 0 ? world.food_lbs - (10 + 10 * (world.rng_last % 4)) : world.food_lbs }}"`, `oxen = "{{ world.rng_last % 2 == 0 ? world.oxen : world.oxen - 1 }}"`
-3. invoke `host.oracle.ask` with `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} oxen:{{ world.oxen }} what:{{ world.rng_last % 2 == 0 ? 'food spoiled' : 'ox lame' }}]`, `prompt_path = "prompts/event_supply_loss.md"`, bind `last_event_prose ← stdout`
+3. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} oxen:{{ world.oxen }} what:{{ world.rng_last % 2 == 0 ? 'food spoiled' : 'ox lame' }}]`, `prompt_path = "prompts/event_supply_loss.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -2172,21 +2126,10 @@ Severe weather: {{ world.weather_kind }}.
 
 **Shows world**: `weather_kind`, `day`, `food_lbs`, `health_avg`, `last_event_prose`
 
-**View**:
-
-```
-{{ if world.last_event_prose != "" }}{{ world.last_event_prose }}
-
-{{ end }}Severe weather: {{ world.weather_kind }}.
-Health: {{ world.health_avg }}.   Food: {{ world.food_lbs }} lbs.   Day {{ world.day }}.
-
-Actions: wait_out, push_on, look, quit.
-```
-
 **On enter**:
 
-1. set `current_event_attempts = 0`, `last_event_prose = ""`, `weather_kind = "{{ if world.rng_last % 4 == 0 }}heavy_rain{{ else }}{{ if world.rng_last % 4 == 1 }}snow{{ else }}{{ if world.rng_last % 4 == 2 }}fog{{ else }}hail{{ end }}{{ end }}{{ end }}"`
-2. invoke `host.oracle.ask` with `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} kind:{{ if world.rng_last % 4 == 0 }}heavy_rain{{ else }}{{ if world.rng_last % 4 == 1 }}snow{{ else }}{{ if world.rng_last % 4 == 2 }}fog{{ else }}hail{{ end }}{{ end }}{{ end }} month:{{ world.month }} terrain:prairie]`, `prompt_path = "prompts/event_weather.md"`, bind `last_event_prose ← stdout`
+1. set `current_event_attempts = 0`, `last_event_prose = ""`, `weather_kind = "{{ world.month == 'november' || world.month == 'december' || world.month == 'january' || world.month == 'february' ? 'snow' : (world.month == 'march' || world.month == 'april' || world.month == 'may' ? 'heavy_rain' : (world.month == 'june' || world.month == 'july' || world.month == 'august' ? (world.rng_last % 2 == 0 ? 'hail' : 'fog') : (world.rng_last % 2 == 0 ? 'heavy_rain' : 'fog'))) }}"`
+2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} kind:{{ world.month == 'november' || world.month == 'december' || world.month == 'january' || world.month == 'february' ? 'snow' : (world.month == 'march' || world.month == 'april' || world.month == 'may' ? 'heavy_rain' : (world.month == 'june' || world.month == 'july' || world.month == 'august' ? (world.rng_last % 2 == 0 ? 'hail' : 'fog') : (world.rng_last % 2 == 0 ? 'heavy_rain' : 'fog'))) }} month:{{ world.month }} terrain:prairie]`, `prompt_path = "prompts/event_weather.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -2201,30 +2144,18 @@ Actions: wait_out, push_on, look, quit.
 
 Travelling — Kansas River Crossing → Fort Kearney.
 
-**View**:
-
-```
-Day {{ world.day }} on the trail. Heading for Fort Kearney (prairie).
-
-Miles travelled this leg: {{ world.miles_traveled }} / 202.
-Food: {{ world.food_lbs }} lbs. Oxen: {{ world.oxen }}. Party: {{ world.party_alive }} alive.
-Pace: {{ world.pace }}. Rations: {{ world.rations }}.
-
-Actions: continue, set_pace <pace>, set_rations <rations>, look, quit.
-```
-
 **Transitions**:
 
 | # | Intent | Guard | → | Effects |
 |---|---|---|---|---|
-| 1 | [`continue`](#intent-continue) | `world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) >= 202` | [`leg_b_awaiting_reply`](#room-leg-b-awaiting-reply) | set `day = "{{ world.day + 1 }}"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · say "Arrived at Fort Kearney." |
-| 2 | [`continue`](#intent-continue) | `world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) <= 0` | [`ended_lost`](#room-ended-lost) | set `day = "{{ world.day + 1 }}"`, `food_lbs = 0` · say "The party has run out of food between Kansas River Crossing and Fort Kearney. They starve on the trail." |
-| 3 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 60 && int(world.miles_traveled + world.rng_counter) % 100 < 75` | `../event_disease` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = "disease"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
-| 4 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 75 && int(world.miles_traveled + world.rng_counter) % 100 < 85` | `../event_breakdown` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = "breakdown"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
-| 5 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 85 && int(world.miles_traveled + world.rng_counter) % 100 < 92` | `../event_weather` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = "weather"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
-| 6 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 92 && int(world.miles_traveled + world.rng_counter) % 100 < 97` | `../event_encounter` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = "encounter"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
-| 7 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 97` | `../event_supply_loss` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = "supply_loss"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
-| 8 | [`continue`](#intent-continue) | _default_ | `.` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = ""`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
+| 1 | [`continue`](#intent-continue) | `world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' \|\| world.month == 'january' \|\| world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' \|\| world.month == 'october' ? 85 : (world.month == 'april' \|\| world.month == 'september' ? 95 : 100)))) / 100) >= 202` | [`leg_b_awaiting_reply`](#room-leg-b-awaiting-reply) | set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · say "Arrived at Fort Kearney." |
+| 2 | [`continue`](#intent-continue) | `world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) <= 0` | [`ended_lost`](#room-ended-lost) | set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `food_lbs = 0`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · say "The party has run out of food between Kansas River Crossing and Fort Kearney. They starve on the trail." |
+| 3 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 60 && int(world.miles_traveled + world.rng_counter) % 100 < 75` | `../event_disease` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = "disease"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
+| 4 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 75 && int(world.miles_traveled + world.rng_counter) % 100 < 85` | `../event_breakdown` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = "breakdown"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
+| 5 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 85 && int(world.miles_traveled + world.rng_counter) % 100 < 92` | `../event_weather` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = "weather"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
+| 6 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 92 && int(world.miles_traveled + world.rng_counter) % 100 < 97` | `../event_encounter` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = "encounter"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
+| 7 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 97` | `../event_supply_loss` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = "supply_loss"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
+| 8 | [`continue`](#intent-continue) | _default_ | `.` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = ""`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
 | 9 | [`look`](#intent-look) |  | `.` |  |
 | 10 | [`quit`](#intent-quit) |  | [`ended_lost`](#room-ended-lost) | say "The party abandons the journey between Kansas River Crossing and Fort Kearney." |
 | 11 | [`set_pace`](#intent-set-pace) |  | `.` | set `pace = "{{ slots.pace }}"` · say "Pace set to {{ slots.pace }}." |
@@ -2234,52 +2165,39 @@ Actions: continue, set_pace <pace>, set_rations <rations>, look, quit.
 
 Arrived at Chimney Rock (prairie).
 
-**Shows world**: `day`, `miles_traveled`, `food_lbs`, `oxen`, `party_alive`, `health_avg`, `last_landmark_prose`
-
-**View**:
-
-```
-Arrived at Chimney Rock (prairie).
-
-Day:    {{ world.day }}
-Food:   {{ world.food_lbs }} lbs
-Oxen:   {{ world.oxen }}
-Party:  {{ world.party_alive }} alive
-Health: {{ world.health_avg }}
-
-{{ if world.last_landmark_prose != "" }}{{ world.last_landmark_prose }}{{ else }}{{ end }}
-
-When you're ready, "continue" presses on toward the next landmark.
-```
+**Shows world**: `day`, `miles_traveled`, `food_lbs`, `oxen`, `party_alive`, `health_avg`, `illness_kind`, `illness_severity`, `illness_member`, `last_landmark_prose`
 
 **On enter**:
 
 1. set `last_landmark_prose = ""`
 2. invoke `host.transport.post` with `body = "Day {{ world.day }}, {{ world.month }} {{ world.year }}. We rolled into **Chimney Rock** (prairie) at last.\n\n- Food: {{ world.food_lbs }} lbs\n- Oxen: {{ world.oxen }}\n- Party: {{ world.party_alive }} alive\n- Health: {{ world.health_avg }}\n"`, `phase_id = "leg_c_arrival"`, `thread = "{{ run.id }}"`, `title = "Day {{ world.day }}: Chimney Rock"`, `transport = "tui"`
-3. invoke `host.oracle.ask` with `args = map[day:{{ world.day }} food_lbs:{{ world.food_lbs }} landmark:Chimney Rock miles_traveled:{{ world.miles_traveled }} month:{{ world.month }} party_alive:{{ world.party_alive }} year:{{ world.year }}]`, `prompt_path = "prompts/landmark_arrival.md"`, bind `last_landmark_prose ← stdout`
+3. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[day:{{ world.day }} food_lbs:{{ world.food_lbs }} landmark:Chimney Rock miles_traveled:{{ world.miles_traveled }} month:{{ world.month }} party_alive:{{ world.party_alive }} year:{{ world.year }}]`, `prompt_path = "prompts/landmark_arrival.md"`, bind `last_landmark_prose ← stdout`
 
 **Transitions**:
 
 | # | Intent | Guard | → | Effects |
 |---|---|---|---|---|
-| 1 | [`approach_river`](#intent-approach-river) | `false` | [`river_crossing`](#room-river-crossing) | set `current_landmark = "Chimney Rock"`, `river_depth_ft = "{{ tpl.to_landmark == 'Kansas River Crossing' ? 2 : 7 }}"`, `river_width_ft = "{{ tpl.to_landmark == 'Kansas River Crossing' ? 620 : 1000 }}"` |
+| 1 | [`approach_river`](#intent-approach-river) | `false` | [`river_crossing`](#room-river-crossing) | set `current_landmark = "Chimney Rock"`, `river_depth_ft = "{{ int(0 * (world.month == 'april' ? 160 : (world.month == 'march' ? 140 : (world.month == 'may' ? 130 : (world.month == 'june' ? 100 : (world.month == 'july' ? 80 : (world.month == 'august' ? 70 : (world.month == 'september' ? 80 : 100))))))) / 100) }}"`, `river_width_ft = "{{ int(0) }}"` |
 | 2 | [`approach_river`](#intent-approach-river) | _default_ | `.` | _hint: No river at this landmark._ |
 | 3 | [`consult_guide`](#intent-consult-guide) |  | [`trail_guide`](#room-trail-guide) | set `last_job_originating_state = "leg_c_awaiting_reply"` · _(no-history)_ |
-| 4 | [`continue`](#intent-continue) |  | [`leg_d_executing`](#room-leg-d-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `current_landmark = "Chimney Rock"`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` |
-| 5 | [`enter_fort`](#intent-enter-fort) | `false` | [`fort`](#room-fort) | set `current_landmark = "Chimney Rock"` |
-| 6 | [`enter_fort`](#intent-enter-fort) | _default_ | `.` | _hint: No fort at this landmark._ |
-| 7 | [`give_up_leg`](#intent-give-up-leg) | `world.cycle__leg_c__on_failure < 2` | [`leg_b_executing`](#room-leg-b-executing) | increment `cycle__leg_c__on_failure += 1` · set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party turns back toward Fort Kearney." |
-| 8 | [`give_up_leg`](#intent-give-up-leg) | _default_ | [`leg_c_error`](#room-leg-c-error) | say "The party has given up too many times — stranded." |
-| 9 | [`hunt`](#intent-hunt) |  | [`hunt`](#room-hunt) |  |
-| 10 | [`quit`](#intent-quit) |  | [`ended_lost`](#room-ended-lost) | say "The party abandons the journey at Chimney Rock." |
-| 11 | [`rest`](#intent-rest) |  | [`rest_room`](#room-rest-room) |  |
-| 12 | [`restart_from`](#intent-restart-from) | `slots.stage == 'independence' \|\| slots.stage == 'kansas'` | [`leg_a_executing`](#room-leg-a-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Independence to retry the run toward Kansas River." |
-| 13 | [`restart_from`](#intent-restart-from) | `slots.stage == 'kearney'` | [`leg_b_executing`](#room-leg-b-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Kansas River to retry the stretch toward Fort Kearney." |
-| 14 | [`restart_from`](#intent-restart-from) | `slots.stage == 'chimney'` | [`leg_c_executing`](#room-leg-c-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Fort Kearney to retry the stretch toward Chimney Rock." |
-| 15 | [`restart_from`](#intent-restart-from) | `slots.stage == 'laramie'` | [`leg_d_executing`](#room-leg-d-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Chimney Rock to retry the stretch toward Fort Laramie." |
-| 16 | [`restart_from`](#intent-restart-from) | `slots.stage == 'south_pass'` | [`leg_e_executing`](#room-leg-e-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Fort Laramie to retry the stretch toward South Pass." |
-| 17 | [`restart_from`](#intent-restart-from) | `slots.stage == 'snake'` | [`leg_f_executing`](#room-leg-f-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to South Pass to retry the stretch toward Snake River." |
-| 18 | [`restart_from`](#intent-restart-from) | _default_ | `.` | _hint: Unknown restart stage._ |
+| 4 | [`continue`](#intent-continue) | `'Chimney Rock' == 'South Pass' && (world.month == 'october' \|\| world.month == 'november' \|\| world.month == 'december' \|\| world.month == 'january' \|\| world.month == 'february')` | [`snow_blocked`](#room-snow-blocked) | set `current_landmark = "Chimney Rock"` · say "South Pass is snowed in. The wagons cannot get through." |
+| 5 | [`continue`](#intent-continue) | _default_ | [`leg_d_executing`](#room-leg-d-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `current_landmark = "Chimney Rock"`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` |
+| 6 | [`enter_fort`](#intent-enter-fort) | `false` | [`fort`](#room-fort) | set `current_landmark = "Chimney Rock"` |
+| 7 | [`enter_fort`](#intent-enter-fort) | _default_ | `.` | _hint: No fort at this landmark._ |
+| 8 | [`face_robbery`](#intent-face-robbery) |  | [`frontier`](#room-frontier) |  |
+| 9 | [`give_up_leg`](#intent-give-up-leg) | `world.cycle__leg_c__on_failure < 2` | [`leg_b_executing`](#room-leg-b-executing) | increment `cycle__leg_c__on_failure += 1` · set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party turns back toward Fort Kearney." |
+| 10 | [`give_up_leg`](#intent-give-up-leg) | _default_ | [`leg_c_error`](#room-leg-c-error) | say "The party has given up too many times — stranded." |
+| 11 | [`hunt`](#intent-hunt) |  | [`hunt`](#room-hunt) |  |
+| 12 | [`quit`](#intent-quit) |  | [`ended_lost`](#room-ended-lost) | say "The party abandons the journey at Chimney Rock." |
+| 13 | [`rest`](#intent-rest) |  | [`rest_room`](#room-rest-room) |  |
+| 14 | [`restart_from`](#intent-restart-from) | `slots.stage == 'independence' \|\| slots.stage == 'kansas'` | [`leg_a_executing`](#room-leg-a-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Independence to retry the run toward Kansas River." |
+| 15 | [`restart_from`](#intent-restart-from) | `slots.stage == 'kearney'` | [`leg_b_executing`](#room-leg-b-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Kansas River to retry the stretch toward Fort Kearney." |
+| 16 | [`restart_from`](#intent-restart-from) | `slots.stage == 'chimney'` | [`leg_c_executing`](#room-leg-c-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Fort Kearney to retry the stretch toward Chimney Rock." |
+| 17 | [`restart_from`](#intent-restart-from) | `slots.stage == 'laramie'` | [`leg_d_executing`](#room-leg-d-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Chimney Rock to retry the stretch toward Fort Laramie." |
+| 18 | [`restart_from`](#intent-restart-from) | `slots.stage == 'south_pass'` | [`leg_e_executing`](#room-leg-e-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Fort Laramie to retry the stretch toward South Pass." |
+| 19 | [`restart_from`](#intent-restart-from) | `slots.stage == 'snake'` | [`leg_f_executing`](#room-leg-f-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to South Pass to retry the stretch toward Snake River." |
+| 20 | [`restart_from`](#intent-restart-from) | _default_ | `.` | _hint: Unknown restart stage._ |
+| 21 | [`scout`](#intent-scout) |  | [`frontier`](#room-frontier) |  |
 
 **Timeout**: after `10d` → `leg_d_executing`
 
@@ -2288,16 +2206,6 @@ When you're ready, "continue" presses on toward the next landmark.
 Stranded between Fort Kearney and Chimney Rock.
 
 **Shows world**: `day`, `party_alive`, `current_landmark`
-
-**View**:
-
-```
-Stranded between Fort Kearney and Chimney Rock.
-
-The party has failed this leg too many times.
-
-Actions: retry (returns to Fort Kearney), quit.
-```
 
 **Transitions**:
 
@@ -2312,7 +2220,7 @@ On the trail from Fort Kearney to Chimney Rock (prairie).
 
 **Initial child**: `traveling`
 
-**Shows world**: `day`, `month`, `miles_traveled`, `food_lbs`, `oxen`, `party_alive`, `health_avg`, `pace`, `rations`, `current_landmark`, `event_kind`, `illness_kind`, `breakdown_part`, `weather_kind`, `encounter_kind`, `rng_last`, `rng_counter`
+**Shows world**: `day`, `month`, `miles_traveled`, `food_lbs`, `oxen`, `party_alive`, `health_avg`, `pace`, `rations`, `current_landmark`, `event_kind`, `illness_kind`, `illness_severity`, `illness_member`, `breakdown_part`, `weather_kind`, `encounter_kind`, `rng_last`, `rng_counter`
 
 **On enter**:
 
@@ -2331,21 +2239,10 @@ Wagon breakdown — {{ world.breakdown_part }}.
 
 **Shows world**: `breakdown_part`, `spare_wheels`, `spare_axles`, `spare_tongues`, `day`, `current_event_attempts`, `last_event_prose`
 
-**View**:
-
-```
-{{ if world.last_event_prose != "" }}{{ world.last_event_prose }}
-
-{{ end }}The wagon's {{ world.breakdown_part }} has broken.
-Spare wheels: {{ world.spare_wheels }}, axles: {{ world.spare_axles }}, tongues: {{ world.spare_tongues }}.
-
-Actions: repair (needs a matching spare), wait_out (5 days), look, quit.
-```
-
 **On enter**:
 
 1. set `breakdown_part = "{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }}"`, `current_event_attempts = 0`, `last_event_prose = ""`
-2. invoke `host.oracle.ask` with `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} part:{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }} spares_remaining:{{ world.rng_last % 3 == 0 ? world.spare_wheels : (world.rng_last % 3 == 1 ? world.spare_axles : world.spare_tongues) }}]`, `prompt_path = "prompts/event_breakdown.md"`, bind `last_event_prose ← stdout`
+2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} part:{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }} spares_remaining:{{ world.rng_last % 3 == 0 ? world.spare_wheels : (world.rng_last % 3 == 1 ? world.spare_axles : world.spare_tongues) }}]`, `prompt_path = "prompts/event_breakdown.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -2364,37 +2261,26 @@ Actions: repair (needs a matching spare), wait_out (5 days), look, quit.
 
 Illness has struck the party ({{ world.illness_kind }}).
 
-**Shows world**: `illness_kind`, `illness_severity`, `illness_treatment`, `health_avg`, `party_alive`, `food_lbs`, `clothing_sets`, `day`, `current_event_attempts`
-
-**View**:
-
-```
-Someone in the party has fallen ill.
-Illness: {{ world.illness_kind }}.
-Health: {{ world.health_avg }}.   Party: {{ world.party_alive }} alive.
-Supplies: {{ world.clothing_sets }} clothing sets, {{ world.food_lbs }} lbs food.
-
-Actions: treat, wait_out, move_on, look, quit.
-```
+**Shows world**: `illness_kind`, `illness_severity`, `illness_treatment`, `illness_member`, `health_avg`, `party_alive`, `food_lbs`, `clothing_sets`, `day`, `current_event_attempts`
 
 **On enter**:
 
-1. set `current_event_attempts = 0`, `health_avg = "{{ world.health_avg - 10 }}"`
+1. set `current_event_attempts = 0`, `health_avg = "{{ world.health_avg - 10 }}"`, `illness_member = "{{ split(world.party_names, ',')[world.rng_last % world.party_alive] }}"`
 2. set `illness_kind = "{{ if world.rng_last % 5 == 0 }}dysentery{{ else }}{{ if world.rng_last % 5 == 1 }}cholera{{ else }}{{ if world.rng_last % 5 == 2 }}typhoid{{ else }}{{ if world.rng_last % 5 == 3 }}measles{{ else }}exhaustion{{ end }}{{ end }}{{ end }}{{ end }}"`, `illness_severity = "{{ world.rng_last % 5 + 1 }}"`, `illness_treatment = "rest"`
-3. invoke `host.oracle.ask_with_mcp` with `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} food_lbs:{{ world.food_lbs }} health_avg:{{ world.health_avg }} party_alive:{{ world.party_alive }} rng_last:{{ world.rng_last }}]`, `prompt = "prompts/event_disease.md"`, `schema = "mcp/illness.json"`, bind `illness_kind ← submitted.illness`, `illness_severity ← submitted.severity`, `illness_treatment ← submitted.treatment`, on_error → `leg_c_error`
+3. invoke `host.oracle.ask_with_mcp` with `agent = "frontier_doctor"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} food_lbs:{{ world.food_lbs }} health_avg:{{ world.health_avg }} party_alive:{{ world.party_alive }} rng_last:{{ world.rng_last }}]`, `prompt = "prompts/event_disease.md"`, `schema = "mcp/illness.json"`, bind `illness_kind ← submitted.illness`, `illness_severity ← submitted.severity`, `illness_treatment ← submitted.treatment`, on_error → `leg_c_error`
 
 **Transitions**:
 
 | # | Intent | Guard | → | Effects |
 |---|---|---|---|---|
 | 1 | [`look`](#intent-look) |  | `.` |  |
-| 2 | [`move_on`](#intent-move-on) |  | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — pushed on through the {{ world.illness_kind }} rather than stop. Health is worse for it, but the wagon rolls."`, `phase_id = "leg_c_event_disease_moved_on_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Pressing on through illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `event_kind = ""`, `health_avg = "{{ world.health_avg - 15 }}"`, `illness_kind = ""` · say "The party presses on. Health worsens." |
+| 2 | [`move_on`](#intent-move-on) |  | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — pushed on through the {{ world.illness_kind }} rather than stop. Health is worse for it, but the wagon rolls."`, `phase_id = "leg_c_event_disease_moved_on_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Pressing on through illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `event_kind = ""`, `health_avg = "{{ world.health_avg - 15 }}"`, `illness_kind = ""`, `illness_member = ""`, `illness_severity = 0`, `illness_treatment = ""` · say "The party presses on. Health worsens." |
 | 3 | [`quit`](#intent-quit) |  | [`ended_lost`](#room-ended-lost) | say "The party gives up on the trail, broken by {{ world.illness_kind }}." |
-| 4 | [`treat`](#intent-treat) | `world.clothing_sets >= 1 && world.food_lbs >= 50 && world.current_event_attempts < 2` | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — the {{ world.illness_kind }} has passed. Rested up, one clothing set used and 50 lbs of food spent on broth and care. Spirits steady, on the move."`, `phase_id = "leg_c_event_disease_treated_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Disease treated"`, `transport = "tui"` · set `clothing_sets = "{{ world.clothing_sets - 1 }}"`, `current_event_attempts = 0`, `event_kind = ""`, `food_lbs = "{{ world.food_lbs - 50 }}"`, `health_avg = "{{ world.health_avg + 20 }}"`, `illness_kind = ""` · say "The party rests and treats the illness." |
+| 4 | [`treat`](#intent-treat) | `world.clothing_sets >= 1 && world.food_lbs >= 50 && world.current_event_attempts < 2` | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — the {{ world.illness_kind }} has passed. Rested up, one clothing set used and 50 lbs of food spent on broth and care. Spirits steady, on the move."`, `phase_id = "leg_c_event_disease_treated_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Disease treated"`, `transport = "tui"` · set `clothing_sets = "{{ world.clothing_sets - 1 }}"`, `current_event_attempts = 0`, `event_kind = ""`, `food_lbs = "{{ world.food_lbs - 50 }}"`, `health_avg = "{{ world.health_avg + 20 }}"`, `illness_kind = ""`, `illness_member = ""`, `illness_severity = 0`, `illness_treatment = ""` · say "The party rests and treats the illness." |
 | 5 | [`treat`](#intent-treat) | `(world.clothing_sets < 1 \|\| world.food_lbs < 50) && world.current_event_attempts < 2` | `.` | increment `current_event_attempts += 1` · say "Not enough supplies to treat the {{ world.illness_kind }} (need 1 clothing set + 50 lbs food). Try again or wait_out." |
-| 6 | [`treat`](#intent-treat) | _default_ | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — after repeated attempts, the {{ world.illness_kind }} took one of the party. May the trail remember them."`, `phase_id = "leg_c_event_disease_lost_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Lost to illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `event_kind = ""`, `illness_kind = ""`, `party_alive = "{{ world.party_alive - 1 }}"` · say "After repeated futile attempts, a party member has died of illness." |
-| 7 | [`wait_out`](#intent-wait-out) | `world.health_avg < 30` | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — the patient was too weak. {{ world.illness_kind }} claimed one of the party while we waited."`, `phase_id = "leg_c_event_disease_wait_lost_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Lost to illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `day = "{{ world.day + 1 }}"`, `event_kind = ""`, `illness_kind = ""`, `party_alive = "{{ world.party_alive - 1 }}"` · say "The patient was too weak. A party member dies of illness." |
-| 8 | [`wait_out`](#intent-wait-out) | _default_ | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — one day of rest and the {{ world.illness_kind }} let go. We move on tomorrow."`, `phase_id = "leg_c_event_disease_wait_ok_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Illness passed"`, `transport = "tui"` · set `current_event_attempts = 0`, `day = "{{ world.day + 1 }}"`, `event_kind = ""`, `illness_kind = ""` · say "The party rests a day. The illness passes." |
+| 6 | [`treat`](#intent-treat) | _default_ | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — after repeated attempts, the {{ world.illness_kind }} took one of the party. May the trail remember them."`, `phase_id = "leg_c_event_disease_lost_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Lost to illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `event_kind = ""`, `illness_kind = ""`, `illness_member = ""`, `illness_severity = 0`, `illness_treatment = ""`, `party_alive = "{{ world.party_alive - 1 }}"` · say "After repeated futile attempts, a party member has died of illness." |
+| 7 | [`wait_out`](#intent-wait-out) | `world.health_avg < 30` | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — the patient was too weak. {{ world.illness_kind }} claimed one of the party while we waited."`, `phase_id = "leg_c_event_disease_wait_lost_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Lost to illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `day = "{{ world.day + 1 }}"`, `event_kind = ""`, `illness_kind = ""`, `illness_member = ""`, `illness_severity = 0`, `illness_treatment = ""`, `party_alive = "{{ world.party_alive - 1 }}"` · say "The patient was too weak. A party member dies of illness." |
+| 8 | [`wait_out`](#intent-wait-out) | _default_ | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — one day of rest and the {{ world.illness_kind }} let go. We move on tomorrow."`, `phase_id = "leg_c_event_disease_wait_ok_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Illness passed"`, `transport = "tui"` · set `current_event_attempts = 0`, `day = "{{ world.day + 1 }}"`, `event_kind = ""`, `illness_kind = ""`, `illness_member = ""`, `illness_severity = 0`, `illness_treatment = ""` · say "The party rests a day. The illness passes." |
 
 ### <a id="room-leg-c-executing-event-encounter"></a> `leg_c_executing.event_encounter`
 
@@ -2402,22 +2288,10 @@ Encounter on the trail: {{ world.encounter_kind }}.
 
 **Shows world**: `encounter_kind`, `food_lbs`, `clothing_sets`, `last_event_prose`
 
-**View**:
-
-```
-{{ if world.last_event_prose != "" }}{{ world.last_event_prose }}
-
-{{ end }}You meet a {{ world.encounter_kind }} on the trail.
-They offer 1 clothing set in exchange for 50 lbs of food.
-You have {{ world.food_lbs }} lbs food, {{ world.clothing_sets }} clothing sets.
-
-Actions: accept_trade, decline_trade, move_on, look, quit.
-```
-
 **On enter**:
 
 1. set `current_event_attempts = 0`, `encounter_kind = "{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}"`, `last_event_prose = ""`
-2. invoke `host.oracle.ask` with `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} kind:{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}]`, `prompt_path = "prompts/event_encounter.md"`, bind `last_event_prose ← stdout`
+2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} kind:{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}]`, `prompt_path = "prompts/event_encounter.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -2436,22 +2310,11 @@ Supplies lost on the trail.
 
 **Shows world**: `food_lbs`, `oxen`, `rng_last`, `last_event_prose`
 
-**View**:
-
-```
-{{ if world.last_event_prose != "" }}{{ world.last_event_prose }}
-
-{{ end }}Supplies have been lost on the trail.
-Food: {{ world.food_lbs }} lbs.  Oxen: {{ world.oxen }}.
-
-Action: move_on.
-```
-
 **On enter**:
 
 1. set `current_event_attempts = 0`, `last_event = "{{ if world.rng_last % 2 == 0 }}food_loss{{ else }}ox_loss{{ end }}"`, `last_event_prose = ""`
 2. set `food_lbs = "{{ world.rng_last % 2 == 0 ? world.food_lbs - (10 + 10 * (world.rng_last % 4)) : world.food_lbs }}"`, `oxen = "{{ world.rng_last % 2 == 0 ? world.oxen : world.oxen - 1 }}"`
-3. invoke `host.oracle.ask` with `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} oxen:{{ world.oxen }} what:{{ world.rng_last % 2 == 0 ? 'food spoiled' : 'ox lame' }}]`, `prompt_path = "prompts/event_supply_loss.md"`, bind `last_event_prose ← stdout`
+3. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} oxen:{{ world.oxen }} what:{{ world.rng_last % 2 == 0 ? 'food spoiled' : 'ox lame' }}]`, `prompt_path = "prompts/event_supply_loss.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -2467,21 +2330,10 @@ Severe weather: {{ world.weather_kind }}.
 
 **Shows world**: `weather_kind`, `day`, `food_lbs`, `health_avg`, `last_event_prose`
 
-**View**:
-
-```
-{{ if world.last_event_prose != "" }}{{ world.last_event_prose }}
-
-{{ end }}Severe weather: {{ world.weather_kind }}.
-Health: {{ world.health_avg }}.   Food: {{ world.food_lbs }} lbs.   Day {{ world.day }}.
-
-Actions: wait_out, push_on, look, quit.
-```
-
 **On enter**:
 
-1. set `current_event_attempts = 0`, `last_event_prose = ""`, `weather_kind = "{{ if world.rng_last % 4 == 0 }}heavy_rain{{ else }}{{ if world.rng_last % 4 == 1 }}snow{{ else }}{{ if world.rng_last % 4 == 2 }}fog{{ else }}hail{{ end }}{{ end }}{{ end }}"`
-2. invoke `host.oracle.ask` with `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} kind:{{ if world.rng_last % 4 == 0 }}heavy_rain{{ else }}{{ if world.rng_last % 4 == 1 }}snow{{ else }}{{ if world.rng_last % 4 == 2 }}fog{{ else }}hail{{ end }}{{ end }}{{ end }} month:{{ world.month }} terrain:prairie]`, `prompt_path = "prompts/event_weather.md"`, bind `last_event_prose ← stdout`
+1. set `current_event_attempts = 0`, `last_event_prose = ""`, `weather_kind = "{{ world.month == 'november' || world.month == 'december' || world.month == 'january' || world.month == 'february' ? 'snow' : (world.month == 'march' || world.month == 'april' || world.month == 'may' ? 'heavy_rain' : (world.month == 'june' || world.month == 'july' || world.month == 'august' ? (world.rng_last % 2 == 0 ? 'hail' : 'fog') : (world.rng_last % 2 == 0 ? 'heavy_rain' : 'fog'))) }}"`
+2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} kind:{{ world.month == 'november' || world.month == 'december' || world.month == 'january' || world.month == 'february' ? 'snow' : (world.month == 'march' || world.month == 'april' || world.month == 'may' ? 'heavy_rain' : (world.month == 'june' || world.month == 'july' || world.month == 'august' ? (world.rng_last % 2 == 0 ? 'hail' : 'fog') : (world.rng_last % 2 == 0 ? 'heavy_rain' : 'fog'))) }} month:{{ world.month }} terrain:prairie]`, `prompt_path = "prompts/event_weather.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -2496,30 +2348,18 @@ Actions: wait_out, push_on, look, quit.
 
 Travelling — Fort Kearney → Chimney Rock.
 
-**View**:
-
-```
-Day {{ world.day }} on the trail. Heading for Chimney Rock (prairie).
-
-Miles travelled this leg: {{ world.miles_traveled }} / 250.
-Food: {{ world.food_lbs }} lbs. Oxen: {{ world.oxen }}. Party: {{ world.party_alive }} alive.
-Pace: {{ world.pace }}. Rations: {{ world.rations }}.
-
-Actions: continue, set_pace <pace>, set_rations <rations>, look, quit.
-```
-
 **Transitions**:
 
 | # | Intent | Guard | → | Effects |
 |---|---|---|---|---|
-| 1 | [`continue`](#intent-continue) | `world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) >= 250` | [`leg_c_awaiting_reply`](#room-leg-c-awaiting-reply) | set `day = "{{ world.day + 1 }}"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · say "Arrived at Chimney Rock." |
-| 2 | [`continue`](#intent-continue) | `world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) <= 0` | [`ended_lost`](#room-ended-lost) | set `day = "{{ world.day + 1 }}"`, `food_lbs = 0` · say "The party has run out of food between Fort Kearney and Chimney Rock. They starve on the trail." |
-| 3 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 60 && int(world.miles_traveled + world.rng_counter) % 100 < 75` | `../event_disease` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = "disease"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
-| 4 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 75 && int(world.miles_traveled + world.rng_counter) % 100 < 85` | `../event_breakdown` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = "breakdown"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
-| 5 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 85 && int(world.miles_traveled + world.rng_counter) % 100 < 92` | `../event_weather` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = "weather"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
-| 6 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 92 && int(world.miles_traveled + world.rng_counter) % 100 < 97` | `../event_encounter` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = "encounter"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
-| 7 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 97` | `../event_supply_loss` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = "supply_loss"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
-| 8 | [`continue`](#intent-continue) | _default_ | `.` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = ""`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
+| 1 | [`continue`](#intent-continue) | `world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' \|\| world.month == 'january' \|\| world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' \|\| world.month == 'october' ? 85 : (world.month == 'april' \|\| world.month == 'september' ? 95 : 100)))) / 100) >= 250` | [`leg_c_awaiting_reply`](#room-leg-c-awaiting-reply) | set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · say "Arrived at Chimney Rock." |
+| 2 | [`continue`](#intent-continue) | `world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) <= 0` | [`ended_lost`](#room-ended-lost) | set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `food_lbs = 0`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · say "The party has run out of food between Fort Kearney and Chimney Rock. They starve on the trail." |
+| 3 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 60 && int(world.miles_traveled + world.rng_counter) % 100 < 75` | `../event_disease` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = "disease"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
+| 4 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 75 && int(world.miles_traveled + world.rng_counter) % 100 < 85` | `../event_breakdown` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = "breakdown"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
+| 5 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 85 && int(world.miles_traveled + world.rng_counter) % 100 < 92` | `../event_weather` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = "weather"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
+| 6 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 92 && int(world.miles_traveled + world.rng_counter) % 100 < 97` | `../event_encounter` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = "encounter"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
+| 7 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 97` | `../event_supply_loss` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = "supply_loss"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
+| 8 | [`continue`](#intent-continue) | _default_ | `.` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = ""`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
 | 9 | [`look`](#intent-look) |  | `.` |  |
 | 10 | [`quit`](#intent-quit) |  | [`ended_lost`](#room-ended-lost) | say "The party abandons the journey between Fort Kearney and Chimney Rock." |
 | 11 | [`set_pace`](#intent-set-pace) |  | `.` | set `pace = "{{ slots.pace }}"` · say "Pace set to {{ slots.pace }}." |
@@ -2529,52 +2369,39 @@ Actions: continue, set_pace <pace>, set_rations <rations>, look, quit.
 
 Arrived at Fort Laramie (prairie).
 
-**Shows world**: `day`, `miles_traveled`, `food_lbs`, `oxen`, `party_alive`, `health_avg`, `last_landmark_prose`
-
-**View**:
-
-```
-Arrived at Fort Laramie (prairie).
-
-Day:    {{ world.day }}
-Food:   {{ world.food_lbs }} lbs
-Oxen:   {{ world.oxen }}
-Party:  {{ world.party_alive }} alive
-Health: {{ world.health_avg }}
-
-{{ if world.last_landmark_prose != "" }}{{ world.last_landmark_prose }}{{ else }}Fort Laramie ahead — enter to resupply at marked-up prices.{{ end }}
-
-When you're ready, "continue" presses on toward the next landmark.
-```
+**Shows world**: `day`, `miles_traveled`, `food_lbs`, `oxen`, `party_alive`, `health_avg`, `illness_kind`, `illness_severity`, `illness_member`, `last_landmark_prose`
 
 **On enter**:
 
 1. set `last_landmark_prose = ""`
 2. invoke `host.transport.post` with `body = "Day {{ world.day }}, {{ world.month }} {{ world.year }}. We rolled into **Fort Laramie** (prairie) at last.\n\n- Food: {{ world.food_lbs }} lbs\n- Oxen: {{ world.oxen }}\n- Party: {{ world.party_alive }} alive\n- Health: {{ world.health_avg }}\n"`, `phase_id = "leg_d_arrival"`, `thread = "{{ run.id }}"`, `title = "Day {{ world.day }}: Fort Laramie"`, `transport = "tui"`
-3. invoke `host.oracle.ask` with `args = map[day:{{ world.day }} food_lbs:{{ world.food_lbs }} landmark:Fort Laramie miles_traveled:{{ world.miles_traveled }} month:{{ world.month }} party_alive:{{ world.party_alive }} year:{{ world.year }}]`, `prompt_path = "prompts/landmark_arrival.md"`, bind `last_landmark_prose ← stdout`
+3. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[day:{{ world.day }} food_lbs:{{ world.food_lbs }} landmark:Fort Laramie miles_traveled:{{ world.miles_traveled }} month:{{ world.month }} party_alive:{{ world.party_alive }} year:{{ world.year }}]`, `prompt_path = "prompts/landmark_arrival.md"`, bind `last_landmark_prose ← stdout`
 
 **Transitions**:
 
 | # | Intent | Guard | → | Effects |
 |---|---|---|---|---|
-| 1 | [`approach_river`](#intent-approach-river) | `false` | [`river_crossing`](#room-river-crossing) | set `current_landmark = "Fort Laramie"`, `river_depth_ft = "{{ tpl.to_landmark == 'Kansas River Crossing' ? 2 : 7 }}"`, `river_width_ft = "{{ tpl.to_landmark == 'Kansas River Crossing' ? 620 : 1000 }}"` |
+| 1 | [`approach_river`](#intent-approach-river) | `false` | [`river_crossing`](#room-river-crossing) | set `current_landmark = "Fort Laramie"`, `river_depth_ft = "{{ int(0 * (world.month == 'april' ? 160 : (world.month == 'march' ? 140 : (world.month == 'may' ? 130 : (world.month == 'june' ? 100 : (world.month == 'july' ? 80 : (world.month == 'august' ? 70 : (world.month == 'september' ? 80 : 100))))))) / 100) }}"`, `river_width_ft = "{{ int(0) }}"` |
 | 2 | [`approach_river`](#intent-approach-river) | _default_ | `.` | _hint: No river at this landmark._ |
 | 3 | [`consult_guide`](#intent-consult-guide) |  | [`trail_guide`](#room-trail-guide) | set `last_job_originating_state = "leg_d_awaiting_reply"` · _(no-history)_ |
-| 4 | [`continue`](#intent-continue) |  | [`leg_e_executing`](#room-leg-e-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `current_landmark = "Fort Laramie"`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` |
-| 5 | [`enter_fort`](#intent-enter-fort) | `true` | [`fort`](#room-fort) | set `current_landmark = "Fort Laramie"` |
-| 6 | [`enter_fort`](#intent-enter-fort) | _default_ | `.` | _hint: No fort at this landmark._ |
-| 7 | [`give_up_leg`](#intent-give-up-leg) | `world.cycle__leg_d__on_failure < 2` | [`leg_c_executing`](#room-leg-c-executing) | increment `cycle__leg_d__on_failure += 1` · set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party turns back toward Chimney Rock." |
-| 8 | [`give_up_leg`](#intent-give-up-leg) | _default_ | [`leg_d_error`](#room-leg-d-error) | say "The party has given up too many times — stranded." |
-| 9 | [`hunt`](#intent-hunt) |  | [`hunt`](#room-hunt) |  |
-| 10 | [`quit`](#intent-quit) |  | [`ended_lost`](#room-ended-lost) | say "The party abandons the journey at Fort Laramie." |
-| 11 | [`rest`](#intent-rest) |  | [`rest_room`](#room-rest-room) |  |
-| 12 | [`restart_from`](#intent-restart-from) | `slots.stage == 'independence' \|\| slots.stage == 'kansas'` | [`leg_a_executing`](#room-leg-a-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Independence to retry the run toward Kansas River." |
-| 13 | [`restart_from`](#intent-restart-from) | `slots.stage == 'kearney'` | [`leg_b_executing`](#room-leg-b-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Kansas River to retry the stretch toward Fort Kearney." |
-| 14 | [`restart_from`](#intent-restart-from) | `slots.stage == 'chimney'` | [`leg_c_executing`](#room-leg-c-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Fort Kearney to retry the stretch toward Chimney Rock." |
-| 15 | [`restart_from`](#intent-restart-from) | `slots.stage == 'laramie'` | [`leg_d_executing`](#room-leg-d-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Chimney Rock to retry the stretch toward Fort Laramie." |
-| 16 | [`restart_from`](#intent-restart-from) | `slots.stage == 'south_pass'` | [`leg_e_executing`](#room-leg-e-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Fort Laramie to retry the stretch toward South Pass." |
-| 17 | [`restart_from`](#intent-restart-from) | `slots.stage == 'snake'` | [`leg_f_executing`](#room-leg-f-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to South Pass to retry the stretch toward Snake River." |
-| 18 | [`restart_from`](#intent-restart-from) | _default_ | `.` | _hint: Unknown restart stage._ |
+| 4 | [`continue`](#intent-continue) | `'Fort Laramie' == 'South Pass' && (world.month == 'october' \|\| world.month == 'november' \|\| world.month == 'december' \|\| world.month == 'january' \|\| world.month == 'february')` | [`snow_blocked`](#room-snow-blocked) | set `current_landmark = "Fort Laramie"` · say "South Pass is snowed in. The wagons cannot get through." |
+| 5 | [`continue`](#intent-continue) | _default_ | [`leg_e_executing`](#room-leg-e-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `current_landmark = "Fort Laramie"`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` |
+| 6 | [`enter_fort`](#intent-enter-fort) | `true` | [`fort`](#room-fort) | set `current_landmark = "Fort Laramie"` |
+| 7 | [`enter_fort`](#intent-enter-fort) | _default_ | `.` | _hint: No fort at this landmark._ |
+| 8 | [`face_robbery`](#intent-face-robbery) |  | [`frontier`](#room-frontier) |  |
+| 9 | [`give_up_leg`](#intent-give-up-leg) | `world.cycle__leg_d__on_failure < 2` | [`leg_c_executing`](#room-leg-c-executing) | increment `cycle__leg_d__on_failure += 1` · set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party turns back toward Chimney Rock." |
+| 10 | [`give_up_leg`](#intent-give-up-leg) | _default_ | [`leg_d_error`](#room-leg-d-error) | say "The party has given up too many times — stranded." |
+| 11 | [`hunt`](#intent-hunt) |  | [`hunt`](#room-hunt) |  |
+| 12 | [`quit`](#intent-quit) |  | [`ended_lost`](#room-ended-lost) | say "The party abandons the journey at Fort Laramie." |
+| 13 | [`rest`](#intent-rest) |  | [`rest_room`](#room-rest-room) |  |
+| 14 | [`restart_from`](#intent-restart-from) | `slots.stage == 'independence' \|\| slots.stage == 'kansas'` | [`leg_a_executing`](#room-leg-a-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Independence to retry the run toward Kansas River." |
+| 15 | [`restart_from`](#intent-restart-from) | `slots.stage == 'kearney'` | [`leg_b_executing`](#room-leg-b-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Kansas River to retry the stretch toward Fort Kearney." |
+| 16 | [`restart_from`](#intent-restart-from) | `slots.stage == 'chimney'` | [`leg_c_executing`](#room-leg-c-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Fort Kearney to retry the stretch toward Chimney Rock." |
+| 17 | [`restart_from`](#intent-restart-from) | `slots.stage == 'laramie'` | [`leg_d_executing`](#room-leg-d-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Chimney Rock to retry the stretch toward Fort Laramie." |
+| 18 | [`restart_from`](#intent-restart-from) | `slots.stage == 'south_pass'` | [`leg_e_executing`](#room-leg-e-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Fort Laramie to retry the stretch toward South Pass." |
+| 19 | [`restart_from`](#intent-restart-from) | `slots.stage == 'snake'` | [`leg_f_executing`](#room-leg-f-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to South Pass to retry the stretch toward Snake River." |
+| 20 | [`restart_from`](#intent-restart-from) | _default_ | `.` | _hint: Unknown restart stage._ |
+| 21 | [`scout`](#intent-scout) |  | [`frontier`](#room-frontier) |  |
 
 **Timeout**: after `10d` → `leg_e_executing`
 
@@ -2583,16 +2410,6 @@ When you're ready, "continue" presses on toward the next landmark.
 Stranded between Chimney Rock and Fort Laramie.
 
 **Shows world**: `day`, `party_alive`, `current_landmark`
-
-**View**:
-
-```
-Stranded between Chimney Rock and Fort Laramie.
-
-The party has failed this leg too many times.
-
-Actions: retry (returns to Chimney Rock), quit.
-```
 
 **Transitions**:
 
@@ -2607,7 +2424,7 @@ On the trail from Chimney Rock to Fort Laramie (prairie).
 
 **Initial child**: `traveling`
 
-**Shows world**: `day`, `month`, `miles_traveled`, `food_lbs`, `oxen`, `party_alive`, `health_avg`, `pace`, `rations`, `current_landmark`, `event_kind`, `illness_kind`, `breakdown_part`, `weather_kind`, `encounter_kind`, `rng_last`, `rng_counter`
+**Shows world**: `day`, `month`, `miles_traveled`, `food_lbs`, `oxen`, `party_alive`, `health_avg`, `pace`, `rations`, `current_landmark`, `event_kind`, `illness_kind`, `illness_severity`, `illness_member`, `breakdown_part`, `weather_kind`, `encounter_kind`, `rng_last`, `rng_counter`
 
 **On enter**:
 
@@ -2626,21 +2443,10 @@ Wagon breakdown — {{ world.breakdown_part }}.
 
 **Shows world**: `breakdown_part`, `spare_wheels`, `spare_axles`, `spare_tongues`, `day`, `current_event_attempts`, `last_event_prose`
 
-**View**:
-
-```
-{{ if world.last_event_prose != "" }}{{ world.last_event_prose }}
-
-{{ end }}The wagon's {{ world.breakdown_part }} has broken.
-Spare wheels: {{ world.spare_wheels }}, axles: {{ world.spare_axles }}, tongues: {{ world.spare_tongues }}.
-
-Actions: repair (needs a matching spare), wait_out (5 days), look, quit.
-```
-
 **On enter**:
 
 1. set `breakdown_part = "{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }}"`, `current_event_attempts = 0`, `last_event_prose = ""`
-2. invoke `host.oracle.ask` with `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} part:{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }} spares_remaining:{{ world.rng_last % 3 == 0 ? world.spare_wheels : (world.rng_last % 3 == 1 ? world.spare_axles : world.spare_tongues) }}]`, `prompt_path = "prompts/event_breakdown.md"`, bind `last_event_prose ← stdout`
+2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} part:{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }} spares_remaining:{{ world.rng_last % 3 == 0 ? world.spare_wheels : (world.rng_last % 3 == 1 ? world.spare_axles : world.spare_tongues) }}]`, `prompt_path = "prompts/event_breakdown.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -2659,37 +2465,26 @@ Actions: repair (needs a matching spare), wait_out (5 days), look, quit.
 
 Illness has struck the party ({{ world.illness_kind }}).
 
-**Shows world**: `illness_kind`, `illness_severity`, `illness_treatment`, `health_avg`, `party_alive`, `food_lbs`, `clothing_sets`, `day`, `current_event_attempts`
-
-**View**:
-
-```
-Someone in the party has fallen ill.
-Illness: {{ world.illness_kind }}.
-Health: {{ world.health_avg }}.   Party: {{ world.party_alive }} alive.
-Supplies: {{ world.clothing_sets }} clothing sets, {{ world.food_lbs }} lbs food.
-
-Actions: treat, wait_out, move_on, look, quit.
-```
+**Shows world**: `illness_kind`, `illness_severity`, `illness_treatment`, `illness_member`, `health_avg`, `party_alive`, `food_lbs`, `clothing_sets`, `day`, `current_event_attempts`
 
 **On enter**:
 
-1. set `current_event_attempts = 0`, `health_avg = "{{ world.health_avg - 10 }}"`
+1. set `current_event_attempts = 0`, `health_avg = "{{ world.health_avg - 10 }}"`, `illness_member = "{{ split(world.party_names, ',')[world.rng_last % world.party_alive] }}"`
 2. set `illness_kind = "{{ if world.rng_last % 5 == 0 }}dysentery{{ else }}{{ if world.rng_last % 5 == 1 }}cholera{{ else }}{{ if world.rng_last % 5 == 2 }}typhoid{{ else }}{{ if world.rng_last % 5 == 3 }}measles{{ else }}exhaustion{{ end }}{{ end }}{{ end }}{{ end }}"`, `illness_severity = "{{ world.rng_last % 5 + 1 }}"`, `illness_treatment = "rest"`
-3. invoke `host.oracle.ask_with_mcp` with `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} food_lbs:{{ world.food_lbs }} health_avg:{{ world.health_avg }} party_alive:{{ world.party_alive }} rng_last:{{ world.rng_last }}]`, `prompt = "prompts/event_disease.md"`, `schema = "mcp/illness.json"`, bind `illness_kind ← submitted.illness`, `illness_severity ← submitted.severity`, `illness_treatment ← submitted.treatment`, on_error → `leg_d_error`
+3. invoke `host.oracle.ask_with_mcp` with `agent = "frontier_doctor"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} food_lbs:{{ world.food_lbs }} health_avg:{{ world.health_avg }} party_alive:{{ world.party_alive }} rng_last:{{ world.rng_last }}]`, `prompt = "prompts/event_disease.md"`, `schema = "mcp/illness.json"`, bind `illness_kind ← submitted.illness`, `illness_severity ← submitted.severity`, `illness_treatment ← submitted.treatment`, on_error → `leg_d_error`
 
 **Transitions**:
 
 | # | Intent | Guard | → | Effects |
 |---|---|---|---|---|
 | 1 | [`look`](#intent-look) |  | `.` |  |
-| 2 | [`move_on`](#intent-move-on) |  | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — pushed on through the {{ world.illness_kind }} rather than stop. Health is worse for it, but the wagon rolls."`, `phase_id = "leg_d_event_disease_moved_on_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Pressing on through illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `event_kind = ""`, `health_avg = "{{ world.health_avg - 15 }}"`, `illness_kind = ""` · say "The party presses on. Health worsens." |
+| 2 | [`move_on`](#intent-move-on) |  | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — pushed on through the {{ world.illness_kind }} rather than stop. Health is worse for it, but the wagon rolls."`, `phase_id = "leg_d_event_disease_moved_on_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Pressing on through illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `event_kind = ""`, `health_avg = "{{ world.health_avg - 15 }}"`, `illness_kind = ""`, `illness_member = ""`, `illness_severity = 0`, `illness_treatment = ""` · say "The party presses on. Health worsens." |
 | 3 | [`quit`](#intent-quit) |  | [`ended_lost`](#room-ended-lost) | say "The party gives up on the trail, broken by {{ world.illness_kind }}." |
-| 4 | [`treat`](#intent-treat) | `world.clothing_sets >= 1 && world.food_lbs >= 50 && world.current_event_attempts < 2` | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — the {{ world.illness_kind }} has passed. Rested up, one clothing set used and 50 lbs of food spent on broth and care. Spirits steady, on the move."`, `phase_id = "leg_d_event_disease_treated_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Disease treated"`, `transport = "tui"` · set `clothing_sets = "{{ world.clothing_sets - 1 }}"`, `current_event_attempts = 0`, `event_kind = ""`, `food_lbs = "{{ world.food_lbs - 50 }}"`, `health_avg = "{{ world.health_avg + 20 }}"`, `illness_kind = ""` · say "The party rests and treats the illness." |
+| 4 | [`treat`](#intent-treat) | `world.clothing_sets >= 1 && world.food_lbs >= 50 && world.current_event_attempts < 2` | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — the {{ world.illness_kind }} has passed. Rested up, one clothing set used and 50 lbs of food spent on broth and care. Spirits steady, on the move."`, `phase_id = "leg_d_event_disease_treated_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Disease treated"`, `transport = "tui"` · set `clothing_sets = "{{ world.clothing_sets - 1 }}"`, `current_event_attempts = 0`, `event_kind = ""`, `food_lbs = "{{ world.food_lbs - 50 }}"`, `health_avg = "{{ world.health_avg + 20 }}"`, `illness_kind = ""`, `illness_member = ""`, `illness_severity = 0`, `illness_treatment = ""` · say "The party rests and treats the illness." |
 | 5 | [`treat`](#intent-treat) | `(world.clothing_sets < 1 \|\| world.food_lbs < 50) && world.current_event_attempts < 2` | `.` | increment `current_event_attempts += 1` · say "Not enough supplies to treat the {{ world.illness_kind }} (need 1 clothing set + 50 lbs food). Try again or wait_out." |
-| 6 | [`treat`](#intent-treat) | _default_ | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — after repeated attempts, the {{ world.illness_kind }} took one of the party. May the trail remember them."`, `phase_id = "leg_d_event_disease_lost_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Lost to illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `event_kind = ""`, `illness_kind = ""`, `party_alive = "{{ world.party_alive - 1 }}"` · say "After repeated futile attempts, a party member has died of illness." |
-| 7 | [`wait_out`](#intent-wait-out) | `world.health_avg < 30` | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — the patient was too weak. {{ world.illness_kind }} claimed one of the party while we waited."`, `phase_id = "leg_d_event_disease_wait_lost_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Lost to illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `day = "{{ world.day + 1 }}"`, `event_kind = ""`, `illness_kind = ""`, `party_alive = "{{ world.party_alive - 1 }}"` · say "The patient was too weak. A party member dies of illness." |
-| 8 | [`wait_out`](#intent-wait-out) | _default_ | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — one day of rest and the {{ world.illness_kind }} let go. We move on tomorrow."`, `phase_id = "leg_d_event_disease_wait_ok_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Illness passed"`, `transport = "tui"` · set `current_event_attempts = 0`, `day = "{{ world.day + 1 }}"`, `event_kind = ""`, `illness_kind = ""` · say "The party rests a day. The illness passes." |
+| 6 | [`treat`](#intent-treat) | _default_ | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — after repeated attempts, the {{ world.illness_kind }} took one of the party. May the trail remember them."`, `phase_id = "leg_d_event_disease_lost_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Lost to illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `event_kind = ""`, `illness_kind = ""`, `illness_member = ""`, `illness_severity = 0`, `illness_treatment = ""`, `party_alive = "{{ world.party_alive - 1 }}"` · say "After repeated futile attempts, a party member has died of illness." |
+| 7 | [`wait_out`](#intent-wait-out) | `world.health_avg < 30` | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — the patient was too weak. {{ world.illness_kind }} claimed one of the party while we waited."`, `phase_id = "leg_d_event_disease_wait_lost_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Lost to illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `day = "{{ world.day + 1 }}"`, `event_kind = ""`, `illness_kind = ""`, `illness_member = ""`, `illness_severity = 0`, `illness_treatment = ""`, `party_alive = "{{ world.party_alive - 1 }}"` · say "The patient was too weak. A party member dies of illness." |
+| 8 | [`wait_out`](#intent-wait-out) | _default_ | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — one day of rest and the {{ world.illness_kind }} let go. We move on tomorrow."`, `phase_id = "leg_d_event_disease_wait_ok_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Illness passed"`, `transport = "tui"` · set `current_event_attempts = 0`, `day = "{{ world.day + 1 }}"`, `event_kind = ""`, `illness_kind = ""`, `illness_member = ""`, `illness_severity = 0`, `illness_treatment = ""` · say "The party rests a day. The illness passes." |
 
 ### <a id="room-leg-d-executing-event-encounter"></a> `leg_d_executing.event_encounter`
 
@@ -2697,22 +2492,10 @@ Encounter on the trail: {{ world.encounter_kind }}.
 
 **Shows world**: `encounter_kind`, `food_lbs`, `clothing_sets`, `last_event_prose`
 
-**View**:
-
-```
-{{ if world.last_event_prose != "" }}{{ world.last_event_prose }}
-
-{{ end }}You meet a {{ world.encounter_kind }} on the trail.
-They offer 1 clothing set in exchange for 50 lbs of food.
-You have {{ world.food_lbs }} lbs food, {{ world.clothing_sets }} clothing sets.
-
-Actions: accept_trade, decline_trade, move_on, look, quit.
-```
-
 **On enter**:
 
 1. set `current_event_attempts = 0`, `encounter_kind = "{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}"`, `last_event_prose = ""`
-2. invoke `host.oracle.ask` with `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} kind:{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}]`, `prompt_path = "prompts/event_encounter.md"`, bind `last_event_prose ← stdout`
+2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} kind:{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}]`, `prompt_path = "prompts/event_encounter.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -2731,22 +2514,11 @@ Supplies lost on the trail.
 
 **Shows world**: `food_lbs`, `oxen`, `rng_last`, `last_event_prose`
 
-**View**:
-
-```
-{{ if world.last_event_prose != "" }}{{ world.last_event_prose }}
-
-{{ end }}Supplies have been lost on the trail.
-Food: {{ world.food_lbs }} lbs.  Oxen: {{ world.oxen }}.
-
-Action: move_on.
-```
-
 **On enter**:
 
 1. set `current_event_attempts = 0`, `last_event = "{{ if world.rng_last % 2 == 0 }}food_loss{{ else }}ox_loss{{ end }}"`, `last_event_prose = ""`
 2. set `food_lbs = "{{ world.rng_last % 2 == 0 ? world.food_lbs - (10 + 10 * (world.rng_last % 4)) : world.food_lbs }}"`, `oxen = "{{ world.rng_last % 2 == 0 ? world.oxen : world.oxen - 1 }}"`
-3. invoke `host.oracle.ask` with `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} oxen:{{ world.oxen }} what:{{ world.rng_last % 2 == 0 ? 'food spoiled' : 'ox lame' }}]`, `prompt_path = "prompts/event_supply_loss.md"`, bind `last_event_prose ← stdout`
+3. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} oxen:{{ world.oxen }} what:{{ world.rng_last % 2 == 0 ? 'food spoiled' : 'ox lame' }}]`, `prompt_path = "prompts/event_supply_loss.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -2762,21 +2534,10 @@ Severe weather: {{ world.weather_kind }}.
 
 **Shows world**: `weather_kind`, `day`, `food_lbs`, `health_avg`, `last_event_prose`
 
-**View**:
-
-```
-{{ if world.last_event_prose != "" }}{{ world.last_event_prose }}
-
-{{ end }}Severe weather: {{ world.weather_kind }}.
-Health: {{ world.health_avg }}.   Food: {{ world.food_lbs }} lbs.   Day {{ world.day }}.
-
-Actions: wait_out, push_on, look, quit.
-```
-
 **On enter**:
 
-1. set `current_event_attempts = 0`, `last_event_prose = ""`, `weather_kind = "{{ if world.rng_last % 4 == 0 }}heavy_rain{{ else }}{{ if world.rng_last % 4 == 1 }}snow{{ else }}{{ if world.rng_last % 4 == 2 }}fog{{ else }}hail{{ end }}{{ end }}{{ end }}"`
-2. invoke `host.oracle.ask` with `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} kind:{{ if world.rng_last % 4 == 0 }}heavy_rain{{ else }}{{ if world.rng_last % 4 == 1 }}snow{{ else }}{{ if world.rng_last % 4 == 2 }}fog{{ else }}hail{{ end }}{{ end }}{{ end }} month:{{ world.month }} terrain:prairie]`, `prompt_path = "prompts/event_weather.md"`, bind `last_event_prose ← stdout`
+1. set `current_event_attempts = 0`, `last_event_prose = ""`, `weather_kind = "{{ world.month == 'november' || world.month == 'december' || world.month == 'january' || world.month == 'february' ? 'snow' : (world.month == 'march' || world.month == 'april' || world.month == 'may' ? 'heavy_rain' : (world.month == 'june' || world.month == 'july' || world.month == 'august' ? (world.rng_last % 2 == 0 ? 'hail' : 'fog') : (world.rng_last % 2 == 0 ? 'heavy_rain' : 'fog'))) }}"`
+2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} kind:{{ world.month == 'november' || world.month == 'december' || world.month == 'january' || world.month == 'february' ? 'snow' : (world.month == 'march' || world.month == 'april' || world.month == 'may' ? 'heavy_rain' : (world.month == 'june' || world.month == 'july' || world.month == 'august' ? (world.rng_last % 2 == 0 ? 'hail' : 'fog') : (world.rng_last % 2 == 0 ? 'heavy_rain' : 'fog'))) }} month:{{ world.month }} terrain:prairie]`, `prompt_path = "prompts/event_weather.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -2791,30 +2552,18 @@ Actions: wait_out, push_on, look, quit.
 
 Travelling — Chimney Rock → Fort Laramie.
 
-**View**:
-
-```
-Day {{ world.day }} on the trail. Heading for Fort Laramie (prairie).
-
-Miles travelled this leg: {{ world.miles_traveled }} / 86.
-Food: {{ world.food_lbs }} lbs. Oxen: {{ world.oxen }}. Party: {{ world.party_alive }} alive.
-Pace: {{ world.pace }}. Rations: {{ world.rations }}.
-
-Actions: continue, set_pace <pace>, set_rations <rations>, look, quit.
-```
-
 **Transitions**:
 
 | # | Intent | Guard | → | Effects |
 |---|---|---|---|---|
-| 1 | [`continue`](#intent-continue) | `world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) >= 86` | [`leg_d_awaiting_reply`](#room-leg-d-awaiting-reply) | set `day = "{{ world.day + 1 }}"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · say "Arrived at Fort Laramie." |
-| 2 | [`continue`](#intent-continue) | `world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) <= 0` | [`ended_lost`](#room-ended-lost) | set `day = "{{ world.day + 1 }}"`, `food_lbs = 0` · say "The party has run out of food between Chimney Rock and Fort Laramie. They starve on the trail." |
-| 3 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 60 && int(world.miles_traveled + world.rng_counter) % 100 < 75` | `../event_disease` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = "disease"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
-| 4 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 75 && int(world.miles_traveled + world.rng_counter) % 100 < 85` | `../event_breakdown` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = "breakdown"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
-| 5 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 85 && int(world.miles_traveled + world.rng_counter) % 100 < 92` | `../event_weather` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = "weather"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
-| 6 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 92 && int(world.miles_traveled + world.rng_counter) % 100 < 97` | `../event_encounter` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = "encounter"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
-| 7 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 97` | `../event_supply_loss` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = "supply_loss"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
-| 8 | [`continue`](#intent-continue) | _default_ | `.` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = ""`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
+| 1 | [`continue`](#intent-continue) | `world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' \|\| world.month == 'january' \|\| world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' \|\| world.month == 'october' ? 85 : (world.month == 'april' \|\| world.month == 'september' ? 95 : 100)))) / 100) >= 86` | [`leg_d_awaiting_reply`](#room-leg-d-awaiting-reply) | set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · say "Arrived at Fort Laramie." |
+| 2 | [`continue`](#intent-continue) | `world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) <= 0` | [`ended_lost`](#room-ended-lost) | set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `food_lbs = 0`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · say "The party has run out of food between Chimney Rock and Fort Laramie. They starve on the trail." |
+| 3 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 60 && int(world.miles_traveled + world.rng_counter) % 100 < 75` | `../event_disease` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = "disease"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
+| 4 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 75 && int(world.miles_traveled + world.rng_counter) % 100 < 85` | `../event_breakdown` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = "breakdown"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
+| 5 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 85 && int(world.miles_traveled + world.rng_counter) % 100 < 92` | `../event_weather` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = "weather"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
+| 6 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 92 && int(world.miles_traveled + world.rng_counter) % 100 < 97` | `../event_encounter` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = "encounter"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
+| 7 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 97` | `../event_supply_loss` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = "supply_loss"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
+| 8 | [`continue`](#intent-continue) | _default_ | `.` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = ""`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
 | 9 | [`look`](#intent-look) |  | `.` |  |
 | 10 | [`quit`](#intent-quit) |  | [`ended_lost`](#room-ended-lost) | say "The party abandons the journey between Chimney Rock and Fort Laramie." |
 | 11 | [`set_pace`](#intent-set-pace) |  | `.` | set `pace = "{{ slots.pace }}"` · say "Pace set to {{ slots.pace }}." |
@@ -2824,52 +2573,39 @@ Actions: continue, set_pace <pace>, set_rations <rations>, look, quit.
 
 Arrived at South Pass (mountain).
 
-**Shows world**: `day`, `miles_traveled`, `food_lbs`, `oxen`, `party_alive`, `health_avg`, `last_landmark_prose`
-
-**View**:
-
-```
-Arrived at South Pass (mountain).
-
-Day:    {{ world.day }}
-Food:   {{ world.food_lbs }} lbs
-Oxen:   {{ world.oxen }}
-Party:  {{ world.party_alive }} alive
-Health: {{ world.health_avg }}
-
-{{ if world.last_landmark_prose != "" }}{{ world.last_landmark_prose }}{{ else }}{{ end }}
-
-When you're ready, "continue" presses on toward the next landmark.
-```
+**Shows world**: `day`, `miles_traveled`, `food_lbs`, `oxen`, `party_alive`, `health_avg`, `illness_kind`, `illness_severity`, `illness_member`, `last_landmark_prose`
 
 **On enter**:
 
 1. set `last_landmark_prose = ""`
 2. invoke `host.transport.post` with `body = "Day {{ world.day }}, {{ world.month }} {{ world.year }}. We rolled into **South Pass** (mountain) at last.\n\n- Food: {{ world.food_lbs }} lbs\n- Oxen: {{ world.oxen }}\n- Party: {{ world.party_alive }} alive\n- Health: {{ world.health_avg }}\n"`, `phase_id = "leg_e_arrival"`, `thread = "{{ run.id }}"`, `title = "Day {{ world.day }}: South Pass"`, `transport = "tui"`
-3. invoke `host.oracle.ask` with `args = map[day:{{ world.day }} food_lbs:{{ world.food_lbs }} landmark:South Pass miles_traveled:{{ world.miles_traveled }} month:{{ world.month }} party_alive:{{ world.party_alive }} year:{{ world.year }}]`, `prompt_path = "prompts/landmark_arrival.md"`, bind `last_landmark_prose ← stdout`
+3. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[day:{{ world.day }} food_lbs:{{ world.food_lbs }} landmark:South Pass miles_traveled:{{ world.miles_traveled }} month:{{ world.month }} party_alive:{{ world.party_alive }} year:{{ world.year }}]`, `prompt_path = "prompts/landmark_arrival.md"`, bind `last_landmark_prose ← stdout`
 
 **Transitions**:
 
 | # | Intent | Guard | → | Effects |
 |---|---|---|---|---|
-| 1 | [`approach_river`](#intent-approach-river) | `false` | [`river_crossing`](#room-river-crossing) | set `current_landmark = "South Pass"`, `river_depth_ft = "{{ tpl.to_landmark == 'Kansas River Crossing' ? 2 : 7 }}"`, `river_width_ft = "{{ tpl.to_landmark == 'Kansas River Crossing' ? 620 : 1000 }}"` |
+| 1 | [`approach_river`](#intent-approach-river) | `false` | [`river_crossing`](#room-river-crossing) | set `current_landmark = "South Pass"`, `river_depth_ft = "{{ int(0 * (world.month == 'april' ? 160 : (world.month == 'march' ? 140 : (world.month == 'may' ? 130 : (world.month == 'june' ? 100 : (world.month == 'july' ? 80 : (world.month == 'august' ? 70 : (world.month == 'september' ? 80 : 100))))))) / 100) }}"`, `river_width_ft = "{{ int(0) }}"` |
 | 2 | [`approach_river`](#intent-approach-river) | _default_ | `.` | _hint: No river at this landmark._ |
 | 3 | [`consult_guide`](#intent-consult-guide) |  | [`trail_guide`](#room-trail-guide) | set `last_job_originating_state = "leg_e_awaiting_reply"` · _(no-history)_ |
-| 4 | [`continue`](#intent-continue) |  | [`leg_f_executing`](#room-leg-f-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `current_landmark = "South Pass"`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` |
-| 5 | [`enter_fort`](#intent-enter-fort) | `false` | [`fort`](#room-fort) | set `current_landmark = "South Pass"` |
-| 6 | [`enter_fort`](#intent-enter-fort) | _default_ | `.` | _hint: No fort at this landmark._ |
-| 7 | [`give_up_leg`](#intent-give-up-leg) | `world.cycle__leg_e__on_failure < 2` | [`leg_d_executing`](#room-leg-d-executing) | increment `cycle__leg_e__on_failure += 1` · set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party turns back toward Fort Laramie." |
-| 8 | [`give_up_leg`](#intent-give-up-leg) | _default_ | [`leg_e_error`](#room-leg-e-error) | say "The party has given up too many times — stranded." |
-| 9 | [`hunt`](#intent-hunt) |  | [`hunt`](#room-hunt) |  |
-| 10 | [`quit`](#intent-quit) |  | [`ended_lost`](#room-ended-lost) | say "The party abandons the journey at South Pass." |
-| 11 | [`rest`](#intent-rest) |  | [`rest_room`](#room-rest-room) |  |
-| 12 | [`restart_from`](#intent-restart-from) | `slots.stage == 'independence' \|\| slots.stage == 'kansas'` | [`leg_a_executing`](#room-leg-a-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Independence to retry the run toward Kansas River." |
-| 13 | [`restart_from`](#intent-restart-from) | `slots.stage == 'kearney'` | [`leg_b_executing`](#room-leg-b-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Kansas River to retry the stretch toward Fort Kearney." |
-| 14 | [`restart_from`](#intent-restart-from) | `slots.stage == 'chimney'` | [`leg_c_executing`](#room-leg-c-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Fort Kearney to retry the stretch toward Chimney Rock." |
-| 15 | [`restart_from`](#intent-restart-from) | `slots.stage == 'laramie'` | [`leg_d_executing`](#room-leg-d-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Chimney Rock to retry the stretch toward Fort Laramie." |
-| 16 | [`restart_from`](#intent-restart-from) | `slots.stage == 'south_pass'` | [`leg_e_executing`](#room-leg-e-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Fort Laramie to retry the stretch toward South Pass." |
-| 17 | [`restart_from`](#intent-restart-from) | `slots.stage == 'snake'` | [`leg_f_executing`](#room-leg-f-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to South Pass to retry the stretch toward Snake River." |
-| 18 | [`restart_from`](#intent-restart-from) | _default_ | `.` | _hint: Unknown restart stage._ |
+| 4 | [`continue`](#intent-continue) | `'South Pass' == 'South Pass' && (world.month == 'october' \|\| world.month == 'november' \|\| world.month == 'december' \|\| world.month == 'january' \|\| world.month == 'february')` | [`snow_blocked`](#room-snow-blocked) | set `current_landmark = "South Pass"` · say "South Pass is snowed in. The wagons cannot get through." |
+| 5 | [`continue`](#intent-continue) | _default_ | [`leg_f_executing`](#room-leg-f-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `current_landmark = "South Pass"`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` |
+| 6 | [`enter_fort`](#intent-enter-fort) | `false` | [`fort`](#room-fort) | set `current_landmark = "South Pass"` |
+| 7 | [`enter_fort`](#intent-enter-fort) | _default_ | `.` | _hint: No fort at this landmark._ |
+| 8 | [`face_robbery`](#intent-face-robbery) |  | [`frontier`](#room-frontier) |  |
+| 9 | [`give_up_leg`](#intent-give-up-leg) | `world.cycle__leg_e__on_failure < 2` | [`leg_d_executing`](#room-leg-d-executing) | increment `cycle__leg_e__on_failure += 1` · set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party turns back toward Fort Laramie." |
+| 10 | [`give_up_leg`](#intent-give-up-leg) | _default_ | [`leg_e_error`](#room-leg-e-error) | say "The party has given up too many times — stranded." |
+| 11 | [`hunt`](#intent-hunt) |  | [`hunt`](#room-hunt) |  |
+| 12 | [`quit`](#intent-quit) |  | [`ended_lost`](#room-ended-lost) | say "The party abandons the journey at South Pass." |
+| 13 | [`rest`](#intent-rest) |  | [`rest_room`](#room-rest-room) |  |
+| 14 | [`restart_from`](#intent-restart-from) | `slots.stage == 'independence' \|\| slots.stage == 'kansas'` | [`leg_a_executing`](#room-leg-a-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Independence to retry the run toward Kansas River." |
+| 15 | [`restart_from`](#intent-restart-from) | `slots.stage == 'kearney'` | [`leg_b_executing`](#room-leg-b-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Kansas River to retry the stretch toward Fort Kearney." |
+| 16 | [`restart_from`](#intent-restart-from) | `slots.stage == 'chimney'` | [`leg_c_executing`](#room-leg-c-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Fort Kearney to retry the stretch toward Chimney Rock." |
+| 17 | [`restart_from`](#intent-restart-from) | `slots.stage == 'laramie'` | [`leg_d_executing`](#room-leg-d-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Chimney Rock to retry the stretch toward Fort Laramie." |
+| 18 | [`restart_from`](#intent-restart-from) | `slots.stage == 'south_pass'` | [`leg_e_executing`](#room-leg-e-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Fort Laramie to retry the stretch toward South Pass." |
+| 19 | [`restart_from`](#intent-restart-from) | `slots.stage == 'snake'` | [`leg_f_executing`](#room-leg-f-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to South Pass to retry the stretch toward Snake River." |
+| 20 | [`restart_from`](#intent-restart-from) | _default_ | `.` | _hint: Unknown restart stage._ |
+| 21 | [`scout`](#intent-scout) |  | [`frontier`](#room-frontier) |  |
 
 **Timeout**: after `10d` → `leg_f_executing`
 
@@ -2878,16 +2614,6 @@ When you're ready, "continue" presses on toward the next landmark.
 Stranded between Fort Laramie and South Pass.
 
 **Shows world**: `day`, `party_alive`, `current_landmark`
-
-**View**:
-
-```
-Stranded between Fort Laramie and South Pass.
-
-The party has failed this leg too many times.
-
-Actions: retry (returns to Fort Laramie), quit.
-```
 
 **Transitions**:
 
@@ -2902,7 +2628,7 @@ On the trail from Fort Laramie to South Pass (mountain).
 
 **Initial child**: `traveling`
 
-**Shows world**: `day`, `month`, `miles_traveled`, `food_lbs`, `oxen`, `party_alive`, `health_avg`, `pace`, `rations`, `current_landmark`, `event_kind`, `illness_kind`, `breakdown_part`, `weather_kind`, `encounter_kind`, `rng_last`, `rng_counter`
+**Shows world**: `day`, `month`, `miles_traveled`, `food_lbs`, `oxen`, `party_alive`, `health_avg`, `pace`, `rations`, `current_landmark`, `event_kind`, `illness_kind`, `illness_severity`, `illness_member`, `breakdown_part`, `weather_kind`, `encounter_kind`, `rng_last`, `rng_counter`
 
 **On enter**:
 
@@ -2921,21 +2647,10 @@ Wagon breakdown — {{ world.breakdown_part }}.
 
 **Shows world**: `breakdown_part`, `spare_wheels`, `spare_axles`, `spare_tongues`, `day`, `current_event_attempts`, `last_event_prose`
 
-**View**:
-
-```
-{{ if world.last_event_prose != "" }}{{ world.last_event_prose }}
-
-{{ end }}The wagon's {{ world.breakdown_part }} has broken.
-Spare wheels: {{ world.spare_wheels }}, axles: {{ world.spare_axles }}, tongues: {{ world.spare_tongues }}.
-
-Actions: repair (needs a matching spare), wait_out (5 days), look, quit.
-```
-
 **On enter**:
 
 1. set `breakdown_part = "{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }}"`, `current_event_attempts = 0`, `last_event_prose = ""`
-2. invoke `host.oracle.ask` with `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} part:{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }} spares_remaining:{{ world.rng_last % 3 == 0 ? world.spare_wheels : (world.rng_last % 3 == 1 ? world.spare_axles : world.spare_tongues) }}]`, `prompt_path = "prompts/event_breakdown.md"`, bind `last_event_prose ← stdout`
+2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} part:{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }} spares_remaining:{{ world.rng_last % 3 == 0 ? world.spare_wheels : (world.rng_last % 3 == 1 ? world.spare_axles : world.spare_tongues) }}]`, `prompt_path = "prompts/event_breakdown.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -2954,37 +2669,26 @@ Actions: repair (needs a matching spare), wait_out (5 days), look, quit.
 
 Illness has struck the party ({{ world.illness_kind }}).
 
-**Shows world**: `illness_kind`, `illness_severity`, `illness_treatment`, `health_avg`, `party_alive`, `food_lbs`, `clothing_sets`, `day`, `current_event_attempts`
-
-**View**:
-
-```
-Someone in the party has fallen ill.
-Illness: {{ world.illness_kind }}.
-Health: {{ world.health_avg }}.   Party: {{ world.party_alive }} alive.
-Supplies: {{ world.clothing_sets }} clothing sets, {{ world.food_lbs }} lbs food.
-
-Actions: treat, wait_out, move_on, look, quit.
-```
+**Shows world**: `illness_kind`, `illness_severity`, `illness_treatment`, `illness_member`, `health_avg`, `party_alive`, `food_lbs`, `clothing_sets`, `day`, `current_event_attempts`
 
 **On enter**:
 
-1. set `current_event_attempts = 0`, `health_avg = "{{ world.health_avg - 10 }}"`
+1. set `current_event_attempts = 0`, `health_avg = "{{ world.health_avg - 10 }}"`, `illness_member = "{{ split(world.party_names, ',')[world.rng_last % world.party_alive] }}"`
 2. set `illness_kind = "{{ if world.rng_last % 5 == 0 }}dysentery{{ else }}{{ if world.rng_last % 5 == 1 }}cholera{{ else }}{{ if world.rng_last % 5 == 2 }}typhoid{{ else }}{{ if world.rng_last % 5 == 3 }}measles{{ else }}exhaustion{{ end }}{{ end }}{{ end }}{{ end }}"`, `illness_severity = "{{ world.rng_last % 5 + 1 }}"`, `illness_treatment = "rest"`
-3. invoke `host.oracle.ask_with_mcp` with `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} food_lbs:{{ world.food_lbs }} health_avg:{{ world.health_avg }} party_alive:{{ world.party_alive }} rng_last:{{ world.rng_last }}]`, `prompt = "prompts/event_disease.md"`, `schema = "mcp/illness.json"`, bind `illness_kind ← submitted.illness`, `illness_severity ← submitted.severity`, `illness_treatment ← submitted.treatment`, on_error → `leg_e_error`
+3. invoke `host.oracle.ask_with_mcp` with `agent = "frontier_doctor"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} food_lbs:{{ world.food_lbs }} health_avg:{{ world.health_avg }} party_alive:{{ world.party_alive }} rng_last:{{ world.rng_last }}]`, `prompt = "prompts/event_disease.md"`, `schema = "mcp/illness.json"`, bind `illness_kind ← submitted.illness`, `illness_severity ← submitted.severity`, `illness_treatment ← submitted.treatment`, on_error → `leg_e_error`
 
 **Transitions**:
 
 | # | Intent | Guard | → | Effects |
 |---|---|---|---|---|
 | 1 | [`look`](#intent-look) |  | `.` |  |
-| 2 | [`move_on`](#intent-move-on) |  | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — pushed on through the {{ world.illness_kind }} rather than stop. Health is worse for it, but the wagon rolls."`, `phase_id = "leg_e_event_disease_moved_on_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Pressing on through illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `event_kind = ""`, `health_avg = "{{ world.health_avg - 15 }}"`, `illness_kind = ""` · say "The party presses on. Health worsens." |
+| 2 | [`move_on`](#intent-move-on) |  | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — pushed on through the {{ world.illness_kind }} rather than stop. Health is worse for it, but the wagon rolls."`, `phase_id = "leg_e_event_disease_moved_on_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Pressing on through illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `event_kind = ""`, `health_avg = "{{ world.health_avg - 15 }}"`, `illness_kind = ""`, `illness_member = ""`, `illness_severity = 0`, `illness_treatment = ""` · say "The party presses on. Health worsens." |
 | 3 | [`quit`](#intent-quit) |  | [`ended_lost`](#room-ended-lost) | say "The party gives up on the trail, broken by {{ world.illness_kind }}." |
-| 4 | [`treat`](#intent-treat) | `world.clothing_sets >= 1 && world.food_lbs >= 50 && world.current_event_attempts < 2` | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — the {{ world.illness_kind }} has passed. Rested up, one clothing set used and 50 lbs of food spent on broth and care. Spirits steady, on the move."`, `phase_id = "leg_e_event_disease_treated_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Disease treated"`, `transport = "tui"` · set `clothing_sets = "{{ world.clothing_sets - 1 }}"`, `current_event_attempts = 0`, `event_kind = ""`, `food_lbs = "{{ world.food_lbs - 50 }}"`, `health_avg = "{{ world.health_avg + 20 }}"`, `illness_kind = ""` · say "The party rests and treats the illness." |
+| 4 | [`treat`](#intent-treat) | `world.clothing_sets >= 1 && world.food_lbs >= 50 && world.current_event_attempts < 2` | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — the {{ world.illness_kind }} has passed. Rested up, one clothing set used and 50 lbs of food spent on broth and care. Spirits steady, on the move."`, `phase_id = "leg_e_event_disease_treated_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Disease treated"`, `transport = "tui"` · set `clothing_sets = "{{ world.clothing_sets - 1 }}"`, `current_event_attempts = 0`, `event_kind = ""`, `food_lbs = "{{ world.food_lbs - 50 }}"`, `health_avg = "{{ world.health_avg + 20 }}"`, `illness_kind = ""`, `illness_member = ""`, `illness_severity = 0`, `illness_treatment = ""` · say "The party rests and treats the illness." |
 | 5 | [`treat`](#intent-treat) | `(world.clothing_sets < 1 \|\| world.food_lbs < 50) && world.current_event_attempts < 2` | `.` | increment `current_event_attempts += 1` · say "Not enough supplies to treat the {{ world.illness_kind }} (need 1 clothing set + 50 lbs food). Try again or wait_out." |
-| 6 | [`treat`](#intent-treat) | _default_ | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — after repeated attempts, the {{ world.illness_kind }} took one of the party. May the trail remember them."`, `phase_id = "leg_e_event_disease_lost_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Lost to illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `event_kind = ""`, `illness_kind = ""`, `party_alive = "{{ world.party_alive - 1 }}"` · say "After repeated futile attempts, a party member has died of illness." |
-| 7 | [`wait_out`](#intent-wait-out) | `world.health_avg < 30` | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — the patient was too weak. {{ world.illness_kind }} claimed one of the party while we waited."`, `phase_id = "leg_e_event_disease_wait_lost_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Lost to illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `day = "{{ world.day + 1 }}"`, `event_kind = ""`, `illness_kind = ""`, `party_alive = "{{ world.party_alive - 1 }}"` · say "The patient was too weak. A party member dies of illness." |
-| 8 | [`wait_out`](#intent-wait-out) | _default_ | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — one day of rest and the {{ world.illness_kind }} let go. We move on tomorrow."`, `phase_id = "leg_e_event_disease_wait_ok_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Illness passed"`, `transport = "tui"` · set `current_event_attempts = 0`, `day = "{{ world.day + 1 }}"`, `event_kind = ""`, `illness_kind = ""` · say "The party rests a day. The illness passes." |
+| 6 | [`treat`](#intent-treat) | _default_ | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — after repeated attempts, the {{ world.illness_kind }} took one of the party. May the trail remember them."`, `phase_id = "leg_e_event_disease_lost_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Lost to illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `event_kind = ""`, `illness_kind = ""`, `illness_member = ""`, `illness_severity = 0`, `illness_treatment = ""`, `party_alive = "{{ world.party_alive - 1 }}"` · say "After repeated futile attempts, a party member has died of illness." |
+| 7 | [`wait_out`](#intent-wait-out) | `world.health_avg < 30` | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — the patient was too weak. {{ world.illness_kind }} claimed one of the party while we waited."`, `phase_id = "leg_e_event_disease_wait_lost_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Lost to illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `day = "{{ world.day + 1 }}"`, `event_kind = ""`, `illness_kind = ""`, `illness_member = ""`, `illness_severity = 0`, `illness_treatment = ""`, `party_alive = "{{ world.party_alive - 1 }}"` · say "The patient was too weak. A party member dies of illness." |
+| 8 | [`wait_out`](#intent-wait-out) | _default_ | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — one day of rest and the {{ world.illness_kind }} let go. We move on tomorrow."`, `phase_id = "leg_e_event_disease_wait_ok_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Illness passed"`, `transport = "tui"` · set `current_event_attempts = 0`, `day = "{{ world.day + 1 }}"`, `event_kind = ""`, `illness_kind = ""`, `illness_member = ""`, `illness_severity = 0`, `illness_treatment = ""` · say "The party rests a day. The illness passes." |
 
 ### <a id="room-leg-e-executing-event-encounter"></a> `leg_e_executing.event_encounter`
 
@@ -2992,22 +2696,10 @@ Encounter on the trail: {{ world.encounter_kind }}.
 
 **Shows world**: `encounter_kind`, `food_lbs`, `clothing_sets`, `last_event_prose`
 
-**View**:
-
-```
-{{ if world.last_event_prose != "" }}{{ world.last_event_prose }}
-
-{{ end }}You meet a {{ world.encounter_kind }} on the trail.
-They offer 1 clothing set in exchange for 50 lbs of food.
-You have {{ world.food_lbs }} lbs food, {{ world.clothing_sets }} clothing sets.
-
-Actions: accept_trade, decline_trade, move_on, look, quit.
-```
-
 **On enter**:
 
 1. set `current_event_attempts = 0`, `encounter_kind = "{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}"`, `last_event_prose = ""`
-2. invoke `host.oracle.ask` with `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} kind:{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}]`, `prompt_path = "prompts/event_encounter.md"`, bind `last_event_prose ← stdout`
+2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} kind:{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}]`, `prompt_path = "prompts/event_encounter.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -3026,22 +2718,11 @@ Supplies lost on the trail.
 
 **Shows world**: `food_lbs`, `oxen`, `rng_last`, `last_event_prose`
 
-**View**:
-
-```
-{{ if world.last_event_prose != "" }}{{ world.last_event_prose }}
-
-{{ end }}Supplies have been lost on the trail.
-Food: {{ world.food_lbs }} lbs.  Oxen: {{ world.oxen }}.
-
-Action: move_on.
-```
-
 **On enter**:
 
 1. set `current_event_attempts = 0`, `last_event = "{{ if world.rng_last % 2 == 0 }}food_loss{{ else }}ox_loss{{ end }}"`, `last_event_prose = ""`
 2. set `food_lbs = "{{ world.rng_last % 2 == 0 ? world.food_lbs - (10 + 10 * (world.rng_last % 4)) : world.food_lbs }}"`, `oxen = "{{ world.rng_last % 2 == 0 ? world.oxen : world.oxen - 1 }}"`
-3. invoke `host.oracle.ask` with `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} oxen:{{ world.oxen }} what:{{ world.rng_last % 2 == 0 ? 'food spoiled' : 'ox lame' }}]`, `prompt_path = "prompts/event_supply_loss.md"`, bind `last_event_prose ← stdout`
+3. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} oxen:{{ world.oxen }} what:{{ world.rng_last % 2 == 0 ? 'food spoiled' : 'ox lame' }}]`, `prompt_path = "prompts/event_supply_loss.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -3057,21 +2738,10 @@ Severe weather: {{ world.weather_kind }}.
 
 **Shows world**: `weather_kind`, `day`, `food_lbs`, `health_avg`, `last_event_prose`
 
-**View**:
-
-```
-{{ if world.last_event_prose != "" }}{{ world.last_event_prose }}
-
-{{ end }}Severe weather: {{ world.weather_kind }}.
-Health: {{ world.health_avg }}.   Food: {{ world.food_lbs }} lbs.   Day {{ world.day }}.
-
-Actions: wait_out, push_on, look, quit.
-```
-
 **On enter**:
 
-1. set `current_event_attempts = 0`, `last_event_prose = ""`, `weather_kind = "{{ if world.rng_last % 4 == 0 }}heavy_rain{{ else }}{{ if world.rng_last % 4 == 1 }}snow{{ else }}{{ if world.rng_last % 4 == 2 }}fog{{ else }}hail{{ end }}{{ end }}{{ end }}"`
-2. invoke `host.oracle.ask` with `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} kind:{{ if world.rng_last % 4 == 0 }}heavy_rain{{ else }}{{ if world.rng_last % 4 == 1 }}snow{{ else }}{{ if world.rng_last % 4 == 2 }}fog{{ else }}hail{{ end }}{{ end }}{{ end }} month:{{ world.month }} terrain:mountain]`, `prompt_path = "prompts/event_weather.md"`, bind `last_event_prose ← stdout`
+1. set `current_event_attempts = 0`, `last_event_prose = ""`, `weather_kind = "{{ world.month == 'november' || world.month == 'december' || world.month == 'january' || world.month == 'february' ? 'snow' : (world.month == 'march' || world.month == 'april' || world.month == 'may' ? 'heavy_rain' : (world.month == 'june' || world.month == 'july' || world.month == 'august' ? (world.rng_last % 2 == 0 ? 'hail' : 'fog') : (world.rng_last % 2 == 0 ? 'heavy_rain' : 'fog'))) }}"`
+2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} kind:{{ world.month == 'november' || world.month == 'december' || world.month == 'january' || world.month == 'february' ? 'snow' : (world.month == 'march' || world.month == 'april' || world.month == 'may' ? 'heavy_rain' : (world.month == 'june' || world.month == 'july' || world.month == 'august' ? (world.rng_last % 2 == 0 ? 'hail' : 'fog') : (world.rng_last % 2 == 0 ? 'heavy_rain' : 'fog'))) }} month:{{ world.month }} terrain:mountain]`, `prompt_path = "prompts/event_weather.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -3086,30 +2756,18 @@ Actions: wait_out, push_on, look, quit.
 
 Travelling — Fort Laramie → South Pass.
 
-**View**:
-
-```
-Day {{ world.day }} on the trail. Heading for South Pass (mountain).
-
-Miles travelled this leg: {{ world.miles_traveled }} / 292.
-Food: {{ world.food_lbs }} lbs. Oxen: {{ world.oxen }}. Party: {{ world.party_alive }} alive.
-Pace: {{ world.pace }}. Rations: {{ world.rations }}.
-
-Actions: continue, set_pace <pace>, set_rations <rations>, look, quit.
-```
-
 **Transitions**:
 
 | # | Intent | Guard | → | Effects |
 |---|---|---|---|---|
-| 1 | [`continue`](#intent-continue) | `world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) >= 292` | [`leg_e_awaiting_reply`](#room-leg-e-awaiting-reply) | set `day = "{{ world.day + 1 }}"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · say "Arrived at South Pass." |
-| 2 | [`continue`](#intent-continue) | `world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) <= 0` | [`ended_lost`](#room-ended-lost) | set `day = "{{ world.day + 1 }}"`, `food_lbs = 0` · say "The party has run out of food between Fort Laramie and South Pass. They starve on the trail." |
-| 3 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 60 && int(world.miles_traveled + world.rng_counter) % 100 < 75` | `../event_disease` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = "disease"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
-| 4 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 75 && int(world.miles_traveled + world.rng_counter) % 100 < 85` | `../event_breakdown` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = "breakdown"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
-| 5 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 85 && int(world.miles_traveled + world.rng_counter) % 100 < 92` | `../event_weather` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = "weather"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
-| 6 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 92 && int(world.miles_traveled + world.rng_counter) % 100 < 97` | `../event_encounter` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = "encounter"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
-| 7 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 97` | `../event_supply_loss` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = "supply_loss"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
-| 8 | [`continue`](#intent-continue) | _default_ | `.` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = ""`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
+| 1 | [`continue`](#intent-continue) | `world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' \|\| world.month == 'january' \|\| world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' \|\| world.month == 'october' ? 85 : (world.month == 'april' \|\| world.month == 'september' ? 95 : 100)))) / 100) >= 292` | [`leg_e_awaiting_reply`](#room-leg-e-awaiting-reply) | set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · say "Arrived at South Pass." |
+| 2 | [`continue`](#intent-continue) | `world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) <= 0` | [`ended_lost`](#room-ended-lost) | set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `food_lbs = 0`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · say "The party has run out of food between Fort Laramie and South Pass. They starve on the trail." |
+| 3 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 60 && int(world.miles_traveled + world.rng_counter) % 100 < 75` | `../event_disease` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = "disease"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
+| 4 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 75 && int(world.miles_traveled + world.rng_counter) % 100 < 85` | `../event_breakdown` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = "breakdown"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
+| 5 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 85 && int(world.miles_traveled + world.rng_counter) % 100 < 92` | `../event_weather` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = "weather"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
+| 6 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 92 && int(world.miles_traveled + world.rng_counter) % 100 < 97` | `../event_encounter` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = "encounter"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
+| 7 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 97` | `../event_supply_loss` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = "supply_loss"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
+| 8 | [`continue`](#intent-continue) | _default_ | `.` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = ""`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
 | 9 | [`look`](#intent-look) |  | `.` |  |
 | 10 | [`quit`](#intent-quit) |  | [`ended_lost`](#room-ended-lost) | say "The party abandons the journey between Fort Laramie and South Pass." |
 | 11 | [`set_pace`](#intent-set-pace) |  | `.` | set `pace = "{{ slots.pace }}"` · say "Pace set to {{ slots.pace }}." |
@@ -3119,52 +2777,39 @@ Actions: continue, set_pace <pace>, set_rations <rations>, look, quit.
 
 Arrived at Snake River Crossing (prairie).
 
-**Shows world**: `day`, `miles_traveled`, `food_lbs`, `oxen`, `party_alive`, `health_avg`, `last_landmark_prose`
-
-**View**:
-
-```
-Arrived at Snake River Crossing (prairie).
-
-Day:    {{ world.day }}
-Food:   {{ world.food_lbs }} lbs
-Oxen:   {{ world.oxen }}
-Party:  {{ world.party_alive }} alive
-Health: {{ world.health_avg }}
-
-{{ if world.last_landmark_prose != "" }}{{ world.last_landmark_prose }}{{ else }}The Snake River blocks the way — approach to assess the crossing.{{ end }}
-
-When you're ready, "continue" presses on toward the next landmark.
-```
+**Shows world**: `day`, `miles_traveled`, `food_lbs`, `oxen`, `party_alive`, `health_avg`, `illness_kind`, `illness_severity`, `illness_member`, `last_landmark_prose`
 
 **On enter**:
 
 1. set `last_landmark_prose = ""`
 2. invoke `host.transport.post` with `body = "Day {{ world.day }}, {{ world.month }} {{ world.year }}. We rolled into **Snake River Crossing** (prairie) at last.\n\n- Food: {{ world.food_lbs }} lbs\n- Oxen: {{ world.oxen }}\n- Party: {{ world.party_alive }} alive\n- Health: {{ world.health_avg }}\n"`, `phase_id = "leg_f_arrival"`, `thread = "{{ run.id }}"`, `title = "Day {{ world.day }}: Snake River Crossing"`, `transport = "tui"`
-3. invoke `host.oracle.ask` with `args = map[day:{{ world.day }} food_lbs:{{ world.food_lbs }} landmark:Snake River Crossing miles_traveled:{{ world.miles_traveled }} month:{{ world.month }} party_alive:{{ world.party_alive }} year:{{ world.year }}]`, `prompt_path = "prompts/landmark_arrival.md"`, bind `last_landmark_prose ← stdout`
+3. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[day:{{ world.day }} food_lbs:{{ world.food_lbs }} landmark:Snake River Crossing miles_traveled:{{ world.miles_traveled }} month:{{ world.month }} party_alive:{{ world.party_alive }} year:{{ world.year }}]`, `prompt_path = "prompts/landmark_arrival.md"`, bind `last_landmark_prose ← stdout`
 
 **Transitions**:
 
 | # | Intent | Guard | → | Effects |
 |---|---|---|---|---|
-| 1 | [`approach_river`](#intent-approach-river) | `true` | [`river_crossing`](#room-river-crossing) | set `current_landmark = "Snake River Crossing"`, `river_depth_ft = "{{ tpl.to_landmark == 'Kansas River Crossing' ? 2 : 7 }}"`, `river_width_ft = "{{ tpl.to_landmark == 'Kansas River Crossing' ? 620 : 1000 }}"` |
+| 1 | [`approach_river`](#intent-approach-river) | `true` | [`river_crossing`](#room-river-crossing) | set `current_landmark = "Snake River Crossing"`, `river_depth_ft = "{{ int(7 * (world.month == 'april' ? 160 : (world.month == 'march' ? 140 : (world.month == 'may' ? 130 : (world.month == 'june' ? 100 : (world.month == 'july' ? 80 : (world.month == 'august' ? 70 : (world.month == 'september' ? 80 : 100))))))) / 100) }}"`, `river_width_ft = "{{ int(1000) }}"` |
 | 2 | [`approach_river`](#intent-approach-river) | _default_ | `.` | _hint: No river at this landmark._ |
 | 3 | [`consult_guide`](#intent-consult-guide) |  | [`trail_guide`](#room-trail-guide) | set `last_job_originating_state = "leg_f_awaiting_reply"` · _(no-history)_ |
-| 4 | [`continue`](#intent-continue) |  | [`leg_g_executing`](#room-leg-g-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `current_landmark = "Snake River Crossing"`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` |
-| 5 | [`enter_fort`](#intent-enter-fort) | `false` | [`fort`](#room-fort) | set `current_landmark = "Snake River Crossing"` |
-| 6 | [`enter_fort`](#intent-enter-fort) | _default_ | `.` | _hint: No fort at this landmark._ |
-| 7 | [`give_up_leg`](#intent-give-up-leg) | `world.cycle__leg_f__on_failure < 2` | [`leg_e_executing`](#room-leg-e-executing) | increment `cycle__leg_f__on_failure += 1` · set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party turns back toward South Pass." |
-| 8 | [`give_up_leg`](#intent-give-up-leg) | _default_ | [`leg_f_error`](#room-leg-f-error) | say "The party has given up too many times — stranded." |
-| 9 | [`hunt`](#intent-hunt) |  | [`hunt`](#room-hunt) |  |
-| 10 | [`quit`](#intent-quit) |  | [`ended_lost`](#room-ended-lost) | say "The party abandons the journey at Snake River Crossing." |
-| 11 | [`rest`](#intent-rest) |  | [`rest_room`](#room-rest-room) |  |
-| 12 | [`restart_from`](#intent-restart-from) | `slots.stage == 'independence' \|\| slots.stage == 'kansas'` | [`leg_a_executing`](#room-leg-a-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Independence to retry the run toward Kansas River." |
-| 13 | [`restart_from`](#intent-restart-from) | `slots.stage == 'kearney'` | [`leg_b_executing`](#room-leg-b-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Kansas River to retry the stretch toward Fort Kearney." |
-| 14 | [`restart_from`](#intent-restart-from) | `slots.stage == 'chimney'` | [`leg_c_executing`](#room-leg-c-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Fort Kearney to retry the stretch toward Chimney Rock." |
-| 15 | [`restart_from`](#intent-restart-from) | `slots.stage == 'laramie'` | [`leg_d_executing`](#room-leg-d-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Chimney Rock to retry the stretch toward Fort Laramie." |
-| 16 | [`restart_from`](#intent-restart-from) | `slots.stage == 'south_pass'` | [`leg_e_executing`](#room-leg-e-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Fort Laramie to retry the stretch toward South Pass." |
-| 17 | [`restart_from`](#intent-restart-from) | `slots.stage == 'snake'` | [`leg_f_executing`](#room-leg-f-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to South Pass to retry the stretch toward Snake River." |
-| 18 | [`restart_from`](#intent-restart-from) | _default_ | `.` | _hint: Unknown restart stage._ |
+| 4 | [`continue`](#intent-continue) | `'Snake River Crossing' == 'South Pass' && (world.month == 'october' \|\| world.month == 'november' \|\| world.month == 'december' \|\| world.month == 'january' \|\| world.month == 'february')` | [`snow_blocked`](#room-snow-blocked) | set `current_landmark = "Snake River Crossing"` · say "South Pass is snowed in. The wagons cannot get through." |
+| 5 | [`continue`](#intent-continue) | _default_ | [`leg_g_executing`](#room-leg-g-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `current_landmark = "Snake River Crossing"`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` |
+| 6 | [`enter_fort`](#intent-enter-fort) | `false` | [`fort`](#room-fort) | set `current_landmark = "Snake River Crossing"` |
+| 7 | [`enter_fort`](#intent-enter-fort) | _default_ | `.` | _hint: No fort at this landmark._ |
+| 8 | [`face_robbery`](#intent-face-robbery) |  | [`frontier`](#room-frontier) |  |
+| 9 | [`give_up_leg`](#intent-give-up-leg) | `world.cycle__leg_f__on_failure < 2` | [`leg_e_executing`](#room-leg-e-executing) | increment `cycle__leg_f__on_failure += 1` · set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party turns back toward South Pass." |
+| 10 | [`give_up_leg`](#intent-give-up-leg) | _default_ | [`leg_f_error`](#room-leg-f-error) | say "The party has given up too many times — stranded." |
+| 11 | [`hunt`](#intent-hunt) |  | [`hunt`](#room-hunt) |  |
+| 12 | [`quit`](#intent-quit) |  | [`ended_lost`](#room-ended-lost) | say "The party abandons the journey at Snake River Crossing." |
+| 13 | [`rest`](#intent-rest) |  | [`rest_room`](#room-rest-room) |  |
+| 14 | [`restart_from`](#intent-restart-from) | `slots.stage == 'independence' \|\| slots.stage == 'kansas'` | [`leg_a_executing`](#room-leg-a-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Independence to retry the run toward Kansas River." |
+| 15 | [`restart_from`](#intent-restart-from) | `slots.stage == 'kearney'` | [`leg_b_executing`](#room-leg-b-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Kansas River to retry the stretch toward Fort Kearney." |
+| 16 | [`restart_from`](#intent-restart-from) | `slots.stage == 'chimney'` | [`leg_c_executing`](#room-leg-c-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Fort Kearney to retry the stretch toward Chimney Rock." |
+| 17 | [`restart_from`](#intent-restart-from) | `slots.stage == 'laramie'` | [`leg_d_executing`](#room-leg-d-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Chimney Rock to retry the stretch toward Fort Laramie." |
+| 18 | [`restart_from`](#intent-restart-from) | `slots.stage == 'south_pass'` | [`leg_e_executing`](#room-leg-e-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Fort Laramie to retry the stretch toward South Pass." |
+| 19 | [`restart_from`](#intent-restart-from) | `slots.stage == 'snake'` | [`leg_f_executing`](#room-leg-f-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to South Pass to retry the stretch toward Snake River." |
+| 20 | [`restart_from`](#intent-restart-from) | _default_ | `.` | _hint: Unknown restart stage._ |
+| 21 | [`scout`](#intent-scout) |  | [`frontier`](#room-frontier) |  |
 
 **Timeout**: after `10d` → `leg_g_executing`
 
@@ -3173,16 +2818,6 @@ When you're ready, "continue" presses on toward the next landmark.
 Stranded between South Pass and Snake River Crossing.
 
 **Shows world**: `day`, `party_alive`, `current_landmark`
-
-**View**:
-
-```
-Stranded between South Pass and Snake River Crossing.
-
-The party has failed this leg too many times.
-
-Actions: retry (returns to South Pass), quit.
-```
 
 **Transitions**:
 
@@ -3197,7 +2832,7 @@ On the trail from South Pass to Snake River Crossing (prairie).
 
 **Initial child**: `traveling`
 
-**Shows world**: `day`, `month`, `miles_traveled`, `food_lbs`, `oxen`, `party_alive`, `health_avg`, `pace`, `rations`, `current_landmark`, `event_kind`, `illness_kind`, `breakdown_part`, `weather_kind`, `encounter_kind`, `rng_last`, `rng_counter`
+**Shows world**: `day`, `month`, `miles_traveled`, `food_lbs`, `oxen`, `party_alive`, `health_avg`, `pace`, `rations`, `current_landmark`, `event_kind`, `illness_kind`, `illness_severity`, `illness_member`, `breakdown_part`, `weather_kind`, `encounter_kind`, `rng_last`, `rng_counter`
 
 **On enter**:
 
@@ -3216,21 +2851,10 @@ Wagon breakdown — {{ world.breakdown_part }}.
 
 **Shows world**: `breakdown_part`, `spare_wheels`, `spare_axles`, `spare_tongues`, `day`, `current_event_attempts`, `last_event_prose`
 
-**View**:
-
-```
-{{ if world.last_event_prose != "" }}{{ world.last_event_prose }}
-
-{{ end }}The wagon's {{ world.breakdown_part }} has broken.
-Spare wheels: {{ world.spare_wheels }}, axles: {{ world.spare_axles }}, tongues: {{ world.spare_tongues }}.
-
-Actions: repair (needs a matching spare), wait_out (5 days), look, quit.
-```
-
 **On enter**:
 
 1. set `breakdown_part = "{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }}"`, `current_event_attempts = 0`, `last_event_prose = ""`
-2. invoke `host.oracle.ask` with `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} part:{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }} spares_remaining:{{ world.rng_last % 3 == 0 ? world.spare_wheels : (world.rng_last % 3 == 1 ? world.spare_axles : world.spare_tongues) }}]`, `prompt_path = "prompts/event_breakdown.md"`, bind `last_event_prose ← stdout`
+2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} part:{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }} spares_remaining:{{ world.rng_last % 3 == 0 ? world.spare_wheels : (world.rng_last % 3 == 1 ? world.spare_axles : world.spare_tongues) }}]`, `prompt_path = "prompts/event_breakdown.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -3249,37 +2873,26 @@ Actions: repair (needs a matching spare), wait_out (5 days), look, quit.
 
 Illness has struck the party ({{ world.illness_kind }}).
 
-**Shows world**: `illness_kind`, `illness_severity`, `illness_treatment`, `health_avg`, `party_alive`, `food_lbs`, `clothing_sets`, `day`, `current_event_attempts`
-
-**View**:
-
-```
-Someone in the party has fallen ill.
-Illness: {{ world.illness_kind }}.
-Health: {{ world.health_avg }}.   Party: {{ world.party_alive }} alive.
-Supplies: {{ world.clothing_sets }} clothing sets, {{ world.food_lbs }} lbs food.
-
-Actions: treat, wait_out, move_on, look, quit.
-```
+**Shows world**: `illness_kind`, `illness_severity`, `illness_treatment`, `illness_member`, `health_avg`, `party_alive`, `food_lbs`, `clothing_sets`, `day`, `current_event_attempts`
 
 **On enter**:
 
-1. set `current_event_attempts = 0`, `health_avg = "{{ world.health_avg - 10 }}"`
+1. set `current_event_attempts = 0`, `health_avg = "{{ world.health_avg - 10 }}"`, `illness_member = "{{ split(world.party_names, ',')[world.rng_last % world.party_alive] }}"`
 2. set `illness_kind = "{{ if world.rng_last % 5 == 0 }}dysentery{{ else }}{{ if world.rng_last % 5 == 1 }}cholera{{ else }}{{ if world.rng_last % 5 == 2 }}typhoid{{ else }}{{ if world.rng_last % 5 == 3 }}measles{{ else }}exhaustion{{ end }}{{ end }}{{ end }}{{ end }}"`, `illness_severity = "{{ world.rng_last % 5 + 1 }}"`, `illness_treatment = "rest"`
-3. invoke `host.oracle.ask_with_mcp` with `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} food_lbs:{{ world.food_lbs }} health_avg:{{ world.health_avg }} party_alive:{{ world.party_alive }} rng_last:{{ world.rng_last }}]`, `prompt = "prompts/event_disease.md"`, `schema = "mcp/illness.json"`, bind `illness_kind ← submitted.illness`, `illness_severity ← submitted.severity`, `illness_treatment ← submitted.treatment`, on_error → `leg_f_error`
+3. invoke `host.oracle.ask_with_mcp` with `agent = "frontier_doctor"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} food_lbs:{{ world.food_lbs }} health_avg:{{ world.health_avg }} party_alive:{{ world.party_alive }} rng_last:{{ world.rng_last }}]`, `prompt = "prompts/event_disease.md"`, `schema = "mcp/illness.json"`, bind `illness_kind ← submitted.illness`, `illness_severity ← submitted.severity`, `illness_treatment ← submitted.treatment`, on_error → `leg_f_error`
 
 **Transitions**:
 
 | # | Intent | Guard | → | Effects |
 |---|---|---|---|---|
 | 1 | [`look`](#intent-look) |  | `.` |  |
-| 2 | [`move_on`](#intent-move-on) |  | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — pushed on through the {{ world.illness_kind }} rather than stop. Health is worse for it, but the wagon rolls."`, `phase_id = "leg_f_event_disease_moved_on_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Pressing on through illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `event_kind = ""`, `health_avg = "{{ world.health_avg - 15 }}"`, `illness_kind = ""` · say "The party presses on. Health worsens." |
+| 2 | [`move_on`](#intent-move-on) |  | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — pushed on through the {{ world.illness_kind }} rather than stop. Health is worse for it, but the wagon rolls."`, `phase_id = "leg_f_event_disease_moved_on_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Pressing on through illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `event_kind = ""`, `health_avg = "{{ world.health_avg - 15 }}"`, `illness_kind = ""`, `illness_member = ""`, `illness_severity = 0`, `illness_treatment = ""` · say "The party presses on. Health worsens." |
 | 3 | [`quit`](#intent-quit) |  | [`ended_lost`](#room-ended-lost) | say "The party gives up on the trail, broken by {{ world.illness_kind }}." |
-| 4 | [`treat`](#intent-treat) | `world.clothing_sets >= 1 && world.food_lbs >= 50 && world.current_event_attempts < 2` | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — the {{ world.illness_kind }} has passed. Rested up, one clothing set used and 50 lbs of food spent on broth and care. Spirits steady, on the move."`, `phase_id = "leg_f_event_disease_treated_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Disease treated"`, `transport = "tui"` · set `clothing_sets = "{{ world.clothing_sets - 1 }}"`, `current_event_attempts = 0`, `event_kind = ""`, `food_lbs = "{{ world.food_lbs - 50 }}"`, `health_avg = "{{ world.health_avg + 20 }}"`, `illness_kind = ""` · say "The party rests and treats the illness." |
+| 4 | [`treat`](#intent-treat) | `world.clothing_sets >= 1 && world.food_lbs >= 50 && world.current_event_attempts < 2` | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — the {{ world.illness_kind }} has passed. Rested up, one clothing set used and 50 lbs of food spent on broth and care. Spirits steady, on the move."`, `phase_id = "leg_f_event_disease_treated_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Disease treated"`, `transport = "tui"` · set `clothing_sets = "{{ world.clothing_sets - 1 }}"`, `current_event_attempts = 0`, `event_kind = ""`, `food_lbs = "{{ world.food_lbs - 50 }}"`, `health_avg = "{{ world.health_avg + 20 }}"`, `illness_kind = ""`, `illness_member = ""`, `illness_severity = 0`, `illness_treatment = ""` · say "The party rests and treats the illness." |
 | 5 | [`treat`](#intent-treat) | `(world.clothing_sets < 1 \|\| world.food_lbs < 50) && world.current_event_attempts < 2` | `.` | increment `current_event_attempts += 1` · say "Not enough supplies to treat the {{ world.illness_kind }} (need 1 clothing set + 50 lbs food). Try again or wait_out." |
-| 6 | [`treat`](#intent-treat) | _default_ | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — after repeated attempts, the {{ world.illness_kind }} took one of the party. May the trail remember them."`, `phase_id = "leg_f_event_disease_lost_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Lost to illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `event_kind = ""`, `illness_kind = ""`, `party_alive = "{{ world.party_alive - 1 }}"` · say "After repeated futile attempts, a party member has died of illness." |
-| 7 | [`wait_out`](#intent-wait-out) | `world.health_avg < 30` | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — the patient was too weak. {{ world.illness_kind }} claimed one of the party while we waited."`, `phase_id = "leg_f_event_disease_wait_lost_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Lost to illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `day = "{{ world.day + 1 }}"`, `event_kind = ""`, `illness_kind = ""`, `party_alive = "{{ world.party_alive - 1 }}"` · say "The patient was too weak. A party member dies of illness." |
-| 8 | [`wait_out`](#intent-wait-out) | _default_ | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — one day of rest and the {{ world.illness_kind }} let go. We move on tomorrow."`, `phase_id = "leg_f_event_disease_wait_ok_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Illness passed"`, `transport = "tui"` · set `current_event_attempts = 0`, `day = "{{ world.day + 1 }}"`, `event_kind = ""`, `illness_kind = ""` · say "The party rests a day. The illness passes." |
+| 6 | [`treat`](#intent-treat) | _default_ | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — after repeated attempts, the {{ world.illness_kind }} took one of the party. May the trail remember them."`, `phase_id = "leg_f_event_disease_lost_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Lost to illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `event_kind = ""`, `illness_kind = ""`, `illness_member = ""`, `illness_severity = 0`, `illness_treatment = ""`, `party_alive = "{{ world.party_alive - 1 }}"` · say "After repeated futile attempts, a party member has died of illness." |
+| 7 | [`wait_out`](#intent-wait-out) | `world.health_avg < 30` | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — the patient was too weak. {{ world.illness_kind }} claimed one of the party while we waited."`, `phase_id = "leg_f_event_disease_wait_lost_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Lost to illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `day = "{{ world.day + 1 }}"`, `event_kind = ""`, `illness_kind = ""`, `illness_member = ""`, `illness_severity = 0`, `illness_treatment = ""`, `party_alive = "{{ world.party_alive - 1 }}"` · say "The patient was too weak. A party member dies of illness." |
+| 8 | [`wait_out`](#intent-wait-out) | _default_ | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — one day of rest and the {{ world.illness_kind }} let go. We move on tomorrow."`, `phase_id = "leg_f_event_disease_wait_ok_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Illness passed"`, `transport = "tui"` · set `current_event_attempts = 0`, `day = "{{ world.day + 1 }}"`, `event_kind = ""`, `illness_kind = ""`, `illness_member = ""`, `illness_severity = 0`, `illness_treatment = ""` · say "The party rests a day. The illness passes." |
 
 ### <a id="room-leg-f-executing-event-encounter"></a> `leg_f_executing.event_encounter`
 
@@ -3287,22 +2900,10 @@ Encounter on the trail: {{ world.encounter_kind }}.
 
 **Shows world**: `encounter_kind`, `food_lbs`, `clothing_sets`, `last_event_prose`
 
-**View**:
-
-```
-{{ if world.last_event_prose != "" }}{{ world.last_event_prose }}
-
-{{ end }}You meet a {{ world.encounter_kind }} on the trail.
-They offer 1 clothing set in exchange for 50 lbs of food.
-You have {{ world.food_lbs }} lbs food, {{ world.clothing_sets }} clothing sets.
-
-Actions: accept_trade, decline_trade, move_on, look, quit.
-```
-
 **On enter**:
 
 1. set `current_event_attempts = 0`, `encounter_kind = "{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}"`, `last_event_prose = ""`
-2. invoke `host.oracle.ask` with `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} kind:{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}]`, `prompt_path = "prompts/event_encounter.md"`, bind `last_event_prose ← stdout`
+2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} kind:{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}]`, `prompt_path = "prompts/event_encounter.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -3321,22 +2922,11 @@ Supplies lost on the trail.
 
 **Shows world**: `food_lbs`, `oxen`, `rng_last`, `last_event_prose`
 
-**View**:
-
-```
-{{ if world.last_event_prose != "" }}{{ world.last_event_prose }}
-
-{{ end }}Supplies have been lost on the trail.
-Food: {{ world.food_lbs }} lbs.  Oxen: {{ world.oxen }}.
-
-Action: move_on.
-```
-
 **On enter**:
 
 1. set `current_event_attempts = 0`, `last_event = "{{ if world.rng_last % 2 == 0 }}food_loss{{ else }}ox_loss{{ end }}"`, `last_event_prose = ""`
 2. set `food_lbs = "{{ world.rng_last % 2 == 0 ? world.food_lbs - (10 + 10 * (world.rng_last % 4)) : world.food_lbs }}"`, `oxen = "{{ world.rng_last % 2 == 0 ? world.oxen : world.oxen - 1 }}"`
-3. invoke `host.oracle.ask` with `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} oxen:{{ world.oxen }} what:{{ world.rng_last % 2 == 0 ? 'food spoiled' : 'ox lame' }}]`, `prompt_path = "prompts/event_supply_loss.md"`, bind `last_event_prose ← stdout`
+3. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} oxen:{{ world.oxen }} what:{{ world.rng_last % 2 == 0 ? 'food spoiled' : 'ox lame' }}]`, `prompt_path = "prompts/event_supply_loss.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -3352,21 +2942,10 @@ Severe weather: {{ world.weather_kind }}.
 
 **Shows world**: `weather_kind`, `day`, `food_lbs`, `health_avg`, `last_event_prose`
 
-**View**:
-
-```
-{{ if world.last_event_prose != "" }}{{ world.last_event_prose }}
-
-{{ end }}Severe weather: {{ world.weather_kind }}.
-Health: {{ world.health_avg }}.   Food: {{ world.food_lbs }} lbs.   Day {{ world.day }}.
-
-Actions: wait_out, push_on, look, quit.
-```
-
 **On enter**:
 
-1. set `current_event_attempts = 0`, `last_event_prose = ""`, `weather_kind = "{{ if world.rng_last % 4 == 0 }}heavy_rain{{ else }}{{ if world.rng_last % 4 == 1 }}snow{{ else }}{{ if world.rng_last % 4 == 2 }}fog{{ else }}hail{{ end }}{{ end }}{{ end }}"`
-2. invoke `host.oracle.ask` with `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} kind:{{ if world.rng_last % 4 == 0 }}heavy_rain{{ else }}{{ if world.rng_last % 4 == 1 }}snow{{ else }}{{ if world.rng_last % 4 == 2 }}fog{{ else }}hail{{ end }}{{ end }}{{ end }} month:{{ world.month }} terrain:prairie]`, `prompt_path = "prompts/event_weather.md"`, bind `last_event_prose ← stdout`
+1. set `current_event_attempts = 0`, `last_event_prose = ""`, `weather_kind = "{{ world.month == 'november' || world.month == 'december' || world.month == 'january' || world.month == 'february' ? 'snow' : (world.month == 'march' || world.month == 'april' || world.month == 'may' ? 'heavy_rain' : (world.month == 'june' || world.month == 'july' || world.month == 'august' ? (world.rng_last % 2 == 0 ? 'hail' : 'fog') : (world.rng_last % 2 == 0 ? 'heavy_rain' : 'fog'))) }}"`
+2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} kind:{{ world.month == 'november' || world.month == 'december' || world.month == 'january' || world.month == 'february' ? 'snow' : (world.month == 'march' || world.month == 'april' || world.month == 'may' ? 'heavy_rain' : (world.month == 'june' || world.month == 'july' || world.month == 'august' ? (world.rng_last % 2 == 0 ? 'hail' : 'fog') : (world.rng_last % 2 == 0 ? 'heavy_rain' : 'fog'))) }} month:{{ world.month }} terrain:prairie]`, `prompt_path = "prompts/event_weather.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -3381,30 +2960,18 @@ Actions: wait_out, push_on, look, quit.
 
 Travelling — South Pass → Snake River Crossing.
 
-**View**:
-
-```
-Day {{ world.day }} on the trail. Heading for Snake River Crossing (prairie).
-
-Miles travelled this leg: {{ world.miles_traveled }} / 250.
-Food: {{ world.food_lbs }} lbs. Oxen: {{ world.oxen }}. Party: {{ world.party_alive }} alive.
-Pace: {{ world.pace }}. Rations: {{ world.rations }}.
-
-Actions: continue, set_pace <pace>, set_rations <rations>, look, quit.
-```
-
 **Transitions**:
 
 | # | Intent | Guard | → | Effects |
 |---|---|---|---|---|
-| 1 | [`continue`](#intent-continue) | `world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) >= 250` | [`leg_f_awaiting_reply`](#room-leg-f-awaiting-reply) | set `day = "{{ world.day + 1 }}"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · say "Arrived at Snake River Crossing." |
-| 2 | [`continue`](#intent-continue) | `world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) <= 0` | [`ended_lost`](#room-ended-lost) | set `day = "{{ world.day + 1 }}"`, `food_lbs = 0` · say "The party has run out of food between South Pass and Snake River Crossing. They starve on the trail." |
-| 3 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 60 && int(world.miles_traveled + world.rng_counter) % 100 < 75` | `../event_disease` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = "disease"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
-| 4 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 75 && int(world.miles_traveled + world.rng_counter) % 100 < 85` | `../event_breakdown` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = "breakdown"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
-| 5 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 85 && int(world.miles_traveled + world.rng_counter) % 100 < 92` | `../event_weather` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = "weather"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
-| 6 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 92 && int(world.miles_traveled + world.rng_counter) % 100 < 97` | `../event_encounter` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = "encounter"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
-| 7 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 97` | `../event_supply_loss` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = "supply_loss"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
-| 8 | [`continue`](#intent-continue) | _default_ | `.` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = ""`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
+| 1 | [`continue`](#intent-continue) | `world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' \|\| world.month == 'january' \|\| world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' \|\| world.month == 'october' ? 85 : (world.month == 'april' \|\| world.month == 'september' ? 95 : 100)))) / 100) >= 250` | [`leg_f_awaiting_reply`](#room-leg-f-awaiting-reply) | set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · say "Arrived at Snake River Crossing." |
+| 2 | [`continue`](#intent-continue) | `world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) <= 0` | [`ended_lost`](#room-ended-lost) | set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `food_lbs = 0`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · say "The party has run out of food between South Pass and Snake River Crossing. They starve on the trail." |
+| 3 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 60 && int(world.miles_traveled + world.rng_counter) % 100 < 75` | `../event_disease` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = "disease"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
+| 4 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 75 && int(world.miles_traveled + world.rng_counter) % 100 < 85` | `../event_breakdown` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = "breakdown"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
+| 5 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 85 && int(world.miles_traveled + world.rng_counter) % 100 < 92` | `../event_weather` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = "weather"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
+| 6 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 92 && int(world.miles_traveled + world.rng_counter) % 100 < 97` | `../event_encounter` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = "encounter"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
+| 7 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 97` | `../event_supply_loss` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = "supply_loss"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
+| 8 | [`continue`](#intent-continue) | _default_ | `.` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = ""`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
 | 9 | [`look`](#intent-look) |  | `.` |  |
 | 10 | [`quit`](#intent-quit) |  | [`ended_lost`](#room-ended-lost) | say "The party abandons the journey between South Pass and Snake River Crossing." |
 | 11 | [`set_pace`](#intent-set-pace) |  | `.` | set `pace = "{{ slots.pace }}"` · say "Pace set to {{ slots.pace }}." |
@@ -3414,52 +2981,39 @@ Actions: continue, set_pace <pace>, set_rations <rations>, look, quit.
 
 Arrived at Willamette Valley (mountain).
 
-**Shows world**: `day`, `miles_traveled`, `food_lbs`, `oxen`, `party_alive`, `health_avg`, `last_landmark_prose`
-
-**View**:
-
-```
-Arrived at Willamette Valley (mountain).
-
-Day:    {{ world.day }}
-Food:   {{ world.food_lbs }} lbs
-Oxen:   {{ world.oxen }}
-Party:  {{ world.party_alive }} alive
-Health: {{ world.health_avg }}
-
-{{ if world.last_landmark_prose != "" }}{{ world.last_landmark_prose }}{{ else }}{{ end }}
-
-When you're ready, "continue" presses on toward the next landmark.
-```
+**Shows world**: `day`, `miles_traveled`, `food_lbs`, `oxen`, `party_alive`, `health_avg`, `illness_kind`, `illness_severity`, `illness_member`, `last_landmark_prose`
 
 **On enter**:
 
 1. set `last_landmark_prose = ""`
 2. invoke `host.transport.post` with `body = "Day {{ world.day }}, {{ world.month }} {{ world.year }}. We rolled into **Willamette Valley** (mountain) at last.\n\n- Food: {{ world.food_lbs }} lbs\n- Oxen: {{ world.oxen }}\n- Party: {{ world.party_alive }} alive\n- Health: {{ world.health_avg }}\n"`, `phase_id = "leg_g_arrival"`, `thread = "{{ run.id }}"`, `title = "Day {{ world.day }}: Willamette Valley"`, `transport = "tui"`
-3. invoke `host.oracle.ask` with `args = map[day:{{ world.day }} food_lbs:{{ world.food_lbs }} landmark:Willamette Valley miles_traveled:{{ world.miles_traveled }} month:{{ world.month }} party_alive:{{ world.party_alive }} year:{{ world.year }}]`, `prompt_path = "prompts/landmark_arrival.md"`, bind `last_landmark_prose ← stdout`
+3. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[day:{{ world.day }} food_lbs:{{ world.food_lbs }} landmark:Willamette Valley miles_traveled:{{ world.miles_traveled }} month:{{ world.month }} party_alive:{{ world.party_alive }} year:{{ world.year }}]`, `prompt_path = "prompts/landmark_arrival.md"`, bind `last_landmark_prose ← stdout`
 
 **Transitions**:
 
 | # | Intent | Guard | → | Effects |
 |---|---|---|---|---|
-| 1 | [`approach_river`](#intent-approach-river) | `false` | [`river_crossing`](#room-river-crossing) | set `current_landmark = "Willamette Valley"`, `river_depth_ft = "{{ tpl.to_landmark == 'Kansas River Crossing' ? 2 : 7 }}"`, `river_width_ft = "{{ tpl.to_landmark == 'Kansas River Crossing' ? 620 : 1000 }}"` |
+| 1 | [`approach_river`](#intent-approach-river) | `false` | [`river_crossing`](#room-river-crossing) | set `current_landmark = "Willamette Valley"`, `river_depth_ft = "{{ int(0 * (world.month == 'april' ? 160 : (world.month == 'march' ? 140 : (world.month == 'may' ? 130 : (world.month == 'june' ? 100 : (world.month == 'july' ? 80 : (world.month == 'august' ? 70 : (world.month == 'september' ? 80 : 100))))))) / 100) }}"`, `river_width_ft = "{{ int(0) }}"` |
 | 2 | [`approach_river`](#intent-approach-river) | _default_ | `.` | _hint: No river at this landmark._ |
 | 3 | [`consult_guide`](#intent-consult-guide) |  | [`trail_guide`](#room-trail-guide) | set `last_job_originating_state = "leg_g_awaiting_reply"` · _(no-history)_ |
-| 4 | [`continue`](#intent-continue) |  | [`ended_won`](#room-ended-won) | set `breakdown_part = ""`, `current_event_attempts = 0`, `current_landmark = "Willamette Valley"`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` |
-| 5 | [`enter_fort`](#intent-enter-fort) | `false` | [`fort`](#room-fort) | set `current_landmark = "Willamette Valley"` |
-| 6 | [`enter_fort`](#intent-enter-fort) | _default_ | `.` | _hint: No fort at this landmark._ |
-| 7 | [`give_up_leg`](#intent-give-up-leg) | `world.cycle__leg_g__on_failure < 2` | [`leg_f_executing`](#room-leg-f-executing) | increment `cycle__leg_g__on_failure += 1` · set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party turns back toward Snake River Crossing." |
-| 8 | [`give_up_leg`](#intent-give-up-leg) | _default_ | [`leg_g_error`](#room-leg-g-error) | say "The party has given up too many times — stranded." |
-| 9 | [`hunt`](#intent-hunt) |  | [`hunt`](#room-hunt) |  |
-| 10 | [`quit`](#intent-quit) |  | [`ended_lost`](#room-ended-lost) | say "The party abandons the journey at Willamette Valley." |
-| 11 | [`rest`](#intent-rest) |  | [`rest_room`](#room-rest-room) |  |
-| 12 | [`restart_from`](#intent-restart-from) | `slots.stage == 'independence' \|\| slots.stage == 'kansas'` | [`leg_a_executing`](#room-leg-a-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Independence to retry the run toward Kansas River." |
-| 13 | [`restart_from`](#intent-restart-from) | `slots.stage == 'kearney'` | [`leg_b_executing`](#room-leg-b-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Kansas River to retry the stretch toward Fort Kearney." |
-| 14 | [`restart_from`](#intent-restart-from) | `slots.stage == 'chimney'` | [`leg_c_executing`](#room-leg-c-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Fort Kearney to retry the stretch toward Chimney Rock." |
-| 15 | [`restart_from`](#intent-restart-from) | `slots.stage == 'laramie'` | [`leg_d_executing`](#room-leg-d-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Chimney Rock to retry the stretch toward Fort Laramie." |
-| 16 | [`restart_from`](#intent-restart-from) | `slots.stage == 'south_pass'` | [`leg_e_executing`](#room-leg-e-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Fort Laramie to retry the stretch toward South Pass." |
-| 17 | [`restart_from`](#intent-restart-from) | `slots.stage == 'snake'` | [`leg_f_executing`](#room-leg-f-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to South Pass to retry the stretch toward Snake River." |
-| 18 | [`restart_from`](#intent-restart-from) | _default_ | `.` | _hint: Unknown restart stage._ |
+| 4 | [`continue`](#intent-continue) | `'Willamette Valley' == 'South Pass' && (world.month == 'october' \|\| world.month == 'november' \|\| world.month == 'december' \|\| world.month == 'january' \|\| world.month == 'february')` | [`snow_blocked`](#room-snow-blocked) | set `current_landmark = "Willamette Valley"` · say "South Pass is snowed in. The wagons cannot get through." |
+| 5 | [`continue`](#intent-continue) | _default_ | [`ended_won`](#room-ended-won) | set `breakdown_part = ""`, `current_event_attempts = 0`, `current_landmark = "Willamette Valley"`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` |
+| 6 | [`enter_fort`](#intent-enter-fort) | `false` | [`fort`](#room-fort) | set `current_landmark = "Willamette Valley"` |
+| 7 | [`enter_fort`](#intent-enter-fort) | _default_ | `.` | _hint: No fort at this landmark._ |
+| 8 | [`face_robbery`](#intent-face-robbery) |  | [`frontier`](#room-frontier) |  |
+| 9 | [`give_up_leg`](#intent-give-up-leg) | `world.cycle__leg_g__on_failure < 2` | [`leg_f_executing`](#room-leg-f-executing) | increment `cycle__leg_g__on_failure += 1` · set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party turns back toward Snake River Crossing." |
+| 10 | [`give_up_leg`](#intent-give-up-leg) | _default_ | [`leg_g_error`](#room-leg-g-error) | say "The party has given up too many times — stranded." |
+| 11 | [`hunt`](#intent-hunt) |  | [`hunt`](#room-hunt) |  |
+| 12 | [`quit`](#intent-quit) |  | [`ended_lost`](#room-ended-lost) | say "The party abandons the journey at Willamette Valley." |
+| 13 | [`rest`](#intent-rest) |  | [`rest_room`](#room-rest-room) |  |
+| 14 | [`restart_from`](#intent-restart-from) | `slots.stage == 'independence' \|\| slots.stage == 'kansas'` | [`leg_a_executing`](#room-leg-a-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Independence to retry the run toward Kansas River." |
+| 15 | [`restart_from`](#intent-restart-from) | `slots.stage == 'kearney'` | [`leg_b_executing`](#room-leg-b-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Kansas River to retry the stretch toward Fort Kearney." |
+| 16 | [`restart_from`](#intent-restart-from) | `slots.stage == 'chimney'` | [`leg_c_executing`](#room-leg-c-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Fort Kearney to retry the stretch toward Chimney Rock." |
+| 17 | [`restart_from`](#intent-restart-from) | `slots.stage == 'laramie'` | [`leg_d_executing`](#room-leg-d-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Chimney Rock to retry the stretch toward Fort Laramie." |
+| 18 | [`restart_from`](#intent-restart-from) | `slots.stage == 'south_pass'` | [`leg_e_executing`](#room-leg-e-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to Fort Laramie to retry the stretch toward South Pass." |
+| 19 | [`restart_from`](#intent-restart-from) | `slots.stage == 'snake'` | [`leg_f_executing`](#room-leg-f-executing) | set `breakdown_part = ""`, `current_event_attempts = 0`, `encounter_kind = ""`, `event_kind = ""`, `illness_kind = ""`, `miles_traveled = 0`, `weather_kind = ""` · say "The party doubles back to South Pass to retry the stretch toward Snake River." |
+| 20 | [`restart_from`](#intent-restart-from) | _default_ | `.` | _hint: Unknown restart stage._ |
+| 21 | [`scout`](#intent-scout) |  | [`frontier`](#room-frontier) |  |
 
 **Timeout**: after `10d` → `ended_won`
 
@@ -3468,16 +3022,6 @@ When you're ready, "continue" presses on toward the next landmark.
 Stranded between Snake River Crossing and Willamette Valley.
 
 **Shows world**: `day`, `party_alive`, `current_landmark`
-
-**View**:
-
-```
-Stranded between Snake River Crossing and Willamette Valley.
-
-The party has failed this leg too many times.
-
-Actions: retry (returns to Snake River Crossing), quit.
-```
 
 **Transitions**:
 
@@ -3492,7 +3036,7 @@ On the trail from Snake River Crossing to Willamette Valley (mountain).
 
 **Initial child**: `traveling`
 
-**Shows world**: `day`, `month`, `miles_traveled`, `food_lbs`, `oxen`, `party_alive`, `health_avg`, `pace`, `rations`, `current_landmark`, `event_kind`, `illness_kind`, `breakdown_part`, `weather_kind`, `encounter_kind`, `rng_last`, `rng_counter`
+**Shows world**: `day`, `month`, `miles_traveled`, `food_lbs`, `oxen`, `party_alive`, `health_avg`, `pace`, `rations`, `current_landmark`, `event_kind`, `illness_kind`, `illness_severity`, `illness_member`, `breakdown_part`, `weather_kind`, `encounter_kind`, `rng_last`, `rng_counter`
 
 **On enter**:
 
@@ -3511,21 +3055,10 @@ Wagon breakdown — {{ world.breakdown_part }}.
 
 **Shows world**: `breakdown_part`, `spare_wheels`, `spare_axles`, `spare_tongues`, `day`, `current_event_attempts`, `last_event_prose`
 
-**View**:
-
-```
-{{ if world.last_event_prose != "" }}{{ world.last_event_prose }}
-
-{{ end }}The wagon's {{ world.breakdown_part }} has broken.
-Spare wheels: {{ world.spare_wheels }}, axles: {{ world.spare_axles }}, tongues: {{ world.spare_tongues }}.
-
-Actions: repair (needs a matching spare), wait_out (5 days), look, quit.
-```
-
 **On enter**:
 
 1. set `breakdown_part = "{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }}"`, `current_event_attempts = 0`, `last_event_prose = ""`
-2. invoke `host.oracle.ask` with `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} part:{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }} spares_remaining:{{ world.rng_last % 3 == 0 ? world.spare_wheels : (world.rng_last % 3 == 1 ? world.spare_axles : world.spare_tongues) }}]`, `prompt_path = "prompts/event_breakdown.md"`, bind `last_event_prose ← stdout`
+2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} part:{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }} spares_remaining:{{ world.rng_last % 3 == 0 ? world.spare_wheels : (world.rng_last % 3 == 1 ? world.spare_axles : world.spare_tongues) }}]`, `prompt_path = "prompts/event_breakdown.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -3544,37 +3077,26 @@ Actions: repair (needs a matching spare), wait_out (5 days), look, quit.
 
 Illness has struck the party ({{ world.illness_kind }}).
 
-**Shows world**: `illness_kind`, `illness_severity`, `illness_treatment`, `health_avg`, `party_alive`, `food_lbs`, `clothing_sets`, `day`, `current_event_attempts`
-
-**View**:
-
-```
-Someone in the party has fallen ill.
-Illness: {{ world.illness_kind }}.
-Health: {{ world.health_avg }}.   Party: {{ world.party_alive }} alive.
-Supplies: {{ world.clothing_sets }} clothing sets, {{ world.food_lbs }} lbs food.
-
-Actions: treat, wait_out, move_on, look, quit.
-```
+**Shows world**: `illness_kind`, `illness_severity`, `illness_treatment`, `illness_member`, `health_avg`, `party_alive`, `food_lbs`, `clothing_sets`, `day`, `current_event_attempts`
 
 **On enter**:
 
-1. set `current_event_attempts = 0`, `health_avg = "{{ world.health_avg - 10 }}"`
+1. set `current_event_attempts = 0`, `health_avg = "{{ world.health_avg - 10 }}"`, `illness_member = "{{ split(world.party_names, ',')[world.rng_last % world.party_alive] }}"`
 2. set `illness_kind = "{{ if world.rng_last % 5 == 0 }}dysentery{{ else }}{{ if world.rng_last % 5 == 1 }}cholera{{ else }}{{ if world.rng_last % 5 == 2 }}typhoid{{ else }}{{ if world.rng_last % 5 == 3 }}measles{{ else }}exhaustion{{ end }}{{ end }}{{ end }}{{ end }}"`, `illness_severity = "{{ world.rng_last % 5 + 1 }}"`, `illness_treatment = "rest"`
-3. invoke `host.oracle.ask_with_mcp` with `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} food_lbs:{{ world.food_lbs }} health_avg:{{ world.health_avg }} party_alive:{{ world.party_alive }} rng_last:{{ world.rng_last }}]`, `prompt = "prompts/event_disease.md"`, `schema = "mcp/illness.json"`, bind `illness_kind ← submitted.illness`, `illness_severity ← submitted.severity`, `illness_treatment ← submitted.treatment`, on_error → `leg_g_error`
+3. invoke `host.oracle.ask_with_mcp` with `agent = "frontier_doctor"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} food_lbs:{{ world.food_lbs }} health_avg:{{ world.health_avg }} party_alive:{{ world.party_alive }} rng_last:{{ world.rng_last }}]`, `prompt = "prompts/event_disease.md"`, `schema = "mcp/illness.json"`, bind `illness_kind ← submitted.illness`, `illness_severity ← submitted.severity`, `illness_treatment ← submitted.treatment`, on_error → `leg_g_error`
 
 **Transitions**:
 
 | # | Intent | Guard | → | Effects |
 |---|---|---|---|---|
 | 1 | [`look`](#intent-look) |  | `.` |  |
-| 2 | [`move_on`](#intent-move-on) |  | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — pushed on through the {{ world.illness_kind }} rather than stop. Health is worse for it, but the wagon rolls."`, `phase_id = "leg_g_event_disease_moved_on_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Pressing on through illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `event_kind = ""`, `health_avg = "{{ world.health_avg - 15 }}"`, `illness_kind = ""` · say "The party presses on. Health worsens." |
+| 2 | [`move_on`](#intent-move-on) |  | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — pushed on through the {{ world.illness_kind }} rather than stop. Health is worse for it, but the wagon rolls."`, `phase_id = "leg_g_event_disease_moved_on_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Pressing on through illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `event_kind = ""`, `health_avg = "{{ world.health_avg - 15 }}"`, `illness_kind = ""`, `illness_member = ""`, `illness_severity = 0`, `illness_treatment = ""` · say "The party presses on. Health worsens." |
 | 3 | [`quit`](#intent-quit) |  | [`ended_lost`](#room-ended-lost) | say "The party gives up on the trail, broken by {{ world.illness_kind }}." |
-| 4 | [`treat`](#intent-treat) | `world.clothing_sets >= 1 && world.food_lbs >= 50 && world.current_event_attempts < 2` | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — the {{ world.illness_kind }} has passed. Rested up, one clothing set used and 50 lbs of food spent on broth and care. Spirits steady, on the move."`, `phase_id = "leg_g_event_disease_treated_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Disease treated"`, `transport = "tui"` · set `clothing_sets = "{{ world.clothing_sets - 1 }}"`, `current_event_attempts = 0`, `event_kind = ""`, `food_lbs = "{{ world.food_lbs - 50 }}"`, `health_avg = "{{ world.health_avg + 20 }}"`, `illness_kind = ""` · say "The party rests and treats the illness." |
+| 4 | [`treat`](#intent-treat) | `world.clothing_sets >= 1 && world.food_lbs >= 50 && world.current_event_attempts < 2` | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — the {{ world.illness_kind }} has passed. Rested up, one clothing set used and 50 lbs of food spent on broth and care. Spirits steady, on the move."`, `phase_id = "leg_g_event_disease_treated_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Disease treated"`, `transport = "tui"` · set `clothing_sets = "{{ world.clothing_sets - 1 }}"`, `current_event_attempts = 0`, `event_kind = ""`, `food_lbs = "{{ world.food_lbs - 50 }}"`, `health_avg = "{{ world.health_avg + 20 }}"`, `illness_kind = ""`, `illness_member = ""`, `illness_severity = 0`, `illness_treatment = ""` · say "The party rests and treats the illness." |
 | 5 | [`treat`](#intent-treat) | `(world.clothing_sets < 1 \|\| world.food_lbs < 50) && world.current_event_attempts < 2` | `.` | increment `current_event_attempts += 1` · say "Not enough supplies to treat the {{ world.illness_kind }} (need 1 clothing set + 50 lbs food). Try again or wait_out." |
-| 6 | [`treat`](#intent-treat) | _default_ | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — after repeated attempts, the {{ world.illness_kind }} took one of the party. May the trail remember them."`, `phase_id = "leg_g_event_disease_lost_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Lost to illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `event_kind = ""`, `illness_kind = ""`, `party_alive = "{{ world.party_alive - 1 }}"` · say "After repeated futile attempts, a party member has died of illness." |
-| 7 | [`wait_out`](#intent-wait-out) | `world.health_avg < 30` | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — the patient was too weak. {{ world.illness_kind }} claimed one of the party while we waited."`, `phase_id = "leg_g_event_disease_wait_lost_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Lost to illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `day = "{{ world.day + 1 }}"`, `event_kind = ""`, `illness_kind = ""`, `party_alive = "{{ world.party_alive - 1 }}"` · say "The patient was too weak. A party member dies of illness." |
-| 8 | [`wait_out`](#intent-wait-out) | _default_ | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — one day of rest and the {{ world.illness_kind }} let go. We move on tomorrow."`, `phase_id = "leg_g_event_disease_wait_ok_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Illness passed"`, `transport = "tui"` · set `current_event_attempts = 0`, `day = "{{ world.day + 1 }}"`, `event_kind = ""`, `illness_kind = ""` · say "The party rests a day. The illness passes." |
+| 6 | [`treat`](#intent-treat) | _default_ | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — after repeated attempts, the {{ world.illness_kind }} took one of the party. May the trail remember them."`, `phase_id = "leg_g_event_disease_lost_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Lost to illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `event_kind = ""`, `illness_kind = ""`, `illness_member = ""`, `illness_severity = 0`, `illness_treatment = ""`, `party_alive = "{{ world.party_alive - 1 }}"` · say "After repeated futile attempts, a party member has died of illness." |
+| 7 | [`wait_out`](#intent-wait-out) | `world.health_avg < 30` | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — the patient was too weak. {{ world.illness_kind }} claimed one of the party while we waited."`, `phase_id = "leg_g_event_disease_wait_lost_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Lost to illness"`, `transport = "tui"` · set `current_event_attempts = 0`, `day = "{{ world.day + 1 }}"`, `event_kind = ""`, `illness_kind = ""`, `illness_member = ""`, `illness_severity = 0`, `illness_treatment = ""`, `party_alive = "{{ world.party_alive - 1 }}"` · say "The patient was too weak. A party member dies of illness." |
+| 8 | [`wait_out`](#intent-wait-out) | _default_ | `../traveling` | invoke `host.transport.post` with `body = "Day {{ world.day }} — one day of rest and the {{ world.illness_kind }} let go. We move on tomorrow."`, `phase_id = "leg_g_event_disease_wait_ok_{{ world.day }}"`, `thread = "{{ run.id }}"`, `title = "Illness passed"`, `transport = "tui"` · set `current_event_attempts = 0`, `day = "{{ world.day + 1 }}"`, `event_kind = ""`, `illness_kind = ""`, `illness_member = ""`, `illness_severity = 0`, `illness_treatment = ""` · say "The party rests a day. The illness passes." |
 
 ### <a id="room-leg-g-executing-event-encounter"></a> `leg_g_executing.event_encounter`
 
@@ -3582,22 +3104,10 @@ Encounter on the trail: {{ world.encounter_kind }}.
 
 **Shows world**: `encounter_kind`, `food_lbs`, `clothing_sets`, `last_event_prose`
 
-**View**:
-
-```
-{{ if world.last_event_prose != "" }}{{ world.last_event_prose }}
-
-{{ end }}You meet a {{ world.encounter_kind }} on the trail.
-They offer 1 clothing set in exchange for 50 lbs of food.
-You have {{ world.food_lbs }} lbs food, {{ world.clothing_sets }} clothing sets.
-
-Actions: accept_trade, decline_trade, move_on, look, quit.
-```
-
 **On enter**:
 
 1. set `current_event_attempts = 0`, `encounter_kind = "{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}"`, `last_event_prose = ""`
-2. invoke `host.oracle.ask` with `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} kind:{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}]`, `prompt_path = "prompts/event_encounter.md"`, bind `last_event_prose ← stdout`
+2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} kind:{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}]`, `prompt_path = "prompts/event_encounter.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -3616,22 +3126,11 @@ Supplies lost on the trail.
 
 **Shows world**: `food_lbs`, `oxen`, `rng_last`, `last_event_prose`
 
-**View**:
-
-```
-{{ if world.last_event_prose != "" }}{{ world.last_event_prose }}
-
-{{ end }}Supplies have been lost on the trail.
-Food: {{ world.food_lbs }} lbs.  Oxen: {{ world.oxen }}.
-
-Action: move_on.
-```
-
 **On enter**:
 
 1. set `current_event_attempts = 0`, `last_event = "{{ if world.rng_last % 2 == 0 }}food_loss{{ else }}ox_loss{{ end }}"`, `last_event_prose = ""`
 2. set `food_lbs = "{{ world.rng_last % 2 == 0 ? world.food_lbs - (10 + 10 * (world.rng_last % 4)) : world.food_lbs }}"`, `oxen = "{{ world.rng_last % 2 == 0 ? world.oxen : world.oxen - 1 }}"`
-3. invoke `host.oracle.ask` with `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} oxen:{{ world.oxen }} what:{{ world.rng_last % 2 == 0 ? 'food spoiled' : 'ox lame' }}]`, `prompt_path = "prompts/event_supply_loss.md"`, bind `last_event_prose ← stdout`
+3. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} oxen:{{ world.oxen }} what:{{ world.rng_last % 2 == 0 ? 'food spoiled' : 'ox lame' }}]`, `prompt_path = "prompts/event_supply_loss.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -3647,21 +3146,10 @@ Severe weather: {{ world.weather_kind }}.
 
 **Shows world**: `weather_kind`, `day`, `food_lbs`, `health_avg`, `last_event_prose`
 
-**View**:
-
-```
-{{ if world.last_event_prose != "" }}{{ world.last_event_prose }}
-
-{{ end }}Severe weather: {{ world.weather_kind }}.
-Health: {{ world.health_avg }}.   Food: {{ world.food_lbs }} lbs.   Day {{ world.day }}.
-
-Actions: wait_out, push_on, look, quit.
-```
-
 **On enter**:
 
-1. set `current_event_attempts = 0`, `last_event_prose = ""`, `weather_kind = "{{ if world.rng_last % 4 == 0 }}heavy_rain{{ else }}{{ if world.rng_last % 4 == 1 }}snow{{ else }}{{ if world.rng_last % 4 == 2 }}fog{{ else }}hail{{ end }}{{ end }}{{ end }}"`
-2. invoke `host.oracle.ask` with `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} kind:{{ if world.rng_last % 4 == 0 }}heavy_rain{{ else }}{{ if world.rng_last % 4 == 1 }}snow{{ else }}{{ if world.rng_last % 4 == 2 }}fog{{ else }}hail{{ end }}{{ end }}{{ end }} month:{{ world.month }} terrain:mountain]`, `prompt_path = "prompts/event_weather.md"`, bind `last_event_prose ← stdout`
+1. set `current_event_attempts = 0`, `last_event_prose = ""`, `weather_kind = "{{ world.month == 'november' || world.month == 'december' || world.month == 'january' || world.month == 'february' ? 'snow' : (world.month == 'march' || world.month == 'april' || world.month == 'may' ? 'heavy_rain' : (world.month == 'june' || world.month == 'july' || world.month == 'august' ? (world.rng_last % 2 == 0 ? 'hail' : 'fog') : (world.rng_last % 2 == 0 ? 'heavy_rain' : 'fog'))) }}"`
+2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} kind:{{ world.month == 'november' || world.month == 'december' || world.month == 'january' || world.month == 'february' ? 'snow' : (world.month == 'march' || world.month == 'april' || world.month == 'may' ? 'heavy_rain' : (world.month == 'june' || world.month == 'july' || world.month == 'august' ? (world.rng_last % 2 == 0 ? 'hail' : 'fog') : (world.rng_last % 2 == 0 ? 'heavy_rain' : 'fog'))) }} month:{{ world.month }} terrain:mountain]`, `prompt_path = "prompts/event_weather.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -3676,30 +3164,18 @@ Actions: wait_out, push_on, look, quit.
 
 Travelling — Snake River Crossing → Willamette Valley.
 
-**View**:
-
-```
-Day {{ world.day }} on the trail. Heading for Willamette Valley (mountain).
-
-Miles travelled this leg: {{ world.miles_traveled }} / 318.
-Food: {{ world.food_lbs }} lbs. Oxen: {{ world.oxen }}. Party: {{ world.party_alive }} alive.
-Pace: {{ world.pace }}. Rations: {{ world.rations }}.
-
-Actions: continue, set_pace <pace>, set_rations <rations>, look, quit.
-```
-
 **Transitions**:
 
 | # | Intent | Guard | → | Effects |
 |---|---|---|---|---|
-| 1 | [`continue`](#intent-continue) | `world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) >= 318` | [`leg_g_awaiting_reply`](#room-leg-g-awaiting-reply) | set `day = "{{ world.day + 1 }}"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · say "Arrived at Willamette Valley." |
-| 2 | [`continue`](#intent-continue) | `world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) <= 0` | [`ended_lost`](#room-ended-lost) | set `day = "{{ world.day + 1 }}"`, `food_lbs = 0` · say "The party has run out of food between Snake River Crossing and Willamette Valley. They starve on the trail." |
-| 3 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 60 && int(world.miles_traveled + world.rng_counter) % 100 < 75` | `../event_disease` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = "disease"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
-| 4 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 75 && int(world.miles_traveled + world.rng_counter) % 100 < 85` | `../event_breakdown` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = "breakdown"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
-| 5 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 85 && int(world.miles_traveled + world.rng_counter) % 100 < 92` | `../event_weather` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = "weather"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
-| 6 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 92 && int(world.miles_traveled + world.rng_counter) % 100 < 97` | `../event_encounter` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = "encounter"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
-| 7 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 97` | `../event_supply_loss` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = "supply_loss"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
-| 8 | [`continue`](#intent-continue) | _default_ | `.` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 }}"`, `event_kind = ""`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + (world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) }}"` · increment `rng_counter += 1` |
+| 1 | [`continue`](#intent-continue) | `world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' \|\| world.month == 'january' \|\| world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' \|\| world.month == 'october' ? 85 : (world.month == 'april' \|\| world.month == 'september' ? 95 : 100)))) / 100) >= 318` | [`leg_g_awaiting_reply`](#room-leg-g-awaiting-reply) | set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · say "Arrived at Willamette Valley." |
+| 2 | [`continue`](#intent-continue) | `world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) <= 0` | [`ended_lost`](#room-ended-lost) | set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `food_lbs = 0`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · say "The party has run out of food between Snake River Crossing and Willamette Valley. They starve on the trail." |
+| 3 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 60 && int(world.miles_traveled + world.rng_counter) % 100 < 75` | `../event_disease` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = "disease"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
+| 4 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 75 && int(world.miles_traveled + world.rng_counter) % 100 < 85` | `../event_breakdown` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = "breakdown"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
+| 5 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 85 && int(world.miles_traveled + world.rng_counter) % 100 < 92` | `../event_weather` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = "weather"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
+| 6 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 92 && int(world.miles_traveled + world.rng_counter) % 100 < 97` | `../event_encounter` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = "encounter"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
+| 7 | [`continue`](#intent-continue) | `int(world.miles_traveled + world.rng_counter) % 100 >= 97` | `../event_supply_loss` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = "supply_loss"`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
+| 8 | [`continue`](#intent-continue) | _default_ | `.` | set `rng_last = "{{ int(world.miles_traveled + world.rng_counter) % 100 }}"` · set `day = "{{ world.day + 1 > 30 ? 1 : world.day + 1 }}"`, `event_kind = ""`, `food_lbs = "{{ world.food_lbs - (world.rations == 'bare_bones' ? 6 : (world.rations == 'meager' ? 8 : 10)) }}"`, `miles_traveled = "{{ world.miles_traveled + int((world.pace == 'grueling' ? 22 : (world.pace == 'strenuous' ? 18 : 14)) * (world.month == 'december' || world.month == 'january' || world.month == 'february' ? 70 : (world.month == 'november' ? 80 : (world.month == 'march' || world.month == 'october' ? 85 : (world.month == 'april' || world.month == 'september' ? 95 : 100)))) / 100) }}"`, `year = "{{ world.day + 1 > 30 && world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.day + 1 > 30 ? (world.month == 'march' ? 'april' : (world.month == 'april' ? 'may' : (world.month == 'may' ? 'june' : (world.month == 'june' ? 'july' : (world.month == 'july' ? 'august' : (world.month == 'august' ? 'september' : (world.month == 'september' ? 'october' : (world.month == 'october' ? 'november' : (world.month == 'november' ? 'december' : (world.month == 'december' ? 'january' : (world.month == 'january' ? 'february' : (world.month == 'february' ? 'march' : world.month)))))))))))) : world.month }}"` · increment `rng_counter += 1` |
 | 9 | [`look`](#intent-look) |  | `.` |  |
 | 10 | [`quit`](#intent-quit) |  | [`ended_lost`](#room-ended-lost) | say "The party abandons the journey between Snake River Crossing and Willamette Valley." |
 | 11 | [`set_pace`](#intent-set-pace) |  | `.` | set `pace = "{{ slots.pace }}"` · say "Pace set to {{ slots.pace }}." |
@@ -3719,15 +3195,6 @@ Camp broken; back on the trail.
 
 **Shows world**: `health_avg`, `food_lbs`, `day`, `current_landmark`
 
-**View**:
-
-```
-Camp broken at {{ world.current_landmark }}.
-Health: {{ world.health_avg }}. Food: {{ world.food_lbs }} lbs.
-
-Actions: continue (return to the trail), look.
-```
-
 **Transitions**:
 
 | # | Intent | Guard | → | Effects |
@@ -3746,16 +3213,6 @@ Actions: continue (return to the trail), look.
 
 Choosing how many days to rest.
 
-**View**:
-
-```
-Making camp at {{ world.current_landmark }}.
-Health: {{ world.health_avg }}. Food: {{ world.food_lbs }} lbs.
-Party: {{ world.party_alive }} alive.
-
-Actions: rest days=<n>, look.
-```
-
 **Transitions**:
 
 | # | Intent | Guard | → | Effects |
@@ -3767,15 +3224,6 @@ Actions: rest days=<n>, look.
 ### <a id="room-rest-room-rest-running"></a> `rest_room.rest_running`
 
 Camp set; party resting.
-
-**View**:
-
-```
-Camp set near {{ world.current_landmark }}.
-(Job {{ world.last_job_id }} running. Resting {{ world.pending_rest_days }} day(s).)
-
-Actions: look.
-```
 
 **On enter**:
 
@@ -3793,23 +3241,13 @@ Actions: look.
 
 At the river ({{ world.current_landmark }}).
 
-**Initial child**: `{{ if world.river_depth_ft < 3 }}shallow{{ else }}{{ if world.river_depth_ft < 6 }}mid{{ else }}deep{{ end }}{{ end }}`
+**Initial child**: `{% if world.river_depth_ft < 3 %}shallow{% else %}{% if world.river_depth_ft < 6 %}mid{% else %}deep{% endif %}{% endif %}`
 
 **Shows world**: `current_landmark`, `river_depth_ft`, `river_width_ft`, `money`, `food_lbs`, `oxen`, `party_alive`, `miles_traveled`, `crossing_method`, `crossing_confidence`, `river_outcome`, `last_job_id`
 
 ### <a id="room-river-crossing-deep"></a> `river_crossing.deep`
 
-The river is deep here ({{ world.river_depth_ft }} ft).
-
-**View**:
-
-```
-{{ world.current_landmark }} — DEEP. {{ world.river_depth_ft }} ft deep,
-{{ world.river_width_ft }} ft wide. Fording is dangerous; consider
-ferry or wait for water levels to drop.
-
-Actions: propose_crossing method=... confidence=..., cancel_crossing, look.
-```
+High water at {{ world.current_landmark }} — {{ world.river_depth_ft }} ft.
 
 **Transitions**:
 
@@ -3819,56 +3257,36 @@ Actions: propose_crossing method=... confidence=..., cancel_crossing, look.
 | 2 | [`cancel_crossing`](#intent-cancel-crossing) | `world.current_landmark == 'Snake River Crossing'` | [`leg_f_awaiting_reply`](#room-leg-f-awaiting-reply) |  |
 | 3 | [`cancel_crossing`](#intent-cancel-crossing) | _default_ | [`ended_lost`](#room-ended-lost) | _hint: Unknown river — ending the run._ |
 | 4 | [`look`](#intent-look) |  | `.` |  |
-| 5 | [`propose_crossing`](#intent-propose-crossing) |  | `../reviewing` | set `crossing_confidence = "{{ int(slots.confidence) }}"`, `crossing_method = "{{ slots.method }}"` · say "Plan: {{ slots.method }} (confidence {{ slots.confidence }})." |
+| 5 | [`propose_crossing`](#intent-propose-crossing) |  | `../reviewing` | set `crossing_confidence = "{{ int(slots.confidence) }}"`, `crossing_method = "{{ slots.method }}"` · say "The wagon master walks the bank, looks at the team, looks at the water. 'We'll {{ slots.method }} her — confidence about {{ slots.confidence }} in ten.'" |
 
 ### <a id="room-river-crossing-executing"></a> `river_crossing.executing`
 
-The wagon is crossing {{ world.current_landmark }}.
+The wagon is in the water at {{ world.current_landmark }}.
 
 **Shows world**: `crossing_method`, `river_outcome`, `last_job_id`, `river_depth_ft`, `oxen`, `miles_traveled`
 
-**View**:
-
-```
-Crossing {{ world.current_landmark }} via {{ world.crossing_method }}...
-(background job in flight; outcome will appear shortly.)
-
-Outcome so far: {{ world.river_outcome }}
-
-Actions: continue (read the outcome and proceed), look.
-```
-
 **On enter**:
 
-1. invoke `host.run` with `cmd = [bash -c sleep 0.2; echo crossed]`, bind `last_job_id ← job_id`
+1. invoke `host.run` with `cmd = "sleep 0.2; echo crossed"`, bind `last_job_id ← job_id`
 
 **Transitions**:
 
 | # | Intent | Guard | → | Effects |
 |---|---|---|---|---|
-| 1 | [`continue`](#intent-continue) | `world.river_outcome == 'crossed' && world.current_landmark == 'Kansas River Crossing'` | [`leg_b_executing`](#room-leg-b-executing) | set `crossing_confidence = 0`, `crossing_method = "none"`, `current_landmark = "Kansas River Crossing"`, `miles_traveled = 0`, `river_outcome = ""` · say "Across! Heading for Fort Kearney." |
-| 2 | [`continue`](#intent-continue) | `world.river_outcome == 'crossed' && world.current_landmark == 'Snake River Crossing'` | [`leg_g_executing`](#room-leg-g-executing) | set `crossing_confidence = 0`, `crossing_method = "none"`, `current_landmark = "Snake River Crossing"`, `miles_traveled = 0`, `river_outcome = ""` · say "Across! The final stretch to Willamette begins." |
-| 3 | [`continue`](#intent-continue) | `world.river_outcome == 'swept_supplies' && world.river_depth_ft < 3` | `../shallow` | set `crossing_confidence = 0`, `crossing_method = "none"`, `food_lbs = "{{ world.food_lbs - 100 }}"`, `river_outcome = ""` · say "The current swept off 100 lbs of supplies. Try again." |
-| 4 | [`continue`](#intent-continue) | `world.river_outcome == 'swept_supplies' && world.river_depth_ft < 6` | `../mid` | set `crossing_confidence = 0`, `crossing_method = "none"`, `food_lbs = "{{ world.food_lbs - 100 }}"`, `river_outcome = ""` · say "The current swept off 100 lbs of supplies. Try again." |
-| 5 | [`continue`](#intent-continue) | `world.river_outcome == 'swept_supplies'` | `../deep` | set `crossing_confidence = 0`, `crossing_method = "none"`, `food_lbs = "{{ world.food_lbs - 100 }}"`, `river_outcome = ""` · say "The current swept off 100 lbs of supplies. Try again." |
-| 6 | [`continue`](#intent-continue) | `world.river_outcome == 'drowned' && world.river_depth_ft < 3` | `../shallow` | set `crossing_confidence = 0`, `crossing_method = "none"`, `party_alive = "{{ world.party_alive - 1 }}"`, `river_outcome = ""` · say "A wagon member drowned in the crossing." |
-| 7 | [`continue`](#intent-continue) | `world.river_outcome == 'drowned' && world.river_depth_ft < 6` | `../mid` | set `crossing_confidence = 0`, `crossing_method = "none"`, `party_alive = "{{ world.party_alive - 1 }}"`, `river_outcome = ""` · say "A wagon member drowned in the crossing." |
-| 8 | [`continue`](#intent-continue) | `world.river_outcome == 'drowned'` | `../deep` | set `crossing_confidence = 0`, `crossing_method = "none"`, `party_alive = "{{ world.party_alive - 1 }}"`, `river_outcome = ""` · say "A wagon member drowned in the crossing." |
-| 9 | [`continue`](#intent-continue) | _default_ | `.` | _hint: Crossing still in progress — wait for the outcome to appear._ |
+| 1 | [`continue`](#intent-continue) | `world.river_outcome == 'crossed' && world.current_landmark == 'Kansas River Crossing'` | [`leg_b_executing`](#room-leg-b-executing) | set `crossing_confidence = 0`, `crossing_method = "none"`, `current_landmark = "Kansas River Crossing"`, `miles_traveled = 0`, `river_outcome = ""` · say "Across! The team finds its footing on the far bank and we hitch the load tight again — Fort Kearney lies ahead." |
+| 2 | [`continue`](#intent-continue) | `world.river_outcome == 'crossed' && world.current_landmark == 'Snake River Crossing'` | [`leg_g_executing`](#room-leg-g-executing) | set `crossing_confidence = 0`, `crossing_method = "none"`, `current_landmark = "Snake River Crossing"`, `miles_traveled = 0`, `river_outcome = ""` · say "Across! The Snake is behind us, the team is dripping but whole, and the road bends west toward the Willamette." |
+| 3 | [`continue`](#intent-continue) | `world.river_outcome == 'swept_supplies' && world.river_depth_ft < 3` | `../shallow` | set `crossing_confidence = 0`, `crossing_method = "none"`, `food_lbs = "{{ world.food_lbs - 100 }}"`, `river_outcome = ""` · say "The current took the load off the wagon-bed — 100 lbs of stores gone downriver. The wagon is dragged back to dry ground; we'll have to try again." |
+| 4 | [`continue`](#intent-continue) | `world.river_outcome == 'swept_supplies' && world.river_depth_ft < 6` | `../mid` | set `crossing_confidence = 0`, `crossing_method = "none"`, `food_lbs = "{{ world.food_lbs - 100 }}"`, `river_outcome = ""` · say "The current took the load off the wagon-bed — 100 lbs of stores gone downriver. The wagon is dragged back to dry ground; we'll have to try again." |
+| 5 | [`continue`](#intent-continue) | `world.river_outcome == 'swept_supplies'` | `../deep` | set `crossing_confidence = 0`, `crossing_method = "none"`, `food_lbs = "{{ world.food_lbs - 100 }}"`, `river_outcome = ""` · say "The current took the load off the wagon-bed — 100 lbs of stores gone downriver. The wagon is dragged back to dry ground; we'll have to try again." |
+| 6 | [`continue`](#intent-continue) | `world.river_outcome == 'drowned' && world.river_depth_ft < 3` | `../shallow` | set `crossing_confidence = 0`, `crossing_method = "none"`, `party_alive = "{{ world.party_alive - 1 }}"`, `river_outcome = ""` · say "One of the party was taken in the crossing — pulled under in the current and lost before the team could come about. The wagon is dragged back to the bank in silence." |
+| 7 | [`continue`](#intent-continue) | `world.river_outcome == 'drowned' && world.river_depth_ft < 6` | `../mid` | set `crossing_confidence = 0`, `crossing_method = "none"`, `party_alive = "{{ world.party_alive - 1 }}"`, `river_outcome = ""` · say "One of the party was taken in the crossing — pulled under in the current and lost before the team could come about. The wagon is dragged back to the bank in silence." |
+| 8 | [`continue`](#intent-continue) | `world.river_outcome == 'drowned'` | `../deep` | set `crossing_confidence = 0`, `crossing_method = "none"`, `party_alive = "{{ world.party_alive - 1 }}"`, `river_outcome = ""` · say "One of the party was taken in the crossing — pulled under in the current and lost before the team could come about. The wagon is dragged back to the bank in silence." |
+| 9 | [`continue`](#intent-continue) | _default_ | `.` | _hint: The wagon's still mid-stream. Wait for word from the bank._ |
 | 10 | [`look`](#intent-look) |  | `.` |  |
 
 ### <a id="room-river-crossing-mid"></a> `river_crossing.mid`
 
-The river is moderate here ({{ world.river_depth_ft }} ft).
-
-**View**:
-
-```
-{{ world.current_landmark }} — moderate. {{ world.river_depth_ft }} ft deep,
-{{ world.river_width_ft }} ft wide. Caulk and float, or ferry if you can pay.
-
-Actions: propose_crossing method=... confidence=..., cancel_crossing, look.
-```
+Fair water at {{ world.current_landmark }} — {{ world.river_depth_ft }} ft.
 
 **Transitions**:
 
@@ -3878,29 +3296,19 @@ Actions: propose_crossing method=... confidence=..., cancel_crossing, look.
 | 2 | [`cancel_crossing`](#intent-cancel-crossing) | `world.current_landmark == 'Snake River Crossing'` | [`leg_f_awaiting_reply`](#room-leg-f-awaiting-reply) |  |
 | 3 | [`cancel_crossing`](#intent-cancel-crossing) | _default_ | [`ended_lost`](#room-ended-lost) | _hint: Unknown river — ending the run._ |
 | 4 | [`look`](#intent-look) |  | `.` |  |
-| 5 | [`propose_crossing`](#intent-propose-crossing) |  | `../reviewing` | set `crossing_confidence = "{{ int(slots.confidence) }}"`, `crossing_method = "{{ slots.method }}"` · say "Plan: {{ slots.method }} (confidence {{ slots.confidence }})." |
+| 5 | [`propose_crossing`](#intent-propose-crossing) |  | `../reviewing` | set `crossing_confidence = "{{ int(slots.confidence) }}"`, `crossing_method = "{{ slots.method }}"` · say "The wagon master walks the bank, looks at the team, looks at the water. 'We'll {{ slots.method }} her — confidence about {{ slots.confidence }} in ten.'" |
 
 ### <a id="room-river-crossing-reviewing"></a> `river_crossing.reviewing`
 
-Reviewing the crossing draft.
+The wagon master spells out the plan.
 
 **Shows world**: `crossing_method`, `crossing_confidence`, `current_landmark`, `river_depth_ft`
-
-**View**:
-
-```
-Plan: {{ world.crossing_method }} the {{ world.current_landmark }}
-(confidence {{ world.crossing_confidence }}). The current is
-{{ world.river_depth_ft }} ft deep.
-
-Actions: accept_crossing, refine_crossing, cancel_crossing, look.
-```
 
 **Transitions**:
 
 | # | Intent | Guard | → | Effects |
 |---|---|---|---|---|
-| 1 | [`accept_crossing`](#intent-accept-crossing) |  | `../executing` | set `river_outcome = ""` · say "Launching the wagon." |
+| 1 | [`accept_crossing`](#intent-accept-crossing) |  | `../executing` | set `river_outcome = ""` · say "The wagon master nods to the team. The lead ox steps into the water; the wheels follow." |
 | 2 | [`cancel_crossing`](#intent-cancel-crossing) | `world.current_landmark == 'Kansas River Crossing'` | [`leg_a_awaiting_reply`](#room-leg-a-awaiting-reply) | set `crossing_confidence = 0`, `crossing_method = "none"` |
 | 3 | [`cancel_crossing`](#intent-cancel-crossing) | `world.current_landmark == 'Snake River Crossing'` | [`leg_f_awaiting_reply`](#room-leg-f-awaiting-reply) | set `crossing_confidence = 0`, `crossing_method = "none"` |
 | 4 | [`cancel_crossing`](#intent-cancel-crossing) | _default_ | [`ended_lost`](#room-ended-lost) | _hint: Unknown river — ending the run._ |
@@ -3911,26 +3319,53 @@ Actions: accept_crossing, refine_crossing, cancel_crossing, look.
 
 ### <a id="room-river-crossing-shallow"></a> `river_crossing.shallow`
 
-The river is shallow here ({{ world.river_depth_ft }} ft).
-
-**View**:
-
-```
-{{ world.current_landmark }} — shallow. {{ world.river_depth_ft }} ft deep,
-{{ world.river_width_ft }} ft wide. Easy ford recommended.
-
-Actions: propose_crossing method=... confidence=..., cancel_crossing, look.
-```
+Low water at {{ world.current_landmark }} — {{ world.river_depth_ft }} ft deep.
 
 **Transitions**:
 
 | # | Intent | Guard | → | Effects |
 |---|---|---|---|---|
-| 1 | [`cancel_crossing`](#intent-cancel-crossing) | `world.current_landmark == 'Kansas River Crossing'` | [`leg_a_awaiting_reply`](#room-leg-a-awaiting-reply) | say "Back away from the river for now." |
-| 2 | [`cancel_crossing`](#intent-cancel-crossing) | `world.current_landmark == 'Snake River Crossing'` | [`leg_f_awaiting_reply`](#room-leg-f-awaiting-reply) | say "Back away from the river for now." |
+| 1 | [`cancel_crossing`](#intent-cancel-crossing) | `world.current_landmark == 'Kansas River Crossing'` | [`leg_a_awaiting_reply`](#room-leg-a-awaiting-reply) | say "The team backs off the cutbank. The river runs on without us; we'll come back to it." |
+| 2 | [`cancel_crossing`](#intent-cancel-crossing) | `world.current_landmark == 'Snake River Crossing'` | [`leg_f_awaiting_reply`](#room-leg-f-awaiting-reply) | say "The team backs off the cutbank. The river runs on without us; we'll come back to it." |
 | 3 | [`cancel_crossing`](#intent-cancel-crossing) | _default_ | [`ended_lost`](#room-ended-lost) | _hint: Unknown river — ending the run._ |
 | 4 | [`look`](#intent-look) |  | `.` |  |
-| 5 | [`propose_crossing`](#intent-propose-crossing) |  | `../reviewing` | set `crossing_confidence = "{{ int(slots.confidence) }}"`, `crossing_method = "{{ slots.method }}"` · say "Plan: {{ slots.method }} (confidence {{ slots.confidence }})." |
+| 5 | [`propose_crossing`](#intent-propose-crossing) |  | `../reviewing` | set `crossing_confidence = "{{ int(slots.confidence) }}"`, `crossing_method = "{{ slots.method }}"` · say "The wagon master walks the bank, looks at the team, looks at the water. 'We'll {{ slots.method }} her — confidence about {{ slots.confidence }} in ten.'" |
+
+### <a id="room-robbery-aftermath"></a> `robbery_aftermath`
+
+Back on the trail after the bandit encounter.
+
+**Shows world**: `money`, `party_alive`, `last_event`, `current_landmark`
+
+**Transitions**:
+
+| # | Intent | Guard | → | Effects |
+|---|---|---|---|---|
+| 1 | [`continue`](#intent-continue) | `world.current_landmark == 'Kansas River Crossing'` | [`leg_a_awaiting_reply`](#room-leg-a-awaiting-reply) |  |
+| 2 | [`continue`](#intent-continue) | `world.current_landmark == 'Fort Kearney'` | [`leg_b_awaiting_reply`](#room-leg-b-awaiting-reply) |  |
+| 3 | [`continue`](#intent-continue) | `world.current_landmark == 'Chimney Rock'` | [`leg_c_awaiting_reply`](#room-leg-c-awaiting-reply) |  |
+| 4 | [`continue`](#intent-continue) | `world.current_landmark == 'Fort Laramie'` | [`leg_d_awaiting_reply`](#room-leg-d-awaiting-reply) |  |
+| 5 | [`continue`](#intent-continue) | `world.current_landmark == 'South Pass'` | [`leg_e_awaiting_reply`](#room-leg-e-awaiting-reply) |  |
+| 6 | [`continue`](#intent-continue) | `world.current_landmark == 'Snake River Crossing'` | [`leg_f_awaiting_reply`](#room-leg-f-awaiting-reply) |  |
+| 7 | [`continue`](#intent-continue) | `world.current_landmark == 'Willamette Valley'` | [`leg_g_awaiting_reply`](#room-leg-g-awaiting-reply) |  |
+| 8 | [`continue`](#intent-continue) | _default_ | [`leg_a_awaiting_reply`](#room-leg-a-awaiting-reply) | _hint: Unknown landmark — returning to the first leg._ |
+| 9 | [`look`](#intent-look) |  | `.` |  |
+
+### <a id="room-snow-blocked"></a> `snow_blocked`
+
+South Pass is snowed in — wait for spring or turn back.
+
+**Shows world**: `month`, `day`, `year`, `food_lbs`, `party_alive`, `oxen`, `health_avg`
+
+**Transitions**:
+
+| # | Intent | Guard | → | Effects |
+|---|---|---|---|---|
+| 1 | [`give_up`](#intent-give-up) |  | [`ended_lost`](#room-ended-lost) | say "The party turns back east, defeated by the snow. The journey ends short of Oregon." |
+| 2 | [`look`](#intent-look) |  | `.` |  |
+| 3 | [`wait_for_spring`](#intent-wait-for-spring) | `world.food_lbs - 120 <= 0` | [`ended_lost`](#room-ended-lost) | set `day = "{{ world.day + 30 }}"`, `food_lbs = 0` · say "The food ran out before spring. The party starves in the snow." |
+| 4 | [`wait_for_spring`](#intent-wait-for-spring) | `world.month == 'march'` | [`leg_e_awaiting_reply`](#room-leg-e-awaiting-reply) | set `day = 1`, `food_lbs = "{{ world.food_lbs - 120 }}"`, `health_avg = "{{ world.health_avg - 5 }}"`, `month = "april"` · say "Spring arrives. The pass is open." |
+| 5 | [`wait_for_spring`](#intent-wait-for-spring) | _default_ | `.` | set `day = 1`, `food_lbs = "{{ world.food_lbs - 120 }}"`, `health_avg = "{{ world.health_avg - 5 }}"`, `year = "{{ world.month == 'december' ? world.year + 1 : world.year }}"` · set `month = "{{ world.month == 'october' ? 'november' :\n   (world.month == 'november' ? 'december' :\n   (world.month == 'december' ? 'january' :\n   (world.month == 'january' ? 'february' :\n   (world.month == 'february' ? 'march' : world.month)))) }}\n"` · say "Another month of winter camp passes." |
 
 ### <a id="room-trail-guide"></a> `trail_guide`  _(compound)_
 
@@ -3946,29 +3381,16 @@ Wagon master — active chat. Ask another question or go back.
 
 **Shows world**: `wagon_chat_id`, `wagon_chat_title`, `wagon_question`, `wagon_answer`, `wagon_chat_turns`
 
-**View**:
-
-```
-Wagon master — {{ world.wagon_chat_title }}
-Chat: {{ world.wagon_chat_id }}    turns: {{ world.wagon_chat_turns }}
-
-Q: {{ world.wagon_question }}
-
-A: {{ world.wagon_answer }}
-
-Ask another question, or "back" for the chat list.
-```
-
 **On enter**:
 
-1. invoke `host.oracle.talk` with `chat_id = "{{ world.wagon_chat_id }}"`, `question = "{{ world.wagon_question }}"`, bind `wagon_answer ← answer`, `wagon_chat_id ← chat_id`, `wagon_session_id ← claude_session_id`
+1. invoke `host.oracle.talk` with `agent = "wagon_master"`, `chat_id = "{{ world.wagon_chat_id }}"`, `question = "{{ world.wagon_question }}"`, bind `wagon_answer ← answer`, `wagon_chat_id ← chat_id`, `wagon_session_id ← claude_session_id`
 2. invoke `host.chat.suggest_title` with `chat_id = "{{ world.wagon_chat_id }}"`, `force = false`, bind `wagon_chat_title ← title`
 
 **Transitions**:
 
 | # | Intent | Guard | → | Effects |
 |---|---|---|---|---|
-| 1 | [`ask_question`](#intent-ask-question) |  | [`trail_guide.trail_guide_active`](#room-trail-guide-trail-guide-active) | set `wagon_answer = ""`, `wagon_question = "{{ slots.question }}"` · increment `wagon_chat_turns += 1` · invoke `host.oracle.talk` with `chat_id = "{{ world.wagon_chat_id }}"`, `question = "{{ slots.question }}"`, bind `wagon_answer ← answer`, `wagon_chat_id ← chat_id`, `wagon_session_id ← claude_session_id` · invoke `host.chat.suggest_title` with `chat_id = "{{ world.wagon_chat_id }}"`, `force = false`, bind `wagon_chat_title ← title` |
+| 1 | [`ask_question`](#intent-ask-question) |  | [`trail_guide.trail_guide_active`](#room-trail-guide-trail-guide-active) | set `wagon_answer = ""`, `wagon_question = "{{ slots.question }}"` · increment `wagon_chat_turns += 1` · invoke `host.oracle.talk` with `agent = "wagon_master"`, `chat_id = "{{ world.wagon_chat_id }}"`, `question = "{{ slots.question }}"`, bind `wagon_answer ← answer`, `wagon_chat_id ← chat_id`, `wagon_session_id ← claude_session_id` · invoke `host.chat.suggest_title` with `chat_id = "{{ world.wagon_chat_id }}"`, `force = false`, bind `wagon_chat_title ← title` |
 | 2 | [`back`](#intent-back) |  | [`trail_guide.trail_guide_list`](#room-trail-guide-trail-guide-list) |  |
 | 3 | [`look`](#intent-look) |  | `.` |  |
 
@@ -3978,23 +3400,10 @@ Wagon master — starting a fresh chat.
 
 **Shows world**: `wagon_chat_id`, `wagon_chat_title`, `wagon_question`, `wagon_answer`, `wagon_chat_turns`
 
-**View**:
-
-```
-Wagon master — {{ world.wagon_chat_title }}
-Chat: {{ world.wagon_chat_id }}    turns: {{ world.wagon_chat_turns }}
-
-Q: {{ world.wagon_question }}
-
-A: {{ world.wagon_answer }}
-
-Ask another question, or "back" for the chat list.
-```
-
 **On enter**:
 
 1. invoke `host.chat.create` with `app = "oregon-trail"`, `room = "trail_guide"`, `scope_key = "{{ world.profession }}"`, `title = "Question about the trail"`, bind `wagon_chat_id ← chat_id`, `wagon_chat_title ← title`
-2. invoke `host.oracle.talk` with `chat_id = "{{ world.wagon_chat_id }}"`, `question = "{{ world.wagon_question }}"`, bind `wagon_answer ← answer`, `wagon_chat_id ← chat_id`, `wagon_session_id ← claude_session_id`
+2. invoke `host.oracle.talk` with `agent = "wagon_master"`, `chat_id = "{{ world.wagon_chat_id }}"`, `question = "{{ world.wagon_question }}"`, bind `wagon_answer ← answer`, `wagon_chat_id ← chat_id`, `wagon_session_id ← claude_session_id`
 3. invoke `host.chat.suggest_title` with `chat_id = "{{ world.wagon_chat_id }}"`, `force = false`, bind `wagon_chat_title ← title`
 
 **Transitions**:
@@ -4010,27 +3419,6 @@ Ask another question, or "back" for the chat list.
 Wagon-master chats — list, open, rename, archive, fork, or start fresh.
 
 **Shows world**: `wagon_chats_view`, `wagon_chat_count`, `profession`
-
-**View**:
-
-```
-======================================================================
- Wagon master                                profession: {{ world.profession }}
-======================================================================
-
- Chats: {{ world.wagon_chat_count }}
-
-{{ world.wagon_chats_view }}
-
- Actions:
-   ask "..."                  — start a fresh wagon-master conversation
-   open <number/id>           — resume an existing chat
-   rename <number/id> "title" — rename a chat
-   archive <number/id>        — hide a chat from the list
-   fork <number/id> "title"   — fork a chat into a what-if branch
-
-   back                       — return to the trail
-```
 
 **On enter**:
 
@@ -4052,12 +3440,6 @@ Wagon-master chats — list, open, rename, archive, fork, or start fresh.
 
 Two orthogonal regions: weather + calendar.
 
-**View**:
-
-```
-── world_clock ──
-```
-
 ### <a id="room-world-clock-calendar"></a> `world_clock.calendar`  _(compound)_
 
 **Initial child**: `day_active`
@@ -4071,23 +3453,11 @@ Two orthogonal regions: weather + calendar.
 
 ### <a id="room-world-clock-calendar-day-active"></a> `world_clock.calendar.day_active`
 
-**View**:
-
-```
-Day {{ world.day }} on the trail.
-```
-
 ### <a id="room-world-clock-weather"></a> `world_clock.weather`  _(compound)_
 
 **Initial child**: `dry`
 
 ### <a id="room-world-clock-weather-dry"></a> `world_clock.weather.dry`
-
-**View**:
-
-```
-Weather: dry.
-```
 
 **Transitions**:
 
@@ -4097,12 +3467,6 @@ Weather: dry.
 
 ### <a id="room-world-clock-weather-rain"></a> `world_clock.weather.rain`
 
-**View**:
-
-```
-Weather: rain.
-```
-
 **Transitions**:
 
 | # | Intent | Guard | → | Effects |
@@ -4110,12 +3474,6 @@ Weather: rain.
 | 1 | [`weather_advance`](#intent-weather-advance) |  | [`world_clock.weather.snow`](#room-world-clock-weather-snow) | set `day = "{{ world.day + 1 }}"`, `weather_kind = "snow"` · emit `snow_starts` |
 
 ### <a id="room-world-clock-weather-snow"></a> `world_clock.weather.snow`
-
-**View**:
-
-```
-Weather: snow.
-```
 
 **Transitions**:
 

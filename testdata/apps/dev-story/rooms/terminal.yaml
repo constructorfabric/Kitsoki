@@ -6,16 +6,21 @@
 states:
   terminal_idle:
     description: "Terminal Room — propose a shell command to run."
-    view: |
-      Terminal Room.
-      Workspace: {{ world.current_workspace }}
-
-      Propose a command to run, e.g.:
-        propose "list files in /tmp"
-        propose "git status"
-        propose "go test ./..."
-
-      Last result: {{ world.proposal_result }}
+    # Proposal §5.3 worked example — code element preserves the example
+    # block's monospace layout; kv rows align Workspace / Last result.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Workspace:   "{{ world.current_workspace|default:\"(none)\" }}"
+                Last result: "{{ world.proposal_result|default:\"(none)\" }}"
+          - prose: "Propose a command to run, e.g.:"
+          - code: |
+              propose "list files in /tmp"
+              propose "git status"
+              propose "go test ./..."
     relevant_world: [current_workspace, proposal_result, proposal_status]
     relevant_slots: []
     on:
@@ -41,11 +46,19 @@ states:
 
   terminal_reviewing:
     description: "Review the proposed command before executing."
-    view: |
-      Proposed command:
-        {{ world.proposal_cmd }}
-
-      Accept to run, refine with feedback, or cancel.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Proposed command"
+          - code: "{{ world.proposal_cmd }}"
+          - prose: "Accept to run, refine with feedback, or cancel."
+        choices:
+          - list:
+              items:
+                - { label: "accept",  hint: "execute the proposed command" }
+                - { label: "refine",  hint: "edit with feedback" }
+                - { label: "cancel",  hint: "discard the proposal" }
     relevant_world: [proposal_cmd, proposal_status]
     relevant_slots: []
     on:
@@ -84,10 +97,14 @@ states:
 
   terminal_executing:
     description: "Running the command..."
-    view: |
-      Executing: {{ world.proposal_cmd }}
-
-      [Running...]
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Executing: "{{ world.proposal_cmd }}"
+          - prose: "[Running...]"
     relevant_world: [proposal_cmd]
     relevant_slots: []
     on_enter:
@@ -127,14 +144,22 @@ states:
 
   terminal_result:
     description: "Command result — review output and decide next step."
-    view: |
-      Command: {{ world.proposal_cmd }}
-      Status: {{ world.proposal_status }}
-
-      Result:
-      {{ world.proposal_result }}
-
-      Options: propose another command, retry, or go back.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Command: "{{ world.proposal_cmd }}"
+                Status:  "{{ world.proposal_status }}"
+          - heading: "Result"
+          - code: "{{ world.proposal_result }}"
+        choices:
+          - list:
+              items:
+                - { label: "propose another", hint: "draft a new command" }
+                - { label: "retry",           hint: "rerun the same command" }
+                - { label: "go back",         hint: "return to the previous room" }
     relevant_world: [proposal_cmd, proposal_result, proposal_status]
     relevant_slots: []
     on:
@@ -171,13 +196,22 @@ states:
 
   terminal_error:
     description: "Command failed with an error."
-    view: |
-      Command: {{ world.proposal_cmd }}
-      Status: FAILED
-
-      Error: {{ world.last_error }}
-
-      Options: retry (same command), refine (new command), fix (ask Claude), cancel.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Command: "{{ world.proposal_cmd }}"
+                Status:  "FAILED"
+                Error:   "{{ world.last_error }}"
+        choices:
+          - list:
+              items:
+                - { label: "retry",  hint: "rerun the same command" }
+                - { label: "refine", hint: "edit with feedback" }
+                - { label: "fix",    hint: "ask Claude to repair" }
+                - { label: "cancel", hint: "discard and start over" }
     relevant_world: [proposal_cmd, last_error]
     relevant_slots: []
     on:
@@ -251,14 +285,16 @@ states:
   # Background job terminal — propose and kick off a long-running command.
   terminal_background:
     description: "Terminal — propose a background command."
-    view: |
-      Background Terminal.
-      Workspace: {{ world.current_workspace }}
-
-      Background job running: {{ world.job_bg_running }}
-      Last result: {{ world.job_bg_result }}
-
-      Propose a command to run in the background.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Workspace:           "{{ world.current_workspace|default:\"(none)\" }}"
+                Background running:  "{{ world.job_bg_running }}"
+                Last result:         "{{ world.job_bg_result|default:\"(none)\" }}"
+          - prose: "Propose a command to run in the background."
     relevant_world: [current_workspace, job_bg_running, job_bg_result]
     relevant_slots: []
     on:
@@ -281,10 +317,13 @@ states:
 
   terminal_bg_reviewing:
     description: "Review the background command before submitting."
-    view: |
-      Background command: {{ world.proposal_cmd }}
-
-      Accept to submit as background job, or cancel.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Background command"
+          - code: "{{ world.proposal_cmd }}"
+          - prose: "Accept to submit as background job, or cancel."
     relevant_world: [proposal_cmd]
     relevant_slots: []
     on:
@@ -320,13 +359,16 @@ states:
 
   terminal_bg_submitted:
     description: "Background job submitted — you have control back."
-    view: |
-      Background job submitted for: {{ world.proposal_cmd }}
-
-      The job is running in the background. You'll be notified when it completes.
-      Job running: {{ world.job_bg_running }}
-
-      You can continue other work or check the inbox for results.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "Background job submitted for: {{ world.proposal_cmd }}"
+          - prose: "The job is running in the background. You'll be notified when it completes."
+          - kv:
+              pairs:
+                Job running: "{{ world.job_bg_running }}"
+          - prose: "You can continue other work or check the inbox for results."
     relevant_world: [proposal_cmd, job_bg_running]
     relevant_slots: []
     on_enter:
@@ -360,8 +402,14 @@ states:
 
   terminal_bg_error:
     description: "Background job submission failed."
-    view: |
-      Failed to submit background job: {{ world.last_error }}
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Error: "{{ world.last_error }}"
+          - prose: "Failed to submit background job."
     relevant_world: [last_error]
     relevant_slots: []
     on:

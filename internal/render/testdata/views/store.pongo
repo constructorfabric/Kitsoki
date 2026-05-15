@@ -1,0 +1,8 @@
+{% extends "base.pongo" %}
+
+{% block heading %}Store: {{ world.name }}{% endblock %}
+
+{% block body %}
+Cash: ${{ world.money }}
+{% include "partials/stock.pongo" %}
+{% endblock %}

@@ -58,14 +58,14 @@ func TestDOTMinimalApp(t *testing.T) {
 		Root: "start",
 		States: map[string]*app.State{
 			"start": {
-				View: "Start state",
+				View: app.LegacyView("Start state"),
 				On: map[string][]app.Transition{
 					"next": {{Target: "finish"}},
 				},
 			},
 			"finish": {
 				Terminal: true,
-				View:     "Done",
+				View:     app.LegacyView("Done"),
 			},
 		},
 	}

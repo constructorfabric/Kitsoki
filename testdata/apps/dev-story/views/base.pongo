@@ -1,0 +1,17 @@
+{# dev-story app-wide base view. See proposal §3.3 / §5.6. #}
+{# Every room extends this and overrides only the blocks that vary. #}
+{# Block contract (shared across all five demo apps so sub-stories #}
+{# composing dev-story can selectively re-skin individual blocks): #}
+{#   status   top status line; default = workspace/last result/inbox #}
+{#   heading  room title; default = state.description #}
+{#   body     main descriptive content #}
+{#   choices  action list (typed list element via the YAML form) #}
+{#   footer   optional bottom material; default empty #}
+{% block status %}{% include "partials/workflow_status.pongo" %}{% endblock %}
+
+{% block heading %}{{ state.description }}{% endblock %}
+
+{% block body %}{% endblock %}
+
+{% block choices %}{% endblock %}
+{% block footer %}{% endblock %}

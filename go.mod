@@ -16,6 +16,7 @@ require (
 	github.com/emicklei/dot v1.11.0
 	github.com/evanphx/json-patch/v5 v5.9.11
 	github.com/expr-lang/expr v1.17.8
+	github.com/flosch/pongo2/v6 v6.0.0
 	github.com/goccy/go-yaml v1.19.2
 	github.com/google/uuid v1.6.0
 	github.com/kljensen/snowball v0.10.0

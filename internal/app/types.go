@@ -101,6 +101,14 @@ type AppDef struct {
 	// the importer's Routing block wins and the child's is dropped.
 	// A nil Routing means "use defaults" (see RoutingConfig.WithDefaults).
 	Routing *RoutingConfig `yaml:"routing,omitempty"`
+
+	// BaseDir is the absolute path to the directory containing the
+	// root manifest. Populated by the loader (not by YAML authors).
+	// Downstream consumers — notably internal/render.AppRenderer —
+	// resolve <appDir>/views/ against this path so {% extends %} /
+	// {% include %} references in pongo2 templates locate per-app
+	// .pongo files (view-elements proposal phase H, §3.3).
+	BaseDir string `yaml:"-"`
 }
 
 // RoutingConfig is the per-app semantic-routing block declared under
@@ -387,7 +395,13 @@ type State struct {
 	// Description is shown in the §7.1 location indicator.
 	Description string `yaml:"description,omitempty"`
 	// View is the render template shown to the user on arrival.
-	View string `yaml:"view,omitempty"`
+	//
+	// The View type custom-unmarshals YAML and accepts either the legacy
+	// scalar string form (a Markdown / pongo2 template body) or the typed
+	// element-array form introduced by the view-elements proposal
+	// (docs/proposals/view-elements-proposal.md). See view_element.go for
+	// the schema; the array form is opt-in per-state.
+	View View `yaml:"view,omitempty"`
 	// Terminal marks end states.
 	Terminal bool `yaml:"terminal,omitempty"`
 	// Initial is the initial child state for compound states; supports expr interpolation.
@@ -436,8 +450,9 @@ type Transition struct {
 	// GuardHint is a human-readable hint shown when the guard fails (§5.2, §7.5).
 	GuardHint string `yaml:"guard_hint,omitempty"`
 	// View is the transition-scoped narrative shown on this transition (§7.6).
-	// When present it wins over the target state's view for this turn.
-	View string `yaml:"view,omitempty"`
+	// When present it wins over the target state's view for this turn. Same
+	// schema as State.View — see view_element.go.
+	View View `yaml:"view,omitempty"`
 	// Emit lists events emitted to parallel regions after this transition.
 	Emit []string `yaml:"emit,omitempty"`
 	// PushHistory controls whether the outgoing state is pushed onto the history stack.
@@ -615,12 +630,6 @@ type Slot struct {
 type GuardExpr struct {
 	Source   string // original expr-lang source
 	compiled any    // opaque compiled program; populated by internal/expr
-}
-
-// View holds a parsed view template for a state.
-type View struct {
-	Source   string // original template source
-	compiled any    // opaque compiled template; populated by internal/expr
 }
 
 // OffPathDef configures the off-path escape hatch (§3.1, §7.7).

@@ -1702,7 +1702,11 @@ func (m RootModel) handleTurnOutcome(msg turnOutcomeMsg) (tea.Model, tea.Cmd) {
 
 	case orchestrator.ModeTransitioned, orchestrator.ModeCompleted:
 		m.currentState = out.NewState
-		m.transcript.AppendTurn(msg.input, out.View)
+		if out.TypedView != nil {
+			m.transcript.AppendTurnTyped(msg.input, out.View, out.TypedView, out.RenderEnv, out.Renderer)
+		} else {
+			m.transcript.AppendTurn(msg.input, out.View)
+		}
 
 		// Update menu.
 		w := m.orch.InitialWorld() // only used for initial world; menu comes from allowed list

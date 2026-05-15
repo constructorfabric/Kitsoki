@@ -68,6 +68,7 @@ import (
 	"kitsoki/internal/app"
 	"kitsoki/internal/expr"
 	"kitsoki/internal/intent"
+	"kitsoki/internal/render"
 	"kitsoki/internal/store"
 	"kitsoki/internal/trace"
 	"kitsoki/internal/world"
@@ -382,7 +383,7 @@ func (m *machineImpl) turnParallel(ctx context.Context, par parsedParallel, w wo
 	// Resolve the target.
 	rawTarget := winningTr.tr.Target
 	if strings.Contains(rawTarget, "{{") {
-		rendered, rerr := expr.Render(rawTarget, env)
+		rendered, rerr := render.Pongo(rawTarget, env)
 		if rerr != nil {
 			return TurnResult{}, fmt.Errorf("render transition target %q: %w", rawTarget, rerr)
 		}
@@ -653,7 +654,7 @@ func (m *machineImpl) propagateEmits(
 			}
 			rawTarget := tr.tr.Target
 			if strings.Contains(rawTarget, "{{") {
-				rendered, rerr := expr.Render(rawTarget, emitEnv)
+				rendered, rerr := render.Pongo(rawTarget, emitEnv)
 				if rerr != nil {
 					return nil, w, nil, "", nil, fmt.Errorf("emit %q: render target: %w", emitName, rerr)
 				}
@@ -764,6 +765,7 @@ func (m *machineImpl) renderViewParallel(tr app.Transition, parRoot string, regi
 		Event: env.Event,
 		Run:   env.Run,
 		Menu:  MenuToTemplateMap(m.Menu(app.StatePath(encodedNewPath), w)),
+		State: stateMetaFor(m, app.StatePath(resolvedTarget)),
 	}
 	expr.PopulateMenuHelpers(&renderEnv)
 	if exitedParallel {
@@ -774,16 +776,20 @@ func (m *machineImpl) renderViewParallel(tr app.Transition, parRoot string, regi
 	var sb strings.Builder
 
 	// 1. Transition view wins outright if declared.
-	if tr.View != "" {
-		v, err := expr.Render(tr.View, renderEnv)
+	if !tr.View.IsEmpty() {
+		v, err := m.renderViewBody(tr.View, renderEnv, resolvedTarget)
 		if err != nil {
 			return "", fmt.Errorf("render transition view: %w", err)
 		}
 		sb.WriteString(v)
 	} else {
 		// 2. Otherwise, parent view (if any) + each region's leaf view.
-		if parCS, ok := m.states[parRoot]; ok && parCS.s != nil && parCS.s.View != "" {
-			v, err := expr.Render(parCS.s.View, renderEnv)
+		// Each leaf renders with its own State metadata so per-region
+		// {{ state.* }} references resolve locally.
+		if parCS, ok := m.states[parRoot]; ok && parCS.s != nil && !parCS.s.View.IsEmpty() {
+			parentEnv := renderEnv
+			parentEnv.State = stateMetaFor(m, app.StatePath(parRoot))
+			v, err := m.renderViewBody(parCS.s.View, parentEnv, parRoot)
 			if err != nil {
 				return "", fmt.Errorf("render parallel parent view %q: %w", parRoot, err)
 			}
@@ -793,10 +799,12 @@ func (m *machineImpl) renderViewParallel(tr app.Transition, parRoot string, regi
 		// Iterate alphabetically to match encoding.
 		for _, leaf := range par.RegionLeaves {
 			cs, ok := m.states[leaf]
-			if !ok || cs.s == nil || cs.s.View == "" {
+			if !ok || cs.s == nil || cs.s.View.IsEmpty() {
 				continue
 			}
-			v, err := expr.Render(cs.s.View, renderEnv)
+			leafEnv := renderEnv
+			leafEnv.State = stateMetaFor(m, app.StatePath(leaf))
+			v, err := m.renderViewBody(cs.s.View, leafEnv, leaf)
 			if err != nil {
 				return "", fmt.Errorf("render region leaf view %q: %w", leaf, err)
 			}

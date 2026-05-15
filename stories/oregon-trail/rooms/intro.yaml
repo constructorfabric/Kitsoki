@@ -10,81 +10,102 @@ states:
     description: "Independence, Missouri — preparing to leave for Oregon."
     relevant_world: [party_names, party_size, party_member_1, party_member_2, party_member_3, party_member_4, party_member_5, profession, month]
     relevant_slots: []
-    view: |
-      It is {{ world.year }}. You are in Independence, Missouri,
-      preparing to lead a wagon party of five to the Willamette Valley in Oregon.
-
-      The trail runs about 1,500 miles to Oregon City. At a steady pace
-      most parties make the crossing in 120 to 150 days. You can push
-      harder — strenuous or grueling — but the oxen tire, folks fall
-      ill, and the wagon breaks down more often.
-
-      Before you outfit at Matt's General Store, size up what you'll need:
-
-        - Oxen ($40/yoke). At least 2 to leave town; 6–8 is comfortable.
-          Lose enough to disease or accident and a heavy wagon won't roll.
-        - Food ($0.20/lb). Each soul eats about 2 lbs/day at filling
-          rations (meager halves that, bare-bones quarters it). Five
-          people for 150 days at filling = ~1,500 lbs minimum; 2,000 lbs
-          is a comfortable cushion.
-        - Bullets ($2.00/box of 20). For hunting — figure ~100 lbs of
-          meat per successful hunt. 50 bullets is thin, 100 comfortable,
-          200 if you mean to live off the land.
-        - Clothing sets ($10/set). Burned through treating illness.
-          2 sets is bare-minimum; 5 or more keeps the party warm.
-        - Spare wheels / axles / tongues ($10 each). Eaten by breakdown
-          events. 1 of each is the floor; 2–3 of each is safer.
-
-      Starting cash depends on your profession:
-
-        - Banker — $1,600 (easy; lowest score multiplier)
-        - Carpenter — $800 (medium)
-        - Farmer — $400 (hard; highest score multiplier)
-
-      Departure month is a load-bearing decision. It feeds five things
-      at once over the run:
-
-        - Daylight / pace — winter days are short; oxen cover fewer
-          miles per tick. Summer pace = 100%; mar/oct = 85%; nov = 80%;
-          dec–feb = 70%.
-        - Forage — grass is rich in may/jun, fair in apr/jul, sparse
-          by mar/aug, drying in sep/oct, gone in winter.
-        - River flooding — april crossings run 160% of base depth
-          (snowmelt); july 80%; august 70%. A swollen river forces
-          ferry/caulk over ford.
-        - Snow-blocked passes — arriving at South Pass in oct–mar
-          routes you to a snow_blocked camp until spring.
-        - Severe-weather kind — when a weather event fires, the kind
-          is biased by month: snow in winter, heavy_rain in spring,
-          hail/fog in summer, heavy_rain/fog in fall.
-
-      Common shapes:
-
-        - March / April — early start, but snowmelt rivers + snow can
-          still close South Pass if you're slow.
-        - May / June — the sweet spot; rich grass, fair rivers, long
-          daylight.
-        - July — late; pace good, but you may meet snow at South Pass.
-        - August+ — likely to overwinter at the pass.
-
-      Mid-trail you can consult the wagon master (or drop into /freeform)
-      for free-form advice. Plan your purchase here so you're not trapped
-      out on the prairie with empty barrels.
-
-      Party of {{ world.party_size }}:
-        1. {{ if world.party_member_1 != "" }}{{ world.party_member_1 }} (leader){{ else }}(unnamed){{ end }}
-        2. {{ if world.party_member_2 != "" }}{{ world.party_member_2 }}{{ else }}(unnamed){{ end }}
-        3. {{ if world.party_member_3 != "" }}{{ world.party_member_3 }}{{ else }}(unnamed){{ end }}
-        4. {{ if world.party_member_4 != "" }}{{ world.party_member_4 }}{{ else }}(unnamed){{ end }}
-        5. {{ if world.party_member_5 != "" }}{{ world.party_member_5 }}{{ else }}(unnamed){{ end }}
-      Profession: {{ if world.profession != nil }}{{ world.profession }}{{ else }}(not yet chosen){{ end }}
-      Departure:  {{ if world.month != nil }}{{ world.month }}{{ else }}(not yet chosen){{ end }}
-
-      Choose:
-        - name the party (or: name member N, or: generate names <theme>)
-        - pick a profession (banker / carpenter / farmer)
-        - pick a departure month (march / april / may / june / july)
-        {{ if available("start_journey") }}- start the journey{{ else }}- ✗ start_journey — {{ blocked_reason("start_journey") }}{{ end }}
+    # Proposal §5.5 — intro is the canonical block-inheritance case.
+    # The five hand-copied roster lines stay as five typed `code` elements
+    # with per-element `when:` guards (the only way to fan out a flat-key
+    # world today). Switching world.party_member_1..5 to a list-shaped
+    # world.party_members would collapse these to a single `{% for %}` —
+    # see the proposal note at §5.5 ("assumes a small refactor of the
+    # world schema"). Until then the typed-element form owns the
+    # conditional logic.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: >
+              It is {{ world.year }}. You are in Independence, Missouri,
+              preparing to lead a wagon party of five to the Willamette
+              Valley in Oregon.
+          - prose: >
+              The trail runs about 1,500 miles to Oregon City. At a steady
+              pace most parties make the crossing in 120 to 150 days. You
+              can push harder — strenuous or grueling — but the oxen tire,
+              folks fall ill, and the wagon breaks down more often.
+          - heading: "Before you outfit at Matt's General Store, size up what you'll need"
+          - list:
+              items:
+                - label: "Oxen ($40/yoke)"
+                  hint:  "≥ 2 to leave town; 6–8 is comfortable"
+                - label: "Food ($0.20/lb)"
+                  hint:  "~2 lbs/soul/day at filling; 5×150d ≈ 1,500 lbs floor"
+                - label: "Bullets ($2.00/box of 20)"
+                  hint:  "~100 lbs of meat per hunt; 100 boxes is comfortable"
+                - label: "Clothing ($10/set)"
+                  hint:  "burned through treating illness; 2 floor, 5+ warm"
+                - label: "Spare wheels / axles / tongues ($10 each)"
+                  hint:  "eaten by breakdown events; 1 floor, 2–3 safer"
+          - heading: "Starting cash by profession"
+          - kv:
+              pairs:
+                Banker:    "$1,600 (easy; lowest score multiplier)"
+                Carpenter: "$800 (medium)"
+                Farmer:    "$400 (hard; highest score multiplier)"
+          - heading: "Departure month — load-bearing"
+          - list:
+              items:
+                - label: "Daylight / pace"
+                  hint:  "summer 100%, mar/oct 85%, nov 80%, dec–feb 70%"
+                - label: "Forage"
+                  hint:  "rich may/jun; fair apr/jul; sparse mar/aug; gone in winter"
+                - label: "River flooding"
+                  hint:  "april ×1.60, july 80%, august 70%"
+                - label: "Snow-blocked passes"
+                  hint:  "South Pass closes oct–mar"
+                - label: "Severe-weather kind"
+                  hint:  "snow / heavy_rain / hail / fog biased by month"
+          - heading: "Common shapes"
+          - list:
+              items:
+                - "March / April — early start, but snowmelt rivers + snow can still close South Pass if you're slow."
+                - "May / June — the sweet spot; rich grass, fair rivers, long daylight."
+                - "July — late; pace good, but you may meet snow at South Pass."
+                - "August+ — likely to overwinter at the pass."
+          - prose: >
+              Mid-trail you can consult the wagon master (or drop into
+              /freeform) for free-form advice. Plan your purchase here so
+              you're not trapped out on the prairie with empty barrels.
+          - heading: "Party of {{ world.party_size }}"
+          # Five per-element prose rows. Each row's text is itself a
+          # tiny pongo template: `world.party_member_N|default:"(unnamed)"`
+          # replaces the `?? '(unnamed)'` shape. The leader badge sits on
+          # the first row only — the rest are guarded by nothing because
+          # they always render. Switching world.party_members to a list
+          # would collapse these to one `{% for %}` (see file header).
+          - code: |
+              {{ world.party_member_1|default:"(unnamed)" }} (leader)
+          - code: |
+              {{ world.party_member_2|default:"(unnamed)" }}
+          - code: |
+              {{ world.party_member_3|default:"(unnamed)" }}
+          - code: |
+              {{ world.party_member_4|default:"(unnamed)" }}
+          - code: |
+              {{ world.party_member_5|default:"(unnamed)" }}
+          - kv:
+              pairs:
+                Profession: '{{ world.profession|default:"(not yet chosen)" }}'
+                Departure:  '{{ world.month|default:"(not yet chosen)" }}'
+        choices:
+          - heading: "Choose"
+          - list:
+              items:
+                - "name the party (or: name member N, or: generate names <theme>)"
+                - "pick a profession (banker / carpenter / farmer)"
+                - "pick a departure month (march / april / may / june / july)"
+                - label: "start the journey"
+                  when:  "available('start_journey')"
+                - label: "✗ start_journey — {{ blocked_reason('start_journey') }}"
+                  when:  "!available('start_journey')"
     on:
       name_party:
         # Quick "set them all" entry point: write the canonical CSV

@@ -1,0 +1,21 @@
+{# dev-story shared macros. Imported by leaf templates that prefer raw #}
+{# pongo over the YAML element-array form. The element-array form #}
+{# covers the bulk of the migration (see rooms/*.yaml); these macros #}
+{# are here for the few templates that need richer in-template #}
+{# composition or for downstream consumers of the dev-story story. #}
+
+{# intent_list — render a list of {label, hint} entries. #}
+{# The element-array `list` kind is the canonical way to author this #}
+{# shape (it gets lipgloss column alignment for free), so this macro #}
+{# is the escape hatch for raw .pongo files only. Item shape: each #}
+{# entry is a 2-element list [label, hint] or a bare string. #}
+{% macro intent_list(items) %}
+{% for it in items %}{% if it.0 %}  - {{ it.0 }}{% if it.1 %} ({{ it.1 }}){% endif %}{% else %}  - {{ it }}{% endif %}
+{% endfor %}{% endmacro %}
+
+{# kv_line — single "Key: value" row with a fixed-width key column #}
+{# (16 chars). Useful inside a `code` element where lipgloss alignment #}
+{# doesn't apply. The element-array `kv` kind is preferred for #}
+{# room-level YAML; this exists for partials that have to format #}
+{# inside code/template elements. #}
+{% macro kv_line(key, value) %}{{ key }}: {{ value }}{% endmacro %}

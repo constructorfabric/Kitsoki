@@ -1,0 +1,27 @@
+{% comment %}
+Oregon Trail — shared macros for view templates.
+Imported by leaf templates that prefer raw pongo over the YAML
+element-array form. The element-array `list` / `kv` kinds remain
+the canonical way to author room views (proposal §2.2); these
+macros are the escape hatch for inline pongo strings inside
+prose/code elements that have to compose richer shapes.
+
+roster_line(name, idx) — render one party-roster row. The intro
+  view today fans out five hand-copied lines (proposal §5.5);
+  once `world.party_members` becomes list-shaped the room can
+  `{% for m in world.party_members %}{{ roster_line(m.name,
+  forloop.Counter) }}{% endfor %}` instead. Until then the room
+  keeps five typed elements with per-element `when:` guards so
+  the typed-element pipeline owns the conditional logic — this
+  macro is here so the future list-shaped refactor is mechanical.
+
+intent_list(items) — compact "Actions: a, b, c." line. Useful in
+  prose/code elements where the typed `list` element's lipgloss
+  column layout would be too heavy. Mirrors the convention in
+  frontier_event / dev-story so a sub-story composed under
+  oregon-trail keeps the same visual language.
+{% endcomment %}
+
+{% macro roster_line(name, idx) %}  {{ idx }}. {{ name|default:"(unnamed)" }}{% if idx == 1 %} (leader){% endif %}{% endmacro %}
+
+{% macro intent_list(items) %}Actions: {{ items|join:", " }}.{% endmacro %}

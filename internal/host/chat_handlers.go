@@ -880,7 +880,7 @@ func ChatResolveRefHandler(ctx context.Context, args map[string]any) (Result, er
 func llmPickChat(ctx context.Context, ref string, chats []ChatRecord, maxChats, maxDeep int, model string, cs ChatStore) (*ChatRecord, string, string, error) {
 	// Probe whether claude is resolvable up-front so we can surface "no
 	// match" rather than a hard error when the binary is missing.
-	if _, err := resolveOracleBin(); err != nil {
+	if _, err := resolveOracleBin(ctx); err != nil {
 		return nil, "", "", nil
 	}
 

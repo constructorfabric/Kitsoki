@@ -285,7 +285,7 @@ func substituteState(tpl *State, params map[string]any, next map[string]string) 
 		Type:          tpl.Type,
 		Mode:          tpl.Mode,
 		Description:   substString(tpl.Description, params, next),
-		View:          substString(tpl.View, params, next),
+		View:          substView(tpl.View, params, next),
 		Terminal:      tpl.Terminal,
 		Initial:       substString(tpl.Initial, params, next),
 		RelevantWorld: append([]string(nil), tpl.RelevantWorld...),
@@ -346,7 +346,7 @@ func substTransition(tr Transition, params map[string]any, next map[string]strin
 		When:      substString(tr.When, params, next),
 		Default:   tr.Default,
 		GuardHint: substString(tr.GuardHint, params, next),
-		View:      substString(tr.View, params, next),
+		View:      substView(tr.View, params, next),
 		Emit:      append([]string(nil), tr.Emit...),
 	}
 	if tr.PushHistory != nil {
@@ -436,6 +436,72 @@ func substAnyString(v any, params map[string]any, next map[string]string) any {
 	default:
 		return v
 	}
+}
+
+// substView applies the same `{{ tpl.X }}` / `{{ phase.next.X }}` rewrites
+// as substString to every author-supplied string inside a View. The scalar
+// string form (View.Source non-empty) is rebuilt via LegacyView so the
+// substituted source text round-trips through the normalised element. The
+// array and {extends, blocks} forms walk each element's string fields
+// (prose/heading/code/template Source, list labels/hints, kv pair string
+// values).
+func substView(v View, params map[string]any, next map[string]string) View {
+	if v.IsEmpty() && v.Source == "" {
+		return View{}
+	}
+	// Scalar string form: substitute and re-wrap.
+	if v.Source != "" {
+		return LegacyView(substString(v.Source, params, next))
+	}
+	// Array / inheritance forms: walk elements.
+	out := View{Extends: v.Extends}
+	if len(v.Elements) > 0 {
+		out.Elements = make([]ViewElement, len(v.Elements))
+		for i, el := range v.Elements {
+			out.Elements[i] = substViewElement(el, params, next)
+		}
+	}
+	if len(v.Blocks) > 0 {
+		out.Blocks = make(map[string][]ViewElement, len(v.Blocks))
+		for name, els := range v.Blocks {
+			newEls := make([]ViewElement, len(els))
+			for i, el := range els {
+				newEls[i] = substViewElement(el, params, next)
+			}
+			out.Blocks[name] = newEls
+		}
+	}
+	return out
+}
+
+func substViewElement(el ViewElement, params map[string]any, next map[string]string) ViewElement {
+	out := ViewElement{
+		Kind:   el.Kind,
+		Source: substString(el.Source, params, next),
+		Marker: el.Marker,
+		When:   substString(el.When, params, next),
+	}
+	if len(el.Items) > 0 {
+		out.Items = make([]ListItem, len(el.Items))
+		for i, item := range el.Items {
+			out.Items[i] = ListItem{
+				Label: substString(item.Label, params, next),
+				Hint:  substString(item.Hint, params, next),
+				When:  substString(item.When, params, next),
+			}
+		}
+	}
+	if len(el.Pairs) > 0 {
+		pairs := make(goyaml.MapSlice, len(el.Pairs))
+		for i, p := range el.Pairs {
+			pairs[i] = p
+			if s, ok := p.Value.(string); ok {
+				pairs[i].Value = substString(s, params, next)
+			}
+		}
+		out.Pairs = pairs
+	}
+	return out
 }
 
 // templateRE matches `{{ tpl.X }}` and `{{ phase.next.X }}` inside a single string.

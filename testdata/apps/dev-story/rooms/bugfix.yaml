@@ -3,13 +3,24 @@
 states:
   bugfix:
     description: "Bug Fix Room — work through the reproduce-localize-fix-verify cycle."
-    view: |
-      Bug Fix Room.
-      Workspace: {{ world.current_workspace }}
-
-      Steps: reproduce → localize → apply fix → verify → open PR
-
-      Options: reproduce bug, localize bug, apply fix, verify fix, open pr, go back.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Workspace: "{{ world.current_workspace }}"
+          - prose: "Steps: reproduce → localize → apply fix → verify → open PR"
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - { label: "reproduce bug", hint: "failing test or repro script" }
+                - { label: "localize bug",  hint: "trace logs / code to root cause" }
+                - { label: "apply fix",     hint: "minimal change" }
+                - { label: "verify fix",    hint: "re-run repro + related tests" }
+                - { label: "open pr",       hint: "hand off to PR room" }
+                - { label: "go back",       hint: "return to previous room" }
     relevant_world: [current_workspace, proposal_result]
     relevant_slots: []
     on:
@@ -42,15 +53,17 @@ states:
 
   bugfix_reproducing:
     description: "Reproducing the bug..."
-    view: |
-      Reproducing bug in workspace: {{ world.current_workspace }}
-
-      [stub] Running repro script...
-        FAIL: TestAuthRefresh (0.23s)
-          auth_test.go:45: expected status 200, got 401
-          auth_test.go:46: response body: {"error":"token_expired"}
-
-      Bug reproduced. Proceed to localize root cause?
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Reproducing bug in workspace: {{ world.current_workspace }}"
+          - prose: "[stub] Running repro script..."
+          - code: |
+              FAIL: TestAuthRefresh (0.23s)
+                auth_test.go:45: expected status 200, got 401
+                auth_test.go:46: response body: {"error":"token_expired"}
+          - prose: "Bug reproduced. Proceed to localize root cause?"
     relevant_world: [current_workspace]
     relevant_slots: []
     on_enter:
@@ -76,16 +89,18 @@ states:
 
   bugfix_localizing:
     description: "Localizing the root cause..."
-    view: |
-      Root Cause Analysis:
-
-      [stub] Tracing auth flow...
-        auth/token.go:123: Token.Validate() returns expired=true for tokens > 24h
-        auth/refresh.go:45: RefreshToken() not called before Validate()
-        → Root cause: Token refresh is not triggered before validation in the
-          request handler at api/auth_handler.go:78
-
-      Suggested fix: Call RefreshToken() in the middleware before route handlers.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Root cause analysis"
+          - prose: "[stub] Tracing auth flow..."
+          - kv:
+              pairs:
+                "auth/token.go:123":   "Token.Validate() returns expired=true for tokens > 24h"
+                "auth/refresh.go:45":  "RefreshToken() not called before Validate()"
+          - prose: "→ Root cause: Token refresh is not triggered before validation in the request handler at api/auth_handler.go:78"
+          - prose: "Suggested fix: Call RefreshToken() in the middleware before route handlers."
     relevant_world: [current_workspace]
     relevant_slots: []
     on:
@@ -104,17 +119,19 @@ states:
 
   bugfix_applying:
     description: "Applying the fix..."
-    view: |
-      Applying fix to: {{ world.current_workspace }}
-
-      [stub] Change applied to api/auth_handler.go:78
-        + refreshErr := token.RefreshToken(ctx, r.Header.Get("Authorization"))
-        + if refreshErr != nil {
-        +     http.Error(w, "token refresh failed", http.StatusUnauthorized)
-        +     return
-        + }
-
-      Fix applied. Verify next?
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Applying fix to: {{ world.current_workspace }}"
+          - prose: "[stub] Change applied to api/auth_handler.go:78"
+          - code: |
+              + refreshErr := token.RefreshToken(ctx, r.Header.Get("Authorization"))
+              + if refreshErr != nil {
+              +     http.Error(w, "token refresh failed", http.StatusUnauthorized)
+              +     return
+              + }
+          - prose: "Fix applied. Verify next?"
     relevant_world: [current_workspace]
     relevant_slots: []
     on_enter:
@@ -138,16 +155,18 @@ states:
 
   bugfix_verifying:
     description: "Verifying the fix..."
-    view: |
-      Verifying fix in {{ world.current_workspace }}:
-
-      [stub] Running: go test ./... -run TestAuth
-        ok  auth/token_test.go (0.15s)
-        ok  auth/refresh_test.go (0.18s)
-        ok  api/auth_handler_test.go (0.22s)
-        PASS: 3 suites, 12 tests
-
-      Fix verified! Ready to open a PR.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Verifying fix in {{ world.current_workspace }}"
+          - code: |
+              [stub] Running: go test ./... -run TestAuth
+                ok  auth/token_test.go (0.15s)
+                ok  auth/refresh_test.go (0.18s)
+                ok  api/auth_handler_test.go (0.22s)
+                PASS: 3 suites, 12 tests
+          - prose: "Fix verified! Ready to open a PR."
     relevant_world: [current_workspace]
     relevant_slots: []
     on_enter:
@@ -173,8 +192,13 @@ states:
 
   bugfix_error:
     description: "Bug fix operation failed."
-    view: |
-      Error: {{ world.last_error }}
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Error: "{{ world.last_error }}"
     relevant_world: [last_error]
     relevant_slots: []
     on:

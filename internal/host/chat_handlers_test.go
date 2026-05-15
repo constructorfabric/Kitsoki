@@ -242,11 +242,11 @@ func (f *fakeChatStore) LatestSeq(_ context.Context, chatID string) (int, error)
 	return msgs[len(msgs)-1].Seq, nil
 }
 
-func (f *fakeChatStore) WithLock(_ context.Context, chatID string, fn func(context.Context) error) error {
+func (f *fakeChatStore) WithLock(ctx context.Context, chatID string, fn func(context.Context) error) error {
 	if f.withLockErr != nil {
 		return f.withLockErr
 	}
-	return fn(context.Background())
+	return fn(ctx)
 }
 
 // ─── chat input queue (fake) ──────────────────────────────────────────────────
@@ -404,6 +404,7 @@ func (f *fakeChatStore) findDrive(driveID, requiredStatus string) (*host.ChatDri
 // ─── ChatResolveHandler tests ─────────────────────────────────────────────────
 
 func TestChatResolveHandler_NoStore(t *testing.T) {
+	t.Parallel()
 	res, err := host.ChatResolveHandler(context.Background(), map[string]any{
 		"app":  "my-app",
 		"room": "oracle",
@@ -417,6 +418,7 @@ func TestChatResolveHandler_NoStore(t *testing.T) {
 }
 
 func TestChatResolveHandler_MissingApp(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	ctx := host.WithChatStore(context.Background(), cs)
 	res, err := host.ChatResolveHandler(ctx, map[string]any{"room": "oracle"})
@@ -429,6 +431,7 @@ func TestChatResolveHandler_MissingApp(t *testing.T) {
 }
 
 func TestChatResolveHandler_NewChat(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	ctx := host.WithChatStore(context.Background(), cs)
 	res, err := host.ChatResolveHandler(ctx, map[string]any{
@@ -450,6 +453,7 @@ func TestChatResolveHandler_NewChat(t *testing.T) {
 }
 
 func TestChatResolveHandler_ExistingChat(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	cs.addChat(host.ChatRecord{ID: "existing-id", Title: "existing chat", Status: "active"})
 	cs.resolveExistingID = "existing-id"
@@ -476,6 +480,7 @@ func TestChatResolveHandler_ExistingChat(t *testing.T) {
 // ─── ChatListHandler tests ────────────────────────────────────────────────────
 
 func TestChatListHandler_NoStore(t *testing.T) {
+	t.Parallel()
 	res, err := host.ChatListHandler(context.Background(), map[string]any{
 		"app":  "my-app",
 		"room": "oracle",
@@ -489,6 +494,7 @@ func TestChatListHandler_NoStore(t *testing.T) {
 }
 
 func TestChatListHandler_EmptyList(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	ctx := host.WithChatStore(context.Background(), cs)
 	res, err := host.ChatListHandler(ctx, map[string]any{
@@ -511,6 +517,7 @@ func TestChatListHandler_EmptyList(t *testing.T) {
 }
 
 func TestChatListHandler_OneChat(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	cs.addChat(host.ChatRecord{
 		ID:           "chat-1",
@@ -542,6 +549,7 @@ func TestChatListHandler_OneChat(t *testing.T) {
 }
 
 func TestChatListHandler_ManyChats(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	for i := 0; i < 3; i++ {
 		cs.addChat(host.ChatRecord{
@@ -569,6 +577,7 @@ func TestChatListHandler_ManyChats(t *testing.T) {
 // ─── ChatTranscriptHandler tests ──────────────────────────────────────────────
 
 func TestChatTranscriptHandler_NoStore(t *testing.T) {
+	t.Parallel()
 	res, err := host.ChatTranscriptHandler(context.Background(), map[string]any{
 		"chat_id": "chat-1",
 	})
@@ -581,6 +590,7 @@ func TestChatTranscriptHandler_NoStore(t *testing.T) {
 }
 
 func TestChatTranscriptHandler_EmptyChat(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	cs.addChat(host.ChatRecord{ID: "chat-1", Title: "My chat", Status: "active"})
 	ctx := host.WithChatStore(context.Background(), cs)
@@ -604,6 +614,7 @@ func TestChatTranscriptHandler_EmptyChat(t *testing.T) {
 // since_seq > 0 yields no rows, the rendered output disambiguates the
 // "polling, no new messages" case from a genuinely empty chat.
 func TestChatTranscriptHandler_NoNewMessagesSinceSeq(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	cs.addChat(host.ChatRecord{ID: "chat-1", Title: "My chat", Status: "active"})
 	// Add some messages so the chat is not "genuinely empty" — but ask for
@@ -633,6 +644,7 @@ func TestChatTranscriptHandler_NoNewMessagesSinceSeq(t *testing.T) {
 }
 
 func TestChatTranscriptHandler_WithMessages(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	cs.addChat(host.ChatRecord{ID: "chat-1", Title: "My chat", Status: "active"})
 	_, _ = cs.AppendMessage(context.Background(), "chat-1", "user", "Hello", nil)
@@ -668,6 +680,7 @@ func TestChatTranscriptHandler_WithMessages(t *testing.T) {
 // ─── ChatForkHandler tests ────────────────────────────────────────────────────
 
 func TestChatForkHandler_NoStore(t *testing.T) {
+	t.Parallel()
 	res, err := host.ChatForkHandler(context.Background(), map[string]any{
 		"chat_id": "chat-1",
 	})
@@ -680,6 +693,7 @@ func TestChatForkHandler_NoStore(t *testing.T) {
 }
 
 func TestChatForkHandler_HappyPath(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	cs.addChat(host.ChatRecord{ID: "chat-1", Title: "Original", Status: "active"})
 	ctx := host.WithChatStore(context.Background(), cs)
@@ -703,6 +717,7 @@ func TestChatForkHandler_HappyPath(t *testing.T) {
 }
 
 func TestChatForkHandler_DefaultTitle(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	cs.addChat(host.ChatRecord{ID: "chat-1", Title: "Original", Status: "active"})
 	ctx := host.WithChatStore(context.Background(), cs)
@@ -723,6 +738,7 @@ func TestChatForkHandler_DefaultTitle(t *testing.T) {
 // ─── ChatArchiveHandler tests ─────────────────────────────────────────────────
 
 func TestChatArchiveHandler_NoStore(t *testing.T) {
+	t.Parallel()
 	res, err := host.ChatArchiveHandler(context.Background(), map[string]any{
 		"chat_id": "chat-1",
 	})
@@ -735,6 +751,7 @@ func TestChatArchiveHandler_NoStore(t *testing.T) {
 }
 
 func TestChatArchiveHandler_HappyPath(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	cs.addChat(host.ChatRecord{ID: "chat-1", Title: "My chat", Status: "active"})
 	ctx := host.WithChatStore(context.Background(), cs)
@@ -755,6 +772,7 @@ func TestChatArchiveHandler_HappyPath(t *testing.T) {
 }
 
 func TestChatArchiveHandler_MissingChatID(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	ctx := host.WithChatStore(context.Background(), cs)
 	res, err := host.ChatArchiveHandler(ctx, map[string]any{})
@@ -769,6 +787,7 @@ func TestChatArchiveHandler_MissingChatID(t *testing.T) {
 // ─── ChatCreateHandler tests ──────────────────────────────────────────────────
 
 func TestChatCreateHandler_NoStore(t *testing.T) {
+	t.Parallel()
 	res, err := host.ChatCreateHandler(context.Background(), map[string]any{
 		"app":  "my-app",
 		"room": "oracle",
@@ -782,6 +801,7 @@ func TestChatCreateHandler_NoStore(t *testing.T) {
 }
 
 func TestChatCreateHandler_MissingArgs(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	ctx := host.WithChatStore(context.Background(), cs)
 
@@ -805,6 +825,7 @@ func TestChatCreateHandler_MissingArgs(t *testing.T) {
 }
 
 func TestChatCreateHandler_HappyPath(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	ctx := host.WithChatStore(context.Background(), cs)
 
@@ -828,6 +849,7 @@ func TestChatCreateHandler_HappyPath(t *testing.T) {
 }
 
 func TestChatCreateHandler_EmptyTitleDefaultsToUntitled(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	ctx := host.WithChatStore(context.Background(), cs)
 
@@ -847,6 +869,7 @@ func TestChatCreateHandler_EmptyTitleDefaultsToUntitled(t *testing.T) {
 }
 
 func TestChatCreateHandler_TitleTruncation(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	ctx := host.WithChatStore(context.Background(), cs)
 
@@ -871,6 +894,7 @@ func TestChatCreateHandler_TitleTruncation(t *testing.T) {
 // ─── ChatRenameHandler tests ──────────────────────────────────────────────────
 
 func TestChatRenameHandler_NoStore(t *testing.T) {
+	t.Parallel()
 	res, err := host.ChatRenameHandler(context.Background(), map[string]any{
 		"chat_id": "chat-1",
 		"title":   "New Name",
@@ -884,6 +908,7 @@ func TestChatRenameHandler_NoStore(t *testing.T) {
 }
 
 func TestChatRenameHandler_HappyPath(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	cs.addChat(host.ChatRecord{ID: "chat-1", Title: "Old Name", Status: "active"})
 	ctx := host.WithChatStore(context.Background(), cs)
@@ -907,6 +932,7 @@ func TestChatRenameHandler_HappyPath(t *testing.T) {
 }
 
 func TestChatRenameHandler_NotFound(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	ctx := host.WithChatStore(context.Background(), cs)
 
@@ -923,6 +949,7 @@ func TestChatRenameHandler_NotFound(t *testing.T) {
 }
 
 func TestChatRenameHandler_MissingChatID(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	ctx := host.WithChatStore(context.Background(), cs)
 
@@ -936,6 +963,7 @@ func TestChatRenameHandler_MissingChatID(t *testing.T) {
 }
 
 func TestChatRenameHandler_MissingTitle(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	ctx := host.WithChatStore(context.Background(), cs)
 
@@ -951,6 +979,7 @@ func TestChatRenameHandler_MissingTitle(t *testing.T) {
 // ─── ChatSuggestTitleHandler tests ────────────────────────────────────────────
 
 func TestChatSuggestTitleHandler_Skipped(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	cs.addChat(host.ChatRecord{ID: "chat-1", Title: "User-set fancy title", Status: "active"})
 	ctx := host.WithChatStore(context.Background(), cs)
@@ -975,6 +1004,7 @@ func TestChatSuggestTitleHandler_Skipped(t *testing.T) {
 }
 
 func TestChatSuggestTitleHandler_NoMessages(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	cs.addChat(host.ChatRecord{ID: "chat-1", Title: "untitled chat", Status: "active"})
 	ctx := host.WithChatStore(context.Background(), cs)
@@ -1162,6 +1192,7 @@ func TestChatResolveRefHandler_DeepRejectsOutOfRange(t *testing.T) {
 // ─── Registration test ────────────────────────────────────────────────────────
 
 func TestChatHandlers_RegisteredAsBuiltins(t *testing.T) {
+	t.Parallel()
 	r := host.NewRegistry()
 	host.RegisterBuiltins(r)
 	for _, name := range []string{
@@ -1184,6 +1215,7 @@ func TestChatHandlers_RegisteredAsBuiltins(t *testing.T) {
 // ─── ChatResolveRefHandler ────────────────────────────────────────────────────
 
 func TestChatResolveRefHandler_NoStore(t *testing.T) {
+	t.Parallel()
 	res, err := host.ChatResolveRefHandler(context.Background(), map[string]any{
 		"app": "x", "room": "y", "ref": "1",
 	})
@@ -1196,6 +1228,7 @@ func TestChatResolveRefHandler_NoStore(t *testing.T) {
 }
 
 func TestChatResolveRefHandler_FullULID(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	cs.addChat(host.ChatRecord{ID: "01ABCDEFGHJKMNPQRSTVWXYZ12", Title: "the auth bug", Status: "active"})
 	ctx := host.WithChatStore(context.Background(), cs)
@@ -1218,6 +1251,7 @@ func TestChatResolveRefHandler_FullULID(t *testing.T) {
 }
 
 func TestChatResolveRefHandler_Position(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	// IDs chosen so deterministic sort yields a known order.
 	cs.addChat(host.ChatRecord{ID: "01AAAAAAAAAAAAAAAAAAAAAAAA", Title: "first"})
@@ -1251,6 +1285,7 @@ func TestChatResolveRefHandler_Position(t *testing.T) {
 }
 
 func TestChatResolveRefHandler_PositionOutOfRange(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	cs.addChat(host.ChatRecord{ID: "01AAAAAAAAAAAAAAAAAAAAAAAA", Title: "only"})
 	ctx := host.WithChatStore(context.Background(), cs)
@@ -1264,6 +1299,7 @@ func TestChatResolveRefHandler_PositionOutOfRange(t *testing.T) {
 }
 
 func TestChatResolveRefHandler_PrefixUnique(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	cs.addChat(host.ChatRecord{ID: "01ABCDEF11111111111111111Z", Title: "alpha"})
 	cs.addChat(host.ChatRecord{ID: "01ZZZZZZ22222222222222222Z", Title: "zeta"})
@@ -1284,6 +1320,7 @@ func TestChatResolveRefHandler_PrefixUnique(t *testing.T) {
 }
 
 func TestChatResolveRefHandler_PrefixAmbiguous(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	cs.addChat(host.ChatRecord{ID: "01ABCDEF11111111111111111Z", Title: "alpha"})
 	cs.addChat(host.ChatRecord{ID: "01ABCDEF22222222222222222Z", Title: "beta"})
@@ -1301,6 +1338,7 @@ func TestChatResolveRefHandler_PrefixAmbiguous(t *testing.T) {
 }
 
 func TestChatResolveRefHandler_NotFound(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	cs.addChat(host.ChatRecord{ID: "01ABCDEF11111111111111111Z", Title: "alpha"})
 	ctx := host.WithChatStore(context.Background(), cs)
@@ -1314,6 +1352,7 @@ func TestChatResolveRefHandler_NotFound(t *testing.T) {
 }
 
 func TestChatResolveRefHandler_EmptyList(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	ctx := host.WithChatStore(context.Background(), cs)
 
@@ -1462,7 +1501,6 @@ func TestChatResolveRefHandler_LLMUnavailable(t *testing.T) {
 // would surface as a test failure rather than a noisy crash.
 func TestBuildDeepPickPrompt_EmptyRole(t *testing.T) {
 	resolveRefLLMSetup(t)
-
 	cs := newFakeChatStore()
 	cs.addChat(host.ChatRecord{ID: "01AAAAAAAAAAAAAAAAAAAAAAAA", Title: "alpha"})
 	// Inject a message with an empty role directly into the transcript —

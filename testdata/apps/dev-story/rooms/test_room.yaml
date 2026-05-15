@@ -3,11 +3,21 @@
 states:
   test_room:
     description: "Test Room — run tests, write new ones, fix flaky ones."
-    view: |
-      Test Room.
-      Workspace: {{ world.current_workspace }}
-
-      Options: run suite, run focused test, write new tests, go back.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Workspace: "{{ world.current_workspace }}"
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - { label: "run suite",       hint: "go test ./..." }
+                - { label: "run focused test", hint: "single test with verbose output" }
+                - { label: "write new tests", hint: "cover uncovered paths" }
+                - { label: "go back",         hint: "return to previous room" }
     relevant_world: [current_workspace, proposal_result]
     relevant_slots: []
     on:
@@ -32,17 +42,19 @@ states:
 
   test_running_suite:
     description: "Running the full test suite..."
-    view: |
-      Running tests in {{ world.current_workspace }}:
-
-      [stub] go test ./... -v
-        ok   auth/token_test.go     (0.15s)
-        ok   auth/refresh_test.go   (0.18s)
-        ok   api/auth_handler_test.go (0.22s)
-        FAIL api/billing_test.go    (0.31s)
-          billing_test.go:67: unexpected nil pointer in invoice calculation
-
-      Summary: 3 pass, 1 fail. Run focused test on billing_test.go?
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Running tests in {{ world.current_workspace }}"
+          - code: |
+              [stub] go test ./... -v
+                ok   auth/token_test.go     (0.15s)
+                ok   auth/refresh_test.go   (0.18s)
+                ok   api/auth_handler_test.go (0.22s)
+                FAIL api/billing_test.go    (0.31s)
+                  billing_test.go:67: unexpected nil pointer in invoice calculation
+          - prose: "Summary: 3 pass, 1 fail. Run focused test on billing_test.go?"
     relevant_world: [current_workspace]
     relevant_slots: []
     on_enter:
@@ -68,16 +80,18 @@ states:
 
   test_running_focused:
     description: "Running focused test..."
-    view: |
-      Running focused test: {{ slots.test_name }}
-
-      [stub] go test -v -run {{ slots.test_name }}
-        --- FAIL: TestBillingInvoice (0.05s)
-            billing_test.go:67: expected invoice total 150.00, got <nil>
-            billing_test.go:68: stacktrace:
-              billing/invoice.go:23: (*Invoice).Calculate() panic: nil pointer
-
-        To fix: add nil guard in billing/invoice.go:23
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Running focused test: {{ slots.test_name }}"
+          - code: |
+              [stub] go test -v -run {{ slots.test_name }}
+                --- FAIL: TestBillingInvoice (0.05s)
+                    billing_test.go:67: expected invoice total 150.00, got <nil>
+                    billing_test.go:68: stacktrace:
+                      billing/invoice.go:23: (*Invoice).Calculate() panic: nil pointer
+          - prose: "To fix: add nil guard in billing/invoice.go:23"
     relevant_world: [current_workspace]
     relevant_slots: []
     on:
@@ -98,22 +112,28 @@ states:
 
   test_writing:
     description: "Generating new tests for uncovered code paths..."
-    view: |
-      Writing tests for {{ world.current_workspace }}:
-
-      [stub] Coverage analysis:
-        billing/invoice.go:  45% covered (target: 80%)
-        Uncovered paths:
-          - Invoice.Calculate() with nil items
-          - Invoice.ApplyDiscount() with negative values
-          - Invoice.Export() with empty items
-
-      Generated tests:
-        - TestCalculateWithNilItems
-        - TestApplyNegativeDiscount
-        - TestExportEmpty
-
-      Add these to billing/invoice_test.go?
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Writing tests for {{ world.current_workspace }}"
+          - heading: "Coverage analysis"
+          - kv:
+              pairs:
+                "billing/invoice.go": "45% covered (target: 80%)"
+          - heading: "Uncovered paths"
+          - list:
+              items:
+                - "Invoice.Calculate() with nil items"
+                - "Invoice.ApplyDiscount() with negative values"
+                - "Invoice.Export() with empty items"
+          - heading: "Generated tests"
+          - list:
+              items:
+                - "TestCalculateWithNilItems"
+                - "TestApplyNegativeDiscount"
+                - "TestExportEmpty"
+          - prose: "Add these to billing/invoice_test.go?"
     relevant_world: [current_workspace]
     relevant_slots: []
     on:
@@ -137,8 +157,13 @@ states:
 
   test_error:
     description: "Test operation failed."
-    view: |
-      Test error: {{ world.last_error }}
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Error: "{{ world.last_error }}"
     relevant_world: [last_error]
     relevant_slots: []
     on:

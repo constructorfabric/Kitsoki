@@ -3,13 +3,23 @@
 states:
   debug_room:
     description: "Debug Room — investigate failures: stack traces, logs, bisect, state inspection."
-    view: |
-      Debug Room.
-      Workspace: {{ world.current_workspace }}
-
-      Tools: analyze stack trace, search logs, bisect regression, inspect state.
-
-      Options: analyze trace, search logs, bisect, hand off to bug fix, go back.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Workspace: "{{ world.current_workspace }}"
+          - prose: "Tools: analyze stack trace, search logs, bisect regression, inspect state."
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - { label: "analyze trace",   hint: "guided explanation of stack trace" }
+                - { label: "search logs",     hint: "query observability backend" }
+                - { label: "bisect",          hint: "find the introducing commit" }
+                - { label: "hand off to bug fix", hint: "carry findings forward" }
+                - { label: "go back",         hint: "return to previous room" }
     relevant_world: [current_workspace, proposal_result]
     relevant_slots: []
     on:
@@ -41,21 +51,28 @@ states:
 
   debug_analyzing:
     description: "Analyzing the stack trace..."
-    view: |
-      Stack Trace Analysis:
-
-      Input: {{ slots.trace }}
-
-      [stub] Analysis:
-        Exception type: NullPointerException (or equivalent)
-        Likely cause: Uninitialized token object in auth/token.go:123
-        Related code: auth/token.go line 123, auth/refresh.go line 45
-        Similar issues: PROJ-98 (resolved), PROJ-102 (open)
-
-        Suggested investigation:
-          1. Check token initialization in auth/token.go
-          2. Add nil guard before Token.Validate() call
-          3. Add logging at auth/token.go:120 to trace token lifecycle
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Stack trace analysis"
+          - kv:
+              pairs:
+                Input: "{{ slots.trace }}"
+          - heading: "Analysis"
+          - kv:
+              pairs:
+                Exception type:  "NullPointerException (or equivalent)"
+                Likely cause:    "Uninitialized token object in auth/token.go:123"
+                Related code:    "auth/token.go line 123, auth/refresh.go line 45"
+                Similar issues:  "PROJ-98 (resolved), PROJ-102 (open)"
+          - heading: "Suggested investigation"
+          - list:
+              marker: "1."
+              items:
+                - "Check token initialization in auth/token.go"
+                - "Add nil guard before Token.Validate() call"
+                - "Add logging at auth/token.go:120 to trace token lifecycle"
     relevant_world: [current_workspace]
     relevant_slots: []
     on:
@@ -76,16 +93,18 @@ states:
 
   debug_searching_logs:
     description: "Searching logs..."
-    view: |
-      Log Search Results:
-
-      [stub] Querying observability backend...
-        Found 23 matching log lines in the last hour:
-        2024-01-15T10:23:45Z WARN auth: token validation failed user=u123 reason=expired
-        2024-01-15T10:23:45Z ERROR api: 401 unauthorized path=/api/v1/data user=u123
-        2024-01-15T10:23:46Z INFO auth: token refresh attempted user=u123 success=false
-
-        Pattern: Token refresh fails silently when token > 24h old.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Log search results"
+          - prose: "[stub] Querying observability backend..."
+          - prose: "Found 23 matching log lines in the last hour:"
+          - code: |
+              2024-01-15T10:23:45Z WARN  auth: token validation failed user=u123 reason=expired
+              2024-01-15T10:23:45Z ERROR api: 401 unauthorized path=/api/v1/data user=u123
+              2024-01-15T10:23:46Z INFO  auth: token refresh attempted user=u123 success=false
+          - prose: "Pattern: Token refresh fails silently when token > 24h old."
     relevant_world: [current_workspace]
     relevant_slots: []
     on_enter:
@@ -113,8 +132,13 @@ states:
 
   debug_error:
     description: "Debug operation failed."
-    view: |
-      Debug error: {{ world.last_error }}
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Error: "{{ world.last_error }}"
     relevant_world: [last_error]
     relevant_slots: []
     on:

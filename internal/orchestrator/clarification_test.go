@@ -55,13 +55,13 @@ func TestClarificationRoundTripOrchestrator(t *testing.T) {
 		},
 		States: map[string]*app.State{
 			"init": {
-				View: "init",
+				View: app.LegacyView("init"),
 				On: map[string][]app.Transition{
 					"enter": {{Target: "lobby"}},
 				},
 			},
 			"lobby": {
-				View: "lobby x={{ world.x }}",
+				View: app.LegacyView("lobby x={{ world.x }}"),
 				OnEnter: []app.Effect{
 					{
 						Invoke:     "host.test.clarify",
@@ -90,7 +90,7 @@ func TestClarificationRoundTripOrchestrator(t *testing.T) {
 					}},
 				},
 			},
-			"done": {Terminal: true, View: "done"},
+			"done": {Terminal: true, View: app.LegacyView("done")},
 		},
 	}
 

@@ -3,12 +3,21 @@
 states:
   workspace_manager:
     description: "Workspace Manager Room — find or create project workspaces."
-    view: |
-      Workspace Manager.
-
-      Current workspace: {{ world.current_workspace }}
-
-      Intents: list workspaces, create workspace, enter workspace, go back.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Current workspace: "{{ world.current_workspace|default:\"(none)\" }}"
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - { label: "list workspaces",  hint: "show all existing" }
+                - { label: "create workspace", hint: "start a new one" }
+                - { label: "enter workspace",  hint: "open by name" }
+                - { label: "go back",          hint: "return to previous room" }
     relevant_world: [current_workspace]
     relevant_slots: []
     on:
@@ -43,15 +52,20 @@ states:
 
   workspace_list:
     description: "Listing all available workspaces."
-    view: |
-      Available Workspaces:
-
-      [stub] 3 workspaces found:
-        1. my-api-project     (main branch, 2 repos, clean)
-        2. feature-auth-v2    (feat/auth-v2 branch, 1 repo, dirty)
-        3. hotfix-billing     (hotfix/billing branch, 1 repo, clean)
-
-      Enter a workspace name or go back.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Available workspaces"
+          # Each workspace is a list row with the metadata as a hint.
+          # Per the proposal — list is the canonical "two-column with
+          # alignment" element; the renderer picks the column widths.
+          - list:
+              items:
+                - { label: "my-api-project",  hint: "main branch, 2 repos, clean" }
+                - { label: "feature-auth-v2", hint: "feat/auth-v2 branch, 1 repo, dirty" }
+                - { label: "hotfix-billing",  hint: "hotfix/billing branch, 1 repo, clean" }
+          - prose: "[stub] 3 workspaces found. Enter a workspace name or go back."
     relevant_world: []
     relevant_slots: []
     on:
@@ -77,15 +91,17 @@ states:
 
   workspace_creating:
     description: "Creating a new workspace..."
-    view: |
-      Creating workspace: {{ world.current_workspace }}
-
-      [stub] Workspace created successfully!
-        Root: /workspaces/{{ world.current_workspace }}
-        Repos: 1 repo initialized
-        Branch: main
-
-      Entering workspace...
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "Creating workspace: {{ world.current_workspace }}"
+          - kv:
+              pairs:
+                Root:   "/workspaces/{{ world.current_workspace }}"
+                Repos:  "1 repo initialized"
+                Branch: "main"
+          - prose: "[stub] Workspace created successfully! Entering workspace..."
     relevant_world: [current_workspace]
     relevant_slots: []
     on_enter:
@@ -119,15 +135,17 @@ states:
 
   workspace_loading:
     description: "Loading workspace..."
-    view: |
-      Loading workspace: {{ world.current_workspace }}
-
-      [stub] Workspace loaded:
-        Root: /workspaces/{{ world.current_workspace }}
-        Repos: 1 repo
-        Branch: main (clean)
-
-      You are now in the workspace.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "Loading workspace: {{ world.current_workspace }}"
+          - kv:
+              pairs:
+                Root:   "/workspaces/{{ world.current_workspace }}"
+                Repos:  "1 repo"
+                Branch: "main (clean)"
+          - prose: "[stub] You are now in the workspace."
     relevant_world: [current_workspace]
     relevant_slots: []
     on_enter:
@@ -158,10 +176,14 @@ states:
 
   workspace_error:
     description: "Workspace operation failed."
-    view: |
-      Workspace error: {{ world.last_error }}
-
-      Go back to try again.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Error: "{{ world.last_error }}"
+          - prose: "Go back to try again."
     relevant_world: [last_error]
     relevant_slots: []
     on:

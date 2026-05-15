@@ -41,7 +41,7 @@ func AskStructured(ctx context.Context, opts AskStructuredOptions) (json.RawMess
 
 	bin := opts.ClaudeBin
 	if bin == "" {
-		resolved, err := resolveOracleBin()
+		resolved, err := resolveOracleBin(ctx)
 		if err != nil {
 			return nil, err
 		}

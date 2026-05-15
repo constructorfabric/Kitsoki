@@ -43,7 +43,7 @@ states:
   river_crossing:
     type: compound
     # depth < 3 → shallow; [3, 6) → mid; >= 6 → deep.
-    initial: "{{ if world.river_depth_ft < 3 }}shallow{{ else }}{{ if world.river_depth_ft < 6 }}mid{{ else }}deep{{ end }}{{ end }}"
+    initial: "{% if world.river_depth_ft < 3 %}shallow{% else %}{% if world.river_depth_ft < 6 %}mid{% else %}deep{% endif %}{% endif %}"
     description: "At the river ({{ world.current_landmark }})."
     relevant_world: [current_landmark, river_depth_ft, river_width_ft, money, food_lbs, oxen, party_alive, miles_traveled, crossing_method, crossing_confidence, river_outcome, last_job_id]
     states:
@@ -51,21 +51,36 @@ states:
       # ── shallow: depth < 3 ft. propose_crossing → reviewing. ─────────
       shallow:
         description: "Low water at {{ world.current_landmark }} — {{ world.river_depth_ft }} ft deep."
-        view: |
-          The {{ world.current_landmark }} runs low. {{ world.river_depth_ft }} ft of water,
-          {{ world.river_width_ft }} ft from bank to bank. The bed reads flat and the
-          current is easy — at this water you could drive across without wetting the wagon
-          much above the axle.
-
-          The wagon master spits in the grass and lays out the choices:
-
-            - ford    — drive the team straight through. Free; safe in low water.
-            - caulk   — seal and float the wagon. Free, but slow work for no gain here.
-            - ferry   — pay the ferryman his dollars. Safe; unnecessary at this depth.
-            - wait    — make camp until the water drops further. Costs days and food.
-
-          Tell him: propose_crossing method=ford confidence=80
-          Or:       cancel_crossing  to step back from the bank.
+        view:
+          extends: "base"
+          blocks:
+            body:
+              - prose: >
+                  The {{ world.current_landmark }} runs low.
+                  {{ world.river_depth_ft }} ft of water,
+                  {{ world.river_width_ft }} ft from bank to bank. The bed
+                  reads flat and the current is easy — at this water you
+                  could drive across without wetting the wagon much above
+                  the axle.
+              - prose: "The wagon master spits in the grass and lays out the choices:"
+              - list:
+                  items:
+                    - label: "ford"
+                      hint:  "drive the team straight through; free, safe in low water"
+                    - label: "caulk"
+                      hint:  "seal and float; free but slow work for no gain here"
+                    - label: "ferry"
+                      hint:  "pay the ferryman his dollars; safe, unnecessary at this depth"
+                    - label: "wait"
+                      hint:  "make camp until the water drops; costs days and food"
+            choices:
+              - heading: "Actions"
+              - list:
+                  items:
+                    - label: "propose_crossing method=ford confidence=80"
+                      hint:  "stage the draft for review"
+                    - label: "cancel_crossing"
+                      hint:  "step back from the bank"
         on:
           propose_crossing:
             - target: ../reviewing
@@ -93,22 +108,37 @@ states:
       # ── mid: 3-5 ft. Same lifecycle, different opening view. ─────────
       mid:
         description: "Fair water at {{ world.current_landmark }} — {{ world.river_depth_ft }} ft."
-        view: |
-          The {{ world.current_landmark }} runs fair to high. {{ world.river_depth_ft }} ft
-          of water, {{ world.river_width_ft }} ft across. The current pulls harder than it
-          looks from the bank — a fording party would feel the oxen leave the bottom in the
-          middle, and a wagon bed would take water before it cleared the far side.
-
-          The wagon master shakes his head at the ford and considers the team:
-
-            - ford    — drive across regardless. Free, but oxen may lose footing.
-            - caulk   — seal the wagon-bed with pitch and tallow and float her over.
-                        Slow, but the standard play in water like this.
-            - ferry   — pay the ferryman. Slow as well, but no losses.
-            - wait    — make camp on the cutbank and wait the water down. Days and food.
-
-          Tell him: propose_crossing method=caulk confidence=70
-          Or:       cancel_crossing  to step off the bank.
+        view:
+          extends: "base"
+          blocks:
+            body:
+              - prose: >
+                  The {{ world.current_landmark }} runs fair to high.
+                  {{ world.river_depth_ft }} ft of water,
+                  {{ world.river_width_ft }} ft across. The current pulls
+                  harder than it looks from the bank — a fording party
+                  would feel the oxen leave the bottom in the middle,
+                  and a wagon bed would take water before it cleared the
+                  far side.
+              - prose: "The wagon master shakes his head at the ford and considers the team:"
+              - list:
+                  items:
+                    - label: "ford"
+                      hint:  "drive across regardless; free, but oxen may lose footing"
+                    - label: "caulk"
+                      hint:  "pitch & tallow, float her over; slow, the standard play"
+                    - label: "ferry"
+                      hint:  "pay the ferryman; slow, no losses"
+                    - label: "wait"
+                      hint:  "camp on the cutbank until the water drops; days and food"
+            choices:
+              - heading: "Actions"
+              - list:
+                  items:
+                    - label: "propose_crossing method=caulk confidence=70"
+                      hint:  "stage the draft for review"
+                    - label: "cancel_crossing"
+                      hint:  "step off the bank"
         on:
           propose_crossing:
             - target: ../reviewing
@@ -131,24 +161,37 @@ states:
       # ── deep: 6+ ft. The dangerous branch. ───────────────────────────
       deep:
         description: "High water at {{ world.current_landmark }} — {{ world.river_depth_ft }} ft."
-        view: |
-          The {{ world.current_landmark }} is running high and brown. {{ world.river_depth_ft }} ft
-          of water — well over the oxen's heads — and {{ world.river_width_ft }} ft of swelter
-          from bank to bank. Cottonwood limbs come tumbling past in the current. A man on
-          horseback would think twice; a wagon and an ox-team has no business out there.
-
-          The wagon master pulls his hat low and reckons it grim:
-
-            - ford    — drive into water above the oxen. Sure to founder. Death of the team
-                        and likely the wagon-bed besides.
-            - caulk   — seal her up and float. Possible, but the current is heavy enough
-                        to swamp a caulked wagon before she reaches the far bank.
-            - ferry   — pay the ferryman. The only sure way over. Worth every coin.
-            - wait    — set camp on the high ground. The water falls in time. Costs days,
-                        and food, but saves the team and the load.
-
-          Tell him: propose_crossing method=ferry confidence=90
-          Or:       cancel_crossing  to step back from the bank.
+        view:
+          extends: "base"
+          blocks:
+            body:
+              - prose: >
+                  The {{ world.current_landmark }} is running high and
+                  brown. {{ world.river_depth_ft }} ft of water — well
+                  over the oxen's heads — and {{ world.river_width_ft }}
+                  ft of swelter from bank to bank. Cottonwood limbs come
+                  tumbling past in the current. A man on horseback would
+                  think twice; a wagon and an ox-team has no business out
+                  there.
+              - prose: "The wagon master pulls his hat low and reckons it grim:"
+              - list:
+                  items:
+                    - label: "ford"
+                      hint:  "drive into water above the oxen; sure to founder"
+                    - label: "caulk"
+                      hint:  "seal and float; the current is heavy enough to swamp"
+                    - label: "ferry"
+                      hint:  "pay the ferryman; the only sure way over, worth every coin"
+                    - label: "wait"
+                      hint:  "camp on high ground until the water falls; days and food"
+            choices:
+              - heading: "Actions"
+              - list:
+                  items:
+                    - label: "propose_crossing method=ferry confidence=90"
+                      hint:  "stage the draft for review"
+                    - label: "cancel_crossing"
+                      hint:  "step back from the bank"
         on:
           propose_crossing:
             - target: ../reviewing
@@ -173,18 +216,31 @@ states:
       # through reviewing.
       reviewing:
         description: "The wagon master spells out the plan."
-        view: |
-          The wagon master sets a boot on the wagon-tongue, looks at the river, says it
-          back so we all hear it:
-
-          "{{ world.crossing_method }} the {{ world.current_landmark }} — {{ world.river_depth_ft }} ft
-           of water, {{ world.river_width_ft }} ft across. Confidence about {{ world.crossing_confidence }}
-           in ten. Speak up now if I've called it wrong."
-
-          accept_crossing — give him the nod and put the team in the water.
-          refine_crossing — change the method or sharpen the call.
-          cancel_crossing — walk away from the bank for now.
-          look           — look the river over again.
+        view:
+          extends: "base"
+          blocks:
+            body:
+              - prose: >
+                  The wagon master sets a boot on the wagon-tongue, looks
+                  at the river, says it back so we all hear it:
+              - prose: >
+                  "{{ world.crossing_method }} the {{ world.current_landmark }}
+                  — {{ world.river_depth_ft }} ft of water,
+                  {{ world.river_width_ft }} ft across. Confidence about
+                  {{ world.crossing_confidence }} in ten. Speak up now if
+                  I've called it wrong."
+            choices:
+              - heading: "Actions"
+              - list:
+                  items:
+                    - label: "accept_crossing"
+                      hint:  "give him the nod and put the team in the water"
+                    - label: "refine_crossing"
+                      hint:  "change the method or sharpen the call"
+                    - label: "cancel_crossing"
+                      hint:  "walk away from the bank for now"
+                    - label: "look"
+                      hint:  "look the river over again"
         relevant_world: [crossing_method, crossing_confidence, current_landmark, river_depth_ft]
         on:
           accept_crossing:
@@ -225,15 +281,30 @@ states:
       # ── executing: background job in flight. ─────────────────────────
       executing:
         description: "The wagon is in the water at {{ world.current_landmark }}."
-        view: |
-          The wagon is in the water — {{ world.crossing_method }} across the
-          {{ world.current_landmark }}. From the bank we watch the wheels turn slow,
-          the oxen swim where it gets deep, the wagon-bed ride high or take water.
-
-          {{ if world.river_outcome == "" }}No word yet from the far side.{{ else }}Word from the far side: {{ world.river_outcome }}.{{ end }}
-
-          continue — once we have the outcome, press on.
-          look     — watch the crossing from the bank.
+        # Per-element `when:` guards replace the inline `{% if %}` block
+        # that used to switch between "no word yet" and "word from the
+        # far side" — proposal §2.2 conditional-inclusion sugar.
+        view:
+          extends: "base"
+          blocks:
+            body:
+              - prose: >
+                  The wagon is in the water — {{ world.crossing_method }}
+                  across the {{ world.current_landmark }}. From the bank
+                  we watch the wheels turn slow, the oxen swim where it
+                  gets deep, the wagon-bed ride high or take water.
+              - prose: "No word yet from the far side."
+                when:  "world.river_outcome == ''"
+              - prose: "Word from the far side: {{ world.river_outcome }}."
+                when:  "world.river_outcome != ''"
+            choices:
+              - heading: "Actions"
+              - list:
+                  items:
+                    - label: "continue"
+                      hint:  "once we have the outcome, press on"
+                    - label: "look"
+                      hint:  "watch the crossing from the bank"
         relevant_world: [crossing_method, river_outcome, last_job_id, river_depth_ft, oxen, miles_traveled]
         on_enter:
           # Background host.run — proposals.yaml river_strategy.execute.

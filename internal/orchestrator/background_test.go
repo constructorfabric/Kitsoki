@@ -47,13 +47,13 @@ func TestBackgroundJobEndToEnd(t *testing.T) {
 		},
 		States: map[string]*app.State{
 			"init": {
-				View: "init",
+				View: app.LegacyView("init"),
 				On: map[string][]app.Transition{
 					"enter": {{Target: "lobby"}},
 				},
 			},
 			"lobby": {
-				View: "lobby x={{ world.x }}",
+				View: app.LegacyView("lobby x={{ world.x }}"),
 				// on_enter fires a background job. The on_complete chain sets
 				// world.x from the job result.
 				OnEnter: []app.Effect{
@@ -72,7 +72,7 @@ func TestBackgroundJobEndToEnd(t *testing.T) {
 					"done": {{Target: "end"}},
 				},
 			},
-			"end": {Terminal: true, View: "ended"},
+			"end": {Terminal: true, View: app.LegacyView("ended")},
 		},
 	}
 
@@ -196,13 +196,13 @@ func TestCustomBind_LastJobIDReplay(t *testing.T) {
 		},
 		States: map[string]*app.State{
 			"init": {
-				View: "init",
+				View: app.LegacyView("init"),
 				On: map[string][]app.Transition{
 					"enter": {{Target: "work"}},
 				},
 			},
 			"work": {
-				View: "work",
+				View: app.LegacyView("work"),
 				// on_enter fires when init→work; dispatches a background job
 				// with a custom bind key.
 				OnEnter: []app.Effect{
@@ -307,13 +307,13 @@ func TestOnComplete_SayText(t *testing.T) {
 		},
 		States: map[string]*app.State{
 			"init": {
-				View: "init",
+				View: app.LegacyView("init"),
 				On: map[string][]app.Transition{
 					"enter": {{Target: "lobby"}},
 				},
 			},
 			"lobby": {
-				View: "lobby",
+				View: app.LegacyView("lobby"),
 				OnEnter: []app.Effect{
 					{
 						Invoke:     "host.test.echo",
@@ -407,13 +407,13 @@ func TestOnComplete_HostCallError_PartialWorldNotPersisted(t *testing.T) {
 		},
 		States: map[string]*app.State{
 			"init": {
-				View: "init",
+				View: app.LegacyView("init"),
 				On: map[string][]app.Transition{
 					"enter": {{Target: "lobby"}},
 				},
 			},
 			"lobby": {
-				View: "lobby",
+				View: app.LegacyView("lobby"),
 				OnEnter: []app.Effect{
 					{
 						Invoke:     "host.test.echo",
@@ -502,12 +502,12 @@ func TestSubmitDirect_TerminalStateStopsListener(t *testing.T) {
 		},
 		States: map[string]*app.State{
 			"start": {
-				View: "start",
+				View: app.LegacyView("start"),
 				On: map[string][]app.Transition{
 					"finish": {{Target: "done"}},
 				},
 			},
-			"done": {Terminal: true, View: "done"},
+			"done": {Terminal: true, View: app.LegacyView("done")},
 		},
 	}
 

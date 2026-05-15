@@ -50,23 +50,28 @@ states:
       # ── idle: pre-draft. propose_purchase drafts; leave_store departs.
       idle:
         description: "At Matt's counter — propose a purchase or leave."
-        view: |
-          Matt's General Store. Stock up before you head out — once you
-          leave Independence there's no road back, only forts with markup.
-
-          Cash:      ${{ world.money }}
-          Oxen:      {{ world.oxen }}    ($40 / yoke)
-          Food:      {{ world.food_lbs }} lbs  ($0.20 / lb)
-          Bullets:   {{ world.bullets }}    ($2.00 / box of 20)
-          Clothing:  {{ world.clothing_sets }}  ($10.00 / set)
-          Spare wheels:  {{ world.spare_wheels }}  ($10.00 each)
-          Spare axles:   {{ world.spare_axles }}   ($10.00 each)
-          Spare tongues: {{ world.spare_tongues }} ($10.00 each)
-
-          Actions:
-            - propose_purchase items=... total_cost=...
-              (auto-accepts when total_cost < $5; otherwise review/refine)
-            - leave the store          (requires >= 2 oxen and >= 200 lbs food)
+        # Proposal §5.4 — stock readout via the shared partial. The
+        # inventory.pongo include is the canonical "what's in the
+        # wagon" table used here AND in forts (proposal §6 — re-use
+        # mentioned). Authoring the table once and including it twice
+        # means a price/column tweak touches one file.
+        view:
+          extends: "base"
+          blocks:
+            body:
+              - prose: >
+                  Matt's General Store. Stock up before you head out — once
+                  you leave Independence there's no road back, only forts
+                  with markup.
+              - code: "{% include \"partials/inventory.pongo\" %}"
+            choices:
+              - heading: "Actions"
+              - list:
+                  items:
+                    - label: "propose_purchase items=… total_cost=…"
+                      hint:  "auto-accepts when total_cost < $5; otherwise review/refine"
+                    - label: "leave the store"
+                      hint:  "requires ≥ 2 oxen and ≥ 200 lbs food"
         on:
           propose_purchase:
             # Auto-accept tiny baskets straight to done, per policy
@@ -147,14 +152,28 @@ states:
       # ── reviewing: a draft is in hand. accept / refine / cancel.
       reviewing:
         description: "Matt reads back the order."
-        view: |
-          Matt sets the slate on the counter, thumbs down the column, looks up.
-
-          "Let's see now — {{ world.proposal_items }}. {{ world.proposal_total_cost }} dollars even.
-           You'd have ${{ world.money - world.proposal_total_cost }} left in your pouch. That right?"
-
-          Tell him: accept_purchase to take it, refine_purchase to change a line,
-                    cancel_purchase to walk it back, or look to read it over again.
+        view:
+          extends: "base"
+          blocks:
+            body:
+              - prose: "Matt sets the slate on the counter, thumbs down the column, looks up."
+              - prose: >
+                  "Let's see now — {{ world.proposal_items }}.
+                  {{ world.proposal_total_cost }} dollars even. You'd have
+                  ${{ world.money - world.proposal_total_cost }} left in
+                  your pouch. That right?"
+            choices:
+              - heading: "Actions"
+              - list:
+                  items:
+                    - label: "accept_purchase"
+                      hint:  "take it"
+                    - label: "refine_purchase"
+                      hint:  "change a line"
+                    - label: "cancel_purchase"
+                      hint:  "walk it back"
+                    - label: "look"
+                      hint:  "read the slate again"
         relevant_world: [proposal_items, proposal_total_cost, money, proposal_refine_count]
         on:
           accept_purchase:
@@ -223,12 +242,24 @@ states:
               phase_id:  "general_store_done_{{ world.proposal_items }}_{{ world.proposal_total_cost }}"
               title:     "Wagon loaded at Independence"
               body:      "Bought {{ world.proposal_items }} for ${{ world.proposal_total_cost }} at Matt's. ${{ world.money }} cash on hand, {{ world.oxen }} oxen yoked, {{ world.food_lbs }} lbs of food in the wagon."
-        view: |
-          Matt slides the parcel across the boards and looks up over his spectacles.
-          "{{ world.proposal_items }}. That'll do you. ${{ world.money }} left in your pouch."
-
-          Anything else you want off the shelves? Tell him repeat_purchase. Otherwise
-          leave_store and he'll wave you out the door. look reads the counter again.
+        view:
+          extends: "base"
+          blocks:
+            body:
+              - prose: >
+                  Matt slides the parcel across the boards and looks up
+                  over his spectacles. "{{ world.proposal_items }}.
+                  That'll do you. ${{ world.money }} left in your pouch."
+            choices:
+              - heading: "Actions"
+              - list:
+                  items:
+                    - label: "repeat_purchase"
+                      hint:  "ask Matt for something else off the shelves"
+                    - label: "leave_store"
+                      hint:  "head out onto the road west"
+                    - label: "look"
+                      hint:  "read the counter again"
         relevant_world: [proposal_items, proposal_total_cost, money, oxen, food_lbs]
         on:
           repeat_purchase:

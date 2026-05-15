@@ -4,7 +4,9 @@ package orchestrator
 
 import (
 	"kitsoki/internal/app"
+	"kitsoki/internal/expr"
 	"kitsoki/internal/intent"
+	"kitsoki/internal/render"
 	"kitsoki/internal/store"
 )
 
@@ -57,7 +59,22 @@ type TurnOutcome struct {
 	// Mode indicates what happened.
 	Mode OutcomeMode
 	// View is the rendered narrative (set on Transitioned/Completed/Rejected).
+	// Pre-rendered at the machine's stable width (80); the TUI uses this
+	// when no typed view is available. When TypedView is non-nil the
+	// TUI re-renders it at the live viewport width on every resize
+	// (Issue 4 / option (a) — see internal/tui/transcript.go).
 	View string
+	// TypedView, RenderEnv, and Renderer carry the typed-view payload
+	// for views that survived as typed elements (no extends, no
+	// template_file). Populated by machine.renderView when the state's
+	// view shape is element-array — the proposal §4's "templating
+	// happens before element layout" pipeline. TUI inspects TypedView
+	// to decide whether to use AppendTurnTyped (lipgloss reflow on
+	// resize) or fall back to AppendTurn with View (Glamour at
+	// width-time).
+	TypedView *app.View          `json:"-"`
+	RenderEnv expr.Env           `json:"-"`
+	Renderer  *render.AppRenderer `json:"-"`
 	// NewState is the state after the turn (unchanged on Clarify/Rejected guard-fail).
 	NewState app.StatePath
 	// Events are the events appended to the store this turn.

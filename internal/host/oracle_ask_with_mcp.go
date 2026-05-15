@@ -27,6 +27,7 @@ import (
 
 	"kitsoki/internal/expr"
 	kitsokimcp "kitsoki/internal/mcp"
+	"kitsoki/internal/render"
 )
 
 // kitsokiBinaryEnv overrides the path to the kitsoki binary used to spawn the
@@ -322,7 +323,7 @@ func OracleAskWithMCPHandler(ctx context.Context, args map[string]any) (Result, 
 	if templateArgs == nil {
 		templateArgs = args
 	}
-	rendered, err := expr.Render(string(raw), expr.Env{Args: templateArgs})
+	rendered, err := render.Pongo(string(raw), expr.Env{Args: templateArgs})
 	if err != nil {
 		return Result{Error: fmt.Sprintf("host.oracle.ask_with_mcp: render prompt %q: %v", resolved, err)}, nil
 	}
@@ -396,7 +397,7 @@ func runOracleAskWithMCPViaAgent(ctx context.Context, agentName string, args map
 	if templateArgs == nil {
 		templateArgs = map[string]any{}
 	}
-	rendered, rerr := expr.Render(ag.SystemPrompt, expr.Env{Args: templateArgs})
+	rendered, rerr := render.Pongo(ag.SystemPrompt, expr.Env{Args: templateArgs})
 	if rerr != nil {
 		return Result{Error: fmt.Sprintf("host.oracle.ask_with_mcp: render agent %q SystemPrompt: %v", agentName, rerr)}, nil
 	}
@@ -554,7 +555,7 @@ func runOracleAskWithMCPWithChat(ctx context.Context, cs ChatStore, chatID, rend
 //
 // Mixing the two yields claude's "Session ID … is already in use" error.
 func oracleAskWithMCPCore(ctx context.Context, rendered, resolvedPrompt string, args map[string]any, _ any, claudeSessionID string, claudeSessionMinted bool) (Result, error) {
-	bin, err := resolveOracleBin()
+	bin, err := resolveOracleBin(ctx)
 	if err != nil {
 		return Result{Error: err.Error()}, nil
 	}

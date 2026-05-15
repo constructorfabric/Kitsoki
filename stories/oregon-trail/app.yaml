@@ -355,13 +355,26 @@ imports:
       states:
         scouting:
           description: "A scout rides ahead to look the trail over."
-          view: |
-            {{ world.scouting_intel }}
-
-            The scout reins beside the wagon. Party: {{ world.party_alive }} alive,
-            strongbox: ${{ world.party_money }}. Threat ahead: {{ world.threat_level }}/3.
-
-            Actions: scout, proceed, look.
+          # Override block for frontier_event.scouting (an imported
+          # sub-story state). Authored as a typed view; resolves against
+          # the importer's per-app renderer at fold time, so `extends:
+          # "base"` would target oregon-trail's base.pongo even though
+          # the state itself lives in frontier_event. We use the plain
+          # element-array form to keep the override self-contained.
+          view:
+            - prose: "{{ world.scouting_intel }}"
+            - prose: "The scout reins beside the wagon."
+            - kv:
+                pairs:
+                  Party:        "{{ world.party_alive }} alive"
+                  Strongbox:    "${{ world.party_money }}"
+                  Threat ahead: "{{ world.threat_level }}/3"
+            - heading: "Actions"
+            - list:
+                items:
+                  - "scout"
+                  - "proceed"
+                  - "look"
           relevant_world: [party_alive, party_money, threat_level, scouting_intel, scout_finding]
           on_enter:
             - invoke: iface.narrator.announce

@@ -132,12 +132,32 @@ imports:
 states:
   scouting:
     description: "Scout the trail ahead before pressing into the unknown."
-    view: |
-      Scout returns. {{ world.scouting_intel }}
-      Party: {{ world.party_alive }} alive, ${{ world.party_money }} in the strongbox.
-      Threat ahead: {{ world.threat_level }}/3.
-
-      Actions: scout, proceed, look.
+    # extends: "base" — when frontier_event runs standalone the per-app
+    # AppRenderer resolves this against stories/frontier_event/views/base.pongo.
+    # When frontier_event is imported into a host (oregon-trail), the host's
+    # AppRenderer wins, so the room composes into the host's base layout via
+    # the shared block-name convention (status / heading / body / choices / footer).
+    view:
+      extends: "base"
+      blocks:
+        heading:
+          - heading: "Scouting the trail"
+        body:
+          - prose: "Scout returns. {{ world.scouting_intel }}"
+          - prose: "Trail dust ahead — riders on the horizon."
+            when: "world.scout_finding != ''"
+          - kv:
+              pairs:
+                Party:   "{{ world.party_alive }} alive"
+                Purse:   "${{ world.party_money }} in the strongbox"
+                Threat:  "{{ world.threat_level }}/3 ahead"
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - { label: "scout",   hint: "send a scout ahead" }
+                - { label: "proceed", hint: "press on into whatever waits" }
+                - { label: "look",    hint: "look around" }
     relevant_world: [party_alive, party_money, threat_level, scouting_intel, scout_finding]
     on_enter:
       - invoke: iface.narrator.announce

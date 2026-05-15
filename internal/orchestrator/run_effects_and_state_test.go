@@ -190,13 +190,13 @@ func TestOnComplete_EmitIntent_FollowsThrough(t *testing.T) {
 		},
 		States: map[string]*app.State{
 			"idle": {
-				View: "idle",
+				View: app.LegacyView("idle"),
 				On: map[string][]app.Transition{
 					"start": {{Target: "working"}},
 				},
 			},
 			"working": {
-				View: "working",
+				View: app.LegacyView("working"),
 				OnEnter: []app.Effect{
 					{
 						Invoke:     "host.bg.work",
@@ -212,7 +212,7 @@ func TestOnComplete_EmitIntent_FollowsThrough(t *testing.T) {
 					"recovered": {{Target: "recovered_landing"}},
 				},
 			},
-			"recovered_landing": {Terminal: true, View: "recovered_landing"},
+			"recovered_landing": {Terminal: true, View: app.LegacyView("recovered_landing")},
 		},
 	}
 

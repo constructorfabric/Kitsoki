@@ -1,0 +1,22 @@
+{%- comment -%}
+Cloak of Darkness — app-wide layout. Five named blocks (status, heading,
+body, choices, footer); rooms override the ones that vary. Un-overridden
+blocks fall through to the defaults below. The status block's default
+{% include %}s a partial so the cloak readout flows through one file —
+the place a translator edits for a new locale. Shared across the five
+demo apps so cross-app story composition can target consistent block
+names. Phase H wires this; see proposal §3.3 / §5.6.
+
+Whitespace-trim ({%- … -%}) keeps the block-tag scaffolding from
+contributing blank lines; the explicit "\n\n" literals between blocks
+are the inter-block separators.
+{%- endcomment -%}
+{%- block status -%}{%- include "partials/cloak_status.pongo" -%}{%- endblock %}
+
+{% block heading %}{%- endblock %}
+
+{% block body %}{%- endblock %}
+
+{% block choices %}{%- endblock %}
+
+{% block footer %}{%- endblock -%}

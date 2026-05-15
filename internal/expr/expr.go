@@ -89,6 +89,16 @@ type Env struct {
 	// to `item.display`. Unused outside range bodies (nil → expr-lang
 	// resolves accesses against nil per AllowUndefinedVariables).
 	Item any `expr:"item"`
+
+	// State carries the current state's metadata (path, description) for
+	// pongo2 view templates. Authors reference it as `{{ state.path }}`,
+	// `{{ state.description }}` inside views and inside the per-app
+	// `views/base.pongo` shared layout. Deliberately NOT added to the
+	// expr-lang whitelist (allowedRoots) — bare `state` references in
+	// `when:` guards stay rejected. The field is consumed only by
+	// internal/render's pongo bridge (ToContext). View-render call sites
+	// populate it; effect / guard evaluation paths leave it nil.
+	State map[string]any `expr:"state"`
 }
 
 // PopulateMenuHelpers binds the helper functions (available, blocked,

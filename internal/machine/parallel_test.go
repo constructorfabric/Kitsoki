@@ -43,14 +43,14 @@ func makeParallelApp() *app.AppDef {
 		},
 		States: map[string]*app.State{
 			"outside": {
-				View: "Outside",
+				View: app.LegacyView("Outside"),
 				On: map[string][]app.Transition{
 					"enter": {{Target: "world_clock"}},
 				},
 			},
 			"world_clock": {
 				Type: "parallel",
-				View: "World clock — header.",
+				View: app.LegacyView("World clock — header."),
 				OnEnter: []app.Effect{
 					{Set: map[string]any{"entered_parallel": true}},
 				},
@@ -63,7 +63,7 @@ func makeParallelApp() *app.AppDef {
 						},
 						States: map[string]*app.State{
 							"day": {
-								View: "Calendar: day.",
+								View: app.LegacyView("Calendar: day."),
 								OnEnter: []app.Effect{
 									{Set: map[string]any{"calendar_leaf_entered": true}},
 								},
@@ -80,8 +80,8 @@ func makeParallelApp() *app.AppDef {
 									}},
 								},
 							},
-							"night": {View: "Calendar: night."},
-							"soggy": {View: "Calendar: soggy."},
+							"night": {View: app.LegacyView("Calendar: night.")},
+							"soggy": {View: app.LegacyView("Calendar: soggy.")},
 						},
 					},
 					"weather": {
@@ -89,7 +89,7 @@ func makeParallelApp() *app.AppDef {
 						Initial: "dry",
 						States: map[string]*app.State{
 							"dry": {
-								View: "Weather: dry.",
+								View: app.LegacyView("Weather: dry."),
 								On: map[string][]app.Transition{
 									"make_it_rain": {{
 										Target: "../rain",
@@ -100,7 +100,7 @@ func makeParallelApp() *app.AppDef {
 									}},
 								},
 							},
-							"rain": {View: "Weather: rain."},
+							"rain": {View: app.LegacyView("Weather: rain.")},
 						},
 					},
 				},

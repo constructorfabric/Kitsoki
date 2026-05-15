@@ -3,12 +3,22 @@
 states:
   incident:
     description: "Incident Room — load context, identify changes, mitigate, update stakeholders."
-    view: |
-      Incident Room.
-      Incident: {{ world.incident_title }}
-
-      Options: load incident, identify recent changes, mitigate, update stakeholders,
-               open postmortem, go back.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Incident: "{{ world.incident_title|default:\"(none)\" }}"
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - { label: "load incident",        hint: "pull alert, deploys, dashboards" }
+                - { label: "mitigate",             hint: "rollback / feature flag / scale" }
+                - { label: "update stakeholders",  hint: "post status to #incidents" }
+                - { label: "open postmortem",      hint: "create Confluence doc" }
+                - { label: "go back",              hint: "return to previous room" }
     relevant_world: [incident_title]
     relevant_slots: []
     on:
@@ -36,19 +46,24 @@ states:
 
   incident_loading:
     description: "Loading incident context..."
-    view: |
-      Incident Context:
-
-      [stub] Alert: AuthService P99 latency > 200ms (firing 15 minutes)
-
-      Recent deploys (last 2 hours):
-        - auth-service v2.4.1 deployed 20 min ago (abc1234)
-        - billing-service v1.9.0 deployed 3 hours ago (def5678)
-
-      Related dashboards:
-        - auth-service: P99=245ms (elevated), error_rate=0.2% (normal)
-
-      Likely cause: auth-service deploy 20 min ago introduced latency regression.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Incident context"
+          - kv:
+              pairs:
+                Alert: "AuthService P99 latency > 200ms (firing 15 minutes)"
+          - heading: "Recent deploys (last 2 hours)"
+          - list:
+              items:
+                - { label: "auth-service v2.4.1",   hint: "deployed 20 min ago (abc1234)" }
+                - { label: "billing-service v1.9.0",hint: "deployed 3 hours ago (def5678)" }
+          - heading: "Related dashboards"
+          - list:
+              items:
+                - { label: "auth-service", hint: "P99=245ms (elevated), error_rate=0.2% (normal)" }
+          - prose: "Likely cause: auth-service deploy 20 min ago introduced latency regression."
     relevant_world: [incident_title]
     relevant_slots: []
     on_enter:
@@ -75,19 +90,23 @@ states:
 
   incident_mitigating:
     description: "Applying mitigation..."
-    view: |
-      Applying mitigation for: {{ world.incident_title }}
-
-      [stub] Mitigation options:
-        A. Rollback auth-service to v2.4.0
-        B. Toggle feature flag auth.new_validation_path=false
-        C. Scale auth-service pods 3 → 6
-
-      [stub] Applying: Rollback auth-service to v2.4.0...
-        Status: ROLLING BACK
-        ETA: 2 minutes
-
-      Monitor the dashboard for recovery.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "Applying mitigation for: {{ world.incident_title }}"
+          - heading: "Mitigation options"
+          - list:
+              items:
+                - { label: "A. Rollback auth-service to v2.4.0" }
+                - { label: "B. Toggle feature flag auth.new_validation_path=false" }
+                - { label: "C. Scale auth-service pods 3 → 6" }
+          - prose: "[stub] Applying: Rollback auth-service to v2.4.0..."
+          - kv:
+              pairs:
+                Status: "ROLLING BACK"
+                ETA:    "2 minutes"
+          - prose: "Monitor the dashboard for recovery."
     relevant_world: [incident_title]
     relevant_slots: []
     on_enter:
@@ -111,15 +130,18 @@ states:
 
   incident_updating_stakeholders:
     description: "Posting status to incident Slack channel..."
-    view: |
-      Status posted to #incidents:
-
-      [stub] Slack update:
-        "🔴 INCIDENT: AuthService latency elevated (245ms, threshold 200ms)
-         Cause: likely auth-service v2.4.1 deploy (20 min ago)
-         Mitigation: rolling back to v2.4.0 (ETA 2 min)
-         Owner: on-call engineer
-         Status: MITIGATING"
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Status posted to #incidents"
+          - code: |
+              [stub] Slack update:
+                "🔴 INCIDENT: AuthService latency elevated (245ms, threshold 200ms)
+                 Cause: likely auth-service v2.4.1 deploy (20 min ago)
+                 Mitigation: rolling back to v2.4.0 (ETA 2 min)
+                 Owner: on-call engineer
+                 Status: MITIGATING"
     relevant_world: [incident_title]
     relevant_slots: []
     on_enter:
@@ -143,22 +165,27 @@ states:
 
   incident_postmortem:
     description: "Creating postmortem document..."
-    view: |
-      Postmortem created for: {{ world.incident_title }}
-
-      [stub] Postmortem draft (Confluence):
-        Title: AuthService Latency Regression 2024-01-15
-        Timeline:
-          10:05: auth-service v2.4.1 deployed
-          10:25: Alert fired: P99 latency > 200ms
-          10:35: Rollback initiated
-          10:37: Rollback complete, latency recovered
-
-        Impact: ~30 min elevated latency, no data loss
-        Root cause: TBD (investigation in progress)
-        Action items: TBD
-
-      Document saved to Confluence.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "Postmortem created for: {{ world.incident_title }}"
+          - heading: "Postmortem draft (Confluence)"
+          - kv:
+              pairs:
+                Title: "AuthService Latency Regression 2024-01-15"
+          - heading: "Timeline"
+          - code: |
+              10:05: auth-service v2.4.1 deployed
+              10:25: Alert fired: P99 latency > 200ms
+              10:35: Rollback initiated
+              10:37: Rollback complete, latency recovered
+          - kv:
+              pairs:
+                Impact:       "~30 min elevated latency, no data loss"
+                Root cause:   "TBD (investigation in progress)"
+                Action items: "TBD"
+          - prose: "Document saved to Confluence."
     relevant_world: [incident_title]
     relevant_slots: []
     on:
@@ -174,8 +201,13 @@ states:
 
   incident_error:
     description: "Incident operation failed."
-    view: |
-      Incident error: {{ world.last_error }}
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Error: "{{ world.last_error }}"
     relevant_world: [last_error]
     relevant_slots: []
     on:

@@ -42,12 +42,15 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"sort"
 	"strings"
 
 	"kitsoki/internal/app"
 	"kitsoki/internal/expr"
 	"kitsoki/internal/intent"
+	"kitsoki/internal/render"
+	"kitsoki/internal/render/elements"
 	"kitsoki/internal/store"
 	"kitsoki/internal/trace"
 	"kitsoki/internal/world"
@@ -120,6 +123,22 @@ type TurnResult struct {
 	// ValidationError is set when the intent was rejected (no transition fired).
 	// In that case NewState equals the input state and World is unchanged.
 	ValidationError *intent.ValidationError `json:"validation_error,omitempty"`
+	// TypedView is the parsed app.View used to produce View, when the
+	// state's view payload is the typed element-array form (Issue 4 /
+	// option (a) in the brief). Nil for legacy string views, for
+	// extends:/template_file: forms, and for empty views. The
+	// orchestrator copies it onto TurnOutcome so the TUI can re-render
+	// at the live viewport width on resize.
+	TypedView *app.View `json:"-"`
+	// RenderEnv is the expr.Env captured at the render seam. Carried
+	// alongside TypedView so the TUI's resize-time re-render uses the
+	// same world / slots / menu snapshot the machine saw.
+	RenderEnv expr.Env `json:"-"`
+	// Renderer is the per-namespace AppRenderer for the new state's
+	// alias (Issue 3). Carried alongside TypedView so leaf-string
+	// {% include %} / {% extends %} inside the typed view's elements
+	// resolve against the right per-app views/ tree on re-render.
+	Renderer *render.AppRenderer `json:"-"`
 }
 
 // Machine is the pure deterministic core (§12.1).
@@ -240,6 +259,18 @@ type machineImpl struct {
 	appDef *app.AppDef
 	states map[string]*compiledState // dot-separated path -> compiled state
 	logger *slog.Logger
+	// renderer is the host-app renderer (rooted at appDef.BaseDir/views/).
+	// Used when a state path has no alias prefix or its alias has no
+	// dedicated sub-story renderer.
+	renderer *render.AppRenderer
+	// importRenderers maps an import alias (the first segment of a state
+	// path, e.g. "bandits", "frontier") to a pongo2 renderer rooted at
+	// that sub-story's <BaseDir>/views/. Built by New from the AppDef's
+	// ImportWrappers metadata so child-app states that ship their own
+	// extends:/include: targets resolve against the child's own views/
+	// (Issue 3). A state path with no alias prefix or an alias not in
+	// this map falls back to renderer.
+	importRenderers map[string]*render.AppRenderer
 }
 
 // MachineOption is a functional option for Machine construction.
@@ -254,15 +285,67 @@ func WithMachineLogger(l *slog.Logger) MachineOption {
 	}
 }
 
+// WithMachineRenderer overrides the default per-app renderer. Used by
+// tests that want a cached renderer (the default New builds an uncached
+// renderer per ideas.md L37's "edits take effect without restart"
+// goal). Production call sites should leave the default.
+func WithMachineRenderer(r *render.AppRenderer) MachineOption {
+	return func(m *machineImpl) {
+		if r != nil {
+			m.renderer = r
+		}
+	}
+}
+
 // New creates a new Machine from a validated AppDef.
 // It pre-compiles all guards, view templates, and guard hints.
 // Returns an error (via errors.Join) listing every compilation failure.
 // Returns an error if any parallel state is malformed (proposal §9.4).
 func New(def *app.AppDef, opts ...MachineOption) (Machine, error) {
 	m := &machineImpl{
-		appDef: def,
-		states: make(map[string]*compiledState),
-		logger: slog.Default(),
+		appDef:          def,
+		states:          make(map[string]*compiledState),
+		logger:          slog.Default(),
+		importRenderers: map[string]*render.AppRenderer{},
+	}
+	// Build the per-app pongo2 renderer rooted at <BaseDir>/views/.
+	// Uncached by default so app-author edits to .pongo files take effect
+	// without a restart (ideas.md L37). The renderer is tolerant of a
+	// missing views/ directory — apps without templates still build a
+	// renderer that handles inline rendering via the fast path
+	// identically to the package-level render.Pongo function.
+	//
+	// When def has no BaseDir (the LoadBytes() path used by tests and
+	// the inspect/test_intents commands) we still build a renderer; the
+	// empty appDir means the renderer's loader is a no-op, but inline
+	// {{ … }} expansion via Render() works unchanged.
+	if def != nil {
+		r, rerr := render.NewAppRenderer(def.BaseDir)
+		if rerr != nil {
+			// Construction errors here are limited to "views path is a
+			// file, not a directory" — surface them at machine-build
+			// time rather than at the first render.
+			return nil, fmt.Errorf("machine.New: build renderer for %q: %w", def.BaseDir, rerr)
+		}
+		m.renderer = r
+
+		// Per-import-alias renderers. Each imported child manifest may
+		// ship its own views/ tree (e.g. stories/robbery/views/base.pongo);
+		// states folded under that alias (`bandits.encounter`, ...) must
+		// resolve `extends: "base"` against the *child's* views/, not the
+		// host's. ImportWrappers carries SourcePath (the child's app.yaml);
+		// the directory of that path is the child's BaseDir.
+		for alias, w := range def.ImportWrappers {
+			if w == nil || w.SourcePath == "" {
+				continue
+			}
+			childDir := filepath.Dir(w.SourcePath)
+			cr, cerr := render.NewAppRenderer(childDir)
+			if cerr != nil {
+				return nil, fmt.Errorf("machine.New: build renderer for import alias %q at %q: %w", alias, childDir, cerr)
+			}
+			m.importRenderers[alias] = cr
+		}
 	}
 	for _, opt := range opts {
 		opt(m)
@@ -295,7 +378,7 @@ func compileStatesInto(prefix string, states map[string]*app.State, dst map[stri
 		cs := &compiledState{s: s, on: make(map[string][]compiledTransition)}
 
 		// Compile view template.
-		if s.View != "" {
+		if !s.View.IsEmpty() {
 			// Views are rendered with Render(); no pre-compilation needed since
 			// our custom template parser is lazy. We store nil and call Render() at runtime.
 			// (Pre-compilation is possible but the Render function handles caching internally.)
@@ -613,7 +696,7 @@ func (m *machineImpl) Turn(ctx context.Context, cur app.StatePath, w world.World
 	// Target may be a template expression like "{{ world.prev_state }}"; evaluate it first.
 	rawTarget := winningTr.tr.Target
 	if strings.Contains(rawTarget, "{{") {
-		rendered, renderErr := expr.Render(rawTarget, env)
+		rendered, renderErr := render.Pongo(rawTarget, env)
 		if renderErr != nil {
 			return TurnResult{}, fmt.Errorf("render transition target %q: %w", rawTarget, renderErr)
 		}
@@ -743,12 +826,21 @@ func (m *machineImpl) Turn(ctx context.Context, cur app.StatePath, w world.World
 	//    forcing authors to scatter `?? "(pending)"` defaults purely to
 	//    survive a render the user will never see.  Skip the render in
 	//    that case; the orchestrator owns the final view.
-	var renderedView string
+	var (
+		renderedView   string
+		typedView      *app.View
+		typedRenderEnv expr.Env
+		typedRenderer  *render.AppRenderer
+	)
 	if !hostCallsWillBind(hostCalls) {
 		if par := parseParallel(finalState); par.IsParallel {
+			// Parallel composition stays on the legacy single-string
+			// path. Typed-view reflow for parallel composition is out
+			// of scope for this pass — the parallel view stitches
+			// multiple region views together at machine-time.
 			renderedView, err = m.renderViewParallel(winningTr.tr, par.Root, sortedRegionNames(m.states[par.Root].s.States), finalState, newWorld, env, saySB.String(), false, finalState)
 		} else {
-			renderedView, err = m.renderView(winningTr.tr, finalState, newWorld, env, saySB.String())
+			renderedView, typedView, typedRenderEnv, typedRenderer, err = m.renderViewWithTyped(winningTr.tr, finalState, newWorld, env, saySB.String())
 		}
 		if err != nil {
 			return TurnResult{}, err
@@ -780,6 +872,9 @@ func (m *machineImpl) Turn(ctx context.Context, cur app.StatePath, w world.World
 		Menu:      newMenu,
 		Events:    events,
 		HostCalls: hostCalls,
+		TypedView: typedView,
+		RenderEnv: typedRenderEnv,
+		Renderer:  typedRenderer,
 	}, nil
 }
 
@@ -1247,7 +1342,7 @@ func (m *machineImpl) applyEffectsTraced(ctx context.Context, effects []app.Effe
 			}
 
 		case eff.Say != "":
-			text, err := expr.Render(eff.Say, env)
+			text, err := render.Pongo(eff.Say, env)
 			if err != nil {
 				return world.World{}, nil, saySB, nil, nil, fmt.Errorf("effect say: %w", err)
 			}
@@ -1464,7 +1559,7 @@ func (m *machineImpl) resolveInitial(path string, env expr.Env) (string, error) 
 		return path, nil
 	}
 	// Evaluate initial expression.
-	childName, err := expr.Render(cs.s.Initial, env)
+	childName, err := render.Pongo(cs.s.Initial, env)
 	if err != nil {
 		return "", fmt.Errorf("evaluate initial expression %q: %w", cs.s.Initial, err)
 	}
@@ -1510,7 +1605,7 @@ func (m *machineImpl) applyEffects(effects []app.Effect, w world.World, env expr
 			}
 
 		case eff.Say != "":
-			text, err := expr.Render(eff.Say, env)
+			text, err := render.Pongo(eff.Say, env)
 			if err != nil {
 				return world.World{}, nil, saySB, nil, fmt.Errorf("effect say: %w", err)
 			}
@@ -1678,13 +1773,18 @@ func (m *machineImpl) RenderState(cur app.StatePath, w world.World) (string, err
 		Slots: map[string]any{},
 		World: w.Vars,
 		Menu:  MenuToTemplateMap(m.Menu(cur, w)),
+		State: stateMetaFor(m, cur),
 	}
 	expr.PopulateMenuHelpers(&env)
 	if par := parseParallel(string(cur)); par.IsParallel {
 		// Parallel composition: parent view (if any) + each leaf view.
+		// Each leaf renders with its own State metadata so the per-region
+		// view sees its own `{{ state.path }}` / `{{ state.description }}`.
 		var sb strings.Builder
-		if parCS, ok := m.states[par.Root]; ok && parCS.s != nil && parCS.s.View != "" {
-			v, err := expr.Render(parCS.s.View, env)
+		if parCS, ok := m.states[par.Root]; ok && parCS.s != nil && !parCS.s.View.IsEmpty() {
+			parentEnv := env
+			parentEnv.State = stateMetaFor(m, app.StatePath(par.Root))
+			v, err := m.renderViewBody(parCS.s.View, parentEnv, par.Root)
 			if err != nil {
 				return "", fmt.Errorf("render parallel parent view %q: %w", par.Root, err)
 			}
@@ -1692,10 +1792,12 @@ func (m *machineImpl) RenderState(cur app.StatePath, w world.World) (string, err
 		}
 		for _, leaf := range par.RegionLeaves {
 			cs, ok := m.states[leaf]
-			if !ok || cs.s == nil || cs.s.View == "" {
+			if !ok || cs.s == nil || cs.s.View.IsEmpty() {
 				continue
 			}
-			v, err := expr.Render(cs.s.View, env)
+			leafEnv := env
+			leafEnv.State = stateMetaFor(m, app.StatePath(leaf))
+			v, err := m.renderViewBody(cs.s.View, leafEnv, leaf)
 			if err != nil {
 				return "", fmt.Errorf("render region leaf view %q: %w", leaf, err)
 			}
@@ -1707,10 +1809,28 @@ func (m *machineImpl) RenderState(cur app.StatePath, w world.World) (string, err
 		return sb.String(), nil
 	}
 	cs, ok := m.states[string(cur)]
-	if !ok || cs.s == nil || cs.s.View == "" {
+	if !ok || cs.s == nil || cs.s.View.IsEmpty() {
 		return "", nil
 	}
-	return expr.Render(cs.s.View, env)
+	return m.renderViewBody(cs.s.View, env, string(cur))
+}
+
+// stateMetaFor returns the `state` metadata map populated for pongo
+// view templates: {"path": <state path>, "description": <state desc>}.
+// Authors reference `{{ state.path }}` / `{{ state.description }}` in
+// view bodies and shared base.pongo layouts (e.g. cloak/oregon-trail's
+// default heading block is `{{ state.description }}`). Missing or
+// undeclared states surface an empty map so undefined references
+// render as empty string rather than erroring.
+func stateMetaFor(m *machineImpl, p app.StatePath) map[string]any {
+	out := map[string]any{
+		"path":        string(p),
+		"description": "",
+	}
+	if cs, ok := m.states[string(p)]; ok && cs.s != nil {
+		out["description"] = cs.s.Description
+	}
+	return out
 }
 
 // RunEffects walks effects and returns the new world, host calls collected,
@@ -1804,11 +1924,151 @@ func resolveEffectValue(v any, env expr.Env, w world.World) (any, error) {
 	}
 }
 
+// rendererFor returns the loader-aware AppRenderer keyed by the first
+// path segment of statePath. If the segment matches an import alias
+// (e.g. `bandits.encounter` → "bandits"), the sub-story renderer is
+// returned so `extends: "base"` / `{% include %}` in that state's view
+// resolve against the *child's* views/ directory. Host-level states
+// and unknown aliases fall back to the host renderer.
+//
+// Issue 3: imported sub-stories ship their own views/ tree (e.g.
+// stories/robbery/views/base.pongo) which would otherwise be dead
+// code under a single host-rooted renderer.
+func (m *machineImpl) rendererFor(statePath string) *render.AppRenderer {
+	if statePath == "" {
+		return m.renderer
+	}
+	// First segment is the alias under our flat-folded namespace.
+	// Parallel-encoded paths look like "$par(root|r1=...|r2=...)"; the
+	// `$par(` token is host-level (no alias). Fall through to the
+	// host renderer for those.
+	if strings.HasPrefix(statePath, "$par(") {
+		return m.renderer
+	}
+	idx := strings.IndexByte(statePath, '.')
+	first := statePath
+	if idx >= 0 {
+		first = statePath[:idx]
+	}
+	if r, ok := m.importRenderers[first]; ok && r != nil {
+		return r
+	}
+	return m.renderer
+}
+
+// renderViewBody renders one view payload — legacy scalar string, the
+// typed {extends, blocks} block-inheritance form, an element array, or
+// a standalone template_file: reference — through an app-scoped
+// AppRenderer. The renderer is selected by rendererFor(statePath) so
+// imported sub-stories resolve {% extends %} / {% include %} against
+// their own views/ directory (Issue 3).
+//
+// For the element-array form (no extends, no template_file), the
+// dispatcher in internal/render/elements is invoked at the stable
+// blockRenderWidth default. The TUI re-renders typed views at the
+// real viewport width via the typed-view path on TurnOutcome
+// (Issue 4 / option (a)); the pre-rendered text here is the
+// width-80 fallback for trace dumps, OneShot, RenderState (used by
+// teleport/oncomplete) and any caller that bypasses the typed seam.
+func (m *machineImpl) renderViewBody(v app.View, env expr.Env, statePath string) (string, error) {
+	if v.IsEmpty() {
+		return "", nil
+	}
+	rr := m.rendererFor(statePath)
+
+	switch {
+	case v.TemplateFile != "":
+		if rr == nil {
+			return "", fmt.Errorf("renderViewBody: template_file %q requires a per-app renderer; none configured", v.TemplateFile)
+		}
+		return rr.RenderFile(v.TemplateFile, env)
+
+	case v.Extends != "":
+		if rr == nil {
+			return "", fmt.Errorf("renderViewBody: extends %q requires a per-app renderer; none configured", v.Extends)
+		}
+		// Pre-render each block body through the elements dispatcher
+		// so block content honours typed-element semantics (when:
+		// guards, leaf-string pongo substitution, list/kv layout).
+		blocks, err := m.renderBlocks(v.Blocks, env, rr)
+		if err != nil {
+			return "", err
+		}
+		return rr.RenderExtended(v.Extends, blocks, env)
+
+	case v.Source != "":
+		// Legacy scalar string form. Route through the per-app
+		// renderer so {% extends %} / {% include %} inside the source
+		// resolve against <appDir>/views/. The renderer's fast-path
+		// (no delimiters → return verbatim) and inline FromString
+		// behaviour are identical to the package-level render.Pongo,
+		// so apps without a views/ directory render unchanged.
+		if rr != nil {
+			return rr.Render(v.Source, env)
+		}
+		return render.Pongo(v.Source, env)
+
+	case len(v.Elements) > 0:
+		// Pure element-array form (no extends, no template_file).
+		// Dispatch the typed-element pipeline at the stable
+		// blockRenderWidth default. The TUI re-renders the same View
+		// at viewport width via TurnOutcome.TypedView (Issue 4 / 2).
+		return elements.RenderAll(v, env, blockRenderWidth, elements.IdentityGlamour, rr)
+	}
+
+	return "", nil
+}
+
+// blockRenderWidth is the layout width used when rendering typed
+// elements outside the TUI viewport seam. The machine has no
+// viewport awareness; tests, trace dumps, and OneShot output bind to
+// this default. The TUI re-renders typed views at the real terminal
+// width via the typed-view path on TurnOutcome (Issue 4).
+const blockRenderWidth = 80
+
+// renderBlocks pre-renders each named block's element array into a
+// flat string keyed by block name. Each block is rendered with an
+// "identity" glamour callback (the post-pongo source returned
+// verbatim) — the wrapping template's base layout is the only entity
+// allowed to apply terminal styling, and it does so by re-parsing the
+// composite via the AppRenderer. The rr argument carries the per-app
+// renderer for leaf-substitution (Issue 1).
+func (m *machineImpl) renderBlocks(blocks map[string][]app.ViewElement, env expr.Env, rr *render.AppRenderer) (map[string]string, error) {
+	if len(blocks) == 0 {
+		return map[string]string{}, nil
+	}
+	out := make(map[string]string, len(blocks))
+	for name, els := range blocks {
+		// Wrap the block's elements as a synthetic View so we can
+		// reuse the dispatcher. Width 80 is the orchestrator-side
+		// default; lipgloss-aware reflow happens later in the TUI
+		// pipeline. The block body is plain text at this seam.
+		sub := app.View{Elements: els}
+		body, err := elements.RenderAll(sub, env, blockRenderWidth, elements.IdentityGlamour, rr)
+		if err != nil {
+			return nil, fmt.Errorf("render block %q: %w", name, err)
+		}
+		out[name] = body
+	}
+	return out, nil
+}
+
 // renderView computes the view text for a turn per §7.6 precedence:
 //   - Transition view wins (if declared).
 //   - Otherwise, target state view.
 //   - If say text exists, prepend it.
 func (m *machineImpl) renderView(tr app.Transition, targetPath string, w world.World, env expr.Env, sayText string) (string, error) {
+	text, _, _, _, err := m.renderViewWithTyped(tr, targetPath, w, env, sayText)
+	return text, err
+}
+
+// renderViewWithTyped is renderView with the typed payload exposed for
+// the TUI's resize-time re-render path (Issue 4 / option (a)). It
+// returns the rendered text (identical to renderView), plus the typed
+// View used (nil for legacy/extends/template_file shapes), the
+// renderEnv captured at the seam, and the per-namespace AppRenderer
+// (Issue 3).
+func (m *machineImpl) renderViewWithTyped(tr app.Transition, targetPath string, w world.World, env expr.Env, sayText string) (string, *app.View, expr.Env, *render.AppRenderer, error) {
 	// Build a new env with the updated world for rendering. Populate
 	// env.Menu (and the helper-fn closures) so view templates can render
 	// the "what can I do right now" surface inline — primary/blocked
@@ -1821,36 +2081,61 @@ func (m *machineImpl) renderView(tr app.Transition, targetPath string, w world.W
 		Event: env.Event,
 		Run:   env.Run,
 		Menu:  MenuToTemplateMap(m.Menu(app.StatePath(targetPath), w)),
+		State: stateMetaFor(m, app.StatePath(targetPath)),
 	}
 	expr.PopulateMenuHelpers(&renderEnv)
 
-	var viewText string
+	var (
+		viewText string
+		typed    *app.View
+	)
 
-	if tr.View != "" {
-		v, err := expr.Render(tr.View, renderEnv)
+	switch {
+	case !tr.View.IsEmpty():
+		v, err := m.renderViewBody(tr.View, renderEnv, targetPath)
 		if err != nil {
-			return "", fmt.Errorf("render transition view: %w", err)
+			return "", nil, renderEnv, nil, fmt.Errorf("render transition view: %w", err)
 		}
 		viewText = v
-	} else {
+		if typedViewIsElementArray(tr.View) {
+			vv := tr.View
+			typed = &vv
+		}
+	default:
 		// Use target state's view.
 		cs, ok := m.states[targetPath]
-		if ok && cs.s.View != "" {
-			v, err := expr.Render(cs.s.View, renderEnv)
+		if ok && !cs.s.View.IsEmpty() {
+			v, err := m.renderViewBody(cs.s.View, renderEnv, targetPath)
 			if err != nil {
-				return "", fmt.Errorf("render state view for %q: %w", targetPath, err)
+				return "", nil, renderEnv, nil, fmt.Errorf("render state view for %q: %w", targetPath, err)
 			}
 			viewText = v
+			if typedViewIsElementArray(cs.s.View) {
+				vv := cs.s.View
+				typed = &vv
+			}
 		}
 	}
 
+	rr := m.rendererFor(targetPath)
+
 	if sayText != "" && viewText != "" {
-		return sayText + "\n\n" + viewText, nil
+		return sayText + "\n\n" + viewText, typed, renderEnv, rr, nil
 	}
 	if sayText != "" {
-		return sayText, nil
+		return sayText, typed, renderEnv, rr, nil
 	}
-	return viewText, nil
+	return viewText, typed, renderEnv, rr, nil
+}
+
+// typedViewIsElementArray reports whether the View is a pure
+// element-array form (no extends, no template_file, no legacy scalar
+// source — just an Elements slice). Only this shape benefits from the
+// TUI's typed-view resize path: extends/template_file render via the
+// pongo2 loader at machine time and have no per-element layout to
+// reflow; legacy strings flow through Glamour.
+func typedViewIsElementArray(v app.View) bool {
+	return v.TemplateFile == "" && v.Extends == "" && v.Source == "" && len(v.Elements) > 0
 }
 
 // ─── Machine.TryGuards ───────────────────────────────────────────────────────

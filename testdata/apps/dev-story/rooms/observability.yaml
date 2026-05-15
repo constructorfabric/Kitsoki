@@ -3,11 +3,21 @@
 states:
   observability_room:
     description: "Observability Room — tail logs, check dashboards, query traces, see alerts."
-    view: |
-      Observability Room.
-      Workspace: {{ world.current_workspace }}
-
-      Options: tail logs, check dashboard, check alerts, go back.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Workspace: "{{ world.current_workspace }}"
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - { label: "tail logs",       hint: "stream logs for a pod/service" }
+                - { label: "check dashboard", hint: "Grafana / metrics" }
+                - { label: "check alerts",    hint: "see firing alerts" }
+                - { label: "go back",         hint: "return to previous room" }
     relevant_world: [current_workspace]
     relevant_slots: []
     on:
@@ -32,17 +42,19 @@ states:
 
   obs_tailing_logs:
     description: "Tailing logs..."
-    view: |
-      Tailing logs for: {{ slots.service }}
-
-      [stub] Log stream (last 10 lines):
-        2024-01-15T10:25:01Z INFO  {{ slots.service }}: request received path=/api/v1/auth method=POST
-        2024-01-15T10:25:01Z DEBUG {{ slots.service }}: token validation started user=u123
-        2024-01-15T10:25:02Z WARN  {{ slots.service }}: token near expiry user=u123 expires_in=4m30s
-        2024-01-15T10:25:02Z INFO  {{ slots.service }}: token refreshed user=u123
-        2024-01-15T10:25:02Z INFO  {{ slots.service }}: request completed status=200 latency=145ms
-
-      Use Ctrl+C equivalent to stop. This view shows last 10 lines (stub).
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Tailing logs for: {{ slots.service }}"
+          - prose: "[stub] Log stream (last 10 lines):"
+          - code: |
+              2024-01-15T10:25:01Z INFO  {{ slots.service }}: request received path=/api/v1/auth method=POST
+              2024-01-15T10:25:01Z DEBUG {{ slots.service }}: token validation started user=u123
+              2024-01-15T10:25:02Z WARN  {{ slots.service }}: token near expiry user=u123 expires_in=4m30s
+              2024-01-15T10:25:02Z INFO  {{ slots.service }}: token refreshed user=u123
+              2024-01-15T10:25:02Z INFO  {{ slots.service }}: request completed status=200 latency=145ms
+          - prose: "Use Ctrl+C equivalent to stop. This view shows last 10 lines (stub)."
     relevant_world: [current_workspace]
     relevant_slots: []
     on_enter:
@@ -66,17 +78,20 @@ states:
 
   obs_dashboard:
     description: "Opening metrics dashboard..."
-    view: |
-      Metrics Dashboard for {{ world.current_workspace }}:
-
-      [stub] Grafana dashboard: auth-service
-        Request rate:    450 req/s (normal)
-        Error rate:      0.2% (normal)
-        P99 latency:     245ms (elevated — threshold 200ms)
-        Token refresh/s: 12 (normal)
-        Active sessions: 1,234
-
-      Alert: P99 latency elevated. Check traces for slow requests.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Metrics dashboard for {{ world.current_workspace }}"
+          - prose: "[stub] Grafana dashboard: auth-service"
+          - kv:
+              pairs:
+                Request rate:    "450 req/s (normal)"
+                Error rate:      "0.2% (normal)"
+                P99 latency:     "245ms (elevated — threshold 200ms)"
+                Token refresh/s: "12 (normal)"
+                Active sessions: "1,234"
+          - prose: "Alert: P99 latency elevated. Check traces for slow requests."
     relevant_world: [current_workspace]
     relevant_slots: []
     on:
@@ -95,16 +110,19 @@ states:
 
   obs_alerts:
     description: "Checking firing alerts..."
-    view: |
-      Active Alerts for {{ world.current_workspace }}:
-
-      [stub] 1 firing alert:
-        WARN: AuthService P99 latency > 200ms
-          Started: 10 minutes ago
-          Value: 245ms
-          Runbook: https://runbooks.internal/auth/latency
-
-      No critical alerts. The latency alert is non-critical.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Active alerts for {{ world.current_workspace }}"
+          - prose: "[stub] 1 firing alert:"
+          - kv:
+              pairs:
+                Alert:    "WARN: AuthService P99 latency > 200ms"
+                Started:  "10 minutes ago"
+                Value:    "245ms"
+                Runbook:  "https://runbooks.internal/auth/latency"
+          - prose: "No critical alerts. The latency alert is non-critical."
     relevant_world: [current_workspace]
     relevant_slots: []
     on_enter:
@@ -132,8 +150,13 @@ states:
 
   obs_error:
     description: "Observability operation failed."
-    view: |
-      Observability error: {{ world.last_error }}
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Error: "{{ world.last_error }}"
     relevant_world: [last_error]
     relevant_slots: []
     on:

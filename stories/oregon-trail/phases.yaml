@@ -119,22 +119,38 @@ phase_templates:
         states:
           traveling:
             description: "Travelling — {{ tpl.from_landmark }} → {{ tpl.to_landmark }}."
-            # The `Forage:` line keys off world.month to make the
-            # seasonal pace modifier visible to the player: rich grass
-            # in may/jun, drying out by aug, gone by nov. This is a
-            # view-only label — the actual pace math lives in the
-            # daylight-modifier expression on continue (which already
-            # bakes in both daylight and forage as a single curve, see
-            # the §8 note in app.yaml).
-            view: |
-              {{ world.month }} {{ world.day }}, {{ world.year }}. Heading for {{ tpl.to_landmark }} ({{ tpl.terrain }}).
-
-              Miles travelled this leg: {{ world.miles_traveled }} / {{ tpl.distance_mi }}.
-              Food: {{ world.food_lbs }} lbs. Oxen: {{ world.oxen }}. Party: {{ world.party_alive }} alive.
-              Pace: {{ world.pace }}. Rations: {{ world.rations }}.
-              Forage: {{ world.month == 'may' || world.month == 'june' ? 'rich' : (world.month == 'april' || world.month == 'july' ? 'fair' : (world.month == 'march' || world.month == 'august' ? 'sparse' : (world.month == 'september' || world.month == 'october' ? 'drying' : 'none — winter'))) }}.
-
-              Actions: continue, set_pace <pace>, set_rations <rations>, look, quit.
+            # The `Forage:` row keys off world.month to surface the
+            # seasonal modifier visible to the player. The actual pace
+            # math lives in the daylight-modifier expression on continue
+            # (which bakes in both daylight and forage as one curve,
+            # §8 note in app.yaml).
+            # Phase-template tpl.X interpolation is unchanged — the
+            # expander substitutes `{{ tpl.distance_mi }}` etc. inside
+            # the typed-element leaves the same way it does for legacy
+            # scalar views (proposal §6.2 / phases.go).
+            view:
+              extends: "base"
+              blocks:
+                body:
+                  - prose: "{{ world.month|upper }} {{ world.day }}, {{ world.year }}. Heading for {{ tpl.to_landmark }} ({{ tpl.terrain }})."
+                  - kv:
+                      pairs:
+                        Miles:    "{{ world.miles_traveled }} / {{ tpl.distance_mi }}"
+                        Food:     "{{ world.food_lbs }} lbs"
+                        Oxen:     "{{ world.oxen }}"
+                        Party:    "{{ world.party_alive }} alive"
+                        Pace:     "{{ world.pace }}"
+                        Rations:  "{{ world.rations }}"
+                        Forage:   "{% if world.month == 'may' or world.month == 'june' %}rich{% else %}{% if world.month == 'april' or world.month == 'july' %}fair{% else %}{% if world.month == 'march' or world.month == 'august' %}sparse{% else %}{% if world.month == 'september' or world.month == 'october' %}drying{% else %}none — winter{% endif %}{% endif %}{% endif %}{% endif %}"
+                choices:
+                  - heading: "Actions"
+                  - list:
+                      items:
+                        - "continue"
+                        - "set_pace <pace>"
+                        - "set_rations <rations>"
+                        - "look"
+                        - "quit"
             on:
               continue:
                 # ── Arrival: miles + step would reach the next landmark.
@@ -421,13 +437,31 @@ phase_templates:
                 # heuristic so a failed Claude call still produces a
                 # playable diagnosis.)
                 on_error: "{{ tpl.id }}_error"
-            view: |
-              {{ if world.illness_member != "" }}{{ world.illness_member }} has fallen ill.{{ else }}Someone in the party has fallen ill.{{ end }}
-              Illness: {{ world.illness_kind }} (severity {{ world.illness_severity }}).
-              Health: {{ world.health_avg }}.   Party: {{ world.party_alive }} alive.
-              Supplies: {{ world.clothing_sets }} clothing sets, {{ world.food_lbs }} lbs food.
-
-              Actions: treat, wait_out, move_on, look, quit.
+            # Per-element `when:` swaps the inline if/else for two
+            # conditional prose rows — proposal §2.2 conditional sugar.
+            view:
+              extends: "base"
+              blocks:
+                body:
+                  - prose: "{{ world.illness_member }} has fallen ill."
+                    when:  "world.illness_member != ''"
+                  - prose: "Someone in the party has fallen ill."
+                    when:  "world.illness_member == ''"
+                  - kv:
+                      pairs:
+                        Illness:  "{{ world.illness_kind }} (severity {{ world.illness_severity }})"
+                        Health:   "{{ world.health_avg }}"
+                        Party:    "{{ world.party_alive }} alive"
+                        Supplies: "{{ world.clothing_sets }} clothing sets, {{ world.food_lbs }} lbs food"
+                choices:
+                  - heading: "Actions"
+                  - list:
+                      items:
+                        - "treat"
+                        - "wait_out"
+                        - "move_on"
+                        - "look"
+                        - "quit"
             on:
               treat:
                 - when: "world.clothing_sets >= 1 && world.food_lbs >= 50 && world.current_event_attempts < 2"
@@ -583,13 +617,28 @@ phase_templates:
                     day:               "{{ world.day }}"
                 bind:
                   last_event_prose: stdout
-            view: |
-              {{ if world.last_event_prose != "" }}{{ world.last_event_prose }}
-
-              {{ end }}The wagon's {{ world.breakdown_part }} has broken.
-              Spare wheels: {{ world.spare_wheels }}, axles: {{ world.spare_axles }}, tongues: {{ world.spare_tongues }}.
-
-              Actions: repair (needs a matching spare), wait_out (5 days), look, quit.
+            view:
+              extends: "base"
+              blocks:
+                body:
+                  - prose: "{{ world.last_event_prose }}"
+                    when:  "world.last_event_prose != ''"
+                  - prose: "The wagon's {{ world.breakdown_part }} has broken."
+                  - kv:
+                      pairs:
+                        Spare wheels:  "{{ world.spare_wheels }}"
+                        Spare axles:   "{{ world.spare_axles }}"
+                        Spare tongues: "{{ world.spare_tongues }}"
+                choices:
+                  - heading: "Actions"
+                  - list:
+                      items:
+                        - label: "repair"
+                          hint:  "needs a matching spare"
+                        - label: "wait_out"
+                          hint:  "5 days"
+                        - "look"
+                        - "quit"
             on:
               repair:
                 - when: "world.breakdown_part == 'wheel' && world.spare_wheels >= 1"
@@ -727,13 +776,26 @@ phase_templates:
                     day:               "{{ world.day }}"
                 bind:
                   last_event_prose: stdout
-            view: |
-              {{ if world.last_event_prose != "" }}{{ world.last_event_prose }}
-
-              {{ end }}Severe weather: {{ world.weather_kind }}.
-              Health: {{ world.health_avg }}.   Food: {{ world.food_lbs }} lbs.   Day {{ world.day }}.
-
-              Actions: wait_out, push_on, look, quit.
+            view:
+              extends: "base"
+              blocks:
+                body:
+                  - prose: "{{ world.last_event_prose }}"
+                    when:  "world.last_event_prose != ''"
+                  - prose: "Severe weather: {{ world.weather_kind }}."
+                  - kv:
+                      pairs:
+                        Health: "{{ world.health_avg }}"
+                        Food:   "{{ world.food_lbs }} lbs"
+                        Day:    "{{ world.day }}"
+                choices:
+                  - heading: "Actions"
+                  - list:
+                      items:
+                        - "wait_out"
+                        - "push_on"
+                        - "look"
+                        - "quit"
             on:
               wait_out:
                 - target: ../traveling
@@ -803,14 +865,27 @@ phase_templates:
                     clothing_sets:     "{{ world.clothing_sets }}"
                 bind:
                   last_event_prose: stdout
-            view: |
-              {{ if world.last_event_prose != "" }}{{ world.last_event_prose }}
-
-              {{ end }}You meet a {{ world.encounter_kind }} on the trail.
-              They offer 1 clothing set in exchange for 50 lbs of food.
-              You have {{ world.food_lbs }} lbs food, {{ world.clothing_sets }} clothing sets.
-
-              Actions: accept_trade, decline_trade, move_on, look, quit.
+            view:
+              extends: "base"
+              blocks:
+                body:
+                  - prose: "{{ world.last_event_prose }}"
+                    when:  "world.last_event_prose != ''"
+                  - prose: "You meet a {{ world.encounter_kind }} on the trail."
+                  - prose: "They offer 1 clothing set in exchange for 50 lbs of food."
+                  - kv:
+                      pairs:
+                        Food:     "{{ world.food_lbs }} lbs"
+                        Clothing: "{{ world.clothing_sets }} sets"
+                choices:
+                  - heading: "Actions"
+                  - list:
+                      items:
+                        - "accept_trade"
+                        - "decline_trade"
+                        - "move_on"
+                        - "look"
+                        - "quit"
             on:
               accept_trade:
                 - when: "world.food_lbs >= 50"
@@ -900,13 +975,22 @@ phase_templates:
                     oxen:              "{{ world.oxen }}"
                 bind:
                   last_event_prose: stdout
-            view: |
-              {{ if world.last_event_prose != "" }}{{ world.last_event_prose }}
-
-              {{ end }}Supplies have been lost on the trail.
-              Food: {{ world.food_lbs }} lbs.  Oxen: {{ world.oxen }}.
-
-              Action: move_on.
+            view:
+              extends: "base"
+              blocks:
+                body:
+                  - prose: "{{ world.last_event_prose }}"
+                    when:  "world.last_event_prose != ''"
+                  - prose: "Supplies have been lost on the trail."
+                  - kv:
+                      pairs:
+                        Food: "{{ world.food_lbs }} lbs"
+                        Oxen: "{{ world.oxen }}"
+                choices:
+                  - heading: "Action"
+                  - list:
+                      items:
+                        - "move_on"
             on:
               move_on:
                 - target: ../traveling
@@ -995,18 +1079,27 @@ phase_templates:
                 food_lbs:        "{{ world.food_lbs }}"
             bind:
               last_landmark_prose: stdout
-        view: |
-          Arrived at {{ tpl.to_landmark }} ({{ tpl.terrain }}).
-
-          Day:    {{ world.day }}
-          Food:   {{ world.food_lbs }} lbs
-          Oxen:   {{ world.oxen }}
-          Party:  {{ world.party_alive }} alive
-          Health: {{ world.health_avg }}
-
-          {{ if world.last_landmark_prose != "" }}{{ world.last_landmark_prose }}{{ else }}{{ tpl.arrival_hint }}{{ end }}
-
-          When you're ready, "continue" presses on toward the next landmark.
+        # Per-element `when:` swaps the inline if/else for two
+        # conditional prose rows; the prose value is itself
+        # pongo2-templated so tpl.arrival_hint substitutes correctly.
+        view:
+          extends: "base"
+          blocks:
+            body:
+              - heading: "Arrived at {{ tpl.to_landmark }} ({{ tpl.terrain }})"
+              - kv:
+                  pairs:
+                    Day:    "{{ world.day }}"
+                    Food:   "{{ world.food_lbs }} lbs"
+                    Oxen:   "{{ world.oxen }}"
+                    Party:  "{{ world.party_alive }} alive"
+                    Health: "{{ world.health_avg }}"
+              - prose: "{{ world.last_landmark_prose }}"
+                when:  "world.last_landmark_prose != ''"
+              - prose: "{{ tpl.arrival_hint }}"
+                when:  "world.last_landmark_prose == ''"
+            choices:
+              - prose: 'When you''re ready, "continue" presses on toward the next landmark.'
         on:
           continue:
             # ── Snow-blocked South Pass guard (§8 month mechanics).
@@ -1243,12 +1336,19 @@ phase_templates:
       "{id}_error":
         description: "Stranded between {{ tpl.from_landmark }} and {{ tpl.to_landmark }}."
         relevant_world: [day, party_alive, current_landmark]
-        view: |
-          Stranded between {{ tpl.from_landmark }} and {{ tpl.to_landmark }}.
-
-          The party has failed this leg too many times.
-
-          Actions: retry (returns to {{ tpl.from_landmark }}), quit.
+        view:
+          extends: "base"
+          blocks:
+            body:
+              - heading: "Stranded between {{ tpl.from_landmark }} and {{ tpl.to_landmark }}"
+              - prose: "The party has failed this leg too many times."
+            choices:
+              - heading: "Actions"
+              - list:
+                  items:
+                    - label: "retry"
+                      hint:  "return to {{ tpl.from_landmark }}"
+                    - "quit"
         on:
           retry:
             - target: "{{ tpl.id }}_executing"

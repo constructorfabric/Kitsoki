@@ -3,13 +3,24 @@
 states:
   implementation:
     description: "Implementation Room — build a feature or complete a task."
-    view: |
-      Implementation Room.
-      Workspace: {{ world.current_workspace }}
-
-      Steps: review task → plan → write code → write tests → open PR
-
-      Options: review task, plan approach, write code, write tests, open pr, go back.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Workspace: "{{ world.current_workspace }}"
+          - prose: "Steps: review task → plan → write code → write tests → open PR"
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - { label: "review task",   hint: "load Jira issue + acceptance criteria" }
+                - { label: "plan approach", hint: "break down the work" }
+                - { label: "write code",    hint: "iterative edit/run/test loop" }
+                - { label: "write tests",   hint: "cover uncovered paths" }
+                - { label: "open pr",       hint: "hand off to PR room" }
+                - { label: "go back",       hint: "return to previous room" }
     relevant_world: [current_workspace]
     relevant_slots: []
     on:
@@ -46,22 +57,28 @@ states:
 
   impl_reviewing_task:
     description: "Loading task details from Jira..."
-    view: |
-      Task Details:
-
-      [stub] PROJ-101: Implement auth refresh token rotation
-        Priority: High
-        Assignee: You
-        Sprint: Sprint 42
-        Story Points: 5
-
-        Acceptance Criteria:
-          - Tokens must auto-refresh when within 5 minutes of expiry
-          - Refresh must be transparent to the API consumer
-          - Add unit tests with >80% coverage
-          - No breaking changes to the token schema
-
-        Linked designs: auth-design.confluence.io/refresh-tokens
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Task details"
+          - kv:
+              pairs:
+                Issue:         "PROJ-101: Implement auth refresh token rotation"
+                Priority:      "High"
+                Assignee:      "You"
+                Sprint:        "Sprint 42"
+                Story Points:  "5"
+          - heading: "Acceptance criteria"
+          - list:
+              items:
+                - "Tokens must auto-refresh when within 5 minutes of expiry"
+                - "Refresh must be transparent to the API consumer"
+                - "Add unit tests with >80% coverage"
+                - "No breaking changes to the token schema"
+          - kv:
+              pairs:
+                Linked designs: "auth-design.confluence.io/refresh-tokens"
     relevant_world: [current_workspace]
     relevant_slots: []
     on:
@@ -85,17 +102,18 @@ states:
 
   impl_writing_code:
     description: "Writing code — iterative edit/run/test loop."
-    view: |
-      Code Writing Session — {{ world.current_workspace }}
-
-      [stub] LLM-assisted coding:
-        → Editing auth/token.go
-        → Adding RefreshIfExpiring(ctx) method
-        → Editing api/middleware.go
-        → Adding refresh middleware before route handlers
-
-      Use the terminal to run tests and see output.
-      Use go terminal to switch to the terminal room.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Code writing session — {{ world.current_workspace }}"
+          - heading: "LLM-assisted coding"
+          - list:
+              items:
+                - { label: "Editing auth/token.go",         hint: "adding RefreshIfExpiring(ctx)" }
+                - { label: "Editing api/middleware.go",     hint: "adding refresh middleware" }
+          - prose: "Use the terminal to run tests and see output."
+          - prose: "Use go terminal to switch to the terminal room."
     relevant_world: [current_workspace]
     relevant_slots: []
     on:

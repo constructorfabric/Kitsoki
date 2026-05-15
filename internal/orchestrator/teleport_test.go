@@ -30,8 +30,8 @@ func TestTeleport_ReplayDeterministic(t *testing.T) {
 			"teleport_proposal_id": {Type: "string", Default: ""},
 		},
 		States: map[string]*app.State{
-			"init": {View: "init"},
-			"dest": {View: "dest x={{ world.x }}"},
+			"init": {View: app.LegacyView("init")},
+			"dest": {View: app.LegacyView("dest x={{ world.x }}")},
 		},
 	}
 

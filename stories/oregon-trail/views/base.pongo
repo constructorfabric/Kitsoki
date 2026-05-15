@@ -1,0 +1,27 @@
+{% comment %}
+Oregon Trail — app-wide base view (view-elements proposal §3.3 / §5.6).
+Every room extends this and overrides only the blocks that vary.
+
+Block contract (shared across all five demo apps so sub-stories
+composing oregon-trail can selectively re-skin individual blocks):
+
+  status   — top status line; oregon-trail's marquee day/miles/cash/
+             party-size readout (proposal §5.6).
+  heading  — room title; default = state.description
+  body     — main descriptive content (prose, kv, code, …)
+  choices  — action list (typed list element)
+  footer   — optional bottom material; default empty
+
+The status bar is the visible-everywhere "where am I on the trail"
+reminder. It survives a resize because the keys are short and the
+lipgloss layer reflows. Renaming the bar (add weather, drop cash,
+change separator) touches one file.
+{% endcomment %}
+{% block status %}Day {{ world.day }}  |  {{ world.miles_traveled }} mi  |  ${{ world.money }}  |  {{ world.party_alive }} on the wagon  |  {{ world.current_landmark }}{% endblock %}
+
+{% block heading %}{{ state.description }}{% endblock %}
+
+{% block body %}{% endblock %}
+
+{% block choices %}{% endblock %}
+{% block footer %}{% endblock %}

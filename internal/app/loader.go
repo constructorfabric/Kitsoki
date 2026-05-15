@@ -82,10 +82,18 @@ func Load(path string) (*AppDef, error) {
 
 	// Parse just enough to find the include: list before full validation.
 	baseDir := filepath.Dir(path)
+	if abs, absErr := filepath.Abs(baseDir); absErr == nil {
+		baseDir = abs
+	}
 	merged, mergeErrs := parseAndMerge(b, path, baseDir)
 	if len(mergeErrs) > 0 {
 		return nil, errors.Join(mergeErrs...)
 	}
+	// Stash the loader's base directory so downstream consumers
+	// (notably internal/render.AppRenderer, which roots its template
+	// loader at <BaseDir>/views/) don't have to recompute it from
+	// the manifest path. See view-elements proposal phase H §3.3.
+	merged.BaseDir = baseDir
 
 	// Resolve imports recursively, folding each child into merged.
 	canonical := canonicalPath(path)
@@ -799,6 +807,14 @@ func validateStates(
 			}
 		}
 
+		// Validate the typed view payload (Phase A of the view-elements
+		// proposal). Catches unknown element kinds, missing required
+		// element fields, and non-string kv values at load time so authors
+		// don't get a Phase-D renderer panic for a YAML-shape problem.
+		if err := s.View.Validate(); err != nil {
+			addErr(fmt.Sprintf("state %q: %v", statePath, err))
+		}
+
 		// Validate on: intent names, transition targets, and effect hosts.
 		intentNames := sortedKeys(s.On)
 		for _, intentName := range intentNames {
@@ -813,6 +829,9 @@ func validateStates(
 			for _, tr := range s.On[intentName] {
 				if err := validateTransitionTarget(file, statePath, tr.Target, allPaths); err != nil {
 					*errs = append(*errs, err)
+				}
+				if err := tr.View.Validate(); err != nil {
+					addErr(fmt.Sprintf("state %q intent %q: transition view: %v", statePath, intentName, err))
 				}
 				// Validate invoke: host.* effects against the allow-list.
 				for i, eff := range tr.Effects {
@@ -856,8 +875,9 @@ func validateStates(
 		// Validate compound state's initial child.
 		if s.Type == "compound" && s.Initial != "" {
 			// Initial may be a template expression; only validate literal references.
-			// Expressions contain "{{" and are skipped here (evaluated at runtime).
-			if !strings.Contains(s.Initial, "{{") {
+			// Templated forms — expr-lang "{{ … }}" or pongo2 block tags "{% … %}"
+			// — are evaluated at runtime; skip the literal-child check for those.
+			if !strings.Contains(s.Initial, "{{") && !strings.Contains(s.Initial, "{%") {
 				childPath := joinPath(statePath, s.Initial)
 				if _, ok := allPaths[childPath]; !ok {
 					addErr(fmt.Sprintf("state %q: initial child %q does not exist", statePath, s.Initial))

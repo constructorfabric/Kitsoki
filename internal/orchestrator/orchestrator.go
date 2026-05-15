@@ -817,6 +817,9 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 	return &TurnOutcome{
 		Mode:           mode,
 		View:           result.View,
+		TypedView:      result.TypedView,
+		RenderEnv:      result.RenderEnv,
+		Renderer:       result.Renderer,
 		NewState:       result.NewState,
 		Events:         successEvents,
 		AllowedIntents: newAllowedNames,
@@ -2288,7 +2291,7 @@ func (o *Orchestrator) InitialView(w world.World) (string, error) {
 	if s == nil {
 		return "", nil
 	}
-	if s.View == "" {
+	if s.View.IsEmpty() {
 		return s.Description, nil
 	}
 	return o.machine.RenderState(initialState, w)

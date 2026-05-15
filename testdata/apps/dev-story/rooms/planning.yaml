@@ -3,11 +3,22 @@
 states:
   planning_room:
     description: "Planning Room — break down epics, design approaches, estimate effort."
-    view: |
-      Planning Room.
-      Workspace: {{ world.current_workspace }}
-
-      Options: break down epic, design approach, estimate effort, save plan, go back.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Workspace: "{{ world.current_workspace }}"
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - { label: "break down epic", hint: "produce child issues" }
+                - { label: "design approach", hint: "architecture / interfaces" }
+                - { label: "estimate effort", hint: "story points / sprints" }
+                - { label: "save plan",       hint: "attach to Jira / workspace" }
+                - { label: "go back",         hint: "return to previous room" }
     relevant_world: [current_workspace]
     relevant_slots: []
     on:
@@ -34,19 +45,25 @@ states:
 
   planning_breakdown:
     description: "Breaking down the epic into child issues..."
-    view: |
-      Epic Breakdown: {{ slots.epic }}
-
-      [stub] Child issues:
-        1. PROJ-201: Set up token schema (1 SP)
-        2. PROJ-202: Implement token refresh logic (3 SP)
-        3. PROJ-203: Add middleware integration (2 SP)
-        4. PROJ-204: Write unit tests (2 SP)
-        5. PROJ-205: Write integration tests (2 SP)
-
-      Total: 10 story points, 2 sprints estimated.
-
-      Save this plan?
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Epic breakdown: {{ slots.epic }}"
+          - heading: "Child issues"
+          - list:
+              marker: "1."
+              items:
+                - { label: "PROJ-201: Set up token schema",        hint: "1 SP" }
+                - { label: "PROJ-202: Implement token refresh logic", hint: "3 SP" }
+                - { label: "PROJ-203: Add middleware integration", hint: "2 SP" }
+                - { label: "PROJ-204: Write unit tests",           hint: "2 SP" }
+                - { label: "PROJ-205: Write integration tests",    hint: "2 SP" }
+          - kv:
+              pairs:
+                Total:    "10 story points"
+                Estimate: "2 sprints"
+          - prose: "Save this plan?"
     relevant_world: []
     relevant_slots: []
     on:
@@ -67,24 +84,28 @@ states:
 
   planning_design:
     description: "Designing the architectural approach..."
-    view: |
-      Design Discussion: {{ slots.task }}
-
-      [stub] Architectural options:
-
-      Option A: Middleware-based refresh (recommended)
-        Pros: Transparent to route handlers, single responsibility
-        Cons: Adds 1 round-trip per request when token is near-expiry
-
-      Option B: Token manager singleton
-        Pros: Reusable across handlers
-        Cons: Global state, harder to test
-
-      Option C: Per-request refresh check
-        Pros: Simple
-        Cons: Duplicates refresh logic across handlers
-
-      Recommendation: Option A — add RefreshMiddleware before your router.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Design discussion: {{ slots.task }}"
+          - prose: "[stub] Architectural options:"
+          - heading: "Option A: Middleware-based refresh (recommended)"
+          - list:
+              items:
+                - { label: "Pros", hint: "transparent to route handlers, single responsibility" }
+                - { label: "Cons", hint: "1 round-trip per request near token expiry" }
+          - heading: "Option B: Token manager singleton"
+          - list:
+              items:
+                - { label: "Pros", hint: "reusable across handlers" }
+                - { label: "Cons", hint: "global state, harder to test" }
+          - heading: "Option C: Per-request refresh check"
+          - list:
+              items:
+                - { label: "Pros", hint: "simple" }
+                - { label: "Cons", hint: "duplicates refresh logic across handlers" }
+          - prose: "Recommendation: Option A — add RefreshMiddleware before your router."
     relevant_world: []
     relevant_slots: []
     on:

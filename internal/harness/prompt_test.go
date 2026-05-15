@@ -19,12 +19,12 @@ func TestBuildDynamicSuffix_IncludesStateViewAndDescription(t *testing.T) {
 		States: map[string]*app.State{
 			"main": {
 				Description: "Main Room — your daily HQ.",
-				View: strings.Join([]string{
+				View: app.LegacyView(strings.Join([]string{
 					"Welcome to dev-story.",
 					"",
 					"  - Start a new task          (jira search)",
 					"  - Continue existing task    (workspace manager)",
-				}, "\n"),
+				}, "\n")),
 			},
 		},
 	}
@@ -57,7 +57,7 @@ func TestBuildDynamicSuffix_RendersWorldTemplates(t *testing.T) {
 		States: map[string]*app.State{
 			"main": {
 				Description: "Main",
-				View:        "Inbox: {{ world.inbox_unread }} unread.",
+				View:        app.LegacyView("Inbox: {{ world.inbox_unread }} unread."),
 			},
 		},
 	}
@@ -85,7 +85,7 @@ func TestBuildDynamicSuffix_RendersRecentTurns(t *testing.T) {
 	def := &app.AppDef{
 		App: app.AppMeta{ID: "x"},
 		States: map[string]*app.State{
-			"main": {Description: "Main", View: "ok"},
+			"main": {Description: "Main", View: app.LegacyView("ok")},
 		},
 	}
 
@@ -121,7 +121,7 @@ func TestBuildDynamicSuffix_EmptyRecentTurnsOmitsBlock(t *testing.T) {
 	def := &app.AppDef{
 		App: app.AppMeta{ID: "x"},
 		States: map[string]*app.State{
-			"main": {Description: "Main", View: "ok"},
+			"main": {Description: "Main", View: app.LegacyView("ok")},
 		},
 	}
 	in := harness.TurnInput{

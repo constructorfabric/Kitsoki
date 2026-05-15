@@ -1,0 +1,33 @@
+{# Robbery — sub-story base layout. Single-line comments only (pongo2/v6 #}
+{# rejects newlines inside {# … #}). See stories/robbery/README.md for the #}
+{# full design note. #}
+{# #}
+{# This template is consulted only when robbery runs STANDALONE. When #}
+{# imported into a host story (frontier_event → oregon-trail), the host's #}
+{# AppRenderer resolves `extends: "base"` against the HOST's #}
+{# views/base.pongo, not this one. See proposal §5.6 and the imports #}
+{# story commit (7331630). #}
+{# #}
+{# The block names mirror the shared convention so any room composes into #}
+{# any host following the same convention: #}
+{#   status   — top status line #}
+{#   heading  — room title (default = state.description) #}
+{#   body     — main narration #}
+{#   choices  — action list #}
+{#   footer   — optional bottom matter #}
+{# #}
+{# Defaults are deliberately minimal — just enough to make standalone #}
+{# rendering legible without imposing chrome on hosts that import robbery. #}
+{# #}
+{# The status line references robbery's private world keys (party_alive, #}
+{# party_money, threat_level). When imported, the leaf-string rewriter #}
+{# prefixes those to `world.<alias>__…` in room views — but this base.pongo #}
+{# is never rewritten because it's only loaded standalone. #}
+{% block status %}Party: {{ world.party_alive }} alive  |  ${{ world.party_money }}  |  Threat: {{ world.threat_level }}/3{% endblock %}
+
+{% block heading %}{{ state.description }}{% endblock %}
+
+{% block body %}{% endblock %}
+
+{% block choices %}{% endblock %}
+{% block footer %}{% endblock %}

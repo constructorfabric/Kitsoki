@@ -15,10 +15,28 @@ states:
 
   robbery_aftermath:
     description: "Back on the trail after the bandit encounter."
-    view: |
-      {{ if world.last_event == 'bandit_paid' }}The bandit takes the coin and rides off. Money: {{ world.money }}.{{ end }}{{ if world.last_event == 'bandit_routed' }}You drove the bandit off without a scratch.{{ end }}{{ if world.last_event == 'bandit_killed_member' }}One of your party fell. Survivors: {{ world.party_alive }}.{{ end }}{{ if world.last_event == 'bandit_fled' }}You whipped the oxen and outran the rider.{{ end }}
-
-      Actions: continue.
+    # Per-element `when:` guards encode the four outcome branches —
+    # proposal §2.2 conditional inclusion. The renderer drops every
+    # element whose guard is false, leaving exactly one prose row.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "The bandit takes the coin and rides off. Money: ${{ world.money }}."
+            when:  "world.last_event == 'bandit_paid'"
+          - prose: "You drove the bandit off without a scratch."
+            when:  "world.last_event == 'bandit_routed'"
+          - prose: "One of your party fell. Survivors: {{ world.party_alive }}."
+            when:  "world.last_event == 'bandit_killed_member'"
+          - prose: "You whipped the oxen and outran the rider."
+            when:  "world.last_event == 'bandit_fled'"
+          - prose: "The encounter is over."
+            when:  "world.last_event == 'bandit_resolved'"
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - "continue"
     relevant_world: [money, party_alive, last_event, current_landmark]
     on:
       # Route back to the same leg's awaiting_reply state. Same shape as

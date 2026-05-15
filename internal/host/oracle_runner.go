@@ -13,8 +13,8 @@ import (
 	"strings"
 )
 
-// claudeRun is the outcome of one `claude -p` invocation.
-type claudeRun struct {
+// ClaudeRun is the outcome of one `claude -p` invocation.
+type ClaudeRun struct {
 	// Stdout has its trailing newline trimmed.
 	Stdout string
 	// Stderr is left raw (untrimmed) so callers can format messages.
@@ -27,9 +27,56 @@ type claudeRun struct {
 	Infra error
 }
 
-// runClaudeOneShot executes the claude CLI with the given args, prompt
+// ClaudeRunner runs the claude binary one-shot and returns its
+// outcome. Production wires the real exec via runClaudeOneShotReal;
+// tests inject an in-process stub via WithClaudeRunner so the
+// package's ~180 tests can run without forking 180 bash subprocesses.
+type ClaudeRunner func(ctx context.Context, args []string, stdin, workingDir string) (ClaudeRun, error)
+
+type claudeRunnerCtxKey struct{}
+
+// WithClaudeRunner returns a child context that uses r for every
+// runClaudeOneShot invocation reached through it. Tests use this to
+// install in-process stubs. Production never calls WithClaudeRunner.
+func WithClaudeRunner(ctx context.Context, r ClaudeRunner) context.Context {
+	return context.WithValue(ctx, claudeRunnerCtxKey{}, r)
+}
+
+// ClaudeRunnerFromContext returns the runner installed in ctx, or
+// nil if none is installed (the real-exec path is used).
+func ClaudeRunnerFromContext(ctx context.Context) ClaudeRunner {
+	r, _ := ctx.Value(claudeRunnerCtxKey{}).(ClaudeRunner)
+	return r
+}
+
+// runClaudeOneShot dispatches a claude one-shot call. When a
+// ClaudeRunner is installed in ctx (test setup) the stub is invoked
+// in-process. Otherwise the real exec path runClaudeOneShotReal forks
+// the binary as before.
+//
+// The trailing-newline trim on Stdout is enforced here, not in the
+// runner implementations. The ClaudeRun.Stdout field is documented to
+// have its trailing newline trimmed; the real exec path (and any
+// stub) might naively return raw output. Enforce the contract at the
+// dispatcher so callers (and downstream code that splits on \n) never
+// see drift between exec and stubbed paths.
+func runClaudeOneShot(ctx context.Context, bin string, cliArgs []string, stdin, workingDir string) (ClaudeRun, error) {
+	var (
+		cr  ClaudeRun
+		err error
+	)
+	if r := ClaudeRunnerFromContext(ctx); r != nil {
+		cr, err = r(ctx, cliArgs, stdin, workingDir)
+	} else {
+		cr, err = runClaudeOneShotReal(ctx, bin, cliArgs, stdin, workingDir)
+	}
+	cr.Stdout = strings.TrimRight(cr.Stdout, "\n")
+	return cr, err
+}
+
+// runClaudeOneShotReal executes the claude CLI with the given args, prompt
 // piped on stdin, and working directory. Context cancellation is
-// returned as a Go error; all other failures populate the claudeRun
+// returned as a Go error; all other failures populate the ClaudeRun
 // fields.
 //
 // Env: the kitsoki binary's own directory is prepended to PATH so
@@ -39,7 +86,7 @@ type claudeRun struct {
 // `kitsoki` is only on PATH when the user has run `go install` or
 // otherwise placed it there — which `go run ./cmd/kitsoki ...`
 // users don't do, and the subprocess fails with "command not found".
-func runClaudeOneShot(ctx context.Context, bin string, cliArgs []string, stdin, workingDir string) (claudeRun, error) {
+func runClaudeOneShotReal(ctx context.Context, bin string, cliArgs []string, stdin, workingDir string) (ClaudeRun, error) {
 	cmd := exec.CommandContext(ctx, bin, cliArgs...)
 	cmd.Stdin = strings.NewReader(stdin)
 	cmd.Dir = workingDir
@@ -53,14 +100,14 @@ func runClaudeOneShot(ctx context.Context, bin string, cliArgs []string, stdin, 
 	out := strings.TrimRight(so.String(), "\n")
 	if runErr != nil {
 		if ctx.Err() != nil {
-			return claudeRun{}, ctx.Err()
+			return ClaudeRun{}, ctx.Err()
 		}
 		if exitErr, ok := runErr.(*exec.ExitError); ok {
-			return claudeRun{Stdout: out, Stderr: se.String(), ExitCode: exitErr.ExitCode()}, nil
+			return ClaudeRun{Stdout: out, Stderr: se.String(), ExitCode: exitErr.ExitCode()}, nil
 		}
-		return claudeRun{Stdout: out, Stderr: se.String(), Infra: runErr}, nil
+		return ClaudeRun{Stdout: out, Stderr: se.String(), Infra: runErr}, nil
 	}
-	return claudeRun{Stdout: out, Stderr: se.String()}, nil
+	return ClaudeRun{Stdout: out, Stderr: se.String()}, nil
 }
 
 // claudeExitErrorMessage builds the Result.Error string for a non-zero
@@ -126,7 +173,14 @@ func envWithKitsokiBinOnPath(env []string) []string {
 // resolveOracleBin returns the path to the claude binary, honoring
 // OracleBinEnv and falling back to a PATH lookup. Returns
 // ErrOracleUnavailable if neither is set.
-func resolveOracleBin() (string, error) {
+//
+// When a ClaudeRunner is installed in ctx (tests) the function
+// short-circuits with a sentinel path because the runner stub does
+// not need a real binary on disk.
+func resolveOracleBin(ctx context.Context) (string, error) {
+	if ClaudeRunnerFromContext(ctx) != nil {
+		return "stub://claude", nil
+	}
 	if bin := os.Getenv(OracleBinEnv); bin != "" {
 		return bin, nil
 	}

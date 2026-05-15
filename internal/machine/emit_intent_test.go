@@ -53,7 +53,7 @@ func TestEmitIntent_SimpleOnEnterAutoFire(t *testing.T) {
 					"auto": {{Target: "end"}},
 				},
 			},
-			"end": {Terminal: true, View: "end"},
+			"end": {Terminal: true, View: app.LegacyView("end")},
 		},
 	}
 

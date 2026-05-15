@@ -3,11 +3,21 @@
 states:
   refactor_room:
     description: "Refactor Room — propose, apply, and verify structural code changes."
-    view: |
-      Refactor Room.
-      Workspace: {{ world.current_workspace }}
-
-      Options: propose refactor, apply refactor, verify behavior, go back.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Workspace: "{{ world.current_workspace }}"
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - { label: "propose refactor",  hint: "describe intent, get plan" }
+                - { label: "apply refactor",    hint: "execute with test guards" }
+                - { label: "verify behavior",   hint: "run tests, compare outputs" }
+                - { label: "go back",           hint: "return to previous room" }
     relevant_world: [current_workspace, proposal_result]
     relevant_slots: []
     on:
@@ -32,28 +42,38 @@ states:
 
   refactor_proposing:
     description: "Proposing a refactor plan..."
-    view: |
-      Refactor Proposal:
-      Intent: {{ slots.intent }}
-
-      [stub] Change plan:
-        Files affected: auth/token.go, auth/refresh.go, api/auth_handler.go
-        Changes:
-          1. Extract TokenValidator interface from Token struct
-          2. Move refresh logic to separate RefreshService type
-          3. Inject RefreshService via dependency injection in handlers
-          4. Update all callers to use the interface
-
-        Risk: Medium (touches 3 files, 12 call sites)
-        Test coverage: 78% → 85% expected after refactor
-
-        Atomic commits:
-          - feat: extract TokenValidator interface
-          - feat: extract RefreshService
-          - refactor: inject RefreshService via DI
-          - test: update tests for new structure
-
-      Apply this refactor?
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Refactor proposal"
+          - kv:
+              pairs:
+                Intent: "{{ slots.intent }}"
+          - heading: "Change plan"
+          - kv:
+              pairs:
+                Files affected: "auth/token.go, auth/refresh.go, api/auth_handler.go"
+          - heading: "Changes"
+          - list:
+              marker: "1."
+              items:
+                - "Extract TokenValidator interface from Token struct"
+                - "Move refresh logic to separate RefreshService type"
+                - "Inject RefreshService via dependency injection in handlers"
+                - "Update all callers to use the interface"
+          - kv:
+              pairs:
+                Risk:           "Medium (touches 3 files, 12 call sites)"
+                Test coverage:  "78% → 85% expected after refactor"
+          - heading: "Atomic commits"
+          - list:
+              items:
+                - "feat: extract TokenValidator interface"
+                - "feat: extract RefreshService"
+                - "refactor: inject RefreshService via DI"
+                - "test: update tests for new structure"
+          - prose: "Apply this refactor?"
     relevant_world: []
     relevant_slots: []
     on:
@@ -75,16 +95,19 @@ states:
 
   refactor_applying:
     description: "Applying the refactor..."
-    view: |
-      Applying refactor to {{ world.current_workspace }}:
-
-      [stub] Progress:
-        [1/4] Extracting TokenValidator interface... done
-        [2/4] Extracting RefreshService... done
-        [3/4] Updating callers to use DI... done
-        [4/4] Running tests to verify... PASS
-
-      Refactor complete. All 12 call sites updated.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Applying refactor to {{ world.current_workspace }}"
+          - heading: "Progress"
+          - list:
+              items:
+                - { label: "[1/4] Extracting TokenValidator interface", hint: "done" }
+                - { label: "[2/4] Extracting RefreshService",           hint: "done" }
+                - { label: "[3/4] Updating callers to use DI",          hint: "done" }
+                - { label: "[4/4] Running tests to verify",             hint: "PASS" }
+          - prose: "Refactor complete. All 12 call sites updated."
     relevant_world: [current_workspace]
     relevant_slots: []
     on_enter:
@@ -115,19 +138,21 @@ states:
 
   refactor_verifying:
     description: "Verifying behavior is unchanged..."
-    view: |
-      Behavior Verification:
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Behavior verification"
+          - prose: "[stub] Running full test suite + behavior comparison:"
+          - code: |
+              go test ./... -count=1
+                ok  auth/token_test.go (0.15s)
+                ok  auth/refresh_test.go (0.18s)
+                ok  api/auth_handler_test.go (0.22s)
+                ok  api/billing_test.go (0.31s)
 
-      [stub] Running full test suite + behavior comparison:
-        go test ./... -count=1
-          ok  auth/token_test.go (0.15s)
-          ok  auth/refresh_test.go (0.18s)
-          ok  api/auth_handler_test.go (0.22s)
-          ok  api/billing_test.go (0.31s)
-
-        All 24 tests pass. No behavioral changes detected.
-
-      Behavior verified — safe to open PR.
+              All 24 tests pass. No behavioral changes detected.
+          - prose: "Behavior verified — safe to open PR."
     relevant_world: [current_workspace]
     relevant_slots: []
     on_enter:
@@ -153,8 +178,13 @@ states:
 
   refactor_error:
     description: "Refactor operation failed."
-    view: |
-      Refactor error: {{ world.last_error }}
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Error: "{{ world.last_error }}"
     relevant_world: [last_error]
     relevant_slots: []
     on:

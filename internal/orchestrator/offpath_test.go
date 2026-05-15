@@ -46,7 +46,7 @@ func minimalOffPathApp() *app.AppDef {
 		},
 		States: map[string]*app.State{
 			"start": {
-				View: "hello",
+				View: app.LegacyView("hello"),
 				On: map[string][]app.Transition{
 					"look": {{Target: "start"}},
 				},

@@ -33,6 +33,8 @@ package app
 import (
 	"regexp"
 	"strings"
+
+	goyaml "github.com/goccy/go-yaml"
 )
 
 // childRewriter holds the lookup tables used to rewrite a child AppDef
@@ -56,7 +58,7 @@ func (rw *childRewriter) rewriteState(s *State) {
 		return
 	}
 	// View, Description.
-	s.View = rw.rewriteExpr(s.View)
+	s.View = rw.rewriteView(s.View)
 	s.Description = rw.rewriteExpr(s.Description)
 	// Initial (templated child name).
 	s.Initial = rw.rewriteExpr(s.Initial)
@@ -161,7 +163,7 @@ func (rw *childRewriter) rewriteTransition(tr *Transition) {
 	}
 	tr.When = rw.rewriteExpr(tr.When)
 	tr.GuardHint = rw.rewriteExpr(tr.GuardHint)
-	tr.View = rw.rewriteExpr(tr.View)
+	tr.View = rw.rewriteView(tr.View)
 	for i := range tr.Effects {
 		rw.rewriteEffect(&tr.Effects[i])
 	}
@@ -366,4 +368,69 @@ func (rw *childRewriter) rewriteExpr(s string) string {
 		}
 		return match
 	})
+}
+
+// rewriteView applies rewriteExpr to every author-supplied template
+// string inside a View — Source on the scalar form, and every element
+// leaf (Source, list labels/hints, kv pair values) on the array /
+// {extends, blocks} forms. The scalar form is rebuilt via LegacyView so
+// Elements stays in sync with the rewritten Source.
+func (rw *childRewriter) rewriteView(v View) View {
+	if rw == nil {
+		return v
+	}
+	if v.IsEmpty() && v.Source == "" {
+		return v
+	}
+	if v.Source != "" {
+		return LegacyView(rw.rewriteExpr(v.Source))
+	}
+	out := View{Extends: v.Extends, TemplateFile: v.TemplateFile}
+	if len(v.Elements) > 0 {
+		out.Elements = make([]ViewElement, len(v.Elements))
+		for i, el := range v.Elements {
+			out.Elements[i] = rw.rewriteViewElement(el)
+		}
+	}
+	if len(v.Blocks) > 0 {
+		out.Blocks = make(map[string][]ViewElement, len(v.Blocks))
+		for name, els := range v.Blocks {
+			newEls := make([]ViewElement, len(els))
+			for i, el := range els {
+				newEls[i] = rw.rewriteViewElement(el)
+			}
+			out.Blocks[name] = newEls
+		}
+	}
+	return out
+}
+
+func (rw *childRewriter) rewriteViewElement(el ViewElement) ViewElement {
+	out := ViewElement{
+		Kind:   el.Kind,
+		Source: rw.rewriteExpr(el.Source),
+		Marker: el.Marker,
+		When:   rw.rewriteExpr(el.When),
+	}
+	if len(el.Items) > 0 {
+		out.Items = make([]ListItem, len(el.Items))
+		for i, item := range el.Items {
+			out.Items[i] = ListItem{
+				Label: rw.rewriteExpr(item.Label),
+				Hint:  rw.rewriteExpr(item.Hint),
+				When:  rw.rewriteExpr(item.When),
+			}
+		}
+	}
+	if len(el.Pairs) > 0 {
+		pairs := make(goyaml.MapSlice, len(el.Pairs))
+		for i, p := range el.Pairs {
+			pairs[i] = p
+			if s, ok := p.Value.(string); ok {
+				pairs[i].Value = rw.rewriteExpr(s)
+			}
+		}
+		out.Pairs = pairs
+	}
+	return out
 }

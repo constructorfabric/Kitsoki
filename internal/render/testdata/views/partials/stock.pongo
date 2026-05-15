@@ -1,0 +1,2 @@
+Oxen: {{ world.oxen }}
+Food: {{ world.food }}

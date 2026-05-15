@@ -4,19 +4,27 @@
 states:
   main:
     description: "Main Room — your daily HQ. Navigate to any area of work from here."
-    view: |
-      Welcome to dev-story. What would you like to do today?
-
-      Available areas:
-        - Start a new task          (jira search)
-        - Continue existing task    (workspace manager)
-        - Consult the Oracle        (general Q&A with Claude)
-        - Review a teammate's PR    (code review)
-        - Check my inbox            (notifications, background jobs)
-        - Prep for standup          (daily summary)
-        - Triage a production issue (incident room)
-
-      Inbox: {{ world.inbox_unread }} unread.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "Welcome to dev-story. What would you like to do today?"
+          - heading: "Available areas"
+          # Proposal §5.2 worked example — the hand-aligned hint column
+          # becomes a typed list; lipgloss re-aligns on resize.
+          - list:
+              items:
+                - { label: "Start a new task",          hint: "jira search" }
+                - { label: "Continue existing task",    hint: "workspace manager" }
+                - { label: "Consult the Oracle",        hint: "general Q&A with Claude" }
+                - { label: "Review a teammate's PR",    hint: "code review" }
+                - { label: "Check my inbox",            hint: "notifications, background jobs" }
+                - { label: "Prep for standup",          hint: "daily summary" }
+                - { label: "Triage a production issue", hint: "incident room" }
+        choices:
+          - kv:
+              pairs:
+                Inbox: "{{ world.inbox_unread }} unread"
     relevant_world: [inbox_unread]
     relevant_slots: []
     on:

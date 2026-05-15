@@ -3,10 +3,17 @@
 states:
   code_review:
     description: "Code Review Room — review PRs assigned to you."
-    view: |
-      Code Review Room.
-
-      Options: list prs to review, review pr, approve pr, go back.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Actions"
+          - list:
+              items:
+                - { label: "list prs to review", hint: "fetch from GitHub" }
+                - { label: "review pr",          hint: "summary + diff walkthrough" }
+                - { label: "approve pr",         hint: "submit approval" }
+                - { label: "go back",            hint: "return to previous room" }
     relevant_world: []
     relevant_slots: []
     on:
@@ -31,15 +38,18 @@ states:
 
   code_review_listing:
     description: "Fetching PRs assigned for your review..."
-    view: |
-      PRs Awaiting Your Review:
-
-      [stub] 3 PRs from GitHub:
-        1. PR #38: feat/billing-discounts (alice) — 12 files, +450/-120
-        2. PR #39: fix/login-redirect (bob) — 3 files, +45/-12
-        3. PR #40: docs/api-update (charlie) — 2 files, +230/-15
-
-      Review one? Use "review pr 38" etc.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "PRs awaiting your review"
+          - list:
+              marker: "1."
+              items:
+                - { label: "PR #38: feat/billing-discounts (alice)", hint: "12 files, +450/-120" }
+                - { label: "PR #39: fix/login-redirect (bob)",       hint: "3 files, +45/-12" }
+                - { label: "PR #40: docs/api-update (charlie)",      hint: "2 files, +230/-15" }
+          - prose: "Review one? Use \"review pr 38\" etc."
     relevant_world: []
     relevant_slots: []
     on_enter:
@@ -63,24 +73,29 @@ states:
 
   code_review_reviewing:
     description: "Reviewing the PR..."
-    view: |
-      Reviewing PR #{{ slots.pr_id }}
-
-      [stub] PR #{{ slots.pr_id }}: feat/billing-discounts
-        Author: alice
-        Files changed: 12
-        +450 / -120
-
-        Summary of changes:
-          - Added discount percentage support to billing engine
-          - Refactored Invoice.Calculate() to support promotions
-          - Added unit tests (coverage: 82%)
-
-        Suggested comments:
-          Line 45 (billing/invoice.go): Consider using Decimal type instead of float64
-          Line 78 (billing/discount.go): Missing edge case for 100% discount
-
-      Leave review comments, approve, or request changes.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Reviewing PR #{{ slots.pr_id }}"
+          - kv:
+              pairs:
+                PR:            "#{{ slots.pr_id }}: feat/billing-discounts"
+                Author:        "alice"
+                Files changed: "12"
+                Diff:          "+450 / -120"
+          - heading: "Summary of changes"
+          - list:
+              items:
+                - "Added discount percentage support to billing engine"
+                - "Refactored Invoice.Calculate() to support promotions"
+                - { label: "Added unit tests", hint: "coverage: 82%" }
+          - heading: "Suggested comments"
+          - list:
+              items:
+                - { label: "Line 45 (billing/invoice.go)",   hint: "use Decimal instead of float64" }
+                - { label: "Line 78 (billing/discount.go)",  hint: "missing edge case for 100% discount" }
+          - prose: "Leave review comments, approve, or request changes."
     relevant_world: []
     relevant_slots: []
     on:
@@ -99,13 +114,15 @@ states:
 
   code_review_approving:
     description: "Submitting review approval..."
-    view: |
-      Approval submitted for PR.
-
-      [stub] Review posted: APPROVED
-        "LGTM! One minor suggestion about decimal types left inline."
-
-      PR is approved. The author can merge when CI passes.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Approval submitted for PR"
+          - code: |
+              [stub] Review posted: APPROVED
+                "LGTM! One minor suggestion about decimal types left inline."
+          - prose: "PR is approved. The author can merge when CI passes."
     relevant_world: []
     relevant_slots: []
     on_enter:
@@ -126,8 +143,13 @@ states:
 
   code_review_error:
     description: "Code review operation failed."
-    view: |
-      Error: {{ world.last_error }}
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Error: "{{ world.last_error }}"
     relevant_world: [last_error]
     relevant_slots: []
     on:

@@ -3,7 +3,6 @@ package host_test
 import (
 	"context"
 	"errors"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +12,7 @@ import (
 )
 
 func TestChatDrive_NoStore(t *testing.T) {
+	t.Parallel()
 	res, err := host.ChatDriveHandler(context.Background(), map[string]any{
 		"chat_id": "X", "payload": "y",
 	})
@@ -25,6 +25,7 @@ func TestChatDrive_NoStore(t *testing.T) {
 }
 
 func TestChatDrive_MissingArgs(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	ctx := host.WithChatStore(context.Background(), cs)
 	cases := []struct {
@@ -49,6 +50,7 @@ func TestChatDrive_MissingArgs(t *testing.T) {
 }
 
 func TestChatDrive_ChatNotFound(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	ctx := host.WithChatStore(context.Background(), cs)
 	res, err := host.ChatDriveHandler(ctx, map[string]any{
@@ -65,6 +67,7 @@ func TestChatDrive_ChatNotFound(t *testing.T) {
 // TestChatDrive_AsyncReturnsDriveID is the await:false happy path: the
 // handler enqueues and returns drive_id without running the turn.
 func TestChatDrive_AsyncReturnsDriveID(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	cs.addChat(host.ChatRecord{ID: "chat-1", Status: "active"})
 	ctx := host.WithChatStore(context.Background(), cs)
@@ -113,14 +116,10 @@ func TestChatDrive_AsyncReturnsDriveID(t *testing.T) {
 // TestChatDrive_AwaitSuccess runs the await:true path against the fake
 // claude binary and verifies the handler returns the run result inline.
 func TestChatDrive_AwaitSuccess(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("fake-oracle.sh requires bash")
-	}
-	t.Setenv(host.OracleBinEnv, fakeOracleBin(t))
-
+	t.Parallel()
 	cs := newFakeChatStore()
 	cs.addChat(host.ChatRecord{ID: "chat-1", Status: "active"})
-	ctx := host.WithChatStore(context.Background(), cs)
+	ctx := host.WithClaudeRunner(host.WithChatStore(context.Background(), cs), stubOracleRunner())
 
 	res, err := host.ChatDriveHandler(ctx, map[string]any{
 		"chat_id": "chat-1",
@@ -162,6 +161,7 @@ func TestChatDrive_AwaitSuccess(t *testing.T) {
 // companion TestDispatchDriveWithTimeout_TimesOutWithoutFree exercises
 // the dispatcher directly with the same pattern.
 func TestChatDrive_AwaitChatBusyReportsBusy(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	cs.addChat(host.ChatRecord{ID: "chat-1", Status: "active"})
 	cs.withLockErr = host.NewChatBusyError(errors.New("chats: chat busy"))
@@ -227,14 +227,10 @@ func TestChatDrive_AwaitChatBusyReportsBusy(t *testing.T) {
 // TestChatDrive_AwaitDriveFailedSurfacesError: claude exits non-zero →
 // Result.Error contains drive_failed and Data.status == failed.
 func TestChatDrive_AwaitDriveFailedSurfacesError(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("fake-oneshot.sh requires bash")
-	}
-	t.Setenv(host.OracleBinEnv, fakeOneShotBin(t))
-
+	t.Parallel()
 	cs := newFakeChatStore()
 	cs.addChat(host.ChatRecord{ID: "chat-1", Status: "active"})
-	ctx := host.WithChatStore(context.Background(), cs)
+	ctx := host.WithClaudeRunner(host.WithChatStore(context.Background(), cs), stubOneShotRunner())
 
 	res, err := host.ChatDriveHandler(ctx, map[string]any{
 		"chat_id": "chat-1",
@@ -256,6 +252,7 @@ func TestChatDrive_AwaitDriveFailedSurfacesError(t *testing.T) {
 }
 
 func TestChatDrive_RegisteredAsBuiltin(t *testing.T) {
+	t.Parallel()
 	r := host.NewRegistry()
 	host.RegisterBuiltins(r)
 	if _, ok := r.Get("host.chat.drive"); !ok {
@@ -266,6 +263,7 @@ func TestChatDrive_RegisteredAsBuiltin(t *testing.T) {
 // TestChatDrive_ChatRefResolvesByPosition exercises the chat_ref →
 // resolve_ref → chat_id path with a simple positional input.
 func TestChatDrive_ChatRefResolvesByPosition(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	cs.addChat(host.ChatRecord{
 		ID: "chat-1", AppID: "bugfix", Room: "live", Status: "active",
@@ -292,6 +290,7 @@ func TestChatDrive_ChatRefResolvesByPosition(t *testing.T) {
 }
 
 func TestChatDrive_ChatRefAndChatIDMutuallyExclusive(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	cs.addChat(host.ChatRecord{ID: "chat-1"})
 	ctx := host.WithChatStore(context.Background(), cs)
@@ -309,6 +308,7 @@ func TestChatDrive_ChatRefAndChatIDMutuallyExclusive(t *testing.T) {
 }
 
 func TestChatDrive_ChatRefRequiresAppRoom(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	ctx := host.WithChatStore(context.Background(), cs)
 	res, err := host.ChatDriveHandler(ctx, map[string]any{
@@ -327,6 +327,7 @@ func TestChatDrive_ChatRefRequiresAppRoom(t *testing.T) {
 // pre-injects __on_complete / __origin_*, the handler records them on
 // the drive row so a future consumer can fire the chain.
 func TestChatDrive_PersistsOnCompleteMetadata(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	cs.addChat(host.ChatRecord{ID: "chat-1", Status: "active"})
 	ctx := host.WithChatStore(context.Background(), cs)
@@ -365,6 +366,7 @@ func TestChatDrive_PersistsOnCompleteMetadata(t *testing.T) {
 // pass the on_complete chain as []any (the parsed []app.Effect form)
 // rather than a JSON string. The handler must marshal it.
 func TestChatDrive_OnCompleteAcceptsParsedSlice(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	cs.addChat(host.ChatRecord{ID: "chat-1", Status: "active"})
 	ctx := host.WithChatStore(context.Background(), cs)
@@ -393,6 +395,7 @@ func TestChatDrive_OnCompleteAcceptsParsedSlice(t *testing.T) {
 // the orchestrator (e.g. an effect with no on_complete declared)
 // must not populate the drive's on_complete column.
 func TestChatDrive_OnCompleteEmptySliceLeavesBlank(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	cs.addChat(host.ChatRecord{ID: "chat-1", Status: "active"})
 	ctx := host.WithChatStore(context.Background(), cs)

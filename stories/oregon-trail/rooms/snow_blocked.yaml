@@ -18,19 +18,30 @@ states:
   snow_blocked:
     description: "South Pass is snowed in — wait for spring or turn back."
     relevant_world: [month, day, year, food_lbs, party_alive, oxen, health_avg]
-    view: |
-      South Pass is choked with snow. The wagons cannot get through.
-
-      Month: {{ world.month }} {{ world.year }}
-      Food:  {{ world.food_lbs }} lbs
-      Party: {{ world.party_alive }} alive
-      Health:{{ world.health_avg }}
-
-      You can wait out the winter (camp here while food lasts and the
-      months tick by, until April opens the pass) — or you can turn
-      back east and abandon the journey.
-
-      Actions: wait_for_spring, give_up, look.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "South Pass is choked with snow. The wagons cannot get through."
+          - kv:
+              pairs:
+                Month:  "{{ world.month|upper }} {{ world.year }}"
+                Food:   "{{ world.food_lbs }} lbs"
+                Party:  "{{ world.party_alive }} alive"
+                Health: "{{ world.health_avg }}"
+          - prose: >
+              You can wait out the winter (camp here while food lasts and
+              the months tick by, until April opens the pass) — or you
+              can turn back east and abandon the journey.
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "wait_for_spring"
+                  hint:  "advance ~30 days; food drains, health drops 5/month"
+                - label: "give_up"
+                  hint:  "turn back east; the journey ends"
+                - "look"
     on:
       # ── wait_for_spring ──────────────────────────────────────────
       # One "tick" = ~30 game-days of winter camp:

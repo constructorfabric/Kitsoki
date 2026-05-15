@@ -1,0 +1,24 @@
+{% comment %}
+Frontier Event — app-wide base layout.
+
+This template is only consulted when frontier_event runs STANDALONE
+(`kitsoki run stories/frontier_event/app.yaml`). When frontier_event is
+imported into a host story (the canonical case — oregon-trail imports
+it under alias `frontier`), the host's per-app AppRenderer resolves
+`extends: "base"` against the HOST's `views/base.pongo`, not this one.
+See proposal §5.6 and the imports story commit (7331630).
+
+The block names here mirror the shared convention so a room template
+authored under frontier_event composes into ANY host that also follows
+the convention. Defaults are deliberately minimal — just enough to
+make standalone rendering legible without imposing an opinionated
+chrome on hosts that import frontier_event.
+{% endcomment %}
+{% block status %}Party: {{ world.party_alive }} alive  |  ${{ world.party_money }}  |  Threat: {{ world.threat_level }}/3{% endblock %}
+
+{% block heading %}{% endblock %}
+
+{% block body %}{% endblock %}
+
+{% block choices %}{% endblock %}
+{% block footer %}{% endblock %}

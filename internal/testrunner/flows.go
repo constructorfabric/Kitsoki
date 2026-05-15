@@ -27,6 +27,7 @@ import (
 	"kitsoki/internal/jobs"
 	"kitsoki/internal/machine"
 	"kitsoki/internal/orchestrator"
+	"kitsoki/internal/render"
 	"kitsoki/internal/store"
 	"kitsoki/internal/world"
 )
@@ -1633,7 +1634,7 @@ func renderSlots(slots map[string]any, w world.World) map[string]any {
 			out[k] = v
 			continue
 		}
-		rendered, err := expr.Render(s, env)
+		rendered, err := render.Pongo(s, env)
 		if err != nil {
 			// Keep a diagnostic string so the turn fails clearly.
 			out[k] = fmt.Sprintf("(renderSlots error for %q: %v)", s, err)

@@ -254,11 +254,11 @@ func (r *renderer) room(path string, st *app.State, isRoot bool) {
 		r.ln("**Menu**: " + backtickList(st.Menu))
 		r.ln("")
 	}
-	if st.View != "" {
+	if src := st.View.SourceString(); src != "" {
 		r.ln("**View**:")
 		r.ln("")
 		r.ln("```")
-		r.ln(strings.TrimRight(st.View, "\n"))
+		r.ln(strings.TrimRight(src, "\n"))
 		r.ln("```")
 		r.ln("")
 	}

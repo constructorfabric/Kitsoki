@@ -4,26 +4,40 @@
 states:
   inbox:
     description: "Inbox — your unified notification and background-job queue."
-    view: |
-      Inbox ({{ world.inbox_unread }} unread)
-
-      [stub] Items:
-      {{ if world.job_bg_running }}
-        1. [running] Background job: {{ world.proposal_cmd }}
-      {{ end }}
-      {{ if world.job_bg_result != "" }}
-        1. [done] Job result available: {{ world.job_bg_result }}
-      {{ end }}
-      {{ if world.clarification_asked }}
-        2. [action_required] Clarification needed for background job
-      {{ end }}
-      {{ if world.inbox_unread > 0 }}
-        Background job completed — teleport to result? Use "open item 1".
-      {{ else }}
-        No unread items.
-      {{ end }}
-
-      Options: show inbox, open item, answer clarification, dismiss, cancel job.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Inbox ({{ world.inbox_unread }} unread)"
+          # The inbox is flat-keyed in world (job_bg_running, job_bg_result,
+          # clarification_asked). Per the migration notes, when the shape
+          # doesn't permit a clean {% for %} we fall back to a list with
+          # per-item `when:` guards. Each item is exposed only if its
+          # backing world flag is set; the unread/empty hints follow the
+          # same pattern.
+          - list:
+              items:
+                - label: "1. [running] Background job: {{ world.proposal_cmd }}"
+                  when:  "world.job_bg_running"
+                - label: "1. [done] Job result available"
+                  hint:  "{{ world.job_bg_result }}"
+                  when:  "world.job_bg_result != ''"
+                - label: "2. [action_required] Clarification needed"
+                  hint:  "background job is waiting"
+                  when:  "world.clarification_asked"
+          - prose: "Background job completed — teleport to result? Use 'open item 1'."
+            when:  "world.inbox_unread > 0"
+          - prose: "No unread items."
+            when:  "world.inbox_unread == 0"
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - { label: "show inbox",          hint: "list all items" }
+                - { label: "open item N",         hint: "teleport to its origin" }
+                - { label: "answer clarification",hint: "respond to a stalled job" }
+                - { label: "dismiss",             hint: "mark items as read" }
+                - { label: "cancel job",          hint: "stop a running job" }
     relevant_world: [inbox_unread, job_bg_running, job_bg_result, clarification_asked, proposal_cmd]
     relevant_slots: []
     on:
@@ -79,13 +93,16 @@ states:
 
   inbox_clarifying:
     description: "Answering a clarification request for a stalled background job."
-    view: |
-      Clarification Request
-
-      A background job is waiting for your input:
-      Question: "Should the deploy target production or staging?"
-
-      Please answer: answer clarification "production" or answer clarification "staging"
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Clarification request"
+          - prose: "A background job is waiting for your input:"
+          - kv:
+              pairs:
+                Question: "Should the deploy target production or staging?"
+          - prose: "Please answer: answer clarification \"production\" or answer clarification \"staging\""
     relevant_world: [clarification_asked]
     relevant_slots: []
     on:
@@ -109,11 +126,15 @@ states:
 
   inbox_clarification_answered:
     description: "Clarification submitted — job will resume."
-    view: |
-      Clarification submitted: {{ world.clarification_answer }}
-
-      The background job has been notified and will resume.
-      Check the inbox for the result.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Submitted: "{{ world.clarification_answer }}"
+          - prose: "The background job has been notified and will resume."
+          - prose: "Check the inbox for the result."
     relevant_world: [clarification_answer]
     relevant_slots: []
     on:
@@ -128,13 +149,17 @@ states:
 
   terminal_bg_result_view:
     description: "Background job result — teleported from inbox."
-    view: |
-      Background Job Result (teleported from inbox)
-
-      Command: {{ world.proposal_cmd }}
-      Result: {{ world.job_bg_result }}
-
-      Job is complete. You can propose another command or go back.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Background job result"
+          - prose: "(teleported from inbox)"
+          - kv:
+              pairs:
+                Command: "{{ world.proposal_cmd }}"
+                Result:  "{{ world.job_bg_result }}"
+          - prose: "Job is complete. You can propose another command or go back."
     relevant_world: [proposal_cmd, job_bg_result, proposal_status]
     relevant_slots: []
     on:

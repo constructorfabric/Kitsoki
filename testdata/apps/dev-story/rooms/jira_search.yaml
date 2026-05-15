@@ -3,13 +3,21 @@
 states:
   jira_search:
     description: "Jira Search Room — search for tickets by query or JQL."
-    view: |
-      Jira Search Room.
-
-      Current query: {{ world.jira_query }}
-      Results: {{ world.jira_results }}
-
-      Intents: search jira, create workspace for ticket, go back.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Current query: "{{ world.jira_query|default:\"(none)\" }}"
+                Results:       "{{ world.jira_results|default:\"(none)\" }}"
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - { label: "search jira",                 hint: "free text or JQL" }
+                - { label: "create workspace for ticket", hint: "open workspace on selected ticket" }
+                - { label: "go back",                     hint: "return to previous room" }
     relevant_world: [jira_query, jira_results]
     relevant_slots: []
     on:
@@ -44,13 +52,17 @@ states:
 
   jira_searching:
     description: "Searching Jira..."
-    view: |
-      Searching Jira for: {{ world.jira_query }}
-
-      [stub] Results: Found 3 tickets matching "{{ world.jira_query }}":
-        - PROJ-101: Implement auth refresh token rotation
-        - PROJ-102: Fix race condition in connection pool
-        - PROJ-103: Add unit tests for billing module
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Searching Jira for: {{ world.jira_query }}"
+          - prose: "[stub] Results: Found 3 tickets matching \"{{ world.jira_query }}\":"
+          - list:
+              items:
+                - { label: "PROJ-101", hint: "Implement auth refresh token rotation" }
+                - { label: "PROJ-102", hint: "Fix race condition in connection pool" }
+                - { label: "PROJ-103", hint: "Add unit tests for billing module" }
     relevant_world: [jira_query]
     relevant_slots: []
     on_enter:
@@ -83,10 +95,14 @@ states:
 
   jira_search_error:
     description: "Jira search encountered an error."
-    view: |
-      Error searching Jira: {{ world.last_error }}
-
-      Press go back to return.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Error: "{{ world.last_error }}"
+          - prose: "Press go back to return."
     relevant_world: [last_error]
     relevant_slots: []
     on:

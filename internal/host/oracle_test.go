@@ -12,25 +12,88 @@ import (
 	"kitsoki/internal/host"
 )
 
-// fakeOracleBin returns the path to testdata/fake-oracle.sh.
-func fakeOracleBin(t *testing.T) string {
-	t.Helper()
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("runtime.Caller failed")
+// stubOracleRunner returns a ClaudeRunner that mimics
+// testdata/fake-oracle.sh verbatim: echoes
+// "ANSWER for q=[<stdin>] sid=<session_id>" and appends
+// " system=[...]" and " model=[...]" when those flags are present.
+// The session id is read from either --session-id or --resume.
+func stubOracleRunner() host.ClaudeRunner {
+	return func(ctx context.Context, args []string, stdin, workingDir string) (host.ClaudeRun, error) {
+		var sessionID, systemPrompt, model string
+		for i := 0; i < len(args); i++ {
+			switch args[i] {
+			case "--session-id":
+				if i+1 < len(args) {
+					sessionID = args[i+1]
+					i++
+				}
+			case "--resume":
+				if i+1 < len(args) {
+					sessionID = args[i+1]
+					i++
+				}
+			case "--append-system-prompt":
+				if i+1 < len(args) {
+					systemPrompt = args[i+1]
+					i++
+				}
+			case "--model":
+				if i+1 < len(args) {
+					model = args[i+1]
+					i++
+				}
+			}
+		}
+		out := "ANSWER for q=[" + stdin + "] sid=" + sessionID
+		if systemPrompt != "" {
+			out += " system=[" + systemPrompt + "]"
+		}
+		if model != "" {
+			out += " model=[" + model + "]"
+		}
+		return host.ClaudeRun{Stdout: out}, nil
 	}
-	path := filepath.Join(filepath.Dir(thisFile), "testdata", "fake-oracle.sh")
-	fi, err := os.Stat(path)
-	if err != nil {
-		t.Fatalf("fake-oracle.sh not found at %s: %v", path, err)
+}
+
+// stubOneShotRunner returns a ClaudeRunner that mimics
+// testdata/fake-oneshot.sh verbatim: echoes stdin and appends
+// " system=[...]" / " model=[...]" when those flags are set; if
+// stdin contains "FAIL" it returns exit 2 with "simulated failure"
+// on stderr.
+func stubOneShotRunner() host.ClaudeRunner {
+	return func(ctx context.Context, args []string, stdin, workingDir string) (host.ClaudeRun, error) {
+		var systemPrompt, model string
+		for i := 0; i < len(args); i++ {
+			switch args[i] {
+			case "--append-system-prompt":
+				if i+1 < len(args) {
+					systemPrompt = args[i+1]
+					i++
+				}
+			case "--model":
+				if i+1 < len(args) {
+					model = args[i+1]
+					i++
+				}
+			}
+		}
+		if strings.Contains(stdin, "FAIL") {
+			return host.ClaudeRun{Stderr: "simulated failure\n", ExitCode: 2}, nil
+		}
+		out := stdin
+		if systemPrompt != "" {
+			out += " system=[" + systemPrompt + "]"
+		}
+		if model != "" {
+			out += " model=[" + model + "]"
+		}
+		return host.ClaudeRun{Stdout: out}, nil
 	}
-	if fi.Mode()&0o111 == 0 {
-		t.Fatalf("fake-oracle.sh is not executable")
-	}
-	return path
 }
 
 // fakeOneShotBin returns the path to testdata/fake-oneshot.sh.
+// Retained for the single remaining test that intentionally inspects
+// the bash fake's verbatim non-JSON output shape via OracleBinEnv.
 func fakeOneShotBin(t *testing.T) string {
 	t.Helper()
 	_, thisFile, _, ok := runtime.Caller(0)
@@ -54,12 +117,10 @@ func fakeOneShotBin(t *testing.T) string {
 // verifies the handler creates a UUID, invokes the fake binary, and returns
 // both the answer and the generated session_id.
 func TestOracleTalk_GeneratesSessionID(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("fake-oracle.sh requires bash")
-	}
-	t.Setenv(host.OracleBinEnv, fakeOracleBin(t))
+	t.Parallel()
+	ctx := host.WithClaudeRunner(context.Background(), stubOracleRunner())
 
-	res, err := host.OracleTalkHandler(context.Background(), map[string]any{
+	res, err := host.OracleTalkHandler(ctx, map[string]any{
 		"question": "how does X work",
 	})
 	if err != nil {
@@ -90,13 +151,11 @@ func TestOracleTalk_GeneratesSessionID(t *testing.T) {
 // TestOracleTalk_PreservesSessionID verifies that when a session_id is passed
 // in, it is forwarded to the binary unchanged and returned in the result.
 func TestOracleTalk_PreservesSessionID(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("fake-oracle.sh requires bash")
-	}
-	t.Setenv(host.OracleBinEnv, fakeOracleBin(t))
+	t.Parallel()
+	ctx := host.WithClaudeRunner(context.Background(), stubOracleRunner())
 
 	const existingSID = "11111111-2222-4333-8444-555555555555"
-	res, err := host.OracleTalkHandler(context.Background(), map[string]any{
+	res, err := host.OracleTalkHandler(ctx, map[string]any{
 		"question":   "second turn",
 		"session_id": existingSID,
 	})
@@ -119,13 +178,11 @@ func TestOracleTalk_PreservesSessionID(t *testing.T) {
 // --append-system-prompt. fake-oracle.sh echoes it back as system=[...] when
 // present, letting us assert the threading without inspecting argv directly.
 func TestOracleTalk_SystemPromptThreaded(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("fake-oracle.sh requires bash")
-	}
-	t.Setenv(host.OracleBinEnv, fakeOracleBin(t))
+	t.Parallel()
+	ctx := host.WithClaudeRunner(context.Background(), stubOracleRunner())
 
 	const persona = "you speak like a frontier scout"
-	res, err := host.OracleTalkHandler(context.Background(), map[string]any{
+	res, err := host.OracleTalkHandler(ctx, map[string]any{
 		"question":      "where to camp?",
 		"system_prompt": persona,
 	})
@@ -145,12 +202,10 @@ func TestOracleTalk_SystemPromptThreaded(t *testing.T) {
 // system_prompt arg, the binary's argv must NOT carry --append-system-prompt.
 // Apps without a persona block keep their pre-existing behaviour.
 func TestOracleTalk_SystemPromptOmitted(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("fake-oracle.sh requires bash")
-	}
-	t.Setenv(host.OracleBinEnv, fakeOracleBin(t))
+	t.Parallel()
+	ctx := host.WithClaudeRunner(context.Background(), stubOracleRunner())
 
-	res, err := host.OracleTalkHandler(context.Background(), map[string]any{
+	res, err := host.OracleTalkHandler(ctx, map[string]any{
 		"question": "anything",
 	})
 	if err != nil {
@@ -168,6 +223,7 @@ func TestOracleTalk_SystemPromptOmitted(t *testing.T) {
 // TestOracleTalk_MissingQuestion asserts that an empty question returns an
 // application-level error (Result.Error), not a Go error.
 func TestOracleTalk_MissingQuestion(t *testing.T) {
+	t.Parallel()
 	res, err := host.OracleTalkHandler(context.Background(), map[string]any{})
 	if err != nil {
 		t.Fatalf("unexpected Go error: %v", err)
@@ -200,6 +256,7 @@ func TestOracleTalk_BinaryMissing(t *testing.T) {
 // TestOracleTalk_RegisteredAsBuiltin verifies the handler is wired into the
 // default Registry via RegisterBuiltins.
 func TestOracleTalk_RegisteredAsBuiltin(t *testing.T) {
+	t.Parallel()
 	r := host.NewRegistry()
 	host.RegisterBuiltins(r)
 	if _, ok := r.Get("host.oracle.talk"); !ok {
@@ -213,10 +270,8 @@ func TestOracleTalk_RegisteredAsBuiltin(t *testing.T) {
 // in the prompt file are substituted from the handler's args before the
 // binary is invoked.
 func TestOracleAsk_RendersPromptWithArgs(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("fake-oneshot.sh requires bash")
-	}
-	t.Setenv(host.OracleBinEnv, fakeOneShotBin(t))
+	t.Parallel()
+	ctx := host.WithClaudeRunner(context.Background(), stubOneShotRunner())
 
 	// Write a prompt file that references two args.
 	dir := t.TempDir()
@@ -226,7 +281,7 @@ func TestOracleAsk_RendersPromptWithArgs(t *testing.T) {
 		t.Fatalf("write prompt: %v", err)
 	}
 
-	res, err := host.OracleAskHandler(context.Background(), map[string]any{
+	res, err := host.OracleAskHandler(ctx, map[string]any{
 		"prompt_path": promptPath,
 		"failed_cmd":  "ls /nope",
 		"last_error":  "No such file or directory",
@@ -257,11 +312,8 @@ func TestOracleAsk_RendersPromptWithArgs(t *testing.T) {
 // TestOracleAsk_ResolvesRelativePath verifies that a prompt_path is resolved
 // relative to KITSOKI_APP_DIR when set.
 func TestOracleAsk_ResolvesRelativePath(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("fake-oneshot.sh requires bash")
-	}
-	t.Setenv(host.OracleBinEnv, fakeOneShotBin(t))
-
+	// Uses t.Setenv(AppDirEnv) — keep serial.
+	t.Setenv(host.AppDirEnv, "")
 	dir := t.TempDir()
 	promptsDir := filepath.Join(dir, "prompts")
 	if err := os.MkdirAll(promptsDir, 0o755); err != nil {
@@ -271,8 +323,9 @@ func TestOracleAsk_ResolvesRelativePath(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 	t.Setenv(host.AppDirEnv, dir)
+	ctx := host.WithClaudeRunner(context.Background(), stubOneShotRunner())
 
-	res, err := host.OracleAskHandler(context.Background(), map[string]any{
+	res, err := host.OracleAskHandler(ctx, map[string]any{
 		"prompt_path": "prompts/hi.md",
 		"name":        "world",
 	})
@@ -289,6 +342,7 @@ func TestOracleAsk_ResolvesRelativePath(t *testing.T) {
 
 // TestOracleAsk_MissingPromptPath returns an application-level error.
 func TestOracleAsk_MissingPromptPath(t *testing.T) {
+	t.Parallel()
 	res, err := host.OracleAskHandler(context.Background(), map[string]any{})
 	if err != nil {
 		t.Fatalf("unexpected Go error: %v", err)
@@ -300,6 +354,7 @@ func TestOracleAsk_MissingPromptPath(t *testing.T) {
 
 // TestOracleAsk_PromptNotFound returns Result.Error, not a Go error.
 func TestOracleAsk_PromptNotFound(t *testing.T) {
+	t.Parallel()
 	res, err := host.OracleAskHandler(context.Background(), map[string]any{
 		"prompt_path": "/definitely/does/not/exist.md",
 	})
@@ -334,19 +389,17 @@ func TestOracleAsk_BinaryMissing(t *testing.T) {
 
 // TestOracleAsk_NonZeroExit populates exit_code, ok=false, and Result.Error.
 func TestOracleAsk_NonZeroExit(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("fake-oneshot.sh requires bash")
-	}
-	t.Setenv(host.OracleBinEnv, fakeOneShotBin(t))
+	t.Parallel()
+	ctx := host.WithClaudeRunner(context.Background(), stubOneShotRunner())
 
 	dir := t.TempDir()
 	promptPath := filepath.Join(dir, "p.md")
-	// Sentinel keyword that the fake binary treats as "exit non-zero".
+	// Sentinel keyword that the stub treats as "exit non-zero".
 	if err := os.WriteFile(promptPath, []byte("FAIL please"), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 
-	res, err := host.OracleAskHandler(context.Background(), map[string]any{
+	res, err := host.OracleAskHandler(ctx, map[string]any{
 		"prompt_path": promptPath,
 	})
 	if err != nil {
@@ -366,6 +419,7 @@ func TestOracleAsk_NonZeroExit(t *testing.T) {
 // TestOracleAsk_RegisteredAsBuiltin verifies the handler is wired into the
 // default Registry via RegisterBuiltins.
 func TestOracleAsk_RegisteredAsBuiltin(t *testing.T) {
+	t.Parallel()
 	r := host.NewRegistry()
 	host.RegisterBuiltins(r)
 	if _, ok := r.Get("host.oracle.ask"); !ok {
@@ -382,14 +436,10 @@ func TestOracleAsk_RegisteredAsBuiltin(t *testing.T) {
 //   - assistant message is appended to the transcript
 //   - result contains chat_id, claude_session_id, transcript_seq
 func TestOracleTalk_ChatAwarePath_FirstTurn(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("fake-oracle.sh requires bash")
-	}
-	t.Setenv(host.OracleBinEnv, fakeOracleBin(t))
-
+	t.Parallel()
 	cs := newFakeChatStore()
 	cs.addChat(host.ChatRecord{ID: "chat-1", Title: "My Chat", Status: "active"})
-	ctx := host.WithChatStore(context.Background(), cs)
+	ctx := host.WithClaudeRunner(host.WithChatStore(context.Background(), cs), stubOracleRunner())
 
 	res, err := host.OracleTalkHandler(ctx, map[string]any{
 		"question": "What is X?",
@@ -444,11 +494,7 @@ func TestOracleTalk_ChatAwarePath_FirstTurn(t *testing.T) {
 // TestOracleTalk_ChatAwarePath_ReusesSessionID verifies that on the second turn
 // the existing claude_session_id is reused, not replaced.
 func TestOracleTalk_ChatAwarePath_ReusesSessionID(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("fake-oracle.sh requires bash")
-	}
-	t.Setenv(host.OracleBinEnv, fakeOracleBin(t))
-
+	t.Parallel()
 	const existingClaudeID = "11111111-2222-4333-8444-555555555555"
 	cs := newFakeChatStore()
 	cs.addChat(host.ChatRecord{
@@ -457,7 +503,7 @@ func TestOracleTalk_ChatAwarePath_ReusesSessionID(t *testing.T) {
 		Status:          "active",
 		ClaudeSessionID: existingClaudeID,
 	})
-	ctx := host.WithChatStore(context.Background(), cs)
+	ctx := host.WithClaudeRunner(host.WithChatStore(context.Background(), cs), stubOracleRunner())
 
 	res, err := host.OracleTalkHandler(ctx, map[string]any{
 		"question": "Second question",
@@ -485,6 +531,7 @@ func TestOracleTalk_ChatAwarePath_ReusesSessionID(t *testing.T) {
 // TestOracleTalk_ChatAwarePath_NoChatStore verifies that providing a chat_id
 // but no store in context produces a domain-level error.
 func TestOracleTalk_ChatAwarePath_NoChatStore(t *testing.T) {
+	t.Parallel()
 	res, err := host.OracleTalkHandler(context.Background(), map[string]any{
 		"question": "anything",
 		"chat_id":  "chat-1",
@@ -502,15 +549,11 @@ func TestOracleTalk_ChatAwarePath_NoChatStore(t *testing.T) {
 // handler returns Result.Error so on_error: routing fires.  The answer is
 // still exposed under Result.Data["answer"] so the user sees the reply.
 func TestRunOracleTalkWithChat_AssistantAppendFails_SurfacesError(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("fake-oracle.sh requires bash")
-	}
-	t.Setenv(host.OracleBinEnv, fakeOracleBin(t))
-
+	t.Parallel()
 	cs := newFakeChatStore()
 	cs.addChat(host.ChatRecord{ID: "chat-c2", Title: "C2 chat", Status: "active"})
 	cs.failAppendOnRole = "assistant" // user append succeeds; assistant fails
-	ctx := host.WithChatStore(context.Background(), cs)
+	ctx := host.WithClaudeRunner(host.WithChatStore(context.Background(), cs), stubOracleRunner())
 
 	res, err := host.OracleTalkHandler(ctx, map[string]any{
 		"question": "ping",
@@ -542,15 +585,14 @@ func TestRunOracleTalkWithChat_AssistantAppendFails_SurfacesError(t *testing.T) 
 // --append-system-prompt, and forwards Model as --model. This is the
 // engine-side round-trip for the new top-level `agents:` block on AppDef.
 func TestOracleTalk_AgentArg_AppliesSystemPrompt(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("fake-oracle.sh requires bash")
-	}
-	t.Setenv(host.OracleBinEnv, fakeOracleBin(t))
-
+	t.Parallel()
 	const systemPrompt = "you are the wagon master, period-accurate"
-	ctx := host.WithAgents(context.Background(), map[string]host.Agent{
-		"wagon_master": {SystemPrompt: systemPrompt, Model: "claude-opus-4-7"},
-	})
+	ctx := host.WithClaudeRunner(
+		host.WithAgents(context.Background(), map[string]host.Agent{
+			"wagon_master": {SystemPrompt: systemPrompt, Model: "claude-opus-4-7"},
+		}),
+		stubOracleRunner(),
+	)
 
 	res, err := host.OracleTalkHandler(ctx, map[string]any{
 		"question": "should we ford or caulk?",
@@ -576,16 +618,15 @@ func TestOracleTalk_AgentArg_AppliesSystemPrompt(t *testing.T) {
 // (lets authors override one named agent per call). The agent's Model still
 // applies — only the prompt is overridden, model and prompt are independent.
 func TestOracleTalk_AgentArg_InlineSystemPromptWins(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("fake-oracle.sh requires bash")
-	}
-	t.Setenv(host.OracleBinEnv, fakeOracleBin(t))
-
+	t.Parallel()
 	const inline = "INLINE OVERRIDE wins"
 	const agentPrompt = "agent persona LOSES"
-	ctx := host.WithAgents(context.Background(), map[string]host.Agent{
-		"wagon_master": {SystemPrompt: agentPrompt},
-	})
+	ctx := host.WithClaudeRunner(
+		host.WithAgents(context.Background(), map[string]host.Agent{
+			"wagon_master": {SystemPrompt: agentPrompt},
+		}),
+		stubOracleRunner(),
+	)
 
 	res, err := host.OracleTalkHandler(ctx, map[string]any{
 		"question":      "anything",
@@ -613,12 +654,10 @@ func TestOracleTalk_AgentArg_InlineSystemPromptWins(t *testing.T) {
 // (Mismatches are normally caught at load time by validateAgentRef; this
 // path only runs in handlers invoked from non-app code, e.g. tests.)
 func TestOracleTalk_AgentArg_UnknownAgent_NoSystemPrompt(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("fake-oracle.sh requires bash")
-	}
-	t.Setenv(host.OracleBinEnv, fakeOracleBin(t))
+	t.Parallel()
+	ctx := host.WithClaudeRunner(context.Background(), stubOracleRunner())
 
-	res, err := host.OracleTalkHandler(context.Background(), map[string]any{
+	res, err := host.OracleTalkHandler(ctx, map[string]any{
 		"question": "anything",
 		"agent":    "does_not_exist",
 	})
@@ -639,11 +678,7 @@ func TestOracleTalk_AgentArg_UnknownAgent_NoSystemPrompt(t *testing.T) {
 // different code path (oracle_ask.go) so this test guards against the
 // agent: support drifting between the two handlers.
 func TestOracleAsk_AgentArg_AppliesSystemPrompt(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("fake-oneshot.sh requires bash")
-	}
-	t.Setenv(host.OracleBinEnv, fakeOneShotBin(t))
-
+	t.Parallel()
 	dir := t.TempDir()
 	promptPath := filepath.Join(dir, "p.md")
 	if err := os.WriteFile(promptPath, []byte("hi"), 0o644); err != nil {
@@ -651,9 +686,12 @@ func TestOracleAsk_AgentArg_AppliesSystemPrompt(t *testing.T) {
 	}
 
 	const systemPrompt = "you are the party namer, comma-separated names only"
-	ctx := host.WithAgents(context.Background(), map[string]host.Agent{
-		"party_namer": {SystemPrompt: systemPrompt},
-	})
+	ctx := host.WithClaudeRunner(
+		host.WithAgents(context.Background(), map[string]host.Agent{
+			"party_namer": {SystemPrompt: systemPrompt},
+		}),
+		stubOneShotRunner(),
+	)
 
 	res, err := host.OracleAskHandler(ctx, map[string]any{
 		"prompt_path": promptPath,
@@ -676,17 +714,13 @@ func TestOracleAsk_AgentArg_AppliesSystemPrompt(t *testing.T) {
 // Pre-fix order was append-user → set-session, so a session-write failure
 // stranded a user message in the chat with no Claude session to resume.
 func TestRunOracleTalkWithChat_SetSessionFails_NoTranscriptPollution(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("fake-oracle.sh requires bash")
-	}
-	t.Setenv(host.OracleBinEnv, fakeOracleBin(t))
-
+	t.Parallel()
 	cs := newFakeChatStore()
 	// Chat starts with empty ClaudeSessionID so the handler will try to
 	// allocate one and call SetClaudeSessionID.
 	cs.addChat(host.ChatRecord{ID: "chat-i10", Title: "I10 chat", Status: "active"})
 	cs.failSetSession = true
-	ctx := host.WithChatStore(context.Background(), cs)
+	ctx := host.WithClaudeRunner(host.WithChatStore(context.Background(), cs), stubOracleRunner())
 
 	res, err := host.OracleTalkHandler(ctx, map[string]any{
 		"question": "ping",

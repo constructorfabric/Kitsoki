@@ -1,0 +1,3 @@
+{% extends "layout.pongo" %}
+{% block heading %}base heading: {{ world.title }}{% endblock %}
+{% block status %}base status: day {{ world.day }}{% endblock %}

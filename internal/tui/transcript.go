@@ -13,7 +13,11 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
 
+	"kitsoki/internal/app"
+	"kitsoki/internal/expr"
 	"kitsoki/internal/journal"
+	"kitsoki/internal/render"
+	"kitsoki/internal/render/elements"
 )
 
 // cachedAutoStyle holds the result of a one-time terminal background probe.
@@ -62,6 +66,17 @@ type transcriptEntry struct {
 	// Glamour). Empty for pre-styled entries like errors and guard hints.
 	// Kept so SetSize can re-render the body at a new wrap width.
 	source string
+	// typedView is the parsed typed View payload, populated by
+	// AppendTurnTyped / AppendSystemTyped. When non-nil, SetSize /
+	// WindowSizeMsg-driven rebuilds re-render the typed elements at
+	// the new viewport width (Issue 4 / option (a) in the brief).
+	// renderEnv and appRenderer are the matching expr.Env and per-app
+	// pongo2 renderer captured at append time; they don't move
+	// thereafter (the view is locked to the world snapshot of its
+	// turn — re-rendering reflects layout only, not new world state).
+	typedView   *app.View
+	renderEnv   expr.Env
+	appRenderer *render.AppRenderer
 }
 
 // transcriptModel is the append-only scrollable history pane.
@@ -130,6 +145,21 @@ func (m transcriptModel) Update(msg tea.Msg) (transcriptModel, tea.Cmd) {
 			); err == nil {
 				m.renderer = r
 			}
+			// Re-render typed view entries at the new wrap width
+			// (Issue 4 / option (a)). String-source entries are
+			// re-rendered by SetSize below when the root model
+			// invokes it; this path only fires for the standalone
+			// transcriptModel test harness which delivers the
+			// WindowSizeMsg directly.
+			for i := range m.entries {
+				if m.entries[i].typedView != nil {
+					m.entries[i].body = m.renderViewWith(
+						*m.entries[i].typedView,
+						m.entries[i].renderEnv,
+						m.entries[i].appRenderer,
+					)
+				}
+			}
 			m.vp.SetContent(m.render())
 		}
 	case offPathToggled:
@@ -153,7 +183,7 @@ func (m *transcriptModel) AppendSystem(body string) {
 		return
 	}
 	m.entries = append(m.entries, transcriptEntry{
-		body:   m.renderMarkdown(body),
+		body:   m.renderViewSource(body),
 		source: body,
 	})
 	m.vp.SetContent(m.render())
@@ -201,11 +231,22 @@ func (m *transcriptModel) SetSize(outerWidth, outerHeight, viewportWidth, viewpo
 		glamour.WithPreservedNewLines(),
 	); err == nil {
 		m.renderer = r
-		// Re-render Markdown-sourced entries at the new wrap width so
-		// lines that were wrapped for a larger viewport don't now clip.
+		// Re-render entries at the new wrap width. Typed-view entries
+		// re-run the elements dispatcher so prose / list / kv reflow
+		// to the new column width (Issue 4 / option (a)); legacy
+		// string-sourced entries re-run through Glamour at the new
+		// width.
 		for i := range m.entries {
+			if m.entries[i].typedView != nil {
+				m.entries[i].body = m.renderViewWith(
+					*m.entries[i].typedView,
+					m.entries[i].renderEnv,
+					m.entries[i].appRenderer,
+				)
+				continue
+			}
 			if m.entries[i].source != "" {
-				m.entries[i].body = m.renderMarkdown(m.entries[i].source)
+				m.entries[i].body = m.renderViewSource(m.entries[i].source)
 			}
 		}
 		m.vp.SetContent(m.render())
@@ -218,7 +259,7 @@ func (m *transcriptModel) SetSize(outerWidth, outerHeight, viewportWidth, viewpo
 // into single paragraphs.
 func (m *transcriptModel) AppendTurn(userInput, view string) {
 	header := "> " + userInput
-	body := m.renderMarkdown(view)
+	body := m.renderViewSource(view)
 	m.entries = append(m.entries, transcriptEntry{
 		header: header,
 		body:   body,
@@ -228,21 +269,123 @@ func (m *transcriptModel) AppendTurn(userInput, view string) {
 	m.vp.GotoBottom()
 }
 
-// renderMarkdown styles view text via glamour. The renderer is built with
-// glamour.WithPreservedNewLines() so author line breaks survive; then
-// leading ASCII spaces on continuation lines are promoted to non-breaking
-// spaces (U+00A0) because CommonMark otherwise strips them as inline
-// whitespace.
+// AppendTurnTyped is the typed-view variant of AppendTurn (Issue 4 /
+// option (a)). It stores the parsed View, the runtime env, and the
+// per-app renderer so the entry can be re-rendered at the new
+// viewport width on WindowSizeMsg without losing the "templating
+// happens before element layout" contract of the proposal §4.
+//
+// The fallback string view (rendered at the machine's stable width)
+// is used immediately for the initial paint; subsequent resize-driven
+// rebuilds replace it with a width-aware render of the typed View.
+func (m *transcriptModel) AppendTurnTyped(userInput, fallbackView string, typed *app.View, env expr.Env, rr *render.AppRenderer) {
+	header := "> " + userInput
+	body := m.renderViewWith(*typed, env, rr)
+	if body == "" {
+		// Fallback to the pre-rendered string (covers views whose typed
+		// dispatch returned "" — e.g. extends/blocks today).
+		body = m.renderViewSource(fallbackView)
+	}
+	m.entries = append(m.entries, transcriptEntry{
+		header:      header,
+		body:        body,
+		source:      fallbackView,
+		typedView:   typed,
+		renderEnv:   env,
+		appRenderer: rr,
+	})
+	m.vp.SetContent(m.render())
+	m.vp.GotoBottom()
+}
+
+// AppendSystemTyped is AppendSystem's typed-view variant. Used for
+// no-input synthetic turns (bg-job completion, timeout, initial view)
+// when the orchestrator emits a typed View.
+func (m *transcriptModel) AppendSystemTyped(fallbackView string, typed *app.View, env expr.Env, rr *render.AppRenderer) {
+	body := m.renderViewWith(*typed, env, rr)
+	if body == "" {
+		body = m.renderViewSource(fallbackView)
+	}
+	m.entries = append(m.entries, transcriptEntry{
+		body:        body,
+		source:      fallbackView,
+		typedView:   typed,
+		renderEnv:   env,
+		appRenderer: rr,
+	})
+	m.vp.SetContent(m.render())
+	m.vp.GotoBottom()
+}
+
+// renderView styles a parsed app.View for the transcript pane. It is
+// the Phase-D dispatch site for the typed element pipeline (see
+// internal/tui/elements/element.go): every element in the view is
+// guard-filtered, pongo-expanded, and laid out at the current viewport
+// wrap width.
+//
+// For the legacy scalar `view: <markdown>` form — which today's loader
+// normalises to a single {Kind: "template", Source: <original>} element —
+// the dispatcher delegates back into renderGlamour below, preserving
+// every byte of the pre-Phase-D behaviour: Glamour with
+// WithPreservedNewLines, preserveLeadingIndent on the source, and so on.
 //
 // TECH DEBT (2026-04-23): WithPreservedNewLines is the right call for
-// structured views (Terminal Room's indented examples, menu-ish lists) but
-// it also caps prose views at the author's hand-wrap width — a cloak
-// foyer view authored at ~65 chars/line won't grow past 65 even on a
-// 150-col terminal. Fix direction is a typed "view element" system
-// (prose | list | code | kv | template) so the renderer knows whether to
-// reflow or preserve per block. See ideas.md § "View rendering: unify
-// structured + prose content".
-func (m *transcriptModel) renderMarkdown(text string) string {
+// structured views (Terminal Room's indented examples, menu-ish lists)
+// but it also caps prose views at the author's hand-wrap width — a
+// cloak foyer view authored at ~65 chars/line won't grow past 65 even
+// on a 150-col terminal. Phase E/F migrate apps onto the typed
+// `prose:` element which reflows to the viewport.
+func (m *transcriptModel) renderView(v app.View) string {
+	return m.renderViewWith(v, expr.Env{}, nil)
+}
+
+// renderViewWith is the typed-view-aware renderer the resize seam and
+// the typed-view append paths share. env carries the runtime expr
+// snapshot (world / slots / menu); rr is the per-app pongo2 renderer
+// so {% include %} / {% extends %} inside leaf strings resolve via the
+// app's per-app loader (Issue 1). Either may be the zero value / nil
+// for legacy entry points — the elements dispatcher falls back to the
+// package-level render.Pongo in that case (preserves the pre-Phase-D
+// behaviour for system messages and reconstructed transcripts).
+func (m *transcriptModel) renderViewWith(v app.View, env expr.Env, rr *render.AppRenderer) string {
+	if v.IsEmpty() {
+		return ""
+	}
+	wrap := m.wrapWidth()
+	// Bridge: *render.AppRenderer satisfies elements.ViewRenderer via
+	// its Render method, but a typed-nil pointer must be passed as
+	// the interface nil so renderLeaf's nil check triggers correctly.
+	var leafRR elements.ViewRenderer
+	if rr != nil {
+		leafRR = rr
+	}
+	out, err := elements.RenderAll(v, env, wrap, m.renderGlamour, leafRR)
+	if err != nil {
+		// On a render error fall back to the raw source — better to show
+		// the un-styled template body than to drop the turn entirely.
+		// The error is non-fatal for the UI; the orchestrator log already
+		// captures the typed view round-trip.
+		return v.SourceString()
+	}
+	return out
+}
+
+// renderViewSource is the back-compat shim for call sites that today
+// pass a pre-rendered view string (the orchestrator's result.View
+// pipeline — every Append* entry point on this model). Wraps the string
+// in a LegacyView so it goes through renderView's dispatcher (which
+// routes single-template-element views back to the Glamour path).
+func (m *transcriptModel) renderViewSource(text string) string {
+	if text == "" {
+		return ""
+	}
+	return m.renderView(app.LegacyView(text))
+}
+
+// renderGlamour is the post-Pongo Glamour step for the `template`
+// element kind. Lifted out of the old renderMarkdown so the elements
+// dispatcher can call it without importing glamour itself.
+func (m *transcriptModel) renderGlamour(text string) string {
 	if text == "" {
 		return ""
 	}
@@ -255,6 +398,19 @@ func (m *transcriptModel) renderMarkdown(text string) string {
 		return text
 	}
 	return strings.TrimRight(out, "\n")
+}
+
+// wrapWidth returns the wrap width to use for the elements dispatcher.
+// Mirrors the safety margin in SetSize's Glamour build — 2 chars
+// narrower than the viewport to clear the rounded-border padding, with
+// a 40-char floor so a too-narrow terminal still renders something
+// readable instead of a one-word-per-line column.
+func (m *transcriptModel) wrapWidth() int {
+	w := m.vp.Width - 2
+	if w < 40 {
+		w = 40
+	}
+	return w
 }
 
 // preserveLeadingIndent swaps runs of two-or-more leading ASCII spaces on
@@ -317,7 +473,7 @@ func startsWithListMarker(s string) bool {
 // userInput="" when the caller already appended the question header in a
 // prior AppendTurn (the typical TUI submitOffPath sequence).
 func (m *transcriptModel) AppendOffPathAnswer(userInput, answer string) {
-	rendered := m.renderMarkdown(answer)
+	rendered := m.renderViewSource(answer)
 	if rendered == "" {
 		rendered = answer
 	}

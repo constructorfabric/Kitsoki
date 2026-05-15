@@ -18,31 +18,38 @@ states:
   oracle:
     mode: conversational
     description: "Oracle Room — chat list. Start a new thread or open an existing one."
-    view: |
-      ======================================================================
-       Oracle                                   persistent Claude chats
-      ======================================================================
-
-      {{ if world.oracle_chat_count == 0 }}
-       No chats yet.
-
-       Type a question to start your first conversation:
-         "how does the ZTA proxy work"
-         "explain the beasy flow"
-         "walk me through bug-fix.py"
-      {{ else }}
-       Chats: {{ world.oracle_chat_count }}
-
-      {{ world.oracle_chats_view }}
-
-       Actions:
-         ask "..."                  — start a new chat with this question
-         open <number/id>           — resume an existing chat
-         rename <number/id> "title" — rename a chat
-         remove <number/id>         — archive a chat (hides from list)
-      {{ end }}
-
-       back                         — return to previous room
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Oracle — persistent Claude chats"
+          # Empty-list onboarding. Element-level when: replaces inline {% if %}.
+          - prose: "No chats yet."
+            when:  "world.oracle_chat_count == 0"
+          - prose: "Type a question to start your first conversation:"
+            when:  "world.oracle_chat_count == 0"
+          - code: |
+              "how does the ZTA proxy work"
+              "explain the beasy flow"
+              "walk me through bug-fix.py"
+            when:  "world.oracle_chat_count == 0"
+          # Non-empty list — show the chat count and the host-rendered
+          # chats view (which already contains its own formatting).
+          - kv:
+              pairs:
+                Chats: "{{ world.oracle_chat_count }}"
+            when:  "world.oracle_chat_count > 0"
+          - code: "{{ world.oracle_chats_view }}"
+            when:  "world.oracle_chat_count > 0"
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - { label: "ask \"…\"",                    hint: "start a new chat with this question" }
+                - { label: "open <number/id>",             hint: "resume an existing chat" }
+                - { label: "rename <number/id> \"title\"", hint: "rename a chat" }
+                - { label: "remove <number/id>",           hint: "archive (hides from list)" }
+                - { label: "back",                         hint: "return to previous room" }
     relevant_world: [oracle_chats_view, oracle_chat_count]
     relevant_slots: []
     on_enter:
@@ -141,13 +148,16 @@ states:
   oracle_active_new:
     mode: conversational
     description: "Creating a new Oracle chat..."
-    view: |
-      Oracle — {{ world.oracle_chat_title }}
-      Chat ID: {{ world.oracle_chat_id }}
-
-      (empty chat — ask a question to begin)
-
-      Ask a question, or use "back" to return to the chat list.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Oracle — {{ world.oracle_chat_title }}"
+          - kv:
+              pairs:
+                Chat ID: "{{ world.oracle_chat_id }}"
+          - prose: "(empty chat — ask a question to begin)"
+          - prose: "Ask a question, or use \"back\" to return to the chat list."
     relevant_world: [oracle_chat_id, oracle_chat_title]
     relevant_slots: []
     on_enter:
@@ -198,13 +208,16 @@ states:
   oracle_active:
     mode: conversational
     description: "Active Oracle chat — view transcript and ask questions."
-    view: |
-      Oracle — {{ world.oracle_chat_title }}
-      Chat ID: {{ world.oracle_chat_id }}
-
-      {{ world.oracle_transcript_view }}
-
-      Ask a question, or use "back" to return to the chat list.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Oracle — {{ world.oracle_chat_title }}"
+          - kv:
+              pairs:
+                Chat ID: "{{ world.oracle_chat_id }}"
+          - code: "{{ world.oracle_transcript_view }}"
+          - prose: "Ask a question, or use \"back\" to return to the chat list."
     relevant_world: [oracle_chat_id, oracle_chat_title, oracle_transcript_view, oracle_answer]
     relevant_slots: []
     on_enter:
@@ -260,15 +273,18 @@ states:
   oracle_asking_new:
     mode: conversational
     description: "Starting a new Oracle chat and asking your question..."
-    view: |
-      Oracle — {{ world.oracle_chat_title }}
-
-      Q: {{ world.oracle_question }}
-
-      A: {{ world.oracle_answer }}{{ if world.oracle_answer == "" }}
-      [Claude is thinking...]{{ end }}
-
-      Ask another question, or use "back" to return to the chat list.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Oracle — {{ world.oracle_chat_title }}"
+          - kv:
+              pairs:
+                Q: "{{ world.oracle_question }}"
+                A: "{{ world.oracle_answer }}"
+          - prose: "[Claude is thinking...]"
+            when:  "world.oracle_answer == ''"
+          - prose: "Ask another question, or use \"back\" to return to the chat list."
     relevant_world: [oracle_chat_id, oracle_chat_title, oracle_question, oracle_answer]
     relevant_slots: []
     on_enter:
@@ -345,15 +361,18 @@ states:
   oracle_asking:
     mode: conversational
     description: "Oracle is working on your question..."
-    view: |
-      Oracle — {{ world.oracle_chat_title }}
-
-      Q: {{ world.oracle_question }}
-
-      A: {{ world.oracle_answer }}{{ if world.oracle_answer == "" }}
-      [Claude is thinking...]{{ end }}
-
-      Ask another question, or use "back" to return to the chat list.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Oracle — {{ world.oracle_chat_title }}"
+          - kv:
+              pairs:
+                Q: "{{ world.oracle_question }}"
+                A: "{{ world.oracle_answer }}"
+          - prose: "[Claude is thinking...]"
+            when:  "world.oracle_answer == ''"
+          - prose: "Ask another question, or use \"back\" to return to the chat list."
     relevant_world: [oracle_chat_id, oracle_chat_title, oracle_question, oracle_answer]
     relevant_slots: []
     on_enter:
@@ -417,11 +436,15 @@ states:
 
   oracle_error:
     description: "Oracle call failed — Claude was unavailable or errored."
-    view: |
-      Oracle error: {{ world.last_error }}
-
-      Try again, or use "back" to return.
-      Chat: {{ world.oracle_chat_id }}
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Error: "{{ world.last_error }}"
+                Chat:  "{{ world.oracle_chat_id|default:\"(none)\" }}"
+          - prose: "Try again, or use \"back\" to return."
     relevant_world: [last_error, oracle_chat_id]
     relevant_slots: []
     on:
@@ -447,15 +470,18 @@ states:
   oracle_asking_bg:
     mode: conversational
     description: "Background Oracle — question dispatched as a background job."
-    view: |
-      Oracle — {{ world.oracle_chat_title }}
-
-      Q: {{ world.oracle_question }}
-
-      A: {{ world.oracle_answer }}{{ if world.oracle_answer == "" }}
-      [Waiting for Claude reply in background… check Inbox for notification.]{{ end }}
-
-      Use "back" to return to the chat list.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Oracle — {{ world.oracle_chat_title }}"
+          - kv:
+              pairs:
+                Q: "{{ world.oracle_question }}"
+                A: "{{ world.oracle_answer }}"
+          - prose: "[Waiting for Claude reply in background… check Inbox for notification.]"
+            when:  "world.oracle_answer == ''"
+          - prose: "Use \"back\" to return to the chat list."
     relevant_world: [oracle_chat_id, oracle_chat_title, oracle_question, oracle_answer, last_job_id]
     relevant_slots: []
     on_enter:

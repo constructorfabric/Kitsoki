@@ -1,0 +1,6 @@
+{# Standard dev-story status line at the top of every room. #}
+{# Renders the three signals an engineer cares about between actions: #}
+{# which workspace, last command result, and unread inbox count. #}
+{# Empty/zero values fall through |default so rooms without workspace #}
+{# context (main, oracle list, inbox) print a clean single-segment line. #}
+Workspace: {{ world.current_workspace|default:"(none)" }}  |  Last result: {{ world.proposal_result|default:"(none)" }}  |  Inbox: {{ world.inbox_unread }} unread

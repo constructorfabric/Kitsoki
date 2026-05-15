@@ -10,6 +10,7 @@ import (
 
 	"kitsoki/internal/app"
 	"kitsoki/internal/expr"
+	"kitsoki/internal/render"
 	"kitsoki/internal/world"
 )
 
@@ -97,7 +98,7 @@ func buildDynamicSuffix(appDef *app.AppDef, in TurnInput) string {
 		if state.Description != "" {
 			sb.WriteString(fmt.Sprintf("**State description:** %s\n\n", state.Description))
 		}
-		if rendered := renderViewForPrompt(state.View, in.World); rendered != "" {
+		if rendered := renderViewForPrompt(state.View.SourceString(), in.World); rendered != "" {
 			sb.WriteString("**Current view (what the user sees — treat menu labels as authoritative for this state):**\n")
 			sb.WriteString("```\n")
 			sb.WriteString(rendered)
@@ -219,7 +220,7 @@ func renderViewForPrompt(view string, w world.World) string {
 	if view == "" {
 		return ""
 	}
-	rendered, err := expr.Render(view, expr.Env{World: w.Vars, Slots: map[string]any{}})
+	rendered, err := render.Pongo(view, expr.Env{World: w.Vars, Slots: map[string]any{}})
 	if err != nil || rendered == "" {
 		return view
 	}

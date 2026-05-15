@@ -1,0 +1,5 @@
+=== layout ===
+{% block heading %}layout default heading{% endblock %}
+{% block status %}layout default status{% endblock %}
+{% block body %}layout default body{% endblock %}
+=== /layout ===

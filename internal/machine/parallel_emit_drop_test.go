@@ -93,21 +93,21 @@ func makeParallelTransitionEmitApp() *app.AppDef {
 		},
 		States: map[string]*app.State{
 			"outside": {
-				View: "Outside",
+				View: app.LegacyView("Outside"),
 				On: map[string][]app.Transition{
 					"enter": {{Target: "shell"}},
 				},
 			},
 			"shell": {
 				Type: "parallel",
-				View: "Shell.",
+				View: app.LegacyView("Shell."),
 				States: map[string]*app.State{
 					"a": {
 						Type:    "compound",
 						Initial: "leaf",
 						States: map[string]*app.State{
 							"leaf": {
-								View: "A leaf.",
+								View: app.LegacyView("A leaf."),
 								On: map[string][]app.Transition{
 									"fire": {{
 										Target: ".",
@@ -125,7 +125,7 @@ func makeParallelTransitionEmitApp() *app.AppDef {
 						Type:    "compound",
 						Initial: "leaf",
 						States: map[string]*app.State{
-							"leaf": {View: "B leaf."},
+							"leaf": {View: app.LegacyView("B leaf.")},
 						},
 					},
 				},
@@ -156,7 +156,7 @@ func TestParallelEmitDropped_DispatchEmittedIntents(t *testing.T) {
 		},
 		States: map[string]*app.State{
 			"outside": {
-				View: "Outside",
+				View: app.LegacyView("Outside"),
 				On: map[string][]app.Transition{
 					"enter": {{
 						Target: "shell",
@@ -173,14 +173,14 @@ func TestParallelEmitDropped_DispatchEmittedIntents(t *testing.T) {
 			},
 			"shell": {
 				Type: "parallel",
-				View: "Shell.",
+				View: app.LegacyView("Shell."),
 				States: map[string]*app.State{
 					"a": {
 						Type:    "compound",
 						Initial: "leaf",
 						States: map[string]*app.State{
 							"leaf": {
-								View: "A leaf.",
+								View: app.LegacyView("A leaf."),
 								On: map[string][]app.Transition{
 									"poke": {{Target: "."}},
 								},
@@ -191,7 +191,7 @@ func TestParallelEmitDropped_DispatchEmittedIntents(t *testing.T) {
 						Type:    "compound",
 						Initial: "leaf",
 						States: map[string]*app.State{
-							"leaf": {View: "B leaf."},
+							"leaf": {View: app.LegacyView("B leaf.")},
 						},
 					},
 				},
@@ -287,27 +287,27 @@ func TestParallelEmitDropped_TurnParallelOnEnterEmit(t *testing.T) {
 		},
 		States: map[string]*app.State{
 			"outside": {
-				View: "Outside",
+				View: app.LegacyView("Outside"),
 				On: map[string][]app.Transition{
 					"enter": {{Target: "shell"}},
 				},
 			},
 			"shell": {
 				Type: "parallel",
-				View: "Shell.",
+				View: app.LegacyView("Shell."),
 				States: map[string]*app.State{
 					"a": {
 						Type:    "compound",
 						Initial: "first",
 						States: map[string]*app.State{
 							"first": {
-								View: "A first.",
+								View: app.LegacyView("A first."),
 								On: map[string][]app.Transition{
 									"step": {{Target: "../second"}},
 								},
 							},
 							"second": {
-								View: "A second.",
+								View: app.LegacyView("A second."),
 								OnEnter: []app.Effect{
 									{EmitIntent: "poke"},
 									{Set: map[string]any{"flag": "set"}},
@@ -322,7 +322,7 @@ func TestParallelEmitDropped_TurnParallelOnEnterEmit(t *testing.T) {
 						Type:    "compound",
 						Initial: "leaf",
 						States: map[string]*app.State{
-							"leaf": {View: "B leaf."},
+							"leaf": {View: app.LegacyView("B leaf.")},
 						},
 					},
 				},
@@ -386,7 +386,7 @@ func TestParallelEmitDropped_DispatchPostBindEmits(t *testing.T) {
 		States: map[string]*app.State{
 			"shell": {
 				Type: "parallel",
-				View: "Shell.",
+				View: app.LegacyView("Shell."),
 				OnEnter: []app.Effect{
 					// emit_intent on the parallel parent's on_enter: this
 					// is what DispatchPostBindEmits would walk.
@@ -397,14 +397,14 @@ func TestParallelEmitDropped_DispatchPostBindEmits(t *testing.T) {
 						Type:    "compound",
 						Initial: "leaf",
 						States: map[string]*app.State{
-							"leaf": {View: "A."},
+							"leaf": {View: app.LegacyView("A.")},
 						},
 					},
 					"b": {
 						Type:    "compound",
 						Initial: "leaf",
 						States: map[string]*app.State{
-							"leaf": {View: "B."},
+							"leaf": {View: app.LegacyView("B.")},
 						},
 					},
 				},

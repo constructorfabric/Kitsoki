@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	"kitsoki/internal/expr"
+	"kitsoki/internal/render"
 )
 
 // OracleAskHandler implements host.oracle.ask.
@@ -64,12 +65,12 @@ func OracleAskHandler(ctx context.Context, args map[string]any) (Result, error) 
 		return Result{Error: fmt.Sprintf("host.oracle.ask: read prompt %q: %v", resolved, err)}, nil
 	}
 
-	rendered, err := expr.Render(string(raw), expr.Env{Args: args})
+	rendered, err := render.Pongo(string(raw), expr.Env{Args: args})
 	if err != nil {
 		return Result{Error: fmt.Sprintf("host.oracle.ask: render prompt %q: %v", resolved, err)}, nil
 	}
 
-	bin, err := resolveOracleBin()
+	bin, err := resolveOracleBin(ctx)
 	if err != nil {
 		return Result{Error: err.Error()}, nil
 	}

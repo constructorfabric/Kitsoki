@@ -1,0 +1,5 @@
+{% block heading %}Default Heading{% endblock %}
+---
+{% block body %}default body{% endblock %}
+---
+{% block footer %}default footer{% endblock %}

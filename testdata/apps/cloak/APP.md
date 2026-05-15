@@ -106,7 +106,7 @@ Put the cloak back on.
 
 A small bar off the foyer. Lit when the cloak is hung up; dark otherwise.
 
-**Initial child**: `{{ world.wearing_cloak ? 'dark' : 'lit' }}`
+**Initial child**: `{% if world.wearing_cloak %}dark{% else %}lit{% endif %}`
 
 **Shows world**: `wearing_cloak`, `disturbance`
 
@@ -115,13 +115,6 @@ A small bar off the foyer. Lit when the cloak is hung up; dark otherwise.
 Too dark to see. Fumbling around increases disturbance.
 
 **Shows world**: `disturbance`
-
-**View**:
-
-```
-It's pitch dark in here. You can just make out a message
-on the floor, but can't read it without more light.
-```
 
 **Transitions**:
 
@@ -137,15 +130,6 @@ The bar, lit now the cloak is hung up. A message is scrawled on the floor.
 
 **Shows world**: `disturbance`
 
-**View**:
-
-```
-The bar, much rougher than you'd have guessed after the
-opulence of the foyer, is completely empty. There seems
-to be some sort of message scrawled in the sawdust on the
-floor.
-```
-
 **Transitions**:
 
 | # | Intent | Guard | → | Effects |
@@ -160,15 +144,6 @@ floor.
 A small cloakroom with a single hook. Exit east.
 
 **Shows world**: `wearing_cloak`
-
-**View**:
-
-```
-The walls of this small room were clearly once lined with hooks,
-though now only one remains. The exit is a door to the east.
-{{ if world.wearing_cloak }}You are wearing a velvet cloak.{{ end }}
-{{ if not world.wearing_cloak }}A velvet cloak hangs on the hook.{{ end }}
-```
 
 **Transitions**:
 
@@ -188,31 +163,11 @@ The journey is over.
 
 **Shows world**: `message_rumpled`, `disturbance`
 
-**View**:
-
-```
-{{ if world.message_rumpled }}
-The message, now little more than a dusty blur, appears to say:
-"You have lost."
-{{ else }}
-The message, neatly marked in the sawdust, reads:
-"You have won."
-{{ end }}
-```
-
 ### <a id="room-foyer"></a> `foyer`  _(root)_
 
 The entrance hall of the opera house. South leads to the bar; west to the cloakroom.
 
 **Shows world**: `wearing_cloak`
-
-**View**:
-
-```
-You are in a spacious hall, splendidly decorated in red and gold,
-with glittering chandeliers overhead. The entrance from the street
-is to the north, and there are doorways south and west.
-```
 
 **Transitions**:
 

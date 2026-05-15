@@ -1,0 +1,16 @@
+{# Macros shared across robbery rooms. Single-line comments only (pongo2/v6 #}
+{# rejects newlines inside {# … #}). #}
+{# #}
+{# intent_list(items) — canonical action-list shape. Each item is a string #}
+{# like "pay" / "fight" / "flee" / "look". Rendered as a single comma- #}
+{# separated "Actions: …" line. Mirrors frontier_event's macro of the same #}
+{# name so authors moving between sibling sub-stories see one convention. #}
+{# #}
+{# tribute_demand(threat) — the bandit's price demand. `threat` is the 1..3 #}
+{# escalation level; price scales linearly at $50/threat. Factored out so a #}
+{# host that wants to re-skin the demand (different currency, different #}
+{# bandit voice) overrides this macro in the host's own views/macros.pongo #}
+{# without touching the room body. #}
+{% macro intent_list(items) %}Actions: {{ items|join:", " }}.{% endmacro %}
+
+{% macro tribute_demand(threat) %}"{{ threat * 50 }} dollars or there'll be trouble."{% endmacro %}

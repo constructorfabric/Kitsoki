@@ -30,17 +30,21 @@ states:
             - Profession: {{ world.profession }}
 
             The journey is over.
-    view: |
-      You have reached the Willamette Valley!
-
-      Day:      {{ world.day }}
-      Party:    {{ world.party_alive }} survivors
-      Food:     {{ world.food_lbs }} lbs remaining
-      Oxen:     {{ world.oxen }}
-      Cash:     ${{ world.money }}
-      Profession: {{ world.profession }}
-
-      The journey is over.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "You have reached the Willamette Valley!"
+          - kv:
+              pairs:
+                Day:        "{{ world.day }}"
+                Party:      "{{ world.party_alive }} survivors"
+                Food:       "{{ world.food_lbs }} lbs remaining"
+                Oxen:       "{{ world.oxen }}"
+                Cash:       "${{ world.money }}"
+                Profession: "{{ world.profession }}"
+        footer:
+          - prose: "The journey is over."
 
   ended_lost:
     terminal: true
@@ -63,11 +67,15 @@ states:
             **Survivors at the end:** {{ world.party_alive }}.
 
             May the trail remember them.
-    view: |
-      The journey ends short of the Willamette Valley.
-
-      Last known location: {{ world.current_landmark }} ({{ world.miles_traveled }} mi into the leg).
-      Day:                 {{ world.day }}
-      Party:               {{ world.party_alive }} alive
-
-      The trail claims another wagon party.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "The journey ends short of the Willamette Valley."
+          - kv:
+              pairs:
+                Last known location: "{{ world.current_landmark }} ({{ world.miles_traveled }} mi into the leg)"
+                Day:                 "{{ world.day }}"
+                Party:               "{{ world.party_alive }} alive"
+        footer:
+          - prose: "The trail claims another wagon party."

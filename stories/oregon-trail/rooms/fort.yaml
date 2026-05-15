@@ -21,16 +21,24 @@ states:
 
       idle:
         description: "At the fort sutler ({{ world.current_landmark }})."
-        view: |
-          {{ world.current_landmark }} — supplies marked up 50%.
-
-          Cash:    ${{ world.money }}
-          Food:    {{ world.food_lbs }} lbs (fort price: $0.30 / lb)
-          Oxen:    {{ world.oxen }} (fort price: $60 / head)
-
-          Actions:
-            - propose_purchase items=... total_cost=...   (auto-accepts <$5)
-            - leave_fort                                  (return to the trail)
+        # Same inventory partial as the general store (proposal §5.4 /
+        # §6 re-use). The partial reads `world.local_price_pct` so the
+        # 150% fort markup is baked into the prices it prints without
+        # this room needing its own table.
+        view:
+          extends: "base"
+          blocks:
+            body:
+              - prose: "{{ world.current_landmark }} — supplies marked up 50%."
+              - code: "{% include \"partials/inventory.pongo\" %}"
+            choices:
+              - heading: "Actions"
+              - list:
+                  items:
+                    - label: "propose_purchase items=… total_cost=…"
+                      hint:  "auto-accepts <$5; otherwise review/refine"
+                    - label: "leave_fort"
+                      hint:  "return to the trail"
         on:
           propose_purchase:
             - when: "int(slots.total_cost) < 5 && world.money >= int(slots.total_cost)"
@@ -118,17 +126,32 @@ states:
 
       reviewing:
         description: "The sutler reads the order back."
-        view: |
-          The sutler at {{ world.current_landmark }} drags a thumb across the chalk
-          board, looks up at you over the counter.
-
-          "{{ world.proposal_items }}. Fort price — ${{ world.proposal_total_cost }}.
-           You'd have ${{ world.money - world.proposal_total_cost }} left, and a long
-           road ahead. Mark you'll not see them prices again till the next post.
-           Speak up — that the order?"
-
-          accept_purchase to take it. refine_purchase to change a line.
-          cancel_purchase to walk off. look reads the board over.
+        view:
+          extends: "base"
+          blocks:
+            body:
+              - prose: >
+                  The sutler at {{ world.current_landmark }} drags a thumb
+                  across the chalk board, looks up at you over the
+                  counter.
+              - prose: >
+                  "{{ world.proposal_items }}. Fort price —
+                  ${{ world.proposal_total_cost }}. You'd have
+                  ${{ world.money - world.proposal_total_cost }} left,
+                  and a long road ahead. Mark you'll not see them prices
+                  again till the next post. Speak up — that the order?"
+            choices:
+              - heading: "Actions"
+              - list:
+                  items:
+                    - label: "accept_purchase"
+                      hint:  "take it"
+                    - label: "refine_purchase"
+                      hint:  "change a line"
+                    - label: "cancel_purchase"
+                      hint:  "walk off"
+                    - label: "look"
+                      hint:  "read the board over"
         relevant_world: [proposal_items, proposal_total_cost, money, proposal_refine_count, current_landmark]
         on:
           accept_purchase:
@@ -193,15 +216,27 @@ states:
               phase_id:  "fort_done_{{ world.current_landmark }}_{{ world.proposal_items }}_{{ world.proposal_total_cost }}"
               title:     "Resupplied at {{ world.current_landmark }}"
               body:      "Bought {{ world.proposal_items }} from the sutler at {{ world.current_landmark }} for ${{ world.proposal_total_cost }}. ${{ world.money }} cash left, {{ world.food_lbs }} lbs food, {{ world.oxen }} oxen."
-        view: |
-          The sutler pockets the coin, drops the goods on the counter. "Pleasure
-          doing business." He's already chalked the next traveller's order on the
-          board.
-
-          ${{ world.money }} left in your purse.
-
-          repeat_purchase if you forgot something. leave_fort to put the post
-          behind you. look reads the counter again.
+        view:
+          extends: "base"
+          blocks:
+            body:
+              - prose: >
+                  The sutler pockets the coin, drops the goods on the
+                  counter. "Pleasure doing business." He's already chalked
+                  the next traveller's order on the board.
+              - kv:
+                  pairs:
+                    Cash left: "${{ world.money }}"
+            choices:
+              - heading: "Actions"
+              - list:
+                  items:
+                    - label: "repeat_purchase"
+                      hint:  "if you forgot something"
+                    - label: "leave_fort"
+                      hint:  "put the post behind you"
+                    - label: "look"
+                      hint:  "read the counter again"
         relevant_world: [money, food_lbs, oxen, current_landmark]
         on:
           repeat_purchase:

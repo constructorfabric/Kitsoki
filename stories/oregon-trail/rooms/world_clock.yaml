@@ -32,7 +32,8 @@ states:
   world_clock:
     type: parallel
     description: "Two orthogonal regions: weather + calendar."
-    view: "── world_clock ──"
+    view:
+      - heading: "── world_clock ──"
     states:
 
       # ── calendar region ───────────────────────────────────────────────
@@ -54,7 +55,8 @@ states:
                 - set: { snow_observed: true }
         states:
           day_active:
-            view: "{{ world.month }} {{ world.day }}, {{ world.year }}."
+            view:
+              - prose: "{{ world.month|upper }} {{ world.day }}, {{ world.year }}."
 
       # ── weather region ────────────────────────────────────────────────
       # dry → rain (emit precip_heavy) → snow (emit snow_starts) → dry.
@@ -67,7 +69,8 @@ states:
         initial: dry
         states:
           dry:
-            view: "Weather: dry."
+            view:
+              - prose: "Weather: dry."
             on:
               weather_advance:
                 - target: world_clock.weather.rain
@@ -77,7 +80,8 @@ states:
                         day: "{{ world.day + 1 }}"
                     - emit: precip_heavy
           rain:
-            view: "Weather: rain."
+            view:
+              - prose: "Weather: rain."
             on:
               weather_advance:
                 - target: world_clock.weather.snow
@@ -87,7 +91,8 @@ states:
                         day: "{{ world.day + 1 }}"
                     - emit: snow_starts
           snow:
-            view: "Weather: snow."
+            view:
+              - prose: "Weather: snow."
             on:
               weather_advance:
                 - target: world_clock.weather.dry

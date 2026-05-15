@@ -103,14 +103,52 @@ root: encounter
 states:
   encounter:
     description: "A masked rider blocks the trail."
-    view: |
-      A masked rider on a sorrel pony blocks the road, rifle across the saddle.
-      "{{ world.threat_level * 50 }} dollars or there'll be trouble."
-
-      Party alive: {{ world.party_alive }}. Money: {{ world.party_money }}.
-      Threat: {{ world.threat_level }}/3.
-
-      Actions: pay, fight, flee, look.
+    # Typed view with block inheritance. `extends: "base"` resolves
+    # against robbery/views/base.pongo when this story runs STANDALONE,
+    # and against the HOST's views/base.pongo when robbery is imported
+    # (frontier_event → oregon-trail). Both base templates declare the
+    # shared block convention (status / heading / body / choices /
+    # footer), so the same room composes into either context — host's
+    # status chrome wins when imported; robbery's minimal status fills
+    # in standalone. See views/base.pongo for the design note.
+    view:
+      extends: "base"
+      blocks:
+        heading:
+          - heading: "Holdup on the trail"
+        body:
+          # First paragraph: the scene. Reflows to viewport width.
+          - prose: >
+              A masked rider on a sorrel pony blocks the road, rifle
+              across the saddle.
+          # Second paragraph: the demand. Kept as its own prose element
+          # so the quote sits in its own paragraph with a blank line
+          # above. The price scales with threat_level.
+          - prose: '"{{ world.threat_level * 50 }} dollars or there''ll be trouble."'
+        choices:
+          - heading: "Actions"
+          # Typed list with hint column. `pay` carries a per-item
+          # `when:` showing the affordability hint only when the party
+          # cannot afford the tribute; expr-lang evaluates against the
+          # same env as the transition guards, so the hint mirrors the
+          # `world.party_money >= world.threat_level * 50` arm above.
+          # `fight` always fires (the default arm routes to @exit:killed
+          # when under-strength), so no per-item guard there — the
+          # outcome is the player's choice, not an availability gate.
+          - list:
+              items:
+                - label: "pay"
+                  hint:  "buy them off ({{ world.threat_level * 50 }})"
+                  when:  "world.party_money >= world.threat_level * 50"
+                - label: "pay"
+                  hint:  "not enough money ({{ world.threat_level * 50 }} needed)"
+                  when:  "world.party_money < world.threat_level * 50"
+                - label: "fight"
+                  hint:  "shoot it out (party_alive >= {{ 2 + world.threat_level }} to win)"
+                - label: "flee"
+                  hint:  "ride off without engaging"
+                - label: "look"
+                  hint:  "re-render the scene"
     relevant_world: [party_money, party_alive, threat_level]
     on_enter:
       # Exercises the multi-op host_interface (proposal §11.1):

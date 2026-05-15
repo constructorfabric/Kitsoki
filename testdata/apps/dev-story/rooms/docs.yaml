@@ -3,12 +3,22 @@
 states:
   docs_room:
     description: "Docs Room — update in-repo docs, Confluence pages, generate from code."
-    view: |
-      Docs Room.
-      Workspace: {{ world.current_workspace }}
-
-      Options: update inline docs, update confluence, generate docs from code,
-               cross-link, go back.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Workspace: "{{ world.current_workspace }}"
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - { label: "update inline docs",      hint: "in-repo Markdown / README" }
+                - { label: "update confluence",       hint: "external page edits" }
+                - { label: "generate docs from code", hint: "draft from source" }
+                - { label: "cross-link",              hint: "wire pages together" }
+                - { label: "go back",                 hint: "return to previous room" }
     relevant_world: [current_workspace]
     relevant_slots: []
     on:
@@ -30,19 +40,26 @@ states:
 
   docs_updating_inline:
     description: "Updating in-repo documentation..."
-    view: |
-      Updating docs in {{ world.current_workspace }}:
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Updating docs in {{ world.current_workspace }}"
+          - heading: "Files to update"
+          - list:
+              items:
+                - { label: "README.md",         hint: "add auth token refresh section" }
+                - { label: "docs/api/auth.md",  hint: "document new refresh endpoint" }
+                - { label: "CHANGELOG.md",      hint: "add entry for v2.4.2" }
+          - heading: "Suggested changes"
+          - code: |
+              README.md line 45:
+                ### Token Refresh
+                Tokens auto-refresh when within 5 minutes of expiry.
 
-      [stub] Files to update:
-        - README.md: Add auth token refresh section
-        - docs/api/auth.md: Document new refresh endpoint
-        - CHANGELOG.md: Add entry for v2.4.2
-
-      Suggested changes:
-        README.md line 45: Add "### Token Refresh\nTokens auto-refresh when within 5 minutes of expiry."
-        docs/api/auth.md: Add POST /auth/refresh endpoint documentation
-
-      Apply these changes?
+              docs/api/auth.md:
+                Add POST /auth/refresh endpoint documentation.
+          - prose: "Apply these changes?"
     relevant_world: [current_workspace]
     relevant_slots: []
     on:
@@ -66,27 +83,30 @@ states:
 
   docs_generating:
     description: "Generating docs from source code..."
-    view: |
-      Generating docs for {{ world.current_workspace }}:
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Generating docs for {{ world.current_workspace }}"
+          - heading: "Analyzing source"
+          - list:
+              items:
+                - { label: "auth/token.go",   hint: "3 exported types, 5 exported functions" }
+                - { label: "auth/refresh.go", hint: "1 exported function" }
+          - heading: "Generated draft"
+          - code: |
+              # auth/token
+              Package auth/token implements JWT token management with auto-refresh.
 
-      [stub] Analyzing source:
-        auth/token.go: 3 exported types, 5 exported functions
-        auth/refresh.go: 1 exported function
+              ## Types
+              - Token: represents a JWT token with expiry tracking
+              - RefreshPolicy: controls when auto-refresh is triggered
 
-      Generated draft:
-        # auth/token
-        Package auth/token implements JWT token management with auto-refresh.
-
-        ## Types
-        - Token: represents a JWT token with expiry tracking
-        - RefreshPolicy: controls when auto-refresh is triggered
-
-        ## Functions
-        - New(claims): creates a new token
-        - Validate(ctx): validates and optionally refreshes the token
-        - RefreshIfExpiring(ctx): refresh when within configured threshold
-
-      Write this to docs/api/auth-token.md?
+              ## Functions
+              - New(claims): creates a new token
+              - Validate(ctx): validates and optionally refreshes the token
+              - RefreshIfExpiring(ctx): refresh when within configured threshold
+          - prose: "Write this to docs/api/auth-token.md?"
     relevant_world: [current_workspace]
     relevant_slots: []
     on:

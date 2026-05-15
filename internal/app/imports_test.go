@@ -60,7 +60,7 @@ func TestImports_StateRewriting(t *testing.T) {
 	// idle's description was: "Ready to work on ticket {{ world.ticket_id }}."
 	require.Contains(t, idle.Description, "world.sub__ticket_id", "child description should be rewritten")
 	require.NotContains(t, idle.Description, "world.ticket_id\b", "raw child name should not survive")
-	require.Contains(t, idle.View, "world.sub__ticket_id")
+	require.Contains(t, idle.View.SourceString(), "world.sub__ticket_id")
 
 	// The working state was OVERRIDDEN by the parent; its description should
 	// reflect the override, not the original.
@@ -73,7 +73,7 @@ func TestImports_StateRewriting(t *testing.T) {
 	// world key. The current rewriter ONLY rewrites child-shaped strings,
 	// not override.states (which the parent authored). The rewriter pass
 	// happens AFTER overrides, so override.states view IS rewritten.
-	require.Contains(t, working.View, "world.sub__ticket_id", "override.states view is rewritten by the same pass that handles child states")
+	require.Contains(t, working.View.SourceString(), "world.sub__ticket_id", "override.states view is rewritten by the same pass that handles child states")
 }
 
 // TestImports_ExitMapping confirms @exit:<name> transitions in the child

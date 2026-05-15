@@ -19,8 +19,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"os"
-	"os/exec"
 	"strings"
 )
 
@@ -92,18 +90,14 @@ func OracleTalkHandler(ctx context.Context, args map[string]any) (Result, error)
 	agent, _ := resolveAgent(ctx, args)
 	systemPrompt := effectiveSystemPrompt(args, agent)
 
-	bin := os.Getenv(OracleBinEnv)
-	if bin == "" {
-		path, err := exec.LookPath("claude")
-		if err != nil {
-			return Result{
-				Error: ErrOracleUnavailable.Error(),
-				Data: map[string]any{
-					"session_id": sessionID,
-				},
-			}, nil
-		}
-		bin = path
+	bin, err := resolveOracleBin(ctx)
+	if err != nil {
+		return Result{
+			Error: err.Error(),
+			Data: map[string]any{
+				"session_id": sessionID,
+			},
+		}, nil
 	}
 
 	cliArgs := []string{
@@ -119,22 +113,25 @@ func OracleTalkHandler(ctx context.Context, args map[string]any) (Result, error)
 		cliArgs = append(cliArgs, "--model", agent.Model)
 	}
 
-	cmd := exec.CommandContext(ctx, bin, cliArgs...)
-	cmd.Stdin = strings.NewReader(question)
-	if workingDir != "" {
-		cmd.Dir = workingDir
+	cr, runErr := runClaudeOneShot(ctx, bin, cliArgs, question, workingDir)
+	if runErr != nil {
+		return Result{}, runErr
 	}
-
-	var stdout, stderr strings.Builder
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		if ctx.Err() != nil {
-			return Result{}, ctx.Err()
+	if cr.Infra != nil {
+		msg := fmt.Sprintf("host.oracle.talk: claude exited with error: %v", cr.Infra)
+		if s := strings.TrimSpace(cr.Stderr); s != "" {
+			msg = fmt.Sprintf("%s\nstderr: %s", msg, s)
 		}
-		stderrText := strings.TrimSpace(stderr.String())
-		msg := fmt.Sprintf("host.oracle.talk: claude exited with error: %v", err)
+		return Result{
+			Error: msg,
+			Data: map[string]any{
+				"session_id": sessionID,
+			},
+		}, nil
+	}
+	if cr.ExitCode != 0 {
+		stderrText := strings.TrimSpace(cr.Stderr)
+		msg := fmt.Sprintf("host.oracle.talk: claude exited with error: exit status %d", cr.ExitCode)
 		if stderrText != "" {
 			msg = fmt.Sprintf("%s\nstderr: %s", msg, stderrText)
 		}
@@ -146,10 +143,9 @@ func OracleTalkHandler(ctx context.Context, args map[string]any) (Result, error)
 		}, nil
 	}
 
-	answer := strings.TrimRight(stdout.String(), "\n")
 	return Result{
 		Data: map[string]any{
-			"answer":     answer,
+			"answer":     cr.Stdout,
 			"session_id": sessionID,
 		},
 	}, nil
@@ -214,7 +210,7 @@ func doOracleChatTurn(ctx context.Context, cs ChatStore, chatID, question, worki
 		return Result{Error: fmt.Sprintf("host.oracle.talk: append user message: %v", err)}, nil
 	}
 
-	bin, err := resolveOracleBin()
+	bin, err := resolveOracleBin(ctx)
 	if err != nil {
 		return Result{
 			Error: err.Error(),

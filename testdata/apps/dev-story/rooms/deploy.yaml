@@ -3,13 +3,24 @@
 states:
   deploy_room:
     description: "Deploy Room — check what's deployed, trigger deploys, rollback."
-    view: |
-      Deploy Room.
-      Workspace: {{ world.current_workspace }}
-      Last deploy env: {{ world.deploy_env }}
-      Last deploy status: {{ world.deploy_status }}
-
-      Options: check deployed, trigger deploy, watch deploy, rollback, go back.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Workspace:          "{{ world.current_workspace }}"
+                Last deploy env:    "{{ world.deploy_env|default:\"(none)\" }}"
+                Last deploy status: "{{ world.deploy_status|default:\"(unknown)\" }}"
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - { label: "check deployed",  hint: "compare deployed vs main" }
+                - { label: "trigger deploy",  hint: "kick off pipeline" }
+                - { label: "watch deploy",    hint: "stream pipeline status" }
+                - { label: "rollback",        hint: "revert to last good rev" }
+                - { label: "go back",         hint: "return to previous room" }
     relevant_world: [current_workspace, deploy_env, deploy_status]
     relevant_slots: []
     on:
@@ -34,19 +45,23 @@ states:
 
   deploy_checking:
     description: "Checking deployed status..."
-    view: |
-      Deployment Status:
-
-      [stub] Comparing deployed vs. main:
-
-        Staging:  commit abc1234 (2 commits behind main)
-        Prod:     commit def5678 (5 commits behind main)
-        Dev:      commit main (up to date)
-
-      5 new commits since last prod deploy:
-        - feat: auth refresh token rotation (#42)
-        - fix: billing nil pointer (#43)
-        - chore: update deps (#44)
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Deployment status"
+          - prose: "[stub] Comparing deployed vs. main:"
+          - kv:
+              pairs:
+                Staging: "commit abc1234 (2 commits behind main)"
+                Prod:    "commit def5678 (5 commits behind main)"
+                Dev:     "commit main (up to date)"
+          - heading: "5 new commits since last prod deploy"
+          - list:
+              items:
+                - "feat: auth refresh token rotation (#42)"
+                - "fix: billing nil pointer (#43)"
+                - "chore: update deps (#44)"
     relevant_world: [current_workspace]
     relevant_slots: []
     on_enter:
@@ -72,15 +87,17 @@ states:
 
   deploy_triggering:
     description: "Triggering deploy..."
-    view: |
-      Deploying to {{ slots.environment }}...
-
-      [stub] Pipeline triggered:
-        Pipeline: deploy-auth-service-{{ slots.environment }}
-        Revision: abc1234
-        Status: RUNNING
-
-      Deploy is running. Check back or open inbox for completion notification.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Deploying to {{ slots.environment }}..."
+          - kv:
+              pairs:
+                Pipeline: "deploy-auth-service-{{ slots.environment }}"
+                Revision: "abc1234"
+                Status:   "RUNNING"
+          - prose: "Deploy is running. Check back or open inbox for completion notification."
     relevant_world: [current_workspace]
     relevant_slots: []
     on_enter:
@@ -107,16 +124,18 @@ states:
 
   deploy_rolling_back:
     description: "Rolling back deployment..."
-    view: |
-      Rolling back to previous revision...
-
-      [stub] Rollback initiated:
-        From: abc1234
-        To:   def5678 (previous known-good)
-        Env:  {{ world.deploy_env }}
-        Status: ROLLING BACK
-
-      Rollback in progress. Estimated 2-3 minutes.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Rolling back to previous revision..."
+          - kv:
+              pairs:
+                From:   "abc1234"
+                To:     "def5678 (previous known-good)"
+                Env:    "{{ world.deploy_env }}"
+                Status: "ROLLING BACK"
+          - prose: "Rollback in progress. Estimated 2-3 minutes."
     relevant_world: [deploy_env]
     relevant_slots: []
     on_enter:
@@ -139,8 +158,13 @@ states:
 
   deploy_error:
     description: "Deploy operation failed."
-    view: |
-      Deploy error: {{ world.last_error }}
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Error: "{{ world.last_error }}"
     relevant_world: [last_error]
     relevant_slots: []
     on:

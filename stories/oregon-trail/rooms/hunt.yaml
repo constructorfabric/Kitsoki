@@ -60,11 +60,23 @@ states:
 
       hunt_idle:
         description: "Choosing how many bullets to spend."
-        view: |
-          Hunting near {{ world.current_landmark }} ({{ world.month }}).
-          You have {{ world.bullets }} bullets and {{ world.food_lbs }} lbs of food.
-
-          Actions: shoot bullets=<n>, check_inbox, look.
+        view:
+          extends: "base"
+          blocks:
+            body:
+              - prose: "Hunting near {{ world.current_landmark }} ({{ world.month|upper }})."
+              - kv:
+                  pairs:
+                    Bullets: "{{ world.bullets }}"
+                    Food:    "{{ world.food_lbs }} lbs"
+            choices:
+              - heading: "Actions"
+              - list:
+                  items:
+                    - label: "shoot bullets=<n>"
+                      hint:  "commit n bullets to the hunting party (1..{{ world.bullets }})"
+                    - "check_inbox"
+                    - "look"
         relevant_world: [bullets, food_lbs, month, current_landmark]
         on:
           shoot:
@@ -90,11 +102,21 @@ states:
 
       hunt_running:
         description: "Hunting party is out."
-        view: |
-          The hunting party is out near {{ world.current_landmark }}.
-          (Job {{ world.last_job_id }} running. Spent {{ world.pending_bullet_spend }} bullets.)
-
-          Actions: check_inbox, look.
+        view:
+          extends: "base"
+          blocks:
+            body:
+              - prose: "The hunting party is out near {{ world.current_landmark }}."
+              - kv:
+                  pairs:
+                    Job:           "{{ world.last_job_id }} (running)"
+                    Bullets spent: "{{ world.pending_bullet_spend }}"
+            choices:
+              - heading: "Actions"
+              - list:
+                  items:
+                    - "check_inbox"
+                    - "look"
         relevant_world: [last_job_id, pending_bullet_spend, current_landmark, last_hunt_outcome]
         on_enter:
           # Record the originating state for inbox teleport-back.
@@ -164,12 +186,26 @@ states:
 
       hunt_done:
         description: "Hunting party returned."
-        view: |
-          Brought back {{ world.last_hunt_lbs }} lbs of {{ world.last_hunt_target }}.
-
-          Food on hand: {{ world.food_lbs }} lbs. Bullets remaining: {{ world.bullets }}.
-
-          Actions: continue (return to {{ world.current_landmark }}), look.
+        # Per the proposal §5 hunt example — typed `prose` + `kv` for
+        # the random-outcome narration so the result table aligns
+        # regardless of the bag size.
+        view:
+          extends: "base"
+          blocks:
+            body:
+              - prose: "Brought back {{ world.last_hunt_lbs }} lbs of {{ world.last_hunt_target }}."
+              - kv:
+                  pairs:
+                    Food on hand:      "{{ world.food_lbs }} lbs"
+                    Bullets remaining: "{{ world.bullets }}"
+                    Outcome:           "{{ world.last_hunt_outcome }}"
+            choices:
+              - heading: "Actions"
+              - list:
+                  items:
+                    - label: "continue"
+                      hint:  "return to {{ world.current_landmark }}"
+                    - "look"
         relevant_world: [last_hunt_lbs, last_hunt_target, last_hunt_outcome, food_lbs, bullets, current_landmark]
         on:
           continue:

@@ -1,0 +1,23 @@
+{% comment %}
+inventory.pongo — the canonical stock readout used by the general
+store, every fort sutler, and any future re-supply room.
+
+This is the proposal §5.4 / §6 "inventory readout used across forts
+and the general store" partial. Authored as a raw pongo template
+(not a typed kv element) so callers can `{% include %}` it inside a
+`code` element and keep the layout monospaced regardless of the
+surrounding viewport.
+
+The price column is parameterised via `local_price_pct` so forts
+(150%) show marked-up prices without duplicating the table. The
+colon column is hand-aligned to the longest key ("Spare tongues:");
+the layout survives because the prefix column never reflows.
+{% endcomment %}
+Cash:           ${{ world.money }}
+Oxen:           {{ world.oxen }}    (${{ world.local_price_pct * 40 / 100 }} / yoke)
+Food:           {{ world.food_lbs }} lbs  (${{ world.local_price_pct * 20 / 10000 }} / lb)
+Bullets:        {{ world.bullets }}    (${{ world.local_price_pct * 2 / 100 }} / box of 20)
+Clothing:       {{ world.clothing_sets }}  (${{ world.local_price_pct * 10 / 100 }} / set)
+Spare wheels:   {{ world.spare_wheels }}  (${{ world.local_price_pct * 10 / 100 }} each)
+Spare axles:    {{ world.spare_axles }}   (${{ world.local_price_pct * 10 / 100 }} each)
+Spare tongues:  {{ world.spare_tongues }} (${{ world.local_price_pct * 10 / 100 }} each)

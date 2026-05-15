@@ -3,25 +3,32 @@
 states:
   workspace_room:
     description: "Workspace Room — your project hub. Run commands, check PRs, navigate to sub-rooms."
-    view: |
-      Workspace: {{ world.current_workspace }}
-      Root: {{ world.workspace_root }}
-
-      Available actions:
-        - terminal            (run commands)
-        - check pr            (PR status)
-        - fix bug             (bug fix room)
-        - implement           (implementation room)
-        - debug               (debug room)
-        - test                (test room)
-        - docs                (docs room)
-        - refactor            (refactor room)
-        - plan                (planning room)
-        - deploy              (deploy room)
-        - logs                (observability room)
-        - sync                (pull latest)
-        - open vscode         (open editor)
-        - jira                (search Jira)
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Workspace: "{{ world.current_workspace }}"
+                Root:      "{{ world.workspace_root }}"
+        choices:
+          - heading: "Available actions"
+          - list:
+              items:
+                - { label: "terminal",     hint: "run commands" }
+                - { label: "check pr",     hint: "PR status" }
+                - { label: "fix bug",      hint: "bug fix room" }
+                - { label: "implement",    hint: "implementation room" }
+                - { label: "debug",        hint: "debug room" }
+                - { label: "test",         hint: "test room" }
+                - { label: "docs",         hint: "docs room" }
+                - { label: "refactor",     hint: "refactor room" }
+                - { label: "plan",         hint: "planning room" }
+                - { label: "deploy",       hint: "deploy room" }
+                - { label: "logs",         hint: "observability room" }
+                - { label: "sync",         hint: "pull latest" }
+                - { label: "open vscode",  hint: "open editor" }
+                - { label: "jira",         hint: "search Jira" }
     relevant_world: [current_workspace, workspace_root]
     relevant_slots: []
     on:
@@ -112,14 +119,16 @@ states:
 
   workspace_syncing:
     description: "Syncing workspace with remote..."
-    view: |
-      Syncing workspace: {{ world.current_workspace }}
-
-      [stub] Running: git pull --rebase && git submodule update --init --recursive
-        Already up to date.
-        Submodules updated.
-
-      Sync complete.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "Syncing workspace: {{ world.current_workspace }}"
+          - code: |
+              [stub] Running: git pull --rebase && git submodule update --init --recursive
+                Already up to date.
+                Submodules updated.
+          - prose: "Sync complete."
     relevant_world: [current_workspace]
     relevant_slots: []
     on_enter:
@@ -145,10 +154,14 @@ states:
 
   workspace_sync_error:
     description: "Sync failed."
-    view: |
-      Sync failed: {{ world.last_error }}
-
-      Resolve conflicts manually and try again.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Error: "{{ world.last_error }}"
+          - prose: "Resolve conflicts manually and try again."
     relevant_world: [last_error]
     relevant_slots: []
     on:

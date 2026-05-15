@@ -37,7 +37,7 @@ func TestPhases_TplSubstitution(t *testing.T) {
 	exec := def.States["phase_b_executing"]
 	require.NotNil(t, exec)
 	assert.Equal(t, "Executing Phase B", exec.Description)
-	assert.Equal(t, "Phase Phase B running", exec.View)
+	assert.Equal(t, "Phase Phase B running", exec.View.SourceString())
 }
 
 // TestPhases_NextRewrite verifies {{ phase.next.continue }} rewrites to

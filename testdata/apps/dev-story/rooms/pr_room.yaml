@@ -3,18 +3,24 @@
 states:
   pr_room:
     description: "PR Room — review status, fix CI, resolve comments, and merge your PRs."
-    view: |
-      PR Room.
-      Workspace: {{ world.current_workspace }}
-      PR Status: {{ world.pr_status }}
-
-      Available actions:
-        - check status
-        - fix ci
-        - resolve comments
-        - update pr description
-        - merge pr
-        - go back
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Workspace: "{{ world.current_workspace }}"
+                PR status: "{{ world.pr_status|default:\"(unknown)\" }}"
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - { label: "check status",        hint: "checks, reviews, mergeability" }
+                - { label: "fix ci",              hint: "LLM-assisted CI repair" }
+                - { label: "resolve comments",    hint: "respond to reviewers" }
+                - { label: "update pr description", hint: "regenerate summary" }
+                - { label: "merge pr",            hint: "land after checks pass" }
+                - { label: "go back",             hint: "return to previous room" }
     relevant_world: [current_workspace, pr_status]
     relevant_slots: []
     on:
@@ -45,16 +51,19 @@ states:
 
   pr_status_checking:
     description: "Checking PR status..."
-    view: |
-      PR Status for {{ world.current_workspace }}:
-
-      [stub] PR #42: feat/auth-v2 → main
-        Status: OPEN
-        Checks: 3/3 passing
-        Reviews: 1 approved, 1 changes requested
-        Mergeable: No (conflicts)
-
-      Last checked: just now
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "PR status for {{ world.current_workspace }}"
+          - kv:
+              pairs:
+                PR:           "#42: feat/auth-v2 → main"
+                Status:       "OPEN"
+                Checks:       "3/3 passing"
+                Reviews:      "1 approved, 1 changes requested"
+                Mergeable:    "No (conflicts)"
+                Last checked: "just now"
     relevant_world: [current_workspace]
     relevant_slots: []
     on_enter:
@@ -86,18 +95,23 @@ states:
 
   pr_fix_ci:
     description: "Analyzing CI failures and generating fixes..."
-    view: |
-      Fixing CI for PR #42:
-
-      [stub] CI Failures detected:
-        - TestAuthRefresh: expected 200, got 401
-        - Lint: unused import in auth_handler.go
-
-      Suggested fixes:
-        1. Add mock token refresh in test setup
-        2. Remove unused import `fmt` from auth_handler.go
-
-      Apply these fixes?
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Fixing CI for PR #42"
+          - heading: "CI failures detected"
+          - list:
+              items:
+                - { label: "TestAuthRefresh", hint: "expected 200, got 401" }
+                - { label: "Lint",            hint: "unused import in auth_handler.go" }
+          - heading: "Suggested fixes"
+          - list:
+              marker: "1."
+              items:
+                - "Add mock token refresh in test setup"
+                - "Remove unused import `fmt` from auth_handler.go"
+          - prose: "Apply these fixes?"
     relevant_world: [current_workspace]
     relevant_slots: []
     on:
@@ -122,18 +136,23 @@ states:
 
   pr_resolve_comments:
     description: "Reviewing and resolving PR comments..."
-    view: |
-      Resolving comments on PR #42:
-
-      [stub] 2 unresolved comments:
-        Line 45 (auth.go): "This token validation should use constant-time comparison"
-        Line 12 (auth_test.go): "Add a test for the expired token case"
-
-      Suggested responses:
-        1. Applied constant-time comparison via subtle.ConstantTimeCompare
-        2. Added TestExpiredToken test case
-
-      Post these responses?
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Resolving comments on PR #42"
+          - heading: "Unresolved comments"
+          - list:
+              items:
+                - { label: "Line 45 (auth.go)",      hint: "use constant-time comparison" }
+                - { label: "Line 12 (auth_test.go)", hint: "add expired-token test case" }
+          - heading: "Suggested responses"
+          - list:
+              marker: "1."
+              items:
+                - "Applied constant-time comparison via subtle.ConstantTimeCompare"
+                - "Added TestExpiredToken test case"
+          - prose: "Post these responses?"
     relevant_world: [current_workspace]
     relevant_slots: []
     on:
@@ -157,22 +176,23 @@ states:
 
   pr_update_description:
     description: "Regenerating PR description..."
-    view: |
-      Updated PR Description for PR #42:
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Updated PR description for PR #42"
+          - prose: "[stub] Generated from commit range main..feat/auth-v2:"
+          - code: |
+              ## Summary
+              - Implement auth refresh token rotation
+              - Add constant-time token comparison
+              - Add unit tests for token expiry
 
-      [stub] Generated from commit range main..feat/auth-v2:
-
-      ## Summary
-      - Implement auth refresh token rotation
-      - Add constant-time token comparison
-      - Add unit tests for token expiry
-
-      ## Test Plan
-      - [x] Unit tests for token refresh
-      - [x] Integration test for auth flow
-      - [ ] Manual QA on staging
-
-      Post this description?
+              ## Test Plan
+              - [x] Unit tests for token refresh
+              - [x] Integration test for auth flow
+              - [ ] Manual QA on staging
+          - prose: "Post this description?"
     relevant_world: [current_workspace]
     relevant_slots: []
     on:
@@ -196,14 +216,19 @@ states:
 
   pr_merging:
     description: "Merging the PR..."
-    view: |
-      Merging PR #42...
-
-      [stub] Squash-merging feat/auth-v2 → main
-        Commit: "feat: implement auth refresh token rotation (#42)"
-        Status: Merged successfully.
-
-      Branch feat/auth-v2 can be deleted.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Merging PR #42..."
+          - kv:
+              pairs:
+                Mode:   "Squash"
+                From:   "feat/auth-v2"
+                To:     "main"
+                Commit: "feat: implement auth refresh token rotation (#42)"
+                Status: "Merged successfully."
+          - prose: "Branch feat/auth-v2 can be deleted."
     relevant_world: [current_workspace]
     relevant_slots: []
     on_enter:
@@ -224,8 +249,13 @@ states:
 
   pr_error:
     description: "PR operation failed."
-    view: |
-      PR error: {{ world.last_error }}
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Error: "{{ world.last_error }}"
     relevant_world: [last_error]
     relevant_slots: []
     on:

@@ -3,7 +3,6 @@ package host_test
 import (
 	"context"
 	"errors"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -16,14 +15,10 @@ import (
 // asserts the drive transitions pending → dispatching → done and that
 // DispatchResult carries the answer + result_seq from the chat turn.
 func TestDispatchDrive_HappyPath(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("fake-oracle.sh requires bash")
-	}
-	t.Setenv(host.OracleBinEnv, fakeOracleBin(t))
-
+	t.Parallel()
 	cs := newFakeChatStore()
 	cs.addChat(host.ChatRecord{ID: "chat-1", Status: "active"})
-	ctx := host.WithChatStore(context.Background(), cs)
+	ctx := host.WithClaudeRunner(host.WithChatStore(context.Background(), cs), stubOracleRunner())
 
 	d, err := cs.Enqueue(ctx, host.EnqueueDriveOptions{
 		ChatID:    "chat-1",
@@ -80,18 +75,14 @@ func TestDispatchDrive_HappyPath(t *testing.T) {
 // with a payload it knows to error on, verifying that the drive is
 // transitioned to failed (not done) and the error message is captured.
 func TestDispatchDrive_ClaudeNonZeroExitMarksFailed(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("fake-oracle.sh requires bash")
-	}
-	// fake-oracle.sh always succeeds; use fake-oneshot.sh which honours
-	// a "FAIL" trigger in the prompt. doOracleChatTurn pipes the user
-	// question on stdin, so a payload starting with FAIL will exit
+	t.Parallel()
+	// The fake-oracle stub always succeeds; use the one-shot stub which
+	// honours a "FAIL" trigger in the prompt. doOracleChatTurn pipes the
+	// user question on stdin, so a payload containing FAIL will exit
 	// non-zero.
-	t.Setenv(host.OracleBinEnv, fakeOneShotBin(t))
-
 	cs := newFakeChatStore()
 	cs.addChat(host.ChatRecord{ID: "chat-1", Status: "active"})
-	ctx := host.WithChatStore(context.Background(), cs)
+	ctx := host.WithClaudeRunner(host.WithChatStore(context.Background(), cs), stubOneShotRunner())
 
 	d, err := cs.Enqueue(ctx, host.EnqueueDriveOptions{
 		ChatID:    "chat-1",
@@ -130,6 +121,7 @@ func TestDispatchDrive_ClaudeNonZeroExitMarksFailed(t *testing.T) {
 // without claiming the drive — the row stays pending so a retry / the
 // next ambient drainer can pick it up.
 func TestDispatchDrive_LockBusyLeavesDrivePending(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	cs.addChat(host.ChatRecord{ID: "chat-1", Status: "active"})
 	cs.withLockErr = host.NewChatBusyError(errors.New("chats: chat busy"))
@@ -152,6 +144,7 @@ func TestDispatchDrive_LockBusyLeavesDrivePending(t *testing.T) {
 // TestDispatchDrive_UnknownDriveErrors makes sure the dispatcher bails
 // before touching the lock if the drive id is bogus.
 func TestDispatchDrive_UnknownDriveErrors(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	ctx := host.WithChatStore(context.Background(), cs)
 	_, err := host.DispatchDrive(ctx, cs, "NOPE", "")
@@ -164,6 +157,7 @@ func TestDispatchDrive_UnknownDriveErrors(t *testing.T) {
 // processes try to dispatch the same drive_id concurrently. The second
 // one sees ClaimDrive return ErrDriveStateMismatch.
 func TestDispatchDrive_AlreadyDispatchingErrors(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	cs.addChat(host.ChatRecord{ID: "chat-1", Status: "active"})
 	ctx := host.WithChatStore(context.Background(), cs)
@@ -189,6 +183,7 @@ func TestDispatchDrive_AlreadyDispatchingErrors(t *testing.T) {
 // DispatchDrive without a ChatStore should return a clear error, not
 // panic.
 func TestDispatchDrive_NoChatStoreErrors(t *testing.T) {
+	t.Parallel()
 	_, err := host.DispatchDrive(context.Background(), nil, "x", "")
 	if err == nil || !strings.Contains(err.Error(), "no chat store") {
 		t.Errorf("expected nil-store error, got %v", err)
@@ -200,18 +195,17 @@ func TestDispatchDrive_NoChatStoreErrors(t *testing.T) {
 // dispatcher polls (against an injected fake clock) and succeeds on
 // the second swing.
 func TestDispatchDriveWithTimeout_BusyThenFree(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("fake-oracle.sh requires bash")
-	}
-	t.Setenv(host.OracleBinEnv, fakeOracleBin(t))
-
+	t.Parallel()
 	cs := newFakeChatStore()
 	cs.addChat(host.ChatRecord{ID: "chat-1", Status: "active"})
 	// The lock starts busy. We arrange to flip it after one tick.
 	cs.withLockErr = host.NewChatBusyError(errors.New("chats: chat busy"))
 
 	clk := clock.NewFake(time.Unix(0, 0))
-	ctx := host.WithClock(host.WithChatStore(context.Background(), cs), clk)
+	ctx := host.WithClaudeRunner(
+		host.WithClock(host.WithChatStore(context.Background(), cs), clk),
+		stubOracleRunner(),
+	)
 
 	d, err := cs.Enqueue(ctx, host.EnqueueDriveOptions{
 		ChatID: "chat-1", Transport: "tui", Payload: "go",
@@ -258,6 +252,7 @@ func TestDispatchDriveWithTimeout_BusyThenFree(t *testing.T) {
 // permanently-busy case: the dispatcher waits for the budget then
 // returns ErrChatBusy and leaves the drive pending.
 func TestDispatchDriveWithTimeout_TimesOutWithoutFree(t *testing.T) {
+	t.Parallel()
 	cs := newFakeChatStore()
 	cs.addChat(host.ChatRecord{ID: "chat-1", Status: "active"})
 	cs.withLockErr = host.NewChatBusyError(errors.New("chats: chat busy"))

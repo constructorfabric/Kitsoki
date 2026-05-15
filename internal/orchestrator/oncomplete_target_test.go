@@ -67,13 +67,13 @@ func TestOnCompleteTarget_HappyPath(t *testing.T) {
 		},
 		States: map[string]*app.State{
 			"init": {
-				View: "init",
+				View: app.LegacyView("init"),
 				On: map[string][]app.Transition{
 					"enter": {{Target: "executing"}},
 				},
 			},
 			"executing": {
-				View: "executing",
+				View: app.LegacyView("executing"),
 				OnEnter: []app.Effect{
 					{
 						Invoke:     "host.test.echo",
@@ -88,7 +88,7 @@ func TestOnCompleteTarget_HappyPath(t *testing.T) {
 				},
 			},
 			"done": {
-				View: "done x={{ world.x }}",
+				View: app.LegacyView("done x={{ world.x }}"),
 				OnEnter: []app.Effect{
 					{Set: map[string]any{"x": "applied-and-entered"}},
 				},
@@ -170,13 +170,13 @@ func TestOnCompleteTarget_OnErrorWinsOverTarget(t *testing.T) {
 		},
 		States: map[string]*app.State{
 			"init": {
-				View: "init",
+				View: app.LegacyView("init"),
 				On: map[string][]app.Transition{
 					"enter": {{Target: "executing"}},
 				},
 			},
 			"executing": {
-				View: "executing",
+				View: app.LegacyView("executing"),
 				OnEnter: []app.Effect{
 					{
 						Invoke:     "host.test.echo",
@@ -193,8 +193,8 @@ func TestOnCompleteTarget_OnErrorWinsOverTarget(t *testing.T) {
 					},
 				},
 			},
-			"errored": {View: "errored"},
-			"done":    {View: "done"},
+			"errored": {View: app.LegacyView("errored")},
+			"done":    {View: app.LegacyView("done")},
 		},
 	}
 
@@ -266,13 +266,13 @@ func TestOnCompleteTarget_PriorEffectFailureSkipsTarget(t *testing.T) {
 		},
 		States: map[string]*app.State{
 			"init": {
-				View: "init",
+				View: app.LegacyView("init"),
 				On: map[string][]app.Transition{
 					"enter": {{Target: "executing"}},
 				},
 			},
 			"executing": {
-				View: "executing",
+				View: app.LegacyView("executing"),
 				OnEnter: []app.Effect{
 					{
 						Invoke:     "host.test.echo",
@@ -287,7 +287,7 @@ func TestOnCompleteTarget_PriorEffectFailureSkipsTarget(t *testing.T) {
 					},
 				},
 			},
-			"done": {View: "done"},
+			"done": {View: app.LegacyView("done")},
 		},
 	}
 

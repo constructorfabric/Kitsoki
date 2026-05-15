@@ -1,0 +1,6 @@
+{%- comment -%}
+cloak_status — small status line. Demonstrates {% include %} from the
+base layout's default status block. Single point of localisation for the
+cloak-state readout.
+{%- endcomment -%}
+{%- if world.wearing_cloak -%}Cloak: worn{%- else -%}Cloak: hung up{%- endif -%}{%- if world.disturbance > 0 -%}  |  Disturbance: {{ world.disturbance }}{%- endif -%}

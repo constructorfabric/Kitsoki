@@ -18,16 +18,28 @@ states:
   inbox:
     description: "Inbox — pending background-job notifications."
     relevant_world: [inbox_unread, last_job_id, last_hunt_target, last_hunt_lbs, last_hunt_outcome, last_job_originating_state]
-    view: |
-      Inbox ({{ world.inbox_unread }} unread).
-
-      Last job: {{ world.last_job_id }}
-      {{ if world.last_hunt_outcome }}Hunt result: {{ world.last_hunt_lbs }} lbs of {{ world.last_hunt_target }} ({{ world.last_hunt_outcome }}).{{ end }}
-
-      Actions:
-        - answer_clarification job_id=... answer=...   (resolve a paused job)
-        - open_job job_id=...                          (teleport back to the originating room)
-        - look
+    # Conditional row pattern (proposal §2.2): the hunt-result prose
+    # element is gated by per-element `when:` so an empty hunt outcome
+    # doesn't leave a stray "Hunt result:" line.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Inbox ({{ world.inbox_unread }} unread)"
+          - kv:
+              pairs:
+                Last job: "{{ world.last_job_id|default:\"(none)\" }}"
+          - prose: "Hunt result: {{ world.last_hunt_lbs }} lbs of {{ world.last_hunt_target }} ({{ world.last_hunt_outcome }})."
+            when:  "world.last_hunt_outcome != ''"
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "answer_clarification job_id=… answer=…"
+                  hint:  "resolve a paused job"
+                - label: "open_job job_id=…"
+                  hint:  "teleport back to the originating room"
+                - "look"
     on:
       # answer_clarification — resolve a paused background job. The
       # host.jobs.answer_clarification handler writes the answer into the
