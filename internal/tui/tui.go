@@ -173,6 +173,27 @@ type RootModel struct {
 	// lastInput remembers the input that triggered the current turn.
 	lastInput string
 
+	// inputHistory is an in-memory, per-session ring of past prompt
+	// submissions (oldest at index 0, newest at the end). Up/Down arrows
+	// in the main prompt walk this list. We deliberately do NOT persist
+	// it to disk — history vanishes when the TUI exits.
+	//
+	// Slash commands ARE included (matches most interactive shells:
+	// bash, zsh, fish all keep their builtins in history).
+	inputHistory []string
+
+	// historyIdx is the cursor into inputHistory while the user is
+	// navigating with arrow keys. The sentinel value
+	// len(inputHistory) means "not currently navigating; show the
+	// in-progress draft". Any other value 0..len-1 indexes the entry
+	// currently displayed in the prompt.
+	historyIdx int
+
+	// historyDraft stashes whatever the user was typing before they
+	// first pressed Up, so a subsequent Down past the newest entry
+	// can restore it (matches bash/readline semantics).
+	historyDraft string
+
 	// traceFile is the open trace file when /trace is active (nil otherwise).
 	traceFile *os.File
 	// traceWriter is the buffered writer for the trace file.
@@ -751,6 +772,7 @@ func (m RootModel) routeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		input := strings.TrimSpace(m.prompt.Value())
 		if strings.HasPrefix(input, "/") {
 			m.prompt.SetValue("")
+			m.appendHistory(input)
 			return m.handleSlashCommand(input)
 		}
 	}
@@ -810,6 +832,18 @@ func (m RootModel) routeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m.submitInput()
 
+	case "up":
+		// Plain Up arrow walks input history backward (newer → older).
+		// Modified Up (shift+up / alt+up) is already routed to the
+		// transcript viewport by isScrollKey above, so we only see the
+		// unmodified key here.
+		return m.historyPrev(), nil
+
+	case "down":
+		// Plain Down arrow walks input history forward (older → newer);
+		// stepping past the newest entry restores the saved draft.
+		return m.historyNext(), nil
+
 	case "1", "2", "3", "4", "5", "6", "7", "8", "9":
 		// When the prompt is empty, number keys are menu hotkeys — they select a row
 		// without feeding the digit into the text input.
@@ -822,10 +856,100 @@ func (m RootModel) routeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Prompt has text — fall through to normal text input handling.
 	}
 
+	// Any non-arrow, non-Enter keystroke while walking history should
+	// "commit" the navigation: the currently-displayed entry becomes
+	// the active draft and we leave history-walk mode. We don't mutate
+	// the prompt text — the textinput.Update call below will fold the
+	// new key into whatever's already shown.
+	if m.historyNavigating() {
+		m.commitHistoryNavigation()
+	}
+
 	// Pass key to prompt.
 	var cmd tea.Cmd
 	m.prompt, cmd = m.prompt.Update(msg)
 	return m, cmd
+}
+
+// historyPrev walks one step back into inputHistory (toward older
+// entries). On the first Up press it stashes the current prompt value
+// as historyDraft so a subsequent Down past the newest entry can
+// restore it. At the oldest entry it's a no-op (matches bash/zsh).
+func (m RootModel) historyPrev() RootModel {
+	if len(m.inputHistory) == 0 {
+		return m
+	}
+	if !m.historyNavigating() {
+		// First Up press — capture the in-progress draft so Down can
+		// restore it later.
+		m.historyDraft = m.prompt.Value()
+		m.historyIdx = len(m.inputHistory)
+	}
+	if m.historyIdx == 0 {
+		// Already at oldest — bash-style no-op.
+		return m
+	}
+	m.historyIdx--
+	m.prompt.SetValue(m.inputHistory[m.historyIdx])
+	m.prompt.CursorEnd()
+	return m
+}
+
+// historyNext walks one step forward into inputHistory (toward newer
+// entries). Stepping past the newest entry restores the saved draft
+// and exits history-walk mode.
+func (m RootModel) historyNext() RootModel {
+	if !m.historyNavigating() {
+		// Not currently walking history — Down is a no-op (matches
+		// bash; readline would beep here but the TUI has no bell).
+		return m
+	}
+	m.historyIdx++
+	if m.historyIdx >= len(m.inputHistory) {
+		// Stepped past newest — restore the saved draft and leave
+		// history-walk mode.
+		m.historyIdx = len(m.inputHistory)
+		m.prompt.SetValue(m.historyDraft)
+		m.prompt.CursorEnd()
+		m.historyDraft = ""
+		return m
+	}
+	m.prompt.SetValue(m.inputHistory[m.historyIdx])
+	m.prompt.CursorEnd()
+	return m
+}
+
+// appendHistory records a submitted prompt line in the in-memory input
+// history. Slash commands ARE included (matching bash/zsh/fish behaviour).
+// Consecutive duplicates collapse to a single entry so spamming the same
+// command doesn't bury older lines. Empty / whitespace-only lines are
+// ignored. After append we always reset the navigation cursor back to
+// the "not navigating, show draft" sentinel.
+func (m *RootModel) appendHistory(input string) {
+	trimmed := strings.TrimSpace(input)
+	if trimmed != "" {
+		if n := len(m.inputHistory); n == 0 || m.inputHistory[n-1] != trimmed {
+			m.inputHistory = append(m.inputHistory, trimmed)
+		}
+	}
+	m.historyIdx = len(m.inputHistory)
+	m.historyDraft = ""
+}
+
+// historyNavigating reports whether the user is currently walking
+// inputHistory with arrow keys (i.e. historyIdx points at a stored entry
+// rather than the "draft" sentinel).
+func (m RootModel) historyNavigating() bool {
+	return m.historyIdx >= 0 && m.historyIdx < len(m.inputHistory)
+}
+
+// commitHistoryNavigation drops the user out of history-walk mode without
+// touching the prompt text. Used when any non-arrow, non-Enter key
+// arrives while navigating: the currently-shown entry effectively
+// becomes the new draft.
+func (m *RootModel) commitHistoryNavigation() {
+	m.historyIdx = len(m.inputHistory)
+	m.historyDraft = ""
 }
 
 func (m RootModel) submitInput() (tea.Model, tea.Cmd) {
@@ -834,6 +958,7 @@ func (m RootModel) submitInput() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.prompt.SetValue("")
+	m.appendHistory(input)
 
 	// Handle slash commands.
 	if strings.HasPrefix(input, "/") {
@@ -2440,6 +2565,26 @@ func (m RootModel) resize() RootModel {
 	m.inbox.height = inboxHeight
 
 	m.location, _ = m.location.Update(tea.WindowSizeMsg{Width: m.width, Height: 1})
+
+	// Prompt width — set so textinput clips & horizontally scrolls once the
+	// value exceeds the visible area. With Width == 0 the bubbles textinput
+	// renders the entire string with no clipping, so long input bleeds past
+	// the right terminal edge and disappears.
+	//
+	// The prompt line is a full-width row at the bottom of the screen,
+	// preceded by a 2-column prefix ("> ", "» ", or off-path "> "). The
+	// prefix style (promptStyle / promptOffPathStyle) is foreground-only
+	// (see styles.go) so it adds no padding beyond the 2 visible glyphs.
+	// We still subtract a small safety margin so the cursor + any terminal-
+	// edge quirks don't push past the last column.
+	const promptPrefixCols = 2 // "> " / "» "
+	const promptSafetyMargin = 2
+	const promptMinWidth = 20
+	promptWidth := m.width - promptPrefixCols - promptSafetyMargin
+	if promptWidth < promptMinWidth {
+		promptWidth = promptMinWidth
+	}
+	m.prompt.Width = promptWidth
 
 	return m
 }

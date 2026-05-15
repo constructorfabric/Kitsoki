@@ -353,6 +353,45 @@ func TestTUIInitialMode(t *testing.T) {
 	require.Equal(t, tuipkg.ModeOnPath, extractMode(t, m))
 }
 
+// TestTUIPromptWidthClipsLongInput verifies that resize() sets a non-zero
+// textinput.Width so the prompt clips and horizontally scrolls when the
+// value is longer than the visible area. Without this, bubbles renders the
+// full string with no clipping and long input disappears past the terminal
+// edge.
+//
+// Formula in resize(): promptWidth = m.width - 2 (prefix "> ") - 2 (safety)
+// At Width=80 we expect 76.
+func TestTUIPromptWidthClipsLongInput(t *testing.T) {
+	orch, sid := setupCloak(t)
+	m := buildModel(t, orch, sid)
+
+	m, _ = m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+
+	rm, ok := tuipkg.ExtractRootModel(m)
+	require.True(t, ok)
+
+	w := tuipkg.GetPromptWidth(rm)
+	require.Greater(t, w, 0,
+		"prompt width must be > 0 after resize so long input clips/scrolls")
+	require.Equal(t, 76, w,
+		"prompt width should equal terminal width minus prefix (2) and safety margin (2)")
+}
+
+// TestTUIPromptWidthHonoursMinimum verifies that very narrow terminals
+// don't drive the prompt width to zero or negative — the floor is 20.
+func TestTUIPromptWidthHonoursMinimum(t *testing.T) {
+	orch, sid := setupCloak(t)
+	m := buildModel(t, orch, sid)
+
+	m, _ = m.Update(tea.WindowSizeMsg{Width: 10, Height: 24})
+
+	rm, ok := tuipkg.ExtractRootModel(m)
+	require.True(t, ok)
+
+	require.Equal(t, 20, tuipkg.GetPromptWidth(rm),
+		"prompt width must clamp to the 20-column minimum on narrow terminals")
+}
+
 func TestTUIQuit(t *testing.T) {
 	orch, sid := setupCloak(t)
 	m := buildModel(t, orch, sid)

@@ -199,6 +199,24 @@ func SetPromptValue(m *RootModel, v string) { m.prompt.SetValue(v) }
 // GetPromptValue returns the current prompt input value.
 func GetPromptValue(m RootModel) string { return m.prompt.Value() }
 
+// GetPromptWidth returns the textinput.Model.Width set on the prompt.
+// Tests use this to assert resize() set a non-zero clip width so long
+// input scrolls horizontally instead of bleeding past the terminal edge.
+func GetPromptWidth(m RootModel) int { return m.prompt.Width }
+
+// GetInputHistory returns a copy of the in-memory prompt history (oldest
+// first). Used by tui_history_test.go to assert append / dedupe semantics.
+func GetInputHistory(m RootModel) []string {
+	out := make([]string, len(m.inputHistory))
+	copy(out, m.inputHistory)
+	return out
+}
+
+// HistoryNavigating reports whether the user is currently walking the
+// input history with arrow keys (i.e. historyIdx points at a stored
+// entry rather than the "draft" sentinel).
+func HistoryNavigating(m RootModel) bool { return m.historyNavigating() }
+
 // ── Disambiguation test helpers ───────────────────────────────────────────────
 
 // TestDisambiguationModelWrapper wraps a disambiguationModel for testing.
