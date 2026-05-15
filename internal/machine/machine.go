@@ -732,14 +732,27 @@ func (m *machineImpl) Turn(ctx context.Context, cur app.StatePath, w world.World
 	//    leaf views; otherwise normal single-state render. Use finalState
 	//    so the view reflects the settled state after any emit_intent
 	//    dispatches have transitioned further.
+	//
+	//    Render-after-bind contract: when the turn queued host calls with
+	//    `bind:` directives, the orchestrator will re-render against the
+	//    POST-bind world after dispatch (orchestrator.dispatchHostCalls →
+	//    machine.RenderState).  Rendering here against the pre-bind world
+	//    is both wasted work AND a footgun — view templates that read a
+	//    bound field (e.g. `world.reproduction_artifact.summary_title`)
+	//    would error against the still-nil snapshot and abort the turn,
+	//    forcing authors to scatter `?? "(pending)"` defaults purely to
+	//    survive a render the user will never see.  Skip the render in
+	//    that case; the orchestrator owns the final view.
 	var renderedView string
-	if par := parseParallel(finalState); par.IsParallel {
-		renderedView, err = m.renderViewParallel(winningTr.tr, par.Root, sortedRegionNames(m.states[par.Root].s.States), finalState, newWorld, env, saySB.String(), false, finalState)
-	} else {
-		renderedView, err = m.renderView(winningTr.tr, finalState, newWorld, env, saySB.String())
-	}
-	if err != nil {
-		return TurnResult{}, err
+	if !hostCallsWillBind(hostCalls) {
+		if par := parseParallel(finalState); par.IsParallel {
+			renderedView, err = m.renderViewParallel(winningTr.tr, par.Root, sortedRegionNames(m.states[par.Root].s.States), finalState, newWorld, env, saySB.String(), false, finalState)
+		} else {
+			renderedView, err = m.renderView(winningTr.tr, finalState, newWorld, env, saySB.String())
+		}
+		if err != nil {
+			return TurnResult{}, err
+		}
 	}
 
 	// 9. Build menu for new state.  For parallel targets, union region menus.
@@ -2020,6 +2033,19 @@ func cloneWorld(w world.World) world.World {
 		nw.Vars[k] = v
 	}
 	return nw
+}
+
+// hostCallsWillBind reports whether any of the queued host invocations declares
+// a `bind:` directive — i.e. the orchestrator's post-dispatch step will mutate
+// world and re-render the view.  Used by Turn / turnParallel to skip a wasted
+// pre-bind render whose only purpose would be to throw on un-bound fields.
+func hostCallsWillBind(hcs []HostInvocation) bool {
+	for _, hc := range hcs {
+		if len(hc.Bind) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func slotsToMap(slots world.Slots) map[string]any {

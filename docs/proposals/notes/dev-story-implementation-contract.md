@@ -666,8 +666,18 @@ reference:
   bound value DEFER via a post-bind re-evaluation pass. The bf
   story's checkpoint shape exercises this; pr-refinement's diagnose
   checkpoint reuses the exact pattern.
-- Views render BEFORE binds. Any view template referencing a bind
-  target (e.g. `world.pr_id`) must use `?? "(pending)"` defaults.
+- **Views render AFTER binds (closed).** Previously `machine.Turn`
+  rendered the view against the pre-bind world snapshot, which forced
+  every checkpoint view to scatter `?? "(pending)"` defaults over any
+  field populated by an `on_enter:` `bind:` — or else the render would
+  error on the first entry and abort the turn. As of the
+  `feat: machine — render view once after host bind settles` commit,
+  `machine.Turn` SKIPS the pre-bind render when any queued host call
+  declares `bind:`; the orchestrator's existing
+  `dispatchHostCalls → RenderState` pass owns the final view against
+  the post-bind world. Authors only need `??` defaults for
+  conditionally-bound fields (e.g. `world.llm_verdict.*`, populated
+  only when `judge_mode in ('llm','llm_then_human')`).
 - Parallel-state `emit_intent` is rejected by the runtime. Wave 2's
   pr-refinement and dev-story hub do not use parallel encoding.
 - **`emit_intent` inside on_error / timeout / on_complete chains

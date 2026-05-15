@@ -247,6 +247,37 @@ right-side panel and the in-view templates read.
 The result is rendered by the surface — the TUI runs it through
 Glamour; transports send it as Markdown or convert to wiki markup.
 
+#### View renders run AFTER `on_enter` `bind:` settles
+
+When a state's `on_enter:` chain invokes a `host.*` (or `iface.*`)
+call with a `bind:` directive, the view is rendered against the
+*post*-bind world. Concretely:
+
+1. `machine.Turn` walks effects, queues host calls, and — if any
+   queued call declares `bind:` — skips its own view render.
+2. The orchestrator dispatches the host calls. Each `bind:` lands
+   into world.
+3. The orchestrator's `dispatchHostCalls` re-renders the view via
+   `machine.RenderState` against the post-bind world.
+
+What this means for authors: a view template that reads
+`world.<bound_key>.<field>` on a state whose `on_enter:` binds
+`<bound_key>` does NOT need a `?? "(pending)"` fallback for that
+field — the value is present by the time the operator sees the
+render. `??` fallbacks are still required when the binding is
+*conditional* (gated by `when:` on the invoke), since the field
+remains absent on the not-taken branch. Worked example —
+`stories/bugfix/rooms/proposing.yaml::proposing_executing`:
+unconditionally binds `propose_fix_artifact`, so the view reads
+`{{ world.propose_fix_artifact.summary_title }}` directly. The
+sibling `..._awaiting_reply` state binds `llm_verdict` only when
+`judge_mode in ('llm','llm_then_human')` — so its view keeps
+`{{ world.llm_verdict.verdict ?? "(no LLM verdict)" }}`.
+
+(See `internal/machine/machine.go::Turn` step 7 and
+`internal/orchestrator/orchestrator.go::dispatchHostCalls` for the
+exact handoff.)
+
 ---
 
 ## 4. Intents and slots

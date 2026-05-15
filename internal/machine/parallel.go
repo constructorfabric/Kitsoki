@@ -516,10 +516,16 @@ func (m *machineImpl) turnParallel(ctx context.Context, par parsedParallel, w wo
 	}
 
 	// Render the view.  For parallel states, compose parent + each region's
-	// leaf view (alphabetical).
-	renderedView, err := m.renderViewParallel(winningTr.tr, parRoot, regionNames, newStatePath, newWorld, env, saySB.String(), exitedParallel, resolvedTarget)
-	if err != nil {
-		return TurnResult{}, err
+	// leaf view (alphabetical).  Skip the render when host calls with binds
+	// are queued; the orchestrator will re-render against the post-bind
+	// world (see Turn for the full rationale).
+	var renderedView string
+	if !hostCallsWillBind(hostCalls) {
+		var rErr error
+		renderedView, rErr = m.renderViewParallel(winningTr.tr, parRoot, regionNames, newStatePath, newWorld, env, saySB.String(), exitedParallel, resolvedTarget)
+		if rErr != nil {
+			return TurnResult{}, rErr
+		}
 	}
 
 	// Build events: TransitionApplied + EffectApplied* + StateExited/Entered.
