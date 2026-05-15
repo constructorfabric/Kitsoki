@@ -34,7 +34,7 @@ host_interfaces: { <name>: <HostInterfaceDef> }  # optional — named capability
   the story-imports surface — aliased composition with private worlds,
   projected world_in/world_out, named exits, intent re-export, and
   rebindable host_interfaces. Full reference and worked examples in
-  [`docs/imports.md`](../../docs/imports.md).
+  [`docs/imports.md`](../imports.md).
 
 ## `AppMeta`
 
@@ -160,7 +160,7 @@ Conventional order within a single effect: `set` → `increment` → `say` →
 
 ## Background jobs
 
-> Detailed reference: [docs/background-jobs/](../../../docs/background-jobs/README.md)
+> Detailed reference: [docs/background-jobs/](../background-jobs/README.md)
 
 Background jobs let a state machine fire a long-running shell command or LLM
 call without blocking the current turn. The job runs in a goroutine; when it
@@ -574,7 +574,7 @@ top-level Load, every `iface.<name>.<op>` is rewritten to
 `<binding>.<op>` → `<binding>` when no per-op handler is registered.
 
 Full reference, including the multi-layer composition surface, is in
-[`docs/imports.md`](../../docs/imports.md).
+[`docs/imports.md`](../imports.md).
 
 ## Validation (what the loader enforces)
 

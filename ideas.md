@@ -13,6 +13,7 @@
 - add reload so external app changes can be picked up without quit/restart (keep world as-is so state is preserved)
 - provide context/guidance/prompt to off_path based on current room + provide history/context/etc...
 - dedupe and integrate docs (cmd folder and main project root)
+- check that we're really doing the mcp validation method — i think we're maybe not based on some bugs
 
 ## Partial / in progress
 
@@ -27,7 +28,6 @@
 
 ## Ideas
 
-- check that we're really doing the mcp validation method — i think we're maybe not based on some bugs
 - generate test from trace
 - generate precursor recording/state so we can continue right at the point where a new feature is to be demoed or a bug is reproduced
 - trace includes atomic state updates in some json-diff format so that there can be checkpoints + event stream for balance between size and speed of replay (reprocessing events) — event sourcing model for consistency
@@ -57,3 +57,6 @@
 - actions panel is too narrow
 - chat input doesn't wrap it just disappears off the end of the screen
 - can't use numbers as start of chat text
+- oversight/silent-background LLM sessions watching the trace internally for certain patterns or insights to file bugs, improvement or knowledge, watch the transcript live, add configurable prompts to watch out for bad patterns and jump in with guidance (when the LLM ignores CLAUDE.md for example or some other annoying pattern).  it's possible to list/attach the sessions but not normally (behind some extra arg), and the only normal output is async artifacts like bugs, knowledge, etc... and then the user gets an inbox notification that a bg agent has created some artifact and they can review it.  self-improvement, bugs, new synonyms, etc... can all be done like this.  include non-LLM (script) actions that can also produce artifacts and notify the user based on some schedule/precursor or LLM pattern detection trigger (tell the LLM to find some pattern and when it does call a script that does some thing)
+- make sure full deterministic replay so we can do bugfix test runs w/o actually using LLM - capture git diffs, etc... for replayable scenarios (like we did PLTFRM-89912 ad infinitum)
+- llm conversation vs decision, separate interfaces, conversation/task work wouldn't be done by humans but decisions may be (and the decision schema may drive a form for example)

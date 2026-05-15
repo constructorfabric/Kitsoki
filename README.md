@@ -95,9 +95,11 @@ Type free text or pick an action. Sessions persist in
 | **[`docs/hosts.md`](docs/hosts.md)** | Every built-in `host.*` handler with input/output contracts. |
 | **[`docs/transports.md`](docs/transports.md)** | TUI / Jira / Bitbucket transports; sessions keyed by external thread. |
 | **[`docs/background-jobs/`](docs/background-jobs/README.md)** | Long-running handlers, notifications, clarifications. |
-| `kitsoki docs llm-guide` | Embedded operator manual aimed at an LLM driving kitsoki. |
-| `kitsoki docs app-schema` | Authoritative `app.yaml` schema reference. |
-| **[`design.md`](design.md)** | Long-form design rationale (~2000 lines). |
+| **[`docs/embedded/llm-guide.md`](docs/embedded/llm-guide.md)** | Operator manual aimed at an LLM driving kitsoki. Also `kitsoki docs llm-guide`. |
+| **[`docs/embedded/app-schema.md`](docs/embedded/app-schema.md)** | Authoritative `app.yaml` schema reference. Also `kitsoki docs app-schema`. |
+| **[`docs/embedded/apply-proposal.md`](docs/embedded/apply-proposal.md)** | LLM guide for implementing a prose proposal against `app.yaml`. |
+| **[`docs/embedded/render-format.md`](docs/embedded/render-format.md)** | Shape of the Markdown produced by `kitsoki render`. |
+| **[`docs/prior-art.md`](docs/prior-art.md)** | Comparative grounding: what kitsoki borrows from interactive fiction, statecharts, dialogue managers, and LLM orchestration. |
 
 ## Project layout
 
@@ -108,10 +110,10 @@ kitsoki/
 │                          mcp-validator, docs, version
 ├── internal/              platform packages — see docs/architecture.md
 ├── docs/                  narrative documentation
+├── docs/embedded/         CLI-embedded reference docs (//go:embed)
 ├── testdata/apps/         example apps: cloak, dev-story,
 │                          background_jobs, proposal_smoke
 ├── demo/                  VHS tapes and recorded GIFs
-├── design.md              long-form design
 ├── ideas.md               working notes / backlog
 └── README.md              you are here
 ```

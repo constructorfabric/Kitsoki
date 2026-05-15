@@ -4,7 +4,6 @@
 package main
 
 import (
-	"embed"
 	"fmt"
 	"io"
 	"io/fs"
@@ -12,14 +11,13 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-)
 
-//go:embed docs/*.md
-var docsFS embed.FS
+	"kitsoki/docs/embedded"
+)
 
 // docTopic is one embedded document.
 type docTopic struct {
-	Name    string // topic name (without .md, without docs/ prefix)
+	Name    string // topic name (without .md)
 	Summary string // one-line summary for `kitsoki docs list`
 }
 
@@ -86,7 +84,7 @@ func printDocsList(w io.Writer) error {
 }
 
 func printDocTopic(w io.Writer, topic string) error {
-	data, err := docsFS.ReadFile("docs/" + topic + ".md")
+	data, err := embedded.FS.ReadFile(topic + ".md")
 	if err != nil {
 		// Try to be helpful: list known topics in the error.
 		known := knownTopics()
@@ -115,11 +113,11 @@ func printAllDocs(w io.Writer) error {
 // sorted. Used only for error messages.
 func knownTopics() []string {
 	var out []string
-	_ = fs.WalkDir(docsFS, "docs", func(path string, d fs.DirEntry, err error) error {
+	_ = fs.WalkDir(embedded.FS, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return nil
 		}
-		name := strings.TrimSuffix(strings.TrimPrefix(path, "docs/"), ".md")
+		name := strings.TrimSuffix(path, ".md")
 		out = append(out, name)
 		return nil
 	})

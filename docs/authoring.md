@@ -191,41 +191,11 @@ states:
 
 ### 5.4 LLM-backed effect
 
-```yaml
-hosts:
-  - host.oracle.ask
-
-# prompts/shell_repair.md
-# Original command:
-# {{ args.failed_cmd }}
-# Exit: {{ args.exit_code }}
-# Error:
-# {{ args.last_error }}
-#
-# Produce the corrected command. Your final message is the literal
-# replacement command and nothing else.
-
-states:
-  terminal_error:
-    on:
-      fix:
-        - target: terminal_reviewing
-          effects:
-            - invoke: host.oracle.ask
-              with:
-                prompt_path: "prompts/shell_repair.md"
-                failed_cmd:  "{{ world.proposal_cmd }}"
-                exit_code:   "{{ world.last_exit }}"
-                last_error:  "{{ world.last_error }}"
-              bind:
-                proposal_cmd: stdout
-              on_error: terminal_error
-```
-
-`host.oracle.ask` runs `claude -p` with full tool access by default;
-write the prompt as if you're talking to a Claude Code session. See
-[`hosts.md`](hosts.md) for the full contract and the `ask_with_mcp` /
-`talk` variants.
+`host.oracle.ask` runs `claude -p` against a prompt template file with
+templated `{{ args.X }}` placeholders; bind `stdout` back into world.
+Full contract and the `ask_with_mcp` / `talk` variants in
+[`hosts.md`](hosts.md). End-to-end worked example (shell-repair) in
+`kitsoki docs llm-guide` §11.1 LLM-backed effects.
 
 ### 5.5 Background job
 

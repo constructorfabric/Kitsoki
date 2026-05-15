@@ -15,7 +15,6 @@ kitsoki/
 ├── docs/                  this directory — narrative documentation
 ├── testdata/apps/         runnable example apps (cloak, dev-story, …)
 ├── demo/                  VHS tapes and recorded GIFs
-├── design.md              long-form design rationale
 ├── ideas.md               working notes / backlog
 └── README.md              top-level entry point
 ```
@@ -312,4 +311,4 @@ binaries are built ad hoc with `go build -o kitsoki ./cmd/kitsoki`.
 - **Testing** → [`testing.md`](testing.md)
 - **Embedded LLM operator manual** → `kitsoki docs llm-guide`
 - **Authoritative `app.yaml` schema** → `kitsoki docs app-schema`
-- **Long-form design rationale** → [`../design.md`](../design.md)
+- **Prior art and comparative grounding** → [`prior-art.md`](prior-art.md)

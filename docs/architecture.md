@@ -6,10 +6,11 @@ for someone trying to understand kitsoki, not for someone working in
 the code; the implementation map at the end points to where each idea
 lives.
 
-For the long-form design rationale, see [`design.md`](../design.md).
-For runnable apps, see [`testdata/apps/`](../testdata/apps). For the
-state-machine vocabulary in detail, see
-[`state-machine.md`](state-machine.md).
+For comparative grounding — what kitsoki borrows from interactive
+fiction, statechart frameworks, dialogue managers, and LLM
+orchestration — see [`prior-art.md`](prior-art.md). For runnable
+apps, see [`testdata/apps/`](../testdata/apps). For the state-machine
+vocabulary in detail, see [`state-machine.md`](state-machine.md).
 
 ---
 
@@ -335,6 +336,46 @@ inside a shadow copy of the app directory; the resulting diff is
 shown for review; on accept, the app reloads in place. The entire
 cycle is in-process — no checkout, no restart.
 
+### 8.1 The LLM as an adversary
+
+The trust model is asymmetric. The application author is trusted —
+they wrote the YAML the operator chose to run. The **LLM is treated
+as adversarial**: it can be prompt-injected by the user, by an
+external surface (a Jira comment, a PR body), or by its own
+hallucination. Kitsoki's job is to make that not matter.
+
+Concretely, every layer below assumes a hostile LLM:
+
+- **The expression language is whitelisted.** Guards and templates
+  evaluate against a typed scope (`world.*`, `slots.*`, `event.*`,
+  `run.*`) with a fixed operator and function set; no reflection, no
+  I/O, no user-defined functions. See
+  [`state-machine.md` §7](state-machine.md#7-guards-the-expr-language).
+- **Effects are an enumerated alphabet.** `set`, `increment`, `say`,
+  `emit`, `invoke: host.*`. The LLM never writes `world` directly —
+  only the effects on a transition the *author* declared do that.
+- **`host.*` is an opt-in registry.** Every host the app uses must
+  appear in the top-level `hosts:` allow-list. `host.run` (shell) is
+  not registered unless the author asked for it. An operator can
+  refuse to compile-in a host module if they don't want apps to be
+  able to invoke it.
+- **Slot validation runs before any guard.** A malicious payload
+  cannot escape the enum/regex/range constraints declared on the
+  slot — see [`state-machine.md` §4](state-machine.md#4-intents-and-slots).
+- **Off-path is marked and opt-in.** Operators can disable free-form
+  chat entirely. When enabled, the TUI visibly frames the session so
+  the user knows they are outside the deterministic graph.
+
+A malicious `transition` call can therefore only cause an effect the
+*author* declared on a transition the author bound — and only after
+slot validation, guard evaluation, and (for `host.*` effects) the
+host's own arg-validation pass. Secrets live in operator-owned
+configuration (`~/.kitsoki/secrets.yaml`, OS keychain integrations)
+and are referenced by name from host configs; app YAML never carries
+secrets. App signing (detached signatures on the YAML tree, so a
+distributed app can be verified) is future work — for now the
+operator audits the YAML before running it.
+
 ---
 
 ## 9. Determinism boundary (where surprise is allowed)
@@ -581,4 +622,4 @@ file is a complete after-the-fact transcript.
 - **Testing** → [`testing.md`](testing.md).
 - **Background jobs** → [`background-jobs/`](background-jobs/README.md).
 - **Hosts and transports** → [`hosts.md`](hosts.md), [`transports.md`](transports.md).
-- **Long-form design rationale** → [`../design.md`](../design.md).
+- **Prior art and comparative grounding** → [`prior-art.md`](prior-art.md).

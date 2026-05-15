@@ -3,8 +3,9 @@
 Welcome. This is the navigation hub for the documentation tree.
 
 For the elevator pitch and quickstart, see the top-level
-[`../README.md`](../README.md). For the long-form design rationale,
-see [`../design.md`](../design.md).
+[`../README.md`](../README.md). For comparative grounding against
+prior art (interactive fiction, statecharts, dialogue managers, LLM
+orchestration), see [`prior-art.md`](prior-art.md).
 
 ---
 
@@ -30,15 +31,24 @@ see [`../design.md`](../design.md).
 9. **[`imports.md`](imports.md)** — composing apps across files and
    repos via the `imports:` block; the `/warp` slash command and
    `kitsoki run --warp` for operator smoke testing.
+10. **[`prior-art.md`](prior-art.md)** — comparative grounding: what
+    kitsoki borrows from (and rejects from) Inform/TADS/Ink/Yarn,
+    XState/SCXML/Temporal/LangGraph, Rasa/Dialogflow/Bot Framework,
+    and the MCP tool-shape conventions.
 
-## Quick reference
+## Reference (embedded in the binary)
+
+The files under [`embedded/`](embedded/) are compiled into the `kitsoki`
+binary via `//go:embed` and served by `kitsoki docs <topic>`. They are
+field-reference / LLM-prompt material — narrative + design rationale
+lives in the top-level `docs/*.md` above.
 
 | Topic | Where |
 |---|---|
-| Authoritative `app.yaml` schema | `kitsoki docs app-schema` (or [`../cmd/kitsoki/docs/app-schema.md`](../cmd/kitsoki/docs/app-schema.md)) |
-| LLM-facing operator manual | `kitsoki docs llm-guide` (or [`../cmd/kitsoki/docs/llm-guide.md`](../cmd/kitsoki/docs/llm-guide.md)) |
-| Implement a prose proposal against `app.yaml` | `kitsoki docs apply-proposal` |
-| Markdown shape produced by `kitsoki render` | `kitsoki docs render-format` |
+| Authoritative `app.yaml` schema | `kitsoki docs app-schema` (or [`embedded/app-schema.md`](embedded/app-schema.md)) |
+| LLM-facing operator manual | `kitsoki docs llm-guide` (or [`embedded/llm-guide.md`](embedded/llm-guide.md)) |
+| Implement a prose proposal against `app.yaml` | `kitsoki docs apply-proposal` (or [`embedded/apply-proposal.md`](embedded/apply-proposal.md)) |
+| Markdown shape produced by `kitsoki render` | `kitsoki docs render-format` (or [`embedded/render-format.md`](embedded/render-format.md)) |
 
 ## Historical material
 

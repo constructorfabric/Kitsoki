@@ -93,6 +93,6 @@ sequenceDiagram
 
 ## See also
 
-- [`cmd/kitsoki/docs/app-schema.md` §Background jobs](../../cmd/kitsoki/docs/app-schema.md#background-jobs) — inline summary and field table.
+- [`embedded/app-schema.md` §Background jobs](../embedded/app-schema.md#background-jobs) — inline summary and field table.
 - [`internal/jobs/doc.go`](../../internal/jobs/doc.go) — package-level architecture overview.
 - [`testdata/apps/background_jobs/flows/happy_path.yaml`](../../testdata/apps/background_jobs/flows/happy_path.yaml) — the canonical flow fixture.

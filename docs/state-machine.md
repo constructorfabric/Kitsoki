@@ -11,7 +11,7 @@ to see where the machine sits in the larger picture.
 
 For the bytes-on-disk authoritative schema, run `kitsoki docs app-schema`
 or open
-[`cmd/kitsoki/docs/app-schema.md`](../cmd/kitsoki/docs/app-schema.md).
+[`embedded/app-schema.md`](embedded/app-schema.md).
 
 ---
 
@@ -42,6 +42,23 @@ Three things that are not in the vocabulary, deliberately:
   intent).
 - **No hidden transitions.** Every edge is in `on:`. The catch-all is
   spelled `default: true`.
+
+Why this shape — three older idioms collapse into the same vocabulary:
+
+- A **text-adventure room** maps to a state; the exits are transitions;
+  the inventory is the world; the verbs the room understands are its
+  intent set; the objects are slot enums.
+- A **wizard** is a linear chain of compound states; the slots on each
+  step are the form parameters; the "back" button is a cyclic
+  transition.
+- A **command palette** is exactly the runtime menu primitive — the
+  set of currently-valid intents derived from the active state's
+  bindings and guards.
+
+A statechart's *parallel region* falls out the same way: a file-editor
+state runs alongside a background-validator state that emits
+`saved`/`error` events the editor consumes. The borrowings from each
+of these traditions are catalogued in [`prior-art.md`](prior-art.md).
 
 ---
 
@@ -272,6 +289,28 @@ self-correct.
    effects, and returns the new state. If validation fails, the error
    envelope (`{ code, hint, allowed_intents, missing_slots }`) goes
    back to the harness for one or more retries.
+
+#### Why one generic `transition` tool instead of per-intent tools
+
+The MCP server registers exactly **one** tool — `transition` — and
+relies on the validator to police the `intent` field. The alternative
+(one MCP tool per intent, or per state) was considered and rejected:
+
+- **Tool-list churn defeats prompt caching.** A per-state tool catalog
+  would change every turn. LLM providers cache the tool list per
+  session; reshuffling it per turn defeats that cache and adds
+  latency.
+- **Per-intent tools leak author internals.** The intent names
+  (`hang_cloak`, `restart_from`) would appear in the tool schema the
+  LLM sees. That couples the LLM prompt to authoring decisions that
+  ought to be free to change.
+
+With one generic tool the harness's job is uniform across apps and
+across states: call `transition` with one of the intents listed in the
+system prompt for the current state. The validator turns the resulting
+`{intent, slots}` into the appropriate structured error envelope when
+the LLM picks something invalid — see [`prior-art.md` §5](prior-art.md#5-why-one-generic-mcp-tool-not-per-state-typed-tools)
+for the full comparison.
 
 Error codes the machine emits — full list in `internal/intent`:
 
@@ -788,7 +827,7 @@ for clarification.
 | Off-path | `internal/orchestrator/teleport.go` and `internal/inbox/` |
 | MCP transition tool | `internal/mcp/` |
 | Visualisation | `internal/viz/` |
-| YAML schema reference | `cmd/kitsoki/docs/app-schema.md` |
+| YAML schema reference | `docs/embedded/app-schema.md` |
 
 Read those packages in that order if you want to see the machine
 end-to-end, top-down.
