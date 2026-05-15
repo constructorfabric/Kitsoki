@@ -1206,8 +1206,10 @@ func TestController_Send_DispatchesStructuredTokens(t *testing.T) {
 	}
 }
 
-// TestNormaliseToolName covers the four canonical cases the brief
-// asks for, plus the empty-string edge case.
+// TestResolveCwd_AppFileFallback exercises the mode > agent > appFile
+// precedence chain. Absolute selections pass through; relative ones
+// are absolutised (this is the bug-1 fix — tmux's `-c` flag must see
+// an absolute path or the pane lands in $HOME).
 func TestResolveCwd_AppFileFallback(t *testing.T) {
 	mode := &app.MetaModeDef{Cwd: "/from-mode"}
 	agent := agents.Agent{DefaultCwd: "/from-agent"}
@@ -1232,6 +1234,66 @@ func TestResolveCwd_AppFileFallback(t *testing.T) {
 		if got != tc.want {
 			t.Errorf("%s: resolveCwd = %q, want %q", tc.name, got, tc.want)
 		}
+	}
+}
+
+// TestResolveCwd_AbsolutisesRelative is the regression test for the
+// /meta story → $HOME bug. A relative appFile (the operator-typed
+// path) must produce an absolute fallback cwd because tmux's `-c`
+// flag resolves relative paths against the tmux server's inherited
+// cwd, which is not the kitsoki process. Same goes for relative
+// mode.Cwd / agent.DefaultCwd — those resolve against the appFile
+// dir for predictability.
+func TestResolveCwd_AbsolutisesRelative(t *testing.T) {
+	// Use a real on-disk tempdir so filepath.Abs against the appFile
+	// produces a stable, prefix-matchable expected value.
+	tmp := t.TempDir()
+	appAbs := filepath.Join(tmp, "stories", "bugfix", "app.yaml")
+	if err := os.MkdirAll(filepath.Dir(appAbs), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(appAbs, []byte("# fixture"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	// Pretend the operator passed a path relative to tmp. We chdir
+	// into tmp so that filepath.Abs("stories/bugfix/app.yaml")
+	// produces appAbs deterministically.
+	cwdBefore, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(cwdBefore) })
+	if err := os.Chdir(tmp); err != nil {
+		t.Fatalf("Chdir: %v", err)
+	}
+
+	relAppFile := filepath.Join("stories", "bugfix", "app.yaml")
+	wantDir := filepath.Join(tmp, "stories", "bugfix")
+
+	// Fallback: relative appFile, no mode/agent cwd → absolutised
+	// directory of appFile.
+	got := resolveCwd(&app.MetaModeDef{}, agents.Agent{}, relAppFile)
+	if got != wantDir {
+		t.Errorf("appFile fallback: resolveCwd(rel) = %q, want %q", got, wantDir)
+	}
+	if !filepath.IsAbs(got) {
+		t.Errorf("appFile fallback: resolveCwd returned non-absolute path %q", got)
+	}
+
+	// Relative mode.Cwd resolves against the appFile dir (most useful
+	// for author-written `cwd: ./includes`-style values).
+	gotMode := resolveCwd(&app.MetaModeDef{Cwd: "includes"}, agents.Agent{}, relAppFile)
+	wantMode := filepath.Join(wantDir, "includes")
+	if gotMode != wantMode {
+		t.Errorf("relative mode.Cwd: resolveCwd = %q, want %q", gotMode, wantMode)
+	}
+
+	// Relative agent.DefaultCwd is treated the same way.
+	gotAgent := resolveCwd(&app.MetaModeDef{}, agents.Agent{DefaultCwd: "scratch"}, relAppFile)
+	wantAgent := filepath.Join(wantDir, "scratch")
+	if gotAgent != wantAgent {
+		t.Errorf("relative agent.DefaultCwd: resolveCwd = %q, want %q", gotAgent, wantAgent)
 	}
 }
 

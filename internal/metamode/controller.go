@@ -995,22 +995,74 @@ func SessionWorkspace(sess *Session, appFile string) string {
 	return resolveCwd(sess.Mode, sess.Agent, appFile)
 }
 
-// resolveCwd picks the cwd for an Ask. Precedence: mode override >
-// agent DefaultCwd > directory of turn.AppFile. The fallback lets a
-// /meta story conversation see the whole app tree (so the agent can
-// read/grep/bash across the story files) without each app having to
-// declare cwd: explicitly.
+// resolveCwd picks the cwd for an Ask, returning an absolute path
+// whenever a non-empty value is selected. Precedence:
+//
+//  1. mode.Cwd     — the meta_mode's explicit `cwd:` field.
+//  2. agent.DefaultCwd — fallback when no mode override is set.
+//  3. filepath.Dir(appFile) — last-resort fallback so a /meta story
+//     conversation sees the whole app tree without each app having
+//     to declare cwd: explicitly.
+//
+// Any selected value that is not already absolute is resolved with
+// filepath.Abs. For relative paths in cases (1) and (2) we resolve
+// against the directory of appFile when known (so author-written
+// `cwd: ./foo` makes sense relative to the app file), falling back
+// to the process cwd via filepath.Abs. The whole point is that the
+// returned string is safe to hand to tmux's `-c` flag: tmux applies
+// start_directory against the inherited working directory, which
+// the kitsoki TUI does NOT control, so a relative path can land the
+// pane in $HOME — the user-witnessed bug.
+//
+// Returns "" only when all three precedence sources are empty.
 func resolveCwd(m *app.MetaModeDef, a agents.Agent, appFile string) string {
-	if m != nil && m.Cwd != "" {
-		return m.Cwd
-	}
-	if a.DefaultCwd != "" {
-		return a.DefaultCwd
-	}
+	// Pre-compute the app-file directory (absolute when possible) so
+	// each branch can lean on it for relative-path resolution without
+	// re-doing the filepath.Abs dance.
+	var appDirAbs string
 	if appFile != "" {
-		return filepath.Dir(appFile)
+		if abs, err := filepath.Abs(appFile); err == nil {
+			appDirAbs = filepath.Dir(abs)
+		} else {
+			appDirAbs = filepath.Dir(appFile)
+		}
 	}
-	return ""
+	switch {
+	case m != nil && m.Cwd != "":
+		return absolutiseAgainst(m.Cwd, appDirAbs)
+	case a.DefaultCwd != "":
+		return absolutiseAgainst(a.DefaultCwd, appDirAbs)
+	case appDirAbs != "":
+		// The app-file fallback is already absolute (we ran
+		// filepath.Abs on appFile above). Clean for tidy output.
+		return filepath.Clean(appDirAbs)
+	default:
+		return ""
+	}
+}
+
+// absolutiseAgainst returns an absolute form of raw. If raw is
+// already absolute it is returned cleaned. Relative paths are
+// resolved against baseDir when baseDir is non-empty (so author-
+// written `cwd: ./includes` makes sense alongside the app yaml);
+// otherwise they are resolved against the process cwd via
+// filepath.Abs. If filepath.Abs fails (a real rarity — it only
+// errors when the OS can't get the cwd), the original is returned
+// rather than losing the value.
+func absolutiseAgainst(raw, baseDir string) string {
+	if raw == "" {
+		return ""
+	}
+	if filepath.IsAbs(raw) {
+		return filepath.Clean(raw)
+	}
+	if baseDir != "" {
+		return filepath.Clean(filepath.Join(baseDir, raw))
+	}
+	if abs, err := filepath.Abs(raw); err == nil {
+		return abs
+	}
+	return raw
 }
 
 // metaRoom produces the chat-room key for a meta mode by name.
