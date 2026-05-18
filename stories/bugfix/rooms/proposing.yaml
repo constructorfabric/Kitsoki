@@ -63,14 +63,14 @@ states:
   proposing_awaiting_reply:
     description: "Fix proposal posted; awaiting verdict."
     view: |
-      Fix-proposal checkpoint — {{ world.ticket_id }}
+      ✓ Fix proposal posted to transport + inbox.
 
-      {{ world.propose_fix_artifact.summary_markdown|default:"(artifact pending)" }}
+      Summary: {{ world.propose_fix_artifact.summary_title|default:"(none)" }}
+      Confidence: {{ world.propose_fix_artifact.confidence|default:"(none)" }}
+      LLM verdict: {{ world.llm_verdict.verdict|default:"(skipped — human mode)" }}{% if world.llm_verdict.confidence %}  (confidence {{ world.llm_verdict.confidence }}){% endif %}{% if world.llm_verdict.reason %}
+      Reason: {{ world.llm_verdict.reason }}{% endif %}
 
-      Verdict slot: {{ world.llm_verdict.verdict|default:"(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence|default:0 }})
-      Reason:       {{ world.llm_verdict.reason|default:"" }}
-
-      Reply: accept | refine [feedback=...] | restart_from [stage=...] | quit
+      Reply: `accept` (advance to implementing) · `refine feedback=...` · `restart_from stage=...` · `quit`
     relevant_world: [judge_mode, judge_confidence_threshold, ticket_id, thread, propose_fix_artifact, llm_verdict, cycle]
     on_enter:
       - invoke: iface.transport.post

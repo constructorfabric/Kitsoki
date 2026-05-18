@@ -42,14 +42,13 @@ states:
   done_awaiting_reply:
     description: "Final artifact posted; awaiting close-out."
     view: |
-      Close-out checkpoint — {{ world.ticket_id }}
+      ✓ Done artifact posted to transport + inbox.
 
-      {{ world.done_artifact.summary_markdown|default:"(artifact pending)" }}
+      Summary: {{ world.done_artifact.summary_title|default:"(none)" }}
+      LLM verdict: {{ world.llm_verdict.verdict|default:"(skipped — human mode)" }}{% if world.llm_verdict.confidence %}  (confidence {{ world.llm_verdict.confidence }}){% endif %}{% if world.llm_verdict.reason %}
+      Reason: {{ world.llm_verdict.reason }}{% endif %}
 
-      Verdict slot: {{ world.llm_verdict.verdict|default:"(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence|default:0 }})
-      Reason:       {{ world.llm_verdict.reason|default:"" }}
-
-      Reply: accept (close out) | refine | quit
+      Reply: `accept` (close out, hand off to pr-refinement) · `refine` · `quit`
     relevant_world: [judge_mode, judge_confidence_threshold, ticket_id, thread, done_artifact, llm_verdict]
     on_enter:
       - invoke: iface.transport.post
