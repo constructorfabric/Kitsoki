@@ -376,7 +376,16 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 				}
 				resumeMode = true
 			} else if !noImplicitResume {
-				// Implicit-resume path: exactly one active session → prompt.
+				// Implicit-resume path: prompt with the most recent active
+				// session as the default. ListSessions returns rows ordered
+				// by started_at DESC, so activeSessions[0] is the newest.
+				// The earlier "exactly one active" guard surprised users
+				// who accumulated a pile of sessions across restarts: the
+				// prompt silently disappeared the moment they had two,
+				// so each restart spun up a fresh session and the loop
+				// felt amnesiac. Now any number of active sessions
+				// surfaces the prompt; the picker is one keystroke away
+				// for users who want to resume an OLDER session.
 				summaries, lErr := s.ListSessions(ctx, def.App.ID, 0)
 				if lErr != nil {
 					return fmt.Errorf("list sessions: %w", lErr)
@@ -387,23 +396,26 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 						activeSessions = append(activeSessions, sum)
 					}
 				}
-				if len(activeSessions) == 1 {
+				if len(activeSessions) >= 1 {
 					sum := activeSessions[0]
 					age := time.Since(sum.StartedAt).Truncate(time.Second)
-					// Build a short state label via LoadJourney to show the user.
-					// Best-effort; ignore errors (fall through to fresh session if
-					// the journey can't be loaded).
 					stateLabel := "unknown"
 					if jPreview, jErr := orch.LoadJourney(sum.ID); jErr == nil {
 						stateLabel = string(jPreview.State)
 					}
+					var pickerHint string
+					if len(activeSessions) > 1 {
+						pickerHint = fmt.Sprintf(" · [p] pick from %d active",
+							len(activeSessions))
+					}
 					fmt.Fprintf(cmd.ErrOrStderr(),
 						"You have an active session for %s from %s ago, turn %d (in %s).\n"+
-							"[Enter] to continue · [n] start fresh · [q] quit\n",
+							"[Enter] to continue · [n] start fresh%s · [q] quit\n",
 						def.App.ID,
 						humanizeAge(age),
 						sum.LastTurn,
 						stateLabel,
+						pickerHint,
 					)
 					scanner := bufio.NewScanner(cmd.InOrStdin())
 					scanner.Scan()
@@ -413,8 +425,25 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 						return errTempFail
 					case "n", "no":
 						// Fall through: fresh session.
+					case "p", "pick":
+						// Open the numbered-list picker over all active
+						// sessions so the user can resume a specific one.
+						keys := make([][]store.ExternalKey, len(activeSessions))
+						for i, sum := range activeSessions {
+							keys[i], _ = s.ListExternalKeys(ctx, sum.ID)
+						}
+						chosen, pErr := pickSession(activeSessions, keys, cmd.ErrOrStderr(), cmd.InOrStdin())
+						if errors.Is(pErr, errPickerAborted) {
+							return errTempFail
+						}
+						if pErr != nil {
+							return pErr
+						}
+						sid = chosen
+						resumeMode = true
 					default:
-						// Empty line (Enter) or any other input → resume.
+						// Empty line (Enter) or any other input → resume the
+						// most recent active session.
 						sid = sum.ID
 						resumeMode = true
 					}
