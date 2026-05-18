@@ -26,11 +26,26 @@ states:
       # Slice β's host handlers implement the work; the iface call below is
       # the canonical dispatch site. In Wave 1 the no-op iface.vcs.commit
       # handler just records "implementation applied" against the workspace.
-      - invoke: iface.workspace.sync
+      #
+      # The workspace_id / workdir guards keep dogfood walkthroughs that
+      # operate against the live repo cwd (no isolated worktree was set
+      # up at pickup time) from face-planting into on_error: idle here:
+      # an empty workspace_id meant iface.workspace.sync errored out and
+      # bounced the operator back to bf.idle the moment they accepted
+      # the proposed fix. Stories that DO own a worktree set the id
+      # earlier in the chain (the ticket_search → pick path can be
+      # extended to do so, or a `setup_workspace` step can land before
+      # this room). When the id is empty the implementing step is a
+      # narrative-only beat — the fix is applied directly in cwd by
+      # whoever drives the implementation outside the orchestrator
+      # (or the implementation pipeline handles it next).
+      - when: "world.workspace_id != ''"
+        invoke: iface.workspace.sync
         with:
           id: "{{ world.workspace_id }}"
         on_error: idle
-      - invoke: iface.vcs.commit
+      - when: "world.workdir != ''"
+        invoke: iface.vcs.commit
         with:
           workdir: "{{ world.workdir }}"
           message: "{{ world.propose_fix_artifact.summary_title }}"
