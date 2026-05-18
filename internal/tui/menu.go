@@ -73,11 +73,10 @@ func (m menuModel) Update(msg tea.Msg) (menuModel, tea.Cmd) {
 			if m.selected < len(m.items)-1 {
 				m.selected++
 			}
-		case "1", "2", "3", "4", "5", "6", "7", "8", "9":
-			idx := int(msg.String()[0]-'0') - 1
-			if idx >= 0 && idx < len(m.items) {
-				m.selected = idx
-			}
+			// Numeric quick-select was removed in phase 4 — numbers
+			// are normal text in the prompt now (proposal §"Input
+			// fixes"). The menu sub-model no longer needs to handle
+			// "1".."9" because it isn't rendered after phase 3.
 		}
 		m.topIdx = m.scrollToSelected(m.topIdx, m.primaryCapacity())
 	}

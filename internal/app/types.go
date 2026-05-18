@@ -9,6 +9,32 @@ import "time"
 // e.g. "bar/dark" for a nested compound state.
 type StatePath string
 
+// TopLevel returns the first segment of this path — i.e. the room
+// identifier the single-pane-tui proposal calls a "room". Path
+// separators are dots in the internal representation (see
+// loader.go::joinPath); a path like "bar.dark" reports "bar". An
+// empty path reports "". Used by the TUI to detect navigation
+// between rooms (changes to the top-level segment) versus moves
+// within a room (changes that leave the top-level segment intact).
+func (p StatePath) TopLevel() StatePath {
+	s := string(p)
+	if i := indexByte(s, '.'); i >= 0 {
+		return StatePath(s[:i])
+	}
+	return p
+}
+
+// indexByte is a tiny local helper to avoid importing "strings" in
+// this types-only file.
+func indexByte(s string, c byte) int {
+	for i := 0; i < len(s); i++ {
+		if s[i] == c {
+			return i
+		}
+	}
+	return -1
+}
+
 // SessionID uniquely identifies a runtime session.
 type SessionID string
 
@@ -435,6 +461,29 @@ type State struct {
 	// arc on the current state. Never set by YAML authors; populated
 	// by `internal/app/imports_rewriter.go::rewriteState` during fold.
 	IntentAliases map[string]string `yaml:"-"`
+
+	// Transcript declares how this room's transcript buffer is treated
+	// on entry. Only meaningful on top-level (room) states; nested
+	// states must leave it empty. Allowed values:
+	//   "persistent" — keep prior content visible on re-entry (default
+	//                  for on-path rooms).
+	//   "transient"  — scroll past prior content on entry so the new
+	//                  session lands at the top of the visible window
+	//                  (default for conversational / meta-mode rooms).
+	// Empty (the default) is resolved per-state in the TUI: rooms
+	// whose Mode == "conversational" default to "transient"; everything
+	// else defaults to "persistent". See the single-pane-tui proposal
+	// §"Per-room transcript buffers".
+	Transcript string `yaml:"transcript,omitempty"`
+
+	// Theme names a blocks.Renderer theme applied on entry into this
+	// room. Only meaningful on top-level (room) states; nested states
+	// must leave it empty. Valid names match the themes shipped under
+	// internal/tui/blocks/themes.go: "default", "meta-blue",
+	// "meta-amber", "off-path". Unknown names fall back to "default"
+	// at render time. See the single-pane-tui proposal §"Per-room
+	// theme swap".
+	Theme string `yaml:"theme,omitempty"`
 }
 
 // Transition is one entry in a state's on[intent] list.

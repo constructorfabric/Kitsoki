@@ -828,6 +828,27 @@ func validateStates(
 			addErr(fmt.Sprintf("state %q: %v", statePath, err))
 		}
 
+		// Validate transcript/theme: only allowed on top-level (room)
+		// states. prefix is empty exactly at the top of def.States; any
+		// nested level carries the parent's dotted path. See the
+		// single-pane-tui proposal §"Per-room transcript buffers" and
+		// §"Per-room theme swap".
+		if prefix != "" {
+			if s.Transcript != "" {
+				addErr(fmt.Sprintf("state %q: transcript: only allowed on top-level (room) states", statePath))
+			}
+			if s.Theme != "" {
+				addErr(fmt.Sprintf("state %q: theme: only allowed on top-level (room) states", statePath))
+			}
+		} else {
+			switch s.Transcript {
+			case "", "persistent", "transient":
+				// ok
+			default:
+				addErr(fmt.Sprintf("state %q: transcript: %q is not one of \"persistent\", \"transient\"", statePath, s.Transcript))
+			}
+		}
+
 		// Validate on: intent names, transition targets, and effect hosts.
 		intentNames := sortedKeys(s.On)
 		for _, intentName := range intentNames {

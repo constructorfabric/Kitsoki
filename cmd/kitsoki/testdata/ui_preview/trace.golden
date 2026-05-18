@@ -1,0 +1,6 @@
+── routing trace ──
+  · deterministic miss   no exact menu match for `use the backup branch instead`
+  · synonyms      miss   0 synonym entries matched
+  · slot-parser   miss   no parser bound to current state
+  · cache         miss   cache key not present
+  ✓ LLM           hit   intent=pick_branch confidence=0.84 slots={branch:"backup"}

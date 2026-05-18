@@ -77,6 +77,7 @@ See docs/ in the repo for the narrative documentation.`,
 	root.AddCommand(chatCmd())
 	root.AddCommand(mcpValidatorCmd())
 	root.AddCommand(bugCmd())
+	root.AddCommand(uiCmd())
 
 	return root
 }
@@ -544,9 +545,12 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 				metaSink := tui.NewMetaStreamSink()
 				tuiOptions = append(tuiOptions, tui.WithMetaStreamSink(metaSink))
 				rootModel := tui.NewRootModel(orch, sid, appPath, effectiveInitialView, tuiOptions...)
+				// Single-pane redesign (phase 5): no tea.WithMouseCellMotion.
+				// Mouse capture is gone — native terminal text selection works
+				// without modifiers, and keyboard scrolling
+				// (Shift+↑/↓, Ctrl+U/D/B/F) is unchanged.
 				p := tea.NewProgram(rootModel,
 					tea.WithAltScreen(),
-					tea.WithMouseCellMotion(),
 				)
 				metaSink.Attach(p)
 				defer metaSink.Detach()
@@ -668,9 +672,11 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 			metaSink := tui.NewMetaStreamSink()
 			tuiOptions = append(tuiOptions, tui.WithMetaStreamSink(metaSink))
 			rootModel := tui.NewRootModel(orch, sid, appPath, initialView, tuiOptions...)
+			// Single-pane redesign (phase 5): mouse capture removed —
+			// native terminal text selection works without modifiers,
+			// keyboard scrolling (Shift+↑/↓, Ctrl+U/D/B/F) unchanged.
 			p := tea.NewProgram(rootModel,
 				tea.WithAltScreen(),
-				tea.WithMouseCellMotion(),
 			)
 			metaSink.Attach(p)
 			defer metaSink.Detach()

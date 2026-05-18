@@ -72,3 +72,7 @@ thought.
   the Oregon Trail calibration history. The user-facing reference
   for the shipped surface lives at
   [`../semantic-routing.md`](../semantic-routing.md).
+- [`single-pane-tui.md`](single-pane-tui.md) — replace the
+  multi-pane mouse-driven TUI with a Claude Code-style single-pane
+  chat + slash commands, keeping typed-view + pongo2 rendering.
+  Nothing implemented yet.

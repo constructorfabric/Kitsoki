@@ -8,10 +8,13 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"kitsoki/internal/app"
 	"kitsoki/internal/clock"
+	"kitsoki/internal/intent"
 	"kitsoki/internal/jobs"
 	"kitsoki/internal/metamode"
 	"kitsoki/internal/orchestrator"
+	"kitsoki/internal/tui/blocks"
 )
 
 // GetTranscriptContent extracts the transcript content from a RootModel
@@ -75,8 +78,9 @@ func SetTranscriptSizeForTest(m *RootModel, width, height int) {
 // PreserveLeadingIndent exposes the internal leading-indent preprocessor.
 func PreserveLeadingIndent(s string) string { return preserveLeadingIndent(s) }
 
-// MouseOn reports whether the TUI currently has mouse capture enabled.
-func MouseOn(m RootModel) bool { return m.mouseOn }
+// MouseOn — removed in phase 7. Mouse support is gone (phase 5);
+// tests that scraped the toggle now assert on /mouse's removal notice
+// via GetTranscriptContent.
 
 // IsInFlight returns true if the model is in ModeAwaitingLLM.
 func IsInFlight(m RootModel) bool {
@@ -153,14 +157,26 @@ func (w *TestClarifyModelWrapper) IsActive() bool {
 	return w.m.active
 }
 
-// View returns the rendered view.
-func (w *TestClarifyModelWrapper) View() string {
-	return w.m.View()
+// InlineBlock returns the inline-rendered "clarification needed" block
+// (Phase 2 single-pane redesign). Replaces the legacy View(), which is
+// gone now that the clarify model no longer owns the prompt area.
+func (w *TestClarifyModelWrapper) InlineBlock() string {
+	return w.m.RenderInlineBlock(blocks.New(80, "default").WithNoColor(true))
 }
 
-// IsUsingHuhForm returns true if the current slot is using a huh form (sub-mode A).
-func (w *TestClarifyModelWrapper) IsUsingHuhForm() bool {
-	return w.m.huhForm != nil
+// SubmitValue exposes clarifyModel.SubmitValue for unit testing.
+func (w *TestClarifyModelWrapper) SubmitValue(input string) (string, bool, map[string]any, error) {
+	return w.m.SubmitValue(input)
+}
+
+// CurrentSlotName returns the name of the slot the user is currently
+// being asked about; used by tests to assert advance between slots.
+func (w *TestClarifyModelWrapper) CurrentSlotName() string {
+	slot, ok := w.m.CurrentSlot()
+	if !ok {
+		return ""
+	}
+	return slot.Name
 }
 
 // ── System menu test helpers ──────────────────────────────────────────────────
@@ -203,9 +219,31 @@ func GetPromptValue(m RootModel) string { return m.prompt.Value() }
 // GetPromptWidth returns the textarea inner content width set on the
 // prompt by resize(). Tests use this to assert resize() reserves a
 // usable input column count after the prompt prefix and safety margin.
-// For a textarea, Width() reports the inner content area (terminal
-// width minus the prompt-prefix gutter and any outer borders).
 func GetPromptWidth(m RootModel) int { return m.prompt.Width() }
+
+// GetPromptHeight returns the textarea.Model.Height() set on the prompt.
+// Used by the wrap golden test to assert multi-line content grows the
+// prompt vertically.
+func GetPromptHeight(m RootModel) int { return m.prompt.Height() }
+
+// GetPromptView returns the rendered textarea view (with the mode
+// prefix prepended on row 0). The wrap golden test inspects this to
+// confirm long input visually flows onto multiple display rows.
+func GetPromptView(m RootModel) string {
+	// Mirror View()'s pre-render setup so the test observes exactly
+	// the same lipgloss output the user sees.
+	m.prompt.SetPromptFunc(promptPrefixCols, m.promptLineFunc())
+	m.prompt.SetHeight(promptHeightFor(&m.prompt))
+	return m.prompt.View()
+}
+
+// ResizeRootModel forwards a tea.WindowSizeMsg into the model so tests
+// can drive the production resize() path without poking private fields.
+func ResizeRootModel(m RootModel, width, height int) RootModel {
+	m.width = width
+	m.height = height
+	return m.resize()
+}
 
 // GetInputHistory returns a copy of the in-memory prompt history (oldest
 // first). Used by tui_history_test.go to assert append / dedupe semantics.
@@ -238,9 +276,20 @@ func (w *TestDisambiguationModelWrapper) IsActive() bool {
 	return w.m.active
 }
 
-// View returns the rendered view.
-func (w *TestDisambiguationModelWrapper) View() string {
-	return w.m.View()
+// Open calls disambiguationModel.Open.
+func (w *TestDisambiguationModelWrapper) Open(candidates []intent.Candidate) {
+	w.m.Open(candidates)
+}
+
+// InlineBlock returns the inline-rendered "did you mean?" block (Phase 2
+// single-pane redesign). Replaces the legacy View().
+func (w *TestDisambiguationModelWrapper) InlineBlock() string {
+	return w.m.RenderInlineBlock(blocks.New(80, "default").WithNoColor(true))
+}
+
+// SubmitValue exposes disambiguationModel.SubmitValue for unit tests.
+func (w *TestDisambiguationModelWrapper) SubmitValue(input string) (intent.Candidate, error) {
+	return w.m.SubmitValue(input)
 }
 
 // ── Inbox test helpers ────────────────────────────────────────────────────────
@@ -341,65 +390,129 @@ func (m RootModel) AppID() string {
 	return ""
 }
 
-// ── Routing chip / queue test helpers ────────────────────────────────────────
+// ── Routing observer test helpers ────────────────────────────────────────
 
-// PendingLineForTest wraps the package-private pendingLine queue so
-// the routing-chip tests can exercise its single-slot semantics from
-// the _test package without depending on its internal field layout.
-type PendingLineForTest struct {
-	q *pendingLine
-}
-
-// NewPendingLineForTest constructs an empty queue.
-func NewPendingLineForTest() PendingLineForTest {
-	return PendingLineForTest{q: &pendingLine{}}
-}
-
-// Enqueue calls pendingLine.Enqueue.
-func (p PendingLineForTest) Enqueue(s string) { p.q.Enqueue(s) }
-
-// Take calls pendingLine.Take.
-func (p PendingLineForTest) Take() (string, bool) { return p.q.Take() }
-
-// HasPending calls pendingLine.HasPending.
-func (p PendingLineForTest) HasPending() bool { return p.q.HasPending() }
-
-// FooterIndicator calls pendingLine.FooterIndicator.
-func (p PendingLineForTest) FooterIndicator() string { return p.q.FooterIndicator() }
-
-// Clear calls pendingLine.Clear.
-func (p PendingLineForTest) Clear() { p.q.Clear() }
-
-// ── Routing chip / overlay test helpers ──────────────────────────────────────
-
-// RoutingChipActive reports whether the in-flight chip is currently
-// visible on the prompt line (Wave 2 §8 wiring).
-func RoutingChipActive(m RootModel) bool { return m.routingChipActive }
-
-// RoutingChipTier returns the chip's resolved tier (TierNone while in
-// flight). Tests use this to assert the chip transitioned to the
-// expected tier after a routing event.
-func RoutingChipTier(m RootModel) RoutingTier { return m.routingChip.Tier() }
-
-// RoutingChipView returns the chip's rendered line — what View()
-// stitches onto the user-input echo. Empty when the chip is in its
-// pristine TierNone+no-spinner state.
-func RoutingChipView(m RootModel) string { return m.routingChip.View() }
-
-// RoutingTraceOpen reports whether the ctrl+r overlay is currently
-// visible.
-func RoutingTraceOpen(m RootModel) bool { return m.routingTraceOpen }
+// Phase 7 removed the legacy routing-chip Bubble Tea sub-model and the
+// pendingLine single-slot queue. The chip's tier-event message types
+// survive (routing_events.go) because routing_observer still emits
+// them and the inline-routing transcript block consumes them.
+// PendingLineForTest, RoutingChipActive, RoutingChipTier, and
+// RoutingChipView are gone — tests now assert on transcript content
+// via GetTranscriptContent.
 
 // SetRoutingObserverForTest installs a *RoutingObserver on the model
-// for tests that need to exercise the overlay path without going
-// through NewRootModel's options.
+// for tests that need to exercise the observer-driven inline routing
+// block without going through NewRootModel's options.
 func SetRoutingObserverForTest(m *RootModel, obs *RoutingObserver) {
 	m.routingObserver = obs
 }
 
-// RenderRoutingTraceOverlayForTest exposes the overlay body builder
-// so the ctrl+r overlay test can assert on its content without
-// scraping the full View().
-func RenderRoutingTraceOverlayForTest(m RootModel) string {
-	return m.renderRoutingTraceOverlay()
+// RoutingTraceOpen / RenderRoutingTraceOverlayForTest — removed in
+// phase 7 along with the overlay itself. Tests assert on inline
+// /trace block content via GetTranscriptContent.
+
+// ── Per-room transcript / theme test helpers (phase 6) ──────────────────────
+
+// CurrentStateForTest returns the model's currentState path. Used
+// by rooms_test.go to assert navigation landed in the expected room
+// without poking at unexported fields from the _test package.
+func (m RootModel) CurrentStateForTest() app.StatePath { return m.currentState }
+
+// ActiveRoomForTest returns the active room key — useful for
+// asserting which transcript buffer is currently bound to
+// m.transcript after a state change.
+func (m RootModel) ActiveRoomForTest() app.StatePath { return m.activeRoom }
+
+// ActivateRoomForTest exposes the package-private activateRoom helper
+// so the transient-scroll test can exercise it without driving a full
+// turn through the orchestrator.
+func ActivateRoomForTest(m *RootModel, room app.StatePath, transient bool) {
+	m.activateRoom(room, transient)
+}
+
+// ResolveRoomThemeForTest exposes themeNameForRoom + roomDecl so the
+// theme-honouring test can assert resolution without going through
+// the RootModel's runtime theme accessor (which folds in the meta /
+// off-path overrides).
+func ResolveRoomThemeForTest(def *app.AppDef, room app.StatePath) string {
+	return themeNameForRoom(roomDecl(def, room))
+}
+
+// CurrentThemeForTest exposes the runtime theme accessor used by
+// every blocks.New call site. Tests assert it changes after a
+// per-room swap.
+func CurrentThemeForTest(m RootModel) string { return m.currentTheme() }
+
+// MetaRoomKeyForTest returns the synthetic meta-mode room key so
+// tests can compare ActiveRoomForTest() against it without
+// duplicating the constant.
+func MetaRoomKeyForTest() app.StatePath { return metaRoomKey }
+
+// InputQueue returns a copy of the live input queue used for tests
+// asserting on Phase 4 queue behaviour. Order is FIFO.
+func InputQueue(m RootModel) []string {
+	out := make([]string, len(m.inputQueue))
+	copy(out, m.inputQueue)
+	return out
+}
+
+// SetInputQueueForTest seeds the input queue directly. Bypasses the
+// usual enqueue path so tests can construct queue scenarios cheaply.
+func SetInputQueueForTest(m *RootModel, items ...string) {
+	m.inputQueue = append([]string(nil), items...)
+}
+
+// BackgroundCompletions returns a copy of the background-completion
+// log keyed by /jump. Newest-first.
+func BackgroundCompletions(m RootModel) []string {
+	out := make([]string, len(m.backgroundCompletions))
+	for i, bc := range m.backgroundCompletions {
+		out[i] = bc.Room + " · " + bc.Summary
+	}
+	return out
+}
+
+// SetActionsAutoForTest flips the auto-print flag without going
+// through the slash dispatcher.
+func SetActionsAutoForTest(m *RootModel, on bool) { m.actionsAuto = on }
+
+// SetModeForTest forces the Mode field. Used by promptPrefix /
+// footer tests that need to observe every mode without driving the
+// underlying state machine into each.
+func SetModeForTest(m *RootModel, mode Mode) { m.mode = mode }
+
+// PromptPrefixForTest exposes the rendered prompt prefix string for
+// the current mode.
+func PromptPrefixForTest(m RootModel) string { return m.promptPrefix() }
+
+// FooterLine1ForTest exposes the framework footer line builder so
+// tests can assert what shows in line 1 without scraping the View().
+func FooterLine1ForTest(m RootModel) string { return footerFrameworkLine(m) }
+
+// MaybeSwitchRoomOnStateForTest exposes the room-swap entry so tests
+// that don't go through a full TurnOutcome can drive the swap
+// manually.
+func MaybeSwitchRoomOnStateForTest(m *RootModel, prev, curr app.StatePath) {
+	m.maybeSwitchRoomOnState(prev, curr)
+}
+
+// CandidateForTest mirrors intent.Candidate so callers in tui_test
+// don't have to import internal/intent.
+type CandidateForTest struct {
+	Intent string
+	Title  string
+}
+
+// OpenDisambiguationForTest opens the disambig overlay with the
+// given candidates and switches the model into ModeDisambiguating.
+// Bypasses the orchestrator-driven path so the
+// handleDisambiguationChoice dispatch behaviour can be exercised in
+// isolation.
+func OpenDisambiguationForTest(m *RootModel, candidates []CandidateForTest) {
+	cs := make([]intent.Candidate, len(candidates))
+	for i, c := range candidates {
+		cs[i] = intent.Candidate{Intent: c.Intent, Title: c.Title}
+	}
+	m.disambiguation.Open(cs)
+	m.mode = ModeDisambiguating
 }

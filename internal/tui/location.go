@@ -6,8 +6,10 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"kitsoki/internal/orchestrator"
+	"kitsoki/internal/tui/blocks"
 )
 
 // locationModel renders the §7.1 location indicator (breadcrumb + state description).
@@ -15,6 +17,12 @@ type locationModel struct {
 	loc     orchestrator.Location
 	offPath bool
 	width   int
+	// theme is the active blocks theme used to colour the location
+	// bar (single-pane-tui proposal §"Per-room theme swap"). Empty
+	// falls back to the package-level locationStyle / locationOffPathStyle
+	// pair to preserve the pre-rooms behaviour for tests that build a
+	// bare locationModel.
+	theme string
 }
 
 func newLocationModel() locationModel {
@@ -24,6 +32,21 @@ func newLocationModel() locationModel {
 }
 
 func (m locationModel) Init() tea.Cmd { return nil }
+
+// LocationLine returns a compact one-line summary of the current
+// location — breadcrumb + description — without the on-path glyph or
+// world dump. Used by the single-pane redesign's two-line footer to
+// surface "where you are" on framework line 1.
+func (m locationModel) LocationLine() string {
+	var parts []string
+	if m.loc.Breadcrumb != "" {
+		parts = append(parts, m.loc.Breadcrumb)
+	}
+	if m.loc.StateDescription != "" {
+		parts = append(parts, m.loc.StateDescription)
+	}
+	return strings.Join(parts, " · ")
+}
 
 func (m locationModel) Update(msg tea.Msg) (locationModel, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -83,6 +106,20 @@ func (m locationModel) View() string {
 	style := locationStyle
 	if m.offPath {
 		style = locationOffPathStyle
+	}
+	// Theme-aware override: when the active room declares a theme,
+	// repaint the bar with the theme's Primary/Text pair so the
+	// colour swap on /meta entry or per-room declaration is visible
+	// at a glance. Falls through to the legacy palette when no theme
+	// is set (preserves test behaviour for bare locationModel
+	// constructions).
+	if m.theme != "" && !m.offPath {
+		t := blocks.ThemeByName(m.theme)
+		style = lipgloss.NewStyle().
+			Background(t.Primary).
+			Foreground(t.Text).
+			Bold(true).
+			Padding(0, 1)
 	}
 
 	if m.width > 0 {

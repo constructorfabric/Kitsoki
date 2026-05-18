@@ -88,6 +88,13 @@ type transcriptModel struct {
 	height   int
 	renderer *glamour.TermRenderer
 	ready    bool
+	// liveEntryIdx points at the in-place-updatable entry created by
+	// AppendLive / updated by UpdateLive. -1 when no live entry is
+	// active. Used by the inline routing-status block: submitInput
+	// appends a placeholder; tier-event handlers replace it in place;
+	// settlement clears liveEntryIdx so subsequent live entries don't
+	// stomp the settled record.
+	liveEntryIdx int
 }
 
 func newTranscriptModel(width, height int) transcriptModel {
@@ -118,12 +125,118 @@ func newTranscriptModel(width, height int) transcriptModel {
 	}
 
 	return transcriptModel{
-		vp:       vp,
-		width:    width,
-		height:   height,
-		renderer: renderer,
-		ready:    true,
+		vp:           vp,
+		width:        width,
+		height:       height,
+		renderer:     renderer,
+		ready:        true,
+		liveEntryIdx: -1,
 	}
+}
+
+// AppendUserInputEcho writes the immediate-on-Enter echo for the user's
+// submitted input. The transcript model becomes the source of truth for
+// "what the user said and when" — no input-area echo, no waiting for
+// the orchestrator. Pairs with AppendAgentBody for the body that lands
+// once the orchestrator finishes.
+//
+// Used by submitInput in the single-pane redesign (proposal §"Input
+// feedback").
+func (m *transcriptModel) AppendUserInputEcho(input string) {
+	if input == "" {
+		return
+	}
+	header := turnHeaderStyle.Render("> " + input)
+	m.entries = append(m.entries, transcriptEntry{body: header})
+	m.vp.SetContent(m.render())
+	m.vp.GotoBottom()
+}
+
+// AppendAgentBody appends a body-only entry — no "> input" header,
+// because the header was already echoed via AppendUserInputEcho. Use
+// this from handleTurnOutcome instead of AppendTurn when the immediate
+// echo path is active.
+func (m *transcriptModel) AppendAgentBody(view string) {
+	if view == "" {
+		return
+	}
+	m.entries = append(m.entries, transcriptEntry{
+		body:   m.renderViewSource(view),
+		source: view,
+	})
+	m.vp.SetContent(m.render())
+	m.vp.GotoBottom()
+}
+
+// AppendAgentBodyTyped is AppendAgentBody's typed-view variant. Mirrors
+// AppendTurnTyped but emits no header — the echo went out at submit
+// time.
+func (m *transcriptModel) AppendAgentBodyTyped(fallbackView string, typed *app.View, env expr.Env, rr *render.AppRenderer) {
+	body := m.renderViewWith(*typed, env, rr)
+	if body == "" {
+		body = m.renderViewSource(fallbackView)
+	}
+	m.entries = append(m.entries, transcriptEntry{
+		body:        body,
+		source:      fallbackView,
+		typedView:   typed,
+		renderEnv:   env,
+		appRenderer: rr,
+	})
+	m.vp.SetContent(m.render())
+	m.vp.GotoBottom()
+}
+
+// AppendLive appends a body-only entry whose contents can be replaced
+// in place via UpdateLive, until FinalizeLive is called. The caller
+// owns the body string — it's stored verbatim (already-styled), so
+// inline-routing renderers and any future live blocks can swap in
+// pre-formatted lines without going through Glamour.
+//
+// Returns the entry index, which is also recorded as the model's
+// liveEntryIdx so UpdateLive doesn't need an explicit reference.
+func (m *transcriptModel) AppendLive(body string) int {
+	m.entries = append(m.entries, transcriptEntry{body: body})
+	m.liveEntryIdx = len(m.entries) - 1
+	m.vp.SetContent(m.render())
+	m.vp.GotoBottom()
+	return m.liveEntryIdx
+}
+
+// UpdateLive replaces the body of the currently live entry, if any.
+// No-op when there is no live entry — defensive against late-arriving
+// tier events that fire after settlement.
+func (m *transcriptModel) UpdateLive(body string) {
+	if m.liveEntryIdx < 0 || m.liveEntryIdx >= len(m.entries) {
+		return
+	}
+	m.entries[m.liveEntryIdx].body = body
+	m.vp.SetContent(m.render())
+	m.vp.GotoBottom()
+}
+
+// FinalizeLive replaces the live entry's body one final time and
+// clears liveEntryIdx so the entry stays in the transcript as a
+// permanent record. Pass an empty body to keep the current contents.
+func (m *transcriptModel) FinalizeLive(body string) {
+	if m.liveEntryIdx >= 0 && m.liveEntryIdx < len(m.entries) && body != "" {
+		m.entries[m.liveEntryIdx].body = body
+		m.vp.SetContent(m.render())
+		m.vp.GotoBottom()
+	}
+	m.liveEntryIdx = -1
+}
+
+// AppendBlock appends a pre-rendered styled multi-line body verbatim —
+// no Markdown pipeline, no extra styling. Used by slash commands that
+// render their own output (e.g. /help, /actions) via internal/tui/blocks.
+func (m *transcriptModel) AppendBlock(body string) {
+	if body == "" {
+		return
+	}
+	m.entries = append(m.entries, transcriptEntry{body: body})
+	m.vp.SetContent(m.render())
+	m.vp.GotoBottom()
 }
 
 func (m transcriptModel) Init() tea.Cmd { return nil }
@@ -660,10 +773,16 @@ func (m *transcriptModel) AppendMetaStreamLine(text string) {
 // AppendError appends an error/rejection message. The leading arrow
 // matches AppendGuardHint and AppendClarification so a user reading the
 // scrollback sees a consistent prefix for engine-side feedback.
+//
+// When userInput is empty, the header is omitted — the single-pane
+// redesign already echoed the user's input via AppendUserInputEcho,
+// so a second header would be a duplicate.
 func (m *transcriptModel) AppendError(userInput, msg string) {
-	header := "> " + userInput
-	body := errorStyle.Render("→ " + msg)
-	m.entries = append(m.entries, transcriptEntry{header: header, body: body})
+	entry := transcriptEntry{body: errorStyle.Render("→ " + msg)}
+	if userInput != "" {
+		entry.header = "> " + userInput
+	}
+	m.entries = append(m.entries, entry)
 	m.vp.SetContent(m.render())
 	m.vp.GotoBottom()
 }

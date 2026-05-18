@@ -1,0 +1,15 @@
+ world · cypilot                                                                
+────────────────────────────────────────────────────────────────────────────────
+▾ session
+    id: "sess_42"
+  ▾ user
+      name: "brad"
+      role: "dev"
+  ▾ tickets [3]
+      [0]: PLTFRM-89912
+      [1]: PLTFRM-90001
+      [2]: PLTFRM-90014
+▸ flags
+▸ providers
+────────────────────────────────────────────────────────────────────────────────
+view: world  ·  ↑/↓ navigate  ·  enter expand  ·  e edit  ·  q close

@@ -266,23 +266,12 @@ func TestRoutingObserver_WithAttrsClone(t *testing.T) {
 	require.Equal(t, "go", rt.Events[0].Attrs["intent"])
 }
 
-// TestRoutingObserver_NoColorDoesNotBreakChip is a regression guard
-// for §8: the chip must render without ANSI escapes when NO_COLOR=1
-// is set, even after the observer wires it. The wiring path is the
-// chip's own rendering — the observer doesn't touch styles — so the
-// existing chip-level NO_COLOR test (TestNoColor) is the real
-// coverage; this test just verifies that observer integration
-// doesn't accidentally re-style the output.
-func TestRoutingObserver_NoColorDoesNotBreakChip(t *testing.T) {
-	t.Setenv("NO_COLOR", "1")
-	c := tuipkg.NewRoutingChip("hunt")
-	c = runChipUpdate(t, c, tuipkg.RoutingTierHitMsg{
-		Tier: tuipkg.TierLLM, Intent: "ask", Reason: "claude-haiku", Confidence: 0.81,
-	})
-	rendered := c.View()
-	require.False(t, strings.ContainsRune(rendered, 0x1b),
-		"NO_COLOR=1 must produce no ANSI escapes after observer wiring, got %q", rendered)
-}
+// TestRoutingObserver_NoColorDoesNotBreakChip was removed in Phase 7
+// along with the routing chip. The successor surface — the inline
+// routing-status block in the transcript — honours NO_COLOR via
+// blocks.Renderer.NoColor, which is exercised by
+// blocks_test.go::TestRoutingResolvedFormats run under NO_COLOR
+// (the test helper sets r.NoColor=true).
 
 // blockingSender is a fake [tuipkg.Sender] whose Send method blocks
 // forever (or until the test's stop channel closes). Used by

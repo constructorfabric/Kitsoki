@@ -2,110 +2,97 @@ package tui
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
-
 	"kitsoki/internal/intent"
+	"kitsoki/internal/tui/blocks"
 )
 
-// disambiguationModel handles the §7.4 disambiguation UI.
-// When the orchestrator returns AMBIGUOUS_INTENT candidates, this model
-// renders a numbered menu of candidates. The user presses 1/2/3 to pick,
-// or Esc to cancel.
+// disambiguationModel tracks the state of an in-progress disambiguation
+// (§7.4). It no longer owns the prompt area — the user types a number
+// or the canonical intent name into the normal textarea, and the inline
+// "Did you mean?" block is rendered into the transcript. The legacy
+// numeric-hotkey path has been removed; selection goes through the
+// normal prompt's Enter + Submit pipeline.
 type disambiguationModel struct {
 	active     bool
 	candidates []intent.Candidate
-	// chosenIdx is set when the user picks; -1 means no pick yet.
-	chosenIdx int
 }
 
 func newDisambiguationModel() disambiguationModel {
-	return disambiguationModel{chosenIdx: -1}
+	return disambiguationModel{}
 }
 
 // Open activates the disambiguation model with the given candidates.
 func (m *disambiguationModel) Open(candidates []intent.Candidate) {
 	m.active = true
 	m.candidates = candidates
-	m.chosenIdx = -1
 }
 
 // Close deactivates the model.
 func (m *disambiguationModel) Close() {
 	m.active = false
 	m.candidates = nil
-	m.chosenIdx = -1
 }
+
+// IsActive reports whether the model is currently presenting a pick.
+func (m *disambiguationModel) IsActive() bool { return m.active }
+
+// Candidates returns the current candidate list (nil when inactive).
+func (m *disambiguationModel) Candidates() []intent.Candidate { return m.candidates }
 
 // disambiguationChoiceMsg is sent when the user picks a candidate.
 type disambiguationChoiceMsg struct {
 	chosen intent.Candidate
 }
 
-func (m disambiguationModel) Init() tea.Cmd { return nil }
-
-func (m disambiguationModel) Update(msg tea.Msg) (disambiguationModel, tea.Cmd) {
-	if !m.active {
-		return m, nil
-	}
-
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		switch msg.String() {
-		case "esc":
-			m.active = false
-			return m, nil
-		}
-		// Numeric key picks a candidate.
-		for i := 1; i <= len(m.candidates) && i <= 9; i++ {
-			if msg.String() == fmt.Sprintf("%d", i) {
-				chosen := m.candidates[i-1]
-				m.active = false
-				m.chosenIdx = i - 1
-				return m, func() tea.Msg {
-					return disambiguationChoiceMsg{chosen: chosen}
-				}
-			}
-		}
-	}
-	return m, nil
-}
-
-// View renders the disambiguation menu.
-func (m disambiguationModel) View() string {
+// RenderInlineBlock returns the styled "Did you mean?" transcript block
+// for the current candidate list, ready to pass to
+// transcript.AppendBlock. Returns empty when no candidates are active.
+func (m *disambiguationModel) RenderInlineBlock(r *blocks.Renderer) string {
 	if !m.active || len(m.candidates) == 0 {
 		return ""
 	}
-
-	var sb strings.Builder
-	sb.WriteString("Did you mean? (press number to pick, Esc to cancel)\n\n")
+	cs := make([]blocks.DisambigCandidate, len(m.candidates))
 	for i, c := range m.candidates {
-		if i >= 9 {
-			break
+		cs[i] = blocks.DisambigCandidate{
+			Intent:      c.Intent,
+			Title:       c.Title,
+			Description: c.Description,
+			Why:         c.Why,
 		}
-		title := c.Title
-		if title == "" {
-			title = c.Intent
-		}
-		desc := c.Why
-		if desc == "" {
-			desc = c.Description
-		}
-		sb.WriteString(fmt.Sprintf("  [%d] %s", i+1, title))
-		if desc != "" {
-			sb.WriteString(" — " + truncateStr(desc, 60))
-		}
-		sb.WriteString("\n")
 	}
-	return sb.String()
+	return r.Disambig(cs)
 }
 
-// truncateStr truncates s to at most n runes.
-func truncateStr(s string, n int) string {
-	runes := []rune(s)
-	if len(runes) <= n {
-		return s
+// SubmitValue accepts a typed value and returns the chosen candidate.
+// Accepts either a 1-based index ("2") or the canonical intent name
+// (case-insensitive). Invalid picks return an error so the caller can
+// surface a hint in the transcript and leave the model intact for
+// retry. On success the model is left active; the caller invokes
+// Close() after dispatching the chosen candidate.
+func (m *disambiguationModel) SubmitValue(input string) (intent.Candidate, error) {
+	if !m.active {
+		return intent.Candidate{}, fmt.Errorf("disambig: not active")
 	}
-	return string(runes[:n]) + "…"
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return intent.Candidate{}, fmt.Errorf("disambig: empty value")
+	}
+	if n, err := strconv.Atoi(input); err == nil {
+		if n < 1 || n > len(m.candidates) {
+			return intent.Candidate{}, fmt.Errorf("disambig: choice %d out of range (1..%d)", n, len(m.candidates))
+		}
+		return m.candidates[n-1], nil
+	}
+	for _, c := range m.candidates {
+		if strings.EqualFold(c.Intent, input) {
+			return c, nil
+		}
+		if c.Title != "" && strings.EqualFold(c.Title, input) {
+			return c, nil
+		}
+	}
+	return intent.Candidate{}, fmt.Errorf("disambig: %q does not match any candidate", input)
 }

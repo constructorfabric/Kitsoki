@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -359,9 +360,10 @@ func TestTUIInitialMode(t *testing.T) {
 // textarea uses its 40-column default, which truncates / mis-wraps on
 // wider terminals.
 //
-// Formula in resize(): promptOuterWidth = m.width - 2 (safety), then the
-// textarea reserves 2 cols for the per-line "> " prefix (no line numbers)
-// so Width() == m.width - 4. At Width=80 we expect 76.
+// Formula in resize(): textarea.SetWidth(m.width - 2 safety). The
+// textarea then reserves promptPrefixCols (2) for the prompt gutter and
+// reports the remaining inner width via Width(). At Width=80 we expect
+// 80 - 2 (safety) - 2 (prompt gutter) = 76.
 func TestTUIPromptWidthClipsLongInput(t *testing.T) {
 	orch, sid := setupCloak(t)
 	m := buildModel(t, orch, sid)
@@ -373,13 +375,15 @@ func TestTUIPromptWidthClipsLongInput(t *testing.T) {
 
 	w := tuipkg.GetPromptWidth(rm)
 	require.Greater(t, w, 0,
-		"prompt width must be > 0 after resize so long input clips/scrolls")
+		"prompt width must be > 0 after resize so long input wraps onto the next line")
 	require.Equal(t, 76, w,
-		"prompt width should equal terminal width minus prefix (2) and safety margin (2)")
+		"prompt width should equal terminal width minus safety margin (2) and prompt gutter (2)")
 }
 
 // TestTUIPromptWidthHonoursMinimum verifies that very narrow terminals
-// don't drive the prompt width to zero or negative — the floor is 20.
+// don't drive the prompt width to zero or negative. resize() clamps the
+// outer width to (promptMinWidth + promptPrefixCols) = 22, so after the
+// textarea reserves the 2-column gutter the inner Width() is 20.
 func TestTUIPromptWidthHonoursMinimum(t *testing.T) {
 	orch, sid := setupCloak(t)
 	m := buildModel(t, orch, sid)
@@ -390,7 +394,7 @@ func TestTUIPromptWidthHonoursMinimum(t *testing.T) {
 	require.True(t, ok)
 
 	require.Equal(t, 20, tuipkg.GetPromptWidth(rm),
-		"prompt width must clamp to the 20-column minimum on narrow terminals")
+		"prompt width must clamp to the 20-column inner minimum on narrow terminals")
 }
 
 func TestTUIQuit(t *testing.T) {
@@ -632,15 +636,53 @@ states:
 	// Should be in slot-filling mode.
 	mode := extractMode(t, m)
 	require.Equal(t, tuipkg.ModeSlotFilling, mode)
+
+	// Phase 2 inline overlay: the "Clarification needed" block lands
+	// in the transcript (not in the prompt area). Assert the block
+	// shows the intent name, the slot prompt, and the numbered choice
+	// list — the legacy modal would have routed these through the
+	// prompt's View().
+	transcript := tuipkg.GetTranscriptContent(extractRoot(t, m))
+	require.Contains(t, transcript, "clarification needed")
+	require.Contains(t, transcript, "move")
+	require.Contains(t, transcript, "Which direction?")
+	require.Contains(t, transcript, "1. north")
+	require.Contains(t, transcript, "2. south")
+
+	// Now drive the slot-fill loop through the normal prompt. Type "2"
+	// (south) and press Enter — the parent intercepts, calls
+	// clarify.SubmitValue, and dispatches continueTurnOutcome.
+	rm, ok := tuipkg.ExtractRootModel(m)
+	require.True(t, ok)
+	tuipkg.SetPromptValue(&rm, "2")
+	m, cmd := tea.Model(rm).Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = processCommands(m, cmd, 20)
+
+	// After Enter, the model exits slot-filling (all slots are full) and
+	// the transcript echoes the user's pick.
+	transcript = tuipkg.GetTranscriptContent(extractRoot(t, m))
+	require.Contains(t, transcript, "> 2", "user pick should be echoed in transcript")
+	require.Contains(t, transcript, "accepted: south")
+	require.NotEqual(t, tuipkg.ModeSlotFilling, extractMode(t, m),
+		"after final slot fill, mode must leave ModeSlotFilling")
 	_ = ctx
+}
+
+// extractRoot extracts the RootModel value from a tea.Model wrapper.
+// Convenience for assertions that need to call GetTranscriptContent etc.
+func extractRoot(t *testing.T, m tea.Model) tuipkg.RootModel {
+	t.Helper()
+	rm, ok := tuipkg.ExtractRootModel(m)
+	require.True(t, ok)
+	return rm
 }
 
 // ─── Menu expansion and direct dispatch ──────────────────────────────────────
 
 // TestTUIMenuExpandedGoSouth verifies that the TUI's menu contains "go south"
-// (not bare "go") in the foyer, and that selecting it via hotkey "1" (if it
-// is the first primary item) followed by Enter dispatches directly via
-// SubmitDirect, advancing the journey to bar.dark.
+// (not bare "go") in the foyer, and that dispatching it via the post-phase-4
+// /actions <n> command advances the journey to bar.dark. Numeric quick-select
+// was removed in phase 4; the equivalent surface is /actions <n>.
 func TestTUIMenuExpandedGoSouth(t *testing.T) {
 	orch, sid := setupCloak(t)
 	m := buildModel(t, orch, sid)
@@ -659,14 +701,11 @@ func TestTUIMenuExpandedGoSouth(t *testing.T) {
 	}
 	require.GreaterOrEqual(t, goSouthIdx, 0, "go south should be in the primary menu")
 
-	// Select the "go south" row via arrow keys and press Enter (with empty prompt).
-	// We simulate pressing the numeric hotkey if it's within 1-9.
-	if goSouthIdx < 9 {
-		hotkey := string(rune('1' + goSouthIdx))
-		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(hotkey)})
-	}
-	// Press Enter with empty prompt to trigger direct dispatch.
-	m = processCommands(m, func() tea.Msg {
+	// Dispatch via /actions <n>. Indices are 1-based in the rendered
+	// block; goSouthIdx is 0-based so add 1.
+	cmd := "/actions " + strconv.Itoa(goSouthIdx+1)
+	tuipkg.SetPromptValue(&rm, cmd)
+	m = processCommands(rm, func() tea.Msg {
 		return tea.KeyMsg{Type: tea.KeyEnter}
 	}, 20)
 
@@ -802,8 +841,11 @@ func TestTUIInFlightMode(t *testing.T) {
 	require.True(t, tuipkg.HasInFlightCancel(rm), "inFlightCancel should be set")
 }
 
-// TestTUISingleFlightReject verifies that submitting a second input while in-flight
-// shows a notice and does NOT start a new turn.
+// TestTUISingleFlightReject verifies that submitting a second input while
+// in-flight does NOT pre-empt the running turn. Post-phase-4 the second
+// submission goes into m.inputQueue rather than printing "still thinking"
+// and being silently dropped — the user's text is preserved and dispatches
+// when the in-flight turn settles.
 func TestTUISingleFlightReject(t *testing.T) {
 	slow := newSlowHarness("look")
 	defer close(slow.release)
@@ -816,15 +858,15 @@ func TestTUISingleFlightReject(t *testing.T) {
 	// Now submit a second input while still in-flight.
 	m, cmd2 := submitLine(m, "do something else")
 
-	// The second submission should produce no async command (or just return nil).
-	// The model should still be in ModeAwaitingLLM.
 	rm, ok := tuipkg.ExtractRootModel(m)
 	require.True(t, ok)
 	require.True(t, tuipkg.IsInFlight(rm), "model should still be in ModeAwaitingLLM")
 
-	// A notice should have been appended to the transcript.
-	transcript := tuipkg.GetTranscriptContent(rm)
-	require.Contains(t, transcript, "still thinking", "transcript should contain single-flight notice")
+	// Queue carries the second submission; transcript has the queued-ack block.
+	require.Equal(t, []string{"do something else"}, tuipkg.InputQueue(rm),
+		"second submission during in-flight must enqueue")
+	require.Contains(t, tuipkg.GetTranscriptContent(rm), "queued",
+		"transcript should advertise the queue depth")
 
 	_ = cmd2
 }
@@ -1053,42 +1095,19 @@ func TestPreserveLeadingIndent(t *testing.T) {
 	require.Contains(t, out, "\nno indent\n")
 }
 
-// TestSlashMouseToggle exercises /mouse on, /mouse off, and bare /mouse
-// (toggle) through the slash-command handler and asserts the model's
-// mouseOn bit flips accordingly, plus a system message lands in the
-// transcript for each transition.
-func TestSlashMouseToggle(t *testing.T) {
+// TestSlashMousePrintsRemovalNotice locks in the post-phase-5 contract:
+// /mouse no longer toggles capture (the feature was removed) — it just
+// prints a friendly notice into the transcript so anyone with the old
+// muscle memory understands what changed.
+func TestSlashMousePrintsRemovalNotice(t *testing.T) {
 	orch, sid := setupCloak(t)
 	m := buildModel(t, orch, sid)
 
-	rm, ok := tuipkg.ExtractRootModel(m)
-	require.True(t, ok)
-	require.True(t, tuipkg.MouseOn(rm), "mouse should start ON")
-
-	// Explicit /mouse off.
-	m = runTurnBlocking(t, m, "/mouse off")
-	rm, _ = tuipkg.ExtractRootModel(m)
-	require.False(t, tuipkg.MouseOn(rm), "/mouse off should disable mouse")
-
-	// /mouse off again — no-op, but shouldn't error.
-	m = runTurnBlocking(t, m, "/mouse off")
-	rm, _ = tuipkg.ExtractRootModel(m)
-	require.False(t, tuipkg.MouseOn(rm), "/mouse off when already off stays off")
-
-	// Bare /mouse toggles — from off back to on.
 	m = runTurnBlocking(t, m, "/mouse")
-	rm, _ = tuipkg.ExtractRootModel(m)
-	require.True(t, tuipkg.MouseOn(rm), "bare /mouse should toggle back to on")
-
-	// Explicit /mouse on.
-	m = runTurnBlocking(t, m, "/mouse off")
-	m = runTurnBlocking(t, m, "/mouse on")
-	rm, _ = tuipkg.ExtractRootModel(m)
-	require.True(t, tuipkg.MouseOn(rm), "/mouse on should enable mouse")
-
-	// Transcript contains one of the system messages we emit.
+	rm, _ := tuipkg.ExtractRootModel(m)
 	content := tuipkg.GetTranscriptContent(rm)
-	require.Contains(t, content, "mouse:")
+	require.Contains(t, content, "mouse",
+		"the /mouse notice should mention mouse")
 }
 
 // TestPreserveLeadingIndentKeepsListMarkers asserts that bullet- and

@@ -1,0 +1,34 @@
+ proposing · cypilot                                                            
+
+────────────────────────────────────────────────────────────────────────────────
+
+· session resumed · turn 4 · state proposing
+
+> back to the proposal
+
+  → nav: back   (deterministic · 1.00)
+
+  Returned to the proposal review.
+
+> use the backup branch instead
+
+  → in-room: pick_branch   (LLM · 0.84)   slots: {branch: "backup"}
+
+  Switched the candidate branch to `backup`. The CI run is queued; I'll print a
+  checkmark when it lands.
+
+[!]  CI run for PR #4821 finished — 3 failures   (32s ago)
+
+✓ review_pr · merged PR #4811 (chore: deps bump)
+
+  actions:
+  1. Open review
+  2. Request changes
+  3. Approve  (CI not yet green)
+
+────────────────────────────────────────────────────────────────────────────────
+
+proposing · cypilot · normal · 2 queued · 1 unread
+PR #4821 · CI: failing (3) · PLTFRM-90014
+
+> _

@@ -38,6 +38,7 @@ import (
 	"kitsoki/internal/orchestrator"
 	"kitsoki/internal/render"
 	"kitsoki/internal/trace"
+	"kitsoki/internal/tui/blocks"
 	"kitsoki/internal/viz"
 	"kitsoki/internal/world"
 )
@@ -69,11 +70,20 @@ const (
 	// listed chats; Enter resumes one; Esc closes the overlay and
 	// returns to ModeOnPath.
 	ModeMetaSessions
+	// ModeWorldView is active while /world's dedicated hierarchical
+	// viewer owns the pane. Arrow keys move the cursor; Enter expands
+	// or collapses nodes; q/Esc returns to chat. Single-pane-tui
+	// proposal §"Phase 1.5".
+	ModeWorldView
 )
 
 // ctrlCQuitWindow is how long after a Ctrl+C the next Ctrl+C will quit
 // rather than just re-clearing the prompt.
 const ctrlCQuitWindow = 2 * time.Second
+
+// promptPrefixCols and promptMaxHeight are owned by prompt.go (main's
+// textarea helper module); the duplicates that lived here in the
+// proposal branch's textarea swap were dropped during the rebase.
 
 // TurnComplete is the tea.Msg sent by the orchestrator when a turn finishes.
 type TurnComplete struct {
@@ -126,6 +136,7 @@ type RootModel struct {
 	menuSystem     menuSystemModel
 	metaMode       metaModel
 	sessionsPanel  sessionsPanelModel
+	worldView      worldViewModel
 	prompt         textarea.Model
 
 	// chatStore is the persistent chat row backend; used by the
@@ -220,10 +231,8 @@ type RootModel struct {
 	// traceWriter is the buffered writer for the trace file.
 	traceWriter *bufio.Writer
 
-	// mouseOn reflects whether the TUI is currently capturing mouse events.
-	// Controlled at runtime via the /mouse slash command. Defaults to true
-	// because the program is launched with tea.WithMouseCellMotion.
-	mouseOn bool
+	// mouseOn — removed in phase 7. Mouse support is gone (phase 5);
+	// the field and the handleMouseCommand toggle are both deleted.
 
 	// journalWriter, when non-nil, receives typed journal entries for
 	// inbox read/dismiss (sites 27) and disambiguation (site 31)
@@ -255,34 +264,59 @@ type RootModel struct {
 	// invocations.
 	sessionList []chats.PtySession
 
-	// routingChip is the progressive resolution badge sub-model
-	// (semantic-routing proposal §8). On every Enter we reset it to
-	// the chip's TierNone "resolving…" state and render it next to
-	// the user-echoed input line; routing slog events arrive via
-	// RoutingTier*Msg from the routingObserver below.
-	routingChip RoutingChip
-	// routingChipActive is true between the moment we submit a turn
-	// and the moment the chip resolves (or the turn outcome arrives).
-	// Used to gate the chip's render on the prompt line so it only
-	// shows during the in-flight window.
-	routingChipActive bool
-	// routingHistory remembers the resolved chip lines per turn so
-	// promoted recent-turns rows still carry the resolution badge.
-	// Keyed by 1-indexed turn number; pruned to the most recent N.
-	routingHistory map[int64]string
 	// routingObserver is the slog→tea.Msg bridge that converts
-	// orchestrator routing-tier events into RoutingTier*Msg deliveries
-	// for the chip. nil disables the chip (headless / observer-less
-	// tests).
+	// orchestrator routing-tier events into RoutingTier*Msg
+	// deliveries — consumed by the inline routing-status block in
+	// the transcript (Phase 1/2 wiring). nil disables the bridge
+	// (headless / observer-less tests).
 	routingObserver *RoutingObserver
-	// routingTraceOpen toggles the ctrl+r overlay; when true View()
-	// renders the full routing-trace for the focused turn over the
-	// transcript.
-	routingTraceOpen bool
-	// routingTraceTurn is the turn the ctrl+r overlay focuses on
-	// (defaults to the latest turn that produced routing events).
-	routingTraceTurn int64
+	// Legacy fields removed in Phase 7:
+	//   - routingChip      (chip Bubble Tea model — no longer rendered)
+	//   - routingChipActive
+	//   - routingHistory   (per-turn settled-line storage — the
+	//                       transcript live entry is now the
+	//                       authoritative record)
+	//   - routingTraceOpen / routingTraceTurn (overlay state)
+
+	// actionsAuto, when true, auto-prints the room's /actions block at
+	// the end of every successful turn — single-pane-tui proposal
+	// §"/actions auto on|off". Toggled by `/actions auto on` /
+	// `/actions auto off`. Persists for the session. The default is
+	// off; rooms may later declare an override in YAML.
+	actionsAuto bool
+
+	// backgroundCompletions is the newest-first log of bg-job /
+	// other-room completions the user has been notified about but
+	// not yet visited via /jump. Bounded at recentBackgroundCap so
+	// the slice doesn't grow unbounded across a long session.
+	// Single-pane-tui proposal §"Queueing across navigation".
+	backgroundCompletions []backgroundCompletion
+
+	// inputQueue is the room-local FIFO of in-room submissions
+	// captured while another turn is in flight. Esc clears the queue
+	// and stashes each item back into inputHistory. Phase 4 ships
+	// the queue scaffolding; phase 6 splits it per-room.
+	inputQueue []string
+
+	// transcripts is the per-room transcript buffer map (single-pane-tui
+	// proposal §"Per-room transcript buffers"). The active room's
+	// transcript lives on m.transcript; on every room change the
+	// outgoing buffer is saved here under its room key and the
+	// incoming room's buffer is loaded back into m.transcript. See
+	// rooms.go for the swap helpers (activateRoom / maybeSwitchRoomOnState)
+	// and the per-room transcript-mode resolution
+	// (transcriptKindForRoom).
+	transcripts map[app.StatePath]transcriptModel
+
+	// activeRoom is the top-level room key whose transcript currently
+	// lives on m.transcript. Empty until the first room-aware swap
+	// fires (which is also the first state-change after construction);
+	// once non-empty it tracks the on-path top-level segment, or
+	// metaRoomKey while a /meta overlay owns the pane.
+	activeRoom app.StatePath
 }
+
+const recentBackgroundCap = 8
 
 // RootModelOption is a functional option for RootModel construction.
 type RootModelOption func(*RootModel)
@@ -492,13 +526,10 @@ func NewRootModel(orch *orchestrator.Orchestrator, sid app.SessionID, appPath, i
 		clarify:        newClarifyModel(),
 		disambiguation: newDisambiguationModel(),
 		menuSystem:     newMenuSystemModel(metaMenuEntries(orch.AppDef())),
-		metaMode:       newMetaModel(),
-		sessionsPanel:  newSessionsPanelModel(),
-		prompt:         ti,
-		spinner:        sp,
-		mouseOn:        true,
-		routingChip:    NewRoutingChip(""),
-		routingHistory: make(map[int64]string),
+		metaMode:      newMetaModel(),
+		sessionsPanel: newSessionsPanelModel(),
+		prompt:        ti,
+		spinner:       sp,
 	}
 
 	// Set initial state.
@@ -839,44 +870,36 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				cmds = append(cmds, cmd)
 			}
 		}
-		if m.routingChipActive {
-			var chipCmd tea.Cmd
-			m.routingChip, chipCmd = m.routingChip.Update(msg)
-			if chipCmd != nil {
-				cmds = append(cmds, chipCmd)
-			}
-		}
 		if len(cmds) == 0 {
 			return m, nil
 		}
 		return m, tea.Batch(cmds...)
 
-	case RoutingChipReset:
-		var cmd tea.Cmd
-		m.routingChip, cmd = m.routingChip.Update(msg)
-		m.routingChipActive = true
-		return m, cmd
-
 	case RoutingTierMissMsg, RoutingTierHitMsg, RoutingAmbiguousMsg, RoutingCancelMsg:
-		var cmd tea.Cmd
-		m.routingChip, cmd = m.routingChip.Update(msg)
-		return m, cmd
-
-	case RoutingChipResolved:
-		// The chip reached a terminal state — capture the final
-		// rendered line under the latest turn the observer has seen
-		// routing events for. The observer is the only source we
-		// have for "what turn is currently being routed"; without
-		// it (headless test), we just key by 0.
-		var turn int64
-		if m.routingObserver != nil {
-			turn = m.routingObserver.LatestTurn()
+		// Update the inline routing-status block in the transcript
+		// so the user sees the tier advance live, in place, beneath
+		// their echoed input. Single-pane-tui §"Input feedback"
+		// step 2. The legacy RoutingChip sub-model that previously
+		// also consumed these messages was deleted in Phase 7.
+		ir := m.newInlineRouter()
+		switch tm := msg.(type) {
+		case RoutingTierMissMsg:
+			m.transcript.UpdateLive(ir.phaseLine(missTierPhase(tm.Tier)))
+		case RoutingTierHitMsg:
+			m.transcript.FinalizeLive(ir.r.RoutingResolved(blocks.Resolved{
+				Kind:       hitTierKind(tm.Tier, m.currentState),
+				Intent:     tm.Intent,
+				Source:     hitTierSource(tm.Tier),
+				Confidence: tm.Confidence,
+				Detail:     hitTierDetail(tm),
+			}))
+		case RoutingAmbiguousMsg:
+			m.transcript.UpdateLive(ir.r.RoutingResolved(blocks.Resolved{
+				Source: blocks.SourceAmbiguous,
+			}))
+		case RoutingCancelMsg:
+			m.transcript.FinalizeLive("")
 		}
-		if m.routingHistory == nil {
-			m.routingHistory = make(map[int64]string)
-		}
-		m.routingHistory[turn] = msg.Final
-		m.routingChipActive = false
 		return m, nil
 
 	case inboxPollMsg:
@@ -887,8 +910,41 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, func() tea.Msg { return m.pollInbox() }
 
 	case inboxRefreshed:
+		// Single-pane redesign: print a transcript line for each
+		// genuinely new notification. "New" = an unread notification
+		// that wasn't in the previous snapshot. This makes the
+		// transcript the primary surface for inbox awareness; the
+		// panel still updates underneath until phase 3 removes it.
+		newOnes := newInboxNotifications(m.lastNotifications, msg.notifications)
 		m.lastNotifications = msg.notifications
 		m.inbox, _ = m.inbox.Update(msg)
+		for _, n := range newOnes {
+			r := blocks.New(m.transcript.width, m.currentTheme())
+			m.transcript.AppendBlock(r.Inbox(blocks.InboxNotification{
+				ID:       n.ID,
+				Title:    n.Title,
+				Severity: string(n.Severity),
+				Age:      "just now",
+			}))
+			// Push the arrival onto the background-completion log so
+			// /jump has a target. Newest-first; bounded by
+			// recentBackgroundCap.
+			room := n.TeleportState
+			if room == "" {
+				room = "inbox"
+			}
+			m.backgroundCompletions = append(
+				[]backgroundCompletion{{
+					NotificationID: n.ID,
+					Room:           room,
+					Summary:        n.Title,
+				}},
+				m.backgroundCompletions...,
+			)
+			if len(m.backgroundCompletions) > recentBackgroundCap {
+				m.backgroundCompletions = m.backgroundCompletions[:recentBackgroundCap]
+			}
+		}
 		// Schedule next poll — faster when jobs are running.
 		if m.jobStore != nil {
 			delay := 2 * time.Second
@@ -949,6 +1005,12 @@ func (m RootModel) handleInboxItemSelected(msg inboxItemSelected) (tea.Model, te
 	}
 }
 
+// updateSlotFilling handles input while the clarify model is collecting
+// missing slot values. The prompt area is the normal textarea (with the
+// `?` prefix); Enter intercepts the typed value and routes it through
+// clarify.SubmitValue. Esc cancels. Window/spinner/tea messages fall
+// through to the default Update path so the rest of the model keeps
+// updating normally.
 func (m RootModel) updateSlotFilling(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case supplementSlotsMsg:
@@ -956,19 +1018,79 @@ func (m RootModel) updateSlotFilling(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.clarify.Close()
 		return m.handleSupplementSlots(msg)
 
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		m = m.resize()
+		return m, nil
+
 	case tea.KeyMsg:
-		if msg.Type == tea.KeyEsc {
-			// Cancel clarify.
+		switch msg.Type {
+		case tea.KeyEsc:
 			m.mode = ModeOnPath
 			m.clarify.Close()
 			m.transcript.AppendSystem("(slot fill cancelled)")
 			return m, nil
+
+		case tea.KeyCtrlC:
+			if strings.TrimSpace(m.prompt.Value()) != "" {
+				m.prompt.SetValue("")
+				return m, nil
+			}
+			m.quitting = true
+			return m, tea.Quit
+
+		case tea.KeyEnter:
+			// Alt+Enter is a newline-in-textarea binding (Phase 4
+			// textarea swap); falls through to the prompt so users can
+			// compose multi-line slot values.
+			if msg.Alt {
+				break
+			}
+			input := strings.TrimSpace(m.prompt.Value())
+			if input == "" {
+				return m, nil
+			}
+			m.prompt.SetValue("")
+			m.appendHistory(input)
+			// Echo what the user typed so the transcript is the source
+			// of truth for "what just happened" (matches the single-pane
+			// proposal's input-feedback rule).
+			m.transcript.AppendUserInputEcho(input)
+
+			value, done, collected, err := m.clarify.SubmitValue(input)
+			if err != nil {
+				m.transcript.AppendSystem("(" + err.Error() + ")")
+				// Re-render the same slot's block so the user sees the
+				// choice list again without scrolling.
+				if block := m.clarify.RenderInlineBlock(blocks.New(m.transcript.width, m.currentTheme())); block != "" {
+					m.transcript.AppendBlock(block)
+				}
+				return m, nil
+			}
+			if done {
+				m.transcript.AppendSystem(fmt.Sprintf("(accepted: %s)", value))
+				m.mode = ModeOnPath
+				m.clarify.Close()
+				return m.handleSupplementSlots(supplementSlotsMsg{slots: collected})
+			}
+			// Advance to the next slot — render its block.
+			m.transcript.AppendSystem(fmt.Sprintf("(accepted: %s)", value))
+			if block := m.clarify.RenderInlineBlock(blocks.New(m.transcript.width, m.currentTheme())); block != "" {
+				m.transcript.AppendBlock(block)
+			}
+			return m, nil
 		}
 	}
 
-	var cmd tea.Cmd
-	m.clarify, cmd = m.clarify.Update(msg)
-	return m, cmd
+	// Everything else — printable keys, arrows, etc. — falls through to
+	// the prompt textinput so the user can edit their pending value.
+	if keyMsg, ok := msg.(tea.KeyMsg); ok {
+		var cmd tea.Cmd
+		m.prompt, cmd = m.prompt.Update(keyMsg)
+		return m, cmd
+	}
+	return m, nil
 }
 
 func (m RootModel) routeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -998,17 +1120,42 @@ func (m RootModel) routeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Ctrl+R toggles the routing-trace overlay (proposal §8.3) — a
-	// pretty-printed dump of the routing-tier events for the focused
-	// turn. ESC inside the overlay closes it via the routingTraceOpen
-	// branch below (no global mode switch needed).
+	// Ctrl+R is the legacy routing-trace overlay shortcut. The
+	// single-pane redesign moves this surface into /trace (chat
+	// block), so the shortcut now prints the trace inline instead
+	// of opening an overlay. The overlay state stays addressable
+	// for the (few) tests that exercise it directly; phase 7
+	// cleanup deletes both the state and the overlay renderer.
 	if msg.Type == tea.KeyCtrlR {
-		if m.routingObserver != nil {
-			m.routingTraceOpen = !m.routingTraceOpen
-			if m.routingTraceOpen {
-				m.routingTraceTurn = m.routingObserver.LatestTurn()
-			}
+		m.transcript.AppendBlock(renderTraceBlock(m))
+		return m, nil
+	}
+
+	// /world dedicated view owns its key handling while active. q
+	// and Esc close it; everything else (arrows, enter, e/c, h/l)
+	// goes to the worldView model.
+	if m.mode == ModeWorldView {
+		switch msg.String() {
+		case "q", "esc":
+			return m.closeWorldView()
 		}
+		updated, cmd := m.worldView.Update(msg)
+		m.worldView = updated
+		return m, cmd
+	}
+
+	// Single-pane redesign (phase 4): Esc with items queued drops
+	// them all and stashes each into inputHistory so the user can
+	// recover with the ↑ arrow. Non-destructive cancel — the
+	// in-flight turn keeps running. Esc with an empty queue
+	// continues to the legacy system-menu behaviour below.
+	if msg.Type == tea.KeyEsc && len(m.inputQueue) > 0 {
+		for _, q := range m.inputQueue {
+			m.appendHistory(q)
+		}
+		m.inputQueue = nil
+		r := blocks.New(m.transcript.width, m.currentTheme())
+		m.transcript.AppendBlock(r.SlashOutput("(queue cleared — items recovered with ↑ in the prompt)"))
 		return m, nil
 	}
 
@@ -1017,14 +1164,6 @@ func (m RootModel) routeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// the turn first) or while a slot-filling / disambiguation overlay is
 	// already using Esc to back out.
 	if msg.Type == tea.KeyEsc {
-		// Esc inside the routing-trace overlay closes the overlay
-		// (no mode change) and falls through to the rest of the
-		// routeKey handler so subsequent presses still open the
-		// system menu.
-		if m.routingTraceOpen {
-			m.routingTraceOpen = false
-			return m, nil
-		}
 		if m.mode == ModeOnPath || m.mode == ModeOffPath {
 			m.mode = ModeMenu
 			m.menuSystem.Open()
@@ -1041,24 +1180,35 @@ func (m RootModel) routeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
-	// Slash commands always route, even during ModeAwaitingLLM.
-	if msg.Type == tea.KeyEnter {
-		input := strings.TrimSpace(m.prompt.Value())
-		if strings.HasPrefix(input, "/") {
-			m.prompt.SetValue("")
-			m.appendHistory(input)
-			return m.handleSlashCommand(input)
-		}
+	// Alt+Enter inserts a literal newline into the textarea — short-
+	// circuit before Enter-based dispatch so the keystroke reaches
+	// the textarea's InsertNewline binding ("alt+enter"). Without
+	// this guard the plain Enter cases below would consume the event.
+	if msg.Type == tea.KeyEnter && msg.Alt {
+		var cmd tea.Cmd
+		m.prompt, cmd = m.prompt.Update(msg)
+		return m, cmd
 	}
 
-	// While awaiting LLM: show a notice and swallow other input.
+	// Slash commands previously had a routeKey-level shortcut that
+	// bypassed submitInput, so they never got the immediate echo +
+	// "→ system: ..." settled-line block. The single-pane redesign
+	// routes all Enter through submitInput so the echo / routing /
+	// dispatch happen at one site. The Phase-4 ModeAwaitingLLM
+	// branch below still allows slash commands during in-flight by
+	// going through submitInput, which slash-detects and bypasses
+	// the queue.
+
+	// While awaiting LLM: route Enter through submitInput so the
+	// Phase 4 queue check fires (in-room free-text enqueues; the
+	// drain pops items when the in-flight turn completes). Non-Enter
+	// keystrokes still fall through to the prompt so users can keep
+	// composing the next message — the textarea handles its own
+	// editing during in-flight.
 	if m.mode == ModeAwaitingLLM {
-		if msg.Type == tea.KeyEnter {
-			// Flash a transient notice — appended as a system message.
-			m.transcript.AppendSystem("hold on — still thinking about the previous turn")
+		if msg.Type == tea.KeyEnter && !msg.Alt {
+			return m.submitInput()
 		}
-		// All other keys are silently ignored while in-flight.
-		return m, nil
 	}
 
 	// i1–i9: inbox selection keys (only when prompt is empty).
@@ -1132,42 +1282,37 @@ func (m RootModel) routeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case "up":
-		// Plain Up arrow walks input history backward (newer → older)
-		// ONLY when the prompt is a single visual row. Multi-line
-		// drafts (either via \n or wrap) should let Up navigate
-		// within the textarea so the user can edit upper rows.
-		// Modified Up (shift+up / alt+up) is already routed to the
-		// transcript viewport by isScrollKey above, so we only see
-		// the unmodified key here.
-		if promptIsMultiLine(m.prompt) {
-			var cmd tea.Cmd
-			m.prompt, cmd = m.prompt.Update(msg)
-			return m, cmd
+		// Plain Up arrow: with a textarea-based prompt, plain ↑ moves
+		// the cursor up within the wrapped buffer when there is a
+		// previous row; only when the cursor is already on the topmost
+		// wrapped row of the first logical line does it walk input
+		// history backward. Modified Up (shift+up / alt+up) is already
+		// routed to the transcript viewport by isScrollKey above.
+		if m.promptCursorAtTop() {
+			return m.historyPrev(), nil
 		}
-		return m.historyPrev(), nil
+		var cmdUp tea.Cmd
+		m.prompt, cmdUp = m.prompt.Update(msg)
+		return m, cmdUp
 
 	case "down":
-		// Plain Down arrow walks input history forward (older → newer);
-		// stepping past the newest entry restores the saved draft.
-		// As with Up, multi-line prompts hand the key to the textarea
-		// for in-input cursor movement.
-		if promptIsMultiLine(m.prompt) {
-			var cmd tea.Cmd
-			m.prompt, cmd = m.prompt.Update(msg)
-			return m, cmd
+		// Plain Down arrow: mirror of Up — move the cursor down within
+		// the wrapped buffer unless we're already on the bottommost
+		// wrapped row of the last logical line, in which case walk
+		// history forward (older → newer). Stepping past the newest
+		// entry restores the saved draft.
+		if m.promptCursorAtBottom() {
+			return m.historyNext(), nil
 		}
-		return m.historyNext(), nil
+		var cmd2 tea.Cmd
+		m.prompt, cmd2 = m.prompt.Update(msg)
+		return m, cmd2
 
-	case "1", "2", "3", "4", "5", "6", "7", "8", "9":
-		// When the prompt is empty, number keys are menu hotkeys — they select a row
-		// without feeding the digit into the text input.
-		if strings.TrimSpace(m.prompt.Value()) == "" {
-			var menuCmd tea.Cmd
-			m.menu, menuCmd = m.menu.Update(msg)
-			_ = menuCmd
-			return m, nil
-		}
-		// Prompt has text — fall through to normal text input handling.
+		// Single-pane redesign (phase 4): numeric quick-select is gone.
+		// Numbers are normal text in the prompt — "1.5" or "10 tickets"
+		// no longer trip the menu hotkey. Action selection moves to
+		// /actions <n> (already wired in phase 1) and synonym/intent
+		// names (semantic routing handles the rest).
 	}
 
 	// Any non-arrow, non-Enter keystroke while walking history should
@@ -1257,6 +1402,33 @@ func (m RootModel) historyNavigating() bool {
 	return m.historyIdx >= 0 && m.historyIdx < len(m.inputHistory)
 }
 
+// promptCursorAtTop reports whether the textarea cursor is on the
+// topmost wrapped row of the first logical line — the edge condition
+// where ↑ should walk input history instead of moving the cursor.
+// While history-walking we're always "at top" semantically so the
+// caller can keep stepping back without first having to dismiss
+// history-walk mode.
+func (m RootModel) promptCursorAtTop() bool {
+	if m.historyNavigating() {
+		return true
+	}
+	return m.prompt.Line() == 0 && m.prompt.LineInfo().RowOffset == 0
+}
+
+// promptCursorAtBottom reports whether the textarea cursor is on the
+// bottommost wrapped row of the last logical line — the edge
+// condition where ↓ should walk input history forward instead of
+// moving the cursor.
+func (m RootModel) promptCursorAtBottom() bool {
+	if m.historyNavigating() {
+		return true
+	}
+	li := m.prompt.LineInfo()
+	lastLine := m.prompt.Line() == m.prompt.LineCount()-1
+	lastRow := li.Height == 0 || li.RowOffset >= li.Height-1
+	return lastLine && lastRow
+}
+
 // commitHistoryNavigation drops the user out of history-walk mode without
 // touching the prompt text. Used when any non-arrow, non-Enter key
 // arrives while navigating: the currently-shown entry effectively
@@ -1273,9 +1445,42 @@ func (m RootModel) submitInput() (tea.Model, tea.Cmd) {
 	}
 	m.prompt.SetValue("")
 	m.appendHistory(input)
+	return m.dispatchInput(input)
+}
 
-	// Handle slash commands.
+// dispatchInput runs the post-history portion of submitInput: queue
+// check → immediate echo → routing classify → dispatch. Split out from
+// submitInput so the queue-drain path can re-run dispatch without
+// double-appending the input to history (the original submission
+// already recorded it before going into the queue).
+func (m RootModel) dispatchInput(input string) (tea.Model, tea.Cmd) {
+	// Phase 4: if a turn is in flight and the new input is in-room
+	// (no leading slash, not off-path), enqueue it. Nav / view /
+	// system inputs pre-empt — they go through the normal path.
+	// /<commands> are always immediate by definition; deciding
+	// in-room vs nav for free-text without routing would need a
+	// cheap pre-classification, so phase 4 conservatively enqueues
+	// every free-text submission and lets a future refinement
+	// upgrade nav-like phrases to immediate dispatch.
+	if m.mode == ModeAwaitingLLM && !strings.HasPrefix(input, "/") {
+		m.inputQueue = append(m.inputQueue, input)
+		r := blocks.New(m.transcript.width, m.currentTheme())
+		m.transcript.AppendBlock(r.SlashOutput("(queued · " + queueDepthLabel(len(m.inputQueue)) + " · esc to cancel)"))
+		return m, nil
+	}
+
+	// Single-pane redesign (proposal §"Input feedback"): echo the
+	// user's input into the transcript immediately, before any routing
+	// or dispatch. The transcript — not the input area — is the source
+	// of truth for "what just happened."
+	m.transcript.AppendUserInputEcho(input)
+	ir := m.newInlineRouter()
+
+	// Handle slash commands. Settled-line classification is "system"
+	// — slash commands bypass routing.
 	if strings.HasPrefix(input, "/") {
+		settled := ir.settledLine("system", strings.Fields(input)[0], blocks.SourceDeterministic, 0, "")
+		m.transcript.AppendBlock(settled)
 		return m.handleSlashCommand(input)
 	}
 
@@ -1283,21 +1488,20 @@ func (m RootModel) submitInput() (tea.Model, tea.Cmd) {
 	// Routes directly to host.oracle.talk via Orchestrator.AskOffPath
 	// rather than through MatchDeterministic → harness → machine.
 	if m.mode == ModeOffPath {
+		m.transcript.AppendBlock(ir.settledLine("", "", blocks.SourceOffPath, 0, ""))
 		return m.submitOffPath(input)
 	}
 
 	m.lastInput = input
 
-	// Reset the progressive resolution chip — the orchestrator's
-	// routing tiers will emit slog events that the routingObserver
-	// bridges into RoutingTier*Msg deliveries, advancing the chip
-	// from "⋯ resolving…" to the resolved tier. We update the chip
-	// directly (instead of returning a chipCmd) so we don't nest a
-	// second tea.Batch on top of the one startAsyncTurn already
-	// produces — nested batches confuse the test-harness drainer
-	// (processCommands handles one level of BatchMsg, not two).
-	m.routingChip, _ = m.routingChip.Update(RoutingChipReset{Input: input})
-	m.routingChipActive = true
+	// Live in-place routing block: starts at the deterministic phase
+	// and is replaced by UpdateLive / FinalizeLive as the pipeline
+	// progresses. routingObserver translates orchestrator slog
+	// events into RoutingTier{Miss,Hit,Ambiguous,Cancel}Msg
+	// deliveries which the dispatcher above feeds through
+	// UpdateLive. The settled line stays in the transcript as a
+	// permanent record (proposal §"Input feedback" step 3).
+	m.transcript.AppendLive(ir.phaseLine(blocks.PhaseDeterministic))
 
 	// Cheap, side-effect-free match against the current menu. This avoids the
 	// LLM round-trip when the user typed something we can route locally — but
@@ -1309,14 +1513,24 @@ func (m RootModel) submitInput() (tea.Model, tea.Cmd) {
 	ctx := context.Background()
 	intent, slots, hit, err := orch.MatchDeterministic(ctx, sid, input)
 	if err != nil {
-		m.transcript.AppendError(input, fmt.Sprintf("error: %v", err))
+		// Drop the placeholder before printing the error.
+		m.transcript.FinalizeLive("")
+		m.transcript.AppendError("", fmt.Sprintf("error: %v", err))
 		return m, nil
 	}
 	if hit {
+		settled := ir.settledLine(
+			"in-room", intent,
+			blocks.SourceDeterministic, 0, "",
+		)
+		m.transcript.FinalizeLive(settled)
 		return startAsyncTurn(m, input, asyncSubmitDirectFromInput(orch, sid, intent, slots, input), pendingDeterministic)
 	}
 
-	// No deterministic match — call the LLM router asynchronously.
+	// No deterministic match — advance the live routing block to
+	// "LLM…" and dispatch through the LLM router. The settled line
+	// lands in handleTurnOutcome.
+	m.transcript.UpdateLive(ir.phaseLine(blocks.PhaseLLM))
 	return startAsyncTurn(m, input, asyncTurn(orch, sid, input), pendingLLM)
 }
 
@@ -1422,6 +1636,25 @@ func (m RootModel) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 		m.quitting = true
 		return m, tea.Quit
 
+	case "/help":
+		body, next, cmd := HelpCommand{}.Run(m, parts[1:])
+		next.transcript.AppendBlock(body)
+		return next, cmd
+
+	case "/actions":
+		body, next, cmd := ActionsCommand{}.Run(m, parts[1:])
+		if body != "" {
+			next.transcript.AppendBlock(body)
+		}
+		return next, cmd
+
+	case "/jump":
+		body, next, cmd := HandleJumpCommand(m, parts[1:])
+		if body != "" {
+			next.transcript.AppendBlock(body)
+		}
+		return next, cmd
+
 	case "/menu":
 		// Toggle menu visibility — for Stage 6 just echo.
 		m.transcript.AppendSystem("(menu toggle — use arrow keys to navigate)")
@@ -1444,12 +1677,30 @@ func (m RootModel) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "/trace":
-		return m.handleTraceToggle(), nil
+		// /trace alone prints the last turn's routing trace as a
+		// chat block (single-pane-tui §"/trace"). `/trace file`
+		// toggles the JSONL file trace — preserved for back-compat.
+		if len(parts) > 1 && parts[1] == "file" {
+			return m.handleTraceToggle(), nil
+		}
+		m.transcript.AppendBlock(renderTraceBlock(m))
+		return m, nil
 
 	case "/mouse":
-		return m.handleMouseCommand(parts[1:])
+		// Single-pane redesign (phase 5): mouse support is removed.
+		// /mouse stays as a friendly notice for muscle memory.
+		m.transcript.AppendBlock(blocks.New(m.transcript.width, m.currentTheme()).SlashOutput(
+			"(mouse capture was removed — native terminal selection works without modifiers)"))
+		return m, nil
+
+	case "/world":
+		return m.openWorldView()
 
 	case "/inbox":
+		// Single-pane redesign: print the inbox inline as a chat
+		// block. The legacy panel toggle is preserved for back-compat
+		// until phase 3 deletes the panel.
+		m.transcript.AppendBlock(renderInboxBlock(m, parts[1:]))
 		m.inbox.ToggleExpanded()
 		return m, nil
 
@@ -1681,44 +1932,10 @@ func stateExistsInApp(def *app.AppDef, path app.StatePath) bool {
 	return false
 }
 
-// handleMouseCommand toggles the TUI's mouse capture on or off at runtime.
-// Mouse capture enables scroll-wheel events on the transcript viewport but
-// hijacks native click-drag text selection. Without an argument it toggles;
-// "/mouse on" and "/mouse off" force a state.
-//
-// When mouse is off, standard terminal selection works again; keyboard
-// scroll bindings (Shift+↑/↓, Ctrl+U/Ctrl+D, Ctrl+B/Ctrl+F) still work.
-func (m RootModel) handleMouseCommand(args []string) (tea.Model, tea.Cmd) {
-	want := !m.mouseOn // default: toggle
-	if len(args) > 0 {
-		switch strings.ToLower(args[0]) {
-		case "on", "enable", "true", "1":
-			want = true
-		case "off", "disable", "false", "0":
-			want = false
-		case "toggle", "":
-			want = !m.mouseOn
-		default:
-			m.transcript.AppendSystem(fmt.Sprintf("(mouse: unknown arg %q — use on|off|toggle)", args[0]))
-			return m, nil
-		}
-	}
-	if want == m.mouseOn {
-		state := "off"
-		if m.mouseOn {
-			state = "on"
-		}
-		m.transcript.AppendSystem(fmt.Sprintf("(mouse: already %s)", state))
-		return m, nil
-	}
-	m.mouseOn = want
-	if want {
-		m.transcript.AppendSystem("(mouse: ON — scroll wheel works; hold Option/Shift while dragging to select text)")
-		return m, tea.EnableMouseCellMotion
-	}
-	m.transcript.AppendSystem("(mouse: OFF — native click-drag text selection works; keyboard scroll still active)")
-	return m, tea.DisableMouse
-}
+// handleMouseCommand was the /mouse on|off|toggle handler. Phase 5
+// removed mouse support entirely; the /mouse command now just prints
+// a removal notice (see the case in handleSlashCommand). The toggle
+// helper is deleted.
 
 // handleTraceToggle opens (first invocation) or closes (second invocation) a live
 // JSONL trace file in /tmp. It wires a slog.JSONHandler into the orchestrator.
@@ -1784,13 +2001,12 @@ func (m RootModel) dispatchMenuEntry(entry *orchestrator.MenuEntry) (tea.Model, 
 	}
 	m.mode = ModeSlotFilling
 	m.clarify.Open(entry.Intent, needs, entry.PrefilledSlots)
-	if len(needs) > 0 {
-		slot := needs[0]
-		prompt := slot.Prompt
-		if prompt == "" {
-			prompt = "Please provide: " + slot.Name
-		}
-		m.transcript.AppendSystem("> " + entry.Display + "\n" + prompt)
+	// Echo the menu pick + render the inline "Clarification needed"
+	// block. The user supplies values via the normal prompt (with the
+	// `?` prefix) — see submitInput's ModeSlotFilling branch.
+	m.transcript.AppendSystem("> " + entry.Display)
+	if block := m.clarify.RenderInlineBlock(blocks.New(m.transcript.width, m.currentTheme())); block != "" {
+		m.transcript.AppendBlock(block)
 	}
 	return m, nil
 }
@@ -1814,8 +2030,13 @@ func (m RootModel) handleTurnOutcome(msg turnOutcomeMsg) (tea.Model, tea.Cmd) {
 		m.mode = ModeOnPath
 	}
 
+	prevState := string(m.currentState)
+
 	if msg.err != nil {
-		m.transcript.AppendError(msg.input, fmt.Sprintf("error: %v", msg.err))
+		// Drop any in-flight routing placeholder; the user already saw
+		// their echo, the error is a complete narrative.
+		m.transcript.FinalizeLive("")
+		m.transcript.AppendError("", fmt.Sprintf("error: %v", msg.err))
 		return m, nil
 	}
 
@@ -1823,15 +2044,36 @@ func (m RootModel) handleTurnOutcome(msg turnOutcomeMsg) (tea.Model, tea.Cmd) {
 
 	switch out.Mode {
 	case orchestrator.ModeCancelled:
+		m.transcript.FinalizeLive("")
 		m.transcript.AppendSystem("(cancelled)")
 		return m, nil
 
 	case orchestrator.ModeTransitioned, orchestrator.ModeCompleted:
 		m.currentState = out.NewState
+		// Swap the transcript buffer if this transition crossed a
+		// room boundary (single-pane-tui proposal §"Per-room
+		// transcript buffers"). No-op when prev/new share a top-level
+		// segment.
+		m.maybeSwitchRoomOnState(app.StatePath(prevState), out.NewState)
+		// Settle the inline routing block if it's still in flight
+		// (deterministic-hit paths already settled at submit time;
+		// LLM paths settle here). Then append the agent's body as a
+		// separate entry — the header was already echoed at submit
+		// time so AppendAgentBody / AppendAgentBodyTyped omit it.
+		ir := m.newInlineRouter()
+		// pendingKind tracks why the model was AwaitingLLM. We use it
+		// to distinguish deterministic (already-settled) from LLM
+		// (needs settling here). Defaults to LLM on the unsettled path
+		// because pendingKind isn't reset elsewhere.
+		deterministic := m.pendingKind == pendingDeterministic
+		if !deterministic {
+			res := settledFromOutcome(out, prevState, msg.input, false)
+			m.transcript.FinalizeLive(ir.r.RoutingResolved(res))
+		}
 		if out.TypedView != nil {
-			m.transcript.AppendTurnTyped(msg.input, out.View, out.TypedView, out.RenderEnv, out.Renderer)
+			m.transcript.AppendAgentBodyTyped(out.View, out.TypedView, out.RenderEnv, out.Renderer)
 		} else {
-			m.transcript.AppendTurn(msg.input, out.View)
+			m.transcript.AppendAgentBody(out.View)
 		}
 
 		// Update menu.
@@ -1841,40 +2083,65 @@ func (m RootModel) handleTurnOutcome(msg turnOutcomeMsg) (tea.Model, tea.Cmd) {
 		// Update location.
 		m = m.updateLocation(out)
 
+		// Auto-print the actions block at end of turn when /actions
+		// auto on was issued. The block follows the agent body so the
+		// user sees: their input → resolution → result → next-step
+		// actions, in scrollback-friendly order.
+		if body := m.maybeAutoActions(); body != "" {
+			m.transcript.AppendBlock(body)
+		}
+
 		if out.Mode == orchestrator.ModeCompleted {
 			m.transcript.AppendSystem("\n[Game over — start a new session to play again]")
 			m.prompt.Placeholder = "(game over)"
 		}
 
 	case orchestrator.ModeClarify:
-		// Enter slot-filling mode.
+		// Settle the routing block — the LLM router did its job,
+		// the agent needs more slots.
+		m.transcript.FinalizeLive("")
+		// Enter slot-filling mode and render the inline "Clarification
+		// needed" block. The user supplies values via the normal prompt
+		// (with the `?` prefix) — see submitInput's ModeSlotFilling
+		// branch.
 		m.mode = ModeSlotFilling
 		m.clarify.Open(out.PendingIntent, out.SlotsNeeded, out.PendingSlots)
-		// Show a prompt asking for the first slot.
-		if len(out.SlotsNeeded) > 0 {
-			slot := out.SlotsNeeded[0]
-			prompt := slot.Prompt
-			if prompt == "" {
-				prompt = "Please provide: " + slot.Name
-			}
-			m.transcript.AppendSystem("> " + msg.input + "\n" + prompt)
+		if block := m.clarify.RenderInlineBlock(blocks.New(m.transcript.width, m.currentTheme())); block != "" {
+			m.transcript.AppendBlock(block)
 		}
 
 	case orchestrator.ModeRejected:
+		m.transcript.FinalizeLive("")
 		m.currentState = out.NewState
 
-		// If there are disambiguation candidates, enter disambiguation mode.
+		// If there are disambiguation candidates, enter disambiguation
+		// mode and render the inline "Did you mean?" block. The user
+		// picks by typing the number or canonical intent name into the
+		// normal prompt — see submitInput's ModeDisambiguating branch.
 		if len(out.Candidates) > 0 {
 			m.mode = ModeDisambiguating
 			m.disambiguation.Open(out.Candidates)
-			m.transcript.AppendTurn(msg.input, "")
-			m.transcript.AppendSystem(m.disambiguation.View())
+			if block := m.disambiguation.RenderInlineBlock(blocks.New(m.transcript.width, m.currentTheme())); block != "" {
+				m.transcript.AppendBlock(block)
+			}
 			// Site 31: emit disambig.presented when the overlay is shown.
 			m.emitDisambigPresented(out.Candidates)
 			return m, nil
 		}
 
-		m.renderRejection(msg.input, out)
+		// User echo already happened; rejection rendering writes only
+		// the engine-side message body.
+		m.renderRejection("", out)
+	}
+
+	// Drain the next queued in-room submission via dispatchInput
+	// (skips the appendHistory step — the original enqueue already
+	// recorded the line). The dispatch goes async so the UI
+	// re-renders between items.
+	if len(m.inputQueue) > 0 && m.mode == ModeOnPath {
+		next := m.inputQueue[0]
+		m.inputQueue = m.inputQueue[1:]
+		return m.dispatchInput(next)
 	}
 
 	return m, nil
@@ -1926,7 +2193,12 @@ func (m *RootModel) renderRejection(userInput string, out *orchestrator.TurnOutc
 		if hint == "" {
 			hint = string(out.ErrorCode)
 		}
-		m.transcript.AppendTurn(userInput, "")
+		// Single-pane redesign: the user's input was already echoed
+		// by submitInput via AppendUserInputEcho, so no extra header
+		// here — just the guard hint.
+		if userInput != "" {
+			m.transcript.AppendTurn(userInput, "")
+		}
 		m.transcript.AppendGuardHint(hint)
 
 	default:
@@ -2426,11 +2698,33 @@ func (m RootModel) handleMetaEnterDone(msg metaEnterDoneMsg) (tea.Model, tea.Cmd
 	}
 
 	// Re-entering meta from inside meta (resume) clears the pane so
-	// the new chat starts visually fresh. First-entry from on-path
-	// keeps the prior transcript so the user sees the context they
-	// came from.
+	// the new chat starts visually fresh; the prior meta-chat buffer
+	// is dropped on the floor. First-entry from on-path swaps to the
+	// synthetic meta room with a fresh transcript so the on-path
+	// buffer is preserved for /onpath. The proposal calls meta entry
+	// "always a transient-style entry with theme swap" — the
+	// activateRoom call below realises both.
 	if m.mode == ModeMeta {
-		m.transcript = newTranscriptModel(m.transcript.vp.Width, m.transcript.vp.Height)
+		// Already in a meta room; drop the saved buffer so the
+		// fresh-chat behaviour matches the pre-rooms code path.
+		if m.transcripts != nil {
+			delete(m.transcripts, metaRoomKey)
+		}
+		m.activeRoom = ""
+	}
+	m.activateRoom(metaRoomKey, true)
+
+	// Stash any queued on-path input back into history before
+	// entering the meta room. The queue is single-instance (not
+	// per-room); without this the items would dispatch in the meta
+	// context on /onpath return, which the user did not intend.
+	// Stashing keeps them recoverable with the ↑ arrow.
+	if len(m.inputQueue) > 0 {
+		for _, q := range m.inputQueue {
+			m.appendHistory(q)
+		}
+		m.transcript.AppendSystem(fmt.Sprintf("(%d queued items stashed to history — recover with ↑)", len(m.inputQueue)))
+		m.inputQueue = nil
 	}
 
 	m.metaMode.Enter(msg.session)
@@ -2845,17 +3139,11 @@ func (m RootModel) exitMetaMode() RootModel {
 		}
 	}
 
-	// Mark where the post-exit section starts so we can scroll the
-	// meta-mode chat off the top of the viewport (still reachable via
-	// scroll-up).
-	mark := m.transcript.ContentHeight()
-
-	// Summarise the session so the user knows whether changes landed.
-	// Edits already triggered an in-flight reload on each Send that
-	// touched the story tree; this just makes the totals visible at
-	// /onpath time and lists every file the agent touched (dedup'd
-	// across turns) so the user can spot includes/prompts/scripts
-	// that wouldn't be obvious from the chat alone.
+	// Build the post-exit summary up front so we can append it to the
+	// on-path transcript after the room swap. Doing the heavy lifting
+	// here keeps the same content the pre-rooms code produced; the
+	// only behavioural change is WHERE it lands (on-path buffer, not
+	// the meta-room buffer).
 	turns, edits := m.metaMode.turns, m.metaMode.edits
 	files := dedupSorted(m.metaMode.changedFiles)
 	var summary string
@@ -2874,6 +3162,23 @@ func (m RootModel) exitMetaMode() RootModel {
 	if len(files) > 0 {
 		summary += "\n  files touched: " + strings.Join(files, ", ")
 	}
+
+	// Swap back to the on-path room — restores the transcript the
+	// user was looking at before /meta took over. The meta-mode chat
+	// buffer is saved under metaRoomKey by activateRoom; the user
+	// can still scroll the chat back if they re-enter via /meta
+	// resume (a fresh enter clears it; see handleMetaEnterDone).
+	onPathRoom := roomKey(m.currentState)
+	// Persistent on-path returns scroll preserves position; transient
+	// (e.g. an on-path room declared transcript: transient) lands at
+	// the top of the visible window so the new view stands out.
+	transient := transcriptKindForRoom(roomDecl(m.orch.AppDef(), onPathRoom)) == "transient"
+	m.activateRoom(onPathRoom, transient)
+
+	// Mark where the post-exit section starts in the on-path buffer
+	// so the summary lands at the top of the viewport (still
+	// reachable via scroll-up).
+	mark := m.transcript.ContentHeight()
 	m.transcript.AppendSlashOutput(summary)
 
 	// Surface the configured return message after the summary so the
@@ -2933,43 +3238,98 @@ func (m RootModel) handleMenuSystemChoice(msg menuSystemChoiceMsg) (tea.Model, t
 	return m, nil
 }
 
+// updateDisambiguating handles input while the disambiguation model is
+// presenting a candidate list. The prompt area is the normal textarea;
+// Enter intercepts the typed pick (number or canonical intent name) and
+// routes it through disambiguation.SubmitValue. Esc cancels.
 func (m RootModel) updateDisambiguating(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case disambiguationChoiceMsg:
 		return m.handleDisambiguationChoice(msg)
+
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		m = m.resize()
+		return m, nil
+
 	case tea.KeyMsg:
-		if msg.Type == tea.KeyEsc {
+		switch msg.Type {
+		case tea.KeyEsc:
 			m.mode = ModeOnPath
 			m.disambiguation.Close()
 			m.transcript.AppendSystem("(disambiguation cancelled)")
 			return m, nil
+
+		case tea.KeyCtrlC:
+			if strings.TrimSpace(m.prompt.Value()) != "" {
+				m.prompt.SetValue("")
+				return m, nil
+			}
+			m.quitting = true
+			return m, tea.Quit
+
+		case tea.KeyEnter:
+			// Alt+Enter falls through to the textarea for newline-in-input.
+			if msg.Alt {
+				break
+			}
+			input := strings.TrimSpace(m.prompt.Value())
+			if input == "" {
+				return m, nil
+			}
+			m.prompt.SetValue("")
+			m.appendHistory(input)
+			m.transcript.AppendUserInputEcho(input)
+
+			chosen, err := m.disambiguation.SubmitValue(input)
+			if err != nil {
+				m.transcript.AppendSystem("(" + err.Error() + ")")
+				// Re-render the candidate list so the user can retry
+				// without scrolling.
+				if block := m.disambiguation.RenderInlineBlock(blocks.New(m.transcript.width, m.currentTheme())); block != "" {
+					m.transcript.AppendBlock(block)
+				}
+				return m, nil
+			}
+			// Synthesise a disambiguationChoiceMsg so the existing
+			// handleDisambiguationChoice site stays the single source of
+			// truth for what happens next (telemetry emit + dispatch).
+			return m.handleDisambiguationChoice(disambiguationChoiceMsg{chosen: chosen})
 		}
 	}
 
-	var cmd tea.Cmd
-	m.disambiguation, cmd = m.disambiguation.Update(msg)
-	return m, cmd
+	if keyMsg, ok := msg.(tea.KeyMsg); ok {
+		var cmd tea.Cmd
+		m.prompt, cmd = m.prompt.Update(keyMsg)
+		return m, cmd
+	}
+	return m, nil
 }
 
 func (m RootModel) handleDisambiguationChoice(msg disambiguationChoiceMsg) (tea.Model, tea.Cmd) {
-	m.mode = ModeOnPath
 	m.disambiguation.Close()
 	chosen := msg.chosen
 	m.transcript.AppendSystem(fmt.Sprintf("(chose: %s)", chosen.Intent))
 	// Site 31: emit disambig.chosen when the user picks an option.
 	m.emitDisambigChosen(chosen)
-	// Re-run the turn with the chosen intent directly.
-	// We synthesise the input as the intent name so the harness is bypassed
-	// and the machine receives the choice directly.
-	orch := m.orch
-	sid := m.sid
-	return m, func() tea.Msg {
-		// Note: for a real implementation this would call a ContinueWithIntent method.
-		// For the PoC, we surface the choice in the transcript.
-		_ = orch
-		_ = sid
-		return nil
+
+	// Dispatch the chosen intent through the deterministic-direct
+	// path. Candidates carry no Slots, so we pass an empty map —
+	// missing required slots trigger the clarify flow on the
+	// orchestrator side just as if the user had typed the intent
+	// name into the prompt and hit a menu row with empty
+	// PrefilledSlots. SubmitDirectFromInput threads the candidate
+	// title onto the TurnStarted audit record so the trace shows
+	// what the user picked.
+	label := chosen.Title
+	if label == "" {
+		label = chosen.Intent
 	}
+	return startAsyncTurn(m, label,
+		asyncSubmitDirectFromInput(m.orch, m.sid, chosen.Intent, map[string]any{}, label),
+		pendingDeterministic,
+	)
 }
 
 func (m RootModel) handleSupplementSlots(msg supplementSlotsMsg) (tea.Model, tea.Cmd) {
@@ -2999,90 +3359,74 @@ func (m RootModel) updateLocation(out *orchestrator.TurnOutcome) RootModel {
 }
 
 func (m RootModel) resize() RootModel {
-	const minMenuWidth = 28
 	const locationHeight = 2
-	const minInboxHeight = 8
 
 	// Prompt height is variable now that the input is a multi-line
 	// textarea: 1 row when the value fits on one line, growing by 1
 	// per wrapped/literal newline up to promptMaxHeight. Anchor the
-	// transcript layout to (prompt height + 2) so the scroll-hint and
-	// optional banner have room beneath the prompt; this matches the
-	// legacy const-3 budget when the prompt is at its 1-row minimum.
+	// transcript layout to (prompt height + 2) so the footer + banner
+	// have room beneath the prompt.
 	promptInnerWidth := m.width - promptPrefixCols - promptSafetyMargin
 	if promptInnerWidth < promptMinWidth {
 		promptInnerWidth = promptMinWidth
 	}
 	promptHeight := promptVisualHeight(m.prompt.Value(), promptInnerWidth) + 2
 
-	menuWidth := minMenuWidth
-
-	// Allocate the full remaining horizontal space to the transcript.
-	// lipgloss.JoinHorizontal concatenates panes with no gap, so the
-	// transcript panel's total width must be m.width - menuWidth for both
-	// panes together to fill the terminal. Previously this subtracted an
-	// extra 4 chars "for safety", which just left a visible dead zone on
-	// the right and made the body text wrap 4 chars early.
-	transcriptWidth := m.width - menuWidth
+	// Single-pane redesign (phase 3): the menu + inbox right column
+	// is gone — transcript fills the full terminal width. menu.go /
+	// inbox.go are still imported because /actions and /inbox read
+	// from them, but their View() output is no longer composed into
+	// the screen.
+	transcriptWidth := m.width
 	if transcriptWidth < 40 {
 		transcriptWidth = 40
 	}
-	totalRightHeight := m.height - locationHeight - promptHeight - 4
-	if totalRightHeight < 5 {
-		totalRightHeight = 5
-	}
-
-	// Split the right column vertically: menu on top, inbox below.
-	// Inbox gets minInboxHeight; menu gets the remainder.
-	inboxHeight := minInboxHeight
-	menuHeight := totalRightHeight - inboxHeight
-	if menuHeight < 5 {
-		menuHeight = 5
-		inboxHeight = max(0, totalRightHeight-menuHeight)
+	totalHeight := m.height - locationHeight - promptHeight - 4
+	if totalHeight < 5 {
+		totalHeight = 5
 	}
 
 	// Inner content area = panel width minus border (1 each side) and
 	// padding (1 each side) from transcriptStyle. That's 4 chars total.
 	innerWidth := transcriptWidth - 4
 
-	// Apply size through SetSize so the Glamour renderer rebuilds with the
-	// correct wrap width. The root intercepts tea.WindowSizeMsg before it
-	// reaches the transcript, so this is the only place the transcript
-	// learns its real size.
-	// Transcript height = entire right-column height (it fills the same
-	// vertical space; it is placed opposite the stacked menu+inbox).
-	m.transcript.SetSize(transcriptWidth, totalRightHeight, innerWidth, totalRightHeight-2)
+	m.transcript.SetSize(transcriptWidth, totalHeight, innerWidth, totalHeight-2)
 
-	m.menu.width = menuWidth
-	m.menu.height = menuHeight
+	// Resize every saved per-room transcript too so a room swap
+	// doesn't surface a buffer rendered at a stale width (single-
+	// pane-tui phase 6). The active one was just resized above;
+	// the saved ones get the same dimensions so swap-in lands at
+	// the live terminal size.
+	for k, t := range m.transcripts {
+		t.SetSize(transcriptWidth, totalHeight, innerWidth, totalHeight-2)
+		m.transcripts[k] = t
+	}
 
-	m.inbox.width = menuWidth
-	m.inbox.height = inboxHeight
+	// World-view sub-model tracks the full pane.
+	m.worldView.SetSize(transcriptWidth, totalHeight)
+
+	// menu / inbox sub-models are kept for the /actions and /inbox
+	// commands but no longer painted. We still size them so any
+	// future inline rendering pulls coherent widths.
+	m.menu.width = transcriptWidth
+	m.menu.height = totalHeight
+
+	m.inbox.width = transcriptWidth
+	m.inbox.height = totalHeight
 
 	m.location, _ = m.location.Update(tea.WindowSizeMsg{Width: m.width, Height: 1})
 
-	// Prompt sizing — the textarea wraps long values rather than
-	// horizontally scrolling. SetWidth takes the OUTER width (including
-	// the prompt prefix textarea reserves internally) and computes the
-	// inner content width from there. We pass the terminal width minus
-	// a small safety margin so cursor and edge quirks don't push past
-	// the last column; the textarea's reserved-inner accounting (see
-	// promptPrefixCols, set via SetPromptFunc in newPromptTextarea)
-	// trims that to the inner content area.
-	//
-	// SetHeight is set to the dynamic visual-row count so the input
-	// grows downward as the user types and shrinks when they delete.
-	// promptMaxHeight caps growth so a runaway paste doesn't eat the
-	// transcript pane.
+	// Prompt sizing — the textarea wraps long values and grows
+	// downward; main's prompt.go owns the SetPromptFunc / SetWidth
+	// contract. We pass the outer width (terminal minus a small
+	// safety margin) and let the textarea reserve the prefix columns
+	// internally. Height is computed against the resulting inner
+	// width so wrap counts match what's rendered.
 	promptOuterWidth := m.width - promptSafetyMargin
 	if promptOuterWidth < promptMinWidth+promptPrefixCols {
 		promptOuterWidth = promptMinWidth + promptPrefixCols
 	}
 	m.prompt.SetWidth(promptOuterWidth)
-	// SetWidth updates m.prompt.Width() to the post-reservation inner
-	// width. Recompute visual height against THAT (not promptInnerWidth
-	// above, which was the pre-SetWidth estimate) so wrap counts match
-	// what the textarea will actually render.
 	m.prompt.SetHeight(promptVisualHeight(m.prompt.Value(), m.prompt.Width()))
 
 	return m
@@ -3094,29 +3438,25 @@ func (m RootModel) View() string {
 		return "Goodbye!\n"
 	}
 
+	// /world dedicated view fully replaces the chat pane until the
+	// user dismisses it (q / Esc). The chat keeps running underneath
+	// — only the View() output is swapped (single-pane-tui §"Phase 1.5").
+	if m.mode == ModeWorldView {
+		return m.worldView.View()
+	}
+
 	// Sync the textarea's rendered height to its current value before
-	// rendering. resize() — which sets the initial height — only
-	// fires on WindowSizeMsg, not on every keystroke; without this
-	// re-sync, typing past wrap would cause the textarea's internal
-	// viewport to scroll vertically instead of growing the rendered
-	// block. We're a value receiver so mutations here only affect
-	// this View() snapshot, never the caller's model.
+	// rendering. resize() — which sets the initial height — only fires
+	// on WindowSizeMsg, not on every keystroke; without this re-sync,
+	// typing past wrap would cause the textarea's internal viewport
+	// to scroll vertically instead of growing the rendered block.
+	// We're a value receiver so mutations here only affect this
+	// View() snapshot.
 	//
 	// We ALSO shrink the transcript pane by the same delta so the
-	// total rendered output stays within the terminal's row budget
-	// (the program runs under tea.WithAltScreen — overflow clips the
-	// top). SetHeightOnly avoids the Glamour rerender that the full
-	// resize()/transcript.SetSize path triggers; wrap width hasn't
-	// changed so existing entry bodies are still correct.
+	// total rendered output stays within the terminal's row budget.
 	promptH := promptVisualHeight(m.prompt.Value(), m.prompt.Width())
 	m.prompt.SetHeight(promptH)
-	// Reclaim the extra rows above the baseline (1-row) prompt by
-	// shrinking the transcript by (promptH-1). Floors viewport at
-	// minTranscriptViewport so the transcript doesn't disappear
-	// entirely when the user makes the prompt very tall on a short
-	// terminal; the cost is that overflow rows do clip on small
-	// windows, which is a far better failure mode than losing the
-	// location bar.
 	const minTranscriptViewport = 3
 	if promptH > 1 {
 		shrink := promptH - 1
@@ -3131,23 +3471,21 @@ func (m RootModel) View() string {
 		)
 	}
 
-	// Location bar (full width).
+	// Location bar (full width). The active room's theme flows
+	// through to the bar's lipgloss style so per-room theme swaps
+	// (meta entry, author-declared theme:) are visible up here too,
+	// not just inside the transcript blocks.
+	m.location.theme = m.currentTheme()
 	locationBar := m.location.View()
 
-	// Main body: transcript (left) + [menu + inbox] (right, stacked vertically).
-	// In ModeMeta the on-path actions menu is irrelevant (FSM is paused),
-	// so swap it for the meta-mode side panel that documents the meta
-	// slash commands.
-	transcriptView := m.transcript.View()
-	menuView := m.menu.View()
-	if m.mode == ModeMeta {
-		menuView = m.metaMode.MenuView(m.menu.width, m.menu.height)
-	}
-	inboxView := m.inbox.View()
-	rightCol := lipgloss.JoinVertical(lipgloss.Left, menuView, inboxView)
-	body := lipgloss.JoinHorizontal(lipgloss.Top, transcriptView, rightCol)
+	// Single-pane redesign (phase 3): the transcript fills the full
+	// terminal width. The menu and inbox sub-models keep their data
+	// (read by /actions and /inbox) but their View() output is no
+	// longer composed into the body.
+	body := m.transcript.View()
 
-	// Action-required banner above the prompt (when applicable).
+	// Action-required banner above the prompt is preserved — it's
+	// the one always-on inbox signal that doesn't need a panel.
 	var bannerLine string
 	if banner := m.inbox.ActionRequiredBanner(); banner != "" {
 		bannerLine = banner
@@ -3157,26 +3495,36 @@ func (m RootModel) View() string {
 	// Spinner placement: right of the prompt prefix on the input line.
 	// This keeps the location bar uncluttered and puts the spinner
 	// where the user's eye is already focused (the input area).
+	//
+	// Mode-specific prefix (single-pane-tui §"Mode visualization"):
+	//   normal     >
+	//   meta       »
+	//   off-path   #
+	//   slot-fill  ?
+	//   awaiting   …
+	prefix := m.promptPrefix()
+	// Ensure the textarea has up-to-date prefix + height before View()
+	// pulls it. m.prompt is a value receiver here; we mutate a copy and
+	// view that — production state isn't disturbed because View() is
+	// itself a value receiver too.
+	m.prompt.SetPromptFunc(promptPrefixCols, m.promptLineFunc())
+	m.prompt.SetHeight(promptHeightFor(&m.prompt))
 	var promptLine string
-	if m.mode == ModeSlotFilling {
-		promptLine = m.clarify.View()
-	} else if m.mode == ModeDisambiguating {
-		promptLine = m.disambiguation.View()
-	} else if m.mode == ModeMenu {
+	switch m.mode {
+	case ModeMenu:
 		promptLine = m.menuSystem.View()
-	} else if m.mode == ModeMetaSessions {
+	case ModeMetaSessions:
 		promptLine = m.sessionsPanel.View()
-	} else if m.mode == ModeAwaitingLLM {
-		spinnerStr := m.spinner.View()
+	case ModeAwaitingLLM:
 		caption := "thinking via claude… (Ctrl+C to cancel)"
 		if m.pendingKind == pendingDeterministic {
 			caption = "running… (Ctrl+C to cancel)"
 		}
-		promptLine = promptStyle.Render("> ") + spinnerStr + " " +
+		promptLine = prefix + m.spinner.View() + " " +
 			lipgloss.NewStyle().Foreground(colorMuted).Render(caption)
-	} else if m.mode == ModeMeta {
+	case ModeMeta:
 		if m.metaMode.inFlight {
-			promptLine = promptStyle.Render("» ") + m.spinner.View() + " " +
+			promptLine = prefix + m.spinner.View() + " " +
 				lipgloss.NewStyle().Foreground(colorMuted).Render("agent is thinking… (Esc to cancel)")
 		} else {
 			// In meta mode the textarea's per-line prefix function is
@@ -3185,79 +3533,184 @@ func (m RootModel) View() string {
 			// rows align without repeating the marker).
 			promptLine = m.prompt.View()
 		}
-	} else {
-		// On-path / off-path: the textarea owns its own prefix via
-		// SetPromptFunc (see newPromptTextarea + enterOffPath /
-		// exitOffPath). View() renders "> " at the input's top-left
-		// and indents wrapped rows by the same 2-column gutter so
-		// long input flows visually as a single block.
+	default:
+		// Textarea owns the prefix via SetPromptFunc (see
+		// newPromptTextarea + the mode-prefix helpers). View()
+		// renders the marker at the input's top-left and indents
+		// wrapped rows by the same 2-column gutter.
 		promptLine = m.prompt.View()
 	}
 
-	// Routing chip line (proposal §8). Rendered above the prompt
-	// while the chip is active so the in-flight or just-resolved
-	// resolution badge sits next to the user-echoed input.
-	var chipLine string
-	if m.routingChipActive {
-		chipLine = m.routingChip.View() + " " + m.lastInput
-	}
+	// Two-line framework footer (single-pane-tui §"Mode visualization
+	// and footer"): line 1 is the framework default — room, state,
+	// mode, queue depth, unread badge. Line 2 is the story/room
+	// pongo2 template (empty by default; phase 6 ships only the
+	// framework line and a placeholder).
+	footer := m.renderFooter()
 
-	// Key hints — shown under the prompt so users know how to scroll back
-	// through prior turns. Bindings are picked to work on MacBook keyboards
-	// without PgUp/PgDn/Home/End physical keys. When mouse capture is off,
-	// drop "mouse wheel" from the hint and advertise the /mouse command.
-	// Prepend inbox badge when there are unread notifications.
-	var scrollHint string
-	if m.mouseOn {
-		scrollHint = "scroll: mouse wheel · Shift+↑/↓ · Ctrl+U/Ctrl+D (half) · Ctrl+B/Ctrl+F (page) · /mouse off to select text"
-	} else {
-		scrollHint = "scroll: Shift+↑/↓ · Ctrl+U/Ctrl+D (half) · Ctrl+B/Ctrl+F (page) · /mouse on to re-enable wheel"
-	}
-	if badge := m.inboxBadge(); badge != "" {
-		scrollHint = badge + "  ·  " + scrollHint
-	}
-	hints := lipgloss.NewStyle().Foreground(colorMuted).Render(scrollHint)
-
-	// Stack vertically, inserting banner when present.
 	parts := []string{locationBar, body}
 	if bannerLine != "" {
 		parts = append(parts, bannerLine)
 	}
-	if chipLine != "" {
-		parts = append(parts, chipLine)
-	}
-	parts = append(parts, promptLine, hints)
-
-	// Ctrl+R routing-trace overlay (§8.3). Rendered above the
-	// rest of the screen when toggled on; the existing transcript
-	// view stays behind it so ESC closes back to the same context.
-	if m.routingTraceOpen && m.routingObserver != nil {
-		overlay := m.renderRoutingTraceOverlay()
-		if overlay != "" {
-			parts = append([]string{overlay}, parts...)
-		}
-	}
+	parts = append(parts, footer, promptLine)
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
 }
 
-// renderRoutingTraceOverlay builds the ctrl+r overlay body — a
-// pretty-printed dump of the routingObserver's events for the
-// focused turn. Empty when the observer has no events recorded yet.
-func (m RootModel) renderRoutingTraceOverlay() string {
-	if m.routingObserver == nil {
-		return ""
+// promptPrefix returns the styled mode-specific prompt prefix.
+// Single-pane-tui §"Mode visualization" table.
+func (m RootModel) promptPrefix() string {
+	switch m.mode {
+	case ModeMeta:
+		return promptStyle.Render("» ")
+	case ModeOffPath:
+		return promptOffPathStyle.Render("# ")
+	case ModeSlotFilling:
+		return promptStyle.Render("? ")
+	case ModeDisambiguating:
+		// Phase 2 inline overlay: disambiguation shares the `?`
+		// glyph with slot-filling — both prompts are asking the
+		// user to clarify a previous turn rather than to act.
+		return promptStyle.Render("? ")
+	case ModeAwaitingLLM:
+		return lipgloss.NewStyle().Foreground(colorMuted).Render("… ")
+	default:
+		return promptStyle.Render("> ")
 	}
-	turn := m.routingTraceTurn
-	if turn == 0 {
-		turn = m.routingObserver.LatestTurn()
-	}
-	body := FormatRoutingTrace(m.routingObserver.Trace(turn))
-	if body == "" {
-		body = fmt.Sprintf("turn %d routing trace\n  (no routing events captured yet)\n", turn)
-	}
-	header := lipgloss.NewStyle().Bold(true).Render("── routing trace ── (ctrl+r to close)")
-	return header + "\n" + body
 }
+
+// promptHangPad is the blank prefix the textarea renders on every
+// wrapped continuation line so the soft-wrapped text visually hangs
+// under (not flush with) the first-row mode glyph. It must be exactly
+// promptPrefixCols wide to keep the inner wrap column stable.
+const promptHangPad = "  "
+
+// promptLineFunc returns the per-row prompt callback the textarea uses
+// for its SetPromptFunc hook. Row 0 carries the mode-specific prefix
+// ("> ", "» ", …); subsequent rows are blank-padded so wrapped lines
+// hang under the first-row prefix. The styling is recomputed every
+// frame because m.mode can change between View() calls (off-path,
+// meta, slot-fill).
+func (m RootModel) promptLineFunc() func(lineIdx int) string {
+	prefix := m.promptPrefix()
+	return func(lineIdx int) string {
+		if lineIdx == 0 {
+			return prefix
+		}
+		return promptHangPad
+	}
+}
+
+// promptHeightFor returns the height (in display rows) the prompt
+// textarea should occupy given its current value. Empty / single-line
+// values stay at 1 row; longer content grows up to promptMaxHeight,
+// past which the textarea internally scrolls.
+func promptHeightFor(ta *textarea.Model) int {
+	// Count display rows by walking each logical line and dividing by
+	// the input width — textarea.LineCount only reports logical
+	// (newline-split) lines, not wrapped display rows. We need
+	// display rows to size the on-screen viewport correctly.
+	w := ta.Width()
+	if w <= 0 {
+		return 1
+	}
+	value := ta.Value()
+	if value == "" {
+		return 1
+	}
+	rows := 0
+	for _, line := range strings.Split(value, "\n") {
+		// One row minimum per logical line (even empty ones), then
+		// add a row for every full wrap.
+		runeLen := len([]rune(line))
+		if runeLen == 0 {
+			rows++
+			continue
+		}
+		// Ceil-divide rune-length by width to get wrapped row count.
+		rows += (runeLen + w - 1) / w
+	}
+	if rows < 1 {
+		rows = 1
+	}
+	if rows > promptMaxHeight {
+		rows = promptMaxHeight
+	}
+	return rows
+}
+
+// newPromptTextarea constructs the bottom-row textarea sub-model with
+// kitsoki-specific defaults: line numbers off, the cursor-line and
+// end-of-buffer styles flattened (no per-row highlight), the focus
+// newPromptTextarea is owned by prompt.go on main — the proposal
+// branch's duplicate (with a `placeholder` arg and slightly different
+// keymap) was dropped during the rebase. Main's version handles every
+// requirement: Enter→submit, Alt+Enter/Ctrl+J newline, line numbers
+// off, cursor-line highlight off, per-line prefix via SetPromptFunc.
+
+// renderFooter builds the two-line footer above the prompt. Line 1 is
+// framework-defaulted from RootModel state (location · mode · queue ·
+// unread). Line 2 is the story/room pongo2 template result; empty by
+// default — story authors opt in.
+func (m RootModel) renderFooter() string {
+	r := blocks.New(m.width, m.currentTheme())
+	line1 := footerFrameworkLine(m)
+	line2 := footerStoryLine(m)
+	return r.Footer(line1, line2)
+}
+
+// footerFrameworkLine assembles the "room · state · mode · queue ·
+// unread" framework default footer line.
+func footerFrameworkLine(m RootModel) string {
+	var parts []string
+	if loc := strings.TrimSpace(m.location.LocationLine()); loc != "" {
+		parts = append(parts, loc)
+	}
+	parts = append(parts, modeLabel(m.mode))
+	if n := len(m.inputQueue); n > 0 {
+		parts = append(parts, queueDepthLabel(n))
+	}
+	if badge := m.inboxBadge(); badge != "" {
+		parts = append(parts, badge)
+	}
+	return strings.Join(parts, " · ")
+}
+
+// footerStoryLine is the placeholder for the story/room pongo2
+// template result. Phase 6 ships the framework line; story authors
+// will wire pongo templates into App / State in a later iteration.
+func footerStoryLine(_ RootModel) string {
+	return ""
+}
+
+// modeLabel returns the human-readable footer label for each Mode.
+func modeLabel(mode Mode) string {
+	switch mode {
+	case ModeOffPath:
+		return "off-path"
+	case ModeMeta:
+		return "meta"
+	case ModeMetaSessions:
+		return "sessions"
+	case ModeSlotFilling:
+		return "slot-fill"
+	case ModeDisambiguating:
+		return "disambig"
+	case ModeAwaitingLLM:
+		return "awaiting"
+	case ModeMenu:
+		return "menu"
+	case ModeWorldView:
+		return "world"
+	default:
+		return "normal"
+	}
+}
+
+// renderRoutingTraceOverlay was the Ctrl+R full-screen routing-trace
+// overlay's body builder. Phase 2 moved the data inline via /trace and
+// stopped rendering the overlay; phase 7 removes the helper. The test
+// seam in export_test.go is gone too — tests for /trace assert on
+// transcript content via GetTranscriptContent.
 
 // inboxBadge builds the status-line badge text from the latest notification
 // snapshot.  Returns "" when there are no unread notifications.
