@@ -3587,14 +3587,17 @@ func (m RootModel) View() string {
 	}
 	parts = append(parts, r.StatusRow(footerFrameworkLine(m), modeLabel(m.mode)))
 
-	// No top-padding to "anchor at bottom" — that pushed the
-	// welcome block (printed once via tea.Println before View()
-	// renders) up off-screen and left tons of blank rows above the
-	// prompt. The terminal's natural scrollback model wants View()
-	// to sit at whatever cursor position Bubble Tea places it,
-	// with future content scrolling in above as more is printed.
-	// Empty rows below the prompt are normal — they shrink as the
-	// user types and content arrives.
+	// Trim trailing newlines from each part before joining. Every
+	// lipgloss.Render output ends with "\n", and JoinVertical
+	// inserts another "\n" between parts — without this trim the
+	// live region renders 2× as many rows as it visibly contains,
+	// which makes Bubble Tea's "clear-then-redraw" logic move the
+	// cursor too far up on the next paint and overwrite scrollback
+	// rows. (Symptom: status row "awaiting" appearing on the same
+	// terminal line as the last bullet of the agent body above.)
+	for i := range parts {
+		parts[i] = strings.TrimRight(parts[i], "\n")
+	}
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
 }
 
