@@ -1,0 +1,156 @@
+# cake_epic_walk_multi_feature — cypilot multi-feature loop variant.
+# The decomposition stub returns phase_count: 2, so the feature room
+# walks twice (feature_index 0 → 1 → exit-to-code) before reaching
+# code_executing. This exercises cypilot's signature pattern that
+# cake_epic_walk.yaml's phase_count=1 doesn't:
+#
+#   accept (on feature_awaiting_reply, when feature_index+1 < count)
+#     → feature_executing
+#         (feature_index incremented; another iface.artifact.create
+#          + iface.artifact.validate dispatch)
+#
+#   accept (on feature_awaiting_reply, on the LAST phase)
+#     → code_executing
+#         (no further feature dispatch)
+#
+# expect_host_calls.times pins iface.artifact.create at three calls
+# inside the feature loop (once per phase) PLUS the other rooms'
+# create dispatches; we only assert on a subset of the total because
+# the prd/adr/design/decomposition rooms each fire create + validate
+# independently.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: main
+initial_world:
+  ticket_id:      "E-2026-05-18-notes-platform"
+  ticket_title:   "Notes-as-a-Platform: tags, sharing, search"
+  ticket_type:    "epic"
+  ticket_url:     "issues/epics/E-2026-05-18-notes-platform.md"
+  thread:         "E-2026-05-18-notes-platform"
+  workdir:        "testdata/projects/cake"
+  base_branch:    "main"
+  feature_branch: "epic/E-2026-05-18-notes-platform"
+  judge_mode:     "human"
+  judge_confidence_threshold: 0.8
+
+host_handlers:
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+  host.inbox.add:
+    data: { ok: true, id: "ib-1" }
+
+  # phase_count: 2 here — the only meaningful difference from
+  # cake_epic_walk.yaml. The decomposition_executing on_enter binds
+  # feature_count from `phase_count`; the feature_awaiting_reply.
+  # accept arc reads it to decide loop vs. handoff.
+  host.cypilot_artifacts:
+    data:
+      ok: true
+      id:          "art-cake-epic"
+      path:        "cypilot/artifacts/notes-platform.md"
+      report:      "PASS"
+      findings:    []
+      plan_path:   ".plans/notes-platform"
+      phase_count: 2
+      artifact:
+        id:               "art-cake-epic"
+        path:             "cypilot/artifacts/notes-platform.md"
+        kind:             "code"
+        summary_title:    "Notes-as-a-Platform — implementation patch"
+        summary_markdown: "Stub code artifact for the cake multi-feature walk."
+        plan_path:        ".plans/notes-platform"
+        phase_count:      2
+        pr_title:         "Notes-as-a-Platform"
+        pr_body:          "Implements tags + sharing + search per the PRD."
+        tests_passed:     8
+        tests_failed:     0
+
+  host.local:
+    data: { ok: true, log: "PASS: 8 tests", passed: 8, failed: 0, state: "success" }
+
+  host.local_files.ticket:
+    data: { ok: true, tickets: [] }
+
+  host.oracle.ask_with_mcp:
+    data:
+      ok: true
+      submitted:
+        verdict:    "uncertain"
+        intent:     "uncertain"
+        reason:     "n/a (judge_mode=human)"
+        confidence: 0.0
+
+turns:
+  - intent: { name: go_cypilot, slots: {} }
+    expect_state: cyp.idle
+    expect_world:
+      cyp__ticket_id: "E-2026-05-18-notes-platform"
+
+  - intent: { name: cyp__begin, slots: {} }
+    expect_state: cyp.prd_executing
+  - intent: { name: cyp__proceed, slots: {} }
+    expect_state: cyp.prd_awaiting_reply
+  - intent: { name: cyp__accept, slots: {} }
+    expect_state: cyp.adr_executing
+  - intent: { name: cyp__proceed, slots: {} }
+    expect_state: cyp.adr_awaiting_reply
+  - intent: { name: cyp__accept, slots: {} }
+    expect_state: cyp.design_executing
+  - intent: { name: cyp__proceed, slots: {} }
+    expect_state: cyp.design_awaiting_reply
+
+  # decomposition_executing.on_enter fires decompose; binds
+  # feature_count from phase_count: 2.
+  - intent: { name: cyp__accept, slots: {} }
+    expect_state: cyp.decomposition_executing
+    expect_host_calls:
+      - handler: host.cypilot_artifacts.decompose
+        times: 1
+  - intent: { name: cyp__proceed, slots: {} }
+    expect_state: cyp.decomposition_awaiting_reply
+    expect_world:
+      cyp__feature_count: 2
+
+  # First feature iteration: enters feature_executing with
+  # feature_index=0; iface.artifact.create + validate fire.
+  - intent: { name: cyp__accept, slots: {} }
+    expect_state: cyp.feature_executing
+    expect_world:
+      cyp__feature_index: 0
+      cyp__feature_count: 2
+  - intent: { name: cyp__proceed, slots: {} }
+    expect_state: cyp.feature_awaiting_reply
+    expect_world:
+      cyp__feature_index: 0
+
+  # Accept on the awaiting_reply: feature_index+1 < feature_count, so
+  # we loop back to feature_executing with feature_index=1. This is
+  # the critical assertion the phase_count=1 fixture cannot make.
+  - intent: { name: cyp__accept, slots: {} }
+    expect_state: cyp.feature_executing
+    expect_world:
+      cyp__feature_index: 1
+      cyp__feature_count: 2
+  - intent: { name: cyp__proceed, slots: {} }
+    expect_state: cyp.feature_awaiting_reply
+    expect_world:
+      cyp__feature_index: 1
+
+  # Final accept: feature_index+1 == feature_count, so the other arm
+  # fires and we land at code_executing — no further feature loop.
+  - intent: { name: cyp__accept, slots: {} }
+    expect_state: cyp.code_executing
+  - intent: { name: cyp__proceed, slots: {} }
+    expect_state: cyp.code_awaiting_reply
+  - intent: { name: cyp__accept, slots: {} }
+    expect_state: main
+    expect_world:
+      status: "code_ready"
+
+expect_no_errors: true
+
+# Bug/feature pipelines must not fire on the epic arm.
+expect_no_host_calls:
+  - host.git
+  - host.git_worktree

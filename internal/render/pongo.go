@@ -139,6 +139,7 @@ func Pongo(src string, env expr.Env) (string, error) {
 	if !hasDelims(src) {
 		return src, nil
 	}
+	src = preprocessCoalesce(src)
 	tpl, err := pongo2.FromString(src)
 	if err != nil {
 		return "", wrapTemplateError(src, err)
@@ -148,6 +149,132 @@ func Pongo(src string, env expr.Env) (string, error) {
 		return "", wrapTemplateError(src, err)
 	}
 	return out, nil
+}
+
+// preprocessCoalesce rewrites the kitsoki-author-friendly ` ?? ` null-
+// coalesce operator into pongo2's `|default:<expr>` filter form so the
+// many existing story view templates that read like
+//
+//	{{ world.x ?? "(none)" }}
+//
+// parse under pongo2 (which has no `??` operator — Django's template
+// language gates falsy fallback through the `|default:` filter). The
+// rewrite happens only between `{{` / `}}` and `{%` / `%}` delimiters
+// so a literal `??` in prose (e.g. an authored question "really??")
+// is left intact.
+//
+// Chained `A ?? B ?? "fallback"` becomes `A|default:B|default:"fallback"`,
+// which pongo2 evaluates left-to-right with the right falsy semantics.
+// `??` inside string literals is preserved by skipping over quoted spans.
+func preprocessCoalesce(src string) string {
+	if !strings.Contains(src, "??") {
+		return src
+	}
+	var out strings.Builder
+	out.Grow(len(src))
+	i := 0
+	for i < len(src) {
+		open := indexOfAny(src[i:], "{{", "{%")
+		if open < 0 {
+			out.WriteString(src[i:])
+			return out.String()
+		}
+		// Emit verbatim up to the opening delimiter.
+		out.WriteString(src[i : i+open])
+		// Identify the matching closing delimiter.
+		closeTok := "}}"
+		if src[i+open:i+open+2] == "{%" {
+			closeTok = "%}"
+		}
+		end := strings.Index(src[i+open+2:], closeTok)
+		if end < 0 {
+			// Unmatched delimiter — emit the rest verbatim and let
+			// pongo2 surface the parser error.
+			out.WriteString(src[i+open:])
+			return out.String()
+		}
+		body := src[i+open+2 : i+open+2+end]
+		out.WriteString(src[i+open : i+open+2])
+		out.WriteString(rewriteCoalesceBody(body))
+		out.WriteString(closeTok)
+		i = i + open + 2 + end + len(closeTok)
+	}
+	return out.String()
+}
+
+// rewriteCoalesceBody replaces every top-level ` ?? ` inside a
+// template expression with `|default:`. String literals (single or
+// double quoted) are passed through unchanged.
+func rewriteCoalesceBody(s string) string {
+	if !strings.Contains(s, "??") {
+		return s
+	}
+	var out strings.Builder
+	out.Grow(len(s))
+	i := 0
+	for i < len(s) {
+		c := s[i]
+		// Skip string literals.
+		if c == '"' || c == '\'' {
+			quote := c
+			out.WriteByte(c)
+			i++
+			for i < len(s) {
+				out.WriteByte(s[i])
+				if s[i] == '\\' && i+1 < len(s) {
+					out.WriteByte(s[i+1])
+					i += 2
+					continue
+				}
+				if s[i] == quote {
+					i++
+					break
+				}
+				i++
+			}
+			continue
+		}
+		if c == '?' && i+1 < len(s) && s[i+1] == '?' {
+			// Eat surrounding whitespace so `A ?? B` and `A??B` both
+			// collapse cleanly into `A|default:B`.
+			trimRight(&out)
+			out.WriteString("|default:")
+			i += 2
+			for i < len(s) && (s[i] == ' ' || s[i] == '\t') {
+				i++
+			}
+			continue
+		}
+		out.WriteByte(c)
+		i++
+	}
+	return out.String()
+}
+
+// trimRight strips trailing ASCII whitespace from a strings.Builder.
+// We rebuild the buffer because strings.Builder doesn't expose
+// length-adjustable mutation directly.
+func trimRight(b *strings.Builder) {
+	s := b.String()
+	t := strings.TrimRight(s, " \t")
+	if len(t) == len(s) {
+		return
+	}
+	b.Reset()
+	b.WriteString(t)
+}
+
+// indexOfAny returns the smallest index at which any of subs starts in
+// s, or -1 when none are present. Used to find the next `{{` or `{%`
+// delimiter in preprocessCoalesce.
+func indexOfAny(s string, subs ...string) int {
+	best := -1
+	for _, sub := range subs {
+		if idx := strings.Index(s, sub); idx >= 0 && (best == -1 || idx < best) {
+			best = idx
+		}
+	}
+	return best
 }
 
 // ToContext converts an expr.Env into a pongo2.Context.

@@ -1,0 +1,178 @@
+# cake_bugfix_walk_autonomous — llm_then_human variant of the cake
+# bugfix walk. The LLM-judge returns a confident `accept` verdict at
+# every checkpoint and `emit_intent: world.llm_verdict.intent` auto-
+# fires it within the same turn — so a single bf__accept cascades
+# through several merged-room phases per operator keystroke.
+#
+# After the bugfix room-merge (commit ea52331), the cascade stops at
+# the first room without a judge gate. Today that's `implementing`
+# (and later `reviewing`): both have artifact-only on_enter chains,
+# no `judge_<room>.md` prompt, so the auto-fire chain breaks.
+#
+# Walk shape (post-merge):
+#
+#   go_bugfix → bf.reproducing  (autostart skips idle)
+#   bf__accept → bf.implementing
+#                (reproducing.on_enter binds → judge → emit accept →
+#                 proposing.on_enter binds → judge → emit accept →
+#                 implementing.on_enter binds; cascade stops here
+#                 because implementing has no judge gate)
+#   bf__accept → bf.reviewing
+#                (implementing has no judge so manual accept moves to
+#                 testing; testing.on_enter judges and emits accept;
+#                 lands at reviewing, no judge there → stop)
+#   bf__accept → bf.done
+#                (reviewing has no judge so manual accept moves to
+#                 validating; validating.on_enter judges and emits
+#                 accept; lands at done, no judge → stop... actually
+#                 done has a judge, but the close-out has special
+#                 effects so we accept manually instead.)
+#   bf__accept → pr.open_pr  (done.accept fires the transport.post +
+#                              ticket.transition + @exit:done effects)
+#
+# This fixture exists primarily to verify:
+#   1. The literal-emit_intent + IntentAliases path works (main's
+#      collectStateOnKeys fix and the runtime resolveEmittedIntentName)
+#      so a bare `accept` resolves to `bf__accept` through the dev-story
+#      fold.
+#   2. The done.accept arc still fires iface.ticket.transition exactly
+#      once even on the autonomous path.
+#   3. Cypilot's artifact iface stays untouched on the bug arm.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: main
+initial_world:
+  ticket_id:      "B-2026-05-18-list-broken"
+  ticket_title:   "Note list disappears after creating a second note"
+  ticket_type:    "bug"
+  ticket_url:     "issues/bugs/B-2026-05-18-list-broken.md"
+  thread:         "B-2026-05-18-list-broken"
+  workdir:        "testdata/projects/cake"
+  workspace_id:   "ws-cake-bug"
+  base_branch:    "main"
+  feature_branch: "fix/B-2026-05-18-list-broken"
+  judge_mode:     "llm_then_human"
+  judge_confidence_threshold: 0.8
+  merge_strategy: "squash"
+
+host_handlers:
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+  host.inbox.add:
+    data: { ok: true, id: "ib-1" }
+  host.git_worktree:
+    data: { ok: true, log: "synced", path: "testdata/projects/cake" }
+  host.git:
+    data:
+      ok:     true
+      sha:    "deadbeef"
+      diff:   ""
+      url:    "https://example/pr/B-2026-05-18-list-broken"
+      pr_id:  "200"
+      state:  "success"
+      checks: ""
+      comments: ""
+      branch: "fix/B-2026-05-18-list-broken"
+  host.local:
+    data: { ok: true, state: "success", log: "PASS", passed: 4, failed: 0 }
+  host.local_files.ticket:
+    by_op:
+      transition:
+        data: { ok: true }
+      list_mine:
+        data: { ok: true, tickets: [] }
+      search:
+        data: { ok: true, tickets: [] }
+
+  # confidence: 0.95 is well above the threshold (0.8) so emit_intent
+  # auto-fires at every judge gate.
+  host.oracle.ask_with_mcp:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Note list disappears — defer state mutation"
+        summary_markdown: "Stub bugfix artifact body; deterministic across rooms."
+        bug_verified:     true
+        steps:            ["create alpha", "create beta", "list re-renders empty"]
+        involved_components:
+          - { name: "frontend/src/NotesList.tsx", reason: "list state mutation" }
+        environment_check:
+          frontend_running: true
+          backend_running:  true
+          dataset_ready:    true
+        fix_description:  "Replace the in-place splice with a new array on add."
+        root_cause:       "The list re-render reuses the same array reference."
+        affected_files:   ["frontend/src/NotesList.tsx"]
+        confidence:       0.95
+        reasoning:        "Trace shows the array identity unchanged; React's diff bails out."
+        status:           "passed"
+        tests_added:      ["frontend/src/NotesList.test.tsx"]
+        tests_run:        { passed: 4, failed: 0, log: "PASS 4 tests" }
+        outcome:          "pass"
+        evidence:         { build: "ok", api: "n/a", ui: "list shows both notes" }
+        verdict:          "pass"
+        intent:           "accept"
+        reason:           "Stub LLM verdict: pass."
+
+turns:
+  # go_bugfix from main lands at bf.idle whose on_enter auto-fires
+  # `start` (entering bf.reproducing). The cascade then chains
+  # through every judge gate in this turn:
+  #   reproducing → emit accept → proposing
+  #   proposing   → emit accept → implementing (no judge → STOP)
+  - intent: { name: go_bugfix, slots: {} }
+    expect_state: bf.implementing
+    expect_world:
+      bf__judge_mode: "llm_then_human"
+
+  # implementing has no judge so accept moves manually to testing,
+  # which judges and emits accept → reviewing (no judge → STOP).
+  - intent: { name: bf__accept, slots: {} }
+    expect_state: bf.reviewing
+
+  # reviewing has no judge so accept moves manually to validating,
+  # which judges and emits accept → done. done.on_enter judges and
+  # emits accept → done's accept arc fires the transport.post +
+  # ticket.transition + @exit:done effects → dev-story projects
+  # @exit:done into pr.open_pr. Five state hops in one turn.
+  #
+  # This is THE assertion the human-mode walk can't make: the
+  # emit_intent cascade survives the @exit boundary AND the done
+  # arc's effects.invoke iface.ticket.transition still fires once.
+  - intent: { name: bf__accept, slots: {} }
+    expect_state: pr.open_pr
+    expect_world:
+      pr__ticket_id: "B-2026-05-18-list-broken"
+    # NOTE: pr_title isn't asserted on the autonomous path. The
+    # bf→pr exits.set projection runs during the cascade, but the
+    # rendered value depends on whether the cascade observed
+    # world.bf__done_artifact bound at exits-projection time. The
+    # human-mode walk (cake_bugfix_walk.yaml) makes that assertion
+    # deterministically. The critical assertion here is the
+    # transition call below — the close-out side effect of done's
+    # accept arc, which fires through the cascade as well.
+    expect_host_calls:
+      - handler: host.local_files.ticket.transition
+        args: { id: "B-2026-05-18-list-broken", to: "resolved" }
+        times: 1
+
+  # pr-refinement was NOT room-merged; it still has _executing /
+  # _awaiting_reply pairs. ci_monitoring and merge_executing have
+  # no judge gates, so the operator walks them step-by-step until
+  # merge_awaiting_reply judges and emits accept → @exit:merged →
+  # main. Three pr_proceed compress into one because merge_executing
+  # → merge_awaiting_reply → judge cascades the same way.
+  - intent: { name: pr__proceed, slots: {} }
+    expect_state: pr.ci_monitoring
+  - intent: { name: pr__proceed, slots: {} }
+    expect_state: pr.merge_executing
+  - intent: { name: pr__proceed, slots: {} }
+    expect_state: main
+    expect_world:
+      status:      "merged"
+      last_pr_url: "https://example/pr/B-2026-05-18-list-broken"
+
+expect_no_errors: true
+expect_no_host_calls:
+  - host.cypilot_artifacts

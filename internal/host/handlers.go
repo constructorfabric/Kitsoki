@@ -253,6 +253,7 @@ func RegisterBuiltins(r *Registry) {
 	r.Register("host.local", LocalCIHandler)
 	r.Register("host.git_worktree", GitWorktreeHandler)
 	r.Register("host.append_to_file", AppendFileTransportHandler)
+	r.Register("host.artifacts_dir", ArtifactsDirTransportHandler)
 	r.Register("host.inbox.add", InboxAddHandler)
 
 	// Wave 3 / Phase 5 — GitHub Issues + cypilot artifact providers.

@@ -1,0 +1,161 @@
+# cake_feature_walk — pick the cake demo feature, drive through the
+# implementation pipeline (idle → review_task → write_code → test →
+# review → handoff → impl's internal pr-refinement) and land back at
+# dev-story main with status="merged".
+#
+# Mirror of cake_bugfix_walk but for the feature pipeline:
+#   - no reproducing room (impl is "small task" — proposal §3 etc).
+#   - iface.ticket.get fires at impl.review_task_executing to fetch
+#     the feature's body; assert it pinged exactly once.
+#   - impl exits at @exit:done with status="merged" projected via
+#     the dev-story imports.impl.exits.done.set block.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: main
+initial_world:
+  ticket_id:      "F-2026-05-18-export-csv"
+  ticket_title:   "Export notes as CSV"
+  ticket_type:    "feature"
+  ticket_url:     "issues/features/F-2026-05-18-export-csv.md"
+  thread:         "F-2026-05-18-export-csv"
+  workdir:        "testdata/projects/cake"
+  workspace_id:   "ws-cake-feat"
+  base_branch:    "main"
+  feature_branch: "task/F-2026-05-18-export-csv"
+  judge_mode:     "human"
+  judge_confidence_threshold: 0.8
+  merge_strategy: "squash"
+
+host_handlers:
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+  host.inbox.add:
+    data: { ok: true, id: "ib-1" }
+  host.git_worktree:
+    data: { ok: true, log: "synced", path: "testdata/projects/cake" }
+  host.git:
+    data:
+      ok:     true
+      sha:    "cafebabe"
+      diff:   ""
+      url:    "https://example/pr/F-2026-05-18-export-csv"
+      pr_id:  "404"
+      state:  "success"
+      checks: ""
+      comments: ""
+  host.local:
+    data: { ok: true, state: "success", log: "PASS: 5 tests", passed: 5, failed: 0 }
+
+  # impl.review_task_executing fires iface.ticket.get against the
+  # feature; the rest of the flow only needs `transition` to succeed
+  # (the impl pipeline isn't wired to call it today but we keep the
+  # envelope ready).
+  host.local_files.ticket:
+    by_op:
+      get:
+        data:
+          ok:    true
+          id:    "F-2026-05-18-export-csv"
+          title: "Export notes as CSV"
+          body:  "Add a GET /notes.csv endpoint streaming all notes."
+          url:   "issues/features/F-2026-05-18-export-csv.md"
+          status: "open"
+      list_mine:
+        data:
+          ok: true
+          tickets:
+            - id: "F-2026-05-18-export-csv"
+              type: "feature"
+              status: "open"
+      transition:
+        data: { ok: true }
+
+  host.oracle.ask_with_mcp:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Export notes as CSV"
+        summary_markdown: "Adds GET /notes.csv streaming endpoint; covered by the new handler test."
+        scope:            "Endpoint + handler + test."
+        acceptance_criteria:
+          - "GET /notes.csv returns 200 with text/csv."
+          - "Empty list returns header row."
+        involved_components:
+          - { name: "backend/routes/notes.go", reason: "new endpoint" }
+        affected_files:   ["backend/routes/notes.go", "backend/routes/notes_test.go"]
+        confidence:       0.9
+        reasoning:        "Endpoint follows the existing handler pattern."
+        tests_planned:    ["TestNotesCSVHeader", "TestNotesCSVEmptyList"]
+        patch_summary:    "Adds the endpoint + tests; deterministic CSV row order."
+        status:           "passed"
+        tests_run:        { passed: 5, failed: 0, log: "PASS: 5 tests" }
+        nits:             []
+        blockers:         []
+        verdict:          "pass"
+        intent:           "accept"
+        reason:           "Stub artifact passes."
+
+turns:
+  # main → impl.idle.
+  - intent: { name: go_implementation, slots: {} }
+    expect_state: impl.idle
+    expect_world:
+      impl__ticket_id: "F-2026-05-18-export-csv"
+
+  # impl.idle → impl.review_task_executing. impl's `start` lifts via
+  # dev-story's imports.bf.intents.import: [start] — start is shared
+  # across imports as bare.
+  - intent: { name: impl__start, slots: {} }
+    expect_state: impl.review_task_executing
+    expect_host_calls:
+      - handler: host.local_files.ticket.get
+        args: { id: "F-2026-05-18-export-csv" }
+        times: 1
+
+  - intent: { name: impl__proceed, slots: {} }
+    expect_state: impl.review_task_awaiting_reply
+  - intent: { name: impl__accept, slots: {} }
+    expect_state: impl.write_code_executing
+  - intent: { name: impl__proceed, slots: {} }
+    expect_state: impl.write_code_awaiting_reply
+  - intent: { name: impl__accept, slots: {} }
+    expect_state: impl.test_executing
+  - intent: { name: impl__proceed, slots: {} }
+    expect_state: impl.test_awaiting_reply
+  - intent: { name: impl__accept, slots: {} }
+    expect_state: impl.review_executing
+  - intent: { name: impl__proceed, slots: {} }
+    expect_state: impl.review_awaiting_reply
+  - intent: { name: impl__accept, slots: {} }
+    expect_state: impl.handoff
+    expect_world:
+      impl__pr_title: "Export notes as CSV"
+
+  # impl.handoff → impl.pr.open_pr.
+  - intent: { name: impl__proceed, slots: {} }
+    expect_state: impl.pr.open_pr
+    expect_world:
+      impl__pr__pr_id:  "404"
+      impl__pr__pr_url: "https://example/pr/F-2026-05-18-export-csv"
+
+  - intent: { name: impl__pr__proceed, slots: {} }
+    expect_state: impl.pr.ci_monitoring
+  - intent: { name: impl__pr__proceed, slots: {} }
+    expect_state: impl.pr.merge_executing
+  - intent: { name: impl__pr__proceed, slots: {} }
+    expect_state: impl.pr.merge_awaiting_reply
+
+  # accept → impl @exit:done → dev-story sets status=merged + last_pr_url.
+  - intent: { name: impl__pr__accept, slots: {} }
+    expect_state: main
+    expect_world:
+      status:      "merged"
+      last_pr_url: "https://example/pr/F-2026-05-18-export-csv"
+
+expect_no_errors: true
+
+# Bugfix's reproducing artifact provider has nothing to do with the
+# impl walk; cypilot's artifact provider likewise. Guard both.
+expect_no_host_calls:
+  - host.cypilot_artifacts

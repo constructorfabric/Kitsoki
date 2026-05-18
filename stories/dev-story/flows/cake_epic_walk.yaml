@@ -1,0 +1,152 @@
+# cake_epic_walk — pick the cake demo epic, drive through cypilot's
+# autonomous SDLC waterfall (idle → prd → adr → design → decomposition
+# → feature × N → code) and land back at dev-story main with
+# status="code_ready".
+#
+# Cypilot's iface set is artifact / vcs / ci / transport / inbox —
+# notably NO workspace / ticket. This fixture stubs host.cypilot_artifacts
+# with a phase_count of 1 so the feature room walks exactly one phase
+# before transitioning to code.
+#
+# Demonstrates expect_files: by rebinding iface.transport to
+# host.artifacts_dir at the cypilot side via initial_world (the cyp
+# child's transport iface), so each _awaiting_reply lands its artifact
+# under .artifacts/<phase>_<ticket>_<cycle>.md and the fixture asserts
+# the file is present.
+#
+# NOTE on transport binding: dev-story's transport iface default is
+# host.append_to_file. Re-routing to host.artifacts_dir from the fixture
+# would normally require a host_bindings: override at the app level;
+# instead the fixture stubs both handlers and the assertion is purely
+# call-count-based. A real .artifacts/ write needs the bindings
+# rewrite — that's still in design and noted in docs/proposals/cake.md.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: main
+initial_world:
+  ticket_id:      "E-2026-05-18-notes-platform"
+  ticket_title:   "Notes-as-a-Platform: tags, sharing, search"
+  ticket_type:    "epic"
+  ticket_url:     "issues/epics/E-2026-05-18-notes-platform.md"
+  thread:         "E-2026-05-18-notes-platform"
+  workdir:        "testdata/projects/cake"
+  base_branch:    "main"
+  feature_branch: "epic/E-2026-05-18-notes-platform"
+  judge_mode:     "human"
+  judge_confidence_threshold: 0.8
+
+host_handlers:
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+  host.inbox.add:
+    data: { ok: true, id: "ib-1" }
+
+  # iface.artifact.* — single stub satisfies create / validate /
+  # decompose with the fields cypilot rooms bind. phase_count: 1 keeps
+  # the feature-room loop to one iteration.
+  host.cypilot_artifacts:
+    data:
+      ok: true
+      id:          "art-cake-epic"
+      path:        "cypilot/artifacts/notes-platform.md"
+      report:      "PASS"
+      findings:    []
+      plan_path:   ".plans/notes-platform"
+      phase_count: 1
+      artifact:
+        id:               "art-cake-epic"
+        path:             "cypilot/artifacts/notes-platform.md"
+        kind:             "code"
+        summary_title:    "Notes-as-a-Platform — implementation patch"
+        summary_markdown: "Stub code artifact for the cake epic walk."
+        plan_path:        ".plans/notes-platform"
+        phase_count:      1
+        pr_title:         "Notes-as-a-Platform"
+        pr_body:          "Implements tags + sharing + search per the PRD."
+        tests_passed:     8
+        tests_failed:     0
+
+  host.local:
+    data: { ok: true, log: "PASS: 8 tests", passed: 8, failed: 0, state: "success" }
+
+  # Local-files ticket — cypilot doesn't declare iface.ticket but the
+  # dev-story dispatcher may still hit it for ancestor on_enter binds
+  # (e.g. main re-renders). Keep a stub returning an empty list so the
+  # fixture's expect_no_host_calls guard for cypilot's artifact iface
+  # stays meaningful.
+  host.local_files.ticket:
+    data: { ok: true, tickets: [] }
+
+  host.oracle.ask_with_mcp:
+    data:
+      ok: true
+      submitted:
+        verdict:    "uncertain"
+        intent:     "uncertain"
+        reason:     "n/a (judge_mode=human)"
+        confidence: 0.0
+
+turns:
+  # main → cyp.idle.
+  - intent: { name: go_cypilot, slots: {} }
+    expect_state: cyp.idle
+    expect_world:
+      cyp__ticket_id: "E-2026-05-18-notes-platform"
+
+  # cyp.idle → prd_executing. `begin` is lifted to bare via the cyp
+  # import's intents.import block but the on: arcs are renamed to
+  # `cyp__begin` at fold time — that's the dispatched form. (The bare
+  # alias is for end-user typing; flows pin the actual prefixed arc
+  # name so they stay valid if a sibling import takes the bare slot.)
+  - intent: { name: cyp__begin, slots: {} }
+    expect_state: cyp.prd_executing
+    expect_host_calls:
+      - handler: host.cypilot_artifacts.create
+
+  - intent: { name: cyp__proceed, slots: {} }
+    expect_state: cyp.prd_awaiting_reply
+  - intent: { name: cyp__accept, slots: {} }
+    expect_state: cyp.adr_executing
+  - intent: { name: cyp__proceed, slots: {} }
+    expect_state: cyp.adr_awaiting_reply
+  - intent: { name: cyp__accept, slots: {} }
+    expect_state: cyp.design_executing
+  - intent: { name: cyp__proceed, slots: {} }
+    expect_state: cyp.design_awaiting_reply
+  # decomposition_executing's on_enter fires iface.artifact.decompose
+  # (the proposal's per-fixture call pin). Pin it once on entry.
+  - intent: { name: cyp__accept, slots: {} }
+    expect_state: cyp.decomposition_executing
+    expect_host_calls:
+      - handler: host.cypilot_artifacts.decompose
+        times: 1
+  - intent: { name: cyp__proceed, slots: {} }
+    expect_state: cyp.decomposition_awaiting_reply
+  - intent: { name: cyp__accept, slots: {} }
+    expect_state: cyp.feature_executing
+    expect_world:
+      cyp__feature_index: 0
+      cyp__feature_count: 1
+
+  - intent: { name: cyp__proceed, slots: {} }
+    expect_state: cyp.feature_awaiting_reply
+
+  # feature_index+1 == feature_count → accept → code_executing.
+  - intent: { name: cyp__accept, slots: {} }
+    expect_state: cyp.code_executing
+  - intent: { name: cyp__proceed, slots: {} }
+    expect_state: cyp.code_awaiting_reply
+
+  # cyp @exit:code_ready → dev-story projects status="code_ready".
+  - intent: { name: cyp__accept, slots: {} }
+    expect_state: main
+    expect_world:
+      status: "code_ready"
+
+expect_no_errors: true
+
+# Bug/feature pipelines must NOT fire on the epic arm.
+expect_no_host_calls:
+  - host.git
+  - host.git_worktree

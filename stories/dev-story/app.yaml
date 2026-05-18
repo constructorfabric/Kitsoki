@@ -171,10 +171,11 @@ world:
   ticket_title:        { type: string, default: "" }
   ticket_url:          { type: string, default: "" }
   # ticket_type is how `drive` chooses a pipeline (bug → bf,
-  # feature → impl). Set by pick_ticket. The local-files provider
-  # only scans issues/bugs/ today, so picks default to "bug"; when
-  # a feature source is wired in, that ticket_search arm will set
-  # ticket_type="feature".
+  # feature → impl, epic → cyp). Set by pick_ticket from its `type:`
+  # slot (or carried through from a prior pick when the slot is
+  # omitted). The local-files provider scans issues/{bugs,features,
+  # epics}/ and tags every row with its source kind, so picks land
+  # with the right value when the slot is fed in.
   ticket_type:         { type: string, default: "" }
   # The main room calls iface.ticket.list_mine on enter and stashes
   # the result here so the view can render a "tickets in your queue"
@@ -293,13 +294,17 @@ intents:
         type: string
         required: true
         description: "Ticket id to pick."
+      type:
+        type: string
+        required: false
+        description: "Optional ticket-type override (bug / feature / epic). Wins over the row-lookup derivation; useful for fixtures + operators who already know the routing target."
 
   # Pipeline-launching navigation (dispatches into bf / pr / impl /
   # rev imports). `go_bugfix` targets the `bf` import compound; the
   # import's entry (idle) handles the rest.
   drive:
-    description: "Drive the picked ticket through its pipeline. Routes by ticket_type: bug → bugfix, feature → implementation."
-    examples: ["drive", "go", "work on it", "start"]
+    description: "Drive the picked ticket through its pipeline. Routes by ticket_type: bug → bf, feature → impl, epic → cyp."
+    examples: ["drive", "go", "work on it", "push", "start"]
     priority: 60
   go_bugfix:
     description: "Hand off to the bugfix sub-story for the picked ticket."
@@ -312,6 +317,10 @@ intents:
   go_implementation:
     description: "Hand off to the implementation sub-story for the picked task."
     examples: ["implement task", "implementation", "work on task"]
+    priority: 55
+  go_cypilot:
+    description: "Hand off to the cypilot sub-story (SDLC waterfall) for the picked epic."
+    examples: ["cypilot", "drive epic", "waterfall"]
     priority: 55
   go_code_review_story:
     description: "Hand off to the code-review sub-story (teammate PR review)."
@@ -505,6 +514,50 @@ imports:
         to: main
         set:
           status: "abandoned"
+
+  # Wave 4 — cypilot SDLC waterfall for epic-track tickets. Routed
+  # from main when the picked ticket's type is "epic". cypilot is
+  # autonomous-by-default; the parent's day-level judge_mode +
+  # threshold pass through and the imports.cyp world projection keeps
+  # the prd / adr / design / decomposition / feature / code rooms
+  # in lockstep with the rest of dev-story's pipeline imports.
+  cyp:
+    source: ../cypilot
+    entry: idle
+
+    world_in:
+      ticket_id:       "{{ world.ticket_id }}"
+      ticket_title:    "{{ world.ticket_title }}"
+      ticket_url:      "{{ world.ticket_url }}"
+      thread:          "{{ world.thread }}"
+      workspace_id:    "{{ world.workspace_id }}"
+      workdir:         "{{ world.workdir }}"
+      base_branch:     "{{ world.base_branch }}"
+      feature_branch:  "{{ world.feature_branch }}"
+      judge_mode:      "{{ world.judge_mode }}"
+      judge_confidence_threshold: "{{ world.judge_confidence_threshold }}"
+
+    # cypilot intents that don't collide with parent / sibling
+    # imports lift to bare. `begin` boots cypilot from idle; the
+    # remaining checkpoint vocabulary (accept/refine/proceed/quit/
+    # look) stays prefixed to avoid colliding with parent/bf/pr.
+    intents:
+      import: [begin, next_feature]
+
+    exits:
+      code_ready:
+        to: main
+        set:
+          status: "code_ready"
+          last_pr_url: "{{ world.cyp__pr_url }}"
+      abandoned:
+        to: main
+        set:
+          status: "abandoned"
+      validation_failed:
+        to: main
+        set:
+          status: "validation_failed"
 
   # Wave 3 / Phase 6 — teammate-PR review. Triggered from the inbox
   # `pick_review` arc. The review-request payload is projected into

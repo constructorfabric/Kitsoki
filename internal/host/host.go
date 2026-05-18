@@ -72,6 +72,20 @@ func (r *Registry) Register(name string, h Handler) {
 	r.handlers[name] = h
 }
 
+// Replace registers a handler, overwriting any existing entry with the
+// same name. Unlike Register (which panics on duplicate as an init-time
+// contract against accidental shadowing in production code), Replace is
+// the test-friendly variant: a fixture that wants to stub a production
+// handler simply re-registers it on top of the builtin. Returns true
+// when an existing handler was overwritten so callers can audit/log.
+func (r *Registry) Replace(name string, h Handler) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	_, existed := r.handlers[name]
+	r.handlers[name] = h
+	return existed
+}
+
 // Get returns the handler for the given name.
 //
 // Lookup tries an exact match first. If no handler is registered at

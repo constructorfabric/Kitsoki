@@ -94,6 +94,31 @@ func resolveTicketsRoot(args map[string]any) (string, error) {
 // bugsDir returns the canonical issues/bugs/ subdirectory under root.
 func bugsDir(root string) string { return filepath.Join(root, "issues", "bugs") }
 
+// ticketKindDirs enumerates the issues/* subdirectories scanned by the
+// local-files provider. Keys are the ticket-type label written into the
+// row's `type` field; values are the on-disk directory name. Stable
+// iteration order matters for tests that pin search/list output.
+var ticketKindDirs = []struct{ Kind, Dir string }{
+	{"bug", "bugs"},
+	{"feature", "features"},
+	{"epic", "epics"},
+}
+
+// findTicketPath locates issues/<kind>/<id>.md under root.  Returns
+// ("", "", nil) when the id is not found in any of the type dirs; the
+// caller turns that into a domain-level "not found" error.
+func findTicketPath(root, id string) (path, kind string, err error) {
+	for _, td := range ticketKindDirs {
+		p := filepath.Join(root, "issues", td.Dir, id+".md")
+		if _, statErr := os.Stat(p); statErr == nil {
+			return p, td.Kind, nil
+		} else if !os.IsNotExist(statErr) {
+			return "", "", statErr
+		}
+	}
+	return "", "", nil
+}
+
 // ─── Bug-file model & I/O ───────────────────────────────────────────────────
 
 // BugComment is one `## Comment <iso> by <author>` block in the body.
@@ -103,11 +128,12 @@ type BugComment struct {
 	Body      string
 }
 
-// BugFile is the parsed shape of `issues/bugs/<id>.md`.  Frontmatter is
-// kept as a generic map so unknown keys survive round-trips (per
+// BugFile is the parsed shape of `issues/<kind>/<id>.md`.  Frontmatter
+// is kept as a generic map so unknown keys survive round-trips (per
 // bug-format-proposal §2.2).
 type BugFile struct {
 	ID       string         // filename without `.md`
+	Kind     string         // "bug" | "feature" | "epic" — set by the lister
 	Path     string         // absolute path
 	Front    map[string]any // YAML frontmatter (rich types preserved)
 	Body     string         // markdown body BEFORE the comment block
@@ -266,31 +292,36 @@ func writeBugFile(bf *BugFile) error {
 	return os.WriteFile(bf.Path, []byte(sb.String()), 0o644)
 }
 
-// listAllBugs returns every bug under root/issues/bugs/.  An absent
-// directory yields an empty list, not an error — a fresh repo has no
-// bugs yet.
+// listAllBugs returns every ticket under root/issues/{bugs,features,
+// epics}/.  Each row carries its source-dir-derived `Kind` so callers
+// can render and route by type.  An absent type-dir yields nothing for
+// that kind — a fresh repo with only bugs is fine.  Name retained for
+// minimal-diff churn; the function now lists all three kinds.
 func listAllBugs(root string) ([]*BugFile, error) {
-	dir := bugsDir(root)
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
 	var out []*BugFile
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
-			continue
-		}
-		bf, err := readBugFile(filepath.Join(dir, e.Name()))
+	for _, td := range ticketKindDirs {
+		dir := filepath.Join(root, "issues", td.Dir)
+		entries, err := os.ReadDir(dir)
 		if err != nil {
-			// Skip unparseable files so a single bad file doesn't
-			// poison the whole search; callers may grep on stderr if
-			// they care about why.
-			continue
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, err
 		}
-		out = append(out, bf)
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+				continue
+			}
+			bf, err := readBugFile(filepath.Join(dir, e.Name()))
+			if err != nil {
+				// Skip unparseable files so a single bad file doesn't
+				// poison the whole search; callers may grep on stderr
+				// if they care about why.
+				continue
+			}
+			bf.Kind = td.Kind
+			out = append(out, bf)
+		}
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out, nil
@@ -336,14 +367,18 @@ func ticketGet(root string, args map[string]any) (Result, error) {
 	if strings.TrimSpace(id) == "" {
 		return Result{Error: "ticket.get: id argument is required"}, nil
 	}
-	path := filepath.Join(bugsDir(root), id+".md")
-	bf, err := readBugFile(path)
+	path, kind, err := findTicketPath(root, id)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return Result{Error: fmt.Sprintf("ticket.get: %s not found", id)}, nil
-		}
 		return Result{Error: fmt.Sprintf("ticket.get: %v", err)}, nil
 	}
+	if path == "" {
+		return Result{Error: fmt.Sprintf("ticket.get: %s not found", id)}, nil
+	}
+	bf, err := readBugFile(path)
+	if err != nil {
+		return Result{Error: fmt.Sprintf("ticket.get: %v", err)}, nil
+	}
+	bf.Kind = kind
 	data := bugSummary(bf)
 	data["body"] = bf.Body
 	cm := make([]map[string]any, 0, len(bf.Comments))
@@ -376,13 +411,20 @@ func ticketComment(root string, args map[string]any, now time.Time) (Result, err
 	}
 
 	// Resolve the target file: either thread (when it looks like a
-	// path) or root/issues/bugs/<id>.md.
+	// path) or issues/<kind>/<id>.md, searching the three known kinds.
 	var path string
 	switch {
 	case thread != "" && (strings.HasSuffix(thread, ".md") || filepath.IsAbs(thread)):
 		path = thread
 	case strings.TrimSpace(id) != "":
-		path = filepath.Join(bugsDir(root), id+".md")
+		p, _, ferr := findTicketPath(root, id)
+		if ferr != nil {
+			return Result{Error: fmt.Sprintf("ticket.comment: %v", ferr)}, nil
+		}
+		if p == "" {
+			return Result{Error: fmt.Sprintf("ticket.comment: %s not found", id)}, nil
+		}
+		path = p
 	default:
 		return Result{Error: "ticket.comment: id or thread is required"}, nil
 	}
@@ -426,12 +468,15 @@ func ticketTransition(root string, args map[string]any) (Result, error) {
 	if strings.TrimSpace(to) == "" {
 		return Result{Error: "ticket.transition: to argument is required"}, nil
 	}
-	path := filepath.Join(bugsDir(root), id+".md")
+	path, _, err := findTicketPath(root, id)
+	if err != nil {
+		return Result{Error: fmt.Sprintf("ticket.transition: %v", err)}, nil
+	}
+	if path == "" {
+		return Result{Error: fmt.Sprintf("ticket.transition: %s not found", id)}, nil
+	}
 	bf, err := readBugFile(path)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return Result{Error: fmt.Sprintf("ticket.transition: %s not found", id)}, nil
-		}
 		return Result{Error: fmt.Sprintf("ticket.transition: %v", err)}, nil
 	}
 	bf.Front["status"] = to
@@ -469,9 +514,11 @@ func ticketListMine(root string, args map[string]any) (Result, error) {
 // ─── Field accessors / projections ──────────────────────────────────────────
 
 // bugSummary projects a BugFile into the ticket summary shape the
-// contract pins (§2.1): id/title/status/priority/assignee/url.
+// contract pins (§2.1): id/title/status/priority/assignee/url. A `type`
+// key is added when the lister tagged the row by source dir so dev-story
+// can route on `ticket_type`.
 func bugSummary(b *BugFile) map[string]any {
-	return map[string]any{
+	out := map[string]any{
 		"id":       b.ID,
 		"title":    b.titleString(),
 		"status":   b.frontString("status"),
@@ -479,6 +526,10 @@ func bugSummary(b *BugFile) map[string]any {
 		"assignee": b.frontString("assignee"),
 		"url":      b.frontString("url"),
 	}
+	if b.Kind != "" {
+		out["type"] = b.Kind
+	}
+	return out
 }
 
 // frontString reads a string-valued frontmatter key, defaulting to "" when

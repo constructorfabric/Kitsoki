@@ -111,11 +111,14 @@ func newAppRenderer(appDir string, cached bool) (*AppRenderer, error) {
 // Render renders an inline template string against env, using this
 // renderer's TemplateSet so that {% extends %} / {% include %} references
 // resolve through the per-app loader. Pongo's fast path (verbatim return
-// for non-templated text) is preserved.
+// for non-templated text) is preserved; the `??` → `|default:` rewrite
+// runs at the same seam as in package-level Pongo so story templates
+// using `{{ world.x ?? "(none)" }}` parse uniformly under either path.
 func (r *AppRenderer) Render(src string, env expr.Env) (string, error) {
 	if !hasDelims(src) {
 		return src, nil
 	}
+	src = preprocessCoalesce(src)
 	tpl, err := r.set.FromString(src)
 	if err != nil {
 		return "", wrapTemplateError(src, err)

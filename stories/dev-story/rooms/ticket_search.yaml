@@ -50,14 +50,19 @@ states:
                 ticket_query:   "{{ slots.query }}"
                 ticket_results: ""
       pick_ticket:
-        # Stash the picked id + a placeholder title. In Wave 2 we don't
-        # invoke iface.ticket.get here (would need a real handler); the
-        # bf import's world_in: just needs ticket_id to wire the rest
-        # via the bug file lookup at the local-files binding's site.
+        # Stash the picked id + a placeholder title. The optional
+        # `type:` slot pins ticket_type for the drive arc; fixtures
+        # and operators that know the routing target set it directly.
+        # Live-typed picks without the slot keep whatever ticket_type
+        # was previously in world — a future iface.ticket.get on entry
+        # to main (which reads the type from the local-files provider's
+        # source dir tagging) can populate it lazily.
         #
-        # ticket_type defaults to "bug" because the local-files
-        # provider only scans issues/bugs/. When a feature source is
-        # wired in, this is the site that decides the routing label.
+        # The local-files provider scans issues/{bugs,features,
+        # epics}/ and tags every row with its source kind; that tag
+        # surfaces via world.ticket_results but the kitsoki expr engine
+        # forbids loop-var member access inside set: templates, so we
+        # rely on slots.type instead of an in-template row lookup.
         #
         # `target: .` is deliberate — pick should NOT re-fire on_enter
         # (the list is already in world.ticket_results from the fresh
@@ -67,7 +72,7 @@ states:
             - set:
                 ticket_id:     "{{ slots.id }}"
                 ticket_title:  "(picked from list)"
-                ticket_type:   "bug"
+                ticket_type:   "{{ slots.type ?? world.ticket_type }}"
                 thread:        "{{ slots.id }}"
       # Hand off to the bugfix sub-story for the picked ticket.
       # bf.idle's on_enter auto-emits `start` when entered with a
@@ -110,14 +115,14 @@ states:
         on_error: ticket_search
     on:
       pick_ticket:
-        # Mirror of pick_ticket in ticket_search above — see comment
-        # there for why ticket_type defaults to "bug".
+        # Mirror of pick_ticket in ticket_search above — slot/world
+        # precedence on ticket_type; see comment there.
         - target: ticket_search
           effects:
             - set:
                 ticket_id:    "{{ slots.id }}"
                 ticket_title: "(picked from search)"
-                ticket_type:  "bug"
+                ticket_type:  "{{ slots.type ?? world.ticket_type }}"
                 thread:       "{{ slots.id }}"
       search_tickets:
         - target: ticket_searching

@@ -1,0 +1,144 @@
+# cake_router_picks_each_type — three sub-fixtures, one per ticket
+# kind, each verifying that picking a ticket of that kind and firing
+# `drive` from main routes into the correct sub-pipeline (bf / impl /
+# cyp).
+#
+# This fixture verifies the dev-story router's plumbing in isolation:
+# - main.on_enter fires iface.ticket.list_mine 1×.
+# - ticket_search.on_enter fires iface.ticket.search 1×.
+# - pick_ticket sets ticket_type from the `type:` slot.
+# - drive's three when-arms pick the right import compound.
+#
+# The host stubs deliberately keep `data:` minimal — list_mine /
+# search return an empty `tickets` list so the on_enter binds are
+# observable as HostDispatched events without the fixture having to
+# match per-row contents.
+
+# ── bug → bf ────────────────────────────────────────────────────────
+test_kind: flow
+app: ../app.yaml
+initial_state: main
+initial_world:
+  ticket_id: ""
+  judge_mode: "human"
+
+host_handlers:
+  host.local_files.ticket:
+    data: { tickets: [] }
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-0" }
+  host.inbox.add:
+    data: { ok: true, id: "ib-0" }
+
+turns:
+  # Entering ticket_search fires iface.ticket.search which resolves
+  # (via the host registry's prefix-fallback) to host.local_files.ticket;
+  # the dispatched event's namespace is the full `host.local_files.
+  # ticket.search` because the registry preserves the op suffix on
+  # lookup.  Pin both the namespace and the args so we assert the
+  # right op fired.
+  - intent: { name: go_ticket_search, slots: {} }
+    expect_state: ticket_search
+    expect_host_calls:
+      - handler: host.local_files.ticket.search
+        args: { query: "", limit: 25 }
+        times: 1
+
+  - intent: { name: pick_ticket, slots: { id: "B-2026-05-18-list-broken", type: "bug" } }
+    expect_state: ticket_search
+    expect_world:
+      ticket_id:   "B-2026-05-18-list-broken"
+      ticket_type: "bug"
+
+  # Re-entering main. Per commit 5758202 (main's declutter pass)
+  # the main room no longer calls iface.ticket.list_mine on entry —
+  # the tickets sub-room is the authoritative ticket-list surface
+  # now. No host-call assertion on this transition.
+  - intent: { name: go_main, slots: {} }
+    expect_state: main
+
+  - intent: { name: drive, slots: {} }
+    expect_state: bf.idle
+    expect_world:
+      bf__ticket_id: "B-2026-05-18-list-broken"
+
+expect_no_errors: true
+# Cypilot's artifact provider must never be touched on the bug arm.
+expect_no_host_calls:
+  - host.cypilot_artifacts
+
+---
+
+# ── feature → impl ──────────────────────────────────────────────────
+test_kind: flow
+app: ../app.yaml
+initial_state: main
+initial_world:
+  ticket_id: ""
+  judge_mode: "human"
+
+host_handlers:
+  host.local_files.ticket:
+    data: { tickets: [] }
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-0" }
+  host.inbox.add:
+    data: { ok: true, id: "ib-0" }
+
+turns:
+  - intent: { name: go_ticket_search, slots: {} }
+    expect_state: ticket_search
+
+  - intent: { name: pick_ticket, slots: { id: "F-2026-05-18-export-csv", type: "feature" } }
+    expect_state: ticket_search
+    expect_world:
+      ticket_type: "feature"
+
+  - intent: { name: go_main, slots: {} }
+    expect_state: main
+
+  - intent: { name: drive, slots: {} }
+    expect_state: impl.idle
+    expect_world:
+      impl__ticket_id: "F-2026-05-18-export-csv"
+
+expect_no_errors: true
+expect_no_host_calls:
+  - host.cypilot_artifacts
+
+---
+
+# ── epic → cyp ──────────────────────────────────────────────────────
+test_kind: flow
+app: ../app.yaml
+initial_state: main
+initial_world:
+  ticket_id: ""
+  judge_mode: "human"
+
+host_handlers:
+  host.local_files.ticket:
+    data: { tickets: [] }
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-0" }
+  host.inbox.add:
+    data: { ok: true, id: "ib-0" }
+
+turns:
+  - intent: { name: go_ticket_search, slots: {} }
+    expect_state: ticket_search
+
+  - intent: { name: pick_ticket, slots: { id: "E-2026-05-18-notes-platform", type: "epic" } }
+    expect_state: ticket_search
+    expect_world:
+      ticket_type: "epic"
+
+  - intent: { name: go_main, slots: {} }
+    expect_state: main
+
+  - intent: { name: drive, slots: {} }
+    expect_state: cyp.idle
+    expect_world:
+      cyp__ticket_id: "E-2026-05-18-notes-platform"
+
+expect_no_errors: true

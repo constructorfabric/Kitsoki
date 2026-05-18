@@ -67,6 +67,20 @@ type FlowFixture struct {
 	// entry implicitly opts the fixture into the orchestrator-backed runner.
 	HostHandlers map[string]HostStub `yaml:"host_handlers,omitempty"`
 
+	// HostBindings rebinds named ifaces to alternative handlers for
+	// this fixture only. Mirrors the production `imports.<alias>.
+	// host_bindings:` block but applies at flow-test scope so a fixture
+	// can swap a transport / vcs / ci provider without forking the
+	// production app.yaml. Keys are top-level iface names declared on
+	// the app (e.g. "transport"); values are the concrete host handler
+	// to bind in place of the iface's declared default.
+	//
+	// When this field is set, the testrunner reloads the app via
+	// app.LoadWithOverrides for this fixture only — so each fixture in
+	// a multi-doc file can declare its own bindings without affecting
+	// peers.
+	HostBindings map[string]string `yaml:"host_bindings,omitempty"`
+
 	// UseOrchestrator opts into the orchestrator-backed runner instead of the
 	// legacy machine-only path. Defaults to false for backwards compatibility;
 	// flows that declare host_handlers: or any advance_clock:/expect_inbox: turn
@@ -79,6 +93,38 @@ type FlowFixture struct {
 	ExpectEventsCountAtMost  *int           `yaml:"expect_events_count_atmost,omitempty"`
 	ExpectNoErrors           *bool          `yaml:"expect_no_errors,omitempty"`
 	ExpectWorldFinal         map[string]any `yaml:"expect_world_final,omitempty"`
+
+	// ExpectFiles asserts that, after the flow completes, named files
+	// exist (or don't) and their contents match a regex. The path itself
+	// is a literal path (relative paths are resolved against the fixture
+	// file's directory); the content_matches field is a Go regex. Use
+	// expect_files for transport-stub variants like host.artifacts_dir
+	// that land artefacts on disk — the fixture asserts the side effect
+	// without inspecting transport-internal state.
+	ExpectFiles []ExpectFile `yaml:"expect_files,omitempty"`
+
+	// ExpectNoHostCalls fails the fixture if any of the named host
+	// handlers fire across the whole run. Mirrors the per-turn variant
+	// on FlowTurn but applied to every collected event. Useful for
+	// asserting that a fixture's walk never touched a transport / VCS
+	// op that belongs to a different pipeline.
+	ExpectNoHostCalls []string `yaml:"expect_no_host_calls,omitempty"`
+}
+
+// ExpectFile is one entry in a fixture-level expect_files assertion.
+// All three fields are optional but at least Path must be set; an
+// entry with no content_matches and no MustNotExist simply asserts
+// the file's existence.
+type ExpectFile struct {
+	// Path is the literal filesystem path to check. Relative paths are
+	// resolved against the fixture file's directory at assertion time.
+	Path string `yaml:"path"`
+	// ContentMatches, when non-empty, is a Go regex run against the
+	// file contents. The assertion fails if the regex does not match.
+	ContentMatches string `yaml:"content_matches,omitempty"`
+	// MustNotExist inverts the assertion — the file must NOT exist on
+	// disk. Useful for asserting that a code-path was never reached.
+	MustNotExist *bool `yaml:"must_not_exist,omitempty"`
 }
 
 // HostStub declares the canned response for a stub host handler used in a flow
@@ -105,6 +151,25 @@ type HostStub struct {
 	// stub returns Data (or Error/InfraError) as normal.
 	// Requires background: true on the invoking effect.
 	RequestClarification string `yaml:"request_clarification,omitempty"`
+	// ByOp lets one stub serve multiple ops under a prefix-fallback handler
+	// (host.local_files.ticket, host.git, host.cypilot_artifacts, etc.) with
+	// distinct envelopes per op. Keys are the `op:` arg value the stub
+	// receives; values are the per-op envelope (Data + Error + InfraError).
+	// When ByOp matches, the top-level Data/Error/InfraError fields are
+	// ignored — the per-op envelope wins. When no key matches, the stub
+	// falls through to the top-level envelope. Delay and RequestClarification
+	// stay at the top level.
+	ByOp map[string]HostStubEnvelope `yaml:"by_op,omitempty"`
+}
+
+// HostStubEnvelope is one per-op canned response under HostStub.ByOp.
+// Mirrors the data/error/infra_error subset of HostStub; delay and
+// clarification stay on the parent so a single stub can declare both
+// once and dispatch only the result shape per op.
+type HostStubEnvelope struct {
+	Data       map[string]any `yaml:"data,omitempty"`
+	Error      string         `yaml:"error,omitempty"`
+	InfraError string         `yaml:"infra_error,omitempty"`
 }
 
 // FlowTurn is one turn in the fixture.
@@ -159,6 +224,36 @@ type FlowTurn struct {
 	ExpectError          *FlowError     `yaml:"expect_error,omitempty"`
 	ExpectViewMatches    string         `yaml:"expect_view_matches,omitempty"`
 	ExpectNoView         *bool          `yaml:"expect_no_view,omitempty"`
+
+	// ExpectHostCalls is a turn-level shorthand for asserting that one
+	// or more host handlers fired during the turn. Each entry expands
+	// into one HostDispatched event match (subsequence semantics — extra
+	// events between are tolerated). Args are matched as a partial map
+	// against the dispatched effect's args payload.
+	ExpectHostCalls []ExpectHostCall `yaml:"expect_host_calls,omitempty"`
+
+	// ExpectNoHostCalls lists handler names that must NOT fire during
+	// this turn. Any HostDispatched event whose effect.handler matches
+	// fails the assertion.
+	ExpectNoHostCalls []string `yaml:"expect_no_host_calls,omitempty"`
+}
+
+// ExpectHostCall is one entry in a per-turn expect_host_calls block —
+// shorthand for an `expect_events: [{kind: HostDispatched, effect: {…}}]`
+// match. The runner expands each entry into a FlowEvent before running
+// the standard subsequence check.
+type ExpectHostCall struct {
+	// Handler is the dispatched handler name (e.g. "iface.vcs.branch"
+	// or "host.oracle.ask_with_mcp"). Required.
+	Handler string `yaml:"handler"`
+	// Args is an optional partial-match against the dispatched effect's
+	// args payload. Missing keys are tolerated; mismatched keys fail.
+	Args map[string]any `yaml:"args,omitempty"`
+	// Times pins the exact number of matching HostDispatched events
+	// emitted during this turn. When zero (default) the runner does a
+	// subsequence-style "at least one match" check (matching the
+	// existing expect_events: semantics).
+	Times *int `yaml:"times,omitempty"`
 }
 
 // FlowInboxExpectation asserts notification counts after a turn. All fields
@@ -307,20 +402,40 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 	// Scheduler backed by the fake clock so Delay stubs block on fake time.
 	sched := jobs.NewScheduler(js, jobs.WithClock(clk))
 
-	// Build host registry from stubs.
+	// Build host registry. host_bindings: fixtures want at least some
+	// production handlers live (the whole point is to swap a binding
+	// and exercise the REAL handler under it). For backwards compat
+	// with the larger pool of stub-only fixtures, builtins are
+	// pre-registered ONLY when host_bindings: is set; the rest of the
+	// suite keeps its "only what you stub is registered" behaviour so
+	// an unstubbed host.run / host.git can't accidentally shell out.
+	//
+	// Stubs declared in host_handlers: are registered below and take
+	// precedence over any built-in with the same name (host.Register
+	// overwrites).
 	reg := host.NewRegistry()
-	// Pre-register built-in service handlers that fixtures rely on but typically
-	// do not stub (because they are infrastructure, not application logic).
-	// host.jobs.answer_clarification must be registered so that the
-	// answer_clarification intent can store the user's answer in the DB and let
-	// a waiting background job resume.  Stubs declared in host_handlers: are
-	// registered below and take precedence over any built-in with the same name.
-	if _, ok := fixture.HostHandlers["host.jobs.answer_clarification"]; !ok {
-		reg.Register("host.jobs.answer_clarification", host.AnswerClarificationHandler)
+	if len(fixture.HostBindings) > 0 {
+		// RegisterBuiltins covers host.jobs.answer_clarification too,
+		// so the bare-registration branch below is skipped.
+		host.RegisterBuiltins(reg)
+	} else {
+		// host.jobs.answer_clarification must be registered so that
+		// the answer_clarification intent can store the user's answer
+		// in the DB and let a waiting background job resume. Only the
+		// non-host_bindings branch needs the explicit registration —
+		// the builtin pre-register above covers it otherwise.
+		if _, ok := fixture.HostHandlers["host.jobs.answer_clarification"]; !ok {
+			reg.Register("host.jobs.answer_clarification", host.AnswerClarificationHandler)
+		}
 	}
 	for name, stub := range fixture.HostHandlers {
 		stub := stub // capture for closure
-		reg.Register(name, func(hctx context.Context, args map[string]any) (host.Result, error) {
+		// Replace (not Register) so a stub overwrites any builtin
+		// previously registered. With host_bindings: this is the
+		// expected path — pre-registered builtins + a few stubs on
+		// top. Without host_bindings: there are no builtins so
+		// Replace behaves identically to Register.
+		reg.Replace(name, func(hctx context.Context, args map[string]any) (host.Result, error) {
 			// 1. Simulated delay using the fake clock injected by the scheduler.
 			if stub.Delay != "" {
 				d, parseErr := app.ParseDuration(stub.Delay)
@@ -341,11 +456,23 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 					return host.Result{Error: cErr.Error()}, nil
 				}
 			}
-			// 3. Infrastructure error (indistinguishable from a real failure).
+			// 3. Per-op envelope (HostStub.ByOp) — when set, the stub
+			// dispatches on args["op"] and returns the matching envelope.
+			// Falls through to the top-level Data/Error when no key matches.
+			if len(stub.ByOp) > 0 {
+				op, _ := args["op"].(string)
+				if env, ok := stub.ByOp[op]; ok {
+					if env.InfraError != "" {
+						return host.Result{}, errors.New(env.InfraError)
+					}
+					return host.Result{Data: env.Data, Error: env.Error}, nil
+				}
+			}
+			// 4. Infrastructure error (indistinguishable from a real failure).
 			if stub.InfraError != "" {
 				return host.Result{}, errors.New(stub.InfraError)
 			}
-			// 4. Domain-level error or success.
+			// 5. Domain-level error or success.
 			return host.Result{Data: stub.Data, Error: stub.Error}, nil
 		})
 	}
@@ -442,7 +569,7 @@ func RunFlows(ctx context.Context, appPath, glob string, opts FlowOptions) (*Flo
 
 	report := &FlowReport{}
 	for _, f := range files {
-		results, err := runFlowFile(ctx, def, m, f, opts)
+		results, err := runFlowFile(ctx, def, m, appPath, f, opts)
 		if err != nil {
 			return nil, fmt.Errorf("run flow %q: %w", f, err)
 		}
@@ -473,8 +600,10 @@ func RunFlows(ctx context.Context, appPath, glob string, opts FlowOptions) (*Flo
 }
 
 // runFlowFile parses and runs one flow fixture file (which may contain multiple
-// YAML documents separated by ---).
-func runFlowFile(ctx context.Context, def *app.AppDef, m machine.Machine, filePath string, opts FlowOptions) ([]FlowResult, error) {
+// YAML documents separated by ---). `appPath` is the root manifest's path —
+// threaded so a fixture with host_bindings: can reload the app with overrides
+// for that one flow run only.
+func runFlowFile(ctx context.Context, def *app.AppDef, m machine.Machine, appPath, filePath string, opts FlowOptions) ([]FlowResult, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("read %q: %w", filePath, err)
@@ -497,7 +626,26 @@ func runFlowFile(ctx context.Context, def *app.AppDef, m machine.Machine, filePa
 			continue // skip non-flow docs
 		}
 
-		result, err := runOneFlow(ctx, def, m, filePath, &fixture, opts)
+		// Per-fixture host_bindings: rebuild def + machine for this
+		// fixture only. The outer def/m stay untouched so peer fixtures
+		// in the same file see the original bindings. The cost is one
+		// extra app.Load per fixture that declares bindings — cheap
+		// (single-digit ms in the kitsoki suite) and only paid by the
+		// fixtures that opt in.
+		fixDef, fixM := def, m
+		if len(fixture.HostBindings) > 0 {
+			overriddenDef, lerr := app.LoadWithOverrides(appPath, fixture.HostBindings)
+			if lerr != nil {
+				return nil, fmt.Errorf("fixture in %q: load with host_bindings: %w", filePath, lerr)
+			}
+			overriddenM, mErr := machine.New(overriddenDef)
+			if mErr != nil {
+				return nil, fmt.Errorf("fixture in %q: build machine with host_bindings: %w", filePath, mErr)
+			}
+			fixDef, fixM = overriddenDef, overriddenM
+		}
+
+		result, err := runOneFlow(ctx, fixDef, fixM, filePath, &fixture, opts)
 		if err != nil {
 			return nil, err
 		}
@@ -747,6 +895,18 @@ func runOneFlowLegacy(ctx context.Context, def *app.AppDef, m machine.Machine, f
 			}
 		}
 
+		// expect_host_calls / expect_no_host_calls.
+		if len(turn.ExpectHostCalls) > 0 {
+			if errs := assertHostCalls(tr.Events, turn.ExpectHostCalls); len(errs) > 0 {
+				tr.Failures = append(tr.Failures, errs...)
+			}
+		}
+		if len(turn.ExpectNoHostCalls) > 0 {
+			if errs := assertNoHostCalls(tr.Events, turn.ExpectNoHostCalls); len(errs) > 0 {
+				tr.Failures = append(tr.Failures, errs...)
+			}
+		}
+
 		// expect_view_matches.
 		if turn.ExpectViewMatches != "" {
 			re, reErr := regexp.Compile(turn.ExpectViewMatches)
@@ -818,6 +978,15 @@ func runOneFlowLegacy(ctx context.Context, def *app.AppDef, m machine.Machine, f
 				sessionFailures = append(sessionFailures, fmt.Sprintf("expect_world_final[%q]: got %v, want %v", k, got, expected))
 			}
 		}
+	}
+	// Fixture-level expect_no_host_calls + expect_files. Same shape as
+	// the orchestrator path above; lives here so legacy-path fixtures
+	// can also assert filesystem side effects and no-spurious-call guards.
+	if len(fixture.ExpectNoHostCalls) > 0 {
+		sessionFailures = append(sessionFailures, assertNoHostCalls(allEvents, fixture.ExpectNoHostCalls)...)
+	}
+	if len(fixture.ExpectFiles) > 0 {
+		sessionFailures = append(sessionFailures, assertExpectFiles(filepath.Dir(filePath), fixture.ExpectFiles)...)
 	}
 
 	// Compute overall pass.
@@ -1094,6 +1263,18 @@ func runOneFlowOrchestrator(ctx context.Context, def *app.AppDef, m machine.Mach
 				tr.Failures = append(tr.Failures, errs...)
 			}
 		}
+		// expect_host_calls / expect_no_host_calls — sugar over
+		// HostDispatched event matching.
+		if len(turn.ExpectHostCalls) > 0 {
+			if errs := assertHostCalls(tr.Events, turn.ExpectHostCalls); len(errs) > 0 {
+				tr.Failures = append(tr.Failures, errs...)
+			}
+		}
+		if len(turn.ExpectNoHostCalls) > 0 {
+			if errs := assertNoHostCalls(tr.Events, turn.ExpectNoHostCalls); len(errs) > 0 {
+				tr.Failures = append(tr.Failures, errs...)
+			}
+		}
 		// expect_view_matches.
 		if turn.ExpectViewMatches != "" {
 			re, reErr := regexp.Compile(turn.ExpectViewMatches)
@@ -1172,6 +1353,18 @@ func runOneFlowOrchestrator(ctx context.Context, def *app.AppDef, m machine.Mach
 				sessionFailures = append(sessionFailures, fmt.Sprintf("expect_world_final[%q]: got %v, want %v", k, got, expected))
 			}
 		}
+	}
+	// Fixture-level expect_no_host_calls: scan every event collected
+	// across the run, not just the final turn's slice. This catches a
+	// spurious call that fires anywhere in the flow.
+	if len(fixture.ExpectNoHostCalls) > 0 {
+		sessionFailures = append(sessionFailures, assertNoHostCalls(allEvents, fixture.ExpectNoHostCalls)...)
+	}
+	// Fixture-level expect_files: filesystem assertions resolved against
+	// the fixture's own directory so authors write paths relative to
+	// where the fixture lives.
+	if len(fixture.ExpectFiles) > 0 {
+		sessionFailures = append(sessionFailures, assertExpectFiles(filepath.Dir(filePath), fixture.ExpectFiles)...)
 	}
 
 	allTurnsPassed := true
@@ -1669,6 +1862,139 @@ func (h *noopHarness) Close() error { return nil }
 var _ harness.Harness = (*noopHarness)(nil)
 
 // ─── Assertion helpers ────────────────────────────────────────────────────────
+
+// countHostDispatchedMatching returns the number of HostDispatched
+// events whose namespace equals handler AND whose args partially-match
+// the args map (missing keys tolerated, set keys must equal). The
+// HostDispatched event payload uses `namespace:` for the handler name
+// (matching the store schema in internal/store/events.go); the testrunner
+// surface stays in author-friendly "handler" terms.
+func countHostDispatchedMatching(actual []store.Event, handler string, args map[string]any) int {
+	count := 0
+	for _, ev := range actual {
+		if string(ev.Kind) != "HostDispatched" || ev.Payload == nil {
+			continue
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(ev.Payload, &payload); err != nil {
+			continue
+		}
+		gotHandler, _ := payload["namespace"].(string)
+		if gotHandler != handler {
+			continue
+		}
+		if len(args) > 0 {
+			gotArgs, _ := payload["args"].(map[string]any)
+			match := true
+			for k, want := range args {
+				if !deepEqualValues(gotArgs[k], want) {
+					match = false
+					break
+				}
+			}
+			if !match {
+				continue
+			}
+		}
+		count++
+	}
+	return count
+}
+
+// assertHostCalls runs expect_host_calls against the turn's events. An
+// entry with Times pins the exact count; an entry without Times runs as
+// "at least one match". Both shapes expand from the same data type so
+// authors flip between modes by adding/removing the field.
+func assertHostCalls(actual []store.Event, calls []ExpectHostCall) []string {
+	var failures []string
+	for _, c := range calls {
+		got := countHostDispatchedMatching(actual, c.Handler, c.Args)
+		switch {
+		case c.Times != nil:
+			if got != *c.Times {
+				failures = append(failures, fmt.Sprintf("expect_host_calls: %s expected %d invocations, got %d", c.Handler, *c.Times, got))
+			}
+		default:
+			if got == 0 {
+				failures = append(failures, fmt.Sprintf("expect_host_calls: %s never invoked (args=%v)", c.Handler, c.Args))
+			}
+		}
+	}
+	return failures
+}
+
+// assertNoHostCalls fails when any of the named handlers fired during
+// the turn (or, when called fixture-scope, across the full run). The
+// dispatched-event scan ignores args — listing a handler in
+// expect_no_host_calls is an absolute "must not fire" guard. The
+// namespace field on the HostDispatched payload carries the handler
+// name (see countHostDispatchedMatching for the same convention).
+func assertNoHostCalls(actual []store.Event, handlers []string) []string {
+	if len(handlers) == 0 {
+		return nil
+	}
+	banned := make(map[string]struct{}, len(handlers))
+	for _, h := range handlers {
+		banned[h] = struct{}{}
+	}
+	var failures []string
+	for _, ev := range actual {
+		if string(ev.Kind) != "HostDispatched" || ev.Payload == nil {
+			continue
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(ev.Payload, &payload); err != nil {
+			continue
+		}
+		got, _ := payload["namespace"].(string)
+		if _, ok := banned[got]; ok {
+			failures = append(failures, fmt.Sprintf("expect_no_host_calls: %s was invoked but listed as forbidden", got))
+		}
+	}
+	return failures
+}
+
+// assertExpectFiles checks every ExpectFile against the filesystem.
+// Paths are resolved against fixtureDir when relative. content_matches
+// uses Go regexp; must_not_exist inverts the assertion. A failure is
+// returned per offending entry so the report shows all mismatches.
+func assertExpectFiles(fixtureDir string, files []ExpectFile) []string {
+	var failures []string
+	for _, ef := range files {
+		path := ef.Path
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(fixtureDir, path)
+		}
+		info, statErr := os.Stat(path)
+		exists := statErr == nil && !info.IsDir()
+		if ef.MustNotExist != nil && *ef.MustNotExist {
+			if exists {
+				failures = append(failures, fmt.Sprintf("expect_files[%s]: must_not_exist but file is present", ef.Path))
+			}
+			continue
+		}
+		if !exists {
+			failures = append(failures, fmt.Sprintf("expect_files[%s]: file does not exist (resolved: %s)", ef.Path, path))
+			continue
+		}
+		if ef.ContentMatches != "" {
+			re, reErr := regexp.Compile(ef.ContentMatches)
+			if reErr != nil {
+				failures = append(failures, fmt.Sprintf("expect_files[%s]: invalid regex %q: %v", ef.Path, ef.ContentMatches, reErr))
+				continue
+			}
+			data, readErr := os.ReadFile(path)
+			if readErr != nil {
+				failures = append(failures, fmt.Sprintf("expect_files[%s]: read failed: %v", ef.Path, readErr))
+				continue
+			}
+			if !re.Match(data) {
+				failures = append(failures, fmt.Sprintf("expect_files[%s]: content does not match %q", ef.Path, ef.ContentMatches))
+			}
+		}
+	}
+	return failures
+}
 
 // assertEventsSubsequence checks that each expected event appears in order
 // in the actual events list (extra events between them are allowed).

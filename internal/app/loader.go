@@ -75,6 +75,23 @@ func (v *ValidationError) Error() string {
 // finds errors short-circuits the rest and returns them via
 // errors.Join.
 func Load(path string) (*AppDef, error) {
+	return LoadWithOverrides(path, nil)
+}
+
+// LoadWithOverrides is Load with a per-iface binding-override map
+// applied between the import-fold pass and resolveAllInterfaces. Keys
+// are top-level host_interface names (e.g. "transport"); values are
+// the concrete host handler to bind in place of the iface's declared
+// `default:`. Unknown iface names are silently ignored — a caller that
+// over-specifies (e.g. covers every story they might run) doesn't have
+// to know which ifaces a given app exposes.
+//
+// Intended caller: testrunner fixtures that need to rebind an iface
+// for one flow run without forking the production app.yaml. Production
+// code should use `imports.<alias>.host_bindings:` at the parent app
+// level — that's the proposal-§11.2 multi-layer compose path. This
+// entrypoint is the test seam below it.
+func LoadWithOverrides(path string, ifaceOverrides map[string]string) (*AppDef, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("load %s: %w", path, err)
@@ -117,6 +134,20 @@ func Load(path string) (*AppDef, error) {
 	// missing-env-var diagnostics fire the same way as for app-declared
 	// modes.
 	injectBuiltinMetaModes(merged)
+
+	// Apply per-iface binding overrides (testrunner seam). Runs AFTER
+	// import-fold so every iface declared by a child has been lifted
+	// into merged.HostInterfaces under its post-fold key — the caller
+	// can override either the top-level name ("transport") or a
+	// prefixed import name ("bf__transport") at the same depth a
+	// production parent's host_bindings: block would. Runs BEFORE
+	// resolveAllInterfaces so the new binding propagates the same way
+	// as the original `default:`.
+	for name, binding := range ifaceOverrides {
+		if iface, ok := merged.HostInterfaces[name]; ok && iface != nil {
+			iface.Default = binding
+		}
+	}
 
 	// Final host_interface resolution: rewrites every remaining
 	// iface.<name>.<op> reference to a concrete <binding>.<op> host

@@ -24,6 +24,17 @@
         },
         "additionalProperties": true
       }
+    },
+    "environment_check": {
+      "type": "object",
+      "description": "Optional environment-readiness snapshot the room may capture before declaring the bug reproducible. All booleans default to absent (unknown) — the artifact remains valid without this block.",
+      "properties": {
+        "frontend_running":  { "type": "boolean", "description": "Frontend dev server reachable." },
+        "backend_running":   { "type": "boolean", "description": "Backend service reachable." },
+        "dataset_ready":     { "type": "boolean", "description": "Test dataset / fixtures present." },
+        "notes":             { "type": "string",  "description": "Free-text note explaining anything not covered by the boolean fields." }
+      },
+      "additionalProperties": true
     }
   },
   "additionalProperties": true

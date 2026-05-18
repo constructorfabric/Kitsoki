@@ -94,9 +94,9 @@ states:
             - set: { prev_state: "main" }
 
       # Auto-routing one-shot: ticket_type chooses the pipeline. The
-      # local-files provider only sees issues/bugs/ today, so picks
-      # land as ticket_type="bug" and route into bf. The `feature`
-      # arm here is ready for the day a feature source comes online.
+      # local-files provider scans issues/{bugs,features,epics}/ and
+      # tags every row with its source kind, so picks land with
+      # ticket_type set and the drive arc routes deterministically.
       # bf.idle's on_enter auto-emits `start` when a ticket is loaded
       # and no reproduction artifact exists yet (see
       # stories/bugfix/rooms/idle.yaml), so the operator types `drive`
@@ -106,6 +106,8 @@ states:
           target: bf
         - when: "world.ticket_id != '' && world.ticket_type == 'feature'"
           target: impl
+        - when: "world.ticket_id != '' && world.ticket_type == 'epic'"
+          target: cyp
         - when: "world.ticket_id == ''"
           target: main
           guard_hint: "Pick a ticket first — type `tickets`."
@@ -114,8 +116,8 @@ states:
           guard_hint: "Ticket has no type set — re-pick from `tickets` so its type is recorded."
 
       # Escape hatches — same destinations as drive, but with
-      # explicit names some flows / scenarios reference. Both now
-      # require a picked ticket.
+      # explicit names some flows / scenarios reference. All three
+      # pipeline hatches require a picked ticket.
       go_bugfix:
         - when: "world.ticket_id != ''"
           target: bf
@@ -125,6 +127,12 @@ states:
       go_implementation:
         - when: "world.ticket_id != ''"
           target: impl
+        - default: true
+          target: main
+          guard_hint: "Pick a ticket first — type `tickets`."
+      go_cypilot:
+        - when: "world.ticket_id != ''"
+          target: cyp
         - default: true
           target: main
           guard_hint: "Pick a ticket first — type `tickets`."

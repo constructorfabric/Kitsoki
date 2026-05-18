@@ -1,0 +1,13 @@
+; Submodule placeholders for the cake demo. The real submodule
+; resolution (host.git submodule_update + git on PATH) is deferred —
+; today the fixtures stub iface.git_worktree / iface.vcs and never
+; recurse into these paths. The directories exist so authors can wire
+; a real demo stack later without changing the fixtures' workdir.
+
+[submodule "frontend"]
+	path = frontend
+	url = ../frontend-placeholder.git
+
+[submodule "backend"]
+	path = backend
+	url = ../backend-placeholder.git

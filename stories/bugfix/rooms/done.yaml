@@ -60,6 +60,11 @@ states:
       # re-pin done_artifact (it was bound on_enter) so the requires
       # gate sees an explicit set.
       accept:
+        # Close out: post the artifact to the transport, transition the
+        # upstream ticket to resolved, then fire @exit:done.
+        # @exit:done.requires: [done_artifact] is checked statically
+        # against the effects on this arc — done_artifact is re-pinned
+        # below so the requires gate sees an explicit set.
         - target: "@exit:done"
           effects:
             - invoke: iface.transport.post
@@ -68,6 +73,10 @@ states:
                 title:    "Bug-fix done: {{ world.ticket_id }}"
                 body:     "{{ world.done_artifact.summary_markdown }}"
                 phase_id: "done_{{ world.ticket_id }}"
+            - invoke: iface.ticket.transition
+              with:
+                id: "{{ world.ticket_id }}"
+                to: "resolved"
             - set:
                 status:        "fixed"
                 done_artifact: "{{ world.done_artifact }}"

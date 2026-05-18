@@ -58,6 +58,28 @@ func seedTicketsRoot(t *testing.T, files map[string]string) string {
 	return root
 }
 
+// seedMultiKindRoot creates a root with one ticket each under
+// issues/{bugs,features,epics}/.
+func seedMultiKindRoot(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	for _, kd := range []struct{ dir, name string }{
+		{"bugs", "B-001.md"},
+		{"features", "F-001.md"},
+		{"epics", "E-001.md"},
+	} {
+		d := filepath.Join(root, "issues", kd.dir)
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", d, err)
+		}
+		body := strings.Replace(sampleBug, "Esc in foyer hangs the TUI", strings.TrimSuffix(kd.name, ".md"), -1)
+		if err := os.WriteFile(filepath.Join(d, kd.name), []byte(body), 0o644); err != nil {
+			t.Fatalf("write %s: %v", kd.name, err)
+		}
+	}
+	return root
+}
+
 func TestLocalFilesTicket_RegisteredAsBuiltin(t *testing.T) {
 	r := host.NewRegistry()
 	host.RegisterBuiltins(r)
@@ -327,6 +349,63 @@ func TestLocalFilesTicket_MissingOp(t *testing.T) {
 	}
 	if res.Error == "" {
 		t.Fatal("expected domain error when op absent")
+	}
+}
+
+func TestLocalFilesTicket_Search_TagsByKind(t *testing.T) {
+	root := seedMultiKindRoot(t)
+	res, err := host.LocalFilesTicketHandler(context.Background(), map[string]any{
+		"op":   "search",
+		"root": root,
+	})
+	if err != nil || res.Error != "" {
+		t.Fatalf("search: %v / %s", err, res.Error)
+	}
+	tickets, _ := res.Data["tickets"].([]map[string]any)
+	if len(tickets) != 3 {
+		t.Fatalf("expected 3 (one per kind), got %d", len(tickets))
+	}
+	want := map[string]string{"B-001": "bug", "F-001": "feature", "E-001": "epic"}
+	for _, row := range tickets {
+		id, _ := row["id"].(string)
+		typ, _ := row["type"].(string)
+		if want[id] != typ {
+			t.Fatalf("row %s: want type=%q got %q", id, want[id], typ)
+		}
+	}
+}
+
+func TestLocalFilesTicket_Get_LocatesAcrossKinds(t *testing.T) {
+	root := seedMultiKindRoot(t)
+	for id, wantKind := range map[string]string{"B-001": "bug", "F-001": "feature", "E-001": "epic"} {
+		res, err := host.LocalFilesTicketHandler(context.Background(), map[string]any{
+			"op":   "get",
+			"root": root,
+			"id":   id,
+		})
+		if err != nil || res.Error != "" {
+			t.Fatalf("get %s: %v / %s", id, err, res.Error)
+		}
+		if got, _ := res.Data["type"].(string); got != wantKind {
+			t.Fatalf("get %s: type=%q want %q", id, got, wantKind)
+		}
+	}
+}
+
+func TestLocalFilesTicket_Transition_LocatesAcrossKinds(t *testing.T) {
+	root := seedMultiKindRoot(t)
+	res, err := host.LocalFilesTicketHandler(context.Background(), map[string]any{
+		"op":   "transition",
+		"root": root,
+		"id":   "F-001",
+		"to":   "resolved",
+	})
+	if err != nil || res.Error != "" {
+		t.Fatalf("transition F-001: %v / %s", err, res.Error)
+	}
+	data, _ := os.ReadFile(filepath.Join(root, "issues", "features", "F-001.md"))
+	if !strings.Contains(string(data), "status: resolved") {
+		t.Fatalf("status not rewritten: %s", data)
 	}
 }
 
