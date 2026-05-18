@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/muesli/termenv"
 
 	"kitsoki/internal/app"
@@ -149,11 +150,39 @@ func newTranscriptModel(width, height int) transcriptModel {
 // queue marks rendered content for emission to scrollback on the next
 // FlushPending. Always called alongside an entries append so AllContent
 // (journal reconstruction, test inspection) stays consistent.
+//
+// Hard-wraps each line of body to the transcript's current viewport
+// width using ansi.Hardwrap — Glamour respects word boundaries when
+// wrapping markdown, but long unbroken tokens (ticket IDs, URLs)
+// produce lines wider than the terminal. Those overflow lines cause
+// the terminal to auto-wrap, which makes Bubble Tea's live-region row
+// accounting drift; the visible symptom is the coloured status row
+// overwriting the wrapped scrollback content. Hardwrap breaks
+// anywhere — including mid-token — so every line is bounded by the
+// terminal width and Bubble Tea's row count matches what's rendered.
 func (m *transcriptModel) queue(body string) {
 	if body == "" {
 		return
 	}
+	if w := m.queueWrapWidth(); w > 0 {
+		body = ansi.Hardwrap(body, w, true)
+	}
 	m.pending = append(m.pending, body)
+}
+
+// queueWrapWidth returns the column count to hard-wrap scrollback
+// content to. Matches the viewport width when set, otherwise uses
+// the model's overall width, with a 40-column floor so very narrow
+// terminals still get readable output.
+func (m *transcriptModel) queueWrapWidth() int {
+	w := m.vp.Width
+	if w <= 0 {
+		w = m.width
+	}
+	if w < 40 {
+		w = 40
+	}
+	return w
 }
 
 // FlushPending returns a tea.Cmd that emits every queued entry via
@@ -542,9 +571,20 @@ func (m *transcriptModel) renderViewSource(text string) string {
 // renderGlamour is the post-Pongo Glamour step for the `template`
 // element kind. Lifted out of the old renderMarkdown so the elements
 // dispatcher can call it without importing glamour itself.
+//
+// Strips ANSI escape sequences from the input before rendering: when
+// Glamour-styled content gets fed back through Glamour (the
+// replayMetaTranscript path — assistant messages stored after a
+// prior render), Glamour drops the leading 0x1b byte but leaves the
+// bracket-code as literal text, producing output like
+// `[1;38;2;16;185;129mStatus[0m`. Stripping ANSI on input ensures
+// Glamour always sees clean markdown.
 func (m *transcriptModel) renderGlamour(text string) string {
 	if text == "" {
 		return ""
+	}
+	if strings.ContainsRune(text, '\x1b') {
+		text = ansi.Strip(text)
 	}
 	text = preserveLeadingIndent(text)
 	if m.renderer == nil {

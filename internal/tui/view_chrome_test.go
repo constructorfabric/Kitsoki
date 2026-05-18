@@ -44,10 +44,25 @@ import (
 // width-bleed bug is invisible — which is how it slipped through
 // before).
 
-func init() {
-	// Match the production behaviour: kitsoki run forces TrueColor
-	// up front so the renderer paths exercised here see ANSI codes.
+// forceTrueColor makes lipgloss + termenv emit ANSI codes for the
+// duration of one test. Production runs lipgloss.SetColorProfile(
+// TrueColor) up front in cmd/kitsoki/main.go; without it, lipgloss
+// strips colours when stdout looks non-TTY (as under `go test`), and
+// the bleed/strip bug classes this file tests for become invisible.
+//
+// Scoped per-test (instead of via init()) so it doesn't break legacy
+// tests that do naive `strings.Contains(rendered, "plain text")`
+// against ANSI-styled output.
+func forceTrueColor(t *testing.T) {
+	t.Helper()
+	prev := lipgloss.ColorProfile()
+	prevOut := termenv.DefaultOutput()
 	lipgloss.SetColorProfile(termenv.TrueColor)
+	termenv.SetDefaultOutput(termenv.NewOutput(nil, termenv.WithProfile(termenv.TrueColor)))
+	t.Cleanup(func() {
+		lipgloss.SetColorProfile(prev)
+		termenv.SetDefaultOutput(prevOut)
+	})
 }
 
 // resizeForTest puts the model through the real resize() path at a
@@ -76,6 +91,7 @@ func stripStyles(s string) string { return ansiRE.ReplaceAllString(s, "") }
 // number of "\n" + 1 in the joined output.
 func TestViewChrome_NoDoubleNewlinesInLiveRegion(t *testing.T) {
 	t.Parallel()
+	forceTrueColor(t)
 	orch, sid := setupCloak(t)
 	m := buildModel(t, orch, sid)
 	rm, _ := tuipkg.ExtractRootModel(m)
@@ -99,6 +115,7 @@ func TestViewChrome_NoDoubleNewlinesInLiveRegion(t *testing.T) {
 // the terminal, which manifests as visible bleed.
 func TestViewChrome_NoRowExceedsTerminalWidth(t *testing.T) {
 	t.Parallel()
+	forceTrueColor(t)
 	const w = 100
 	orch, sid := setupCloak(t)
 	m := buildModel(t, orch, sid)
@@ -120,6 +137,7 @@ func TestViewChrome_NoRowExceedsTerminalWidth(t *testing.T) {
 // content like "row1\nrow2" inside a single logical row.
 func TestViewChrome_NoEmbeddedNewlinesWithinRows(t *testing.T) {
 	t.Parallel()
+	forceTrueColor(t)
 	orch, sid := setupCloak(t)
 	m := buildModel(t, orch, sid)
 	rm, _ := tuipkg.ExtractRootModel(m)
@@ -140,6 +158,7 @@ func TestViewChrome_NoEmbeddedNewlinesWithinRows(t *testing.T) {
 // require it to be a reset.
 func TestViewChrome_AnsiBalanced(t *testing.T) {
 	t.Parallel()
+	forceTrueColor(t)
 	orch, sid := setupCloak(t)
 	m := buildModel(t, orch, sid)
 	rm, _ := tuipkg.ExtractRootModel(m)
@@ -171,6 +190,7 @@ func TestViewChrome_AnsiBalanced(t *testing.T) {
 // (where the next paint can leak), anything wider wraps and bleeds.
 func TestViewChrome_StatusRowExactlyTerminalWidth(t *testing.T) {
 	t.Parallel()
+	forceTrueColor(t)
 	for _, w := range []int{60, 80, 100, 140} {
 		w := w
 		t.Run("width="+itoaWidth(w), func(t *testing.T) {
@@ -205,6 +225,7 @@ func TestViewChrome_StatusRowExactlyTerminalWidth(t *testing.T) {
 // above it.
 func TestViewChrome_AwaitingLLMShowsTextarea(t *testing.T) {
 	t.Parallel()
+	forceTrueColor(t)
 	orch, sid := setupCloak(t)
 	m := buildModel(t, orch, sid)
 	rm, _ := tuipkg.ExtractRootModel(m)
@@ -221,6 +242,105 @@ func TestViewChrome_AwaitingLLMShowsTextarea(t *testing.T) {
 		"AwaitingLLM should keep the textarea visible with the queue glyph; got:\n%s", plain)
 }
 
+// TestScrollback_NoRowExceedsTerminalWidth catches the bug class
+// where agent-body content sent to scrollback via tea.Println has
+// lines wider than the terminal. The terminal wraps those rows; Bubble
+// Tea doesn't know about the wrap and its live-region row accounting
+// drifts, which manifests as the colored status row overwriting (or
+// appearing on the same visual row as) the wrapped scrollback content.
+//
+// We use the same markdown that the bugfix story sends to the
+// transcript (a multi-line bullet list with long ticket titles) so
+// the test exercises the realistic shape.
+func TestScrollback_NoRowExceedsTerminalWidth(t *testing.T) {
+	t.Parallel()
+	forceTrueColor(t)
+	const w = 100
+	orch, sid := setupCloak(t)
+	m := buildModel(t, orch, sid)
+	rm, _ := tuipkg.ExtractRootModel(m)
+	rm = resizeForTest(rm, w, 24)
+	tuipkg.ClearTranscriptPendingForTest(&rm)
+
+	// Long markdown bullets that would wrap if Glamour's word-wrap
+	// is set to the wrong width. Mirrors the bugfix-story
+	// ticket-search response (which is what triggered the user's
+	// "footer garbled into transcript" report).
+	body := "Tickets\n\n" +
+		"- `2026-05-18T045825Z-metamode-prompt-pongo2-unescaped-template-tags-in-transcript` — " +
+		"metamode: prompt render fails with pongo2 EOF when transcript/view contains '{{' or '{%' " +
+		"(story-author edit turn dies) [open]\n" +
+		"- `2026-05-18T045257Z-localfiles-ticket-rank-by-severity-and-recency` — " +
+		"localfiles_ticket: rank tickets by severity + recency [open]\n" +
+		"- `2026-05-17T111838Z-integration-smoke-bug-picked-up-by-dogfood` — " +
+		"integration smoke — bug picked up by dogfood [open]\n\n" +
+		"Picked: 2026-05-18T045257Z-localfiles-ticket-rank-by-severity-and-recency\n\n" +
+		"Intents: `pick_ticket id=<TKT>`, `search_tickets query=<text>` (narrow), " +
+		"`go_bugfix`, `go_back`, `go_main`.\n\n" +
+		"list is auto-fetched on entry.\n"
+
+	queued := tuipkg.QueueAgentBodyForTest(&rm, body)
+	require.NotEmpty(t, queued, "AppendAgentBody should have queued the rendered body")
+
+	// Each queued item may itself contain multiple lines. Walk each
+	// rendered line and assert visible width ≤ terminal width.
+	for i, item := range queued {
+		for j, line := range strings.Split(item, "\n") {
+			visible := ansi.StringWidth(line)
+			require.LessOrEqualf(t, visible, w,
+				"queued item %d row %d exceeds terminal width %d (visible=%d):\n  raw: %q\n  stripped: %q",
+				i, j, w, visible, line, stripStyles(line))
+		}
+	}
+}
+
+// TestScrollback_AlreadyAnsiContentDoesNotProduceLiteralEscapes
+// regresses the meta-mode bug where assistant messages stored with
+// ANSI styling (from a previous render) get re-rendered through
+// Glamour on replay. Glamour drops the 0x1b byte but leaves the
+// bracket-code as visible text, producing output like
+// `[1;38;2;16;185;129mStatus[0m` mixed into the transcript.
+//
+// The fix strips ANSI from input before Glamour processes it; this
+// test pushes ANSI-bearing content through AppendSystem (the replay
+// site) and asserts the queued scrollback line has NO literal ANSI
+// CSI sequences as text — meaning every `[` followed by digit/`m`
+// is wrapped in a real 0x1b prefix (i.e. it's a real escape, not
+// the stripped-but-visible form).
+func TestScrollback_AlreadyAnsiContentDoesNotProduceLiteralEscapes(t *testing.T) {
+	t.Parallel()
+	forceTrueColor(t)
+	orch, sid := setupCloak(t)
+	m := buildModel(t, orch, sid)
+	rm, _ := tuipkg.ExtractRootModel(m)
+	rm = resizeForTest(rm, 100, 24)
+	tuipkg.ClearTranscriptPendingForTest(&rm)
+
+	// Pre-rendered Glamour-styled content (what an assistant message
+	// in the chat store actually looks like after a prior turn went
+	// through AppendSystem). The leading `\x1b[1;38;...m` is a
+	// real escape; if Glamour strips the 0x1b on re-render, the
+	// `[1;38;...m` portion becomes literal text.
+	preRendered := "\x1b[1;38;2;16;185;129mdev-story — engineer's day\x1b[0m\n" +
+		"\x1b[1;38;2;16;185;129mStatus\x1b[0m — pick a ticket.\n" +
+		"\x1b[1;38;2;16;185;129mChoose\x1b[0m one to continue.\n"
+
+	tuipkg.AppendSystemForTest(&rm, preRendered)
+	queued := tuipkg.PendingTranscriptForTest(rm)
+	require.NotEmpty(t, queued, "AppendSystem should queue a rendered entry")
+
+	// Strict assertion: after stripping ALL real ANSI escapes, no
+	// "[<digits>;...m" pattern (the visible form of a broken
+	// escape) should remain anywhere in the queued content.
+	for _, item := range queued {
+		stripped := stripStyles(item)
+		match := regexp.MustCompile(`\[[0-9][0-9;]*m`).FindString(stripped)
+		require.Empty(t, match,
+			"queued content has a literal CSI-as-text token after ANSI strip — Glamour stripped the escape byte but left the code as visible text.\nmatch: %q\nstripped: %q",
+			match, stripped)
+	}
+}
+
 // TestViewChrome_LiveRegionDoesNotChangeRowCountAcrossFrames pins
 // the contract that a deterministic state produces a deterministic
 // number of rendered rows. If View() is called twice with no
@@ -230,6 +350,7 @@ func TestViewChrome_AwaitingLLMShowsTextarea(t *testing.T) {
 // this check.)
 func TestViewChrome_LiveRegionDoesNotChangeRowCountAcrossFrames(t *testing.T) {
 	t.Parallel()
+	forceTrueColor(t)
 	orch, sid := setupCloak(t)
 	m := buildModel(t, orch, sid)
 	rm, _ := tuipkg.ExtractRootModel(m)

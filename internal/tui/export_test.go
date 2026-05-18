@@ -469,6 +469,30 @@ func SetInputQueueForTest(m *RootModel, items ...string) {
 // m.liveLine.
 func LiveLineForTest(m RootModel) string { return m.transcript.LiveLine() }
 
+// AppendSystemForTest drives the production AppendSystem path so
+// regression tests can exercise the assistant-replay rendering site.
+// (Renders the input through Glamour, queues to scrollback pending.)
+func AppendSystemForTest(m *RootModel, body string) {
+	m.transcript.AppendSystem(body)
+}
+
+// QueueAgentBodyForTest pushes a rendered agent body through the
+// AppendAgentBody path and returns the new pending queue. Used by
+// chrome regression tests that need to validate what scrollback
+// content the live TUI would emit via tea.Println.
+func QueueAgentBodyForTest(m *RootModel, view string) []string {
+	m.transcript.AppendAgentBody(view)
+	out := make([]string, len(m.transcript.pending))
+	copy(out, m.transcript.pending)
+	return out
+}
+
+// ClearTranscriptPendingForTest empties the pending queue without
+// running FlushPending. Used to isolate per-test scrollback contents.
+func ClearTranscriptPendingForTest(m *RootModel) {
+	m.transcript.pending = nil
+}
+
 // PendingTranscriptForTest exposes the transcript's pending-print
 // queue so tests can assert what will land in scrollback on the
 // next FlushPending — used by the welcome-block test that needs to
