@@ -162,6 +162,20 @@ func (r *Renderer) UserTurn(text string) string {
 	return r.style(r.Theme.Primary, nil, true, false).Render("> " + text)
 }
 
+// QueuedEcho renders a user submission that was captured by the
+// input queue while a turn was in flight. Visually distinct from a
+// normal UserTurn: warning-tinted, with a "↳ queued" tag and the
+// current queue depth. The line lands in scrollback so the user has
+// a permanent record of every queued submission.
+func (r *Renderer) QueuedEcho(text string, depth int) string {
+	style := r.style(r.Theme.Warning, nil, false, true)
+	tag := "↳ queued"
+	if depth > 1 {
+		tag = fmt.Sprintf("↳ queued · %d in queue", depth)
+	}
+	return style.Render(tag + "   " + text)
+}
+
 // ─── Routing status (live-updated) ───────────────────────────────────────
 
 // RoutingPhase is the in-flight phase of the routing pipeline. Rendered

@@ -1494,7 +1494,11 @@ func (m RootModel) dispatchInput(input string) (tea.Model, tea.Cmd) {
 	if m.mode == ModeAwaitingLLM && !strings.HasPrefix(input, "/") {
 		m.inputQueue = append(m.inputQueue, input)
 		r := blocks.New(m.transcript.width, m.currentTheme())
-		m.transcript.AppendBlock(r.SlashOutput("(queued · " + queueDepthLabel(len(m.inputQueue)) + " · esc to cancel)"))
+		// Queued-echo block: shows the user's text + a queue tag so
+		// scrollback carries "this is what you queued and when". The
+		// styled prefix `↳` mirrors the prompt-row glyph during
+		// in-flight so the visual cue is consistent.
+		m.transcript.AppendBlock(r.QueuedEcho(input, len(m.inputQueue)))
 		return m, nil
 	}
 
@@ -3512,12 +3516,26 @@ func (m RootModel) View() string {
 	case ModeMetaSessions:
 		promptLine = m.sessionsPanel.View()
 	case ModeAwaitingLLM:
+		// Keep the textarea visible during in-flight so the user
+		// can type the next message — Enter enqueues. A muted
+		// "⏳ thinking · queue: N" row sits above the textarea so
+		// the queue affordance is obvious. The hourglass icon also
+		// replaces the textarea's normal "> " prefix on row 0 so
+		// the visual cue is unmistakable.
 		caption := "thinking via claude… (Ctrl+C to cancel)"
 		if m.pendingKind == pendingDeterministic {
-			caption = "running… (Ctrl+C to cancel)"
+			caption = "running…  (Ctrl+C to cancel)"
 		}
-		promptLine = prefix + m.spinner.View() + " " +
-			lipgloss.NewStyle().Foreground(colorMuted).Render(caption)
+		indicator := lipgloss.NewStyle().
+			Foreground(colorMuted).
+			Render("⏳ " + m.spinner.View() + " " + caption +
+				"  ·  queue: " + queueDepthLabel(len(m.inputQueue)) +
+				"  ·  Enter to queue · Esc to cancel queue")
+		// Swap the textarea's prefix to a queue icon so the row 0
+		// glyph signals "this Enter queues" without changing the
+		// prompt's value semantics.
+		m.prompt.SetPromptFunc(promptPrefixCols, func(int) string { return "↳ " })
+		promptLine = indicator + "\n" + m.prompt.View()
 	case ModeMeta:
 		if m.metaMode.inFlight {
 			promptLine = prefix + m.spinner.View() + " " +

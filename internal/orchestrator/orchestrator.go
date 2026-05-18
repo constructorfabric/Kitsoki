@@ -1226,7 +1226,15 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 		// onward (P1-D); when no emit fired it equals `redirect`.
 		errEvents, errWorld, errView, resolvedRedirect, redirErr := o.enterRedirectState(ctx, sid, state, redirect, w)
 		if redirErr != nil {
-			return events, w, "", "", redirErr
+			// Even on cap-fire / infra error, enterRedirectState may have
+			// produced events (notably the HarnessError carrying
+			// reason=on_error.depth_cap_exceeded). Append them so the
+			// failure surfaces in the persisted journal — without this
+			// the SubmitDirect/Turn caller still gets a clean turn-end
+			// event sequence but the operator-visible diagnostic
+			// vanishes.
+			events = append(events, errEvents...)
+			return events, errWorld, "", "", redirErr
 		}
 		events = append(events, errEvents...)
 		w = errWorld
@@ -1401,7 +1409,12 @@ func (o *Orchestrator) enterRedirectState(ctx context.Context, sid app.SessionID
 		if len(hostCalls) > 0 {
 			nestedEvents, nestedWorld, nestedView, nestedRedirect, nestedErr := o.dispatchHostCalls(ctx, sid, hostCalls, w, resolved)
 			if nestedErr != nil {
-				return events, w, "", resolved, nestedErr
+				// Propagate nested events even on error so the
+				// HarnessError emitted by a deeper cap-fire reaches
+				// the persisted journal. Mirrors the outer
+				// dispatchHostCalls branch.
+				events = append(events, nestedEvents...)
+				return events, nestedWorld, "", resolved, nestedErr
 			}
 			events = append(events, nestedEvents...)
 			w = nestedWorld

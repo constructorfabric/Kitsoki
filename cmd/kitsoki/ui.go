@@ -230,6 +230,30 @@ func renderSingleBlock(r *blocks.Renderer, name string) (string, error) {
 		return r.RoutingTrace(blocks.TraceFixture()), nil
 	case "world":
 		return r.World(blocks.WorldFixture()), nil
+	case "welcome":
+		return r.WelcomeBlock(blocks.Welcome{
+			Title:    "kitsoki · cypilot",
+			Subtitle: "v1.2.0 · by brad",
+			Hints: []string{
+				"/help        list commands",
+				"/world       inspect current state",
+				"/quit        exit",
+			},
+			Status: "session sess_42… · state idle",
+		}), nil
+	case "divider":
+		return r.Divider(), nil
+	case "status_row":
+		return r.StatusRow(f.FooterLine1, "normal"), nil
+	case "queued_echo":
+		// Three depths so authors see the singular / plural variants.
+		var b strings.Builder
+		b.WriteString(r.QueuedEcho("use the backup branch instead", 1))
+		b.WriteByte('\n')
+		b.WriteString(r.QueuedEcho("re-run CI when ready", 2))
+		b.WriteByte('\n')
+		b.WriteString(r.QueuedEcho("then merge", 3))
+		return b.String(), nil
 	}
 	return "", errors.New("unknown --block " + name)
 }

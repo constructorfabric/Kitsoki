@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
@@ -239,6 +241,95 @@ func TestOrchestrator_HostDispatchOnError_SelfRedirectDoesNotLoop(t *testing.T) 
 		"session must land in probe (the self-target), not loop or escape")
 	require.Equal(t, int64(1), invokeCount,
 		"host.fail must be invoked exactly once; self-redirect must not re-fire on_enter")
+}
+
+// TestOrchestrator_OnErrorRedirect_DepthCapBreaksLoop guards against the
+// regression the dogfood-regression-testing-gap proposal flagged: a
+// host call whose on_error target is a SIBLING state (not self) whose
+// own on_enter re-invokes a failing host call with on_error pointing
+// back at the original state. The `target == prior` self-redirect
+// guard at orchestrator.go:1350 does not catch this — mutually-
+// redirecting siblings strictly alternate prior↔target on each
+// recursion, so the guard never sees equality. Before the
+// `maxRedirectDepth` cap landed (commit fa39746), this looped
+// forever; `core.bf.idle`'s `iface.workspace.create` failing against a
+// stale `.worktrees/bf-<id>/` dir was a real instance.
+//
+// Fixture: testdata/hosterror_loop/app.yaml has two states `a` and
+// `b`; `a.on_enter` invokes host.fail with on_error: b, `b.on_enter`
+// invokes host.fail with on_error: a. The registered host.fail always
+// returns Result.Error.
+//
+// Assertions:
+//   - SubmitDirect returns without hanging (5s context timeout makes a
+//     loop regression FAIL fast rather than hang CI).
+//   - A HarnessError event with reason=on_error.depth_cap_exceeded
+//     appears in store.LoadHistory(sid).
+//   - Host invocation count is bounded by the cap (depth-cap + 1 = 5
+//     in the current implementation; using <=8 here as a generous
+//     ceiling so a future cap-bump doesn't accidentally fail this).
+//
+// REGRESSION VERIFICATION: To prove this test catches the loop, comment
+// out the `if depth > maxRedirectDepth { … return }` block in
+// orchestrator.go::enterRedirectState (around lines 1305-1324), then
+// re-run `go test -run TestOrchestrator_OnErrorRedirect_DepthCapBreaksLoop`.
+// The test must FAIL with a context-deadline timeout (the SubmitDirect
+// hard-stops at 5s; without the cap the recursion would spin
+// indefinitely). Restore the cap afterwards. Verified 2026-05-18.
+func TestOrchestrator_OnErrorRedirect_DepthCapBreaksLoop(t *testing.T) {
+	def, err := app.Load("testdata/hosterror_loop/app.yaml")
+	require.NoError(t, err)
+
+	m, err := machine.New(def)
+	require.NoError(t, err)
+
+	s, err := store.OpenMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	var invokeCount int64
+	reg := host.NewRegistry()
+	reg.Register("host.fail", func(ctx context.Context, args map[string]any) (host.Result, error) {
+		atomic.AddInt64(&invokeCount, 1)
+		return host.Result{Error: "deliberate failure"}, nil
+	})
+
+	orch := orchestrator.New(def, m, s, noopHarness{}, orchestrator.WithHostRegistry(reg))
+
+	rootCtx := context.Background()
+	sid, err := orch.NewSession(rootCtx)
+	require.NoError(t, err)
+
+	// 5-second hard timeout so a regression (the loop comes back)
+	// fails the test in seconds rather than hanging CI for minutes.
+	ctx, cancel := context.WithTimeout(rootCtx, 5*time.Second)
+	defer cancel()
+
+	out, err := orch.SubmitDirect(ctx, sid, "trigger", nil)
+	require.NoError(t, err, "depth-cap firing must surface as TurnOutcome.HarnessError, not a Go error / hang")
+	require.NotNil(t, out)
+
+	require.Less(t, atomic.LoadInt64(&invokeCount), int64(8),
+		"host.fail invocations must be bounded by the depth cap; got %d (cap is currently 4, so 5 is the legitimate ceiling)", atomic.LoadInt64(&invokeCount))
+
+	// The HarnessError event must land in the persisted history with
+	// the cap's documented reason string.
+	history, err := s.LoadHistory(sid)
+	require.NoError(t, err)
+	var found bool
+	for _, ev := range history {
+		if ev.Kind != store.HarnessError {
+			continue
+		}
+		var p map[string]any
+		require.NoError(t, json.Unmarshal(ev.Payload, &p))
+		if reason, _ := p["reason"].(string); reason == "on_error.depth_cap_exceeded" {
+			found = true
+			break
+		}
+	}
+	require.True(t, found,
+		"expected a HarnessError event with reason=on_error.depth_cap_exceeded in history; got %d events", len(history))
 }
 
 // TestOrchestrator_WithChatStore_InjectsStoreIntoContext verifies that when
