@@ -811,12 +811,14 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleMetaDoneDone(msg)
 
 	case MetaStreamMsg:
-		// Stale stream event arriving after meta mode exited (the
-		// oracle subprocess goroutine outlives our mode flip when
-		// the user cancels mid-call). Silently drop — same effect
-		// as handleMetaStreamEvent's not-in-flight guard, but
-		// without re-entering the meta handler from on-path mode.
-		return m, nil
+		// Route to the shared handler. Its own in-flight gate
+		// (ModeMeta+metaMode.inFlight OR ModeAwaitingLLM) decides
+		// whether to render the event or drop it as stale — the
+		// previous unconditional drop here meant on-path oracle calls
+		// (e.g. bf.reproducing_executing's host.oracle.ask_with_mcp)
+		// never surfaced their tool-use trail in the transcript even
+		// though the runner was streaming the events all along.
+		return m.handleMetaStreamEvent(msg), nil
 
 	case sessionsPanelLoadedMsg:
 		return m.handleSessionsPanelLoaded(msg)
