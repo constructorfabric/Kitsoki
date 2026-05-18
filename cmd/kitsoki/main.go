@@ -19,6 +19,8 @@ import (
 
 	anthropic "github.com/anthropics/anthropic-sdk-go"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 	"github.com/spf13/cobra"
 
 	"kitsoki/internal/agents"
@@ -158,6 +160,18 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 					panic(r) // re-raise so the runtime still prints the trace
 				}
 			}()
+
+			// Force a colour profile so lipgloss/glamour render with
+			// ANSI escapes regardless of how termenv classifies stdout
+			// once Bubble Tea has set up its renderer. Without this,
+			// tea.Println (no-alt-screen mode) sometimes received
+			// already-stripped strings — lipgloss had detected the
+			// program's output as non-TTY and produced plain text
+			// from Render(). Honour NO_COLOR / TERM=dumb so user
+			// preferences still win.
+			if os.Getenv("NO_COLOR") == "" && os.Getenv("TERM") != "dumb" {
+				lipgloss.SetColorProfile(termenv.TrueColor)
+			}
 
 			appPath := args[0]
 
