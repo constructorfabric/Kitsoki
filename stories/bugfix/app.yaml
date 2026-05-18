@@ -295,6 +295,10 @@ intents:
     description: "Default — walk all phases. Set bugfix_mode=full and start from reproducing."
     examples: [full_pipeline, "full", "all phases"]
     priority: 75
+  change_ticket:
+    description: "From idle: hand control back to the parent's ticket picker so the operator can choose a (different) ticket before starting."
+    examples: [change_ticket, "pick ticket", "find ticket", "tickets"]
+    priority: 65
   quit:
     description: "Abandon the pipeline."
     examples: [quit, "abort", "bail"]
@@ -309,7 +313,7 @@ intents:
 # lifts these into the parent's bare intent table so an operator can
 # drive the imported pipeline without typing the `bf__` prefix.
 exports:
-  intents: [start, proceed, accept, refine, restart_from, jump_to, quick_fix, skip_to_pr, full_pipeline, quit, look]
+  intents: [start, proceed, accept, refine, restart_from, jump_to, quick_fix, skip_to_pr, full_pipeline, change_ticket, quit, look]
 
 # Named return points. A parent story (dev-story / kitsoki-dev / cyber-devstory)
 # maps each to one of its own states. Standalone load synthesises
@@ -320,6 +324,8 @@ exits:
     requires: [done_artifact]
   abandoned:
     description: "User or LLM bailed."
+  pick_ticket:
+    description: "Operator wants to (re-)pick a ticket. Parent should route back to its ticket picker; no abandonment, no artifact required."
 
 # Root state — the operator-controlled entry point. Children fold this into
 # `bf` (or similar alias) and `entry: idle` enters here.

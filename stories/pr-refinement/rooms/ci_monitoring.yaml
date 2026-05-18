@@ -24,9 +24,9 @@ states:
     view: |
       Monitoring CI for PR {{ world.pr_id }} — {{ world.pr_title }}
 
-      CI state:    {{ world.ci_state ?? "(unknown)" }}
+      CI state:    {{ world.ci_state|default:"(unknown)" }}
       Attempts:    {{ world.ci_attempts }} / {{ world.ci_poll_budget }}
-      Failing:     {{ world.ci_failed_checks ?? "none" }}
+      Failing:     {{ world.ci_failed_checks|default:"none" }}
       Pending review comments: {{ world.pending_comments }}
 
       Type `monitor` to re-poll, `proceed` to act on the current state,

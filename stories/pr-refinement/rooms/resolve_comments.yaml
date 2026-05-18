@@ -13,7 +13,7 @@ states:
     view: |
       Review comments on PR {{ world.pr_id }} — {{ world.pr_title }}
         pending: {{ world.pending_comments }}
-        raw:     {{ world.pr_comments ?? "(none)" }}
+        raw:     {{ world.pr_comments|default:"(none)" }}
 
       Type `resolve` to post a follow-up comment and re-push,
       `proceed` to skip ahead (treat as resolved), or `quit`.

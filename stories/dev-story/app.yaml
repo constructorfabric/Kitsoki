@@ -170,6 +170,16 @@ world:
   ticket_id:           { type: string, default: "" }
   ticket_title:        { type: string, default: "" }
   ticket_url:          { type: string, default: "" }
+  # ticket_type is how `drive` chooses a pipeline (bug → bf,
+  # feature → impl). Set by pick_ticket. The local-files provider
+  # only scans issues/bugs/ today, so picks default to "bug"; when
+  # a feature source is wired in, that ticket_search arm will set
+  # ticket_type="feature".
+  ticket_type:         { type: string, default: "" }
+  # The main room calls iface.ticket.list_mine on enter and stashes
+  # the result here so the view can render a "tickets in your queue"
+  # block without the operator having to type `tickets`.
+  my_tickets:          { type: list,   default: [] }
   thread:              { type: string, default: "" }
 
   # ── Workspace ─────────────────────────────────────────────────────
@@ -287,6 +297,10 @@ intents:
   # Pipeline-launching navigation (dispatches into bf / pr / impl /
   # rev imports). `go_bugfix` targets the `bf` import compound; the
   # import's entry (idle) handles the rest.
+  drive:
+    description: "Drive the picked ticket through its pipeline. Routes by ticket_type: bug → bugfix, feature → implementation."
+    examples: ["drive", "go", "work on it", "start"]
+    priority: 60
   go_bugfix:
     description: "Hand off to the bugfix sub-story for the picked ticket."
     examples: ["fix bug", "bugfix", "work on bug"]
@@ -384,7 +398,7 @@ imports:
     # types `bf__accept` inside bf and `pr__accept` inside pr; `start`
     # is bf-only and lifts cleanly to bare.
     intents:
-      import: [start]
+      import: [start, change_ticket]
 
     # Exit projections. bf's @exit:done writes done_artifact via the
     # `set:` block on done_awaiting_reply.on.accept; we lift that
@@ -401,6 +415,13 @@ imports:
         to: main
         set:
           status: "abandoned"
+      # `change_ticket` on bf.idle fires this. Land in ticket_search
+      # so the operator can search/pick; `go_bugfix` re-enters bf with
+      # the new ticket_id projected via world_in:.
+      pick_ticket:
+        to: ticket_search
+        set:
+          prev_state: "main"
 
   pr:
     source: ../pr-refinement

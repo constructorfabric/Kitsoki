@@ -12,8 +12,8 @@ states:
     view: |
       Testing {{ world.ticket_id }} — {{ world.ticket_title }}
 
-      Tests artifact: {{ world.test_artifact.summary_title ?? "(pending)" }}
-      CI state:       {{ world.ci_state ?? "(pending)" }}
+      Tests artifact: {{ world.test_artifact.summary_title|default:"(pending)" }}
+      CI state:       {{ world.ci_state|default:"(pending)" }}
 
       Type `proceed` to deliver the test artifact, `refine` to redo,
       or `quit` to abandon.
@@ -60,11 +60,11 @@ states:
     view: |
       Test checkpoint — {{ world.ticket_id }}
 
-      {{ world.test_artifact.summary_markdown ?? "(artifact pending)" }}
+      {{ world.test_artifact.summary_markdown|default:"(artifact pending)" }}
 
-      CI state:     {{ world.ci_state ?? "(unknown)" }}
-      Verdict slot: {{ world.llm_verdict.verdict ?? "(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence ?? 0 }})
-      Reason:       {{ world.llm_verdict.reason ?? "" }}
+      CI state:     {{ world.ci_state|default:"(unknown)" }}
+      Verdict slot: {{ world.llm_verdict.verdict|default:"(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence|default:0 }})
+      Reason:       {{ world.llm_verdict.reason|default:"" }}
 
       Reply: accept | refine [feedback=...] | restart_from [stage=...] | quit
     relevant_world: [judge_mode, ticket_id, test_artifact, ci_state, llm_verdict, cycle]

@@ -11,9 +11,9 @@ states:
     view: |
       Writing code for {{ world.ticket_id }} — {{ world.ticket_title }}
 
-      Summary:    {{ world.code_artifact.summary_title ?? "(pending)" }}
-      Files:      {{ world.code_artifact.affected_files ?? "(pending)" }}
-      Confidence: {{ world.code_artifact.confidence ?? "(pending)" }}
+      Summary:    {{ world.code_artifact.summary_title|default:"(pending)" }}
+      Files:      {{ world.code_artifact.affected_files|default:"(pending)" }}
+      Confidence: {{ world.code_artifact.confidence|default:"(pending)" }}
 
       Type `proceed` to deliver the code-artifact, `refine` to redo,
       or `quit` to abandon.
@@ -63,10 +63,10 @@ states:
     view: |
       Code-write checkpoint — {{ world.ticket_id }}
 
-      {{ world.code_artifact.summary_markdown ?? "(artifact pending)" }}
+      {{ world.code_artifact.summary_markdown|default:"(artifact pending)" }}
 
-      Verdict slot: {{ world.llm_verdict.verdict ?? "(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence ?? 0 }})
-      Reason:       {{ world.llm_verdict.reason ?? "" }}
+      Verdict slot: {{ world.llm_verdict.verdict|default:"(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence|default:0 }})
+      Reason:       {{ world.llm_verdict.reason|default:"" }}
 
       Reply: accept | refine [feedback=...] | restart_from [stage=...] | quit
     relevant_world: [judge_mode, ticket_id, code_artifact, llm_verdict, cycle]

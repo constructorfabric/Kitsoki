@@ -15,9 +15,9 @@ states:
         feature_slug: {{ world.feature_slug }}
         workdir:      {{ world.workdir }}
 
-      Code artifact: {{ world.code_artifact.summary_title ?? "(pending)" }}
-      Tests passed:  {{ world.code_artifact.tests_passed ?? 0 }}
-      Tests failed:  {{ world.code_artifact.tests_failed ?? 0 }}
+      Code artifact: {{ world.code_artifact.summary_title|default:"(pending)" }}
+      Tests passed:  {{ world.code_artifact.tests_passed|default:0 }}
+      Tests failed:  {{ world.code_artifact.tests_failed|default:0 }}
 
       Type `proceed`, `refine`, or `quit`.
     relevant_world: [ticket_id, ticket_title, feature_slug, workdir, code_artifact, cycle]
@@ -61,12 +61,12 @@ states:
     view: |
       Code checkpoint — {{ world.ticket_id }}
 
-      {{ world.code_artifact.summary_markdown ?? "(artifact pending)" }}
+      {{ world.code_artifact.summary_markdown|default:"(artifact pending)" }}
 
-      Tests: {{ world.code_artifact.tests_passed ?? 0 }} passed / {{ world.code_artifact.tests_failed ?? 0 }} failed
+      Tests: {{ world.code_artifact.tests_passed|default:0 }} passed / {{ world.code_artifact.tests_failed|default:0 }} failed
 
-      Verdict slot: {{ world.llm_verdict.verdict ?? "(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence ?? 0 }})
-      Reason:       {{ world.llm_verdict.reason ?? "" }}
+      Verdict slot: {{ world.llm_verdict.verdict|default:"(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence|default:0 }})
+      Reason:       {{ world.llm_verdict.reason|default:"" }}
 
       Reply: accept (hand off to pr-refinement) | refine | quit
     relevant_world: [judge_mode, ticket_id, code_artifact, validate_ok, validate_report, llm_verdict, cycle]

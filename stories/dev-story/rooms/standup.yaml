@@ -9,11 +9,11 @@ states:
     view: |
       Standup.
 
-      Picked ticket: {{ world.ticket_id ?? "(none)" }} {{ world.ticket_title }}
-      Last PR url:   {{ world.last_pr_url ?? "(none)" }}
+      Picked ticket: {{ world.ticket_id|default:"(none)" }} {{ world.ticket_title }}
+      Last PR url:   {{ world.last_pr_url|default:"(none)" }}
 
       Summary:
-      {{ world.standup_summary ?? "(empty — type `summarize_day` to generate)" }}
+      {{ world.standup_summary|default:"(empty — type `summarize_day` to generate)" }}
 
       Intents: summarize_day, go_back, go_main.
     relevant_world: [ticket_id, ticket_title, last_pr_url, standup_summary]
@@ -32,7 +32,7 @@ states:
     view: |
       Generating standup summary…
 
-      Summary: {{ world.standup_summary ?? "(pending)" }}
+      Summary: {{ world.standup_summary|default:"(pending)" }}
     relevant_world: [standup_summary]
     on_enter:
       # Pull tickets assigned to me via iface.ticket.list_mine.

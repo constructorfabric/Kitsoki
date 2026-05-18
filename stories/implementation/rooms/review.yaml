@@ -12,8 +12,8 @@ states:
     view: |
       Reviewing the change for {{ world.ticket_id }} — {{ world.ticket_title }}
 
-      Review status:  {{ world.review_artifact.status ?? "(pending)" }}
-      Blockers:       {{ world.review_artifact.blockers ?? "(none)" }}
+      Review status:  {{ world.review_artifact.status|default:"(pending)" }}
+      Blockers:       {{ world.review_artifact.blockers|default:"(none)" }}
 
       Type `proceed` to deliver, `refine` to redo, or `quit`.
     relevant_world: [ticket_id, ticket_title, review_artifact, code_artifact, cycle]
@@ -57,10 +57,10 @@ states:
     view: |
       Review checkpoint — {{ world.ticket_id }}
 
-      {{ world.review_artifact.summary_markdown ?? "(artifact pending)" }}
+      {{ world.review_artifact.summary_markdown|default:"(artifact pending)" }}
 
-      Verdict slot: {{ world.llm_verdict.verdict ?? "(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence ?? 0 }})
-      Reason:       {{ world.llm_verdict.reason ?? "" }}
+      Verdict slot: {{ world.llm_verdict.verdict|default:"(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence|default:0 }})
+      Reason:       {{ world.llm_verdict.reason|default:"" }}
 
       Reply: accept | refine [feedback=...] | restart_from [stage=...] | quit
     relevant_world: [judge_mode, ticket_id, review_artifact, llm_verdict, cycle]

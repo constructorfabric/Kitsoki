@@ -10,8 +10,10 @@ states:
     view: |
       Validating fix for {{ world.ticket_id }} — {{ world.ticket_title }}
 
-      Outcome:    {{ world.validate_artifact.outcome }}
-      Summary:    {{ world.validate_artifact.summary_title }}
+      Summary: {{ world.validate_artifact.summary_title|default:"(pending)" }}
+      Outcome: {{ world.validate_artifact.outcome|default:"(pending)" }}
+
+      {{ world.validate_artifact.summary_markdown|default:"(artifact pending — oracle has not returned yet)" }}
 
       Type `proceed` to deliver the validation artifact.
     relevant_world: [ticket_id, ticket_title, workdir, validate_artifact, implement_review_artifact, ci_log, cycle]
@@ -88,10 +90,10 @@ states:
     view: |
       Validation checkpoint — {{ world.ticket_id }}
 
-      {{ world.validate_artifact.summary_markdown ?? "(artifact pending)" }}
+      {{ world.validate_artifact.summary_markdown|default:"(artifact pending)" }}
 
-      Verdict slot: {{ world.llm_verdict.verdict ?? "(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence ?? 0 }})
-      Reason:       {{ world.llm_verdict.reason ?? "" }}
+      Verdict slot: {{ world.llm_verdict.verdict|default:"(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence|default:0 }})
+      Reason:       {{ world.llm_verdict.reason|default:"" }}
 
       Reply: accept | refine [feedback=...] | restart_from [stage=...] | quit
     relevant_world: [judge_mode, judge_confidence_threshold, ticket_id, thread, validate_artifact, llm_verdict, cycle]

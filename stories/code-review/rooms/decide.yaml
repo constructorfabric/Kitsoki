@@ -16,8 +16,8 @@ states:
     view: |
       Decision for PR {{ world.pr_id }} — {{ world.pr_title }}
 
-      Current decision: {{ world.decision ?? "(pending)" }}
-      Reviewer comment posted: {{ world.draft_comment ?? "" }}
+      Current decision: {{ world.decision|default:"(pending)" }}
+      Reviewer comment posted: {{ world.draft_comment|default:"" }}
 
       Type `approve`, `request_changes`, or `quit`.
     relevant_world: [pr_id, pr_title, decision, draft_comment]
@@ -64,10 +64,10 @@ states:
 
       Decision: {{ world.decision }}
 
-      {{ world.decision_artifact.summary_markdown ?? "(artifact pending)" }}
+      {{ world.decision_artifact.summary_markdown|default:"(artifact pending)" }}
 
-      Verdict slot: {{ world.llm_verdict.verdict ?? "(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence ?? 0 }})
-      Reason:       {{ world.llm_verdict.reason ?? "" }}
+      Verdict slot: {{ world.llm_verdict.verdict|default:"(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence|default:0 }})
+      Reason:       {{ world.llm_verdict.reason|default:"" }}
 
       Reply: approve | request_changes | refine | quit
     relevant_world: [judge_mode, pr_id, decision, decision_artifact, llm_verdict]

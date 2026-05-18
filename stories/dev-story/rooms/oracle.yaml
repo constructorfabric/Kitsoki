@@ -10,8 +10,8 @@ states:
     view: |
       Oracle.
 
-      Last question: {{ world.oracle_question ?? "(none)" }}
-      Last answer:   {{ world.oracle_answer ?? "(none)" }}
+      Last question: {{ world.oracle_question|default:"(none)" }}
+      Last answer:   {{ world.oracle_answer|default:"(none)" }}
 
       Intents: ask_question, go_back, go_main.
     relevant_world: [oracle_question, oracle_answer]
@@ -33,7 +33,7 @@ states:
       Oracle (querying).
 
       Question: {{ world.oracle_question }}
-      Answer:   {{ world.oracle_answer ?? "(pending)" }}
+      Answer:   {{ world.oracle_answer|default:"(pending)" }}
     relevant_world: [oracle_question, oracle_answer]
     on_enter:
       - invoke: host.oracle.ask_with_mcp

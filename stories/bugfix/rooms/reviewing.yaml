@@ -8,7 +8,10 @@ states:
     view: |
       Reviewing the fix for {{ world.ticket_id }} — {{ world.ticket_title }}
 
-      Code-review status: {{ world.implement_review_artifact.status ?? "(pending)" }}
+      Summary: {{ world.implement_review_artifact.summary_title|default:"(pending)" }}
+      Status:  {{ world.implement_review_artifact.status|default:"(pending)" }}
+
+      {{ world.implement_review_artifact.summary_markdown|default:"(artifact pending — oracle has not returned yet)" }}
 
       Type `proceed` to advance to validating.
     relevant_world: [ticket_id, ticket_title, workdir, implement_review_artifact]

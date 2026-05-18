@@ -10,10 +10,10 @@ states:
   adr_executing:
     description: "Producing the ADR via cpt generate."
     view: |
-      Drafting ADR for PRD {{ world.prd_artifact.id ?? "(unknown)" }}
+      Drafting ADR for PRD {{ world.prd_artifact.id|default:"(unknown)" }}
         feature_slug: {{ world.feature_slug }}
 
-      ADR id:       {{ world.adr_artifact.id ?? "(pending)" }}
+      ADR id:       {{ world.adr_artifact.id|default:"(pending)" }}
       Validate ok:  {{ world.validate_ok }}
 
       Type `proceed`, `refine`, or `quit`.
@@ -56,13 +56,13 @@ states:
     view: |
       ADR checkpoint — {{ world.ticket_id }}
 
-      ADR: {{ world.adr_artifact.summary_title ?? world.adr_artifact.id ?? "(unknown)" }}
+      ADR: {{ world.adr_artifact.summary_title|default:world.adr_artifact.id|default:"(unknown)" }}
       Validate ok: {{ world.validate_ok }}
       Report excerpt:
-      {{ world.validate_report ?? "(no report)" }}
+      {{ world.validate_report|default:"(no report)" }}
 
-      Verdict slot: {{ world.llm_verdict.verdict ?? "(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence ?? 0 }})
-      Reason:       {{ world.llm_verdict.reason ?? "" }}
+      Verdict slot: {{ world.llm_verdict.verdict|default:"(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence|default:0 }})
+      Reason:       {{ world.llm_verdict.reason|default:"" }}
 
       Reply: accept | refine [feedback=...] | quit
     relevant_world: [judge_mode, ticket_id, adr_artifact, validate_ok, validate_report, llm_verdict, cycle]

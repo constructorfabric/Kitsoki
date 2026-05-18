@@ -10,7 +10,7 @@ states:
       Code-review pipeline — idle.
 
       Pending PRs awaiting your review: {{ world.pending_count }}
-      Currently picked: {{ world.pr_id ?? "(none)" }} {{ world.pr_title }}
+      Currently picked: {{ world.pr_id|default:"(none)" }} {{ world.pr_title }}
       Judge mode: {{ world.judge_mode }}
 
       Actions: start, quit, look.

@@ -9,10 +9,10 @@ states:
   design_executing:
     description: "Producing the DESIGN via cpt generate."
     view: |
-      Drafting DESIGN for PRD {{ world.prd_artifact.id ?? "(unknown)" }}
+      Drafting DESIGN for PRD {{ world.prd_artifact.id|default:"(unknown)" }}
         feature_slug: {{ world.feature_slug }}
 
-      DESIGN id:    {{ world.design_artifact.id ?? "(pending)" }}
+      DESIGN id:    {{ world.design_artifact.id|default:"(pending)" }}
       Validate ok:  {{ world.validate_ok }}
 
       Type `proceed`, `refine`, or `quit`.
@@ -55,13 +55,13 @@ states:
     view: |
       DESIGN checkpoint — {{ world.ticket_id }}
 
-      DESIGN: {{ world.design_artifact.summary_title ?? world.design_artifact.id ?? "(unknown)" }}
+      DESIGN: {{ world.design_artifact.summary_title|default:world.design_artifact.id|default:"(unknown)" }}
       Validate ok: {{ world.validate_ok }}
       Report excerpt:
-      {{ world.validate_report ?? "(no report)" }}
+      {{ world.validate_report|default:"(no report)" }}
 
-      Verdict slot: {{ world.llm_verdict.verdict ?? "(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence ?? 0 }})
-      Reason:       {{ world.llm_verdict.reason ?? "" }}
+      Verdict slot: {{ world.llm_verdict.verdict|default:"(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence|default:0 }})
+      Reason:       {{ world.llm_verdict.reason|default:"" }}
 
       Reply: accept | refine [feedback=...] | quit
     relevant_world: [judge_mode, ticket_id, design_artifact, validate_ok, validate_report, llm_verdict, cycle]

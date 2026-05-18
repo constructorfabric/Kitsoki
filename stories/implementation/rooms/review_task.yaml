@@ -13,8 +13,8 @@ states:
     view: |
       Reviewing task {{ world.ticket_id }} — {{ world.ticket_title }}
 
-      Artifact summary: {{ world.task_summary_artifact.summary_title ?? "(pending)" }}
-      Acceptance criteria: {{ world.task_summary_artifact.acceptance_criteria ?? "(pending)" }}
+      Artifact summary: {{ world.task_summary_artifact.summary_title|default:"(pending)" }}
+      Acceptance criteria: {{ world.task_summary_artifact.acceptance_criteria|default:"(pending)" }}
 
       Type `proceed` to deliver the artifact to the transport / inbox,
       or `restart_from` to re-run, or `quit` to abandon.
@@ -67,10 +67,10 @@ states:
     view: |
       Task-summary checkpoint — {{ world.ticket_id }}
 
-      {{ world.task_summary_artifact.summary_markdown ?? "(artifact pending)" }}
+      {{ world.task_summary_artifact.summary_markdown|default:"(artifact pending)" }}
 
-      Verdict slot: {{ world.llm_verdict.verdict ?? "(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence ?? 0 }})
-      Reason:       {{ world.llm_verdict.reason ?? "" }}
+      Verdict slot: {{ world.llm_verdict.verdict|default:"(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence|default:0 }})
+      Reason:       {{ world.llm_verdict.reason|default:"" }}
 
       Reply: accept | refine [feedback=...] | restart_from [stage=...] | quit
     relevant_world: [judge_mode, ticket_id, task_summary_artifact, llm_verdict, cycle]

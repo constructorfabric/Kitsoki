@@ -10,9 +10,9 @@ states:
     view: |
       Workspace manager.
 
-      Current workspace: {{ world.current_workspace ?? "(none)" }}
-      Workdir:           {{ world.workdir ?? "(none)" }}
-      Feature branch:    {{ world.feature_branch ?? "(none)" }}
+      Current workspace: {{ world.current_workspace|default:"(none)" }}
+      Workdir:           {{ world.workdir|default:"(none)" }}
+      Feature branch:    {{ world.feature_branch|default:"(none)" }}
 
       Type `proceed` to fetch the workspace list, `go_back`, or `go_main`.
     relevant_world: [current_workspace, workdir, feature_branch]

@@ -1,44 +1,87 @@
-# main — engineer's-day landing. Provider-neutral; no Jira-flavoured
-# vocabulary. The operator picks a sub-flow from here:
+# main — engineer's-day landing. Oregon-trail-shaped: a narrative
+# situation report up top, a Status block, a live "tickets in your
+# queue" list pulled via iface.ticket.list_mine on enter, then a
+# Choose block whose items appear/grey-out via available() /
+# blocked_reason() guards on the bound intents.
 #
-#   go_ticket_search   → ticket_search
-#   go_workspace_manager → workspace_manager
-#   go_inbox          → inbox
-#   go_oracle         → oracle
-#   go_standup        → standup
-#   go_code_review    → code_review (Wave 3 stub)
-#   go_bugfix         → bf (the bugfix import; enters at bf.idle)
-#   go_pr_refinement  → pr (the pr-refinement import; enters at pr.open_pr)
-#   go_deploy / go_observability / go_incident / go_docs — Wave 3 stubs
+# Pipeline routing: `drive` is the one intent the operator picks
+# once a ticket is selected. It branches on world.ticket_type —
+# bug → bf, feature → impl — so the operator never picks the
+# pipeline directly. The legacy `go_bugfix` / `go_implementation`
+# / `go_pr_refinement` intents stay as escape hatches but are now
+# guarded on the relevant prerequisite.
 
 states:
 
   main:
-    description: "Main room — your engineer's-day landing."
-    view: |
-      dev-story — main.
+    description: "dev-story — Independence, Missouri for the engineer's day."
+    relevant_world: [ticket_id, ticket_title, ticket_type, my_tickets, last_pr_url, status, inbox_unread, workdir, feature_branch]
 
-      Last PR url:  {{ world.last_pr_url ?? "(none)" }}
-      Status:       {{ world.status }}
-      Inbox unread: {{ world.inbox_unread }}
-      Current ticket: {{ world.ticket_id ?? "(none)" }} {{ world.ticket_title }}
+    # Refresh the personal ticket list every time we land here. Best
+    # effort: on_error stays in main so a transient provider failure
+    # doesn't strand the operator. The empty filter returns every
+    # bug under issues/bugs/ (local-files provider).
+    on_enter:
+      - invoke: iface.ticket.list_mine
+        with:
+          filter: ""
+        bind:
+          my_tickets: tickets
+        on_error: main
 
-      Available areas:
-        - Pick a ticket          (ticket search)
-        - Continue existing task (workspace manager)
-        - Prep standup
-        - Ask the Oracle
-        - Review a teammate's PR (code review)
-        - Triage an incident
-        - View logs / metrics
-        - Deploy
-        - Edit docs
+    view:
+      - heading: "dev-story — engineer's day"
+      - prose: >
+          You drive tickets through their pipeline from here. Pick a
+          ticket first, then `drive` it. Bug tickets route through
+          the bugfix pipeline; feature tickets route through the
+          implementation pipeline — the ticket's type chooses, you
+          don't pick the pipeline yourself.
 
-        - Hand off picked ticket to bugfix (`bugfix` / `go_bugfix`)
-        - Hand off an open PR to pr-refinement (`go_pr_refinement`)
+      - heading: "Status"
+      - kv:
+          pairs:
+            "Picked ticket":  '{{ world.ticket_id|default:"(none — pick one below)" }} {{ world.ticket_title }}'
+            "Ticket type":    '{{ world.ticket_type|default:"(n/a)" }}'
+            "Workspace":      '{{ world.workdir|default:"(none — created when you drive)" }}'
+            "Feature branch": '{{ world.feature_branch|default:"(none)" }}'
+            "Last PR":        '{{ world.last_pr_url|default:"(none)" }}  ({{ world.status }})'
+            "Inbox unread":   "{{ world.inbox_unread }}"
 
-      Inbox: {{ world.inbox_unread }} unread.
-    relevant_world: [last_pr_url, status, inbox_unread, ticket_id, ticket_title]
+      - heading: "Tickets in your queue"
+      # Render the live list bound from iface.ticket.list_mine. Each
+      # entry is a {id,title,status,priority,assignee,url} map. When
+      # the list is empty we drop a hint pointing at `tickets` (the
+      # search room) — same shape as oregon-trail's "(not yet chosen)"
+      # placeholders.
+      - code: |
+          {% if world.my_tickets|length == 0 %}
+          (empty — type `tickets` to search)
+          {% else %}
+          {% for t in world.my_tickets %}- {{ t.id }} — {{ t.title }} [{{ t.status|default:"?" }}]
+          {% endfor %}{% endif %}
+      - prose: >
+          To pick one of these, type `tickets`, then `pick <id>`.
+
+      - heading: "Choose"
+      - list:
+          items:
+            - "`tickets` — search for a ticket to pick"
+            - "`workspaces` — resume a workspace you already started"
+            - label: "`drive` — push the picked ticket through its pipeline"
+              when:  "available('drive')"
+            - label: "`drive` ✗ — {{ blocked_reason('drive') }}"
+              when:  "!available('drive')"
+            - label: "`pr` — hand the picked workspace's PR to pr-refinement"
+              when:  "available('go_pr_refinement')"
+            - label: "`pr` ✗ — {{ blocked_reason('go_pr_refinement') }}"
+              when:  "!available('go_pr_refinement')"
+            - "`code review` — review a teammate's PR"
+            - "`inbox` — read notifications ({{ world.inbox_unread }} unread)"
+            - "`oracle` — ask the LLM a one-shot question"
+            - "`standup` — prep today's standup summary"
+            - "`deploy` · `observability` · `incident` · `docs` — stubs"
+
     on:
       go_ticket_search:
         - target: ticket_search
@@ -81,15 +124,49 @@ states:
         - target: docs
           effects:
             - set: { prev_state: "main" }
-      # Dispatch to imported sub-stories. `target: bf` enters the bf
-      # compound at its entry state (idle); same for pr (entry: open_pr),
-      # impl (entry: idle), rev (entry: idle).
+
+      # Auto-routing one-shot: ticket_type chooses the pipeline. The
+      # local-files provider only sees issues/bugs/ today, so picks
+      # land as ticket_type="bug" and route into bf. The `feature`
+      # arm here is ready for the day a feature source comes online.
+      drive:
+        - when: "world.ticket_id != '' && world.ticket_type == 'bug'"
+          target: bf
+        - when: "world.ticket_id != '' && world.ticket_type == 'feature'"
+          target: impl
+        - when: "world.ticket_id == ''"
+          target: main
+          guard_hint: "Pick a ticket first — type `tickets`."
+        - default: true
+          target: main
+          guard_hint: "Ticket has no type set — re-pick from `tickets` so its type is recorded."
+
+      # Escape hatches — same destinations as drive, but with
+      # explicit names some flows / scenarios reference. Both now
+      # require a picked ticket.
       go_bugfix:
-        - target: bf
-      go_pr_refinement:
-        - target: pr
+        - when: "world.ticket_id != ''"
+          target: bf
+        - default: true
+          target: main
+          guard_hint: "Pick a ticket first — type `tickets`."
       go_implementation:
-        - target: impl
+        - when: "world.ticket_id != ''"
+          target: impl
+        - default: true
+          target: main
+          guard_hint: "Pick a ticket first — type `tickets`."
+
+      # PR refinement needs an open PR (or at least a feature branch
+      # that's been pushed); blocking it from a cold main is the
+      # whole point of the prerequisite story.
+      go_pr_refinement:
+        - when: "world.last_pr_url != '' || world.feature_branch != ''"
+          target: pr
+        - default: true
+          target: main
+          guard_hint: "No open PR yet — drive a ticket through the pipeline first."
+
       go_code_review_story:
         - target: rev
       go_main:

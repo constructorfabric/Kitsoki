@@ -12,9 +12,9 @@ states:
       PRs awaiting your review.
 
       Count:   {{ world.pending_count }}
-      Pending: {{ world.pending_pr ?? "(none)" }}
+      Pending: {{ world.pending_pr|default:"(none)" }}
 
-      Currently picked: {{ world.pr_id ?? "(none)" }} {{ world.pr_title }}
+      Currently picked: {{ world.pr_id|default:"(none)" }} {{ world.pr_title }}
 
       Type `pick_pr id=<PR>` to start reviewing,
       or `proceed` if a PR is already picked.

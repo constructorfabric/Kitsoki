@@ -24,9 +24,9 @@ states:
       Drafting PRD for {{ world.ticket_id }} — {{ world.ticket_title }}
         feature_slug: {{ world.feature_slug }}
 
-      PRD id:       {{ world.prd_artifact.id ?? "(pending)" }}
+      PRD id:       {{ world.prd_artifact.id|default:"(pending)" }}
       Validate ok:  {{ world.validate_ok }}
-      Report:       {{ world.validate_report ?? "(none)" }}
+      Report:       {{ world.validate_report|default:"(none)" }}
 
       Type `proceed` to deliver the PRD to the checkpoint,
       or `refine` to re-run with feedback, or `quit` to abandon.
@@ -77,13 +77,13 @@ states:
     view: |
       PRD checkpoint — {{ world.ticket_id }}
 
-      PRD: {{ world.prd_artifact.summary_title ?? world.prd_artifact.id ?? "(unknown)" }}
+      PRD: {{ world.prd_artifact.summary_title|default:world.prd_artifact.id|default:"(unknown)" }}
       Validate ok: {{ world.validate_ok }}
       Report excerpt:
-      {{ world.validate_report ?? "(no report)" }}
+      {{ world.validate_report|default:"(no report)" }}
 
-      Verdict slot: {{ world.llm_verdict.verdict ?? "(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence ?? 0 }})
-      Reason:       {{ world.llm_verdict.reason ?? "" }}
+      Verdict slot: {{ world.llm_verdict.verdict|default:"(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence|default:0 }})
+      Reason:       {{ world.llm_verdict.reason|default:"" }}
 
       Reply: accept | refine [feedback=...] | quit
     relevant_world: [judge_mode, ticket_id, prd_artifact, validate_ok, validate_report, llm_verdict, cycle]

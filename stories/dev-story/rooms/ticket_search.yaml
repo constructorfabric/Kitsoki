@@ -13,16 +13,35 @@
 states:
 
   ticket_search:
-    description: "Search tickets across the configured provider."
-    view: |
-      Ticket search.
-
-      Current query:   {{ world.ticket_query ?? "(empty)" }}
-      Results:         {{ world.ticket_results ?? "(none yet)" }}
-      Picked ticket:   {{ world.ticket_id ?? "(none)" }} {{ world.ticket_title }}
-
-      Intents: search_tickets, pick_ticket, go_bugfix, go_back, go_main.
+    description: "Browse tickets — list is auto-fetched on entry."
     relevant_world: [ticket_query, ticket_results, ticket_id, ticket_title]
+    # Proactive fetch on entry — the operator should land here and SEE
+    # the queue, not be prompted to type a search query first. The
+    # empty `ticket_query` default returns the full list; the optional
+    # `search_tickets` intent narrows it via the ticket_searching state.
+    #
+    # NOTE: ordering today is filed_at-ASC (host's listAllBugs sorts by
+    # id, and ids are ISO-prefixed). `|reverse` in the view flips that
+    # to newest-first. True priority ranking requires the host to read
+    # `severity:` (not `priority:`) and sort multi-key — see
+    # internal/host/localfiles_ticket.go: bugSummary / listAllBugs.
+    on_enter:
+      - invoke: iface.ticket.search
+        with:
+          query: "{{ world.ticket_query }}"
+          limit: 25
+        bind:
+          ticket_results: tickets
+        on_error: ticket_search
+    view: |
+      Tickets{% if world.ticket_query %} (filter: `{{ world.ticket_query }}`){% endif %}
+
+      {% if world.ticket_results|length == 0 %}(none — file one in `issues/bugs/`)
+      {% else %}{% for t in world.ticket_results|reverse %}- `{{ t.id }}` — {{ t.title }} [{{ t.status|default:"?" }}{% if t.priority %} · {{ t.priority }}{% endif %}]
+      {% endfor %}{% endif %}
+      Picked: {{ world.ticket_id|default:"(none — `pick_ticket id=<TKT>`)" }} {{ world.ticket_title }}
+
+      Intents: `pick_ticket id=<TKT>`, `search_tickets query=<text>` (narrow), `go_bugfix`, `go_back`, `go_main`.
     on:
       search_tickets:
         - target: ticket_searching
@@ -35,11 +54,20 @@ states:
         # invoke iface.ticket.get here (would need a real handler); the
         # bf import's world_in: just needs ticket_id to wire the rest
         # via the bug file lookup at the local-files binding's site.
-        - target: ticket_search
+        #
+        # ticket_type defaults to "bug" because the local-files
+        # provider only scans issues/bugs/. When a feature source is
+        # wired in, this is the site that decides the routing label.
+        #
+        # `target: .` is deliberate — pick should NOT re-fire on_enter
+        # (the list is already in world.ticket_results from the fresh
+        # fetch on the way in).
+        - target: .
           effects:
             - set:
                 ticket_id:     "{{ slots.id }}"
-                ticket_title:  "(picked from search)"
+                ticket_title:  "(picked from list)"
+                ticket_type:   "bug"
                 thread:        "{{ slots.id }}"
       # Hand off to the bugfix sub-story for the picked ticket. The
       # `target: bf` compound enters at bf.idle; world_in: projects
@@ -66,7 +94,7 @@ states:
       Searching for: {{ world.ticket_query }}
 
       Results:
-      {{ world.ticket_results ?? "(empty)" }}
+      {{ world.ticket_results|default:"(empty)" }}
 
       Type `pick_ticket id=<TKT>` to pick, or `go_back`.
     relevant_world: [ticket_query, ticket_results]
@@ -80,11 +108,14 @@ states:
         on_error: ticket_search
     on:
       pick_ticket:
+        # Mirror of pick_ticket in ticket_search above — see comment
+        # there for why ticket_type defaults to "bug".
         - target: ticket_search
           effects:
             - set:
                 ticket_id:    "{{ slots.id }}"
                 ticket_title: "(picked from search)"
+                ticket_type:  "bug"
                 thread:       "{{ slots.id }}"
       search_tickets:
         - target: ticket_searching

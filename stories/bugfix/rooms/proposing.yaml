@@ -10,8 +10,10 @@ states:
     view: |
       Proposing fix for {{ world.ticket_id }} — {{ world.ticket_title }}
 
-      Summary:    {{ world.propose_fix_artifact.summary_title }}
-      Confidence: {{ world.propose_fix_artifact.confidence }}
+      Summary:    {{ world.propose_fix_artifact.summary_title|default:"(pending)" }}
+      Confidence: {{ world.propose_fix_artifact.confidence|default:"(pending)" }}
+
+      {{ world.propose_fix_artifact.summary_markdown|default:"(artifact pending — oracle has not returned yet)" }}
 
       Type `proceed` to deliver, `restart_from` to re-run, or `quit`.
     relevant_world: [ticket_id, ticket_title, workdir, propose_fix_artifact, reproduction_artifact, cycle, refine_feedback]
@@ -63,10 +65,10 @@ states:
     view: |
       Fix-proposal checkpoint — {{ world.ticket_id }}
 
-      {{ world.propose_fix_artifact.summary_markdown ?? "(artifact pending)" }}
+      {{ world.propose_fix_artifact.summary_markdown|default:"(artifact pending)" }}
 
-      Verdict slot: {{ world.llm_verdict.verdict ?? "(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence ?? 0 }})
-      Reason:       {{ world.llm_verdict.reason ?? "" }}
+      Verdict slot: {{ world.llm_verdict.verdict|default:"(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence|default:0 }})
+      Reason:       {{ world.llm_verdict.reason|default:"" }}
 
       Reply: accept | refine [feedback=...] | restart_from [stage=...] | quit
     relevant_world: [judge_mode, judge_confidence_threshold, ticket_id, thread, propose_fix_artifact, llm_verdict, cycle]

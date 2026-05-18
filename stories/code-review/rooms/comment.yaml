@@ -12,7 +12,7 @@ states:
       Drafting comment for PR {{ world.pr_id }} — {{ world.pr_title }}
 
       Draft:
-      {{ world.draft_comment ?? "(pending)" }}
+      {{ world.draft_comment|default:"(pending)" }}
 
       Type `proceed` to post + advance to decide,
       `refine` to redraft, or `quit` to abandon.

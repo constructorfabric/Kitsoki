@@ -13,10 +13,10 @@ states:
   decomposition_executing:
     description: "Decomposing the PRD via cpt plan."
     view: |
-      Decomposing PRD {{ world.prd_artifact.id ?? "(unknown)" }}
+      Decomposing PRD {{ world.prd_artifact.id|default:"(unknown)" }}
 
-      Plan path:    {{ world.decomposition_artifact.plan_path ?? "(pending)" }}
-      Phase count:  {{ world.decomposition_artifact.phase_count ?? 0 }}
+      Plan path:    {{ world.decomposition_artifact.plan_path|default:"(pending)" }}
+      Phase count:  {{ world.decomposition_artifact.phase_count|default:0 }}
 
       Type `proceed` to deliver the plan, `refine` to re-run, `quit` to abandon.
     relevant_world: [prd_artifact, decomposition_artifact, feature_count, cycle]
@@ -57,8 +57,8 @@ states:
       Plan path:    {{ world.decomposition_artifact.plan_path }}
       Phase count:  {{ world.feature_count }}
 
-      Verdict slot: {{ world.llm_verdict.verdict ?? "(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence ?? 0 }})
-      Reason:       {{ world.llm_verdict.reason ?? "" }}
+      Verdict slot: {{ world.llm_verdict.verdict|default:"(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence|default:0 }})
+      Reason:       {{ world.llm_verdict.reason|default:"" }}
 
       Reply: accept (advance to first feature) | refine | quit
     relevant_world: [judge_mode, ticket_id, decomposition_artifact, feature_count, llm_verdict, cycle]

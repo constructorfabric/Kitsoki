@@ -12,7 +12,9 @@ states:
     view: |
       Wrapping up {{ world.ticket_id }} — {{ world.ticket_title }}
 
-      Summary: {{ world.done_artifact.summary_title }}
+      Summary: {{ world.done_artifact.summary_title|default:"(pending)" }}
+
+      {{ world.done_artifact.summary_markdown|default:"(artifact pending — oracle has not returned yet)" }}
 
       Type `proceed` to deliver the final artifact.
     relevant_world: [ticket_id, ticket_title, done_artifact, validate_artifact, cycle]
@@ -42,10 +44,10 @@ states:
     view: |
       Close-out checkpoint — {{ world.ticket_id }}
 
-      {{ world.done_artifact.summary_markdown ?? "(artifact pending)" }}
+      {{ world.done_artifact.summary_markdown|default:"(artifact pending)" }}
 
-      Verdict slot: {{ world.llm_verdict.verdict ?? "(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence ?? 0 }})
-      Reason:       {{ world.llm_verdict.reason ?? "" }}
+      Verdict slot: {{ world.llm_verdict.verdict|default:"(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence|default:0 }})
+      Reason:       {{ world.llm_verdict.reason|default:"" }}
 
       Reply: accept (close out) | refine | quit
     relevant_world: [judge_mode, judge_confidence_threshold, ticket_id, thread, done_artifact, llm_verdict]

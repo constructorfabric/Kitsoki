@@ -11,7 +11,7 @@ states:
         workdir:        {{ world.workdir }}
         feature_branch: {{ world.feature_branch }}
         cycle:          {{ world.cycle }}
-        feedback:       {{ world.refine_feedback ?? "(none)" }}
+        feedback:       {{ world.refine_feedback|default:"(none)" }}
 
       Type `proceed` to return to ci_monitoring, `retry` to re-run,
       or `quit` to abandon.

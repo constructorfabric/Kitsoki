@@ -11,8 +11,8 @@ states:
     view: |
       Reviewing PR {{ world.pr_id }} — {{ world.pr_title }} (author: {{ world.pr_author }})
 
-      Summary:    {{ world.review_summary_artifact.summary_title ?? "(pending)" }}
-      Confidence: {{ world.review_summary_artifact.confidence ?? "(pending)" }}
+      Summary:    {{ world.review_summary_artifact.summary_title|default:"(pending)" }}
+      Confidence: {{ world.review_summary_artifact.confidence|default:"(pending)" }}
 
       Type `proceed` to deliver the review summary,
       `refine` to redo, or `quit` to abandon.
@@ -71,10 +71,10 @@ states:
     view: |
       Review-summary checkpoint — PR {{ world.pr_id }}
 
-      {{ world.review_summary_artifact.summary_markdown ?? "(artifact pending)" }}
+      {{ world.review_summary_artifact.summary_markdown|default:"(artifact pending)" }}
 
-      Verdict slot: {{ world.llm_verdict.verdict ?? "(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence ?? 0 }})
-      Reason:       {{ world.llm_verdict.reason ?? "" }}
+      Verdict slot: {{ world.llm_verdict.verdict|default:"(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence|default:0 }})
+      Reason:       {{ world.llm_verdict.reason|default:"" }}
 
       Reply: accept | refine [feedback=...] | dismiss | quit
     relevant_world: [judge_mode, pr_id, review_summary_artifact, llm_verdict, cycle]

@@ -16,7 +16,7 @@ states:
       Generating feature {{ world.feature_index }}/{{ world.feature_count }} for {{ world.ticket_id }}
         feature_slug: {{ world.feature_slug }}
 
-      Feature id:   {{ world.feature_artifact.id ?? "(pending)" }}
+      Feature id:   {{ world.feature_artifact.id|default:"(pending)" }}
       Validate ok:  {{ world.validate_ok }}
 
       Type `proceed`, `refine`, or `quit`.
@@ -62,13 +62,13 @@ states:
     view: |
       Feature checkpoint — phase {{ world.feature_index }}/{{ world.feature_count }}
 
-      Feature: {{ world.feature_artifact.summary_title ?? world.feature_artifact.id ?? "(unknown)" }}
+      Feature: {{ world.feature_artifact.summary_title|default:world.feature_artifact.id|default:"(unknown)" }}
       Validate ok: {{ world.validate_ok }}
       Report excerpt:
-      {{ world.validate_report ?? "(no report)" }}
+      {{ world.validate_report|default:"(no report)" }}
 
-      Verdict slot: {{ world.llm_verdict.verdict ?? "(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence ?? 0 }})
-      Reason:       {{ world.llm_verdict.reason ?? "" }}
+      Verdict slot: {{ world.llm_verdict.verdict|default:"(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence|default:0 }})
+      Reason:       {{ world.llm_verdict.reason|default:"" }}
 
       Reply: accept (next feature or → code) | refine | quit
     relevant_world: [judge_mode, ticket_id, feature_artifact, feature_index, feature_count, validate_ok, validate_report, llm_verdict, cycle]

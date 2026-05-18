@@ -12,8 +12,12 @@ states:
     view: |
       Implementing fix for {{ world.ticket_id }} — {{ world.ticket_title }}
 
-      Workspace: {{ world.workspace_id }} ({{ world.workdir }})
-      Feature branch: {{ world.feature_branch }}
+      Workspace:      {{ world.workspace_id|default:"(none)" }} ({{ world.workdir|default:"(no path)" }})
+      Feature branch: {{ world.feature_branch|default:"(none)" }}
+
+      Applying proposal: {{ world.propose_fix_artifact.summary_title|default:"(no proposal in scope)" }}
+
+      {{ world.propose_fix_artifact.summary_markdown|default:"(no proposal body available)" }}
 
       Type `proceed` to move to testing, or `restart_from` to bail back.
     relevant_world: [ticket_id, ticket_title, workspace_id, workdir, feature_branch, propose_fix_artifact]

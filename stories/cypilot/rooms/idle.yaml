@@ -15,7 +15,7 @@ states:
       cypilot waterfall — idle.
 
       Ticket:        {{ world.ticket_id }} {{ world.ticket_title }}
-      Feature slug:  {{ world.feature_slug ?? "(pending — set from ticket on begin)" }}
+      Feature slug:  {{ world.feature_slug|default:"(pending — set from ticket on begin)" }}
       Judge mode:    {{ world.judge_mode }}
       Workspace:     {{ world.workdir }}
 

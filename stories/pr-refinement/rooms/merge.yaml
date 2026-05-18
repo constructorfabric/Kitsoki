@@ -19,7 +19,7 @@ states:
     view: |
       Merging PR {{ world.pr_id }} — {{ world.pr_title }}
         strategy: {{ world.merge_strategy }}
-        sha:      {{ world.merge_sha ?? "(pending)" }}
+        sha:      {{ world.merge_sha|default:"(pending)" }}
 
       Type `proceed` to land the merge, `quit` to abandon.
     relevant_world: [pr_id, pr_title, merge_strategy, merge_sha]
@@ -50,11 +50,11 @@ states:
     view: |
       Merge checkpoint — PR {{ world.pr_id }}
 
-      merged_sha: {{ world.merge_sha ?? "(unknown)" }}
-      pr_url:     {{ world.pr_url ?? "(unknown)" }}
+      merged_sha: {{ world.merge_sha|default:"(unknown)" }}
+      pr_url:     {{ world.pr_url|default:"(unknown)" }}
 
-      Verdict slot: {{ world.llm_verdict.verdict ?? "(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence ?? 0 }})
-      Reason:       {{ world.llm_verdict.reason ?? "" }}
+      Verdict slot: {{ world.llm_verdict.verdict|default:"(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence|default:0 }})
+      Reason:       {{ world.llm_verdict.reason|default:"" }}
 
       Reply: accept (close out) | refine (back to ci_monitoring) | quit
     relevant_world: [judge_mode, pr_id, pr_url, merge_sha, llm_verdict]

@@ -10,8 +10,10 @@ states:
     view: |
       Testing {{ world.ticket_id }} — {{ world.ticket_title }}
 
-      Tests artifact: {{ world.implement_review_artifact.summary_title }}
-      Status:         {{ world.implement_review_artifact.status }}
+      Summary: {{ world.implement_review_artifact.summary_title|default:"(pending)" }}
+      Status:  {{ world.implement_review_artifact.status|default:"(pending)" }}
+
+      {{ world.implement_review_artifact.summary_markdown|default:"(artifact pending — oracle has not returned yet)" }}
 
       Type `proceed` to deliver the artifact, `restart_from` to back up.
     relevant_world: [ticket_id, ticket_title, workdir, implement_review_artifact, propose_fix_artifact, ci_log, cycle]
@@ -77,10 +79,10 @@ states:
     view: |
       Testing checkpoint — {{ world.ticket_id }}
 
-      {{ world.implement_review_artifact.summary_markdown ?? "(artifact pending)" }}
+      {{ world.implement_review_artifact.summary_markdown|default:"(artifact pending)" }}
 
-      Verdict slot: {{ world.llm_verdict.verdict ?? "(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence ?? 0 }})
-      Reason:       {{ world.llm_verdict.reason ?? "" }}
+      Verdict slot: {{ world.llm_verdict.verdict|default:"(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence|default:0 }})
+      Reason:       {{ world.llm_verdict.reason|default:"" }}
 
       Reply: accept | refine [feedback=...] | restart_from [stage=...] | quit
     relevant_world: [judge_mode, judge_confidence_threshold, ticket_id, thread, implement_review_artifact, llm_verdict, cycle]

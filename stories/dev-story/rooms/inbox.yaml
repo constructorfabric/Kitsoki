@@ -24,7 +24,7 @@ states:
 
       Unread: {{ world.inbox_unread }}
 
-      Pending review request: {{ world.pr_id ?? "(none)" }} {{ world.pr_title }}
+      Pending review request: {{ world.pr_id|default:"(none)" }} {{ world.pr_title }}
 
       Intents:
         - pick_review id=<PR>     (route a review notification into code-review)

@@ -1,0 +1,10 @@
+=== RUN   TestRepro_BugSummary_ProjectsSeverity
+    localfiles_ticket_repro_test.go:71: expected severity P0 in summary, got "" (full summary: map[string]interface {}{"assignee":"brad", "id":"2026-05-18T010000Z-a", "priority":"", "status":"open", "title":"Alpha", "url":""})
+--- FAIL: TestRepro_BugSummary_ProjectsSeverity (0.00s)
+=== RUN   TestRepro_ListAllBugs_OrdersBySeverityThenRecency
+    localfiles_ticket_repro_test.go:118: ordering mismatch at index 0: want "2026-05-17T000000Z-new", got "2026-05-10T000000Z-old" (full order: [2026-05-10T000000Z-old 2026-05-12T000000Z-mid 2026-05-17T000000Z-new])
+          defect: listAllBugs sorts by ID ASC; expected severity ASC, filed_at DESC
+--- FAIL: TestRepro_ListAllBugs_OrdersBySeverityThenRecency (0.00s)
+FAIL
+FAIL	kitsoki/internal/host	0.012s
+FAIL
