@@ -22,10 +22,12 @@ package orchestrator_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -569,7 +571,7 @@ func TestDogfoodSmoke_ContinueFromProposingReachesImplementing(t *testing.T) {
 // landed at core.bf.idle.
 func TestDogfoodSmoke_ProposingAccept_RegisteredWorktreeDirtyTree(t *testing.T) {
 	repoRoot, ticketID := setupDogfoodRepo(t)
-	orch, _, sid, _ := newSmokeOrchestrator(t, repoRoot)
+	orch, s, sid, _ := newSmokeOrchestrator(t, repoRoot)
 
 	ctx := context.Background()
 
@@ -635,6 +637,15 @@ func TestDogfoodSmoke_ProposingAccept_RegisteredWorktreeDirtyTree(t *testing.T) 
 	cancel()
 	require.NoError(t, err)
 	require.NotNil(t, out)
+	if out.NewState != "core.bf.implementing" {
+		hist, _ := s.LoadHistory(sid)
+		for i := len(hist) - 1; i >= 0 && i > len(hist)-25; i-- {
+			ev := hist[i]
+			if ev.Kind == store.HostReturned || ev.Kind == store.HostDispatched {
+				t.Logf("ev #%d %s: %s", i, ev.Kind, string(ev.Payload))
+			}
+		}
+	}
 	require.Equal(t, app.StatePath("core.bf.implementing"), out.NewState,
 		"accept at proposing must land at implementing despite a registered/dirty worktree; got %q (view: %q)",
 		out.NewState, out.View)
@@ -762,6 +773,141 @@ func TestDogfoodSmoke_FullImplementationPipeline(t *testing.T) {
 	step("test → review",      "core__impl__accept",      "core.impl.review_executing")
 	step("review → wait",      "core__impl__proceed",     "core.impl.review_awaiting_reply")
 	step("review → handoff",   "core__impl__accept",      "core.impl.handoff")
+}
+
+// TestDogfoodSmoke_ImplementingActuallyEditsFiles is the regression
+// guard for the "implementing room is a no-op" bug: until 2026-05-19,
+// implementing.on_enter ran workspace.sync + vcs.commit + a misleading
+// `say "Fix applied"` and advanced, but nothing actually edited the
+// code. Earlier happy-path smoke tests didn't notice because the
+// oracle was stubbed and they only checked `next_state`. This test
+// stubs the implementing oracle to ACTUALLY write a file in the
+// worktree, then asserts post-pipeline:
+//
+//  1. The file shows up in `git diff HEAD~ HEAD` on the feature
+//     branch — proves the commit step picked up the oracle's edits.
+//  2. `world.implement_artifact.files_changed` lists the file —
+//     proves the artifact binding flowed.
+//
+// A future "implementing-is-a-no-op" regression would fail both
+// assertions before testing room ran.
+func TestDogfoodSmoke_ImplementingActuallyEditsFiles(t *testing.T) {
+	repoRoot, ticketID := setupDogfoodRepo(t)
+
+	appPath := filepath.Join(repoRoot, "stories", "kitsoki-dev", "app.yaml")
+	def, err := app.Load(appPath)
+	require.NoError(t, err)
+
+	m, err := machine.New(def)
+	require.NoError(t, err)
+
+	s, err := store.OpenMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	reg := host.NewRegistry()
+
+	// Per-prompt-path oracle dispatch: the implementing prompt's stub
+	// edits a marker file in the worktree; every other prompt returns
+	// the generic canned artifact.
+	markerFile := "STUB_EDITED_BY_IMPLEMENTING_ORACLE.txt"
+	reg.Register("host.oracle.ask_with_mcp", func(ctx context.Context, args map[string]any) (host.Result, error) {
+		promptArg, _ := args["prompt"].(string)
+		// The implementing prompt is the one whose name contains
+		// "implementing_executing.md" (after path resolution). The
+		// stub WRITES a real file in working_dir to prove edits
+		// actually happen.
+		if strings.Contains(promptArg, "implementing_executing") {
+			wd, _ := args["working_dir"].(string)
+			markerPath := filepath.Join(repoRoot, wd, markerFile)
+			if writeErr := os.WriteFile(markerPath, []byte("written by stub oracle\n"), 0o644); writeErr != nil {
+				return host.Result{Error: fmt.Sprintf("stub write: %v", writeErr)}, nil
+			}
+			artifact := map[string]any{
+				"summary_title":    "Stub implementing — wrote marker file",
+				"summary_markdown": "Wrote " + markerFile + " in the worktree to prove the oracle ran and the commit step picked it up.\n\nFull text: written by stub oracle.\n",
+				"files_changed":    []string{markerFile},
+				"applied":          true,
+			}
+			stdoutJSON, _ := json.Marshal(artifact)
+			return host.Result{Data: map[string]any{
+				"submitted": artifact,
+				"stdout":    string(stdoutJSON),
+				"ok":        true,
+			}}, nil
+		}
+		// All other prompts: generic canned artifact.
+		stdoutJSON, _ := json.Marshal(dogfoodArtifact)
+		return host.Result{Data: map[string]any{
+			"submitted": dogfoodArtifact,
+			"stdout":    string(stdoutJSON),
+			"ok":        true,
+		}}, nil
+	})
+	reg.Register("host.local", func(ctx context.Context, args map[string]any) (host.Result, error) {
+		return host.Result{Data: map[string]any{
+			"ok": true, "passed": 1, "failed": 0, "log": "PASS (stub)",
+		}}, nil
+	})
+	reg.Register("host.local_files.ticket", host.LocalFilesTicketHandler)
+	reg.Register("host.git", host.GitVCSHandler)
+	reg.Register("host.git_worktree", host.GitWorktreeHandler)
+	reg.Register("host.append_to_file", host.AppendFileTransportHandler)
+	reg.Register("host.inbox.add", host.InboxAddHandler)
+
+	orch := orchestrator.New(def, m, s, noopHarness{}, orchestrator.WithHostRegistry(reg))
+	sid, err := orch.NewSession(context.Background())
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	step := func(label, intent string, want app.StatePath) {
+		t.Helper()
+		c, cancel := context.WithTimeout(ctx, 15*time.Second)
+		defer cancel()
+		out, sErr := orch.SubmitDirect(c, sid, intent, nil)
+		require.NoError(t, sErr, "%s: SubmitDirect(%s)", label, intent)
+		require.NotNil(t, out, "%s: nil out", label)
+		require.Equal(t, want, out.NewState,
+			"%s: %s should land at %q; got %q (view: %q)",
+			label, intent, want, out.NewState, out.View)
+	}
+
+	{
+		c, cancel := context.WithTimeout(ctx, 10*time.Second)
+		require.NoError(t, orch.RunInitialOnEnter(c, sid))
+		cancel()
+	}
+	{
+		c, cancel := context.WithTimeout(ctx, 10*time.Second)
+		_, tErr := orch.Teleport(c, sid, inbox.TeleportTarget{
+			State: app.StatePath("core.main"),
+			Slots: seedDogfoodWorld(ticketID),
+		})
+		require.NoError(t, tErr)
+		cancel()
+	}
+	step("kickoff",     "core__go_bugfix",  "core.bf.reproducing")
+	step("reproducing", "core__bf__accept", "core.bf.proposing")
+	step("proposing",   "core__bf__accept", "core.bf.implementing")
+
+	// 1. The marker file must be committed on the feature branch.
+	workdir := filepath.Join(repoRoot, ".worktrees", "bf-"+ticketID)
+	showCmd := exec.Command("git", "show", "--name-only", "--format=%H", "HEAD")
+	showCmd.Dir = workdir
+	showOut, showErr := showCmd.CombinedOutput()
+	require.NoError(t, showErr, "git show: %s", string(showOut))
+	require.Contains(t, string(showOut), markerFile,
+		"HEAD commit must include the marker file written by the oracle stub; got: %s", string(showOut))
+
+	// 2. world.implement_artifact must reflect what the stub returned.
+	journey, err := orch.LoadJourney(sid)
+	require.NoError(t, err)
+	artifact, _ := journey.World.Vars["core__bf__implement_artifact"].(map[string]any)
+	require.NotNil(t, artifact, "world.implement_artifact must be bound")
+	require.Equal(t, true, artifact["applied"], "applied must be true")
+	files, _ := artifact["files_changed"].([]any)
+	require.Len(t, files, 1, "files_changed must have one entry")
+	require.Equal(t, markerFile, files[0])
 }
 
 // newSmokeOrchestratorWithCIStub mirrors newSmokeOrchestrator but also

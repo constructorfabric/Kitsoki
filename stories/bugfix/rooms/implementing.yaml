@@ -1,10 +1,16 @@
 # implementing — phase 3 of the bugfix pipeline (apply the proposed fix).
 #
-# No artifact-producing oracle and no separate decision room. The
-# implementation is a side-effect chain that runs on_enter (workspace
-# sync + vcs commit), and `continue` advances to testing. There's no
-# checkpoint here because the implementation has no body to review
-# independently — it's reviewed in testing's run-and-review pass.
+# Runs an oracle that reads the propose_fix_artifact and APPLIES the
+# edits to the worktree, then commits whatever's dirty. `continue`
+# advances to testing for the run-and-review pass.
+#
+# Pre-2026-05-19 this room did NOT invoke an oracle — it ran
+# workspace.sync + vcs.commit + a misleading `say "Fix applied"` and
+# advanced. The actual edits were never made; testing.on_enter then
+# ran the repro tests against unchanged code and reported "Fix not
+# applied" every time. The user-visible symptom was a happy pipeline
+# that produced zero diff. The oracle invocation below is the missing
+# piece that makes implementing do its job.
 
 states:
 
@@ -16,12 +22,18 @@ states:
       Workspace:      {{ world.workspace_id|default:"(none)" }} ({{ world.workdir|default:"(no path)" }})
       Feature branch: {{ world.feature_branch|default:"(none)" }}
 
-      Applying proposal: {{ world.propose_fix_artifact.summary_title|default:"(no proposal in scope)" }}
+      Applied:   {{ world.implement_artifact.summary_title|default:"(oracle has not returned yet)" }}
+      Status:    {% if world.implement_artifact.applied == false %}❌ blocked{% else %}✅ applied{% endif %}
+      Files:     {{ world.implement_artifact.files_changed|default:"(none recorded)" }}
 
-      {{ world.propose_fix_artifact.summary_markdown|default:"(no proposal body available)" }}
+      {{ world.implement_artifact.summary_markdown|default:"(no implementation body — oracle pending or failed)" }}
+
+      {% if world.implement_artifact.blockers %}**Blockers:**
+      {% for b in world.implement_artifact.blockers %}- {{ b }}
+      {% endfor %}{% endif %}
 
       Reply: `continue` (advance to testing) · `restart_from stage=…` · `quit`
-    relevant_world: [ticket_id, ticket_title, workspace_id, workdir, feature_branch, propose_fix_artifact]
+    relevant_world: [ticket_id, ticket_title, workspace_id, workdir, feature_branch, propose_fix_artifact, implement_artifact]
     on_enter:
       # Self-heal the workspace before we touch it. bf.idle's auto-
       # create only runs when `!bf_autostart_attempted`, so once that
@@ -51,14 +63,48 @@ states:
         with:
           id: "{{ world.workspace_id }}"
         on_error: idle
+
+      # Apply the proposed fix. The oracle runs with cwd=workdir
+      # (the bugfix worktree), reads the proposal artifact, and uses
+      # Edit/Write to make the actual code changes. Without this
+      # step the room is a no-op and testing observes "fix not
+      # applied". See the file header above for the regression
+      # history.
+      - when: "world.workdir != ''"
+        invoke: host.oracle.ask_with_mcp
+        with:
+          prompt: prompts/implementing_executing.md
+          schema: schemas/implementing_artifact.json
+          working_dir: "{{ world.workdir }}"
+          args:
+            ticket_id:        "{{ world.ticket_id }}"
+            ticket_title:     "{{ world.ticket_title }}"
+            workdir:          "{{ world.workdir }}"
+            fix_description:  "{{ world.propose_fix_artifact.fix_description }}"
+            root_cause:       "{{ world.propose_fix_artifact.root_cause }}"
+            affected_files:   "{{ world.propose_fix_artifact.affected_files }}"
+            refine_feedback:  "{{ world.refine_feedback }}"
+            cycle:            "{{ world.cycle }}"
+        bind:
+          implement_artifact: submitted
+        on_error: idle
+
       - when: "world.workdir != ''"
         invoke: iface.vcs.commit
         with:
           workdir: "{{ world.workdir }}"
           message: "{{ world.propose_fix_artifact.summary_title }}"
-          files:   "{{ world.propose_fix_artifact.affected_files }}"
+          # Stage the oracle's files explicitly. `git commit -a`
+          # picks up modifications to tracked files but does NOT
+          # stage new files — so a `Write`-based edit (oracle
+          # creating a helper) would silently vanish without this
+          # explicit add. files_changed comes from the
+          # implementing artifact and is the oracle's record of
+          # everything it touched.
+          files: "{{ world.implement_artifact.files_changed }}"
         on_error: idle
-      - say: "Fix applied — {{ world.propose_fix_artifact.summary_title }}"
+
+      - say: "Fix applied — {{ world.implement_artifact.summary_title|default:world.propose_fix_artifact.summary_title }}"
     on:
       accept:
         - target: testing

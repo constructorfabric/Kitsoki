@@ -134,7 +134,24 @@ func gitCommit(ctx context.Context, workdir string, args map[string]any) (Result
 	// bounce the bugfix pipeline back to the parked room. Treat as
 	// "no commit made" success so the pipeline keeps moving and the
 	// downstream phases can show their own diagnostics.
-	filesAny, _ := args["files"].([]any)
+	// `files` may arrive as []any (literal YAML list) or []string (when
+	// the rendered expression preserved the inner element type). Accept
+	// both — the pre-fix path-comparison shape that hid the
+	// "implementing is a no-op" bug also masquerades here: a YAML
+	// `{{ world.x }}` reference whose underlying value is `[]string`
+	// renders as `[]string` and the `[]any` type assertion silently
+	// returns false → len()==0 → handler falls back to `git commit -a`
+	// → doesn't stage new files → commit is a no-op → test thinks
+	// implementing succeeded when it didn't.
+	var filesAny []any
+	if v, ok := args["files"].([]any); ok {
+		filesAny = v
+	} else if v, ok := args["files"].([]string); ok {
+		filesAny = make([]any, len(v))
+		for i, s := range v {
+			filesAny[i] = s
+		}
+	}
 	if len(filesAny) > 0 {
 		addArgs := []string{"add", "--"}
 		var listed []string
@@ -175,7 +192,13 @@ func gitCommit(ctx context.Context, workdir string, args map[string]any) (Result
 		// this the leniency check above silently misses the most
 		// common no-op state and the on_error: idle arc fires.
 		combined := stdout + "\n" + stderr
-		if strings.Contains(combined, "nothing to commit") || strings.Contains(combined, "no changes added to commit") {
+		// `nothing to commit`            — clean tree
+		// `no changes added to commit`   — `git add` skipped, tracked changes exist but unstaged
+		// `nothing added to commit but untracked files present` — clean tracked tree, only untracked
+		// All three are "no-op success" from the pipeline's perspective.
+		if strings.Contains(combined, "nothing to commit") ||
+			strings.Contains(combined, "no changes added to commit") ||
+			strings.Contains(combined, "nothing added to commit") {
 			return Result{Data: map[string]any{
 				"ok":             true,
 				"sha":            "",

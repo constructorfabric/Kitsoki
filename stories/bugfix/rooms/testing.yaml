@@ -22,11 +22,15 @@ states:
     on_enter:
       # Run tests against the change. iface.ci.run_tests is wired by
       # the instance binding (host.local in kitsoki-dev). The log is
-      # bound to ci_log so the next invoke can read it.
+      # bound to ci_log so the next invoke can read it. No `target:`
+      # — the local-CI handler forwards target verbatim as the last
+      # `go test` arg (package path / `-run` pattern). Passing the
+      # proposal's summary_title made `go test` choke on `:` /
+      # whitespace and surface a pseudo-failure
+      # ("malformed import path") that masked real test outcomes.
       - invoke: iface.ci.run_tests
         with:
           workdir: "{{ world.workdir }}"
-          target:  "{{ world.propose_fix_artifact.summary_title }}"
         bind:
           ci_log: log
         on_error: idle
