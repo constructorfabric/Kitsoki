@@ -37,7 +37,7 @@ states:
       Tickets{% if world.ticket_query %} (filter: `{{ world.ticket_query }}`){% endif %}
 
       {% if world.ticket_results|length == 0 %}(none — file one in `issues/bugs/`)
-      {% else %}{% for t in world.ticket_results|reverse %}- `{{ t.id }}` — {{ t.title }} [{{ t.status|default:"?" }}{% if t.priority %} · {{ t.priority }}{% endif %}]
+      {% else %}{% for t in world.ticket_results|reverse %}- `{{ t.id }}` — {{ t.title }} **`[{{ t.status|default:"?" }}{% if t.priority %} · {{ t.priority }}{% endif %}]`**
       {% endfor %}{% endif %}
       Picked: {{ world.ticket_id|default:"(none — `pick_ticket id=<TKT>`)" }} {{ world.ticket_title }}
 
