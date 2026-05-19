@@ -5,15 +5,25 @@
 states:
 
   idle:
-    description: "Implementation pipeline parked. Waiting for `start`."
-    view: |
-      Implementation pipeline — idle.
-
-      Ticket:    {{ world.ticket_id }} {{ world.ticket_title }}
-      Workspace: {{ world.workspace_id }}
-      Mode:      judge_mode={{ world.judge_mode }}
-
-      Actions: start, quit, look.
+    description: "Implementation pipeline parked. Waiting for start."
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Ticket:    '{{ world.ticket_id|default:"(none)" }} {{ world.ticket_title }}'
+                Workspace: '{{ world.workspace_id|default:"(none)" }}'
+                Judge:     "{{ world.judge_mode }}"
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "start"
+                  hint:  "boot the pipeline (enters review_task)"
+                - label: "quit"
+                  hint:  "abandon the pipeline"
+                - label: "look"
     relevant_world: [ticket_id, ticket_title, judge_mode, workspace_id]
     on:
       start:

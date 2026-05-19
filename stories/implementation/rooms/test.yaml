@@ -9,14 +9,28 @@ states:
 
   test_executing:
     description: "Running tests for the applied code change."
-    view: |
-      Testing {{ world.ticket_id }} — {{ world.ticket_title }}
-
-      Tests artifact: {{ world.test_artifact.summary_title|default:"(pending)" }}
-      CI state:       {{ world.ci_state|default:"(pending)" }}
-
-      Type `proceed` to deliver the test artifact, `refine` to redo,
-      or `quit` to abandon.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Ticket:     "{{ world.ticket_id }} — {{ world.ticket_title }}"
+                Summary:    '{{ world.test_artifact.summary_title|default:"(pending)" }}'
+                "CI state": '{{ world.ci_state|default:"(pending)" }}'
+          - heading: "Artifact"
+          - code: '{{ world.test_artifact.summary_markdown|default:"(pending — oracle has not returned yet)" }}'
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "proceed"
+                  hint:  "deliver the test artifact to the checkpoint"
+                - label: "restart_from stage=…"
+                  hint:  "bounce back to review_task"
+                - label: "quit"
+                  hint:  "abandon the pipeline"
+                - label: "look"
     relevant_world: [ticket_id, ticket_title, test_artifact, code_artifact, cycle, ci_state]
     on_enter:
       - invoke: iface.ci.run_tests
@@ -57,16 +71,32 @@ states:
   # Canonical §6 checkpoint shape.
   test_awaiting_reply:
     description: "Test results posted; awaiting verdict."
-    view: |
-      Test checkpoint — {{ world.ticket_id }}
-
-      {{ world.test_artifact.summary_markdown|default:"(artifact pending)" }}
-
-      CI state:     {{ world.ci_state|default:"(unknown)" }}
-      Verdict slot: {{ world.llm_verdict.verdict|default:"(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence|default:0 }})
-      Reason:       {{ world.llm_verdict.reason|default:"" }}
-
-      Reply: accept | refine [feedback=...] | restart_from [stage=...] | quit
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Ticket:     "{{ world.ticket_id }} — {{ world.ticket_title }}"
+                "CI state": '{{ world.ci_state|default:"(unknown)" }}'
+                Verdict:    '{{ world.llm_verdict.verdict|default:"(no LLM verdict)" }}'
+                Confidence: '{{ world.llm_verdict.confidence|default:"(n/a)" }}'
+                Reason:     '{{ world.llm_verdict.reason|default:"(none)" }}'
+          - heading: "Artifact"
+          - code: '{{ world.test_artifact.summary_markdown|default:"(pending — oracle has not returned yet)" }}'
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "accept"
+                  hint:  "advance to review"
+                - label: "refine feedback=…"
+                  hint:  "bounce back to write_code with failing-test feedback"
+                - label: "restart_from stage=…"
+                  hint:  "bounce back to an earlier room"
+                - label: "quit"
+                  hint:  "abandon the pipeline"
+                - label: "look"
     relevant_world: [judge_mode, ticket_id, test_artifact, ci_state, llm_verdict, cycle]
     on_enter:
       - invoke: iface.transport.post

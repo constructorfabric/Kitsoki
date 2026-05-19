@@ -9,13 +9,33 @@ states:
 
   review_executing:
     description: "Self-review of the diff (code-review pass)."
-    view: |
-      Reviewing the change for {{ world.ticket_id }} — {{ world.ticket_title }}
-
-      Review status:  {{ world.review_artifact.status|default:"(pending)" }}
-      Blockers:       {{ world.review_artifact.blockers|default:"(none)" }}
-
-      Type `proceed` to deliver, `refine` to redo, or `quit`.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Ticket: "{{ world.ticket_id }} — {{ world.ticket_title }}"
+                Status: '{{ world.review_artifact.status|default:"(pending)" }}'
+          - heading: "Artifact"
+          - code: '{{ world.review_artifact.summary_markdown|default:"(pending — oracle has not returned yet)" }}'
+          - heading: "Blockers"
+            when:  "world.review_artifact.blockers"
+          - code: |
+              {% for b in world.review_artifact.blockers %}- {{ b }}
+              {% endfor %}
+            when: "world.review_artifact.blockers"
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "proceed"
+                  hint:  "deliver the review to the checkpoint"
+                - label: "restart_from stage=…"
+                  hint:  "bounce back to review_task"
+                - label: "quit"
+                  hint:  "abandon the pipeline"
+                - label: "look"
     relevant_world: [ticket_id, ticket_title, review_artifact, code_artifact, cycle]
     on_enter:
       - invoke: iface.vcs.diff
@@ -54,15 +74,31 @@ states:
   # Canonical §6 checkpoint shape.
   review_awaiting_reply:
     description: "Review posted; awaiting verdict."
-    view: |
-      Review checkpoint — {{ world.ticket_id }}
-
-      {{ world.review_artifact.summary_markdown|default:"(artifact pending)" }}
-
-      Verdict slot: {{ world.llm_verdict.verdict|default:"(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence|default:0 }})
-      Reason:       {{ world.llm_verdict.reason|default:"" }}
-
-      Reply: accept | refine [feedback=...] | restart_from [stage=...] | quit
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Ticket:     "{{ world.ticket_id }} — {{ world.ticket_title }}"
+                Verdict:    '{{ world.llm_verdict.verdict|default:"(no LLM verdict)" }}'
+                Confidence: '{{ world.llm_verdict.confidence|default:"(n/a)" }}'
+                Reason:     '{{ world.llm_verdict.reason|default:"(none)" }}'
+          - heading: "Artifact"
+          - code: '{{ world.review_artifact.summary_markdown|default:"(pending — oracle has not returned yet)" }}'
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "accept"
+                  hint:  "hand off to pr-refinement"
+                - label: "refine feedback=…"
+                  hint:  "bounce back to write_code with reviewer feedback"
+                - label: "restart_from stage=…"
+                  hint:  "bounce back to review_task"
+                - label: "quit"
+                  hint:  "abandon the pipeline"
+                - label: "look"
     relevant_world: [judge_mode, ticket_id, review_artifact, llm_verdict, cycle]
     on_enter:
       - invoke: iface.transport.post

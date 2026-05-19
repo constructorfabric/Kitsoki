@@ -1,0 +1,31 @@
+{% comment %}
+implementation — sub-story base view. Mirrors stories/bugfix/views/base.pongo
+and follows the style-guide block convention (docs/story-style.md §2).
+
+This base IS consulted only when implementation runs STANDALONE. When
+imported under dev-story (alias `impl`) or kitsoki-dev, the AppRenderer
+resolves `extends: "base"` against the HOST's views/base.pongo, not this
+one. See docs/proposals/view-elements-proposal.md §5.6 and
+stories/robbery/views/base.pongo for the same pattern.
+
+Block contract — shared across stories so any room composes into any host:
+
+  status   — top status line; implementation's "ticket · workdir · branch · cycle · judge"
+  heading  — room title (default: state.description)
+  body     — main descriptive content (prose, kv, code)
+  choices  — action list
+  footer   — optional bottom matter
+
+Status line keys are private to implementation (ticket_id / workdir /
+feature_branch / cycle / judge_mode). When imported, the leaf-string
+rewriter prefixes the room views' references to `world.impl__…`, but
+this base.pongo is never rewritten because it's only loaded standalone.
+{% endcomment %}
+{% block status %}{{ world.ticket_id|default:"(no ticket)" }}  ·  {{ world.workdir|default:"(no workspace)" }}  ·  {{ world.feature_branch|default:"(no branch)" }}  ·  cycle {{ world.cycle }}  ·  judge {{ world.judge_mode }}{% endblock %}
+
+{% block heading %}{{ state.description }}{% endblock %}
+
+{% block body %}{% endblock %}
+
+{% block choices %}{% endblock %}
+{% block footer %}{% endblock %}

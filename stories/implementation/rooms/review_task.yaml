@@ -10,14 +10,28 @@ states:
 
   review_task_executing:
     description: "Reviewing the task and drafting a task-summary artifact."
-    view: |
-      Reviewing task {{ world.ticket_id }} — {{ world.ticket_title }}
-
-      Artifact summary: {{ world.task_summary_artifact.summary_title|default:"(pending)" }}
-      Acceptance criteria: {{ world.task_summary_artifact.acceptance_criteria|default:"(pending)" }}
-
-      Type `proceed` to deliver the artifact to the transport / inbox,
-      or `restart_from` to re-run, or `quit` to abandon.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Ticket:                "{{ world.ticket_id }} — {{ world.ticket_title }}"
+                Summary:               '{{ world.task_summary_artifact.summary_title|default:"(pending)" }}'
+                "Acceptance criteria": '{{ world.task_summary_artifact.acceptance_criteria|default:"(pending)" }}'
+          - heading: "Artifact"
+          - code: '{{ world.task_summary_artifact.summary_markdown|default:"(pending — oracle has not returned yet)" }}'
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "proceed"
+                  hint:  "deliver the task summary to the checkpoint"
+                - label: "restart_from stage=…"
+                  hint:  "bounce back to re-run review_task"
+                - label: "quit"
+                  hint:  "abandon the pipeline"
+                - label: "look"
     relevant_world: [ticket_id, ticket_title, ticket_body, task_summary_artifact, cycle]
     on_enter:
       # Fetch the ticket. The default host.local_files.ticket binding
@@ -64,15 +78,31 @@ states:
   # Canonical §6 checkpoint shape.
   review_task_awaiting_reply:
     description: "Task summary posted; awaiting verdict."
-    view: |
-      Task-summary checkpoint — {{ world.ticket_id }}
-
-      {{ world.task_summary_artifact.summary_markdown|default:"(artifact pending)" }}
-
-      Verdict slot: {{ world.llm_verdict.verdict|default:"(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence|default:0 }})
-      Reason:       {{ world.llm_verdict.reason|default:"" }}
-
-      Reply: accept | refine [feedback=...] | restart_from [stage=...] | quit
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Ticket:     "{{ world.ticket_id }} — {{ world.ticket_title }}"
+                Verdict:    '{{ world.llm_verdict.verdict|default:"(no LLM verdict)" }}'
+                Confidence: '{{ world.llm_verdict.confidence|default:"(n/a)" }}'
+                Reason:     '{{ world.llm_verdict.reason|default:"(none)" }}'
+          - heading: "Artifact"
+          - code: '{{ world.task_summary_artifact.summary_markdown|default:"(pending — oracle has not returned yet)" }}'
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "accept"
+                  hint:  "advance to write_code"
+                - label: "refine feedback=…"
+                  hint:  "re-draft the task summary with feedback"
+                - label: "restart_from stage=…"
+                  hint:  "bounce back to an earlier room"
+                - label: "quit"
+                  hint:  "abandon the pipeline"
+                - label: "look"
     relevant_world: [judge_mode, ticket_id, task_summary_artifact, llm_verdict, cycle]
     on_enter:
       - invoke: iface.transport.post

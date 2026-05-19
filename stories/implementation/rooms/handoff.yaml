@@ -13,14 +13,26 @@ states:
 
   handoff:
     description: "Handing off to pr-refinement (opens the PR and runs the tail)."
-    view: |
-      Handoff: PR refinement for {{ world.ticket_id }} — {{ world.ticket_title }}
-
-      PR title: {{ world.pr_title }}
-      Workdir:  {{ world.workdir }}
-
-      Type `open` (or `proceed`) to enter the pr-refinement tail,
-      or `quit` to abandon.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Ticket:     "{{ world.ticket_id }} — {{ world.ticket_title }}"
+                "PR title": '{{ world.pr_title|default:"(none)" }}'
+                Workdir:    '{{ world.workdir|default:"(none)" }}'
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "open"
+                  hint:  "enter the pr-refinement tail (opens the PR)"
+                - label: "proceed"
+                  hint:  "alias for open"
+                - label: "quit"
+                  hint:  "abandon the pipeline"
+                - label: "look"
     relevant_world: [ticket_id, ticket_title, pr_title, pr_body, workdir]
     on:
       # Dispatch into the `pr` import compound. The compound's entry
