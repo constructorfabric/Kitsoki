@@ -6,15 +6,28 @@ states:
 
   re_push:
     description: "Committing + pushing the fix."
-    view: |
-      Re-pushing for PR {{ world.pr_id }} — {{ world.pr_title }}
-        workdir:        {{ world.workdir }}
-        feature_branch: {{ world.feature_branch }}
-        cycle:          {{ world.cycle }}
-        feedback:       {{ world.refine_feedback|default:"(none)" }}
-
-      Type `proceed` to return to ci_monitoring, `retry` to re-run,
-      or `quit` to abandon.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                PR:                "{{ world.pr_id }} — {{ world.pr_title }}"
+                Workspace:         '{{ world.workdir|default:"(none)" }}'
+                "Feature branch":  '{{ world.feature_branch|default:"(none)" }}'
+                Cycle:             "{{ world.cycle }}"
+                Feedback:          '{{ world.refine_feedback|default:"(none)" }}'
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "proceed"
+                  hint:  "return to ci_monitoring"
+                - label: "retry"
+                  hint:  "re-run the commit + push"
+                - label: "quit"
+                  hint:  "abandon the pipeline"
+                - label: "look"
     relevant_world: [pr_id, pr_title, workdir, feature_branch, cycle, refine_feedback]
     on_enter:
       # Commit + push. iface.vcs.commit binds sha; iface.vcs.push binds

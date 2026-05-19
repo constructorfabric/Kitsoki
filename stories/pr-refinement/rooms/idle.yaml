@@ -13,16 +13,26 @@
 states:
 
   idle:
-    description: "pr-refinement parked. Waiting for `open` to start."
-    view: |
-      pr-refinement — idle.
-
-      Ticket:         {{ world.ticket_id }} {{ world.ticket_title }}
-      Workspace:      {{ world.workdir }}
-      Feature branch: {{ world.feature_branch }}
-      Judge mode:     {{ world.judge_mode }}
-
-      Actions: open, quit, look.
+    description: "pr-refinement parked. Waiting for open."
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Ticket:           '{{ world.ticket_id|default:"(none)" }} {{ world.ticket_title }}'
+                Workspace:        '{{ world.workdir|default:"(none)" }}'
+                "Feature branch": '{{ world.feature_branch|default:"(none)" }}'
+                Judge:            "{{ world.judge_mode }}"
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "open"
+                  hint:  "open the PR via iface.vcs.open_pr"
+                - label: "quit"
+                  hint:  "abandon the pipeline"
+                - label: "look"
     relevant_world: [ticket_id, ticket_title, workdir, feature_branch, judge_mode]
     on:
       open:

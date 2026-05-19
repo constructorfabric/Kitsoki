@@ -20,17 +20,31 @@
 states:
 
   ci_monitoring:
-    description: "Polling CI for {{ world.pr_id }}."
-    view: |
-      Monitoring CI for PR {{ world.pr_id }} — {{ world.pr_title }}
-
-      CI state:    {{ world.ci_state|default:"(unknown)" }}
-      Attempts:    {{ world.ci_attempts }} / {{ world.ci_poll_budget }}
-      Failing:     {{ world.ci_failed_checks|default:"none" }}
-      Pending review comments: {{ world.pending_comments }}
-
-      Type `monitor` to re-poll, `proceed` to act on the current state,
-      `merge_now` to override and merge, or `quit` to abandon.
+    description: "Polling CI; proceed once a verdict lands."
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                PR:                "{{ world.pr_id }} — {{ world.pr_title }}"
+                "CI state":        '{{ world.ci_state|default:"(unknown)" }}'
+                Attempts:          "{{ world.ci_attempts }} / {{ world.ci_poll_budget }}"
+                Failing:           '{{ world.ci_failed_checks|default:"(none)" }}'
+                "Pending comments": "{{ world.pending_comments }}"
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "monitor"
+                  hint:  "re-poll CI"
+                - label: "proceed"
+                  hint:  "act on the current state (success → merge/resolve, failure → diagnose)"
+                - label: "merge_now"
+                  hint:  "override and jump to merge"
+                - label: "quit"
+                  hint:  "abandon the pipeline"
+                - label: "look"
     relevant_world: [pr_id, pr_title, ci_state, ci_attempts, ci_poll_budget, ci_failed_checks, pending_comments]
     on_enter:
       # Poll the PR's CI state. iface.vcs.pr_status returns

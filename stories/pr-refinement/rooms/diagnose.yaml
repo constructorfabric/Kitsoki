@@ -14,17 +14,30 @@ states:
 
   diagnose_executing:
     description: "Diagnosing the CI failure via the oracle."
-    view: |
-      Diagnosing CI failure for PR {{ world.pr_id }} — {{ world.pr_title }}
-
-      Failing checks:  {{ world.ci_failed_checks|default:"(unknown)" }}
-      Last CI log:     {{ world.ci_log|default:"(none)" }}
-
-      Diagnosis:       {{ world.diagnose_artifact.summary_title|default:"(pending)" }}
-      Confidence:      {{ world.diagnose_artifact.confidence|default:0 }}
-
-      Type `proceed` to deliver the diagnosis, `refine` to re-run,
-      or `quit` to abandon.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                PR:                "{{ world.pr_id }} — {{ world.pr_title }}"
+                "Failing checks":  '{{ world.ci_failed_checks|default:"(unknown)" }}'
+                "Last CI log":     '{{ world.ci_log|default:"(none)" }}'
+                Diagnosis:         '{{ world.diagnose_artifact.summary_title|default:"(pending)" }}'
+                Confidence:        '{{ world.diagnose_artifact.confidence|default:"(pending)" }}'
+          - heading: "Artifact"
+          - code: '{{ world.diagnose_artifact.summary_markdown|default:"(pending — oracle has not returned yet)" }}'
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "proceed"
+                  hint:  "deliver the diagnosis to the checkpoint"
+                - label: "refine feedback=…"
+                  hint:  "re-run diagnose with feedback"
+                - label: "quit"
+                  hint:  "abandon the pipeline"
+                - label: "look"
     relevant_world: [pr_id, pr_title, ci_failed_checks, ci_log, diagnose_artifact, cycle]
     on_enter:
       - invoke: host.oracle.ask_with_mcp
@@ -58,15 +71,30 @@ states:
   # Checkpoint — identical shape to a bugfix _awaiting_reply (contract §6).
   diagnose_awaiting_reply:
     description: "Diagnosis posted; awaiting verdict."
-    view: |
-      Diagnosis checkpoint — PR {{ world.pr_id }}
-
-      {{ world.diagnose_artifact.summary_markdown|default:"(artifact pending)" }}
-
-      Verdict slot: {{ world.llm_verdict.verdict|default:"(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence|default:0 }})
-      Reason:       {{ world.llm_verdict.reason|default:"" }}
-
-      Reply: accept (apply fix → re_push) | refine [feedback=...] | quit
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                PR:           "{{ world.pr_id }}"
+                Diagnosis:    '{{ world.diagnose_artifact.summary_title|default:"(pending)" }}'
+                Verdict:      '{{ world.llm_verdict.verdict|default:"(no LLM verdict)" }}'
+                Confidence:   '{{ world.llm_verdict.confidence|default:"(n/a)" }}'
+                Reason:       '{{ world.llm_verdict.reason|default:"(none)" }}'
+          - heading: "Artifact"
+          - code: '{{ world.diagnose_artifact.summary_markdown|default:"(artifact pending)" }}'
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "accept"
+                  hint:  "apply fix and advance to re_push"
+                - label: "refine feedback=…"
+                  hint:  "re-run diagnose with feedback"
+                - label: "quit"
+                  hint:  "abandon the pipeline"
+                - label: "look"
     relevant_world: [judge_mode, pr_id, diagnose_artifact, llm_verdict, cycle]
     on_enter:
       # 1. Always: post the artifact to whichever transport is bound.

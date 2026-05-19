@@ -15,13 +15,25 @@
 states:
 
   merge_executing:
-    description: "Merging PR {{ world.pr_id }}."
-    view: |
-      Merging PR {{ world.pr_id }} — {{ world.pr_title }}
-        strategy: {{ world.merge_strategy }}
-        sha:      {{ world.merge_sha|default:"(pending)" }}
-
-      Type `proceed` to land the merge, `quit` to abandon.
+    description: "Merging the PR; proceed to advance to close-out."
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                PR:        "{{ world.pr_id }} — {{ world.pr_title }}"
+                Strategy:  "{{ world.merge_strategy }}"
+                SHA:       '{{ world.merge_sha|default:"(pending)" }}'
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "proceed"
+                  hint:  "land the merge and advance to checkpoint"
+                - label: "quit"
+                  hint:  "abandon the pipeline"
+                - label: "look"
     relevant_world: [pr_id, pr_title, merge_strategy, merge_sha]
     on_enter:
       - invoke: iface.vcs.merge
@@ -47,16 +59,29 @@ states:
   # @exit:merged arc that closes the pipeline.
   merge_awaiting_reply:
     description: "Merge landed; awaiting close-out."
-    view: |
-      Merge checkpoint — PR {{ world.pr_id }}
-
-      merged_sha: {{ world.merge_sha|default:"(unknown)" }}
-      pr_url:     {{ world.pr_url|default:"(unknown)" }}
-
-      Verdict slot: {{ world.llm_verdict.verdict|default:"(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence|default:0 }})
-      Reason:       {{ world.llm_verdict.reason|default:"" }}
-
-      Reply: accept (close out) | refine (back to ci_monitoring) | quit
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                PR:           "{{ world.pr_id }}"
+                "Merge SHA":  '{{ world.merge_sha|default:"(unknown)" }}'
+                "PR url":     '{{ world.pr_url|default:"(unknown)" }}'
+                Verdict:      '{{ world.llm_verdict.verdict|default:"(no LLM verdict)" }}'
+                Confidence:   '{{ world.llm_verdict.confidence|default:"(n/a)" }}'
+                Reason:       '{{ world.llm_verdict.reason|default:"(none)" }}'
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "accept"
+                  hint:  "close out and exit merged"
+                - label: "refine"
+                  hint:  "back to ci_monitoring with feedback"
+                - label: "quit"
+                  hint:  "abandon the pipeline"
+                - label: "look"
     relevant_world: [judge_mode, pr_id, pr_url, merge_sha, llm_verdict]
     on_enter:
       - invoke: iface.transport.post

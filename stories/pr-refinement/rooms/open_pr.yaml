@@ -12,16 +12,29 @@ states:
 
   open_pr:
     description: "Opening the PR (or recognising an existing one)."
-    view: |
-      Opening PR for {{ world.ticket_id }} — {{ world.ticket_title }}
-        feature_branch: {{ world.feature_branch }}
-        base_branch:    {{ world.base_branch }}
-        workdir:        {{ world.workdir }}
-
-      PR id:  {{ world.pr_id|default:"(pending)" }}
-      PR url: {{ world.pr_url|default:"(pending)" }}
-
-      Type `proceed` to start monitoring CI, or `quit` to abandon.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Ticket:           "{{ world.ticket_id }} — {{ world.ticket_title }}"
+                "Feature branch": '{{ world.feature_branch|default:"(none)" }}'
+                "Base branch":    "{{ world.base_branch }}"
+                Workspace:        '{{ world.workdir|default:"(none)" }}'
+                "PR id":          '{{ world.pr_id|default:"(pending)" }}'
+                "PR url":         '{{ world.pr_url|default:"(pending)" }}'
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "proceed"
+                  hint:  "start monitoring CI"
+                - label: "monitor"
+                  hint:  "alias for proceed"
+                - label: "quit"
+                  hint:  "abandon the pipeline"
+                - label: "look"
     relevant_world: [ticket_id, ticket_title, feature_branch, base_branch, workdir, pr_id, pr_url]
     on_enter:
       # Open the PR. iface.vcs.open_pr → host.git.open_pr in the

@@ -9,14 +9,27 @@
 states:
 
   resolve_comments:
-    description: "Round-tripping {{ world.pending_comments }} review comments."
-    view: |
-      Review comments on PR {{ world.pr_id }} — {{ world.pr_title }}
-        pending: {{ world.pending_comments }}
-        raw:     {{ world.pr_comments|default:"(none)" }}
-
-      Type `resolve` to post a follow-up comment and re-push,
-      `proceed` to skip ahead (treat as resolved), or `quit`.
+    description: "Round-tripping review comments."
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                PR:       "{{ world.pr_id }} — {{ world.pr_title }}"
+                Pending:  "{{ world.pending_comments }}"
+                Raw:      '{{ world.pr_comments|default:"(none)" }}'
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "resolve"
+                  hint:  "post a follow-up comment and re-push"
+                - label: "proceed"
+                  hint:  "skip ahead (treat as resolved without posting)"
+                - label: "quit"
+                  hint:  "abandon the pipeline"
+                - label: "look"
     relevant_world: [pr_id, pr_title, pending_comments, pr_comments]
     on:
       resolve:
