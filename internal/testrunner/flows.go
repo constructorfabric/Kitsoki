@@ -821,7 +821,15 @@ func runOneFlowLegacy(ctx context.Context, def *app.AppDef, m machine.Machine, f
 		currentState = machResult.NewState
 		currentWorld = machResult.World
 		tr.NewState = currentState
-		tr.View = machResult.View
+		// Re-render against the landed state/world so `expect_view_matches`
+		// sees what `kitsoki session show` would render after the turn
+		// settles — not the stale view machine.Turn captured before any
+		// host-call cascade or on_complete chain advanced the state.
+		if v, rErr := m.RenderState(currentState, currentWorld); rErr == nil {
+			tr.View = v
+		} else {
+			tr.View = machResult.View
+		}
 		tr.Events = machResult.Events
 
 		// Apply assertions.
@@ -1207,7 +1215,15 @@ func runOneFlowOrchestrator(ctx context.Context, def *app.AppDef, m machine.Mach
 		}
 
 		tr.NewState = currentState
-		tr.View = outcome.View
+		// Re-render against the post-completion state/world so view
+		// assertions match what `kitsoki session show` returns — the
+		// outcome.View captured at machine.Turn time is stale once a
+		// host-call cascade or on_complete chain advances the state.
+		if v, rErr := rig.orch.RenderState(currentState, currentWorld); rErr == nil {
+			tr.View = v
+		} else {
+			tr.View = outcome.View
+		}
 		tr.Events = outcome.Events
 
 		// expect_state.
