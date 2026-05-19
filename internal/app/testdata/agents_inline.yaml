@@ -15,5 +15,6 @@ agents:
       You are a YAML editor for the inline app.
     model: claude-opus-4-7
     tools:
-      - authoring.propose
-      - host.authoring.apply
+      - Edit
+      - Write
+      - Read

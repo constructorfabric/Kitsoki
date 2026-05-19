@@ -52,11 +52,7 @@ func TestStoryAuthorPromptMentionsContextProtocol(t *testing.T) {
 
 func TestStoryAuthorToolsOrder(t *testing.T) {
 	a := storyAuthor()
-	want := []string{
-		"host.authoring.propose",
-		"host.authoring.apply",
-		"host.authoring.discard",
-	}
+	want := []string{"Read", "Edit", "Write", "Bash", "Grep", "Glob"}
 	if !reflect.DeepEqual(a.Tools, want) {
 		t.Errorf("storyAuthor().Tools = %v, want %v", a.Tools, want)
 	}

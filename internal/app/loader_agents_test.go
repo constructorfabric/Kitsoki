@@ -24,7 +24,7 @@ func TestAgents_InlinePrompt(t *testing.T) {
 	require.Contains(t, a.SystemPrompt, "YAML editor for the inline app")
 	require.Empty(t, a.SystemPromptPath, "system_prompt_path must be empty when inline form is used")
 	require.Equal(t, "claude-opus-4-7", a.Model)
-	require.Equal(t, []string{"host.authoring.propose", "host.authoring.apply"}, a.Tools)
+	require.Equal(t, []string{"host.Edit", "host.Write", "host.Read"}, a.Tools)
 }
 
 // TestAgents_FilePrompt covers the file-ref happy path: the loader reads the
@@ -123,7 +123,7 @@ func TestAgents_AgentSpecs(t *testing.T) {
 	require.Equal(t, "story-author", specs[0].Name)
 	require.Contains(t, specs[0].SystemPrompt, "YAML editor for the inline app")
 	require.Equal(t, "claude-opus-4-7", specs[0].Model)
-	require.Equal(t, []string{"host.authoring.propose", "host.authoring.apply"}, specs[0].Tools)
+	require.Equal(t, []string{"host.Edit", "host.Write", "host.Read"}, specs[0].Tools)
 	require.Equal(t, "", specs[0].DefaultCwd)
 }
 

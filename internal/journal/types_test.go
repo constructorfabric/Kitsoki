@@ -59,9 +59,6 @@ func TestKindConstants_RoundTrip(t *testing.T) {
 		journal.KindTimeoutFired,
 		journal.KindInboxItemOpened,
 		journal.KindInboxItemDismissed,
-		journal.KindMetamodeProposalStaged,
-		journal.KindMetamodeProposalApplied,
-		journal.KindMetamodeProposalDiscarded,
 		journal.KindValidationRejected,
 		journal.KindGuardRejected,
 	}

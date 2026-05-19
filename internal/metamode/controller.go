@@ -622,17 +622,66 @@ func (c *Controller) sendLocked(ctx context.Context, s *Session, userText string
 	// in any imported child story's directory (proposal §16.4).
 	// Reload trigger #2 (legacy): the ledger flipped during the
 	// structured-token dispatch above. Either is sufficient.
-	var changedFiles []string
+	var (
+		changedFiles    []string
+		changedAbsPaths []string
+	)
 	if treeRoot != "" {
 		postTree := snapshotStoryTree(treeRoot, extras...)
 		changedFiles = storyTreeChanges(preTree, postTree)
+		changedAbsPaths = changedFilesAbsPaths(preTree, postTree, treeRoot)
 	}
 	_ = preStat // kept for symmetry with the legacy single-file diagnostic
 	reload := s.Ledger.ConsumeReload() || len(changedFiles) > 0
+
+	// Deterministic post-turn git commit: if the agent's tools
+	// (Edit/Write) touched any file in the watched tree, stage exactly
+	// those paths and commit (or amend, when this chat already owns
+	// HEAD). See internal/host/authoring_commit.go for the protocol.
+	//
+	// Best-effort — a failed commit does NOT fail the Send turn (the
+	// file edits already landed; we'd corrupt the user's mental model
+	// to claim the turn failed). The commit outcome is surfaced via
+	// SendResult.CommitSHA / CommitAmended / CommitError so the TUI
+	// can render "applied but commit failed: <reason>".
+	var (
+		commitSHA       string
+		commitAmended   bool
+		commitErrString string
+	)
+	if len(changedAbsPaths) > 0 {
+		// Validate the manifest still loads BEFORE committing so a
+		// broken edit never gets amended into history (see
+		// authoring_commit.go validation gate for the trace context).
+		// Skipping validation (passing "") when turn.AppFile is unset
+		// is the right behaviour for legacy callers that don't track
+		// the manifest path.
+		sha, amended, commitErr := host.CommitChangedFiles(ctx, treeRoot, changedAbsPaths, metamodeCommitSubject(changedFiles), chatID, turn.AppFile)
+		commitSHA = sha
+		commitAmended = amended
+		if commitErr != nil {
+			commitErrString = commitErr.Error()
+			slog.WarnContext(ctx, "metamode.commit.failed",
+				"chat_id", chatID,
+				"changed_files", changedFiles,
+				"err", commitErrString,
+			)
+		} else if commitSHA != "" {
+			slog.InfoContext(ctx, "metamode.commit",
+				"chat_id", chatID,
+				"sha", commitSHA,
+				"amended", commitAmended,
+				"files", changedFiles,
+			)
+		}
+	}
+
 	slog.InfoContext(ctx, "metamode.send.done",
 		"chat_id", chatID,
 		"reload_requested", reload,
 		"changed_files", changedFiles,
+		"commit_sha", commitSHA,
+		"commit_amended", commitAmended,
 	)
 
 	return SendResult{
@@ -640,8 +689,73 @@ func (c *Controller) sendLocked(ctx context.Context, s *Session, userText string
 		ChatID:          chatID,
 		ReloadRequested: reload,
 		ChangedFiles:    changedFiles,
+		CommitSHA:       commitSHA,
+		CommitAmended:   commitAmended,
+		CommitError:     commitErrString,
 		Err:             nil,
 	}, nil
+}
+
+// metamodeCommitSubject builds the commit subject for a meta-mode turn.
+// Format: "meta-mode: <first changed file>[, +N more]". Deterministic
+// and machine-parseable; the user can rewrite the message manually if
+// they want a richer description.
+func metamodeCommitSubject(changedFiles []string) string {
+	if len(changedFiles) == 0 {
+		return "meta-mode: applied changes"
+	}
+	if len(changedFiles) == 1 {
+		return "meta-mode: " + changedFiles[0]
+	}
+	return fmt.Sprintf("meta-mode: %s (+%d more)", changedFiles[0], len(changedFiles)-1)
+}
+
+// changedFilesAbsPaths is the absolute-path companion to
+// storyTreeChanges. Where storyTreeChanges returns display-formatted
+// paths suitable for the TUI (`robbery/prompts/intro.md`),
+// changedFilesAbsPaths returns the actual filesystem paths so we can
+// hand them to git. The two helpers walk the same snapshot diff so
+// they always agree on which files changed.
+func changedFilesAbsPaths(pre, post storyTreeSnapshot, treeRoot string) []string {
+	seen := make(map[string]struct{}, len(pre)+len(post))
+	var changed []string
+	for k, prev := range pre {
+		seen[k] = struct{}{}
+		next, ok := post[k]
+		if !ok {
+			changed = append(changed, snapshotKeyToAbsPath(k, treeRoot))
+			continue
+		}
+		if prev.size != next.size || !prev.mtime.Equal(next.mtime) {
+			changed = append(changed, snapshotKeyToAbsPath(k, treeRoot))
+		}
+	}
+	for k := range post {
+		if _, already := seen[k]; already {
+			continue
+		}
+		changed = append(changed, snapshotKeyToAbsPath(k, treeRoot))
+	}
+	sort.Strings(changed)
+	return changed
+}
+
+// snapshotKeyToAbsPath maps a storyTreeSnapshot key back to an
+// absolute filesystem path. Keys have one of two forms (see
+// walkOneRoot): a plain relative path (treeRoot files) or
+// `@@<abs>@@<relpath>` (extra-root files, where <abs> is the imported
+// story's absolute directory). This function reverses the encoding.
+func snapshotKeyToAbsPath(k, treeRoot string) string {
+	if !strings.HasPrefix(k, "@@") {
+		return filepath.Join(treeRoot, k)
+	}
+	end := strings.Index(k[2:], "@@")
+	if end < 0 {
+		return filepath.Join(treeRoot, k)
+	}
+	abs := k[2 : 2+end]
+	rel := k[2+end+2:]
+	return filepath.Join(abs, rel)
 }
 
 // appFileStat captures the mtime + size of one file so direct edits

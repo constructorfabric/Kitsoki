@@ -263,6 +263,4 @@ func RegisterBuiltins(r *Registry) {
 	// of the dev-story-bugfix unify proposal.
 	r.Register("host.gh.ticket", GitHubTicketHandler)
 	r.Register("host.cypilot_artifacts", CypilotArtifactsHandler)
-
-	RegisterAuthoringBuiltins(r)
 }

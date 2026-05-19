@@ -13,8 +13,6 @@ import (
 
 	"kitsoki/internal/agents"
 	"kitsoki/internal/app"
-	"kitsoki/internal/authoring"
-	"kitsoki/internal/host"
 	"kitsoki/internal/world"
 )
 
@@ -291,7 +289,7 @@ func newTestController(t *testing.T, opts ...func(*Controller)) (*Controller, *f
 	reg := newFakeRegistry(agents.Agent{
 		Name:         "story-author",
 		SystemPrompt: "you are the story author.",
-		Tools:        []string{"host.authoring.propose", "host.authoring.apply"},
+		Tools:        []string{"host.oracle.talk", "host.oracle.ask"},
 		DefaultCwd:   "/tmp/agent-default-cwd",
 	})
 	def := &app.AppDef{
@@ -301,7 +299,7 @@ func newTestController(t *testing.T, opts ...func(*Controller)) (*Controller, *f
 				Trigger: "meta",
 				Label:   "improve the story",
 				Agent:   "story-author",
-				Tools:   []string{"host.authoring.propose"},
+				Tools:   []string{"host.oracle.talk"},
 			},
 		},
 	}
@@ -355,9 +353,6 @@ func TestController_Enter_NewChat(t *testing.T) {
 	}
 	if s.Agent.Name != "story-author" {
 		t.Errorf("Session.Agent.Name = %q, want %q", s.Agent.Name, "story-author")
-	}
-	if s.Ledger == nil {
-		t.Error("Session.Ledger is nil")
 	}
 	if s.Snapshot.EnteredAt.IsZero() {
 		t.Error("Session.Snapshot.EnteredAt was not stamped")
@@ -483,7 +478,7 @@ func TestController_Send_NoSessionWriteWhenUnchanged(t *testing.T) {
 func TestController_Send_ToolAllowlistPassed(t *testing.T) {
 	c, _, oracle := newTestController(t)
 	// Override the mode's tool list to a known value.
-	c.AppDef.MetaModes["story"].Tools = []string{"host.authoring.propose"}
+	c.AppDef.MetaModes["story"].Tools = []string{"host.oracle.talk"}
 
 	s, err := c.Enter(context.Background(), makeSnapshot("main"), "story")
 	if err != nil {
@@ -494,7 +489,7 @@ func TestController_Send_ToolAllowlistPassed(t *testing.T) {
 	}
 
 	got := oracle.gotInput.ToolAllowlist
-	want := []string{"host.authoring.propose"}
+	want := []string{"host.oracle.talk"}
 	if !equalStrings(got, want) {
 		t.Errorf("ToolAllowlist = %v, want %v", got, want)
 	}
@@ -576,39 +571,6 @@ func TestController_Send_PopulatesChatID(t *testing.T) {
 
 // ─── Controller.Exit tests ───────────────────────────────────────────────────
 
-func TestController_Exit_KeepsDraftProposals(t *testing.T) {
-	// Decision: meta-mode proposal §6.4 mandates drafts survive Exit
-	// ("on re-entry the chat resumes with that proposal still draft").
-	// Verify Exit leaves the draft entry in place.
-	c, _, _ := newTestController(t)
-	s, err := c.Enter(context.Background(), makeSnapshot("main"), "story")
-	if err != nil {
-		t.Fatalf("Enter: %v", err)
-	}
-	// Add two ledger entries: leave one draft, mark one applied.
-	draftID := s.Ledger.Add(nil)
-	appliedID := s.Ledger.Add(nil)
-	s.Ledger.Update(appliedID, func(pp *PendingProposal) {
-		pp.State = ProposalApplied
-	})
-
-	if err := c.Exit(context.Background(), s); err != nil {
-		t.Fatalf("Exit: %v", err)
-	}
-
-	got, ok := s.Ledger.Get(draftID)
-	if !ok {
-		t.Fatal("draft entry missing after Exit")
-	}
-	if got.State != ProposalDraft {
-		t.Errorf("draft state = %q after Exit, want %q", got.State, ProposalDraft)
-	}
-	got, ok = s.Ledger.Get(appliedID)
-	if !ok || got.State != ProposalApplied {
-		t.Errorf("applied entry corrupted by Exit: %+v ok=%v", got, ok)
-	}
-}
-
 // TestController_Exit_ArchivesEphemeralChat covers the persist:false
 // case: Exit must archive the backing chat when the mode opts out of
 // persistence, and must NOT archive when the mode is persistent
@@ -654,16 +616,14 @@ func TestController_Exit_ArchivesEphemeralChat(t *testing.T) {
 	extraAgent, _ := c.Agents.Get("extra-agent")
 
 	storyS := &Session{
-		Mode:   c.AppDef.MetaModes["story"],
-		Agent:  storyAgent,
-		Chat:   storyChat,
-		Ledger: NewProposalLedger(),
+		Mode:  c.AppDef.MetaModes["story"],
+		Agent: storyAgent,
+		Chat:  storyChat,
 	}
 	extraS := &Session{
-		Mode:   c.AppDef.MetaModes["extra"],
-		Agent:  extraAgent,
-		Chat:   extraChat,
-		Ledger: NewProposalLedger(),
+		Mode:  c.AppDef.MetaModes["extra"],
+		Agent: extraAgent,
+		Chat:  extraChat,
 	}
 
 	ctx := context.Background()
@@ -729,7 +689,7 @@ var _ agents.Registry = (*fakeRegistry)(nil)
 // the deterministic tests above.
 var _ = fmt.Sprintf
 
-// ─── WS-A4: reload-flag + tool-name normalisation tests ──────────────────────
+// ─── tool-name normalisation + direct-edit reload tests ─────────────────────
 
 // oracleFunc is a func-shaped OracleCaller so individual tests can
 // inject custom Ask behaviour without writing a new struct each time.
@@ -737,90 +697,6 @@ type oracleFunc func(ctx context.Context, in AskInput) (AskOutput, error)
 
 func (f oracleFunc) Ask(ctx context.Context, in AskInput) (AskOutput, error) {
 	return f(ctx, in)
-}
-
-// TestController_Send_ReloadFlag_ConsumedFromLedger verifies the
-// WS-A4 ↔ WS-A5 handshake: when an authoring.apply call lands inside
-// a turn, Controller.Send returns SendResult.ReloadRequested=true and
-// the flag is cleared so the next turn doesn't repeat the signal.
-//
-// We stage the test by overriding the host-side propose/apply runners
-// so the inline Ask body can call host.AuthoringPropose +
-// host.AuthoringApply (which the controller has already registered a
-// ledger for) without shelling out to claude.
-func TestController_Send_ReloadFlag_ConsumedFromLedger(t *testing.T) {
-	c, _, _ := newTestController(t)
-
-	restoreP := host.OverrideProposeRunner(t, func(ctx context.Context, appPath, text string, runCtx *authoring.Context) (*authoring.Proposal, error) {
-		return &authoring.Proposal{Summary: "synth", AppDir: "/tmp/a", AppPath: "/tmp/a/app.yaml"}, nil
-	})
-	defer restoreP()
-	restoreA := host.OverrideApplyRunner(t, func(p *authoring.Proposal) error { return nil })
-	defer restoreA()
-
-	c.Oracle = oracleFunc(func(ctx context.Context, in AskInput) (AskOutput, error) {
-		out, err := host.AuthoringPropose(ctx, host.AuthoringProposeArgs{
-			ChatID:  "chat-1",
-			Text:    "x",
-			AppFile: "/tmp/x.yaml",
-		})
-		if err != nil {
-			t.Fatalf("inline AuthoringPropose: %v", err)
-		}
-		if _, err := host.AuthoringApply(ctx, host.AuthoringApplyArgs{
-			ChatID:     "chat-1",
-			ProposalID: out.ProposalID,
-		}); err != nil {
-			t.Fatalf("inline AuthoringApply: %v", err)
-		}
-		return AskOutput{Reply: "applied!"}, nil
-	})
-
-	s, err := c.Enter(context.Background(), makeSnapshot("main"), "story")
-	if err != nil {
-		t.Fatalf("Enter: %v", err)
-	}
-
-	res, err := c.Send(context.Background(), s, "please apply", TurnContext{})
-	if err != nil {
-		t.Fatalf("Send: %v", err)
-	}
-	if !res.ReloadRequested {
-		t.Fatalf("SendResult.ReloadRequested = false, want true after authoring.apply")
-	}
-
-	// And: the flag is consumed by Send, so a second Send (no apply)
-	// returns ReloadRequested=false.
-	c.Oracle = oracleFunc(func(ctx context.Context, in AskInput) (AskOutput, error) {
-		return AskOutput{Reply: "noop"}, nil
-	})
-	res, err = c.Send(context.Background(), s, "anything", TurnContext{})
-	if err != nil {
-		t.Fatalf("Send #2: %v", err)
-	}
-	if res.ReloadRequested {
-		t.Fatalf("SendResult.ReloadRequested = true on no-apply turn; want false (ConsumeReload should have cleared it)")
-	}
-}
-
-// TestController_Send_NoApply_NoReload asserts the regression: when no
-// apply call lands during a turn, ReloadRequested stays false.
-func TestController_Send_NoApply_NoReload(t *testing.T) {
-	c, _, _ := newTestController(t)
-	c.Oracle = oracleFunc(func(ctx context.Context, in AskInput) (AskOutput, error) {
-		return AskOutput{Reply: "no tools used"}, nil
-	})
-	s, err := c.Enter(context.Background(), makeSnapshot("main"), "story")
-	if err != nil {
-		t.Fatalf("Enter: %v", err)
-	}
-	res, err := c.Send(context.Background(), s, "chat with me", TurnContext{})
-	if err != nil {
-		t.Fatalf("Send: %v", err)
-	}
-	if res.ReloadRequested {
-		t.Errorf("ReloadRequested = true on turn with no apply call; want false")
-	}
 }
 
 // TestController_Send_DirectEdit_TriggersReload covers the modern
@@ -1148,9 +1024,9 @@ func TestController_Send_NormalisesToolNames(t *testing.T) {
 	// Mix of short and qualified names — both should pass through
 	// to the oracle as host.*.
 	c.AppDef.MetaModes["story"].Tools = []string{
-		"authoring.propose",
-		"host.authoring.apply",
 		"oracle.talk",
+		"host.oracle.ask",
+		"git.diff",
 	}
 	var seenAllowlist []string
 	c.Oracle = oracleFunc(func(ctx context.Context, in AskInput) (AskOutput, error) {
@@ -1164,47 +1040,9 @@ func TestController_Send_NormalisesToolNames(t *testing.T) {
 	if _, err := c.Send(context.Background(), s, "hi", TurnContext{}); err != nil {
 		t.Fatalf("Send: %v", err)
 	}
-	want := []string{"host.authoring.propose", "host.authoring.apply", "host.oracle.talk"}
+	want := []string{"host.oracle.talk", "host.oracle.ask", "host.git.diff"}
 	if !equalStrings(seenAllowlist, want) {
 		t.Errorf("ToolAllowlist = %v, want %v", seenAllowlist, want)
-	}
-}
-
-// TestController_Send_DispatchesStructuredTokens verifies the Path-Y
-// dispatch: when claude's reply contains <<<apply id>>>, the
-// controller invokes host.AuthoringApply and the reply is rewritten
-// to remove the raw token before transcript-append.
-func TestController_Send_DispatchesStructuredTokens(t *testing.T) {
-	c, _, _ := newTestController(t)
-
-	// Pre-stage: pretend a proposal already exists on the ledger.
-	// We need to do that via the session's ledger after Enter.
-	s, err := c.Enter(context.Background(), makeSnapshot("main"), "story")
-	if err != nil {
-		t.Fatalf("Enter: %v", err)
-	}
-	dummy := &authoring.Proposal{Summary: "tidy", AppDir: "/tmp"}
-	pid := s.Ledger.Add(dummy)
-
-	restore := host.OverrideApplyRunner(t, func(p *authoring.Proposal) error { return nil })
-	defer restore()
-
-	c.Oracle = oracleFunc(func(ctx context.Context, in AskInput) (AskOutput, error) {
-		return AskOutput{Reply: "applying now: <<<apply " + pid + ">>>"}, nil
-	})
-
-	res, err := c.Send(context.Background(), s, "please apply", TurnContext{})
-	if err != nil {
-		t.Fatalf("Send: %v", err)
-	}
-	if !res.ReloadRequested {
-		t.Errorf("expected ReloadRequested after token-dispatched apply")
-	}
-	if !contains(res.Assistant, "[proposal "+pid+" applied: tidy]") {
-		t.Errorf("assistant reply not rewritten with apply summary: %q", res.Assistant)
-	}
-	if contains(res.Assistant, "<<<apply ") {
-		t.Errorf("raw <<<apply>>> token leaked into transcript: %q", res.Assistant)
 	}
 }
 
@@ -1303,10 +1141,9 @@ func TestNormaliseToolName(t *testing.T) {
 	cases := []struct {
 		in, want string
 	}{
-		{"authoring.propose", "host.authoring.propose"},
-		{"host.authoring.apply", "host.authoring.apply"},
 		{"oracle.talk", "host.oracle.talk"},
-		{"host.oracle.talk", "host.oracle.talk"},
+		{"host.oracle.ask", "host.oracle.ask"},
+		{"git.diff", "host.git.diff"},
 		{"", ""},
 		// Tokens with multiple dots still get a single host. prefix.
 		{"deeply.nested.name", "host.deeply.nested.name"},
@@ -1420,82 +1257,6 @@ func TestController_Send_ZeroTurnContextNoPreamble(t *testing.T) {
 	}
 	if want := "[user]\nping\n[/user]\n"; !strings.Contains(got, want) {
 		t.Errorf("UserMessage missing %q:\n%s", want, got)
-	}
-}
-
-// TestController_ProposeTokenAutofillsAppFile feeds a fake oracle reply
-// that contains <<<propose>>>{"text":"x"}<<<endpropose>>> (no app_file)
-// and asserts the propose-runner sees turn.AppFile substituted in.
-func TestController_ProposeTokenAutofillsAppFile(t *testing.T) {
-	c, _, _ := newTestController(t)
-
-	turn := TurnContext{
-		StatePath:    "main",
-		AppFile:      "/tmp/auto/app.yaml",
-		RenderedView: "the auto-filled view",
-	}
-
-	var sawAppPath, sawState, sawView string
-	restoreP := host.OverrideProposeRunner(t, func(ctx context.Context, appPath, text string, runCtx *authoring.Context) (*authoring.Proposal, error) {
-		sawAppPath = appPath
-		if runCtx != nil {
-			sawState = runCtx.State
-			sawView = runCtx.View
-		}
-		return &authoring.Proposal{Summary: "synth", AppDir: "/tmp/a", AppPath: appPath}, nil
-	})
-	defer restoreP()
-
-	c.Oracle = oracleFunc(func(ctx context.Context, in AskInput) (AskOutput, error) {
-		// Body intentionally omits app_file / current_state /
-		// current_view — the controller should fill them from turn.
-		return AskOutput{Reply: `<<<propose>>>{"text":"x"}<<<endpropose>>>`}, nil
-	})
-
-	s, err := c.Enter(context.Background(), makeSnapshot("main"), "story")
-	if err != nil {
-		t.Fatalf("Enter: %v", err)
-	}
-	if _, err := c.Send(context.Background(), s, "please change", turn); err != nil {
-		t.Fatalf("Send: %v", err)
-	}
-	if sawAppPath != turn.AppFile {
-		t.Errorf("propose runner saw appPath = %q, want %q (autofill from TurnContext)", sawAppPath, turn.AppFile)
-	}
-	if sawState != turn.StatePath {
-		t.Errorf("propose runner saw state = %q, want %q", sawState, turn.StatePath)
-	}
-	if sawView != turn.RenderedView {
-		t.Errorf("propose runner saw view = %q, want %q", sawView, turn.RenderedView)
-	}
-}
-
-// TestController_ProposeTokenKeepsExplicitAppFile asserts the agent's
-// explicit app_file wins over TurnContext.AppFile when both are set.
-func TestController_ProposeTokenKeepsExplicitAppFile(t *testing.T) {
-	c, _, _ := newTestController(t)
-
-	turn := TurnContext{AppFile: "/from/context.yaml"}
-	var sawAppPath string
-	restoreP := host.OverrideProposeRunner(t, func(ctx context.Context, appPath, text string, runCtx *authoring.Context) (*authoring.Proposal, error) {
-		sawAppPath = appPath
-		return &authoring.Proposal{Summary: "synth", AppPath: appPath}, nil
-	})
-	defer restoreP()
-
-	c.Oracle = oracleFunc(func(ctx context.Context, in AskInput) (AskOutput, error) {
-		return AskOutput{Reply: `<<<propose>>>{"text":"x","app_file":"/explicit.yaml"}<<<endpropose>>>`}, nil
-	})
-
-	s, err := c.Enter(context.Background(), makeSnapshot("main"), "story")
-	if err != nil {
-		t.Fatalf("Enter: %v", err)
-	}
-	if _, err := c.Send(context.Background(), s, "do it", turn); err != nil {
-		t.Fatalf("Send: %v", err)
-	}
-	if sawAppPath != "/explicit.yaml" {
-		t.Errorf("propose runner saw appPath = %q, want explicit %q (no override)", sawAppPath, "/explicit.yaml")
 	}
 }
 
@@ -1626,9 +1387,6 @@ func TestController_EnterByChatID_HappyPath(t *testing.T) {
 	if s.Agent.Name != "story-author" {
 		t.Errorf("Agent.Name = %q", s.Agent.Name)
 	}
-	if s.Ledger == nil {
-		t.Error("Ledger nil")
-	}
 	if s.Snapshot.EnteredAt.IsZero() {
 		t.Error("Snapshot.EnteredAt not stamped")
 	}
@@ -1709,9 +1467,6 @@ func TestController_NewChat_ArchivesAndOpensFresh(t *testing.T) {
 	}
 	if len(store.archivedIDs) != 1 || store.archivedIDs[0] != oldID {
 		t.Errorf("archivedIDs = %v, want [%s]", store.archivedIDs, oldID)
-	}
-	if s2.Ledger == s.Ledger {
-		t.Error("NewChat reused the old Ledger; want a fresh one")
 	}
 	if s2.Mode != s.Mode || s2.Agent.Name != s.Agent.Name {
 		t.Error("NewChat dropped Mode/Agent")

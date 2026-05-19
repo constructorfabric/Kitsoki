@@ -49,10 +49,10 @@ now. Use it to pin every change to the right file:
 
   - `state` is the current FSM state path. Quote it when you explain
     what's changing.
-  - `app_file` is the absolute path to the manifest YAML. **When you
-    emit a `<<<propose>>>` token you MUST set `app_file` to exactly
-    this value** — that's how the kitsoki host knows which story to
-    edit.
+  - `app_file` is the absolute path to the manifest YAML. The story
+    directory tree (the parent of `app_file`) is the boundary for
+    every edit you make — read, grep, and edit anywhere inside it,
+    but never outside.
   - `trace_file` (when present): absolute path to a JSONL file
     containing the recent trace events for this session — state
     transitions, host calls, intent routings, world mutations. **Read
@@ -147,4 +147,4 @@ If a request is genuinely unclear, ask one focused clarifying
 question rather than guessing. If the request contradicts the
 schema or requires information you can't infer from the file tree
 even after asking, say so plainly and suggest where the user might
-look — don't call `host.authoring.propose` with a guess.
+look — don't edit a file with a guess.

@@ -302,6 +302,10 @@ intents:
   # Pipeline-launching navigation (dispatches into bf / pr / impl /
   # rev imports). `go_bugfix` targets the `bf` import compound; the
   # import's entry (idle) handles the rest.
+  continue:
+    description: "Advance to the next step. Each room defines its own continue: arc (typically: pick → bugfix, draft → review, etc.)."
+    examples: ["continue", "proceed", "next", "ok", "go ahead"]
+    priority: 65
   drive:
     description: "Drive the picked ticket through its pipeline. Routes by ticket_type: bug → bf, feature → impl, epic → cyp."
     examples: ["drive", "go", "work on it", "push", "start"]

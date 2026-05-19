@@ -13,7 +13,7 @@
 states:
 
   ticket_search:
-    description: "Browse tickets — list is auto-fetched on entry."
+    description: "Browse tickets — pick one, then `continue` into the bugfix pipeline."
     relevant_world: [ticket_query, ticket_results, ticket_id, ticket_title]
     # Proactive fetch on entry — the operator should land here and SEE
     # the queue, not be prompted to type a search query first. The
@@ -41,24 +41,35 @@ states:
           # Live result list bound from iface.ticket.search in on_enter.
           # Style guide §6.2 — the canonical "render a world array as a
           # list element" shape is still TBD; until then this code: block
-          # is the agreed pattern across operator stories.
+          # is the agreed pattern across operator stories. The leading
+          # `▸` (vs `-`) marker visually pins the picked row so the
+          # operator can scan past the list and confirm what's about to
+          # be handed to the bugfix pipeline.
           - code: |
               {% if world.ticket_results|length == 0 %}(none — file one in issues/bugs/)
-              {% else %}{% for t in world.ticket_results|reverse %}- {{ t.id }} — {{ t.title }} [{{ t.status|default:"?" }}{% if t.priority %} · {{ t.priority }}{% endif %}]
+              {% else %}{% for t in world.ticket_results|reverse %}{% if t.id == world.ticket_id %}▸{% else %}-{% endif %} {{ t.id }} — {{ t.title }} [{{ t.status|default:"?" }}{% if t.priority %} · {{ t.priority }}{% endif %}]
               {% endfor %}{% endif %}
+          - heading: "Selection"
           - kv:
               pairs:
-                Picked: '{{ world.ticket_id|default:"(none — type pick_ticket id=<TKT>)" }} {{ world.ticket_title }}'
+                Picked: '{{ world.ticket_id|default:"(none — type `pick_ticket id=<TKT>`)" }} {{ world.ticket_title }}'
+                Ready:  '{% if world.ticket_id %}yes — type `continue` to hand off to bugfix{% else %}no — pick a ticket first{% endif %}'
         choices:
           - heading: "Actions"
           - list:
               items:
+                # Primary drive-forward action. `continue` is the canonical
+                # name; `go_bugfix` is kept as a hidden alias on the `on:`
+                # block below for flows/fixtures that still reference it.
+                - label: "continue"
+                  hint:  "hand the picked ticket to the bugfix pipeline"
+                  when:  "available('continue')"
+                - label: "✗ continue — {{ blocked_reason('continue') }}"
+                  when:  "!available('continue')"
                 - label: "pick_ticket id=<TKT>"
                   hint:  "pick a ticket from the list above"
                 - label: "search_tickets query=<text>"
                   hint:  "narrow the list"
-                - label: "go_bugfix"
-                  hint:  "hand the picked ticket to the bugfix pipeline"
                 - label: "go_back"
                 - label: "go_main"
                 - label: "look"
@@ -97,8 +108,19 @@ states:
       # Hand off to the bugfix sub-story for the picked ticket.
       # bf.idle's on_enter auto-emits `start` when entered with a
       # ticket and no in-progress artifact, so the operator types
-      # `go_bugfix` ONCE and lands inside the pipeline. world_in:
+      # `continue` ONCE and lands inside the pipeline. world_in:
       # projects ticket_id / workdir / etc through the boundary.
+      #
+      # `continue` is the canonical name surfaced in the action menu;
+      # `go_bugfix` is the legacy alias kept here so existing flows
+      # and fixtures (dev-story/flows/*, scenarios/pickup_*.yaml, the
+      # dogfood smoke test) keep working unchanged.
+      continue:
+        - when: "world.ticket_id != ''"
+          target: bf
+        - default: true
+          target: ticket_search
+          guard_hint: "Pick a ticket from the list before continuing."
       go_bugfix:
         - when: "world.ticket_id != ''"
           target: bf

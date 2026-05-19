@@ -588,11 +588,10 @@ func NewRootModel(orch *orchestrator.Orchestrator, sid app.SessionID, appPath, i
 	if m.metaController == nil && m.chatStore != nil && len(orch.AppDef().MetaModes) > 0 {
 		if reg := host.AgentRegistry(); reg != nil {
 			m.metaController = &metamode.Controller{
-				Chats:         metamode.NewChatStoreAdapter(m.chatStore),
-				Agents:        reg,
-				AppDef:        orch.AppDef(),
-				Oracle:        metamode.NewOracleCallerAdapter(),
-				JournalWriter: m.journalWriter, // site 28-30: wire ledger journal writes
+				Chats:  metamode.NewChatStoreAdapter(m.chatStore),
+				Agents: reg,
+				AppDef: orch.AppDef(),
+				Oracle: metamode.NewOracleCallerAdapter(),
 			}
 		}
 	}

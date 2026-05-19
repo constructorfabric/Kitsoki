@@ -156,6 +156,17 @@ type SendResult struct {
 	// included YAML fragments, prompts, scripts, anything the
 	// directory walk picked up. Empty when nothing changed.
 	ChangedFiles []string
+	// CommitSHA / CommitAmended / CommitError carry the outcome of the
+	// deterministic post-turn git-commit step. When any files changed,
+	// the controller stages exactly those files and either creates a
+	// new commit (first apply per chat) or amends HEAD (subsequent
+	// apply in the same chat — keyed on a Kitsoki-Meta-Session trailer
+	// so process restarts don't lose the binding). CommitSHA is empty
+	// when no commit happened (no changes, no git repo, or git
+	// failed — CommitError disambiguates).
+	CommitSHA     string
+	CommitAmended bool
+	CommitError   string
 	// ChatID is the meta-chat row's full ULID. Surfaced on every
 	// successful turn so the TUI can render a "kitsoki chat attach
 	// <id>" hint — meta-mode chats are regular chat rows under the

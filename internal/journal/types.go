@@ -105,15 +105,6 @@ const KindInboxItemOpened = "inbox.item.opened"
 // KindInboxItemDismissed records that the user dismissed an inbox item.
 const KindInboxItemDismissed = "inbox.item.dismissed"
 
-// KindMetamodeProposalStaged records that a meta-mode proposal was staged for review.
-const KindMetamodeProposalStaged = "metamode.proposal.staged"
-
-// KindMetamodeProposalApplied records that a staged meta-mode proposal was applied.
-const KindMetamodeProposalApplied = "metamode.proposal.applied"
-
-// KindMetamodeProposalDiscarded records that a staged meta-mode proposal was discarded.
-const KindMetamodeProposalDiscarded = "metamode.proposal.discarded"
-
 // KindValidationRejected records that an intent was rejected by the validator.
 const KindValidationRejected = "validation.rejected"
 

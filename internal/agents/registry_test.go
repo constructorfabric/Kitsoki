@@ -15,11 +15,7 @@ func TestNewBuiltinsHasStoryAuthor(t *testing.T) {
 	if a.SystemPrompt == "" {
 		t.Error("story-author SystemPrompt is empty")
 	}
-	want := []string{
-		"host.authoring.propose",
-		"host.authoring.apply",
-		"host.authoring.discard",
-	}
+	want := []string{"Read", "Edit", "Write", "Bash", "Grep", "Glob"}
 	if !reflect.DeepEqual(a.Tools, want) {
 		t.Errorf("story-author Tools = %v, want %v", a.Tools, want)
 	}
