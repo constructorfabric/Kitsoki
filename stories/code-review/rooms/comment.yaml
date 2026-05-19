@@ -8,14 +8,26 @@ states:
 
   comment_executing:
     description: "Drafting the review comment."
-    view: |
-      Drafting comment for PR {{ world.pr_id }} — {{ world.pr_title }}
-
-      Draft:
-      {{ world.draft_comment|default:"(pending)" }}
-
-      Type `proceed` to post + advance to decide,
-      `refine` to redraft, or `quit` to abandon.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                PR: "{{ world.pr_id }} — {{ world.pr_title }}"
+          - heading: "Draft"
+          - code: '{{ world.draft_comment|default:"(pending — oracle has not returned yet)" }}'
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "proceed"
+                  hint:  "post the comment and advance to decide"
+                - label: "refine feedback=…"
+                  hint:  "redraft the comment with feedback"
+                - label: "quit"
+                  hint:  "abandon the review"
+                - label: "look"
     relevant_world: [pr_id, pr_title, draft_comment, review_summary_artifact, cycle, refine_feedback]
     on_enter:
       # LLM drafts the comment body. The draft itself is a free-form

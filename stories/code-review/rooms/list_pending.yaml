@@ -8,17 +8,31 @@ states:
 
   list_pending:
     description: "Listing PRs awaiting your review."
-    view: |
-      PRs awaiting your review.
-
-      Count:   {{ world.pending_count }}
-      Pending: {{ world.pending_pr|default:"(none)" }}
-
-      Currently picked: {{ world.pr_id|default:"(none)" }} {{ world.pr_title }}
-
-      Type `pick_pr id=<PR>` to start reviewing,
-      or `proceed` if a PR is already picked.
-      `quit` to abandon.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Count:   "{{ world.pending_count }}"
+                Pending: '{{ world.pending_prs|default:"(none)" }}'
+                Picked:  '{{ world.pr_id|default:"(none)" }} {{ world.pr_title }}'
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "pick_pr id=<PR>"
+                  hint:  "select a PR and start reviewing"
+                - label: "proceed"
+                  hint:  "advance with the already-picked PR"
+                  when:  "world.pr_id != ''"
+                - label: "✗ proceed — pick a PR first"
+                  when:  "world.pr_id == ''"
+                - label: "dismiss"
+                  hint:  "drop the review request (wrong reviewer)"
+                - label: "quit"
+                  hint:  "abandon the review"
+                - label: "look"
     relevant_world: [pending_count, pending_prs, pr_id, pr_title]
     on_enter:
       # Fetch the list. The default host.git binding doesn't actually

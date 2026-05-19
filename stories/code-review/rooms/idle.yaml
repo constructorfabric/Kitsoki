@@ -5,15 +5,25 @@
 states:
 
   idle:
-    description: "Code-review pipeline parked. Waiting for `start`."
-    view: |
-      Code-review pipeline — idle.
-
-      Pending PRs awaiting your review: {{ world.pending_count }}
-      Currently picked: {{ world.pr_id|default:"(none)" }} {{ world.pr_title }}
-      Judge mode: {{ world.judge_mode }}
-
-      Actions: start, quit, look.
+    description: "Code-review pipeline parked. Waiting for start."
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                "Pending PRs": "{{ world.pending_count }}"
+                Picked:        '{{ world.pr_id|default:"(none)" }} {{ world.pr_title }}'
+                Judge:         "{{ world.judge_mode }}"
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "start"
+                  hint:  "list PRs awaiting your review"
+                - label: "quit"
+                  hint:  "abandon the review"
+                - label: "look"
     relevant_world: [pending_count, pr_id, pr_title, judge_mode]
     on:
       start:

@@ -8,14 +8,29 @@ states:
 
   review_pr_executing:
     description: "Reviewing PR diff via the oracle."
-    view: |
-      Reviewing PR {{ world.pr_id }} — {{ world.pr_title }} (author: {{ world.pr_author }})
-
-      Summary:    {{ world.review_summary_artifact.summary_title|default:"(pending)" }}
-      Confidence: {{ world.review_summary_artifact.confidence|default:"(pending)" }}
-
-      Type `proceed` to deliver the review summary,
-      `refine` to redo, or `quit` to abandon.
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                PR:         "{{ world.pr_id }} — {{ world.pr_title }}"
+                Author:     '{{ world.pr_author|default:"(unknown)" }}'
+                Summary:    '{{ world.review_summary_artifact.summary_title|default:"(pending)" }}'
+                Confidence: '{{ world.review_summary_artifact.confidence|default:"(pending)" }}'
+          - heading: "Artifact"
+          - code: '{{ world.review_summary_artifact.summary_markdown|default:"(pending — oracle has not returned yet)" }}'
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "proceed"
+                  hint:  "deliver the review summary at the checkpoint"
+                - label: "refine feedback=…"
+                  hint:  "re-run the reviewer with feedback"
+                - label: "quit"
+                  hint:  "abandon the review"
+                - label: "look"
     relevant_world: [pr_id, pr_title, pr_author, pr_diff, pr_comments, review_summary_artifact, cycle]
     on_enter:
       # Fetch the diff. iface.vcs.diff with pr_id (the host handler
@@ -68,16 +83,32 @@ states:
   # Canonical §6 checkpoint shape.
   review_pr_awaiting_reply:
     description: "Review summary posted; awaiting verdict."
-    view: |
-      Review-summary checkpoint — PR {{ world.pr_id }}
-
-      {{ world.review_summary_artifact.summary_markdown|default:"(artifact pending)" }}
-
-      Verdict slot: {{ world.llm_verdict.verdict|default:"(no LLM verdict)" }}  (confidence {{ world.llm_verdict.confidence|default:0 }})
-      Reason:       {{ world.llm_verdict.reason|default:"" }}
-
-      Reply: accept | refine [feedback=...] | dismiss | quit
-    relevant_world: [judge_mode, pr_id, review_summary_artifact, llm_verdict, cycle]
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                PR:         "{{ world.pr_id }} — {{ world.pr_title }}"
+                Verdict:    '{{ world.llm_verdict.verdict|default:"(no LLM verdict)" }}'
+                Confidence: '{{ world.llm_verdict.confidence|default:"(n/a)" }}'
+                Reason:     '{{ world.llm_verdict.reason|default:"(none)" }}'
+          - heading: "Artifact"
+          - code: '{{ world.review_summary_artifact.summary_markdown|default:"(pending — oracle has not returned yet)" }}'
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "accept"
+                  hint:  "advance to drafting a review comment"
+                - label: "refine feedback=…"
+                  hint:  "re-run the reviewer with feedback"
+                - label: "dismiss"
+                  hint:  "drop the review request (wrong reviewer)"
+                - label: "quit"
+                  hint:  "abandon the review"
+                - label: "look"
+    relevant_world: [judge_mode, pr_id, pr_title, review_summary_artifact, llm_verdict, cycle]
     on_enter:
       - invoke: iface.transport.post
         with:
