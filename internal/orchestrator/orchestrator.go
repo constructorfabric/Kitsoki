@@ -1014,7 +1014,11 @@ func (o *Orchestrator) settlePostBindEmits(ctx context.Context, sid app.SessionI
 			// Refresh the view from whatever state we landed at before
 			// returning the nested error so the caller still has
 			// something to render.
-			if v, rErr := o.machine.RenderState(res.NewState, res.World); rErr == nil && v != "" {
+			v, rErr := o.machine.RenderState(res.NewState, res.World)
+			if rErr != nil {
+				slog.Warn("orchestrator.render_after_bind_failed",
+					"state", string(res.NewState), "err", rErr.Error())
+			} else if v != "" {
 				if emSay != "" {
 					res.View = emSay + "\n\n" + v
 				} else {
@@ -1024,8 +1028,16 @@ func (o *Orchestrator) settlePostBindEmits(ctx context.Context, sid app.SessionI
 			return nestedErr
 		}
 	}
-	// Refresh the view so it reflects the final settled state.
-	if v, rErr := o.machine.RenderState(res.NewState, res.World); rErr == nil && v != "" {
+	// Refresh the view so it reflects the final settled state. A
+	// render error here used to silently zero the view (the user
+	// described it as "dumped into nothingness"). Log it so the
+	// failure is at least visible in the trace; the upstream view
+	// template needs to be hardened — see docs/story-style.md §3.5.
+	v, rErr := o.machine.RenderState(res.NewState, res.World)
+	if rErr != nil {
+		slog.Warn("orchestrator.render_after_bind_failed",
+			"state", string(res.NewState), "err", rErr.Error())
+	} else if v != "" {
 		if emSay != "" {
 			res.View = emSay + "\n\n" + v
 		} else {

@@ -144,6 +144,79 @@ Conventions:
 
 ---
 
+## 3.5 The view MUST always render to something visible
+
+The single worst failure mode in a kitsoki story is a room whose
+view renders to **zero bytes**. The user is dropped into a blank
+screen with no narration, no status, no action menu, no prompt — no
+way to tell what state the session is in or what to type next. They
+quit, restart, or grep the trace. This has happened. Defend against
+it.
+
+Why blanks happen:
+
+- A pongo2 expression inside `view: |` errors (missing key, wrong
+  type, malformed `|default:` chain, `{% for %}` over a non-iterable).
+  The orchestrator's render-after-bind path silently swallows the
+  error and leaves `res.View` empty — there is no diagnostic in the
+  trace beyond `view_bytes: 0`.
+- A typed `view: extends: base` whose every block evaluates to empty
+  (every `when:` guard false, every `prose:` body empty) renders the
+  base template with empty slots — also unrecoverable from the user's
+  side.
+- A host call binds `nil` or `null` into a world key the view then
+  iterates over.
+
+**Rules to keep a view from blanking:**
+
+1. **Prefer typed `view: extends: "base"` over `view: |` strings.**
+   A single bad `{{ … }}` in a legacy string kills the entire render.
+   Typed elements isolate failures to one element at a time and the
+   surrounding chrome (location bar, prompt, action menu) keeps the
+   user oriented.
+
+2. **Never make the action menu conditional on world state.** Even
+   if the room can't show its body, the user must still see
+   `Reply: \`continue\` · \`restart_from stage=…\` · \`quit\``. Put
+   the menu in a `choices:` block (always rendered) or as a
+   non-guarded `prose:` line at the bottom of `body:`. If the user
+   doesn't know what to type, the session is unrecoverable.
+
+3. **Pongo2 `{% for %}` over a possibly-absent key needs an
+   `{% if %}` guard, OR use a typed `list:` element with a `from:`
+   reference.** The `list:` form tolerates `nil` / missing keys —
+   the legacy `{% for x in world.maybe_missing %}` form will render
+   to empty under common world shapes.
+
+4. **`{% if world.foo == false %}` distinguishes "missing", "null"
+   and "false" differently in pongo2. Prefer `{% if !world.foo %}`
+   or move the check into a typed element's `when:`.** Equality
+   against literal booleans is a frequent silent-blanker source.
+
+5. **Every room's `view:` must produce ≥ 1 line of text against an
+   empty world (`{}`).** If your view depends on a host call having
+   already returned, write a *pending-state* version that renders
+   before the bind happens (see §4 placeholders). Tests:
+   `internal/machine/view_elements_test.go` exercises the typed
+   path; add an analogous case if you're writing a legacy-string
+   view that you can't migrate today.
+
+6. **Treat `view_bytes: 0` in the trace as a P0 bug.** It is never
+   correct for a turn that lands in a non-exit state. If you see it,
+   the view template errored — find it by re-rendering against the
+   logged world. (Authors: prefer `extends: base` so this can't
+   happen silently.)
+
+The implementing-room regression of 2026-05-19 — user typed
+`continue` on a fix-proposal, the oracle ran for 50 seconds and
+returned a valid artifact, the room transitioned successfully — but
+the view template hit a pongo2 error and the orchestrator silently
+zeroed it. The user described it as "dumped into nothingness."
+Don't ship a room whose view can do that. Use `extends: base` and
+let the chrome carry the floor.
+
+---
+
 ## 4. Placeholders for empty / pending values
 
 Lowercase, in parentheses. The pongo `|default` filter is the standard
@@ -242,6 +315,26 @@ not yet adopted.**
    system) or route system lines to a separate transport. Single-voice
    stories don't need anything.
 
+8. **Per-pipeline infrastructure plumbed through every room.** The
+   bugfix story carries `workspace_id`, `workdir`, `feature_branch`
+   through every room view AND threads them into every
+   `iface.workspace.*` / `iface.vcs.*` call as `with:` args — plus a
+   `when: world.workspace_id != ''` guard on every host call to
+   "degrade gracefully" if the workspace wasn't set up. This is
+   leaky: workspaces should be a pipeline-level concept (set up
+   once when the pipeline enters its first room, torn down at
+   `@exit:*`), not a per-room obligation. Authors end up re-stating
+   the same plumbing in five rooms; a missed guard silently bounces
+   to idle; the `view:` shows infrastructure detail the user has no
+   say in.
+   *Proposed:* a pipeline-scoped `setup:` block on the parent state
+   (or on the import) that runs once on entry and exposes the
+   resulting context via implicit keys handlers can read without the
+   room having to pass them. Until that exists: keep all workspace
+   plumbing in one room (`idle.yaml` for bugfix today), and treat
+   the per-room re-creation as a workaround for a missing
+   abstraction, not a pattern to copy.
+
 ---
 
 ## 7. Quick author checklist
@@ -257,3 +350,7 @@ Before you ship a new room:
       placeholders from §4.
 - [ ] `look` is the last action and `target: .`.
 - [ ] You haven't reached for ANSI escapes or backticks-around-intent-names.
+- [ ] The view renders to ≥ 1 visible line against an empty world
+      (`{}`). Action-menu / reply prompt is unconditional.
+- [ ] No `{% for %}` over a world key that might be absent / nil.
+      Either guard with `{% if %}` or use a typed `list: from: …`.
