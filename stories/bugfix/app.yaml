@@ -273,7 +273,15 @@ intents:
     examples: [refine, "rework", "redo"]
     priority: 70
     slots:
-      feedback: { type: string, required: false }
+      # required: true so a synonym hit on the lead verb ("refine ...")
+      # forces the semantic router to fall through to the LLM router
+      # (via orchestrator.RequiresUnfilledSlot). Otherwise the
+      # bare-string matcher would auto-dispatch `refine` with empty
+      # slots, and the trailing free-form feedback the operator typed
+      # — "refine don't keep priority" — would be dropped on the
+      # floor. See the 2026-05-20 dogfood trace at
+      # /tmp/kitsoki-dogfood-trace.jsonl:859 for the regression.
+      feedback: { type: string, required: true }
   restart_from:
     description: "Restart from a named prior stage (resets that phase's cycle counter)."
     examples: [restart_from, "restart"]

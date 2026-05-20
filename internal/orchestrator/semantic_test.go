@@ -170,6 +170,139 @@ func TestSemantic_DisabledFallsThroughToHarness(t *testing.T) {
 		"harness MUST be called when routing.enabled=false")
 }
 
+// TestSemantic_RefineIntents_FeedbackRequired pins the YAML-side
+// half of the 2026-05-20 fix: every story that declares a `refine`
+// intent must mark its `feedback` slot as required:true. Without
+// that flag, the semantic router's high-confidence path short-
+// circuits on the lead verb and the operator's trailing free-form
+// feedback is dropped (see TestSemantic_RequiredSlotForcesFallThrough
+// for the mechanism). A toggle back to required:false in any of
+// these stories would silently re-introduce the regression; this
+// test catches that toggle at load time.
+func TestSemantic_RefineIntents_FeedbackRequired(t *testing.T) {
+	t.Parallel()
+
+	stories := []string{
+		"../../stories/bugfix/app.yaml",
+		"../../stories/cypilot/app.yaml",
+		"../../stories/pr-refinement/app.yaml",
+	}
+
+	for _, path := range stories {
+		path := path
+		t.Run(path, func(t *testing.T) {
+			t.Parallel()
+			def, err := app.Load(path)
+			require.NoError(t, err, "load %s", path)
+
+			intent, ok := def.Intents["refine"]
+			require.True(t, ok, "%s must declare a refine intent", path)
+
+			slot, ok := intent.Slots["feedback"]
+			require.True(t, ok, "%s: refine intent must declare a feedback slot", path)
+
+			require.True(t, slot.Required,
+				"%s: refine.slots.feedback MUST be required:true — without it the semantic router auto-dispatches `refine X Y Z` with empty slots and the operator's directive is lost (2026-05-20 dogfood regression)",
+				path)
+		})
+	}
+}
+
+// TestSemantic_RequiredSlotForcesFallThrough is the regression for
+// the 2026-05-20 dogfood bug where typing
+// `refine don't keep priority - there's no consumers ...`
+// at a bugfix checkpoint caused the kitsoki bare-string semantic
+// router to short-circuit on the verb-word "refine" and dispatch
+// `core__bf__refine` with EMPTY slots. The downstream refine arc
+// then set `world.refine_feedback` to "" via
+// `{{ slots.feedback ?? world.llm_verdict.reason }}`, the next
+// oracle's prompt's `{% if args.refine_feedback %}` rendered false,
+// and the operator's directive never reached the LLM.
+//
+// The fix is encoded in stories/{bugfix,cypilot,pr-refinement}/app.yaml:
+// refine.slots.feedback is now `required: true`, which makes
+// RequiresUnfilledSlot return true for a bare-string match with an
+// empty slot bag — semantic.go's high-confidence branch then
+// abdicates to the LLM router, which extracts the feedback from
+// natural language.
+//
+// This test pins the orchestrator behaviour: a synonym/example
+// match against an intent that declares a required slot the matcher
+// cannot fill MUST fall through to the harness, not auto-dispatch
+// with empty slots.
+func TestSemantic_RequiredSlotForcesFallThrough(t *testing.T) {
+	t.Parallel()
+
+	const appYAML = `
+app:
+  id: semroute-required-slot
+  version: 0.1.0
+
+world: {}
+
+routing:
+  enabled: true
+
+intents:
+  refine:
+    title: "Refine"
+    examples: ["refine"]
+    synonyms: ["rework"]
+    slots:
+      # The exact shape of the bugfix story's refine intent after the
+      # 2026-05-20 fix. Without required:true the semantic matcher
+      # short-circuits on the lead verb and the trailing feedback is
+      # lost.
+      feedback: { type: string, required: true }
+
+root: start
+
+states:
+  start:
+    view: "checkpoint"
+    on:
+      refine:
+        - target: ended
+
+  ended:
+    terminal: true
+    view: "done"
+`
+	def, err := app.LoadBytes([]byte(appYAML))
+	require.NoError(t, err)
+
+	m, err := machine.New(def)
+	require.NoError(t, err)
+	s, err := store.OpenMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	// Fallback harness routes everything to `refine` with the
+	// feedback slot filled — same shape claude would produce when
+	// the LLM router parses "refine don't keep priority" out of
+	// natural language. The semantic router falling through to the
+	// harness is what we're asserting; the harness's response is
+	// irrelevant to the test's load-bearing claim.
+	h := &countingHarness{fall: staticHarness{
+		intentName: "refine",
+		slots:      map[string]any{"feedback": "don't keep priority"},
+	}}
+
+	orch := orchestrator.New(def, m, s, h)
+	ctx := context.Background()
+	sid, err := orch.NewSession(ctx)
+	require.NoError(t, err)
+
+	// Bare-string match on the example word "refine" — the rest of
+	// the input is free-form feedback the matcher cannot extract.
+	out, err := orch.Turn(ctx, sid, "refine don't keep priority - there's no consumers backwards compat is not relevant")
+	require.NoError(t, err)
+	require.Equal(t, orchestrator.ModeCompleted, out.Mode,
+		"the transition must reach ended (via the harness's filled slots)")
+	require.EqualValues(t, 1, h.calls.Load(),
+		"harness MUST be called: a semantic match on an intent with a required unfilled slot must abdicate to the LLM, not auto-dispatch with empty slots — this is the 2026-05-20 dogfood regression")
+}
+
 // TestSemantic_MissFallsThroughToHarness — routing is enabled but
 // the input shares no stems with any declared synonym; the harness
 // MUST fire.

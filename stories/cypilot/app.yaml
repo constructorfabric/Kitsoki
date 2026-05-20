@@ -222,7 +222,12 @@ intents:
     examples: [refine, "rework"]
     priority: 70
     slots:
-      feedback: { type: string, required: false }
+      # required: true so a synonym hit on "refine ..." forces a
+      # fall-through to the LLM router instead of auto-dispatching
+      # with empty slots. See bugfix/app.yaml's refine intent for the
+      # full rationale + the 2026-05-20 dogfood regression that
+      # motivated this.
+      feedback: { type: string, required: true }
   next_feature:
     description: "Advance to the next feature in the decomposition."
     examples: [next, "next feature", "next phase"]
