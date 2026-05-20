@@ -112,11 +112,13 @@ states:
           schema: schemas/testing_artifact.json
           working_dir: "{{ world.workdir }}"
           args:
-            ticket_id:    "{{ world.ticket_id }}"
-            ticket_title: "{{ world.ticket_title }}"
-            workdir:      "{{ world.workdir }}"
-            fix_summary:  "{{ world.propose_fix_artifact.summary_markdown }}"
-            ci_log:       "{{ world.ci_log }}"
+            ticket_id:       "{{ world.ticket_id }}"
+            ticket_title:    "{{ world.ticket_title }}"
+            workdir:         "{{ world.workdir }}"
+            fix_summary:     "{{ world.propose_fix_artifact.summary_markdown }}"
+            ci_log:          "{{ world.ci_log }}"
+            refine_feedback: "{{ world.refine_feedback }}"
+            cycle:           "{{ world.cycle }}"
         bind:
           implement_review_artifact: submitted
         on_error: idle

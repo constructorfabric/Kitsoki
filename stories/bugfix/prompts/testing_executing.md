@@ -13,6 +13,33 @@ The CI / test run produced:
 {{ args.ci_log }}
 ```
 
+{% if args.refine_feedback %}## ⚠ Operator refinement directive (cycle {{ args.cycle }})
+
+This is a refine cycle — the previous test review was rejected. The
+operator's feedback below is a **binding directive**: it OVERRIDES
+any default behaviour or constraint further down this prompt whenever
+the two conflict. Treat every statement as a hard requirement, not a
+suggestion.
+
+> {{ args.refine_feedback }}
+
+Before submitting:
+
+1. Walk the feedback statement-by-statement and confirm the new
+   review addresses each point. If the feedback says "do not X",
+   the review must NOT do X — including in `summary_markdown`,
+   `status`, `tests_added`, and `blockers`.
+2. If you genuinely cannot honour a statement (schema-incompatible,
+   factually impossible), say so in `summary_markdown` and explain
+   why. Silent non-compliance is the failure mode this directive
+   guards against.
+3. If the feedback contradicts the default constraints below,
+   follow the feedback and flag the conflict in `summary_markdown`.
+
+---
+
+{% endif %}
+
 ## Constraints
 
 - `status` must be `passed` only if the tests actually ran and the bug

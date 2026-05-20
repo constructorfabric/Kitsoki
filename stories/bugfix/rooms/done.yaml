@@ -83,6 +83,7 @@ states:
             workdir:          "{{ world.workdir }}"
             validate_summary: "{{ world.validate_artifact.summary_markdown }}"
             cycle:            "{{ world.cycle }}"
+            refine_feedback:  "{{ world.refine_feedback }}"
         bind:
           done_artifact: submitted
         on_error: idle

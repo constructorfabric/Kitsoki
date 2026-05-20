@@ -114,11 +114,13 @@ states:
           schema: schemas/validating_artifact.json
           working_dir: "{{ world.workdir }}"
           args:
-            ticket_id:    "{{ world.ticket_id }}"
-            ticket_title: "{{ world.ticket_title }}"
-            workdir:      "{{ world.workdir }}"
-            build_log:    "{{ world.ci_log }}"
-            review_body:  "{{ world.implement_review_artifact.summary_markdown }}"
+            ticket_id:       "{{ world.ticket_id }}"
+            ticket_title:    "{{ world.ticket_title }}"
+            workdir:         "{{ world.workdir }}"
+            build_log:       "{{ world.ci_log }}"
+            review_body:     "{{ world.implement_review_artifact.summary_markdown }}"
+            refine_feedback: "{{ world.refine_feedback }}"
+            cycle:           "{{ world.cycle }}"
         bind:
           validate_artifact: submitted
         on_error: idle
