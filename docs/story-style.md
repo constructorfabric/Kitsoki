@@ -468,12 +468,14 @@ Before you ship a new room:
 
 ---
 
-## 8. Source-color: template vs LLM (preview, not yet wired)
+## 8. Source-color: template vs LLM
 
 When a view mixes templated text with LLM-generated text, the two are
 distinguished by **terminal background color**, not punctuation or
-quoting. The author writes nothing special — the renderer tags spans
-based on where the bytes came from.
+quoting. **Authors write nothing special** — the LLM operator labels
+its own output at the result boundary, the labels survive pongo
+rendering and transcript flush, and the final paint lands at the TUI
+write seam.
 
 | Source | Background | Why this hue |
 |---|---|---|
@@ -484,28 +486,34 @@ based on where the bytes came from.
 Two render modes, picked automatically by the renderer:
 
 - **Inline.** An LLM value substituted into a single field (`{{
-  llm.title }}`) switches bg only around the LLM bytes; the rest of
-  the line stays cool.
-- **Block.** An LLM value containing newlines (`{{ llm.summary }}`
-  where the summary is a paragraph) gets each line padded to the
-  terminal width so the warm band is solid edge-to-edge. The visual
-  "shoulder" above and below the block makes the boundary
-  unmistakable.
+  world.ticket.title }}` where `title` came from an LLM call) switches
+  bg only around the LLM bytes; the rest of the line stays cool.
+- **Block.** An LLM value containing newlines gets each contained
+  line padded to the transcript's wrap width so the warm band reads
+  as a solid rectangle. A "shoulder" row pads above and below the
+  block so the boundary is unmistakable.
 
 Nesting works through a background-color stack. Entering a span pushes
 its bg; exiting pops and restores the parent's bg — never a bare
-reset. So an LLM tool-call that quotes earlier LLM output stays warm,
-and a template fragment substituted into an LLM block (rare) would
-return to cool only for that span.
+reset. So an LLM tool-call that quotes earlier LLM output stays warm
+through the inner exit.
 
-**Wire mechanism.** LLM outputs are wrapped at the operator boundary
-with zero-width sentinel runs (`U+200B U+2063 LLM U+2063` /
-`U+200B U+2063 /LLM U+2063`). The wrap survives pongo rendering, JSON
-marshalling, and string ops without changing visible width. A final
-render pass lexes sentinels and emits ANSI bg switches with stack
-tracking.
+**Wire mechanism (engine-internal).** The pipeline has four seams:
 
-**Preview the rendering before authoring against it:**
+| Seam | What happens | Lives in |
+|---|---|---|
+| Operator | `cr.Stdout` and `cr.Answer` are wrapped before being stored as `Result.Data["stdout"]` / `["answer"]`. Structured payloads (`Result.Data["submitted"]` from the MCP validator, `Result.Data["stdout_json"]` from `output_format=json`) get every string leaf wrapped recursively via `WrapTree` — bugfix-style flows bind individual fields (`world.x.summary_markdown`) and need them tagged too. | `internal/host/oracle_ask.go`, `oracle.go`, `oracle_ask_with_mcp.go` |
+| Render | Pongo substitutes the wrapped value into the view template. Sentinels are zero-width Unicode runes (`U+2063 U+2061 U+2061 U+2063` open, `U+2063 U+2062 U+2062 U+2063` close), so pongo's HTML auto-escape leaves them alone. | `internal/render/pongo.go` |
+| Outbound prompt | Sentinels are stripped immediately after the prompt template is rendered, before the prompt crosses back into claude. Bound LLM values keep their tags for the display path; claude doesn't see them. | `internal/host/oracle_ask.go`, `oracle_ask_with_mcp.go` |
+| Hardwrap | The transcript pre-wraps each entry to the viewport width before queueing. Sentinels add zero visible width, so width-based wrapping cannot bisect one. | `internal/tui/transcript.go queue()` |
+| Paint | `FlushPending` runs the joined buffer through `sourcecolor.Colorize` immediately before `tea.Println`. Sentinels become ANSI bg switches with stack-aware nesting and block padding. | `internal/tui/transcript.go FlushPending()` |
+
+Plain-text consumers that must not see sentinels strip them with
+`sourcecolor.Strip` (current strip points: the `chat`/`chat queue`
+CLI JSON output, the on-complete notification truncate path, and the
+meta-mode adapter that feeds replies back to claude).
+
+**Preview the rendering:**
 
     go run ./cmd/source-color-demo
     go run ./cmd/source-color-demo -theme=high-contrast
@@ -513,7 +521,18 @@ tracking.
     go run ./cmd/source-color-demo -all
     go run ./cmd/source-color-demo -fill-template
 
-The demo is hand-fed sentinel-laced strings — a static reference for
-the visual scheme. The pipeline (operator wrap + renderer post-pass)
-lands after this section is signed off; until then, authors don't
-need to mark anything: existing rooms render identically.
+The demo wraps hand-fed strings with the same `sourcecolor.Wrap` the
+LLM operators use in production, then runs them through the same
+`Colorize` the TUI calls at flush — there is no second implementation
+to drift.
+
+**API surface for new code paths:**
+
+- `sourcecolor.Wrap(s)` — call when emitting any string whose
+  provenance is "an LLM produced this." Empty strings are a no-op.
+- `sourcecolor.Strip(s)` — call before sending the string to a
+  non-terminal consumer (shell JSON, an outbound prompt to claude,
+  any byte/rune-based truncate).
+- `sourcecolor.Colorize(s, theme, opts)` — call at the final
+  terminal-write seam. The package wires this in for the transcript;
+  other write paths can opt in.

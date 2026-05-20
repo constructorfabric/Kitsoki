@@ -20,6 +20,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"kitsoki/internal/render/sourcecolor"
 )
 
 // OracleBinEnv overrides the `claude` binary path for tests.
@@ -145,7 +147,10 @@ func OracleTalkHandler(ctx context.Context, args map[string]any) (Result, error)
 
 	return Result{
 		Data: map[string]any{
-			"answer":     cr.Stdout,
+			// Wrap the LLM reply at the operator boundary so the
+			// source-color renderer can paint it warm bg downstream.
+			// See internal/render/sourcecolor.
+			"answer":     sourcecolor.Wrap(cr.Stdout),
 			"session_id": sessionID,
 		},
 	}, nil
@@ -283,7 +288,7 @@ func doOracleChatTurn(ctx context.Context, cs ChatStore, chatID, question, worki
 		return Result{
 			Error: fmt.Sprintf("host.oracle.talk: persist assistant message: %v", appendErr),
 			Data: map[string]any{
-				"answer":            cr.Stdout,
+				"answer":            sourcecolor.Wrap(cr.Stdout),
 				"session_id":        claudeSID,
 				"chat_id":           chatID,
 				"claude_session_id": claudeSID,
@@ -294,7 +299,7 @@ func doOracleChatTurn(ctx context.Context, cs ChatStore, chatID, question, worki
 	seq, _ := cs.LatestSeq(ctx, chatID)
 
 	return Result{Data: map[string]any{
-		"answer":            cr.Stdout,
+		"answer":            sourcecolor.Wrap(cr.Stdout),
 		"session_id":        claudeSID,
 		"chat_id":           chatID,
 		"claude_session_id": claudeSID,

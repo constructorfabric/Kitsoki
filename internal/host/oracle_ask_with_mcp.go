@@ -28,6 +28,7 @@ import (
 	"kitsoki/internal/expr"
 	kitsokimcp "kitsoki/internal/mcp"
 	"kitsoki/internal/render"
+	"kitsoki/internal/render/sourcecolor"
 )
 
 // kitsokiBinaryEnv overrides the path to the kitsoki binary used to spawn the
@@ -327,6 +328,12 @@ func OracleAskWithMCPHandler(ctx context.Context, args map[string]any) (Result, 
 	if err != nil {
 		return Result{Error: fmt.Sprintf("host.oracle.ask_with_mcp: render prompt %q: %v", resolved, err)}, nil
 	}
+	// Strip source-color sentinels from the rendered prompt before it
+	// crosses the boundary into claude. Bound LLM values (e.g.
+	// world.reproduction_artifact.summary_markdown) carry sentinels
+	// for the display pipeline; claude doesn't need them and they
+	// would otherwise consume tokens for no semantic value.
+	rendered = sourcecolor.Strip(rendered)
 
 	// Chat-aware path: chat_id provided AND ChatStore available.
 	chatID, _ := args["chat_id"].(string)
@@ -401,6 +408,9 @@ func runOracleAskWithMCPViaAgent(ctx context.Context, agentName string, args map
 	if rerr != nil {
 		return Result{Error: fmt.Sprintf("host.oracle.ask_with_mcp: render agent %q SystemPrompt: %v", agentName, rerr)}, nil
 	}
+	// Strip sentinels before writing the system prompt to disk for
+	// claude — see render-prompt strip above.
+	rendered = sourcecolor.Strip(rendered)
 
 	promptPath, cleanup, perr := WritePromptTempFile(rendered)
 	if perr != nil {
@@ -773,7 +783,12 @@ func oracleAskWithMCPCore(ctx context.Context, rendered, resolvedPrompt string, 
 
 	res := Result{
 		Data: map[string]any{
-			"stdout":    cr.Stdout,
+			// Wrap stdout at the operator boundary — see
+			// internal/render/sourcecolor. The wrap is zero-width and
+			// survives pongo render, hardwrap, and JSON serialization
+			// (including the json output_format unmarshal below, which
+			// runs on the unwrapped cr.Stdout directly).
+			"stdout":    sourcecolor.Wrap(cr.Stdout),
 			"exit_code": cr.ExitCode,
 			"ok":        cr.ExitCode == 0,
 		},
@@ -791,7 +806,12 @@ func oracleAskWithMCPCore(ctx context.Context, rendered, resolvedPrompt string, 
 	if outputFormat == "json" && cr.ExitCode == 0 && cr.Stdout != "" {
 		var parsed any
 		if jErr := json.Unmarshal([]byte(cr.Stdout), &parsed); jErr == nil {
-			res.Data["stdout_json"] = parsed
+			// Wrap every string leaf — when output_format=json, the
+			// entire payload is LLM-generated structure, not just the
+			// top-level text. Views that bind individual fields
+			// (`{{ world.x.summary }}`) then carry source-color
+			// provenance through to the final paint.
+			res.Data["stdout_json"] = sourcecolor.WrapTree(parsed)
 		} else {
 			// Don't fail the handler — bind: { foo: stdout_json } will silently
 			// not bind, and an explicit on_error: route can still fire if the
@@ -810,7 +830,11 @@ func oracleAskWithMCPCore(ctx context.Context, rendered, resolvedPrompt string, 
 		if vErr == nil && len(vBytes) > 0 {
 			var parsed any
 			if jErr := json.Unmarshal(vBytes, &parsed); jErr == nil {
-				res.Data["submitted"] = unescapeOverEscapedStrings(parsed)
+				// Wrap every string leaf so individual bound fields
+				// (e.g. {{ world.reproduction_artifact.summary_markdown }})
+				// carry LLM-provenance through the render pipeline. The
+				// MCP-validated submit payload is wholly LLM-authored.
+				res.Data["submitted"] = sourcecolor.WrapTree(unescapeOverEscapedStrings(parsed))
 			} else {
 				// The validator only writes payloads that already passed
 				// schema validation, so a parse error here is a real bug.
@@ -988,7 +1012,10 @@ func runWithValidatorRetryLoop(ctx context.Context, p runValidatorLoopParams) Re
 func assembleResult(p runValidatorLoopParams, stdout string, exitCode int, stderr, errMsg string) Result {
 	res := Result{
 		Data: map[string]any{
-			"stdout":    stdout,
+			// Wrap stdout at the operator boundary — see
+			// internal/render/sourcecolor. The json unmarshal below
+			// uses the unwrapped stdout var directly.
+			"stdout":    sourcecolor.Wrap(stdout),
 			"exit_code": exitCode,
 			"ok":        exitCode == 0,
 		},
@@ -996,7 +1023,8 @@ func assembleResult(p runValidatorLoopParams, stdout string, exitCode int, stder
 	if p.OutputFormat == "json" && exitCode == 0 && stdout != "" {
 		var parsed any
 		if jErr := json.Unmarshal([]byte(stdout), &parsed); jErr == nil {
-			res.Data["stdout_json"] = parsed
+			// See WrapTree comment in the non-validator branch above.
+			res.Data["stdout_json"] = sourcecolor.WrapTree(parsed)
 		} else {
 			res.Data["stdout_json_parse_error"] = jErr.Error()
 		}
@@ -1006,7 +1034,7 @@ func assembleResult(p runValidatorLoopParams, stdout string, exitCode int, stder
 		if vErr == nil && len(vBytes) > 0 {
 			var parsed any
 			if jErr := json.Unmarshal(vBytes, &parsed); jErr == nil {
-				res.Data["submitted"] = unescapeOverEscapedStrings(parsed)
+				res.Data["submitted"] = sourcecolor.WrapTree(unescapeOverEscapedStrings(parsed))
 			} else {
 				// The validator only writes schema-passed payloads; a
 				// parse error here is a real bug.

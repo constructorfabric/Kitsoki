@@ -15,6 +15,7 @@ import (
 
 	"kitsoki/internal/agents"
 	"kitsoki/internal/host"
+	"kitsoki/internal/render/sourcecolor"
 )
 
 // fakeAgentRegistry is a minimal agents.Registry for the per-call
@@ -178,6 +179,9 @@ func TestOracleAskWithMCP_NoServers(t *testing.T) {
 		t.Fatalf("unexpected Result.Error: %s", res.Error)
 	}
 	out, _ := res.Data["stdout"].(string)
+	// stdout carries source-color sentinels from the LLM operator
+	// boundary; strip them when asserting on visible content.
+	out = sourcecolor.Strip(out)
 	if !strings.Contains(out, "hello world") {
 		t.Fatalf("stdout missing rendered prompt: %q", out)
 	}
@@ -246,7 +250,8 @@ func TestOracleAskWithMCP_ServersMaterialized(t *testing.T) {
 	if !ok {
 		t.Fatalf("wiggum entry missing: %v", servers)
 	}
-	if wiggum["command"] != "python3" {
+	// stdout_json string leaves carry source-color sentinels — strip on assert.
+	if cmd, _ := wiggum["command"].(string); sourcecolor.Strip(cmd) != "python3" {
 		t.Fatalf("wiggum.command = %v, want python3", wiggum["command"])
 	}
 }
@@ -397,12 +402,13 @@ func TestOracleAskWithMCP_AutoAttachesValidatorForSchema(t *testing.T) {
 	servers, _ := body["mcpServers"].(map[string]any)
 	v, ok := servers["validator"].(map[string]any)
 	require.True(t, ok, "validator entry missing: %v", servers)
-	assert.Equal(t, "/usr/local/bin/kitsoki", v["command"])
+	// stdout_json string leaves carry source-color sentinels — strip on assert.
+	assert.Equal(t, "/usr/local/bin/kitsoki", sourcecolor.Strip(v["command"].(string)))
 	args, _ := v["args"].([]any)
 	require.GreaterOrEqual(t, len(args), 3)
-	assert.Equal(t, "mcp-validator", args[0])
-	assert.Equal(t, "--schema", args[1])
-	assert.Equal(t, schemaPath, args[2])
+	assert.Equal(t, "mcp-validator", sourcecolor.Strip(args[0].(string)))
+	assert.Equal(t, "--schema", sourcecolor.Strip(args[1].(string)))
+	assert.Equal(t, schemaPath, sourcecolor.Strip(args[2].(string)))
 }
 
 // TestOracleAskWithMCP_NoAutoAttachWhenMcpServersValidatorPresent verifies
@@ -440,7 +446,7 @@ func TestOracleAskWithMCP_NoAutoAttachWhenMcpServersValidatorPresent(t *testing.
 	body, _ := parsed["mcp_body"].(map[string]any)
 	servers, _ := body["mcpServers"].(map[string]any)
 	v, _ := servers["validator"].(map[string]any)
-	require.Equal(t, "/opt/custom-validator", v["command"], "caller-provided validator must not be overwritten")
+	require.Equal(t, "/opt/custom-validator", sourcecolor.Strip(v["command"].(string)), "caller-provided validator must not be overwritten")
 }
 
 // TestOracleAskWithMCP_NoSchemaMeansNoValidator verifies that without a
@@ -499,7 +505,7 @@ func TestOracleAskWithMCP_SchemaResolvedAgainstAppDir(t *testing.T) {
 	v, _ := servers["validator"].(map[string]any)
 	args, _ := v["args"].([]any)
 	require.GreaterOrEqual(t, len(args), 3)
-	assert.Equal(t, filepath.Join(appDir, "schemas/p.json"), args[2])
+	assert.Equal(t, filepath.Join(appDir, "schemas/p.json"), sourcecolor.Strip(args[2].(string)))
 }
 
 // TestOracleAskWithMCP_SubmittedBindCapturesValidatedPayload verifies the
@@ -537,11 +543,13 @@ func TestOracleAskWithMCP_SubmittedBindCapturesValidatedPayload(t *testing.T) {
 	submitted, ok := res.Data["submitted"].(map[string]any)
 	require.True(t, ok, "Result.Data[\"submitted\"] missing or wrong shape: %T %v",
 		res.Data["submitted"], res.Data["submitted"])
-	assert.Equal(t, "fix double-Close", submitted["summary"])
-	assert.Equal(t, "high", submitted["confidence"])
+	// String leaves are wrapped with source-color sentinels at the
+	// operator boundary; strip when asserting on visible content.
+	assert.Equal(t, "fix double-Close", sourcecolor.Strip(submitted["summary"].(string)))
+	assert.Equal(t, "high", sourcecolor.Strip(submitted["confidence"].(string)))
 	files, _ := submitted["files_changed"].([]any)
 	require.Len(t, files, 1)
-	assert.Equal(t, "a.go", files[0])
+	assert.Equal(t, "a.go", sourcecolor.Strip(files[0].(string)))
 }
 
 // TestOracleAskWithMCP_NoSubmittedKeyWhenLLMNeverCalledSubmit verifies that
@@ -641,9 +649,11 @@ func TestOracleAskWithMCP_ValidatorBlockParsed(t *testing.T) {
 
 	argv, _ := v["args"].([]any)
 	// Walk argv and convert to []string so we can assert on the contents.
+	// stdout_json string leaves are sentinel-wrapped at the operator
+	// boundary; Strip when asserting on visible content.
 	var got []string
 	for _, a := range argv {
-		got = append(got, fmt.Sprint(a))
+		got = append(got, sourcecolor.Strip(fmt.Sprint(a)))
 	}
 	// Expected argv (sorted by post_cmd_args key):
 	//   mcp-validator --schema <schema> --output <out>
@@ -842,7 +852,7 @@ func TestOracleAskWithMCP_ValidatorBlockArgsTemplated(t *testing.T) {
 	argv, _ := v["args"].([]any)
 	var got []string
 	for _, a := range argv {
-		got = append(got, fmt.Sprint(a))
+		got = append(got, sourcecolor.Strip(fmt.Sprint(a)))
 	}
 	assert.Contains(t, got, "ticket=PLTFRM-12345")
 	assert.Contains(t, got, "worktree=/tmp/PLTFRM-12345-3/worktree")
@@ -888,7 +898,7 @@ func TestOracleAskWithMCP_OutcomeSuccess_FirstIteration(t *testing.T) {
 	require.Empty(t, res.Error)
 	submitted, ok := res.Data["submitted"].(map[string]any)
 	require.True(t, ok, "submitted payload missing")
-	assert.Equal(t, "first try worked", submitted["summary"])
+	assert.Equal(t, "first try worked", sourcecolor.Strip(submitted["summary"].(string)))
 }
 
 // TestOracleAskWithMCP_OutcomeAbandoned_SecondIteration_Success — iter 0

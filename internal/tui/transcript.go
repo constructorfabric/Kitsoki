@@ -19,6 +19,7 @@ import (
 	"kitsoki/internal/journal"
 	"kitsoki/internal/render"
 	"kitsoki/internal/render/elements"
+	"kitsoki/internal/render/sourcecolor"
 )
 
 // cachedAutoStyle holds the result of a one-time terminal background probe.
@@ -193,6 +194,14 @@ func (m *transcriptModel) queueWrapWidth() int {
 // per-entry println cmds — the test harness's processCommands doesn't
 // recurse into nested tea.BatchMsg values, so a nested batch would
 // silently drop prints. One join, one println, no batch nesting.
+//
+// Source-color: the joined buffer is run through [sourcecolor.Colorize]
+// here, at the last moment before bytes leave the model. This is the
+// single chokepoint where LLM-sourced runs (marked at the host
+// operator boundary with zero-width sentinels) become visible warm-bg
+// bands. Plain template content gets the cool-bg paint at the same
+// time. Entries without sentinels still go through colorize: it's the
+// rendering layer's job to make every transcript line consistent.
 func (m *transcriptModel) FlushPending() tea.Cmd {
 	if len(m.pending) == 0 {
 		return nil
@@ -200,6 +209,9 @@ func (m *transcriptModel) FlushPending() tea.Cmd {
 	items := m.pending
 	m.pending = nil
 	joined := strings.Join(items, "\n")
+	joined = sourcecolor.Colorize(joined, sourcecolor.DarkTheme, sourcecolor.Options{
+		Width: m.queueWrapWidth(),
+	})
 	return tea.Println(joined)
 }
 
@@ -896,8 +908,8 @@ func (m *transcriptModel) AppendMetaThinking(text string) {
 //
 // Examples:
 //
-//	  ▸ Read /path/to/file.go
-//	  ▸ Bash ls /worktrees
+//	▸ Read /path/to/file.go
+//	▸ Bash ls /worktrees
 //
 // args is allowed to be empty (some tool_use events ship without a
 // preview); in that case only the tool name is shown.

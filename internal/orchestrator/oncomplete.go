@@ -14,6 +14,7 @@ import (
 	"kitsoki/internal/expr"
 	"kitsoki/internal/inbox"
 	"kitsoki/internal/jobs"
+	"kitsoki/internal/render/sourcecolor"
 	"kitsoki/internal/store"
 	"kitsoki/internal/trace"
 	"kitsoki/internal/world"
@@ -676,11 +677,16 @@ func completionNotification(ev jobs.JobEvent, j *jobs.Job) (jobs.NotificationSev
 			if chatID, ok := ev.Result.Data["chat_id"].(string); ok && chatID != "" {
 				title := "Reply ready"
 				body := ""
+				// Strip source-color sentinels before truncate — the
+				// notification text is plain-string-typed and a
+				// rune-counting truncate could otherwise split a
+				// 4-rune sentinel sequence.
 				if answer, ok := ev.Result.Data["answer"].(string); ok && answer != "" {
+					answer = sourcecolor.Strip(answer)
 					title = "Reply ready — " + truncate(answer, 60)
 					body = truncate(answer, 200)
 				} else if stdout, ok := ev.Result.Data["stdout"].(string); ok && stdout != "" {
-					body = truncate(stdout, 200)
+					body = truncate(sourcecolor.Strip(stdout), 200)
 				}
 				return jobs.SeveritySuccess, title, body
 			}

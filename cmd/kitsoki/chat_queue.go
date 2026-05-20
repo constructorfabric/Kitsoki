@@ -27,6 +27,7 @@ import (
 	"kitsoki/internal/chathost"
 	"kitsoki/internal/chats"
 	"kitsoki/internal/host"
+	"kitsoki/internal/render/sourcecolor"
 )
 
 // chatQueueCmd is the parent of `kitsoki chat queue *` subcommands.
@@ -222,7 +223,9 @@ failed. If another process holds the chat lock the command exits 75
 			}
 			if res.Status == "done" {
 				out["result_seq"] = res.ResultSeq
-				out["answer"] = res.Answer
+				// Strip source-color sentinels from the JSON wire output —
+				// shell consumers see plain text.
+				out["answer"] = sourcecolor.Strip(res.Answer)
 				if res.ClaudeSessionID != "" {
 					out["claude_session_id"] = res.ClaudeSessionID
 				}

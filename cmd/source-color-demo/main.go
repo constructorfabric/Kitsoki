@@ -2,6 +2,11 @@
 // and LLM-generated text, switching terminal background color at the
 // boundary so the two are visually distinguishable.
 //
+// The colorize pass and theme palette live in the
+// internal/render/sourcecolor package — this binary is a thin wrapper
+// around that package so the demo cannot drift from production
+// behaviour. The visual scheme is documented in docs/story-style.md §8.
+//
 // Run:
 //
 //	go run ./cmd/source-color-demo
@@ -9,10 +14,6 @@
 //	go run ./cmd/source-color-demo -theme=light
 //	go run ./cmd/source-color-demo -all
 //	go run ./cmd/source-color-demo -fill-template
-//
-// This is a *static* preview to align on the visual scheme before the
-// full pipeline (operator-side sentinel wrapping + render post-pass)
-// is wired into the TUI. See docs/story-style.md §8.
 package main
 
 import (
@@ -21,51 +22,19 @@ import (
 	"io"
 	"os"
 	"strings"
-	"unicode/utf8"
+
+	"kitsoki/internal/render/sourcecolor"
 )
 
-// Sentinels mark LLM-sourced runs. Zero-width space + invisible
-// separator + ascii tag keeps them invisible in any normal renderer
-// and vanishingly unlikely to collide with real text. Only the final
-// colorize pass interprets them.
-const (
-	llmOpen  = "​⁣LLM⁣"
-	llmClose = "​⁣/LLM⁣"
-)
+// L wraps a string as LLM-sourced. The author of a demo sample reaches
+// for L() exactly where the LLM operator would wrap its output in
+// production — sourcecolor.Wrap is the single shared sentinel.
+func L(s string) string { return sourcecolor.Wrap(s) }
 
-// L wraps a string as LLM-sourced for the demo input.
-func L(s string) string { return llmOpen + s + llmClose }
-
-type theme struct {
-	name  string
-	tplBG string // ANSI background for templated text
-	llmBG string // ANSI background for LLM-sourced text
-	fg    string // foreground (set explicitly so light theme reads)
-	reset string
-}
-
-var themes = map[string]theme{
-	"dark": {
-		name:  "dark",
-		tplBG: "\x1b[48;2;42;53;80m", // #2a3550 — cool slate, visible vs black
-		llmBG: "\x1b[48;2;92;62;40m", // #5c3e28 — warm bronze, slightly brighter
-		fg:    "\x1b[38;2;232;232;232m",
-		reset: "\x1b[0m",
-	},
-	"high-contrast": {
-		name:  "high-contrast",
-		tplBG: "\x1b[48;2;32;48;112m", // #203070 — saturated cool
-		llmBG: "\x1b[48;2;128;72;24m", // #804818 — saturated warm
-		fg:    "\x1b[38;2;255;255;255m",
-		reset: "\x1b[0m",
-	},
-	"light": {
-		name:  "light",
-		tplBG: "\x1b[48;2;232;240;255m", // #e8f0ff
-		llmBG: "\x1b[48;2;255;244;224m", // #fff4e0
-		fg:    "\x1b[38;2;20;20;20m",
-		reset: "\x1b[0m",
-	},
+var themes = map[string]sourcecolor.Theme{
+	"dark":          sourcecolor.DarkTheme,
+	"high-contrast": sourcecolor.HighContrastTheme,
+	"light":         sourcecolor.LightTheme,
 }
 
 func themeNames() []string {
@@ -74,68 +43,6 @@ func themeNames() []string {
 		out = append(out, k)
 	}
 	return out
-}
-
-// colorize walks sentinel-laced text and emits ANSI bg switches.
-//
-// Strategy:
-//   - Maintain a stack of active background escapes.
-//   - On llmOpen: push warm bg, emit it.
-//   - On llmClose: pop, emit the now-top bg (parent's) — never a bare
-//     reset, so the outer bg is restored cleanly on exit.
-//   - At end of each line: if currently inside an LLM span, pad with
-//     spaces in the warm bg so the band is solid to the right margin.
-//     This gives block-mode rendering for any multi-line LLM value
-//     without the author having to mark it specially.
-//   - Inline LLM (single line) is naturally not padded because the
-//     bg has already popped back to template by line end.
-//
-// fillTpl optionally pads template lines too, so the entire view is a
-// solid cool band. Off by default — template lines stay text-tight,
-// which keeps the warm LLM band as the visually loud element.
-func colorize(text string, t theme, width int, fillTpl bool) string {
-	var out strings.Builder
-	stack := []string{t.tplBG}
-
-	lines := strings.Split(text, "\n")
-	for li, line := range lines {
-		out.WriteString(t.fg)
-		out.WriteString(stack[len(stack)-1])
-
-		visWidth := 0
-		i := 0
-		for i < len(line) {
-			if strings.HasPrefix(line[i:], llmOpen) {
-				stack = append(stack, t.llmBG)
-				out.WriteString(t.llmBG)
-				i += len(llmOpen)
-				continue
-			}
-			if strings.HasPrefix(line[i:], llmClose) {
-				if len(stack) > 1 {
-					stack = stack[:len(stack)-1]
-				}
-				out.WriteString(stack[len(stack)-1])
-				i += len(llmClose)
-				continue
-			}
-			r, sz := utf8.DecodeRuneInString(line[i:])
-			out.WriteRune(r)
-			visWidth++
-			i += sz
-		}
-
-		inLLM := len(stack) > 1
-		if visWidth < width && (inLLM || fillTpl) {
-			out.WriteString(strings.Repeat(" ", width-visWidth))
-		}
-
-		out.WriteString(t.reset)
-		if li < len(lines)-1 {
-			out.WriteByte('\n')
-		}
-	}
-	return out.String()
 }
 
 type sample struct {
@@ -187,12 +94,16 @@ func samples() []sample {
 	}
 }
 
-func render(w io.Writer, t theme, width int, fillTpl bool) {
+func render(w io.Writer, t sourcecolor.Theme, width int, fillTpl bool) {
 	fmt.Fprintf(w, "\n=== theme=%s  width=%d  fill-template=%v ===\n",
-		t.name, width, fillTpl)
+		t.Name, width, fillTpl)
 	for _, s := range samples() {
 		fmt.Fprintf(w, "\n%s\n\n", s.title)
-		io.WriteString(w, colorize(s.body, t, width, fillTpl))
+		painted := sourcecolor.Colorize(s.body, t, sourcecolor.Options{
+			Width:        width,
+			FillTemplate: fillTpl,
+		})
+		io.WriteString(w, painted)
 		fmt.Fprintln(w)
 	}
 	fmt.Fprintln(w)

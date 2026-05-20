@@ -22,6 +22,7 @@ import (
 
 	"kitsoki/internal/expr"
 	"kitsoki/internal/render"
+	"kitsoki/internal/render/sourcecolor"
 )
 
 // OracleAskHandler implements host.oracle.ask.
@@ -69,6 +70,9 @@ func OracleAskHandler(ctx context.Context, args map[string]any) (Result, error) 
 	if err != nil {
 		return Result{Error: fmt.Sprintf("host.oracle.ask: render prompt %q: %v", resolved, err)}, nil
 	}
+	// Strip source-color sentinels before piping to claude — see the
+	// commentary in oracle_ask_with_mcp.go for the rationale.
+	rendered = sourcecolor.Strip(rendered)
 
 	bin, err := resolveOracleBin(ctx)
 	if err != nil {
@@ -110,7 +114,12 @@ func OracleAskHandler(ctx context.Context, args map[string]any) (Result, error) 
 
 	res := Result{
 		Data: map[string]any{
-			"stdout":    cr.Stdout,
+			// Wrap stdout with source-color sentinels so downstream
+			// consumers (transcript, view templates) carry the
+			// LLM-provenance label through to the final paint. The
+			// sentinels are zero-width and survive pongo render,
+			// hardwrap, and JSON serialization.
+			"stdout":    sourcecolor.Wrap(cr.Stdout),
 			"exit_code": cr.ExitCode,
 			"ok":        cr.ExitCode == 0,
 		},

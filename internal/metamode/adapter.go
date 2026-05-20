@@ -54,6 +54,7 @@ import (
 
 	"kitsoki/internal/chats"
 	"kitsoki/internal/host"
+	"kitsoki/internal/render/sourcecolor"
 )
 
 // ─── ChatStore adapter ───────────────────────────────────────────────────────
@@ -289,7 +290,13 @@ func (a *oracleAdapter) Ask(ctx context.Context, in AskInput) (AskOutput, error)
 	if res.Error != "" {
 		return AskOutput{}, fmt.Errorf("metamode.OracleAdapter: %s", res.Error)
 	}
+	// Strip source-color sentinels: the controller persists Reply to
+	// the meta chat and re-feeds it to claude on subsequent turns,
+	// where sentinels would leak into the LLM prompt. The display
+	// path for meta-mode replies is handled separately by the meta
+	// stream observer, which can re-wrap if it wants the warm bg.
 	stdout, _ := res.Data["stdout"].(string)
+	stdout = sourcecolor.Strip(stdout)
 	newSID, _ := res.Data["claude_session_id"].(string)
 	if newSID == "" {
 		// Fallback: keep whatever we had so Controller.Send's

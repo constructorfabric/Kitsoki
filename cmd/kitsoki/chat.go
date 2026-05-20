@@ -23,6 +23,7 @@ import (
 	"kitsoki/internal/chathost"
 	"kitsoki/internal/chats"
 	"kitsoki/internal/host"
+	"kitsoki/internal/render/sourcecolor"
 )
 
 // errTempFail is a sentinel returned from RunE when the operation should exit
@@ -312,10 +313,13 @@ Exit codes:
 
 			// Print the answer to stdout for shell consumption; the JSON
 			// summary goes through writeJSON like the other subcommands so
-			// orchestrators can parse it.
+			// orchestrators can parse it. Strip source-color sentinels so
+			// shell consumers see plain text — sentinels are a render
+			// concern, not a wire format.
+			answer, _ := res.Data["answer"].(string)
 			out := map[string]any{
 				"chat_id": chatID,
-				"answer":  res.Data["answer"],
+				"answer":  sourcecolor.Strip(answer),
 			}
 			if cs, ok := res.Data["claude_session_id"].(string); ok {
 				out["claude_session_id"] = cs
