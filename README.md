@@ -1,11 +1,28 @@
 # kitsoki
 
-A deterministic conversation engine. The user (or an external
-orchestrator) drives a finite-state application with free text; an LLM
-is used only to translate that text into one of a finite alphabet of
-intents declared by the application author. Every transition, every
-guard, every world mutation is in YAML. No hallucinated flags. No
-out-of-state actions.
+A conversation engine built on one commitment: **make workflows as
+deterministic as possible, and confine the LLM to narrow, identified,
+traceable decision points.**
+
+Most LLM systems put the LLM in charge — it plans, it reasons, it
+calls tools, the runtime executes. Kitsoki inverts that. The runtime
+is a YAML state machine, written by the application author. When it
+needs help with something it cannot resolve deterministically, it
+*calls the LLM* for that narrow sub-task — routing a turn onto a
+declared intent, extracting structured fields from free text, or
+running focused agent work inside a sandboxed phase — and then takes
+the result and resumes deterministic execution.
+
+This lets a workflow start as an LLM-heavy sketch and grow, one
+decision point at a time, into something predictable: prompts become
+flows, free-form tool calls become typed host invocations,
+interpretation becomes slot templates. The trace records every
+decision, which is what makes the conversion incremental and
+auditable.
+
+For the full thesis — control inversion, narrow LLM domains,
+progressive determinism, the spectrum from CLI wizards to free agent
+workflows — see [`docs/concept.md`](docs/concept.md).
 
 **Free-text in, deterministic transitions out.**
 
@@ -127,6 +144,7 @@ schema. The dogfood multi-glob covers both kitsoki-self bugs
 
 | Doc | What |
 |---|---|
+| **[`docs/concept.md`](docs/concept.md)** | The thesis: control inversion, narrow LLM domains, progressive determinism, the spectrum of stories. **Start here.** |
 | **[`docs/architecture.md`](docs/architecture.md)** | Layers, packages, data flow, persistence model, conversation surfaces. |
 | **[`docs/state-machine.md`](docs/state-machine.md)** | Rooms, phases, states, intents, slots, world, guards, the turn loop. The directed cyclic graph in detail. |
 | **[`docs/authoring.md`](docs/authoring.md)** | How to write an `app.yaml`. Patterns, scaling-up, pitfalls. |
