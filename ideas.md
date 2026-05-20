@@ -73,4 +73,8 @@
 - repo-persisted workflow state - allow multiple people to collaborate but keep the state in the repo (or optionally in tickets I guess...)
 - we keep losing features... there was a / command listing that's now gone, and I thought the world file stuff was done too but it somehow reverted, text box scrolling is gone... the test suite must be garbage
 - choice widget (yes/no, multi-choice single or multi-select, explain like claude code)
-
+- hot reload thin wrapper - the main engine is an SO file that is purely stateless (use lint rules for go AST to ensure the code is stateless via static analysis), when the /meta kitsoki mode is used, the main engine can be recompiled and reloaded.  the state engine for world should be clean and self-contained such that it can be also reloaded with a dump+load cycle as necessary.  For release versions, this is a single binary with no hot loading.  For dev, there's a minimally thin wrapper around the hot-loaded aspects, to minimize the surface of changes that would require a full reload of the full application.  We want to be able to maintain/migrate state cleanly so separating it from logic is the best bet.  use stable interfaces and avoid import cycles.
+- external reload - cause a running kitsoki session to reload its yaml - done by external claude code via mcp or cli to simulate meta mode with an unamanged claude code
+- control the next proposed message - template it, tab to accept and then press enter to execute
+- identify field as secret - do not log/trace/etc... (needs to be individually provided - exception to deterministic replay) - extensive testing/verification
+- full abstraction of jira/github/local issues as CLI/mcp and use it instead of writing md to disk and just reading the md - can do file as the starting point but make sure the interface is full and correct compared to jira/github real issues
