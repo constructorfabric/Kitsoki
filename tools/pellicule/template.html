@@ -1,0 +1,1656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   PELLICULE — API Demo Visual Template
+   Edit this file to change the look of the generated video.
+   Color palette: GitHub Dark + Postman vibes
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+  background: #0d1117;
+  color: #e6edf3;
+  font-family: 'Courier New', 'Lucida Console', monospace;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+/* ── Root Layout ──────────────────────────────────────────────────────────── */
+#root {
+  display: flex;
+  flex-direction: column;
+  width: 1920px;
+  height: 1080px;
+  position: relative;
+}
+
+/* ── Title Card (full-screen overlay) ────────────────────────────────────── */
+#title-card {
+  position: absolute;
+  inset: 0;
+  z-index: 200;
+  background: #0d1117;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+}
+
+#title-card-eyebrow {
+  font-size: 20px;
+  letter-spacing: 0.4em;
+  text-transform: uppercase;
+  color: #30363d;
+}
+
+#title-card-rule {
+  width: 140px;
+  height: 3px;
+  background: linear-gradient(90deg, #58a6ff, #bc8cff);
+  border-radius: 2px;
+}
+
+#title-card-title {
+  font-size: 70px;
+  font-weight: bold;
+  color: #e6edf3;
+  text-align: center;
+  max-width: 1400px;
+  line-height: 1.2;
+}
+
+#title-card-subtitle {
+  font-size: 32px;
+  color: #8b949e;
+  text-align: center;
+  max-width: 1200px;
+  max-height: 100px;
+  overflow: hidden;
+}
+
+/* ── Header Bar ───────────────────────────────────────────────────────────── */
+#header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 80px;
+  flex-shrink: 0;
+  padding: 0 48px;
+  background: #161b22;
+  border-bottom: 1px solid #21262d;
+}
+
+#ticker {
+  flex: 1;
+  font-size: 28px;
+  color: #8b949e;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ticket-id { color: #f0883e; font-weight: bold; }
+
+#phase-badge {
+  padding: 8px 28px;
+  border-radius: 5px;
+  font-size: 22px;
+  font-weight: bold;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.badge-before  { background: #2d1700; color: #f0883e; border: 1px solid #f0883e44; }
+.badge-after   { background: #0a2010; color: #3fb950; border: 1px solid #3fb95044; }
+.badge-neutral { background: #1c2128; color: #8b949e; border: 1px solid #30363d;  }
+
+/* ── Scene Header ─────────────────────────────────────────────────────────── */
+#scene-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 18px 48px;
+  background: #161b22;
+  border-bottom: 1px solid #21262d;
+  min-height: 110px;
+}
+
+#scene-title-text {
+  font-size: 36px;
+  font-weight: bold;
+  color: #e6edf3;
+  margin-bottom: 6px;
+}
+
+#scene-annotation-text {
+  font-size: 24px;
+  color: #8b949e;
+}
+
+/* ── Main Two-Panel Area ──────────────────────────────────────────────────── */
+#main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+  position: relative;   /* anchor for #footer-annotation overlay */
+}
+
+/* ── Panel (Request / Response) ───────────────────────────────────────────── */
+.panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.panel-label {
+  flex-shrink: 0;
+  padding: 10px 36px;
+  background: #161b22;
+  border-bottom: 1px solid #21262d;
+  font-size: 16px;
+  font-weight: bold;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: #484f58;
+}
+
+.panel-body {
+  flex: 1;
+  overflow: hidden;
+  padding: 24px 36px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-height: 0;
+}
+
+.panel-divider {
+  width: 1px;
+  background: #21262d;
+  flex-shrink: 0;
+}
+
+/* ── URL Bar ──────────────────────────────────────────────────────────────── */
+#url-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 14px 20px;
+  flex-shrink: 0;
+}
+
+.method-badge {
+  padding: 8px 22px;
+  border-radius: 5px;
+  font-size: 24px;
+  font-weight: bold;
+  letter-spacing: 0.06em;
+  flex-shrink: 0;
+}
+
+.method-GET    { background: #0a2010; color: #3fb950; border: 1px solid #3fb95055; }
+.method-POST   { background: #3d2b00; color: #e3b341; border: 1px solid #e3b34155; }
+.method-PUT    { background: #0c2d5e; color: #58a6ff; border: 1px solid #58a6ff55; }
+.method-PATCH  { background: #2d0c5e; color: #bc8cff; border: 1px solid #bc8cff55; }
+.method-DELETE { background: #4a1a1a; color: #f85149; border: 1px solid #f8514955; }
+
+#url-text {
+  flex: 1;
+  color: #cdd9e5;
+  font-size: 26px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#send-btn {
+  padding: 10px 32px;
+  background: #1f6feb;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  font-size: 22px;
+  font-weight: bold;
+  font-family: inherit;
+  cursor: default;
+  flex-shrink: 0;
+  letter-spacing: 0.03em;
+}
+
+#send-btn.sending {
+  background: #1c2128;
+  color: #8b949e;
+  border: 1px solid #30363d;
+}
+
+/* ── Section Blocks ───────────────────────────────────────────────────────── */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+
+.section-label {
+  font-size: 18px;
+  font-weight: bold;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: #484f58;
+  border-bottom: 1px solid #21262d;
+  padding-bottom: 8px;
+  flex-shrink: 0;
+}
+
+.headers-list { display: flex; flex-direction: column; gap: 4px; }
+
+.header-row {
+  display: flex;
+  gap: 28px;
+  font-size: 24px;
+  line-height: 1.6;
+}
+
+.header-name  { color: #79c0ff; flex-shrink: 0; min-width: 320px; }
+.header-value { color: #cdd9e5; }
+
+/* ── Code Blocks ──────────────────────────────────────────────────────────── */
+.code-block {
+  background: #0d1117;
+  border: 1px solid #21262d;
+  border-radius: 7px;
+  padding: 18px 24px;
+  font-size: 22px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow: hidden;
+  max-height: 260px;
+  flex-shrink: 0;
+}
+
+/* Response body expands to fill all remaining panel space */
+#res-body-section {
+  flex: 1;
+  min-height: 0;
+}
+
+#res-body-code {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}
+
+/* ── Sending Overlay ──────────────────────────────────────────────────────── */
+#sending-overlay {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 18px;
+  padding: 12px 0;
+  color: #8b949e;
+  font-size: 22px;
+  flex-shrink: 0;
+}
+
+.spinner-track {
+  width: 400px;
+  height: 5px;
+  background: #21262d;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.spinner-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #58a6ff, #bc8cff);
+  border-radius: 2px;
+  width: 0%;
+  transition: width 0.1s linear;
+}
+
+/* ── Status Display ───────────────────────────────────────────────────────── */
+#status-display {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 18px 24px;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  flex-shrink: 0;
+}
+
+#status-code {
+  font-size: 80px;
+  font-weight: bold;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+#status-text-label {
+  font-size: 38px;
+  font-weight: bold;
+}
+
+.status-expected {
+  margin-left: auto;
+  text-align: right;
+  font-size: 22px;
+  color: #8b949e;
+  line-height: 1.6;
+}
+
+.status-2xx {
+  border-color: #238636;
+  background: #0a1f10;
+  box-shadow: 0 0 32px rgba(35, 134, 54, 0.18), inset 0 1px 0 rgba(63,185,80,0.1);
+}
+.status-2xx #status-code,
+.status-2xx #status-text-label { color: #3fb950; }
+
+.status-4xx {
+  border-color: #da3633;
+  background: #1f0a0a;
+  box-shadow: 0 0 32px rgba(218, 54, 51, 0.18), inset 0 1px 0 rgba(248,81,73,0.1);
+}
+.status-4xx #status-code,
+.status-4xx #status-text-label { color: #f85149; }
+
+.status-5xx {
+  border-color: #9e6a03;
+  background: #1a1000;
+  box-shadow: 0 0 32px rgba(158, 106, 3, 0.18), inset 0 1px 0 rgba(210,153,34,0.1);
+}
+.status-5xx #status-code,
+.status-5xx #status-text-label { color: #d29922; }
+
+/* ── Annotation Overlay ───────────────────────────────────────────────────── */
+/* Centered overlay across the full content area. #main is position:relative. */
+#footer-annotation {
+  position: absolute;
+  top: 50%;
+  left: 120px;
+  right: 120px;
+  transform: translateY(-50%);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: 40px 56px;
+  border-radius: 16px;
+  border: 2px solid transparent;
+  font-size: 38px;
+  font-weight: 500;
+  line-height: 1.5;
+  text-align: center;
+}
+
+#footer-annotation.type-error   { background: rgba(31,10,10,0.95);  border-color: #f85149; color: #f85149; }
+#footer-annotation.type-warning { background: rgba(26,16,0,0.95);   border-color: #f0883e; color: #f0883e; }
+#footer-annotation.type-success { background: rgba(10,31,16,0.95);  border-color: #3fb950; color: #3fb950; }
+#footer-annotation.type-info    { background: rgba(12,45,94,0.95);  border-color: #58a6ff; color: #58a6ff; }
+
+#annotation-icon { font-size: 44px; flex-shrink: 0; }
+#annotation-text { word-break: break-word; }
+
+/* ── JSON Syntax Highlighting ─────────────────────────────────────────────── */
+.json-key     { color: #79c0ff; }
+.json-string  { color: #a5d6ff; }
+.json-number  { color: #f2cc60; }
+.json-boolean { color: #ff7b72; }
+.json-null    { color: #ff7b72; }
+
+
+/* ── MOCK Badge ───────────────────────────────────────────────────────────── */
+#mock-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 14px;
+  border-radius: 4px;
+  font-size: 16px;
+  font-weight: bold;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: #2d1f5e;
+  color: #bc8cff;
+  border: 1px solid #bc8cff55;
+  flex-shrink: 0;
+  margin-left: 16px;
+}
+
+/* MOCK mode: tint the response panel label */
+#response-panel.is-mock .panel-label::after {
+  content: ' · MOCK';
+  color: #bc8cff;
+  letter-spacing: 0.1em;
+}
+
+/* ── PLAYBACK Badge ───────────────────────────────────────────────────────── */
+/* Real response captured from a prior live run — stand not required.         */
+#playback-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 14px;
+  border-radius: 4px;
+  font-size: 16px;
+  font-weight: bold;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: #0f2d1a;
+  color: #3fb950;
+  border: 1px solid #3fb95055;
+  flex-shrink: 0;
+  margin-left: 16px;
+}
+
+/* PLAYBACK mode: tint the response panel label */
+#response-panel.is-playback .panel-label::after {
+  content: ' · PLAYBACK';
+  color: #3fb950;
+  letter-spacing: 0.1em;
+}
+
+/* ── Visibility Toggle ────────────────────────────────────────────────────── */
+.hidden { display: none !important; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PITCH-MODE SCENES (narrative, diagram, terminal-gif, stat, cta)
+   Hidden in API mode; revealed by `body.mode-pitch` + per-scene show calls.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* In pitch mode, suppress the API header bar (keep #main for fallback). */
+body.mode-pitch #header { display: none; }
+body.mode-pitch #main   { display: none; }
+
+/* Stage region — common parent for pitch scenes; only visible in pitch mode. */
+#pitch-stage {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 96px 120px;
+  background: #0d1117;
+  overflow: hidden;
+}
+body.mode-pitch #pitch-stage { display: flex; }
+
+/* Subtle vignette backdrop common to pitch scenes for that pitch-y feel */
+#pitch-stage::before {
+  content: '';
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(ellipse at 50% 30%, rgba(88,166,255,0.06), transparent 60%),
+    linear-gradient(180deg, transparent 70%, #0d1117 100%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.scene-region {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.scene-region.active { display: flex; }
+
+/* Progressive-reveal helper — child elements with .reveal start hidden */
+.reveal {
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 320ms ease-out, transform 320ms ease-out;
+}
+.reveal.shown { opacity: 1; transform: translateY(0); }
+
+/* ── Narrative ───────────────────────────────────────────────────────────── */
+#narrative-region { gap: 36px; max-width: 1500px; margin: 0 auto; text-align: center; }
+#narrative-eyebrow {
+  font-size: 22px;
+  letter-spacing: 0.4em;
+  text-transform: uppercase;
+  color: #58a6ff;
+}
+#narrative-rule {
+  width: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #58a6ff, #bc8cff);
+  border-radius: 2px;
+  transition: width 600ms ease-out 100ms;
+}
+#narrative-eyebrow.shown ~ #narrative-rule { width: 180px; }
+#narrative-body {
+  font-size: 62px;
+  font-weight: bold;
+  line-height: 1.25;
+  color: #e6edf3;
+  letter-spacing: -0.01em;
+}
+#narrative-lede {
+  font-size: 32px;
+  color: #8b949e;
+  line-height: 1.5;
+  max-width: 1200px;
+}
+
+/* ── Diagram ─────────────────────────────────────────────────────────────── */
+#diagram-region { gap: 40px; max-width: 1700px; }
+#diagram-title {
+  font-size: 22px;
+  letter-spacing: 0.4em;
+  text-transform: uppercase;
+  color: #58a6ff;
+}
+#diagram-panels {
+  display: flex;
+  gap: 60px;
+  width: 100%;
+  justify-content: center;
+  align-items: stretch;
+}
+.diagram-panel {
+  flex: 1;
+  min-width: 0;
+  max-width: 760px;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 14px;
+  padding: 36px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.diagram-panel-label {
+  font-size: 22px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: #8b949e;
+  font-weight: bold;
+}
+.diagram-panel-ascii {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 22px;
+  line-height: 1.5;
+  white-space: pre;
+  color: #cdd9e5;
+  overflow: hidden;
+}
+#diagram-caption {
+  font-size: 30px;
+  color: #cdd9e5;
+  text-align: center;
+  max-width: 1400px;
+  line-height: 1.5;
+}
+
+/* ── Terminal GIF ────────────────────────────────────────────────────────── */
+#termgif-region { gap: 28px; max-width: 1500px; }
+.termgif-frame {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 30px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.02);
+}
+.termgif-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 42px;
+  padding: 0 18px;
+  background: #21262d;
+  border-bottom: 1px solid #30363d;
+}
+.termgif-dot {
+  width: 13px; height: 13px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.termgif-dot.r { background: #ff5f57; }
+.termgif-dot.y { background: #febc2e; }
+.termgif-dot.g { background: #28c840; }
+.termgif-titlebar-title {
+  flex: 1;
+  text-align: center;
+  font-size: 18px;
+  color: #8b949e;
+  letter-spacing: 0.05em;
+}
+#termgif-img {
+  display: block;
+  width: 1400px;
+  max-width: 100%;
+  height: auto;
+  background: #0d1117;
+}
+#termgif-caption {
+  font-size: 28px;
+  color: #8b949e;
+  text-align: center;
+  max-width: 1300px;
+}
+
+/* ── Stat ────────────────────────────────────────────────────────────────── */
+#stat-region { gap: 24px; text-align: center; }
+#stat-value {
+  font-size: 280px;
+  font-weight: bold;
+  line-height: 1;
+  background: linear-gradient(180deg, #58a6ff, #bc8cff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+}
+#stat-label {
+  font-size: 38px;
+  color: #e6edf3;
+  max-width: 1300px;
+  line-height: 1.4;
+}
+#stat-detail {
+  font-size: 24px;
+  color: #8b949e;
+  margin-top: 8px;
+}
+
+/* ── Diagram SVG ─────────────────────────────────────────────────────────── */
+#diagramsvg-region { gap: 36px; max-width: 1700px; width: 100%; }
+#diagramsvg-title {
+  font-size: 22px;
+  letter-spacing: 0.4em;
+  text-transform: uppercase;
+  color: #58a6ff;
+  text-align: center;
+}
+#diagramsvg-panels {
+  display: flex;
+  gap: 64px;
+  width: 100%;
+  justify-content: center;
+  align-items: stretch;
+}
+.diagramsvg-panel {
+  flex: 1;
+  min-width: 0;
+  max-width: 760px;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 14px;
+  padding: 32px 36px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.diagramsvg-panel-label {
+  font-size: 22px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: #8b949e;
+  font-weight: bold;
+  text-align: center;
+}
+.diagramsvg-svg {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1 / 0.95;
+  display: block;
+}
+.diagramsvg-panel-caption {
+  font-size: 18px;
+  color: #8b949e;
+  text-align: center;
+  margin-top: 4px;
+}
+#diagramsvg-caption {
+  font-size: 28px;
+  color: #cdd9e5;
+  text-align: center;
+  max-width: 1400px;
+  line-height: 1.5;
+  margin: 0 auto;
+}
+
+/* SVG content styles */
+.dsvg-node rect {
+  fill: #0d1117;
+  stroke: #30363d;
+  stroke-width: 2;
+}
+.dsvg-node.dsvg-style-primary rect {
+  fill: #0c1d2e;
+  stroke: #58a6ff;
+  stroke-width: 2.5;
+}
+.dsvg-node.dsvg-style-secondary rect {
+  fill: #1a1029;
+  stroke: #bc8cff;
+  stroke-width: 2.5;
+}
+.dsvg-label {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 22px;
+  font-weight: bold;
+  fill: #e6edf3;
+}
+.dsvg-sub {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 14px;
+  fill: #8b949e;
+}
+.dsvg-edge line {
+  stroke: #58a6ff;
+  stroke-width: 2.5;
+  fill: none;
+}
+.dsvg-arrow path { fill: #58a6ff; stroke: none; }
+.dsvg-edge-label {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 15px;
+  fill: #cdd9e5;
+  paint-order: stroke;
+  stroke: #0d1117;
+  stroke-width: 6px;
+  stroke-linejoin: round;
+}
+
+/* ── Trace ───────────────────────────────────────────────────────────────── */
+#trace-region { gap: 32px; max-width: 1500px; width: 100%; }
+#trace-title {
+  font-size: 22px;
+  letter-spacing: 0.4em;
+  text-transform: uppercase;
+  color: #58a6ff;
+  text-align: center;
+}
+#trace-turns {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: 100%;
+  align-items: center;
+}
+.trace-turn {
+  width: 100%;
+  max-width: 1100px;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 12px;
+  padding: 22px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.trace-turn-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.trace-turn-label {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 16px;
+  letter-spacing: 0.2em;
+  color: #484f58;
+  font-weight: bold;
+}
+.trace-turn-user {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 26px;
+  color: #e6edf3;
+}
+.trace-turn-user::before {
+  content: '> ';
+  color: #58a6ff;
+}
+.trace-turn-layers {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-left: 24px;
+}
+.trace-layer {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 22px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: #8b949e;
+}
+.trace-layer-dot { color: #484f58; }
+.trace-layer-name { min-width: 130px; color: #cdd9e5; }
+.trace-layer-dots { color: #30363d; flex: 0 0 auto; }
+.trace-layer-result {
+  font-weight: bold;
+  padding: 2px 10px;
+  border-radius: 4px;
+  font-size: 18px;
+  letter-spacing: 0.1em;
+}
+.trace-layer.trace-layer-hit .trace-layer-result {
+  background: #0a2010; color: #3fb950; border: 1px solid #3fb95055;
+}
+.trace-layer.trace-layer-miss .trace-layer-result {
+  background: #1c2128; color: #8b949e; border: 1px solid #30363d;
+}
+.trace-layer-ms { color: #484f58; font-size: 16px; }
+.trace-turn-intent {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 22px;
+  color: #f0883e;
+  margin-left: 24px;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.trace-turn-intent code {
+  color: #e6edf3;
+  background: #0d1117;
+  padding: 4px 12px;
+  border-radius: 6px;
+  border: 1px solid #30363d;
+}
+.trace-no-llm {
+  color: #3fb950;
+  font-size: 18px;
+  letter-spacing: 0.05em;
+}
+#trace-caption {
+  font-size: 24px;
+  color: #cdd9e5;
+  text-align: center;
+  max-width: 1300px;
+  line-height: 1.5;
+  margin: 0 auto;
+}
+
+/* ── CTA ─────────────────────────────────────────────────────────────────── */
+#cta-region { gap: 28px; text-align: center; }
+#cta-wordmark {
+  font-size: 96px;
+  font-weight: bold;
+  background: linear-gradient(180deg, #58a6ff, #bc8cff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  letter-spacing: -0.02em;
+}
+#cta-tagline {
+  font-size: 36px;
+  color: #cdd9e5;
+  max-width: 1300px;
+  line-height: 1.4;
+}
+#cta-url {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 28px;
+  color: #58a6ff;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 16px 32px;
+  margin-top: 12px;
+}
+</style>
+</head>
+<body>
+<div id="root">
+
+  <!-- ── TITLE CARD (full-screen overlay) ─────────────────────────────────── -->
+  <div id="title-card" class="hidden">
+    <div id="title-card-eyebrow"></div>
+    <div id="title-card-rule"></div>
+    <div id="title-card-title"></div>
+    <div id="title-card-subtitle"></div>
+  </div>
+
+  <!-- ── HEADER BAR ──────────────────────────────────────────────────────── -->
+  <div id="header">
+    <span id="ticker">
+      <span class="ticket-id" id="header-ticket"></span>
+      <span id="header-title"></span>
+    </span>
+    <span id="phase-badge" class="badge-neutral">DEMO</span>
+  </div>
+
+  <!-- ── SCENE HEADER ────────────────────────────────────────────────────── -->
+  <div id="scene-header" class="hidden">
+    <div style="flex:1; min-width:0;">
+      <div style="display:flex; align-items:center; gap:0;">
+        <div id="scene-title-text"></div>
+        <span id="mock-badge" class="hidden">MOCK</span>
+          <span id="playback-badge" class="hidden">PLAYBACK</span>
+      </div>
+      <div id="scene-annotation-text"></div>
+    </div>
+  </div>
+
+  <!-- ── MAIN TWO-PANEL AREA ─────────────────────────────────────────────── -->
+  <div id="main">
+
+    <!-- REQUEST PANEL -->
+    <div class="panel" id="request-panel">
+      <div class="panel-label">Request</div>
+      <div class="panel-body">
+
+        <div id="url-bar" class="hidden">
+          <span id="method-badge" class="method-badge"></span>
+          <span id="url-text"></span>
+          <button id="send-btn">Send</button>
+        </div>
+
+        <div id="req-headers-section" class="section hidden">
+          <div class="section-label">Headers</div>
+          <div id="req-headers-list" class="headers-list"></div>
+        </div>
+
+        <div id="req-body-section" class="section hidden">
+          <div class="section-label">Body</div>
+          <div id="req-body-code" class="code-block"></div>
+        </div>
+
+        <div id="sending-overlay" class="hidden">
+          <div class="spinner-track"><div class="spinner-bar" id="spinner-bar"></div></div>
+          <span id="sending-text">Sending request...</span>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="panel-divider"></div>
+
+    <!-- RESPONSE PANEL -->
+    <div class="panel" id="response-panel">
+      <div class="panel-label">Response</div>
+      <div class="panel-body">
+
+        <div id="status-display" class="hidden">
+          <span id="status-code"></span>
+          <span id="status-text-label"></span>
+          <div class="status-expected hidden" id="status-expected"></div>
+        </div>
+
+        <div id="res-headers-section" class="section hidden">
+          <div class="section-label">Headers</div>
+          <div id="res-headers-list" class="headers-list"></div>
+        </div>
+
+        <div id="res-body-section" class="section hidden">
+          <div class="section-label">Body</div>
+          <div id="res-body-code" class="code-block"></div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ── ANNOTATION OVERLAY — floats over response panel ─────────────────── -->
+    <div id="footer-annotation" class="hidden">
+      <span id="annotation-icon"></span>
+      <span id="annotation-text"></span>
+    </div>
+
+  </div><!-- /#main -->
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       PITCH-MODE STAGE — narrative, diagram, terminal-gif, stat, cta scenes
+       Only visible when body has .mode-pitch (set via pellicule.setMode).
+       ═══════════════════════════════════════════════════════════════════════ -->
+  <div id="pitch-stage">
+
+    <!-- Narrative -->
+    <div id="narrative-region" class="scene-region">
+      <div id="narrative-eyebrow" class="reveal"></div>
+      <div id="narrative-rule"></div>
+      <div id="narrative-body" class="reveal"></div>
+      <div id="narrative-lede" class="reveal"></div>
+    </div>
+
+    <!-- Diagram -->
+    <div id="diagram-region" class="scene-region">
+      <div id="diagram-title" class="reveal"></div>
+      <div id="diagram-panels"></div>
+      <div id="diagram-caption" class="reveal"></div>
+    </div>
+
+    <!-- Terminal GIF -->
+    <div id="termgif-region" class="scene-region">
+      <div class="termgif-frame reveal" id="termgif-frame">
+        <div class="termgif-titlebar">
+          <span class="termgif-dot r"></span>
+          <span class="termgif-dot y"></span>
+          <span class="termgif-dot g"></span>
+          <span class="termgif-titlebar-title" id="termgif-titlebar-title"></span>
+        </div>
+        <img id="termgif-img" alt="">
+      </div>
+      <div id="termgif-caption" class="reveal"></div>
+    </div>
+
+    <!-- Stat -->
+    <div id="stat-region" class="scene-region">
+      <div id="stat-value" class="reveal"></div>
+      <div id="stat-label" class="reveal"></div>
+      <div id="stat-detail" class="reveal"></div>
+    </div>
+
+    <!-- Diagram SVG -->
+    <div id="diagramsvg-region" class="scene-region">
+      <div id="diagramsvg-title" class="reveal"></div>
+      <div id="diagramsvg-panels"></div>
+      <div id="diagramsvg-caption" class="reveal"></div>
+    </div>
+
+    <!-- Trace -->
+    <div id="trace-region" class="scene-region">
+      <div id="trace-title" class="reveal"></div>
+      <div id="trace-turns"></div>
+      <div id="trace-caption" class="reveal"></div>
+    </div>
+
+    <!-- CTA -->
+    <div id="cta-region" class="scene-region">
+      <div id="cta-wordmark" class="reveal"></div>
+      <div id="cta-tagline" class="reveal"></div>
+      <div id="cta-url" class="reveal"></div>
+    </div>
+
+  </div><!-- /#pitch-stage -->
+
+</div><!-- /#root -->
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════
+   PELLICULE — Template Controller
+   Driven by renderer.js via page.evaluate() calls.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const $ = id => document.getElementById(id);
+
+// ── Syntax Highlighting ────────────────────────────────────────────────────
+
+function escapeHTML(str) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function highlightJSON(text) {
+  const escaped = escapeHTML(text);
+  return escaped.replace(
+    /("(?:[^"\\]|\\.)*")\s*:|("(?:[^"\\]|\\.)*")|(true|false|null)|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g,
+    (match, key, str, kw, num) => {
+      if (key !== undefined) return `<span class="json-key">${key}</span>:`;
+      if (str !== undefined) return `<span class="json-string">${str}</span>`;
+      if (kw  !== undefined) return `<span class="json-boolean">${kw}</span>`;
+      if (num !== undefined) return `<span class="json-number">${num}</span>`;
+      return match;
+    }
+  );
+}
+
+function renderBody(text, contentType) {
+  if (!text || text.trim() === '') {
+    return '<span style="color:#484f58"><em>empty body</em></span>';
+  }
+  const ct = (contentType || '').toLowerCase();
+  const looksLikeJSON = ct.includes('json') ||
+    text.trim().startsWith('{') || text.trim().startsWith('[');
+  if (looksLikeJSON) {
+    try {
+      return highlightJSON(JSON.stringify(JSON.parse(text), null, 2));
+    } catch (_) { /* fall through */ }
+  }
+  // Truncate long non-JSON bodies
+  const truncated = text.length > 1500 ? text.slice(0, 1500) + '\n…' : text;
+  return escapeHTML(truncated);
+}
+
+function renderHeaders(headers, containerId) {
+  const el = $(containerId);
+  if (!el) return;
+  el.innerHTML = (headers || []).map(h =>
+    `<div class="header-row">` +
+    `<span class="header-name">${escapeHTML(h.name)}</span>` +
+    `<span class="header-value">${escapeHTML(h.value)}</span>` +
+    `</div>`
+  ).join('');
+}
+
+function statusClass(code) {
+  if (code >= 200 && code < 300) return 'status-2xx';
+  if (code >= 400 && code < 500) return 'status-4xx';
+  if (code >= 500)               return 'status-5xx';
+  return 'status-2xx';
+}
+
+// ── Visibility Helpers ────────────────────────────────────────────────────
+
+function show(id) { const el = $(id); if (el) el.classList.remove('hidden'); }
+function hide(id) { const el = $(id); if (el) el.classList.add('hidden'); }
+
+// ── PELLICULE Public API ──────────────────────────────────────────────────
+// Called from renderer.js via page.evaluate()
+
+window.pellicule = {
+
+  /* Set global header metadata (called once per spec) */
+  setMeta(meta) {
+    if (meta.ticket) $('header-ticket').textContent = meta.ticket + '  ';
+    if (meta.title)  $('header-title').textContent  = meta.title;
+
+    const badge = $('phase-badge');
+    if (meta.phase === 'before') {
+      badge.className = 'badge-before';
+      badge.textContent = 'BEFORE FIX';
+    } else if (meta.phase === 'after') {
+      badge.className = 'badge-after';
+      badge.textContent = 'AFTER FIX';
+    } else {
+      badge.className = 'badge-neutral';
+      badge.textContent = (meta.phase || 'DEMO').toUpperCase();
+    }
+  },
+
+  /* Show a full-screen title card */
+  showTitleCard(scene) {
+    this._resetScene();
+    $('title-card-eyebrow').textContent  = scene.eyebrow  || '';
+    $('title-card-title').textContent    = scene.title    || '';
+    $('title-card-subtitle').textContent = scene.subtitle || '';
+    show('title-card');
+  },
+
+  /* Hide the title card */
+  hideTitleCard() {
+    hide('title-card');
+  },
+
+  /* Pre-load all data for a request scene (none of it shown yet) */
+  loadScene(scene, opts) {
+    const isMock     = (opts && opts.isMock)     || scene.mock     === true;
+    const isPlayback = (opts && opts.isPlayback) || scene.playback === true;
+    this._resetScene();
+    // Store mode flags AFTER reset so they survive setState('blank') calls
+    this._isMock     = isMock;
+    this._isPlayback = isPlayback;
+
+    // Scene header text (badges applied via _applyModeBadge after scene-header is shown)
+    $('scene-title-text').textContent      = scene.title      || '';
+    $('scene-annotation-text').textContent = scene.annotation || '';
+
+    // Response panel: tint label for mock or playback
+    const resPanel = $('response-panel');
+    resPanel.classList.toggle('is-mock',     isMock);
+    resPanel.classList.toggle('is-playback', isPlayback);
+
+    // URL bar
+    const method = (scene.request && scene.request.method) || 'GET';
+    $('method-badge').textContent = method;
+    $('method-badge').className   = `method-badge method-${method}`;
+    $('url-text').textContent     = (scene.request && scene.request.url) || '';
+
+    // Request headers
+    const reqHeaders = (scene.request && scene.request.headers) || [];
+    renderHeaders(reqHeaders, 'req-headers-list');
+
+    // Request body
+    const reqBodyText = (scene.request && scene.request.body) || '';
+    const reqCT = (reqHeaders.find(h => h.name.toLowerCase() === 'content-type') || {}).value;
+    $('req-body-code').innerHTML = renderBody(reqBodyText, reqCT);
+
+    // Response
+    const res = scene.response || {};
+    const code = res.status || 200;
+    $('status-code').textContent       = code;
+    $('status-text-label').textContent = res.statusText || '';
+    // Keep 'hidden' intact; just swap the colour class
+    $('status-display').classList.remove('status-2xx', 'status-4xx', 'status-5xx');
+    $('status-display').classList.add(statusClass(code));
+
+    if (res.statusExpected) {
+      const expEl = $('status-expected');
+      expEl.innerHTML = `Expected<br><strong>${escapeHTML(String(res.statusExpected))}</strong>`;
+      expEl.classList.remove('hidden');
+    } else {
+      $('status-expected').classList.add('hidden');
+    }
+
+    const resHeaders = res.headers || [];
+    renderHeaders(resHeaders, 'res-headers-list');
+
+    const resCT = (resHeaders.find(h => h.name.toLowerCase() === 'content-type') || {}).value;
+    $('res-body-code').innerHTML = renderBody(res.body || '', resCT);
+
+    // Footer annotation
+    const annotType = res.annotationType || 'error';
+    $('footer-annotation').className = `type-${annotType}`;
+    const icons = { error: '✗', warning: '⚠', success: '✓', info: 'ℹ' };
+    $('annotation-icon').textContent = icons[annotType] || '·';
+    $('annotation-text').textContent = res.annotation || '';
+  },
+
+  /* Drive animation step — reveals elements progressively */
+  setState(step) {
+    const hasReqHeaders = $('req-headers-list').children.length > 0;
+    const hasReqBody    = ($('req-body-code').textContent || '').trim().length > 0;
+    const hasResHeaders = $('res-headers-list').children.length > 0;
+    const hasResBody    = ($('res-body-code').textContent || '').trim().length > 0;
+    const hasAnnotation = ($('annotation-text').textContent || '').trim().length > 0;
+
+    // Show helper that respects hasX guards
+    const maybeShow = (id, guard = true) => { if (guard) show(id); };
+
+    // ── Reset send-btn on non-sending states
+    if (step !== 'sending') {
+      hide('sending-overlay');
+      $('send-btn').className = '';
+      $('send-btn').textContent = 'Send';
+    }
+
+    // Re-apply mode badge whenever scene-header is visible (survives blank resets)
+    if (step !== 'blank') this._applyModeBadge();
+
+    switch (step) {
+      case 'blank':
+        this._resetScene();
+        break;
+
+      case 'scene_header':
+        show('scene-header');
+        break;
+
+      case 'request_url':
+        show('scene-header');
+        show('url-bar');
+        break;
+
+      case 'request_headers':
+        show('scene-header');
+        show('url-bar');
+        maybeShow('req-headers-section', hasReqHeaders);
+        break;
+
+      case 'request_body':
+        show('scene-header');
+        show('url-bar');
+        maybeShow('req-headers-section', hasReqHeaders);
+        maybeShow('req-body-section', hasReqBody);
+        break;
+
+      case 'sending':
+        show('scene-header');
+        show('url-bar');
+        maybeShow('req-headers-section', hasReqHeaders);
+        maybeShow('req-body-section', hasReqBody);
+        $('send-btn').classList.add('sending');
+        $('send-btn').textContent = 'Sending…';
+        show('sending-overlay');
+        break;
+
+      case 'response_status':
+        show('scene-header');
+        show('url-bar');
+        maybeShow('req-headers-section', hasReqHeaders);
+        maybeShow('req-body-section', hasReqBody);
+        show('status-display');
+        break;
+
+      case 'response_headers':
+        show('scene-header');
+        show('url-bar');
+        maybeShow('req-headers-section', hasReqHeaders);
+        maybeShow('req-body-section', hasReqBody);
+        show('status-display');
+        maybeShow('res-headers-section', hasResHeaders);
+        break;
+
+      case 'response_body':
+        show('scene-header');
+        show('url-bar');
+        maybeShow('req-headers-section', hasReqHeaders);
+        maybeShow('req-body-section', hasReqBody);
+        show('status-display');
+        maybeShow('res-headers-section', hasResHeaders);
+        maybeShow('res-body-section', hasResBody);
+        break;
+
+      case 'response_annotation':
+      case 'complete':
+        show('scene-header');
+        show('url-bar');
+        maybeShow('req-headers-section', hasReqHeaders);
+        maybeShow('req-body-section', hasReqBody);
+        show('status-display');
+        maybeShow('res-headers-section', hasResHeaders);
+        maybeShow('res-body-section', hasResBody);
+        maybeShow('footer-annotation', hasAnnotation);
+        break;
+    }
+  },
+
+  /* Set the sending progress bar width (0–100) */
+  setProgress(pct) {
+    const bar = $('spinner-bar');
+    if (bar) bar.style.width = pct + '%';
+  },
+
+  /* Set the sending status text */
+  setSendingText(text) {
+    $('sending-text').textContent = text;
+  },
+
+  /* Re-show the mode badge for the current scene (called by setState). */
+  _applyModeBadge() {
+    if (this._isMock) {
+      show('mock-badge');
+    } else {
+      hide('mock-badge');
+    }
+    if (this._isPlayback) {
+      show('playback-badge');
+    } else {
+      hide('playback-badge');
+    }
+  },
+
+  _resetScene() {
+    const ids = [
+      'title-card', 'scene-header', 'url-bar',
+      'req-headers-section', 'req-body-section',
+      'sending-overlay', 'status-display',
+      'res-headers-section', 'res-body-section',
+      'footer-annotation', 'mock-badge', 'playback-badge',
+    ];
+    ids.forEach(id => hide(id));
+    $('send-btn').className   = '';
+    $('send-btn').textContent = 'Send';
+    $('spinner-bar').style.width = '0%';
+    hide('status-expected');
+    $('response-panel').classList.remove('is-mock');
+    $('response-panel').classList.remove('is-playback');
+  },
+
+  // ── Pitch-mode API ──────────────────────────────────────────────────────
+  // Toggle the page chrome: 'api' shows #header + #main; 'pitch' shows the
+  // pitch stage and hides #header/#main.
+  setMode(mode) {
+    document.body.classList.toggle('mode-pitch', mode === 'pitch');
+    document.body.classList.toggle('mode-api',   mode !== 'pitch');
+  },
+
+  _activateRegion(id) {
+    document.querySelectorAll('.scene-region').forEach(r =>
+      r.classList.toggle('active', r.id === id));
+  },
+
+  _hideAllRegions() {
+    document.querySelectorAll('.scene-region').forEach(r =>
+      r.classList.remove('active'));
+    document.querySelectorAll('.reveal').forEach(el =>
+      el.classList.remove('shown'));
+  },
+
+  _setText(id, text) { const el = $(id); if (el) el.textContent = text || ''; },
+  _reveal(id)        { const el = $(id); if (el) el.classList.add('shown'); },
+  _hideReveal(id)    { const el = $(id); if (el) el.classList.remove('shown'); },
+
+  // ── Narrative ───────────────────────────────────────────────────────────
+  showNarrative(scene) {
+    this._hideAllRegions();
+    this._setText('narrative-eyebrow', scene.eyebrow);
+    this._setText('narrative-body',    scene.body);
+    this._setText('narrative-lede',    scene.lede);
+    this._activateRegion('narrative-region');
+  },
+  hideNarrative() { this._hideAllRegions(); },
+
+  // ── Diagram ─────────────────────────────────────────────────────────────
+  showDiagram(scene) {
+    this._hideAllRegions();
+    this._setText('diagram-title',   scene.title);
+    this._setText('diagram-caption', scene.caption);
+
+    const wrap = $('diagram-panels');
+    wrap.innerHTML = '';
+    (scene.panels || []).forEach((p, i) => {
+      const panel = document.createElement('div');
+      panel.className = 'diagram-panel reveal';
+      panel.id = `diagram-panel-${i}`;
+      panel.innerHTML =
+        (p.label ? `<div class="diagram-panel-label">${escapeHTML(p.label)}</div>` : '') +
+        `<pre class="diagram-panel-ascii">${escapeHTML(p.ascii || '')}</pre>`;
+      wrap.appendChild(panel);
+    });
+    this._activateRegion('diagram-region');
+  },
+  hideDiagram() { this._hideAllRegions(); },
+
+  // ── Terminal GIF ────────────────────────────────────────────────────────
+  showTerminalGif(scene, dataUri) {
+    this._hideAllRegions();
+    this._setText('termgif-titlebar-title', scene.title);
+    this._setText('termgif-caption', scene.caption);
+    $('termgif-img').src = dataUri;
+    this._activateRegion('termgif-region');
+  },
+  hideTerminalGif() {
+    this._hideAllRegions();
+    $('termgif-img').src = '';  // free memory between scenes
+  },
+
+  // ── Stat ────────────────────────────────────────────────────────────────
+  showStat(scene) {
+    this._hideAllRegions();
+    this._setText('stat-value',  scene.value);
+    this._setText('stat-label',  scene.label);
+    this._setText('stat-detail', scene.detail);
+    this._activateRegion('stat-region');
+  },
+  hideStat() { this._hideAllRegions(); },
+
+  // ── CTA ─────────────────────────────────────────────────────────────────
+  showCta(scene) {
+    this._hideAllRegions();
+    this._setText('cta-wordmark', scene.wordmark);
+    this._setText('cta-tagline',  scene.tagline);
+    this._setText('cta-url',      scene.url);
+    this._activateRegion('cta-region');
+  },
+  hideCta() { this._hideAllRegions(); },
+
+  // ── Diagram-SVG ─────────────────────────────────────────────────────────
+  showDiagramSvg(scene) {
+    this._hideAllRegions();
+    this._setText('diagramsvg-title',   scene.title);
+    this._setText('diagramsvg-caption', scene.caption);
+
+    const wrap = $('diagramsvg-panels');
+    wrap.innerHTML = '';
+    (scene.panels || []).forEach((p, i) => {
+      const panel = document.createElement('div');
+      panel.className = 'diagramsvg-panel reveal';
+      panel.id = `diagramsvg-panel-${i}`;
+      panel.innerHTML = this._renderSvgPanel(p, i);
+      wrap.appendChild(panel);
+    });
+    this._activateRegion('diagramsvg-region');
+  },
+  hideDiagramSvg() { this._hideAllRegions(); },
+
+  _renderSvgPanel(panel, idx) {
+    const vb       = panel.viewBox || '0 0 400 360';
+    const nodes    = (panel.nodes || []);
+    const nodeMap  = Object.fromEntries(nodes.map(n => [n.id, n]));
+    const markerId = `arrow-${idx}`;
+
+    const nodesSvg = nodes.map(n => {
+      const cx = n.x + n.w / 2;
+      const cy = n.y + n.h / 2;
+      const labelY = n.sub ? cy - 4 : cy + 8;
+      const subSvg = n.sub
+        ? `<text class="dsvg-sub" x="${cx}" y="${cy + 22}" text-anchor="middle">${escapeHTML(n.sub)}</text>`
+        : '';
+      return `<g class="dsvg-node dsvg-style-${n.style || 'default'}">` +
+             `<rect x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="14" ry="14"/>` +
+             `<text class="dsvg-label" x="${cx}" y="${labelY}" text-anchor="middle" dominant-baseline="middle">${escapeHTML(n.label || '')}</text>` +
+             subSvg +
+             `</g>`;
+    }).join('');
+
+    const edgesSvg = (panel.edges || []).map(e => {
+      const from = nodeMap[e.from], to = nodeMap[e.to];
+      if (!from || !to) return '';
+      const fromBelow = (from.y + from.h / 2) > (to.y + to.h / 2);
+      // Endpoints: edge starts at the side of `from` facing `to` and ends at the side of `to` facing `from`
+      let y1, y2;
+      if (fromBelow) { y1 = from.y;          y2 = to.y + to.h; }
+      else           { y1 = from.y + from.h; y2 = to.y; }
+      const offset = e.side === 'left' ? -32 : (e.side === 'right' ? 32 : 0);
+      const x1 = from.x + from.w / 2 + offset;
+      const x2 = to.x   + to.w   / 2 + offset;
+
+      const labelX  = (x1 + x2) / 2 + (e.side === 'left' ? -10 : (e.side === 'right' ? 10 : 0));
+      const labelY  = (y1 + y2) / 2;
+      const anchor  = e.side === 'left' ? 'end' : (e.side === 'right' ? 'start' : 'middle');
+      const labelEl = e.label
+        ? `<text class="dsvg-edge-label" x="${labelX}" y="${labelY}" text-anchor="${anchor}" dominant-baseline="middle">${escapeHTML(e.label)}</text>`
+        : '';
+
+      return `<g class="dsvg-edge">` +
+             `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" marker-end="url(#${markerId})"/>` +
+             labelEl +
+             `</g>`;
+    }).join('');
+
+    const label   = panel.label   ? `<div class="diagramsvg-panel-label">${escapeHTML(panel.label)}</div>` : '';
+    const pcap    = panel.caption ? `<div class="diagramsvg-panel-caption">${escapeHTML(panel.caption)}</div>` : '';
+
+    return label +
+      `<svg viewBox="${vb}" xmlns="http://www.w3.org/2000/svg" class="diagramsvg-svg">` +
+        `<defs>` +
+          `<marker id="${markerId}" class="dsvg-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">` +
+            `<path d="M 0 0 L 10 5 L 0 10 z"/>` +
+          `</marker>` +
+        `</defs>` +
+        edgesSvg +
+        nodesSvg +
+      `</svg>` +
+      pcap;
+  },
+
+  // ── Trace ───────────────────────────────────────────────────────────────
+  showTrace(scene) {
+    this._hideAllRegions();
+    this._setText('trace-title',   scene.title);
+    this._setText('trace-caption', scene.caption);
+
+    const wrap = $('trace-turns');
+    wrap.innerHTML = '';
+    (scene.turns || []).forEach((t, i) => {
+      const card = document.createElement('div');
+      card.className = 'trace-turn reveal';
+      card.id = `trace-turn-${i}`;
+      card.innerHTML = this._renderTraceTurn(t, i);
+      wrap.appendChild(card);
+    });
+    this._activateRegion('trace-region');
+  },
+  hideTrace() { this._hideAllRegions(); },
+
+  _renderTraceTurn(t, idx) {
+    const layers = (t.layers || []).map(l => {
+      const isHit = (l.result || '').toUpperCase() === 'HIT';
+      const cls = isHit ? 'trace-layer-hit' : 'trace-layer-miss';
+      const ms = l.ms ? `<span class="trace-layer-ms">${l.ms} ms</span>` : '';
+      return `<div class="trace-layer ${cls}">` +
+        `<span class="trace-layer-dot">▸</span>` +
+        `<span class="trace-layer-name">${escapeHTML(l.name || '')}</span>` +
+        `<span class="trace-layer-dots">···</span>` +
+        `<span class="trace-layer-result">${escapeHTML(l.result || '')}</span>` +
+        ms +
+      `</div>`;
+    }).join('');
+
+    const noLlm = t.no_llm ? `<span class="trace-no-llm">no LLM call</span>` : '';
+    return `<div class="trace-turn-header"><span class="trace-turn-label">TURN ${idx + 1}</span></div>` +
+      `<div class="trace-turn-user">${escapeHTML(t.user || '')}</div>` +
+      `<div class="trace-turn-layers">${layers}</div>` +
+      (t.intent
+        ? `<div class="trace-turn-intent">→ intent: <code>${escapeHTML(t.intent)}</code>${noLlm}</div>`
+        : ''
+      );
+  },
+};
+
+// ── Pitch-mode state names ──────────────────────────────────────────────────
+// Extend setState to recognise pitch-scene reveal step names. Each step name
+// maps to one or more elements to reveal.
+const _PITCH_REVEALS = {
+  // Narrative
+  narrative_eyebrow: ['narrative-eyebrow'],
+  narrative_body:    ['narrative-body'],
+  narrative_lede:    ['narrative-lede'],
+  // Diagram
+  diagram_title:     ['diagram-title'],
+  diagram_panel_0:   ['diagram-panel-0'],
+  diagram_panel_1:   ['diagram-panel-1'],
+  diagram_panel_2:   ['diagram-panel-2'],
+  diagram_caption:   ['diagram-caption'],
+  // Terminal-gif
+  termgif_frame:     ['termgif-frame'],
+  termgif_caption:   ['termgif-caption'],
+  // Stat
+  stat_value:        ['stat-value'],
+  stat_label:        ['stat-label'],
+  stat_detail:       ['stat-detail'],
+  // CTA
+  cta_wordmark:      ['cta-wordmark'],
+  cta_tagline:       ['cta-tagline'],
+  cta_url:           ['cta-url'],
+  // Diagram SVG
+  diagramsvg_title:    ['diagramsvg-title'],
+  diagramsvg_panel_0:  ['diagramsvg-panel-0'],
+  diagramsvg_panel_1:  ['diagramsvg-panel-1'],
+  diagramsvg_panel_2:  ['diagramsvg-panel-2'],
+  diagramsvg_caption:  ['diagramsvg-caption'],
+  // Trace
+  trace_title:         ['trace-title'],
+  trace_turn_0:        ['trace-turn-0'],
+  trace_turn_1:        ['trace-turn-1'],
+  trace_turn_2:        ['trace-turn-2'],
+  trace_caption:       ['trace-caption'],
+};
+
+const _origSetState = window.pellicule.setState.bind(window.pellicule);
+window.pellicule.setState = function(step) {
+  if (_PITCH_REVEALS[step]) {
+    _PITCH_REVEALS[step].forEach(id => window.pellicule._reveal(id));
+    return;
+  }
+  return _origSetState(step);
+};
+</script>
+</body>
+</html>

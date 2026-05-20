@@ -1,0 +1,17 @@
+{
+  "name": "pellicule",
+  "version": "1.0.0",
+  "description": "Deterministic API interaction video generator — renders .demo.json scripts into stylized MP4 videos",
+  "main": "index.js",
+  "scripts": {
+    "demo:vp-5623": "node index.js examples/vp-5623.demo.json vp-5623.mp4",
+    "demo:pltfrm-87475": "node index.js examples/pltfrm-87475.demo.json pltfrm-87475.mp4"
+  },
+  "dependencies": {
+    "jsonpath-plus": "^10.4.0",
+    "puppeteer": "^21.11.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

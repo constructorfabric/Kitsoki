@@ -33,3 +33,8 @@ dist/
 # Generated visualisations from `kitsoki viz`
 *-viz.dot
 *-viz.mmd
+
+# Pellicule (video pipeline) — node deps and generated frames/output
+tools/pellicule/node_modules/
+tools/pellicule/*.mp4
+tools/pellicule/frames/

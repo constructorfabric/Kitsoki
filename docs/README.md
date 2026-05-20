@@ -49,6 +49,10 @@ orchestration), see [`prior-art.md`](prior-art.md).
 14. **[`story-style.md`](story-style.md)** — how a story should look:
     blocks, elements, colors, action menus, placeholders. The short
     guide; copy Oregon Trail when in doubt.
+15. **[`case-studies/`](case-studies/README.md)** — worked examples of
+    progressive determinism applied to real workflows. Start with
+    [`case-studies/bug-fix.md`](case-studies/bug-fix.md): how a
+    prompt-driven agent loop became the seven-room `bugfix` pipeline.
 
 ## Reference (embedded in the binary)
 

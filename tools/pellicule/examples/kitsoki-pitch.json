@@ -1,0 +1,142 @@
+{
+  "_comment": "Kitsoki concept pitch — silent ~70s cut. Sells docs/concept.md.",
+
+  "meta": {
+    "mode":   "pitch",
+    "title":  "Kitsoki",
+    "ticket": "",
+    "phase":  "demo",
+    "resolution": { "width": 1920, "height": 1080 }
+  },
+
+  "scenes": [
+
+    {
+      "type": "title",
+      "title": "Kitsoki",
+      "subtitle": "A conversation engine with deterministic flow"
+    },
+
+    {
+      "type": "narrative",
+      "eyebrow": "The Problem",
+      "body": "Two extremes dominate today's interactive software.",
+      "lede": "Traditional CLIs are unforgiving. Chat agents are unpredictable.",
+      "hold": 150
+    },
+
+    {
+      "type": "diagram",
+      "title": "Two extremes",
+      "panels": [
+        {
+          "label": "Traditional CLI",
+          "ascii": "$ ./tool --service=frontend\n         --replicas=3\n         --region=us-east-1\n\nerror: missing required flag --env\n\n# rigid, unforgiving,\n# every keystroke matters"
+        },
+        {
+          "label": "Chat agent",
+          "ascii": "> scale the frontend\n\n  ... thinking ...\n  ... tool: read_repo\n  ... tool: list_services\n  ... tool: ???\n\n# vague, opaque,\n# every decision is LLM judgement"
+        }
+      ],
+      "caption": "Predictable but rigid — or forgiving but unpredictable.",
+      "hold": 180
+    },
+
+    {
+      "type": "narrative",
+      "eyebrow": "The Inversion",
+      "body": "Kitsoki flips control.",
+      "lede": "The runtime is in charge. The LLM is called when interpretation is needed — and only then.",
+      "hold": 150
+    },
+
+    {
+      "type": "diagram-svg",
+      "title": "Control inversion",
+      "panels": [
+        {
+          "label": "Typical agent",
+          "viewBox": "0 0 400 360",
+          "nodes": [
+            {
+              "id": "llm", "label": "LLM", "sub": "plan · reason · decide",
+              "x": 70, "y": 50, "w": 260, "h": 90, "style": "primary"
+            },
+            {
+              "id": "rt", "label": "runtime", "sub": "execute",
+              "x": 70, "y": 240, "w": 260, "h": 90
+            }
+          ],
+          "edges": [
+            { "from": "llm", "to": "rt", "label": "calls" }
+          ],
+          "caption": "LLM holds the plan; runtime executes."
+        },
+        {
+          "label": "Kitsoki",
+          "viewBox": "0 0 400 360",
+          "nodes": [
+            {
+              "id": "rt", "label": "runtime", "sub": "state machine",
+              "x": 70, "y": 50, "w": 260, "h": 90, "style": "primary"
+            },
+            {
+              "id": "llm", "label": "LLM", "sub": "narrow sub-task",
+              "x": 70, "y": 240, "w": 260, "h": 90, "style": "secondary"
+            }
+          ],
+          "edges": [
+            { "from": "rt",  "to": "llm", "label": "resolve this",     "side": "left"  },
+            { "from": "llm", "to": "rt",  "label": "structured output", "side": "right" }
+          ],
+          "caption": "Runtime holds the plan; LLM is called as a sub-task."
+        }
+      ],
+      "caption": "The arrow that matters is the LLM's return arrow — a typed intent, not a free-form action.",
+      "hold": 210
+    },
+
+    {
+      "type": "trace",
+      "title": "On every turn",
+      "turns": [
+        {
+          "user":   "show me what's open assigned to me",
+          "layers": [
+            { "name": "synonym", "result": "MISS" },
+            { "name": "slot",    "result": "MISS" },
+            { "name": "LLM",     "result": "HIT",  "ms": 280 }
+          ],
+          "intent": "tickets {filter: open, assignee: me}"
+        },
+        {
+          "user":   "tickets",
+          "layers": [
+            { "name": "synonym", "result": "HIT" }
+          ],
+          "intent": "tickets",
+          "no_llm": true
+        }
+      ],
+      "caption": "Deterministic layers first; the LLM is called only when they miss.",
+      "hold": 210
+    },
+
+    {
+      "type": "stat",
+      "value":  "78%",
+      "label":  "of turns route deterministically — without calling the LLM.",
+      "detail": "Measured across the cloak, oregon-trail and dev-story stories.",
+      "hold":   150
+    },
+
+    {
+      "type": "cta",
+      "wordmark": "Kitsoki",
+      "tagline":  "Predictable by construction. Interpretive where it has to be.",
+      "url":      "github.com/acronis/kitsoki",
+      "hold":     180
+    }
+
+  ]
+}
