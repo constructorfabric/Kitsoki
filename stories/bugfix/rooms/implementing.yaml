@@ -34,6 +34,13 @@ states:
                 Files:            '{{ world.implement_artifact.files_changed|default:"(none recorded)" }}'
           - heading: "Artifact"
           - code: '{{ world.implement_artifact.summary_markdown|default:"(no implementation body — oracle pending or failed)" }}'
+          # Bare `when: "world.x"` triggers truthy() in
+          # internal/render/elements/element.go — nil / empty-slice /
+          # empty-map / empty-string are all falsy; anything else is
+          # truthy. Before truthy() landed, expr-lang's bool([]any)
+          # threw "invalid operation" and the orchestrator's post-bind
+          # render path silently dropped the view to "" (the
+          # "we dead-ended" symptom in the 2026-05-20 trace).
           - heading: "Blockers"
             when:  "world.implement_artifact.blockers"
           - code: |

@@ -54,6 +54,7 @@ package elements
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"sync"
 
@@ -274,19 +275,106 @@ var whenCache sync.Map // map[string]*expr.Program
 
 // evalWhen evaluates an optional element-level `when:` guard. An empty
 // guard means "always render" and returns true. A non-empty guard is
-// compiled (or fetched from cache) and evaluated as a bool. Non-bool
-// results fall through expr.EvalBool's error handling.
+// compiled (or fetched from cache) and evaluated to ANY value, then
+// coerced to bool via JavaScript/Python-style truthy rules:
+//
+//   bool      → as-is
+//   nil       → false
+//   string    → len > 0
+//   slice/array/map → len > 0
+//   number    → != 0
+//   anything else → true (any non-nil value is truthy)
+//
+// Strict-bool semantics (the legacy `expr.CompileBool` + `EvalBool`
+// path) were too brittle for `when:` guards: an author writing
+// `when: "world.implement_artifact.blockers"` expected
+// "render this section IF there are blockers" and got a runtime
+// panic when claude's oracle returned `blockers: []` — expr-lang
+// rejected `bool([]interface{})` with "invalid operation". The
+// orchestrator's post-bind render path then silently dropped the
+// view to "" because the render error bubbled up the host-dispatch
+// chain. The fix is to make `when:` permissive by default — the
+// guard's intent is "is this thing present?" not "is this thing
+// strictly a Go bool?".
 func evalWhen(src string, env expr.Env) (bool, error) {
 	if src == "" {
 		return true, nil
 	}
-	if p, ok := whenCache.Load(src); ok {
-		return expr.EvalBool(p.(*expr.Program), env)
-	}
-	p, err := expr.CompileBool(src)
+	prog, err := whenProgram(src)
 	if err != nil {
+		// Compile-time errors are authoring bugs — surface so the
+		// load fails loudly. The element pipeline forwards this.
 		return false, err
 	}
+	val, err := expr.EvalAny(prog, env)
+	if err != nil {
+		// Runtime eval errors get treated as falsy. The common shape
+		// is `world.x.y` where `world.x` is nil ("cannot fetch y from
+		// <nil>"). Failing the whole view because one optional guard
+		// couldn't resolve a property is worse than rendering with
+		// that block hidden. Authoring tests still catch the case via
+		// the explicit non-nil shape.
+		return false, nil
+	}
+	return truthy(val), nil
+}
+
+// whenProgram returns the cached compiled program for src, compiling
+// it on first use. We compile without AsBool so the runtime evaluator
+// returns the raw value; evalWhen applies truthy coercion.
+func whenProgram(src string) (*expr.Program, error) {
+	if p, ok := whenCache.Load(src); ok {
+		return p.(*expr.Program), nil
+	}
+	p, err := expr.Compile(src)
+	if err != nil {
+		return nil, err
+	}
 	whenCache.Store(src, p)
-	return expr.EvalBool(p, env)
+	return p, nil
+}
+
+// truthy applies JavaScript/Python-style truthiness to a raw expr
+// result. Used by element-level `when:` guards so authors can write
+// `when: "world.things"` without having to remember to wrap it in
+// `len(...) > 0` for slice-typed values.
+func truthy(v any) bool {
+	switch t := v.(type) {
+	case nil:
+		return false
+	case bool:
+		return t
+	case string:
+		return t != ""
+	case []any:
+		return len(t) > 0
+	case []string:
+		return len(t) > 0
+	case []map[string]any:
+		return len(t) > 0
+	case map[string]any:
+		return len(t) > 0
+	case int:
+		return t != 0
+	case int64:
+		return t != 0
+	case float64:
+		return t != 0
+	}
+	// Fall back to reflect for any remaining slice/array/map/struct
+	// shapes (the typed cases above cover the common shapes our
+	// world.* values land as). Anything non-nil is truthy; for
+	// reflect-Len-able kinds we check len > 0.
+	rv := reflect.ValueOf(v)
+	if !rv.IsValid() {
+		return false
+	}
+	switch rv.Kind() {
+	case reflect.Slice, reflect.Array, reflect.Map, reflect.String:
+		return rv.Len() > 0
+	case reflect.Pointer, reflect.Interface:
+		return !rv.IsNil()
+	default:
+		return true
+	}
 }

@@ -19,6 +19,9 @@ states:
                 Status: '{{ world.review_artifact.status|default:"(pending)" }}'
           - heading: "Artifact"
           - code: '{{ world.review_artifact.summary_markdown|default:"(pending — oracle has not returned yet)" }}'
+          # See element.go::truthy — bare `when: world.x` evaluates
+          # slices/maps/strings via length and other types via
+          # JS-style truthiness. No need for `len(...) > 0` wrappers.
           - heading: "Blockers"
             when:  "world.review_artifact.blockers"
           - code: |
