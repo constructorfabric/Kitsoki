@@ -43,11 +43,15 @@
 states:
 
   reproducing:
-    description: "Reproduce the bug; produce the reproduction artifact for review."
+    description: "Starting reproducing — produce the reproduction artifact for review."
     view:
       extends: "base"
       blocks:
         body:
+          - banner:
+              text:     "REPRODUCING"
+              subtitle: "Phase 1 / 7  ·  verify the bug; produce reproduction artifact"
+              color:    "#06B6D4"   # cyan — cool start of the pipeline
           - kv:
               pairs:
                 Ticket:         "{{ world.ticket_id }} — {{ world.ticket_title }}"

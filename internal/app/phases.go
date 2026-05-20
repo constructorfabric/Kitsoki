@@ -476,10 +476,12 @@ func substView(v View, params map[string]any, next map[string]string) View {
 
 func substViewElement(el ViewElement, params map[string]any, next map[string]string) ViewElement {
 	out := ViewElement{
-		Kind:   el.Kind,
-		Source: substString(el.Source, params, next),
-		Marker: el.Marker,
-		When:   substString(el.When, params, next),
+		Kind:     el.Kind,
+		Source:   substString(el.Source, params, next),
+		Marker:   el.Marker,
+		Subtitle: substString(el.Subtitle, params, next),
+		Color:    el.Color,
+		When:     substString(el.When, params, next),
 	}
 	if len(el.Items) > 0 {
 		out.Items = make([]ListItem, len(el.Items))

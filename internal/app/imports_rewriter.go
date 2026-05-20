@@ -407,10 +407,12 @@ func (rw *childRewriter) rewriteView(v View) View {
 
 func (rw *childRewriter) rewriteViewElement(el ViewElement) ViewElement {
 	out := ViewElement{
-		Kind:   el.Kind,
-		Source: rw.rewriteExpr(el.Source),
-		Marker: el.Marker,
-		When:   rw.rewriteExpr(el.When),
+		Kind:     el.Kind,
+		Source:   rw.rewriteExpr(el.Source),
+		Marker:   el.Marker,
+		Subtitle: rw.rewriteExpr(el.Subtitle),
+		Color:    el.Color,
+		When:     rw.rewriteExpr(el.When),
 	}
 	if len(el.Items) > 0 {
 		out.Items = make([]ListItem, len(el.Items))

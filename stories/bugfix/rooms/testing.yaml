@@ -27,11 +27,15 @@
 states:
 
   testing:
-    description: "Run + review tests for the applied fix; advance to reviewing (or done in quick mode)."
+    description: "Starting testing — run + review tests for the applied fix; advance to reviewing (or done in quick mode)."
     view:
       extends: "base"
       blocks:
         body:
+          - banner:
+              text:     "TESTING"
+              subtitle: "Phase 4 / 7  ·  run + review tests against the applied fix"
+              color:    "#F59E0B"   # amber — caution
           - kv:
               pairs:
                 Ticket:  "{{ world.ticket_id }} — {{ world.ticket_title }}"

@@ -5,11 +5,15 @@
 states:
 
   reviewing:
-    description: "Self-review the diff (code + security); advance to validating."
+    description: "Starting reviewing — self-review the diff (code + security); advance to validating."
     view:
       extends: "base"
       blocks:
         body:
+          - banner:
+              text:     "REVIEWING"
+              subtitle: "Phase 5 / 7  ·  self-review the diff (code + security)"
+              color:    "#F43F5E"   # rose — review under scrutiny
           - kv:
               pairs:
                 Ticket:  "{{ world.ticket_id }} — {{ world.ticket_title }}"

@@ -91,18 +91,25 @@ type View struct {
 //   - "list" — Items holds the entries; Marker holds the optional bullet
 //     marker (default "-" applied at element-render time, not at load).
 //   - "kv" — Pairs holds the ordered key/value pairs.
+//   - "banner" — Source holds the phase name (text to figlet); Subtitle
+//     holds an optional one-liner shown beneath the ASCII art; Color
+//     holds an optional CSS-style hex foreground (e.g. "#06B6D4"). The
+//     renderer generates the figlet-style art at render time from Source
+//     so authors don't have to paste pre-baked ASCII into YAML.
 //
 // When is the optional element-level guard expression (expr-lang source).
 // Phase A stores it verbatim; the Phase D renderer evaluates it against
 // the same env as transition / effect guards and suppresses the element
 // when the expression is false.
 type ViewElement struct {
-	Kind   string
-	Source string
-	Items  []ListItem
-	Pairs  goyaml.MapSlice
-	Marker string
-	When   string
+	Kind     string
+	Source   string
+	Items    []ListItem
+	Pairs    goyaml.MapSlice
+	Marker   string
+	Subtitle string
+	Color    string
+	When     string
 }
 
 // ListItem is one entry in a "list" element. An author may write a bare
@@ -250,7 +257,18 @@ type rawViewElementYAML struct {
 	Template *string         `yaml:"template,omitempty"`
 	List     *rawListYAML    `yaml:"list,omitempty"`
 	KV       *rawKVYAML      `yaml:"kv,omitempty"`
+	Banner   *rawBannerYAML  `yaml:"banner,omitempty"`
 	When     string          `yaml:"when,omitempty"`
+}
+
+// rawBannerYAML decodes the banner element body. Text is the phase name
+// the renderer figlets into ASCII art; Subtitle is the optional one-line
+// caption shown beneath; Color is an optional CSS-style hex foreground
+// applied to the art via lipgloss (subtitle stays unstyled).
+type rawBannerYAML struct {
+	Text     string `yaml:"text"`
+	Subtitle string `yaml:"subtitle,omitempty"`
+	Color    string `yaml:"color,omitempty"`
 }
 
 // rawListYAML decodes the list element body. Items are decoded into a
@@ -347,9 +365,19 @@ func (r rawViewElementYAML) toElement() (ViewElement, error) {
 		set = append(set, "kv")
 		out = ViewElement{Kind: "kv", Pairs: r.KV.Pairs, When: when}
 	}
+	if r.Banner != nil {
+		set = append(set, "banner")
+		out = ViewElement{
+			Kind:     "banner",
+			Source:   r.Banner.Text,
+			Subtitle: r.Banner.Subtitle,
+			Color:    r.Banner.Color,
+			When:     when,
+		}
+	}
 	switch len(set) {
 	case 0:
-		return ViewElement{}, fmt.Errorf("element has no kind (expected one of prose / heading / list / kv / code / template)")
+		return ViewElement{}, fmt.Errorf("element has no kind (expected one of prose / heading / list / kv / code / template / banner)")
 	case 1:
 		return out, nil
 	default:
@@ -411,7 +439,12 @@ func (e ViewElement) validate() error {
 			}
 		}
 		return nil
+	case "banner":
+		if strings.TrimSpace(e.Source) == "" {
+			return fmt.Errorf("banner requires a non-empty text:")
+		}
+		return nil
 	default:
-		return fmt.Errorf("unknown element kind %q (expected one of prose / heading / list / kv / code / template)", e.Kind)
+		return fmt.Errorf("unknown element kind %q (expected one of prose / heading / list / kv / code / template / banner)", e.Kind)
 	}
 }

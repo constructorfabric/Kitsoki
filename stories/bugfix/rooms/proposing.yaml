@@ -9,11 +9,15 @@
 states:
 
   proposing:
-    description: "Draft the fix proposal; review and advance to implementing."
+    description: "Starting proposing — draft the fix proposal; review and advance to implementing."
     view:
       extends: "base"
       blocks:
         body:
+          - banner:
+              text:     "PROPOSING"
+              subtitle: "Phase 2 / 7  ·  draft the fix proposal for review"
+              color:    "#3B82F6"   # blue — thinking
           - kv:
               pairs:
                 Ticket:     "{{ world.ticket_id }} — {{ world.ticket_title }}"

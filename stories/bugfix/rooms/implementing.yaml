@@ -15,11 +15,15 @@
 states:
 
   implementing:
-    description: "Apply the proposed fix to the workspace; advance to testing."
+    description: "Starting implementing — apply the proposed fix to the workspace; advance to testing."
     view:
       extends: "base"
       blocks:
         body:
+          - banner:
+              text:     "IMPLEMENTING"
+              subtitle: "Phase 3 / 7  ·  apply the proposed fix to the workspace"
+              color:    "#8B5CF6"   # violet — doing the work
           - kv:
               pairs:
                 Ticket:           "{{ world.ticket_id }} — {{ world.ticket_title }}"

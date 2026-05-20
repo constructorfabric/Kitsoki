@@ -30,11 +30,15 @@
 states:
 
   validating:
-    description: "Validate the fix against the full environment; advance to done."
+    description: "Starting validating — validate the fix against the full environment; advance to done."
     view:
       extends: "base"
       blocks:
         body:
+          - banner:
+              text:     "VALIDATING"
+              subtitle: "Phase 6 / 7  ·  full-environment validation of the fix"
+              color:    "#F97316"   # orange — last gate before close-out
           - kv:
               pairs:
                 Ticket:  "{{ world.ticket_id }} — {{ world.ticket_title }}"

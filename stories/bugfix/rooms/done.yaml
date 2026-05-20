@@ -10,11 +10,15 @@
 states:
 
   done:
-    description: "Build the run's close-out artifact; accept to hand off to pr-refinement."
+    description: "Starting close-out — build the run's done artifact; accept to hand off to pr-refinement."
     view:
       extends: "base"
       blocks:
         body:
+          - banner:
+              text:     "DONE"
+              subtitle: "Phase 7 / 7  ·  close-out artifact, hand off to pr-refinement"
+              color:    "#10B981"   # emerald — success
           - kv:
               pairs:
                 Ticket:  "{{ world.ticket_id }} — {{ world.ticket_title }}"

@@ -229,6 +229,8 @@ func renderOne(el app.ViewElement, env expr.Env, width int, glamour GlamourFunc,
 		return Code{Source: el.Source}.Render(width, env, rr)
 	case "template":
 		return Template{Source: el.Source, Glamour: glamour}.Render(width, env, rr)
+	case "banner":
+		return Banner{Source: el.Source, Subtitle: el.Subtitle, Color: el.Color}.Render(width, env, rr)
 	default:
 		return "", fmt.Errorf("unknown element kind %q", el.Kind)
 	}
