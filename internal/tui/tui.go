@@ -879,6 +879,17 @@ func (m RootModel) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// though the runner was streaming the events all along.
 		return m.handleMetaStreamEvent(msg), nil
 
+	case roomEnteredMsg:
+		// Paint the room banner above the in-flight tool-call
+		// breadcrumbs. Fires mid-turn from the orchestrator the moment
+		// a transition lands in a new room (top-level state change),
+		// before on_enter host calls dispatch — so the banner reads
+		// like a section header for everything that follows. Flush
+		// immediately so the queued banner reaches scrollback now,
+		// not when the turn completes.
+		m.transcript.AppendRoomBanner(msg.Banner)
+		return m, m.transcript.FlushPending()
+
 	case sessionsPanelLoadedMsg:
 		return m.handleSessionsPanelLoaded(msg)
 

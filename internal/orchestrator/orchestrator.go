@@ -64,6 +64,14 @@ type Orchestrator struct {
 	// and the host.chat.* built-ins. Optional; nil disables chat persistence.
 	chatStore host.ChatStore
 
+	// roomEnterSink, when non-nil, receives a pre-rendered banner string
+	// every time a turn transitions into a new room (top-level state).
+	// Fired AFTER the machine collects on_enter side-effects but BEFORE
+	// host calls dispatch, so the banner lands in the TUI transcript
+	// before any oracle / Bash / etc. tool-use breadcrumbs from the
+	// on_enter chain stream in. Optional; nil disables the hook.
+	roomEnterSink RoomEnterSink
+
 	// chatsConcrete is the concrete *chats.Store, set when callers want the
 	// continue-mode resume path to surface pending drives and backgrounded PTY
 	// chats. Distinct from chatStore (the host-interface flavour) because the
@@ -792,6 +800,22 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 				ErrorMessage:   ve.Message,
 				TurnNumber:     turnNum,
 			}, nil
+		}
+	}
+
+	// Pre-dispatch room-entry hook: when the machine landed us in a new
+	// room (top-level state changed), fire the RoomEnterSink BEFORE the
+	// on_enter chain's host calls so a live TUI can paint the room's
+	// banner above the tool-call breadcrumbs about to stream in. Hook
+	// is a no-op when no sink was installed (the headless path).
+	if o.roomEnterSink != nil && result.NewState != "" {
+		if prev, curr := journey.State.TopLevel(), result.NewState.TopLevel(); prev != curr {
+			if st := o.def.States[string(result.NewState)]; st != nil {
+				env := expr.Env{World: result.World.Vars}
+				if banner := renderRoomBanner(o.def, st, env); banner != "" {
+					o.roomEnterSink.OnRoomEnter(result.NewState, banner)
+				}
+			}
 		}
 	}
 

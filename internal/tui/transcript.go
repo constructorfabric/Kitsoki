@@ -852,6 +852,25 @@ func (m *transcriptModel) AppendMetaStreamLine(text string) {
 	m.queue(body)
 }
 
+// AppendRoomBanner emits a room-entry banner above the in-flight
+// tool-call breadcrumbs. The orchestrator fires this when a turn
+// lands in a new room (top-level state change) BEFORE its on_enter
+// host calls dispatch, so a long oracle / Bash / Read stream lands
+// beneath the banner instead of leading it.
+//
+// banner is the pre-styled output from elements.Banner.Render (ANSI
+// escapes intact); we don't re-style it here, only frame it with a
+// leading blank line so it stands clear of the preceding routing
+// breadcrumb.
+func (m *transcriptModel) AppendRoomBanner(banner string) {
+	if banner == "" {
+		return
+	}
+	body := "\n" + banner
+	m.entries = append(m.entries, transcriptEntry{body: body})
+	m.queue(body)
+}
+
 // AppendMetaThinking renders an agent narration / "thinking" line —
 // muted italic prose without a tool label. Visually distinct from
 // tool-use rows (which call AppendMetaToolUse) so the scrollback
@@ -864,7 +883,7 @@ func (m *transcriptModel) AppendMetaThinking(text string) {
 		Foreground(colorPrimary).
 		Bold(true).
 		Italic(true).
-		Render("  " + text)
+		Render("🧠 " + text)
 	body := "\n" + styled
 	m.entries = append(m.entries, transcriptEntry{body: body})
 	m.queue(body)

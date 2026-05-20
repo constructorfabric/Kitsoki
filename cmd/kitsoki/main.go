@@ -322,6 +322,13 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 			}
 			host.SetAgentRegistry(agentReg)
 
+			// Allocate the room-enter sink up-front so it can be
+			// passed into the orchestrator AND held by the rootModel.
+			// Bound to the tea.Program below via sink.Attach(p) after
+			// tea.NewProgram exists. Same lifecycle pattern as the
+			// meta-mode stream sink.
+			roomEnterSink := tui.NewRoomEnterSink()
+
 			// Build orchestrator.
 			orch := orchestrator.New(def, m, s, h,
 				orchestrator.WithLogger(logger),
@@ -332,6 +339,7 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 				orchestrator.WithChatsConcrete(rawChatStore),
 				orchestrator.WithJournalWriter(jw),
 				orchestrator.WithJournalReader(jr),
+				orchestrator.WithRoomEnterSink(roomEnterSink),
 			)
 
 			ctx := context.Background()
@@ -568,6 +576,8 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 				p := tea.NewProgram(rootModel)
 				metaSink.Attach(p)
 				defer metaSink.Detach()
+				roomEnterSink.Attach(p)
+				defer roomEnterSink.Detach()
 				detach := tui.AttachOrchestratorObserver(orch, p, sid)
 				defer detach()
 
@@ -693,6 +703,8 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 			p := tea.NewProgram(rootModel)
 			metaSink.Attach(p)
 			defer metaSink.Detach()
+			roomEnterSink.Attach(p)
+			defer roomEnterSink.Detach()
 			// Bridge orchestrator background-turn notifications into
 			// the Bubble Tea message loop so the main transcript
 			// re-renders when a background job's on_complete fires —
