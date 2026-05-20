@@ -87,8 +87,16 @@ func IdentityGlamour(s string) string { return s }
 // *render.AppRenderer implements this interface via its Render method;
 // tests can supply a mock or a nil to fall back to the package-level
 // render.Pongo behaviour (no loader, fine for pure inline templates).
+//
+// RenderExtended is the typed-extends companion: when RenderAll is
+// given a View with `extends:` set, it pre-renders each block at the
+// dispatcher's width and then asks the ViewRenderer to splice them
+// into the base template. Tests can pass an extendsCapable mock or
+// stay on the legacy path by passing nil (RenderAll will refuse the
+// extends shape with a clear error).
 type ViewRenderer interface {
 	Render(src string, env expr.Env) (string, error)
+	RenderExtended(extends string, blocks map[string]string, env expr.Env) (string, error)
 }
 
 // renderLeaf is the single seam every element renderer routes its leaf-
@@ -125,12 +133,22 @@ type Renderer interface {
 // Behaviour summary:
 //
 //   - When view.IsEmpty() → returns "" with no error.
-//   - When view.Extends != "" or len(view.Blocks) > 0 → returns the empty
-//     string (the typed-extends path is rendered upstream by
-//     machine.renderViewBody via AppRenderer.RenderExtended).
+//   - When view.Extends != "" → pre-renders each block at the supplied
+//     `width` (recursive RenderAll), splices the rendered blocks into
+//     the base template via rr.RenderExtended, then applies `glamour`
+//     to the composite. Returns "" with no error when rr is nil
+//     (legacy callers that haven't wired the typed-extends path).
 //   - Otherwise iterates view.Elements: guard-filters, pongo-expands
 //     leaf strings, dispatches to the kind-specific renderer, and joins
 //     with the standard spacing.
+//
+// The extends-aware branch is what lets the TUI re-render typed-extends
+// views at the real viewport width (instead of the orchestrator-side
+// blockRenderWidth=80 default that the machine pre-renders with). Before
+// this branch existed, the TUI fell back to the 80-wide pre-render, so
+// a single wide label in any block clamped the hint column to ~25 chars
+// even on a 150-col terminal. See stories/dev-story/rooms/main.yaml:62
+// for the wide-label canary.
 func RenderAll(view app.View, env expr.Env, width int, glamour GlamourFunc, rr ViewRenderer) (string, error) {
 	if glamour == nil {
 		glamour = IdentityGlamour
@@ -138,13 +156,31 @@ func RenderAll(view app.View, env expr.Env, width int, glamour GlamourFunc, rr V
 	if view.IsEmpty() {
 		return "", nil
 	}
-	if view.Extends != "" || len(view.Blocks) > 0 {
-		// The extends/blocks form is rendered upstream via the
-		// AppRenderer's RenderExtended path (see
-		// machine.renderViewBody). The dispatcher returns "" so a
-		// caller that mistakenly hands us an extends-shaped View
-		// sees a clear empty body rather than a partial dump.
-		return "", nil
+	if view.Extends != "" {
+		// Legacy entry points (RenderAll with rr=nil) can't resolve
+		// the base template — fall back to the pre-typed-extends
+		// behaviour (empty string, caller's fallback path takes over).
+		if rr == nil {
+			return "", nil
+		}
+		blocks := make(map[string]string, len(view.Blocks))
+		for name, els := range view.Blocks {
+			sub := app.View{Elements: els}
+			body, err := RenderAll(sub, env, width, glamour, rr)
+			if err != nil {
+				return "", fmt.Errorf("render block %q: %w", name, err)
+			}
+			blocks[name] = body
+		}
+		composite, err := rr.RenderExtended(view.Extends, blocks, env)
+		if err != nil {
+			return "", fmt.Errorf("render extends %q: %w", view.Extends, err)
+		}
+		// Glamour styles the composite (markdown chrome from base.pongo
+		// + the plain-text element bodies). For the IdentityGlamour
+		// case (machine.renderViewBody, trace dumps, OneShot) this is a
+		// no-op, preserving the pre-typed-extends output verbatim.
+		return glamour(composite), nil
 	}
 
 	parts := make([]string, 0, len(view.Elements))

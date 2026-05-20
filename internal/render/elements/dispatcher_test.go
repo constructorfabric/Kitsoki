@@ -147,16 +147,16 @@ func TestRenderAll_WhenFiltersElement(t *testing.T) {
 	}
 }
 
-// TestRenderAll_ExtendsBlocksPlaceholder asserts that the extends /
-// blocks form renders the empty string in Phase D — Phase H will wire
-// real resolution. Authoring this surface before Phase H lands shows a
-// clear empty body rather than a malformed dump.
-func TestRenderAll_ExtendsBlocksPlaceholder(t *testing.T) {
+// TestRenderAll_ExtendsBlocksLegacyEmptyWithoutRenderer asserts the
+// back-compat path: callers that pass rr=nil with an extends-shaped
+// view still get the empty-string fallback (the dispatcher can't
+// resolve the base template without a per-app loader).
+func TestRenderAll_ExtendsBlocksLegacyEmptyWithoutRenderer(t *testing.T) {
 	view := app.View{
 		Extends: "base",
 		Blocks: map[string][]app.ViewElement{
 			"body": {
-				{Kind: "prose", Source: "ignored in Phase D"},
+				{Kind: "prose", Source: "needs a renderer"},
 			},
 		},
 	}
@@ -165,7 +165,113 @@ func TestRenderAll_ExtendsBlocksPlaceholder(t *testing.T) {
 		t.Fatalf("RenderAll: %v", err)
 	}
 	if out != "" {
-		t.Errorf("extends/blocks should render empty in Phase D, got %q", out)
+		t.Errorf("extends/blocks should render empty when rr=nil, got %q", out)
+	}
+}
+
+// fakeExtendsRenderer is the minimal ViewRenderer for the
+// extends-aware tests below. Render is a passthrough; RenderExtended
+// just concatenates the rendered blocks in alphabetical name order so
+// the test can grep individual block bodies. Tests that need a real
+// base-template splice already live in internal/render/extends_test.go.
+type fakeExtendsRenderer struct{}
+
+func (fakeExtendsRenderer) Render(src string, _ expr.Env) (string, error) {
+	return src, nil
+}
+
+func (fakeExtendsRenderer) RenderExtended(_ string, blocks map[string]string, _ expr.Env) (string, error) {
+	names := make([]string, 0, len(blocks))
+	for n := range blocks {
+		names = append(names, n)
+	}
+	// Sort for deterministic test output.
+	for i := 1; i < len(names); i++ {
+		for j := i; j > 0 && names[j-1] > names[j]; j-- {
+			names[j-1], names[j] = names[j], names[j-1]
+		}
+	}
+	var sb strings.Builder
+	for i, n := range names {
+		if i > 0 {
+			sb.WriteString("\n\n")
+		}
+		sb.WriteString(blocks[n])
+	}
+	return sb.String(), nil
+}
+
+// TestRenderAll_ExtendsUsesDispatcherWidth is the regression guard for
+// the 2026-05-20 narrow-hint-column bug. Pre-fix, RenderAll early-
+// returned "" for any extends-shaped view, forcing the TUI to fall
+// back to the orchestrator-side machine.renderViewBody output rendered
+// at the fixed blockRenderWidth=80. A single wide label in any block
+// would then clamp the hint column to ~25 chars even on a 150-col
+// terminal — the user-witnessed "search for a ticket to\n  pick"
+// wrap in stories/dev-story/rooms/main.yaml when one row's label is
+// 51 chars long.
+//
+// Post-fix, RenderAll pre-renders each block at the supplied width,
+// so passing the actual viewport width gives the list element enough
+// room to fit short hints on one line.
+func TestRenderAll_ExtendsUsesDispatcherWidth(t *testing.T) {
+	view := app.View{
+		Extends: "base",
+		Blocks: map[string][]app.ViewElement{
+			"choices": {
+				{
+					Kind: "list",
+					Items: []app.ListItem{
+						{Label: "tickets", Hint: "search for a ticket to pick"},
+						// 50-char "wide" label sets maxLabel for the list,
+						// constraining every row's hint column.
+						{Label: "deploy · observability · incident · docs · etc", Hint: "stubs"},
+					},
+				},
+			},
+		},
+	}
+
+	// Width 80: hint budget = 80 - 2(marker) - 46(maxLabel) - 2(gutter) = 30.
+	// "search for a ticket to pick" is 27 chars — fits at 80.
+	// Width 60: hint budget = 60 - 50 = 10. Hint must wrap.
+	cases := []struct {
+		name       string
+		width      int
+		shouldWrap bool
+	}{
+		{"narrow", 60, true},
+		{"viewport", 120, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := RenderAll(view, expr.Env{}, tc.width, IdentityGlamour, fakeExtendsRenderer{})
+			if err != nil {
+				t.Fatalf("RenderAll(w=%d): %v", tc.width, err)
+			}
+			// Locate the "tickets" row. The full hint must land on the
+			// same line as the label when the dispatcher has enough
+			// width; pre-fix the dispatcher always used width=80 so a
+			// 150-col viewport still wrapped.
+			ticketsLine := ""
+			for _, line := range strings.Split(out, "\n") {
+				if strings.Contains(line, "tickets") {
+					ticketsLine = line
+					break
+				}
+			}
+			if ticketsLine == "" {
+				t.Fatalf("output did not contain a tickets row:\n%s", out)
+			}
+			fits := strings.Contains(ticketsLine, "search for a ticket to pick")
+			if tc.shouldWrap && fits {
+				t.Errorf("w=%d: hint should wrap, but landed on one line: %q", tc.width, ticketsLine)
+			}
+			if !tc.shouldWrap && !fits {
+				t.Errorf("w=%d: hint should fit on one line, but wrapped. Line: %q\nFull:\n%s",
+					tc.width, ticketsLine, out)
+			}
+		})
 	}
 }
 
