@@ -1758,6 +1758,9 @@ func (m RootModel) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 	case "/warp":
 		return m.handleWarpCommand(parts[1:])
 
+	case "/reload":
+		return m.handleReloadSlash()
+
 	default:
 		m.transcript.AppendSystem(fmt.Sprintf("(unknown command: %s)", parts[0]))
 		return m, nil
@@ -2937,6 +2940,84 @@ func (m RootModel) handleMetaSendDone(msg metaSendDoneMsg) (tea.Model, tea.Cmd) 
 // the dormant legacy authoring-token dispatcher.
 func (m RootModel) reloadOrchestratorAfterMeta() (tea.Model, tea.Cmd) {
 	return m.reloadOrchestratorAfterMetaWithFiles(nil)
+}
+
+// handleReloadSlash implements `/reload`. It hot-swaps the app
+// definition from disk and re-fires the current state's on_enter
+// chain so view-template edits, on_enter additions, or oracle-prompt
+// changes take effect without restarting the session.
+//
+// The flow:
+//
+//  1. Swap the app def via Orchestrator.Reload (synchronous, fast
+//     file I/O). On error the session is left untouched and the
+//     transcript surfaces the load failure.
+//  2. Refresh the menu, location, and prompt placeholder so they
+//     reflect the new app graph.
+//  3. Dispatch Orchestrator.RerunOnEnter asynchronously — the
+//     current room's on_enter typically calls an oracle and we don't
+//     want the TUI to freeze for ~60s. The TurnOutcome flows back
+//     through the existing turnOutcomeMsg handler, which re-renders
+//     the view and resets the prompt.
+//
+// `/reload` is destructive on side-effect-bearing on_enter chains
+// (it WILL re-invoke an oracle, re-post to a transport, etc.). The
+// trade-off is intentional — the operator explicitly asked for "redo
+// whatever actions" so that the dogfood "edit story externally,
+// observe the new behaviour" loop closes without a TUI restart.
+func (m RootModel) handleReloadSlash() (tea.Model, tea.Cmd) {
+	if m.appPath == "" {
+		m.transcript.AppendSlashOutput(
+			"(/reload disabled — no app path was passed to NewRootModel; restart with `kitsoki run <app.yaml>` to enable hot-reload)")
+		return m, nil
+	}
+	if m.mode == ModeAwaitingLLM {
+		m.transcript.AppendSlashOutput(
+			"(/reload: a turn is in flight — wait for it to settle or press Ctrl+C to cancel, then try again)")
+		return m, nil
+	}
+
+	res, err := m.orch.Reload(m.appPath, m.currentState)
+	if err != nil {
+		m.transcript.AppendError("/reload",
+			fmt.Sprintf("reload failed: %v", err))
+		return m, nil
+	}
+
+	// Refresh the menu, location, and prompt placeholder against the
+	// post-reload world so they reflect any new/removed intents or
+	// menu labels declared in the freshly loaded definition.
+	w := m.orch.CurrentWorld(m.sid)
+	computed := orchestrator.ComputeMenu(m.orch.AppDef(), m.orch.Machine(), m.currentState, w)
+	m.menu, _ = m.menu.Update(menuItemsChanged{items: computed.Primary, blocked: computed.Blocked})
+	m.refreshPromptPlaceholder()
+	loc := orchestrator.ComputeLocation(m.orch.AppDef(), m.currentState, w, 0)
+	m.location, _ = m.location.Update(locationUpdated{loc: loc})
+
+	if !res.PrevStateExists {
+		m.transcript.AppendSlashOutput(
+			"(/reload: current state was removed in the new definition — re-render only, no on_enter rerun)")
+		if view, vErr := m.orch.Machine().RenderState(m.currentState, w); vErr == nil && view != "" {
+			m.transcript.AppendSystem(view)
+		}
+		return m, nil
+	}
+
+	m.transcript.AppendSlashOutput("(/reload: definition reloaded — re-firing on_enter)")
+
+	// Dispatch RerunOnEnter via the same async-turn machinery the
+	// menu uses. The resulting TurnOutcome flows back through
+	// handleTurnOutcome which renders the view and resets state.
+	return startAsyncTurn(m, "/reload", asyncRerunOnEnter(m.orch, m.sid), pendingDeterministic)
+}
+
+// asyncRerunOnEnter returns the closure shape startAsyncTurn expects
+// for the `/reload` path. RerunOnEnter has no user-input string of
+// its own, so the closure ignores the surrounding input plumbing.
+func asyncRerunOnEnter(orch *orchestrator.Orchestrator, sid app.SessionID) func(context.Context) (*orchestrator.TurnOutcome, error) {
+	return func(ctx context.Context) (*orchestrator.TurnOutcome, error) {
+		return orch.RerunOnEnter(ctx, sid)
+	}
 }
 
 // reloadOrchestratorAfterMetaWithFiles runs the same reload-and-rerender

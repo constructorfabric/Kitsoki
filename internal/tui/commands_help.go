@@ -44,6 +44,7 @@ func (HelpCommand) Run(m RootModel, _ []string) (string, RootModel, tea.Cmd) {
 		}},
 		{"system", []row{
 			{"/warp <state>", "developer teleport to a state"},
+			{"/reload", "reload app.yaml from disk and re-fire on_enter"},
 			{"/quit, /q", "exit kitsoki"},
 		}},
 	}

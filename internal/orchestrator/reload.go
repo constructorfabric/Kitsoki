@@ -1,10 +1,15 @@
 package orchestrator
 
 import (
+	"context"
 	"fmt"
+	"log/slog"
+	"time"
 
 	"kitsoki/internal/app"
 	"kitsoki/internal/machine"
+	"kitsoki/internal/store"
+	"kitsoki/internal/trace"
 )
 
 // ReloadResult reports the outcome of a Reload call. It tells the
@@ -104,4 +109,129 @@ func hasNestedState(s *app.State, prefix, target string) bool {
 		}
 	}
 	return false
+}
+
+// RerunOnEnter re-fires the current state's on_enter chain against the
+// session's live world, dispatches any host calls it emits, and returns
+// a TurnOutcome with the freshly rendered view. This is the
+// "/reload" partner of Reload: Reload swaps the app definition, then
+// RerunOnEnter replays the entered state's actions so view-template
+// edits, on_enter additions, or oracle-prompt changes take effect
+// without the user having to re-type an intent.
+//
+// Caveats by design:
+//
+//   - It re-fires the on_enter chain as-is. If the chain posts to a
+//     transport, calls an oracle, or otherwise has external side
+//     effects, those side effects will repeat. The user explicitly
+//     asked for this ("redo whatever actions") — the trade-off is
+//     spelled out in `/reload`'s slash help.
+//   - When the current state has no on_enter, RerunOnEnter still
+//     produces a TurnOutcome with a freshly rendered view so the
+//     caller's render pipeline is uniform.
+//   - The synthetic turn is logged as kind="reload" in the TurnStarted
+//     event so trace consumers can distinguish a reload from a user
+//     turn.
+//
+// Not safe to call concurrently with Turn / SubmitDirect / Reload /
+// other RerunOnEnter for the same session — uses the per-session
+// mutex.
+func (o *Orchestrator) RerunOnEnter(ctx context.Context, sid app.SessionID) (*TurnOutcome, error) {
+	sessMu := o.sessionLock(sid)
+	sessMu.Lock()
+	defer sessMu.Unlock()
+
+	journey, err := o.loadJourney(sid)
+	if err != nil {
+		return nil, fmt.Errorf("orchestrator.RerunOnEnter: load journey: %w", err)
+	}
+
+	turnNum := journey.Turn + 1
+	tl := trace.NewTurnLogger(o.logger, sid, turnNum, journey.State)
+	tl.Debug(ctx, trace.EvTurnStart,
+		slog.String("intent", ""),
+		slog.String("mode", "reload"),
+	)
+
+	currentState := journey.State
+	currentWorld := journey.World
+
+	state := lookupStateByPath(o.def, currentState)
+
+	var events []store.Event
+	if state != nil && len(state.OnEnter) > 0 {
+		resolved, newWorld, hostCalls, _, effEvents, runErr := o.machine.RunEffectsAndState(ctx, currentState, currentWorld, state.OnEnter)
+		if runErr != nil {
+			return nil, fmt.Errorf("orchestrator.RerunOnEnter: run on_enter for %q: %w", currentState, runErr)
+		}
+		events = append(events, effEvents...)
+		currentState = resolved
+		currentWorld = newWorld
+
+		if len(hostCalls) > 0 {
+			hostEvents, hostWorld, _, hostRedirect, hostErr := o.dispatchHostCalls(ctx, sid, hostCalls, currentWorld, currentState)
+			if hostErr != nil {
+				tl.Debug(ctx, trace.EvHarnessError, slog.String("host_dispatch_error", hostErr.Error()))
+			}
+			events = append(events, hostEvents...)
+			currentWorld = hostWorld
+			if hostRedirect != "" {
+				currentState = hostRedirect
+			}
+		}
+	}
+
+	// Always re-render so callers see template / view edits even when
+	// the state has no on_enter chain.
+	view, rErr := o.machine.RenderState(currentState, currentWorld)
+	if rErr != nil {
+		return nil, fmt.Errorf("orchestrator.RerunOnEnter: render state %q: %w", currentState, rErr)
+	}
+
+	startEvent := newOrchestratorEvent(store.TurnStarted, map[string]any{
+		"turn":  int64(turnNum),
+		"kind":  "reload",
+		"state": string(currentState),
+	}, turnNum)
+	endEvent := newOrchestratorEvent(store.TurnEnded, map[string]any{
+		"outcome": "reloaded",
+		"to":      string(currentState),
+	}, turnNum)
+
+	successEvents := append([]store.Event{startEvent}, events...)
+	successEvents = append(successEvents, endEvent)
+	for i := range successEvents {
+		successEvents[i].Turn = turnNum
+	}
+
+	jEntries := journalEntriesForEvents(sid, turnNum, time.Now(), successEvents,
+		journey.World, currentWorld, view, currentState, "")
+	if appendErr := o.store.AppendEventsAndJournal(sid, successEvents, jEntries); appendErr != nil {
+		return nil, fmt.Errorf("orchestrator.RerunOnEnter: append events: %w", appendErr)
+	}
+
+	tl.Debug(ctx, trace.EvTurnPersisted,
+		slog.Int("count", len(successEvents)),
+		slog.String("outcome", "reloaded"),
+	)
+
+	allowed := o.machine.AllowedIntents(currentState, currentWorld)
+	allowedNames := make([]string, len(allowed))
+	for i, a := range allowed {
+		allowedNames[i] = a.Name
+	}
+
+	mode := ModeTransitioned
+	if def := lookupStateByPath(o.def, currentState); def != nil && def.Terminal {
+		mode = ModeCompleted
+	}
+
+	return &TurnOutcome{
+		Mode:           mode,
+		View:           view,
+		NewState:       currentState,
+		Events:         successEvents,
+		AllowedIntents: allowedNames,
+		TurnNumber:     turnNum,
+	}, nil
 }
