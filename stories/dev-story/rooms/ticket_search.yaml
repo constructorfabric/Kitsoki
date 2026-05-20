@@ -162,7 +162,7 @@ states:
         #   1. n out of range → bounce with guard_hint
         #   2. either slot present → resolve via `slots.id ?? results[n-1].id`
         #   3. neither present → bounce with guard_hint
-        - when: "slots.n != nil && (slots.n < 1 || slots.n > len(world.ticket_results))"
+        - when: "slots.n != nil && (int(slots.n) < 1 || int(slots.n) > len(world.ticket_results))"
           target: .
           guard_hint: "Row {{ slots.n }} is out of range — pick 1..{{ len(world.ticket_results) }}."
         - when: "slots.id == nil && slots.n == nil"
@@ -176,9 +176,9 @@ states:
             # each choice item is what guarantees the surviving value is
             # non-empty.
             - set:
-                ticket_id:     "{{ slots.id ?? world.ticket_results[slots.n - 1].id }}"
+                ticket_id:     "{{ slots.id ?? world.ticket_results[int(slots.n) - 1].id }}"
                 ticket_type:   "{{ slots.type ?? world.ticket_type }}"
-                thread:        "{{ slots.id ?? world.ticket_results[slots.n - 1].id }}"
+                thread:        "{{ slots.id ?? world.ticket_results[int(slots.n) - 1].id }}"
             # iface.ticket.get returns the real human-readable
             # title from the ticket's frontmatter; bind it as
             # ticket_title so downstream rooms (bugfix phases,
@@ -186,7 +186,7 @@ states:
             # the 60-char ID slug + "(picked from list)" stub.
             - invoke: iface.ticket.get
               with:
-                id: "{{ slots.id ?? world.ticket_results[slots.n - 1].id }}"
+                id: "{{ slots.id ?? world.ticket_results[int(slots.n) - 1].id }}"
               bind:
                 ticket_title: title
               on_error: idle
@@ -270,7 +270,7 @@ states:
         # short-circuit and out-of-range guard, but the target lands
         # back in ticket_search (not `.`) so the operator sees the
         # full table after picking.
-        - when: "slots.n != nil && (slots.n < 1 || slots.n > len(world.ticket_results))"
+        - when: "slots.n != nil && (int(slots.n) < 1 || int(slots.n) > len(world.ticket_results))"
           target: ticket_searching
           guard_hint: "Row {{ slots.n }} is out of range — pick 1..{{ len(world.ticket_results) }}."
         - when: "slots.id == nil && slots.n == nil"
@@ -279,10 +279,10 @@ states:
         - target: ticket_search
           effects:
             - set:
-                ticket_id:    "{{ slots.id ?? world.ticket_results[slots.n - 1].id }}"
+                ticket_id:    "{{ slots.id ?? world.ticket_results[int(slots.n) - 1].id }}"
                 ticket_title: "(picked from search)"
                 ticket_type:  "{{ slots.type ?? world.ticket_type }}"
-                thread:       "{{ slots.id ?? world.ticket_results[slots.n - 1].id }}"
+                thread:       "{{ slots.id ?? world.ticket_results[int(slots.n) - 1].id }}"
       search_tickets:
         - target: ticket_searching
           effects:
