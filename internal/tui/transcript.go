@@ -314,9 +314,13 @@ func (m transcriptModel) Update(msg tea.Msg) (transcriptModel, tea.Cmd) {
 			m.vp.Width = msg.Width
 			m.vp.Height = msg.Height
 			// Rebuild the glamour renderer at the new wrap width.
+			// Matches SetSize's `viewportWidth - 2` budget; the
+			// dispatcher's wrapWidth() picks up `vp.Width - 4` so its
+			// output stays inside glamour's content area after the
+			// 2-char document margin is accounted for.
 			if r, err := glamour.NewTermRenderer(
 				glamour.WithStandardStyle(detectAutoStyle()),
-				glamour.WithWordWrap(max(msg.Width-4, 40)),
+				glamour.WithWordWrap(max(msg.Width-2, 40)),
 				glamour.WithPreservedNewLines(),
 			); err == nil {
 				m.renderer = r
@@ -598,12 +602,20 @@ func (m *transcriptModel) renderGlamour(text string) string {
 }
 
 // wrapWidth returns the wrap width to use for the elements dispatcher.
-// Mirrors the safety margin in SetSize's Glamour build — 2 chars
-// narrower than the viewport to clear the rounded-border padding, with
-// a 40-char floor so a too-narrow terminal still renders something
-// readable instead of a one-word-per-line column.
+// Must be ≤ Glamour's wrap budget MINUS Glamour's document margin, or
+// long element lines (a wide-label list, a 78-char banner divider)
+// land inside Glamour as paragraph text that exceeds its content
+// budget and get re-wrapped onto a second line with the doc-margin
+// indent. The visible symptom: the action list's hint column splits
+// at ~22 chars even on a 150-col terminal.
+//
+// SetSize hands Glamour `viewportWidth - 2`; Glamour's auto/dark style
+// reserves 2 cols of left margin out of that wrap budget for its own
+// chrome. So the effective content area is `viewportWidth - 4`, which
+// is what we hand the dispatcher here. The 40-char floor keeps a
+// narrow terminal from collapsing to a one-word-per-line column.
 func (m *transcriptModel) wrapWidth() int {
-	w := m.vp.Width - 2
+	w := m.vp.Width - 4
 	if w < 40 {
 		w = 40
 	}
@@ -848,10 +860,12 @@ func (m *transcriptModel) AppendMetaThinking(text string) {
 	if text == "" {
 		return
 	}
-	body := lipgloss.NewStyle().
-		Foreground(colorMuted).
+	styled := lipgloss.NewStyle().
+		Foreground(colorPrimary).
+		Bold(true).
 		Italic(true).
 		Render("  " + text)
+	body := "\n" + styled
 	m.entries = append(m.entries, transcriptEntry{body: body})
 	m.queue(body)
 }
