@@ -806,12 +806,18 @@ func oracleAskWithMCPCore(ctx context.Context, rendered, resolvedPrompt string, 
 	if outputFormat == "json" && cr.ExitCode == 0 && cr.Stdout != "" {
 		var parsed any
 		if jErr := json.Unmarshal([]byte(cr.Stdout), &parsed); jErr == nil {
-			// Wrap every string leaf — when output_format=json, the
-			// entire payload is LLM-generated structure, not just the
-			// top-level text. Views that bind individual fields
-			// (`{{ world.x.summary }}`) then carry source-color
-			// provenance through to the final paint.
-			res.Data["stdout_json"] = sourcecolor.WrapTree(parsed)
+			// Do NOT wrap string leaves with source-color sentinels:
+			// stdout_json values feed `set:` bindings and `when:`
+			// guards in the state machine, and they're forwarded
+			// verbatim to external transports (Jira/Bitbucket
+			// comments) by host.transport.post and the bugfix
+			// pr-reply/pr-apply steps.  Wrapping here injects
+			// zero-width Unicode markers that break enum-equality
+			// guards (`action == 'edit'`) and leak into Jira/BB
+			// audit trails.  Source-color belongs at the TUI render
+			// boundary; the renderer knows the field provenance via
+			// its own metadata and re-applies markers at paint time.
+			res.Data["stdout_json"] = parsed
 		} else {
 			// Don't fail the handler — bind: { foo: stdout_json } will silently
 			// not bind, and an explicit on_error: route can still fire if the
@@ -830,11 +836,22 @@ func oracleAskWithMCPCore(ctx context.Context, rendered, resolvedPrompt string, 
 		if vErr == nil && len(vBytes) > 0 {
 			var parsed any
 			if jErr := json.Unmarshal(vBytes, &parsed); jErr == nil {
-				// Wrap every string leaf so individual bound fields
-				// (e.g. {{ world.reproduction_artifact.summary_markdown }})
-				// carry LLM-provenance through the render pipeline. The
-				// MCP-validated submit payload is wholly LLM-authored.
-				res.Data["submitted"] = sourcecolor.WrapTree(unescapeOverEscapedStrings(parsed))
+				// Do NOT wrap string leaves with source-color
+				// sentinels here.  `submitted` is the MCP-validated,
+				// schema-conforming canonical input for the state
+				// machine — bug-fix's phase_12_6 reads
+				// `world.phase_12_6_submitted.action == 'edit'`,
+				// and the bugfix pr-reply / pr-apply steps copy
+				// `submitted.comment_replies[].reply_text` verbatim
+				// into Bitbucket PR comments and Jira posts.
+				// Wrapping injects zero-width Unicode markers that
+				// (a) break enum-equality guards in app.yaml and
+				// (b) leak into Jira/BB audit trails.  Source-color
+				// markers belong at the TUI render boundary; the
+				// renderer applies them at paint time from field
+				// provenance metadata, not by mutating world data
+				// at write time.
+				res.Data["submitted"] = unescapeOverEscapedStrings(parsed)
 			} else {
 				// The validator only writes payloads that already passed
 				// schema validation, so a parse error here is a real bug.

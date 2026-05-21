@@ -453,6 +453,26 @@ func (o *Orchestrator) WaitListenerIdle(ctx context.Context, sid app.SessionID) 
 	return o.scheduler.WaitSessionDrained(ctx, sid)
 }
 
+// EnsureSessionListener spawns the per-session terminal-event listener for
+// sid if one is not already running.  NewSession does this automatically for
+// fresh sessions, but CLI entry points that resolve an existing session by
+// (transport, thread) key — `kitsoki session continue` — never call
+// NewSession and therefore must wire the listener themselves before any
+// background dispatch happens.  No-op when the orchestrator was built
+// without a scheduler.
+func (o *Orchestrator) EnsureSessionListener(sid app.SessionID) {
+	if o.scheduler == nil {
+		return
+	}
+	o.mu.Lock()
+	_, already := o.cancelListeners[sid]
+	o.mu.Unlock()
+	if already {
+		return
+	}
+	o.startSessionListener(sid)
+}
+
 // stopSessionListener cancels the listener goroutine for sid (if any) and
 // reclaims the per-session lock map entry so long-running orchestrators do
 // not accumulate stale entries.

@@ -29,6 +29,7 @@ import (
 	"kitsoki/internal/chathost"
 	"kitsoki/internal/chats"
 	"kitsoki/internal/host"
+	"kitsoki/internal/jobs"
 	"kitsoki/internal/journal"
 	"kitsoki/internal/machine"
 	"kitsoki/internal/orchestrator"
@@ -844,14 +845,44 @@ another process holds it, this command exits 75 (EX_TEMPFAIL).`,
 
 			// Build the journal writer (continue-mode §4.9 Rule 1).
 			// Shares the same *sql.DB so dual-write transactions are possible.
+			// Built before the job store so it can be passed via
+			// jobs.WithJobJournalWriter (mirrors cmd/kitsoki/main.go § run).
 			var journalWriterOpt orchestrator.Option
 			var journalReaderOpt orchestrator.Option
-			if jw, jwErr := journal.NewSQLiteWriter(s.DB()); jwErr == nil {
+			jw, jwErr := journal.NewSQLiteWriter(s.DB())
+			if jwErr == nil {
 				journalWriterOpt = orchestrator.WithJournalWriter(jw)
 			}
 			// Build the journal reader (symmetric to the writer; §4.5 resume path).
 			if jr, jrErr := journal.NewSQLiteReader(s.DB()); jrErr == nil {
 				journalReaderOpt = orchestrator.WithJournalReader(jr)
+			}
+
+			// Build the job store + scheduler so on_enter effects with
+			// `background: true` (host.oracle.ask_with_mcp in phase_12_6,
+			// phase_minus_1, …) actually dispatch asynchronously and their
+			// on_complete: chains fire.  Without this wiring the
+			// orchestrator's WithScheduler doc explicitly states that
+			// `background: true` is silently ignored — the work runs
+			// synchronously but on_complete never fires, leaving the
+			// session pinned in `_executing` forever (Phase 12.6 leapfrog
+			// root cause, observed against ABR-429271).  Same *sql.DB as
+			// the session store so we stay at one SQLite file.
+			var jobStore *jobs.JobStore
+			var jobScheduler jobs.Scheduler
+			var schedulerOpt, jobStoreOpt orchestrator.Option
+			if jwErr == nil {
+				var jsErr error
+				jobStore, jsErr = jobs.NewJobStore(s.DB(), jobs.WithJobJournalWriter(jw))
+				if jsErr == nil {
+					jobScheduler = jobs.NewScheduler(jobStore)
+					schedulerOpt = orchestrator.WithScheduler(jobScheduler)
+					jobStoreOpt = orchestrator.WithJobStore(jobStore)
+				} else {
+					fmt.Fprintf(cmd.ErrOrStderr(),
+						"warning: open job store failed (%v); background dispatches will be silently dropped\n",
+						jsErr)
+				}
 			}
 
 			orchOpts := []orchestrator.Option{
@@ -870,7 +901,21 @@ another process holds it, this command exits 75 (EX_TEMPFAIL).`,
 			if journalReaderOpt != nil {
 				orchOpts = append(orchOpts, journalReaderOpt)
 			}
+			if schedulerOpt != nil {
+				orchOpts = append(orchOpts, schedulerOpt)
+			}
+			if jobStoreOpt != nil {
+				orchOpts = append(orchOpts, jobStoreOpt)
+			}
 			orch := orchestrator.New(def, m, s, h, orchOpts...)
+
+			// NewSession spawns the per-session terminal-event listener for
+			// fresh sessions; for an existing session resolved by key we
+			// must wire it explicitly before the synchronous turn runs.
+			// Without the listener the scheduler dispatches the job but
+			// `handleJobTerminal` never fires, so on_complete: chains are
+			// dropped on the floor.
+			orch.EnsureSessionListener(sid)
 
 			var outcome *orchestrator.TurnOutcome
 			lockErr := s.WithWriterLock(ctx, sid, func() error {
@@ -899,6 +944,65 @@ another process holds it, this command exits 75 (EX_TEMPFAIL).`,
 			}
 			if lockErr != nil {
 				return lockErr
+			}
+
+			// Drain any background dispatches kicked off during this turn
+			// before the process exits.  Without this block the bg
+			// goroutine and the session listener are killed in flight when
+			// the CLI command returns, so on_complete: never lands.  Loop
+			// until the persisted state stops advancing — phase_12_6 →
+			// phase_13 chains another bg LLM call from its own on_enter,
+			// and a single drain pass would leave that one orphaned too.
+			// Bounded by maxDrainPasses to avoid grinding forever on a
+			// genuinely-broken story.
+			if jobScheduler != nil {
+				const maxDrainPasses = 8
+				const drainTimeout = 10 * time.Minute
+				for pass := 0; pass < maxDrainPasses; pass++ {
+					drainCtx, drainCancel := context.WithTimeout(ctx, drainTimeout)
+					schedErr := jobScheduler.WaitIdle(drainCtx)
+					listenerErr := orch.WaitListenerIdle(drainCtx, sid)
+					drainCancel()
+					if schedErr != nil {
+						fmt.Fprintf(cmd.ErrOrStderr(),
+							"warning: scheduler drain timed out on pass %d: %v\n",
+							pass+1, schedErr)
+						break
+					}
+					if listenerErr != nil {
+						fmt.Fprintf(cmd.ErrOrStderr(),
+							"warning: listener drain timed out on pass %d: %v\n",
+							pass+1, listenerErr)
+						break
+					}
+					// Check if the persisted state advanced into another
+					// `_executing` room that may have dispatched its own
+					// bg work.  If yes, loop and drain again; otherwise,
+					// settle.
+					journey, lerr := orch.LoadJourney(sid)
+					if lerr != nil {
+						fmt.Fprintf(cmd.ErrOrStderr(),
+							"warning: load journey after drain pass %d failed: %v\n",
+							pass+1, lerr)
+						break
+					}
+					state := string(journey.State)
+					if !strings.HasSuffix(state, "_executing") {
+						break
+					}
+					// Still in an _executing room: a second bg job may
+					// be in flight (e.g. phase_13_executing's
+					// host.oracle.ask_with_mcp).  Loop to drain it.
+				}
+				// Refresh the outcome view from persisted state so the
+				// JSON return reflects the post-drain settlement (loop.py
+				// reads new_state to decide its next dispatch).
+				if outcome != nil {
+					if journey, lerr := orch.LoadJourney(sid); lerr == nil {
+						outcome.NewState = journey.State
+						outcome.TurnNumber = journey.Turn
+					}
+				}
 			}
 
 			return writeJSON(cmd.OutOrStdout(), turnOutcomeView(sid, outcome))
