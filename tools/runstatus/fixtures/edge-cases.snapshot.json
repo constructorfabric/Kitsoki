@@ -1,0 +1,2012 @@
+{
+  "session": {
+    "session_id": "sess-edge-001",
+    "app_id": "cloak-of-darkness",
+    "current_state": "ended",
+    "turn": 9,
+    "started_at": "2026-05-25T12:00:00Z",
+    "terminal": true
+  },
+  "app": {
+    "App": {
+      "ID": "cloak-of-darkness",
+      "Version": "0.1.0",
+      "Title": "Cloak of Darkness",
+      "Author": "Roger Firth (spec), ported to Kitsoki",
+      "License": "Spec in public domain; this port CC0"
+    },
+    "World": {
+      "disturbance": {
+        "Type": "int",
+        "Default": 0,
+        "Values": null
+      },
+      "message_rumpled": {
+        "Type": "bool",
+        "Default": false,
+        "Values": null
+      },
+      "wearing_cloak": {
+        "Type": "bool",
+        "Default": true,
+        "Values": null
+      }
+    },
+    "Intents": {
+      "drop_cloak": {
+        "Title": "Drop the cloak",
+        "Description": "Drop the cloak on the floor wherever you're standing.",
+        "Examples": [
+          "drop the cloak",
+          "discard the cloak"
+        ],
+        "Priority": 10,
+        "Hidden": true,
+        "Slots": null,
+        "Synonyms": null
+      },
+      "go": {
+        "Title": "Go",
+        "Description": "Move in a compass direction.",
+        "Examples": [
+          "go south",
+          "head north",
+          "walk east",
+          "n"
+        ],
+        "Priority": 100,
+        "Hidden": false,
+        "Slots": {
+          "direction": {
+            "Type": "enum",
+            "Required": true,
+            "Default": null,
+            "Values": [
+              "north",
+              "south",
+              "east",
+              "west",
+              "up",
+              "down"
+            ],
+            "Description": "Which compass direction to move.",
+            "Examples": [
+              "south",
+              "n",
+              "east"
+            ],
+            "FormatHint": "One of n/s/e/w/up/down, spelled out or abbreviated.",
+            "Prompt": "Which direction?",
+            "Validator": "",
+            "Format": "",
+            "Synonyms": null
+          }
+        },
+        "Synonyms": null
+      },
+      "hang_cloak": {
+        "Title": "Hang the cloak",
+        "Description": "Hang the cloak on the hook in the cloakroom.",
+        "Examples": [
+          "hang the cloak",
+          "hang my cloak on the hook",
+          "put the cloak up"
+        ],
+        "Priority": 80,
+        "Hidden": false,
+        "Slots": null,
+        "Synonyms": null
+      },
+      "look": {
+        "Title": "Look around",
+        "Description": "Describe the current room again.",
+        "Examples": [
+          "look",
+          "look around",
+          "describe the room"
+        ],
+        "Priority": 20,
+        "Hidden": false,
+        "Slots": null,
+        "Synonyms": null
+      },
+      "read_message": {
+        "Title": "Read the message",
+        "Description": "Read the message scrawled in the sawdust on the bar floor.",
+        "Examples": [
+          "read the message",
+          "read the writing",
+          "read it"
+        ],
+        "Priority": 90,
+        "Hidden": false,
+        "Slots": null,
+        "Synonyms": null
+      },
+      "wear_cloak": {
+        "Title": "Wear the cloak",
+        "Description": "Put the cloak back on.",
+        "Examples": [
+          "wear the cloak",
+          "put on the cloak",
+          "take the cloak"
+        ],
+        "Priority": 70,
+        "Hidden": false,
+        "Slots": null,
+        "Synonyms": null
+      }
+    },
+    "Root": "foyer",
+    "States": {
+      "bar": {
+        "Type": "compound",
+        "Mode": "",
+        "Description": "A small bar off the foyer. Lit when the cloak is hung up; dark otherwise.",
+        "View": {
+          "Source": "",
+          "Elements": null,
+          "Extends": "",
+          "Blocks": null,
+          "TemplateFile": ""
+        },
+        "Terminal": false,
+        "Initial": "{% if world.wearing_cloak %}dark{% else %}lit{% endif %}",
+        "States": {
+          "dark": {
+            "Type": "",
+            "Mode": "",
+            "Description": "Too dark to see. Fumbling around increases disturbance.",
+            "View": {
+              "Source": "",
+              "Elements": null,
+              "Extends": "base",
+              "Blocks": {
+                "body": [
+                  {
+                    "Kind": "prose",
+                    "Source": "It's pitch dark in here. You can just make out a message on the floor, but can't read it without more light.\n",
+                    "Items": null,
+                    "Pairs": null,
+                    "Marker": "",
+                    "Subtitle": "",
+                    "Color": "",
+                    "When": "",
+                    "ChoiceMode": "",
+                    "ChoicePrompt": "",
+                    "ChoiceItems": null,
+                    "ChoiceIntent": "",
+                    "ChoiceSlot": "",
+                    "ChoiceMin": 0,
+                    "ChoiceMax": 0,
+                    "ChoiceMinSet": false,
+                    "ChoiceMaxSet": false,
+                    "ChoiceTemplate": "",
+                    "ChoiceFields": null,
+                    "ChoiceRaw": null
+                  }
+                ],
+                "heading": [
+                  {
+                    "Kind": "heading",
+                    "Source": "{{ 'bar (dark)'|upper }}",
+                    "Items": null,
+                    "Pairs": null,
+                    "Marker": "",
+                    "Subtitle": "",
+                    "Color": "",
+                    "When": "",
+                    "ChoiceMode": "",
+                    "ChoicePrompt": "",
+                    "ChoiceItems": null,
+                    "ChoiceIntent": "",
+                    "ChoiceSlot": "",
+                    "ChoiceMin": 0,
+                    "ChoiceMax": 0,
+                    "ChoiceMinSet": false,
+                    "ChoiceMaxSet": false,
+                    "ChoiceTemplate": "",
+                    "ChoiceFields": null,
+                    "ChoiceRaw": null
+                  }
+                ],
+                "status": [
+                  {
+                    "Kind": "kv",
+                    "Source": "",
+                    "Items": null,
+                    "Pairs": [
+                      {
+                        "Key": "Disturbance",
+                        "Value": "{{ world.disturbance }}"
+                      }
+                    ],
+                    "Marker": "",
+                    "Subtitle": "",
+                    "Color": "",
+                    "When": "",
+                    "ChoiceMode": "",
+                    "ChoicePrompt": "",
+                    "ChoiceItems": null,
+                    "ChoiceIntent": "",
+                    "ChoiceSlot": "",
+                    "ChoiceMin": 0,
+                    "ChoiceMax": 0,
+                    "ChoiceMinSet": false,
+                    "ChoiceMaxSet": false,
+                    "ChoiceTemplate": "",
+                    "ChoiceFields": null,
+                    "ChoiceRaw": null
+                  }
+                ]
+              },
+              "TemplateFile": ""
+            },
+            "Terminal": false,
+            "Initial": "",
+            "States": null,
+            "On": {
+              "*": [
+                {
+                  "Target": ".",
+                  "When": "",
+                  "Default": false,
+                  "Effects": [
+                    {
+                      "When": "",
+                      "Set": null,
+                      "Increment": {
+                        "disturbance": 1
+                      },
+                      "Say": "",
+                      "Invoke": "",
+                      "With": null,
+                      "Bind": null,
+                      "OnError": "",
+                      "Emit": "",
+                      "Background": false,
+                      "OnComplete": null,
+                      "Target": "",
+                      "EmitIntent": "",
+                      "EmitSlots": null
+                    },
+                    {
+                      "When": "",
+                      "Set": null,
+                      "Increment": null,
+                      "Say": "You can't see a thing.",
+                      "Invoke": "",
+                      "With": null,
+                      "Bind": null,
+                      "OnError": "",
+                      "Emit": "",
+                      "Background": false,
+                      "OnComplete": null,
+                      "Target": "",
+                      "EmitIntent": "",
+                      "EmitSlots": null
+                    }
+                  ],
+                  "GuardHint": "It's pitch dark -- you can't see to do that.",
+                  "View": {
+                    "Source": "",
+                    "Elements": null,
+                    "Extends": "",
+                    "Blocks": null,
+                    "TemplateFile": ""
+                  },
+                  "Emit": null,
+                  "PushHistory": null
+                }
+              ],
+              "go": [
+                {
+                  "Target": "../../foyer",
+                  "When": "slots.direction == 'north'",
+                  "Default": false,
+                  "Effects": null,
+                  "GuardHint": "",
+                  "View": {
+                    "Source": "",
+                    "Elements": null,
+                    "Extends": "",
+                    "Blocks": null,
+                    "TemplateFile": ""
+                  },
+                  "Emit": null,
+                  "PushHistory": null
+                },
+                {
+                  "Target": ".",
+                  "When": "",
+                  "Default": true,
+                  "Effects": [
+                    {
+                      "When": "",
+                      "Set": null,
+                      "Increment": {
+                        "disturbance": 1
+                      },
+                      "Say": "",
+                      "Invoke": "",
+                      "With": null,
+                      "Bind": null,
+                      "OnError": "",
+                      "Emit": "",
+                      "Background": false,
+                      "OnComplete": null,
+                      "Target": "",
+                      "EmitIntent": "",
+                      "EmitSlots": null
+                    },
+                    {
+                      "When": "",
+                      "Set": null,
+                      "Increment": null,
+                      "Say": "Blundering around in the dark isn't a good idea.",
+                      "Invoke": "",
+                      "With": null,
+                      "Bind": null,
+                      "OnError": "",
+                      "Emit": "",
+                      "Background": false,
+                      "OnComplete": null,
+                      "Target": "",
+                      "EmitIntent": "",
+                      "EmitSlots": null
+                    }
+                  ],
+                  "GuardHint": "You can't see well enough in the dark to head that way. Try going north, or finding a way to make light.",
+                  "View": {
+                    "Source": "",
+                    "Elements": null,
+                    "Extends": "",
+                    "Blocks": null,
+                    "TemplateFile": ""
+                  },
+                  "Emit": null,
+                  "PushHistory": null
+                }
+              ]
+            },
+            "OnEnter": null,
+            "Intents": null,
+            "Menu": null,
+            "RelevantWorld": [
+              "disturbance"
+            ],
+            "Footer": "",
+            "RelevantSlots": [],
+            "Timeout": null,
+            "IntentAliases": null,
+            "Transcript": "",
+            "Theme": ""
+          },
+          "lit": {
+            "Type": "",
+            "Mode": "",
+            "Description": "The bar, lit now the cloak is hung up. A message is scrawled on the floor.",
+            "View": {
+              "Source": "",
+              "Elements": null,
+              "Extends": "base",
+              "Blocks": {
+                "body": [
+                  {
+                    "Kind": "prose",
+                    "Source": "The bar, much rougher than you'd have guessed after the opulence of the foyer, is completely empty. There seems to be some sort of message scrawled in the sawdust on the floor.\n",
+                    "Items": null,
+                    "Pairs": null,
+                    "Marker": "",
+                    "Subtitle": "",
+                    "Color": "",
+                    "When": "",
+                    "ChoiceMode": "",
+                    "ChoicePrompt": "",
+                    "ChoiceItems": null,
+                    "ChoiceIntent": "",
+                    "ChoiceSlot": "",
+                    "ChoiceMin": 0,
+                    "ChoiceMax": 0,
+                    "ChoiceMinSet": false,
+                    "ChoiceMaxSet": false,
+                    "ChoiceTemplate": "",
+                    "ChoiceFields": null,
+                    "ChoiceRaw": null
+                  }
+                ],
+                "heading": [
+                  {
+                    "Kind": "heading",
+                    "Source": "{{ 'bar (lit)'|upper }}",
+                    "Items": null,
+                    "Pairs": null,
+                    "Marker": "",
+                    "Subtitle": "",
+                    "Color": "",
+                    "When": "",
+                    "ChoiceMode": "",
+                    "ChoicePrompt": "",
+                    "ChoiceItems": null,
+                    "ChoiceIntent": "",
+                    "ChoiceSlot": "",
+                    "ChoiceMin": 0,
+                    "ChoiceMax": 0,
+                    "ChoiceMinSet": false,
+                    "ChoiceMaxSet": false,
+                    "ChoiceTemplate": "",
+                    "ChoiceFields": null,
+                    "ChoiceRaw": null
+                  }
+                ],
+                "status": [
+                  {
+                    "Kind": "kv",
+                    "Source": "",
+                    "Items": null,
+                    "Pairs": [
+                      {
+                        "Key": "Disturbance",
+                        "Value": "{{ world.disturbance }}"
+                      }
+                    ],
+                    "Marker": "",
+                    "Subtitle": "",
+                    "Color": "",
+                    "When": "",
+                    "ChoiceMode": "",
+                    "ChoicePrompt": "",
+                    "ChoiceItems": null,
+                    "ChoiceIntent": "",
+                    "ChoiceSlot": "",
+                    "ChoiceMin": 0,
+                    "ChoiceMax": 0,
+                    "ChoiceMinSet": false,
+                    "ChoiceMaxSet": false,
+                    "ChoiceTemplate": "",
+                    "ChoiceFields": null,
+                    "ChoiceRaw": null
+                  }
+                ]
+              },
+              "TemplateFile": ""
+            },
+            "Terminal": false,
+            "Initial": "",
+            "States": null,
+            "On": {
+              "go": [
+                {
+                  "Target": "../../foyer",
+                  "When": "slots.direction == 'north'",
+                  "Default": false,
+                  "Effects": null,
+                  "GuardHint": "",
+                  "View": {
+                    "Source": "",
+                    "Elements": null,
+                    "Extends": "",
+                    "Blocks": null,
+                    "TemplateFile": ""
+                  },
+                  "Emit": null,
+                  "PushHistory": null
+                },
+                {
+                  "Target": ".",
+                  "When": "",
+                  "Default": true,
+                  "Effects": [
+                    {
+                      "When": "",
+                      "Set": null,
+                      "Increment": null,
+                      "Say": "You can't go that way from the bar.",
+                      "Invoke": "",
+                      "With": null,
+                      "Bind": null,
+                      "OnError": "",
+                      "Emit": "",
+                      "Background": false,
+                      "OnComplete": null,
+                      "Target": "",
+                      "EmitIntent": "",
+                      "EmitSlots": null
+                    }
+                  ],
+                  "GuardHint": "",
+                  "View": {
+                    "Source": "",
+                    "Elements": null,
+                    "Extends": "",
+                    "Blocks": null,
+                    "TemplateFile": ""
+                  },
+                  "Emit": null,
+                  "PushHistory": null
+                }
+              ],
+              "look": [
+                {
+                  "Target": ".",
+                  "When": "",
+                  "Default": false,
+                  "Effects": null,
+                  "GuardHint": "",
+                  "View": {
+                    "Source": "",
+                    "Elements": null,
+                    "Extends": "",
+                    "Blocks": null,
+                    "TemplateFile": ""
+                  },
+                  "Emit": null,
+                  "PushHistory": null
+                }
+              ],
+              "read_message": [
+                {
+                  "Target": "ended",
+                  "When": "",
+                  "Default": false,
+                  "Effects": [
+                    {
+                      "When": "",
+                      "Set": {
+                        "message_rumpled": "{{ world.disturbance \u003e 2 }}"
+                      },
+                      "Increment": null,
+                      "Say": "",
+                      "Invoke": "",
+                      "With": null,
+                      "Bind": null,
+                      "OnError": "",
+                      "Emit": "",
+                      "Background": false,
+                      "OnComplete": null,
+                      "Target": "",
+                      "EmitIntent": "",
+                      "EmitSlots": null
+                    }
+                  ],
+                  "GuardHint": "",
+                  "View": {
+                    "Source": "",
+                    "Elements": null,
+                    "Extends": "",
+                    "Blocks": null,
+                    "TemplateFile": ""
+                  },
+                  "Emit": null,
+                  "PushHistory": null
+                }
+              ]
+            },
+            "OnEnter": null,
+            "Intents": null,
+            "Menu": null,
+            "RelevantWorld": [
+              "disturbance"
+            ],
+            "Footer": "",
+            "RelevantSlots": [],
+            "Timeout": null,
+            "IntentAliases": null,
+            "Transcript": "",
+            "Theme": ""
+          }
+        },
+        "On": null,
+        "OnEnter": null,
+        "Intents": null,
+        "Menu": null,
+        "RelevantWorld": [
+          "wearing_cloak",
+          "disturbance"
+        ],
+        "Footer": "",
+        "RelevantSlots": [],
+        "Timeout": null,
+        "IntentAliases": null,
+        "Transcript": "",
+        "Theme": ""
+      },
+      "cloakroom": {
+        "Type": "",
+        "Mode": "",
+        "Description": "A small cloakroom with a single hook. Exit east.",
+        "View": {
+          "Source": "",
+          "Elements": null,
+          "Extends": "base",
+          "Blocks": {
+            "body": [
+              {
+                "Kind": "prose",
+                "Source": "The walls of this small room were clearly once lined with hooks, though now only one remains. The exit is a door to the east.\n",
+                "Items": null,
+                "Pairs": null,
+                "Marker": "",
+                "Subtitle": "",
+                "Color": "",
+                "When": "",
+                "ChoiceMode": "",
+                "ChoicePrompt": "",
+                "ChoiceItems": null,
+                "ChoiceIntent": "",
+                "ChoiceSlot": "",
+                "ChoiceMin": 0,
+                "ChoiceMax": 0,
+                "ChoiceMinSet": false,
+                "ChoiceMaxSet": false,
+                "ChoiceTemplate": "",
+                "ChoiceFields": null,
+                "ChoiceRaw": null
+              },
+              {
+                "Kind": "prose",
+                "Source": "You are wearing a velvet cloak.",
+                "Items": null,
+                "Pairs": null,
+                "Marker": "",
+                "Subtitle": "",
+                "Color": "",
+                "When": "world.wearing_cloak",
+                "ChoiceMode": "",
+                "ChoicePrompt": "",
+                "ChoiceItems": null,
+                "ChoiceIntent": "",
+                "ChoiceSlot": "",
+                "ChoiceMin": 0,
+                "ChoiceMax": 0,
+                "ChoiceMinSet": false,
+                "ChoiceMaxSet": false,
+                "ChoiceTemplate": "",
+                "ChoiceFields": null,
+                "ChoiceRaw": null
+              },
+              {
+                "Kind": "prose",
+                "Source": "A velvet cloak hangs on the hook.",
+                "Items": null,
+                "Pairs": null,
+                "Marker": "",
+                "Subtitle": "",
+                "Color": "",
+                "When": "not world.wearing_cloak",
+                "ChoiceMode": "",
+                "ChoicePrompt": "",
+                "ChoiceItems": null,
+                "ChoiceIntent": "",
+                "ChoiceSlot": "",
+                "ChoiceMin": 0,
+                "ChoiceMax": 0,
+                "ChoiceMinSet": false,
+                "ChoiceMaxSet": false,
+                "ChoiceTemplate": "",
+                "ChoiceFields": null,
+                "ChoiceRaw": null
+              }
+            ],
+            "heading": [
+              {
+                "Kind": "heading",
+                "Source": "{{ 'cloakroom'|upper }}",
+                "Items": null,
+                "Pairs": null,
+                "Marker": "",
+                "Subtitle": "",
+                "Color": "",
+                "When": "",
+                "ChoiceMode": "",
+                "ChoicePrompt": "",
+                "ChoiceItems": null,
+                "ChoiceIntent": "",
+                "ChoiceSlot": "",
+                "ChoiceMin": 0,
+                "ChoiceMax": 0,
+                "ChoiceMinSet": false,
+                "ChoiceMaxSet": false,
+                "ChoiceTemplate": "",
+                "ChoiceFields": null,
+                "ChoiceRaw": null
+              }
+            ]
+          },
+          "TemplateFile": ""
+        },
+        "Terminal": false,
+        "Initial": "",
+        "States": null,
+        "On": {
+          "go": [
+            {
+              "Target": "foyer",
+              "When": "slots.direction == 'east'",
+              "Default": false,
+              "Effects": null,
+              "GuardHint": "",
+              "View": {
+                "Source": "",
+                "Elements": null,
+                "Extends": "",
+                "Blocks": null,
+                "TemplateFile": ""
+              },
+              "Emit": null,
+              "PushHistory": null
+            },
+            {
+              "Target": "cloakroom",
+              "When": "",
+              "Default": true,
+              "Effects": [
+                {
+                  "When": "",
+                  "Set": null,
+                  "Increment": null,
+                  "Say": "You can't go that way from here.",
+                  "Invoke": "",
+                  "With": null,
+                  "Bind": null,
+                  "OnError": "",
+                  "Emit": "",
+                  "Background": false,
+                  "OnComplete": null,
+                  "Target": "",
+                  "EmitIntent": "",
+                  "EmitSlots": null
+                }
+              ],
+              "GuardHint": "",
+              "View": {
+                "Source": "",
+                "Elements": null,
+                "Extends": "",
+                "Blocks": null,
+                "TemplateFile": ""
+              },
+              "Emit": null,
+              "PushHistory": null
+            }
+          ],
+          "hang_cloak": [
+            {
+              "Target": "cloakroom",
+              "When": "world.wearing_cloak == true",
+              "Default": false,
+              "Effects": [
+                {
+                  "When": "",
+                  "Set": {
+                    "wearing_cloak": false
+                  },
+                  "Increment": null,
+                  "Say": "",
+                  "Invoke": "",
+                  "With": null,
+                  "Bind": null,
+                  "OnError": "",
+                  "Emit": "",
+                  "Background": false,
+                  "OnComplete": null,
+                  "Target": "",
+                  "EmitIntent": "",
+                  "EmitSlots": null
+                },
+                {
+                  "When": "",
+                  "Set": null,
+                  "Increment": null,
+                  "Say": "You hang the cloak on the hook.",
+                  "Invoke": "",
+                  "With": null,
+                  "Bind": null,
+                  "OnError": "",
+                  "Emit": "",
+                  "Background": false,
+                  "OnComplete": null,
+                  "Target": "",
+                  "EmitIntent": "",
+                  "EmitSlots": null
+                }
+              ],
+              "GuardHint": "",
+              "View": {
+                "Source": "",
+                "Elements": null,
+                "Extends": "",
+                "Blocks": null,
+                "TemplateFile": ""
+              },
+              "Emit": null,
+              "PushHistory": null
+            },
+            {
+              "Target": "cloakroom",
+              "When": "",
+              "Default": true,
+              "Effects": [
+                {
+                  "When": "",
+                  "Set": null,
+                  "Increment": null,
+                  "Say": "You aren't wearing the cloak.",
+                  "Invoke": "",
+                  "With": null,
+                  "Bind": null,
+                  "OnError": "",
+                  "Emit": "",
+                  "Background": false,
+                  "OnComplete": null,
+                  "Target": "",
+                  "EmitIntent": "",
+                  "EmitSlots": null
+                }
+              ],
+              "GuardHint": "You aren't wearing the cloak -- nothing to hang.",
+              "View": {
+                "Source": "",
+                "Elements": null,
+                "Extends": "",
+                "Blocks": null,
+                "TemplateFile": ""
+              },
+              "Emit": null,
+              "PushHistory": null
+            }
+          ],
+          "look": [
+            {
+              "Target": "cloakroom",
+              "When": "",
+              "Default": false,
+              "Effects": null,
+              "GuardHint": "",
+              "View": {
+                "Source": "",
+                "Elements": null,
+                "Extends": "",
+                "Blocks": null,
+                "TemplateFile": ""
+              },
+              "Emit": null,
+              "PushHistory": null
+            }
+          ],
+          "wear_cloak": [
+            {
+              "Target": "cloakroom",
+              "When": "world.wearing_cloak == false",
+              "Default": false,
+              "Effects": [
+                {
+                  "When": "",
+                  "Set": {
+                    "wearing_cloak": true
+                  },
+                  "Increment": null,
+                  "Say": "",
+                  "Invoke": "",
+                  "With": null,
+                  "Bind": null,
+                  "OnError": "",
+                  "Emit": "",
+                  "Background": false,
+                  "OnComplete": null,
+                  "Target": "",
+                  "EmitIntent": "",
+                  "EmitSlots": null
+                },
+                {
+                  "When": "",
+                  "Set": null,
+                  "Increment": null,
+                  "Say": "You take the cloak from the hook.",
+                  "Invoke": "",
+                  "With": null,
+                  "Bind": null,
+                  "OnError": "",
+                  "Emit": "",
+                  "Background": false,
+                  "OnComplete": null,
+                  "Target": "",
+                  "EmitIntent": "",
+                  "EmitSlots": null
+                }
+              ],
+              "GuardHint": "",
+              "View": {
+                "Source": "",
+                "Elements": null,
+                "Extends": "",
+                "Blocks": null,
+                "TemplateFile": ""
+              },
+              "Emit": null,
+              "PushHistory": null
+            },
+            {
+              "Target": "cloakroom",
+              "When": "",
+              "Default": true,
+              "Effects": [
+                {
+                  "When": "",
+                  "Set": null,
+                  "Increment": null,
+                  "Say": "You're already wearing the cloak.",
+                  "Invoke": "",
+                  "With": null,
+                  "Bind": null,
+                  "OnError": "",
+                  "Emit": "",
+                  "Background": false,
+                  "OnComplete": null,
+                  "Target": "",
+                  "EmitIntent": "",
+                  "EmitSlots": null
+                }
+              ],
+              "GuardHint": "You're already wearing the cloak.",
+              "View": {
+                "Source": "",
+                "Elements": null,
+                "Extends": "",
+                "Blocks": null,
+                "TemplateFile": ""
+              },
+              "Emit": null,
+              "PushHistory": null
+            }
+          ]
+        },
+        "OnEnter": null,
+        "Intents": null,
+        "Menu": null,
+        "RelevantWorld": [
+          "wearing_cloak"
+        ],
+        "Footer": "",
+        "RelevantSlots": [],
+        "Timeout": null,
+        "IntentAliases": null,
+        "Transcript": "",
+        "Theme": ""
+      },
+      "ended": {
+        "Type": "",
+        "Mode": "",
+        "Description": "The journey is over.",
+        "View": {
+          "Source": "",
+          "Elements": null,
+          "Extends": "base",
+          "Blocks": {
+            "body": [
+              {
+                "Kind": "prose",
+                "Source": "The message, now little more than a dusty blur, appears to say:\n\"You have lost.\"\n",
+                "Items": null,
+                "Pairs": null,
+                "Marker": "",
+                "Subtitle": "",
+                "Color": "",
+                "When": "world.message_rumpled",
+                "ChoiceMode": "",
+                "ChoicePrompt": "",
+                "ChoiceItems": null,
+                "ChoiceIntent": "",
+                "ChoiceSlot": "",
+                "ChoiceMin": 0,
+                "ChoiceMax": 0,
+                "ChoiceMinSet": false,
+                "ChoiceMaxSet": false,
+                "ChoiceTemplate": "",
+                "ChoiceFields": null,
+                "ChoiceRaw": null
+              },
+              {
+                "Kind": "prose",
+                "Source": "The message, neatly marked in the sawdust, reads:\n\"You have won.\"\n",
+                "Items": null,
+                "Pairs": null,
+                "Marker": "",
+                "Subtitle": "",
+                "Color": "",
+                "When": "not world.message_rumpled",
+                "ChoiceMode": "",
+                "ChoicePrompt": "",
+                "ChoiceItems": null,
+                "ChoiceIntent": "",
+                "ChoiceSlot": "",
+                "ChoiceMin": 0,
+                "ChoiceMax": 0,
+                "ChoiceMinSet": false,
+                "ChoiceMaxSet": false,
+                "ChoiceTemplate": "",
+                "ChoiceFields": null,
+                "ChoiceRaw": null
+              }
+            ],
+            "heading": [
+              {
+                "Kind": "heading",
+                "Source": "{{ 'the end'|upper }}",
+                "Items": null,
+                "Pairs": null,
+                "Marker": "",
+                "Subtitle": "",
+                "Color": "",
+                "When": "",
+                "ChoiceMode": "",
+                "ChoicePrompt": "",
+                "ChoiceItems": null,
+                "ChoiceIntent": "",
+                "ChoiceSlot": "",
+                "ChoiceMin": 0,
+                "ChoiceMax": 0,
+                "ChoiceMinSet": false,
+                "ChoiceMaxSet": false,
+                "ChoiceTemplate": "",
+                "ChoiceFields": null,
+                "ChoiceRaw": null
+              }
+            ]
+          },
+          "TemplateFile": ""
+        },
+        "Terminal": true,
+        "Initial": "",
+        "States": null,
+        "On": null,
+        "OnEnter": null,
+        "Intents": null,
+        "Menu": null,
+        "RelevantWorld": [
+          "message_rumpled",
+          "disturbance"
+        ],
+        "Footer": "",
+        "RelevantSlots": [],
+        "Timeout": null,
+        "IntentAliases": null,
+        "Transcript": "",
+        "Theme": ""
+      },
+      "foyer": {
+        "Type": "",
+        "Mode": "",
+        "Description": "The entrance hall of the opera house. South leads to the bar; west to the cloakroom.",
+        "View": {
+          "Source": "",
+          "Elements": null,
+          "Extends": "base",
+          "Blocks": {
+            "body": [
+              {
+                "Kind": "prose",
+                "Source": "You are in a spacious hall, splendidly decorated in red and gold, with glittering chandeliers overhead. The entrance from the street is to the north, and there are doorways south and west.\n",
+                "Items": null,
+                "Pairs": null,
+                "Marker": "",
+                "Subtitle": "",
+                "Color": "",
+                "When": "",
+                "ChoiceMode": "",
+                "ChoicePrompt": "",
+                "ChoiceItems": null,
+                "ChoiceIntent": "",
+                "ChoiceSlot": "",
+                "ChoiceMin": 0,
+                "ChoiceMax": 0,
+                "ChoiceMinSet": false,
+                "ChoiceMaxSet": false,
+                "ChoiceTemplate": "",
+                "ChoiceFields": null,
+                "ChoiceRaw": null
+              }
+            ],
+            "heading": [
+              {
+                "Kind": "heading",
+                "Source": "{{ 'foyer'|upper }}",
+                "Items": null,
+                "Pairs": null,
+                "Marker": "",
+                "Subtitle": "",
+                "Color": "",
+                "When": "",
+                "ChoiceMode": "",
+                "ChoicePrompt": "",
+                "ChoiceItems": null,
+                "ChoiceIntent": "",
+                "ChoiceSlot": "",
+                "ChoiceMin": 0,
+                "ChoiceMax": 0,
+                "ChoiceMinSet": false,
+                "ChoiceMaxSet": false,
+                "ChoiceTemplate": "",
+                "ChoiceFields": null,
+                "ChoiceRaw": null
+              }
+            ]
+          },
+          "TemplateFile": ""
+        },
+        "Terminal": false,
+        "Initial": "",
+        "States": null,
+        "On": {
+          "go": [
+            {
+              "Target": "bar",
+              "When": "slots.direction == 'south'",
+              "Default": false,
+              "Effects": null,
+              "GuardHint": "",
+              "View": {
+                "Source": "",
+                "Elements": null,
+                "Extends": "",
+                "Blocks": null,
+                "TemplateFile": ""
+              },
+              "Emit": null,
+              "PushHistory": null
+            },
+            {
+              "Target": "cloakroom",
+              "When": "slots.direction == 'west'",
+              "Default": false,
+              "Effects": null,
+              "GuardHint": "",
+              "View": {
+                "Source": "",
+                "Elements": null,
+                "Extends": "",
+                "Blocks": null,
+                "TemplateFile": ""
+              },
+              "Emit": null,
+              "PushHistory": null
+            },
+            {
+              "Target": "foyer",
+              "When": "slots.direction == 'north'",
+              "Default": false,
+              "Effects": [
+                {
+                  "When": "",
+                  "Set": null,
+                  "Increment": null,
+                  "Say": "You've only just arrived, and besides, the weather outside seems to be getting worse.",
+                  "Invoke": "",
+                  "With": null,
+                  "Bind": null,
+                  "OnError": "",
+                  "Emit": "",
+                  "Background": false,
+                  "OnComplete": null,
+                  "Target": "",
+                  "EmitIntent": "",
+                  "EmitSlots": null
+                }
+              ],
+              "GuardHint": "The weather outside is awful -- you've only just arrived.",
+              "View": {
+                "Source": "",
+                "Elements": null,
+                "Extends": "",
+                "Blocks": null,
+                "TemplateFile": ""
+              },
+              "Emit": null,
+              "PushHistory": null
+            },
+            {
+              "Target": "foyer",
+              "When": "",
+              "Default": true,
+              "Effects": [
+                {
+                  "When": "",
+                  "Set": null,
+                  "Increment": null,
+                  "Say": "You can't go that way.",
+                  "Invoke": "",
+                  "With": null,
+                  "Bind": null,
+                  "OnError": "",
+                  "Emit": "",
+                  "Background": false,
+                  "OnComplete": null,
+                  "Target": "",
+                  "EmitIntent": "",
+                  "EmitSlots": null
+                }
+              ],
+              "GuardHint": "",
+              "View": {
+                "Source": "",
+                "Elements": null,
+                "Extends": "",
+                "Blocks": null,
+                "TemplateFile": ""
+              },
+              "Emit": null,
+              "PushHistory": null
+            }
+          ],
+          "look": [
+            {
+              "Target": "foyer",
+              "When": "",
+              "Default": false,
+              "Effects": null,
+              "GuardHint": "",
+              "View": {
+                "Source": "",
+                "Elements": null,
+                "Extends": "",
+                "Blocks": null,
+                "TemplateFile": ""
+              },
+              "Emit": null,
+              "PushHistory": null
+            }
+          ]
+        },
+        "OnEnter": null,
+        "Intents": null,
+        "Menu": null,
+        "RelevantWorld": [
+          "wearing_cloak"
+        ],
+        "Footer": "",
+        "RelevantSlots": [],
+        "Timeout": null,
+        "IntentAliases": null,
+        "Transcript": "",
+        "Theme": ""
+      }
+    },
+    "OffPath": {
+      "Trigger": "/freeform",
+      "Banner": "*** off the path -- responses do not affect your story ***",
+      "Return": "/onpath",
+      "Persona": "",
+      "Agent": ""
+    },
+    "Hosts": null,
+    "Proposals": null,
+    "Include": null,
+    "PhaseTemplates": null,
+    "Phases": null,
+    "CheckpointIntents": null,
+    "MetaModes": {
+      "story": {
+        "Trigger": "meta",
+        "Group": "",
+        "Default": false,
+        "Label": "improve the story",
+        "Banner": "*** meta:story — discussing cloak-of-darkness ***",
+        "Agent": "story-author",
+        "Persist": true,
+        "Cwd": "",
+        "Tools": null,
+        "Return": {
+          "Message": "back on the path.",
+          "Intent": "onpath"
+        }
+      },
+      "story.ask": {
+        "Trigger": "ask",
+        "Group": "story",
+        "Default": false,
+        "Label": "Ask about story",
+        "Banner": "Asking about this story — read-only, no edits.",
+        "Agent": "story-explainer",
+        "Persist": null,
+        "Cwd": "",
+        "Tools": [
+          "Read",
+          "Glob",
+          "Grep"
+        ],
+        "Return": {
+          "Message": "",
+          "Intent": "onpath"
+        }
+      },
+      "story.bug": {
+        "Trigger": "bug",
+        "Group": "story",
+        "Default": false,
+        "Label": "Story bug",
+        "Banner": "Filing a story bug — write it down and the agent files it under issues/bugs/.",
+        "Agent": "story-bug-reporter",
+        "Persist": null,
+        "Cwd": "",
+        "Tools": null,
+        "Return": {
+          "Message": "",
+          "Intent": "onpath"
+        }
+      },
+      "story.edit": {
+        "Trigger": "edit",
+        "Group": "story",
+        "Default": true,
+        "Label": "Edit story",
+        "Banner": "Editing this story's YAML — your changes affect the running app.",
+        "Agent": "story-author",
+        "Persist": null,
+        "Cwd": "",
+        "Tools": null,
+        "Return": {
+          "Message": "",
+          "Intent": "onpath"
+        }
+      }
+    },
+    "Agents": null,
+    "Imports": null,
+    "Exits": null,
+    "Exports": null,
+    "HostInterfaces": null,
+    "ImportWrappers": null,
+    "LoadedManifests": [
+      "/home/cloud-user/code/kitsoki/.worktrees/runstatus-fixtures-playwright/testdata/apps/cloak/app.yaml"
+    ],
+    "Routing": null,
+    "BaseDir": "/home/cloud-user/code/kitsoki/.worktrees/runstatus-fixtures-playwright/testdata/apps/cloak"
+  },
+  "mermaid": {
+    "source": "%% Cloak of Darkness\n%% kitsoki viz --flowchart --detail states\nflowchart LR\n\n  Start([\"\u003cb\u003eStart\u003c/b\u003e\"]):::input\n\n  subgraph SG_bar[\"\u003cb\u003ephase 1 · bar\u003c/b\u003e — A small bar off the foyer. Lit when the cloak is hung up; dark otherwise.\"]\n    direction LR\n    ST_bar_dark[/\"bar.dark\"/]:::room\n    ST_bar_lit[/\"bar.lit\"/]:::room\n  end\n\n  subgraph SG_cloakroom[\"\u003cb\u003ephase 2 · cloakroom\u003c/b\u003e — A small cloakroom with a single hook. Exit east.\"]\n    direction LR\n    ST_cloakroom[/\"cloakroom\"/]:::room\n  end\n\n  subgraph SG_ended[\"\u003cb\u003ephase 3 · ended\u003c/b\u003e — The journey is over.\"]\n    direction LR\n    ST_ended[/\"ended\"/]:::room\n  end\n\n  subgraph SG_foyer[\"\u003cb\u003ephase 0 · foyer\u003c/b\u003e — The entrance hall of the opera house. South leads to the bar; west to the cloakroom.\"]\n    direction LR\n    ST_foyer[/\"foyer\"/]:::room\n  end\n\n  Start --\u003e ST_foyer\n\n  ST_bar_dark -- \"*(any)\" --\u003e ST_bar_dark\n  ST_bar_dark -- \"go (default)\" --\u003e ST_bar_dark\n  ST_bar_dark -- \"go [slots.direction == '…]\" --\u003e ST_foyer\n  ST_bar_lit -- \"go (default)\" --\u003e ST_bar_lit\n  ST_bar_lit -- \"look\" --\u003e ST_bar_lit\n  ST_bar_lit -- \"read_message\" --\u003e ST_ended\n  ST_bar_lit -- \"go [slots.direction == '…]\" --\u003e ST_foyer\n  ST_cloakroom -- \"go (default)\" --\u003e ST_cloakroom\n  ST_cloakroom -- \"hang_cloak (default)\" --\u003e ST_cloakroom\n  ST_cloakroom -- \"hang_cloak [world.wearing_cloak …]\" --\u003e ST_cloakroom\n  ST_cloakroom -- \"look\" --\u003e ST_cloakroom\n  ST_cloakroom -- \"wear_cloak (default)\" --\u003e ST_cloakroom\n  ST_cloakroom -- \"wear_cloak [world.wearing_cloak …]\" --\u003e ST_cloakroom\n  ST_cloakroom -- \"go [slots.direction == '…]\" --\u003e ST_foyer\n  ST_foyer -- \"go [slots.direction == '…]\" --\u003e ST_bar\n  ST_foyer -- \"go [slots.direction == '…]\" --\u003e ST_cloakroom\n  ST_foyer -- \"go (default)\" --\u003e ST_foyer\n  ST_foyer -- \"go [slots.direction == '…]\" --\u003e ST_foyer\n  ST_foyer -- \"look\" --\u003e ST_foyer\n\n  classDef input  fill:#eef,stroke:#446,stroke-width:1.5px\n  classDef room   fill:#fff,stroke:#357,stroke-width:1.5px\n  classDef work   fill:#f7f7fa,stroke:#888\n  classDef llm    fill:#f0e6ff,stroke:#6a3eb5,stroke-width:2px,color:#3a2270\n  classDef shell  fill:#fef6e4,stroke:#a85,stroke-width:1.5px\n  classDef store  fill:#eef5fb,stroke:#369,stroke-width:1px\n  classDef cache  fill:#fff6e0,stroke:#a86,stroke-width:1.5px\n  classDef err    fill:#fff5f5,stroke:#c66,stroke-width:1px,stroke-dasharray:4 3\n  classDef next   fill:#e8f5e9,stroke:#272,stroke-width:1.5px\n  classDef note   fill:#fffbe6,stroke:#a90,stroke-width:1px,stroke-dasharray:2 2,color:#553\n",
+    "node_map": {
+      "ST_bar_dark": {
+        "kind": "state",
+        "ref": "bar.dark"
+      },
+      "ST_bar_lit": {
+        "kind": "state",
+        "ref": "bar.lit"
+      },
+      "ST_cloakroom": {
+        "kind": "state",
+        "ref": "cloakroom"
+      },
+      "ST_ended": {
+        "kind": "state",
+        "ref": "ended"
+      },
+      "ST_foyer": {
+        "kind": "state",
+        "ref": "foyer"
+      }
+    }
+  },
+  "events": [
+    {
+      "time": "2026-05-25T12:00:00Z",
+      "level": "INFO",
+      "msg": "turn.start",
+      "session_id": "sess-edge-001",
+      "turn": 1,
+      "state_path": "foyer",
+      "attrs": {
+        "input": "look"
+      }
+    },
+    {
+      "time": "2026-05-25T12:00:00.02Z",
+      "level": "DEBUG",
+      "msg": "oracle.ask.start",
+      "session_id": "sess-edge-001",
+      "turn": 1,
+      "state_path": "foyer",
+      "attrs": {
+        "model": "claude-3-sonnet",
+        "prompt": "You are an interactive fiction engine running a game called Cloak of Darkness. The player is in the foyer — a spacious hall splendidly decorated in red and gold, with glittering chandeliers overhead. The entrance from the street is to the north, and there are doorways south and west. The player is wearing a velvet cloak. Intents available: go (move in a direction), look (look around). Your task is to determine which intent the player expresses and extract any slot values. Reply with a JSON object: {\"intent\": \"\u003cintent-name\u003e\", \"slots\": {}}. Only use the available intents listed. If the player's input does not clearly match any intent, use the closest one or ask for clarification. Remember: you are not the narrator — you are the intent router. Do not generate game text; only route the intent. Input: \"look\"",
+        "prompt_tokens": 480
+      }
+    },
+    {
+      "time": "2026-05-25T12:00:00.18Z",
+      "level": "DEBUG",
+      "msg": "oracle.ask.complete",
+      "session_id": "sess-edge-001",
+      "turn": 1,
+      "state_path": "foyer",
+      "attrs": {
+        "intent": "look",
+        "model": "claude-3-sonnet",
+        "response": "After reviewing the player's input carefully, I can identify this as a \"look\" intent — the player wants to examine or describe the current room. This is a straightforward intent match. {\"intent\": \"look\", \"slots\": {}}",
+        "response_tokens": 42
+      }
+    },
+    {
+      "time": "2026-05-25T12:00:00.185Z",
+      "level": "DEBUG",
+      "msg": "machine.transition",
+      "session_id": "sess-edge-001",
+      "turn": 1,
+      "state_path": "foyer",
+      "attrs": {
+        "from": "foyer",
+        "intent": "look",
+        "to": "foyer"
+      }
+    },
+    {
+      "time": "2026-05-25T12:00:00.19Z",
+      "level": "DEBUG",
+      "msg": "machine.state_entered",
+      "session_id": "sess-edge-001",
+      "turn": 1,
+      "state_path": "foyer",
+      "attrs": null
+    },
+    {
+      "time": "2026-05-25T12:00:00.195Z",
+      "level": "INFO",
+      "msg": "turn.end",
+      "session_id": "sess-edge-001",
+      "turn": 1,
+      "state_path": "foyer",
+      "attrs": null
+    },
+    {
+      "time": "2026-05-25T12:00:05Z",
+      "level": "INFO",
+      "msg": "turn.start",
+      "session_id": "sess-edge-001",
+      "turn": 2,
+      "state_path": "foyer",
+      "attrs": {
+        "input": "go west"
+      }
+    },
+    {
+      "time": "2026-05-25T12:00:05.02Z",
+      "level": "DEBUG",
+      "msg": "oracle.ask.start",
+      "session_id": "sess-edge-001",
+      "turn": 2,
+      "state_path": "foyer",
+      "attrs": {
+        "model": "claude-3-sonnet",
+        "prompt_tokens": 510
+      }
+    },
+    {
+      "time": "2026-05-25T12:00:05.175Z",
+      "level": "DEBUG",
+      "msg": "oracle.ask.complete",
+      "session_id": "sess-edge-001",
+      "turn": 2,
+      "state_path": "foyer",
+      "attrs": {
+        "intent": "go",
+        "model": "claude-3-sonnet",
+        "response_tokens": 28,
+        "slots": {
+          "direction": "west"
+        }
+      }
+    },
+    {
+      "time": "2026-05-25T12:00:05.18Z",
+      "level": "DEBUG",
+      "msg": "machine.transition",
+      "session_id": "sess-edge-001",
+      "turn": 2,
+      "state_path": "foyer",
+      "attrs": {
+        "from": "foyer",
+        "intent": "go",
+        "to": "cloakroom"
+      }
+    },
+    {
+      "time": "2026-05-25T12:00:05.185Z",
+      "level": "DEBUG",
+      "msg": "machine.state_exited",
+      "session_id": "sess-edge-001",
+      "turn": 2,
+      "state_path": "foyer",
+      "attrs": null
+    },
+    {
+      "time": "2026-05-25T12:00:05.188Z",
+      "level": "DEBUG",
+      "msg": "machine.state_entered",
+      "session_id": "sess-edge-001",
+      "turn": 2,
+      "state_path": "cloakroom",
+      "attrs": null
+    },
+    {
+      "time": "2026-05-25T12:00:05.192Z",
+      "level": "INFO",
+      "msg": "turn.end",
+      "session_id": "sess-edge-001",
+      "turn": 2,
+      "state_path": "cloakroom",
+      "attrs": null
+    },
+    {
+      "time": "2026-05-25T12:00:10Z",
+      "level": "INFO",
+      "msg": "turn.start",
+      "session_id": "sess-edge-001",
+      "turn": 3,
+      "state_path": "cloakroom",
+      "attrs": {
+        "input": "hang the cloak"
+      }
+    },
+    {
+      "time": "2026-05-25T12:00:10.02Z",
+      "level": "DEBUG",
+      "msg": "oracle.ask.start",
+      "session_id": "sess-edge-001",
+      "turn": 3,
+      "state_path": "cloakroom",
+      "attrs": {
+        "model": "claude-3-sonnet",
+        "prompt_tokens": 620
+      }
+    },
+    {
+      "time": "2026-05-25T12:00:10.175Z",
+      "level": "DEBUG",
+      "msg": "oracle.ask.complete",
+      "session_id": "sess-edge-001",
+      "turn": 3,
+      "state_path": "cloakroom",
+      "attrs": {
+        "intent": "hang_cloak",
+        "model": "claude-3-sonnet",
+        "response_tokens": 20
+      }
+    },
+    {
+      "time": "2026-05-25T12:00:10.18Z",
+      "level": "DEBUG",
+      "msg": "machine.transition",
+      "session_id": "sess-edge-001",
+      "turn": 3,
+      "state_path": "cloakroom",
+      "attrs": {
+        "from": "cloakroom",
+        "intent": "hang_cloak",
+        "to": "cloakroom"
+      }
+    },
+    {
+      "time": "2026-05-25T12:00:10.185Z",
+      "level": "DEBUG",
+      "msg": "machine.world.write",
+      "session_id": "sess-edge-001",
+      "turn": 3,
+      "state_path": "cloakroom",
+      "attrs": {
+        "key": "wearing_cloak",
+        "value": false
+      }
+    },
+    {
+      "time": "2026-05-25T12:00:10.188Z",
+      "level": "DEBUG",
+      "msg": "machine.state_entered",
+      "session_id": "sess-edge-001",
+      "turn": 3,
+      "state_path": "cloakroom",
+      "attrs": null
+    },
+    {
+      "time": "2026-05-25T12:00:10.192Z",
+      "level": "INFO",
+      "msg": "turn.end",
+      "session_id": "sess-edge-001",
+      "turn": 3,
+      "state_path": "cloakroom",
+      "attrs": null
+    },
+    {
+      "time": "2026-05-25T12:00:15Z",
+      "level": "INFO",
+      "msg": "turn.start",
+      "session_id": "sess-edge-001",
+      "turn": 4,
+      "state_path": "cloakroom",
+      "attrs": {
+        "input": "go east"
+      }
+    },
+    {
+      "time": "2026-05-25T12:00:15.018Z",
+      "level": "DEBUG",
+      "msg": "oracle.ask.start",
+      "session_id": "sess-edge-001",
+      "turn": 4,
+      "state_path": "cloakroom",
+      "attrs": {
+        "model": "claude-3-sonnet",
+        "prompt_tokens": 635
+      }
+    },
+    {
+      "time": "2026-05-25T12:00:15.17Z",
+      "level": "DEBUG",
+      "msg": "oracle.ask.complete",
+      "session_id": "sess-edge-001",
+      "turn": 4,
+      "state_path": "cloakroom",
+      "attrs": {
+        "intent": "go",
+        "model": "claude-3-sonnet",
+        "response_tokens": 24,
+        "slots": {
+          "direction": "east"
+        }
+      }
+    },
+    {
+      "time": "2026-05-25T12:00:15.175Z",
+      "level": "DEBUG",
+      "msg": "machine.transition",
+      "session_id": "sess-edge-001",
+      "turn": 4,
+      "state_path": "cloakroom",
+      "attrs": {
+        "from": "cloakroom",
+        "intent": "go",
+        "to": "foyer"
+      }
+    },
+    {
+      "time": "2026-05-25T12:00:15.18Z",
+      "level": "DEBUG",
+      "msg": "machine.state_exited",
+      "session_id": "sess-edge-001",
+      "turn": 4,
+      "state_path": "cloakroom",
+      "attrs": null
+    },
+    {
+      "time": "2026-05-25T12:00:15.183Z",
+      "level": "DEBUG",
+      "msg": "machine.state_entered",
+      "session_id": "sess-edge-001",
+      "turn": 4,
+      "state_path": "foyer",
+      "attrs": null
+    },
+    {
+      "time": "2026-05-25T12:00:15.188Z",
+      "level": "INFO",
+      "msg": "turn.end",
+      "session_id": "sess-edge-001",
+      "turn": 4,
+      "state_path": "foyer",
+      "attrs": null
+    },
+    {
+      "time": "2026-05-25T12:00:20Z",
+      "level": "INFO",
+      "msg": "turn.start",
+      "session_id": "sess-edge-001",
+      "turn": 5,
+      "state_path": "foyer",
+      "attrs": {
+        "input": "go south"
+      }
+    },
+    {
+      "time": "2026-05-25T12:00:20.018Z",
+      "level": "DEBUG",
+      "msg": "oracle.ask.start",
+      "session_id": "sess-edge-001",
+      "turn": 5,
+      "state_path": "foyer",
+      "attrs": {
+        "model": "claude-3-sonnet",
+        "prompt_tokens": 520
+      }
+    },
+    {
+      "time": "2026-05-25T12:00:20.17Z",
+      "level": "DEBUG",
+      "msg": "oracle.ask.complete",
+      "session_id": "sess-edge-001",
+      "turn": 5,
+      "state_path": "foyer",
+      "attrs": {
+        "intent": "go",
+        "model": "claude-3-sonnet",
+        "response_tokens": 26,
+        "slots": {
+          "direction": "south"
+        }
+      }
+    },
+    {
+      "time": "2026-05-25T12:00:20.175Z",
+      "level": "DEBUG",
+      "msg": "machine.transition",
+      "session_id": "sess-edge-001",
+      "turn": 5,
+      "state_path": "foyer",
+      "attrs": {
+        "from": "foyer",
+        "intent": "go",
+        "to": "bar.lit"
+      }
+    },
+    {
+      "time": "2026-05-25T12:00:20.18Z",
+      "level": "DEBUG",
+      "msg": "machine.state_exited",
+      "session_id": "sess-edge-001",
+      "turn": 5,
+      "state_path": "foyer",
+      "attrs": null
+    },
+    {
+      "time": "2026-05-25T12:00:20.183Z",
+      "level": "DEBUG",
+      "msg": "machine.state_entered",
+      "session_id": "sess-edge-001",
+      "turn": 5,
+      "state_path": "bar.lit",
+      "attrs": null
+    },
+    {
+      "time": "2026-05-25T12:00:20.188Z",
+      "level": "INFO",
+      "msg": "turn.end",
+      "session_id": "sess-edge-001",
+      "turn": 5,
+      "state_path": "bar.lit",
+      "attrs": null
+    },
+    {
+      "time": "2026-05-25T12:00:25Z",
+      "level": "INFO",
+      "msg": "turn.start",
+      "session_id": "sess-edge-001",
+      "turn": 6,
+      "state_path": "bar.lit",
+      "attrs": {
+        "input": "/freeform tell me about yourself"
+      }
+    },
+    {
+      "time": "2026-05-25T12:00:25.018Z",
+      "level": "DEBUG",
+      "msg": "machine.off_path_entered",
+      "session_id": "sess-edge-001",
+      "turn": 6,
+      "state_path": "bar.lit",
+      "attrs": {
+        "banner": "*** off the path -- responses do not affect your story ***",
+        "trigger": "/freeform"
+      }
+    },
+    {
+      "time": "2026-05-25T12:00:25.03Z",
+      "level": "DEBUG",
+      "msg": "oracle.ask.start",
+      "session_id": "sess-edge-001",
+      "turn": 6,
+      "state_path": "bar.lit",
+      "attrs": {
+        "model": "claude-3-sonnet",
+        "prompt": "You are Claude, an AI assistant made by Anthropic. The player has engaged off-path mode in this interactive fiction game. In this mode you can respond freely without being constrained to the game's state machine. The player is asking you to introduce yourself. This is a meta-conversation outside the game narrative — you are free to be helpful and conversational. The player said: 'tell me about yourself'. Please respond naturally and helpfully, explaining what you are and how you're helping power this interactive fiction experience. You can mention that you're the AI helping route intents and generate responses in the Cloak of Darkness game, but you're also just Claude. Be warm, brief, and engaging.",
+        "prompt_tokens": 800
+      }
+    },
+    {
+      "time": "2026-05-25T12:00:25.28Z",
+      "level": "DEBUG",
+      "msg": "oracle.ask.complete",
+      "session_id": "sess-edge-001",
+      "turn": 6,
+      "state_path": "bar.lit",
+      "attrs": {
+        "model": "claude-3-sonnet",
+        "prompt": "You are an interactive fiction engine running a game called Cloak of Darkness. The player is in the foyer — a spacious hall splendidly decorated in red and gold, with glittering chandeliers overhead. The entrance from the street is to the north, and there are doorways south and west. The player is wearing a velvet cloak. Intents available: go (move in a direction), look (look around). Your task is to determine which intent the player expresses and extract any slot values. Reply with a JSON object: {\"intent\": \"\u003cintent-name\u003e\", \"slots\": {}}. Only use the available intents listed. If the player's input does not clearly match any intent, use the closest one or ask for clarification. Remember: you are not the narrator — you are the intent router. Do not generate game text; only route the intent. Input: \"tell me about yourself\"",
+        "response": "I'm Claude, an AI assistant created by Anthropic. In this interactive fiction experience, I'm working behind the scenes to help interpret your natural language inputs — figuring out which game intent you mean (like 'go', 'look', 'hang the cloak') and extracting any relevant slot values (like which direction you want to go). I'm also helping to generate the narrative responses when you do things in the game world. Think of me as the intelligence that bridges your natural English with the structured state machine that powers the Cloak of Darkness story. Outside the game, I can chat with you freely about anything — this is exactly what off-path mode is for. The cloak game itself is a classic work of interactive fiction by Roger Firth, adapted here as a kitsoki state machine to demonstrate how the system works. Is there anything else you'd like to know?",
+        "response_tokens": 180
+      }
+    },
+    {
+      "time": "2026-05-25T12:00:25.285Z",
+      "level": "INFO",
+      "msg": "turn.end",
+      "session_id": "sess-edge-001",
+      "turn": 6,
+      "state_path": "bar.lit",
+      "attrs": null
+    },
+    {
+      "time": "2026-05-25T12:00:30Z",
+      "level": "INFO",
+      "msg": "turn.start",
+      "session_id": "sess-edge-001",
+      "turn": 7,
+      "state_path": "bar.lit",
+      "attrs": {
+        "input": "/onpath"
+      }
+    },
+    {
+      "time": "2026-05-25T12:00:30.018Z",
+      "level": "DEBUG",
+      "msg": "machine.off_path_exited",
+      "session_id": "sess-edge-001",
+      "turn": 7,
+      "state_path": "bar.lit",
+      "attrs": null
+    },
+    {
+      "time": "2026-05-25T12:00:30.022Z",
+      "level": "INFO",
+      "msg": "turn.end",
+      "session_id": "sess-edge-001",
+      "turn": 7,
+      "state_path": "bar.lit",
+      "attrs": null
+    },
+    {
+      "time": "2026-05-25T12:00:35Z",
+      "level": "INFO",
+      "msg": "turn.start",
+      "session_id": "sess-edge-001",
+      "turn": 8,
+      "state_path": "bar.lit",
+      "attrs": {
+        "input": "read message"
+      }
+    },
+    {
+      "time": "2026-05-25T12:00:35.018Z",
+      "level": "DEBUG",
+      "msg": "oracle.ask.start",
+      "session_id": "sess-edge-001",
+      "turn": 8,
+      "state_path": "bar.lit",
+      "attrs": {
+        "model": "claude-3-sonnet",
+        "prompt_tokens": 555
+      }
+    },
+    {
+      "time": "2026-05-25T12:00:35.17Z",
+      "level": "DEBUG",
+      "msg": "oracle.ask.complete",
+      "session_id": "sess-edge-001",
+      "turn": 8,
+      "state_path": "bar.lit",
+      "attrs": {
+        "intent": "read_message",
+        "model": "claude-3-sonnet",
+        "response_tokens": 20
+      }
+    },
+    {
+      "time": "2026-05-25T12:00:35.175Z",
+      "level": "DEBUG",
+      "msg": "machine.transition",
+      "session_id": "sess-edge-001",
+      "turn": 8,
+      "state_path": "bar.lit",
+      "attrs": {
+        "from": "bar.lit",
+        "intent": "read_message",
+        "to": "ended"
+      }
+    },
+    {
+      "time": "2026-05-25T12:00:35.18Z",
+      "level": "DEBUG",
+      "msg": "machine.world.write",
+      "session_id": "sess-edge-001",
+      "turn": 8,
+      "state_path": "bar.lit",
+      "attrs": {
+        "key": "message_rumpled",
+        "value": false
+      }
+    },
+    {
+      "time": "2026-05-25T12:00:35.183Z",
+      "level": "DEBUG",
+      "msg": "machine.world.write",
+      "session_id": "sess-edge-001",
+      "turn": 8,
+      "state_path": "bar.lit",
+      "attrs": {
+        "key": "disturbance",
+        "value": 0
+      }
+    },
+    {
+      "time": "2026-05-25T12:00:35.186Z",
+      "level": "DEBUG",
+      "msg": "machine.state_exited",
+      "session_id": "sess-edge-001",
+      "turn": 8,
+      "state_path": "bar.lit",
+      "attrs": null
+    },
+    {
+      "time": "2026-05-25T12:00:35.189Z",
+      "level": "DEBUG",
+      "msg": "machine.state_entered",
+      "session_id": "sess-edge-001",
+      "turn": 8,
+      "state_path": "ended",
+      "attrs": null
+    },
+    {
+      "time": "2026-05-25T12:00:35.193Z",
+      "level": "INFO",
+      "msg": "turn.end",
+      "session_id": "sess-edge-001",
+      "turn": 8,
+      "state_path": "ended",
+      "attrs": null
+    },
+    {
+      "time": "2026-05-25T12:00:40Z",
+      "level": "ERROR",
+      "msg": "harness.error",
+      "session_id": "sess-edge-001",
+      "turn": 9,
+      "state_path": "ended",
+      "attrs": {
+        "duration_ms": 45,
+        "error": "I/O error writing session state to disk: no space left on device",
+        "handler": "host.save_state"
+      }
+    },
+    {
+      "time": "2026-05-25T12:00:40.005Z",
+      "level": "WARN",
+      "msg": "harness.retry",
+      "session_id": "sess-edge-001",
+      "turn": 9,
+      "state_path": "ended",
+      "attrs": {
+        "attempt": 2,
+        "handler": "host.save_state"
+      }
+    },
+    {
+      "time": "2026-05-25T12:00:40.2Z",
+      "level": "ERROR",
+      "msg": "harness.error",
+      "session_id": "sess-edge-001",
+      "turn": 9,
+      "state_path": "ended",
+      "attrs": {
+        "duration_ms": 195,
+        "error": "I/O error writing session state to disk: no space left on device",
+        "handler": "host.save_state"
+      }
+    },
+    {
+      "time": "2026-05-25T12:00:40.205Z",
+      "level": "INFO",
+      "msg": "turn.end",
+      "session_id": "sess-edge-001",
+      "turn": 9,
+      "state_path": "ended",
+      "attrs": null
+    }
+  ]
+}

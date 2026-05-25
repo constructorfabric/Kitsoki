@@ -131,6 +131,7 @@ func TestExportStatus_WriteFile(t *testing.T) {
 		"",    // sessionID: derived
 		"",    // startedAt: derived
 		outPath,
+		false, // withMermaid: false — keep original behaviour for this test
 	)
 	require.NoError(t, err, "runExportFromTrace must succeed")
 
@@ -151,11 +152,41 @@ func TestExportStatus_WriteFile(t *testing.T) {
 	require.NotNil(t, snap.App, "App must be serialised")
 	assert.Equal(t, "cloak-of-darkness", snap.App.App.ID)
 
-	// Mermaid stub: Source is empty, NodeMap is nil.
+	// withMermaid=false: Source is empty, NodeMap is nil.
 	assert.Empty(t, snap.Mermaid.Source)
 	assert.Nil(t, snap.Mermaid.NodeMap)
 
 	assert.Len(t, snap.Events, 20, "all 20 trace events must be included")
+}
+
+// TestExportStatus_WithMermaid asserts that --with-mermaid=true populates
+// Mermaid.Source (non-empty) and Mermaid.NodeMap (at least one entry).
+func TestExportStatus_WithMermaid(t *testing.T) {
+	t.Parallel()
+
+	outDir := t.TempDir()
+	outPath := filepath.Join(outDir, "status-mermaid.snapshot.json")
+
+	err := runExportFromTrace(
+		filepath.Join("testdata", "export_status", "cloak_run.jsonl"),
+		cloakAppYAML,
+		"",   // currentState: derived
+		"",   // sessionID: derived
+		"",   // startedAt: derived
+		outPath,
+		true, // withMermaid: true
+	)
+	require.NoError(t, err, "runExportFromTrace with --with-mermaid must succeed")
+
+	raw, err := os.ReadFile(outPath)
+	require.NoError(t, err, "output file must exist")
+
+	var snap runstatus.Snapshot
+	require.NoError(t, json.Unmarshal(raw, &snap), "output must be valid JSON matching Snapshot shape")
+
+	assert.NotEmpty(t, snap.Mermaid.Source, "Mermaid.Source must be non-empty when --with-mermaid=true")
+	require.NotNil(t, snap.Mermaid.NodeMap, "Mermaid.NodeMap must not be nil when --with-mermaid=true")
+	assert.Greater(t, len(snap.Mermaid.NodeMap), 0, "Mermaid.NodeMap must have at least one entry")
 }
 
 // TestIsStateTerminal asserts the terminal-state look-up helper against

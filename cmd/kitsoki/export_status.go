@@ -23,6 +23,7 @@ import (
 
 	"kitsoki/internal/app"
 	"kitsoki/internal/runstatus"
+	"kitsoki/internal/viz"
 )
 
 func exportStatusCmd() *cobra.Command {
@@ -33,6 +34,7 @@ func exportStatusCmd() *cobra.Command {
 		sessionID    string
 		startedAt    string
 		outPath      string
+		withMermaid  bool
 	)
 
 	cmd := &cobra.Command{
@@ -58,7 +60,7 @@ Live-mode export (reads the in-process ring buffer):
 
 			// ── --from-trace mode ─────────────────────────────────────────
 			if fromTrace != "" {
-				return runExportFromTrace(fromTrace, appPath, currentState, sessionID, startedAt, outPath)
+				return runExportFromTrace(fromTrace, appPath, currentState, sessionID, startedAt, outPath, withMermaid)
 			}
 
 			// ── Live mode stub ────────────────────────────────────────────
@@ -78,13 +80,14 @@ Live-mode export (reads the in-process ring buffer):
 	cmd.Flags().StringVar(&sessionID, "session-id", "", "override session ID")
 	cmd.Flags().StringVar(&startedAt, "started-at", "", "override session start time (RFC3339, e.g. 2026-05-25T10:00:00Z)")
 	cmd.Flags().StringVarP(&outPath, "out", "o", "", "output file path (required)")
+	cmd.Flags().BoolVar(&withMermaid, "with-mermaid", true, "populate mermaid.source and mermaid.node_map (default true when --from-trace is used)")
 
 	return cmd
 }
 
 // runExportFromTrace reads a JSONL trace and an app.yaml, synthesises a
 // Snapshot, and writes it as indented JSON to outPath.
-func runExportFromTrace(tracePath, appPath, currentStateFlag, sessionIDFlag, startedAtFlag, outPath string) error {
+func runExportFromTrace(tracePath, appPath, currentStateFlag, sessionIDFlag, startedAtFlag, outPath string, withMermaid bool) error {
 	if appPath == "" {
 		return fmt.Errorf("--app is required with --from-trace")
 	}
@@ -106,14 +109,25 @@ func runExportFromTrace(tracePath, appPath, currentStateFlag, sessionIDFlag, sta
 	// ── Synthesise SessionHeader ──────────────────────────────────────────
 	header := synthesiseSessionHeader(def, events, sessionIDFlag, currentStateFlag, startedAtFlag)
 
-	// ── Mermaid stub ─────────────────────────────────────────────────────
-	// TODO(runstatus-merge): after feat/runstatus-viz-nodemap merges into
-	// feat/runstatus, wire viz.FlowchartWithMap(def, viz.DetailStates) here
-	// and populate both Source and NodeMap. Until then Source is empty and
-	// NodeMap is nil so the UI degrades gracefully (no diagram, trace only).
-	mermaid := runstatus.MermaidSnapshot{
-		Source:  "",
-		NodeMap: nil,
+	// ── Mermaid ───────────────────────────────────────────────────────────
+	// When --with-mermaid (default true) call FlowchartWithMap so the
+	// exported snapshot has a fully-populated diagram and node map.
+	// The UI degrades gracefully when Source is empty (no diagram panel),
+	// so --with-mermaid=false is a valid way to produce a lighter fixture.
+	var mermaid runstatus.MermaidSnapshot
+	if withMermaid {
+		result, err := viz.FlowchartWithMap(def, viz.FlowchartOptions{
+			Detail: viz.DetailStates,
+		})
+		if err != nil {
+			// Non-fatal: degrade gracefully rather than aborting the export.
+			fmt.Fprintf(os.Stderr, "export-status: mermaid generation failed (continuing without diagram): %v\n", err)
+		} else {
+			mermaid = runstatus.MermaidSnapshot{
+				Source:  result.Source,
+				NodeMap: result.NodeMap,
+			}
+		}
 	}
 
 	// ── Build Snapshot ────────────────────────────────────────────────────

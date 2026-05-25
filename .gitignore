@@ -38,3 +38,9 @@ dist/
 tools/pellicule/node_modules/
 tools/pellicule/*.mp4
 tools/pellicule/frames/
+
+# Run-status SPA — Playwright artifacts and test output
+tools/runstatus/.playwright-artifacts/
+tools/runstatus/test-results/
+tools/runstatus/playwright-report/
+tools/runstatus/node_modules/
