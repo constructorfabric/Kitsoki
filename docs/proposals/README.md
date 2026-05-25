@@ -76,3 +76,8 @@ thought.
   multi-pane mouse-driven TUI with a Claude Code-style single-pane
   chat + slash commands, keeping typed-view + pongo2 rendering.
   Nothing implemented yet.
+- [`runstatus-proposal.md`](runstatus-proposal.md) — Vue 3 web UI
+  for inspecting a run: clickable state diagram + trace timeline +
+  detail drawer surfacing exact YAML / prompts / host I/O. Two
+  modes: self-contained HTML artifact and live (JSON-RPC + SSE
+  folded into `kitsoki oracle serve`). Nothing implemented yet.
