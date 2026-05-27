@@ -15,6 +15,15 @@
         <code class="run-view__current-state">{{ store.currentStatePath }}</code>
       </div>
 
+      <!-- Detail Drawer (teleports to body) -->
+      <DetailDrawer
+        v-if="store.appDef"
+        :selected-node="store.selectedNode"
+        :selected-event="store.selectedEvent"
+        :app-def="store.appDef"
+        @close="store.clearSelection()"
+      />
+
       <!-- Main panels -->
       <div class="run-view__panels">
         <!-- Diagram panel -->
@@ -25,36 +34,41 @@
             :mermaid-source="store.mermaid.source"
             :node-map="store.mermaid.node_map"
             :current-state-path="store.currentStatePath"
+            :highlighted-state-paths="store.highlightedStatePaths"
             @select="onNodeSelect"
+            @select-phase="onPhaseSelect"
           />
           <div v-else class="run-view__empty">No diagram.</div>
         </div>
 
         <!-- Timeline panel -->
         <div class="run-view__panel run-view__panel--timeline">
-          <div class="run-view__panel-header">Trace</div>
+          <div class="run-view__panel-header">
+            <span>Trace</span>
+            <button
+              v-if="store.highlightedStatePaths.length > 0"
+              class="run-view__clear-highlight"
+              @click="onClearHighlight"
+              :title="'Clear diagram highlight'"
+            >clear highlight ({{ store.highlightedStatePaths.length }})</button>
+          </div>
           <TraceTimeline
             :events="store.events"
             :selected-event-index="store.selectedEventIndex"
+            :highlighted-state-paths="store.highlightedStatePaths"
+            :highlight-tick="store.highlightTick"
+            :mermaid-source="store.mermaid?.source ?? null"
             @select="onEventSelect"
           />
         </div>
       </div>
 
-      <!-- Detail drawer (overlay) -->
-      <DetailDrawer
-        v-if="store.appDef"
-        :selected-node="store.selectedNode"
-        :selected-event="selectedEvent"
-        :app-def="store.appDef"
-        @close="onDrawerClose"
-      />
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from "vue";
+import { onMounted, onUnmounted } from "vue";
 import { useRunStore } from "../stores/run.js";
 import { createDataSource } from "../data/source.js";
 import StateDiagram from "../components/StateDiagram.vue";
@@ -65,11 +79,6 @@ import type { NodeRef } from "../types.js";
 const props = defineProps<{ sessionId: string }>();
 const store = useRunStore();
 
-const selectedEvent = computed(() => {
-  if (store.selectedEventIndex === null) return null;
-  return store.events[store.selectedEventIndex] ?? null;
-});
-
 onMounted(async () => {
   await store.hydrate(createDataSource(), props.sessionId);
 });
@@ -78,18 +87,26 @@ onUnmounted(() => {
   store.teardown();
 });
 
-function onNodeSelect(nodeId: string, _nodeRef: NodeRef): void {
-  store.selectNode(nodeId);
+function onNodeSelect(_nodeId: string, nodeRef: NodeRef): void {
+  // Diagram clicks drive the highlight set only — we intentionally do NOT
+  // open the DetailDrawer here, because its backdrop would intercept the
+  // next click in the diagram or timeline.  The drawer is still reachable
+  // by clicking a trace row.
+  if (nodeRef.kind === "state") {
+    store.setHighlightedStatePaths([nodeRef.ref]);
+  }
+}
+
+function onPhaseSelect(_phaseId: string, roomRefs: string[]): void {
+  store.setHighlightedStatePaths(roomRefs);
+}
+
+function onClearHighlight(): void {
+  store.setHighlightedStatePaths([]);
 }
 
 function onEventSelect(index: number): void {
   store.selectEvent(index);
-}
-
-function onDrawerClose(): void {
-  // Clear selections.
-  store.selectedNode = null;
-  store.selectedEventIndex = null;
 }
 </script>
 
@@ -198,6 +215,26 @@ function onDrawerClose(): void {
   color: #64748b;
   padding: 0.25rem 0;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.run-view__clear-highlight {
+  background: #3a2d0e;
+  border: 1px solid #fbbf24;
+  color: #fde68a;
+  font-size: 0.65rem;
+  text-transform: none;
+  letter-spacing: normal;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.run-view__clear-highlight:hover {
+  background: #4a3a14;
 }
 
 /* StateDiagram takes the remaining height */

@@ -73,28 +73,24 @@ test.describe("in-progress fixture", () => {
     await expect(page.locator(".run-view__state-badge--live")).toBeVisible();
   });
 
-  test("state diagram renders SVG with multiple node elements", async ({ page }) => {
+  test("state diagram renders phase cards with room buttons", async ({ page }) => {
     await loadArtifact(page, IN_PROGRESS_SNAPSHOT);
 
-    // Wait for the SVG to appear inside the state-diagram component.
-    const svg = page.locator(".state-diagram__svg-host svg");
-    await expect(svg).toBeVisible({ timeout: 8000 });
+    // Phase cards stacked vertically.
+    const phases = page.locator(".state-diagram__phase");
+    await expect(phases.first()).toBeVisible({ timeout: 8000 });
+    expect(await phases.count()).toBeGreaterThan(2);
 
-    // Mermaid renders state nodes as <g> elements. Expect multiple.
-    const gNodes = page.locator(".state-diagram__svg-host svg g[id]");
-    const count = await gNodes.count();
-    expect(count).toBeGreaterThan(2);
+    // Each phase contains at least one clickable room button.
+    const rooms = page.locator(".state-diagram__room");
+    expect(await rooms.count()).toBeGreaterThan(2);
   });
 
-  test("current state node has the 'current' CSS class in the diagram", async ({ page }) => {
+  test("current state room has the 'current' modifier in the diagram", async ({ page }) => {
     await loadArtifact(page, IN_PROGRESS_SNAPSHOT);
 
-    await page.locator(".state-diagram__svg-host svg").waitFor({ timeout: 8000 });
-
-    // Find any g.current element — the component adds it to the node whose
-    // NodeRef.ref matches currentStatePath.
-    const currentNode = page.locator(".state-diagram__svg-host svg g.current");
-    await expect(currentNode).toBeVisible({ timeout: 5000 });
+    const current = page.locator(".state-diagram__room--current");
+    await expect(current).toBeVisible({ timeout: 5000 });
   });
 
   test("clicking a trace event row opens the drawer and selects the row", async ({ page }) => {
@@ -268,15 +264,15 @@ test.describe("edge-cases fixture", () => {
       const drawer = page.locator(".detail-drawer");
       await expect(drawer).toBeVisible({ timeout: 2000 });
 
-      const showFullBtns = drawer.locator(".detail-drawer__toggle-btn").filter({ hasText: "Show full" });
+      // Oracle events now render through OracleDetail → CollapsibleText whose
+      // toggle is .ct-toggle (not .detail-drawer__toggle-btn).
+      const showFullBtns = drawer.locator(".ct-toggle").filter({ hasText: "Show full" });
       const isVisible = await showFullBtns.first().isVisible();
       if (isVisible) {
         found = true;
         // Click the first "Show full" — text should change to "Show less".
-        // After clicking, the button's filter text changes so we use the
-        // broader toggle-btn selector to find "Show less".
         await showFullBtns.first().click();
-        const showLessBtn = drawer.locator(".detail-drawer__toggle-btn").filter({ hasText: "Show less" });
+        const showLessBtn = drawer.locator(".ct-toggle").filter({ hasText: "Show less" });
         await expect(showLessBtn.first()).toBeVisible({ timeout: 3000 });
         break;
       }

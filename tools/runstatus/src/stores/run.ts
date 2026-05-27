@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { ref } from "vue";
+import { ref, computed } from "vue";
 import type { AppDef, MermaidSnapshot, TraceEvent, NodeRef } from "../types.js";
 import type { DataSource } from "../data/source.js";
 
@@ -13,6 +13,13 @@ export const useRunStore = defineStore("run", () => {
   const selectedEventIndex = ref<number | null>(null);
   const terminal = ref<boolean>(false);
   const loading = ref<boolean>(false);
+  // Set of state_path values that should be highlighted in the timeline.
+  // Driven by clicks on diagram rooms/phases.  Empty = no highlight.
+  const highlightedStatePaths = ref<string[]>([]);
+  // Bumped each time the highlight set changes; TraceTimeline watches it to
+  // scroll the first matching row into view (so re-clicking the same room
+  // scrolls again).
+  const highlightTick = ref<number>(0);
 
   // ---- internal ----
   let _unsubscribe: (() => void) | null = null;
@@ -71,9 +78,28 @@ export const useRunStore = defineStore("run", () => {
     selectedNode.value = ref ?? null;
   }
 
+  /** The currently selected event object (null when none or index out of range). */
+  const selectedEvent = computed<TraceEvent | null>(() => {
+    const i = selectedEventIndex.value;
+    if (i === null || i < 0 || i >= events.value.length) return null;
+    return events.value[i] ?? null;
+  });
+
   /** Set the selected event by index. */
   function selectEvent(index: number): void {
     selectedEventIndex.value = index;
+  }
+
+  /** Clear both the selected node and selected event. */
+  function clearSelection(): void {
+    selectedNode.value = null;
+    selectedEventIndex.value = null;
+  }
+
+  /** Set the highlighted state paths (driven by diagram clicks). */
+  function setHighlightedStatePaths(paths: string[]): void {
+    highlightedStatePaths.value = paths.slice();
+    highlightTick.value += 1;
   }
 
   return {
@@ -84,12 +110,17 @@ export const useRunStore = defineStore("run", () => {
     currentStatePath,
     selectedNode,
     selectedEventIndex,
+    selectedEvent,
     terminal,
     loading,
+    highlightedStatePaths,
+    highlightTick,
     // actions
     hydrate,
     teardown,
     selectNode,
     selectEvent,
+    clearSelection,
+    setHighlightedStatePaths,
   };
 });

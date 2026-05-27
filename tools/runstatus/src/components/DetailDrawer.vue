@@ -166,7 +166,11 @@
           </div>
 
           <!-- Event-kind-specific attrs -->
-          <template v-if="isLlmEvent">
+          <template v-if="isOracleEvent">
+            <!-- Delegate to OracleDetail for verb-specific rich rendering. -->
+            <OracleDetail :event="selectedEvent" />
+          </template>
+          <template v-else-if="isLlmEvent">
             <div v-if="selectedEvent.attrs.prompt" class="detail-drawer__block">
               <span class="detail-drawer__key">Prompt</span>
               <pre class="detail-drawer__pre">{{ maybeShow('prompt', String(selectedEvent.attrs.prompt)) }}</pre>
@@ -268,6 +272,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, reactive } from "vue";
 import type { NodeRef, TraceEvent, AppDef } from "../types.js";
+import OracleDetail from "./oracle/OracleDetail.vue";
 
 // ---- props & emits ----------------------------------------------------------
 
@@ -346,8 +351,13 @@ function maybeShow(key: string, val: string): string {
 function walkStatePath(path: string): Record<string, unknown> | null {
   const parts = path.split(".");
   // AppDef.states is declared as Record<string, unknown>; actual data from Go
-  // uses PascalCase keys (States, OnEnter, etc.)
-  let current: Record<string, unknown> = props.appDef.states as Record<string, unknown>;
+  // uses PascalCase keys (States, OnEnter, etc.).  Accept either spelling.
+  const app = props.appDef as unknown as Record<string, unknown>;
+  const topStates = (app["States"] ?? app["states"]) as
+    | Record<string, unknown>
+    | undefined;
+  if (!topStates) return null;
+  let current: Record<string, unknown> = topStates;
 
   for (let i = 0; i < parts.length; i++) {
     const seg = parts[i]!;
@@ -479,10 +489,15 @@ function worldVarDef(varName: string): unknown {
 
 // ---- event classification ---------------------------------------------------
 
+const isOracleEvent = computed(() => {
+  if (!props.selectedEvent) return false;
+  return props.selectedEvent.msg.startsWith("oracle.");
+});
+
 const isLlmEvent = computed(() => {
   if (!props.selectedEvent) return false;
   const msg = props.selectedEvent.msg;
-  return msg.startsWith("oracle.") || msg.startsWith("turn.llm.");
+  return msg.startsWith("turn.llm.");
 });
 
 const isHostEvent = computed(() => {
