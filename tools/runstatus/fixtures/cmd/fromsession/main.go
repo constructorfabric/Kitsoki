@@ -18,13 +18,10 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strings"
-	"time"
 
 	"kitsoki/internal/app"
 	"kitsoki/internal/runstatus"
 	"kitsoki/internal/store"
-	"kitsoki/internal/viz"
 )
 
 func main() {
@@ -64,28 +61,10 @@ func main() {
 		die("no events", fmt.Errorf("session %q has no events", sessionID))
 	}
 
-	events, currentState, lastTurn, terminal, started := mapEvents(hist, def)
-
-	fc, err := viz.FlowchartWithMap(def, viz.FlowchartOptions{Detail: viz.DetailStates})
+	snap, err := runstatus.FromHistory(hist, def, sessionID,
+		runstatus.WithOracleJournal(s.DB()))
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "warn: flowchart:", err)
-	}
-
-	snap := runstatus.Snapshot{
-		Session: runstatus.SessionHeader{
-			SessionID:    sessionID,
-			AppID:        def.App.ID,
-			CurrentState: currentState,
-			Turn:         lastTurn,
-			StartedAt:    started,
-			Terminal:     terminal,
-		},
-		App: def,
-		Mermaid: runstatus.MermaidSnapshot{
-			Source:  fc.Source,
-			NodeMap: fc.NodeMap,
-		},
-		Events: events,
+		die("build snapshot", err)
 	}
 
 	b, err := json.MarshalIndent(snap, "", "  ")
@@ -95,114 +74,7 @@ func main() {
 	if err := os.WriteFile(outPath, b, 0o644); err != nil {
 		die("write", err)
 	}
-	fmt.Fprintf(os.Stderr, "wrote %d events to %s\n", len(events), outPath)
-}
-
-// mapEvents converts store.Event records into runstatus.TraceEvent records,
-// tracking the most recent state path so each event carries one even though
-// the source events don't store it inline.
-func mapEvents(hist store.History, def *app.AppDef) (out []runstatus.TraceEvent, currentState string, lastTurn int, terminal bool, started time.Time) {
-	out = make([]runstatus.TraceEvent, 0, len(hist))
-	for i, ev := range hist {
-		if i == 0 {
-			started = ev.Ts
-		}
-
-		var payload map[string]any
-		if len(ev.Payload) > 0 {
-			_ = json.Unmarshal(ev.Payload, &payload)
-		}
-
-		// Track the current state from StateEntered events.
-		if ev.Kind == store.StateEntered {
-			if sp, ok := payload["state"].(string); ok {
-				currentState = sp
-			}
-		}
-
-		te := runstatus.TraceEvent{
-			Time:      ev.Ts,
-			Level:     levelFor(ev.Kind),
-			Msg:       msgFor(ev.Kind),
-			SessionID: "",
-			Turn:      int(ev.Turn),
-			StatePath: currentState,
-			Attrs:     payload,
-		}
-		out = append(out, te)
-
-		if int(ev.Turn) > lastTurn {
-			lastTurn = int(ev.Turn)
-		}
-	}
-
-	if currentState != "" {
-		if st, ok := app.Compile(def).LookupState(app.StatePath(strings.ReplaceAll(currentState, "/", "."))); ok && st != nil && st.Terminal {
-			terminal = true
-		}
-	}
-	return
-}
-
-// msgFor maps a stored EventKind to the slog `msg` convention the SPA uses
-// to pick subsystem chips. The prefixes (turn./harness./machine./host./oracle.)
-// match those emitted by the live engine's slog handlers.
-func msgFor(k store.EventKind) string {
-	switch k {
-	case store.TurnStarted:
-		return "turn.start"
-	case store.TurnEnded:
-		return "turn.end"
-	case store.LLMCalled:
-		return "oracle.ask.start"
-	case store.LLMToolCall:
-		return "oracle.tool_call"
-	case store.ValidationFailed:
-		return "machine.validation_failed"
-	case store.TransitionApplied:
-		return "machine.transition"
-	case store.EffectApplied:
-		return "machine.effect"
-	case store.HostInvoked:
-		return "harness.called"
-	case store.HostDispatched:
-		return "harness.dispatched"
-	case store.HostReturned:
-		return "harness.returned"
-	case store.StateExited:
-		return "machine.state_exited"
-	case store.StateEntered:
-		return "machine.state_entered"
-	case store.IntentAccepted:
-		return "machine.intent_accepted"
-	case store.GuardRejected:
-		return "machine.guard_rejected"
-	case store.OffPathEntered:
-		return "machine.off_path_entered"
-	case store.OffPathExited:
-		return "machine.off_path_exited"
-	case store.OffPathQuestion:
-		return "oracle.off_path.question"
-	case store.OffPathAnswer:
-		return "oracle.off_path.answer"
-	case store.JobSubmitted:
-		return "scheduler.submitted"
-	case store.JobCompleted:
-		return "scheduler.completed"
-	case store.TimeoutFired:
-		return "machine.timeout"
-	case store.HarnessError:
-		return "harness.error"
-	}
-	return "event." + string(k)
-}
-
-func levelFor(k store.EventKind) string {
-	switch k {
-	case store.HarnessError, store.ValidationFailed, store.GuardRejected:
-		return "ERROR"
-	}
-	return "INFO"
+	fmt.Fprintf(os.Stderr, "wrote %d events to %s\n", len(snap.Events), outPath)
 }
 
 func die(what string, err error) {
