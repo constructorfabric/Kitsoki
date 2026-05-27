@@ -546,11 +546,14 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 		}
 		rig.journalWriter = jw
 
-		// Build a journal lookup function for Phase 3 (record mode): given a
-		// call_id returned by the live oracle handler, read back the
-		// KindOracleCall body it just wrote to the SQLite journal.
-		journalLookup := func(callID string) (*host.OracleCallBody, bool) {
-			return lookupOracleCallByID(st.DB(), callID)
+		// Build a journal lookup function for Phase 3 (record mode): given the
+		// oracle context and verb, read back the most recently written
+		// KindOracleCall entry for that session and verb. The oracle handlers do
+		// not return call_id in result.Data, so we identify the entry by
+		// session ID + verb + max rowid (latest write).
+		journalLookup := func(ctx context.Context, verb string) (*host.OracleCallBody, bool) {
+			oc := host.OracleCallCtxFrom(ctx)
+			return lookupOracleCallByVerb(st.DB(), oc.SessionID, verb)
 		}
 
 		// stateOf reads the shared currentStatePath pointer updated by the turn loop.
@@ -589,6 +592,33 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 			casDispatcher := BuildCassetteDispatcherWithJournal(cas, handlerName, stateOf, fallback, recordSink, clk, jw, journalLookup)
 			reg.Replace(handlerName, casDispatcher)
 		}
+
+		// When host_bindings: is set (builtins registered) and a record sink is
+		// active, also install cassette dispatchers for every host.oracle.*
+		// builtin handler that isn't already wrapped by an episode above.
+		// This lets the cassette record oracle calls even when the cassette file
+		// has no oracle episodes yet — the first recording pass adds them.
+		if len(fixture.HostBindings) > 0 && recordSink != nil {
+			oracleBuiltins := []string{
+				"host.oracle.ask",
+				"host.oracle.decide",
+				"host.oracle.extract",
+				"host.oracle.task",
+				"host.oracle.converse",
+			}
+			for _, handlerName := range oracleBuiltins {
+				if seen[handlerName] {
+					continue // already wrapped via an episode above
+				}
+				fallback, hasFallback := reg.Get(handlerName)
+				if !hasFallback {
+					continue // not a builtin in this rig — skip
+				}
+				casDispatcher := BuildCassetteDispatcherWithJournal(cas, handlerName, stateOf, fallback, recordSink, clk, jw, journalLookup)
+				reg.Replace(handlerName, casDispatcher)
+				seen[handlerName] = true
+			}
+		}
 	}
 
 	// Use a no-op harness; the orchestrator path calls RunIntent directly
@@ -626,17 +656,23 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 	return &rig, nil
 }
 
-// lookupOracleCallByID queries the journal for a KindOracleCall entry with the
-// given call_id and returns the parsed body. Returns (nil, false) on any error
-// or when no entry is found. Used by the cassette dispatcher in record mode to
-// capture oracle call metadata into the synthesised episode's oracle: block.
-func lookupOracleCallByID(db *sql.DB, callID string) (*host.OracleCallBody, bool) {
-	if db == nil || callID == "" {
+// lookupOracleCallByVerb queries the journal for the most recently written
+// KindOracleCall entry for the given session and verb and returns the parsed
+// body. Returns (nil, false) on any error or when no entry is found. Used by
+// the cassette dispatcher in record mode — oracle handlers do not return
+// call_id in result.Data so we identify the entry by session + verb + rowid
+// ordering (latest write wins).
+func lookupOracleCallByVerb(db *sql.DB, sessionID app.SessionID, verb string) (*host.OracleCallBody, bool) {
+	if db == nil || verb == "" {
 		return nil, false
 	}
 	row := db.QueryRow(
-		`SELECT body_json FROM journal WHERE kind = 'oracle.call' AND json_extract(body_json, '$.call_id') = ? LIMIT 1`,
-		callID,
+		`SELECT body_json FROM journal
+		 WHERE kind = 'oracle.call'
+		   AND session_id = ?
+		   AND json_extract(body_json, '$.verb') = ?
+		 ORDER BY rowid DESC LIMIT 1`,
+		string(sessionID), verb,
 	)
 	var bodyStr string
 	if err := row.Scan(&bodyStr); err != nil {

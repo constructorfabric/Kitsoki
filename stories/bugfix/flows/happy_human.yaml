@@ -4,22 +4,11 @@
 # split). on_enter binds the artifact; `accept` posts to transport AND
 # advances to the next phase — one keystroke per checkpoint.
 #
-# The flow runner stubs every host call:
-#   - host.oracle.decide returns canned `submitted:` artifacts
-#     per room. The first call (reproducing.on_enter) returns the
-#     reproduction artifact; the next room's call binds the same key
-#     to its own canned payload, etc.
-#   - host.append_to_file (the iface.transport default) is stubbed to
-#     ok: true; the iface rewrite resolves iface.transport.post →
-#     host.append_to_file.post, which the registry's prefix-fallback
-#     dispatches to the bare host.append_to_file handler.
-#   - host.inbox.add is stubbed to ok: true (the dispatch was removed
-#     from the bugfix rooms, but the handler stays registered as a
-#     no-op safety net for harnesses that still resolve the name).
-#   - iface.workspace.sync, iface.vcs.commit, iface.vcs.diff,
-#     iface.ci.run_tests, iface.ci.build all resolve to <binding>.<op>;
-#     each binding (host.git_worktree, host.git, host.local) is stubbed
-#     with the appropriate envelope shape.
+# Non-oracle host calls (git, local, append_to_file, inbox.add) are
+# served by replay:any episodes in the cassette. Oracle calls
+# (host.oracle.task, host.oracle.ask, host.oracle.decide) are recorded
+# once against the real Claude CLI and replayed forever with full
+# oracle: metadata blocks so runstatus snapshots carry oracle trace events.
 
 test_kind: flow
 app: ../app.yaml
@@ -37,146 +26,19 @@ initial_world:
   judge_mode:      "human"
   judge_confidence_threshold: 0.8
 
-host_handlers:
+host_cassette: ../cassettes/happy_human.cassette.yaml
 
-  # The iface.transport default — host.append_to_file. iface.transport.post
-  # resolves to host.append_to_file.post; registry prefix-fallback walks back
-  # to host.append_to_file when no per-op handler is registered.
-  host.append_to_file:
-    data: { ok: true, message_id: "msg-1" }
-
-  # Inbox mirror handler (kept as a no-op; rooms no longer fire inbox.add
-  # but the host_handlers entry is harmless and defends against re-add).
-  host.inbox.add:
-    data: { ok: true, id: "ib-1" }
-
-  # Workspace iface — host.git_worktree prefix-fallback handles every
-  # iface.workspace.<op> dispatch.
-  host.git_worktree:
-    data: { ok: true, log: "synced" }
-
-  # VCS iface — host.git prefix-fallback. iface.vcs.commit returns ok+sha;
-  # iface.vcs.diff returns a diff string. Both come through the same stub
-  # (the room reads the `diff` key for vcs.diff and ignores extra fields
-  # for vcs.commit).
-  host.git:
-    data: { ok: true, sha: "abc123", diff: "diff --git a/x b/x\n", files: [] }
-
-  # CI iface — host.local prefix-fallback. iface.ci.run_tests returns
-  # log/passed/failed; iface.ci.build returns log/ok.
-  host.local:
-    data: { ok: true, log: "PASS: 12 tests", passed: 12, failed: 0 }
-
-  # The oracle calls. Every room's decide/ask/task call hits its matching
-  # stub and returns the same Data. That's intentional for happy_human —
-  # the artifact_* keys all read from the same submitted: payload, but each
-  # room binds it into its OWN world key (reproduction_artifact, etc.), so
-  # they don't clobber each other.
-  #
-  # Judge prompts use host.oracle.decide; since judge_mode=human, the
-  # `when:` clause skips them. The single Data payload looks like an
-  # artifact, which is fine.
-  host.oracle.task:
-    data:
-      stdout: "{\"summary_title\":\"...\",\"summary_markdown\":\"...\"}"
-      ok: true
-      submitted:
-        summary_title:    "Stub artifact"
-        summary_markdown: |
-          # Stub artifact body
-
-          This is a flow-fixture stub payload covering every checkpoint room.
-          The same payload binds into reproduction_artifact, propose_fix_artifact,
-          implement_review_artifact, validate_artifact, done_artifact in turn.
-
-          It satisfies the schemas only loosely — flow fixtures don't run the
-          validator subprocess (no -validate flag in the orchestrator call),
-          so this stub is sufficient for state-machine testing.
-        bug_verified: true
-        steps:        ["start kitsoki", "press ESC", "observe hang"]
-        involved_components:
-          - { name: "internal/tui", reason: "ESC handler routes through here" }
-        fix_description:        "Drain the input queue in the ESC handler instead of blocking on the channel send so the foyer rerender doesn't deadlock on a closed peer."
-        root_cause:             "The ESC handler blocks on a channel send to a peer that has already been closed by an earlier teardown; the rerender goroutine is the only consumer, and it has already exited."
-        affected_files:         ["internal/tui/tui.go", "internal/tui/keys.go"]
-        confidence:             0.85
-        reasoning:              "Trace shows the foyer's teardown closes the rerender channel before the ESC handler is unregistered; the next ESC press blocks. Draining-instead-of-send is the conventional fix for this pattern in our codebase (see internal/jobs/scheduler.go for a parallel example)."
-        status:                 "passed"
-        tests_added:            ["internal/tui/tui_esc_test.go"]
-        tests_run:              { passed: 12, failed: 0, log: "PASS: 12 tests" }
-        outcome:                "pass"
-        evidence:               { build: "ok", api: "n/a", ui: "n/a" }
-        next_action_hint:       ""
-        lessons:
-          - { category: "channel-lifetimes", description: "Closing a channel before unregistering its only producer is a deadlock pattern we've now hit twice; codify a lint rule.", severity: "high" }
-
-  host.oracle.ask:
-    data:
-      stdout: "{\"summary_title\":\"...\",\"summary_markdown\":\"...\"}"
-      ok: true
-      submitted:
-        summary_title:    "Stub artifact"
-        summary_markdown: |
-          # Stub artifact body
-
-          This is a flow-fixture stub payload covering every checkpoint room.
-          The same payload binds into reproduction_artifact, propose_fix_artifact,
-          implement_review_artifact, validate_artifact, done_artifact in turn.
-
-          It satisfies the schemas only loosely — flow fixtures don't run the
-          validator subprocess (no -validate flag in the orchestrator call),
-          so this stub is sufficient for state-machine testing.
-        bug_verified: true
-        steps:        ["start kitsoki", "press ESC", "observe hang"]
-        involved_components:
-          - { name: "internal/tui", reason: "ESC handler routes through here" }
-        fix_description:        "Drain the input queue in the ESC handler instead of blocking on the channel send so the foyer rerender doesn't deadlock on a closed peer."
-        root_cause:             "The ESC handler blocks on a channel send to a peer that has already been closed by an earlier teardown; the rerender goroutine is the only consumer, and it has already exited."
-        affected_files:         ["internal/tui/tui.go", "internal/tui/keys.go"]
-        confidence:             0.85
-        reasoning:              "Trace shows the foyer's teardown closes the rerender channel before the ESC handler is unregistered; the next ESC press blocks. Draining-instead-of-send is the conventional fix for this pattern in our codebase (see internal/jobs/scheduler.go for a parallel example)."
-        status:                 "passed"
-        tests_added:            ["internal/tui/tui_esc_test.go"]
-        tests_run:              { passed: 12, failed: 0, log: "PASS: 12 tests" }
-        outcome:                "pass"
-        evidence:               { build: "ok", api: "n/a", ui: "n/a" }
-        next_action_hint:       ""
-        lessons:
-          - { category: "channel-lifetimes", description: "Closing a channel before unregistering its only producer is a deadlock pattern we've now hit twice; codify a lint rule.", severity: "high" }
-
-  host.oracle.decide:
-    data:
-      stdout: "{\"summary_title\":\"...\",\"summary_markdown\":\"...\"}"
-      ok: true
-      submitted:
-        summary_title:    "Stub artifact"
-        summary_markdown: |
-          # Stub artifact body
-
-          This is a flow-fixture stub payload covering every checkpoint room.
-          The same payload binds into reproduction_artifact, propose_fix_artifact,
-          implement_review_artifact, validate_artifact, done_artifact in turn.
-
-          It satisfies the schemas only loosely — flow fixtures don't run the
-          validator subprocess (no -validate flag in the orchestrator call),
-          so this stub is sufficient for state-machine testing.
-        bug_verified: true
-        steps:        ["start kitsoki", "press ESC", "observe hang"]
-        involved_components:
-          - { name: "internal/tui", reason: "ESC handler routes through here" }
-        fix_description:        "Drain the input queue in the ESC handler instead of blocking on the channel send so the foyer rerender doesn't deadlock on a closed peer."
-        root_cause:             "The ESC handler blocks on a channel send to a peer that has already been closed by an earlier teardown; the rerender goroutine is the only consumer, and it has already exited."
-        affected_files:         ["internal/tui/tui.go", "internal/tui/keys.go"]
-        confidence:             0.85
-        reasoning:              "Trace shows the foyer's teardown closes the rerender channel before the ESC handler is unregistered; the next ESC press blocks. Draining-instead-of-send is the conventional fix for this pattern in our codebase (see internal/jobs/scheduler.go for a parallel example)."
-        status:                 "passed"
-        tests_added:            ["internal/tui/tui_esc_test.go"]
-        tests_run:              { passed: 12, failed: 0, log: "PASS: 12 tests" }
-        outcome:                "pass"
-        evidence:               { build: "ok", api: "n/a", ui: "n/a" }
-        next_action_hint:       ""
-        lessons:
-          - { category: "channel-lifetimes", description: "Closing a channel before unregistering its only producer is a deadlock pattern we've now hit twice; codify a lint rule.", severity: "high" }
+# host_bindings: bind the app's ifaces to their real default handlers.
+# This causes the testrunner to call host.RegisterBuiltins so that the
+# real host.oracle.* handlers are available as cassette-miss fallbacks
+# during KITSOKI_CASSETTE_RECORD=new_episodes recording runs. The
+# cassette's replay:any stubs still intercept non-oracle calls first,
+# so no real git/ci/transport side-effects occur during replay.
+host_bindings:
+  vcs:       host.git
+  ci:        host.local
+  workspace: host.git_worktree
+  transport: host.append_to_file
 
 turns:
 

@@ -43,6 +43,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"kitsoki/internal/expr"
 	"kitsoki/internal/render"
@@ -146,6 +147,10 @@ func OracleTaskHandler(ctx context.Context, args map[string]any) (Result, error)
 	// ── Capture initial state hash ────────────────────────────────────────
 	taskTraceID := newUUID()
 	initialHash := captureInitialStateHash(ctx, workingDir)
+
+	callID := newUUID()
+	callStart := time.Now()
+	taskSystemPrompt := effectiveSystemPrompt(args, agent)
 
 	slog.InfoContext(ctx, "task.start",
 		"agent", agentName,
@@ -300,9 +305,36 @@ func OracleTaskHandler(ctx context.Context, args map[string]any) (Result, error)
 			finalDiff := captureFinalDiff(ctx, workingDir)
 			filesChanged := captureFilesChanged(ctx, workingDir)
 			emitTaskEnd(ctx, "exhausted", filesChanged, replayMode)
+			exhaustedErr := fmt.Sprintf("host.oracle.task: acceptance failed after %d attempt(s); last output: %s",
+				maxRetries, onelinePreview(lastStdout, 300))
+			exhaustedDurationMS := time.Since(callStart).Milliseconds()
+			slog.InfoContext(ctx, "oracle.task.complete",
+				"call_id", callID,
+				"model", agent.Model,
+				"duration_ms", exhaustedDurationMS,
+				"task_trace_id", taskTraceID,
+				"error", exhaustedErr,
+			)
+			appendOracleCallJournal(ctx, callStart, 0, OracleCallBody{
+				CallID:       callID,
+				Verb:         "task",
+				Agent:        agentName,
+				Model:        agent.Model,
+				TaskTraceID:  taskTraceID,
+				DurationMS:   exhaustedDurationMS,
+				SystemPrompt: taskSystemPrompt,
+				Prompt:       contextPrompt,
+				Input: marshalInput(map[string]any{
+					"instructions": contextPrompt,
+					"files_in":     filesChanged,
+				}),
+				Response: marshalResponse(map[string]any{
+					"text": lastStdout,
+				}),
+				Error: exhaustedErr,
+			})
 			return Result{
-				Error: fmt.Sprintf("host.oracle.task: acceptance failed after %d attempt(s); last output: %s",
-					maxRetries, onelinePreview(lastStdout, 300)),
+				Error: exhaustedErr,
 				Data: map[string]any{
 					"task_trace_id": taskTraceID,
 					"files_changed": filesChanged,
@@ -326,6 +358,15 @@ func OracleTaskHandler(ctx context.Context, args map[string]any) (Result, error)
 
 	emitTaskEnd(ctx, "success", filesChanged, replayMode)
 
+	taskDurationMS := time.Since(callStart).Milliseconds()
+
+	slog.InfoContext(ctx, "oracle.task.complete",
+		"call_id", callID,
+		"model", agent.Model,
+		"duration_ms", taskDurationMS,
+		"task_trace_id", taskTraceID,
+	)
+
 	slog.InfoContext(ctx, "task.end",
 		"outcome", "success",
 		"task_trace_id", taskTraceID,
@@ -333,6 +374,24 @@ func OracleTaskHandler(ctx context.Context, args map[string]any) (Result, error)
 		"replay_mode", string(replayMode),
 		"initial_state_hash", initialHash,
 	)
+
+	appendOracleCallJournal(ctx, callStart, 0, OracleCallBody{
+		CallID:       callID,
+		Verb:         "task",
+		Agent:        agentName,
+		Model:        agent.Model,
+		TaskTraceID:  taskTraceID,
+		DurationMS:   taskDurationMS,
+		SystemPrompt: taskSystemPrompt,
+		Prompt:       contextPrompt,
+		Input: marshalInput(map[string]any{
+			"instructions": contextPrompt,
+			"files_in":     filesChanged,
+		}),
+		Response: marshalResponse(map[string]any{
+			"text": lastStdout,
+		}),
+	})
 
 	return Result{
 		Data: map[string]any{

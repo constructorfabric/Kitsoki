@@ -148,6 +148,23 @@ const KindChatDriveFailed = "chat.drive.failed"
 // without dispatch. Body: {drive_id, chat_id, reason}.
 const KindChatDriveDismissed = "chat.drive.dismissed"
 
+// ---- oracle call tracing (Phase N: full prompt/response capture) -------------
+
+// KindOracleCall records a completed oracle verb call with full prompt,
+// system prompt, and response payload. One entry per oracle.* call.
+//
+// Body shape:
+//
+//	{verb, agent, model, duration_ms, prompt_tokens, response_tokens, cost_usd?,
+//	 system_prompt, prompt, input, response, error?,
+//	 call_id}
+//
+// tool_calls and files_changed are NOT stored here — they are aggregated at
+// export time from KindTaskTool / KindTaskEnd entries in the same window.
+// call_id is a per-call UUID that correlates this entry with the lean slog
+// oracle.<verb>.complete record emitted in the same call.
+const KindOracleCall = "oracle.call"
+
 // ---- oracle-split Phase 4 event kinds (task trace) ---------------------------
 
 // KindTaskTool records a single tool call by a task agent. Body shape:

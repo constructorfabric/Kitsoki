@@ -348,6 +348,13 @@ type CassetteDispatcherOpts struct {
 	SessionID app.SessionID
 }
 
+// OracleJournalLookup is the function type used by the cassette dispatcher in
+// record mode to retrieve the KindOracleCall journal entry the live handler
+// just wrote. ctx carries the oracle call context (session, turn), verb is the
+// oracle verb derived from the handler name (e.g. "task" from "host.oracle.task").
+// Returns (nil, false) when no entry is found.
+type OracleJournalLookup func(ctx context.Context, verb string) (*host.OracleCallBody, bool)
+
 // BuildCassetteDispatcher returns a host.Handler closure that the testrunner
 // installs under every handler name referenced by the cassette's episodes.
 // stateOf is called per-invocation to read the orchestrator's current StatePath.
@@ -367,8 +374,9 @@ func BuildCassetteDispatcher(
 
 // BuildCassetteDispatcherWithJournal is the journal-aware variant of
 // BuildCassetteDispatcher. jw is the journal writer for the rig's in-memory
-// store; journalLookup reads KindOracleCall rows by call_id after a live
-// handler returns in record mode.
+// store; journalLookup reads the KindOracleCall entry the live handler just
+// wrote, identified by ctx + verb (derived from handlerName). Returns (nil, false)
+// when no entry is found.
 func BuildCassetteDispatcherWithJournal(
 	cas *Cassette,
 	handlerName string,
@@ -377,7 +385,7 @@ func BuildCassetteDispatcherWithJournal(
 	recordSink func(ep *CassetteEpisode),
 	clk clock.Clock,
 	jw journal.Writer,
-	journalLookup func(callID string) (*host.OracleCallBody, bool),
+	journalLookup OracleJournalLookup,
 ) host.Handler {
 	return buildCassetteDispatcherFull(cas, handlerName, stateOf, fallback, recordSink, clk, jw, journalLookup)
 }
@@ -390,7 +398,7 @@ func buildCassetteDispatcherFull(
 	recordSink func(ep *CassetteEpisode),
 	clk clock.Clock,
 	jw journal.Writer,
-	journalLookup func(callID string) (*host.OracleCallBody, bool),
+	journalLookup OracleJournalLookup,
 ) host.Handler {
 	return func(ctx context.Context, args map[string]any) (host.Result, error) {
 		statePath := stateOf()
@@ -458,15 +466,13 @@ func buildCassetteDispatcherFull(
 
 			// Phase 3: for host.oracle.* handlers, read the KindOracleCall entry
 			// the live handler just wrote and capture it in the episode's oracle: block.
-			// The live handler stores call_id in its result data.
+			// Derive the verb from the handler name (e.g. "task" from "host.oracle.task").
 			if strings.HasPrefix(handlerName, "host.oracle.") && journalLookup != nil {
-				callID, _ := liveResult.Data["call_id"].(string)
-				if callID != "" {
-					if body, ok := journalLookup(callID); ok {
-						// Compute the deterministic call_id for this episode.
-						detCallID := derivedCallID(cas.AppID, synth.ID)
-						synth.Oracle = oracleBodyToEpisode(body, detCallID)
-					}
+				verb := strings.TrimPrefix(handlerName, "host.oracle.")
+				if body, ok := journalLookup(ctx, verb); ok {
+					// Compute the deterministic call_id for this episode.
+					detCallID := derivedCallID(cas.AppID, synth.ID)
+					synth.Oracle = oracleBodyToEpisode(body, detCallID)
 				}
 			}
 
@@ -566,13 +572,11 @@ func oracleBodyToEpisode(b *host.OracleCallBody, detCallID string) *EpisodeOracl
 		}
 	}
 
-	// Convert json.RawMessage Input to any so it round-trips through YAML correctly.
-	var inputAny any
-	if b.Input != nil {
-		if err := json.Unmarshal(b.Input, &inputAny); err != nil {
-			inputAny = string(b.Input) // fallback to raw string
-		}
-	}
+	// Input is omitted from cassette episodes: it duplicates data already in
+	// Prompt/SystemPrompt, and storing map[string]interface{} values through
+	// goccy/go-yaml v1.19.2 can cause encoder stack overflow on certain YAML-
+	// decoded map structures. The Prompt and Response fields are sufficient for
+	// fromhistory to synthesise oracle.<verb>.start/.complete trace events.
 
 	return &EpisodeOracle{
 		CallID:         detCallID,
@@ -585,7 +589,6 @@ func oracleBodyToEpisode(b *host.OracleCallBody, detCallID string) *EpisodeOracl
 		CostUSD:        b.CostUSD,
 		SystemPrompt:   b.SystemPrompt,
 		Prompt:         b.Prompt,
-		Input:          inputAny,
 		Response:       responseStr,
 		Error:          b.Error,
 	}
@@ -597,16 +600,28 @@ func synthesiseEpisode(handlerName string, args map[string]any, statePath string
 	if statePath != "" {
 		matchMap["phase"] = cas.phaseFromStatePath(statePath)
 	}
-	for k, v := range args {
-		if k != "handler" && k != "phase" && k != "schema_name" {
-			matchMap[k] = v
+
+	// For oracle handlers:
+	//   1. Only match on handler + phase (skip args — they contain YAML-decoded
+	//      nested maps that trigger a goccy/go-yaml v1.19.2 encoder stack overflow).
+	//   2. Don't store result.Data — it contains deeply-nested JSON-decoded values
+	//      (e.g. the "submitted" artifact) that also cause the YAML overflow. On
+	//      replay the live oracle fallback is always called, so the stored response
+	//      data is never used.
+	var respData map[string]any
+	if !strings.HasPrefix(handlerName, "host.oracle.") {
+		for k, v := range args {
+			if k != "handler" && k != "phase" && k != "schema_name" {
+				matchMap[k] = v
+			}
 		}
+		respData = result.Data
 	}
 	return &CassetteEpisode{
 		ID:    fmt.Sprintf("recorded_%s_%s", handlerName, statePath),
 		Match: matchMap,
 		Response: CassetteResponse{
-			Data:  result.Data,
+			Data:  respData,
 			Error: result.Error,
 		},
 	}
@@ -645,9 +660,12 @@ func CassetteStrictRecording() bool {
 	return v == "1" || v == "true"
 }
 
-// AppendEpisodeToFile appends ep to the cassette file at cas.path using an
-// atomic temp-file rename. The cassette is re-read, the new episode appended,
-// and the full YAML written back. A trailing comment marks appended episodes.
+// AppendEpisodeToFile appends ep to the cassette file at cas.path.
+//
+// Rather than re-marshaling the entire cassette (which can stack-overflow on
+// large oracle responses when goccy/go-yaml encodes deeply-nested any values),
+// we marshal only the new episode and raw-append it to the existing file.
+// The episode is indented by two spaces to slot into the episodes: list.
 func AppendEpisodeToFile(cas *Cassette, ep *CassetteEpisode) error {
 	if cas.path == "" {
 		return fmt.Errorf("cassette: AppendEpisodeToFile: cassette has no path")
@@ -656,48 +674,52 @@ func AppendEpisodeToFile(cas *Cassette, ep *CassetteEpisode) error {
 	cas.mu.Lock()
 	defer cas.mu.Unlock()
 
-	// Re-read the existing file so we preserve any edits made since load.
-	existing, err := os.ReadFile(cas.path)
-	if err != nil {
-		return fmt.Errorf("cassette: AppendEpisodeToFile: read %q: %w", cas.path, err)
-	}
-
-	// Unmarshal the existing cassette without include resolution (the file was
-	// already loaded; we just want to add an episode and re-marshal).
-	var onDisk Cassette
-	if parseErr := goyaml.Unmarshal(existing, &onDisk); parseErr != nil {
-		return fmt.Errorf("cassette: AppendEpisodeToFile: parse existing: %w", parseErr)
-	}
-
-	onDisk.Episodes = append(onDisk.Episodes, *ep)
-
-	out, marshalErr := goyaml.Marshal(&onDisk)
+	// Marshal only the single episode. goyaml encodes it as a YAML mapping
+	// document (no leading "- "). We indent each line by two spaces and prefix
+	// the first line with "- " to produce a valid list item.
+	epBytes, marshalErr := goyaml.Marshal(ep)
 	if marshalErr != nil {
-		return fmt.Errorf("cassette: AppendEpisodeToFile: marshal: %w", marshalErr)
+		return fmt.Errorf("cassette: AppendEpisodeToFile: marshal episode: %w", marshalErr)
 	}
 
-	// Append a comment so the origin of the episode is traceable.
-	out = append(out, []byte("\n# appended by KITSOKI_CASSETTE_RECORD\n")...)
+	// Indent each non-empty line by four spaces so the episode sits at the
+	// second indent level (under episodes:). Then replace the first four spaces
+	// of the first line with "  - " (two spaces + list marker + space) so the
+	// episode becomes a valid YAML sequence item inside the episodes: key.
+	//
+	//   episodes:
+	//     - id: ...      ← four-space indent, first line gets "  - "
+	//       match: ...   ← four-space indent on continuation lines
+	lines := strings.Split(string(epBytes), "\n")
+	for i, line := range lines {
+		if line == "" {
+			continue // preserve blank lines as-is
+		}
+		lines[i] = "    " + line
+	}
+	if len(lines) > 0 {
+		// Replace the four leading spaces on the first non-empty line with "  - ".
+		lines[0] = "  - " + strings.TrimPrefix(lines[0], "    ")
+	}
+	indented := strings.Join(lines, "\n")
+	// Ensure the snippet ends with a newline.
+	if !strings.HasSuffix(indented, "\n") {
+		indented += "\n"
+	}
 
-	// Atomic write via temp file + rename.
-	dir := filepath.Dir(cas.path)
-	tmp, tmpErr := os.CreateTemp(dir, ".cassette-append-*.yaml")
-	if tmpErr != nil {
-		return fmt.Errorf("cassette: AppendEpisodeToFile: create temp: %w", tmpErr)
+	block := "\n# appended by KITSOKI_CASSETTE_RECORD\n" + indented
+
+	// Open the cassette file in append mode — no read/re-marshal required.
+	f, openErr := os.OpenFile(cas.path, os.O_WRONLY|os.O_APPEND, 0o644)
+	if openErr != nil {
+		return fmt.Errorf("cassette: AppendEpisodeToFile: open %q: %w", cas.path, openErr)
 	}
-	tmpName := tmp.Name()
-	if _, writeErr := tmp.Write(out); writeErr != nil {
-		_ = tmp.Close()
-		_ = os.Remove(tmpName)
-		return fmt.Errorf("cassette: AppendEpisodeToFile: write temp: %w", writeErr)
+	if _, writeErr := f.WriteString(block); writeErr != nil {
+		_ = f.Close()
+		return fmt.Errorf("cassette: AppendEpisodeToFile: write: %w", writeErr)
 	}
-	if closeErr := tmp.Close(); closeErr != nil {
-		_ = os.Remove(tmpName)
-		return fmt.Errorf("cassette: AppendEpisodeToFile: close temp: %w", closeErr)
-	}
-	if renameErr := os.Rename(tmpName, cas.path); renameErr != nil {
-		_ = os.Remove(tmpName)
-		return fmt.Errorf("cassette: AppendEpisodeToFile: rename: %w", renameErr)
+	if closeErr := f.Close(); closeErr != nil {
+		return fmt.Errorf("cassette: AppendEpisodeToFile: close: %w", closeErr)
 	}
 
 	// Update the in-memory cassette to reflect the appended episode.

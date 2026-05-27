@@ -458,7 +458,7 @@ func invokeDispatcherWithJournal(
 	fallback host.Handler,
 	recordSink func(*CassetteEpisode),
 	jw journal.Writer,
-	journalLookup func(string) (*host.OracleCallBody, bool),
+	journalLookup OracleJournalLookup,
 ) (host.Result, error) {
 	t.Helper()
 	clk := newFakeClock()

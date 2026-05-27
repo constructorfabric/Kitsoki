@@ -30,8 +30,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
+	"time"
 
 	"kitsoki/internal/expr"
 	kitsokimcp "kitsoki/internal/mcp"
@@ -243,6 +245,16 @@ func OracleDecideHandler(ctx context.Context, args map[string]any) (Result, erro
 		cliArgs = append(cliArgs, "--mcp-config", mcpConfigPath)
 	}
 
+	// Capture pre-call context for journal recording.
+	callID := newUUID()
+	callStart := time.Now()
+	systemPrompt := effectiveSystemPrompt(args, agent)
+
+	// Build input descriptor for the journal.
+	decideInputDesc := map[string]any{
+		"schema_path": schemaArg,
+	}
+
 	// If a validator block is present, run the retry loop. Otherwise use
 	// OracleStreamer for the single-shot streaming path.
 	if validatorBlockPresent {
@@ -250,7 +262,7 @@ func OracleDecideHandler(ctx context.Context, args map[string]any) (Result, erro
 		if effectiveMaxRetries <= 0 {
 			effectiveMaxRetries = decideDefaultMaxRetries
 		}
-		return runDecideWithValidatorRetryLoop(ctx, decideLoopParams{
+		res := runDecideWithValidatorRetryLoop(ctx, decideLoopParams{
 			Bin:                  bin,
 			BaseCLIArgs:          cliArgs,
 			Rendered:             rendered,
@@ -260,7 +272,11 @@ func OracleDecideHandler(ctx context.Context, args map[string]any) (Result, erro
 			MaxOuterIterations:   decideMaxOuterIterations,
 			ValidatorMaxRetries:  effectiveMaxRetries,
 			SandboxValidatorOpts: &vopts,
-		}), nil
+		})
+		durationMS := time.Since(callStart).Milliseconds()
+		emitDecideJournal(ctx, callID, callStart, durationMS, agentNameFromArgs(args), agent.Model,
+			systemPrompt, rendered, decideInputDesc, res)
+		return res, nil
 	}
 
 	// Single-shot path through OracleStreamer (streams reasoning tokens).
@@ -272,6 +288,8 @@ func OracleDecideHandler(ctx context.Context, args map[string]any) (Result, erro
 		Stdin:      rendered,
 		WorkingDir: workingDir,
 	}.Run(ctx)
+	durationMS := time.Since(callStart).Milliseconds()
+
 	if runErr != nil {
 		return Result{}, runErr
 	}
@@ -280,7 +298,10 @@ func OracleDecideHandler(ctx context.Context, args map[string]any) (Result, erro
 		if s := strings.TrimSpace(cr.Stderr); s != "" {
 			msg = fmt.Sprintf("%s\nstderr: %s", msg, s)
 		}
-		return Result{Error: msg}, nil
+		infraRes := Result{Error: msg}
+		emitDecideJournal(ctx, callID, callStart, durationMS, agentNameFromArgs(args), agent.Model,
+			systemPrompt, rendered, decideInputDesc, infraRes)
+		return infraRes, nil
 	}
 
 	usedSessionID := sessionID
@@ -289,7 +310,53 @@ func OracleDecideHandler(ctx context.Context, args map[string]any) (Result, erro
 	}
 
 	res := buildDecideResult(cr.Stdout, cr.ExitCode, cr.Stderr, validatorOutputPath, usedSessionID, "")
+	emitDecideJournal(ctx, callID, callStart, durationMS, agentNameFromArgs(args), agent.Model,
+		systemPrompt, rendered, decideInputDesc, res)
 	return res, nil
+}
+
+// emitDecideJournal writes the lean slog oracle.decide.complete record and the
+// full KindOracleCall journal entry after a decide call completes.
+func emitDecideJournal(ctx context.Context, callID string, callStart time.Time, durationMS int64,
+	agentName, model, systemPrompt, prompt string, inputDesc map[string]any, res Result) {
+
+	// Lean slog record.
+	attrs := []any{
+		"call_id", callID,
+		"model", model,
+		"duration_ms", durationMS,
+	}
+	if res.Error != "" {
+		attrs = append(attrs, "error", res.Error)
+	}
+	slog.InfoContext(ctx, "oracle.decide.complete", attrs...)
+
+	// Build response descriptor.
+	var responseDesc map[string]any
+	if res.Data != nil {
+		responseDesc = map[string]any{}
+		if v, ok := res.Data["submitted"]; ok {
+			responseDesc["json"] = v
+			if decision, ok2 := v.(map[string]any); ok2 {
+				if d, ok3 := decision["decision"].(string); ok3 {
+					responseDesc["decision"] = d
+				}
+			}
+		}
+	}
+
+	appendOracleCallJournal(ctx, callStart, 0, OracleCallBody{
+		CallID:       callID,
+		Verb:         "decide",
+		Agent:        agentName,
+		Model:        model,
+		DurationMS:   durationMS,
+		SystemPrompt: systemPrompt,
+		Prompt:       prompt,
+		Input:        marshalInput(inputDesc),
+		Response:     marshalResponse(responseDesc),
+		Error:        res.Error,
+	})
 }
 
 // resolveDecidePrompt renders the prompt for a decide call. Accepts either
