@@ -439,6 +439,85 @@ func (r *sqliteReader) LatestCheckpoint(sid app.SessionID, doc DocID) (Entry, bo
 	}, true
 }
 
+// LoadOracleCallEntries returns all KindOracleCall journal entries for sid as
+// a slice of Entry values (including timestamps). Entries are ordered by
+// (turn, seq). This is used by FromHistory to synthesise oracle trace events
+// from journal data when WithOracleJournal is supplied.
+func LoadOracleCallEntries(db *sql.DB, sid app.SessionID) ([]Entry, error) {
+	rows, err := db.Query(
+		`SELECT ts, turn, seq, body_json FROM journal
+		 WHERE session_id = ? AND kind = 'oracle.call'
+		 ORDER BY turn ASC, seq ASC`,
+		string(sid),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("journal.LoadOracleCallEntries: query: %w", err)
+	}
+	defer rows.Close()
+
+	var out []Entry
+	for rows.Next() {
+		var (
+			tsMicro int64
+			turnN   int64
+			seq     int
+			bodyStr string
+		)
+		if err := rows.Scan(&tsMicro, &turnN, &seq, &bodyStr); err != nil {
+			continue
+		}
+		out = append(out, Entry{
+			Ts:      time.UnixMicro(tsMicro),
+			Session: sid,
+			Turn:    app.TurnNumber(turnN),
+			Seq:     seq,
+			Kind:    KindOracleCall,
+			Body:    json.RawMessage(bodyStr),
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("journal.LoadOracleCallEntries: scan: %w", err)
+	}
+	return out, nil
+}
+
+// LoadOracleCalls returns all KindOracleCall journal entries for sid, keyed by
+// the call_id field in the body. Entries with no parseable call_id are skipped.
+// This is used by export-status to merge full prompt/response payloads into the
+// lean slog oracle.<verb>.complete records.
+func LoadOracleCalls(db *sql.DB, sid app.SessionID) (map[string]json.RawMessage, error) {
+	rows, err := db.Query(
+		`SELECT body_json FROM journal
+		 WHERE session_id = ? AND kind = 'oracle.call'
+		 ORDER BY turn ASC, seq ASC`,
+		string(sid),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("journal.LoadOracleCalls: query: %w", err)
+	}
+	defer rows.Close()
+
+	out := make(map[string]json.RawMessage)
+	for rows.Next() {
+		var bodyStr string
+		if err := rows.Scan(&bodyStr); err != nil {
+			continue
+		}
+		// Parse just the call_id field to build the index key.
+		var partial struct {
+			CallID string `json:"call_id"`
+		}
+		if err := json.Unmarshal([]byte(bodyStr), &partial); err != nil || partial.CallID == "" {
+			continue
+		}
+		out[partial.CallID] = json.RawMessage(bodyStr)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("journal.LoadOracleCalls: scan: %w", err)
+	}
+	return out, nil
+}
+
 // ListLiveDocs returns the distinct DocIDs that have at least one entry for sid.
 func (r *sqliteReader) ListLiveDocs(sid app.SessionID) []DocID {
 	rows, err := r.db.Query(
