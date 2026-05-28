@@ -114,8 +114,8 @@ const (
 
 	// Off-path side-channel (§7.7).  The off-path runtime is intentionally
 	// orthogonal to the state machine — no Turn() fires, no transition events
-	// land on the journey.  These trace constants are the only structured
-	// breadcrumb of that activity in --trace-pretty output.
+	// land on the journey.  These trace constants are the structured slog
+	// breadcrumb of that activity.
 	EvOffPathEnter        = "offpath.enter"
 	EvOffPathExit         = "offpath.exit"
 	EvOffPathAskStart     = "offpath.ask.start"

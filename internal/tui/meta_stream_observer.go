@@ -5,10 +5,10 @@
 // --output-format stream-json --verbose` and emits one structured
 // event per JSONL line claude prints (system.init, assistant.text,
 // assistant.tool_use, user.tool_result, system.api_retry, result).
-// Those events feed --trace-pretty via slog, but until this bridge
-// existed the TUI's transcript stayed frozen on the "agent is
-// thinking…" spinner until the terminal `result` event finally fired
-// metaSendDoneMsg with the full assistant text.
+// Those events are emitted via slog, but until this bridge existed the
+// TUI's transcript stayed frozen on the "agent is thinking…" spinner
+// until the terminal `result` event finally fired metaSendDoneMsg with
+// the full assistant text.
 //
 // MetaStreamSink is the host.StreamSink implementation that turns
 // each stream event into a MetaStreamMsg and posts it into the

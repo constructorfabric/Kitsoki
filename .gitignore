@@ -29,9 +29,6 @@ coverage.html
 # Git worktrees (local checkouts of feature branches)
 .worktrees/
 
-# Session data (local only)
-~/.kitsoki/
-
 # Per-repo session traces auto-dropped by `kitsoki run` into the nearest
 # .kitsoki/ folder. The rest of `.kitsoki/` is reserved for local state
 # we may want to keep around; only the auto-traces are guaranteed

@@ -685,9 +685,13 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 	// UserInputReceived is emitted at the moment input arrives, with the turn
 	// number it belongs to (same as the TurnStarted that follows). This replaces
 	// the exporter-side synthesised turn.input row.
+	// G6: unified payload {"input": <text>, "intent": <name>} on both the Turn
+	// (chat-text) and SubmitDirect paths. On the Turn path intent is "" (the
+	// harness has not yet resolved the intent); on SubmitDirect both are populated.
+	// SPA consumers can ignore intent when empty.
 	var inputEvent store.Event
 	if input != "" {
-		inputPayload, _ := json.Marshal(map[string]any{"input": input})
+		inputPayload, _ := json.Marshal(map[string]any{"input": input, "intent": ""})
 		inputEvent = store.Event{
 			Kind:      store.UserInputReceived,
 			Turn:      turnNum,
@@ -862,6 +866,8 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 			if inputEvent.Kind != "" {
 				failureEvents = append([]store.Event{inputEvent}, failureEvents...)
 			}
+			// G5: pre-stamp StateEntered/StateExited with their per-event state.
+			stampStatePathPerEvent(failureEvents)
 			// Finding 2.1: fall back to InitialState when journey.State is "" (e.g. new
 			// session whose AppDef.Root didn't parse) so every event has non-empty state_path.
 			stampStatePath(failureEvents, journey.State, o.InitialState())
@@ -980,6 +986,9 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 	for i := range successEvents {
 		successEvents[i].Turn = turnNum
 	}
+	// G5: pre-stamp StateEntered/StateExited with their per-event state before
+	// the uniform FROM-state fill, so machine.state_entered carries the TO state.
+	stampStatePathPerEvent(successEvents)
 	// Stamp state_path on events that don't already have one.
 	// Finding 2.1: fall back to InitialState when journey.State is "" so every event has non-empty state_path.
 	stampStatePath(successEvents, journey.State, o.InitialState())
@@ -2063,6 +2072,7 @@ func (o *Orchestrator) submitDirect(ctx context.Context, sid app.SessionID, inte
 		for i := range failureEvents {
 			failureEvents[i].Turn = turnNum
 		}
+		stampStatePathPerEvent(failureEvents)
 		stampStatePath(failureEvents, journey.State, o.InitialState())
 		// Site 5: dual-write journal entries for the SubmitDirect rejection turn.
 		sdFailJEntries := journalEntriesForEvents(sid, turnNum, time.Now(), failureEvents,
@@ -2133,6 +2143,7 @@ func (o *Orchestrator) submitDirect(ctx context.Context, sid app.SessionID, inte
 	for i := range successEvents {
 		successEvents[i].Turn = turnNum
 	}
+	stampStatePathPerEvent(successEvents)
 	stampStatePath(successEvents, journey.State, o.InitialState())
 
 	// Site 6: dual-write journal entries for the SubmitDirect success turn.
@@ -2933,6 +2944,37 @@ func newOrchestratorEvent(kind store.EventKind, payload map[string]any, turn app
 	}
 }
 
+// stampStatePathPerEvent pre-stamps StateExited and StateEntered events with
+// the state they "happened in", fixing finding G5 (machine.state_entered
+// carrying the FROM state instead of the TO state).
+//
+// Machine events carry the state path in their payload:
+//   - StateExited{state: "foyer"}  → state_path = "foyer"  (the exited state)
+//   - StateEntered{state: "cloakroom"} → state_path = "cloakroom" (the entered state)
+//
+// This must be called BEFORE stampStatePath so these events get the correct
+// per-event value rather than the uniform FROM-state default.
+func stampStatePathPerEvent(evs []store.Event) {
+	for i := range evs {
+		ev := &evs[i]
+		if ev.StatePath != "" {
+			continue // already set
+		}
+		switch ev.Kind {
+		case store.StateExited, store.StateEntered:
+			// Extract the "state" field from the payload.
+			var p struct {
+				State string `json:"state"`
+			}
+			if len(ev.Payload) > 0 {
+				if err := json.Unmarshal(ev.Payload, &p); err == nil && p.State != "" {
+					ev.StatePath = app.StatePath(p.State)
+				}
+			}
+		}
+	}
+}
+
 // stampStatePath sets StatePath on every event in evs that does not already
 // have one set. Called before appendEventsAndJournal so the on-disk JSONL
 // records the active state without exporter-side back-fill.
@@ -2941,6 +2983,10 @@ func newOrchestratorEvent(kind store.EventKind, payload map[string]any, turn app
 // e.g. when AppDef.Root is not a valid string), fall back to fallback. Pass
 // o.InitialState() as fallback to ensure every event carries a non-empty
 // state_path on disk.
+//
+// Finding G5: StateEntered and StateExited events should be pre-stamped via
+// stampStatePathPerEvent before this is called, so this only fills events that
+// don't have a per-event state assigned.
 func stampStatePath(evs []store.Event, state, fallback app.StatePath) {
 	effective := state
 	if effective == "" {

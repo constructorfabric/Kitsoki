@@ -297,10 +297,9 @@ func runClaudeStreamJSON(ctx context.Context, bin string, cliArgs []string, stdi
 }
 
 // emitStreamEvent surfaces one parsed stream-json event into slog so
-// it lands in kitsoki's --trace-pretty output as it happens. We keep
-// each record tiny (type/subtype/tool/preview) — full content blocks
-// would dwarf the log; the preview is enough to see the agent making
-// progress.
+// it is visible in the session log as it happens. We keep each record
+// tiny (type/subtype/tool/preview) — full content blocks would dwarf
+// the log; the preview is enough to see the agent making progress.
 //
 // When a StreamSink is installed on ctx (the TUI's metaSendCmd wires
 // one in via WithStreamSink), the same payload is also forwarded to

@@ -131,10 +131,6 @@ func runCmd() *cobra.Command {
 		recordingPath    string
 		recordPath       string
 		dbPath           string
-		tracePath        string
-		tracePretty      string
-		traceLevel       string
-		traceRedact      bool
 		continueFlag     bool
 		continueID       string
 		continueKey      string
@@ -159,7 +155,9 @@ Examples:
   kitsoki run myapp.yaml --harness claude --claude-model opus
   kitsoki run myapp.yaml --harness replay --recording recording.yaml
   kitsoki run myapp.yaml --harness recording --record /tmp/rec.jsonl
-  kitsoki run myapp.yaml --trace /tmp/t.jsonl --trace-pretty -
+
+Session traces are written automatically to the nearest .kitsoki/sessions/
+folder (walking up from cwd). Use 'kitsoki trace <path>' to pretty-print.
 
 See 'kitsoki docs llm-guide' for the full operator guide.`,
 		Args: cobra.ExactArgs(1),
@@ -250,74 +248,8 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 			}
 			chatStoreAdapter := chathost.NewAdapter(rawChatStore)
 
-			// Build trace logger.
-			var level slog.Level
-			switch traceLevel {
-			case "debug", "":
-				level = slog.LevelDebug
-			case "info":
-				level = slog.LevelInfo
-			case "warn":
-				level = slog.LevelWarn
-			case "error":
-				level = slog.LevelError
-			default:
-				return fmt.Errorf("unknown --trace-level %q (use debug|info|warn|error)", traceLevel)
-			}
-
-			// Default: always drop a JSONL trace into the nearest
-			// .kitsoki/sessions/ folder so post-mortems don't depend on
-			// the operator remembering --trace. The operator can still
-			// override with an explicit --trace path (or '-' for stderr).
-			if tracePath == "" {
-				if def := defaultSessionTracePath(def.App.ID); def != "" {
-					tracePath = def
-				}
-			}
-
-			traceCfg := TraceConfig{
-				JSONLPath:  tracePath,
-				PrettyPath: tracePretty,
-				Level:      level,
-				Redact:     traceRedact,
-			}
-			logger, traceRing, traceCleanup, err := BuildTraceLogger(traceCfg)
-			if err != nil {
-				return fmt.Errorf("build trace logger: %w", err)
-			}
-			defer traceCleanup()
-
-			// Redirect the package-level slog sink through the trace logger
-			// so slog.Warn / slog.Error from deep in the harness stack
-			// (e.g. retry-after-parse-failure in claude_cli.go) reach the
-			// --trace file (and the always-on ring buffer) rather than
-			// stderr, which the alt-screen TUI swallows.
-			prevDefault := slog.Default()
-			slog.SetDefault(logger)
-			defer slog.SetDefault(prevDefault)
-
-			// Meta-mode trace file: where the story-author agent reads
-			// session history. If --trace points at a real on-disk
-			// JSONL path, reuse that — slog is already streaming events
-			// there, no need for a parallel dump. Otherwise create a
-			// per-session temp file the TUI rewrites from the in-memory
-			// ring buffer on every Send.
-			var (
-				metaTraceFilePath string
-				metaTraceExternal bool
-			)
-			if tracePath != "" && tracePath != "-" {
-				metaTraceFilePath = tracePath
-				metaTraceExternal = true
-			} else if tf, terr := os.CreateTemp("", "kitsoki-meta-trace-*.jsonl"); terr == nil {
-				metaTraceFilePath = tf.Name()
-				_ = tf.Close()
-				defer func() { _ = os.Remove(metaTraceFilePath) }()
-			} else {
-				slog.Warn("trace: could not create meta-mode trace temp file", "err", terr)
-			}
-
 			// Build machine.
+			logger := slog.Default()
 			m, err := machine.New(def, machine.WithMachineLogger(logger))
 			if err != nil {
 				return fmt.Errorf("build machine: %w", err)
@@ -329,7 +261,6 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 				return fmt.Errorf("build harness: %w", err)
 			}
 			defer func() { _ = h.Close() }()
-			// Wire logger into harness.
 			setHarnessLogger(h, logger)
 
 			// Build host registry (built-in handlers + allow-list check).
@@ -532,14 +463,17 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 					}
 				}
 
-				// Wave 3-entry: wire JSONL sink for resumed TUI session.
+				// Wire EventSink for resumed TUI session.
 				// Use "tui:<session_id>" as the virtual transport:thread key so
 				// each session gets a stable, unique, human-readable trace path.
+				// The EventSink JSONL is the only trace — no slog file.
 				tuiTracePath := store.DefaultTracePath(def.App.ID, "tui", string(sid))
+				var tuiMetaTracePath string
 				if mkErr := os.MkdirAll(filepath.Dir(tuiTracePath), 0o755); mkErr == nil {
 					if tuiSink, sinkErr := store.OpenJSONL(tuiTracePath); sinkErr == nil {
 						orch.SetEventSink(tuiSink)
 						defer func() { _ = tuiSink.Close() }()
+						tuiMetaTracePath = tuiTracePath
 					}
 					// Failure to open is non-fatal: events still land in SQLite.
 				}
@@ -592,13 +526,10 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 				tuiOptions = append([]tui.RootModelOption{
 					tui.WithJobStore(jobStore),
 					tui.WithChatStore(rawChatStore),
-					tui.WithTraceRingBuffer(traceRing),
 					tui.WithJournalWriter(jw),
 				}, tuiOptions...)
-				if metaTraceExternal {
-					tuiOptions = append(tuiOptions, tui.WithExternalTraceFile(metaTraceFilePath))
-				} else {
-					tuiOptions = append(tuiOptions, tui.WithTraceFilePath(metaTraceFilePath))
+				if tuiMetaTracePath != "" {
+					tuiOptions = append(tuiOptions, tui.WithExternalTraceFile(tuiMetaTracePath))
 				}
 				// Allocate the meta-mode stream sink up-front so the
 				// model can hold a reference; bind it to the program
@@ -643,14 +574,16 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 				return fmt.Errorf("create session: %w", err)
 			}
 
-			// Wave 3-entry: wire JSONL sink for fresh TUI session now that
-			// the session ID is known.
+			// Wire EventSink for fresh TUI session.
+			// freshMetaTracePath is the path handed to the meta-mode agent.
+			var freshMetaTracePath string
 			{
 				freshTracePath := store.DefaultTracePath(def.App.ID, "tui", string(sid))
 				if mkErr := os.MkdirAll(filepath.Dir(freshTracePath), 0o755); mkErr == nil {
 					if freshSink, sinkErr := store.OpenJSONL(freshTracePath); sinkErr == nil {
 						orch.SetEventSink(freshSink)
 						defer func() { _ = freshSink.Close() }()
+						freshMetaTracePath = freshTracePath
 					}
 					// Failure to open is non-fatal: events still land in SQLite.
 				}
@@ -730,14 +663,11 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 			tuiOptions = []tui.RootModelOption{
 				tui.WithJobStore(jobStore),
 				tui.WithChatStore(rawChatStore),
-				tui.WithTraceRingBuffer(traceRing),
 				tui.WithJournalWriter(jw),
 				tui.WithInitialTypedView(initialTypedView, initialTypedEnv, initialTypedRR),
 			}
-			if metaTraceExternal {
-				tuiOptions = append(tuiOptions, tui.WithExternalTraceFile(metaTraceFilePath))
-			} else {
-				tuiOptions = append(tuiOptions, tui.WithTraceFilePath(metaTraceFilePath))
+			if freshMetaTracePath != "" {
+				tuiOptions = append(tuiOptions, tui.WithExternalTraceFile(freshMetaTracePath))
 			}
 			// Allocate the meta-mode stream sink up-front so the
 			// model can hold a reference; bind it to the program
@@ -779,14 +709,6 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 		"path to output JSONL recording (for --harness recording)")
 	cmd.Flags().StringVar(&dbPath, "db", "",
 		"path to SQLite session database (default: $XDG_DATA_HOME/kitsoki/sessions.db)")
-	cmd.Flags().StringVar(&tracePath, "trace", "",
-		"write JSONL trace events to this file; '-' writes to stderr")
-	cmd.Flags().StringVar(&tracePretty, "trace-pretty", "",
-		"write human-readable trace to this file in parallel; '-' writes to stderr")
-	cmd.Flags().StringVar(&traceLevel, "trace-level", "debug",
-		"minimum trace level: debug|info|warn|error (default: debug when --trace is set)")
-	cmd.Flags().BoolVar(&traceRedact, "trace-redact", true,
-		"redact sensitive values (API keys, etc.) in trace output")
 
 	cmd.Flags().BoolVar(&continueFlag, "continue", false,
 		"resume an existing session instead of starting a fresh one")
@@ -1068,7 +990,6 @@ Examples:
 	return cmd
 }
 
-// traceCmd is defined in trace.go.
 // replayCmd is defined in replay.go (oracle-split Phase 4).
 
 func testCmd() *cobra.Command {

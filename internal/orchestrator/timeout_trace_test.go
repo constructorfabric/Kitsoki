@@ -18,10 +18,7 @@ import (
 )
 
 // TestTimeout_TraceArmCancelFire verifies that arming, cancelling, and
-// firing a timeout each emit their respective structured event. This is
-// the regression net for the original bug where timeout dispatcher activity
-// landed as unmoored DEBUG entries in --trace-pretty rather than under the
-// TIMEOUT chip.
+// firing a timeout each emit their respective structured slog event kind.
 func TestTimeout_TraceArmCancelFire(t *testing.T) {
 	t.Parallel()
 

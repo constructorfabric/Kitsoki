@@ -8,8 +8,7 @@
 //
 // cause the orchestrator to auto-transition out of the declaring state
 // after the declared duration has elapsed on the orchestrator's clock.
-// Cancelled when any normal exit fires before the timer.  Survives
-// orchestrator restarts via a small SQLite table.
+// Cancelled when any normal exit fires before the timer.
 //
 // # Design
 //
@@ -20,14 +19,16 @@
 // StateExited/StateEntered/TimeoutFired and runs the destination state's
 // on_enter chain.  Exiting the timeout state cancels the timer.
 //
-// # Persistence
+// # Persistence (phase A: in-memory only)
 //
-// Pending entries are written to a `timeouts` table (one row per
-// (session_id, state_path)) when armed and deleted when fired or cancelled.
-// On orchestrator start (RearmPersisted), every row is reloaded and a fresh
-// timer is scheduled at (fires_at - now).  Entries whose fires_at is already
-// in the past fire immediately on rearm so a crash during a long timeout
-// still lands the session in the target state.
+// Pending entries exist only in the process's memory.  Timeouts are lost
+// on process restart.  Phase B will restore persistence via a non-SQLite
+// seam (e.g., a sidecar JSONL file under ~/.kitsoki/timeouts/); until then
+// a crash or restart while a session is waiting in a Timeout: state will
+// leave the session stuck — the operator must manually re-trigger or
+// teleport the session past the timed state.  arm() and cancel() emit
+// journal entries (KindTimeoutArmed / KindTimeoutCancelled) as a
+// best-effort audit trail.
 package orchestrator
 
 import (
@@ -575,6 +576,7 @@ func (o *Orchestrator) fireTimeout(ctx context.Context, sid app.SessionID, fromS
 	for i := range events {
 		events[i].Turn = turnNum
 	}
+	stampStatePathPerEvent(events)
 	stampStatePath(events, fromState, o.InitialState())
 	// Site 14: dual-write journal entries for the timeout-fired synthetic turn.
 	ftJEntries := journalEntriesForEvents(sid, turnNum, time.Now(), events,

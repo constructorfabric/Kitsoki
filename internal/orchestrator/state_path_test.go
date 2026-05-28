@@ -225,6 +225,71 @@ func TestMidOracleCall_ReIssueOnNextTurn(t *testing.T) {
 		"trace must have more events after the new turn (dangling oracle + new turn events)")
 }
 
+// TestStatePathPerEvent_FoyerToCloakroom asserts the G5 fix: machine.state_exited
+// carries the FROM state ("foyer") and machine.state_entered carries the TO state
+// ("cloakroom") — not the uniform FROM-state that stampStatePath would assign without
+// the per-event pre-stamp.
+func TestStatePathPerEvent_FoyerToCloakroom(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	tracePath := filepath.Join(dir, "trace_g5.jsonl")
+
+	def, err := app.Load("../../testdata/apps/cloak/app.yaml")
+	require.NoError(t, err)
+
+	m, err := machine.New(def)
+	require.NoError(t, err)
+
+	s, err := store.OpenMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	sink, err := store.OpenJSONL(tracePath)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sink.Close() })
+
+	hostReg := host.NewRegistry()
+	host.RegisterBuiltins(hostReg)
+
+	orch := orchestrator.New(def, m, s, noopHarness{},
+		orchestrator.WithHostRegistry(hostReg),
+		orchestrator.WithEventSink(sink),
+		orchestrator.WithEventSinkAuthority(true),
+	)
+	ctx := context.Background()
+
+	sid, err := orch.NewSession(ctx)
+	require.NoError(t, err)
+
+	// foyer → go west → cloakroom
+	out, err := orch.SubmitDirect(ctx, sid, "go", map[string]any{"direction": "west"})
+	require.NoError(t, err)
+	require.Equal(t, orchestrator.ModeTransitioned, out.Mode)
+
+	hist := sink.History()
+	require.NotEmpty(t, hist)
+
+	var exited, entered *store.Event
+	for i := range hist {
+		switch hist[i].Kind {
+		case store.StateExited:
+			ev := hist[i]
+			exited = &ev
+		case store.StateEntered:
+			ev := hist[i]
+			entered = &ev
+		}
+	}
+
+	require.NotNil(t, exited, "expected a machine.state_exited event")
+	require.NotNil(t, entered, "expected a machine.state_entered event")
+
+	require.Equal(t, app.StatePath("foyer"), exited.StatePath,
+		"machine.state_exited must carry the FROM state (foyer), not the TO state")
+	require.Equal(t, app.StatePath("cloakroom"), entered.StatePath,
+		"machine.state_entered must carry the TO state (cloakroom), not the FROM state (foyer)")
+}
+
 // TestTsNonZero_AfterTurn verifies that every event written during a turn
 // has a non-zero, post-2020 timestamp (finding 2.3 regression guard).
 func TestTsNonZero_AfterTurn(t *testing.T) {

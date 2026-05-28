@@ -16,9 +16,8 @@
 //
 // Lifecycle: [InstallRoutingObserver] returns a *RoutingObserver that
 // the caller wires into their slog logger as one handler in a multi-
-// handler set (the same way the always-on RingBuffer is wired in
-// cmd/kitsoki/trace.go::BuildTraceLogger). [RoutingObserver.Attach]
-// sets the *tea.Program and starts dispatching; [Detach] stops it.
+// handler set. [RoutingObserver.Attach] sets the *tea.Program and starts
+// dispatching; [Detach] stops it.
 //
 // The observer also maintains a small in-memory ring of routing
 // records (the last N events grouped by turn number) so the ctrl+r

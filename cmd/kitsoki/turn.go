@@ -316,7 +316,7 @@ func runTraceTurn(cmd *cobra.Command, appPath, tracePath, intentName string, slo
 
 	def, err := loadAppWithEnv(appPath)
 	if err != nil {
-		return infraError("load app %q: %v", appPath, err)
+		return infraError("%v", err)
 	}
 
 	// Ensure the trace directory exists.

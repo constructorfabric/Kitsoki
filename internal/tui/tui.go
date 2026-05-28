@@ -254,11 +254,12 @@ type RootModel struct {
 	// Nil disables journal writes (back-compat default for tests).
 	journalWriter journal.Writer
 
-	// traceRing is the always-on in-memory ring buffer built by
-	// BuildTraceLogger.  buildMetaTurnContext snapshots it to
-	// traceFilePath on every meta-mode Send so the agent can Read
-	// the file for session-history context. Nil disables the dump
-	// (tests / headless callers).
+	// traceRing is an optional in-memory ring buffer.  When non-nil and
+	// traceFileExternal is false, buildMetaTurnContext snapshots it to
+	// traceFilePath on every meta-mode Send so the agent can Read the file
+	// for session-history context.  Production kitsoki run uses the
+	// EventSink JSONL path directly (traceFileExternal=true); the ring
+	// is wired in tests that want a lightweight fallback without a real file.
 	traceRing *trace.RingBuffer
 	// traceFileExternal is true when traceFilePath points at a file an
 	// external writer is keeping current (e.g. --trace /path.jsonl).  In
@@ -377,12 +378,12 @@ func WithMetaController(c *metamode.Controller) RootModelOption {
 	return func(m *RootModel) { m.metaController = c }
 }
 
-// WithTraceRingBuffer wires the always-on in-memory trace ring into
-// the RootModel.  buildMetaTurnContext snapshots it to disk on every
-// meta-mode Send so the agent can Read the recent session history.
-// Production passes the ring built by BuildTraceLogger; tests pass nil
-// (the dump is silently skipped) unless they explicitly want to assert
-// on the on-disk file.
+// WithTraceRingBuffer wires an in-memory trace ring into the RootModel.
+// buildMetaTurnContext snapshots it to disk on every meta-mode Send when
+// no external trace file is available.  Tests that want a lightweight
+// fallback without a real EventSink file pass a ring here; tests and
+// production callers that hand the agent a real JSONL path via
+// WithExternalTraceFile do not need to set a ring.
 func WithTraceRingBuffer(rb *trace.RingBuffer) RootModelOption {
 	return func(m *RootModel) { m.traceRing = rb }
 }
@@ -441,8 +442,7 @@ func WithInitialTypedView(typed *app.View, env expr.Env, rr *render.AppRenderer)
 // caller binds it to the *tea.Program post-construction via
 // sink.Attach(prog), exactly like RoutingObserver.Attach. When
 // omitted (or nil), meta-mode falls back to the buffered "agent is
-// thinking…" spinner UX — slog still records the stream-json events
-// for --trace-pretty consumers.
+// thinking…" spinner UX — slog still records the stream-json events.
 func WithMetaStreamSink(sink *MetaStreamSink) RootModelOption {
 	return func(m *RootModel) { m.metaStreamSink = sink }
 }

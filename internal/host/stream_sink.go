@@ -1,11 +1,10 @@
 // Package host — meta-mode stream-event sink.
 //
 // runClaudeStreamJSON in oracle_runner.go emits one slog.InfoContext
-// record per JSONL line claude prints in stream-json mode. That feeds
-// the --trace-pretty file, but the TUI's transcript pane has no slog
-// listener — it would stay frozen behind the "agent is thinking…"
-// spinner until the terminal `result` event lands and metaSendDoneMsg
-// finally fires.
+// record per JSONL line claude prints in stream-json mode. The TUI's
+// transcript pane has no slog listener — it would stay frozen behind
+// the "agent is thinking…" spinner until the terminal `result` event
+// lands and metaSendDoneMsg finally fires.
 //
 // StreamSink is a non-blocking observer that lets the TUI tee those
 // same events into the transcript in real time. The runner pulls a

@@ -68,10 +68,15 @@ SQLite or a fake clock.
     --harness replay \
     --recording testdata/apps/cloak/recording.yaml
 
-# Verbose tracing, both JSONL and human-readable, to disk
-./kitsoki run testdata/apps/cloak/app.yaml \
-    --trace /tmp/cloak.jsonl \
-    --trace-pretty /tmp/cloak.log
+# A JSONL trace is always written automatically to .kitsoki/sessions/
+# View it with:
+kitsoki trace .kitsoki/sessions/20260115T090000Z-cloak.jsonl
+# or:
+jq '.kind,.state_path' .kitsoki/sessions/20260115T090000Z-cloak.jsonl
+
+# One-shot headless turn (no TUI, no LLM):
+./kitsoki turn --app testdata/apps/cloak/app.yaml \
+    --trace /tmp/cloak-turn.jsonl --intent go --slot direction=west
 
 # Visualise the state graph
 ./kitsoki viz testdata/apps/cloak/app.yaml | dot -Tpng -o /tmp/cloak.png
@@ -169,35 +174,47 @@ implicit public surface — flow tests, the trace pretty-printer, and
 
 ### 6.1 The trace is your transcript
 
+`kitsoki run` always writes a JSONL trace into the nearest `.kitsoki/sessions/`
+folder (walking up from cwd; falling back to cwd if none exists), named
+`<utc-timestamp>-<app-id>.jsonl`. No extra flag is needed. Add
+`.kitsoki/sessions/` (but not the whole `.kitsoki/` directory) to your
+project's `.gitignore`; this repo's `.gitignore` already does so.
+
+For `kitsoki turn --trace <path>`, the trace is at the path you supply.
+
+**Viewing a trace:**
+
 ```sh
-kitsoki run myapp.yaml --trace /tmp/run.jsonl --trace-pretty -
+kitsoki trace .kitsoki/sessions/20260115T090000Z-cloak.jsonl   # pretty-print
+jq 'select(.kind=="machine.state_entered") | .state_path' trace.jsonl  # jq
 ```
 
-`--trace` writes one JSON object per event. `--trace-pretty -` mirrors
-to stderr in colour. After the fact, `kitsoki trace /tmp/run.jsonl`
-re-pretty-prints.
+**Trace format:** one JSON object per line in the `store.Event` shape
+(`turn`, `seq`, `ts`, `kind`, `state_path`, `payload`). The full schema and
+event-kind vocabulary are in [`docs/trace-format.md`](trace-format.md).
 
-Even without `--trace`, `kitsoki run` always drops a JSONL trace into
-the nearest `.kitsoki/sessions/` folder (walking up from cwd; falling
-back to cwd if none exists) named
-`<utc-timestamp>-<app-id>.jsonl`. The rest of `.kitsoki/` is reserved
-for local per-repo state we may want to keep — add
-`.kitsoki/sessions/` (but not the whole `.kitsoki/` directory) to your
-project's `.gitignore`. This repo's own `.gitignore` already does so.
+**Path schemes:**
 
-Every event line carries `session_id`, `turn`, and
-the namespaced `event` name (e.g. `harness.response`,
-`machine.transition`, `host.invoke.return`). Grep is your friend.
+| Entry point          | Path                                                         |
+|----------------------|--------------------------------------------------------------|
+| `kitsoki run` (TUI)  | `~/.kitsoki/sessions/<app>/<sha8>-tui-<sid>.jsonl`          |
+| `kitsoki turn`       | Caller-supplied `--trace <path>`; explicit                  |
+| `session continue`   | `~/.kitsoki/sessions/<app>/<sha8>-<slug>.jsonl`             |
 
-The most diagnostic events:
+The TUI uses the home-anchored scheme so resumed sessions always append to the
+same file. `kitsoki run` for one-off interactive sessions uses the repo-anchored
+scheme so traces land next to the story sources.
 
-- `harness.request` / `harness.response` — what the LLM was given,
-  what came back, and what it parsed to.
-- `machine.guard` — every `when:` evaluation with its result.
-- `host.invoke.start` / `host.invoke.return` — host call boundaries
-  with the args and result data.
-- `turn.done` — carries the rendered view, so the trace is a complete
-  after-the-fact transcript.
+**Diagnostic events to look for:**
+
+- `oracle.ask.start` / `oracle.tool_call` — what the LLM was given and what
+  came back.
+- `machine.guard_rejected` — every `when:` evaluation that failed.
+- `harness.called` / `harness.returned` — host call boundaries with args and
+  result data.
+- `machine.state_exited` / `machine.state_entered` — state transition with
+  the exact FROM and TO paths stamped per-event.
+- `turn.end` — carries the rendered view, so the trace is a complete transcript.
 
 ### 6.2 `kitsoki inspect`
 
