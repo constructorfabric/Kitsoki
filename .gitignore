@@ -32,6 +32,12 @@ coverage.html
 # Session data (local only)
 ~/.kitsoki/
 
+# Per-repo session traces auto-dropped by `kitsoki run` into the nearest
+# .kitsoki/ folder. The rest of `.kitsoki/` is reserved for local state
+# we may want to keep around; only the auto-traces are guaranteed
+# throwaway.
+.kitsoki/sessions/
+
 # Local session summaries (per-checkout, not committed)
 .context/
 

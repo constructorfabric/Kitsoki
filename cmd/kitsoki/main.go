@@ -265,6 +265,16 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 				return fmt.Errorf("unknown --trace-level %q (use debug|info|warn|error)", traceLevel)
 			}
 
+			// Default: always drop a JSONL trace into the nearest
+			// .kitsoki/sessions/ folder so post-mortems don't depend on
+			// the operator remembering --trace. The operator can still
+			// override with an explicit --trace path (or '-' for stderr).
+			if tracePath == "" {
+				if def := defaultSessionTracePath(def.App.ID); def != "" {
+					tracePath = def
+				}
+			}
+
 			traceCfg := TraceConfig{
 				JSONLPath:  tracePath,
 				PrettyPath: tracePretty,

@@ -399,6 +399,53 @@ func BuildTraceLogger(cfg TraceConfig) (l *slog.Logger, ring *trace.RingBuffer, 
 	return slog.New(&multiHandler{handlers: handlers}), ring, cleanup, nil
 }
 
+// defaultSessionTracePath returns the JSONL trace path used when the
+// operator did not pass `--trace`. We walk upward from cwd looking for an
+// existing `.kitsoki/` directory (or `.kitsoki-root` marker, the same
+// signal `internal/app/imports.go` uses to identify a repo root). If none
+// is found we anchor at cwd and create `.kitsoki/sessions/` there. The
+// trace lives at
+// `<anchor>/.kitsoki/sessions/<RFC3339-timestamp>-<app-id>.jsonl`.
+// Returns "" if cwd lookup fails — caller treats that as "no default".
+func defaultSessionTracePath(appID string) string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	anchor := cwd
+	cur := cwd
+	for {
+		if fi, statErr := os.Stat(filepath.Join(cur, ".kitsoki")); statErr == nil && fi.IsDir() {
+			anchor = cur
+			break
+		}
+		if _, statErr := os.Stat(filepath.Join(cur, ".kitsoki-root")); statErr == nil {
+			anchor = cur
+			break
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			// No existing anchor found anywhere above us — create one
+			// at cwd so the operator gets a stable, discoverable place
+			// to look for traces. openSink would MkdirAll the sessions
+			// subdir anyway, but doing it here means the bare
+			// `.kitsoki/` is present even before the first event lands.
+			if mkErr := os.MkdirAll(filepath.Join(cwd, ".kitsoki", "sessions"), 0o755); mkErr != nil {
+				return ""
+			}
+			anchor = cwd
+			break
+		}
+		cur = parent
+	}
+	safeApp := appID
+	if safeApp == "" {
+		safeApp = "session"
+	}
+	stamp := time.Now().UTC().Format("20060102T150405Z")
+	return filepath.Join(anchor, ".kitsoki", "sessions", stamp+"-"+safeApp+".jsonl")
+}
+
 // openSink opens a write sink. "-" → os.Stderr; anything else → file.
 // Creates any missing parent directories so callers can pass a path
 // like /tmp/kitsoki-traces/foo.jsonl without pre-creating the dir.

@@ -175,7 +175,17 @@ kitsoki run myapp.yaml --trace /tmp/run.jsonl --trace-pretty -
 
 `--trace` writes one JSON object per event. `--trace-pretty -` mirrors
 to stderr in colour. After the fact, `kitsoki trace /tmp/run.jsonl`
-re-pretty-prints. Every event line carries `session_id`, `turn`, and
+re-pretty-prints.
+
+Even without `--trace`, `kitsoki run` always drops a JSONL trace into
+the nearest `.kitsoki/sessions/` folder (walking up from cwd; falling
+back to cwd if none exists) named
+`<utc-timestamp>-<app-id>.jsonl`. The rest of `.kitsoki/` is reserved
+for local per-repo state we may want to keep — add
+`.kitsoki/sessions/` (but not the whole `.kitsoki/` directory) to your
+project's `.gitignore`. This repo's own `.gitignore` already does so.
+
+Every event line carries `session_id`, `turn`, and
 the namespaced `event` name (e.g. `harness.response`,
 `machine.transition`, `host.invoke.return`). Grep is your friend.
 
