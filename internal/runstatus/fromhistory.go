@@ -111,13 +111,34 @@ func mapHistory(hist store.History, def *app.AppDef) (out []TraceEvent, currentS
 			}
 		}
 
+		displayTurn := int(ev.Turn)
+
+		// When a user turn carries actual input text, synthesise a turn.input
+		// event placed at the end of the *previous* turn's group so the timeline
+		// reads "turn N-1 worked, then the user said X, then turn N processed it."
+		// Programmatic / seed turns (turn 0 or empty input) produce no extra row.
+		if ev.Kind == store.TurnStarted && displayTurn > 0 {
+			if input, ok := payload["input"].(string); ok && input != "" {
+				out = append(out, TraceEvent{
+					Time:       ev.Ts,
+					Level:      "INFO",
+					Msg:        "turn.input",
+					Turn:       displayTurn - 1,
+					StatePath:  currentState,
+					ParentTurn: int(ev.ParentTurn),
+					Attrs:      map[string]any{"input": input},
+				})
+			}
+		}
+
 		out = append(out, TraceEvent{
-			Time:      ev.Ts,
-			Level:     levelFor(ev.Kind),
-			Msg:       msgFor(ev.Kind),
-			Turn:      int(ev.Turn),
-			StatePath: currentState,
-			Attrs:     payload,
+			Time:       ev.Ts,
+			Level:      levelFor(ev.Kind),
+			Msg:        msgFor(ev.Kind),
+			Turn:       displayTurn,
+			StatePath:  currentState,
+			ParentTurn: int(ev.ParentTurn),
+			Attrs:      payload,
 		})
 
 		if int(ev.Turn) > lastTurn {
@@ -151,7 +172,7 @@ func msgFor(k store.EventKind) string {
 	case store.TransitionApplied:
 		return "machine.transition"
 	case store.EffectApplied:
-		return "machine.effect"
+		return "world.update"
 	case store.HostInvoked:
 		return "harness.called"
 	case store.HostDispatched:
@@ -233,12 +254,6 @@ func synthesiseOracleEvents(db *sql.DB, sid app.SessionID, existing []TraceEvent
 			continue
 		}
 
-		// Derive start timestamp.
-		startTs := entry.Ts
-		if partial.Duration > 0 {
-			startTs = entry.Ts.Add(-time.Duration(partial.Duration) * time.Millisecond)
-		}
-
 		// Prompt preview (truncated to promptPreviewLen chars).
 		preview := partial.Prompt
 		if len([]rune(preview)) > promptPreviewLen {
@@ -246,15 +261,34 @@ func synthesiseOracleEvents(db *sql.DB, sid app.SessionID, existing []TraceEvent
 			preview = string(runes[:promptPreviewLen])
 		}
 
-		// state_path for synthesised events: nearest-preceding store event.
-		statePath := nearestStatePath(existing, startTs)
+		// state_path and turn for synthesised events: derived from the
+		// nearest-preceding store event by timestamp. entry.Turn is 0 for
+		// oracle calls that fired during RunInitialOnEnter (all state
+		// transitions cascade synchronously before any turn.start), so we
+		// always prefer the positional lookup over the stored turn number.
+		//
+		// For the turn we use entry.Ts (the completion time) for both the
+		// start and complete events: the oracle call belongs to whichever
+		// turn it *completed* in, and using the back-calculated start time
+		// (entry.Ts - duration) would place long-running calls in the wrong
+		// (often pre-turn-1) bucket.
+		//
+		// For the oracle.start event's position in the merged stream we also
+		// use entry.Ts (minus 1 µs so stable sort keeps it before oracle.complete).
+		// Using startTs would place long-running cassette calls minutes before
+		// their turn's machine events and before the host calls that precede
+		// or follow the oracle within that turn. The actual elapsed duration
+		// is preserved in the oracle.complete attrs.duration_ms field.
+		turn := nearestTurn(existing, entry.Ts)
+		statePath := nearestStatePath(existing, entry.Ts)
+		startEventTs := entry.Ts.Add(-time.Microsecond)
 
 		// oracle.<verb>.start
 		out = append(out, TraceEvent{
-			Time:      startTs,
+			Time:      startEventTs,
 			Level:     "INFO",
 			Msg:       "oracle." + verb + ".start",
-			Turn:      int(entry.Turn),
+			Turn:      turn,
 			StatePath: statePath,
 			Attrs: map[string]any{
 				"verb":           verb,
@@ -273,7 +307,7 @@ func synthesiseOracleEvents(db *sql.DB, sid app.SessionID, existing []TraceEvent
 			Time:      entry.Ts,
 			Level:     "INFO",
 			Msg:       "oracle." + verb + ".complete",
-			Turn:      int(entry.Turn),
+			Turn:      nearestTurn(existing, entry.Ts),
 			StatePath: nearestStatePath(existing, entry.Ts),
 			Attrs:     completeAttrs,
 		})
@@ -282,7 +316,9 @@ func synthesiseOracleEvents(db *sql.DB, sid app.SessionID, existing []TraceEvent
 }
 
 // nearestStatePath returns the state_path from the last store event whose
-// timestamp is <= ts. Returns "" if no store event precedes ts.
+// timestamp is <= ts. If no preceding event carries a state_path (e.g. oracle
+// calls that fire during RunInitialOnEnter before the first machine.state_entered),
+// it falls back to the first subsequent event that carries a non-empty state_path.
 func nearestStatePath(events []TraceEvent, ts time.Time) string {
 	state := ""
 	for _, ev := range events {
@@ -293,7 +329,36 @@ func nearestStatePath(events []TraceEvent, ts time.Time) string {
 			state = ev.StatePath
 		}
 	}
-	return state
+	if state != "" {
+		return state
+	}
+	// Forward fallback: no preceding state found; use the next available state.
+	for _, ev := range events {
+		if !ev.Time.After(ts) {
+			continue
+		}
+		if ev.StatePath != "" {
+			return ev.StatePath
+		}
+	}
+	return ""
+}
+
+// nearestTurn returns the turn number from the last store event whose
+// timestamp is <= ts. Returns 0 if no store event precedes ts.
+// Used to assign oracle synthesised events to the correct turn group even
+// when entry.Turn is 0 (oracle calls that fired during RunInitialOnEnter).
+func nearestTurn(events []TraceEvent, ts time.Time) int {
+	turn := 0
+	for _, ev := range events {
+		if ev.Time.After(ts) {
+			break
+		}
+		if ev.Turn > turn {
+			turn = ev.Turn
+		}
+	}
+	return turn
 }
 
 // mergeEventsByTime merges two slices of TraceEvents into one sorted by Time.

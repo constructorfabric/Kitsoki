@@ -58,11 +58,11 @@ test.describe("bugfix fixture", () => {
     // The "clear highlight" pill should appear in the timeline panel header.
     await expect(page.locator(".run-view__clear-highlight")).toBeVisible();
 
-    // Several timeline rows should pick up the .highlighted class — the
-    // real bugfix flow emits ~13 events whose state_path falls under
-    // reproducing.* across the room's turn(s).
+    // Several timeline rows should pick up the .highlighted class.
+    // (machine.* and turn.* rows are filtered by default, so the count
+    // reflects the oracle + host + world rows with state_path='reproducing'.)
     const highlighted = page.locator(".trace-timeline__row.highlighted");
-    expect(await highlighted.count()).toBeGreaterThan(5);
+    expect(await highlighted.count()).toBeGreaterThanOrEqual(5);
   });
 
   test("clicking a phase header highlights all of its rooms' events", async ({ page }) => {
@@ -154,26 +154,28 @@ test.describe("bugfix fixture", () => {
     await load(page);
     await page.waitForSelector(".trace-timeline__row", { timeout: 8000 });
 
-    // Find an oracle.<verb>.complete row in the timeline.
+    // Find a merged oracle.<verb> row in the timeline.
+    // The timeline merges oracle.start+complete pairs into a single row whose
+    // .trace-timeline__msg text reads "oracle.<verb>" (e.g. "oracle.task").
     const oracleCompleteRow = page.locator(".trace-timeline__row", {
-      has: page.locator(".trace-timeline__msg").filter({ hasText: /oracle\.[a-z]+\.complete/ }),
+      has: page.locator(".trace-timeline__msg").filter({ hasText: /^oracle\.[a-z]+$/ }),
     }).first();
 
     await expect(oracleCompleteRow).toBeVisible({ timeout: 5000 });
     await oracleCompleteRow.click();
 
-    // Drawer opens.
-    const drawer = page.locator(".detail-drawer");
-    await expect(drawer).toBeVisible({ timeout: 3000 });
+    // Row expands inline — look inside the row's body, not a separate drawer.
+    const rowBody = oracleCompleteRow.locator(".trace-timeline__row-body");
+    await expect(rowBody).toBeVisible({ timeout: 3000 });
 
     // The OracleDetail verb badge must be visible (confirms OracleDetail rendered).
-    await expect(drawer.locator(".oracle-detail__verb-badge")).toBeVisible({ timeout: 3000 });
+    await expect(rowBody.locator(".oracle-detail__verb-badge")).toBeVisible({ timeout: 3000 });
 
     // The prompt pane: CollapsibleText renders a .ct-pre when text is non-empty.
     // TaskDetail uses CollapsibleText for "Prompt"; AskDetail also uses it.
     // We assert that at least one .ct-pre is non-empty, confirming the prompt
     // attr reached the sub-renderer.
-    const promptPre = drawer.locator(".ct-pre").first();
+    const promptPre = rowBody.locator(".ct-pre").first();
     await expect(promptPre).toBeVisible({ timeout: 3000 });
     const promptText = await promptPre.innerText();
     expect(promptText.trim().length, "Expected the prompt pane to be non-empty").toBeGreaterThan(0);
@@ -185,26 +187,29 @@ test.describe("bugfix fixture", () => {
     await load(page);
     await page.waitForSelector(".trace-timeline__row", { timeout: 8000 });
 
-    // Find an oracle.task.complete or oracle.ask.complete row — both have
-    // visible response content in the drawer under different sub-renderers.
+    // Find merged oracle.<verb> rows — the timeline merges start+complete pairs
+    // into a single row whose .trace-timeline__msg reads "oracle.<verb>".
     const oracleCompleteRows = page.locator(".trace-timeline__row", {
-      has: page.locator(".trace-timeline__msg").filter({ hasText: /oracle\.[a-z]+\.complete/ }),
+      has: page.locator(".trace-timeline__msg").filter({ hasText: /^oracle\.[a-z]+$/ }),
     });
     const count = await oracleCompleteRows.count();
-    expect(count, "Expected at least one oracle.complete row in the timeline").toBeGreaterThan(0);
+    expect(count, "Expected at least one oracle row in the timeline").toBeGreaterThan(0);
 
-    // Iterate rows to find one whose drawer shows a non-empty response pane.
+    // Iterate rows to find one whose inline expansion shows a non-empty response.
     // (Some verbs render response as .od-pre--response; tasks render it via
     // CollapsibleText or the Transcript tab. We look for any non-empty .od-pre
-    // or .ct-pre in the drawer.)
+    // or .ct-pre in the expanded row body.)
     let foundNonEmptyResponse = false;
     for (let i = 0; i < Math.min(count, 5); i++) {
-      await oracleCompleteRows.nth(i).click();
-      const drawer = page.locator(".detail-drawer");
-      await expect(drawer).toBeVisible({ timeout: 2000 });
+      const row = oracleCompleteRows.nth(i);
+      await row.click();
+
+      // Row expands inline — look inside the row's body.
+      const rowBody = row.locator(".trace-timeline__row-body");
+      await expect(rowBody).toBeVisible({ timeout: 2000 });
 
       // Check for any pre block (CollapsibleText or response) with content.
-      const pres = drawer.locator(".ct-pre, .od-pre");
+      const pres = rowBody.locator(".ct-pre, .od-pre");
       const preCount = await pres.count();
       for (let j = 0; j < preCount; j++) {
         const text = await pres.nth(j).innerText();
@@ -215,13 +220,13 @@ test.describe("bugfix fixture", () => {
       }
       if (foundNonEmptyResponse) break;
 
-      // Close drawer and try next row.
-      await drawer.locator(".detail-drawer__close").click();
+      // Collapse row and try next.
+      await row.click();
     }
 
     expect(
       foundNonEmptyResponse,
-      "Expected to find a non-empty prompt/response pane in at least one oracle.complete drawer"
+      "Expected to find a non-empty prompt/response pane in at least one oracle row body"
     ).toBe(true);
   });
 });

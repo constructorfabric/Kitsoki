@@ -1253,6 +1253,14 @@ func (m RootModel) routeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.menuSystem.Open()
 			return m, nil
 		}
+		if m.mode == ModeAwaitingLLM {
+			if m.inFlightCancel != nil {
+				m.inFlightCancel()
+			}
+			m.mode = ModeMenu
+			m.menuSystem.Open()
+			return m, nil
+		}
 	}
 
 	// Scroll keys (Shift+↑/↓, Ctrl+U/D/B/F, PgUp/PgDn) used to drive

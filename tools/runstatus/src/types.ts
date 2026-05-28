@@ -24,6 +24,10 @@ export interface TraceEvent {
   session_id: string;
   turn: number;
   state_path: string;
+  /** Non-zero for off-path event batches: the foreground turn that was active
+   *  when the off-path interaction occurred. The trace UI uses this to render
+   *  off-path groups as nested sub-items rather than independent sibling turns. */
+  parent_turn?: number;
   attrs: Record<string, unknown>;
 }
 

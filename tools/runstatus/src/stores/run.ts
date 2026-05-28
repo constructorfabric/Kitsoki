@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
-import { ref, computed } from "vue";
-import type { AppDef, MermaidSnapshot, TraceEvent, NodeRef } from "../types.js";
+import { ref } from "vue";
+import type { AppDef, MermaidSnapshot, TraceEvent } from "../types.js";
 import type { DataSource } from "../data/source.js";
 
 export const useRunStore = defineStore("run", () => {
@@ -9,7 +9,6 @@ export const useRunStore = defineStore("run", () => {
   const mermaid = ref<MermaidSnapshot | null>(null);
   const events = ref<TraceEvent[]>([]);
   const currentStatePath = ref<string>("");
-  const selectedNode = ref<NodeRef | null>(null);
   const selectedEventIndex = ref<number | null>(null);
   const terminal = ref<boolean>(false);
   const loading = ref<boolean>(false);
@@ -64,35 +63,13 @@ export const useRunStore = defineStore("run", () => {
     _unsubscribe = null;
   }
 
-  /**
-   * Look up nodeId in mermaid.node_map and set selectedNode.
-   * Sets selectedNode to null if nodeId is not found.
-   */
-  function selectNode(nodeId: string): void {
-    const map = mermaid.value?.node_map;
-    if (map === undefined) {
-      selectedNode.value = null;
-      return;
-    }
-    const ref = map[nodeId];
-    selectedNode.value = ref ?? null;
-  }
-
-  /** The currently selected event object (null when none or index out of range). */
-  const selectedEvent = computed<TraceEvent | null>(() => {
-    const i = selectedEventIndex.value;
-    if (i === null || i < 0 || i >= events.value.length) return null;
-    return events.value[i] ?? null;
-  });
-
-  /** Set the selected event by index. */
+  /** Set the selected event by index (drives inline row highlight). */
   function selectEvent(index: number): void {
     selectedEventIndex.value = index;
   }
 
-  /** Clear both the selected node and selected event. */
+  /** Clear the selected event. */
   function clearSelection(): void {
-    selectedNode.value = null;
     selectedEventIndex.value = null;
   }
 
@@ -108,9 +85,7 @@ export const useRunStore = defineStore("run", () => {
     mermaid,
     events,
     currentStatePath,
-    selectedNode,
     selectedEventIndex,
-    selectedEvent,
     terminal,
     loading,
     highlightedStatePaths,
@@ -118,7 +93,6 @@ export const useRunStore = defineStore("run", () => {
     // actions
     hydrate,
     teardown,
-    selectNode,
     selectEvent,
     clearSelection,
     setHighlightedStatePaths,

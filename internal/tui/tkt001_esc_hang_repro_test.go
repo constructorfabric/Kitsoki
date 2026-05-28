@@ -87,9 +87,8 @@ func TestTKT001_EscBannerDismiss_BlocksEventLoop(t *testing.T) {
 	rm.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	elapsed := time.Since(start)
 
-	// BUG(TKT-001): when MarkNotificationRead runs synchronously inside Update()
-	// it blocks on the held transaction. This assertion passes while the bug is
-	// present; it fails once the call is moved into a tea.Cmd.
-	assert.GreaterOrEqual(t, elapsed, 150*time.Millisecond,
-		"BUG(TKT-001): Update() returned in %v; expected ≥150ms block while sync MarkNotificationRead holds the event loop", elapsed)
+	// Regression guard: Update() must return in microseconds because
+	// MarkNotificationRead is dispatched as a tea.Cmd, not called synchronously.
+	assert.Less(t, elapsed, 10*time.Millisecond,
+		"TKT-001 regression: Update() returned in %v; expected <10ms (sync DB call would block on held transaction)", elapsed)
 }

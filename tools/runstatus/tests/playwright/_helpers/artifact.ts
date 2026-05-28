@@ -13,6 +13,7 @@
 import fs from "fs";
 import { fileURLToPath } from "url";
 import path from "path";
+import { execSync } from "child_process";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,7 +21,11 @@ const __dirname = path.dirname(__filename);
 // __dirname = tools/runstatus/tests/playwright/_helpers
 // projectRoot = tools/runstatus (3 levels up)
 const projectRoot = path.resolve(__dirname, "../../..");
-const artifactsDir = path.join(projectRoot, ".playwright-artifacts");
+
+// Artifacts go in <repo-root>/.artifacts/ — top of the surrounding git
+// checkout (which is the worktree root when running from a worktree).
+const repoRoot = execSync("git rev-parse --show-toplevel", { cwd: projectRoot, encoding: "utf-8" }).trim();
+const artifactsDir = path.join(repoRoot, ".artifacts");
 
 /** Ensure the artifacts directory exists. */
 function ensureArtifactsDir(): void {

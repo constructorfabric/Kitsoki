@@ -122,33 +122,36 @@ describe("useRunStore — hydrate with SnapshotSource", () => {
   });
 });
 
-describe("useRunStore — selectNode", () => {
-  it("resolves a known nodeId from node_map", async () => {
+describe("useRunStore — setHighlightedStatePaths", () => {
+  it("sets highlightedStatePaths and bumps highlightTick", async () => {
     const store = useRunStore();
     await store.hydrate(new SnapshotSource(SNAPSHOT), "sess-1");
 
-    store.selectNode("root_review");
-    expect(store.selectedNode).toEqual({ kind: "state", ref: "root/review" });
+    expect(store.highlightedStatePaths).toEqual([]);
+    const tick0 = store.highlightTick;
+
+    store.setHighlightedStatePaths(["root/review", "root/done"]);
+    expect(store.highlightedStatePaths).toEqual(["root/review", "root/done"]);
+    expect(store.highlightTick).toBe(tick0 + 1);
   });
 
-  it("resolves effect and transition node kinds", async () => {
+  it("clears highlightedStatePaths when called with empty array", async () => {
     const store = useRunStore();
     await store.hydrate(new SnapshotSource(SNAPSHOT), "sess-1");
 
-    store.selectNode("effect_0");
-    expect(store.selectedNode?.kind).toBe("effect");
-
-    store.selectNode("transition_0");
-    expect(store.selectedNode?.kind).toBe("transition");
+    store.setHighlightedStatePaths(["root/review"]);
+    store.setHighlightedStatePaths([]);
+    expect(store.highlightedStatePaths).toEqual([]);
   });
 
-  it("sets selectedNode to null for an unknown nodeId", async () => {
+  it("bumps highlightTick each call (re-clicking same room scrolls again)", async () => {
     const store = useRunStore();
     await store.hydrate(new SnapshotSource(SNAPSHOT), "sess-1");
 
-    store.selectNode("root_review"); // set to non-null first
-    store.selectNode("nonexistent_node");
-    expect(store.selectedNode).toBeNull();
+    const tick0 = store.highlightTick;
+    store.setHighlightedStatePaths(["root/review"]);
+    store.setHighlightedStatePaths(["root/review"]);
+    expect(store.highlightTick).toBe(tick0 + 2);
   });
 });
 

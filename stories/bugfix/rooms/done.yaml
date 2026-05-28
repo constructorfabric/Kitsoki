@@ -72,10 +72,10 @@ states:
       # done's postmortem oracle mostly reads upstream artifact text —
       # consistency across rooms means an operator never has to remember
       # which oracle calls see which tree.
-      - invoke: host.oracle.ask
+      - invoke: host.oracle.decide
         with:
           agent: proposer
-          prompt: prompts/done_executing.md
+          prompt_path: prompts/done_executing.md
           schema: schemas/done_artifact.json
           working_dir: "{{ world.workdir }}"
           args:

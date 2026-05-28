@@ -78,8 +78,6 @@ func TestFromHistory_WithOracleJournal(t *testing.T) {
 	require.NoError(t, err, "load history (first load)")
 	require.Len(t, hist, 3, "expect 3 stored events")
 
-	// stateEnteredTs is the actual stored timestamp of the StateEntered event.
-	stateEnteredTs := hist[1].Ts
 	// lastEventTs is the timestamp of the last store event.
 	lastEventTs := hist[len(hist)-1].Ts
 
@@ -87,15 +85,12 @@ func TestFromHistory_WithOracleJournal(t *testing.T) {
 	jw, err := journal.NewSQLiteWriter(st.DB())
 	require.NoError(t, err, "create journal writer")
 
-	// The oracle call completes 200ms after the last store event and lasted 150ms,
-	// so the start event should land 50ms after the last store event.
+	// The oracle call completes 200ms after the last store event and lasted 150ms.
+	// oracle.start is placed 1µs before oracle.complete in the merged stream so
+	// it sorts just before it regardless of the original call duration.
 	callCompletedAt := lastEventTs.Add(200 * time.Millisecond)
 	callDurationMs := int64(150)
-	expectedStartTs := callCompletedAt.Add(-time.Duration(callDurationMs) * time.Millisecond)
-
-	// Sanity: expectedStartTs must be after stateEnteredTs so nearestStatePath works.
-	require.True(t, expectedStartTs.After(stateEnteredTs),
-		"oracle start (%v) must be after stateEntered (%v)", expectedStartTs, stateEnteredTs)
+	expectedStartTs := callCompletedAt.Add(-time.Microsecond)
 
 	oracleBody := map[string]any{
 		"call_id":       "test-call-001",

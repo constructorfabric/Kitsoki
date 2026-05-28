@@ -69,6 +69,7 @@ type EpisodeOracle struct {
 	Verb           string  `yaml:"verb"`                      // ask | decide | extract | task | converse
 	Agent          string  `yaml:"agent,omitempty"`
 	Model          string  `yaml:"model,omitempty"`
+	Turn           int64   `yaml:"turn,omitempty"`
 	DurationMs     int64   `yaml:"duration_ms,omitempty"`
 	PromptTokens   int     `yaml:"prompt_tokens,omitempty"`
 	ResponseTokens int     `yaml:"response_tokens,omitempty"`
@@ -473,6 +474,7 @@ func buildCassetteDispatcherFull(
 					// Compute the deterministic call_id for this episode.
 					detCallID := derivedCallID(cas.AppID, synth.ID)
 					synth.Oracle = oracleBodyToEpisode(body, detCallID)
+					synth.Oracle.Turn = int64(host.OracleCallCtxFrom(ctx).Turn)
 				}
 			}
 
@@ -523,10 +525,15 @@ func writeOracleJournalEntry(ctx context.Context, jw journal.Writer, cas *Casset
 		return // best-effort
 	}
 
+	turn := oc.Turn
+	if o.Turn > 0 {
+		turn = app.TurnNumber(o.Turn)
+	}
+
 	e := journal.Entry{
 		Ts:      time.Now(),
 		Session: oc.SessionID,
-		Turn:    oc.Turn,
+		Turn:    turn,
 		Seq:     0,
 		Kind:    journal.KindOracleCall,
 		Body:    json.RawMessage(raw),

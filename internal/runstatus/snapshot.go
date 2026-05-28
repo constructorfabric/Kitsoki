@@ -57,13 +57,18 @@ type NodeRef = viz.NodeRef
 // UnmarshalJSON implements the "known fields promoted, rest into Attrs" logic.
 // When marshalling back to JSON all fields are emitted normally.
 type TraceEvent struct {
-	Time      time.Time      `json:"time"`
-	Level     string         `json:"level"`
-	Msg       string         `json:"msg"`
-	SessionID string         `json:"session_id"`
-	Turn      int            `json:"turn"`
-	StatePath string         `json:"state_path"`
-	Attrs     map[string]any `json:"attrs"` // catch-all for slog kv pairs not modelled above
+	Time       time.Time      `json:"time"`
+	Level      string         `json:"level"`
+	Msg        string         `json:"msg"`
+	SessionID  string         `json:"session_id"`
+	Turn       int            `json:"turn"`
+	StatePath  string         `json:"state_path"`
+	// ParentTurn is non-zero for off-path event batches: it holds the
+	// foreground turn that was active when the off-path interaction occurred.
+	// The trace UI uses this to render off-path groups as sub-items of their
+	// parent turn rather than as independent sibling turns.
+	ParentTurn int            `json:"parent_turn,omitempty"`
+	Attrs      map[string]any `json:"attrs"` // catch-all for slog kv pairs not modelled above
 }
 
 // knownTraceKeys is the set of top-level JSON keys that are promoted to named
@@ -74,13 +79,14 @@ type TraceEvent struct {
 // the UnmarshalJSON handler deserialises the "attrs" object into Attrs
 // directly rather than nesting it under Attrs["attrs"].
 var knownTraceKeys = map[string]bool{
-	"time":       true,
-	"level":      true,
-	"msg":        true,
-	"session_id": true,
-	"turn":       true,
-	"state_path": true,
-	"attrs":      true, // handled explicitly below for round-trip safety
+	"time":        true,
+	"level":       true,
+	"msg":         true,
+	"session_id":  true,
+	"turn":        true,
+	"state_path":  true,
+	"parent_turn": true,
+	"attrs":       true, // handled explicitly below for round-trip safety
 }
 
 // UnmarshalJSON implements json.Unmarshaler.
@@ -118,6 +124,9 @@ func (e *TraceEvent) UnmarshalJSON(b []byte) error {
 	}
 	if v, ok := raw["state_path"]; ok {
 		_ = json.Unmarshal(v, &e.StatePath)
+	}
+	if v, ok := raw["parent_turn"]; ok {
+		_ = json.Unmarshal(v, &e.ParentTurn)
 	}
 
 	// "attrs" is the serialised form of a previously marshalled TraceEvent.

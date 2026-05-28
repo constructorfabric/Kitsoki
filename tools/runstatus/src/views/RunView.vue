@@ -15,19 +15,10 @@
         <code class="run-view__current-state">{{ store.currentStatePath }}</code>
       </div>
 
-      <!-- Detail Drawer (teleports to body) -->
-      <DetailDrawer
-        v-if="store.appDef"
-        :selected-node="store.selectedNode"
-        :selected-event="store.selectedEvent"
-        :app-def="store.appDef"
-        @close="store.clearSelection()"
-      />
-
       <!-- Main panels -->
-      <div class="run-view__panels">
+      <div class="run-view__panels" ref="panelsEl">
         <!-- Diagram panel -->
-        <div class="run-view__panel run-view__panel--diagram">
+        <div class="run-view__panel run-view__panel--diagram" :style="{ flexBasis: diagramBasis }">
           <div class="run-view__panel-header">State Diagram</div>
           <StateDiagram
             v-if="store.mermaid"
@@ -35,14 +26,20 @@
             :node-map="store.mermaid.node_map"
             :current-state-path="store.currentStatePath"
             :highlighted-state-paths="store.highlightedStatePaths"
+            :events="store.events"
+            :selected-event-index="store.selectedEventIndex"
             @select="onNodeSelect"
             @select-phase="onPhaseSelect"
+            @select-event="onEventSelect"
           />
           <div v-else class="run-view__empty">No diagram.</div>
         </div>
 
+        <!-- Resize handle -->
+        <div class="run-view__divider" @mousedown.prevent="onDividerMousedown" />
+
         <!-- Timeline panel -->
-        <div class="run-view__panel run-view__panel--timeline">
+        <div class="run-view__panel run-view__panel--timeline" :style="{ flexBasis: timelineBasis }">
           <div class="run-view__panel-header">
             <span>Trace</span>
             <button
@@ -68,16 +65,54 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted } from "vue";
+import { onMounted, onUnmounted, ref } from "vue";
 import { useRunStore } from "../stores/run.js";
 import { createDataSource } from "../data/source.js";
 import StateDiagram from "../components/StateDiagram.vue";
 import TraceTimeline from "../components/TraceTimeline.vue";
-import DetailDrawer from "../components/DetailDrawer.vue";
 import type { NodeRef } from "../types.js";
 
 const props = defineProps<{ sessionId: string }>();
 const store = useRunStore();
+
+const panelsEl = ref<HTMLElement | null>(null);
+const splitPct = ref(50); // diagram gets this % of panel width
+
+const DIVIDER_PX = 6;
+
+const diagramBasis = ref("calc(50% - 3px)");
+const timelineBasis = ref("calc(50% - 3px)");
+
+function updateBases() {
+  diagramBasis.value = `calc(${splitPct.value}% - ${DIVIDER_PX / 2}px)`;
+  timelineBasis.value = `calc(${100 - splitPct.value}% - ${DIVIDER_PX / 2}px)`;
+}
+
+function onDividerMousedown(e: MouseEvent) {
+  const container = panelsEl.value;
+  if (!container) return;
+
+  const startX = e.clientX;
+  const containerW = container.getBoundingClientRect().width;
+  const startPct = splitPct.value;
+
+  function onMousemove(ev: MouseEvent) {
+    const delta = ev.clientX - startX;
+    const newPct = Math.min(80, Math.max(20, startPct + (delta / containerW) * 100));
+    splitPct.value = newPct;
+    updateBases();
+  }
+
+  function onMouseup() {
+    window.removeEventListener("mousemove", onMousemove);
+    window.removeEventListener("mouseup", onMouseup);
+  }
+
+  window.addEventListener("mousemove", onMousemove);
+  window.addEventListener("mouseup", onMouseup);
+}
+
+updateBases();
 
 onMounted(async () => {
   await store.hydrate(createDataSource(), props.sessionId);
@@ -185,9 +220,9 @@ function onEventSelect(index: number): void {
 .run-view__panels {
   display: flex;
   flex: 1;
-  gap: 0.5rem;
   padding: 0.5rem;
   overflow: hidden;
+  gap: 0;
 }
 
 .run-view__panel {
@@ -195,16 +230,44 @@ function onEventSelect(index: number): void {
   flex-direction: column;
   overflow: hidden;
   border-radius: 6px;
+  flex-shrink: 0;
+  flex-grow: 0;
+  min-width: 0;
 }
 
 .run-view__panel--diagram {
-  flex: 1;
-  min-width: 0;
+  /* flex-basis set inline */
 }
 
 .run-view__panel--timeline {
-  flex: 1;
-  min-width: 0;
+  /* flex-basis set inline */
+}
+
+.run-view__divider {
+  flex-shrink: 0;
+  width: 6px;
+  cursor: col-resize;
+  background: transparent;
+  border-radius: 3px;
+  transition: background 0.15s;
+  position: relative;
+}
+
+.run-view__divider::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  width: 2px;
+  background: #1e293b;
+  border-radius: 1px;
+  transition: background 0.15s;
+}
+
+.run-view__divider:hover::after,
+.run-view__divider:active::after {
+  background: #3b82f6;
 }
 
 .run-view__panel-header {

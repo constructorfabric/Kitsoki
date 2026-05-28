@@ -98,6 +98,10 @@ type Event struct {
 	Kind EventKind `json:"kind"`
 	// Payload holds the event-specific data as raw JSON.
 	Payload json.RawMessage `json:"payload,omitempty"`
+	// ParentTurn is the foreground turn that was active when this event was
+	// appended as a side-channel (off-path) batch. Zero for normal foreground
+	// events. Carried in memory only; not persisted to the DB.
+	ParentTurn app.TurnNumber `json:"-"`
 }
 
 // History is an ordered slice of events for a session, as returned by Store.LoadHistory.
