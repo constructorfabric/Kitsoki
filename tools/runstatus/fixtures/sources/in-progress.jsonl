@@ -1,0 +1,53 @@
+{"time":"2026-05-25T10:00:00.000Z","level":"INFO","msg":"turn.start","session_id":"sess-inprog-001","turn":1,"state_path":"foyer","input":"look"}
+{"time":"2026-05-25T10:00:00.020Z","level":"DEBUG","msg":"oracle.ask.start","session_id":"sess-inprog-001","turn":1,"state_path":"foyer","model":"claude-3-sonnet","prompt_tokens":480}
+{"time":"2026-05-25T10:00:00.180Z","level":"DEBUG","msg":"oracle.ask.complete","session_id":"sess-inprog-001","turn":1,"state_path":"foyer","intent":"look","model":"claude-3-sonnet","response_tokens":42}
+{"time":"2026-05-25T10:00:00.185Z","level":"DEBUG","msg":"machine.transition","session_id":"sess-inprog-001","turn":1,"state_path":"foyer","intent":"look","from":"foyer","to":"foyer"}
+{"time":"2026-05-25T10:00:00.190Z","level":"DEBUG","msg":"machine.state_entered","session_id":"sess-inprog-001","turn":1,"state_path":"foyer"}
+{"time":"2026-05-25T10:00:00.195Z","level":"INFO","msg":"turn.end","session_id":"sess-inprog-001","turn":1,"state_path":"foyer"}
+{"time":"2026-05-25T10:00:05.000Z","level":"INFO","msg":"turn.start","session_id":"sess-inprog-001","turn":2,"state_path":"foyer","input":"go west"}
+{"time":"2026-05-25T10:00:05.015Z","level":"DEBUG","msg":"oracle.ask.start","session_id":"sess-inprog-001","turn":2,"state_path":"foyer","model":"claude-3-sonnet","prompt_tokens":512}
+{"time":"2026-05-25T10:00:05.170Z","level":"DEBUG","msg":"oracle.ask.complete","session_id":"sess-inprog-001","turn":2,"state_path":"foyer","intent":"go","slots":{"direction":"west"},"model":"claude-3-sonnet","response_tokens":28}
+{"time":"2026-05-25T10:00:05.175Z","level":"DEBUG","msg":"machine.transition","session_id":"sess-inprog-001","turn":2,"state_path":"foyer","intent":"go","from":"foyer","to":"cloakroom"}
+{"time":"2026-05-25T10:00:05.180Z","level":"DEBUG","msg":"machine.state_exited","session_id":"sess-inprog-001","turn":2,"state_path":"foyer"}
+{"time":"2026-05-25T10:00:05.182Z","level":"DEBUG","msg":"machine.state_entered","session_id":"sess-inprog-001","turn":2,"state_path":"cloakroom"}
+{"time":"2026-05-25T10:00:05.188Z","level":"INFO","msg":"turn.end","session_id":"sess-inprog-001","turn":2,"state_path":"cloakroom"}
+{"time":"2026-05-25T10:00:10.000Z","level":"INFO","msg":"turn.start","session_id":"sess-inprog-001","turn":3,"state_path":"cloakroom","input":"look"}
+{"time":"2026-05-25T10:00:10.020Z","level":"DEBUG","msg":"oracle.ask.start","session_id":"sess-inprog-001","turn":3,"state_path":"cloakroom","model":"claude-3-sonnet","prompt_tokens":590}
+{"time":"2026-05-25T10:00:10.165Z","level":"DEBUG","msg":"oracle.ask.complete","session_id":"sess-inprog-001","turn":3,"state_path":"cloakroom","intent":"look","model":"claude-3-sonnet","response_tokens":35}
+{"time":"2026-05-25T10:00:10.170Z","level":"DEBUG","msg":"machine.transition","session_id":"sess-inprog-001","turn":3,"state_path":"cloakroom","intent":"look","from":"cloakroom","to":"cloakroom"}
+{"time":"2026-05-25T10:00:10.175Z","level":"DEBUG","msg":"machine.state_entered","session_id":"sess-inprog-001","turn":3,"state_path":"cloakroom"}
+{"time":"2026-05-25T10:00:10.180Z","level":"INFO","msg":"turn.end","session_id":"sess-inprog-001","turn":3,"state_path":"cloakroom"}
+{"time":"2026-05-25T10:00:15.000Z","level":"INFO","msg":"turn.start","session_id":"sess-inprog-001","turn":4,"state_path":"cloakroom","input":"hang the cloak"}
+{"time":"2026-05-25T10:00:15.015Z","level":"DEBUG","msg":"oracle.ask.start","session_id":"sess-inprog-001","turn":4,"state_path":"cloakroom","model":"claude-3-sonnet","prompt_tokens":630}
+{"time":"2026-05-25T10:00:15.080Z","level":"DEBUG","msg":"oracle.ask.complete","session_id":"sess-inprog-001","turn":4,"state_path":"cloakroom","intent":"hang_cloak","model":"claude-3-sonnet","response_tokens":18}
+{"time":"2026-05-25T10:00:15.085Z","level":"DEBUG","msg":"machine.transition","session_id":"sess-inprog-001","turn":4,"state_path":"cloakroom","intent":"hang_cloak","from":"cloakroom","to":"cloakroom"}
+{"time":"2026-05-25T10:00:15.090Z","level":"DEBUG","msg":"machine.world.write","session_id":"sess-inprog-001","turn":4,"state_path":"cloakroom","key":"wearing_cloak","value":false}
+{"time":"2026-05-25T10:00:15.095Z","level":"DEBUG","msg":"machine.state_entered","session_id":"sess-inprog-001","turn":4,"state_path":"cloakroom"}
+{"time":"2026-05-25T10:00:15.100Z","level":"INFO","msg":"turn.end","session_id":"sess-inprog-001","turn":4,"state_path":"cloakroom"}
+{"time":"2026-05-25T10:00:20.000Z","level":"INFO","msg":"turn.start","session_id":"sess-inprog-001","turn":5,"state_path":"cloakroom","input":"look"}
+{"time":"2026-05-25T10:00:20.020Z","level":"DEBUG","msg":"oracle.ask.start","session_id":"sess-inprog-001","turn":5,"state_path":"cloakroom","model":"claude-3-sonnet","prompt_tokens":645}
+{"time":"2026-05-25T10:00:20.160Z","level":"DEBUG","msg":"oracle.ask.complete","session_id":"sess-inprog-001","turn":5,"state_path":"cloakroom","intent":"look","model":"claude-3-sonnet","response_tokens":38}
+{"time":"2026-05-25T10:00:20.165Z","level":"DEBUG","msg":"machine.transition","session_id":"sess-inprog-001","turn":5,"state_path":"cloakroom","intent":"look","from":"cloakroom","to":"cloakroom"}
+{"time":"2026-05-25T10:00:20.170Z","level":"DEBUG","msg":"machine.state_entered","session_id":"sess-inprog-001","turn":5,"state_path":"cloakroom"}
+{"time":"2026-05-25T10:00:20.175Z","level":"INFO","msg":"turn.end","session_id":"sess-inprog-001","turn":5,"state_path":"cloakroom"}
+{"time":"2026-05-25T10:00:25.000Z","level":"INFO","msg":"turn.start","session_id":"sess-inprog-001","turn":6,"state_path":"cloakroom","input":"wear the cloak"}
+{"time":"2026-05-25T10:00:25.015Z","level":"DEBUG","msg":"oracle.ask.start","session_id":"sess-inprog-001","turn":6,"state_path":"cloakroom","model":"claude-3-sonnet","prompt_tokens":655}
+{"time":"2026-05-25T10:00:25.075Z","level":"DEBUG","msg":"oracle.ask.complete","session_id":"sess-inprog-001","turn":6,"state_path":"cloakroom","intent":"wear_cloak","model":"claude-3-sonnet","response_tokens":18}
+{"time":"2026-05-25T10:00:25.080Z","level":"DEBUG","msg":"machine.transition","session_id":"sess-inprog-001","turn":6,"state_path":"cloakroom","intent":"wear_cloak","from":"cloakroom","to":"cloakroom"}
+{"time":"2026-05-25T10:00:25.085Z","level":"DEBUG","msg":"machine.world.write","session_id":"sess-inprog-001","turn":6,"state_path":"cloakroom","key":"wearing_cloak","value":true}
+{"time":"2026-05-25T10:00:25.090Z","level":"DEBUG","msg":"machine.state_entered","session_id":"sess-inprog-001","turn":6,"state_path":"cloakroom"}
+{"time":"2026-05-25T10:00:25.095Z","level":"INFO","msg":"turn.end","session_id":"sess-inprog-001","turn":6,"state_path":"cloakroom"}
+{"time":"2026-05-25T10:00:30.000Z","level":"INFO","msg":"turn.start","session_id":"sess-inprog-001","turn":7,"state_path":"cloakroom","input":"hang the cloak again"}
+{"time":"2026-05-25T10:00:30.015Z","level":"DEBUG","msg":"oracle.ask.start","session_id":"sess-inprog-001","turn":7,"state_path":"cloakroom","model":"claude-3-sonnet","prompt_tokens":680}
+{"time":"2026-05-25T10:00:30.070Z","level":"DEBUG","msg":"oracle.ask.complete","session_id":"sess-inprog-001","turn":7,"state_path":"cloakroom","intent":"hang_cloak","model":"claude-3-sonnet","response_tokens":18}
+{"time":"2026-05-25T10:00:30.075Z","level":"DEBUG","msg":"machine.transition","session_id":"sess-inprog-001","turn":7,"state_path":"cloakroom","intent":"hang_cloak","from":"cloakroom","to":"cloakroom"}
+{"time":"2026-05-25T10:00:30.080Z","level":"DEBUG","msg":"machine.world.write","session_id":"sess-inprog-001","turn":7,"state_path":"cloakroom","key":"wearing_cloak","value":false}
+{"time":"2026-05-25T10:00:30.085Z","level":"DEBUG","msg":"machine.state_entered","session_id":"sess-inprog-001","turn":7,"state_path":"cloakroom"}
+{"time":"2026-05-25T10:00:30.090Z","level":"INFO","msg":"turn.end","session_id":"sess-inprog-001","turn":7,"state_path":"cloakroom"}
+{"time":"2026-05-25T10:00:35.000Z","level":"INFO","msg":"turn.start","session_id":"sess-inprog-001","turn":8,"state_path":"cloakroom","input":"go east"}
+{"time":"2026-05-25T10:00:35.015Z","level":"DEBUG","msg":"oracle.ask.start","session_id":"sess-inprog-001","turn":8,"state_path":"cloakroom","model":"claude-3-sonnet","prompt_tokens":695}
+{"time":"2026-05-25T10:00:35.065Z","level":"DEBUG","msg":"oracle.ask.complete","session_id":"sess-inprog-001","turn":8,"state_path":"cloakroom","intent":"go","slots":{"direction":"east"},"model":"claude-3-sonnet","response_tokens":24}
+{"time":"2026-05-25T10:00:35.070Z","level":"DEBUG","msg":"machine.transition","session_id":"sess-inprog-001","turn":8,"state_path":"cloakroom","intent":"go","from":"cloakroom","to":"foyer"}
+{"time":"2026-05-25T10:00:35.075Z","level":"DEBUG","msg":"machine.state_exited","session_id":"sess-inprog-001","turn":8,"state_path":"cloakroom"}
+{"time":"2026-05-25T10:00:35.078Z","level":"DEBUG","msg":"machine.state_entered","session_id":"sess-inprog-001","turn":8,"state_path":"foyer"}
+{"time":"2026-05-25T10:00:35.082Z","level":"INFO","msg":"turn.end","session_id":"sess-inprog-001","turn":8,"state_path":"foyer"}

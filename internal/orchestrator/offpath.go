@@ -175,7 +175,8 @@ func (o *Orchestrator) AskOffPath(ctx context.Context, sid app.SessionID, questi
 
 // MarkOffPathEntered appends an OffPathEntered event to the session's event
 // log. Held outside the session lock because off-path events do not affect
-// turn numbering — they all live at turn 0.
+// turn numbering — they are stamped with maxTurn+1 (a side-channel allocation
+// that does not advance the foreground turn counter).
 func (o *Orchestrator) MarkOffPathEntered(sid app.SessionID, fromState app.StatePath) error {
 	o.logger.DebugContext(context.Background(), trace.EvOffPathEnter,
 		slog.String("session_id", string(sid)),
@@ -234,6 +235,10 @@ func (o *Orchestrator) appendOffPathEvents(sid app.SessionID, events []store.Eve
 	offTurn := maxTurn + 1
 	for i := range events {
 		events[i].Turn = offTurn
+		// Record the foreground turn that was active when this off-path batch
+		// was appended so the trace UI can sub-group these events under their
+		// parent rather than rendering them as a top-level sibling turn.
+		events[i].ParentTurn = maxTurn
 	}
 	// Sites 10–13: dual-write journal entries for off-path events.
 	// Off-path events never mutate world or state; use empty worlds for the diff.

@@ -1,5 +1,7 @@
 # Compiled binary
 /kitsoki
+/fromflow
+/fromsession
 
 # Test binaries and coverage
 *.test
@@ -41,3 +43,10 @@ dist/
 tools/pellicule/node_modules/
 tools/pellicule/*.mp4
 tools/pellicule/frames/
+
+# Run-status SPA — single-file HTML artifacts (built by `pnpm artifact …`
+# and by the Playwright artifact suite).
+.artifacts/
+tools/runstatus/test-results/
+tools/runstatus/playwright-report/
+tools/runstatus/node_modules/

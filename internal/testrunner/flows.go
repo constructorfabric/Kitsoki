@@ -4,6 +4,7 @@ package testrunner
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,6 +26,7 @@ import (
 	"kitsoki/internal/host"
 	"kitsoki/internal/intent"
 	"kitsoki/internal/jobs"
+	"kitsoki/internal/journal"
 	"kitsoki/internal/machine"
 	"kitsoki/internal/orchestrator"
 	"kitsoki/internal/render"
@@ -74,6 +76,12 @@ type FlowFixture struct {
 	// HostHandlers; compatible with HostBindings.
 	HostCassette string `yaml:"host_cassette,omitempty"`
 
+	// StrictCassetteCoverage, when true, fails the fixture if any cassette
+	// episode was never matched during the run. Only meaningful when
+	// host_cassette: is set. Default false preserves backward compatibility —
+	// fixtures that reuse a shared cassette for a subset of turns won't fail.
+	StrictCassetteCoverage bool `yaml:"strict_cassette_coverage,omitempty"`
+
 	// HostBindings rebinds named ifaces to alternative handlers for
 	// this fixture only. Mirrors the production `imports.<alias>.
 	// host_bindings:` block but applies at flow-test scope so a fixture
@@ -116,16 +124,6 @@ type FlowFixture struct {
 	// asserting that a fixture's walk never touched a transport / VCS
 	// op that belongs to a different pipeline.
 	ExpectNoHostCalls []string `yaml:"expect_no_host_calls,omitempty"`
-
-	// StrictCassetteCoverage, when true, fails the fixture if any cassette
-	// episode was never matched at least once after all turns complete.
-	// Only meaningful when host_cassette: is set.  Default false preserves
-	// backward compatibility — fixtures that reuse a shared cassette for a
-	// subset of a run (e.g. to detect accidental host calls) are not forced
-	// to consume every episode.
-	// When this flag is true, replay: any episodes that matched at least once
-	// are NOT flagged; only episodes with a zero match count are reported.
-	StrictCassetteCoverage bool `yaml:"strict_cassette_coverage,omitempty"`
 }
 
 // ExpectFile is one entry in a fixture-level expect_files assertion.
@@ -377,6 +375,12 @@ type FlowOptions struct {
 	Verbose bool
 	// JSONOut is the optional path to write a JSON report.
 	JSONOut string
+	// OnRigClose, if non-nil, is invoked at the end of each orchestrator-backed
+	// flow run — after assertions have completed but before the in-memory store
+	// is closed. Intended for fixture-export tools that need the raw event log
+	// the flow produced (the store goes away once the function returns). The
+	// store and session id passed in are still live.
+	OnRigClose func(filePath string, st store.Store, sid app.SessionID) error
 }
 
 // ─── orchRig holds all resources for an orchestrator-backed flow run ─────────
@@ -397,9 +401,14 @@ type orchRig struct {
 	// without a synchronous LoadJourney on every handler invocation.
 	currentStatePath app.StatePath
 
+	// journalWriter is the in-memory journal writer wired by buildOrchestratorRig
+	// when a host_cassette is configured. It is exposed here so the cassette
+	// dispatcher can write KindOracleCall entries on replay (Phase 2) and so
+	// downstream callers (e.g. fromflow) can pass the journal to runstatus.FromHistory.
+	journalWriter journal.Writer
+
 	// cassette holds the loaded host cassette when host_cassette: is set and
-	// strict_cassette_coverage: true is declared on the fixture.
-	// nil when the fixture uses host_handlers: or no strict-coverage flag.
+	// strict_cassette_coverage: true is declared on the fixture. nil otherwise.
 	// Retained so runOneFlowOrchestrator can check for unmatched (orphan)
 	// episodes after all turns complete.
 	cassette *Cassette
@@ -413,7 +422,7 @@ type orchRig struct {
 // Error, and Data fields in that priority order.
 //
 // filePath is the fixture file's absolute path; it is used to resolve
-// host_cassette: relative paths. Pass the fixture's filePath from runFlowFile.
+// host_cassette: relative paths.
 func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machine, fixture *FlowFixture, filePath string) (*orchRig, error) {
 	// Deterministic epoch.
 	clk := clock.NewFake(time.Unix(0, 0))
@@ -509,11 +518,10 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 		})
 	}
 
-	// cassette dispatcher: allocate a rig so the stateOf closure can read the
-	// current state path. The rig pointer is returned below; the closure holds
-	// a reference to &rig.currentStatePath which the turn loop updates before
-	// every RunIntent call. This avoids a synchronous LoadJourney per dispatch.
-	var rigPtr orchRig
+	// Allocate the rig pointer early so the cassette dispatcher's stateOf closure
+	// can hold a reference to &rig.currentStatePath that the turn loop updates
+	// before each RunIntent call. This avoids a synchronous LoadJourney per dispatch.
+	var rig orchRig
 
 	// Wire host_cassette: when set.
 	if fixture.HostCassette != "" {
@@ -540,9 +548,29 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 			return nil, fmt.Errorf("buildOrchestratorRig: KITSOKI_CASSETTE_STRICT=1 but cassette record mode is %q", mode)
 		}
 
+		// Create an in-memory journal writer backed by the same SQLite DB so
+		// cassette replay can write KindOracleCall entries (Phase 2) and record
+		// mode can read them back (Phase 3).
+		jw, jwErr := journal.NewSQLiteWriter(st.DB())
+		if jwErr != nil {
+			_ = st.Close()
+			return nil, fmt.Errorf("buildOrchestratorRig: create journal writer: %w", jwErr)
+		}
+		rig.journalWriter = jw
+
+		// Build a journal lookup function for Phase 3 (record mode): given the
+		// oracle context and verb, read back the most recently written
+		// KindOracleCall entry for that session and verb. The oracle handlers do
+		// not return call_id in result.Data, so we identify the entry by
+		// session ID + verb + max rowid (latest write).
+		journalLookup := func(ctx context.Context, verb string) (*host.OracleCallBody, bool) {
+			oc := host.OracleCallCtxFrom(ctx)
+			return lookupOracleCallByVerb(st.DB(), oc.SessionID, verb)
+		}
+
 		// stateOf reads the shared currentStatePath pointer updated by the turn loop.
 		stateOf := func() string {
-			return string(rigPtr.currentStatePath)
+			return string(rig.currentStatePath)
 		}
 
 		// recordSink appends to the cassette file when recording is active.
@@ -565,7 +593,7 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 			}
 			seen[h] = true
 			handlerName := h
-			// Capture any existing (real) handler as fallback. Per proposal §3.1:
+			// Capture any existing (real) handler as fallback. Per proposal §3.2:
 			// when host_bindings: is set, builtins are pre-registered and act as
 			// the fallback for cassette misses. Without host_bindings: there are
 			// no pre-registered builtins, so fallback is nil (miss is a hard error).
@@ -573,13 +601,41 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 			if len(fixture.HostBindings) > 0 {
 				fallback, _ = reg.Get(handlerName)
 			}
-			casDispatcher := BuildCassetteDispatcher(cas, handlerName, stateOf, fallback, recordSink, clk)
+			casDispatcher := BuildCassetteDispatcherWithJournal(cas, handlerName, stateOf, fallback, recordSink, clk, jw, journalLookup)
 			reg.Replace(handlerName, casDispatcher)
 		}
+
+		// When host_bindings: is set (builtins registered) and a record sink is
+		// active, also install cassette dispatchers for every host.oracle.*
+		// builtin handler that isn't already wrapped by an episode above.
+		// This lets the cassette record oracle calls even when the cassette file
+		// has no oracle episodes yet — the first recording pass adds them.
+		if len(fixture.HostBindings) > 0 && recordSink != nil {
+			oracleBuiltins := []string{
+				"host.oracle.ask",
+				"host.oracle.decide",
+				"host.oracle.extract",
+				"host.oracle.task",
+				"host.oracle.converse",
+			}
+			for _, handlerName := range oracleBuiltins {
+				if seen[handlerName] {
+					continue // already wrapped via an episode above
+				}
+				fallback, hasFallback := reg.Get(handlerName)
+				if !hasFallback {
+					continue // not a builtin in this rig — skip
+				}
+				casDispatcher := BuildCassetteDispatcherWithJournal(cas, handlerName, stateOf, fallback, recordSink, clk, jw, journalLookup)
+				reg.Replace(handlerName, casDispatcher)
+				seen[handlerName] = true
+			}
+		}
+
 		// Retain the cassette for post-run orphan detection when
 		// strict_cassette_coverage: true is declared on the fixture.
 		if fixture.StrictCassetteCoverage {
-			rigPtr.cassette = cas
+			rig.cassette = cas
 		}
 	}
 
@@ -587,14 +643,20 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 	// for intent: turns and never falls through to the harness in normal use.
 	h := &noopHarness{}
 
-	orch := orchestrator.New(def, m, st, h,
+	orchOpts := []orchestrator.Option{
 		orchestrator.WithHostRegistry(reg),
 		orchestrator.WithScheduler(sched),
 		orchestrator.WithJobStore(js),
 		// Inject the same fake clock the scheduler uses so Timeout: firings
 		// (gap §9.5) run on virtual time alongside background-job delays.
 		orchestrator.WithClock(clk),
-	)
+	}
+	// Wire the journal writer into the orchestrator so oracle handlers
+	// can write KindOracleCall entries during record-mode live calls.
+	if rig.journalWriter != nil {
+		orchOpts = append(orchOpts, orchestrator.WithJournalWriter(rig.journalWriter))
+	}
+	orch := orchestrator.New(def, m, st, h, orchOpts...)
 
 	sid, err := orch.NewSession(ctx)
 	if err != nil {
@@ -602,16 +664,43 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 		return nil, fmt.Errorf("buildOrchestratorRig: new session: %w", err)
 	}
 
-	rigPtr.orch = orch
-	rigPtr.sched = sched
-	rigPtr.jobStore = js
-	rigPtr.st = st
-	rigPtr.sid = sid
-	rigPtr.clk = clk
-	rigPtr.cleanup = st.Close
-	// rigPtr.cassette is set inside the host_cassette: block above when
-	// fixture.StrictCassetteCoverage is true; nil otherwise.
-	return &rigPtr, nil
+	rig.orch = orch
+	rig.sched = sched
+	rig.jobStore = js
+	rig.st = st
+	rig.sid = sid
+	rig.clk = clk
+	rig.cleanup = st.Close
+	return &rig, nil
+}
+
+// lookupOracleCallByVerb queries the journal for the most recently written
+// KindOracleCall entry for the given session and verb and returns the parsed
+// body. Returns (nil, false) on any error or when no entry is found. Used by
+// the cassette dispatcher in record mode — oracle handlers do not return
+// call_id in result.Data so we identify the entry by session + verb + rowid
+// ordering (latest write wins).
+func lookupOracleCallByVerb(db *sql.DB, sessionID app.SessionID, verb string) (*host.OracleCallBody, bool) {
+	if db == nil || verb == "" {
+		return nil, false
+	}
+	row := db.QueryRow(
+		`SELECT body_json FROM journal
+		 WHERE kind = 'oracle.call'
+		   AND session_id = ?
+		   AND json_extract(body_json, '$.verb') = ?
+		 ORDER BY rowid DESC LIMIT 1`,
+		string(sessionID), verb,
+	)
+	var bodyStr string
+	if err := row.Scan(&bodyStr); err != nil {
+		return nil, false
+	}
+	var body host.OracleCallBody
+	if err := json.Unmarshal([]byte(bodyStr), &body); err != nil {
+		return nil, false
+	}
+	return &body, true
 }
 
 // shouldUseOrchestrator reports whether the fixture should run through the
@@ -736,12 +825,6 @@ func runFlowFile(ctx context.Context, def *app.AppDef, m machine.Machine, appPat
 			continue // skip non-flow docs
 		}
 
-		// host_cassette: and host_handlers: are mutually exclusive — both set
-		// is a load-time error to prevent ambiguous dispatch.
-		if fixture.HostCassette != "" && len(fixture.HostHandlers) > 0 {
-			return nil, fmt.Errorf("fixture in %q: host_cassette and host_handlers are mutually exclusive", filePath)
-		}
-
 		// Per-fixture host_bindings: rebuild def + machine for this
 		// fixture only. The outer def/m stay untouched so peer fixtures
 		// in the same file see the original bindings. The cost is one
@@ -759,6 +842,12 @@ func runFlowFile(ctx context.Context, def *app.AppDef, m machine.Machine, appPat
 				return nil, fmt.Errorf("fixture in %q: build machine with host_bindings: %w", filePath, mErr)
 			}
 			fixDef, fixM = overriddenDef, overriddenM
+		}
+
+		// host_cassette: and host_handlers: are mutually exclusive — both set
+		// is a load-time error to prevent ambiguous dispatch.
+		if fixture.HostCassette != "" && len(fixture.HostHandlers) > 0 {
+			return nil, fmt.Errorf("fixture in %q: host_cassette and host_handlers are mutually exclusive", filePath)
 		}
 
 		result, err := runOneFlow(ctx, fixDef, fixM, filePath, &fixture, opts)
@@ -1504,12 +1593,10 @@ func runOneFlowOrchestrator(ctx context.Context, def *app.AppDef, m machine.Mach
 	if len(fixture.ExpectFiles) > 0 {
 		sessionFailures = append(sessionFailures, assertExpectFiles(filepath.Dir(filePath), fixture.ExpectFiles)...)
 	}
+
 	// Post-run cassette orphan check: when strict_cassette_coverage: true is
 	// declared, any episode that was never matched at least once is a phantom
-	// episode the test never exercised.  An unmatched episode indicates
-	// either a cassette that drifted out of sync with the app.yaml or a
-	// fixture that is missing turns to reach certain phases.
-	// replay: any episodes that matched at least once are NOT flagged.
+	// episode the test never exercised.
 	if rig.cassette != nil {
 		if unmatched := rig.cassette.UnmatchedEpisodes(); len(unmatched) > 0 {
 			sessionFailures = append(sessionFailures,
@@ -1532,6 +1619,12 @@ func runOneFlowOrchestrator(ctx context.Context, def *app.AppDef, m machine.Mach
 			Passed:    false,
 			Failures:  sessionFailures,
 		})
+	}
+
+	if opts.OnRigClose != nil {
+		if err := opts.OnRigClose(filePath, rig.st, rig.sid); err != nil {
+			return nil, fmt.Errorf("OnRigClose: %w", err)
+		}
 	}
 
 	return result, nil

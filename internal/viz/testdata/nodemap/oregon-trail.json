@@ -1,0 +1,389 @@
+{
+  "source": "%% The Oregon Trail\n%% kitsoki viz --flowchart --detail states\nflowchart LR\n\n  Start([\"\u003cb\u003eStart\u003c/b\u003e\"]):::input\n\n  subgraph SG_ended[\"\u003cb\u003ephase 3 · ended\u003c/b\u003e\"]\n    direction LR\n    ST_ended_lost[/\"ended_lost\"/]:::room\n    ST_ended_won[/\"ended_won\"/]:::room\n  end\n\n  subgraph SG_fort[\"\u003cb\u003ephase 5 · fort\u003c/b\u003e — Inside the fort ({ { world.current_landmark } }) — buy_supplies at marked-up prices.\"]\n    direction LR\n    ST_fort_compose[/\"fort.compose\"/]:::room\n    ST_fort_describe[/\"fort.describe\"/]:::room\n    ST_fort_done[/\"fort.done\"/]:::room\n    ST_fort_idle[/\"fort.idle\"/]:::room\n    ST_fort_reviewing[/\"fort.reviewing\"/]:::room\n  end\n\n  subgraph SG_frontier[\"\u003cb\u003ephase 6 · frontier\u003c/b\u003e\"]\n    direction LR\n    ST_frontier_bandits_encounter[/\"frontier.bandits.encounter\"/]:::room\n    ST_frontier_scouting[/\"frontier.scouting\"/]:::room\n  end\n\n  subgraph SG_general_store[\"\u003cb\u003ephase 1 · general_store\u003c/b\u003e — Matt's General Store, Independence — outfit the wagon before leaving.\"]\n    direction LR\n    ST_general_store_compose[/\"general_store.compose\"/]:::room\n    ST_general_store_describe[/\"general_store.describe\"/]:::room\n    ST_general_store_done[/\"general_store.done\"/]:::room\n    ST_general_store_idle[/\"general_store.idle\"/]:::room\n    ST_general_store_reviewing[/\"general_store.reviewing\"/]:::room\n  end\n\n  subgraph SG_hunt[\"\u003cb\u003ephase 7 · hunt\u003c/b\u003e — Hunting expedition.\"]\n    direction LR\n    ST_hunt_hunt_done[/\"hunt.hunt_done\"/]:::room\n    ST_hunt_hunt_idle[/\"hunt.hunt_idle\"/]:::room\n    ST_hunt_hunt_running[/\"hunt.hunt_running\"/]:::room\n  end\n\n  subgraph SG_inbox[\"\u003cb\u003ephase 19 · inbox\u003c/b\u003e — Inbox — pending background-job notifications.\"]\n    direction LR\n    ST_inbox[/\"inbox\"/]:::room\n  end\n\n  subgraph SG_intro[\"\u003cb\u003ephase 0 · intro\u003c/b\u003e — Independence, Missouri — overview and setup.\"]\n    direction LR\n    ST_intro[/\"intro\"/]:::room\n    ST_intro_month[/\"intro_month\"/]:::room\n    ST_intro_party_names[/\"intro_party_names\"/]:::room\n    ST_intro_profession[/\"intro_profession\"/]:::room\n    ST_intro_summary[/\"intro_summary\"/]:::room\n  end\n\n  subgraph SG_leg[\"\u003cb\u003ephase 4 · leg\u003c/b\u003e\"]\n    direction LR\n    ST_leg_a_awaiting_reply[/\"leg_a_awaiting_reply\"/]:::room\n    ST_leg_a_error[/\"leg_a_error\"/]:::room\n    ST_leg_b_awaiting_reply[/\"leg_b_awaiting_reply\"/]:::room\n    ST_leg_b_error[/\"leg_b_error\"/]:::room\n    ST_leg_c_awaiting_reply[/\"leg_c_awaiting_reply\"/]:::room\n    ST_leg_c_error[/\"leg_c_error\"/]:::room\n    ST_leg_d_awaiting_reply[/\"leg_d_awaiting_reply\"/]:::room\n    ST_leg_d_error[/\"leg_d_error\"/]:::room\n    ST_leg_e_awaiting_reply[/\"leg_e_awaiting_reply\"/]:::room\n    ST_leg_e_error[/\"leg_e_error\"/]:::room\n    ST_leg_f_awaiting_reply[/\"leg_f_awaiting_reply\"/]:::room\n    ST_leg_f_error[/\"leg_f_error\"/]:::room\n    ST_leg_g_awaiting_reply[/\"leg_g_awaiting_reply\"/]:::room\n    ST_leg_g_error[/\"leg_g_error\"/]:::room\n  end\n\n  subgraph SG_leg_a_executing[\"\u003cb\u003ephase 2 · leg_a_executing\u003c/b\u003e — On the trail from Independence to Kansas River Crossing (prairie).\"]\n    direction LR\n    ST_leg_a_executing_event_breakdown[/\"leg_a_executing.event_breakdown\"/]:::room\n    ST_leg_a_executing_event_disease[/\"leg_a_executing.event_disease\"/]:::room\n    ST_leg_a_executing_event_encounter[/\"leg_a_executing.event_encounter\"/]:::room\n    ST_leg_a_executing_event_supply_loss[/\"leg_a_executing.event_supply_loss\"/]:::room\n    ST_leg_a_executing_event_weather[/\"leg_a_executing.event_weather\"/]:::room\n    ST_leg_a_executing_traveling[/\"leg_a_executing.traveling\"/]:::room\n  end\n\n  subgraph SG_leg_b_executing[\"\u003cb\u003ephase 8 · leg_b_executing\u003c/b\u003e — On the trail from Kansas River Crossing to Fort Kearney (prairie).\"]\n    direction LR\n    ST_leg_b_executing_event_breakdown[/\"leg_b_executing.event_breakdown\"/]:::room\n    ST_leg_b_executing_event_disease[/\"leg_b_executing.event_disease\"/]:::room\n    ST_leg_b_executing_event_encounter[/\"leg_b_executing.event_encounter\"/]:::room\n    ST_leg_b_executing_event_supply_loss[/\"leg_b_executing.event_supply_loss\"/]:::room\n    ST_leg_b_executing_event_weather[/\"leg_b_executing.event_weather\"/]:::room\n    ST_leg_b_executing_traveling[/\"leg_b_executing.traveling\"/]:::room\n  end\n\n  subgraph SG_leg_c_executing[\"\u003cb\u003ephase 9 · leg_c_executing\u003c/b\u003e — On the trail from Fort Kearney to Chimney Rock (prairie).\"]\n    direction LR\n    ST_leg_c_executing_event_breakdown[/\"leg_c_executing.event_breakdown\"/]:::room\n    ST_leg_c_executing_event_disease[/\"leg_c_executing.event_disease\"/]:::room\n    ST_leg_c_executing_event_encounter[/\"leg_c_executing.event_encounter\"/]:::room\n    ST_leg_c_executing_event_supply_loss[/\"leg_c_executing.event_supply_loss\"/]:::room\n    ST_leg_c_executing_event_weather[/\"leg_c_executing.event_weather\"/]:::room\n    ST_leg_c_executing_traveling[/\"leg_c_executing.traveling\"/]:::room\n  end\n\n  subgraph SG_leg_d_executing[\"\u003cb\u003ephase 10 · leg_d_executing\u003c/b\u003e — On the trail from Chimney Rock to Fort Laramie (prairie).\"]\n    direction LR\n    ST_leg_d_executing_event_breakdown[/\"leg_d_executing.event_breakdown\"/]:::room\n    ST_leg_d_executing_event_disease[/\"leg_d_executing.event_disease\"/]:::room\n    ST_leg_d_executing_event_encounter[/\"leg_d_executing.event_encounter\"/]:::room\n    ST_leg_d_executing_event_supply_loss[/\"leg_d_executing.event_supply_loss\"/]:::room\n    ST_leg_d_executing_event_weather[/\"leg_d_executing.event_weather\"/]:::room\n    ST_leg_d_executing_traveling[/\"leg_d_executing.traveling\"/]:::room\n  end\n\n  subgraph SG_leg_e_executing[\"\u003cb\u003ephase 11 · leg_e_executing\u003c/b\u003e — On the trail from Fort Laramie to South Pass (mountain).\"]\n    direction LR\n    ST_leg_e_executing_event_breakdown[/\"leg_e_executing.event_breakdown\"/]:::room\n    ST_leg_e_executing_event_disease[/\"leg_e_executing.event_disease\"/]:::room\n    ST_leg_e_executing_event_encounter[/\"leg_e_executing.event_encounter\"/]:::room\n    ST_leg_e_executing_event_supply_loss[/\"leg_e_executing.event_supply_loss\"/]:::room\n    ST_leg_e_executing_event_weather[/\"leg_e_executing.event_weather\"/]:::room\n    ST_leg_e_executing_traveling[/\"leg_e_executing.traveling\"/]:::room\n  end\n\n  subgraph SG_leg_f_executing[\"\u003cb\u003ephase 12 · leg_f_executing\u003c/b\u003e — On the trail from South Pass to Snake River Crossing (prairie).\"]\n    direction LR\n    ST_leg_f_executing_event_breakdown[/\"leg_f_executing.event_breakdown\"/]:::room\n    ST_leg_f_executing_event_disease[/\"leg_f_executing.event_disease\"/]:::room\n    ST_leg_f_executing_event_encounter[/\"leg_f_executing.event_encounter\"/]:::room\n    ST_leg_f_executing_event_supply_loss[/\"leg_f_executing.event_supply_loss\"/]:::room\n    ST_leg_f_executing_event_weather[/\"leg_f_executing.event_weather\"/]:::room\n    ST_leg_f_executing_traveling[/\"leg_f_executing.traveling\"/]:::room\n  end\n\n  subgraph SG_leg_g_executing[\"\u003cb\u003ephase 13 · leg_g_executing\u003c/b\u003e — On the trail from Snake River Crossing to Willamette Valley (mountain).\"]\n    direction LR\n    ST_leg_g_executing_event_breakdown[/\"leg_g_executing.event_breakdown\"/]:::room\n    ST_leg_g_executing_event_disease[/\"leg_g_executing.event_disease\"/]:::room\n    ST_leg_g_executing_event_encounter[/\"leg_g_executing.event_encounter\"/]:::room\n    ST_leg_g_executing_event_supply_loss[/\"leg_g_executing.event_supply_loss\"/]:::room\n    ST_leg_g_executing_event_weather[/\"leg_g_executing.event_weather\"/]:::room\n    ST_leg_g_executing_traveling[/\"leg_g_executing.traveling\"/]:::room\n  end\n\n  subgraph SG_rest_room[\"\u003cb\u003ephase 14 · rest_room\u003c/b\u003e — Make camp to rest the party.\"]\n    direction LR\n    ST_rest_room_rest_done[/\"rest_room.rest_done\"/]:::room\n    ST_rest_room_rest_idle[/\"rest_room.rest_idle\"/]:::room\n    ST_rest_room_rest_running[/\"rest_room.rest_running\"/]:::room\n  end\n\n  subgraph SG_river_crossing[\"\u003cb\u003ephase 15 · river_crossing\u003c/b\u003e — At the river ({ { world.current_landmark } }).\"]\n    direction LR\n    ST_river_crossing_deep[/\"river_crossing.deep\"/]:::room\n    ST_river_crossing_executing[/\"river_crossing.executing\"/]:::room\n    ST_river_crossing_mid[/\"river_crossing.mid\"/]:::room\n    ST_river_crossing_reviewing[/\"river_crossing.reviewing\"/]:::room\n    ST_river_crossing_shallow[/\"river_crossing.shallow\"/]:::room\n  end\n\n  subgraph SG_robbery[\"\u003cb\u003ephase 18 · robbery\u003c/b\u003e\"]\n    direction LR\n    ST_robbery_aftermath[/\"robbery_aftermath\"/]:::room\n  end\n\n  subgraph SG_snow[\"\u003cb\u003ephase 16 · snow\u003c/b\u003e\"]\n    direction LR\n    ST_snow_blocked[/\"snow_blocked\"/]:::room\n  end\n\n  subgraph SG_trail_guide[\"\u003cb\u003ephase 17 · trail_guide\u003c/b\u003e — Wagon master — persistent chats keyed by profession.\"]\n    direction LR\n    ST_trail_guide_trail_guide_active[/\"trail_guide.trail_guide_active\"/]:::room\n    ST_trail_guide_trail_guide_active_new[/\"trail_guide.trail_guide_active_new\"/]:::room\n    ST_trail_guide_trail_guide_list[/\"trail_guide.trail_guide_list\"/]:::room\n  end\n\n  subgraph SG_world_clock[\"\u003cb\u003ephase 20 · world_clock\u003c/b\u003e — Two orthogonal regions: weather + calendar.\"]\n    direction LR\n    ST_world_clock_calendar_day_active[/\"world_clock.calendar.day_active\"/]:::room\n    ST_world_clock_weather_dry[/\"world_clock.weather.dry\"/]:::room\n    ST_world_clock_weather_rain[/\"world_clock.weather.rain\"/]:::room\n    ST_world_clock_weather_snow[/\"world_clock.weather.snow\"/]:::room\n  end\n\n  Start --\u003e ST_intro\n\n  ST_fort_compose -- \"look\" --\u003e ST_fort_compose\n  ST_fort_compose -- \"propose_kit (default)\" --\u003e ST_fort_compose\n  ST_fort_compose -- \"back\" --\u003e ST_fort_idle\n  ST_fort_compose -- \"propose_kit [world.money \u0026gt;= int((…]\" --\u003e ST_fort_reviewing\n  ST_fort_describe -- \"open_compose\" --\u003e ST_fort_compose\n  ST_fort_describe -- \"look\" --\u003e ST_fort_describe\n  ST_fort_describe -- \"propose_budget (default)\" --\u003e ST_fort_describe\n  ST_fort_describe -- \"back\" --\u003e ST_fort_idle\n  ST_fort_describe -- \"propose_budget [int(slots.total_cost…]\" --\u003e ST_fort_reviewing\n  ST_fort_done -- \"leave_fort (default)\" --\u003e ST_ended_lost\n  ST_fort_done -- \"look\" --\u003e ST_fort_done\n  ST_fort_done -- \"repeat_purchase\" --\u003e ST_fort_idle\n  ST_fort_done -- \"leave_fort [world.current_landma…]\" --\u003e ST_leg_c_executing\n  ST_fort_done -- \"leave_fort [world.current_landma…]\" --\u003e ST_leg_e_executing\n  ST_fort_idle -- \"leave_fort (default)\" --\u003e ST_ended_lost\n  ST_fort_idle -- \"open_compose\" --\u003e ST_fort_compose\n  ST_fort_idle -- \"browse_items\" --\u003e ST_fort_describe\n  ST_fort_idle -- \"propose_purchase [int(slots.total_cost…]\" --\u003e ST_fort_done\n  ST_fort_idle -- \"look\" --\u003e ST_fort_idle\n  ST_fort_idle -- \"propose_budget (default)\" --\u003e ST_fort_idle\n  ST_fort_idle -- \"propose_purchase (default)\" --\u003e ST_fort_idle\n  ST_fort_idle -- \"propose_budget [int(slots.total_cost…]\" --\u003e ST_fort_reviewing\n  ST_fort_idle -- \"propose_purchase [world.money \u0026gt;= int(s…]\" --\u003e ST_fort_reviewing\n  ST_fort_idle -- \"leave_fort [world.current_landma…]\" --\u003e ST_leg_c_executing\n  ST_fort_idle -- \"leave_fort [world.current_landma…]\" --\u003e ST_leg_e_executing\n  ST_fort_reviewing -- \"accept_purchase\" --\u003e ST_fort_done\n  ST_fort_reviewing -- \"cancel_purchase\" --\u003e ST_fort_idle\n  ST_fort_reviewing -- \"look\" --\u003e ST_fort_reviewing\n  ST_fort_reviewing -- \"refine_purchase\" --\u003e ST_fort_reviewing\n  ST_frontier_bandits_encounter -- \"frontier__bandits__look\" --\u003e ST_frontier_bandits_encounter\n  ST_frontier_bandits_encounter -- \"frontier__bandits__pay (default)\" --\u003e ST_frontier_bandits_encounter\n  ST_frontier_bandits_encounter -- \"frontier__bandits__fight (default)\" --\u003e ST_robbery_aftermath\n  ST_frontier_bandits_encounter -- \"frontier__bandits__fight [world.frontier__band…]\" --\u003e ST_robbery_aftermath\n  ST_frontier_bandits_encounter -- \"frontier__bandits__flee\" --\u003e ST_robbery_aftermath\n  ST_frontier_bandits_encounter -- \"frontier__bandits__pay [world.frontier__band…]\" --\u003e ST_robbery_aftermath\n  ST_frontier_scouting -- \"frontier__proceed\" --\u003e ST_frontier_bandits\n  ST_frontier_scouting -- \"frontier__look\" --\u003e ST_frontier_scouting\n  ST_frontier_scouting -- \"frontier__scout\" --\u003e ST_frontier_scouting\n  ST_general_store_compose -- \"look\" --\u003e ST_general_store_compose\n  ST_general_store_compose -- \"propose_kit (default)\" --\u003e ST_general_store_compose\n  ST_general_store_compose -- \"back\" --\u003e ST_general_store_idle\n  ST_general_store_compose -- \"propose_kit [world.money \u0026gt;= int((…]\" --\u003e ST_general_store_reviewing\n  ST_general_store_describe -- \"open_compose\" --\u003e ST_general_store_compose\n  ST_general_store_describe -- \"look\" --\u003e ST_general_store_describe\n  ST_general_store_describe -- \"propose_budget (default)\" --\u003e ST_general_store_describe\n  ST_general_store_describe -- \"back\" --\u003e ST_general_store_idle\n  ST_general_store_describe -- \"propose_budget [int(slots.total_cost…]\" --\u003e ST_general_store_reviewing\n  ST_general_store_done -- \"look\" --\u003e ST_general_store_done\n  ST_general_store_done -- \"leave_store (default)\" --\u003e ST_general_store_idle\n  ST_general_store_done -- \"repeat_purchase\" --\u003e ST_general_store_idle\n  ST_general_store_done -- \"leave_store [world.oxen \u0026gt;= 2 \u0026amp;\u0026amp; w…]\" --\u003e ST_leg_a_executing\n  ST_general_store_idle -- \"open_compose\" --\u003e ST_general_store_compose\n  ST_general_store_idle -- \"browse_items\" --\u003e ST_general_store_describe\n  ST_general_store_idle -- \"propose_purchase [int(slots.total_cost…]\" --\u003e ST_general_store_done\n  ST_general_store_idle -- \"leave_store (default)\" --\u003e ST_general_store_idle\n  ST_general_store_idle -- \"look\" --\u003e ST_general_store_idle\n  ST_general_store_idle -- \"propose_budget (default)\" --\u003e ST_general_store_idle\n  ST_general_store_idle -- \"propose_purchase (default)\" --\u003e ST_general_store_idle\n  ST_general_store_idle -- \"propose_budget [int(slots.total_cost…]\" --\u003e ST_general_store_reviewing\n  ST_general_store_idle -- \"propose_purchase [world.money \u0026gt;= int(s…]\" --\u003e ST_general_store_reviewing\n  ST_general_store_idle -- \"leave_store [world.oxen \u0026gt;= 2 \u0026amp;\u0026amp; w…]\" --\u003e ST_leg_a_executing\n  ST_general_store_reviewing -- \"accept_purchase\" --\u003e ST_general_store_done\n  ST_general_store_reviewing -- \"cancel_purchase\" --\u003e ST_general_store_idle\n  ST_general_store_reviewing -- \"look\" --\u003e ST_general_store_reviewing\n  ST_general_store_reviewing -- \"refine_purchase\" --\u003e ST_general_store_reviewing\n  ST_hunt_hunt_done -- \"look\" --\u003e ST_hunt_hunt_done\n  ST_hunt_hunt_done -- \"continue (default)\" --\u003e ST_leg_a_awaiting_reply\n  ST_hunt_hunt_done -- \"continue [world.current_landma…]\" --\u003e ST_leg_a_awaiting_reply\n  ST_hunt_hunt_done -- \"continue [world.current_landma…]\" --\u003e ST_leg_b_awaiting_reply\n  ST_hunt_hunt_done -- \"continue [world.current_landma…]\" --\u003e ST_leg_c_awaiting_reply\n  ST_hunt_hunt_done -- \"continue [world.current_landma…]\" --\u003e ST_leg_d_awaiting_reply\n  ST_hunt_hunt_done -- \"continue [world.current_landma…]\" --\u003e ST_leg_e_awaiting_reply\n  ST_hunt_hunt_done -- \"continue [world.current_landma…]\" --\u003e ST_leg_f_awaiting_reply\n  ST_hunt_hunt_done -- \"continue [world.current_landma…]\" --\u003e ST_leg_g_awaiting_reply\n  ST_hunt_hunt_idle -- \"look\" --\u003e ST_hunt_hunt_idle\n  ST_hunt_hunt_idle -- \"shoot (default)\" --\u003e ST_hunt_hunt_idle\n  ST_hunt_hunt_idle -- \"shoot [int(slots.bullets) \u0026gt;…]\" --\u003e ST_hunt_hunt_running\n  ST_hunt_hunt_idle -- \"check_inbox\" --\u003e ST_inbox\n  ST_hunt_hunt_running -- \"continue [world.last_hunt_outc…]\" --\u003e ST_hunt_hunt_done\n  ST_hunt_hunt_running -- \"answer_clarification\" --\u003e ST_hunt_hunt_running\n  ST_hunt_hunt_running -- \"continue (default)\" --\u003e ST_hunt_hunt_running\n  ST_hunt_hunt_running -- \"look\" --\u003e ST_hunt_hunt_running\n  ST_hunt_hunt_running -- \"check_inbox\" --\u003e ST_inbox\n  ST_inbox -- \"look\" --\u003e ST_inbox\n  ST_intro -- \"look\" --\u003e ST_intro\n  ST_intro -- \"begin_setup\" --\u003e ST_intro_profession\n  ST_intro_month -- \"look\" --\u003e ST_intro_month\n  ST_intro_month -- \"pick_month\" --\u003e ST_intro_party_names\n  ST_intro_month -- \"back\" --\u003e ST_intro_profession\n  ST_intro_party_names -- \"back\" --\u003e ST_intro_month\n  ST_intro_party_names -- \"continue (default)\" --\u003e ST_intro_party_names\n  ST_intro_party_names -- \"generate_names (default)\" --\u003e ST_intro_party_names\n  ST_intro_party_names -- \"generate_names [world.narration]\" --\u003e ST_intro_party_names\n  ST_intro_party_names -- \"look\" --\u003e ST_intro_party_names\n  ST_intro_party_names -- \"name_member (default)\" --\u003e ST_intro_party_names\n  ST_intro_party_names -- \"name_member [slots.index == 1]\" --\u003e ST_intro_party_names\n  ST_intro_party_names -- \"name_member [slots.index == 2]\" --\u003e ST_intro_party_names\n  ST_intro_party_names -- \"name_member [slots.index == 3]\" --\u003e ST_intro_party_names\n  ST_intro_party_names -- \"name_member [slots.index == 4]\" --\u003e ST_intro_party_names\n  ST_intro_party_names -- \"name_member [slots.index == 5]\" --\u003e ST_intro_party_names\n  ST_intro_party_names -- \"name_party\" --\u003e ST_intro_party_names\n  ST_intro_party_names -- \"continue [world.party_member_1…]\" --\u003e ST_intro_summary\n  ST_intro_party_names -- \"continue [world.party_names !=…]\" --\u003e ST_intro_summary\n  ST_intro_profession -- \"back\" --\u003e ST_intro\n  ST_intro_profession -- \"pick_profession\" --\u003e ST_intro_month\n  ST_intro_profession -- \"look\" --\u003e ST_intro_profession\n  ST_intro_summary -- \"start_journey [world.party_names !=…]\" --\u003e ST_general_store\n  ST_intro_summary -- \"edit_step [slots.step == 'month…]\" --\u003e ST_intro_month\n  ST_intro_summary -- \"edit_step [slots.step == 'names…]\" --\u003e ST_intro_party_names\n  ST_intro_summary -- \"edit_step [slots.step == 'profe…]\" --\u003e ST_intro_profession\n  ST_intro_summary -- \"look\" --\u003e ST_intro_summary\n  ST_intro_summary -- \"start_journey (default)\" --\u003e ST_intro_summary\n  ST_leg_a_awaiting_reply -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_a_awaiting_reply -- \"enter_fort [false]\" --\u003e ST_fort\n  ST_leg_a_awaiting_reply -- \"face_robbery\" --\u003e ST_frontier\n  ST_leg_a_awaiting_reply -- \"scout\" --\u003e ST_frontier\n  ST_leg_a_awaiting_reply -- \"hunt\" --\u003e ST_hunt\n  ST_leg_a_awaiting_reply -- \"approach_river (default)\" --\u003e ST_leg_a_awaiting_reply\n  ST_leg_a_awaiting_reply -- \"enter_fort (default)\" --\u003e ST_leg_a_awaiting_reply\n  ST_leg_a_awaiting_reply -- \"restart_from (default)\" --\u003e ST_leg_a_awaiting_reply\n  ST_leg_a_awaiting_reply -- \"give_up_leg (default)\" --\u003e ST_leg_a_error\n  ST_leg_a_awaiting_reply -- \"give_up_leg [world.cycle__leg_a__…]\" --\u003e ST_leg_a_executing\n  ST_leg_a_awaiting_reply -- \"restart_from [slots.stage == 'inde…]\" --\u003e ST_leg_a_executing\n  ST_leg_a_awaiting_reply -- \"continue (default)\" --\u003e ST_leg_b_executing\n  ST_leg_a_awaiting_reply -- \"restart_from [slots.stage == 'kear…]\" --\u003e ST_leg_b_executing\n  ST_leg_a_awaiting_reply -- \"restart_from [slots.stage == 'chim…]\" --\u003e ST_leg_c_executing\n  ST_leg_a_awaiting_reply -- \"restart_from [slots.stage == 'lara…]\" --\u003e ST_leg_d_executing\n  ST_leg_a_awaiting_reply -- \"restart_from [slots.stage == 'sout…]\" --\u003e ST_leg_e_executing\n  ST_leg_a_awaiting_reply -- \"restart_from [slots.stage == 'snak…]\" --\u003e ST_leg_f_executing\n  ST_leg_a_awaiting_reply -- \"rest\" --\u003e ST_rest_room\n  ST_leg_a_awaiting_reply -- \"approach_river [true]\" --\u003e ST_river_crossing\n  ST_leg_a_awaiting_reply -- \"continue ['Kansas River Crossi…]\" --\u003e ST_snow_blocked\n  ST_leg_a_awaiting_reply -- \"consult_guide\" --\u003e ST_trail_guide\n  ST_leg_a_error -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_a_error -- \"retry\" --\u003e ST_leg_a_executing\n  ST_leg_a_executing_event_breakdown -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_a_executing_event_breakdown -- \"look\" --\u003e ST_leg_a_executing_event_breakdown\n  ST_leg_a_executing_event_breakdown -- \"repair [world.current_event_…]\" --\u003e ST_leg_a_executing_event_breakdown\n  ST_leg_a_executing_event_breakdown -- \"repair (default)\" --\u003e ST_leg_a_executing_traveling\n  ST_leg_a_executing_event_breakdown -- \"repair [world.breakdown_part…]\" --\u003e ST_leg_a_executing_traveling\n  ST_leg_a_executing_event_breakdown -- \"wait_out\" --\u003e ST_leg_a_executing_traveling\n  ST_leg_a_executing_event_disease -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_a_executing_event_disease -- \"look\" --\u003e ST_leg_a_executing_event_disease\n  ST_leg_a_executing_event_disease -- \"treat [(world.clothing_sets…]\" --\u003e ST_leg_a_executing_event_disease\n  ST_leg_a_executing_event_disease -- \"move_on\" --\u003e ST_leg_a_executing_traveling\n  ST_leg_a_executing_event_disease -- \"treat (default)\" --\u003e ST_leg_a_executing_traveling\n  ST_leg_a_executing_event_disease -- \"treat [world.clothing_sets …]\" --\u003e ST_leg_a_executing_traveling\n  ST_leg_a_executing_event_disease -- \"wait_out (default)\" --\u003e ST_leg_a_executing_traveling\n  ST_leg_a_executing_event_disease -- \"wait_out [world.health_avg \u0026lt; 3…]\" --\u003e ST_leg_a_executing_traveling\n  ST_leg_a_executing_event_encounter -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_a_executing_event_encounter -- \"accept_trade (default)\" --\u003e ST_leg_a_executing_event_encounter\n  ST_leg_a_executing_event_encounter -- \"look\" --\u003e ST_leg_a_executing_event_encounter\n  ST_leg_a_executing_event_encounter -- \"accept_trade [world.food_lbs \u0026gt;= 50]\" --\u003e ST_leg_a_executing_traveling\n  ST_leg_a_executing_event_encounter -- \"decline_trade\" --\u003e ST_leg_a_executing_traveling\n  ST_leg_a_executing_event_encounter -- \"move_on\" --\u003e ST_leg_a_executing_traveling\n  ST_leg_a_executing_event_supply_loss -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_a_executing_event_supply_loss -- \"look\" --\u003e ST_leg_a_executing_event_supply_loss\n  ST_leg_a_executing_event_supply_loss -- \"move_on\" --\u003e ST_leg_a_executing_traveling\n  ST_leg_a_executing_event_weather -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_a_executing_event_weather -- \"look\" --\u003e ST_leg_a_executing_event_weather\n  ST_leg_a_executing_event_weather -- \"push_on\" --\u003e ST_leg_a_executing_traveling\n  ST_leg_a_executing_event_weather -- \"wait_out\" --\u003e ST_leg_a_executing_traveling\n  ST_leg_a_executing_traveling -- \"continue [world.food_lbs - (wo…]\" --\u003e ST_ended_lost\n  ST_leg_a_executing_traveling -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_a_executing_traveling -- \"continue [world.miles_traveled…]\" --\u003e ST_leg_a_awaiting_reply\n  ST_leg_a_executing_traveling -- \"continue [int(world.miles_trav…]\" --\u003e ST_leg_a_executing_event_breakdown\n  ST_leg_a_executing_traveling -- \"continue [int(world.miles_trav…]\" --\u003e ST_leg_a_executing_event_disease\n  ST_leg_a_executing_traveling -- \"continue [int(world.miles_trav…]\" --\u003e ST_leg_a_executing_event_encounter\n  ST_leg_a_executing_traveling -- \"continue [int(world.miles_trav…]\" --\u003e ST_leg_a_executing_event_supply_loss\n  ST_leg_a_executing_traveling -- \"continue [int(world.miles_trav…]\" --\u003e ST_leg_a_executing_event_weather\n  ST_leg_a_executing_traveling -- \"continue (default)\" --\u003e ST_leg_a_executing_traveling\n  ST_leg_a_executing_traveling -- \"look\" --\u003e ST_leg_a_executing_traveling\n  ST_leg_a_executing_traveling -- \"set_pace\" --\u003e ST_leg_a_executing_traveling\n  ST_leg_a_executing_traveling -- \"set_rations\" --\u003e ST_leg_a_executing_traveling\n  ST_leg_b_awaiting_reply -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_b_awaiting_reply -- \"enter_fort [true]\" --\u003e ST_fort\n  ST_leg_b_awaiting_reply -- \"face_robbery\" --\u003e ST_frontier\n  ST_leg_b_awaiting_reply -- \"scout\" --\u003e ST_frontier\n  ST_leg_b_awaiting_reply -- \"hunt\" --\u003e ST_hunt\n  ST_leg_b_awaiting_reply -- \"give_up_leg [world.cycle__leg_b__…]\" --\u003e ST_leg_a_executing\n  ST_leg_b_awaiting_reply -- \"restart_from [slots.stage == 'inde…]\" --\u003e ST_leg_a_executing\n  ST_leg_b_awaiting_reply -- \"approach_river (default)\" --\u003e ST_leg_b_awaiting_reply\n  ST_leg_b_awaiting_reply -- \"enter_fort (default)\" --\u003e ST_leg_b_awaiting_reply\n  ST_leg_b_awaiting_reply -- \"restart_from (default)\" --\u003e ST_leg_b_awaiting_reply\n  ST_leg_b_awaiting_reply -- \"give_up_leg (default)\" --\u003e ST_leg_b_error\n  ST_leg_b_awaiting_reply -- \"restart_from [slots.stage == 'kear…]\" --\u003e ST_leg_b_executing\n  ST_leg_b_awaiting_reply -- \"continue (default)\" --\u003e ST_leg_c_executing\n  ST_leg_b_awaiting_reply -- \"restart_from [slots.stage == 'chim…]\" --\u003e ST_leg_c_executing\n  ST_leg_b_awaiting_reply -- \"restart_from [slots.stage == 'lara…]\" --\u003e ST_leg_d_executing\n  ST_leg_b_awaiting_reply -- \"restart_from [slots.stage == 'sout…]\" --\u003e ST_leg_e_executing\n  ST_leg_b_awaiting_reply -- \"restart_from [slots.stage == 'snak…]\" --\u003e ST_leg_f_executing\n  ST_leg_b_awaiting_reply -- \"rest\" --\u003e ST_rest_room\n  ST_leg_b_awaiting_reply -- \"approach_river [false]\" --\u003e ST_river_crossing\n  ST_leg_b_awaiting_reply -- \"continue ['Fort Kearney' == 'S…]\" --\u003e ST_snow_blocked\n  ST_leg_b_awaiting_reply -- \"consult_guide\" --\u003e ST_trail_guide\n  ST_leg_b_error -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_b_error -- \"retry\" --\u003e ST_leg_b_executing\n  ST_leg_b_executing_event_breakdown -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_b_executing_event_breakdown -- \"look\" --\u003e ST_leg_b_executing_event_breakdown\n  ST_leg_b_executing_event_breakdown -- \"repair [world.current_event_…]\" --\u003e ST_leg_b_executing_event_breakdown\n  ST_leg_b_executing_event_breakdown -- \"repair (default)\" --\u003e ST_leg_b_executing_traveling\n  ST_leg_b_executing_event_breakdown -- \"repair [world.breakdown_part…]\" --\u003e ST_leg_b_executing_traveling\n  ST_leg_b_executing_event_breakdown -- \"wait_out\" --\u003e ST_leg_b_executing_traveling\n  ST_leg_b_executing_event_disease -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_b_executing_event_disease -- \"look\" --\u003e ST_leg_b_executing_event_disease\n  ST_leg_b_executing_event_disease -- \"treat [(world.clothing_sets…]\" --\u003e ST_leg_b_executing_event_disease\n  ST_leg_b_executing_event_disease -- \"move_on\" --\u003e ST_leg_b_executing_traveling\n  ST_leg_b_executing_event_disease -- \"treat (default)\" --\u003e ST_leg_b_executing_traveling\n  ST_leg_b_executing_event_disease -- \"treat [world.clothing_sets …]\" --\u003e ST_leg_b_executing_traveling\n  ST_leg_b_executing_event_disease -- \"wait_out (default)\" --\u003e ST_leg_b_executing_traveling\n  ST_leg_b_executing_event_disease -- \"wait_out [world.health_avg \u0026lt; 3…]\" --\u003e ST_leg_b_executing_traveling\n  ST_leg_b_executing_event_encounter -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_b_executing_event_encounter -- \"accept_trade (default)\" --\u003e ST_leg_b_executing_event_encounter\n  ST_leg_b_executing_event_encounter -- \"look\" --\u003e ST_leg_b_executing_event_encounter\n  ST_leg_b_executing_event_encounter -- \"accept_trade [world.food_lbs \u0026gt;= 50]\" --\u003e ST_leg_b_executing_traveling\n  ST_leg_b_executing_event_encounter -- \"decline_trade\" --\u003e ST_leg_b_executing_traveling\n  ST_leg_b_executing_event_encounter -- \"move_on\" --\u003e ST_leg_b_executing_traveling\n  ST_leg_b_executing_event_supply_loss -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_b_executing_event_supply_loss -- \"look\" --\u003e ST_leg_b_executing_event_supply_loss\n  ST_leg_b_executing_event_supply_loss -- \"move_on\" --\u003e ST_leg_b_executing_traveling\n  ST_leg_b_executing_event_weather -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_b_executing_event_weather -- \"look\" --\u003e ST_leg_b_executing_event_weather\n  ST_leg_b_executing_event_weather -- \"push_on\" --\u003e ST_leg_b_executing_traveling\n  ST_leg_b_executing_event_weather -- \"wait_out\" --\u003e ST_leg_b_executing_traveling\n  ST_leg_b_executing_traveling -- \"continue [world.food_lbs - (wo…]\" --\u003e ST_ended_lost\n  ST_leg_b_executing_traveling -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_b_executing_traveling -- \"continue [world.miles_traveled…]\" --\u003e ST_leg_b_awaiting_reply\n  ST_leg_b_executing_traveling -- \"continue [int(world.miles_trav…]\" --\u003e ST_leg_b_executing_event_breakdown\n  ST_leg_b_executing_traveling -- \"continue [int(world.miles_trav…]\" --\u003e ST_leg_b_executing_event_disease\n  ST_leg_b_executing_traveling -- \"continue [int(world.miles_trav…]\" --\u003e ST_leg_b_executing_event_encounter\n  ST_leg_b_executing_traveling -- \"continue [int(world.miles_trav…]\" --\u003e ST_leg_b_executing_event_supply_loss\n  ST_leg_b_executing_traveling -- \"continue [int(world.miles_trav…]\" --\u003e ST_leg_b_executing_event_weather\n  ST_leg_b_executing_traveling -- \"continue (default)\" --\u003e ST_leg_b_executing_traveling\n  ST_leg_b_executing_traveling -- \"look\" --\u003e ST_leg_b_executing_traveling\n  ST_leg_b_executing_traveling -- \"set_pace\" --\u003e ST_leg_b_executing_traveling\n  ST_leg_b_executing_traveling -- \"set_rations\" --\u003e ST_leg_b_executing_traveling\n  ST_leg_c_awaiting_reply -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_c_awaiting_reply -- \"enter_fort [false]\" --\u003e ST_fort\n  ST_leg_c_awaiting_reply -- \"face_robbery\" --\u003e ST_frontier\n  ST_leg_c_awaiting_reply -- \"scout\" --\u003e ST_frontier\n  ST_leg_c_awaiting_reply -- \"hunt\" --\u003e ST_hunt\n  ST_leg_c_awaiting_reply -- \"restart_from [slots.stage == 'inde…]\" --\u003e ST_leg_a_executing\n  ST_leg_c_awaiting_reply -- \"give_up_leg [world.cycle__leg_c__…]\" --\u003e ST_leg_b_executing\n  ST_leg_c_awaiting_reply -- \"restart_from [slots.stage == 'kear…]\" --\u003e ST_leg_b_executing\n  ST_leg_c_awaiting_reply -- \"approach_river (default)\" --\u003e ST_leg_c_awaiting_reply\n  ST_leg_c_awaiting_reply -- \"enter_fort (default)\" --\u003e ST_leg_c_awaiting_reply\n  ST_leg_c_awaiting_reply -- \"restart_from (default)\" --\u003e ST_leg_c_awaiting_reply\n  ST_leg_c_awaiting_reply -- \"give_up_leg (default)\" --\u003e ST_leg_c_error\n  ST_leg_c_awaiting_reply -- \"restart_from [slots.stage == 'chim…]\" --\u003e ST_leg_c_executing\n  ST_leg_c_awaiting_reply -- \"continue (default)\" --\u003e ST_leg_d_executing\n  ST_leg_c_awaiting_reply -- \"restart_from [slots.stage == 'lara…]\" --\u003e ST_leg_d_executing\n  ST_leg_c_awaiting_reply -- \"restart_from [slots.stage == 'sout…]\" --\u003e ST_leg_e_executing\n  ST_leg_c_awaiting_reply -- \"restart_from [slots.stage == 'snak…]\" --\u003e ST_leg_f_executing\n  ST_leg_c_awaiting_reply -- \"rest\" --\u003e ST_rest_room\n  ST_leg_c_awaiting_reply -- \"approach_river [false]\" --\u003e ST_river_crossing\n  ST_leg_c_awaiting_reply -- \"continue ['Chimney Rock' == 'S…]\" --\u003e ST_snow_blocked\n  ST_leg_c_awaiting_reply -- \"consult_guide\" --\u003e ST_trail_guide\n  ST_leg_c_error -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_c_error -- \"retry\" --\u003e ST_leg_c_executing\n  ST_leg_c_executing_event_breakdown -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_c_executing_event_breakdown -- \"look\" --\u003e ST_leg_c_executing_event_breakdown\n  ST_leg_c_executing_event_breakdown -- \"repair [world.current_event_…]\" --\u003e ST_leg_c_executing_event_breakdown\n  ST_leg_c_executing_event_breakdown -- \"repair (default)\" --\u003e ST_leg_c_executing_traveling\n  ST_leg_c_executing_event_breakdown -- \"repair [world.breakdown_part…]\" --\u003e ST_leg_c_executing_traveling\n  ST_leg_c_executing_event_breakdown -- \"wait_out\" --\u003e ST_leg_c_executing_traveling\n  ST_leg_c_executing_event_disease -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_c_executing_event_disease -- \"look\" --\u003e ST_leg_c_executing_event_disease\n  ST_leg_c_executing_event_disease -- \"treat [(world.clothing_sets…]\" --\u003e ST_leg_c_executing_event_disease\n  ST_leg_c_executing_event_disease -- \"move_on\" --\u003e ST_leg_c_executing_traveling\n  ST_leg_c_executing_event_disease -- \"treat (default)\" --\u003e ST_leg_c_executing_traveling\n  ST_leg_c_executing_event_disease -- \"treat [world.clothing_sets …]\" --\u003e ST_leg_c_executing_traveling\n  ST_leg_c_executing_event_disease -- \"wait_out (default)\" --\u003e ST_leg_c_executing_traveling\n  ST_leg_c_executing_event_disease -- \"wait_out [world.health_avg \u0026lt; 3…]\" --\u003e ST_leg_c_executing_traveling\n  ST_leg_c_executing_event_encounter -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_c_executing_event_encounter -- \"accept_trade (default)\" --\u003e ST_leg_c_executing_event_encounter\n  ST_leg_c_executing_event_encounter -- \"look\" --\u003e ST_leg_c_executing_event_encounter\n  ST_leg_c_executing_event_encounter -- \"accept_trade [world.food_lbs \u0026gt;= 50]\" --\u003e ST_leg_c_executing_traveling\n  ST_leg_c_executing_event_encounter -- \"decline_trade\" --\u003e ST_leg_c_executing_traveling\n  ST_leg_c_executing_event_encounter -- \"move_on\" --\u003e ST_leg_c_executing_traveling\n  ST_leg_c_executing_event_supply_loss -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_c_executing_event_supply_loss -- \"look\" --\u003e ST_leg_c_executing_event_supply_loss\n  ST_leg_c_executing_event_supply_loss -- \"move_on\" --\u003e ST_leg_c_executing_traveling\n  ST_leg_c_executing_event_weather -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_c_executing_event_weather -- \"look\" --\u003e ST_leg_c_executing_event_weather\n  ST_leg_c_executing_event_weather -- \"push_on\" --\u003e ST_leg_c_executing_traveling\n  ST_leg_c_executing_event_weather -- \"wait_out\" --\u003e ST_leg_c_executing_traveling\n  ST_leg_c_executing_traveling -- \"continue [world.food_lbs - (wo…]\" --\u003e ST_ended_lost\n  ST_leg_c_executing_traveling -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_c_executing_traveling -- \"continue [world.miles_traveled…]\" --\u003e ST_leg_c_awaiting_reply\n  ST_leg_c_executing_traveling -- \"continue [int(world.miles_trav…]\" --\u003e ST_leg_c_executing_event_breakdown\n  ST_leg_c_executing_traveling -- \"continue [int(world.miles_trav…]\" --\u003e ST_leg_c_executing_event_disease\n  ST_leg_c_executing_traveling -- \"continue [int(world.miles_trav…]\" --\u003e ST_leg_c_executing_event_encounter\n  ST_leg_c_executing_traveling -- \"continue [int(world.miles_trav…]\" --\u003e ST_leg_c_executing_event_supply_loss\n  ST_leg_c_executing_traveling -- \"continue [int(world.miles_trav…]\" --\u003e ST_leg_c_executing_event_weather\n  ST_leg_c_executing_traveling -- \"continue (default)\" --\u003e ST_leg_c_executing_traveling\n  ST_leg_c_executing_traveling -- \"look\" --\u003e ST_leg_c_executing_traveling\n  ST_leg_c_executing_traveling -- \"set_pace\" --\u003e ST_leg_c_executing_traveling\n  ST_leg_c_executing_traveling -- \"set_rations\" --\u003e ST_leg_c_executing_traveling\n  ST_leg_d_awaiting_reply -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_d_awaiting_reply -- \"enter_fort [true]\" --\u003e ST_fort\n  ST_leg_d_awaiting_reply -- \"face_robbery\" --\u003e ST_frontier\n  ST_leg_d_awaiting_reply -- \"scout\" --\u003e ST_frontier\n  ST_leg_d_awaiting_reply -- \"hunt\" --\u003e ST_hunt\n  ST_leg_d_awaiting_reply -- \"restart_from [slots.stage == 'inde…]\" --\u003e ST_leg_a_executing\n  ST_leg_d_awaiting_reply -- \"restart_from [slots.stage == 'kear…]\" --\u003e ST_leg_b_executing\n  ST_leg_d_awaiting_reply -- \"give_up_leg [world.cycle__leg_d__…]\" --\u003e ST_leg_c_executing\n  ST_leg_d_awaiting_reply -- \"restart_from [slots.stage == 'chim…]\" --\u003e ST_leg_c_executing\n  ST_leg_d_awaiting_reply -- \"approach_river (default)\" --\u003e ST_leg_d_awaiting_reply\n  ST_leg_d_awaiting_reply -- \"enter_fort (default)\" --\u003e ST_leg_d_awaiting_reply\n  ST_leg_d_awaiting_reply -- \"restart_from (default)\" --\u003e ST_leg_d_awaiting_reply\n  ST_leg_d_awaiting_reply -- \"give_up_leg (default)\" --\u003e ST_leg_d_error\n  ST_leg_d_awaiting_reply -- \"restart_from [slots.stage == 'lara…]\" --\u003e ST_leg_d_executing\n  ST_leg_d_awaiting_reply -- \"continue (default)\" --\u003e ST_leg_e_executing\n  ST_leg_d_awaiting_reply -- \"restart_from [slots.stage == 'sout…]\" --\u003e ST_leg_e_executing\n  ST_leg_d_awaiting_reply -- \"restart_from [slots.stage == 'snak…]\" --\u003e ST_leg_f_executing\n  ST_leg_d_awaiting_reply -- \"rest\" --\u003e ST_rest_room\n  ST_leg_d_awaiting_reply -- \"approach_river [false]\" --\u003e ST_river_crossing\n  ST_leg_d_awaiting_reply -- \"continue ['Fort Laramie' == 'S…]\" --\u003e ST_snow_blocked\n  ST_leg_d_awaiting_reply -- \"consult_guide\" --\u003e ST_trail_guide\n  ST_leg_d_error -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_d_error -- \"retry\" --\u003e ST_leg_d_executing\n  ST_leg_d_executing_event_breakdown -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_d_executing_event_breakdown -- \"look\" --\u003e ST_leg_d_executing_event_breakdown\n  ST_leg_d_executing_event_breakdown -- \"repair [world.current_event_…]\" --\u003e ST_leg_d_executing_event_breakdown\n  ST_leg_d_executing_event_breakdown -- \"repair (default)\" --\u003e ST_leg_d_executing_traveling\n  ST_leg_d_executing_event_breakdown -- \"repair [world.breakdown_part…]\" --\u003e ST_leg_d_executing_traveling\n  ST_leg_d_executing_event_breakdown -- \"wait_out\" --\u003e ST_leg_d_executing_traveling\n  ST_leg_d_executing_event_disease -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_d_executing_event_disease -- \"look\" --\u003e ST_leg_d_executing_event_disease\n  ST_leg_d_executing_event_disease -- \"treat [(world.clothing_sets…]\" --\u003e ST_leg_d_executing_event_disease\n  ST_leg_d_executing_event_disease -- \"move_on\" --\u003e ST_leg_d_executing_traveling\n  ST_leg_d_executing_event_disease -- \"treat (default)\" --\u003e ST_leg_d_executing_traveling\n  ST_leg_d_executing_event_disease -- \"treat [world.clothing_sets …]\" --\u003e ST_leg_d_executing_traveling\n  ST_leg_d_executing_event_disease -- \"wait_out (default)\" --\u003e ST_leg_d_executing_traveling\n  ST_leg_d_executing_event_disease -- \"wait_out [world.health_avg \u0026lt; 3…]\" --\u003e ST_leg_d_executing_traveling\n  ST_leg_d_executing_event_encounter -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_d_executing_event_encounter -- \"accept_trade (default)\" --\u003e ST_leg_d_executing_event_encounter\n  ST_leg_d_executing_event_encounter -- \"look\" --\u003e ST_leg_d_executing_event_encounter\n  ST_leg_d_executing_event_encounter -- \"accept_trade [world.food_lbs \u0026gt;= 50]\" --\u003e ST_leg_d_executing_traveling\n  ST_leg_d_executing_event_encounter -- \"decline_trade\" --\u003e ST_leg_d_executing_traveling\n  ST_leg_d_executing_event_encounter -- \"move_on\" --\u003e ST_leg_d_executing_traveling\n  ST_leg_d_executing_event_supply_loss -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_d_executing_event_supply_loss -- \"look\" --\u003e ST_leg_d_executing_event_supply_loss\n  ST_leg_d_executing_event_supply_loss -- \"move_on\" --\u003e ST_leg_d_executing_traveling\n  ST_leg_d_executing_event_weather -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_d_executing_event_weather -- \"look\" --\u003e ST_leg_d_executing_event_weather\n  ST_leg_d_executing_event_weather -- \"push_on\" --\u003e ST_leg_d_executing_traveling\n  ST_leg_d_executing_event_weather -- \"wait_out\" --\u003e ST_leg_d_executing_traveling\n  ST_leg_d_executing_traveling -- \"continue [world.food_lbs - (wo…]\" --\u003e ST_ended_lost\n  ST_leg_d_executing_traveling -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_d_executing_traveling -- \"continue [world.miles_traveled…]\" --\u003e ST_leg_d_awaiting_reply\n  ST_leg_d_executing_traveling -- \"continue [int(world.miles_trav…]\" --\u003e ST_leg_d_executing_event_breakdown\n  ST_leg_d_executing_traveling -- \"continue [int(world.miles_trav…]\" --\u003e ST_leg_d_executing_event_disease\n  ST_leg_d_executing_traveling -- \"continue [int(world.miles_trav…]\" --\u003e ST_leg_d_executing_event_encounter\n  ST_leg_d_executing_traveling -- \"continue [int(world.miles_trav…]\" --\u003e ST_leg_d_executing_event_supply_loss\n  ST_leg_d_executing_traveling -- \"continue [int(world.miles_trav…]\" --\u003e ST_leg_d_executing_event_weather\n  ST_leg_d_executing_traveling -- \"continue (default)\" --\u003e ST_leg_d_executing_traveling\n  ST_leg_d_executing_traveling -- \"look\" --\u003e ST_leg_d_executing_traveling\n  ST_leg_d_executing_traveling -- \"set_pace\" --\u003e ST_leg_d_executing_traveling\n  ST_leg_d_executing_traveling -- \"set_rations\" --\u003e ST_leg_d_executing_traveling\n  ST_leg_e_awaiting_reply -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_e_awaiting_reply -- \"enter_fort [false]\" --\u003e ST_fort\n  ST_leg_e_awaiting_reply -- \"face_robbery\" --\u003e ST_frontier\n  ST_leg_e_awaiting_reply -- \"scout\" --\u003e ST_frontier\n  ST_leg_e_awaiting_reply -- \"hunt\" --\u003e ST_hunt\n  ST_leg_e_awaiting_reply -- \"restart_from [slots.stage == 'inde…]\" --\u003e ST_leg_a_executing\n  ST_leg_e_awaiting_reply -- \"restart_from [slots.stage == 'kear…]\" --\u003e ST_leg_b_executing\n  ST_leg_e_awaiting_reply -- \"restart_from [slots.stage == 'chim…]\" --\u003e ST_leg_c_executing\n  ST_leg_e_awaiting_reply -- \"give_up_leg [world.cycle__leg_e__…]\" --\u003e ST_leg_d_executing\n  ST_leg_e_awaiting_reply -- \"restart_from [slots.stage == 'lara…]\" --\u003e ST_leg_d_executing\n  ST_leg_e_awaiting_reply -- \"approach_river (default)\" --\u003e ST_leg_e_awaiting_reply\n  ST_leg_e_awaiting_reply -- \"enter_fort (default)\" --\u003e ST_leg_e_awaiting_reply\n  ST_leg_e_awaiting_reply -- \"restart_from (default)\" --\u003e ST_leg_e_awaiting_reply\n  ST_leg_e_awaiting_reply -- \"give_up_leg (default)\" --\u003e ST_leg_e_error\n  ST_leg_e_awaiting_reply -- \"restart_from [slots.stage == 'sout…]\" --\u003e ST_leg_e_executing\n  ST_leg_e_awaiting_reply -- \"continue (default)\" --\u003e ST_leg_f_executing\n  ST_leg_e_awaiting_reply -- \"restart_from [slots.stage == 'snak…]\" --\u003e ST_leg_f_executing\n  ST_leg_e_awaiting_reply -- \"rest\" --\u003e ST_rest_room\n  ST_leg_e_awaiting_reply -- \"approach_river [false]\" --\u003e ST_river_crossing\n  ST_leg_e_awaiting_reply -- \"continue ['South Pass' == 'Sou…]\" --\u003e ST_snow_blocked\n  ST_leg_e_awaiting_reply -- \"consult_guide\" --\u003e ST_trail_guide\n  ST_leg_e_error -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_e_error -- \"retry\" --\u003e ST_leg_e_executing\n  ST_leg_e_executing_event_breakdown -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_e_executing_event_breakdown -- \"look\" --\u003e ST_leg_e_executing_event_breakdown\n  ST_leg_e_executing_event_breakdown -- \"repair [world.current_event_…]\" --\u003e ST_leg_e_executing_event_breakdown\n  ST_leg_e_executing_event_breakdown -- \"repair (default)\" --\u003e ST_leg_e_executing_traveling\n  ST_leg_e_executing_event_breakdown -- \"repair [world.breakdown_part…]\" --\u003e ST_leg_e_executing_traveling\n  ST_leg_e_executing_event_breakdown -- \"wait_out\" --\u003e ST_leg_e_executing_traveling\n  ST_leg_e_executing_event_disease -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_e_executing_event_disease -- \"look\" --\u003e ST_leg_e_executing_event_disease\n  ST_leg_e_executing_event_disease -- \"treat [(world.clothing_sets…]\" --\u003e ST_leg_e_executing_event_disease\n  ST_leg_e_executing_event_disease -- \"move_on\" --\u003e ST_leg_e_executing_traveling\n  ST_leg_e_executing_event_disease -- \"treat (default)\" --\u003e ST_leg_e_executing_traveling\n  ST_leg_e_executing_event_disease -- \"treat [world.clothing_sets …]\" --\u003e ST_leg_e_executing_traveling\n  ST_leg_e_executing_event_disease -- \"wait_out (default)\" --\u003e ST_leg_e_executing_traveling\n  ST_leg_e_executing_event_disease -- \"wait_out [world.health_avg \u0026lt; 3…]\" --\u003e ST_leg_e_executing_traveling\n  ST_leg_e_executing_event_encounter -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_e_executing_event_encounter -- \"accept_trade (default)\" --\u003e ST_leg_e_executing_event_encounter\n  ST_leg_e_executing_event_encounter -- \"look\" --\u003e ST_leg_e_executing_event_encounter\n  ST_leg_e_executing_event_encounter -- \"accept_trade [world.food_lbs \u0026gt;= 50]\" --\u003e ST_leg_e_executing_traveling\n  ST_leg_e_executing_event_encounter -- \"decline_trade\" --\u003e ST_leg_e_executing_traveling\n  ST_leg_e_executing_event_encounter -- \"move_on\" --\u003e ST_leg_e_executing_traveling\n  ST_leg_e_executing_event_supply_loss -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_e_executing_event_supply_loss -- \"look\" --\u003e ST_leg_e_executing_event_supply_loss\n  ST_leg_e_executing_event_supply_loss -- \"move_on\" --\u003e ST_leg_e_executing_traveling\n  ST_leg_e_executing_event_weather -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_e_executing_event_weather -- \"look\" --\u003e ST_leg_e_executing_event_weather\n  ST_leg_e_executing_event_weather -- \"push_on\" --\u003e ST_leg_e_executing_traveling\n  ST_leg_e_executing_event_weather -- \"wait_out\" --\u003e ST_leg_e_executing_traveling\n  ST_leg_e_executing_traveling -- \"continue [world.food_lbs - (wo…]\" --\u003e ST_ended_lost\n  ST_leg_e_executing_traveling -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_e_executing_traveling -- \"continue [world.miles_traveled…]\" --\u003e ST_leg_e_awaiting_reply\n  ST_leg_e_executing_traveling -- \"continue [int(world.miles_trav…]\" --\u003e ST_leg_e_executing_event_breakdown\n  ST_leg_e_executing_traveling -- \"continue [int(world.miles_trav…]\" --\u003e ST_leg_e_executing_event_disease\n  ST_leg_e_executing_traveling -- \"continue [int(world.miles_trav…]\" --\u003e ST_leg_e_executing_event_encounter\n  ST_leg_e_executing_traveling -- \"continue [int(world.miles_trav…]\" --\u003e ST_leg_e_executing_event_supply_loss\n  ST_leg_e_executing_traveling -- \"continue [int(world.miles_trav…]\" --\u003e ST_leg_e_executing_event_weather\n  ST_leg_e_executing_traveling -- \"continue (default)\" --\u003e ST_leg_e_executing_traveling\n  ST_leg_e_executing_traveling -- \"look\" --\u003e ST_leg_e_executing_traveling\n  ST_leg_e_executing_traveling -- \"set_pace\" --\u003e ST_leg_e_executing_traveling\n  ST_leg_e_executing_traveling -- \"set_rations\" --\u003e ST_leg_e_executing_traveling\n  ST_leg_f_awaiting_reply -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_f_awaiting_reply -- \"enter_fort [false]\" --\u003e ST_fort\n  ST_leg_f_awaiting_reply -- \"face_robbery\" --\u003e ST_frontier\n  ST_leg_f_awaiting_reply -- \"scout\" --\u003e ST_frontier\n  ST_leg_f_awaiting_reply -- \"hunt\" --\u003e ST_hunt\n  ST_leg_f_awaiting_reply -- \"restart_from [slots.stage == 'inde…]\" --\u003e ST_leg_a_executing\n  ST_leg_f_awaiting_reply -- \"restart_from [slots.stage == 'kear…]\" --\u003e ST_leg_b_executing\n  ST_leg_f_awaiting_reply -- \"restart_from [slots.stage == 'chim…]\" --\u003e ST_leg_c_executing\n  ST_leg_f_awaiting_reply -- \"restart_from [slots.stage == 'lara…]\" --\u003e ST_leg_d_executing\n  ST_leg_f_awaiting_reply -- \"give_up_leg [world.cycle__leg_f__…]\" --\u003e ST_leg_e_executing\n  ST_leg_f_awaiting_reply -- \"restart_from [slots.stage == 'sout…]\" --\u003e ST_leg_e_executing\n  ST_leg_f_awaiting_reply -- \"approach_river (default)\" --\u003e ST_leg_f_awaiting_reply\n  ST_leg_f_awaiting_reply -- \"enter_fort (default)\" --\u003e ST_leg_f_awaiting_reply\n  ST_leg_f_awaiting_reply -- \"restart_from (default)\" --\u003e ST_leg_f_awaiting_reply\n  ST_leg_f_awaiting_reply -- \"give_up_leg (default)\" --\u003e ST_leg_f_error\n  ST_leg_f_awaiting_reply -- \"restart_from [slots.stage == 'snak…]\" --\u003e ST_leg_f_executing\n  ST_leg_f_awaiting_reply -- \"continue (default)\" --\u003e ST_leg_g_executing\n  ST_leg_f_awaiting_reply -- \"rest\" --\u003e ST_rest_room\n  ST_leg_f_awaiting_reply -- \"approach_river [true]\" --\u003e ST_river_crossing\n  ST_leg_f_awaiting_reply -- \"continue ['Snake River Crossin…]\" --\u003e ST_snow_blocked\n  ST_leg_f_awaiting_reply -- \"consult_guide\" --\u003e ST_trail_guide\n  ST_leg_f_error -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_f_error -- \"retry\" --\u003e ST_leg_f_executing\n  ST_leg_f_executing_event_breakdown -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_f_executing_event_breakdown -- \"look\" --\u003e ST_leg_f_executing_event_breakdown\n  ST_leg_f_executing_event_breakdown -- \"repair [world.current_event_…]\" --\u003e ST_leg_f_executing_event_breakdown\n  ST_leg_f_executing_event_breakdown -- \"repair (default)\" --\u003e ST_leg_f_executing_traveling\n  ST_leg_f_executing_event_breakdown -- \"repair [world.breakdown_part…]\" --\u003e ST_leg_f_executing_traveling\n  ST_leg_f_executing_event_breakdown -- \"wait_out\" --\u003e ST_leg_f_executing_traveling\n  ST_leg_f_executing_event_disease -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_f_executing_event_disease -- \"look\" --\u003e ST_leg_f_executing_event_disease\n  ST_leg_f_executing_event_disease -- \"treat [(world.clothing_sets…]\" --\u003e ST_leg_f_executing_event_disease\n  ST_leg_f_executing_event_disease -- \"move_on\" --\u003e ST_leg_f_executing_traveling\n  ST_leg_f_executing_event_disease -- \"treat (default)\" --\u003e ST_leg_f_executing_traveling\n  ST_leg_f_executing_event_disease -- \"treat [world.clothing_sets …]\" --\u003e ST_leg_f_executing_traveling\n  ST_leg_f_executing_event_disease -- \"wait_out (default)\" --\u003e ST_leg_f_executing_traveling\n  ST_leg_f_executing_event_disease -- \"wait_out [world.health_avg \u0026lt; 3…]\" --\u003e ST_leg_f_executing_traveling\n  ST_leg_f_executing_event_encounter -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_f_executing_event_encounter -- \"accept_trade (default)\" --\u003e ST_leg_f_executing_event_encounter\n  ST_leg_f_executing_event_encounter -- \"look\" --\u003e ST_leg_f_executing_event_encounter\n  ST_leg_f_executing_event_encounter -- \"accept_trade [world.food_lbs \u0026gt;= 50]\" --\u003e ST_leg_f_executing_traveling\n  ST_leg_f_executing_event_encounter -- \"decline_trade\" --\u003e ST_leg_f_executing_traveling\n  ST_leg_f_executing_event_encounter -- \"move_on\" --\u003e ST_leg_f_executing_traveling\n  ST_leg_f_executing_event_supply_loss -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_f_executing_event_supply_loss -- \"look\" --\u003e ST_leg_f_executing_event_supply_loss\n  ST_leg_f_executing_event_supply_loss -- \"move_on\" --\u003e ST_leg_f_executing_traveling\n  ST_leg_f_executing_event_weather -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_f_executing_event_weather -- \"look\" --\u003e ST_leg_f_executing_event_weather\n  ST_leg_f_executing_event_weather -- \"push_on\" --\u003e ST_leg_f_executing_traveling\n  ST_leg_f_executing_event_weather -- \"wait_out\" --\u003e ST_leg_f_executing_traveling\n  ST_leg_f_executing_traveling -- \"continue [world.food_lbs - (wo…]\" --\u003e ST_ended_lost\n  ST_leg_f_executing_traveling -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_f_executing_traveling -- \"continue [world.miles_traveled…]\" --\u003e ST_leg_f_awaiting_reply\n  ST_leg_f_executing_traveling -- \"continue [int(world.miles_trav…]\" --\u003e ST_leg_f_executing_event_breakdown\n  ST_leg_f_executing_traveling -- \"continue [int(world.miles_trav…]\" --\u003e ST_leg_f_executing_event_disease\n  ST_leg_f_executing_traveling -- \"continue [int(world.miles_trav…]\" --\u003e ST_leg_f_executing_event_encounter\n  ST_leg_f_executing_traveling -- \"continue [int(world.miles_trav…]\" --\u003e ST_leg_f_executing_event_supply_loss\n  ST_leg_f_executing_traveling -- \"continue [int(world.miles_trav…]\" --\u003e ST_leg_f_executing_event_weather\n  ST_leg_f_executing_traveling -- \"continue (default)\" --\u003e ST_leg_f_executing_traveling\n  ST_leg_f_executing_traveling -- \"look\" --\u003e ST_leg_f_executing_traveling\n  ST_leg_f_executing_traveling -- \"set_pace\" --\u003e ST_leg_f_executing_traveling\n  ST_leg_f_executing_traveling -- \"set_rations\" --\u003e ST_leg_f_executing_traveling\n  ST_leg_g_awaiting_reply -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_g_awaiting_reply -- \"continue (default)\" --\u003e ST_ended_won\n  ST_leg_g_awaiting_reply -- \"enter_fort [false]\" --\u003e ST_fort\n  ST_leg_g_awaiting_reply -- \"face_robbery\" --\u003e ST_frontier\n  ST_leg_g_awaiting_reply -- \"scout\" --\u003e ST_frontier\n  ST_leg_g_awaiting_reply -- \"hunt\" --\u003e ST_hunt\n  ST_leg_g_awaiting_reply -- \"restart_from [slots.stage == 'inde…]\" --\u003e ST_leg_a_executing\n  ST_leg_g_awaiting_reply -- \"restart_from [slots.stage == 'kear…]\" --\u003e ST_leg_b_executing\n  ST_leg_g_awaiting_reply -- \"restart_from [slots.stage == 'chim…]\" --\u003e ST_leg_c_executing\n  ST_leg_g_awaiting_reply -- \"restart_from [slots.stage == 'lara…]\" --\u003e ST_leg_d_executing\n  ST_leg_g_awaiting_reply -- \"restart_from [slots.stage == 'sout…]\" --\u003e ST_leg_e_executing\n  ST_leg_g_awaiting_reply -- \"give_up_leg [world.cycle__leg_g__…]\" --\u003e ST_leg_f_executing\n  ST_leg_g_awaiting_reply -- \"restart_from [slots.stage == 'snak…]\" --\u003e ST_leg_f_executing\n  ST_leg_g_awaiting_reply -- \"approach_river (default)\" --\u003e ST_leg_g_awaiting_reply\n  ST_leg_g_awaiting_reply -- \"enter_fort (default)\" --\u003e ST_leg_g_awaiting_reply\n  ST_leg_g_awaiting_reply -- \"restart_from (default)\" --\u003e ST_leg_g_awaiting_reply\n  ST_leg_g_awaiting_reply -- \"give_up_leg (default)\" --\u003e ST_leg_g_error\n  ST_leg_g_awaiting_reply -- \"rest\" --\u003e ST_rest_room\n  ST_leg_g_awaiting_reply -- \"approach_river [false]\" --\u003e ST_river_crossing\n  ST_leg_g_awaiting_reply -- \"continue ['Willamette Valley' …]\" --\u003e ST_snow_blocked\n  ST_leg_g_awaiting_reply -- \"consult_guide\" --\u003e ST_trail_guide\n  ST_leg_g_error -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_g_error -- \"retry\" --\u003e ST_leg_g_executing\n  ST_leg_g_executing_event_breakdown -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_g_executing_event_breakdown -- \"look\" --\u003e ST_leg_g_executing_event_breakdown\n  ST_leg_g_executing_event_breakdown -- \"repair [world.current_event_…]\" --\u003e ST_leg_g_executing_event_breakdown\n  ST_leg_g_executing_event_breakdown -- \"repair (default)\" --\u003e ST_leg_g_executing_traveling\n  ST_leg_g_executing_event_breakdown -- \"repair [world.breakdown_part…]\" --\u003e ST_leg_g_executing_traveling\n  ST_leg_g_executing_event_breakdown -- \"wait_out\" --\u003e ST_leg_g_executing_traveling\n  ST_leg_g_executing_event_disease -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_g_executing_event_disease -- \"look\" --\u003e ST_leg_g_executing_event_disease\n  ST_leg_g_executing_event_disease -- \"treat [(world.clothing_sets…]\" --\u003e ST_leg_g_executing_event_disease\n  ST_leg_g_executing_event_disease -- \"move_on\" --\u003e ST_leg_g_executing_traveling\n  ST_leg_g_executing_event_disease -- \"treat (default)\" --\u003e ST_leg_g_executing_traveling\n  ST_leg_g_executing_event_disease -- \"treat [world.clothing_sets …]\" --\u003e ST_leg_g_executing_traveling\n  ST_leg_g_executing_event_disease -- \"wait_out (default)\" --\u003e ST_leg_g_executing_traveling\n  ST_leg_g_executing_event_disease -- \"wait_out [world.health_avg \u0026lt; 3…]\" --\u003e ST_leg_g_executing_traveling\n  ST_leg_g_executing_event_encounter -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_g_executing_event_encounter -- \"accept_trade (default)\" --\u003e ST_leg_g_executing_event_encounter\n  ST_leg_g_executing_event_encounter -- \"look\" --\u003e ST_leg_g_executing_event_encounter\n  ST_leg_g_executing_event_encounter -- \"accept_trade [world.food_lbs \u0026gt;= 50]\" --\u003e ST_leg_g_executing_traveling\n  ST_leg_g_executing_event_encounter -- \"decline_trade\" --\u003e ST_leg_g_executing_traveling\n  ST_leg_g_executing_event_encounter -- \"move_on\" --\u003e ST_leg_g_executing_traveling\n  ST_leg_g_executing_event_supply_loss -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_g_executing_event_supply_loss -- \"look\" --\u003e ST_leg_g_executing_event_supply_loss\n  ST_leg_g_executing_event_supply_loss -- \"move_on\" --\u003e ST_leg_g_executing_traveling\n  ST_leg_g_executing_event_weather -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_g_executing_event_weather -- \"look\" --\u003e ST_leg_g_executing_event_weather\n  ST_leg_g_executing_event_weather -- \"push_on\" --\u003e ST_leg_g_executing_traveling\n  ST_leg_g_executing_event_weather -- \"wait_out\" --\u003e ST_leg_g_executing_traveling\n  ST_leg_g_executing_traveling -- \"continue [world.food_lbs - (wo…]\" --\u003e ST_ended_lost\n  ST_leg_g_executing_traveling -- \"quit\" --\u003e ST_ended_lost\n  ST_leg_g_executing_traveling -- \"continue [world.miles_traveled…]\" --\u003e ST_leg_g_awaiting_reply\n  ST_leg_g_executing_traveling -- \"continue [int(world.miles_trav…]\" --\u003e ST_leg_g_executing_event_breakdown\n  ST_leg_g_executing_traveling -- \"continue [int(world.miles_trav…]\" --\u003e ST_leg_g_executing_event_disease\n  ST_leg_g_executing_traveling -- \"continue [int(world.miles_trav…]\" --\u003e ST_leg_g_executing_event_encounter\n  ST_leg_g_executing_traveling -- \"continue [int(world.miles_trav…]\" --\u003e ST_leg_g_executing_event_supply_loss\n  ST_leg_g_executing_traveling -- \"continue [int(world.miles_trav…]\" --\u003e ST_leg_g_executing_event_weather\n  ST_leg_g_executing_traveling -- \"continue (default)\" --\u003e ST_leg_g_executing_traveling\n  ST_leg_g_executing_traveling -- \"look\" --\u003e ST_leg_g_executing_traveling\n  ST_leg_g_executing_traveling -- \"set_pace\" --\u003e ST_leg_g_executing_traveling\n  ST_leg_g_executing_traveling -- \"set_rations\" --\u003e ST_leg_g_executing_traveling\n  ST_rest_room_rest_done -- \"continue (default)\" --\u003e ST_leg_a_awaiting_reply\n  ST_rest_room_rest_done -- \"continue [world.current_landma…]\" --\u003e ST_leg_a_awaiting_reply\n  ST_rest_room_rest_done -- \"continue [world.current_landma…]\" --\u003e ST_leg_b_awaiting_reply\n  ST_rest_room_rest_done -- \"continue [world.current_landma…]\" --\u003e ST_leg_c_awaiting_reply\n  ST_rest_room_rest_done -- \"continue [world.current_landma…]\" --\u003e ST_leg_d_awaiting_reply\n  ST_rest_room_rest_done -- \"continue [world.current_landma…]\" --\u003e ST_leg_e_awaiting_reply\n  ST_rest_room_rest_done -- \"continue [world.current_landma…]\" --\u003e ST_leg_f_awaiting_reply\n  ST_rest_room_rest_done -- \"continue [world.current_landma…]\" --\u003e ST_leg_g_awaiting_reply\n  ST_rest_room_rest_done -- \"look\" --\u003e ST_rest_room_rest_done\n  ST_rest_room_rest_idle -- \"look\" --\u003e ST_rest_room_rest_idle\n  ST_rest_room_rest_idle -- \"rest (default)\" --\u003e ST_rest_room_rest_idle\n  ST_rest_room_rest_idle -- \"rest [int(slots.days) \u0026gt; 0]\" --\u003e ST_rest_room_rest_running\n  ST_rest_room_rest_running -- \"continue\" --\u003e ST_rest_room_rest_done\n  ST_rest_room_rest_running -- \"look\" --\u003e ST_rest_room_rest_running\n  ST_river_crossing_deep -- \"cancel_crossing (default)\" --\u003e ST_ended_lost\n  ST_river_crossing_deep -- \"cancel_crossing [world.current_landma…]\" --\u003e ST_leg_a_awaiting_reply\n  ST_river_crossing_deep -- \"cancel_crossing [world.current_landma…]\" --\u003e ST_leg_f_awaiting_reply\n  ST_river_crossing_deep -- \"look\" --\u003e ST_river_crossing_deep\n  ST_river_crossing_deep -- \"propose_crossing\" --\u003e ST_river_crossing_reviewing\n  ST_river_crossing_executing -- \"continue [world.river_outcome …]\" --\u003e ST_leg_b_executing\n  ST_river_crossing_executing -- \"continue [world.river_outcome …]\" --\u003e ST_leg_g_executing\n  ST_river_crossing_executing -- \"continue [world.river_outcome …]\" --\u003e ST_river_crossing_deep\n  ST_river_crossing_executing -- \"continue (default)\" --\u003e ST_river_crossing_executing\n  ST_river_crossing_executing -- \"look\" --\u003e ST_river_crossing_executing\n  ST_river_crossing_executing -- \"continue [world.river_outcome …]\" --\u003e ST_river_crossing_mid\n  ST_river_crossing_executing -- \"continue [world.river_outcome …]\" --\u003e ST_river_crossing_shallow\n  ST_river_crossing_mid -- \"cancel_crossing (default)\" --\u003e ST_ended_lost\n  ST_river_crossing_mid -- \"cancel_crossing [world.current_landma…]\" --\u003e ST_leg_a_awaiting_reply\n  ST_river_crossing_mid -- \"cancel_crossing [world.current_landma…]\" --\u003e ST_leg_f_awaiting_reply\n  ST_river_crossing_mid -- \"look\" --\u003e ST_river_crossing_mid\n  ST_river_crossing_mid -- \"propose_crossing\" --\u003e ST_river_crossing_reviewing\n  ST_river_crossing_reviewing -- \"cancel_crossing (default)\" --\u003e ST_ended_lost\n  ST_river_crossing_reviewing -- \"cancel_crossing [world.current_landma…]\" --\u003e ST_leg_a_awaiting_reply\n  ST_river_crossing_reviewing -- \"cancel_crossing [world.current_landma…]\" --\u003e ST_leg_f_awaiting_reply\n  ST_river_crossing_reviewing -- \"refine_crossing (default)\" --\u003e ST_river_crossing_deep\n  ST_river_crossing_reviewing -- \"accept_crossing\" --\u003e ST_river_crossing_executing\n  ST_river_crossing_reviewing -- \"refine_crossing [world.river_depth_ft…]\" --\u003e ST_river_crossing_mid\n  ST_river_crossing_reviewing -- \"look\" --\u003e ST_river_crossing_reviewing\n  ST_river_crossing_reviewing -- \"refine_crossing [world.river_depth_ft…]\" --\u003e ST_river_crossing_shallow\n  ST_river_crossing_shallow -- \"cancel_crossing (default)\" --\u003e ST_ended_lost\n  ST_river_crossing_shallow -- \"cancel_crossing [world.current_landma…]\" --\u003e ST_leg_a_awaiting_reply\n  ST_river_crossing_shallow -- \"cancel_crossing [world.current_landma…]\" --\u003e ST_leg_f_awaiting_reply\n  ST_river_crossing_shallow -- \"propose_crossing\" --\u003e ST_river_crossing_reviewing\n  ST_river_crossing_shallow -- \"look\" --\u003e ST_river_crossing_shallow\n  ST_robbery_aftermath -- \"continue (default)\" --\u003e ST_leg_a_awaiting_reply\n  ST_robbery_aftermath -- \"continue [world.current_landma…]\" --\u003e ST_leg_a_awaiting_reply\n  ST_robbery_aftermath -- \"continue [world.current_landma…]\" --\u003e ST_leg_b_awaiting_reply\n  ST_robbery_aftermath -- \"continue [world.current_landma…]\" --\u003e ST_leg_c_awaiting_reply\n  ST_robbery_aftermath -- \"continue [world.current_landma…]\" --\u003e ST_leg_d_awaiting_reply\n  ST_robbery_aftermath -- \"continue [world.current_landma…]\" --\u003e ST_leg_e_awaiting_reply\n  ST_robbery_aftermath -- \"continue [world.current_landma…]\" --\u003e ST_leg_f_awaiting_reply\n  ST_robbery_aftermath -- \"continue [world.current_landma…]\" --\u003e ST_leg_g_awaiting_reply\n  ST_robbery_aftermath -- \"look\" --\u003e ST_robbery_aftermath\n  ST_snow_blocked -- \"give_up\" --\u003e ST_ended_lost\n  ST_snow_blocked -- \"wait_for_spring [world.food_lbs - 120…]\" --\u003e ST_ended_lost\n  ST_snow_blocked -- \"wait_for_spring [world.month == 'marc…]\" --\u003e ST_leg_e_awaiting_reply\n  ST_snow_blocked -- \"look\" --\u003e ST_snow_blocked\n  ST_snow_blocked -- \"wait_for_spring (default)\" --\u003e ST_snow_blocked\n  ST_trail_guide_trail_guide_active -- \"ask_question\" --\u003e ST_trail_guide_trail_guide_active\n  ST_trail_guide_trail_guide_active -- \"look\" --\u003e ST_trail_guide_trail_guide_active\n  ST_trail_guide_trail_guide_active -- \"back\" --\u003e ST_trail_guide_trail_guide_list\n  ST_trail_guide_trail_guide_active_new -- \"ask_question\" --\u003e ST_trail_guide_trail_guide_active\n  ST_trail_guide_trail_guide_active_new -- \"look\" --\u003e ST_trail_guide_trail_guide_active_new\n  ST_trail_guide_trail_guide_active_new -- \"back\" --\u003e ST_trail_guide_trail_guide_list\n  ST_trail_guide_trail_guide_list -- \"fork_chat\" --\u003e ST_trail_guide_trail_guide_active\n  ST_trail_guide_trail_guide_list -- \"open_chat\" --\u003e ST_trail_guide_trail_guide_active\n  ST_trail_guide_trail_guide_list -- \"ask_question\" --\u003e ST_trail_guide_trail_guide_active_new\n  ST_trail_guide_trail_guide_list -- \"archive_chat\" --\u003e ST_trail_guide_trail_guide_list\n  ST_trail_guide_trail_guide_list -- \"look\" --\u003e ST_trail_guide_trail_guide_list\n  ST_trail_guide_trail_guide_list -- \"rename_chat\" --\u003e ST_trail_guide_trail_guide_list\n  ST_world_clock_weather_dry -- \"weather_advance\" --\u003e ST_world_clock_weather_rain\n  ST_world_clock_weather_rain -- \"weather_advance\" --\u003e ST_world_clock_weather_snow\n  ST_world_clock_weather_snow -- \"weather_advance\" --\u003e ST_world_clock_weather_dry\n\n  classDef input  fill:#eef,stroke:#446,stroke-width:1.5px\n  classDef room   fill:#fff,stroke:#357,stroke-width:1.5px\n  classDef work   fill:#f7f7fa,stroke:#888\n  classDef llm    fill:#f0e6ff,stroke:#6a3eb5,stroke-width:2px,color:#3a2270\n  classDef shell  fill:#fef6e4,stroke:#a85,stroke-width:1.5px\n  classDef store  fill:#eef5fb,stroke:#369,stroke-width:1px\n  classDef cache  fill:#fff6e0,stroke:#a86,stroke-width:1.5px\n  classDef err    fill:#fff5f5,stroke:#c66,stroke-width:1px,stroke-dasharray:4 3\n  classDef next   fill:#e8f5e9,stroke:#272,stroke-width:1.5px\n  classDef note   fill:#fffbe6,stroke:#a90,stroke-width:1px,stroke-dasharray:2 2,color:#553\n",
+  "node_map": {
+    "ST_ended_lost": {
+      "kind": "state",
+      "ref": "ended_lost"
+    },
+    "ST_ended_won": {
+      "kind": "state",
+      "ref": "ended_won"
+    },
+    "ST_fort_compose": {
+      "kind": "state",
+      "ref": "fort.compose"
+    },
+    "ST_fort_describe": {
+      "kind": "state",
+      "ref": "fort.describe"
+    },
+    "ST_fort_done": {
+      "kind": "state",
+      "ref": "fort.done"
+    },
+    "ST_fort_idle": {
+      "kind": "state",
+      "ref": "fort.idle"
+    },
+    "ST_fort_reviewing": {
+      "kind": "state",
+      "ref": "fort.reviewing"
+    },
+    "ST_frontier_bandits_encounter": {
+      "kind": "state",
+      "ref": "frontier.bandits.encounter"
+    },
+    "ST_frontier_scouting": {
+      "kind": "state",
+      "ref": "frontier.scouting"
+    },
+    "ST_general_store_compose": {
+      "kind": "state",
+      "ref": "general_store.compose"
+    },
+    "ST_general_store_describe": {
+      "kind": "state",
+      "ref": "general_store.describe"
+    },
+    "ST_general_store_done": {
+      "kind": "state",
+      "ref": "general_store.done"
+    },
+    "ST_general_store_idle": {
+      "kind": "state",
+      "ref": "general_store.idle"
+    },
+    "ST_general_store_reviewing": {
+      "kind": "state",
+      "ref": "general_store.reviewing"
+    },
+    "ST_hunt_hunt_done": {
+      "kind": "state",
+      "ref": "hunt.hunt_done"
+    },
+    "ST_hunt_hunt_idle": {
+      "kind": "state",
+      "ref": "hunt.hunt_idle"
+    },
+    "ST_hunt_hunt_running": {
+      "kind": "state",
+      "ref": "hunt.hunt_running"
+    },
+    "ST_inbox": {
+      "kind": "state",
+      "ref": "inbox"
+    },
+    "ST_intro": {
+      "kind": "state",
+      "ref": "intro"
+    },
+    "ST_intro_month": {
+      "kind": "state",
+      "ref": "intro_month"
+    },
+    "ST_intro_party_names": {
+      "kind": "state",
+      "ref": "intro_party_names"
+    },
+    "ST_intro_profession": {
+      "kind": "state",
+      "ref": "intro_profession"
+    },
+    "ST_intro_summary": {
+      "kind": "state",
+      "ref": "intro_summary"
+    },
+    "ST_leg_a_awaiting_reply": {
+      "kind": "state",
+      "ref": "leg_a_awaiting_reply"
+    },
+    "ST_leg_a_error": {
+      "kind": "state",
+      "ref": "leg_a_error"
+    },
+    "ST_leg_a_executing_event_breakdown": {
+      "kind": "state",
+      "ref": "leg_a_executing.event_breakdown"
+    },
+    "ST_leg_a_executing_event_disease": {
+      "kind": "state",
+      "ref": "leg_a_executing.event_disease"
+    },
+    "ST_leg_a_executing_event_encounter": {
+      "kind": "state",
+      "ref": "leg_a_executing.event_encounter"
+    },
+    "ST_leg_a_executing_event_supply_loss": {
+      "kind": "state",
+      "ref": "leg_a_executing.event_supply_loss"
+    },
+    "ST_leg_a_executing_event_weather": {
+      "kind": "state",
+      "ref": "leg_a_executing.event_weather"
+    },
+    "ST_leg_a_executing_traveling": {
+      "kind": "state",
+      "ref": "leg_a_executing.traveling"
+    },
+    "ST_leg_b_awaiting_reply": {
+      "kind": "state",
+      "ref": "leg_b_awaiting_reply"
+    },
+    "ST_leg_b_error": {
+      "kind": "state",
+      "ref": "leg_b_error"
+    },
+    "ST_leg_b_executing_event_breakdown": {
+      "kind": "state",
+      "ref": "leg_b_executing.event_breakdown"
+    },
+    "ST_leg_b_executing_event_disease": {
+      "kind": "state",
+      "ref": "leg_b_executing.event_disease"
+    },
+    "ST_leg_b_executing_event_encounter": {
+      "kind": "state",
+      "ref": "leg_b_executing.event_encounter"
+    },
+    "ST_leg_b_executing_event_supply_loss": {
+      "kind": "state",
+      "ref": "leg_b_executing.event_supply_loss"
+    },
+    "ST_leg_b_executing_event_weather": {
+      "kind": "state",
+      "ref": "leg_b_executing.event_weather"
+    },
+    "ST_leg_b_executing_traveling": {
+      "kind": "state",
+      "ref": "leg_b_executing.traveling"
+    },
+    "ST_leg_c_awaiting_reply": {
+      "kind": "state",
+      "ref": "leg_c_awaiting_reply"
+    },
+    "ST_leg_c_error": {
+      "kind": "state",
+      "ref": "leg_c_error"
+    },
+    "ST_leg_c_executing_event_breakdown": {
+      "kind": "state",
+      "ref": "leg_c_executing.event_breakdown"
+    },
+    "ST_leg_c_executing_event_disease": {
+      "kind": "state",
+      "ref": "leg_c_executing.event_disease"
+    },
+    "ST_leg_c_executing_event_encounter": {
+      "kind": "state",
+      "ref": "leg_c_executing.event_encounter"
+    },
+    "ST_leg_c_executing_event_supply_loss": {
+      "kind": "state",
+      "ref": "leg_c_executing.event_supply_loss"
+    },
+    "ST_leg_c_executing_event_weather": {
+      "kind": "state",
+      "ref": "leg_c_executing.event_weather"
+    },
+    "ST_leg_c_executing_traveling": {
+      "kind": "state",
+      "ref": "leg_c_executing.traveling"
+    },
+    "ST_leg_d_awaiting_reply": {
+      "kind": "state",
+      "ref": "leg_d_awaiting_reply"
+    },
+    "ST_leg_d_error": {
+      "kind": "state",
+      "ref": "leg_d_error"
+    },
+    "ST_leg_d_executing_event_breakdown": {
+      "kind": "state",
+      "ref": "leg_d_executing.event_breakdown"
+    },
+    "ST_leg_d_executing_event_disease": {
+      "kind": "state",
+      "ref": "leg_d_executing.event_disease"
+    },
+    "ST_leg_d_executing_event_encounter": {
+      "kind": "state",
+      "ref": "leg_d_executing.event_encounter"
+    },
+    "ST_leg_d_executing_event_supply_loss": {
+      "kind": "state",
+      "ref": "leg_d_executing.event_supply_loss"
+    },
+    "ST_leg_d_executing_event_weather": {
+      "kind": "state",
+      "ref": "leg_d_executing.event_weather"
+    },
+    "ST_leg_d_executing_traveling": {
+      "kind": "state",
+      "ref": "leg_d_executing.traveling"
+    },
+    "ST_leg_e_awaiting_reply": {
+      "kind": "state",
+      "ref": "leg_e_awaiting_reply"
+    },
+    "ST_leg_e_error": {
+      "kind": "state",
+      "ref": "leg_e_error"
+    },
+    "ST_leg_e_executing_event_breakdown": {
+      "kind": "state",
+      "ref": "leg_e_executing.event_breakdown"
+    },
+    "ST_leg_e_executing_event_disease": {
+      "kind": "state",
+      "ref": "leg_e_executing.event_disease"
+    },
+    "ST_leg_e_executing_event_encounter": {
+      "kind": "state",
+      "ref": "leg_e_executing.event_encounter"
+    },
+    "ST_leg_e_executing_event_supply_loss": {
+      "kind": "state",
+      "ref": "leg_e_executing.event_supply_loss"
+    },
+    "ST_leg_e_executing_event_weather": {
+      "kind": "state",
+      "ref": "leg_e_executing.event_weather"
+    },
+    "ST_leg_e_executing_traveling": {
+      "kind": "state",
+      "ref": "leg_e_executing.traveling"
+    },
+    "ST_leg_f_awaiting_reply": {
+      "kind": "state",
+      "ref": "leg_f_awaiting_reply"
+    },
+    "ST_leg_f_error": {
+      "kind": "state",
+      "ref": "leg_f_error"
+    },
+    "ST_leg_f_executing_event_breakdown": {
+      "kind": "state",
+      "ref": "leg_f_executing.event_breakdown"
+    },
+    "ST_leg_f_executing_event_disease": {
+      "kind": "state",
+      "ref": "leg_f_executing.event_disease"
+    },
+    "ST_leg_f_executing_event_encounter": {
+      "kind": "state",
+      "ref": "leg_f_executing.event_encounter"
+    },
+    "ST_leg_f_executing_event_supply_loss": {
+      "kind": "state",
+      "ref": "leg_f_executing.event_supply_loss"
+    },
+    "ST_leg_f_executing_event_weather": {
+      "kind": "state",
+      "ref": "leg_f_executing.event_weather"
+    },
+    "ST_leg_f_executing_traveling": {
+      "kind": "state",
+      "ref": "leg_f_executing.traveling"
+    },
+    "ST_leg_g_awaiting_reply": {
+      "kind": "state",
+      "ref": "leg_g_awaiting_reply"
+    },
+    "ST_leg_g_error": {
+      "kind": "state",
+      "ref": "leg_g_error"
+    },
+    "ST_leg_g_executing_event_breakdown": {
+      "kind": "state",
+      "ref": "leg_g_executing.event_breakdown"
+    },
+    "ST_leg_g_executing_event_disease": {
+      "kind": "state",
+      "ref": "leg_g_executing.event_disease"
+    },
+    "ST_leg_g_executing_event_encounter": {
+      "kind": "state",
+      "ref": "leg_g_executing.event_encounter"
+    },
+    "ST_leg_g_executing_event_supply_loss": {
+      "kind": "state",
+      "ref": "leg_g_executing.event_supply_loss"
+    },
+    "ST_leg_g_executing_event_weather": {
+      "kind": "state",
+      "ref": "leg_g_executing.event_weather"
+    },
+    "ST_leg_g_executing_traveling": {
+      "kind": "state",
+      "ref": "leg_g_executing.traveling"
+    },
+    "ST_rest_room_rest_done": {
+      "kind": "state",
+      "ref": "rest_room.rest_done"
+    },
+    "ST_rest_room_rest_idle": {
+      "kind": "state",
+      "ref": "rest_room.rest_idle"
+    },
+    "ST_rest_room_rest_running": {
+      "kind": "state",
+      "ref": "rest_room.rest_running"
+    },
+    "ST_river_crossing_deep": {
+      "kind": "state",
+      "ref": "river_crossing.deep"
+    },
+    "ST_river_crossing_executing": {
+      "kind": "state",
+      "ref": "river_crossing.executing"
+    },
+    "ST_river_crossing_mid": {
+      "kind": "state",
+      "ref": "river_crossing.mid"
+    },
+    "ST_river_crossing_reviewing": {
+      "kind": "state",
+      "ref": "river_crossing.reviewing"
+    },
+    "ST_river_crossing_shallow": {
+      "kind": "state",
+      "ref": "river_crossing.shallow"
+    },
+    "ST_robbery_aftermath": {
+      "kind": "state",
+      "ref": "robbery_aftermath"
+    },
+    "ST_snow_blocked": {
+      "kind": "state",
+      "ref": "snow_blocked"
+    },
+    "ST_trail_guide_trail_guide_active": {
+      "kind": "state",
+      "ref": "trail_guide.trail_guide_active"
+    },
+    "ST_trail_guide_trail_guide_active_new": {
+      "kind": "state",
+      "ref": "trail_guide.trail_guide_active_new"
+    },
+    "ST_trail_guide_trail_guide_list": {
+      "kind": "state",
+      "ref": "trail_guide.trail_guide_list"
+    },
+    "ST_world_clock_calendar_day_active": {
+      "kind": "state",
+      "ref": "world_clock.calendar.day_active"
+    },
+    "ST_world_clock_weather_dry": {
+      "kind": "state",
+      "ref": "world_clock.weather.dry"
+    },
+    "ST_world_clock_weather_rain": {
+      "kind": "state",
+      "ref": "world_clock.weather.rain"
+    },
+    "ST_world_clock_weather_snow": {
+      "kind": "state",
+      "ref": "world_clock.weather.snow"
+    }
+  }
+}

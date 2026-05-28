@@ -1,0 +1,59 @@
+%% Cloak of Darkness
+%% kitsoki viz --flowchart --detail states
+flowchart LR
+
+  Start(["<b>Start</b>"]):::input
+
+  subgraph SG_bar["<b>phase 1 · bar</b> — A small bar off the foyer. Lit when the cloak is hung up; dark otherwise."]
+    direction LR
+    ST_bar_dark[/"bar.dark"/]:::room
+    ST_bar_lit[/"bar.lit"/]:::room
+  end
+
+  subgraph SG_cloakroom["<b>phase 2 · cloakroom</b> — A small cloakroom with a single hook. Exit east."]
+    direction LR
+    ST_cloakroom[/"cloakroom"/]:::room
+  end
+
+  subgraph SG_ended["<b>phase 3 · ended</b> — The journey is over."]
+    direction LR
+    ST_ended[/"ended"/]:::room
+  end
+
+  subgraph SG_foyer["<b>phase 0 · foyer</b> — The entrance hall of the opera house. South leads to the bar; west to the cloakroom."]
+    direction LR
+    ST_foyer[/"foyer"/]:::room
+  end
+
+  Start --> ST_foyer
+
+  ST_bar_dark -- "*(any)" --> ST_bar_dark
+  ST_bar_dark -- "go (default)" --> ST_bar_dark
+  ST_bar_dark -- "go [slots.direction == '…]" --> ST_foyer
+  ST_bar_lit -- "go (default)" --> ST_bar_lit
+  ST_bar_lit -- "look" --> ST_bar_lit
+  ST_bar_lit -- "read_message" --> ST_ended
+  ST_bar_lit -- "go [slots.direction == '…]" --> ST_foyer
+  ST_cloakroom -- "go (default)" --> ST_cloakroom
+  ST_cloakroom -- "hang_cloak (default)" --> ST_cloakroom
+  ST_cloakroom -- "hang_cloak [world.wearing_cloak …]" --> ST_cloakroom
+  ST_cloakroom -- "look" --> ST_cloakroom
+  ST_cloakroom -- "wear_cloak (default)" --> ST_cloakroom
+  ST_cloakroom -- "wear_cloak [world.wearing_cloak …]" --> ST_cloakroom
+  ST_cloakroom -- "go [slots.direction == '…]" --> ST_foyer
+  ST_foyer -- "go [slots.direction == '…]" --> ST_bar
+  ST_foyer -- "go [slots.direction == '…]" --> ST_cloakroom
+  ST_foyer -- "go (default)" --> ST_foyer
+  ST_foyer -- "go [slots.direction == '…]" --> ST_foyer
+  ST_foyer -- "look" --> ST_foyer
+
+  classDef input  fill:#eef,stroke:#446,stroke-width:1.5px
+  classDef room   fill:#fff,stroke:#357,stroke-width:1.5px
+  classDef work   fill:#f7f7fa,stroke:#888
+  classDef llm    fill:#f0e6ff,stroke:#6a3eb5,stroke-width:2px,color:#3a2270
+  classDef shell  fill:#fef6e4,stroke:#a85,stroke-width:1.5px
+  classDef store  fill:#eef5fb,stroke:#369,stroke-width:1px
+  classDef cache  fill:#fff6e0,stroke:#a86,stroke-width:1.5px
+  classDef err    fill:#fff5f5,stroke:#c66,stroke-width:1px,stroke-dasharray:4 3
+  classDef next   fill:#e8f5e9,stroke:#272,stroke-width:1.5px
+  classDef note   fill:#fffbe6,stroke:#a90,stroke-width:1px,stroke-dasharray:2 2,color:#553

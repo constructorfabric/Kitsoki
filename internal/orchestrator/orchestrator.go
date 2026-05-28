@@ -845,7 +845,13 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 	// Success path: dispatch any host calls collected by the machine, apply
 	// their bindings to world, and refresh the view so the user sees the
 	// updated state on the same turn.
-	hostEvents, hostWorld, hostView, hostRedirect, hostErr := o.dispatchHostCalls(ctx, sid, result.HostCalls, result.World, result.NewState)
+	// Inject the turn number for oracle journal entries (§ oracle tracing).
+	ctxWithTurn := host.WithOracleCallCtx(ctx, host.OracleCallCtx{
+		SessionID: sid,
+		Turn:      turnNum,
+		StatePath: result.NewState,
+	})
+	hostEvents, hostWorld, hostView, hostRedirect, hostErr := o.dispatchHostCalls(ctxWithTurn, sid, result.HostCalls, result.World, result.NewState)
 	if hostErr != nil {
 		tl.Debug(ctx, trace.EvHarnessError, slog.String("host_dispatch_error", hostErr.Error()))
 	}
@@ -1154,6 +1160,23 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 	// `with: { agent: <name> }` references to a host.Agent value. Built
 	// once per dispatch (cheap — translation is tag-equivalent).
 	ctx = host.WithAgents(ctx, agentsForContext(o.def))
+
+	// Inject journal writer and oracle call context so oracle handlers can
+	// write KindOracleCall journal entries without importing the orchestrator.
+	if o.journalWriter != nil {
+		ctx = host.WithOracleJournalWriter(ctx, o.journalWriter)
+	}
+	// OracleCallCtx carries session/turn/state for journal Entry metadata.
+	// Turn is not directly available here (it lives in the Turn() local), so
+	// we inject a best-effort value of 0 when not provided; callers that
+	// inject the turn via WithOracleCallCtx before dispatchHostCalls override
+	// this default.
+	if existing := host.OracleCallCtxFrom(ctx); existing.SessionID == "" {
+		ctx = host.WithOracleCallCtx(ctx, host.OracleCallCtx{
+			SessionID: sid,
+			StatePath: state,
+		})
+	}
 
 	var events []store.Event
 	applied := false

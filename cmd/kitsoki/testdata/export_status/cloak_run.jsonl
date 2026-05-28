@@ -1,0 +1,20 @@
+{"time":"2026-05-25T10:00:00.000Z","level":"DEBUG","msg":"turn.start","session_id":"sess-cloak-001","turn":1,"state_path":"foyer","input":"go west"}
+{"time":"2026-05-25T10:00:00.010Z","level":"DEBUG","msg":"harness.called","session_id":"sess-cloak-001","turn":1,"state_path":"foyer","model":"claude-3-sonnet","prompt_tokens":512}
+{"time":"2026-05-25T10:00:00.120Z","level":"DEBUG","msg":"harness.returned","session_id":"sess-cloak-001","turn":1,"state_path":"foyer","intent":"go","slots":{"direction":"west"}}
+{"time":"2026-05-25T10:00:00.125Z","level":"DEBUG","msg":"machine.transition","session_id":"sess-cloak-001","turn":1,"state_path":"foyer","intent":"go","target":"cloakroom"}
+{"time":"2026-05-25T10:00:00.130Z","level":"DEBUG","msg":"machine.state_exited","session_id":"sess-cloak-001","turn":1,"state_path":"foyer"}
+{"time":"2026-05-25T10:00:00.131Z","level":"DEBUG","msg":"machine.state_entered","session_id":"sess-cloak-001","turn":1,"state_path":"cloakroom"}
+{"time":"2026-05-25T10:00:00.135Z","level":"DEBUG","msg":"turn.end","session_id":"sess-cloak-001","turn":1,"state_path":"cloakroom"}
+{"time":"2026-05-25T10:00:05.000Z","level":"DEBUG","msg":"turn.start","session_id":"sess-cloak-001","turn":2,"state_path":"cloakroom","input":"hang the cloak"}
+{"time":"2026-05-25T10:00:05.010Z","level":"DEBUG","msg":"harness.called","session_id":"sess-cloak-001","turn":2,"state_path":"cloakroom","model":"claude-3-sonnet","prompt_tokens":620}
+{"time":"2026-05-25T10:00:05.080Z","level":"DEBUG","msg":"harness.returned","session_id":"sess-cloak-001","turn":2,"state_path":"cloakroom","intent":"hang_cloak"}
+{"time":"2026-05-25T10:00:05.082Z","level":"DEBUG","msg":"machine.transition","session_id":"sess-cloak-001","turn":2,"state_path":"cloakroom","intent":"hang_cloak","target":"cloakroom"}
+{"time":"2026-05-25T10:00:05.090Z","level":"DEBUG","msg":"machine.effect_applied","session_id":"sess-cloak-001","turn":2,"state_path":"cloakroom","effect":"set","key":"wearing_cloak","value":false}
+{"time":"2026-05-25T10:00:05.095Z","level":"DEBUG","msg":"turn.end","session_id":"sess-cloak-001","turn":2,"state_path":"cloakroom"}
+{"time":"2026-05-25T10:00:09.000Z","level":"DEBUG","msg":"turn.start","session_id":"sess-cloak-001","turn":3,"state_path":"cloakroom","input":"go east"}
+{"time":"2026-05-25T10:00:09.005Z","level":"DEBUG","msg":"harness.called","session_id":"sess-cloak-001","turn":3,"state_path":"cloakroom","model":"claude-3-sonnet","prompt_tokens":580}
+{"time":"2026-05-25T10:00:09.060Z","level":"DEBUG","msg":"harness.returned","session_id":"sess-cloak-001","turn":3,"state_path":"cloakroom","intent":"go","slots":{"direction":"east"}}
+{"time":"2026-05-25T10:00:09.065Z","level":"DEBUG","msg":"machine.transition","session_id":"sess-cloak-001","turn":3,"state_path":"cloakroom","intent":"go","target":"foyer"}
+{"time":"2026-05-25T10:00:09.070Z","level":"DEBUG","msg":"machine.state_exited","session_id":"sess-cloak-001","turn":3,"state_path":"cloakroom"}
+{"time":"2026-05-25T10:00:09.071Z","level":"DEBUG","msg":"machine.state_entered","session_id":"sess-cloak-001","turn":3,"state_path":"foyer"}
+{"time":"2026-05-25T10:00:09.075Z","level":"DEBUG","msg":"turn.end","session_id":"sess-cloak-001","turn":3,"state_path":"foyer"}

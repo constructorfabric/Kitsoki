@@ -71,10 +71,10 @@ states:
       # `working_dir` pins the oracle subprocess to the bugfix worktree
       # so greps/reads against the live tree land on the feature branch,
       # not on main. See implementing.yaml header for the regression.
-      - invoke: host.oracle.ask
+      - invoke: host.oracle.decide
         with:
           agent: proposer
-          prompt: prompts/proposing_executing.md
+          prompt_path: prompts/proposing_executing.md
           schema: schemas/proposing_artifact.json
           working_dir: "{{ world.workdir }}"
           args:

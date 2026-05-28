@@ -1,0 +1,95 @@
+{
+  "session": {
+    "session_id": "tiny-session",
+    "app_id": "tiny-app",
+    "current_state": "root.active",
+    "turn": 2,
+    "started_at": "2026-01-01T00:00:00Z",
+    "terminal": false
+  },
+  "app": {
+    "id": "tiny-app",
+    "name": "Tiny App",
+    "root": "root",
+    "states": {
+      "root": {
+        "States": {
+          "active": {
+            "Description": "Active state — doing work",
+            "OnEnter": [
+              {
+                "Invoke": "host.greet",
+                "With": { "name": "world" }
+              }
+            ],
+            "On": {
+              "done": [{ "Target": "done" }]
+            }
+          },
+          "done": {
+            "Description": "Terminal state",
+            "OnEnter": []
+          }
+        }
+      }
+    },
+    "World": {
+      "greeting": { "type": "string", "default": "" }
+    }
+  },
+  "mermaid": {
+    "source": "flowchart LR\n  ST_root_active[\"active\"]\n  ST_root_done[\"done\"]\n  ST_root_active -->|done| ST_root_done",
+    "node_map": {
+      "ST_root_active": { "kind": "state", "ref": "root.active" },
+      "ST_root_done": { "kind": "state", "ref": "root.done" },
+      "STEP_root_active_0": { "kind": "effect", "ref": "root.active:on_enter:0" }
+    }
+  },
+  "events": [
+    {
+      "time": "2026-01-01T00:00:01Z",
+      "level": "info",
+      "msg": "turn.start",
+      "session_id": "tiny-session",
+      "turn": 1,
+      "state_path": "root.active",
+      "attrs": { "turn": 1 }
+    },
+    {
+      "time": "2026-01-01T00:00:02Z",
+      "level": "info",
+      "msg": "host.invoked",
+      "session_id": "tiny-session",
+      "turn": 1,
+      "state_path": "root.active",
+      "attrs": { "handler": "host.greet", "input": { "name": "world" } }
+    },
+    {
+      "time": "2026-01-01T00:00:03Z",
+      "level": "info",
+      "msg": "host.returned",
+      "session_id": "tiny-session",
+      "turn": 1,
+      "state_path": "root.active",
+      "attrs": { "handler": "host.greet", "return": "Hello, world!", "duration_ms": 12 }
+    },
+    {
+      "time": "2026-01-01T00:00:04Z",
+      "level": "info",
+      "msg": "machine.transition",
+      "session_id": "tiny-session",
+      "turn": 2,
+      "state_path": "root.done",
+      "attrs": { "intent": "done", "from": "root.active", "to": "root.done" }
+    },
+    {
+      "time": "2026-01-01T00:00:05Z",
+      "level": "info",
+      "msg": "turn.end",
+      "session_id": "tiny-session",
+      "turn": 2,
+      "state_path": "root.done",
+      "attrs": { "turn": 2 }
+    }
+  ]
+}

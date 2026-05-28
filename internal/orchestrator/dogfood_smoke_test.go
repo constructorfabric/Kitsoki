@@ -1038,6 +1038,9 @@ func oracleRouter(artifacts promptArtifact, seen *[]oracleSeen) host.Handler {
 				promptArg, _ = ctxBlock["prompt"].(string)
 			}
 		}
+		if promptArg == "" {
+			promptArg, _ = args["prompt_path"].(string)
+		}
 		workingDir, _ := args["working_dir"].(string)
 		*seen = append(*seen, oracleSeen{prompt: promptArg, workingDir: workingDir})
 

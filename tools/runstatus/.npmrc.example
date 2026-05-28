@@ -1,0 +1,6 @@
+# Copy to .npmrc and add your own credentials.
+# Auth belongs in your user-level ~/.npmrc, not in this repo file.
+
+registry=https://artifactory.corp.acronis.com/artifactory/api/npm/global-npm-prod-virtual/
+always-auth=false
+@jsr:registry=https://npm.jsr.io/

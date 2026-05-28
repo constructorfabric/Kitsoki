@@ -1245,11 +1245,18 @@ func (m RootModel) routeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Esc opens the system menu from the default interactive modes.
-	// It deliberately does not fire during ModeAwaitingLLM (Ctrl+C cancels
-	// the turn first) or while a slot-filling / disambiguation overlay is
+	// It does not fire while a slot-filling / disambiguation overlay is
 	// already using Esc to back out.
 	if msg.Type == tea.KeyEsc {
 		if m.mode == ModeOnPath || m.mode == ModeOffPath {
+			m.mode = ModeMenu
+			m.menuSystem.Open()
+			return m, nil
+		}
+		if m.mode == ModeAwaitingLLM {
+			if m.inFlightCancel != nil {
+				m.inFlightCancel()
+			}
 			m.mode = ModeMenu
 			m.menuSystem.Open()
 			return m, nil
@@ -1320,12 +1327,18 @@ func (m RootModel) routeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// until a new one is posted; there is no dedicated snooze-with-timer
 			// path in the store today).
 			if n := m.inbox.ActionRequiredNotification(); n != nil && m.jobStore != nil {
-				ctx := context.Background()
-				_ = m.jobStore.MarkNotificationRead(ctx, n.ID)
+				nID := n.ID
+				js := m.jobStore
 				// Site 27 (c): inbox item dismissed (Esc / snooze semantics).
 				m.emitInboxDismissed(n.ID, n.Title)
 				// Trigger a re-poll so the inbox snapshot updates immediately.
-				return m, func() tea.Msg { return m.pollInbox() }
+				// MarkNotificationRead is called inside the Cmd to avoid blocking
+				// Bubble Tea's Update loop on a potentially slow SQLite call.
+				return m, func() tea.Msg {
+					ctx := context.Background()
+					_ = js.MarkNotificationRead(ctx, nID)
+					return m.pollInbox()
+				}
 			}
 			return m, nil
 		}

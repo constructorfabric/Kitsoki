@@ -41,6 +41,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"time"
 
 	"kitsoki/internal/render/sourcecolor"
 )
@@ -212,7 +213,66 @@ func OracleExtractHandler(ctx context.Context, args map[string]any) (Result, err
 		_ = err
 	}
 
-	return runExtract(ctx, ea, bin, args)
+	callID := newUUID()
+	callStart := time.Now()
+
+	res, runErr := runExtract(ctx, ea, bin, args)
+	durationMS := time.Since(callStart).Milliseconds()
+
+	// Only emit journal entries for calls that hit the LLM tier (or all calls
+	// for tracing purposes). We always emit so runstatus can show the routing
+	// decision.
+	agentName := agentNameFromArgs(args)
+	agent, _ := resolveAgent(ctx, map[string]any{"agent": agentName})
+
+	// Build input descriptor.
+	inputDesc := map[string]any{
+		"schema": ea.SchemaPath,
+	}
+
+	// Build response descriptor.
+	var responseDesc map[string]any
+	if res.Data != nil {
+		responseDesc = map[string]any{}
+		if v, ok := res.Data["submitted"]; ok {
+			responseDesc["extracted"] = v
+			responseDesc["json"] = v
+		}
+		if v, ok := res.Data["resolved_by"]; ok {
+			responseDesc["resolved_by"] = v
+		}
+	}
+
+	errStr := ""
+	if res.Error != "" {
+		errStr = res.Error
+	}
+
+	// Lean slog.
+	slogAttrs := []any{
+		"call_id", callID,
+		"model", agent.Model,
+		"duration_ms", durationMS,
+	}
+	if errStr != "" {
+		slogAttrs = append(slogAttrs, "error", errStr)
+	}
+	slog.InfoContext(ctx, "oracle.extract.complete", slogAttrs...)
+
+	appendOracleCallJournal(ctx, callStart, 0, OracleCallBody{
+		CallID:       callID,
+		Verb:         "extract",
+		Agent:        agentName,
+		Model:        agent.Model,
+		DurationMS:   durationMS,
+		SystemPrompt: effectiveSystemPrompt(map[string]any{}, agent),
+		Prompt:       ea.Input,
+		Input:        marshalInput(inputDesc),
+		Response:     marshalResponse(responseDesc),
+		Error:        errStr,
+	})
+
+	return res, runErr
 }
 
 // runExtract is the implementation extracted so tests can call it directly

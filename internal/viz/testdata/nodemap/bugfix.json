@@ -1,0 +1,49 @@
+{
+  "source": "%% Bug-fix pipeline\n%% kitsoki viz --flowchart --detail states\nflowchart LR\n\n  Start([\"\u003cb\u003eStart\u003c/b\u003e\"]):::input\n\n  subgraph SG___exit__abandoned[\"\u003cb\u003e__exit__abandoned\u003c/b\u003e — Exit: abandoned\"]\n    direction LR\n    ST___exit__abandoned[/\"__exit__abandoned\"/]:::room\n  end\n\n  subgraph SG___exit__done[\"\u003cb\u003e__exit__done\u003c/b\u003e — Exit: done\"]\n    direction LR\n    ST___exit__done[/\"__exit__done\"/]:::room\n  end\n\n  subgraph SG___exit__pick_ticket[\"\u003cb\u003e__exit__pick_ticket\u003c/b\u003e — Exit: pick_ticket\"]\n    direction LR\n    ST___exit__pick_ticket[/\"__exit__pick_ticket\"/]:::room\n  end\n\n  subgraph SG_done[\"\u003cb\u003ephase 3 · done\u003c/b\u003e — Build the run's close-out artifact; accept to hand off to pr-refinement.\"]\n    direction LR\n    ST_done[/\"done\"/]:::room\n  end\n\n  subgraph SG_idle[\"\u003cb\u003ephase 0 · idle\u003c/b\u003e — Bug-fix pipeline parked. Waiting for start.\"]\n    direction LR\n    ST_idle[/\"idle\"/]:::room\n  end\n\n  subgraph SG_implementing[\"\u003cb\u003ephase 6 · implementing\u003c/b\u003e — Apply the proposed fix to the workspace; advance to testing.\"]\n    direction LR\n    ST_implementing[/\"implementing\"/]:::room\n  end\n\n  subgraph SG_proposing[\"\u003cb\u003ephase 4 · proposing\u003c/b\u003e — Draft the fix proposal; review and advance to implementing.\"]\n    direction LR\n    ST_proposing[/\"proposing\"/]:::room\n  end\n\n  subgraph SG_reproducing[\"\u003cb\u003ephase 1 · reproducing\u003c/b\u003e — Reproduce the bug; produce the reproduction artifact for review.\"]\n    direction LR\n    ST_reproducing[/\"reproducing\"/]:::room\n  end\n\n  subgraph SG_reviewing[\"\u003cb\u003ephase 7 · reviewing\u003c/b\u003e — Self-review the diff (code + security); advance to validating.\"]\n    direction LR\n    ST_reviewing[/\"reviewing\"/]:::room\n  end\n\n  subgraph SG_testing[\"\u003cb\u003ephase 5 · testing\u003c/b\u003e — Run + review tests for the applied fix; advance to reviewing (or done in quick mode).\"]\n    direction LR\n    ST_testing[/\"testing\"/]:::room\n  end\n\n  subgraph SG_validating[\"\u003cb\u003ephase 2 · validating\u003c/b\u003e — Validate the fix against the full environment; advance to done.\"]\n    direction LR\n    ST_validating[/\"validating\"/]:::room\n  end\n\n  Start --\u003e ST_idle\n\n  ST_done -- \"quit\" --\u003e ST___exit__abandoned\n  ST_done -- \"refine [world.done_cycle \u0026gt;= …]\" --\u003e ST___exit__abandoned\n  ST_done -- \"accept\" --\u003e ST___exit__done\n  ST_done -- \"look\" --\u003e ST_done\n  ST_done -- \"refine\" --\u003e ST_done\n  ST_done -- \"restart_from [slots.stage == 'impl…]\" --\u003e ST_implementing\n  ST_done -- \"restart_from [slots.stage == 'prop…]\" --\u003e ST_proposing\n  ST_done -- \"restart_from [slots.stage == 'repr…]\" --\u003e ST_reproducing\n  ST_done -- \"restart_from [slots.stage == 'test…]\" --\u003e ST_testing\n  ST_done -- \"restart_from\" --\u003e ST_validating\n  ST_done -- \"restart_from [slots.stage == 'vali…]\" --\u003e ST_validating\n  ST_idle -- \"quit\" --\u003e ST___exit__abandoned\n  ST_idle -- \"change_ticket\" --\u003e ST___exit__pick_ticket\n  ST_idle -- \"look\" --\u003e ST_idle\n  ST_idle -- \"full_pipeline\" --\u003e ST_reproducing\n  ST_idle -- \"quick_fix\" --\u003e ST_reproducing\n  ST_idle -- \"start\" --\u003e ST_reproducing\n  ST_idle -- \"skip_to_pr\" --\u003e ST_validating\n  ST_implementing -- \"quit\" --\u003e ST___exit__abandoned\n  ST_implementing -- \"look\" --\u003e ST_implementing\n  ST_implementing -- \"restart_from\" --\u003e ST_proposing\n  ST_implementing -- \"restart_from [slots.stage == 'prop…]\" --\u003e ST_proposing\n  ST_implementing -- \"restart_from [slots.stage == 'repr…]\" --\u003e ST_reproducing\n  ST_implementing -- \"accept\" --\u003e ST_testing\n  ST_proposing -- \"jump_to\" --\u003e ST___exit__abandoned\n  ST_proposing -- \"quit\" --\u003e ST___exit__abandoned\n  ST_proposing -- \"refine [world.proposing_cycl…]\" --\u003e ST___exit__abandoned\n  ST_proposing -- \"jump_to [slots.stage == 'done…]\" --\u003e ST_done\n  ST_proposing -- \"accept\" --\u003e ST_implementing\n  ST_proposing -- \"look\" --\u003e ST_proposing\n  ST_proposing -- \"refine\" --\u003e ST_proposing\n  ST_proposing -- \"restart_from\" --\u003e ST_proposing\n  ST_proposing -- \"restart_from [slots.stage == 'repr…]\" --\u003e ST_reproducing\n  ST_proposing -- \"jump_to [slots.stage == 'test…]\" --\u003e ST_testing\n  ST_proposing -- \"jump_to [slots.stage == 'vali…]\" --\u003e ST_validating\n  ST_reproducing -- \"jump_to\" --\u003e ST___exit__abandoned\n  ST_reproducing -- \"quit\" --\u003e ST___exit__abandoned\n  ST_reproducing -- \"refine [world.reproducing_cy…]\" --\u003e ST___exit__abandoned\n  ST_reproducing -- \"jump_to [slots.stage == 'done…]\" --\u003e ST_done\n  ST_reproducing -- \"accept\" --\u003e ST_proposing\n  ST_reproducing -- \"full_pipeline\" --\u003e ST_reproducing\n  ST_reproducing -- \"look\" --\u003e ST_reproducing\n  ST_reproducing -- \"quick_fix\" --\u003e ST_reproducing\n  ST_reproducing -- \"refine\" --\u003e ST_reproducing\n  ST_reproducing -- \"restart_from\" --\u003e ST_reproducing\n  ST_reproducing -- \"jump_to [slots.stage == 'test…]\" --\u003e ST_testing\n  ST_reproducing -- \"jump_to [slots.stage == 'vali…]\" --\u003e ST_validating\n  ST_reproducing -- \"skip_to_pr\" --\u003e ST_validating\n  ST_reviewing -- \"quit\" --\u003e ST___exit__abandoned\n  ST_reviewing -- \"restart_from [slots.stage == 'impl…]\" --\u003e ST_implementing\n  ST_reviewing -- \"restart_from\" --\u003e ST_proposing\n  ST_reviewing -- \"restart_from [slots.stage == 'prop…]\" --\u003e ST_proposing\n  ST_reviewing -- \"restart_from [slots.stage == 'repr…]\" --\u003e ST_reproducing\n  ST_reviewing -- \"look\" --\u003e ST_reviewing\n  ST_reviewing -- \"restart_from [slots.stage == 'test…]\" --\u003e ST_testing\n  ST_reviewing -- \"accept\" --\u003e ST_validating\n  ST_testing -- \"accept [(world.implement_rev…]\" --\u003e ST___exit__abandoned\n  ST_testing -- \"jump_to\" --\u003e ST___exit__abandoned\n  ST_testing -- \"quit\" --\u003e ST___exit__abandoned\n  ST_testing -- \"refine [world.testing_cycle …]\" --\u003e ST___exit__abandoned\n  ST_testing -- \"accept [world.bugfix_mode ==…]\" --\u003e ST_done\n  ST_testing -- \"jump_to [slots.stage == 'done…]\" --\u003e ST_done\n  ST_testing -- \"accept [world.implement_revi…]\" --\u003e ST_implementing\n  ST_testing -- \"restart_from [slots.stage == 'impl…]\" --\u003e ST_implementing\n  ST_testing -- \"restart_from\" --\u003e ST_proposing\n  ST_testing -- \"restart_from [slots.stage == 'prop…]\" --\u003e ST_proposing\n  ST_testing -- \"restart_from [slots.stage == 'repr…]\" --\u003e ST_reproducing\n  ST_testing -- \"accept\" --\u003e ST_reviewing\n  ST_testing -- \"look\" --\u003e ST_testing\n  ST_testing -- \"refine\" --\u003e ST_testing\n  ST_testing -- \"jump_to [slots.stage == 'vali…]\" --\u003e ST_validating\n  ST_validating -- \"accept [world.validate_artif…]\" --\u003e ST___exit__abandoned\n  ST_validating -- \"jump_to\" --\u003e ST___exit__abandoned\n  ST_validating -- \"quit\" --\u003e ST___exit__abandoned\n  ST_validating -- \"refine [world.validating_cyc…]\" --\u003e ST___exit__abandoned\n  ST_validating -- \"accept\" --\u003e ST_done\n  ST_validating -- \"jump_to [slots.stage == 'done…]\" --\u003e ST_done\n  ST_validating -- \"accept [world.validate_artif…]\" --\u003e ST_implementing\n  ST_validating -- \"restart_from [slots.stage == 'impl…]\" --\u003e ST_implementing\n  ST_validating -- \"accept [world.validate_artif…]\" --\u003e ST_proposing\n  ST_validating -- \"restart_from\" --\u003e ST_proposing\n  ST_validating -- \"restart_from [slots.stage == 'prop…]\" --\u003e ST_proposing\n  ST_validating -- \"restart_from [slots.stage == 'repr…]\" --\u003e ST_reproducing\n  ST_validating -- \"restart_from [slots.stage == 'test…]\" --\u003e ST_testing\n  ST_validating -- \"accept [world.validate_artif…]\" --\u003e ST_validating\n  ST_validating -- \"look\" --\u003e ST_validating\n  ST_validating -- \"refine\" --\u003e ST_validating\n\n  classDef input  fill:#eef,stroke:#446,stroke-width:1.5px\n  classDef room   fill:#fff,stroke:#357,stroke-width:1.5px\n  classDef work   fill:#f7f7fa,stroke:#888\n  classDef llm    fill:#f0e6ff,stroke:#6a3eb5,stroke-width:2px,color:#3a2270\n  classDef shell  fill:#fef6e4,stroke:#a85,stroke-width:1.5px\n  classDef store  fill:#eef5fb,stroke:#369,stroke-width:1px\n  classDef cache  fill:#fff6e0,stroke:#a86,stroke-width:1.5px\n  classDef err    fill:#fff5f5,stroke:#c66,stroke-width:1px,stroke-dasharray:4 3\n  classDef next   fill:#e8f5e9,stroke:#272,stroke-width:1.5px\n  classDef note   fill:#fffbe6,stroke:#a90,stroke-width:1px,stroke-dasharray:2 2,color:#553\n",
+  "node_map": {
+    "ST___exit__abandoned": {
+      "kind": "state",
+      "ref": "__exit__abandoned"
+    },
+    "ST___exit__done": {
+      "kind": "state",
+      "ref": "__exit__done"
+    },
+    "ST___exit__pick_ticket": {
+      "kind": "state",
+      "ref": "__exit__pick_ticket"
+    },
+    "ST_done": {
+      "kind": "state",
+      "ref": "done"
+    },
+    "ST_idle": {
+      "kind": "state",
+      "ref": "idle"
+    },
+    "ST_implementing": {
+      "kind": "state",
+      "ref": "implementing"
+    },
+    "ST_proposing": {
+      "kind": "state",
+      "ref": "proposing"
+    },
+    "ST_reproducing": {
+      "kind": "state",
+      "ref": "reproducing"
+    },
+    "ST_reviewing": {
+      "kind": "state",
+      "ref": "reviewing"
+    },
+    "ST_testing": {
+      "kind": "state",
+      "ref": "testing"
+    },
+    "ST_validating": {
+      "kind": "state",
+      "ref": "validating"
+    }
+  }
+}

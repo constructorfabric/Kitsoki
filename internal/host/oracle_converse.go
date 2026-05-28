@@ -28,7 +28,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
+	"time"
 
 	"kitsoki/internal/render/sourcecolor"
 )
@@ -111,6 +113,9 @@ func OracleConverseHandler(ctx context.Context, args map[string]any) (Result, er
 	workingDir = appendDefaultCwd(workingDir, agent)
 	tools := effectiveTools(ctx, args, agent)
 
+	callID := newUUID()
+	callStart := time.Now()
+
 	bin, err := resolveOracleBin(ctx)
 	if err != nil {
 		return Result{
@@ -138,14 +143,23 @@ func OracleConverseHandler(ctx context.Context, args map[string]any) (Result, er
 		Stdin:      question,
 		WorkingDir: workingDir,
 	}.Run(ctx)
+	durationMS := time.Since(callStart).Milliseconds()
+
 	if runErr != nil {
 		return Result{}, runErr
 	}
+
+	converseInputDesc := map[string]any{
+		"messages": []map[string]any{{"role": "user", "content": question}},
+	}
+
 	if cr.Infra != nil {
 		msg := fmt.Sprintf("host.oracle.converse: claude exited with error: %v", cr.Infra)
 		if s := strings.TrimSpace(cr.Stderr); s != "" {
 			msg = fmt.Sprintf("%s\nstderr: %s", msg, s)
 		}
+		emitConverseJournal(ctx, callID, callStart, durationMS, agentNameFromArgs(args), agent.Model,
+			systemPrompt, question, converseInputDesc, "", msg)
 		return Result{
 			Error: msg,
 			Data:  map[string]any{"session_id": sessionID},
@@ -157,11 +171,16 @@ func OracleConverseHandler(ctx context.Context, args map[string]any) (Result, er
 		if stderrText != "" {
 			msg = fmt.Sprintf("%s\nstderr: %s", msg, stderrText)
 		}
+		emitConverseJournal(ctx, callID, callStart, durationMS, agentNameFromArgs(args), agent.Model,
+			systemPrompt, question, converseInputDesc, "", msg)
 		return Result{
 			Error: msg,
 			Data:  map[string]any{"session_id": sessionID},
 		}, nil
 	}
+
+	emitConverseJournal(ctx, callID, callStart, durationMS, agentNameFromArgs(args), agent.Model,
+		systemPrompt, question, converseInputDesc, cr.Stdout, "")
 
 	return Result{
 		Data: map[string]any{
@@ -169,6 +188,38 @@ func OracleConverseHandler(ctx context.Context, args map[string]any) (Result, er
 			"session_id": sessionID,
 		},
 	}, nil
+}
+
+// emitConverseJournal writes the lean slog and journal entry for converse calls.
+func emitConverseJournal(ctx context.Context, callID string, callStart time.Time, durationMS int64,
+	agentName, model, systemPrompt, prompt string, inputDesc map[string]any, answer, errMsg string) {
+
+	attrs := []any{
+		"call_id", callID,
+		"model", model,
+		"duration_ms", durationMS,
+	}
+	if errMsg != "" {
+		attrs = append(attrs, "error", errMsg)
+	}
+	slog.InfoContext(ctx, "oracle.converse.complete", attrs...)
+
+	responseDesc := map[string]any{
+		"text": answer,
+	}
+
+	appendOracleCallJournal(ctx, callStart, 0, OracleCallBody{
+		CallID:       callID,
+		Verb:         "converse",
+		Agent:        agentName,
+		Model:        model,
+		DurationMS:   durationMS,
+		SystemPrompt: systemPrompt,
+		Prompt:       prompt,
+		Input:        marshalInput(inputDesc),
+		Response:     marshalResponse(responseDesc),
+		Error:        errMsg,
+	})
 }
 
 // runConverseWithChat executes a chat-aware converse turn: appends user/assistant
@@ -201,6 +252,9 @@ func runConverseWithChat(ctx context.Context, cs ChatStore, chatID, question, pe
 // Step ordering: allocate/persist the Claude session ID BEFORE appending the
 // user message to prevent orphan transcript rows on session-write failures.
 func doConverseChatTurn(ctx context.Context, cs ChatStore, chatID, question, workingDir, systemPrompt, model, permMode string, tools []string) (Result, error) {
+	callID := newUUID()
+	callStart := time.Now()
+
 	chat, err := cs.Get(ctx, chatID)
 	if err != nil {
 		return Result{Error: fmt.Sprintf("host.oracle.converse: get chat %s: %v", chatID, err)}, nil
@@ -254,8 +308,14 @@ func doConverseChatTurn(ctx context.Context, cs ChatStore, chatID, question, wor
 		Stdin:      question,
 		WorkingDir: workingDir,
 	}.Run(ctx)
+	durationMS := time.Since(callStart).Milliseconds()
+
 	if runErr != nil {
 		return Result{}, runErr
+	}
+
+	chatInputDesc := map[string]any{
+		"messages": []map[string]any{{"role": "user", "content": question}},
 	}
 
 	if cr.Infra != nil {
@@ -263,6 +323,7 @@ func doConverseChatTurn(ctx context.Context, cs ChatStore, chatID, question, wor
 		if s := strings.TrimSpace(cr.Stderr); s != "" {
 			msg = fmt.Sprintf("%s\nstderr: %s", msg, s)
 		}
+		emitConverseJournal(ctx, callID, callStart, durationMS, "", model, systemPrompt, question, chatInputDesc, "", msg)
 		return Result{
 			Error: msg,
 			Data: map[string]any{
@@ -275,6 +336,7 @@ func doConverseChatTurn(ctx context.Context, cs ChatStore, chatID, question, wor
 
 	if cr.ExitCode != 0 {
 		msg := claudeExitErrorMessage(cr.ExitCode, cr.Stderr, cr.Stdout)
+		emitConverseJournal(ctx, callID, callStart, durationMS, "", model, systemPrompt, question, chatInputDesc, "", msg)
 		return Result{
 			Error: msg,
 			Data: map[string]any{
@@ -289,6 +351,8 @@ func doConverseChatTurn(ctx context.Context, cs ChatStore, chatID, question, wor
 		"exit_code": cr.ExitCode,
 	})
 	if appendErr != nil {
+		emitConverseJournal(ctx, callID, callStart, durationMS, "", model, systemPrompt, question, chatInputDesc, cr.Stdout,
+			fmt.Sprintf("host.oracle.converse: persist assistant message: %v", appendErr))
 		return Result{
 			Error: fmt.Sprintf("host.oracle.converse: persist assistant message: %v", appendErr),
 			Data: map[string]any{
@@ -299,6 +363,8 @@ func doConverseChatTurn(ctx context.Context, cs ChatStore, chatID, question, wor
 			},
 		}, nil
 	}
+
+	emitConverseJournal(ctx, callID, callStart, durationMS, "", model, systemPrompt, question, chatInputDesc, cr.Stdout, "")
 
 	seq, _ := cs.LatestSeq(ctx, chatID)
 

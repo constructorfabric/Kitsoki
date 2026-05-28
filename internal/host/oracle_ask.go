@@ -26,9 +26,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"kitsoki/internal/expr"
 	"kitsoki/internal/render"
@@ -276,21 +278,48 @@ func OracleAskHandler(ctx context.Context, args map[string]any) (Result, error) 
 		cliArgs = append(cliArgs, "--mcp-config", mcpConfigPath)
 	}
 
+	callID := newUUID()
+	callStart := time.Now()
+	systemPrompt := effectiveSystemPrompt(args, agent)
+
 	cr, _, runErr := OracleStreamer{
 		Bin:        bin,
 		CLIArgs:    cliArgs,
 		Stdin:      rendered,
 		WorkingDir: workingDir,
 	}.Run(ctx)
+	durationMS := time.Since(callStart).Milliseconds()
+
 	if runErr != nil {
 		return Result{}, runErr
 	}
+
+	var errMsg string
 	if cr.Infra != nil {
-		msg := fmt.Sprintf("host.oracle.ask: claude exec failed: %v", cr.Infra)
+		errMsg = fmt.Sprintf("host.oracle.ask: claude exec failed: %v", cr.Infra)
 		if s := strings.TrimSpace(cr.Stderr); s != "" {
-			msg = fmt.Sprintf("%s\nstderr: %s", msg, s)
+			errMsg = fmt.Sprintf("%s\nstderr: %s", errMsg, s)
 		}
-		return Result{Error: msg}, nil
+		// Emit lean slog + journal before returning
+		slog.InfoContext(ctx, "oracle.ask.complete",
+			"call_id", callID,
+			"agent", agent.Model,
+			"model", agent.Model,
+			"duration_ms", durationMS,
+			"error", errMsg,
+		)
+		appendOracleCallJournal(ctx, callStart, 0, OracleCallBody{
+			CallID:       callID,
+			Verb:         "ask",
+			Agent:        agentNameFromArgs(args),
+			Model:        agent.Model,
+			DurationMS:   durationMS,
+			SystemPrompt: systemPrompt,
+			Prompt:       rendered,
+			Input:        marshalInput(map[string]any{}),
+			Error:        errMsg,
+		})
+		return Result{Error: errMsg}, nil
 	}
 
 	data := map[string]any{
@@ -298,24 +327,69 @@ func OracleAskHandler(ctx context.Context, args map[string]any) (Result, error) 
 		"exit_code": cr.ExitCode,
 		"ok":        cr.ExitCode == 0,
 	}
+	if cr.ExitCode != 0 {
+		errMsg = claudeExitErrorMessage(cr.ExitCode, cr.Stderr, cr.Stdout)
+	}
 
 	// Schema mode: read the submitted payload from the tempfile (written by
 	// kitsoki mcp-validator on successful submit).
+	var submitted any
 	if schemaPath != "" && submittedOutputPath != "" {
 		if payload, readErr := os.ReadFile(submittedOutputPath); readErr == nil && len(payload) > 0 {
 			var parsed any
 			if jErr := json.Unmarshal(payload, &parsed); jErr == nil {
 				data["submitted"] = parsed
+				submitted = parsed
 			}
 		}
 		// submittedOutputPath is cleaned up by the defer above.
 	}
 
+	// Emit lean slog oracle.ask.complete.
+	slog.InfoContext(ctx, "oracle.ask.complete",
+		"call_id", callID,
+		"model", agent.Model,
+		"duration_ms", durationMS,
+	)
+
+	// Write full KindOracleCall journal entry.
+	inputDesc := map[string]any{}
+	if schemaPath != "" {
+		inputDesc["schema_path"] = schemaPath
+	}
+	responseDesc := map[string]any{
+		"text": cr.Stdout,
+	}
+	if submitted != nil {
+		responseDesc["intent"] = submitted
+	}
+	appendOracleCallJournal(ctx, callStart, 0, OracleCallBody{
+		CallID:       callID,
+		Verb:         "ask",
+		Agent:        agentNameFromArgs(args),
+		Model:        agent.Model,
+		DurationMS:   durationMS,
+		SystemPrompt: systemPrompt,
+		Prompt:       rendered,
+		Input:        marshalInput(inputDesc),
+		Response:     marshalResponse(responseDesc),
+		Error:        errMsg,
+	})
+
 	res := Result{Data: data}
-	if cr.ExitCode != 0 {
-		res.Error = claudeExitErrorMessage(cr.ExitCode, cr.Stderr, cr.Stdout)
+	if errMsg != "" {
+		res.Error = errMsg
 	}
 	return res, nil
+}
+
+// agentNameFromArgs extracts the agent name string from handler args,
+// returning "" if not set.
+func agentNameFromArgs(args map[string]any) string {
+	if v, ok := args["agent"].(string); ok {
+		return v
+	}
+	return ""
 }
 
 // AppDirEnv is the env var loaders set to the directory containing app.yaml,
