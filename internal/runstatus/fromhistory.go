@@ -10,6 +10,31 @@ import (
 	"kitsoki/internal/viz"
 )
 
+// FromSink is identical to FromHistory but uses sink.Lines() to populate
+// Snapshot.RawLines with the exact bytes the sink wrote (byte-copy-equal),
+// rather than re-marshalling each event.  Use this wherever you have access
+// to the JSONLSink that holds the history; use FromHistory when only a
+// History slice is available (e.g. in-memory synthetic histories in tests).
+//
+// Fallback: if sink is nil, FromSink falls back to FromHistory.
+func FromSink(sink *store.JSONLSink, def *app.AppDef, sessionID string) (Snapshot, error) {
+	if sink == nil {
+		return Snapshot{}, nil
+	}
+	snap, err := FromHistory(sink.History(), def, sessionID)
+	if err != nil {
+		return snap, err
+	}
+	// Replace RawLines with the sink-retained bytes (byte-copy-equal, not
+	// encoder-pair-equal).  The two slices have the same length because
+	// FromHistory processes exactly the events in sink.History().
+	rawLines := sink.Lines()
+	if len(rawLines) == len(snap.RawLines) {
+		snap.RawLines = rawLines
+	}
+	return snap, nil
+}
+
 // FromHistory converts a real store.History into a Snapshot suitable for the
 // runstatus UI. Used by both the fromsession exporter (real SQLite-backed
 // sessions) and the fromflow exporter (in-memory store from a flow run), so

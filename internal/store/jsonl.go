@@ -69,6 +69,17 @@ type JSONLSink struct {
 	hist History
 	f    *os.File
 
+	// rawLines retains a copy of the exact bytes written (or loaded) for
+	// each event, without the trailing newline.  Lines()[i] corresponds to
+	// hist[i].  This allows Layer 7 consumers (runstatus.FromSink) to
+	// populate Snapshot.RawLines with the actual bytes the writer wrote,
+	// rather than re-marshalling through a separate code path.
+	//
+	// Memory: O(N) bytes per session where N is the number of events.  The
+	// per-event bytes already exist on disk; keeping them here is a 2× factor
+	// in memory for in-process sessions.  Acceptable for phase A scale.
+	rawLines [][]byte
+
 	// openIno is the inode number of the trace file at open time.
 	// Before each Append we stat the path and compare to detect replacement.
 	openIno uint64
@@ -140,7 +151,8 @@ func OpenJSONL(path string) (*JSONLSink, error) {
 	}
 
 	// Existing file: validate and load.
-	hist, err = loadAndValidate(existing, path)
+	var rawLines [][]byte
+	hist, rawLines, err = loadAndValidate(existing, path)
 	if err != nil {
 		return nil, err
 	}
@@ -164,7 +176,7 @@ func OpenJSONL(path string) (*JSONLSink, error) {
 	for _, ev := range hist {
 		seqByTurn[ev.Turn] = ev.Seq + 1 // next seq for this turn
 	}
-	return &JSONLSink{Path: path, hist: hist, f: f, openIno: ino, seqByTurn: seqByTurn}, nil
+	return &JSONLSink{Path: path, hist: hist, rawLines: rawLines, f: f, openIno: ino, seqByTurn: seqByTurn}, nil
 }
 
 // fileInode returns the inode number of the open file f.
@@ -196,14 +208,15 @@ func pathInode(path string) (uint64, error) {
 }
 
 // loadAndValidate reads existing JSONL bytes, validates the header, and
-// returns the event history (all lines after line 1).
-func loadAndValidate(data []byte, path string) (History, error) {
+// returns the event history (all lines after line 1) plus the corresponding
+// raw line bytes (one entry per event, without trailing newline).
+func loadAndValidate(data []byte, path string) (History, [][]byte, error) {
 	lines, splitErr := splitLines(data)
 	if splitErr != nil {
-		return nil, fmt.Errorf("store/jsonl: %q: %w", path, splitErr)
+		return nil, nil, fmt.Errorf("store/jsonl: %q: %w", path, splitErr)
 	}
 	if len(lines) == 0 {
-		return nil, fmt.Errorf("store/jsonl: %q: trace missing session.header on line 1", path)
+		return nil, nil, fmt.Errorf("store/jsonl: %q: trace missing session.header on line 1", path)
 	}
 
 	// Line 1 must be the header.
@@ -212,17 +225,18 @@ func loadAndValidate(data []byte, path string) (History, error) {
 		SchemaVersion int    `json:"schema_version"`
 	}
 	if err := json.Unmarshal(lines[0], &hdr); err != nil {
-		return nil, fmt.Errorf("store/jsonl: %q: line 1 is not valid JSON: %w", path, err)
+		return nil, nil, fmt.Errorf("store/jsonl: %q: line 1 is not valid JSON: %w", path, err)
 	}
 	if hdr.Kind != sessionHeaderKind {
-		return nil, fmt.Errorf("store/jsonl: %q: trace missing session.header on line 1 (got kind=%q)", path, hdr.Kind)
+		return nil, nil, fmt.Errorf("store/jsonl: %q: trace missing session.header on line 1 (got kind=%q)", path, hdr.Kind)
 	}
 	if hdr.SchemaVersion > maxSchemaVersion {
-		return nil, fmt.Errorf("store/jsonl: %q: schema_version %d on disk exceeds highest supported %d", path, hdr.SchemaVersion, maxSchemaVersion)
+		return nil, nil, fmt.Errorf("store/jsonl: %q: schema_version %d on disk exceeds highest supported %d", path, hdr.SchemaVersion, maxSchemaVersion)
 	}
 
 	// Remaining lines are events; check for duplicate header and (turn,seq) monotonicity.
 	var hist History
+	var rawLines [][]byte
 
 	// seqByTurn tracks the highest seq seen per turn (for monotonicity and gap detection).
 	// We use -1 to mean "no events seen yet for this turn".
@@ -236,14 +250,14 @@ func loadAndValidate(data []byte, path string) (History, error) {
 			Kind string `json:"kind"`
 		}
 		if err := json.Unmarshal(raw, &probe); err != nil {
-			return nil, fmt.Errorf("store/jsonl: %q: line %d is not valid JSON: %w", path, lineNum, err)
+			return nil, nil, fmt.Errorf("store/jsonl: %q: line %d is not valid JSON: %w", path, lineNum, err)
 		}
 		if probe.Kind == sessionHeaderKind {
-			return nil, fmt.Errorf("store/jsonl: %q: duplicate session.header at line %d", path, lineNum)
+			return nil, nil, fmt.Errorf("store/jsonl: %q: duplicate session.header at line %d", path, lineNum)
 		}
 		var ev Event
 		if err := json.Unmarshal(raw, &ev); err != nil {
-			return nil, fmt.Errorf("store/jsonl: %q: line %d: unmarshal event: %w", path, lineNum, err)
+			return nil, nil, fmt.Errorf("store/jsonl: %q: line %d: unmarshal event: %w", path, lineNum, err)
 		}
 
 		// Enforce (turn, seq) monotonicity.
@@ -256,7 +270,7 @@ func loadAndValidate(data []byte, path string) (History, error) {
 		// check within turn 1 would pass (seq 0 → seq 1 is valid), but the cross-
 		// turn ordering is broken.
 		if ev.Turn < maxTurn {
-			return nil, fmt.Errorf("store/jsonl: %q: out-of-order turn at line %d: turn=%d arrives after turn=%d (cross-turn ordering violation)",
+			return nil, nil, fmt.Errorf("store/jsonl: %q: out-of-order turn at line %d: turn=%d arrives after turn=%d (cross-turn ordering violation)",
 				path, lineNum, ev.Turn, maxTurn)
 		}
 		if ev.Turn > maxTurn {
@@ -264,29 +278,31 @@ func loadAndValidate(data []byte, path string) (History, error) {
 		}
 		if prev, seen := seqByTurn[ev.Turn]; seen {
 			if ev.Seq == prev {
-				return nil, fmt.Errorf("store/jsonl: %q: duplicate (turn,seq) at line %d: turn=%d seq=%d",
+				return nil, nil, fmt.Errorf("store/jsonl: %q: duplicate (turn,seq) at line %d: turn=%d seq=%d",
 					path, lineNum, ev.Turn, ev.Seq)
 			}
 			if ev.Seq < prev {
-				return nil, fmt.Errorf("store/jsonl: %q: out-of-order (turn,seq) at line %d: turn=%d seq=%d (previous seq=%d)",
+				return nil, nil, fmt.Errorf("store/jsonl: %q: out-of-order (turn,seq) at line %d: turn=%d seq=%d (previous seq=%d)",
 					path, lineNum, ev.Turn, ev.Seq, prev)
 			}
 			if ev.Seq != prev+1 {
-				return nil, fmt.Errorf("store/jsonl: %q: gap in seq within turn %d at line %d: expected seq %d, got %d",
+				return nil, nil, fmt.Errorf("store/jsonl: %q: gap in seq within turn %d at line %d: expected seq %d, got %d",
 					path, lineNum, ev.Turn, prev+1, ev.Seq)
 			}
 		} else {
 			// First event for this turn; must start at seq 0.
 			if ev.Seq != 0 {
-				return nil, fmt.Errorf("store/jsonl: %q: gap in seq within turn %d at line %d: expected seq 0, got %d",
+				return nil, nil, fmt.Errorf("store/jsonl: %q: gap in seq within turn %d at line %d: expected seq 0, got %d",
 					path, lineNum, ev.Turn, ev.Seq)
 			}
 		}
 		seqByTurn[ev.Turn] = ev.Seq
 
 		hist = append(hist, ev)
+		// Retain the raw bytes for this event (raw already a copy from splitLines).
+		rawLines = append(rawLines, []byte(raw))
 	}
-	return hist, nil
+	return hist, rawLines, nil
 }
 
 // maxReadLineBytes is the maximum line size accepted at read time.
@@ -484,6 +500,12 @@ func (s *JSONLSink) Append(ev Event) error {
 	evWithSeq.Seq = assignedSeq
 	evWithSeq.Ts = ts
 	s.hist = append(s.hist, evWithSeq)
+	// Retain a copy of the raw bytes written (without the trailing \n) so
+	// Lines() can return the exact bytes the writer wrote.  line includes \n;
+	// strip it before storing.
+	rawCopy := make([]byte, len(line)-1) // line ends with \n
+	copy(rawCopy, line[:len(line)-1])
+	s.rawLines = append(s.rawLines, rawCopy)
 	// Advance the per-turn seq counter.
 	s.seqByTurn[ev.Turn] = assignedSeq + 1
 	return nil
@@ -515,6 +537,23 @@ func rejectNFD(raw json.RawMessage) error {
 // History returns the in-memory event history.
 func (s *JSONLSink) History() History {
 	return s.hist
+}
+
+// Lines returns a defensive copy (slice header only) of the raw JSONL bytes
+// for each event, one entry per event in the same order as History().
+// Each element is the marshalled line without the trailing newline.
+//
+// This allows Layer 7 consumers to populate Snapshot.RawLines with the exact
+// bytes the writer wrote rather than re-marshalling through a separate code
+// path.  The underlying byte slices are shared with the sink's internal
+// buffer; callers must not mutate them.
+//
+// Memory: O(N) per session.  Acceptable for phase A scale; phase B can
+// revisit if memory pressure surfaces.
+func (s *JSONLSink) Lines() [][]byte {
+	out := make([][]byte, len(s.rawLines))
+	copy(out, s.rawLines)
+	return out
 }
 
 // Close releases the advisory flock and closes the underlying file.

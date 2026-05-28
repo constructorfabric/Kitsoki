@@ -200,9 +200,13 @@ type EventSink interface {
 - **`History()`** returns the in-memory event slice accumulated since `OpenJSONL`.
   Useful for computing "events written this turn" without re-reading the file.
 - **`Close`** releases the flock.
-- **Byte equality:** `History()[i]` and the on-disk line for the same event use
-  the same `json.Marshal` code path. Tests that assert byte-equality (layer 7)
-  rely on encoder-pair equality, not a literal byte copy of the disk line.
+- **`Lines()`** returns a defensive copy of the raw bytes the sink wrote for
+  each event (one `[]byte` per event, without trailing `\n`), in the same
+  order as `History()`.  `Snapshot.RawLines` is populated from `Lines()` when
+  the caller uses `runstatus.FromSink`; this is a byte-copy-equal path, not
+  encoder-pair-equal.  `FromHistory` (when called without a sink) re-marshals
+  each event and is encoder-pair-equal.
+  Memory: O(N) per session; acceptable for phase A scale.
 
 ---
 
@@ -232,6 +236,9 @@ The trace is lossless and replay is deterministic:
 
 1. **Byte-identity round-trip:** read JSONL → write back via `JSONLSink` →
    `bytes.Equal` on file contents. Serialisation drift fails this immediately.
+   `runstatus.FromSink` uses `sink.Lines()` to populate `Snapshot.RawLines`
+   with the exact bytes the writer wrote (byte-copy-equal); `FromHistory` falls
+   back to encoder-pair marshalling when no sink is available.
 2. **Fold idempotence:** `BuildJourney(history)` twice returns deep-equal
    `(state, world, turn)`. A third call after JSONL round-trip returns the same.
 3. **Live ≡ replay equivalence:** run a fixture live, reload from JSONL, continue

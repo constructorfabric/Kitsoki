@@ -183,13 +183,26 @@ func New(def *app.AppDef, m machine.Machine, s store.Store, h harness.Harness, o
 	for _, opt := range opts {
 		opt(o)
 	}
-	// Construct the timeout dispatcher. Phase A: orchestrator no longer owns a
-	// *sql.DB; the timeout dispatcher runs in-memory only (no cross-restart
-	// persistence). Timeouts are re-armed via ArmTimeoutForInitialState on the
-	// session-continue and TUI paths. The *sql.DB path in timeout.go is kept
-	// for phase B when a non-sqlite seam replaces it; for now db=nil means
-	// the dispatcher simply does not persist entries across restarts.
-	td, tdErr := newTimeoutDispatcher(o.clk, nil, o.logger)
+	// Construct the timeout dispatcher.  Build a SQLite-backed TimeoutStore
+	// from the session store's shared *sql.DB so pending timeouts survive a
+	// process restart.  If the store has no DB (e.g. in-memory test rig), or
+	// if table creation fails, fall back to the noop store so tests that do
+	// not care about persistence still work.
+	var ts host.TimeoutStore
+	if db := s.DB(); db != nil {
+		if sqlTS, tsErr := host.NewSQLiteTimeoutStore(db); tsErr == nil {
+			ts = sqlTS
+		} else {
+			o.logger.Warn(trace.EvTimeoutError,
+				slog.String("phase", "timeout_store_init"),
+				slog.String("err", tsErr.Error()),
+			)
+			ts = host.NewNoopTimeoutStore()
+		}
+	} else {
+		ts = host.NewNoopTimeoutStore()
+	}
+	td, tdErr := newTimeoutDispatcher(o.clk, ts, o.logger)
 	if tdErr != nil {
 		// A schema failure is recoverable: log and proceed with no Timeout
 		// support.  Apps that don't use Timeout: still work.

@@ -109,38 +109,64 @@ func TestTimeout_CancelledOnExit(t *testing.T) {
 	require.Equal(t, app.StatePath("traveled"), j.State)
 }
 
-// ── TestTimeout_NoPersistenceAcrossRestart verifies that phase A in-memory-only
-// timeout behaviour: a pending timeout is NOT preserved when a new orchestrator
-// instance is created. Phase B will add a non-sqlite persistence seam.
-func TestTimeout_NoPersistenceAcrossRestart(t *testing.T) {
+// ── TestTimeout_SurvivesOrchestratorRestart verifies that a pending timeout
+// row written by orch1 is re-armed by orch2 when they share the same SQLite
+// store.  This is the restart-persistence contract: a session waiting in a
+// Timeout: state survives a process restart and eventually fires.
+func TestTimeout_SurvivesOrchestratorRestart(t *testing.T) {
 	t.Parallel()
 	def, err := app.Load("testdata/timeout/app.yaml")
 	require.NoError(t, err)
 	m, err := machine.New(def)
 	require.NoError(t, err)
-	s, err := store.OpenMemory()
+
+	// Use a file-backed SQLite store so the timeouts table persists across
+	// two orchestrator instances.
+	dir := t.TempDir()
+	s, err := store.Open(dir + "/session.db")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close() })
 
+	// Start clock at unix epoch so fire_at is deterministic.
 	clk := clock.NewFake(time.Unix(0, 0))
 	h := &timeoutNoopHarness{}
-	orch1 := orchestrator.New(def, m, s, h, orchestrator.WithClock(clk))
 	ctx := context.Background()
 
+	// ── orch1: schedule the timeout ──────────────────────────────────────────
+	orch1 := orchestrator.New(def, m, s, h, orchestrator.WithClock(clk))
 	sid, err := orch1.NewSession(ctx)
 	require.NoError(t, err)
 	_, err = orch1.Teleport(ctx, sid, inbox.TeleportTarget{State: "waiting"})
 	require.NoError(t, err)
-	require.NotEmpty(t, orch1.TimeoutPendingStates(sid), "orch1 must have pending timeout")
+	require.NotEmpty(t, orch1.TimeoutPendingStates(sid),
+		"orch1 must have a pending timeout after entering waiting")
 
-	// Drop orch1 (simulating a process restart).
+	// Simulate a clean process exit: stop in-memory timers without touching
+	// the persisted row.
 	orch1.ShutdownTimeoutsForTest()
 
-	// Phase A: a new orchestrator has NO pending timeouts because persistence
-	// was removed. Phase B will add a non-sqlite seam to restore them.
+	// ── orch2: reconstruct from the persisted row ────────────────────────────
+	// A fresh orchestrator shares the same store (and therefore the same
+	// timeouts table row).  rearmPersistedTimeouts() should re-arm the timer.
 	orch2 := orchestrator.New(def, m, s, h, orchestrator.WithClock(clk))
+	require.NotEmpty(t, orch2.TimeoutPendingStates(sid),
+		"orch2 must have re-armed the pending timeout from the persisted row")
+
+	// Advance the clock past the 10-day timeout; the timer must fire and
+	// transition the session into traveled.
+	clk.Advance(11 * 24 * time.Hour)
+
+	require.Eventually(t, func() bool {
+		j, lerr := orch2.LoadJourney(sid)
+		if lerr != nil {
+			return false
+		}
+		return j.State == app.StatePath("traveled")
+	}, 2*time.Second, 5*time.Millisecond,
+		"session should have transitioned to traveled after clock advance")
+
 	require.Empty(t, orch2.TimeoutPendingStates(sid),
-		"phase A: timeout must NOT persist across orchestrator restart (in-memory only; phase B adds persistence)")
+		"pending entry should be cleared after the timeout fires")
 }
 
 // ── TestTimeout_EmitsTimeoutFiredEvent verifies the synthetic turn carries

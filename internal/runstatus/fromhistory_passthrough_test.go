@@ -159,28 +159,40 @@ func TestLayer7_ByteEqualRoundTrip(t *testing.T) {
 	require.True(t, nlIdx >= 0, "file must have a header line")
 	originalEventBytes := rawAll[nlIdx+1:]
 
-	// Parse JSONL via OpenJSONL → History.
+	// Parse JSONL via OpenJSONL → get the sink (not just History).
 	s2, err := store.OpenJSONL(tracePath)
 	require.NoError(t, err)
 	defer s2.Close()
 	hist := s2.History()
 	require.Len(t, hist, len(eventsToWrite))
 
-	// Call FromHistory → Snapshot.
 	def := buildMinimalAppDef()
-	snap, err := runstatus.FromHistory(hist, def, "sess-l7-byte")
+
+	// ── sub-test A: FromSink uses sink-retained bytes (byte-copy-equal) ──────
+	snapSink, err := runstatus.FromSink(s2, def, "sess-l7-byte-sink")
 	require.NoError(t, err)
-
-	// Assert RawLines is populated.
-	require.Len(t, snap.RawLines, len(eventsToWrite),
-		"Snapshot.RawLines must have one entry per event")
-
-	// The headline: joinRawLines(snap.RawLines) must equal originalEventBytes.
-	reconstructed := joinRawLines(snap.RawLines)
-	require.True(t, bytes.Equal(originalEventBytes, reconstructed),
-		"Layer 7 byte-equality: joinLines(snap.RawLines) must equal original JSONL event section.\n"+
+	require.Len(t, snapSink.RawLines, len(eventsToWrite),
+		"FromSink: Snapshot.RawLines must have one entry per event")
+	reconstructedSink := joinRawLines(snapSink.RawLines)
+	require.True(t, bytes.Equal(originalEventBytes, reconstructedSink),
+		"Layer 7 byte-copy-equality (FromSink): joinLines(snap.RawLines) must equal original JSONL event section.\n"+
 			"original:      %s\nreconstructed: %s",
-		originalEventBytes, reconstructed)
+		originalEventBytes, reconstructedSink)
+
+	// ── sub-test B: FromHistory falls back to re-marshalling (encoder-pair) ──
+	// This sub-test documents the carve-out: when only a History slice is
+	// available (no sink), FromHistory re-marshals each event.  The bytes
+	// must still be equal because the encoder and writer use the same
+	// json.Marshal code path.
+	snapHist, err := runstatus.FromHistory(hist, def, "sess-l7-byte-hist")
+	require.NoError(t, err)
+	require.Len(t, snapHist.RawLines, len(eventsToWrite),
+		"FromHistory: Snapshot.RawLines must have one entry per event")
+	reconstructedHist := joinRawLines(snapHist.RawLines)
+	require.True(t, bytes.Equal(originalEventBytes, reconstructedHist),
+		"Layer 7 encoder-pair-equality (FromHistory fallback): joinLines(snap.RawLines) must equal original JSONL event section.\n"+
+			"original:      %s\nreconstructed: %s",
+		originalEventBytes, reconstructedHist)
 }
 
 // TestLayer7_WithOracleJournal_SymbolAbsent has been removed (finding from audit).

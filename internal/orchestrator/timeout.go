@@ -19,16 +19,16 @@
 // StateExited/StateEntered/TimeoutFired and runs the destination state's
 // on_enter chain.  Exiting the timeout state cancels the timer.
 //
-// # Persistence (phase A: in-memory only)
+// # Persistence
 //
-// Pending entries exist only in the process's memory.  Timeouts are lost
-// on process restart.  Phase B will restore persistence via a non-SQLite
-// seam (e.g., a sidecar JSONL file under ~/.kitsoki/timeouts/); until then
-// a crash or restart while a session is waiting in a Timeout: state will
-// leave the session stuck — the operator must manually re-trigger or
-// teleport the session past the timed state.  arm() and cancel() emit
-// journal entries (KindTimeoutArmed / KindTimeoutCancelled) as a
-// best-effort audit trail.
+// Pending timeout entries are written to the timeouts table in the same
+// SQLite database used by the session store (via host.TimeoutStore).  On
+// orchestrator start, rearmPersistedTimeouts() reads every unfired row and
+// reconstructs in-memory timers so sessions waiting in a Timeout: state
+// survive a process restart.  Timers that fire write Fire() to mark the row
+// as consumed; timers that are cancelled call Cancel() to remove the row.
+// arm() and cancel() also emit journal entries (KindTimeoutArmed /
+// KindTimeoutCancelled) as an audit trail.
 package orchestrator
 
 import (
@@ -40,6 +40,7 @@ import (
 
 	"kitsoki/internal/app"
 	"kitsoki/internal/clock"
+	"kitsoki/internal/host"
 	"kitsoki/internal/journal"
 	"kitsoki/internal/store"
 	"kitsoki/internal/trace"
@@ -59,9 +60,10 @@ type timeoutEntry struct {
 
 // timeoutDispatcher owns all pending timeouts for one orchestrator instance.
 //
-// Phase A: the dispatcher runs in-memory only (no SQLite persistence).
-// Timeouts are lost on process restart. Phase B will add a non-sqlite
-// persistence seam (e.g., a sidecar JSONL file under ~/.kitsoki/timeouts/).
+// Persistence: entries are written to the timeouts table via store (a
+// host.TimeoutStore backed by the same SQLite db as the session store).  On
+// orchestrator start, rearmAllFromStore reads pending rows and reconstructs
+// in-memory timers so sessions survive a process restart.
 //
 // Concurrency: pending is guarded by mu.  The per-entry firing goroutine
 // runs the synthetic transition outside the lock so a long-running
@@ -73,6 +75,9 @@ type timeoutDispatcher struct {
 	// New so the wiring in orchestrator.New stays a one-liner.
 	orch *Orchestrator
 
+	// ts is the persistence seam for timeout entries.
+	ts host.TimeoutStore
+
 	mu sync.Mutex
 	// pending: session → state-path → entry.  Per-state to keep the
 	// future-friendly case (multiple Timeout-bearing states in distinct
@@ -80,19 +85,23 @@ type timeoutDispatcher struct {
 	pending map[app.SessionID]map[app.StatePath]*timeoutEntry
 }
 
-// newTimeoutDispatcher returns an in-memory dispatcher backed by clk.
-// The db parameter is accepted but ignored (phase A: sqlite removed from
-// orchestrator; phase B will add a non-sqlite persistence seam).
-func newTimeoutDispatcher(clk clock.Clock, _ interface{}, logger *slog.Logger) (*timeoutDispatcher, error) {
+// newTimeoutDispatcher returns a dispatcher backed by clk and ts.
+// ts must not be nil; pass host.NewNoopTimeoutStore() when SQLite persistence
+// is not required (e.g. in-memory test rigs).
+func newTimeoutDispatcher(clk clock.Clock, ts host.TimeoutStore, logger *slog.Logger) (*timeoutDispatcher, error) {
 	if clk == nil {
 		clk = clock.Real()
 	}
 	if logger == nil {
 		logger = slog.Default()
 	}
+	if ts == nil {
+		ts = host.NewNoopTimeoutStore()
+	}
 	d := &timeoutDispatcher{
 		clk:     clk,
 		logger:  logger,
+		ts:      ts,
 		pending: make(map[app.SessionID]map[app.StatePath]*timeoutEntry),
 	}
 	return d, nil
@@ -270,10 +279,14 @@ func (d *timeoutDispatcher) runEntry(sid app.SessionID, entry *timeoutEntry) {
 				slog.String("err", err.Error()),
 			)
 		}
-		// Remove from pending and unpersist AFTER firing has fully landed.
-		// WaitTimeoutsDrained may observe the entry up to this point; once
-		// removed and done is closed, the synthetic turn's events are
-		// guaranteed to be in the event log.
+		// Remove from pending and mark fired AFTER the synthetic turn has
+		// fully landed.  WaitTimeoutsDrained may observe the entry up to this
+		// point; once removed and done is closed, the synthetic turn's events
+		// are guaranteed to be in the event log.
+		//
+		// We call persistFired (not unpersist/Cancel) so the row stays in the
+		// table with fired=1.  A subsequent orchestrator restart will not
+		// re-arm this entry because Pending() filters fired=0 only.
 		d.mu.Lock()
 		// Only remove if still the same entry (defensive against a
 		// concurrent arm() that replaced us — shouldn't happen because we
@@ -282,7 +295,7 @@ func (d *timeoutDispatcher) runEntry(sid app.SessionID, entry *timeoutEntry) {
 			d.removeLocked(sid, entry.statePath)
 		}
 		d.mu.Unlock()
-		d.unpersist(sid, entry.statePath)
+		d.persistFired(sid, entry.statePath)
 	case <-entry.done:
 		// Cancelled before deadline.
 		return
@@ -386,9 +399,21 @@ type timeoutSnapshot struct {
 	FiresAt   time.Time
 }
 
-// persist records a timeout entry (phase A: in-memory only; no SQLite).
-// Emits a journal entry for the audit log.
+// persist writes the timeout entry to the store and emits a journal entry.
 func (d *timeoutDispatcher) persist(sid app.SessionID, sp, target app.StatePath, firesAt time.Time) {
+	if err := d.ts.Schedule(host.TimeoutEntry{
+		SessionID: string(sid),
+		StatePath: string(sp),
+		Target:    string(target),
+		FireAt:    firesAt,
+	}); err != nil {
+		d.logger.WarnContext(context.Background(), trace.EvTimeoutError,
+			slog.String("session_id", string(sid)),
+			slog.String("state", string(sp)),
+			slog.String("phase", "persist_schedule"),
+			slog.String("err", err.Error()),
+		)
+	}
 	// Site 15: emit timeout.armed as a standalone journal write.
 	if d.orch != nil {
 		d.orch.appendJournal(journalEntry(sid, 0, 0, time.Now(),
@@ -401,9 +426,16 @@ func (d *timeoutDispatcher) persist(sid app.SessionID, sp, target app.StatePath,
 	}
 }
 
-// unpersist removes a timeout entry (phase A: in-memory only; no SQLite).
-// Emits a journal entry for the audit log.
+// unpersist removes the timeout entry from the store and emits a journal entry.
 func (d *timeoutDispatcher) unpersist(sid app.SessionID, sp app.StatePath) {
+	if err := d.ts.Cancel(string(sid), string(sp)); err != nil {
+		d.logger.WarnContext(context.Background(), trace.EvTimeoutError,
+			slog.String("session_id", string(sid)),
+			slog.String("state", string(sp)),
+			slog.String("phase", "unpersist_cancel"),
+			slog.String("err", err.Error()),
+		)
+	}
 	// Site 16: emit timeout.cancelled as a standalone journal write.
 	if d.orch != nil {
 		d.orch.appendJournal(journalEntry(sid, 0, 0, time.Now(),
@@ -415,15 +447,57 @@ func (d *timeoutDispatcher) unpersist(sid app.SessionID, sp app.StatePath) {
 	}
 }
 
-// rearmFromStore is a no-op in phase A (no SQLite persistence).
-// Phase B will add a non-sqlite seam (e.g., sidecar JSONL) to restore
-// pending timeouts across process restarts.
+// persistFired marks the entry as fired in the store so a second restart does
+// not replay the same timeout.
+func (d *timeoutDispatcher) persistFired(sid app.SessionID, sp app.StatePath) {
+	if err := d.ts.Fire(string(sid), string(sp)); err != nil {
+		d.logger.WarnContext(context.Background(), trace.EvTimeoutError,
+			slog.String("session_id", string(sid)),
+			slog.String("state", string(sp)),
+			slog.String("phase", "persist_fired"),
+			slog.String("err", err.Error()),
+		)
+	}
+}
+
+// rearmFromStore is a no-op; rearmAllFromStore handles all sessions at once.
 func (d *timeoutDispatcher) rearmFromStore(_ app.SessionID) error {
 	return nil
 }
 
-// rearmAllFromStore is a no-op in phase A (no SQLite persistence).
+// rearmAllFromStore loads every unfired timeout row from the store and
+// reconstructs in-memory timers.  Called once during orchestrator startup.
+// Each entry whose fire_at is already in the past gets a zero duration so
+// the timer fires on the next clock tick; once the synthetic turn lands,
+// persistFired marks the row consumed.
 func (d *timeoutDispatcher) rearmAllFromStore() error {
+	entries, err := d.ts.Pending()
+	if err != nil {
+		return fmt.Errorf("rearmAllFromStore: pending: %w", err)
+	}
+	now := d.clk.Now()
+	for _, e := range entries {
+		after := e.FireAt.Sub(now)
+		if after < 0 {
+			after = 0
+		}
+		sid := app.SessionID(e.SessionID)
+		sp := app.StatePath(e.StatePath)
+		target := app.StatePath(e.Target)
+
+		d.mu.Lock()
+		entry := &timeoutEntry{
+			statePath: sp,
+			target:    target,
+			firesAt:   e.FireAt,
+			done:      make(chan struct{}),
+		}
+		entry.timer = d.clk.NewTimer(after)
+		d.insertLocked(sid, sp, entry)
+		d.mu.Unlock()
+
+		go d.runEntry(sid, entry)
+	}
 	return nil
 }
 
