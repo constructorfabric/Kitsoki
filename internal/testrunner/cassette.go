@@ -530,11 +530,9 @@ func buildCassetteDispatcherFull(
 				}
 			}
 
-			// Phase 2: write KindOracleCall journal entry when oracle: block present.
-			if oracleBlock != nil && jw != nil {
-				writeOracleJournalEntry(ctx, jw, cas, epID, oracleBlock)
-			}
-			// Wave 3-oracle: parallel write OracleCalled+OracleReturned to JSONL sink.
+			// Wave 3-oracle / B-4: write OracleCalled+OracleReturned to JSONL sink.
+			// The SQLite journal write was removed in B-4 — cassette dispatch is
+			// sink-only now. B-5 will delete oracle_journal.go entirely.
 			// matchIdx is threaded through so the emitted OracleCalled event carries
 			// episode_id and match_idx; on post-resume reload these are used by
 			// SeedMatchCountsFromHistory to restore the counter (§3.3.2).
@@ -595,67 +593,15 @@ func buildCassetteDispatcherFull(
 	}
 }
 
-// writeOracleJournalEntry constructs a KindOracleCall journal.Entry from an
-// EpisodeOracle block and writes it to jw. The call_id is the deterministic
-// value derived from cas.AppID + episodeID (§7); the stored oracle.call_id is
-// advisory and is overridden here to keep re-records byte-stable.
-//
-// The oracle call context (session, turn, state) is read from ctx via the
-// standard host.OracleCallCtxFrom helper so the entry lands in the correct
-// session's journal row.
-func writeOracleJournalEntry(ctx context.Context, jw journal.Writer, cas *Cassette, epID string, o *EpisodeOracle) {
-	callID := host.DeriveCallID(cas.AppID, epID)
-	oc := host.OracleCallCtxFrom(ctx)
-
-	// Marshal Input (any) to json.RawMessage for the journal entry.
-	var inputRaw json.RawMessage
-	if o.Input != nil {
-		if b, merr := json.Marshal(o.Input); merr == nil {
-			inputRaw = json.RawMessage(b)
-		}
-	}
-
-	body := host.OracleCallBody{
-		CallID:         callID,
-		Verb:           o.Verb,
-		Agent:          o.Agent,
-		Model:          o.Model,
-		DurationMS:     o.DurationMs,
-		PromptTokens:   o.PromptTokens,
-		ResponseTokens: o.ResponseTokens,
-		CostUSD:        o.CostUSD,
-		SystemPrompt:   o.SystemPrompt,
-		Prompt:         o.Prompt,
-		Input:          inputRaw,
-		Response:       json.RawMessage(marshalOracleResponseString(o.Response)),
-		Error:          o.Error,
-	}
-
-	raw, err := json.Marshal(body)
-	if err != nil {
-		return // best-effort
-	}
-
-	turn := oc.Turn
-	if o.Turn > 0 {
-		turn = app.TurnNumber(o.Turn)
-	}
-
-	e := journal.Entry{
-		Ts:      time.Now(),
-		Session: oc.SessionID,
-		Turn:    turn,
-		Seq:     0,
-		Kind:    journal.KindOracleCall,
-		Body:    json.RawMessage(raw),
-	}
-	_ = jw.Append(e)
-}
+// The SQLite oracle journal write for cassette replay was removed in B-4.
+// OracleCalled / OracleReturned events flow to the JSONL sink only.
+// The oracle journal is scheduled for full deletion in B-5.
+// BuildCassetteDispatcherWithJournal retains its jw parameter for API
+// backwards compat but the write is now a no-op.
 
 // writeCassetteOracleEvents writes an OracleCalled + OracleReturned (or
-// OracleError) event pair to sink for a cassette episode replay. This is the
-// wave 3-oracle parallel write: the journal write (writeOracleJournalEntry) and
-// the JSONL sink write both happen in the same code path.
+// OracleError) event pair to sink for a cassette episode replay (legacy dispatcher
+// path; the cassetteOracle transport also uses this implicitly via Dispatch).
 //
 // call_id is derived deterministically as:
 //

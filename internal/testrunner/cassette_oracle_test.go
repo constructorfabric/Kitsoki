@@ -3,7 +3,6 @@ package testrunner
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -276,9 +275,14 @@ episodes:
 
 // ─── Phase 2: Replay writes KindOracleCall to journal ────────────────────────
 
-// TestEpisodeOracle_ReplayWritesJournal replays a cassette episode with an
-// oracle: block and asserts that a KindOracleCall entry lands in the in-memory
-// SQLite journal with the expected derived call_id (§7).
+// TestEpisodeOracle_ReplayWritesJournal verifies that the cassette dispatcher
+// (legacy path) no longer writes KindOracleCall entries to the SQLite oracle
+// journal after the B-4 change. Cassette dispatch is now sink-only.
+//
+// Historical note: this test previously asserted that a KindOracleCall entry
+// WAS written (Phase 2 behaviour). In B-4 the journal write was removed from
+// the cassette path — oracle events are written to the JSONL sink only.
+// The test is updated to assert the new (correct) behaviour.
 func TestEpisodeOracle_ReplayWritesJournal(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -305,7 +309,7 @@ episodes:
 		t.Fatalf("LoadCassette: %v", err)
 	}
 
-	// Open an in-memory SQLite store (same as the rig uses) and create a journal writer.
+	// Open an in-memory SQLite store and create a journal writer.
 	st, err := store.OpenMemory()
 	if err != nil {
 		t.Fatalf("open store: %v", err)
@@ -317,8 +321,6 @@ episodes:
 		t.Fatalf("create journal writer: %v", err)
 	}
 
-	// Inject a session ID + turn into the context so the journal entry gets
-	// the right session metadata.
 	sid := app.SessionID("test-session-replay-1")
 	ctx := host.WithOracleCallCtx(context.Background(), host.OracleCallCtx{
 		SessionID: sid,
@@ -326,7 +328,7 @@ episodes:
 		StatePath: "phase_1.dispatching",
 	})
 
-	// Build dispatcher with journal writer.
+	// Build dispatcher with journal writer (jw is accepted but no longer writes).
 	clk := newFakeClock()
 	stateOf := func() string { return "phase_1.dispatching" }
 	dispatch := BuildCassetteDispatcherWithJournal(cas, "host.oracle.task", stateOf, nil, nil, clk, jw, nil)
@@ -339,32 +341,15 @@ episodes:
 		t.Errorf("expected submitted in result data, got %v", res.Data)
 	}
 
-	// Assert a KindOracleCall entry landed in the SQLite journal keyed by call_id.
-	expectedCallID := host.DeriveCallID("myapp", "phase_1_oracle")
+	// B-4: cassette dispatch no longer writes KindOracleCall entries to the journal.
+	// The journal write was removed; oracle events go to the JSONL sink only.
+	// Assert that no journal entries were written.
 	rows, err := loadOracleCallRows(st.DB(), string(sid))
 	if err != nil {
 		t.Fatalf("load oracle call rows: %v", err)
 	}
-	if len(rows) == 0 {
-		t.Fatal("no KindOracleCall entry found in journal")
-	}
-
-	// Parse body and check call_id matches the derived value.
-	var body host.OracleCallBody
-	if err := json.Unmarshal([]byte(rows[0]), &body); err != nil {
-		t.Fatalf("unmarshal oracle call body: %v", err)
-	}
-	if body.CallID != expectedCallID {
-		t.Errorf("call_id: got %q want %q", body.CallID, expectedCallID)
-	}
-	if body.Verb != "task" {
-		t.Errorf("verb: got %q want task", body.Verb)
-	}
-	if body.Agent != "bugfix-reproducer" {
-		t.Errorf("agent: got %q want bugfix-reproducer", body.Agent)
-	}
-	if body.DurationMS != 5000 {
-		t.Errorf("duration_ms: got %d want 5000", body.DurationMS)
+	if len(rows) > 0 {
+		t.Errorf("B-4: cassette dispatch must NOT write KindOracleCall to journal (sink-only); got %d entries", len(rows))
 	}
 }
 

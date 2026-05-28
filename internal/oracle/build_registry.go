@@ -97,6 +97,15 @@ func BuildRegistry(plugins map[string]*PluginDecl, h harness.Harness) (*Registry
 		case "builtin.inprocess":
 			return nil, fmt.Errorf("oracle: BuildRegistry: plugin %q cannot be constructed from YAML; inject via RegisterInProcess", name)
 
+		case "cassette":
+			// The cassette transport cannot be constructed from a YAML path alone here
+			// because the Oracle implementation lives in internal/testrunner (which
+			// imports this package). Callers should construct testrunner.NewCassetteOracle
+			// and register it via reg.Register(name, o) before using Dispatch.
+			// This case is rejected here so the caller gets a clear error rather than
+			// a silent no-op.
+			return nil, fmt.Errorf("oracle: BuildRegistry: plugin %q cannot be constructed from YAML; use testrunner.NewCassetteOracle and inject via reg.Register", name)
+
 		case "subprocess":
 			if decl.Command == "" {
 				return nil, fmt.Errorf("oracle: BuildRegistry: subprocess plugin %q missing command", name)

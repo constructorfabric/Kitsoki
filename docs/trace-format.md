@@ -139,6 +139,21 @@ where `key` is:
 cassette episodes, `episode_id` groups reuses while `call_id` remains unique
 per exchange (different `matchIdx` → different `call_id`).
 
+### Sub-events (B-4)
+
+A plugin may populate `AskResponse.SubEvents` with plugin-internal events. These
+are appended verbatim to the JSONL between the `OracleCalled` and `OracleReturned`
+lines with the following constraints (all enforced by kitsoki; violations produce
+`OracleError` instead of `OracleReturned` and no sub-events land):
+
+- **Namespace:** every sub-event `kind` must start with the dispatching oracle
+  plugin name + `.` (e.g. `oracle.autofix_fixer.bash.called`).
+- **`call_id`:** every sub-event `call_id` must match the parent `OracleCalled.call_id`.
+- **Size:** every sub-event is subject to the `PIPE_BUF` = 4096 byte line limit.
+- **Timestamp:** kitsoki re-stamps each sub-event `ts` at append time using its
+  own monotonic clock. The plugin's claimed `ts` is discarded. This guarantees all
+  sub-event timestamps fall within `[OracleCalled.ts, OracleReturned.ts)`.
+
 ---
 
 ## 6. Line constraints (write-time enforcement)

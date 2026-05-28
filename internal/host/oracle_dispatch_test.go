@@ -256,12 +256,22 @@ func TestDispatch_SchemaValid(t *testing.T) {
 }
 
 // TestDispatch_SubEvents verifies that SubEvents are appended between
-// OracleCalled and OracleReturned.
+// OracleCalled and OracleReturned when they pass namespace + call_id + size validation.
+//
+// B-4: sub-event Kind must start with the dispatching plugin name + "." and
+// sub-event CallID must match the parent OracleCalled.CallID. The plugin is
+// registered as "oracle.claude" so the required prefix is "oracle.claude.".
 func TestDispatch_SubEvents(t *testing.T) {
 	t.Parallel()
+
+	const parentCallID = "call-dispatch-001" // matches sampleDispatchRequest().Req.CallID
+
+	// Sub-event Kind must use the plugin namespace prefix "oracle.claude.".
+	// CallID must match the parent OracleCalled.
 	subEvent := store.Event{
-		Kind:    store.EventKind("oracle.test.internal_step"),
+		Kind:    store.EventKind("oracle.claude.internal_step"),
 		Payload: json.RawMessage(`{"step":1}`),
+		CallID:  parentCallID,
 	}
 	o := oracle.New(oracle.AskFunc(func(_ context.Context, _ oracle.AskRequest) (oracle.AskResponse, error) {
 		return oracle.AskResponse{
@@ -279,15 +289,15 @@ func TestDispatch_SubEvents(t *testing.T) {
 	}
 
 	kinds := sink.kindsInOrder()
-	// Expected order: OracleCalled, oracle.test.internal_step, OracleReturned
+	// Expected order: OracleCalled, oracle.claude.internal_step, OracleReturned
 	if len(kinds) < 3 {
 		t.Fatalf("expected at least 3 events, got %d: %v", len(kinds), kinds)
 	}
 	if kinds[0] != store.OracleCalled {
 		t.Errorf("events[0]: got %q, want OracleCalled", kinds[0])
 	}
-	if kinds[1] != store.EventKind("oracle.test.internal_step") {
-		t.Errorf("events[1]: got %q, want oracle.test.internal_step", kinds[1])
+	if kinds[1] != store.EventKind("oracle.claude.internal_step") {
+		t.Errorf("events[1]: got %q, want oracle.claude.internal_step", kinds[1])
 	}
 	if kinds[len(kinds)-1] != store.OracleReturned {
 		t.Errorf("events[last]: got %q, want OracleReturned", kinds[len(kinds)-1])
@@ -344,4 +354,237 @@ func TestDispatch_CallIDPreserved(t *testing.T) {
 	if !foundCallID {
 		t.Error("OracleCalled event does not carry the expected CallID")
 	}
+}
+
+// ─── B-4: SubEvents validation tests ─────────────────────────────────────────
+
+// TestDispatch_SubEvents_NamespaceViolation verifies that a sub-event whose Kind
+// does not start with the dispatching plugin name + "." causes OracleError and
+// no sub-events land in the trace.
+func TestDispatch_SubEvents_NamespaceViolation(t *testing.T) {
+	t.Parallel()
+	const parentCallID = "call-dispatch-001"
+
+	// "oracle.other.step" does not start with "oracle.claude." — must be rejected.
+	badSub := store.Event{
+		Kind:   store.EventKind("oracle.other.step"),
+		CallID: parentCallID,
+	}
+	o := oracle.New(oracle.AskFunc(func(_ context.Context, _ oracle.AskRequest) (oracle.AskResponse, error) {
+		return oracle.AskResponse{
+			Submission: json.RawMessage(`{"ok":true}`),
+			SubEvents:  []store.Event{badSub},
+		}, nil
+	}))
+
+	ctx, sink := buildDispatchCtx(t, o)
+	dr := sampleDispatchRequest()
+
+	_, err := host.Dispatch(ctx, dr)
+	if err == nil {
+		t.Fatal("expected error for namespace violation, got nil")
+	}
+	var ae *oracle.AskError
+	if !errors.As(err, &ae) {
+		t.Fatalf("expected *oracle.AskError, got %T", err)
+	}
+	if ae.Kind != "sub_event_namespace_violation" {
+		t.Errorf("Kind: got %q, want sub_event_namespace_violation", ae.Kind)
+	}
+
+	// OracleError written, no sub-events, no OracleReturned.
+	kinds := sink.kindsInOrder()
+	for _, k := range kinds {
+		if k == store.OracleReturned {
+			t.Error("OracleReturned must not be written on namespace violation")
+		}
+		if k == store.EventKind("oracle.other.step") {
+			t.Error("namespace-violating sub-event must not appear in trace")
+		}
+	}
+	// OracleCalled and OracleError must be present.
+	if !containsKind(kinds, store.OracleCalled) {
+		t.Error("OracleCalled must be present even on violation")
+	}
+	if !containsKind(kinds, store.OracleError) {
+		t.Error("OracleError must be written on namespace violation")
+	}
+}
+
+// TestDispatch_SubEvents_CallIDMismatch verifies that a sub-event with a
+// mismatched CallID causes OracleError.
+func TestDispatch_SubEvents_CallIDMismatch(t *testing.T) {
+	t.Parallel()
+	const parentCallID = "call-dispatch-001"
+
+	badSub := store.Event{
+		Kind:   store.EventKind("oracle.claude.step"),
+		CallID: "wrong-call-id", // must equal parentCallID
+	}
+	o := oracle.New(oracle.AskFunc(func(_ context.Context, _ oracle.AskRequest) (oracle.AskResponse, error) {
+		return oracle.AskResponse{
+			Submission: json.RawMessage(`{"ok":true}`),
+			SubEvents:  []store.Event{badSub},
+		}, nil
+	}))
+
+	ctx, sink := buildDispatchCtx(t, o)
+	dr := sampleDispatchRequest()
+
+	_, err := host.Dispatch(ctx, dr)
+	if err == nil {
+		t.Fatal("expected error for call_id mismatch, got nil")
+	}
+	var ae *oracle.AskError
+	if !errors.As(err, &ae) {
+		t.Fatalf("expected *oracle.AskError, got %T", err)
+	}
+	if ae.Kind != "sub_event_call_id_mismatch" {
+		t.Errorf("Kind: got %q, want sub_event_call_id_mismatch", ae.Kind)
+	}
+	kinds := sink.kindsInOrder()
+	if !containsKind(kinds, store.OracleError) {
+		t.Error("OracleError must be written on call_id mismatch")
+	}
+}
+
+// TestDispatch_SubEvents_Oversize verifies that a sub-event exceeding PIPE_BUF
+// causes OracleError.
+func TestDispatch_SubEvents_Oversize(t *testing.T) {
+	if testing.Short() {
+		t.Skip("oversize sub-event test allocates >4KB payload; skipped under -short")
+	}
+	t.Parallel()
+	const parentCallID = "call-dispatch-001"
+
+	// Build a payload that will cause the marshalled event to exceed 4096 bytes.
+	bigPayload, _ := json.Marshal(map[string]any{"data": string(make([]byte, 5000))})
+	oversizeSub := store.Event{
+		Kind:    store.EventKind("oracle.claude.big_step"),
+		CallID:  parentCallID,
+		Payload: json.RawMessage(bigPayload),
+	}
+	o := oracle.New(oracle.AskFunc(func(_ context.Context, _ oracle.AskRequest) (oracle.AskResponse, error) {
+		return oracle.AskResponse{
+			Submission: json.RawMessage(`{"ok":true}`),
+			SubEvents:  []store.Event{oversizeSub},
+		}, nil
+	}))
+
+	ctx, sink := buildDispatchCtx(t, o)
+	dr := sampleDispatchRequest()
+
+	_, err := host.Dispatch(ctx, dr)
+	if err == nil {
+		t.Fatal("expected error for oversize sub-event, got nil")
+	}
+	var ae *oracle.AskError
+	if !errors.As(err, &ae) {
+		t.Fatalf("expected *oracle.AskError, got %T", err)
+	}
+	if ae.Kind != "sub_event_oversize" {
+		t.Errorf("Kind: got %q, want sub_event_oversize", ae.Kind)
+	}
+	kinds := sink.kindsInOrder()
+	if !containsKind(kinds, store.OracleError) {
+		t.Error("OracleError must be written on oversize sub-event")
+	}
+}
+
+// TestDispatch_SubEvents_NilSlice verifies that a nil SubEvents slice writes
+// zero sub-event lines (only OracleCalled + OracleReturned).
+func TestDispatch_SubEvents_NilSlice(t *testing.T) {
+	t.Parallel()
+	o := oracle.New(oracle.AskFunc(func(_ context.Context, _ oracle.AskRequest) (oracle.AskResponse, error) {
+		return oracle.AskResponse{
+			Submission: json.RawMessage(`{"ok":true}`),
+			SubEvents:  nil, // explicitly nil
+		}, nil
+	}))
+
+	ctx, sink := buildDispatchCtx(t, o)
+	_, err := host.Dispatch(ctx, sampleDispatchRequest())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	kinds := sink.kindsInOrder()
+	if len(kinds) != 2 {
+		t.Errorf("nil SubEvents: expected 2 events (OracleCalled+OracleReturned), got %d: %v", len(kinds), kinds)
+	}
+}
+
+// TestDispatch_SubEvents_EmptySlice verifies that an empty SubEvents slice
+// (non-nil) produces the same result as nil — zero sub-event lines.
+func TestDispatch_SubEvents_EmptySlice(t *testing.T) {
+	t.Parallel()
+	o := oracle.New(oracle.AskFunc(func(_ context.Context, _ oracle.AskRequest) (oracle.AskResponse, error) {
+		return oracle.AskResponse{
+			Submission: json.RawMessage(`{"ok":true}`),
+			SubEvents:  []store.Event{}, // empty non-nil
+		}, nil
+	}))
+
+	ctx, sink := buildDispatchCtx(t, o)
+	_, err := host.Dispatch(ctx, sampleDispatchRequest())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	kinds := sink.kindsInOrder()
+	if len(kinds) != 2 {
+		t.Errorf("empty SubEvents: expected 2 events (OracleCalled+OracleReturned), got %d: %v", len(kinds), kinds)
+	}
+}
+
+// TestDispatch_SubEvents_TsRestamped verifies that kitsoki re-stamps each
+// sub-event's ts at append time; the plugin's claimed ts is ignored.
+func TestDispatch_SubEvents_TsRestamped(t *testing.T) {
+	t.Parallel()
+	const parentCallID = "call-dispatch-001"
+
+	// Plugin claims a ts far in the past.
+	pastTS := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+	subEvent := store.Event{
+		Kind:    store.EventKind("oracle.claude.step"),
+		CallID:  parentCallID,
+		Payload: json.RawMessage(`{"ok":true}`),
+		Ts:      pastTS,
+	}
+	o := oracle.New(oracle.AskFunc(func(_ context.Context, _ oracle.AskRequest) (oracle.AskResponse, error) {
+		return oracle.AskResponse{
+			Submission: json.RawMessage(`{"ok":true}`),
+			SubEvents:  []store.Event{subEvent},
+		}, nil
+	}))
+
+	before := time.Now()
+	ctx, sink := buildDispatchCtx(t, o)
+	_, err := host.Dispatch(ctx, sampleDispatchRequest())
+	after := time.Now()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Find the sub-event in sink and verify ts was re-stamped.
+	for _, e := range sink.events {
+		if e.Kind == store.EventKind("oracle.claude.step") {
+			if !e.Ts.After(before.Add(-time.Second)) || !e.Ts.Before(after.Add(time.Second)) {
+				t.Errorf("sub-event ts %v was not re-stamped (before=%v after=%v)", e.Ts, before, after)
+			}
+			if e.Ts.Equal(pastTS) {
+				t.Error("plugin ts was not discarded — kitsoki must re-stamp")
+			}
+			return
+		}
+	}
+	t.Error("sub-event not found in trace")
+}
+
+// containsKind returns true when kinds contains k.
+func containsKind(kinds []store.EventKind, k store.EventKind) bool {
+	for _, kind := range kinds {
+		if kind == k {
+			return true
+		}
+	}
+	return false
 }

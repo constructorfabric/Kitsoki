@@ -1,31 +1,46 @@
-// Package host — oracle dispatcher (proposal §2 B-2).
+// Package host — oracle dispatcher (proposal §2 B-2 / B-4).
 //
 // OracleDispatch is the shared dispatcher that routes oracle handler calls
 // through the Oracle plugin interface. It:
 //
 //  1. Resolves the oracle plugin from the registry injected in context.
-//  2. Writes OracleCalled to the EventSink.
-//  3. Calls oracle.Ask(ctx, req).
-//  4. Appends any SubEvents verbatim between OracleCalled and OracleReturned.
+//  2. Calls oracle.Ask(ctx, req).
+//  3. Writes OracleCalled to the EventSink, using episode_id/match_idx from
+//     resp.Meta when the transport is cassette-backed (§3.1 / B-4).
+//  4. Validates SubEvents (namespace, call_id, size) before appending verbatim
+//     between OracleCalled and OracleReturned (§2 resolution 2 / B-4).
 //  5. Validates resp.Submission against req.SchemaJSON (kitsoki is validation authority).
 //  6. Writes OracleReturned or OracleError.
 //  7. Returns (submission, meta, error).
 //
+// SubEvents validation (B-4):
+//   - Every sub-event Kind MUST start with the dispatching host's name + "."
+//     (e.g., dispatching from "oracle.autofix_fixer" requires Kind prefix
+//     "oracle.autofix_fixer."). Violation → OracleError{Kind: "sub_event_namespace_violation"}.
+//   - Every sub-event CallID MUST match the parent OracleCalled.CallID.
+//     Violation → OracleError{Kind: "sub_event_call_id_mismatch"}.
+//   - Every sub-event is subject to the PIPE_BUF=4096 byte-per-line limit.
+//     Oversize → OracleError{Kind: "sub_event_oversize"}.
+//   - Sub-event ts is re-stamped at append time using kitsoki's monotonic clock.
+//     The plugin's claimed ts is ignored.
+//   - On any validation failure: OracleCalled is already written; OracleError
+//     replaces OracleReturned; no sub-events land. This is the atomicity boundary.
+//
+// OracleCalled is written after Ask returns so that the cassette transport's
+// episode_id and match_idx (carried in resp.Meta) can be included on the event.
+// For all other transports the ordering is semantically identical since OracleCalled
+// is a no-op for replay and the event pair is what the runstatus SPA consumes.
+//
 // Backwards compat: when no oracle registry is wired in context (all existing
 // call sites before B-2), Dispatch returns errNoRegistry so the caller falls
-// through to its existing direct handler logic. This lets B-2 land without
-// touching every handler call site — only code paths that opt in to the new
-// registry use Dispatch.
-//
-// The per-verb handlers remain unchanged for B-2; they continue to call their
-// direct claude logic.  New call sites (tests, B-3 external transports) go
-// through Dispatch.
+// through to its existing direct handler logic.
 package host
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"kitsoki/internal/oracle"
@@ -108,6 +123,18 @@ type OracleDispatchResult struct {
 	DurationMS int64
 }
 
+// subEventViolationKind is the AskError.Kind used when SubEvent validation fails.
+const (
+	subEventNamespaceViolation = "sub_event_namespace_violation"
+	subEventCallIDMismatch     = "sub_event_call_id_mismatch"
+	subEventOversize           = "sub_event_oversize"
+)
+
+// pipeBufLimit mirrors store.pipeBuf (4096). Duplicated here to avoid importing
+// an internal store constant; the store package enforces this on Append anyway,
+// but we pre-validate to produce a clearer error message and prevent partial writes.
+const pipeBufLimit = 4096
+
 // Dispatch routes an oracle call through the plugin registry. Returns
 // errNoRegistry when no registry is wired — callers should fall through to
 // their existing direct handler logic in that case.
@@ -116,6 +143,8 @@ type OracleDispatchResult struct {
 // error (an *oracle.AskError or wrapped version).
 // On schema validation failure, Dispatch writes OracleError and returns
 // *oracle.AskError{Kind: "schema_invalid"}.
+// On SubEvents validation failure, Dispatch writes OracleError and returns
+// *oracle.AskError{Kind: "sub_event_namespace_violation" | "sub_event_call_id_mismatch" | "sub_event_oversize"}.
 func Dispatch(ctx context.Context, dr OracleDispatchRequest) (OracleDispatchResult, error) {
 	reg := OracleRegistryFromCtx(ctx)
 	if reg == nil {
@@ -134,8 +163,20 @@ func Dispatch(ctx context.Context, dr OracleDispatchRequest) (OracleDispatchResu
 		dr.Req.CallID = callID
 	}
 
-	// Write OracleCalled to the JSONL sink.
-	appendOracleCalledEvent(ctx, callStart, callID, OracleCalledPayload{
+	resp, askErr := plug.Ask(ctx, dr.Req)
+	durationMS := time.Since(callStart).Milliseconds()
+
+	// Extract cassette-transport metadata from resp.Meta (if present).
+	// Cassette transports embed episode_id and match_idx in Meta so the
+	// OracleCalled event carries them for post-resume SeedMatchCountsFromHistory.
+	episodeID := episodeIDFromMeta(resp.Meta)
+	matchIdx := matchIdxFromMeta(resp.Meta)
+
+	// Write OracleCalled after Ask returns so cassette episode_id/match_idx
+	// are available. For all transports this is functionally equivalent to
+	// writing before: OracleCalled is a no-op for replay, and the event pair
+	// is what the runstatus SPA consumes (ordered by ts, not by write sequence).
+	appendOracleCalledEventWithEpisode(ctx, callStart, callID, episodeID, matchIdx, OracleCalledPayload{
 		Verb:         dr.Verb,
 		Agent:        dr.Agent,
 		Model:        dr.Model,
@@ -143,9 +184,6 @@ func Dispatch(ctx context.Context, dr OracleDispatchRequest) (OracleDispatchResu
 		SystemPrompt: dr.SystemPrompt,
 		Input:        marshalInput(dr.InputDesc),
 	})
-
-	resp, askErr := plug.Ask(ctx, dr.Req)
-	durationMS := time.Since(callStart).Milliseconds()
 
 	if askErr != nil {
 		callEnd := time.Now()
@@ -170,15 +208,36 @@ func Dispatch(ctx context.Context, dr OracleDispatchRequest) (OracleDispatchResu
 		return OracleDispatchResult{}, askErr
 	}
 
-	// Append SubEvents verbatim between OracleCalled and OracleReturned.
-	// B-4 will add namespace + size validation; B-2 appends in order.
+	// B-4: Validate SubEvents before any append. On violation: write OracleError
+	// (not OracleReturned); no sub-events land. This is the atomicity boundary —
+	// OracleCalled is already written; the call is abandoned cleanly.
 	if len(resp.SubEvents) > 0 {
-		sink := EventSinkFromOracleCtx(ctx)
-		if sink != nil {
-			for _, se := range resp.SubEvents {
-				_ = sink.Append(se)
-			}
+		if subErr := validateSubEvents(resp.SubEvents, dr.PluginName, callID); subErr != nil {
+			callEnd := time.Now()
+			appendOracleErrorEvent(ctx, callEnd, callID, OracleErrorPayload{
+				Verb:       dr.Verb,
+				Agent:      dr.Agent,
+				DurationMS: durationMS,
+				Error:      subErr.Error(),
+			})
+			appendOracleCallJournal(ctx, callStart, 0, OracleCallBody{
+				CallID:       callID,
+				Verb:         dr.Verb,
+				Agent:        dr.Agent,
+				Model:        dr.Model,
+				DurationMS:   durationMS,
+				SystemPrompt: dr.SystemPrompt,
+				Prompt:       dr.PromptText,
+				Input:        marshalInput(dr.InputDesc),
+				Error:        subErr.Error(),
+			})
+			return OracleDispatchResult{}, subErr
 		}
+
+		// Validation passed: append SubEvents with kitsoki-assigned ts.
+		// Plugin-supplied ts is discarded; kitsoki's monotonic clock wins
+		// (proposal §2 testing "Sub-events ordered after the response").
+		appendSubEventsValidated(ctx, resp.SubEvents, callID)
 	}
 
 	// Validate submission against schema (kitsoki is validation authority).
@@ -244,9 +303,131 @@ func Dispatch(ctx context.Context, dr OracleDispatchRequest) (OracleDispatchResu
 	}, nil
 }
 
+// validateSubEvents checks all sub-events against the B-4 constraints:
+//   - namespace: every Kind must start with pluginName+"."
+//   - call_id: every sub-event CallID must match parentCallID
+//   - size: marshalled event must not exceed pipeBufLimit bytes
+//
+// Returns the first violation as an *oracle.AskError. The full AskResponse is
+// rejected on first violation (atomicity: no partial sub-event append).
+func validateSubEvents(subEvents []store.Event, pluginName, parentCallID string) *oracle.AskError {
+	requiredPrefix := pluginName + "."
+	for i, se := range subEvents {
+		// Namespace check: Kind must start with pluginName+".".
+		if !strings.HasPrefix(string(se.Kind), requiredPrefix) {
+			return &oracle.AskError{
+				Kind:   subEventNamespaceViolation,
+				Detail: fmt.Sprintf("sub_event[%d]: Kind %q does not start with required namespace prefix %q", i, se.Kind, requiredPrefix),
+			}
+		}
+		// call_id check: must match the parent OracleCalled's call_id.
+		if se.CallID != parentCallID {
+			return &oracle.AskError{
+				Kind:   subEventCallIDMismatch,
+				Detail: fmt.Sprintf("sub_event[%d]: CallID %q does not match parent call_id %q", i, se.CallID, parentCallID),
+			}
+		}
+		// Size check: marshalled line must not exceed PIPE_BUF.
+		b, err := json.Marshal(se)
+		if err == nil && len(b) > pipeBufLimit {
+			return &oracle.AskError{
+				Kind:   subEventOversize,
+				Detail: fmt.Sprintf("sub_event[%d]: marshalled size %d exceeds PIPE_BUF limit %d", i, len(b), pipeBufLimit),
+			}
+		}
+	}
+	return nil
+}
+
+// appendSubEventsValidated appends sub-events that have already passed
+// validateSubEvents. Kitsoki re-stamps each sub-event's ts using time.Now()
+// so the plugin's claimed ts is ignored (proposal §2 "Sub-events ordered after
+// the response" — kitsoki's monotonic clock is the source of truth for all ts
+// fields in the JSONL trace).
+//
+// The CallID is set to parentCallID (already validated to match), and the
+// event is appended verbatim otherwise.
+//
+// NOTE: plugin-supplied ts values are discarded here. Kitsoki re-stamps ts at
+// append time so that:
+//  1. The trace has a monotonically increasing ts sequence.
+//  2. Plugins cannot forge timestamps for forensic events.
+//  3. All sub-events have ts in [OracleCalled.ts, OracleReturned.ts).
+func appendSubEventsValidated(ctx context.Context, subEvents []store.Event, parentCallID string) {
+	sink := EventSinkFromOracleCtx(ctx)
+	if sink == nil {
+		return
+	}
+	for _, se := range subEvents {
+		// Re-stamp ts with kitsoki's clock. Plugin ts is ignored.
+		se.Ts = time.Now()
+		// Ensure CallID matches (already validated, but set explicitly for clarity).
+		se.CallID = parentCallID
+		_ = sink.Append(se)
+	}
+}
+
+// appendOracleCalledEventWithEpisode is like appendOracleCalledEvent but also
+// sets EpisodeID and MatchIdx on the event. Used by Dispatch when the cassette
+// transport returns episode_id and match_idx in AskResponse.Meta.
+//
+// When episodeID is "" (non-cassette transports), the EpisodeID/MatchIdx fields
+// are zero-valued and omitted from the marshalled JSON (omitempty).
+func appendOracleCalledEventWithEpisode(ctx context.Context, ts time.Time, callID, episodeID string, matchIdx int, payload OracleCalledPayload) {
+	sink := EventSinkFromOracleCtx(ctx)
+	if sink == nil {
+		return
+	}
+	oc := OracleCallCtxFrom(ctx)
+
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+
+	ev := store.Event{
+		Turn:      oc.Turn,
+		Ts:        ts,
+		Kind:      store.OracleCalled,
+		StatePath: oc.StatePath,
+		Payload:   json.RawMessage(raw),
+		CallID:    callID,
+		EpisodeID: episodeID,
+		MatchIdx:  matchIdx,
+	}
+	_ = sink.Append(ev)
+}
+
+// episodeIDFromMeta extracts the episode_id field from AskResponse.Meta.
+// Returns "" when not present (non-cassette transports).
+func episodeIDFromMeta(meta map[string]any) string {
+	if meta == nil {
+		return ""
+	}
+	s, _ := meta["episode_id"].(string)
+	return s
+}
+
+// matchIdxFromMeta extracts the match_idx field from AskResponse.Meta.
+// Returns 0 when not present (non-cassette transports).
+func matchIdxFromMeta(meta map[string]any) int {
+	if meta == nil {
+		return 0
+	}
+	switch v := meta["match_idx"].(type) {
+	case int:
+		return v
+	case int64:
+		return int(v)
+	case float64:
+		return int(v)
+	}
+	return 0
+}
+
 // appendSubEventsToSink writes a slice of store.Events to the EventSink in ctx.
-// This is the B-2 implementation: no validation, just sequential append.
-// B-4 will add namespace + size checks.
+// Deprecated: B-2 implementation with no validation. Use appendSubEventsValidated
+// after validateSubEvents for B-4+ call sites.
 func appendSubEventsToSink(ctx context.Context, events []store.Event) {
 	if len(events) == 0 {
 		return
