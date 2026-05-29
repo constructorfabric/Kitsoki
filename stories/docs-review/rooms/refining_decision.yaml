@@ -1,0 +1,98 @@
+# refining_decision — optional agentic refinement of the verdict using oracle.task.
+#
+# Reached from `reviewed` when the user chooses `refine_verdict`. Uses an
+# agentic task (oracle.task) to analyze the stale_docs[] entries more deeply,
+# propose prioritization or consolidation, and generate an enhanced artifact
+# with detailed invalidation context. The agent can iterate based on user
+# feedback via the acceptance loop.
+#
+# on_enter:
+#   1. host.oracle.task: hand the verdict + stale_docs listing to a
+#      write-capable agent (docs_analyzer); agent produces a refined
+#      analysis artifact recording deeper context, consolidations, or
+#      priority tiers.
+#   2. host.artifacts_dir: write the analysis to
+#      .artifacts/docs-review-analysis-<sha>.json
+#   3. emit_intent: refine_done → back to reviewed for next action
+
+states:
+
+  refining_decision:
+    description: "Analyzing the invalidation details with agentic feedback loop."
+    view:
+      - banner:
+          text:     "ANALYZING DOCS"
+          subtitle: "Agent is examining invalidation patterns and context"
+          color:    "#EC4899"
+      - kv:
+          pairs:
+            "Commit":    "{{ world.commit_sha }}"
+            "Stale rows": '{{ world.verdict.stale_docs|length|default:"0" }}'
+            "Status":    '{% if world.analysis_artifact.complete == true %}complete{% elif world.analysis_artifact.complete == false %}incomplete — see note{% else %}(pending — analysis in progress){% endif %}'
+      - heading: "Original stale_docs list"
+      - code: |
+          {% for d in world.verdict.stale_docs %}{{ d.path }} : {{ d.lines }}{% if d.anchor %}  ({{ d.anchor }}){% endif %}
+          {% for inv in d.invalidations %}    [{{ inv.commit }}{% if inv.source %} · {{ inv.source }}{% endif %}] {{ inv.change }}
+              → {{ inv.reason }}
+          {% endfor %}{% empty %}(no stale rows — should not be here){% endfor %}
+      - heading: "Analysis (if available)"
+        when: "world.analysis_artifact.analysis_markdown != ''"
+      - prose: '{{ world.analysis_artifact.analysis_markdown|default:"(pending)" }}'
+        when: "world.analysis_artifact.analysis_markdown != ''"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "proceed"
+              hint:   "accept the analysis and move on"
+              intent: proceed
+            - label:  "quit"
+              hint:   "abandon the refinement"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    relevant_world: [commit_sha, verdict, analysis_artifact]
+    on_enter:
+      # 1. Hand the verdict to the docs_analyzer agent. This is an agentic
+      # call (oracle.task) with an acceptance loop, allowing the agent to
+      # refine its analysis based on feedback.
+      - invoke: host.oracle.task
+        with:
+          agent: docs_analyzer
+          acceptance:
+            schema: schemas/docs_analysis_artifact.json
+          context:
+            prompt: prompts/analyze.md
+            args:
+              commit_sha:          "{{ world.commit_sha }}"
+              verdict_summary:     "{{ world.verdict.summary }}"
+              stale_docs:          "{{ world.verdict.stale_docs }}"
+              verdict_json:        "{{ world.verdict }}"
+        bind:
+          analysis_artifact: submitted
+          # Scalar sentinel — `analysis_markdown` is required, so its
+          # presence reliably indicates a real submit.
+          analysis_summary:  submitted.analysis_markdown
+        on_error: reviewed
+
+      # 2. Persist the analysis alongside the verdict.
+      - invoke: host.artifacts_dir
+        with:
+          thread: "docs-review-analysis-{{ world.commit_sha }}.json"
+          mode:   "replace"
+          body:   "{{ world.analysis_artifact }}"
+        on_error: reviewed
+
+      # 3. Hand off.
+      - emit_intent: refine_done
+        when: "world.analysis_summary != ''"
+    on:
+      refine_done:
+        - target: reviewed
+      proceed:
+        - target: "@exit:done"
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .

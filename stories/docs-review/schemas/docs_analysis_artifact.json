@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title":   "docs_analysis_artifact",
+  "description": "Analysis artifact produced by the docs-review story's oracle.task call in the refining_decision room. Provides deeper context and consolidation on the stale_docs entries from the verdict.",
+  "type":    "object",
+  "required": ["analysis_markdown", "complete"],
+  "properties": {
+    "analysis_markdown": {
+      "type": "string",
+      "minLength": 10,
+      "description": "Markdown-formatted analysis of the invalidation patterns. May include consolidations, priority tiers, or grouped insights."
+    },
+    "complete": {
+      "type": "boolean",
+      "description": "Whether the analysis was able to complete successfully (true) or encountered blockers (false)."
+    },
+    "consolidated_groups": {
+      "type": "array",
+      "description": "Optional: logical groupings or consolidations of the stale_docs entries, e.g. by affected feature or component.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string", "description": "Group title, e.g. 'Architecture docs'." },
+          "doc_indices": { "type": "array", "items": { "type": "integer" }, "description": "Indices into the original verdict.stale_docs[]." }
+        }
+      }
+    },
+    "priority_tiers": {
+      "type": "array",
+      "description": "Optional: prioritization of fixes, e.g. 'critical', 'high', 'nice-to-have'.",
+      "items": { "type": "string" }
+    }
+  },
+  "additionalProperties": false
+}

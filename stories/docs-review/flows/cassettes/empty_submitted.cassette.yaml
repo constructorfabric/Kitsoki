@@ -1,0 +1,54 @@
+# Simulates the "silent failure" mode that bit us live: oracle.decide
+# returns ok=true with submitted == {} (an empty map). This bypasses
+# on_error: review_failed, so without the defensive `when:` guard on
+# reviewing.done the story walks to `reviewed` and renders a verdict
+# block full of (missing)s.
+#
+# The matched flow asserts the guard catches this and routes to
+# review_failed instead.
+
+kind: host_cassette
+app_id: docs-review
+generated_at: 2026-05-28T00:00:00Z
+match_on: [handler]
+
+episodes:
+  - id: preflight_run
+    match:
+      handler: host.run
+    response:
+      data:
+        ok: true
+        exit_code: 0
+        stdout: |
+          {"sha":"deadbeef00000000","commit_count":"2","recent_log":"abc1234 sub","recent_changes":"","working_tree_diff":""}
+        stdout_json:
+          sha: "deadbeef00000000"
+          commit_count: "2"
+          recent_log: "abc1234 sub"
+          recent_changes: ""
+          working_tree_diff: ""
+    replay: any
+
+  # The bug: ok=true, but the agent never submitted anything coherent.
+  # Empty map fails schema validation in real runs, but a misbehaving
+  # cassette / corrupt validator pipeline can still surface this shape.
+  - id: oracle_empty_submit
+    match:
+      handler: host.oracle.decide
+    response:
+      data:
+        ok: true
+        exit_code: 0
+        submitted: {}
+    replay: any
+
+  - id: artifacts_dir_write
+    match:
+      handler: host.artifacts_dir
+    response:
+      data:
+        ok: true
+        path: "/tmp/.artifacts/docs-review-deadbeef00000000.md"
+        message_id: "docs-review-deadbeef00000000#0"
+    replay: any

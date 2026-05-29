@@ -1,0 +1,114 @@
+# testing_artifact_round_trip — exercises the full bind-to-disk path for
+# the bugfix testing room's implement_review_artifact.
+#
+# Catches the silent-failure class where:
+#   - host.oracle.task returns ok with Data["submitted"] = full artifact
+#   - bind: implement_review_artifact: submitted copies the map into world
+#   - on accept: body: "{{ world.implement_review_artifact.summary_markdown }}"
+#     templates the map into iface.transport.post
+#   - host.artifacts_dir pretty-prints to a file on disk
+# If ANY step drops the bind or stringifies the map wrong (e.g. `{}`
+# literal or `<map[string]interface{} Value>` Go stringification),
+# the artifact file will NOT contain "BUGFIX-ROUND-TRIP-SENTINEL"
+# and the wrapping Go test (TestBugfix_TestingArtifactRoundTrip) fails.
+#
+# Uses initial_state: testing to skip reproducing/proposing/implementing.
+# Turn 0 is `refine` (with feedback) which does target: testing explicitly
+# — an explicit self-transition re-enters the state and fires on_enter
+# (target: "." skips on_enter; explicit "testing" does not).
+# That fires: iface.ci.run_tests → host.local (stubbed) → bind ci_log;
+#             host.oracle.task (stubbed) → bind implement_review_artifact.
+# Turn 1 is `accept` which invokes iface.transport.post (= host.artifacts_dir
+# real handler) and writes the artifact file to $KITSOKI_ARTIFACTS_ROOT.
+#
+# host_bindings: transport: host.artifacts_dir wires the REAL handler.
+# host_bindings: also triggers RegisterBuiltins (see flows.go:458).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: testing
+initial_world:
+  ticket_id:   "TKT-999"
+  ticket_title: "Round-trip sentinel test"
+  thread:      "TKT-999"
+  workdir:     "/tmp/stub-workdir"
+  base_branch: "main"
+  bugfix_mode: "quick"
+  judge_mode:  "human"
+  judge_confidence_threshold: 0.8
+  testing_cycle: 0
+  testing_budget: 3
+  propose_fix_artifact:
+    summary_title:    "Stub proposal"
+    summary_markdown: "stub"
+
+# Rebind transport iface to host.artifacts_dir (real handler).
+# The no-op self-binding on host.artifacts_dir triggers RegisterBuiltins.
+host_bindings:
+  transport:          host.artifacts_dir
+  host.artifacts_dir: host.artifacts_dir
+
+host_handlers:
+  # ci iface (iface.ci.run_tests → host.local in testing room's on_enter)
+  host.local:
+    data:
+      ok:     true
+      passed: 3
+      failed: 0
+      log:    "ok    kitsoki/... [stub]"
+
+  # oracle.decide — safety-net stub so the builtin never shells out.
+  # judge_mode=human means the when: condition is false; this stub guards
+  # against any unexpected fallthrough to the real claude binary.
+  host.oracle.decide:
+    data:
+      ok:        true
+      exit_code: 0
+      submitted:
+        intent:     "accept"
+        reason:     "stub"
+        confidence: 0.9
+        verdict:    "accept"
+
+  # oracle.task — returns the full testing_artifact schema with a
+  # recognizable sentinel string that the Go test asserts must reach disk.
+  host.oracle.task:
+    data:
+      ok:        true
+      exit_code: 0
+      submitted:
+        summary_title:    "TKT-999 test review"
+        summary_markdown: "BUGFIX-ROUND-TRIP-SENTINEL: all tests passed; regression test added at internal/foo_test.go."
+        status:           "passed"
+        tests_added:
+          - path: "internal/foo_test.go"
+            name: "TestFooRoundTrip"
+        tests_run:
+          passed:  3
+          failed:  0
+          skipped: 0
+          log:     "ok    kitsoki/internal/foo [stub]"
+        blockers: []
+
+turns:
+  # refine with explicit target: testing fires on_enter (unlike `look`
+  # which uses target: "." and intentionally skips it). on_enter chain:
+  #   1. iface.ci.run_tests → binds ci_log
+  #   2. host.oracle.task → binds implement_review_artifact
+  #   3. when(judge_mode==llm): skipped (human)
+  - intent: { name: refine, slots: { feedback: "trigger on_enter via explicit self-transition" } }
+    expect_state: testing
+    expect_world:
+      # ci_log is a simple string; its presence confirms iface.ci.run_tests
+      # ran and bound successfully. implement_review_artifact is an object;
+      # the Go test asserts its content via the on-disk file.
+      ci_log: "ok    kitsoki/... [stub]"
+
+  # accept (bugfix_mode=quick → target: done): invokes iface.transport.post
+  # which is now wired to host.artifacts_dir (real handler). The real
+  # handler writes body="{{ world.implement_review_artifact.summary_markdown }}"
+  # to $KITSOKI_ARTIFACTS_ROOT/TKT-999.md.
+  - intent: { name: accept, slots: {} }
+    expect_state: done
+
+expect_no_errors: true

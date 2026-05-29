@@ -1,0 +1,118 @@
+# fixing — apply the documentation fixes the verdict described.
+#
+# Reached automatically from `reviewed` when the verdict's `decision`
+# is `needs_update`. Walks the `stale_docs[]` listing and hands it to a
+# write-capable opus agent (`docs_writer`) that uses Edit/Write to bring
+# each cited doc section back in sync with the code.
+#
+# The agent does NOT commit — changes are left uncommitted in the
+# working tree for the operator to review and stage themselves. Matches
+# the rest of docs-review's hands-off positioning (no vcs/workspace
+# plumbing; the story doesn't own a worktree).
+#
+# on_enter chain (mirrors the reviewing room's shape):
+#
+#   1. host.oracle.task: hand docs_writer the verdict + rendered
+#      worklist; agent edits files; submits a docs_fix_artifact.
+#   2. host.artifacts_dir: write the fix artifact to
+#      .artifacts/docs-review-fix-<sha>.json as pure JSON (same
+#      thread-extension convention reviewing uses for its verdict).
+#   3. emit_intent: fix_done | fix_failed — guarded against pre-bind
+#      world snapshot the same way reviewing.yaml does.
+
+states:
+
+  fixing:
+    description: "Applying the documentation fixes (write-capable oracle)."
+    view:
+      - banner:
+          text:     "APPLYING DOC FIXES"
+          subtitle: "Docs writer is editing the cited doc sections"
+          color:    "#8B5CF6"
+      - kv:
+          pairs:
+            "Commit":   "{{ world.commit_sha }}"
+            "Decision": "{{ world.verdict.decision }}"
+            "Stale rows": '{{ world.verdict.stale_docs|length|default:"0" }}'
+            "Applied":  '{% if world.fix_artifact.applied == true %}yes{% elif world.fix_artifact.applied == false %}no (see blockers){% else %}(pending — agent has not returned){% endif %}'
+      - heading: "Worklist (read-only render of verdict.stale_docs)"
+      - code: |
+          {% for d in world.verdict.stale_docs %}{{ d.path }} : {{ d.lines }}{% if d.anchor %}  ({{ d.anchor }}){% endif %}
+          {% for inv in d.invalidations %}    [{{ inv.commit }}{% if inv.source %} · {{ inv.source }}{% endif %}] {{ inv.change }}
+              → {{ inv.reason }}
+          {% endfor %}{% empty %}(no stale rows — should not be here){% endfor %}
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "quit"
+              hint:   "abandon the fix run (any edits already on disk are kept)"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    relevant_world: [commit_sha, verdict, fix_artifact]
+    on_enter:
+      # 1. Hand the verdict to the docs writer. Renders a couple of
+      # listing strings up-front so the prompt can show the worklist
+      # without re-encoding the whole verdict as YAML/JSON twice.
+      - invoke: host.oracle.task
+        with:
+          agent: docs_writer
+          acceptance:
+            schema: schemas/docs_fix_artifact.json
+          context:
+            prompt: prompts/fix.md
+            args:
+              # context.args are rendered as single-expression (expr-lang),
+              # NOT pongo2 — passing typed maps/arrays through `{{ … }}`
+              # works, but {% for %} / {% if %} blocks do not. The
+              # iteration lives in prompts/fix.md (which IS pongo2).
+              commit_sha:          "{{ world.commit_sha }}"
+              verdict_summary:     "{{ world.verdict.summary }}"
+              stale_docs:          "{{ world.verdict.stale_docs }}"
+              recommended_actions: "{{ world.verdict.recommended_actions }}"
+              verdict_json:        "{{ world.verdict }}"
+        bind:
+          fix_artifact: submitted
+          # Scalar sentinel — `summary` is required (minLength 10), so
+          # its presence reliably indicates a real submit. Mirrors the
+          # `verdict_decision` pattern in reviewing.yaml.
+          fix_summary:  submitted.summary
+        on_error: review_failed
+
+      # 2. Persist the fix artifact next to the verdict so downstream
+      # tooling (or a later run) can see exactly which edits landed.
+      # Same thread-extension trick as reviewing.yaml — `.json` suffix
+      # bypasses the markdown wrapper.
+      - invoke: host.artifacts_dir
+        with:
+          thread: "docs-review-fix-{{ world.commit_sha }}.json"
+          mode:   "replace"
+          body:   "{{ world.fix_artifact }}"
+        on_error: review_failed
+
+      # 3. Hand off. Single conditional emit — guarded against the
+      # pre-bind world snapshot the same way reviewing.yaml does.
+      # `fix_summary` is bound from `submitted.summary` (schema-required,
+      # minLength 10), so it is non-empty iff a real submit landed.
+      #
+      # We deliberately do NOT add a symmetric `fix_failed` emit here.
+      # The reviewing room's `no_submit` sentinel works because it can
+      # key off `commit_sha`, which only becomes non-empty when THAT
+      # room's preflight runs. Here every world var that's stable pre-
+      # and post-bind would have been populated by `reviewing`, so we
+      # have no clean way to tell "didn't run yet" from "ran but submit
+      # was empty" without a literal-set effect. on_error: review_failed
+      # above already catches the failure modes that matter (handler
+      # error, validator rejection); a true empty-but-ok submit just
+      # sticks at `fixing` and the operator quits.
+      - emit_intent: fix_done
+        when: "world.fix_summary != ''"
+    on:
+      fix_done:
+        - target: fixed
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .

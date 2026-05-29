@@ -1,0 +1,65 @@
+# reviewed — terminal display state. Shows the verdict and the path
+# to the artifact. From here the operator can review again (e.g. after
+# a new commit) or quit.
+
+states:
+
+  reviewed:
+    description: "Docs review complete."
+    view:
+      - kv:
+          pairs:
+            "Commit":     "{{ world.commit_sha }}"
+            "Mode":       '{{ world.review_mode|default:"recent" }}'
+            "Decision":   '{{ world.verdict.decision|default:"(missing)" }}'
+            "Confidence": '{% if world.verdict.confidence != nil %}{{ int(world.verdict.confidence * 100) }}%{% else %}(n/a){% endif %}'
+            "Artifact":   '{{ world.artifact_path|default:"(not written)" }}'
+      - heading: "Summary"
+      - prose: '{{ world.verdict.summary|default:"(no summary)" }}'
+      - heading: "Commits in scope"
+      - code: |
+          {% for c in world.verdict.commits %}- {{ c.sha }} — {{ c.subject }}
+            change: {{ c.change }}
+          {% empty %}(none — structural audit){% endfor %}
+      - heading: "Stale docs (path : lines)"
+        when: 'world.verdict.decision == "needs_update"'
+      - code: |
+          {% for d in world.verdict.stale_docs %}{{ d.path }} : {{ d.lines }}{% if d.anchor %}  ({{ d.anchor }}){% endif %}
+          {% for inv in d.invalidations %}    [{{ inv.commit }}{% if inv.source %} · {{ inv.source }}{% endif %}] {{ inv.change }}
+              → {{ inv.reason }}
+          {% endfor %}{% empty %}(none cited){% endfor %}
+        when: 'world.verdict.decision == "needs_update"'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "review_again"
+              hint:   "re-run against the current HEAD"
+              intent: review_again
+            - label:  "quit"
+              hint:   "exit"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render the scene"
+              intent: look
+    relevant_world: [commit_sha, verdict, artifact_path]
+    on_enter:
+      # Auto-advance to `fixing` when the verdict flagged stale docs.
+      # `verdict_decision` is the scalar shadow bound by reviewing.on_enter
+      # (alongside `verdict`); the schema requires it to be present on
+      # every successful submit, so this guard fires iff the previous
+      # room actually landed a needs_update verdict.
+      #
+      # For up_to_date verdicts no emit fires — reviewed acts as the
+      # normal terminal display.
+      - emit_intent: fix_docs
+        when: 'world.verdict_decision == "needs_update"'
+    on:
+      fix_docs:
+        - target: fixing
+      review_again:
+        - target: reviewing
+      quit:
+        - target: "@exit:done"
+      look:
+        - target: .

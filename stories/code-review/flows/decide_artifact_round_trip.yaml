@@ -1,0 +1,94 @@
+# decide_artifact_round_trip — exercises the full bind-to-disk path that
+# none of the other code-review fixtures cover. Stubs host.oracle.ask,
+# host.oracle.decide, and other host calls inline (via host_handlers),
+# rebinds iface.transport to host.artifacts_dir so the real handler runs
+# and writes a file to KITSOKI_ARTIFACTS_ROOT.
+#
+# Catches the silent-failure class where:
+#   - decide_executing.on_enter calls oracle.decide → returns submitted
+#   - bind: decision_artifact: submitted copies the map into world
+#   - decide_awaiting_reply.on_enter templates
+#     `body: "{{ world.decision_artifact.summary_markdown }}"` into
+#     iface.transport.post (→ host.artifacts_dir.post)
+#   - bodyArg in artifacts_dir pretty-prints to file on disk
+# If ANY step in that chain drops or stringifies the artifact (an empty
+# map, a `<map[...]interface{}>` go-stringification, a missing bind),
+# the file body will not contain the sentinel and the Go wrapper fails.
+#
+# Note: initial_state teleports the session to comment_executing WITHOUT
+# running its on_enter. Firing `proceed` causes the orchestrator to
+# ENTER decide_executing naturally, which DOES run decide_executing.on_enter
+# (the oracle.decide call + bind: decision_artifact: submitted).
+#
+# Driven by cmd/kitsoki/code_review_decide_artifact_test.go.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: comment_executing
+initial_world:
+  pr_id:        "PR-99"
+  pr_title:     "feat: round-trip-sentinel"
+  pr_author:    "alice"
+  thread:       "PR-99"
+  judge_mode:   "human"
+  judge_confidence_threshold: 0.8
+  draft_comment: "LGTM with minor nit."
+  review_summary_artifact:
+    summary_markdown: "Looks solid overall."
+
+# Rebind iface.transport to host.artifacts_dir so the real handler runs.
+# host.artifacts_dir: host.artifacts_dir is a no-op trigger that ensures
+# RegisterBuiltins is called (see internal/testrunner/flows.go lines 458-461).
+host_bindings:
+  transport: host.artifacts_dir
+  host.artifacts_dir: host.artifacts_dir
+
+# Stub oracle and other hosts; host.artifacts_dir is intentionally absent
+# so the real handler writes to $KITSOKI_ARTIFACTS_ROOT.
+host_handlers:
+  host.oracle.ask:
+    data:
+      ok: true
+      exit_code: 0
+      stdout: "LGTM. One nit on decimal precision."
+  host.oracle.decide:
+    data:
+      ok: true
+      exit_code: 0
+      submitted:
+        summary_title:    "Decision: PR-99"
+        summary_markdown: "CODEREVIEW-ROUND-TRIP-SENTINEL approve rationale."
+        decision:         "approve"
+        rationale:        "No blockers found in the diff."
+        open_questions:   []
+  host.inbox.add:
+    data: { ok: true, id: "ib-rt-1" }
+  host.git:
+    data:
+      ok:              true
+      pr_id:           "PR-99"
+      approve:         true
+      request_changes: false
+
+turns:
+  # From comment_executing, `proceed` enters decide_executing and runs
+  # its on_enter (host.oracle.decide → binds decision_artifact).
+  - intent: { name: proceed, slots: {} }
+    expect_state: decide_executing
+
+  # From decide_executing, `approve` stages the decision and enters
+  # decide_awaiting_reply (runs on_enter → templates decision_artifact
+  # into iface.transport.post → host.artifacts_dir.post → file on disk).
+  - intent: { name: approve, slots: {} }
+    expect_state: decide_awaiting_reply
+    expect_world:
+      decision: "approve"
+
+  # Final approval exits to reviewed.
+  - intent: { name: approve, slots: {} }
+    expect_state: __exit__reviewed
+    expect_world:
+      status:   "reviewed"
+      decision: "approve"
+
+expect_terminal: true

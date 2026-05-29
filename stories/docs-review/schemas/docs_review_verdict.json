@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title":   "docs_review_verdict",
+  "description": "Verdict produced by the docs-review story's oracle.decide call. Pinned into world.verdict and written to .artifacts/docs-review-<sha>.md. The shape is designed to render as a listing: one row per (doc, line-range), with 1+ invalidation records explaining the code/doc change that broke that section.",
+  "type":    "object",
+  "required": ["decision", "summary", "confidence", "commits", "stale_docs"],
+  "properties": {
+    "decision": {
+      "type": "string",
+      "enum": ["needs_update", "up_to_date"],
+      "description": "Binary verdict — needs_update means at least one doc section is stale."
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 10,
+      "description": "One-paragraph rationale; cites file paths, line ranges, and commit short-shas."
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "commits": {
+      "type": "array",
+      "description": "Every commit considered in this audit. Used as the lookup table referenced by stale_docs[].invalidations[].commit. May be empty only when the verdict fell back to a structural audit.",
+      "items": {
+        "type": "object",
+        "required": ["sha", "subject", "change"],
+        "properties": {
+          "sha":     { "type": "string", "description": "Short or full commit SHA." },
+          "subject": { "type": "string", "description": "Commit subject line." },
+          "change":  { "type": "string", "description": "One sentence on what observable behavior or surface this commit changed. Not a restatement of the subject." }
+        },
+        "additionalProperties": false
+      }
+    },
+    "stale_docs": {
+      "type": "array",
+      "description": "One record per (doc, line-range) that is now stale. Empty array when decision == up_to_date.",
+      "items": {
+        "type": "object",
+        "required": ["path", "lines", "invalidations"],
+        "properties": {
+          "path":   { "type": "string", "description": "Repo-relative doc path." },
+          "lines":  { "type": "string", "description": "Line range inside the doc, e.g. '110-117' or '650' for a single line. Required — the listing is keyed by (path, lines)." },
+          "anchor": { "type": "string", "description": "Optional human-readable anchor, e.g. '§4.3 Iterate on an app with full tracing'." },
+          "invalidations": {
+            "type": "array",
+            "minItems": 1,
+            "description": "1+ records of what changed (in code, or another doc) such that this doc section is now wrong or incomplete. One change per record.",
+            "items": {
+              "type": "object",
+              "required": ["commit", "change", "reason"],
+              "properties": {
+                "commit": { "type": "string", "description": "SHA from commits[], or the literal 'working-tree' for uncommitted changes, or 'structural' when no specific commit applies." },
+                "source": { "type": "string", "description": "Optional file path that drives the invalidation (e.g. 'cmd/kitsoki/trace.go' or 'docs/architecture.md'). Cite when it sharpens the link." },
+                "change": { "type": "string", "description": "What the commit / source changed at the behavior or contract level." },
+                "reason": { "type": "string", "description": "Why this change makes the cited doc section stale. Quote or paraphrase the doc's current claim." }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "recommended_actions": {
+      "type": "array",
+      "description": "Short directive strings, ideally one per stale_docs[] entry in the same order.",
+      "items": { "type": "string" }
+    }
+  },
+  "additionalProperties": false
+}

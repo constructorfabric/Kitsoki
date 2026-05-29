@@ -1,0 +1,80 @@
+# diagnose_artifact_round_trip — exercises the FULL bind-to-disk path that
+# the other pr-refinement fixtures skip. Stubs host.oracle.decide and
+# host.inbox.add inline (via host_handlers), but DOES NOT stub
+# iface.transport.post (rebound to host.artifacts_dir below) so the real
+# handler runs and writes a file to KITSOKI_ARTIFACTS_ROOT.
+#
+# Catches the silent-failure class where:
+#   - oracle.decide returns ok with Data["submitted"] = diagnose_artifact
+#   - bind: diagnose_artifact: submitted copies that map into world
+#   - body: "{{ world.diagnose_artifact.summary_markdown }}" templates it
+#   - bodyArg in artifacts_dir pretty-prints to a file on disk
+# If ANY step drops or stringifies the artifact the wrapping Go test's
+# sentinel assertion will fail.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: ci_monitoring
+initial_world:
+  pr_id:            "PR-ROUNDTRIP-99"
+  pr_title:         "Round-trip sentinel PR"
+  thread:           "pr-refinement-round-trip"
+  ci_log:           "FAIL: TestFoo (segfault at foo.go:7)"
+  ci_state:         "failure"
+  ci_failed_checks: "go-test"
+  judge_mode:       "human"
+  judge_confidence_threshold: 0.8
+  cycle:            0
+  refine_feedback:  ""
+
+# Rebind iface.transport to host.artifacts_dir so the real handler runs.
+# The runner only registers builtins when host_bindings is non-empty
+# (buildOrchestratorRig in internal/testrunner/flows.go); rebinding the
+# transport interface triggers RegisterBuiltins.
+host_bindings:
+  transport: host.artifacts_dir
+
+host_handlers:
+  host.inbox.add:
+    data: { ok: true, id: "ib-rt-1" }
+  # iface.vcs → host.git (default). pr_status returns state: failure so
+  # the ci_monitoring.on_enter bind sets ci_state and the proceed guard
+  # routes to diagnose_executing.
+  host.git:
+    data:
+      ok:      true
+      state:   "failure"
+      checks:  "go-test"
+      comments: ""
+  host.oracle.decide:
+    data:
+      ok: true
+      exit_code: 0
+      submitted:
+        summary_title:    "Nil pointer in TestFoo at foo.go:7"
+        summary_markdown: "PR-REFINEMENT-ROUND-TRIP-SENTINEL: Nil pointer dereference in TestFoo at foo.go:7. Fix by checking err before dereferencing the result pointer."
+        root_cause:       "Nil pointer dereference in the result handler at foo.go:7."
+        fix_description:  "Add a nil check before dereferencing result in TestFoo."
+        affected_files:   ["foo.go", "foo_test.go"]
+        failing_checks:   ["go-test"]
+        confidence:       0.9
+        reasoning:        "The panic trace points directly at foo.go:7 — the only unsynchronised dereference in that path."
+
+turns:
+  # ci_monitoring.on_enter polls vcs.pr_status (→ host.git stub, state=failure)
+  # and re-sets ci_state. proceed routes to diagnose_executing because
+  # ci_state == "failure" (seeded and re-confirmed by on_enter).
+  - intent: { name: proceed, slots: {} }
+    expect_state: diagnose_executing
+
+  # diagnose_executing.on_enter calls oracle.decide; binds diagnose_artifact.
+  # proceed transitions to diagnose_awaiting_reply where on_enter calls
+  # iface.transport.post (→ host.artifacts_dir, real handler) with the bound
+  # diagnose_artifact.summary_markdown as body.
+  - intent: { name: proceed, slots: {} }
+    expect_state: diagnose_awaiting_reply
+
+  - intent: { name: quit, slots: {} }
+    expect_state: __exit__abandoned
+
+expect_terminal: true

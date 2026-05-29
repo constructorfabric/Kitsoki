@@ -1,0 +1,34 @@
+# Simulates the oracle.decide handler exhausting its nudge budget
+# (5 validator retries × 3 outer --resume iterations) without a
+# successful submit(). The host returns an envelope with Error set,
+# which routes through on_error: review_failed.
+
+kind: host_cassette
+app_id: docs-review
+generated_at: 2026-05-28T00:00:00Z
+match_on: [handler]
+
+episodes:
+  - id: preflight_run
+    match:
+      handler: host.run
+    response:
+      data:
+        ok: true
+        exit_code: 0
+        stdout: |
+          {"sha":"feedfacecafe0000","commit_count":"1","recent_log":"aaa0000 Initial commit","recent_changes":"","working_tree_diff":""}
+        stdout_json:
+          sha: "feedfacecafe0000"
+          commit_count: "1"
+          recent_log: "aaa0000 Initial commit"
+          recent_changes: ""
+          working_tree_diff: ""
+    replay: any
+
+  - id: oracle_abandoned
+    match:
+      handler: host.oracle.decide
+    response:
+      error: "host.oracle.decide: validator: session abandoned without successful submit after 3 outer iteration(s), 5 attempt(s)"
+    replay: any
