@@ -29,8 +29,18 @@ orchestration), see [`prior-art.md`](prior-art.md).
    episode matching, `!include`, record mode, and CI safety.
 7. **[`hosts.md`](hosts.md)** — every built-in `host.*` handler with
    its input/output contract.
+   **[`oracle-plugin.md`](oracle-plugin.md)** — the Oracle plugin
+   contract: declaring external oracles under `oracle_plugins:`,
+   the `invoke: host.oracle.<verb>` + `oracle:` effect shape, the
+   subprocess / MCP-over-HTTP transports, schema validation, and
+   sub-events. **[`oracle-cli.md`](oracle-cli.md)** — the five-verb
+   `host.oracle.*` surface.
 8. **[`transports.md`](transports.md)** — TUI, Jira, Bitbucket;
    sessions keyed by external thread; phase checkpoints.
+   **[`trace-format.md`](trace-format.md)** — the JSONL trace schema:
+   event vocabulary (`oracle.call.start` / `.complete` / `.error`),
+   the `EventSink` contract, `call_id` derivation, and replay
+   guarantees. The trace is the session's authoritative state.
 9. **[`background-jobs/`](background-jobs/README.md)** — long-running
    handlers, inbox notifications, mid-flight clarifications.
 10. **[`imports.md`](imports.md)** — composing apps across files and

@@ -1,8 +1,11 @@
 # Oracle Plugin Contract
 
-> **Phase B complete (2026-05-28).** This document is the operator-facing
-> specification for the Oracle plugin mechanism implemented in Phase B of
-> the [control-inversion proposal](proposals/pr-refinement-proposal.md).
+> **Status:** the operator-facing specification for the Oracle plugin
+> mechanism. The plugin contract is the seam that lets an external system
+> (a CI-failure responder, a bounded fixer agent, a user's own MCP server)
+> register itself as the LLM behind a kitsoki oracle call without compiling
+> into kitsoki. See [`docs/trace-format.md §5`](trace-format.md) for the JSONL
+> events each call produces.
 
 An **oracle plugin** is the component that receives a rendered prompt and
 returns a structured JSON submission.  Kitsoki owns the schema validation,
@@ -11,10 +14,13 @@ that must honour a narrow `ask / return` contract.
 
 ---
 
-## 1. `hosts:` block YAML reference
+## 1. `oracle_plugins:` block YAML reference
+
+Oracle plugins are declared under the top-level `oracle_plugins:` key (a map of
+oracle alias → declaration). This is separate from the `hosts:` allow-list.
 
 ```yaml
-hosts:
+oracle_plugins:
   oracle.claude:                    # default (injected when absent)
     plugin: builtin.claude_cli
 
@@ -35,23 +41,21 @@ hosts:
 
 ### Supported plugin types
 
-| Plugin type           | When to use                                                 |
-|-----------------------|-------------------------------------------------------------|
-| `builtin.claude_cli`  | Default — exec the local `claude` binary; backwards compat. |
-| `builtin.inprocess`   | Compiled-in Go oracle; tests and deterministic stubs.       |
-| `subprocess`          | External binary speaking JSON-RPC 2.0 over stdio.           |
-| `mcp_http`            | Long-running HTTP service exposing an `ask` MCP tool.       |
-| `cassette`            | Pre-recorded responses; replayed deterministically.         |
+The `plugin:` value must be one of the four names below; any other value fails
+at story-load time.
 
-### Per-type required fields
+| Plugin type           | Required fields | When to use                                                 |
+|-----------------------|-----------------|-------------------------------------------------------------|
+| `builtin.claude_cli`  | _(none)_        | Default — exec the local `claude` binary; backwards compat. |
+| `builtin.inprocess`   | _(none)_        | Compiled-in Go oracle. Declared in YAML but the `Oracle` impl must be injected in code via `RegisterInProcess` before dispatch; tests and deterministic stubs. |
+| `subprocess`          | `command:`      | External binary speaking JSON-RPC 2.0 over stdio.           |
+| `mcp_http`            | `endpoint:`     | Long-running HTTP service exposing an `ask` MCP tool.       |
 
-| Plugin type           | Required fields             |
-|-----------------------|-----------------------------|
-| `builtin.claude_cli`  | _(none)_                    |
-| `builtin.inprocess`   | _(none; wired in code)_     |
-| `subprocess`          | `command:`                  |
-| `mcp_http`            | `endpoint:`                 |
-| `cassette`            | _(cassette file path)_      |
+> The **cassette** transport (pre-recorded, deterministic replay) is a fourth
+> conformance transport but is *not* declarable via `oracle_plugins:`. It is
+> wired in test code via `testrunner.NewCassetteOracle` and registered with
+> `reg.Register`; see the four-transport conformance test in
+> `internal/testrunner/oracle_conformance_test.go`.
 
 ### Auth and secrets
 
@@ -67,25 +71,45 @@ hosts:
 
 ---
 
-## 2. `oracle:` room-level block
+## 2. Calling a plugin oracle from a room
+
+An oracle call is a host invoke effect — `invoke: host.oracle.<verb>` — with an
+`oracle:` field naming the plugin alias declared in `oracle_plugins:`. The
+verbs are `ask`, `decide`, `extract`, `task`, and `converse`.
 
 ```yaml
 states:
   executing:
     on_enter:
-      - oracle: oracle.my_fixer         # resolves to the hosts: entry
+      - invoke: host.oracle.decide      # ask | decide | extract | task | converse
+        oracle: oracle.my_fixer         # resolves to the oracle_plugins: entry
         with:
-          task: "{{ args.task }}"
-          repo: "{{ world.repo }}"
-        schema: schemas/fixer-output.json
-        bind: world.fixer_result
+          prompt: prompts/fix.md        # rendered prompt (path or inline text)
+          schema: schemas/fixer-output.json
+          args:
+            task: "{{ args.task }}"
+            repo: "{{ world.repo }}"
+        bind:
+          fixer_result: submission      # bind the validated Submission to world
 ```
 
-- `oracle:` defaults to `oracle.claude` when omitted.
-- `schema:` is an optional path to a JSON Schema file (relative to the
-  story directory).  When set, kitsoki validates `AskResponse.Submission`
+- **`oracle:` is opt-in.** When omitted, the call runs on the built-in
+  `oracle.claude` (claude_cli) path exactly as before — existing stories that
+  bind `stdout` or `submitted` are unchanged. Naming a plugin via `oracle:`
+  routes the call through the plugin dispatch path described here, whose result
+  exposes the keys in the table below (note: **not** `stdout`).
+- `schema:` (inside `with:`) is an optional path to a JSON Schema file relative
+  to the story directory. When set, kitsoki validates `AskResponse.Submission`
   against it and produces an `OracleError` on failure.
-- `bind:` binds the validated `Submission` to a world variable.
+- `bind:` maps world variables to keys of the dispatch result:
+
+  | bind source  | value                                                        |
+  |--------------|--------------------------------------------------------------|
+  | `submission` | the validated `Submission`, parsed (nil when no `schema:`).  |
+  | `submitted`  | alias for `submission` (back-compat with existing rooms).    |
+  | `meta`       | opaque plugin metadata (tokens, cost, model).                |
+  | `ok`         | `true` on success.                                           |
+  | `exit_code`  | `0` on success.                                              |
 
 ---
 
@@ -197,7 +221,7 @@ not retroactively rewritten.
 ### subprocess oracle
 
 ```yaml
-hosts:
+oracle_plugins:
   oracle.my_analyzer:
     plugin: subprocess
     command: /opt/analyzers/code-analyzer
@@ -209,7 +233,7 @@ hosts:
 ### mcp_http oracle
 
 ```yaml
-hosts:
+oracle_plugins:
   oracle.remote_fixer:
     plugin: mcp_http
     endpoint: http://fixer-service:7301/mcp
@@ -220,13 +244,10 @@ hosts:
 
 ### cassette oracle (testing)
 
-```yaml
-hosts:
-  oracle.fixer:
-    plugin: cassette
-```
-
-Room-level cassette fixture sets up the oracle block:
+The cassette transport is not declared in `oracle_plugins:` (the loader rejects
+`plugin: cassette`). Instead, a flow's cassette fixture records the oracle
+exchange and the test wires `testrunner.NewCassetteOracle` into the registry.
+The fixture episode carries the oracle block:
 
 ```yaml
 episodes:

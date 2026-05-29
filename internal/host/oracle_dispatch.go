@@ -187,6 +187,21 @@ func TryDispatchVerb(ctx context.Context, verb, renderedPrompt, systemPrompt, ag
 	}
 
 	pluginName := OraclePluginNameFromCtx(ctx)
+
+	// Backwards compat (proposal §2 "Existing stories don't change"): the plugin
+	// dispatch path is opt-in. Only route through it when the story explicitly
+	// named an oracle via the effect's `oracle:` field (the orchestrator injects
+	// the plugin name into context only in that case). With no explicit plugin,
+	// fall through to the legacy in-process handler so existing rooms keep their
+	// full result shape — notably the `stdout` bind key, which the dispatch
+	// result does not expose — and the phase-A oracle events the legacy path
+	// already emits. The default oracle.claude therefore stays on the
+	// battle-tested claude_cli path; the Oracle plugin contract is reserved for
+	// declared/external oracles.
+	if pluginName == "" {
+		return Result{}, false, nil
+	}
+
 	oc := OracleCallCtxFrom(ctx)
 
 	dr := OracleDispatchRequest{

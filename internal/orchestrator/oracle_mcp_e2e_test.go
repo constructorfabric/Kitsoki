@@ -170,28 +170,29 @@ states:
 	require.NoError(t, err, "RunInitialOnEnter should succeed")
 
 	// ── 6. Assert world binding ───────────────────────────────────────────────
-	// Check for EffectApplied events that bind fixer_result to verify world binding.
+	// The Submission must bind into world via `bind: { fixer_result: submission }`.
+	// This is the load-bearing guarantee for the control-inversion use cases (a
+	// driver round-trips the trace and reads the bound result), so it is a HARD
+	// assertion on both presence and value, not a log.
 	events := sink.Events()
-	var fixer_result_bound bool
+	var boundValue any
+	var fixerResultBound bool
 	for _, ev := range events {
 		if ev.Kind == store.EffectApplied {
 			var payload map[string]any
 			if json.Unmarshal(ev.Payload, &payload) == nil {
 				if set, ok := payload["set"].(map[string]any); ok {
-					if _, ok := set["fixer_result"]; ok {
-						fixer_result_bound = true
+					if v, ok := set["fixer_result"]; ok {
+						fixerResultBound = true
+						boundValue = v
 					}
 				}
 			}
 		}
 	}
-	if !fixer_result_bound {
-		// Not a hard failure — the binding may work via the turn's WorldAfter.
-		// The primary assertion is the oracle events (OracleCalled + OracleReturned).
-		t.Log("fixer_result binding via EffectApplied not observed in sink; oracle events are the primary gate")
-	} else {
-		t.Log("fixer_result binding confirmed via EffectApplied event")
-	}
+	require.True(t, fixerResultBound, "fixer_result must bind via an EffectApplied event (bind: { fixer_result: submission })")
+	require.Equal(t, map[string]any{"fixed": true}, boundValue,
+		"fixer_result must bind to the plugin's Submission value {\"fixed\":true}")
 
 	// ── 7. Assert trace events ─────────────────────────────────────────────────
 	events = sink.Events()

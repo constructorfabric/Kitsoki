@@ -126,9 +126,9 @@ type TurnNumber int64
 
 // ---- App-definition types (loaded from YAML) --------------------------------
 
-// OraclePluginDecl declares one oracle plugin entry in the `hosts:` block.
-// Only `oracle.*` prefixed host entries are parsed as plugin declarations;
-// other host entries in `hosts:` are the flat string allow-list.
+// OraclePluginDecl declares one oracle plugin entry under the top-level
+// `oracle_plugins:` YAML key (a map of oracle alias → declaration). This is
+// distinct from the `hosts:` field, which is the flat string host allow-list.
 //
 // Supported plugin values (B-3):
 //   - "builtin.claude_cli" — the default; wraps the existing claude-CLI harness.
