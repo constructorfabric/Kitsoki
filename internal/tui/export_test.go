@@ -673,3 +673,23 @@ func OpenDisambiguationForTest(m *RootModel, candidates []CandidateForTest) {
 	m.disambiguation.Open(cs)
 	m.mode = ModeDisambiguating
 }
+
+// GetTranscriptLiveLine returns the current in-flight liveLine from the transcript.
+func GetTranscriptLiveLine(m *transcriptModel) string {
+	return m.liveLine
+}
+
+// GetTranscriptPending returns a copy of the pending queue from the transcript.
+func GetTranscriptPending(m *transcriptModel) []string {
+	pending := make([]string, len(m.pending))
+	copy(pending, m.pending)
+	return pending
+}
+
+// NewTranscriptModel creates a transcriptModel for testing.
+func NewTranscriptModel(width int, appDef app.AppDef) *transcriptModel {
+	tm := newTranscriptModel(width, 10) // 10-line viewport for testing
+	tm.entries = []transcriptEntry{}    // ensure clean state
+	tm.pending = []string{}
+	return &tm
+}
