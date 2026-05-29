@@ -649,15 +649,20 @@ Enum entries live in
 
 ### 11.6 Observability
 
-- **Trace** — `--trace file.jsonl --trace-pretty -` writes one JSON
-  object per event (`turn.*`, `harness.*`, `machine.*`, `store.*`,
-  `host.*`, `jobs.*`).
+- **Trace** — `kitsoki run` auto-writes a JSONL trace to
+  `.kitsoki/sessions/<utc-timestamp>-<app-id>.jsonl` on every
+  invocation; there is no `--trace` flag on `run`. For one-shot
+  headless turns, `kitsoki turn --trace <path>` writes to an explicit
+  path (pair with `--trace-pretty -` to also pretty-print to stdout).
+  Each line is one JSON object covering `turn.*`, `harness.*`,
+  `machine.*`, `store.*`, `host.*`, and `jobs.*` events. See
+  [`docs/trace-format.md`](trace-format.md) for the schema.
 - **Inspect** — `kitsoki inspect --session-id <id>` prints a read-only
   JSON snapshot of a stored session.
 - **Visualise** — `kitsoki viz` emits Graphviz DOT or Mermaid.
 
-The `turn.done` events carry `view_rendered`, so a `--trace` JSONL
-file is a complete after-the-fact transcript.
+The `turn.done` events carry `view_rendered`, so the JSONL trace is a
+complete after-the-fact transcript.
 
 ---
 

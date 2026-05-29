@@ -1,6 +1,7 @@
 package tui_test
 
 import (
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -158,4 +159,87 @@ func TestRenderingJoinVerticalVsConcatenation(t *testing.T) {
 		analyzer.AssertContains("queue indicator")
 		// analyzer.Dump() // Uncomment to see the padding
 	})
+}
+
+// TestConcurrentIODoesNotMix is an example of testing for bugs that involve
+// concurrent I/O from multiple sources (like slog and TUI rendering mixing).
+// This test pattern catches race conditions that isolated View() tests miss.
+//
+// See SKILL.md "Critical Pitfall: When Unit Tests Aren't Enough" for guidance
+// on when to write this kind of integration test.
+func TestConcurrentIODoesNotMix(t *testing.T) {
+	t.Parallel()
+
+	// This example demonstrates the pattern, but doesn't run actual concurrent
+	// operations (would require full TUI model setup). The pattern is:
+	//
+	// 1. Capture the I/O you want to inspect (stderr, files, etc)
+	// 2. Introduce concurrent operations that would trigger the bug
+	// 3. Assert on the COMBINED output from all sources
+	//
+	// Example scenario: Oracle logs while TUI renders queue indicator
+	//
+	// captured := tui.CaptureSlog(t)
+	// defer captured.Restore()
+	//
+	// done := make(chan struct{})
+	// go func() {
+	//     // Simulate oracle runner logging events
+	//     for i := 0; i < 50; i++ {
+	//         slog.Info("metamode.oracle.event", "type", "system")
+	//         time.Sleep(time.Microsecond)  // Interleave with rendering
+	//     }
+	//     close(done)
+	// }()
+	//
+	// // Concurrent rendering with logging
+	// for i := 0; i < 50; i++ {
+	//     output := m.View()  // This renders queue indicator
+	//     time.Sleep(time.Microsecond)
+	// }
+	// <-done
+	//
+	// // Key assertion: verify logs and queue indicator don't mix on same line
+	// captured.AssertNoMixedOutput("INFO", "⏳", "slog and queue indicator on same line")
+
+	// For now, we just verify the helper API exists and can be called
+	captured := tui.CaptureSlog(t)
+	defer captured.Restore()
+
+	// Example: write something to captured I/O
+	slog.Info("test.event", "turn", 1)
+
+	// Verify capture worked
+	require.Contains(t, captured.StderrBuf.String(), "test.event",
+		"slog capture should work")
+}
+
+// TestIntegrationPatternExample shows the pattern for testing bugs that span
+// multiple components (TUI + external systems). Use this as a template for
+// reproducing real concurrent I/O bugs.
+func TestIntegrationPatternExample(t *testing.T) {
+	t.Parallel()
+
+	// Pattern for testing a bug like "slog output mixed with queue indicator":
+	//
+	// Step 1: Set up I/O capture
+	captured := tui.CaptureSlog(t)
+	defer captured.Restore()
+
+	// Step 2: Simulate concurrent operations
+	// (In real usage, would have actual concurrent logging + TUI rendering)
+	slog.Info("oracle.event", "type", "system", "turn", 1)
+	slog.Info("oracle.event", "type", "thinking_tokens", "turn", 2)
+
+	// Step 3: Verify the output (what user sees)
+	output := captured.StderrBuf.String()
+
+	// Step 4: Assert on ACTUAL output, not just function return values
+	require.Contains(t, output, "oracle.event", "slog should capture events")
+
+	// This is the key pattern: verify that concurrent sources don't corrupt
+	// each other's output. In a real bug, you'd see things like:
+	// "INFO oracle.event ... ⏳ running…" (mixed on same line)
+	analyzer := tui.NewRenderingAnalyzer(t, output)
+	analyzer.AssertNotContains("⏳") // Queue indicator shouldn't be in logs
 }

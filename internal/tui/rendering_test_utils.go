@@ -1,8 +1,10 @@
 package tui
 
 import (
+	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -292,4 +294,138 @@ func (rth *RenderingTestHelper) AssertNoHorizontalConcat(text1, text2 string) *R
 func (rth *RenderingTestHelper) AssertLineSeparation(text1, text2 string) *RenderingTestHelper {
 	rth.Render().AssertLineSeparation(text1, text2)
 	return rth
+}
+
+// === Integration Test Helpers ===
+// Use these when testing bugs that involve concurrent I/O, external systems,
+// or interactions between the TUI and other components (slog, files, etc).
+// See SKILL.md "Critical Pitfall: When Unit Tests Aren't Enough" for when to use these.
+
+// CapturedIO holds the output from systems that write concurrently (slog, stderr, etc).
+// Use this to test bugs where multiple sources write at the same time.
+type CapturedIO struct {
+	StderrBuf  strings.Builder
+	StdoutBuf  strings.Builder
+	oldDefault *slog.Logger
+	t          *testing.T
+}
+
+// CaptureSlog redirects slog to a buffer so you can inspect what actually gets logged.
+// Call Restore() in a defer to restore the original logger.
+//
+// Usage:
+//
+//	captured := CaptureSlog(t)
+//	defer captured.Restore()
+//
+//	// Now slog writes go to captured.StderrBuf
+//	slog.Info("test event")
+//
+//	// Assert on actual logged output
+//	if strings.Contains(captured.StderrBuf.String(), "⏳") {
+//	    t.Fatal("slog output mixed with queue indicator")
+//	}
+func CaptureSlog(t *testing.T) *CapturedIO {
+	captured := &CapturedIO{t: t}
+	captured.oldDefault = slog.Default()
+	suppressedLogger := slog.New(slog.NewTextHandler(&captured.StderrBuf, nil))
+	slog.SetDefault(suppressedLogger)
+	return captured
+}
+
+// Restore restores the original slog logger.
+func (c *CapturedIO) Restore() {
+	if c.oldDefault != nil {
+		slog.SetDefault(c.oldDefault)
+	}
+}
+
+// AssertNoMixedOutput checks that output from two sources (like slog logs and queue indicator)
+// don't appear on the same line. This catches race conditions where concurrent I/O mixes.
+//
+// Example:
+//
+//	captured := CaptureSlog(t)
+//	defer captured.Restore()
+//
+//	// Concurrent goroutine logging while TUI renders
+//	go func() {
+//	    for i := 0; i < 50; i++ {
+//	        slog.Info("oracle.event", "type", "system")
+//	        time.Sleep(time.Microsecond)
+//	    }
+//	}()
+//
+//	// TUI rendering
+//	for i := 0; i < 50; i++ {
+//	    m.View()
+//	    time.Sleep(time.Microsecond)
+//	}
+//
+//	// Verify logs didn't mix with queue indicator
+//	captured.AssertNoMixedOutput("INFO", "⏳", "indicator in log lines")
+func (c *CapturedIO) AssertNoMixedOutput(sourceAMarker, sourceBMarker, description string) {
+	lines := strings.Split(c.StderrBuf.String(), "\n")
+	for _, line := range lines {
+		hasA := strings.Contains(line, sourceAMarker)
+		hasB := strings.Contains(line, sourceBMarker)
+		require.False(c.t, hasA && hasB,
+			"concurrent I/O bug (%s): line has both %q and %q: %q",
+			description, sourceAMarker, sourceBMarker, truncateStr(line, 100))
+	}
+}
+
+// SimulateConurrentIO is a helper for testing race conditions between slog and TUI rendering.
+// It runs a logging goroutine concurrently with rendering to simulate the timing where
+// logs and UI output mix on the same terminal line.
+//
+// Example:
+//
+//	captured := CaptureSlog(t)
+//	defer captured.Restore()
+//
+//	helper := NewConcurrentIOTester(t, captured)
+//	helper.LogConcurrently(func() {
+//	    for i := 0; i < 50; i++ {
+//	        slog.Info("oracle.event", "turn", i)
+//	    }
+//	}).
+//	RenderConcurrently(func() {
+//	    for i := 0; i < 50; i++ {
+//	        m.View()
+//	    }
+//	})
+//
+//	// After concurrent operations, verify the result
+//	captured.AssertNoMixedOutput("INFO", "⏳", "queue indicator")
+type ConcurrentIOTester struct {
+	t        *testing.T
+	captured *CapturedIO
+}
+
+// NewConcurrentIOTester creates a helper for testing concurrent I/O scenarios.
+func NewConcurrentIOTester(t *testing.T, captured *CapturedIO) *ConcurrentIOTester {
+	return &ConcurrentIOTester{t: t, captured: captured}
+}
+
+// LogConcurrently runs the given function in a goroutine to simulate concurrent logging.
+// Use this with RenderConcurrently to test race conditions.
+func (cit *ConcurrentIOTester) LogConcurrently(fn func()) *ConcurrentIOTester {
+	done := make(chan struct{})
+	go func() {
+		fn()
+		close(done)
+	}()
+	// Give logging goroutine a moment to interleave with rendering
+	time.Sleep(time.Microsecond)
+	// Wait for logging to complete
+	<-done
+	return cit
+}
+
+// RenderConcurrently runs rendering concurrent with logging.
+// The logging goroutine started by LogConcurrently runs in parallel with this.
+func (cit *ConcurrentIOTester) RenderConcurrently(fn func()) *ConcurrentIOTester {
+	fn()
+	return cit
 }

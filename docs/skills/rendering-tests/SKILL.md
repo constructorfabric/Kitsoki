@@ -171,6 +171,100 @@ for _, width := range []int{80, 120, 200} {
 ❌ **Testing implementation, not behavior** — test what users see  
 ❌ **Tests too specific** — focus on critical structure, not exact positions  
 
+## ⚠️ Critical Pitfall: When Unit Tests Aren't Enough
+
+**The mistake:** Testing View() output in isolation and declaring bugs fixed based on test passes.
+
+**When this fails:** Bugs involving:
+- Concurrent I/O (slog writes while TUI renders)
+- Interaction with external systems (files, terminal, subprocesses)
+- Timing-dependent behavior (race conditions)
+- Terminal state (cursor position, alt-screen mode, terminal width)
+
+### Example: The slog/TUI Race Condition
+
+**User reported:** "Queue indicator appears at end of log lines"
+```
+2026/05/29 05:40:41 INFO metamode.oracle.event ...  ⏳ ⠏ running…
+```
+
+**Isolated test (❌ can't catch it):**
+```go
+func TestQueueIndicator(t *testing.T) {
+    output := m.View()
+    analyzer := tui.NewRenderingAnalyzer(t, output)
+    analyzer.AssertLineSeparation("queue", "status")  // ✅ Passes!
+    // But this doesn't test: slog writes to stderr while View() renders
+}
+```
+
+**Integration test (✅ catches it):**
+```go
+func TestSlogDoesNotMixWithQueueIndicator(t *testing.T) {
+    // Capture actual stderr output
+    var stderrBuf strings.Builder
+    oldDefault := slog.Default()
+    slog.SetDefault(slog.New(slog.NewTextHandler(&stderrBuf, nil)))
+    defer slog.SetDefault(oldDefault)
+    
+    // Simulate concurrent logging + rendering (where the bug lives)
+    go func() {
+        for i := 0; i < 50; i++ {
+            slog.Info("metamode.oracle.event", "type", "system")
+            time.Sleep(time.Microsecond)
+        }
+    }()
+    
+    for i := 0; i < 50; i++ {
+        m.View()
+        time.Sleep(time.Microsecond)
+    }
+    
+    // Assert on ACTUAL output that reaches the terminal
+    stderrLines := strings.Split(stderrBuf.String(), "\n")
+    for _, line := range stderrLines {
+        if strings.Contains(line, "INFO") && strings.Contains(line, "⏳") {
+            t.Fatalf("queue indicator mixed into log: %q", line)
+        }
+    }
+}
+```
+
+### The Pattern: Test What Users See, Not Function Returns
+
+**When to use isolated tests:**
+- ✅ Testing View() composition logic (elements on separate lines)
+- ✅ Testing ANSI codes and styling
+- ✅ Testing template rendering
+
+**When you must add integration tests:**
+- ❌ Bug involves concurrent I/O (slog, files, pipes)
+- ❌ Bug manifests only when external systems interact
+- ❌ User's bug report shows mixed output from multiple sources
+- ❌ The symptom is "things appeared on same line" from different subsystems
+
+### Red Flags in Bug Reports
+
+If the user's symptom involves:
+- Log lines mixed with TUI elements → **Concurrent I/O test needed**
+- File contents mixed/corrupted → **Concurrent write test needed**
+- Terminal corruption across multiple renders → **Integration test needed**
+- Timing-dependent behavior → **Add delays/concurrency to test**
+
+**Action:** Don't just run the isolated test suite. Build a test that:
+1. Captures actual I/O (not just return values)
+2. Introduces the concurrency that causes the bug
+3. Asserts on what the user would observe
+
+### Verify the Test Would Fail
+
+Before declaring a bug fixed:
+1. **Run the test without the fix** — it should FAIL
+2. **Apply the fix** — test should PASS
+3. If you can't make the test fail first, your test doesn't catch the bug
+
+This is non-negotiable. A passing test that would pass even without your fix is not testing the fix.  
+
 ## Run Tests
 
 ```bash
