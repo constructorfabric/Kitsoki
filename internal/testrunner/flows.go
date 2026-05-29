@@ -407,6 +407,11 @@ type orchRig struct {
 	// downstream callers (e.g. fromflow) can pass the journal to runstatus.FromHistory.
 	journalWriter journal.Writer
 
+	// deferredOracleSink is the deferred sink used by cassette dispatchers to write
+	// oracle events. It's created before session creation and updated after NewSession
+	// when the real sink is available.
+	deferredOracleSink *store.DeferredSink
+
 	// cassette holds the loaded host cassette when host_cassette: is set and
 	// strict_cassette_coverage: true is declared on the fixture. nil otherwise.
 	// Retained so runOneFlowOrchestrator can check for unmatched (orphan)
@@ -581,6 +586,11 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 			}
 		}
 
+		// Create a deferred oracle event sink for cassette dispatchers.
+		// The real sink will be set after session creation when the session ID is known.
+		deferredOracleSink := store.NewDeferredSink()
+		rig.deferredOracleSink = deferredOracleSink
+
 		// Collect unique handler names from the cassette's episodes.
 		seen := map[string]bool{}
 		for _, ep := range cas.Episodes {
@@ -601,7 +611,7 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 			if len(fixture.HostBindings) > 0 {
 				fallback, _ = reg.Get(handlerName)
 			}
-			casDispatcher := BuildCassetteDispatcherWithJournal(cas, handlerName, stateOf, fallback, recordSink, clk, jw, journalLookup)
+			casDispatcher := BuildCassetteDispatcherWithJournalAndSink(cas, handlerName, stateOf, fallback, recordSink, clk, jw, journalLookup, deferredOracleSink)
 			reg.Replace(handlerName, casDispatcher)
 		}
 
@@ -626,7 +636,7 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 				if !hasFallback {
 					continue // not a builtin in this rig — skip
 				}
-				casDispatcher := BuildCassetteDispatcherWithJournal(cas, handlerName, stateOf, fallback, recordSink, clk, jw, journalLookup)
+				casDispatcher := BuildCassetteDispatcherWithJournalAndSink(cas, handlerName, stateOf, fallback, recordSink, clk, jw, journalLookup, deferredOracleSink)
 				reg.Replace(handlerName, casDispatcher)
 				seen[handlerName] = true
 			}
@@ -665,11 +675,13 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 		return nil, fmt.Errorf("buildOrchestratorRig: new session: %w", err)
 	}
 
-	// Wire the EventSink for oracle events only. Oracle handlers buffer events during
-	// host dispatch; they're flushed after main turn events are written to avoid
-	// seq collisions in the store.
-	orch.SetEventSink(store.NewStoreSinkAdapter(st, sid))
-	orch.SetOracleEventSinkOnly(true)
+	// Update the deferred sink used by cassette dispatchers with a real sink.
+	// Cassette dispatchers were created before NewSession (before we had the session ID),
+	// so they captured a deferred sink that is now updated with the real sink.
+	// Oracle events from cassette replay are written through this sink.
+	if rig.deferredOracleSink != nil {
+		rig.deferredOracleSink.SetSink(store.NewStoreSinkAdapter(st, sid))
+	}
 
 	rig.orch = orch
 	rig.sched = sched

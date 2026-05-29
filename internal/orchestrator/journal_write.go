@@ -40,10 +40,7 @@ import (
 // When o.store is nil AND o.eventSink is nil (nil-store test scaffolds),
 // the call is a no-op.
 func (o *Orchestrator) appendEventsAndJournal(sid app.SessionID, events []store.Event, jEntries []journal.Entry) error {
-	// Special handling when o.eventSink is for oracle events only (testrunner).
-	// In this case, don't append main turn events to it; only oracle events go through it.
-	// Main turn events are written via the store directly (see below).
-	if o.eventSink != nil && !o.oracleEventSinkOnly {
+	if o.eventSink != nil {
 		// JSONL dual-write path: append each event to the JSONL sink.
 		// The SQLite write follows below so all subcommands stay consistent.
 		for _, ev := range events {
@@ -56,15 +53,6 @@ func (o *Orchestrator) appendEventsAndJournal(sid app.SessionID, events []store.
 		adapter := store.NewStoreSinkAdapter(o.store, sid)
 		if err := adapter.AppendBatch(events); err != nil {
 			return err
-		}
-		// If o.eventSink is for oracle events only, flush buffered oracle events
-		// after the main turn events are written to the store.
-		if o.oracleEventSinkOnly && o.eventSink != nil {
-			if oracleSink, ok := o.eventSink.(*store.StoreSinkAdapter); ok {
-				if err := oracleSink.Flush(); err != nil {
-					return err
-				}
-			}
 		}
 	}
 	for _, e := range jEntries {

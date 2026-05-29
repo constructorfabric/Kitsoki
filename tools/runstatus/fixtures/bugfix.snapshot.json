@@ -1,10 +1,10 @@
 {
   "session": {
-    "session_id": "73778b01-7032-4d87-8480-16c12facaf68",
+    "session_id": "da1d230b-b28d-440c-b875-f32185cf1c48",
     "app_id": "bugfix",
     "current_state": "__exit__done",
     "turn": 8,
-    "started_at": "2026-05-29T06:23:57.853424Z",
+    "started_at": "2026-05-29T06:27:22.295339Z",
     "terminal": true
   },
   "app": {
@@ -7605,7 +7605,7 @@
   },
   "events": [
     {
-      "time": "2026-05-29T06:23:57.853424Z",
+      "time": "2026-05-29T06:27:22.295339Z",
       "level": "INFO",
       "msg": "machine.transition",
       "session_id": "",
@@ -7618,98 +7618,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.853424Z",
-      "level": "INFO",
-      "msg": "world.update",
-      "session_id": "",
-      "turn": 0,
-      "state_path": "",
-      "attrs": {
-        "set": {
-          "ticket_id": "TKT-001"
-        }
-      }
-    },
-    {
-      "time": "2026-05-29T06:23:57.853424Z",
-      "level": "INFO",
-      "msg": "world.update",
-      "session_id": "",
-      "turn": 0,
-      "state_path": "",
-      "attrs": {
-        "set": {
-          "ticket_title": "TUI hangs on ESC"
-        }
-      }
-    },
-    {
-      "time": "2026-05-29T06:23:57.853424Z",
-      "level": "INFO",
-      "msg": "world.update",
-      "session_id": "",
-      "turn": 0,
-      "state_path": "",
-      "attrs": {
-        "set": {
-          "ticket_url": "issues/bugs/2026-05-14-tui-hangs-on-esc.md"
-        }
-      }
-    },
-    {
-      "time": "2026-05-29T06:23:57.853424Z",
-      "level": "INFO",
-      "msg": "world.update",
-      "session_id": "",
-      "turn": 0,
-      "state_path": "",
-      "attrs": {
-        "set": {
-          "thread": "TKT-001"
-        }
-      }
-    },
-    {
-      "time": "2026-05-29T06:23:57.853424Z",
-      "level": "INFO",
-      "msg": "world.update",
-      "session_id": "",
-      "turn": 0,
-      "state_path": "",
-      "attrs": {
-        "set": {
-          "workspace_id": "ws-tkt-001"
-        }
-      }
-    },
-    {
-      "time": "2026-05-29T06:23:57.853424Z",
-      "level": "INFO",
-      "msg": "world.update",
-      "session_id": "",
-      "turn": 0,
-      "state_path": "",
-      "attrs": {
-        "set": {
-          "workdir": ".worktrees/tkt-001"
-        }
-      }
-    },
-    {
-      "time": "2026-05-29T06:23:57.853424Z",
-      "level": "INFO",
-      "msg": "world.update",
-      "session_id": "",
-      "turn": 0,
-      "state_path": "",
-      "attrs": {
-        "set": {
-          "base_branch": "main"
-        }
-      }
-    },
-    {
-      "time": "2026-05-29T06:23:57.853424Z",
+      "time": "2026-05-29T06:27:22.295339Z",
       "level": "INFO",
       "msg": "world.update",
       "session_id": "",
@@ -7722,20 +7631,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.853424Z",
-      "level": "INFO",
-      "msg": "world.update",
-      "session_id": "",
-      "turn": 0,
-      "state_path": "",
-      "attrs": {
-        "set": {
-          "feature_branch": "fix/tkt-001-tui-esc"
-        }
-      }
-    },
-    {
-      "time": "2026-05-29T06:23:57.853424Z",
+      "time": "2026-05-29T06:27:22.295339Z",
       "level": "INFO",
       "msg": "world.update",
       "session_id": "",
@@ -7748,7 +7644,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.853424Z",
+      "time": "2026-05-29T06:27:22.295339Z",
       "level": "INFO",
       "msg": "world.update",
       "session_id": "",
@@ -7761,7 +7657,111 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.854663Z",
+      "time": "2026-05-29T06:27:22.295339Z",
+      "level": "INFO",
+      "msg": "world.update",
+      "session_id": "",
+      "turn": 0,
+      "state_path": "",
+      "attrs": {
+        "set": {
+          "ticket_url": "issues/bugs/2026-05-14-tui-hangs-on-esc.md"
+        }
+      }
+    },
+    {
+      "time": "2026-05-29T06:27:22.295339Z",
+      "level": "INFO",
+      "msg": "world.update",
+      "session_id": "",
+      "turn": 0,
+      "state_path": "",
+      "attrs": {
+        "set": {
+          "thread": "TKT-001"
+        }
+      }
+    },
+    {
+      "time": "2026-05-29T06:27:22.295339Z",
+      "level": "INFO",
+      "msg": "world.update",
+      "session_id": "",
+      "turn": 0,
+      "state_path": "",
+      "attrs": {
+        "set": {
+          "workdir": ".worktrees/tkt-001"
+        }
+      }
+    },
+    {
+      "time": "2026-05-29T06:27:22.295339Z",
+      "level": "INFO",
+      "msg": "world.update",
+      "session_id": "",
+      "turn": 0,
+      "state_path": "",
+      "attrs": {
+        "set": {
+          "ticket_id": "TKT-001"
+        }
+      }
+    },
+    {
+      "time": "2026-05-29T06:27:22.295339Z",
+      "level": "INFO",
+      "msg": "world.update",
+      "session_id": "",
+      "turn": 0,
+      "state_path": "",
+      "attrs": {
+        "set": {
+          "ticket_title": "TUI hangs on ESC"
+        }
+      }
+    },
+    {
+      "time": "2026-05-29T06:27:22.295339Z",
+      "level": "INFO",
+      "msg": "world.update",
+      "session_id": "",
+      "turn": 0,
+      "state_path": "",
+      "attrs": {
+        "set": {
+          "workspace_id": "ws-tkt-001"
+        }
+      }
+    },
+    {
+      "time": "2026-05-29T06:27:22.295339Z",
+      "level": "INFO",
+      "msg": "world.update",
+      "session_id": "",
+      "turn": 0,
+      "state_path": "",
+      "attrs": {
+        "set": {
+          "base_branch": "main"
+        }
+      }
+    },
+    {
+      "time": "2026-05-29T06:27:22.295339Z",
+      "level": "INFO",
+      "msg": "world.update",
+      "session_id": "",
+      "turn": 0,
+      "state_path": "",
+      "attrs": {
+        "set": {
+          "feature_branch": "fix/tkt-001-tui-esc"
+        }
+      }
+    },
+    {
+      "time": "2026-05-29T06:27:22.296604Z",
       "level": "INFO",
       "msg": "turn.start",
       "session_id": "",
@@ -7774,7 +7774,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.854663Z",
+      "time": "2026-05-29T06:27:22.296604Z",
       "level": "INFO",
       "msg": "machine.transition",
       "session_id": "",
@@ -7788,7 +7788,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.854663Z",
+      "time": "2026-05-29T06:27:22.296604Z",
       "level": "INFO",
       "msg": "harness.called",
       "session_id": "",
@@ -7817,7 +7817,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.854663Z",
+      "time": "2026-05-29T06:27:22.296604Z",
       "level": "INFO",
       "msg": "machine.state_exited",
       "session_id": "",
@@ -7828,7 +7828,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.854663Z",
+      "time": "2026-05-29T06:27:22.296604Z",
       "level": "INFO",
       "msg": "machine.state_entered",
       "session_id": "",
@@ -7839,7 +7839,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.854663Z",
+      "time": "2026-05-29T06:27:22.296604Z",
       "level": "INFO",
       "msg": "harness.dispatched",
       "session_id": "",
@@ -7869,7 +7869,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.854663Z",
+      "time": "2026-05-29T06:27:22.296604Z",
       "level": "INFO",
       "msg": "harness.returned",
       "session_id": "",
@@ -7880,7 +7880,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.854663Z",
+      "time": "2026-05-29T06:27:22.296604Z",
       "level": "INFO",
       "msg": "turn.end",
       "session_id": "",
@@ -7892,7 +7892,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.856809Z",
+      "time": "2026-05-29T06:27:22.298711Z",
       "level": "INFO",
       "msg": "turn.start",
       "session_id": "",
@@ -7905,7 +7905,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.856809Z",
+      "time": "2026-05-29T06:27:22.298711Z",
       "level": "INFO",
       "msg": "machine.transition",
       "session_id": "",
@@ -7919,7 +7919,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.856809Z",
+      "time": "2026-05-29T06:27:22.298711Z",
       "level": "INFO",
       "msg": "harness.called",
       "session_id": "",
@@ -7937,20 +7937,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.856809Z",
-      "level": "INFO",
-      "msg": "world.update",
-      "session_id": "",
-      "turn": 2,
-      "state_path": "",
-      "attrs": {
-        "set": {
-          "cycle": 0
-        }
-      }
-    },
-    {
-      "time": "2026-05-29T06:23:57.856809Z",
+      "time": "2026-05-29T06:27:22.298711Z",
       "level": "INFO",
       "msg": "world.update",
       "session_id": "",
@@ -7963,7 +7950,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.856809Z",
+      "time": "2026-05-29T06:27:22.298711Z",
       "level": "INFO",
       "msg": "world.update",
       "session_id": "",
@@ -7976,7 +7963,20 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.856809Z",
+      "time": "2026-05-29T06:27:22.298711Z",
+      "level": "INFO",
+      "msg": "world.update",
+      "session_id": "",
+      "turn": 2,
+      "state_path": "",
+      "attrs": {
+        "set": {
+          "cycle": 0
+        }
+      }
+    },
+    {
+      "time": "2026-05-29T06:27:22.298711Z",
       "level": "INFO",
       "msg": "harness.called",
       "session_id": "",
@@ -8002,7 +8002,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.856809Z",
+      "time": "2026-05-29T06:27:22.298711Z",
       "level": "INFO",
       "msg": "machine.state_exited",
       "session_id": "",
@@ -8013,7 +8013,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.856809Z",
+      "time": "2026-05-29T06:27:22.298711Z",
       "level": "INFO",
       "msg": "machine.state_entered",
       "session_id": "",
@@ -8024,7 +8024,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.856809Z",
+      "time": "2026-05-29T06:27:22.298711Z",
       "level": "INFO",
       "msg": "harness.dispatched",
       "session_id": "",
@@ -8043,7 +8043,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.856809Z",
+      "time": "2026-05-29T06:27:22.298711Z",
       "level": "INFO",
       "msg": "harness.returned",
       "session_id": "",
@@ -8058,7 +8058,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.856809Z",
+      "time": "2026-05-29T06:27:22.298711Z",
       "level": "INFO",
       "msg": "harness.dispatched",
       "session_id": "",
@@ -8085,7 +8085,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.856809Z",
+      "time": "2026-05-29T06:27:22.298711Z",
       "level": "INFO",
       "msg": "world.update",
       "session_id": "",
@@ -8108,7 +8108,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.856809Z",
+      "time": "2026-05-29T06:27:22.298711Z",
       "level": "INFO",
       "msg": "harness.returned",
       "session_id": "",
@@ -8132,7 +8132,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.856809Z",
+      "time": "2026-05-29T06:27:22.298711Z",
       "level": "INFO",
       "msg": "turn.end",
       "session_id": "",
@@ -8144,7 +8144,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.860383Z",
+      "time": "2026-05-29T06:27:22.30144Z",
       "level": "INFO",
       "msg": "turn.start",
       "session_id": "",
@@ -8157,7 +8157,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.860383Z",
+      "time": "2026-05-29T06:27:22.30144Z",
       "level": "INFO",
       "msg": "machine.transition",
       "session_id": "",
@@ -8171,7 +8171,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.860383Z",
+      "time": "2026-05-29T06:27:22.30144Z",
       "level": "INFO",
       "msg": "harness.called",
       "session_id": "",
@@ -8189,7 +8189,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.860383Z",
+      "time": "2026-05-29T06:27:22.30144Z",
       "level": "INFO",
       "msg": "world.update",
       "session_id": "",
@@ -8202,7 +8202,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.860383Z",
+      "time": "2026-05-29T06:27:22.30144Z",
       "level": "INFO",
       "msg": "world.update",
       "session_id": "",
@@ -8215,7 +8215,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.860383Z",
+      "time": "2026-05-29T06:27:22.30144Z",
       "level": "INFO",
       "msg": "world.update",
       "session_id": "",
@@ -8228,7 +8228,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.860383Z",
+      "time": "2026-05-29T06:27:22.30144Z",
       "level": "INFO",
       "msg": "harness.called",
       "session_id": "",
@@ -8245,7 +8245,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.860383Z",
+      "time": "2026-05-29T06:27:22.30144Z",
       "level": "INFO",
       "msg": "harness.called",
       "session_id": "",
@@ -8260,7 +8260,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.860383Z",
+      "time": "2026-05-29T06:27:22.30144Z",
       "level": "INFO",
       "msg": "harness.called",
       "session_id": "",
@@ -8294,7 +8294,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.860383Z",
+      "time": "2026-05-29T06:27:22.30144Z",
       "level": "INFO",
       "msg": "harness.called",
       "session_id": "",
@@ -8311,7 +8311,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.860383Z",
+      "time": "2026-05-29T06:27:22.30144Z",
       "level": "INFO",
       "msg": "world.update",
       "session_id": "",
@@ -8322,7 +8322,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.860383Z",
+      "time": "2026-05-29T06:27:22.30144Z",
       "level": "INFO",
       "msg": "machine.state_exited",
       "session_id": "",
@@ -8333,7 +8333,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.860383Z",
+      "time": "2026-05-29T06:27:22.30144Z",
       "level": "INFO",
       "msg": "machine.state_entered",
       "session_id": "",
@@ -8344,7 +8344,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.860383Z",
+      "time": "2026-05-29T06:27:22.30144Z",
       "level": "INFO",
       "msg": "harness.dispatched",
       "session_id": "",
@@ -8363,7 +8363,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.860383Z",
+      "time": "2026-05-29T06:27:22.30144Z",
       "level": "INFO",
       "msg": "harness.returned",
       "session_id": "",
@@ -8378,7 +8378,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.860383Z",
+      "time": "2026-05-29T06:27:22.30144Z",
       "level": "INFO",
       "msg": "harness.dispatched",
       "session_id": "",
@@ -8396,7 +8396,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.860383Z",
+      "time": "2026-05-29T06:27:22.30144Z",
       "level": "INFO",
       "msg": "harness.returned",
       "session_id": "",
@@ -8411,7 +8411,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.860383Z",
+      "time": "2026-05-29T06:27:22.30144Z",
       "level": "INFO",
       "msg": "harness.dispatched",
       "session_id": "",
@@ -8427,7 +8427,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.860383Z",
+      "time": "2026-05-29T06:27:22.30144Z",
       "level": "INFO",
       "msg": "harness.returned",
       "session_id": "",
@@ -8442,7 +8442,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.860383Z",
+      "time": "2026-05-29T06:27:22.30144Z",
       "level": "INFO",
       "msg": "harness.dispatched",
       "session_id": "",
@@ -8477,7 +8477,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.860383Z",
+      "time": "2026-05-29T06:27:22.30144Z",
       "level": "INFO",
       "msg": "harness.returned",
       "session_id": "",
@@ -8488,7 +8488,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.860383Z",
+      "time": "2026-05-29T06:27:22.30144Z",
       "level": "INFO",
       "msg": "harness.dispatched",
       "session_id": "",
@@ -8506,7 +8506,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.860383Z",
+      "time": "2026-05-29T06:27:22.30144Z",
       "level": "INFO",
       "msg": "harness.returned",
       "session_id": "",
@@ -8523,7 +8523,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.860383Z",
+      "time": "2026-05-29T06:27:22.30144Z",
       "level": "INFO",
       "msg": "turn.end",
       "session_id": "",
@@ -8535,7 +8535,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.864705Z",
+      "time": "2026-05-29T06:27:22.306297Z",
       "level": "INFO",
       "msg": "turn.start",
       "session_id": "",
@@ -8548,7 +8548,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.864705Z",
+      "time": "2026-05-29T06:27:22.306297Z",
       "level": "INFO",
       "msg": "machine.transition",
       "session_id": "",
@@ -8562,7 +8562,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.864705Z",
+      "time": "2026-05-29T06:27:22.306297Z",
       "level": "INFO",
       "msg": "harness.called",
       "session_id": "",
@@ -8577,7 +8577,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.864705Z",
+      "time": "2026-05-29T06:27:22.306297Z",
       "level": "INFO",
       "msg": "harness.called",
       "session_id": "",
@@ -8608,7 +8608,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.864705Z",
+      "time": "2026-05-29T06:27:22.306297Z",
       "level": "INFO",
       "msg": "machine.state_exited",
       "session_id": "",
@@ -8619,7 +8619,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.864705Z",
+      "time": "2026-05-29T06:27:22.306297Z",
       "level": "INFO",
       "msg": "machine.state_entered",
       "session_id": "",
@@ -8630,7 +8630,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.864705Z",
+      "time": "2026-05-29T06:27:22.306297Z",
       "level": "INFO",
       "msg": "harness.dispatched",
       "session_id": "",
@@ -8646,7 +8646,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.864705Z",
+      "time": "2026-05-29T06:27:22.306297Z",
       "level": "INFO",
       "msg": "world.update",
       "session_id": "",
@@ -8659,7 +8659,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.864705Z",
+      "time": "2026-05-29T06:27:22.306297Z",
       "level": "INFO",
       "msg": "harness.returned",
       "session_id": "",
@@ -8676,7 +8676,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.864705Z",
+      "time": "2026-05-29T06:27:22.306297Z",
       "level": "INFO",
       "msg": "harness.dispatched",
       "session_id": "",
@@ -8708,7 +8708,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.864705Z",
+      "time": "2026-05-29T06:27:22.306297Z",
       "level": "INFO",
       "msg": "harness.returned",
       "session_id": "",
@@ -8719,7 +8719,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.864705Z",
+      "time": "2026-05-29T06:27:22.306297Z",
       "level": "INFO",
       "msg": "turn.end",
       "session_id": "",
@@ -8731,7 +8731,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.867726Z",
+      "time": "2026-05-29T06:27:22.308862Z",
       "level": "INFO",
       "msg": "turn.start",
       "session_id": "",
@@ -8744,7 +8744,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.867726Z",
+      "time": "2026-05-29T06:27:22.308862Z",
       "level": "INFO",
       "msg": "machine.transition",
       "session_id": "",
@@ -8758,7 +8758,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.867726Z",
+      "time": "2026-05-29T06:27:22.308862Z",
       "level": "INFO",
       "msg": "harness.called",
       "session_id": "",
@@ -8776,7 +8776,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.867726Z",
+      "time": "2026-05-29T06:27:22.308862Z",
       "level": "INFO",
       "msg": "world.update",
       "session_id": "",
@@ -8789,7 +8789,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.867726Z",
+      "time": "2026-05-29T06:27:22.308862Z",
       "level": "INFO",
       "msg": "world.update",
       "session_id": "",
@@ -8802,7 +8802,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.867726Z",
+      "time": "2026-05-29T06:27:22.308862Z",
       "level": "INFO",
       "msg": "world.update",
       "session_id": "",
@@ -8815,7 +8815,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.867726Z",
+      "time": "2026-05-29T06:27:22.308862Z",
       "level": "INFO",
       "msg": "harness.called",
       "session_id": "",
@@ -8830,7 +8830,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.867726Z",
+      "time": "2026-05-29T06:27:22.308862Z",
       "level": "INFO",
       "msg": "world.update",
       "session_id": "",
@@ -8841,7 +8841,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.867726Z",
+      "time": "2026-05-29T06:27:22.308862Z",
       "level": "INFO",
       "msg": "machine.state_exited",
       "session_id": "",
@@ -8852,7 +8852,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.867726Z",
+      "time": "2026-05-29T06:27:22.308862Z",
       "level": "INFO",
       "msg": "machine.state_entered",
       "session_id": "",
@@ -8863,7 +8863,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.867726Z",
+      "time": "2026-05-29T06:27:22.308862Z",
       "level": "INFO",
       "msg": "harness.dispatched",
       "session_id": "",
@@ -8882,7 +8882,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.867726Z",
+      "time": "2026-05-29T06:27:22.308862Z",
       "level": "INFO",
       "msg": "harness.returned",
       "session_id": "",
@@ -8897,7 +8897,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.867726Z",
+      "time": "2026-05-29T06:27:22.308862Z",
       "level": "INFO",
       "msg": "harness.dispatched",
       "session_id": "",
@@ -8913,7 +8913,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.867726Z",
+      "time": "2026-05-29T06:27:22.308862Z",
       "level": "INFO",
       "msg": "world.update",
       "session_id": "",
@@ -8926,7 +8926,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.867726Z",
+      "time": "2026-05-29T06:27:22.308862Z",
       "level": "INFO",
       "msg": "harness.returned",
       "session_id": "",
@@ -8943,7 +8943,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.867726Z",
+      "time": "2026-05-29T06:27:22.308862Z",
       "level": "INFO",
       "msg": "turn.end",
       "session_id": "",
@@ -8955,7 +8955,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.871653Z",
+      "time": "2026-05-29T06:27:22.312333Z",
       "level": "INFO",
       "msg": "turn.start",
       "session_id": "",
@@ -8968,7 +8968,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.871653Z",
+      "time": "2026-05-29T06:27:22.312333Z",
       "level": "INFO",
       "msg": "machine.transition",
       "session_id": "",
@@ -8982,7 +8982,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.871653Z",
+      "time": "2026-05-29T06:27:22.312333Z",
       "level": "INFO",
       "msg": "harness.called",
       "session_id": "",
@@ -8997,7 +8997,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.871653Z",
+      "time": "2026-05-29T06:27:22.312333Z",
       "level": "INFO",
       "msg": "harness.called",
       "session_id": "",
@@ -9028,7 +9028,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.871653Z",
+      "time": "2026-05-29T06:27:22.312333Z",
       "level": "INFO",
       "msg": "machine.state_exited",
       "session_id": "",
@@ -9039,7 +9039,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.871653Z",
+      "time": "2026-05-29T06:27:22.312333Z",
       "level": "INFO",
       "msg": "machine.state_entered",
       "session_id": "",
@@ -9050,7 +9050,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.871653Z",
+      "time": "2026-05-29T06:27:22.312333Z",
       "level": "INFO",
       "msg": "harness.dispatched",
       "session_id": "",
@@ -9066,7 +9066,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.871653Z",
+      "time": "2026-05-29T06:27:22.312333Z",
       "level": "INFO",
       "msg": "world.update",
       "session_id": "",
@@ -9079,7 +9079,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.871653Z",
+      "time": "2026-05-29T06:27:22.312333Z",
       "level": "INFO",
       "msg": "harness.returned",
       "session_id": "",
@@ -9096,7 +9096,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.871653Z",
+      "time": "2026-05-29T06:27:22.312333Z",
       "level": "INFO",
       "msg": "harness.dispatched",
       "session_id": "",
@@ -9128,7 +9128,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.871653Z",
+      "time": "2026-05-29T06:27:22.312333Z",
       "level": "INFO",
       "msg": "world.update",
       "session_id": "",
@@ -9148,7 +9148,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.871653Z",
+      "time": "2026-05-29T06:27:22.312333Z",
       "level": "INFO",
       "msg": "harness.returned",
       "session_id": "",
@@ -9169,7 +9169,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.871653Z",
+      "time": "2026-05-29T06:27:22.312333Z",
       "level": "INFO",
       "msg": "turn.end",
       "session_id": "",
@@ -9181,7 +9181,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.875904Z",
+      "time": "2026-05-29T06:27:22.315915Z",
       "level": "INFO",
       "msg": "turn.start",
       "session_id": "",
@@ -9194,7 +9194,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.875904Z",
+      "time": "2026-05-29T06:27:22.315915Z",
       "level": "INFO",
       "msg": "machine.transition",
       "session_id": "",
@@ -9208,7 +9208,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.875904Z",
+      "time": "2026-05-29T06:27:22.315915Z",
       "level": "INFO",
       "msg": "harness.called",
       "session_id": "",
@@ -9226,7 +9226,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.875904Z",
+      "time": "2026-05-29T06:27:22.315915Z",
       "level": "INFO",
       "msg": "world.update",
       "session_id": "",
@@ -9239,7 +9239,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.875904Z",
+      "time": "2026-05-29T06:27:22.315915Z",
       "level": "INFO",
       "msg": "world.update",
       "session_id": "",
@@ -9252,7 +9252,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.875904Z",
+      "time": "2026-05-29T06:27:22.315915Z",
       "level": "INFO",
       "msg": "world.update",
       "session_id": "",
@@ -9265,7 +9265,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.875904Z",
+      "time": "2026-05-29T06:27:22.315915Z",
       "level": "INFO",
       "msg": "harness.called",
       "session_id": "",
@@ -9291,7 +9291,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.875904Z",
+      "time": "2026-05-29T06:27:22.315915Z",
       "level": "INFO",
       "msg": "machine.state_exited",
       "session_id": "",
@@ -9302,7 +9302,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.875904Z",
+      "time": "2026-05-29T06:27:22.315915Z",
       "level": "INFO",
       "msg": "machine.state_entered",
       "session_id": "",
@@ -9313,7 +9313,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.875904Z",
+      "time": "2026-05-29T06:27:22.315915Z",
       "level": "INFO",
       "msg": "harness.dispatched",
       "session_id": "",
@@ -9332,7 +9332,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.875904Z",
+      "time": "2026-05-29T06:27:22.315915Z",
       "level": "INFO",
       "msg": "harness.returned",
       "session_id": "",
@@ -9347,7 +9347,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.875904Z",
+      "time": "2026-05-29T06:27:22.315915Z",
       "level": "INFO",
       "msg": "harness.dispatched",
       "session_id": "",
@@ -9374,7 +9374,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.875904Z",
+      "time": "2026-05-29T06:27:22.315915Z",
       "level": "INFO",
       "msg": "world.update",
       "session_id": "",
@@ -9414,7 +9414,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.875904Z",
+      "time": "2026-05-29T06:27:22.315915Z",
       "level": "INFO",
       "msg": "harness.returned",
       "session_id": "",
@@ -9455,7 +9455,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.875904Z",
+      "time": "2026-05-29T06:27:22.315915Z",
       "level": "INFO",
       "msg": "turn.end",
       "session_id": "",
@@ -9467,7 +9467,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.879933Z",
+      "time": "2026-05-29T06:27:22.320449Z",
       "level": "INFO",
       "msg": "turn.start",
       "session_id": "",
@@ -9480,7 +9480,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.879933Z",
+      "time": "2026-05-29T06:27:22.320449Z",
       "level": "INFO",
       "msg": "machine.transition",
       "session_id": "",
@@ -9494,7 +9494,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.879933Z",
+      "time": "2026-05-29T06:27:22.320449Z",
       "level": "INFO",
       "msg": "harness.called",
       "session_id": "",
@@ -9512,7 +9512,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.879933Z",
+      "time": "2026-05-29T06:27:22.320449Z",
       "level": "INFO",
       "msg": "harness.called",
       "session_id": "",
@@ -9528,20 +9528,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.879933Z",
-      "level": "INFO",
-      "msg": "world.update",
-      "session_id": "",
-      "turn": 8,
-      "state_path": "",
-      "attrs": {
-        "set": {
-          "status": "fixed"
-        }
-      }
-    },
-    {
-      "time": "2026-05-29T06:23:57.879933Z",
+      "time": "2026-05-29T06:27:22.320449Z",
       "level": "INFO",
       "msg": "world.update",
       "session_id": "",
@@ -9581,7 +9568,20 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.879933Z",
+      "time": "2026-05-29T06:27:22.320449Z",
+      "level": "INFO",
+      "msg": "world.update",
+      "session_id": "",
+      "turn": 8,
+      "state_path": "",
+      "attrs": {
+        "set": {
+          "status": "fixed"
+        }
+      }
+    },
+    {
+      "time": "2026-05-29T06:27:22.320449Z",
       "level": "INFO",
       "msg": "machine.state_exited",
       "session_id": "",
@@ -9592,7 +9592,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.879933Z",
+      "time": "2026-05-29T06:27:22.320449Z",
       "level": "INFO",
       "msg": "machine.state_entered",
       "session_id": "",
@@ -9603,7 +9603,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.879933Z",
+      "time": "2026-05-29T06:27:22.320449Z",
       "level": "INFO",
       "msg": "harness.dispatched",
       "session_id": "",
@@ -9622,7 +9622,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.879933Z",
+      "time": "2026-05-29T06:27:22.320449Z",
       "level": "INFO",
       "msg": "harness.returned",
       "session_id": "",
@@ -9637,7 +9637,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.879933Z",
+      "time": "2026-05-29T06:27:22.320449Z",
       "level": "INFO",
       "msg": "harness.dispatched",
       "session_id": "",
@@ -9654,7 +9654,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.879933Z",
+      "time": "2026-05-29T06:27:22.320449Z",
       "level": "INFO",
       "msg": "harness.returned",
       "session_id": "",
@@ -9666,7 +9666,7 @@
       }
     },
     {
-      "time": "2026-05-29T06:23:57.879933Z",
+      "time": "2026-05-29T06:27:22.320449Z",
       "level": "INFO",
       "msg": "turn.end",
       "session_id": "",

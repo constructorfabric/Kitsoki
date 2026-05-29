@@ -465,6 +465,23 @@ func BuildCassetteDispatcherWithJournal(
 	return buildCassetteDispatcherFull(cas, handlerName, stateOf, fallback, recordSink, clk, jw, journalLookup, nil)
 }
 
+// BuildCassetteDispatcherWithJournalAndSink combines journal and event sink support.
+// Both jw and sink are optional; if both are provided, oracle events are written
+// to the sink during cassette replay.
+func BuildCassetteDispatcherWithJournalAndSink(
+	cas *Cassette,
+	handlerName string,
+	stateOf func() string,
+	fallback host.Handler,
+	recordSink func(ep *CassetteEpisode),
+	clk clock.Clock,
+	jw journal.Writer,
+	journalLookup OracleJournalLookup,
+	sink store.EventSink,
+) host.Handler {
+	return buildCassetteDispatcherFull(cas, handlerName, stateOf, fallback, recordSink, clk, jw, journalLookup, sink)
+}
+
 // BuildCassetteDispatcherWithSink is the EventSink-aware variant of
 // BuildCassetteDispatcher. sink receives OracleCalled / OracleReturned /
 // OracleError events on replay (wave 3-oracle parallel write). When priorHist

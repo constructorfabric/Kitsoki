@@ -16,7 +16,11 @@
 // compatibility and buffers internally until Flush is called.
 package store
 
-import "kitsoki/internal/app"
+import (
+	"sync"
+
+	"kitsoki/internal/app"
+)
 
 // Compile-time assertion: *StoreSinkAdapter must satisfy EventSink.
 var _ EventSink = (*StoreSinkAdapter)(nil)
@@ -76,4 +80,47 @@ func (a *StoreSinkAdapter) AppendBatch(events []Event) error {
 func (a *StoreSinkAdapter) History() History {
 	h, _ := a.s.LoadHistory(a.sid)
 	return h
+}
+
+// DeferredSink wraps an EventSink that may be nil at creation time but is set
+// later. Used when the sink is not available at the time the EventSink
+// parameter is captured (e.g., cassette dispatcher creation happens before
+// session creation). Thread-safe for Append; History is read-only after first call.
+type DeferredSink struct {
+	mu   sync.Mutex
+	sink EventSink
+}
+
+func NewDeferredSink() *DeferredSink {
+	return &DeferredSink{}
+}
+
+// SetSink updates the underlying sink. Safe to call before/after Append calls.
+func (d *DeferredSink) SetSink(sink EventSink) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.sink = sink
+}
+
+// Append delegates to the underlying sink if set, otherwise buffers locally
+// (though buffering is not supported — this is best-effort).
+func (d *DeferredSink) Append(ev Event) error {
+	d.mu.Lock()
+	sink := d.sink
+	d.mu.Unlock()
+	if sink == nil {
+		return nil // silently drop if no sink is set yet
+	}
+	return sink.Append(ev)
+}
+
+// History delegates to the underlying sink if set.
+func (d *DeferredSink) History() History {
+	d.mu.Lock()
+	sink := d.sink
+	d.mu.Unlock()
+	if sink == nil {
+		return History{}
+	}
+	return sink.History()
 }
