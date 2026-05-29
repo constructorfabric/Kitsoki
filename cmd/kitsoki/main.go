@@ -552,6 +552,16 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 				// (Claude Code's model). The View() output is just the
 				// bottom chrome — footer + prompt — which Bubble Tea
 				// re-renders in place at the cursor row.
+
+				// Suppress slog output during TUI operation to prevent log lines
+				// from mixing with the queue indicator on the same terminal line.
+				// Issue: oracle runner emits slog records while TUI is rendering,
+				// causing "2026-05-29 ... INFO ... ⏳ running…" on same line.
+				oldLogger := slog.Default()
+				suppressedLogger := slog.New(slog.NewTextHandler(io.Discard, nil))
+				slog.SetDefault(suppressedLogger)
+				defer slog.SetDefault(oldLogger)
+
 				p := tea.NewProgram(rootModel)
 				metaSink.Attach(p)
 				defer metaSink.Detach()
@@ -691,6 +701,14 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 			// Output prints to normal scrollback so the terminal's
 			// native scroll (wheel / Cmd+↑) walks history; the prompt
 			// re-renders at the bottom in place.
+
+			// Suppress slog output during TUI operation to prevent log lines
+			// from mixing with the queue indicator on the same terminal line.
+			oldLogger := slog.Default()
+			suppressedLogger := slog.New(slog.NewTextHandler(io.Discard, nil))
+			slog.SetDefault(suppressedLogger)
+			defer slog.SetDefault(oldLogger)
+
 			p := tea.NewProgram(rootModel)
 			metaSink.Attach(p)
 			defer metaSink.Detach()
