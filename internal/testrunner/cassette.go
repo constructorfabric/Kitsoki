@@ -627,12 +627,10 @@ func writeCassetteOracleEvents(ctx context.Context, sink store.EventSink, cas *C
 
 	// OracleCalled: use now as dispatch time (cassette replay is instantaneous).
 	calledPayload := host.OracleCalledPayload{
-		Verb:         o.Verb,
-		Agent:        o.Agent,
-		Model:        o.Model,
-		Prompt:       o.Prompt,
-		SystemPrompt: o.SystemPrompt,
-		Input:        inputRaw,
+		Verb:   o.Verb,
+		Agent:  o.Agent,
+		Model:  o.Model,
+		Input:  inputRaw,
 	}
 	calledRaw, err := json.Marshal(calledPayload)
 	if err == nil {

@@ -100,6 +100,41 @@ Trade-off: `session` carries a persistent state machine across calls
 (useful), but you have to think about session keys and locks. `turn`
 is stateless and you thread `--world` yourself between calls.
 
+## Discover and inspect existing sessions
+
+Every `kitsoki run` or `session` invocation writes a JSONL trace to `~/.kitsoki/sessions/<app>/` automatically — no `KITSOKI_TRACE_FILE` flag needed. This means any session the user ran can be discovered and inspected later:
+
+```sh
+# List all discovered sessions by app
+ls -la ~/.kitsoki/sessions/
+
+# List traces for a specific app (e.g., kitsoki-dev)
+ls -la ~/.kitsoki/sessions/kitsoki-dev/
+
+# Inspect the latest session for an app
+tail -f ~/.kitsoki/sessions/kitsoki-dev/*.jsonl | grep 'turn.done' | jq -c '.event'
+```
+
+To diagnose a user's session after the fact:
+
+1. **Locate the trace**: find the `.jsonl` file in `~/.kitsoki/sessions/<app>/` that corresponds to when the user ran the session (check file timestamps).
+2. **Find the bounce**: grep for `host.on_error.redirect` or the last `turn.done` in the user's reported session.
+3. **Extract world state**: the `turn.done` event includes `view_rendered` with the `world` snapshot at that moment.
+4. **Replay**: use `kitsoki turn` with the extracted world to reproduce the error in isolation.
+
+Example:
+
+```sh
+# Find what turn the user got stuck on
+grep 'turn.done' ~/.kitsoki/sessions/kitsoki-dev/8e8f94c9-*.jsonl | tail -5 | jq -c '{turn, state_path, next_state}'
+
+# Check for redirects that indicate on_error fired
+grep 'host.on_error.redirect' ~/.kitsoki/sessions/kitsoki-dev/8e8f94c9-*.jsonl
+
+# Extract the world from the last turn and dump it
+grep 'turn.done' ~/.kitsoki/sessions/kitsoki-dev/8e8f94c9-*.jsonl | tail -1 | jq '.view_rendered.world' > /tmp/world-at-bounce.json
+```
+
 ## Step 2 — cross-check the trace
 
 `/tmp/kitsoki-dogfood-trace.jsonl` (path is `KITSOKI_TRACE_FILE` env or the TUI's default) is a slog JSONL log. Useful greps:

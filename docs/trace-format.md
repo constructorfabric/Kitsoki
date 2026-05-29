@@ -123,8 +123,12 @@ up to the point of an unknown kind that matters for state reconstruction.
 
 Every oracle call produces exactly two events: `oracle.call.start` and
 `oracle.call.complete` (or `oracle.call.error` on failure).  These events are **no-ops
-for replay** — `BuildJourney` ignores them — but they carry the full prompt and
-response for audit and the runstatus SPA.
+for replay** — `BuildJourney` ignores them — but they carry the response and
+oracle metadata for audit and the runstatus SPA. The prompt itself is **not**
+embedded in the event (keeping each JSONL line under the 4096-byte `PIPE_BUF`
+atomic-write limit); recover it from `oracle.AskRequest.PromptText` in live
+mode or from the cassette via `!include` in replay mode (see
+[oracle-plugin.md §3](oracle-plugin.md)).
 
 | Kind                   | When written                                               |
 |------------------------|------------------------------------------------------------|
@@ -139,9 +143,12 @@ response for audit and the runstatus SPA.
 | `verb`         | string | Oracle verb: `ask`, `decide`, `extract`, `task`, `converse`. |
 | `agent`        | string | Agent name (optional).                             |
 | `model`        | string | Model name (optional).                             |
-| `prompt`       | string | Fully rendered prompt text.                        |
-| `system_prompt`| string | Effective system prompt (optional).                |
 | `input`        | object | Verb-specific input descriptor (e.g. `{schema_path}`). |
+
+> The prompt is intentionally **not** included in this payload — it would
+> push many lines past the 4096-byte `PIPE_BUF` atomic-write limit. The
+> rendered prompt lives on `oracle.AskRequest.PromptText` (live) or in the
+> cassette `!include`d file (replay).
 
 **`oracle.call.complete` payload fields:**
 
