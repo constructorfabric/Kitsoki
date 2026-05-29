@@ -170,9 +170,9 @@ def turn1_decide() -> None:
     emit("DEBUG", "machine.transition", turn, sp,
          **{"from": sp, "to": "reproducing._executing"},
          intent="start")
-    emit("DEBUG", "machine.world.write", turn, sp, key="ticket_id", value="BUG-4711")
-    emit("DEBUG", "machine.world.write", turn, sp, key="ticket_title",
-         value="race condition in worker pool on shutdown")
+    emit("DEBUG", "world.update", turn, sp, set={"ticket_id": "BUG-4711"})
+    emit("DEBUG", "world.update", turn, sp,
+         set={"ticket_title": "race condition in worker pool on shutdown"})
     emit("DEBUG", "machine.state_exited", turn, sp)
     emit("DEBUG", "machine.state_entered", turn, "reproducing._executing")
     emit("INFO", "turn.end", turn, "reproducing._executing")
@@ -247,9 +247,9 @@ def turn2_extract() -> None:
              },
          })
 
-    emit("DEBUG", "machine.world.write", turn, sp, key="ticket_id", value="BUG-4711")
-    emit("DEBUG", "machine.world.write", turn, sp, key="ticket_title",
-         value="Race condition in worker pool on shutdown")
+    emit("DEBUG", "world.update", turn, sp, set={"ticket_id": "BUG-4711"})
+    emit("DEBUG", "world.update", turn, sp,
+         set={"ticket_title": "Race condition in worker pool on shutdown"})
     emit("INFO", "turn.end", turn, sp)
 
 
@@ -303,7 +303,7 @@ def turn3_ask() -> None:
     emit("DEBUG", "machine.transition", turn, sp,
          **{"from": sp, "to": "proposing._executing"},
          intent="restart_from")
-    emit("DEBUG", "machine.world.write", turn, sp, key="restart_from_stage", value="proposing")
+    emit("DEBUG", "world.update", turn, sp, set={"restart_from_stage": "proposing"})
     emit("DEBUG", "machine.state_exited", turn, sp)
     emit("DEBUG", "machine.state_entered", turn, "proposing._executing")
     emit("INFO", "turn.end", turn, "proposing._executing")
@@ -559,9 +559,8 @@ def turn4_task() -> None:
     emit("DEBUG", "host.call.complete", turn, sp, step=0.13,
          handler="iface.transport.post", duration_ms=130, post_id="p_001")
 
-    emit("DEBUG", "machine.world.write", turn, sp,
-         key="reproduction_artifact",
-         value={"confirmed": True, "test": "TestDispatcherShutdownRace", "tokens": 1820})
+    emit("DEBUG", "world.update", turn, sp,
+         set={"reproduction_artifact": {"confirmed": True, "test": "TestDispatcherShutdownRace", "tokens": 1820}})
     emit("DEBUG", "machine.transition", turn, sp,
          **{"from": sp, "to": "reproducing._awaiting_reply"},
          intent="@auto")
@@ -658,9 +657,8 @@ def turn5_converse() -> None:
     emit("DEBUG", "machine.transition", turn, sp,
          **{"from": sp, "to": "proposing._executing"},
          intent="accept")
-    emit("DEBUG", "machine.world.write", turn, sp,
-         key="refine_feedback",
-         value="Shutdown must drain with configurable timeout (default 5s), then force-cancel.")
+    emit("DEBUG", "world.update", turn, sp,
+         set={"refine_feedback": "Shutdown must drain with configurable timeout (default 5s), then force-cancel."})
     emit("DEBUG", "machine.state_exited", turn, sp)
     emit("DEBUG", "machine.state_entered", turn, "proposing._executing")
     emit("INFO", "turn.end", turn, "proposing._executing")

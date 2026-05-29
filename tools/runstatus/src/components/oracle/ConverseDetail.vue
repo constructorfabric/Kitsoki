@@ -29,6 +29,7 @@
 import { computed } from "vue";
 import type { TraceEvent } from "../../types.js";
 import CollapsibleText from "./CollapsibleText.vue";
+import { usePromptLoader } from "./usePromptLoader.js";
 
 const props = defineProps<{ event: TraceEvent }>();
 
@@ -47,8 +48,7 @@ const messages = computed<ChatMessage[]>(() => {
   return [];
 });
 
-const prompt = computed(() => String(attrs.value.prompt ?? ""));
-const systemPrompt = computed(() => String(attrs.value.system_prompt ?? ""));
+const { prompt, systemPrompt } = usePromptLoader(attrs);
 
 const response = computed(() => attrs.value.response as Record<string, unknown> | undefined);
 const responseText = computed(() => {

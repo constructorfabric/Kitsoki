@@ -24,11 +24,7 @@ Where `<verb>` is one of: `decide`, `extract`, `ask`, `task`, `converse`.
 | input?       | object | Verb-specific input descriptor (e.g. `{schema_path}`).                         |
 
 Purpose: give the UI early visibility that an LLM call is in flight before the
-(potentially long) response arrives. The rendered prompt itself is **not**
-embedded in this event — it would push many lines past the 4096-byte `PIPE_BUF`
-atomic-write limit. To recover the prompt, read `prompt_file` (if present) or
-the cassette `!include`d file in replay mode. See
-[../../../docs/trace-format.md §Oracle event kinds](../../../docs/trace-format.md#oracle-event-kinds).
+(potentially long) response arrives. The rendered prompt is embedded in this event.
 
 ---
 
@@ -48,15 +44,8 @@ All keys below are present on every `.complete` event unless marked `?`
 | prompt_tokens   | number | Tokens in the rendered prompt (input side)                    |
 | response_tokens | number | Tokens in the model response (output side)                    |
 | cost_usd?       | number | Estimated USD cost; omit if unavailable                       |
+| response        | object | The parsed model response (any shape depends on the verb and schema). |
 | error?          | string | If the call failed, the error message. Other response fields are absent when error is present. |
-
-> The rendered prompt and system prompt are **not** carried on `.complete`
-> events — they exceed the 4096-byte `PIPE_BUF` atomic-write limit. The
-> matching `.start` event carries a `prompt_file` reference to the on-disk
-> sidecar at `{trace_dir}/oracle-prompts/{call_id}.txt` for large prompts;
-> small prompts can be recovered from the cassette `!include` in replay mode
-> or from `oracle.AskRequest.PromptText` in live mode. See
-> [../../../docs/trace-format.md §Oracle event kinds](../../../docs/trace-format.md#oracle-event-kinds).
 
 ### input object
 
@@ -89,7 +78,9 @@ to the verb are present.
 ### response object
 
 Holds the model's structured output. Only the keys relevant to the verb are
-present.
+present. The entire `response` object is **omitted** from `.complete` when
+`response_file` is set (large-response offload — see Common fields above);
+consumers must follow `response_file` to recover the payload in that case.
 
 | Key        | Verbs              | Notes                                                             |
 |------------|--------------------|-------------------------------------------------------------------|
@@ -154,6 +145,15 @@ The rendered `prompt` and `system_prompt` are **not** transported on the event
 at all (so no cap applies on the wire); they live in the on-disk sidecar
 referenced by the `.start` event's `prompt_file` field. The sidecar file
 itself is not size-capped by kitsoki.
+
+Beyond the per-field caps above, the whole parsed `response` object is
+offloaded when its serialized size exceeds **~1KB** and a prompts dir is
+configured: the JSON is written to
+`{trace_dir}/oracle-prompts/{call_id}-response.json` and the `.complete`
+event drops the inline `response` field in favour of a `response_file`
+reference. This is the primary size-handling rule for responses; the
+per-field truncation markers above only apply when the inline `response` is
+still present.
 
 ---
 

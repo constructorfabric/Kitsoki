@@ -89,6 +89,7 @@ import type { TraceEvent } from "../../types.js";
 import { prettyJson } from "./lib.js";
 import CollapsibleText from "./CollapsibleText.vue";
 import JsonViewer from "./JsonViewer.vue";
+import { usePromptLoader } from "./usePromptLoader.js";
 
 const props = defineProps<{ event: TraceEvent }>();
 
@@ -115,8 +116,7 @@ const decision = computed<string | null>(() => {
   return typeof r?.decision === "string" ? r.decision : null;
 });
 
-const prompt = computed(() => String(attrs.value.prompt ?? ""));
-const systemPrompt = computed(() => String(attrs.value.system_prompt ?? ""));
+const { prompt, systemPrompt } = usePromptLoader(attrs);
 
 const responseJson = computed(() => {
   const r = attrs.value.response as Record<string, unknown> | undefined;

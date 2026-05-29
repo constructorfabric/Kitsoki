@@ -25,13 +25,12 @@ import { computed } from "vue";
 import type { TraceEvent } from "../../types.js";
 import { prettyJson } from "./lib.js";
 import CollapsibleText from "./CollapsibleText.vue";
+import { usePromptLoader } from "./usePromptLoader.js";
 
 const props = defineProps<{ event: TraceEvent }>();
 
 const attrs = computed(() => props.event.attrs);
-
-const prompt = computed(() => String(attrs.value.prompt ?? ""));
-const systemPrompt = computed(() => String(attrs.value.system_prompt ?? ""));
+const { prompt, systemPrompt } = usePromptLoader(attrs);
 
 // Response may be the new shape (object with .text/.intent/.slots) OR the
 // legacy lean shape — top-level attrs.response is a string, attrs.intent /

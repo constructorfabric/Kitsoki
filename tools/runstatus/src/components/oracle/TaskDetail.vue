@@ -77,6 +77,7 @@ import { isTruncated, maybeShow } from "./lib.js";
 import CollapsibleText from "./CollapsibleText.vue";
 import ToolTranscript from "./ToolTranscript.vue";
 import UnifiedDiff from "./UnifiedDiff.vue";
+import { usePromptLoader } from "./usePromptLoader.js";
 
 const props = defineProps<{ event: TraceEvent }>();
 
@@ -130,8 +131,7 @@ const toolCalls = computed<ToolCall[]>(() => {
 const totalAdds = computed(() => filesChanged.value.reduce((s, f) => s + (f.additions ?? 0), 0));
 const totalDels = computed(() => filesChanged.value.reduce((s, f) => s + (f.deletions ?? 0), 0));
 
-const prompt = computed(() => String(attrs.value.prompt ?? ""));
-const systemPrompt = computed(() => String(attrs.value.system_prompt ?? ""));
+const { prompt, systemPrompt } = usePromptLoader(attrs);
 
 function statusClass(status: string): string {
   switch (status) {

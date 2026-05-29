@@ -103,17 +103,6 @@
       </div>
     </template>
 
-    <template v-else-if="isWorldWriteEvent">
-      <div v-if="event.attrs.key" class="event-detail__kv">
-        <span class="event-detail__key">Key</span>
-        <code class="event-detail__val">{{ event.attrs.key }}</code>
-      </div>
-      <div v-if="event.attrs.value !== undefined" class="event-detail__block">
-        <span class="event-detail__key">Value</span>
-        <pre class="event-detail__pre">{{ prettyJson(event.attrs.value) }}</pre>
-      </div>
-    </template>
-
     <template v-else>
       <div class="event-detail__block">
         <div class="event-detail__attrs-header">
@@ -189,7 +178,6 @@ const isOracleComplete = computed(() => ORACLE_COMPLETE_RE.test(props.event.msg)
 const isLlmEvent = computed(() => !isOracleComplete.value && (props.event.msg.startsWith("oracle.") || props.event.msg.startsWith("turn.llm.")));
 const isHostEvent = computed(() => props.event.msg.startsWith("harness.") || props.event.msg.startsWith("host."));
 const isTransitionEvent = computed(() => props.event.msg.startsWith("machine.transition") || props.event.msg === "TransitionApplied");
-const isWorldWriteEvent = computed(() => props.event.msg.startsWith("machine.world."));
 </script>
 
 <style scoped>

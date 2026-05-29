@@ -151,6 +151,7 @@
           "TemplateFile": ""
         },
         "Terminal": false,
+        "Decider": "",
         "Initial": "{% if world.wearing_cloak %}dark{% else %}lit{% endif %}",
         "States": {
           "dark": {
@@ -243,6 +244,7 @@
               "TemplateFile": ""
             },
             "Terminal": false,
+            "Decider": "",
             "Initial": "",
             "States": null,
             "On": {
@@ -268,7 +270,9 @@
                       "OnComplete": null,
                       "Target": "",
                       "EmitIntent": "",
-                      "EmitSlots": null
+                      "EmitSlots": null,
+                      "Effects": null,
+                      "OraclePlugin": ""
                     },
                     {
                       "When": "",
@@ -284,7 +288,9 @@
                       "OnComplete": null,
                       "Target": "",
                       "EmitIntent": "",
-                      "EmitSlots": null
+                      "EmitSlots": null,
+                      "Effects": null,
+                      "OraclePlugin": ""
                     }
                   ],
                   "GuardHint": "It's pitch dark -- you can't see to do that.",
@@ -337,7 +343,9 @@
                       "OnComplete": null,
                       "Target": "",
                       "EmitIntent": "",
-                      "EmitSlots": null
+                      "EmitSlots": null,
+                      "Effects": null,
+                      "OraclePlugin": ""
                     },
                     {
                       "When": "",
@@ -353,7 +361,9 @@
                       "OnComplete": null,
                       "Target": "",
                       "EmitIntent": "",
-                      "EmitSlots": null
+                      "EmitSlots": null,
+                      "Effects": null,
+                      "OraclePlugin": ""
                     }
                   ],
                   "GuardHint": "You can't see well enough in the dark to head that way. Try going north, or finding a way to make light.",
@@ -472,6 +482,7 @@
               "TemplateFile": ""
             },
             "Terminal": false,
+            "Decider": "",
             "Initial": "",
             "States": null,
             "On": {
@@ -511,7 +522,9 @@
                       "OnComplete": null,
                       "Target": "",
                       "EmitIntent": "",
-                      "EmitSlots": null
+                      "EmitSlots": null,
+                      "Effects": null,
+                      "OraclePlugin": ""
                     }
                   ],
                   "GuardHint": "",
@@ -566,7 +579,9 @@
                       "OnComplete": null,
                       "Target": "",
                       "EmitIntent": "",
-                      "EmitSlots": null
+                      "EmitSlots": null,
+                      "Effects": null,
+                      "OraclePlugin": ""
                     }
                   ],
                   "GuardHint": "",
@@ -716,6 +731,7 @@
           "TemplateFile": ""
         },
         "Terminal": false,
+        "Decider": "",
         "Initial": "",
         "States": null,
         "On": {
@@ -755,7 +771,9 @@
                   "OnComplete": null,
                   "Target": "",
                   "EmitIntent": "",
-                  "EmitSlots": null
+                  "EmitSlots": null,
+                  "Effects": null,
+                  "OraclePlugin": ""
                 }
               ],
               "GuardHint": "",
@@ -792,7 +810,9 @@
                   "OnComplete": null,
                   "Target": "",
                   "EmitIntent": "",
-                  "EmitSlots": null
+                  "EmitSlots": null,
+                  "Effects": null,
+                  "OraclePlugin": ""
                 },
                 {
                   "When": "",
@@ -808,7 +828,9 @@
                   "OnComplete": null,
                   "Target": "",
                   "EmitIntent": "",
-                  "EmitSlots": null
+                  "EmitSlots": null,
+                  "Effects": null,
+                  "OraclePlugin": ""
                 }
               ],
               "GuardHint": "",
@@ -841,7 +863,9 @@
                   "OnComplete": null,
                   "Target": "",
                   "EmitIntent": "",
-                  "EmitSlots": null
+                  "EmitSlots": null,
+                  "Effects": null,
+                  "OraclePlugin": ""
                 }
               ],
               "GuardHint": "You aren't wearing the cloak -- nothing to hang.",
@@ -896,7 +920,9 @@
                   "OnComplete": null,
                   "Target": "",
                   "EmitIntent": "",
-                  "EmitSlots": null
+                  "EmitSlots": null,
+                  "Effects": null,
+                  "OraclePlugin": ""
                 },
                 {
                   "When": "",
@@ -912,7 +938,9 @@
                   "OnComplete": null,
                   "Target": "",
                   "EmitIntent": "",
-                  "EmitSlots": null
+                  "EmitSlots": null,
+                  "Effects": null,
+                  "OraclePlugin": ""
                 }
               ],
               "GuardHint": "",
@@ -945,7 +973,9 @@
                   "OnComplete": null,
                   "Target": "",
                   "EmitIntent": "",
-                  "EmitSlots": null
+                  "EmitSlots": null,
+                  "Effects": null,
+                  "OraclePlugin": ""
                 }
               ],
               "GuardHint": "You're already wearing the cloak.",
@@ -1057,6 +1087,7 @@
           "TemplateFile": ""
         },
         "Terminal": true,
+        "Decider": "",
         "Initial": "",
         "States": null,
         "On": null,
@@ -1135,6 +1166,7 @@
           "TemplateFile": ""
         },
         "Terminal": false,
+        "Decider": "",
         "Initial": "",
         "States": null,
         "On": {
@@ -1190,7 +1222,9 @@
                   "OnComplete": null,
                   "Target": "",
                   "EmitIntent": "",
-                  "EmitSlots": null
+                  "EmitSlots": null,
+                  "Effects": null,
+                  "OraclePlugin": ""
                 }
               ],
               "GuardHint": "The weather outside is awful -- you've only just arrived.",
@@ -1223,7 +1257,9 @@
                   "OnComplete": null,
                   "Target": "",
                   "EmitIntent": "",
-                  "EmitSlots": null
+                  "EmitSlots": null,
+                  "Effects": null,
+                  "OraclePlugin": ""
                 }
               ],
               "GuardHint": "",
@@ -1279,6 +1315,17 @@
       "Agent": ""
     },
     "Hosts": null,
+    "OraclePlugins": {
+      "oracle.claude": {
+        "Plugin": "builtin.claude_cli",
+        "Command": "",
+        "Args": null,
+        "Endpoint": "",
+        "Tool": "",
+        "Env": null,
+        "Headers": null
+      }
+    },
     "Proposals": null,
     "Include": null,
     "PhaseTemplates": null,
@@ -1357,10 +1404,10 @@
     "HostInterfaces": null,
     "ImportWrappers": null,
     "LoadedManifests": [
-      "/home/cloud-user/code/kitsoki/.worktrees/runstatus-fixtures-playwright/testdata/apps/cloak/app.yaml"
+      "/home/cloud-user/code/kitsoki/testdata/apps/cloak/app.yaml"
     ],
     "Routing": null,
-    "BaseDir": "/home/cloud-user/code/kitsoki/.worktrees/runstatus-fixtures-playwright/testdata/apps/cloak"
+    "BaseDir": "/home/cloud-user/code/kitsoki/testdata/apps/cloak"
   },
   "mermaid": {
     "source": "%% Cloak of Darkness\n%% kitsoki viz --flowchart --detail states\nflowchart LR\n\n  Start([\"\u003cb\u003eStart\u003c/b\u003e\"]):::input\n\n  subgraph SG_bar[\"\u003cb\u003ephase 1 · bar\u003c/b\u003e — A small bar off the foyer. Lit when the cloak is hung up; dark otherwise.\"]\n    direction LR\n    ST_bar_dark[/\"bar.dark\"/]:::room\n    ST_bar_lit[/\"bar.lit\"/]:::room\n  end\n\n  subgraph SG_cloakroom[\"\u003cb\u003ephase 2 · cloakroom\u003c/b\u003e — A small cloakroom with a single hook. Exit east.\"]\n    direction LR\n    ST_cloakroom[/\"cloakroom\"/]:::room\n  end\n\n  subgraph SG_ended[\"\u003cb\u003ephase 3 · ended\u003c/b\u003e — The journey is over.\"]\n    direction LR\n    ST_ended[/\"ended\"/]:::room\n  end\n\n  subgraph SG_foyer[\"\u003cb\u003ephase 0 · foyer\u003c/b\u003e — The entrance hall of the opera house. South leads to the bar; west to the cloakroom.\"]\n    direction LR\n    ST_foyer[/\"foyer\"/]:::room\n  end\n\n  Start --\u003e ST_foyer\n\n  ST_bar_dark -- \"*(any)\" --\u003e ST_bar_dark\n  ST_bar_dark -- \"go (default)\" --\u003e ST_bar_dark\n  ST_bar_dark -- \"go [slots.direction == '…]\" --\u003e ST_foyer\n  ST_bar_lit -- \"go (default)\" --\u003e ST_bar_lit\n  ST_bar_lit -- \"look\" --\u003e ST_bar_lit\n  ST_bar_lit -- \"read_message\" --\u003e ST_ended\n  ST_bar_lit -- \"go [slots.direction == '…]\" --\u003e ST_foyer\n  ST_cloakroom -- \"go (default)\" --\u003e ST_cloakroom\n  ST_cloakroom -- \"hang_cloak (default)\" --\u003e ST_cloakroom\n  ST_cloakroom -- \"hang_cloak [world.wearing_cloak …]\" --\u003e ST_cloakroom\n  ST_cloakroom -- \"look\" --\u003e ST_cloakroom\n  ST_cloakroom -- \"wear_cloak (default)\" --\u003e ST_cloakroom\n  ST_cloakroom -- \"wear_cloak [world.wearing_cloak …]\" --\u003e ST_cloakroom\n  ST_cloakroom -- \"go [slots.direction == '…]\" --\u003e ST_foyer\n  ST_foyer -- \"go [slots.direction == '…]\" --\u003e ST_bar\n  ST_foyer -- \"go [slots.direction == '…]\" --\u003e ST_cloakroom\n  ST_foyer -- \"go (default)\" --\u003e ST_foyer\n  ST_foyer -- \"go [slots.direction == '…]\" --\u003e ST_foyer\n  ST_foyer -- \"look\" --\u003e ST_foyer\n\n  classDef input  fill:#eef,stroke:#446,stroke-width:1.5px\n  classDef room   fill:#fff,stroke:#357,stroke-width:1.5px\n  classDef work   fill:#f7f7fa,stroke:#888\n  classDef llm    fill:#f0e6ff,stroke:#6a3eb5,stroke-width:2px,color:#3a2270\n  classDef shell  fill:#fef6e4,stroke:#a85,stroke-width:1.5px\n  classDef store  fill:#eef5fb,stroke:#369,stroke-width:1px\n  classDef cache  fill:#fff6e0,stroke:#a86,stroke-width:1.5px\n  classDef err    fill:#fff5f5,stroke:#c66,stroke-width:1px,stroke-dasharray:4 3\n  classDef next   fill:#e8f5e9,stroke:#272,stroke-width:1.5px\n  classDef note   fill:#fffbe6,stroke:#a90,stroke-width:1px,stroke-dasharray:2 2,color:#553\n",
@@ -1588,13 +1635,14 @@
     {
       "time": "2026-05-25T12:00:10.185Z",
       "level": "DEBUG",
-      "msg": "machine.world.write",
+      "msg": "world.update",
       "session_id": "sess-edge-001",
       "turn": 3,
       "state_path": "cloakroom",
       "attrs": {
-        "key": "wearing_cloak",
-        "value": false
+        "set": {
+          "wearing_cloak": false
+        }
       }
     },
     {
@@ -1913,25 +1961,27 @@
     {
       "time": "2026-05-25T12:00:35.18Z",
       "level": "DEBUG",
-      "msg": "machine.world.write",
+      "msg": "world.update",
       "session_id": "sess-edge-001",
       "turn": 8,
       "state_path": "bar.lit",
       "attrs": {
-        "key": "message_rumpled",
-        "value": false
+        "set": {
+          "message_rumpled": false
+        }
       }
     },
     {
       "time": "2026-05-25T12:00:35.183Z",
       "level": "DEBUG",
-      "msg": "machine.world.write",
+      "msg": "world.update",
       "session_id": "sess-edge-001",
       "turn": 8,
       "state_path": "bar.lit",
       "attrs": {
-        "key": "disturbance",
-        "value": 0
+        "set": {
+          "disturbance": 0
+        }
       }
     },
     {

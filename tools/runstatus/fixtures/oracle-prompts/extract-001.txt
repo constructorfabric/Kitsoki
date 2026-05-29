@@ -1,0 +1,5 @@
+Extract the bug title from the following text:
+
+Race condition detected in the worker pool shutdown sequence. The issue occurs when multiple worker threads attempt to acquire the shutdown lock simultaneously, causing a deadlock in production systems.
+
+Extract the title field.

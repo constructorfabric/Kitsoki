@@ -338,18 +338,20 @@ describe("TraceTimeline — oracle start/complete merge", () => {
 });
 
 describe("TraceTimeline — turn.input ordering", () => {
-  // Reproduces the 'reproducing' phase: oracle in turn 1, user accepts triggering
-  // turn 2 (host + world), then oracle again. turn.input ('[intent] accept') is
-  // synthesised at turn=1 (N-1) by fromhistory but must render LAST within the
-  // reproducing phase — after the host/world work it triggered in turn 2.
+  // Reproduces the 'reproducing' phase: oracle decides in turn 1, the user
+  // accepts and the machine executes that intent (host + world) in turn 2.
+  // turn.input ('[intent] accept') carries the SAME turn (2) as the work it
+  // triggers; the UI defers it to the end of that turn group so the input chip
+  // renders LAST — after the host/world rows it triggered.
   function reproducingEvents(): TraceEvent[] {
     return [
       makeEvent({ msg: "oracle.task.start",  turn: 1, state_path: "reproducing", time: "2026-01-01T00:00:01Z", attrs: { call_id: "c-task", verb: "task" } }),
       makeEvent({ msg: "oracle.task.complete", turn: 1, state_path: "reproducing", time: "2026-01-01T00:00:02Z", attrs: { call_id: "c-task", duration_ms: 1000, verb: "task" } }),
       makeEvent({ msg: "oracle.decide.start", turn: 1, state_path: "reproducing", time: "2026-01-01T00:00:03Z", attrs: { call_id: "c-decide", verb: "decide" } }),
       makeEvent({ msg: "oracle.decide.complete", turn: 1, state_path: "reproducing", time: "2026-01-01T00:00:04Z", attrs: { call_id: "c-decide", duration_ms: 500, verb: "decide" } }),
-      // turn.input synthesised at turn=1 (N-1) by fromhistory — should display LAST.
-      makeEvent({ msg: "turn.input", turn: 1, state_path: "reproducing", time: "2026-01-01T00:00:05Z", attrs: { input: "[intent] accept" } }),
+      // turn.input carries the SAME turn (2) as the work it triggers, and the
+      // UI defers it to the end of that turn group — so it should display LAST.
+      makeEvent({ msg: "turn.input", turn: 2, state_path: "reproducing", time: "2026-01-01T00:00:05Z", attrs: { input: "[intent] accept" } }),
       // turn 2: machine executes the accepted intent.
       makeEvent({ msg: "harness.called",   turn: 2, state_path: "reproducing", time: "2026-01-01T00:00:05Z", attrs: { namespace: "host.append_to_file.post" } }),
       makeEvent({ msg: "harness.dispatched", turn: 2, state_path: "reproducing", time: "2026-01-01T00:00:05Z", attrs: { namespace: "host.append_to_file.post" } }),

@@ -26,6 +26,7 @@ import { computed } from "vue";
 import type { TraceEvent } from "../../types.js";
 import { prettyJson } from "./lib.js";
 import CollapsibleText from "./CollapsibleText.vue";
+import { usePromptLoader } from "./usePromptLoader.js";
 
 const props = defineProps<{ event: TraceEvent }>();
 
@@ -51,8 +52,7 @@ const nullFields = computed<string[]>(() => {
 
 const hasNulls = computed(() => nullFields.value.length > 0);
 
-const prompt = computed(() => String(attrs.value.prompt ?? ""));
-const systemPrompt = computed(() => String(attrs.value.system_prompt ?? ""));
+const { prompt, systemPrompt } = usePromptLoader(attrs);
 </script>
 
 <style scoped>

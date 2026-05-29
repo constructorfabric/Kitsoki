@@ -1,0 +1,5 @@
+The user typed: 'start BUG-4711'.
+
+World state: ticket_id is empty, no reproduction artifact exists.
+
+Choose the best next step.

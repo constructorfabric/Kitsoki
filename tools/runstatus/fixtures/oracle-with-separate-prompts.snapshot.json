@@ -1,11 +1,7 @@
 {
   "session": {
-    "session_id": "sess-oracle-rich-001",
-    "app_id": "bugfix",
-    "current_state": "proposing._executing",
-    "turn": 5,
-    "started_at": "2026-05-26T10:00:00.000Z",
-    "terminal": false
+    "id": "sess-oracle-separate-prompts",
+    "app_id": "bugfix"
   },
   "app": {
     "App": {
@@ -293,7 +289,7 @@
       },
       "full_pipeline": {
         "Title": "",
-        "Description": "Default — walk all phases. Set bugfix_mode=full and start from reproducing.",
+        "Description": "Default \u2014 walk all phases. Set bugfix_mode=full and start from reproducing.",
         "Examples": [
           "full_pipeline",
           "full",
@@ -344,7 +340,7 @@
       },
       "quick_fix": {
         "Title": "",
-        "Description": "Shortcut from idle: walk reproducing → proposing → implementing → testing → done (skip reviewing + validating).",
+        "Description": "Shortcut from idle: walk reproducing \u2192 proposing \u2192 implementing \u2192 testing \u2192 done (skip reviewing + validating).",
         "Examples": [
           "quick_fix",
           "quick",
@@ -758,7 +754,7 @@
         "Group": "story",
         "Default": false,
         "Label": "Ask about story",
-        "Banner": "Asking about this story — read-only, no edits.",
+        "Banner": "Asking about this story \u2014 read-only, no edits.",
         "Agent": "story-explainer",
         "Persist": null,
         "Cwd": "",
@@ -777,7 +773,7 @@
         "Group": "story",
         "Default": false,
         "Label": "Story bug",
-        "Banner": "Filing a story bug — write it down and the agent files it under issues/bugs/.",
+        "Banner": "Filing a story bug \u2014 write it down and the agent files it under issues/bugs/.",
         "Agent": "story-bug-reporter",
         "Persist": null,
         "Cwd": "",
@@ -792,7 +788,7 @@
         "Group": "story",
         "Default": true,
         "Label": "Edit story",
-        "Banner": "Editing this story's YAML — your changes affect the running app.",
+        "Banner": "Editing this story's YAML \u2014 your changes affect the running app.",
         "Agent": "story-author",
         "Persist": null,
         "Cwd": "",
@@ -1168,7 +1164,7 @@
     "BaseDir": "/home/cloud-user/code/kitsoki/stories/bugfix"
   },
   "mermaid": {
-    "source": "%% Bug-fix pipeline\n%% kitsoki viz --flowchart --detail states\nflowchart LR\n\n  Start([\"<b>Start</b>\"]):::input\n\n  subgraph SG___exit__abandoned[\"<b>__exit__abandoned</b> — Exit: abandoned\"]\n    direction LR\n    ST___exit__abandoned[/\"__exit__abandoned\"/]:::room\n  end\n\n  subgraph SG___exit__done[\"<b>__exit__done</b> — Exit: done\"]\n    direction LR\n    ST___exit__done[/\"__exit__done\"/]:::room\n  end\n\n  subgraph SG___exit__pick_ticket[\"<b>__exit__pick_ticket</b> — Exit: pick_ticket\"]\n    direction LR\n    ST___exit__pick_ticket[/\"__exit__pick_ticket\"/]:::room\n  end\n\n  subgraph SG_done[\"<b>phase 3 · done</b> — Build the run's close-out artifact; accept to hand off to pr-refinement.\"]\n    direction LR\n    ST_done[/\"done\"/]:::room\n  end\n\n  subgraph SG_idle[\"<b>phase 0 · idle</b> — Bug-fix pipeline parked. Waiting for start.\"]\n    direction LR\n    ST_idle[/\"idle\"/]:::room\n  end\n\n  subgraph SG_implementing[\"<b>phase 6 · implementing</b> — Apply the proposed fix to the workspace; advance to testing.\"]\n    direction LR\n    ST_implementing[/\"implementing\"/]:::room\n  end\n\n  subgraph SG_proposing[\"<b>phase 4 · proposing</b> — Draft the fix proposal; review and advance to implementing.\"]\n    direction LR\n    ST_proposing[/\"proposing\"/]:::room\n  end\n\n  subgraph SG_reproducing[\"<b>phase 1 · reproducing</b> — Reproduce the bug; produce the reproduction artifact for review.\"]\n    direction LR\n    ST_reproducing[/\"reproducing\"/]:::room\n  end\n\n  subgraph SG_reviewing[\"<b>phase 7 · reviewing</b> — Self-review the diff (code + security); advance to validating.\"]\n    direction LR\n    ST_reviewing[/\"reviewing\"/]:::room\n  end\n\n  subgraph SG_testing[\"<b>phase 5 · testing</b> — Run + review tests for the applied fix; advance to reviewing (or done in quick mode).\"]\n    direction LR\n    ST_testing[/\"testing\"/]:::room\n  end\n\n  subgraph SG_validating[\"<b>phase 2 · validating</b> — Validate the fix against the full environment; advance to done.\"]\n    direction LR\n    ST_validating[/\"validating\"/]:::room\n  end\n\n  Start --> ST_idle\n\n  ST_done -- \"quit\" --> ST___exit__abandoned\n  ST_done -- \"refine [world.done_cycle &gt;= …]\" --> ST___exit__abandoned\n  ST_done -- \"accept\" --> ST___exit__done\n  ST_done -- \"look\" --> ST_done\n  ST_done -- \"refine\" --> ST_done\n  ST_done -- \"restart_from [slots.stage == 'impl…]\" --> ST_implementing\n  ST_done -- \"restart_from [slots.stage == 'prop…]\" --> ST_proposing\n  ST_done -- \"restart_from [slots.stage == 'repr…]\" --> ST_reproducing\n  ST_done -- \"restart_from [slots.stage == 'test…]\" --> ST_testing\n  ST_done -- \"restart_from\" --> ST_validating\n  ST_done -- \"restart_from [slots.stage == 'vali…]\" --> ST_validating\n  ST_idle -- \"quit\" --> ST___exit__abandoned\n  ST_idle -- \"change_ticket\" --> ST___exit__pick_ticket\n  ST_idle -- \"look\" --> ST_idle\n  ST_idle -- \"full_pipeline\" --> ST_reproducing\n  ST_idle -- \"quick_fix\" --> ST_reproducing\n  ST_idle -- \"start\" --> ST_reproducing\n  ST_idle -- \"skip_to_pr\" --> ST_validating\n  ST_implementing -- \"quit\" --> ST___exit__abandoned\n  ST_implementing -- \"look\" --> ST_implementing\n  ST_implementing -- \"restart_from\" --> ST_proposing\n  ST_implementing -- \"restart_from [slots.stage == 'prop…]\" --> ST_proposing\n  ST_implementing -- \"restart_from [slots.stage == 'repr…]\" --> ST_reproducing\n  ST_implementing -- \"accept\" --> ST_testing\n  ST_proposing -- \"jump_to\" --> ST___exit__abandoned\n  ST_proposing -- \"quit\" --> ST___exit__abandoned\n  ST_proposing -- \"refine [world.proposing_cycl…]\" --> ST___exit__abandoned\n  ST_proposing -- \"jump_to [slots.stage == 'done…]\" --> ST_done\n  ST_proposing -- \"accept\" --> ST_implementing\n  ST_proposing -- \"look\" --> ST_proposing\n  ST_proposing -- \"refine\" --> ST_proposing\n  ST_proposing -- \"restart_from\" --> ST_proposing\n  ST_proposing -- \"restart_from [slots.stage == 'repr…]\" --> ST_reproducing\n  ST_proposing -- \"jump_to [slots.stage == 'test…]\" --> ST_testing\n  ST_proposing -- \"jump_to [slots.stage == 'vali…]\" --> ST_validating\n  ST_reproducing -- \"jump_to\" --> ST___exit__abandoned\n  ST_reproducing -- \"quit\" --> ST___exit__abandoned\n  ST_reproducing -- \"refine [world.reproducing_cy…]\" --> ST___exit__abandoned\n  ST_reproducing -- \"jump_to [slots.stage == 'done…]\" --> ST_done\n  ST_reproducing -- \"accept\" --> ST_proposing\n  ST_reproducing -- \"full_pipeline\" --> ST_reproducing\n  ST_reproducing -- \"look\" --> ST_reproducing\n  ST_reproducing -- \"quick_fix\" --> ST_reproducing\n  ST_reproducing -- \"refine\" --> ST_reproducing\n  ST_reproducing -- \"restart_from\" --> ST_reproducing\n  ST_reproducing -- \"jump_to [slots.stage == 'test…]\" --> ST_testing\n  ST_reproducing -- \"jump_to [slots.stage == 'vali…]\" --> ST_validating\n  ST_reproducing -- \"skip_to_pr\" --> ST_validating\n  ST_reviewing -- \"quit\" --> ST___exit__abandoned\n  ST_reviewing -- \"restart_from [slots.stage == 'impl…]\" --> ST_implementing\n  ST_reviewing -- \"restart_from\" --> ST_proposing\n  ST_reviewing -- \"restart_from [slots.stage == 'prop…]\" --> ST_proposing\n  ST_reviewing -- \"restart_from [slots.stage == 'repr…]\" --> ST_reproducing\n  ST_reviewing -- \"look\" --> ST_reviewing\n  ST_reviewing -- \"restart_from [slots.stage == 'test…]\" --> ST_testing\n  ST_reviewing -- \"accept\" --> ST_validating\n  ST_testing -- \"accept [(world.implement_rev…]\" --> ST___exit__abandoned\n  ST_testing -- \"jump_to\" --> ST___exit__abandoned\n  ST_testing -- \"quit\" --> ST___exit__abandoned\n  ST_testing -- \"refine [world.testing_cycle …]\" --> ST___exit__abandoned\n  ST_testing -- \"accept [world.bugfix_mode ==…]\" --> ST_done\n  ST_testing -- \"jump_to [slots.stage == 'done…]\" --> ST_done\n  ST_testing -- \"accept [world.implement_revi…]\" --> ST_implementing\n  ST_testing -- \"restart_from [slots.stage == 'impl…]\" --> ST_implementing\n  ST_testing -- \"restart_from\" --> ST_proposing\n  ST_testing -- \"restart_from [slots.stage == 'prop…]\" --> ST_proposing\n  ST_testing -- \"restart_from [slots.stage == 'repr…]\" --> ST_reproducing\n  ST_testing -- \"accept\" --> ST_reviewing\n  ST_testing -- \"look\" --> ST_testing\n  ST_testing -- \"refine\" --> ST_testing\n  ST_testing -- \"jump_to [slots.stage == 'vali…]\" --> ST_validating\n  ST_validating -- \"accept [world.validate_artif…]\" --> ST___exit__abandoned\n  ST_validating -- \"jump_to\" --> ST___exit__abandoned\n  ST_validating -- \"quit\" --> ST___exit__abandoned\n  ST_validating -- \"refine [world.validating_cyc…]\" --> ST___exit__abandoned\n  ST_validating -- \"accept\" --> ST_done\n  ST_validating -- \"jump_to [slots.stage == 'done…]\" --> ST_done\n  ST_validating -- \"accept [world.validate_artif…]\" --> ST_implementing\n  ST_validating -- \"restart_from [slots.stage == 'impl…]\" --> ST_implementing\n  ST_validating -- \"accept [world.validate_artif…]\" --> ST_proposing\n  ST_validating -- \"restart_from\" --> ST_proposing\n  ST_validating -- \"restart_from [slots.stage == 'prop…]\" --> ST_proposing\n  ST_validating -- \"restart_from [slots.stage == 'repr…]\" --> ST_reproducing\n  ST_validating -- \"restart_from [slots.stage == 'test…]\" --> ST_testing\n  ST_validating -- \"accept [world.validate_artif…]\" --> ST_validating\n  ST_validating -- \"look\" --> ST_validating\n  ST_validating -- \"refine\" --> ST_validating\n\n  classDef input  fill:#eef,stroke:#446,stroke-width:1.5px\n  classDef room   fill:#fff,stroke:#357,stroke-width:1.5px\n  classDef work   fill:#f7f7fa,stroke:#888\n  classDef llm    fill:#f0e6ff,stroke:#6a3eb5,stroke-width:2px,color:#3a2270\n  classDef shell  fill:#fef6e4,stroke:#a85,stroke-width:1.5px\n  classDef store  fill:#eef5fb,stroke:#369,stroke-width:1px\n  classDef cache  fill:#fff6e0,stroke:#a86,stroke-width:1.5px\n  classDef err    fill:#fff5f5,stroke:#c66,stroke-width:1px,stroke-dasharray:4 3\n  classDef next   fill:#e8f5e9,stroke:#272,stroke-width:1.5px\n  classDef note   fill:#fffbe6,stroke:#a90,stroke-width:1px,stroke-dasharray:2 2,color:#553\n",
+    "source": "%% Bug-fix pipeline\n%% kitsoki viz --flowchart --detail states\nflowchart LR\n\n  Start([\"<b>Start</b>\"]):::input\n\n  subgraph SG___exit__abandoned[\"<b>__exit__abandoned</b> \u2014 Exit: abandoned\"]\n    direction LR\n    ST___exit__abandoned[/\"__exit__abandoned\"/]:::room\n  end\n\n  subgraph SG___exit__done[\"<b>__exit__done</b> \u2014 Exit: done\"]\n    direction LR\n    ST___exit__done[/\"__exit__done\"/]:::room\n  end\n\n  subgraph SG___exit__pick_ticket[\"<b>__exit__pick_ticket</b> \u2014 Exit: pick_ticket\"]\n    direction LR\n    ST___exit__pick_ticket[/\"__exit__pick_ticket\"/]:::room\n  end\n\n  subgraph SG_done[\"<b>phase 3 \u00b7 done</b> \u2014 Build the run's close-out artifact; accept to hand off to pr-refinement.\"]\n    direction LR\n    ST_done[/\"done\"/]:::room\n  end\n\n  subgraph SG_idle[\"<b>phase 0 \u00b7 idle</b> \u2014 Bug-fix pipeline parked. Waiting for start.\"]\n    direction LR\n    ST_idle[/\"idle\"/]:::room\n  end\n\n  subgraph SG_implementing[\"<b>phase 6 \u00b7 implementing</b> \u2014 Apply the proposed fix to the workspace; advance to testing.\"]\n    direction LR\n    ST_implementing[/\"implementing\"/]:::room\n  end\n\n  subgraph SG_proposing[\"<b>phase 4 \u00b7 proposing</b> \u2014 Draft the fix proposal; review and advance to implementing.\"]\n    direction LR\n    ST_proposing[/\"proposing\"/]:::room\n  end\n\n  subgraph SG_reproducing[\"<b>phase 1 \u00b7 reproducing</b> \u2014 Reproduce the bug; produce the reproduction artifact for review.\"]\n    direction LR\n    ST_reproducing[/\"reproducing\"/]:::room\n  end\n\n  subgraph SG_reviewing[\"<b>phase 7 \u00b7 reviewing</b> \u2014 Self-review the diff (code + security); advance to validating.\"]\n    direction LR\n    ST_reviewing[/\"reviewing\"/]:::room\n  end\n\n  subgraph SG_testing[\"<b>phase 5 \u00b7 testing</b> \u2014 Run + review tests for the applied fix; advance to reviewing (or done in quick mode).\"]\n    direction LR\n    ST_testing[/\"testing\"/]:::room\n  end\n\n  subgraph SG_validating[\"<b>phase 2 \u00b7 validating</b> \u2014 Validate the fix against the full environment; advance to done.\"]\n    direction LR\n    ST_validating[/\"validating\"/]:::room\n  end\n\n  Start --> ST_idle\n\n  ST_done -- \"quit\" --> ST___exit__abandoned\n  ST_done -- \"refine [world.done_cycle &gt;= \u2026]\" --> ST___exit__abandoned\n  ST_done -- \"accept\" --> ST___exit__done\n  ST_done -- \"look\" --> ST_done\n  ST_done -- \"refine\" --> ST_done\n  ST_done -- \"restart_from [slots.stage == 'impl\u2026]\" --> ST_implementing\n  ST_done -- \"restart_from [slots.stage == 'prop\u2026]\" --> ST_proposing\n  ST_done -- \"restart_from [slots.stage == 'repr\u2026]\" --> ST_reproducing\n  ST_done -- \"restart_from [slots.stage == 'test\u2026]\" --> ST_testing\n  ST_done -- \"restart_from\" --> ST_validating\n  ST_done -- \"restart_from [slots.stage == 'vali\u2026]\" --> ST_validating\n  ST_idle -- \"quit\" --> ST___exit__abandoned\n  ST_idle -- \"change_ticket\" --> ST___exit__pick_ticket\n  ST_idle -- \"look\" --> ST_idle\n  ST_idle -- \"full_pipeline\" --> ST_reproducing\n  ST_idle -- \"quick_fix\" --> ST_reproducing\n  ST_idle -- \"start\" --> ST_reproducing\n  ST_idle -- \"skip_to_pr\" --> ST_validating\n  ST_implementing -- \"quit\" --> ST___exit__abandoned\n  ST_implementing -- \"look\" --> ST_implementing\n  ST_implementing -- \"restart_from\" --> ST_proposing\n  ST_implementing -- \"restart_from [slots.stage == 'prop\u2026]\" --> ST_proposing\n  ST_implementing -- \"restart_from [slots.stage == 'repr\u2026]\" --> ST_reproducing\n  ST_implementing -- \"accept\" --> ST_testing\n  ST_proposing -- \"jump_to\" --> ST___exit__abandoned\n  ST_proposing -- \"quit\" --> ST___exit__abandoned\n  ST_proposing -- \"refine [world.proposing_cycl\u2026]\" --> ST___exit__abandoned\n  ST_proposing -- \"jump_to [slots.stage == 'done\u2026]\" --> ST_done\n  ST_proposing -- \"accept\" --> ST_implementing\n  ST_proposing -- \"look\" --> ST_proposing\n  ST_proposing -- \"refine\" --> ST_proposing\n  ST_proposing -- \"restart_from\" --> ST_proposing\n  ST_proposing -- \"restart_from [slots.stage == 'repr\u2026]\" --> ST_reproducing\n  ST_proposing -- \"jump_to [slots.stage == 'test\u2026]\" --> ST_testing\n  ST_proposing -- \"jump_to [slots.stage == 'vali\u2026]\" --> ST_validating\n  ST_reproducing -- \"jump_to\" --> ST___exit__abandoned\n  ST_reproducing -- \"quit\" --> ST___exit__abandoned\n  ST_reproducing -- \"refine [world.reproducing_cy\u2026]\" --> ST___exit__abandoned\n  ST_reproducing -- \"jump_to [slots.stage == 'done\u2026]\" --> ST_done\n  ST_reproducing -- \"accept\" --> ST_proposing\n  ST_reproducing -- \"full_pipeline\" --> ST_reproducing\n  ST_reproducing -- \"look\" --> ST_reproducing\n  ST_reproducing -- \"quick_fix\" --> ST_reproducing\n  ST_reproducing -- \"refine\" --> ST_reproducing\n  ST_reproducing -- \"restart_from\" --> ST_reproducing\n  ST_reproducing -- \"jump_to [slots.stage == 'test\u2026]\" --> ST_testing\n  ST_reproducing -- \"jump_to [slots.stage == 'vali\u2026]\" --> ST_validating\n  ST_reproducing -- \"skip_to_pr\" --> ST_validating\n  ST_reviewing -- \"quit\" --> ST___exit__abandoned\n  ST_reviewing -- \"restart_from [slots.stage == 'impl\u2026]\" --> ST_implementing\n  ST_reviewing -- \"restart_from\" --> ST_proposing\n  ST_reviewing -- \"restart_from [slots.stage == 'prop\u2026]\" --> ST_proposing\n  ST_reviewing -- \"restart_from [slots.stage == 'repr\u2026]\" --> ST_reproducing\n  ST_reviewing -- \"look\" --> ST_reviewing\n  ST_reviewing -- \"restart_from [slots.stage == 'test\u2026]\" --> ST_testing\n  ST_reviewing -- \"accept\" --> ST_validating\n  ST_testing -- \"accept [(world.implement_rev\u2026]\" --> ST___exit__abandoned\n  ST_testing -- \"jump_to\" --> ST___exit__abandoned\n  ST_testing -- \"quit\" --> ST___exit__abandoned\n  ST_testing -- \"refine [world.testing_cycle \u2026]\" --> ST___exit__abandoned\n  ST_testing -- \"accept [world.bugfix_mode ==\u2026]\" --> ST_done\n  ST_testing -- \"jump_to [slots.stage == 'done\u2026]\" --> ST_done\n  ST_testing -- \"accept [world.implement_revi\u2026]\" --> ST_implementing\n  ST_testing -- \"restart_from [slots.stage == 'impl\u2026]\" --> ST_implementing\n  ST_testing -- \"restart_from\" --> ST_proposing\n  ST_testing -- \"restart_from [slots.stage == 'prop\u2026]\" --> ST_proposing\n  ST_testing -- \"restart_from [slots.stage == 'repr\u2026]\" --> ST_reproducing\n  ST_testing -- \"accept\" --> ST_reviewing\n  ST_testing -- \"look\" --> ST_testing\n  ST_testing -- \"refine\" --> ST_testing\n  ST_testing -- \"jump_to [slots.stage == 'vali\u2026]\" --> ST_validating\n  ST_validating -- \"accept [world.validate_artif\u2026]\" --> ST___exit__abandoned\n  ST_validating -- \"jump_to\" --> ST___exit__abandoned\n  ST_validating -- \"quit\" --> ST___exit__abandoned\n  ST_validating -- \"refine [world.validating_cyc\u2026]\" --> ST___exit__abandoned\n  ST_validating -- \"accept\" --> ST_done\n  ST_validating -- \"jump_to [slots.stage == 'done\u2026]\" --> ST_done\n  ST_validating -- \"accept [world.validate_artif\u2026]\" --> ST_implementing\n  ST_validating -- \"restart_from [slots.stage == 'impl\u2026]\" --> ST_implementing\n  ST_validating -- \"accept [world.validate_artif\u2026]\" --> ST_proposing\n  ST_validating -- \"restart_from\" --> ST_proposing\n  ST_validating -- \"restart_from [slots.stage == 'prop\u2026]\" --> ST_proposing\n  ST_validating -- \"restart_from [slots.stage == 'repr\u2026]\" --> ST_reproducing\n  ST_validating -- \"restart_from [slots.stage == 'test\u2026]\" --> ST_testing\n  ST_validating -- \"accept [world.validate_artif\u2026]\" --> ST_validating\n  ST_validating -- \"look\" --> ST_validating\n  ST_validating -- \"refine\" --> ST_validating\n\n  classDef input  fill:#eef,stroke:#446,stroke-width:1.5px\n  classDef room   fill:#fff,stroke:#357,stroke-width:1.5px\n  classDef work   fill:#f7f7fa,stroke:#888\n  classDef llm    fill:#f0e6ff,stroke:#6a3eb5,stroke-width:2px,color:#3a2270\n  classDef shell  fill:#fef6e4,stroke:#a85,stroke-width:1.5px\n  classDef store  fill:#eef5fb,stroke:#369,stroke-width:1px\n  classDef cache  fill:#fff6e0,stroke:#a86,stroke-width:1.5px\n  classDef err    fill:#fff5f5,stroke:#c66,stroke-width:1px,stroke-dasharray:4 3\n  classDef next   fill:#e8f5e9,stroke:#272,stroke-width:1.5px\n  classDef note   fill:#fffbe6,stroke:#a90,stroke-width:1px,stroke-dasharray:2 2,color:#553\n",
     "node_map": {
       "ST___exit__abandoned": {
         "kind": "state",
@@ -1221,7 +1217,7 @@
       "time": "2026-05-26T10:00:02.050Z",
       "level": "INFO",
       "msg": "turn.start",
-      "session_id": "sess-oracle-rich-001",
+      "session_id": "sess-oracle-separate-prompts",
       "turn": 1,
       "state_path": "idle",
       "attrs": {
@@ -1232,7 +1228,7 @@
       "time": "2026-05-26T10:00:02.100Z",
       "level": "DEBUG",
       "msg": "machine.state_entered",
-      "session_id": "sess-oracle-rich-001",
+      "session_id": "sess-oracle-separate-prompts",
       "turn": 1,
       "state_path": "idle",
       "attrs": {}
@@ -1241,11 +1237,12 @@
       "time": "2026-05-26T10:00:02.150Z",
       "level": "DEBUG",
       "msg": "oracle.decide.start",
-      "session_id": "sess-oracle-rich-001",
+      "session_id": "sess-oracle-separate-prompts",
       "turn": 1,
       "state_path": "idle",
       "attrs": {
         "verb": "decide",
+        "call_id": "call-decide-001",
         "agent": "strategy_router",
         "model": "claude-3-sonnet"
       }
@@ -1254,28 +1251,29 @@
       "time": "2026-05-26T10:00:02.960Z",
       "level": "DEBUG",
       "msg": "oracle.decide.complete",
-      "session_id": "sess-oracle-rich-001",
+      "session_id": "sess-oracle-separate-prompts",
       "turn": 1,
       "state_path": "idle",
       "attrs": {
         "verb": "decide",
+        "call_id": "call-decide-001",
         "agent": "strategy_router",
         "model": "claude-3-sonnet",
         "duration_ms": 840,
         "prompt_tokens": 512,
         "response_tokens": 18,
         "cost_usd": 0.0009,
-        "system_prompt": "You are a strategy router for the bugfix pipeline. Given the user's message and the current world state, choose the best next step from the provided choices. Output valid JSON with a 'choice' field set to one of the choice ids, and a 'confidence' field between 0 and 1.",
-        "prompt": "The user typed: 'start BUG-4711'.\n\nWorld state: ticket_id is empty, no reproduction artifact exists.\n\nChoose the best next step.",
+        "system_prompt_file": "oracle-prompts/decide-001-system.txt",
+        "prompt_file": "oracle-prompts/decide-001.txt",
         "input": {
           "choices": [
             {
               "id": "reproduce_locally",
-              "description": "Attempt to reproduce the bug in a local workspace using the ticket id."
+              "description": "Attempt to reproduce the bug."
             },
             {
               "id": "ask_user",
-              "description": "Ask the user for more information before proceeding (ticket details are missing)."
+              "description": "Ask the user for more information."
             }
           ]
         },
@@ -1292,7 +1290,7 @@
       "time": "2026-05-26T10:00:03.010Z",
       "level": "DEBUG",
       "msg": "machine.transition",
-      "session_id": "sess-oracle-rich-001",
+      "session_id": "sess-oracle-separate-prompts",
       "turn": 1,
       "state_path": "idle",
       "attrs": {
@@ -1305,7 +1303,7 @@
       "time": "2026-05-26T10:00:03.060Z",
       "level": "DEBUG",
       "msg": "world.update",
-      "session_id": "sess-oracle-rich-001",
+      "session_id": "sess-oracle-separate-prompts",
       "turn": 1,
       "state_path": "idle",
       "attrs": {
@@ -1317,48 +1315,35 @@
     {
       "time": "2026-05-26T10:00:03.110Z",
       "level": "DEBUG",
-      "msg": "world.update",
-      "session_id": "sess-oracle-rich-001",
+      "msg": "machine.state_exited",
+      "session_id": "sess-oracle-separate-prompts",
       "turn": 1,
       "state_path": "idle",
-      "attrs": {
-        "set": {
-          "ticket_title": "race condition in worker pool on shutdown"
-        }
-      }
+      "attrs": {}
     },
     {
       "time": "2026-05-26T10:00:03.160Z",
       "level": "DEBUG",
-      "msg": "machine.state_exited",
-      "session_id": "sess-oracle-rich-001",
+      "msg": "machine.state_entered",
+      "session_id": "sess-oracle-separate-prompts",
       "turn": 1,
-      "state_path": "idle",
+      "state_path": "reproducing._executing",
       "attrs": {}
     },
     {
       "time": "2026-05-26T10:00:03.210Z",
-      "level": "DEBUG",
-      "msg": "machine.state_entered",
-      "session_id": "sess-oracle-rich-001",
-      "turn": 1,
-      "state_path": "reproducing._executing",
-      "attrs": {}
-    },
-    {
-      "time": "2026-05-26T10:00:03.260Z",
       "level": "INFO",
       "msg": "turn.end",
-      "session_id": "sess-oracle-rich-001",
+      "session_id": "sess-oracle-separate-prompts",
       "turn": 1,
       "state_path": "reproducing._executing",
       "attrs": {}
     },
     {
-      "time": "2026-05-26T10:00:06.310Z",
+      "time": "2026-05-26T10:00:06.260Z",
       "level": "INFO",
       "msg": "turn.start",
-      "session_id": "sess-oracle-rich-001",
+      "session_id": "sess-oracle-separate-prompts",
       "turn": 2,
       "state_path": "reproducing._executing",
       "attrs": {
@@ -1366,643 +1351,70 @@
       }
     },
     {
-      "time": "2026-05-26T10:00:06.360Z",
+      "time": "2026-05-26T10:00:06.310Z",
       "level": "DEBUG",
       "msg": "oracle.extract.start",
-      "session_id": "sess-oracle-rich-001",
+      "session_id": "sess-oracle-separate-prompts",
       "turn": 2,
       "state_path": "reproducing._executing",
       "attrs": {
         "verb": "extract",
+        "call_id": "call-extract-001",
         "agent": "intake_extractor",
         "model": "claude-3-sonnet"
+      }
+    },
+    {
+      "time": "2026-05-26T10:00:06.920Z",
+      "level": "DEBUG",
+      "msg": "oracle.extract.complete",
+      "session_id": "sess-oracle-separate-prompts",
+      "turn": 2,
+      "state_path": "reproducing._executing",
+      "attrs": {
+        "verb": "extract",
+        "call_id": "call-extract-001",
+        "agent": "intake_extractor",
+        "model": "claude-3-sonnet",
+        "duration_ms": 620,
+        "prompt_tokens": 384,
+        "response_tokens": 42,
+        "cost_usd": 0.00071,
+        "system_prompt_file": "oracle-prompts/extract-001-system.txt",
+        "prompt_file": "oracle-prompts/extract-001.txt",
+        "input": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "response": {
+          "extracted": {
+            "title": "Race condition in worker pool"
+          }
+        }
       }
     },
     {
       "time": "2026-05-26T10:00:06.970Z",
       "level": "DEBUG",
-      "msg": "oracle.extract.complete",
-      "session_id": "sess-oracle-rich-001",
+      "msg": "machine.state_exited",
+      "session_id": "sess-oracle-separate-prompts",
       "turn": 2,
       "state_path": "reproducing._executing",
-      "attrs": {
-        "verb": "extract",
-        "agent": "intake_extractor",
-        "model": "claude-3-sonnet",
-        "duration_ms": 620,
-        "prompt_tokens": 380,
-        "response_tokens": 45,
-        "cost_usd": 0.0006,
-        "system_prompt": "You are the intake extractor for the bugfix pipeline. Extract structured fields from the user's triage message according to the provided JSON Schema. Return only valid JSON that satisfies the schema.",
-        "prompt": "Triage message from thread BUG-4711:\n\n'BUG-4711: Race condition in worker pool on shutdown. The dispatcher closes the done channel without holding the mu lock while worker goroutines read it under mu. Severity: high. Reported by: ops-team.'",
-        "input": {
-          "schema": {
-            "type": "object",
-            "properties": {
-              "ticket_id": {
-                "type": "string",
-                "description": "Jira/issue tracker id"
-              },
-              "summary": {
-                "type": "string",
-                "description": "One-sentence bug summary"
-              },
-              "severity": {
-                "type": "string",
-                "enum": [
-                  "low",
-                  "medium",
-                  "high",
-                  "critical"
-                ],
-                "description": "Bug severity level"
-              }
-            },
-            "required": [
-              "ticket_id",
-              "summary",
-              "severity"
-            ]
-          }
-        },
-        "response": {
-          "json": {
-            "ticket_id": "BUG-4711",
-            "summary": "Race condition in worker pool on shutdown",
-            "severity": "high"
-          },
-          "extracted": {
-            "ticket_id": "BUG-4711",
-            "summary": "Race condition in worker pool on shutdown",
-            "severity": "high"
-          }
-        }
-      }
+      "attrs": {}
     },
     {
       "time": "2026-05-26T10:00:07.020Z",
-      "level": "DEBUG",
-      "msg": "world.update",
-      "session_id": "sess-oracle-rich-001",
+      "level": "INFO",
+      "msg": "turn.end",
+      "session_id": "sess-oracle-separate-prompts",
       "turn": 2,
       "state_path": "reproducing._executing",
-      "attrs": {
-        "set": {
-          "ticket_id": "BUG-4711"
-        }
-      }
-    },
-    {
-      "time": "2026-05-26T10:00:07.070Z",
-      "level": "DEBUG",
-      "msg": "world.update",
-      "session_id": "sess-oracle-rich-001",
-      "turn": 2,
-      "state_path": "reproducing._executing",
-      "attrs": {
-        "set": {
-          "ticket_title": "Race condition in worker pool on shutdown"
-        }
-      }
-    },
-    {
-      "time": "2026-05-26T10:00:07.120Z",
-      "level": "INFO",
-      "msg": "turn.end",
-      "session_id": "sess-oracle-rich-001",
-      "turn": 2,
-      "state_path": "reproducing._executing",
-      "attrs": {}
-    },
-    {
-      "time": "2026-05-26T10:00:15.170Z",
-      "level": "INFO",
-      "msg": "turn.start",
-      "session_id": "sess-oracle-rich-001",
-      "turn": 3,
-      "state_path": "idle",
-      "attrs": {
-        "input": "restart from proposing please"
-      }
-    },
-    {
-      "time": "2026-05-26T10:00:15.220Z",
-      "level": "DEBUG",
-      "msg": "machine.state_exited",
-      "session_id": "sess-oracle-rich-001",
-      "turn": 3,
-      "state_path": "reproducing._executing",
-      "attrs": {}
-    },
-    {
-      "time": "2026-05-26T10:00:15.270Z",
-      "level": "DEBUG",
-      "msg": "machine.state_entered",
-      "session_id": "sess-oracle-rich-001",
-      "turn": 3,
-      "state_path": "idle",
-      "attrs": {}
-    },
-    {
-      "time": "2026-05-26T10:00:15.320Z",
-      "level": "DEBUG",
-      "msg": "oracle.ask.start",
-      "session_id": "sess-oracle-rich-001",
-      "turn": 3,
-      "state_path": "idle",
-      "attrs": {
-        "verb": "ask",
-        "agent": "idle_router",
-        "model": "claude-3-sonnet"
-      }
-    },
-    {
-      "time": "2026-05-26T10:00:15.830Z",
-      "level": "DEBUG",
-      "msg": "oracle.ask.complete",
-      "session_id": "sess-oracle-rich-001",
-      "turn": 3,
-      "state_path": "idle",
-      "attrs": {
-        "verb": "ask",
-        "agent": "idle_router",
-        "model": "claude-3-sonnet",
-        "duration_ms": 510,
-        "prompt_tokens": 420,
-        "response_tokens": 28,
-        "cost_usd": 0.0005,
-        "system_prompt": "You are the intent router for the bugfix pipeline idle state. Classify the user message into one of the registered intents and extract any slots. Registered intents: start, quit, restart_from, quick. Output JSON with 'intent' and 'slots' fields.",
-        "prompt": "User: restart from proposing please",
-        "input": {
-          "instructions": "Classify the user message into one of: start, quit, restart_from, quick."
-        },
-        "response": {
-          "text": "Intent: restart_from",
-          "intent": "restart_from",
-          "slots": {
-            "stage": "proposing"
-          }
-        }
-      }
-    },
-    {
-      "time": "2026-05-26T10:00:15.880Z",
-      "level": "DEBUG",
-      "msg": "machine.transition",
-      "session_id": "sess-oracle-rich-001",
-      "turn": 3,
-      "state_path": "idle",
-      "attrs": {
-        "from": "idle",
-        "to": "proposing._executing",
-        "intent": "restart_from"
-      }
-    },
-    {
-      "time": "2026-05-26T10:00:15.930Z",
-      "level": "DEBUG",
-      "msg": "world.update",
-      "session_id": "sess-oracle-rich-001",
-      "turn": 3,
-      "state_path": "idle",
-      "attrs": {
-        "set": {
-          "restart_from_stage": "proposing"
-        }
-      }
-    },
-    {
-      "time": "2026-05-26T10:00:15.980Z",
-      "level": "DEBUG",
-      "msg": "machine.state_exited",
-      "session_id": "sess-oracle-rich-001",
-      "turn": 3,
-      "state_path": "idle",
-      "attrs": {}
-    },
-    {
-      "time": "2026-05-26T10:00:16.030Z",
-      "level": "DEBUG",
-      "msg": "machine.state_entered",
-      "session_id": "sess-oracle-rich-001",
-      "turn": 3,
-      "state_path": "proposing._executing",
-      "attrs": {}
-    },
-    {
-      "time": "2026-05-26T10:00:16.080Z",
-      "level": "INFO",
-      "msg": "turn.end",
-      "session_id": "sess-oracle-rich-001",
-      "turn": 3,
-      "state_path": "proposing._executing",
-      "attrs": {}
-    },
-    {
-      "time": "2026-05-26T10:00:21.130Z",
-      "level": "INFO",
-      "msg": "turn.start",
-      "session_id": "sess-oracle-rich-001",
-      "turn": 4,
-      "state_path": "reproducing._executing",
-      "attrs": {
-        "input": "(auto:executing)"
-      }
-    },
-    {
-      "time": "2026-05-26T10:00:21.180Z",
-      "level": "DEBUG",
-      "msg": "machine.state_exited",
-      "session_id": "sess-oracle-rich-001",
-      "turn": 4,
-      "state_path": "proposing._executing",
-      "attrs": {}
-    },
-    {
-      "time": "2026-05-26T10:00:21.230Z",
-      "level": "DEBUG",
-      "msg": "machine.state_entered",
-      "session_id": "sess-oracle-rich-001",
-      "turn": 4,
-      "state_path": "reproducing._executing",
-      "attrs": {}
-    },
-    {
-      "time": "2026-05-26T10:00:21.280Z",
-      "level": "DEBUG",
-      "msg": "oracle.task.start",
-      "session_id": "sess-oracle-rich-001",
-      "turn": 4,
-      "state_path": "reproducing._executing",
-      "attrs": {
-        "verb": "task",
-        "agent": "reproducing_specialist",
-        "model": "claude-3-sonnet"
-      }
-    },
-    {
-      "time": "2026-05-26T10:00:43.290Z",
-      "level": "DEBUG",
-      "msg": "oracle.task.complete",
-      "session_id": "sess-oracle-rich-001",
-      "turn": 4,
-      "state_path": "reproducing._executing",
-      "attrs": {
-        "verb": "task",
-        "agent": "reproducing_specialist",
-        "model": "claude-3-sonnet",
-        "duration_ms": 22400,
-        "prompt_tokens": 2400,
-        "response_tokens": 1820,
-        "cost_usd": 0.018,
-        "system_prompt": "You are the reproducing specialist for the kitsoki bugfix pipeline. Your goal is to reproduce the reported bug by reading the relevant source files, understanding the race condition, writing a failing test, and confirming the test fails under the Go race detector. Use the available tools: Read, Grep, Edit, Bash. Return a concise summary of your findings and the reproduction steps.",
-        "prompt": "Reproduce BUG-4711: race condition in worker pool on shutdown.\n\nRepository path: /workspace/BUG-4711\nPackage under test: workerpool\n\nSteps expected:\n1. Read the dispatcher implementation to locate the race.\n2. Grep for the shutdown function across the package.\n3. Read the existing test file to find the right insertion point.\n4. Add a failing test that exercises the race.\n5. Run `go test -race ./workerpool/...` and confirm the test fails.\n6. Summarise the root cause.",
-        "input": {
-          "instructions": "Reproduce the reported race condition. Write a failing test named TestDispatcherShutdownRace that demonstrates the race under `go test -race`. Do not fix the bug — only prove it is reproducible.",
-          "files_in": [
-            "workerpool/dispatcher.go",
-            "workerpool/worker.go"
-          ]
-        },
-        "response": {
-          "text": "Root cause identified: Dispatcher.shutdown() closes the done channel without holding d.mu, while worker goroutines in (*Worker).loop() check done under d.mu. This creates a concurrent read/write on the channel head pointer.\n\nAdded TestDispatcherShutdownRace in dispatcher_test.go. The test spawns 8 concurrent workers and calls Shutdown() while tasks are still dispatching. Under `go test -race` it fails reliably:\n\n    DATA RACE\n    Write at 0x00c0001a4080 by goroutine 12:\n      workerpool.(*Dispatcher).shutdown()\n    Previous read at 0x00c0001a4080 by goroutine 17:\n      workerpool.(*Worker).loop()\n\nReproduction confirmed. Test committed to dispatcher_test.go."
-        },
-        "tool_calls": [
-          {
-            "seq": 1,
-            "tool": "Read",
-            "args": {
-              "file_path": "workerpool/dispatcher.go"
-            },
-            "result": "package workerpool\n\nimport \"sync\"\n\ntype Dispatcher struct {\n\tmu      sync.Mutex\n\tworkers []*Worker\n\tdone    chan struct{}\n}\n\nfunc NewDispatcher(n int) *Dispatcher {\n\treturn &Dispatcher{done: make(chan struct{})}\n}\n\nfunc (d *Dispatcher) Start() {\n\tfor i := 0; i < cap(d.workers); i++ {\n\t\tw := &Worker{d: d}\n\t\td.workers = append(d.workers, w)\n\t\tgo w.loop()\n\t}\n}\n\n// shutdown closes the done channel without holding mu — RACE\nfunc (d *Dispatcher) shutdown() {\n\tclose(d.done)\n}",
-            "duration_ms": 12
-          },
-          {
-            "seq": 2,
-            "tool": "Grep",
-            "args": {
-              "pattern": "func.*[Ss]hutdown",
-              "path": "workerpool/",
-              "recursive": true
-            },
-            "result": "workerpool/dispatcher.go:28:func (d *Dispatcher) shutdown() {\nworkerpool/dispatcher.go:31:func (d *Dispatcher) Shutdown() {\n",
-            "duration_ms": 8
-          },
-          {
-            "seq": 3,
-            "tool": "Read",
-            "args": {
-              "file_path": "workerpool/dispatcher.go",
-              "offset": 31,
-              "limit": 10
-            },
-            "result": "func (d *Dispatcher) Shutdown() {\n\td.mu.Lock()\n\tdefer d.mu.Unlock()\n\td.shutdown()\n}\n",
-            "duration_ms": 10
-          },
-          {
-            "seq": 4,
-            "tool": "Read",
-            "args": {
-              "file_path": "workerpool/dispatcher_test.go"
-            },
-            "result": "package workerpool\n\nimport (\n\t\"testing\"\n\t\"sync\"\n)\n\nfunc TestDispatcherBasic(t *testing.T) {\n\td := NewDispatcher(2)\n\td.Start()\n\td.Shutdown()\n}\n\nfunc TestDispatcherDispatch(t *testing.T) {\n\td := NewDispatcher(4)\n\td.Start()\n\tvar count int32\n\tfor i := 0; i < 100; i++ {\n\t\td.Dispatch(func() { atomic.AddInt32(&count, 1) })\n\t}\n\td.Shutdown()\n}\n",
-            "duration_ms": 11
-          },
-          {
-            "seq": 5,
-            "tool": "Edit",
-            "args": {
-              "file_path": "workerpool/dispatcher_test.go",
-              "old_string": "func TestDispatcherDispatch(t *testing.T) {",
-              "new_string": "func TestDispatcherShutdownRace(t *testing.T) {\n\tconst workers = 8\n\td := NewDispatcher(workers)\n\td.Start()\n\tvar wg sync.WaitGroup\n\tfor i := 0; i < workers*4; i++ {\n\t\twg.Add(1)\n\t\tgo func() {\n\t\t\tdefer wg.Done()\n\t\t\td.Dispatch(noopTask)\n\t\t}()\n\t}\n\twg.Wait()\n\td.Shutdown()\n}\n\nfunc TestDispatcherDispatch(t *testing.T) {"
-            },
-            "result": "Edit applied successfully.",
-            "duration_ms": 14
-          },
-          {
-            "seq": 6,
-            "tool": "Bash",
-            "args": {
-              "command": "cd /workspace/BUG-4711 && go test -race -run TestDispatcherShutdownRace ./workerpool/... 2>&1 | tail -25",
-              "timeout": 30000
-            },
-            "result": "--- FAIL: TestDispatcherShutdownRace (0.12s)\n    DATA RACE\n    Write at 0x00c0001a4080 by goroutine 12:\n      workerpool.(*Dispatcher).shutdown()\n          /workspace/BUG-4711/workerpool/dispatcher.go:29\n    Previous read at 0x00c0001a4080 by goroutine 17:\n      workerpool.(*Worker).loop()\n          /workspace/BUG-4711/workerpool/worker.go:44\nFAIL\tworkerpool\t0.128s\n",
-            "duration_ms": 3100
-          },
-          {
-            "seq": 7,
-            "tool": "Bash",
-            "args": {
-              "command": "cd /workspace/BUG-4711 && go test -race ./workerpool/... 2>&1 | tail -5",
-              "timeout": 30000
-            },
-            "result": "ok  \tworkerpool\t3.241s\n# Only TestDispatcherShutdownRace fails; other tests pass.",
-            "duration_ms": 3241
-          }
-        ],
-        "files_changed": [
-          {
-            "path": "workerpool/dispatcher_test.go",
-            "status": "modified",
-            "additions": 16,
-            "deletions": 0,
-            "diff": "--- workerpool/dispatcher_test.go\n+++ workerpool/dispatcher_test.go\n@@ -14,0 +14,16 @@\n+func TestDispatcherShutdownRace(t *testing.T) {\n+\tconst workers = 8\n+\td := NewDispatcher(workers)\n+\td.Start()\n+\tvar wg sync.WaitGroup\n+\tfor i := 0; i < workers*4; i++ {\n+\t\twg.Add(1)\n+\t\tgo func() {\n+\t\t\tdefer wg.Done()\n+\t\t\td.Dispatch(noopTask)\n+\t\t}()\n+\t}\n+\twg.Wait()\n+\td.Shutdown()\n+}\n+\n"
-          }
-        ]
-      }
-    },
-    {
-      "time": "2026-05-26T10:00:43.340Z",
-      "level": "DEBUG",
-      "msg": "host.call.start",
-      "session_id": "sess-oracle-rich-001",
-      "turn": 4,
-      "state_path": "reproducing._executing",
-      "attrs": {
-        "handler": "iface.workspace.sync",
-        "input": {
-          "workspace_id": "default"
-        }
-      }
-    },
-    {
-      "time": "2026-05-26T10:00:43.540Z",
-      "level": "DEBUG",
-      "msg": "host.call.complete",
-      "session_id": "sess-oracle-rich-001",
-      "turn": 4,
-      "state_path": "reproducing._executing",
-      "attrs": {
-        "handler": "iface.workspace.sync",
-        "duration_ms": 240,
-        "return": "ok"
-      }
-    },
-    {
-      "time": "2026-05-26T10:00:43.590Z",
-      "level": "DEBUG",
-      "msg": "host.call.start",
-      "session_id": "sess-oracle-rich-001",
-      "turn": 4,
-      "state_path": "reproducing._executing",
-      "attrs": {
-        "handler": "iface.vcs.checkout",
-        "input": {
-          "branch": "bug/BUG-4711"
-        }
-      }
-    },
-    {
-      "time": "2026-05-26T10:00:43.670Z",
-      "level": "DEBUG",
-      "msg": "host.call.complete",
-      "session_id": "sess-oracle-rich-001",
-      "turn": 4,
-      "state_path": "reproducing._executing",
-      "attrs": {
-        "handler": "iface.vcs.checkout",
-        "duration_ms": 80,
-        "return": "ok"
-      }
-    },
-    {
-      "time": "2026-05-26T10:00:43.720Z",
-      "level": "DEBUG",
-      "msg": "host.call.start",
-      "session_id": "sess-oracle-rich-001",
-      "turn": 4,
-      "state_path": "reproducing._executing",
-      "attrs": {
-        "handler": "iface.transport.post",
-        "input": {
-          "thread": "BUG-4711",
-          "kind": "reproduction"
-        }
-      }
-    },
-    {
-      "time": "2026-05-26T10:00:43.850Z",
-      "level": "DEBUG",
-      "msg": "host.call.complete",
-      "session_id": "sess-oracle-rich-001",
-      "turn": 4,
-      "state_path": "reproducing._executing",
-      "attrs": {
-        "handler": "iface.transport.post",
-        "duration_ms": 130,
-        "post_id": "p_001"
-      }
-    },
-    {
-      "time": "2026-05-26T10:00:43.900Z",
-      "level": "DEBUG",
-      "msg": "world.update",
-      "session_id": "sess-oracle-rich-001",
-      "turn": 4,
-      "state_path": "reproducing._executing",
-      "attrs": {
-        "set": {
-          "reproduction_artifact": {
-            "confirmed": true,
-            "test": "TestDispatcherShutdownRace",
-            "tokens": 1820
-          }
-        }
-      }
-    },
-    {
-      "time": "2026-05-26T10:00:43.950Z",
-      "level": "DEBUG",
-      "msg": "machine.transition",
-      "session_id": "sess-oracle-rich-001",
-      "turn": 4,
-      "state_path": "reproducing._executing",
-      "attrs": {
-        "from": "reproducing._executing",
-        "to": "reproducing._awaiting_reply",
-        "intent": "@auto"
-      }
-    },
-    {
-      "time": "2026-05-26T10:00:44.000Z",
-      "level": "DEBUG",
-      "msg": "machine.state_exited",
-      "session_id": "sess-oracle-rich-001",
-      "turn": 4,
-      "state_path": "reproducing._executing",
-      "attrs": {}
-    },
-    {
-      "time": "2026-05-26T10:00:44.050Z",
-      "level": "DEBUG",
-      "msg": "machine.state_entered",
-      "session_id": "sess-oracle-rich-001",
-      "turn": 4,
-      "state_path": "reproducing._awaiting_reply",
-      "attrs": {}
-    },
-    {
-      "time": "2026-05-26T10:00:44.100Z",
-      "level": "INFO",
-      "msg": "turn.end",
-      "session_id": "sess-oracle-rich-001",
-      "turn": 4,
-      "state_path": "reproducing._awaiting_reply",
-      "attrs": {}
-    },
-    {
-      "time": "2026-05-26T10:00:54.150Z",
-      "level": "INFO",
-      "msg": "turn.start",
-      "session_id": "sess-oracle-rich-001",
-      "turn": 5,
-      "state_path": "reproducing._awaiting_reply",
-      "attrs": {
-        "input": "before we fix this, question about shutdown semantics"
-      }
-    },
-    {
-      "time": "2026-05-26T10:00:54.200Z",
-      "level": "DEBUG",
-      "msg": "oracle.converse.start",
-      "session_id": "sess-oracle-rich-001",
-      "turn": 5,
-      "state_path": "reproducing._awaiting_reply",
-      "attrs": {
-        "verb": "converse",
-        "agent": "clarification_agent",
-        "model": "claude-3-sonnet"
-      }
-    },
-    {
-      "time": "2026-05-26T10:00:57.210Z",
-      "level": "DEBUG",
-      "msg": "oracle.converse.complete",
-      "session_id": "sess-oracle-rich-001",
-      "turn": 5,
-      "state_path": "reproducing._awaiting_reply",
-      "attrs": {
-        "verb": "converse",
-        "agent": "clarification_agent",
-        "model": "claude-3-sonnet",
-        "duration_ms": 3200,
-        "prompt_tokens": 680,
-        "response_tokens": 142,
-        "cost_usd": 0.0014,
-        "system_prompt": "You are a clarification agent embedded in the bugfix pipeline. Your role is to conduct a short, focused dialogue with the operator to resolve ambiguity about requirements before the fix is proposed. Ask targeted questions, acknowledge answers, and summarise the agreed behaviour as the final message.",
-        "prompt": "We need to clarify the expected shutdown behaviour for Dispatcher before the proposing specialist authors the fix.\n\nKnown facts:\n- Current code: shutdown() closes done channel without holding mu.\n- Workers: read done inside mu.\n- Race: confirmed under -race detector.\n\nConduct a clarification dialogue with the operator.",
-        "input": {
-          "messages": [
-            {
-              "role": "assistant",
-              "content": "Before I write the fix, I need to clarify the expected shutdown semantics. Should Dispatcher.Shutdown() wait for in-flight tasks to drain before returning, or should it signal cancellation and return immediately?"
-            },
-            {
-              "role": "user",
-              "content": "It should drain: wait for in-flight tasks to finish, but with a timeout. After the timeout, force-cancel any remaining tasks."
-            },
-            {
-              "role": "assistant",
-              "content": "Understood — drain with timeout, then force-cancel. Should the timeout be a fixed constant (e.g. 5s) or configurable per Dispatcher instance?"
-            }
-          ]
-        },
-        "response": {
-          "text": "Configurable per instance via a ShutdownTimeout field, defaulting to 5 seconds. Zero value means block indefinitely (no force-cancel). Summary of agreed behaviour:\n1. Shutdown() acquires mu, signals done.\n2. Waits up to ShutdownTimeout for all workers to exit their loops.\n3. If timeout elapses, cancels remaining tasks via context.\n4. Returns after all goroutines have exited."
-        }
-      }
-    },
-    {
-      "time": "2026-05-26T10:00:57.260Z",
-      "level": "DEBUG",
-      "msg": "machine.transition",
-      "session_id": "sess-oracle-rich-001",
-      "turn": 5,
-      "state_path": "reproducing._awaiting_reply",
-      "attrs": {
-        "from": "reproducing._awaiting_reply",
-        "to": "proposing._executing",
-        "intent": "accept"
-      }
-    },
-    {
-      "time": "2026-05-26T10:00:57.310Z",
-      "level": "DEBUG",
-      "msg": "world.update",
-      "session_id": "sess-oracle-rich-001",
-      "turn": 5,
-      "state_path": "reproducing._awaiting_reply",
-      "attrs": {
-        "set": {
-          "refine_feedback": "Shutdown must drain with configurable timeout (default 5s), then force-cancel."
-        }
-      }
-    },
-    {
-      "time": "2026-05-26T10:00:57.360Z",
-      "level": "DEBUG",
-      "msg": "machine.state_exited",
-      "session_id": "sess-oracle-rich-001",
-      "turn": 5,
-      "state_path": "reproducing._awaiting_reply",
-      "attrs": {}
-    },
-    {
-      "time": "2026-05-26T10:00:57.410Z",
-      "level": "DEBUG",
-      "msg": "machine.state_entered",
-      "session_id": "sess-oracle-rich-001",
-      "turn": 5,
-      "state_path": "proposing._executing",
-      "attrs": {}
-    },
-    {
-      "time": "2026-05-26T10:00:57.460Z",
-      "level": "INFO",
-      "msg": "turn.end",
-      "session_id": "sess-oracle-rich-001",
-      "turn": 5,
-      "state_path": "proposing._executing",
       "attrs": {}
     }
   ]

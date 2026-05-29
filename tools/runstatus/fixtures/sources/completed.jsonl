@@ -17,7 +17,7 @@
 {"time":"2026-05-25T11:00:10.082Z","level":"DEBUG","msg":"harness.called","session_id":"sess-done-001","turn":3,"state_path":"cloakroom","handler":"host.notify","with":{"message":"Cloak hung on hook","state":"cloakroom"}}
 {"time":"2026-05-25T11:00:10.084Z","level":"DEBUG","msg":"harness.returned","session_id":"sess-done-001","turn":3,"state_path":"cloakroom","handler":"host.notify","return":{"ok":true},"duration_ms":2}
 {"time":"2026-05-25T11:00:10.085Z","level":"DEBUG","msg":"machine.transition","session_id":"sess-done-001","turn":3,"state_path":"cloakroom","intent":"hang_cloak","from":"cloakroom","to":"cloakroom"}
-{"time":"2026-05-25T11:00:10.090Z","level":"DEBUG","msg":"machine.world.write","session_id":"sess-done-001","turn":3,"state_path":"cloakroom","key":"wearing_cloak","value":false}
+{"time":"2026-05-25T11:00:10.090Z","level":"DEBUG","msg":"world.update","session_id":"sess-done-001","turn":3,"state_path":"cloakroom","set":{"wearing_cloak":false}}
 {"time":"2026-05-25T11:00:10.095Z","level":"DEBUG","msg":"machine.state_entered","session_id":"sess-done-001","turn":3,"state_path":"cloakroom"}
 {"time":"2026-05-25T11:00:10.100Z","level":"INFO","msg":"turn.end","session_id":"sess-done-001","turn":3,"state_path":"cloakroom"}
 {"time":"2026-05-25T11:00:15.000Z","level":"INFO","msg":"turn.start","session_id":"sess-done-001","turn":4,"state_path":"cloakroom","input":"go east"}
@@ -44,7 +44,7 @@
 {"time":"2026-05-25T11:00:30.018Z","level":"DEBUG","msg":"oracle.ask.start","session_id":"sess-done-001","turn":7,"state_path":"bar.lit","model":"claude-3-sonnet","prompt_tokens":570}
 {"time":"2026-05-25T11:00:30.172Z","level":"DEBUG","msg":"oracle.ask.complete","session_id":"sess-done-001","turn":7,"state_path":"bar.lit","intent":"read_message","model":"claude-3-sonnet","response_tokens":22}
 {"time":"2026-05-25T11:00:30.177Z","level":"DEBUG","msg":"machine.transition","session_id":"sess-done-001","turn":7,"state_path":"bar.lit","intent":"read_message","from":"bar.lit","to":"ended"}
-{"time":"2026-05-25T11:00:30.182Z","level":"DEBUG","msg":"machine.world.write","session_id":"sess-done-001","turn":7,"state_path":"bar.lit","key":"message_rumpled","value":false}
+{"time":"2026-05-25T11:00:30.182Z","level":"DEBUG","msg":"world.update","session_id":"sess-done-001","turn":7,"state_path":"bar.lit","set":{"message_rumpled":false}}
 {"time":"2026-05-25T11:00:30.186Z","level":"DEBUG","msg":"machine.state_exited","session_id":"sess-done-001","turn":7,"state_path":"bar.lit"}
 {"time":"2026-05-25T11:00:30.189Z","level":"DEBUG","msg":"machine.state_entered","session_id":"sess-done-001","turn":7,"state_path":"ended"}
 {"time":"2026-05-25T11:00:30.193Z","level":"INFO","msg":"turn.end","session_id":"sess-done-001","turn":7,"state_path":"ended"}
