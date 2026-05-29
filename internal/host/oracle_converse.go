@@ -139,8 +139,6 @@ func OracleConverseHandler(ctx context.Context, args map[string]any) (Result, er
 		Verb:         "converse",
 		Agent:        agentNameFromArgs(args),
 		Model:        agent.Model,
-		Prompt:       question,
-		SystemPrompt: systemPrompt,
 	})
 
 	cliArgs := []string{
@@ -284,8 +282,6 @@ func doConverseChatTurn(ctx context.Context, cs ChatStore, chatID, question, wor
 		Verb:         "converse",
 		Agent:        "",
 		Model:        model,
-		Prompt:       question,
-		SystemPrompt: systemPrompt,
 	})
 
 	chat, err := cs.Get(ctx, chatID)

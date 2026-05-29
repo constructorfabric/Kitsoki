@@ -297,16 +297,15 @@ func OracleAskHandler(ctx context.Context, args map[string]any) (Result, error) 
 
 	callID := newUUID()
 	callStart := time.Now()
-	systemPrompt := effectiveSystemPrompt(args, agent)
 
 	// Wave 3-oracle: write OracleCalled to the JSONL sink (if wired) at
-	// dispatch time, before the subprocess is started.
+	// dispatch time, before the subprocess is started. Note: Prompt and
+	// SystemPrompt are omitted from the event to stay under PIPE_BUF (4096 bytes).
+	// The full prompt is available in AskRequest context (live) or cassette (replay).
 	appendOracleCalledEvent(ctx, callStart, callID, OracleCalledPayload{
 		Verb:         "ask",
 		Agent:        agentNameFromArgs(args),
 		Model:        agent.Model,
-		Prompt:       rendered,
-		SystemPrompt: systemPrompt,
 		Input:        marshalInput(map[string]any{}),
 	})
 

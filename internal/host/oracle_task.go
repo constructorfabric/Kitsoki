@@ -166,15 +166,15 @@ func OracleTaskHandler(ctx context.Context, args map[string]any) (Result, error)
 
 	callID := newUUID()
 	callStart := time.Now()
-	taskSystemPrompt := effectiveSystemPrompt(args, agent)
 
 	// Wave 3-oracle: write OracleCalled to the JSONL sink at dispatch time.
+	// Note: Prompt and SystemPrompt are omitted from the event to stay under
+	// PIPE_BUF (4096 bytes). The full prompt is available in AskRequest context
+	// (live) or cassette (replay).
 	appendOracleCalledEvent(ctx, callStart, callID, OracleCalledPayload{
 		Verb:         "task",
 		Agent:        agentName,
 		Model:        agent.Model,
-		Prompt:       contextPrompt,
-		SystemPrompt: taskSystemPrompt,
 	})
 
 	slog.InfoContext(ctx, "task.start",

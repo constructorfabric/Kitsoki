@@ -274,8 +274,6 @@ func OracleDecideHandler(ctx context.Context, args map[string]any) (Result, erro
 		Verb:         "decide",
 		Agent:        agentNameFromArgs(args),
 		Model:        agent.Model,
-		Prompt:       rendered,
-		SystemPrompt: systemPrompt,
 		Input:        marshalInput(decideInputDesc),
 	})
 

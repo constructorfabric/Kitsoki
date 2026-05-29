@@ -82,13 +82,18 @@ func EventSinkFromOracleCtx(ctx context.Context) store.EventSink {
 // extract, task, converse). The call_id is a deterministic identifier that
 // pairs this event with the matching OracleReturned or OracleError event.
 // Replay treats OracleCalled as a no-op.
+//
+// NOTE: Prompt and SystemPrompt are omitted from the event to keep the JSONL
+// line under PIPE_BUF (4096 bytes). The full prompt is available in:
+// - The oracle.AskRequest.PromptText (live mode)
+// - The cassette via !include (replay mode)
+// This ensures deterministic replay while staying under atomic write limits.
+// See oracle_dispatch.go appendOracleCalledEventWithEpisode for details.
 type OracleCalledPayload struct {
-	Verb         string          `json:"verb"`
-	Agent        string          `json:"agent,omitempty"`
-	Model        string          `json:"model,omitempty"`
-	Prompt       string          `json:"prompt,omitempty"`
-	SystemPrompt string          `json:"system_prompt,omitempty"`
-	Input        json.RawMessage `json:"input,omitempty"`
+	Verb  string          `json:"verb"`
+	Agent string          `json:"agent,omitempty"`
+	Model string          `json:"model,omitempty"`
+	Input json.RawMessage `json:"input,omitempty"`
 }
 
 // OracleReturnedPayload is the payload written to OracleReturned events.
