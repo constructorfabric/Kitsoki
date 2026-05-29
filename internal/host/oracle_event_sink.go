@@ -127,13 +127,20 @@ type OracleCalledPayload struct {
 // OracleReturnedPayload is the payload written to OracleReturned events.
 // Meta is opaque (tokens, cost, model — varies by oracle transport).
 // Replay treats OracleReturned as a no-op.
+//
+// NOTE: Large responses are stored in separate files to keep the JSONL line
+// under PIPE_BUF (4096 bytes). When ResponseFile is set, the full response is
+// in that external file. The response is available in:
+// - The oracle handler's response field (live mode)
+// - The cassette's response field or separate response file (replay mode)
 type OracleReturnedPayload struct {
-	Verb       string          `json:"verb"`
-	Agent      string          `json:"agent,omitempty"`
-	Model      string          `json:"model,omitempty"`
-	DurationMS int64           `json:"duration_ms"`
-	Response   json.RawMessage `json:"response,omitempty"`
-	Meta       map[string]any  `json:"meta,omitempty"`
+	Verb         string          `json:"verb"`
+	Agent        string          `json:"agent,omitempty"`
+	Model        string          `json:"model,omitempty"`
+	DurationMS   int64           `json:"duration_ms"`
+	Response     json.RawMessage `json:"response,omitempty"`
+	ResponseFile string          `json:"response_file,omitempty"` // Path to external response file if large
+	Meta         map[string]any  `json:"meta,omitempty"`
 }
 
 // OracleErrorPayload is the payload written to OracleError events.
@@ -175,12 +182,23 @@ func appendOracleCalledEvent(ctx context.Context, ts time.Time, callID string, p
 
 // appendOracleReturnedEvent appends an OracleReturned event to the EventSink
 // in ctx (if any). ts is the response timestamp (real, not fudged).
+// If the response is large, it is stored in a separate file and the
+// payload.ResponseFile is set to reference it.
 func appendOracleReturnedEvent(ctx context.Context, ts time.Time, callID string, payload OracleReturnedPayload) {
 	sink := EventSinkFromOracleCtx(ctx)
 	if sink == nil {
 		return
 	}
 	oc := OracleCallCtxFrom(ctx)
+
+	// Store large responses in separate files to keep JSONL lines under PIPE_BUF.
+	if len(payload.Response) > 0 {
+		if responseFile, err := storeResponseIfLarge(ctx, callID, payload.Response); err == nil && responseFile != "" {
+			payload.ResponseFile = responseFile
+			payload.Response = nil // Clear the inline response since it's in a separate file
+		}
+		// On error, proceed with the original (possibly large) payload anyway
+	}
 
 	raw, err := json.Marshal(payload)
 	if err != nil {
@@ -336,4 +354,57 @@ func promptForEvent(ctx context.Context, callID string, prompt string) string {
 
 	// Large prompt with storage configured; don't include in event
 	return ""
+}
+
+// storeResponseIfLarge writes the response to a separate file if it's large (>1KB),
+// returning the file reference for the ResponseFile field, or "" if the response
+// was small or storage is not configured. Large responses are stored in
+// {promptsDir}/{callID}-response.json to keep JSONL lines under PIPE_BUF.
+//
+// Returns: (responseFileRef, error). On error, returns ("", err) and the event
+// should still be written (response unavailable in UI, but execution continues).
+func storeResponseIfLarge(ctx context.Context, callID string, response json.RawMessage) (string, error) {
+	const largeThreshold = 1024 // 1KB
+
+	if len(response) <= largeThreshold {
+		return "", nil // Small enough to include inline
+	}
+
+	promptsDir := OraclePromptsDirFromCtx(ctx)
+	if promptsDir == "" {
+		return "", nil // Storage not configured; skip
+	}
+
+	// Ensure prompts directory exists (reuse for both prompts and responses).
+	if err := os.MkdirAll(promptsDir, 0o755); err != nil {
+		return "", fmt.Errorf("storeResponseIfLarge: mkdir %q: %w", promptsDir, err)
+	}
+
+	// Write response to {promptsDir}/{callID}-response.json.
+	responsePath := filepath.Join(promptsDir, callID+"-response.json")
+	if err := os.WriteFile(responsePath, []byte(response), 0o644); err != nil {
+		return "", fmt.Errorf("storeResponseIfLarge: write %q: %w", responsePath, err)
+	}
+
+	// Return relative path for portability (relative to trace dir).
+	return filepath.Join("oracle-prompts", callID+"-response.json"), nil
+}
+
+// responseForEvent returns the response bytes to include in the OracleReturned event.
+// If the response is large and storage is configured, stores it separately and
+// returns nil. Otherwise returns the full response (for small responses stored inline).
+func responseForEvent(ctx context.Context, callID string, response json.RawMessage) json.RawMessage {
+	const largeThreshold = 1024
+
+	if len(response) <= largeThreshold {
+		return response // Small; include inline
+	}
+
+	promptsDir := OraclePromptsDirFromCtx(ctx)
+	if promptsDir == "" {
+		return response // Storage not configured; include inline (may exceed PIPE_BUF)
+	}
+
+	// Large response with storage configured; don't include in event
+	return nil
 }
