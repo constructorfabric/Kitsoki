@@ -484,14 +484,14 @@ episodes:
 	}
 }
 
-// ─── §3.3.5: Oversize episode via !include ────────────────────────────────────
+// ─── §3.3.5: Large episode via !include ────────────────────────────────────
 
-// TestCassettesDeterminism_OversizeInclude verifies that a large !include
-// payload is resolved at load time and that writing it to JSONL fails at
-// the PIPE_BUF limit. Skipped under -short (4 MiB allocation).
-func TestCassettesDeterminism_OversizeInclude(t *testing.T) {
+// TestCassettesDeterminism_LargeInclude verifies that a large !include
+// payload is resolved at load time and correctly written to JSONL
+// (PIPE_BUF limit was removed). Skipped under -short (4 MiB allocation).
+func TestCassettesDeterminism_LargeInclude(t *testing.T) {
 	if testing.Short() {
-		t.Skip("TestCassettesDeterminism_OversizeInclude: skipped under -short (4 MiB allocation)")
+		t.Skip("TestCassettesDeterminism_LargeInclude: skipped under -short (4 MiB allocation)")
 	}
 	t.Parallel()
 	dir := t.TempDir()
@@ -529,7 +529,7 @@ episodes:
 		t.Errorf("resolved prompt must be %d bytes, got %d", size, len(cas.Episodes[0].Oracle.Prompt))
 	}
 
-	// Attempt to write this as a JSONL OracleCalled event — must fail (PIPE_BUF).
+	// Write this as a JSONL OracleCalled event — must now succeed.
 	s, err := store.OpenJSONL(filepath.Join(dir, "trace.jsonl"))
 	if err != nil {
 		t.Fatalf("OpenJSONL: %v", err)
@@ -551,10 +551,14 @@ episodes:
 		Payload: json.RawMessage(payload),
 		CallID:  host.DeriveCallID("myapp", "large_ep:0"),
 	})
-	if appendErr == nil {
-		t.Error("Append of oversize oracle payload must fail (PIPE_BUF)")
-	} else {
-		t.Logf("oversize correctly rejected: %v", appendErr)
+	if appendErr != nil {
+		t.Errorf("Append of large oracle payload must succeed, got error: %v", appendErr)
+	}
+
+	// Verify it was written correctly
+	hist := s.History()
+	if len(hist) != 1 {
+		t.Errorf("expected 1 event, got %d", len(hist))
 	}
 }
 

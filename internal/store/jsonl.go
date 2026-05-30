@@ -11,7 +11,6 @@
 //	line 2+: one store.Event JSON object, terminated with \n
 //
 // Invariants enforced at write time:
-//   - marshalled line must not exceed PIPE_BUF (4096 bytes on Linux).
 //   - NUL bytes anywhere in the marshalled line are rejected.
 //   - ts fields are RFC3339Nano in UTC with explicit Z suffix.
 //   - encoding/json rejects NaN/Inf by default; that default is preserved.
@@ -29,11 +28,6 @@ import (
 	"golang.org/x/text/unicode/norm"
 	"kitsoki/internal/app"
 )
-
-// pipeBuf is the POSIX PIPE_BUF value on Linux.  A single write of this size
-// or smaller is atomic on O_APPEND files.  We reject marshalled lines that
-// would exceed it rather than risk a torn write.
-const pipeBuf = 4096
 
 // maxSchemaVersion is the highest SessionHeader schema_version this build
 // can open.  Files written by a newer version are refused at open time.
@@ -305,18 +299,14 @@ func loadAndValidate(data []byte, path string) (History, [][]byte, error) {
 	return hist, rawLines, nil
 }
 
-// maxReadLineBytes is the maximum line size accepted at read time.
-// This matches pipeBuf (the write-side limit) so the reader rejects exactly
-// what the writer would have rejected (finding 2.9: read-side oversize must
-// be symmetric with the write-side limit).
-const maxReadLineBytes = pipeBuf
+// Note: we no longer enforce a maximum line size at read time.
+// The PIPE_BUF limit was removed to allow arbitrary-sized events in traces.
 
 // splitLines splits JSONL bytes into lines with strict validation:
 //   - Every line MUST end with exactly \n (no CRLF, no missing trailing newline).
 //   - A file that does not end with \n is "trace corrupted: missing trailing newline at EOF".
 //   - CRLF (\r\n) is a hard error — the \r is not stripped.
 //   - Any line containing a NUL byte is an error.
-//   - Any line exceeding maxReadLineBytes is an error.
 //
 // Returns (lines, nil) on success. The returned slices are independent copies.
 // Returns (nil, error) on any structural violation.
@@ -359,11 +349,6 @@ func splitLines(data []byte) ([]json.RawMessage, error) {
 		// Reject NUL bytes.
 		if bytes.IndexByte(line, 0) >= 0 {
 			return nil, fmt.Errorf("trace corrupted: NUL byte in line %d", lineNum)
-		}
-
-		// Reject oversize lines.
-		if len(line) > maxReadLineBytes {
-			return nil, fmt.Errorf("trace corrupted: line %d is %d bytes, exceeds limit of %d", lineNum, len(line), maxReadLineBytes)
 		}
 
 		cp := make([]byte, len(line))
@@ -595,8 +580,7 @@ func MarshalEventLine(ev Event) ([]byte, error) {
 	return b, nil
 }
 
-// marshalLine marshals v to JSON, appends a trailing \n, and enforces the
-// per-line size limit and NUL-byte rejection.
+// marshalLine marshals v to JSON, appends a trailing \n, and rejects NUL bytes.
 func marshalLine(v any) ([]byte, error) {
 	b, err := json.Marshal(v)
 	if err != nil {
@@ -604,11 +588,6 @@ func marshalLine(v any) ([]byte, error) {
 	}
 	// Append trailing newline.
 	line := append(b, '\n')
-
-	// Enforce PIPE_BUF size limit.
-	if len(line) > pipeBuf {
-		return nil, fmt.Errorf("marshalled line is %d bytes, exceeds PIPE_BUF (%d)", len(line), pipeBuf)
-	}
 
 	// Reject NUL bytes.
 	if bytes.IndexByte(line, 0) >= 0 {

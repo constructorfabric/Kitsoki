@@ -448,18 +448,18 @@ func TestDispatch_SubEvents_CallIDMismatch(t *testing.T) {
 	}
 }
 
-// TestDispatch_SubEvents_Oversize verifies that a sub-event exceeding PIPE_BUF
-// causes OracleError.
+// TestDispatch_SubEvents_Oversize verifies that a sub-event larger than 4096 bytes
+// is now accepted (PIPE_BUF limit was removed).
 func TestDispatch_SubEvents_Oversize(t *testing.T) {
 	if testing.Short() {
-		t.Skip("oversize sub-event test allocates >4KB payload; skipped under -short")
+		t.Skip("large sub-event test allocates >4KB payload; skipped under -short")
 	}
 	t.Parallel()
 	const parentCallID = "call-dispatch-001"
 
-	// Build a payload that will cause the marshalled event to exceed 4096 bytes.
+	// Build a payload that would previously have exceeded 4096 bytes.
 	bigPayload, _ := json.Marshal(map[string]any{"data": string(make([]byte, 5000))})
-	oversizeSub := store.Event{
+	largeSub := store.Event{
 		Kind:    store.EventKind("oracle.claude.big_step"),
 		CallID:  parentCallID,
 		Payload: json.RawMessage(bigPayload),
@@ -467,7 +467,7 @@ func TestDispatch_SubEvents_Oversize(t *testing.T) {
 	o := oracle.New(oracle.AskFunc(func(_ context.Context, _ oracle.AskRequest) (oracle.AskResponse, error) {
 		return oracle.AskResponse{
 			Submission: json.RawMessage(`{"ok":true}`),
-			SubEvents:  []store.Event{oversizeSub},
+			SubEvents:  []store.Event{largeSub},
 		}, nil
 	}))
 
@@ -475,19 +475,13 @@ func TestDispatch_SubEvents_Oversize(t *testing.T) {
 	dr := sampleDispatchRequest()
 
 	_, err := host.Dispatch(ctx, dr)
-	if err == nil {
-		t.Fatal("expected error for oversize sub-event, got nil")
-	}
-	var ae *oracle.AskError
-	if !errors.As(err, &ae) {
-		t.Fatalf("expected *oracle.AskError, got %T", err)
-	}
-	if ae.Kind != "sub_event_oversize" {
-		t.Errorf("Kind: got %q, want sub_event_oversize", ae.Kind)
+	if err != nil {
+		t.Fatalf("expected no error for large sub-event, got %v", err)
 	}
 	kinds := sink.kindsInOrder()
-	if !containsKind(kinds, store.OracleError) {
-		t.Error("OracleError must be written on oversize sub-event")
+	if !containsKind(kinds, store.OracleCalled) ||
+		!containsKind(kinds, store.OracleReturned) {
+		t.Error("OracleCalled and OracleReturned must be written for successful dispatch")
 	}
 }
 

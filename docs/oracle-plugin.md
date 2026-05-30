@@ -157,8 +157,7 @@ sub-events land):
   `oracle.my_fixer.`).
 - **`call_id`:** every sub-event `call_id` must match the parent
   `OracleCalled.call_id`.
-- **Size:** each sub-event is subject to the `PIPE_BUF` = 4096 byte line
-  limit.  Oversize sub-events fail the whole `AskResponse`.
+- **Size:** sub-events can be arbitrary size (no limits).
 - **Timestamp:** kitsoki re-stamps each sub-event `ts` with its own monotonic
   clock.  The plugin's claimed `ts` is discarded; all sub-event timestamps
   fall within `[OracleCalled.ts, OracleReturned.ts)`.
@@ -211,7 +210,6 @@ not retroactively rewritten.
 | `deadline_exceeded`             | Context deadline exceeded.                            |
 | `sub_event_namespace_violation` | Sub-event Kind outside plugin namespace.              |
 | `sub_event_call_id_mismatch`    | Sub-event call_id ≠ parent call_id.                   |
-| `sub_event_oversize`            | Sub-event serialises to > 4096 bytes.                 |
 | `transport_error`               | HTTP/TLS/dial error on `mcp_http` transport.          |
 
 ---

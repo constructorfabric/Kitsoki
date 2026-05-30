@@ -179,15 +179,14 @@ var corruptionCases = []corruptionCase{
 		wantErr: "JSON",
 	},
 
-	// ── Oversize line (read-side now rejects per PIPE_BUF) ───────────────────────
-	// Finding 2.9: maxReadLineBytes == pipeBuf so the reader rejects what the
-	// writer would have rejected.
+	// ── Oversize line (now accepted) ────────────────────────────────────────────
+	// PIPE_BUF limit was removed to allow arbitrary-sized events.
 	{
-		name: "oversize_line_read_side",
+		name: "oversize_line_accepted",
 		content: validHeader +
 			`{"turn":1,"seq":0,"ts":"2024-01-01T00:00:01Z","kind":"turn.start","payload":{"data":"` +
 			strings.Repeat("x", 5000) + `"}}` + "\n",
-		wantErr: "exceeds limit",
+		mustSucceed: true,
 	},
 }
 
@@ -311,24 +310,24 @@ func TestLayer5_BOMAtStart(t *testing.T) {
 
 // ─── Oversize line (read side) ────────────────────────────────────────────────
 
-// TestLayer5_OversizeLine_ReadSide verifies that a line exceeding PIPE_BUF
-// is rejected at read time (finding 2.9: read-side limit must be symmetric
-// with the write-side pipeBuf limit).
+// TestLayer5_OversizeLine_ReadSide verifies that a line exceeding 4096 bytes
+// is now accepted (PIPE_BUF limit was removed).
 func TestLayer5_OversizeLine_ReadSide(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "bigline.jsonl")
 
-	// Craft a line with a large payload (> PIPE_BUF) directly in the file,
-	// bypassing the writer's size check.
+	// Craft a line with a large payload (> 4096 bytes).
 	bigVal := strings.Repeat("x", 5000)
 	bigLine := fmt.Sprintf(`{"turn":1,"seq":0,"ts":"2024-01-01T00:00:01Z","kind":"turn.start","payload":{"data":%q}}`,
 		bigVal) + "\n"
 	require.NoError(t, os.WriteFile(path, []byte(validHeader+bigLine), 0o644))
 
-	// With maxReadLineBytes == pipeBuf, the reader must now reject this line.
-	_, err := store.OpenJSONL(path)
-	require.Error(t, err, "read-side must reject a line exceeding PIPE_BUF (finding 2.9)")
-	require.Contains(t, err.Error(), "exceeds limit",
-		"error must mention the size limit")
+	// Large lines must now be accepted.
+	sink, err := store.OpenJSONL(path)
+	require.NoError(t, err, "large line must be accepted")
+	defer sink.Close()
+
+	hist := sink.History()
+	require.Len(t, hist, 1)
 }

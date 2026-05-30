@@ -19,8 +19,7 @@
 //     "oracle.autofix_fixer."). Violation → OracleError{Kind: "sub_event_namespace_violation"}.
 //   - Every sub-event CallID MUST match the parent OracleCalled.CallID.
 //     Violation → OracleError{Kind: "sub_event_call_id_mismatch"}.
-//   - Every sub-event is subject to the PIPE_BUF=4096 byte-per-line limit.
-//     Oversize → OracleError{Kind: "sub_event_oversize"}.
+//   - Sub-events can be arbitrary size (PIPE_BUF limit was removed).
 //   - Sub-event ts is re-stamped at append time using kitsoki's monotonic clock.
 //     The plugin's claimed ts is ignored.
 //   - On any validation failure: OracleCalled is already written; OracleError
@@ -151,13 +150,7 @@ type OracleDispatchResult struct {
 const (
 	subEventNamespaceViolation = "sub_event_namespace_violation"
 	subEventCallIDMismatch     = "sub_event_call_id_mismatch"
-	subEventOversize           = "sub_event_oversize"
 )
-
-// pipeBufLimit mirrors store.pipeBuf (4096). Duplicated here to avoid importing
-// an internal store constant; the store package enforces this on Append anyway,
-// but we pre-validate to produce a clearer error message and prevent partial writes.
-const pipeBufLimit = 4096
 
 // TryDispatchVerb attempts to route an oracle verb call through the plugin
 // registry. It is the B-7 production wiring entry point called from each oracle
@@ -262,7 +255,7 @@ func TryDispatchVerb(ctx context.Context, verb, renderedPrompt, systemPrompt, ag
 // On schema validation failure, Dispatch writes OracleError and returns
 // *oracle.AskError{Kind: "schema_invalid"}.
 // On SubEvents validation failure, Dispatch writes OracleError and returns
-// *oracle.AskError{Kind: "sub_event_namespace_violation" | "sub_event_call_id_mismatch" | "sub_event_oversize"}.
+// *oracle.AskError{Kind: "sub_event_namespace_violation" | "sub_event_call_id_mismatch"}.
 func Dispatch(ctx context.Context, dr OracleDispatchRequest) (OracleDispatchResult, error) {
 	reg := OracleRegistryFromCtx(ctx)
 	if reg == nil {
@@ -383,7 +376,6 @@ func Dispatch(ctx context.Context, dr OracleDispatchRequest) (OracleDispatchResu
 // validateSubEvents checks all sub-events against the B-4 constraints:
 //   - namespace: every Kind must start with pluginName+"."
 //   - call_id: every sub-event CallID must match parentCallID
-//   - size: marshalled event must not exceed pipeBufLimit bytes
 //
 // Returns the first violation as an *oracle.AskError. The full AskResponse is
 // rejected on first violation (atomicity: no partial sub-event append).
@@ -402,14 +394,6 @@ func validateSubEvents(subEvents []store.Event, pluginName, parentCallID string)
 			return &oracle.AskError{
 				Kind:   subEventCallIDMismatch,
 				Detail: fmt.Sprintf("sub_event[%d]: CallID %q does not match parent call_id %q", i, se.CallID, parentCallID),
-			}
-		}
-		// Size check: marshalled line must not exceed PIPE_BUF.
-		b, err := json.Marshal(se)
-		if err == nil && len(b) > pipeBufLimit {
-			return &oracle.AskError{
-				Kind:   subEventOversize,
-				Detail: fmt.Sprintf("sub_event[%d]: marshalled size %d exceeds PIPE_BUF limit %d", i, len(b), pipeBufLimit),
 			}
 		}
 	}

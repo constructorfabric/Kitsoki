@@ -307,15 +307,15 @@ func TestJSONL_RoundTrip_PayloadNullVsEmptyVsAbsent(t *testing.T) {
 }
 
 // TestJSONL_RoundTrip_LargePayload verifies that a 4 MiB payload is correctly
-// rejected (exceeds PIPE_BUF) — not silently corrupted. Skipped under -short.
+// accepted and round-trips without corruption. Skipped under -short.
 func TestJSONL_RoundTrip_LargePayload(t *testing.T) {
 	if testing.Short() {
 		t.Skip("TestJSONL_RoundTrip_LargePayload: skipped under -short (4 MiB allocation)")
 	}
 	t.Parallel()
-	s, _ := openSink(t)
+	s, path := openSink(t)
 
-	// A 4 MiB string (well over PIPE_BUF=4096).
+	// A 4 MiB string (previously would have exceeded PIPE_BUF=4096, now accepted).
 	big := strings.Repeat("x", 4*1024*1024)
 	payload := map[string]any{"data": big}
 	b, _ := json.Marshal(payload)
@@ -327,9 +327,22 @@ func TestJSONL_RoundTrip_LargePayload(t *testing.T) {
 		Payload: b,
 	}
 	err := s.Append(ev)
-	require.Error(t, err, "4 MiB payload must be rejected at write time (PIPE_BUF)")
-	require.Contains(t, err.Error(), "PIPE_BUF",
-		"error must mention PIPE_BUF: %v", err)
+	require.NoError(t, err, "4 MiB payload must be accepted")
+
+	// Verify it round-trips correctly.
+	s.Close()
+	s2, err := store.OpenJSONL(path)
+	require.NoError(t, err)
+	defer s2.Close()
+
+	hist := s2.History()
+	require.Len(t, hist, 1)
+	// Verify the data round-trips by unmarshaling both payloads
+	var originalData map[string]any
+	var roundTrippedData map[string]any
+	require.NoError(t, json.Unmarshal(b, &originalData))
+	require.NoError(t, json.Unmarshal(hist[0].Payload, &roundTrippedData))
+	require.Equal(t, originalData, roundTrippedData)
 }
 
 // TestJSONL_RoundTrip_NilPayloadNormalized verifies nil payload is written as {}.
@@ -489,12 +502,12 @@ func TestJSONL_Reject_NULByte(t *testing.T) {
 	require.Contains(t, err.Error(), "NUL")
 }
 
-// TestJSONL_Reject_OversizeLine checks that a line exceeding PIPE_BUF is rejected.
-func TestJSONL_Reject_OversizeLine(t *testing.T) {
+// TestJSONL_Accept_OversizeLine checks that a line exceeding 4096 bytes is accepted.
+func TestJSONL_Accept_OversizeLine(t *testing.T) {
 	t.Parallel()
-	s, _ := openSink(t)
+	s, path := openSink(t)
 
-	// Build a payload that causes the marshalled line to exceed 4096 bytes.
+	// Build a payload that would previously have exceeded PIPE_BUF=4096 bytes.
 	big := strings.Repeat("x", 4100)
 	payload := map[string]any{"data": big}
 	b, _ := json.Marshal(payload)
@@ -507,8 +520,22 @@ func TestJSONL_Reject_OversizeLine(t *testing.T) {
 		Payload: b,
 	}
 	err := s.Append(ev)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "PIPE_BUF")
+	require.NoError(t, err, "oversized line must be accepted")
+
+	// Verify it round-trips correctly.
+	s.Close()
+	s2, err := store.OpenJSONL(path)
+	require.NoError(t, err)
+	defer s2.Close()
+
+	hist := s2.History()
+	require.Len(t, hist, 1)
+	// Verify the data round-trips by unmarshaling both payloads
+	var originalData map[string]any
+	var roundTrippedData map[string]any
+	require.NoError(t, json.Unmarshal(b, &originalData))
+	require.NoError(t, json.Unmarshal(hist[0].Payload, &roundTrippedData))
+	require.Equal(t, originalData, roundTrippedData)
 }
 
 // TestJSONL_Reject_NaN verifies that encoding/json refuses NaN float64 values.

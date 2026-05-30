@@ -124,11 +124,10 @@ up to the point of an unknown kind that matters for state reconstruction.
 Every oracle call produces exactly two events: `oracle.call.start` and
 `oracle.call.complete` (or `oracle.call.error` on failure).  These events are **no-ops
 for replay** — `BuildJourney` ignores them — but they carry the response and
-oracle metadata for audit and the runstatus SPA. The prompt itself is **not**
-embedded in the event (keeping each JSONL line under the 4096-byte `PIPE_BUF`
-atomic-write limit); recover it from `oracle.AskRequest.PromptText` in live
-mode or from the cassette via `!include` in replay mode (see
-[oracle-plugin.md §3](oracle-plugin.md)).
+oracle metadata for audit and the runstatus SPA. Large prompts and responses
+(>1KB) are written to sidecar files under the configured prompts directory and
+the event payload references them via `prompt_file` / `response_file`; smaller
+payloads remain inline.
 
 | Kind                   | When written                                               |
 |------------------------|------------------------------------------------------------|
@@ -143,16 +142,8 @@ mode or from the cassette via `!include` in replay mode (see
 | `verb`         | string | Oracle verb: `ask`, `decide`, `extract`, `task`, `converse`. |
 | `agent`        | string | Agent name (optional).                             |
 | `model`        | string | Model name (optional).                             |
-| `prompt_file`  | string | Relative path (from the trace dir) to the rendered prompt sidecar when the prompt exceeds ~1KB and a prompts dir is configured; omitted otherwise. |
+| `prompt_file`  | string | Relative path (from the trace dir) to the prompt sidecar when the rendered prompt exceeds ~1KB and a prompts dir is configured; omitted otherwise. |
 | `input`        | object | Verb-specific input descriptor (e.g. `{schema_path}`). |
-
-> The prompt is intentionally **not** included in this payload — it would
-> push many lines past the 4096-byte `PIPE_BUF` atomic-write limit.
-> Recover the rendered prompt from one of three places: `oracle.AskRequest.PromptText`
-> (live), the cassette `!include`d file (replay), or — for large prompts written
-> by a sink configured via `host.WithOraclePromptsDir` — the on-disk sidecar at
-> `{trace_dir}/oracle-prompts/{call_id}.txt` referenced by the event's
-> `prompt_file` field.
 
 **`oracle.call.complete` payload fields:**
 
@@ -162,7 +153,8 @@ mode or from the cassette via `!include` in replay mode (see
 | `agent`      | string | Agent name (optional).                               |
 | `model`      | string | Model name (optional).                               |
 | `duration_ms`| int    | Round-trip duration in milliseconds.                 |
-| `response`   | object | Parsed `Submission` + any verb-specific fields.      |
+| `response`   | object | Parsed `Submission` + any verb-specific fields. Omitted when `response_file` is set (large responses). |
+| `response_file` | string | Relative path (from the trace dir) to the response sidecar when the response exceeds ~1KB and a prompts dir is configured; omitted otherwise. |
 | `meta`       | object | Opaque oracle metadata (tokens, cost, transport, …). |
 
 **`oracle.call.error` payload fields:**
@@ -207,7 +199,7 @@ lines with the following constraints (all enforced by kitsoki; violations produc
 - **Namespace:** every sub-event `kind` must start with the dispatching oracle
   plugin name + `.` (e.g. `oracle.autofix_fixer.bash.called`).
 - **`call_id`:** every sub-event `call_id` must match the parent `oracle.call.start` call_id.
-- **Size:** every sub-event is subject to the `PIPE_BUF` = 4096 byte line limit.
+- **Size:** sub-events can be arbitrary size (no limits).
 - **Timestamp:** kitsoki re-stamps each sub-event `ts` at append time using its
   own monotonic clock. The plugin's claimed `ts` is discarded. This guarantees all
   sub-event timestamps fall within `[oracle.call.start.ts, oracle.call.complete.ts)`.
@@ -221,7 +213,6 @@ error and leave the file unmodified.
 
 | Constraint           | Limit / rule                                                   |
 |----------------------|----------------------------------------------------------------|
-| Line size            | Must not exceed `PIPE_BUF` = 4096 bytes (including `\n`).     |
 | Line ending          | Exactly `\n`; CRLF is rejected.                               |
 | NUL bytes            | Rejected in any field.                                         |
 | Unicode normalisation| All string values must be NFC; NFD input is rejected.          |
@@ -237,7 +228,6 @@ error and leave the file unmodified.
 | File does not end with `\n`               | `trace corrupted: missing trailing newline at EOF` |
 | CRLF line ending at line N                | `trace corrupted: CRLF line ending at line N`    |
 | NUL byte in line N                        | `trace corrupted: NUL byte in line N`            |
-| Line > 4096 bytes                         | `trace corrupted: line N is X bytes, exceeds limit of 4096` |
 | Line 1 is not `session.header`            | `trace missing session.header on line 1`         |
 | Duplicate `session.header`                | `duplicate session.header at line N`             |
 | `schema_version` > maxSchemaVersion       | `schema_version N on disk exceeds highest supported M` |
