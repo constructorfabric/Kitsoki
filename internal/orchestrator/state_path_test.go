@@ -225,6 +225,128 @@ func TestMidOracleCall_ReIssueOnNextTurn(t *testing.T) {
 		"trace must have more events after the new turn (dangling oracle + new turn events)")
 }
 
+// TestStatePathNonEmpty_RunIntent_Accepted verifies that every event written
+// during an accepted turn via the RunIntent path (used by the cassette /
+// control-inversion flow runner) has a non-empty state_path.
+//
+// Regression guard: RunIntent originally skipped stampStatePath, so the bugfix
+// runstatus fixture's events all carried empty state_path and the trace UI's
+// per-turn phase headers collapsed to the "—" fallback.
+func TestStatePathNonEmpty_RunIntent_Accepted(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	tracePath := filepath.Join(dir, "trace_runintent.jsonl")
+
+	def, err := app.Load("../../testdata/apps/cloak/app.yaml")
+	require.NoError(t, err)
+
+	m, err := machine.New(def)
+	require.NoError(t, err)
+
+	s, err := store.OpenMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	sink, err := store.OpenJSONL(tracePath)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sink.Close() })
+
+	hostReg := host.NewRegistry()
+	host.RegisterBuiltins(hostReg)
+
+	orch := orchestrator.New(def, m, s, noopHarness{},
+		orchestrator.WithHostRegistry(hostReg),
+		orchestrator.WithEventSink(sink),
+		orchestrator.WithEventSinkAuthority(true),
+	)
+	ctx := context.Background()
+
+	sid, err := orch.NewSession(ctx)
+	require.NoError(t, err)
+
+	out, err := orch.RunIntent(ctx, sid, "go", map[string]any{"direction": "west"})
+	require.NoError(t, err)
+	require.Equal(t, orchestrator.ModeTransitioned, out.Mode)
+
+	hist := sink.History()
+	require.NotEmpty(t, hist, "expected at least one event")
+	for _, ev := range hist {
+		require.NotEmpty(t, string(ev.StatePath),
+			"RunIntent event kind=%q turn=%d seq=%d must have non-empty state_path",
+			ev.Kind, ev.Turn, ev.Seq)
+	}
+
+	// The state-transition pair must still carry the correct per-event states.
+	var exited, entered *store.Event
+	for i := range hist {
+		switch hist[i].Kind {
+		case store.StateExited:
+			ev := hist[i]
+			exited = &ev
+		case store.StateEntered:
+			ev := hist[i]
+			entered = &ev
+		}
+	}
+	require.NotNil(t, exited, "expected a machine.state_exited event")
+	require.NotNil(t, entered, "expected a machine.state_entered event")
+	require.Equal(t, app.StatePath("foyer"), exited.StatePath,
+		"state_exited must carry the FROM state (foyer)")
+	require.Equal(t, app.StatePath("cloakroom"), entered.StatePath,
+		"state_entered must carry the TO state (cloakroom)")
+}
+
+// TestStatePathNonEmpty_RunIntent_Rejected verifies every event written during
+// a rejected RunIntent turn (INTENT_NOT_ALLOWED) has a non-empty state_path.
+func TestStatePathNonEmpty_RunIntent_Rejected(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	tracePath := filepath.Join(dir, "trace_runintent_reject.jsonl")
+
+	def, err := app.Load("../../testdata/apps/cloak/app.yaml")
+	require.NoError(t, err)
+
+	m, err := machine.New(def)
+	require.NoError(t, err)
+
+	s, err := store.OpenMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	sink, err := store.OpenJSONL(tracePath)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sink.Close() })
+
+	hostReg := host.NewRegistry()
+	host.RegisterBuiltins(hostReg)
+
+	orch := orchestrator.New(def, m, s, noopHarness{},
+		orchestrator.WithHostRegistry(hostReg),
+		orchestrator.WithEventSink(sink),
+		orchestrator.WithEventSinkAuthority(true),
+	)
+	ctx := context.Background()
+
+	sid, err := orch.NewSession(ctx)
+	require.NoError(t, err)
+
+	out, err := orch.RunIntent(ctx, sid, "nonexistent_intent_xyz", nil)
+	require.NoError(t, err, "rejection must be returned as an outcome, not an error")
+	require.Equal(t, orchestrator.ModeRejected, out.Mode)
+
+	hist := sink.History()
+	require.NotEmpty(t, hist, "rejection must produce at least one event")
+	for _, ev := range hist {
+		require.NotEmpty(t, string(ev.StatePath),
+			"RunIntent rejection event kind=%q turn=%d seq=%d must have non-empty state_path",
+			ev.Kind, ev.Turn, ev.Seq)
+	}
+	for _, ev := range out.Events {
+		require.NotEmpty(t, string(ev.StatePath),
+			"RunIntent rejection outcome event kind=%q must have non-empty state_path", ev.Kind)
+	}
+}
+
 // TestStatePathPerEvent_FoyerToCloakroom asserts the G5 fix: machine.state_exited
 // carries the FROM state ("foyer") and machine.state_entered carries the TO state
 // ("cloakroom") — not the uniform FROM-state that stampStatePath would assign without

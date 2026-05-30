@@ -499,6 +499,10 @@ func (o *Orchestrator) RunInitialOnEnter(ctx context.Context, sid app.SessionID)
 	for i := range events {
 		events[i].Turn = 0
 	}
+	// Stamp state_path so the synthetic turn-0 init events record the active
+	// state (matches the turn paths). finding 2.1.
+	stampStatePathPerEvent(events)
+	stampStatePath(events, journey.State, o.InitialState())
 	jEntries := journalEntriesForEvents(sid, 0, time.Now(), events, journey.World, newWorld, "", resolved, "")
 	if appendErr := o.appendEventsAndJournal(sid, events, jEntries); appendErr != nil {
 		return fmt.Errorf("orchestrator: RunInitialOnEnter: append events: %w", appendErr)
@@ -2754,6 +2758,10 @@ func (o *Orchestrator) ContinueTurn(ctx context.Context, sid app.SessionID, supp
 	for i := range successEvents {
 		successEvents[i].Turn = turnNum
 	}
+	// Stamp state_path so every on-disk event records the active state
+	// (matches the Turn/SubmitDirect paths). finding 2.1.
+	stampStatePathPerEvent(successEvents)
+	stampStatePath(successEvents, journey.State, o.InitialState())
 
 	// Site 7: dual-write journal entries for the ContinueTurn success turn.
 	// Prepend a clarify.answered entry before the standard set.

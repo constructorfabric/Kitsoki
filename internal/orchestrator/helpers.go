@@ -307,6 +307,12 @@ func (o *Orchestrator) RunIntent(ctx context.Context, sid app.SessionID, intentN
 		for i := range failureEvents {
 			failureEvents[i].Turn = turnNum
 		}
+		// Stamp state_path so every on-disk event records the active state
+		// (matches the Turn/SubmitDirect paths). Without this the cassette /
+		// RunIntent flow path writes events with empty state_path, which breaks
+		// the runstatus trace UI's per-phase grouping. finding 2.1.
+		stampStatePathPerEvent(failureEvents)
+		stampStatePath(failureEvents, journey.State, o.InitialState())
 		// Site 3: dual-write journal entries for the RunIntent rejection turn.
 		riFailJEntries := journalEntriesForEvents(sid, turnNum, time.Now(), failureEvents,
 			journey.World, journey.World, "", journey.State, intentName)
@@ -360,6 +366,12 @@ func (o *Orchestrator) RunIntent(ctx context.Context, sid app.SessionID, intentN
 	for i := range successEvents {
 		successEvents[i].Turn = turnNum
 	}
+	// Stamp state_path so every on-disk event records the active state
+	// (matches the Turn/SubmitDirect paths). Without this the cassette /
+	// RunIntent flow path writes events with empty state_path, which breaks
+	// the runstatus trace UI's per-phase grouping. finding 2.1.
+	stampStatePathPerEvent(successEvents)
+	stampStatePath(successEvents, journey.State, o.InitialState())
 
 	// Site 4: dual-write journal entries for the RunIntent success turn.
 	riSuccJEntries := journalEntriesForEvents(sid, turnNum, time.Now(), successEvents,
