@@ -1,0 +1,80 @@
+# Proposing a fix — produce the fix-proposal artifact
+
+You are proposing a fix for **TKT-001** — *TUI hangs on ESC*
+against `.worktrees/tkt-001`.
+
+You have a reproduction artifact from the previous room:
+
+> ## Bug: ESC silently discarded while TUI is in `ModeAwaitingLLM`
+
+### What is broken
+
+When a user presses **ESC while an LLM turn is in flight** (spinner active, mode = `ModeAwaitingLLM`), the keypress is silently discarded. The system menu does not open, no transcript feedback is shown, and the in-flight turn is not cancelled. From the user's perspective, the TUI appears completely frozen and unresponsive.
+
+### Root cause
+
+In `internal/tui/tui.go` around line 1251, `routeKey()` guards the ESC→menu transition to `ModeOnPath | ModeOffPath` only:
+
+```go
+if msg.Type == tea.KeyEsc {
+    if m.mode == ModeOnPath || m.mode == ModeOffPath {
+        m.mode = ModeMenu
+        m.menuSystem.Open()
+        return m, nil
+    }
+}
+```
+
+When `m.mode == ModeAwaitingLLM`, this guard is skipped entirely. The key then falls through to `m.prompt.Update(msg)`, which passes it to the `charmbracelet/bubbles/textarea` widget — a widget that has no ESC binding, so it is silently dropped.
+
+Ctrl+C is handled correctly for `ModeAwaitingLLM` (calls `inFlightCancel`), but ESC is not.
+
+### Reproduction
+
+A deterministic Go test was written and is on disk at:
+
+```
+internal/tui/tkt001_esc_repro_test.go
+```
+
+The test has two cases:
+
+**`TestTKT001_EscSilentlySwallowedDuringInFlight`** — proves the bug. Calls `SimulateSlowHarnessTurnStart` to put the model into `ModeAwaitingLLM` (with a no-op cancel func wired), then sends `tea.KeyEsc`. All three "BUG" assertions pass:
+1. Mode remains `ModeAwaitingLLM` — menu never opened.
+2. Transcript content unchanged — no "press Ctrl+C" or similar hint was appended.
+3. `HasInFlightCancel` is still `true` — `inFlightCancel` was never called; the turn was not cancelled.
+
+**`TestTKT001_ControlEscFromOnPathOpensMenu`** — positive control. ESC from `ModeOnPath` correctly transitions to `ModeMenu`. Passes, confirming test helpers are sound.
+
+Run: `cd internal/tui && go test -v -run TestTKT001 .`
+
+Output:
+```
+--- PASS: TestTKT001_EscSilentlySwallowedDuringInFlight (0.01s)
+--- PASS: TestTKT001_ControlEscFromOnPathOpensMenu (0.01s)
+```
+
+### Fix direction
+
+Add a `ModeAwaitingLLM` branch to the ESC handler in `routeKey()`. At minimum, show the user a hint ("turn in flight — use Ctrl+C to cancel") or call `inFlightCancel` directly and transition mode. The queue-clear branch just above the menu guard is a useful model for the fix pattern.
+
+
+
+## Constraints
+
+- `fix_description` must be concrete — not "fix the bug". Describe the
+  edit in enough detail that another engineer could implement it without
+  rereading the ticket.
+- `root_cause` must explain *why* the bug happens, not *what* the bug is.
+  Cite the offending file / line where possible.
+- `affected_files` must be real, relative paths in the repo (no leading
+  slash; must have an extension). At least one.
+- `confidence` is your own estimate in [0.0, 1.0]; under 0.3 is rejected
+  downstream.
+- `reasoning` is the chain from evidence → cause → fix.
+
+## Output
+
+Submit a `propose_fix_artifact` (see `schemas/proposing_artifact.json`).
+The `summary_markdown` field is what a human reviewer reads at the
+checkpoint — write it for them: bug, cause, fix, files, confidence.

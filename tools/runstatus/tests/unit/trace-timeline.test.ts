@@ -408,3 +408,68 @@ describe("TraceTimeline — turn.input ordering", () => {
     wrapper.unmount();
   });
 });
+
+describe("TraceTimeline — phase headers", () => {
+  // A minimal mermaid source with two phases, each owning one room. Room
+  // labels ("reproducing", "proposing") match the events' state_path values,
+  // so phaseForStatePath resolves the header text from the diagram.
+  const MERMAID = `flowchart LR
+  Start(["<b>Start</b>"]):::input
+  subgraph SG_reproducing["<b>phase 1 · reproducing</b> — Reproduce the bug."]
+    direction LR
+    ST_reproducing[/"reproducing"/]:::room
+  end
+  subgraph SG_proposing["<b>phase 4 · proposing</b> — Draft the fix."]
+    direction LR
+    ST_proposing[/"proposing"/]:::room
+  end
+  Start --> ST_reproducing
+  ST_reproducing -- "accept" --> ST_proposing
+`;
+
+  const PHASE_EVENTS: TraceEvent[] = [
+    makeEvent({ msg: "host.invoked",  turn: 1, state_path: "reproducing", time: "2026-01-01T00:00:01Z" }),
+    makeEvent({ msg: "host.returned", turn: 1, state_path: "reproducing", time: "2026-01-01T00:00:02Z" }),
+    makeEvent({ msg: "host.invoked",  turn: 2, state_path: "proposing",   time: "2026-01-01T00:00:03Z" }),
+    makeEvent({ msg: "host.returned", turn: 2, state_path: "proposing",   time: "2026-01-01T00:00:04Z" }),
+  ];
+
+  it("labels each turn's phase header from the mermaid source (regression: was '—')", async () => {
+    const wrapper = mount(TraceTimeline, {
+      props: { events: PHASE_EVENTS, selectedEventIndex: null, mermaidSource: MERMAID },
+    });
+    await flushPromises();
+
+    const phaseNames = wrapper
+      .findAll(".trace-timeline__phase-header .trace-timeline__turn-phase")
+      .map((h) => h.text());
+
+    expect(phaseNames).toEqual(["reproducing", "proposing"]);
+    // The '—' fallback (empty / unresolved state_path) must NOT appear.
+    expect(phaseNames).not.toContain("—");
+
+    wrapper.unmount();
+  });
+
+  it("falls back to '—' when events carry empty state_path", async () => {
+    // This is exactly the broken-trace symptom: empty state_path → no phase.
+    // Guards that the header text is data-driven, so a faithful trace (with
+    // state_path) is what restores the phase names — not a UI default.
+    const emptyPathEvents: TraceEvent[] = [
+      makeEvent({ msg: "host.invoked",  turn: 1, state_path: "", time: "2026-01-01T00:00:01Z" }),
+      makeEvent({ msg: "host.returned", turn: 1, state_path: "", time: "2026-01-01T00:00:02Z" }),
+    ];
+
+    const wrapper = mount(TraceTimeline, {
+      props: { events: emptyPathEvents, selectedEventIndex: null, mermaidSource: MERMAID },
+    });
+    await flushPromises();
+
+    const phaseNames = wrapper
+      .findAll(".trace-timeline__phase-header .trace-timeline__turn-phase")
+      .map((h) => h.text());
+    expect(phaseNames).toEqual(["—"]);
+
+    wrapper.unmount();
+  });
+});

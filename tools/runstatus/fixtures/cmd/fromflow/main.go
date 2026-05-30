@@ -20,6 +20,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"kitsoki/internal/app"
 	"kitsoki/internal/runstatus"
@@ -54,14 +56,26 @@ func main() {
 		captureErr   error
 	)
 
+	// Put the run's JSONL trace next to the output snapshot so the sibling
+	// oracle-prompts/ directory (large oracle prompts/responses spilled to
+	// side-files to stay under PIPE_BUF) ends up where the runstatus SPA
+	// fetches them: relative to the snapshot. The .jsonl itself is an
+	// intermediate we remove after building the snapshot; oracle-prompts/ stays.
+	outDir := filepath.Dir(outPath)
+	tracePath := filepath.Join(outDir, "."+strings.TrimSuffix(filepath.Base(outPath), ".json")+".trace.jsonl")
+
 	opts := testrunner.FlowOptions{
-		OnRigClose: func(_ string, st store.Store, sid app.SessionID) error {
-			hist, err := st.LoadHistory(sid)
-			if err != nil {
-				captureErr = fmt.Errorf("load history: %w", err)
+		TracePath: tracePath,
+		OnRigClose: func(_ string, _ store.Store, sid app.SessionID, sink *store.JSONLSink) error {
+			// Read from the authoritative JSONL trace, not st.LoadHistory: the
+			// SQLite events table is lossy (no state_path / call_id / parent_turn
+			// columns) and drops cassette oracle events, whereas the JSONL sink
+			// records the full faithful trace the production runstatus UI shows.
+			if sink == nil {
+				captureErr = fmt.Errorf("flow rig did not expose a JSONL event sink")
 				return captureErr
 			}
-			snap, err := runstatus.FromHistory(hist, def, string(sid))
+			snap, err := runstatus.FromSink(sink, def, string(sid))
 			if err != nil {
 				captureErr = fmt.Errorf("build snapshot: %w", err)
 				return captureErr
@@ -94,6 +108,11 @@ func main() {
 		// we exit non-zero so callers (Makefiles, CI) can notice.
 		fmt.Fprintf(os.Stderr, "warning: flow had %d failed turn(s); snapshot written anyway\n", report.Failed)
 	}
+
+	// Remove the intermediate JSONL trace; the snapshot embeds the events and
+	// the sibling oracle-prompts/ directory carries the spilled prompt/response
+	// side-files the SPA fetches.
+	_ = os.Remove(tracePath)
 
 	if err := os.WriteFile(outPath, snapshotJSON, 0o644); err != nil {
 		die("write", err)

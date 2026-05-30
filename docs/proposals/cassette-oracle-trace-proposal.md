@@ -1,8 +1,14 @@
 # Proposal — Cassette oracle-trace fidelity for runstatus snapshots
 
-**Status:** Draft v1. Builds on the merged host-cassettes apparatus
-(`docs/cassettes.md`, `internal/testrunner/cassette.go`). Targets the
-`feat/runstatus` branch.
+**Status:** Partially implemented. The deferred oracle event sink
+(commit 61f992f, `internal/host/oracle_event_sink.go`) and its wiring
+into the test runner (commit 5a9bf56, `internal/testrunner/cassette.go`)
+have landed: cassette replays now emit `oracle.<verb>.start/.complete`
+trace events that the runstatus UI consumes. Remaining work — if any —
+is around fully retiring this proposal into narrative docs
+(`docs/cassettes.md`, `docs/trace-format.md`); operator should confirm
+whether any unfinished aspects justify keeping the proposal before
+deletion.
 
 **Tldr.** Host cassettes today substitute *results* (`response.data`)
 deterministically, but throw away the rich oracle-call metadata —
@@ -18,7 +24,9 @@ entry on replay, and extends `runstatus.FromHistory` to synthesize
 `oracle.<verb>.start/.complete` trace events from that journal stream.
 Net effect: bugfix.html — and every future cassette-backed fixture —
 gets a faithful oracle trace identical in shape to what `kitsoki run
---trace` produces against a real session.
+--trace` produces against a real session. **As of commits 61f992f and
+5a9bf56, this net effect is realised in the codebase via a deferred
+oracle event sink wired into the test runner.**
 
 ---
 

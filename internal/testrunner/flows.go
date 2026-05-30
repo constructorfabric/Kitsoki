@@ -387,7 +387,20 @@ type FlowOptions struct {
 	// is closed. Intended for fixture-export tools that need the raw event log
 	// the flow produced (the store goes away once the function returns). The
 	// store and session id passed in are still live.
-	OnRigClose func(filePath string, st store.Store, sid app.SessionID) error
+	//
+	// sink is the authoritative JSONL trace for the run. Exporters should read
+	// from it (runstatus.FromSink) rather than from st.LoadHistory: the SQLite
+	// events table is lossy (no state_path / call_id / parent_turn columns) and
+	// omits cassette oracle events, whereas the JSONL sink is faithful.
+	OnRigClose func(filePath string, st store.Store, sid app.SessionID, sink *store.JSONLSink) error
+
+	// TracePath, when non-empty, fixes the path of the run's authoritative JSONL
+	// event sink (and, by extension, the sibling oracle-prompts/ directory where
+	// large oracle prompts are stored). Fixture exporters set this to a path in
+	// the output directory so the prompt/response side-files end up next to the
+	// generated snapshot, where the runstatus SPA fetches them. When empty (the
+	// default), the rig uses a temp file that cleanup removes.
+	TracePath string
 }
 
 // ─── orchRig holds all resources for an orchestrator-backed flow run ─────────
@@ -419,6 +432,14 @@ type orchRig struct {
 	// when the real sink is available.
 	deferredOracleSink *store.DeferredSink
 
+	// eventSink is the authoritative JSONL trace for this flow run. The
+	// orchestrator dual-writes every turn event here (in addition to SQLite),
+	// and cassette oracle events are routed here too. It is the faithful trace
+	// — unlike the SQLite events table, JSONL records state_path / call_id /
+	// parent_turn — so fixture exporters (fromflow) read from it rather than
+	// from store.LoadHistory. Backed by a temp file removed by cleanup.
+	eventSink *store.JSONLSink
+
 	// cassette holds the loaded host cassette when host_cassette: is set and
 	// strict_cassette_coverage: true is declared on the fixture. nil otherwise.
 	// Retained so runOneFlowOrchestrator can check for unmatched (orphan)
@@ -435,7 +456,7 @@ type orchRig struct {
 //
 // filePath is the fixture file's absolute path; it is used to resolve
 // host_cassette: relative paths.
-func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machine, fixture *FlowFixture, filePath string) (*orchRig, error) {
+func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machine, fixture *FlowFixture, filePath string, tracePath string) (*orchRig, error) {
 	// Deterministic epoch.
 	clk := clock.NewFake(time.Unix(0, 0))
 
@@ -660,6 +681,38 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 	// for intent: turns and never falls through to the harness in normal use.
 	h := &noopHarness{}
 
+	// Authoritative JSONL trace for this run. The orchestrator dual-writes
+	// every turn event here AND to SQLite (loadJourney still reads SQLite).
+	// Unlike the SQLite events table, JSONL records state_path / call_id /
+	// parent_turn, so fixture exporters get a faithful trace from it.
+	//
+	// When tracePath is empty the trace is a temp file that cleanup removes;
+	// when the caller supplies one (fixture export), the file and its sibling
+	// oracle-prompts/ directory are caller-owned and left in place by cleanup.
+	traceOwned := tracePath == ""
+	if traceOwned {
+		traceFile, traceErr := os.CreateTemp("", "kitsoki-flow-*.jsonl")
+		if traceErr != nil {
+			_ = st.Close()
+			return nil, fmt.Errorf("buildOrchestratorRig: create trace temp file: %w", traceErr)
+		}
+		tracePath = traceFile.Name()
+		_ = traceFile.Close()
+		_ = os.Remove(tracePath) // OpenJSONL creates the file fresh
+	} else {
+		if mkErr := os.MkdirAll(filepath.Dir(tracePath), 0o755); mkErr != nil {
+			_ = st.Close()
+			return nil, fmt.Errorf("buildOrchestratorRig: mkdir trace dir: %w", mkErr)
+		}
+		_ = os.Remove(tracePath) // start from a fresh trace on re-runs
+	}
+	eventSink, sinkErr := store.OpenJSONL(tracePath)
+	if sinkErr != nil {
+		_ = st.Close()
+		return nil, fmt.Errorf("buildOrchestratorRig: open JSONL sink: %w", sinkErr)
+	}
+	rig.eventSink = eventSink
+
 	orchOpts := []orchestrator.Option{
 		orchestrator.WithHostRegistry(reg),
 		orchestrator.WithScheduler(sched),
@@ -667,6 +720,9 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 		// Inject the same fake clock the scheduler uses so Timeout: firings
 		// (gap §9.5) run on virtual time alongside background-job delays.
 		orchestrator.WithClock(clk),
+		// Dual-write every turn event to the JSONL trace (authority stays with
+		// SQLite for loadJourney; see WithEventSink doc).
+		orchestrator.WithEventSink(eventSink),
 	}
 	// Wire the journal writer into the orchestrator so oracle handlers
 	// can write KindOracleCall entries during record-mode live calls.
@@ -682,6 +738,9 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 	case "staged":
 		orchOpts = append(orchOpts, orchestrator.WithExecutionMode(orchestrator.ExecStaged))
 	default:
+		_ = eventSink.Close()
+		_ = os.Remove(tracePath)
+		_ = st.Close()
 		return nil, fmt.Errorf("buildOrchestratorRig: invalid mode %q (want \"staged\" or \"one-shot\")", fixture.Mode)
 	}
 
@@ -689,6 +748,8 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 
 	sid, err := orch.NewSession(ctx)
 	if err != nil {
+		_ = eventSink.Close()
+		_ = os.Remove(tracePath)
 		_ = st.Close()
 		return nil, fmt.Errorf("buildOrchestratorRig: new session: %w", err)
 	}
@@ -696,9 +757,11 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 	// Update the deferred sink used by cassette dispatchers with a real sink.
 	// Cassette dispatchers were created before NewSession (before we had the session ID),
 	// so they captured a deferred sink that is now updated with the real sink.
-	// Oracle events from cassette replay are written through this sink.
+	// Oracle events from cassette replay are written to the JSONL trace (the
+	// authoritative trace) so they carry state_path / call_id and survive — the
+	// StoreSinkAdapter.Append path only buffered them and never flushed.
 	if rig.deferredOracleSink != nil {
-		rig.deferredOracleSink.SetSink(store.NewStoreSinkAdapter(st, sid))
+		rig.deferredOracleSink.SetSink(eventSink)
 	}
 
 	rig.orch = orch
@@ -707,7 +770,13 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 	rig.st = st
 	rig.sid = sid
 	rig.clk = clk
-	rig.cleanup = st.Close
+	rig.cleanup = func() error {
+		_ = eventSink.Close()
+		if traceOwned {
+			_ = os.Remove(tracePath)
+		}
+		return st.Close()
+	}
 	return &rig, nil
 }
 
@@ -1281,7 +1350,7 @@ func runOneFlowOrchestrator(ctx context.Context, def *app.AppDef, m machine.Mach
 	result := &FlowResult{File: filePath}
 
 	// Build the rig (store + scheduler + orchestrator).
-	rig, err := buildOrchestratorRig(ctx, def, m, fixture, filePath)
+	rig, err := buildOrchestratorRig(ctx, def, m, fixture, filePath, opts.TracePath)
 	if err != nil {
 		return nil, fmt.Errorf("runOneFlowOrchestrator: %w", err)
 	}
@@ -1659,7 +1728,7 @@ func runOneFlowOrchestrator(ctx context.Context, def *app.AppDef, m machine.Mach
 	}
 
 	if opts.OnRigClose != nil {
-		if err := opts.OnRigClose(filePath, rig.st, rig.sid); err != nil {
+		if err := opts.OnRigClose(filePath, rig.st, rig.sid, rig.eventSink); err != nil {
 			return nil, fmt.Errorf("OnRigClose: %w", err)
 		}
 	}
@@ -1704,6 +1773,18 @@ func seedInitialState(ctx context.Context, rig *orchRig, def *app.AppDef, fixtur
 				"set": map[string]any{k: v},
 			}),
 		})
+	}
+
+	// Stamp state_path on the synthetic seed events so the turn-0 group in the
+	// runstatus trace UI resolves to the initial state's phase rather than the
+	// "—" fallback. The seed transition lands the session in InitialState, so
+	// every seed event is attributed to that state.
+	if fixture.InitialState != "" {
+		for i := range events {
+			if events[i].StatePath == "" {
+				events[i].StatePath = app.StatePath(fixture.InitialState)
+			}
+		}
 	}
 
 	// Persist seed events via StoreSinkAdapter (wave-2a seam).

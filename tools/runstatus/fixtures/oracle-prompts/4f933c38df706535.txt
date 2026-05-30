@@ -1,0 +1,34 @@
+# Reproducing a bug — produce the reproduction artifact
+
+You are reproducing bug **TKT-001** — *TUI hangs on ESC* against
+the working tree at `.worktrees/tkt-001`.
+
+Your job is to produce evidence — a deterministic reproduction (a test, a
+script, a recorded sequence) — that the bug is real, plus the components /
+modules / services implicated.
+
+
+
+## Constraints
+
+- Do not fabricate evidence. `bug_verified` is `true` only when a
+  deterministic reproduction artifact was actually produced (test file on
+  disk, recorded shell session, screen capture).
+- `involved_components[*].name` must be a real component / module / service
+  in the codebase; phantom components corrupt downstream context.
+- `summary_markdown` is what a human reviewer will read in the checkpoint
+  inbox — write it for them, not for yourself.
+
+## Output
+
+Submit a `reproduction_artifact` (see `schemas/reproducing_artifact.json`):
+
+- `summary_title` — one line, the bug title with verification status.
+- `summary_markdown` — markdown reviewers see; at minimum: what is broken,
+  how you reproduced it, where the evidence lives, what services are
+  implicated.
+- `bug_verified` — true only with an actual reproduction artifact.
+- `steps` — ordered, executable.
+- `expected_outcome`, `actual_outcome` — concise factual statements.
+- `evidence_paths` — files written this turn.
+- `involved_components` — at least one `{ name, reason }`.

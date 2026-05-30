@@ -42,6 +42,25 @@ test.describe("bugfix fixture", () => {
     ]);
   });
 
+  test("trace timeline turn headers are grouped under real phase names, not '—'", async ({ page }) => {
+    await load(page);
+    await page.waitForSelector(".trace-timeline__phase-header", { timeout: 8000 });
+
+    const phaseNames = await page
+      .locator(".trace-timeline__phase-header .trace-timeline__turn-phase")
+      .allTextContents();
+
+    // Regression: every event used to carry an empty state_path, so every
+    // phase header collapsed to the "—" fallback. The faithful trace now
+    // resolves each turn group to its room's phase.
+    expect(phaseNames.length).toBeGreaterThan(1);
+    expect(phaseNames).not.toContain("—");
+    // The canonical bugfix flow visits these phases in order.
+    expect(phaseNames).toContain("reproducing");
+    expect(phaseNames).toContain("proposing");
+    expect(phaseNames).toContain("done");
+  });
+
   test("clicking a room highlights every event whose state_path falls under it", async ({ page }) => {
     await load(page);
 
@@ -60,9 +79,10 @@ test.describe("bugfix fixture", () => {
 
     // Several timeline rows should pick up the .highlighted class.
     // (machine.* and turn.* rows are filtered by default, so the count
-    // reflects the oracle + host + world rows with state_path='reproducing'.)
+    // reflects the oracle + host + world rows with state_path='reproducing':
+    // 2 host-call rows + 1 merged oracle row + 1 grouped world.update row.)
     const highlighted = page.locator(".trace-timeline__row.highlighted");
-    expect(await highlighted.count()).toBeGreaterThanOrEqual(5);
+    expect(await highlighted.count()).toBeGreaterThanOrEqual(4);
   });
 
   test("clicking a phase header highlights all of its rooms' events", async ({ page }) => {
