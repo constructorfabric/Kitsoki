@@ -850,8 +850,7 @@ type Slot struct {
 
 // GuardExpr is a compiled guard expression (produced by internal/expr).
 type GuardExpr struct {
-	Source   string // original expr-lang source
-	compiled any    // opaque compiled program; populated by internal/expr
+	Source string // original expr-lang source
 }
 
 // OffPathDef configures the off-path escape hatch (§3.1, §7.7).

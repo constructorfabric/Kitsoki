@@ -51,16 +51,6 @@ func loadHistory(t *testing.T, path string) store.History {
 	return h
 }
 
-// foldJourney is a convenience wrapper around BuildJourney using the
-// cloak-of-darkness AppDef and initial world as a canonical base.
-func foldJourney(t *testing.T, history store.History) *store.JourneyState {
-	t.Helper()
-	def := &app.AppDef{App: app.AppMeta{ID: "cloak-of-darkness", Version: "0.1.0"}}
-	js, err := store.BuildJourney(def, "foyer", cloakInitialWorld(), history)
-	require.NoError(t, err)
-	return js
-}
-
 // zeroTimestamps returns a copy of the history with all Ts fields zeroed so
 // byte-comparison is wall-clock-independent.
 func zeroTimestamps(history store.History) store.History {
@@ -70,23 +60,6 @@ func zeroTimestamps(history store.History) store.History {
 		out[i] = ev
 	}
 	return out
-}
-
-// historyBytesNoTS serialises a history to JSONL after zeroing timestamps,
-// for byte-identical comparison.
-func historyBytesNoTS(t *testing.T, dir, stem string, history store.History) []byte {
-	t.Helper()
-	zeroed := zeroTimestamps(history)
-	path := filepath.Join(dir, stem+".jsonl")
-	s, err := store.OpenJSONL(path)
-	require.NoError(t, err)
-	for _, ev := range zeroed {
-		require.NoError(t, s.Append(ev))
-	}
-	require.NoError(t, s.Close())
-	raw, err := os.ReadFile(path)
-	require.NoError(t, err)
-	return raw
 }
 
 // assertEventStreamsEqual checks that two histories are elementwise equal for

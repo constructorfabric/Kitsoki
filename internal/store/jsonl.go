@@ -21,7 +21,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strings"
 	"syscall"
 	"time"
 
@@ -595,13 +594,4 @@ func marshalLine(v any) ([]byte, error) {
 	}
 
 	return line, nil
-}
-
-// validateUTF8NoNUL checks that s contains no NUL bytes before we attempt to
-// marshal it.  We surface this early so the error is clear.
-func validateUTF8NoNUL(s string) error {
-	if strings.IndexByte(s, 0) >= 0 {
-		return fmt.Errorf("string contains NUL byte")
-	}
-	return nil
 }

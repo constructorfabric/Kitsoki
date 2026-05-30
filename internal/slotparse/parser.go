@@ -132,18 +132,3 @@ func (boolParser) Parse(tokens []lex.Token, _ app.Slot) Result { return ParseBoo
 type dateParser struct{}
 
 func (dateParser) Parse(tokens []lex.Token, _ app.Slot) Result { return ParseDate(tokens) }
-
-// --- shared helpers --------------------------------------------------
-
-// firstNonStop returns the index of the first token whose IsStop is
-// false. Returns len(tokens) when every token is a stopword. Callers
-// use this to skip leading filler ("please buy six" — skip "please")
-// cleanly without modifying the input slice.
-func firstNonStop(tokens []lex.Token) int {
-	for i, t := range tokens {
-		if !t.IsStop {
-			return i
-		}
-	}
-	return len(tokens)
-}

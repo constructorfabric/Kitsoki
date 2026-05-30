@@ -2,7 +2,6 @@ package tui
 
 import (
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
@@ -1223,16 +1222,3 @@ func max(a, b int) int {
 	return b
 }
 
-// scrollMsg is a generic viewport scroll message (for testing).
-type scrollMsg struct {
-	key string
-}
-
-// renderWidth returns the rendered width of a string via lipgloss measurement.
-func renderWidth(s string) int {
-	return lipgloss.Width(s)
-}
-
-func formatWidth(n int) string {
-	return fmt.Sprintf("%d", n)
-}

@@ -5,18 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
-
-	"kitsoki/internal/harness"
 )
-
-// stubHarnessForRegistry is a minimal harness.Harness for registry tests.
-type stubHarnessForRegistry struct{}
-
-func (s *stubHarnessForRegistry) RunTurn(_ context.Context, _ harness.TurnInput) (interface{}, error) {
-	return nil, nil
-}
-
-func (s *stubHarnessForRegistry) Close() error { return nil }
 
 // TestBuildRegistry_DefaultClaudeCLI verifies that builtin.claude_cli registers
 // an oracle wrapped around the provided harness.

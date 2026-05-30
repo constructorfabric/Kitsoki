@@ -24,8 +24,6 @@ func mustNew(t *testing.T, def *app.AppDef) machine.Machine {
 	return m
 }
 
-func ptr[T any](v T) *T { return &v }
-
 // ─── (a) simple linear transition ────────────────────────────────────────────
 
 func TestSimpleLinearTransition(t *testing.T) {

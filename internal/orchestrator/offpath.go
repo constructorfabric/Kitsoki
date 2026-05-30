@@ -210,7 +210,7 @@ func (o *Orchestrator) MarkOffPathExited(sid app.SessionID, toState app.StatePat
 // (session_id, turn, seq) primary key. The replay layer (store.BuildJourney)
 // explicitly ignores off-path event turn numbers when computing js.Turn,
 // so this side-channel allocation doesn't corrupt the foreground turn
-// counter — see isOffPathEvent in internal/store/replay.go.
+// counter — see the off-path handling in store.BuildJourney.
 func (o *Orchestrator) appendOffPathEvents(sid app.SessionID, events []store.Event) error {
 	if o.store == nil || len(events) == 0 {
 		return nil

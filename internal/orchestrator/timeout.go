@@ -460,11 +460,6 @@ func (d *timeoutDispatcher) persistFired(sid app.SessionID, sp app.StatePath) {
 	}
 }
 
-// rearmFromStore is a no-op; rearmAllFromStore handles all sessions at once.
-func (d *timeoutDispatcher) rearmFromStore(_ app.SessionID) error {
-	return nil
-}
-
 // rearmAllFromStore loads every unfired timeout row from the store and
 // reconstructs in-memory timers.  Called once during orchestrator startup.
 // Each entry whose fire_at is already in the past gets a zero duration so
@@ -677,15 +672,6 @@ func (o *Orchestrator) fireTimeout(ctx context.Context, sid app.SessionID, fromS
 	}
 
 	return nil
-}
-
-// timeoutPending exposes the dispatcher's per-session snapshot for tests.
-// Returns nil when no dispatcher is wired.
-func (o *Orchestrator) timeoutPending(sid app.SessionID) []timeoutSnapshot {
-	if o.timeouts == nil {
-		return nil
-	}
-	return o.timeouts.snapshot(sid)
 }
 
 // TimeoutPendingStates returns the state paths that currently have an armed

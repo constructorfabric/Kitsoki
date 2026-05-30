@@ -23,17 +23,6 @@ func failHandler(msg string) host.Handler {
 	}
 }
 
-func slowHandler(d time.Duration, output string) host.Handler {
-	return func(ctx context.Context, args map[string]any) (host.Result, error) {
-		select {
-		case <-ctx.Done():
-			return host.Result{}, ctx.Err()
-		case <-time.After(d):
-			return host.Result{Data: map[string]any{"output": output}}, nil
-		}
-	}
-}
-
 func TestSubmitAndSubscribe_Success(t *testing.T) {
 	sched := jobs.NewInMemoryScheduler()
 	ch, unsub := subscribeAfterSubmit(t, sched, echoHandler("hello"))

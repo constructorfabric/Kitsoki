@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -539,18 +538,3 @@ func TestChat_Continue_SignalCleanup(t *testing.T) {
 	t.Skip("TODO: cross-process SIGINT cleanup test — see comment above for why this is hard")
 }
 
-// ─── runKitsoki helper that returns combined err/stderr ───────────────────────
-
-// runKitsokiCapturingStderr is a variant of runKitsoki for cases that need both
-// stdout and stderr. Currently unused but available for future tests.
-func runKitsokiCapturingStderr(t *testing.T, args ...string) (stdout, stderr string, err error) {
-	t.Helper()
-	cmd := rootForTest()
-	var outBuf, errBuf bytes.Buffer
-	cmd.SetOut(&outBuf)
-	cmd.SetErr(&errBuf)
-	cmd.SetArgs(args)
-	cmd.SetContext(context.Background())
-	err = cmd.Execute()
-	return outBuf.String(), errBuf.String(), err
-}

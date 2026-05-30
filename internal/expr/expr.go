@@ -371,9 +371,6 @@ func EvalAny(p *Program, env Env) (any, error) {
 
 // ─── Render / template engine ─────────────────────────────────────────────────
 
-// renderCache caches parsed template trees keyed by source string.
-var renderCache sync.Map // map[string]*tmplTree
-
 // Render interpolates an expr-lang template against an Env.
 // Supports {{ expr }}, {{ if expr }}...{{ else }}...{{ end }} blocks.
 // Literal text between blocks is passed through unchanged.

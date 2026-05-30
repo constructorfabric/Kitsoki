@@ -1926,47 +1926,6 @@ func resolveTemplateValueLeafFallback(v any, existing any, hasExisting bool, env
 	}
 }
 
-// resolveTemplateValue mirrors machine.resolveEffectValue but lives here
-// so the orchestrator's late re-render doesn't need to import machine
-// internals.  Recurses into maps and slices and renders any string that
-// looks like an expr-lang template.  Kept for callers that don't have a
-// pre-bind fallback value; rerenderHostArgs uses the leaf-fallback variant
-// above instead.
-func resolveTemplateValue(v any, env expr.Env) (any, error) {
-	switch val := v.(type) {
-	case string:
-		if !containsTemplate(val) {
-			return val, nil
-		}
-		// expr.RenderValue preserves type when the entire string is a
-		// single `{{ ... }}` (e.g. a nested object); falls back to text
-		// rendering for inline interpolation.
-		return expr.RenderValue(val, env)
-	case map[string]any:
-		out := make(map[string]any, len(val))
-		for k, vv := range val {
-			r, err := resolveTemplateValue(vv, env)
-			if err != nil {
-				return nil, err
-			}
-			out[k] = r
-		}
-		return out, nil
-	case []any:
-		out := make([]any, len(val))
-		for i, vv := range val {
-			r, err := resolveTemplateValue(vv, env)
-			if err != nil {
-				return nil, err
-			}
-			out[i] = r
-		}
-		return out, nil
-	default:
-		return v, nil
-	}
-}
-
 func containsTemplate(s string) bool {
 	return strings.Contains(s, "{{")
 }

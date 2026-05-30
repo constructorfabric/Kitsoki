@@ -72,15 +72,6 @@ const (
 	ReplayModeExternalSideEffect ReplayMode = "external_side_effect"
 )
 
-// taskReplayState holds the artifacts captured at task start and end.
-type taskReplayState struct {
-	InitialHash  string
-	FinalDiff    string
-	FilesChanged []string
-	ReplayMode   ReplayMode
-	ScratchTar   []byte // non-nil for Mode B
-}
-
 // inferReplayMode determines the replay mode for a task call based on the
 // agent's ExternalSideEffect field and its declared tool surface.
 //

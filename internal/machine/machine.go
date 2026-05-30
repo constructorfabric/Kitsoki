@@ -289,9 +289,8 @@ type GuardDryRunResult struct {
 
 // compiledTransition holds a Transition with its pre-compiled guard program.
 type compiledTransition struct {
-	tr       app.Transition
-	guard    *expr.Program // nil when no When guard
-	viewProg *expr.Program // nil when no View template
+	tr    app.Transition
+	guard *expr.Program // nil when no When guard
 }
 
 // compiledState is a State with pre-compiled guard programs on every transition.
@@ -1590,81 +1589,6 @@ func (m *machineImpl) applyEffectsTraced(ctx context.Context, effects []app.Effe
 	return newWorld, hostCalls, saySB, effectEvents, emits, nil
 }
 
-// findTransition walks the transition arms for a given intent in the state
-// path (leaf first, then ancestors for compound states) and returns the first
-// winning compiledTransition, the state path it belongs to, and any guard hint.
-func (m *machineImpl) findTransition(leafPath, intentName string, env expr.Env) (*compiledTransition, string, string, error) {
-	// Walk from leaf to root.
-	path := leafPath
-	for {
-		cs, ok := m.states[path]
-		if ok {
-			// Try the intent's handlers first.
-			handlers := cs.on[intentName]
-			if len(handlers) > 0 {
-				ct, hint, err := evaluateArms(handlers, env)
-				if err != nil {
-					return nil, "", "", err
-				}
-				if ct != nil {
-					return ct, path, "", nil
-				}
-				// All guards failed; return hint from first failing guard.
-				return nil, path, hint, nil
-			}
-			// Try wildcard "*" handlers.
-			wildcardHandlers := cs.on["*"]
-			if len(wildcardHandlers) > 0 {
-				ct, hint, err := evaluateArms(wildcardHandlers, env)
-				if err != nil {
-					return nil, "", "", err
-				}
-				if ct != nil {
-					return ct, path, "", nil
-				}
-				return nil, path, hint, nil
-			}
-		}
-		// Move up one level.
-		idx := strings.LastIndexByte(path, '.')
-		if idx < 0 {
-			break
-		}
-		path = path[:idx]
-	}
-	return nil, leafPath, "", nil
-}
-
-// evaluateArms walks a list of compiledTransitions in order and returns the
-// first one whose guard evaluates true (or which is a default branch).
-// Returns nil if no arm matched, along with the guard hint from the first
-// failing guarded transition.
-func evaluateArms(arms []compiledTransition, env expr.Env) (*compiledTransition, string, error) {
-	hint := ""
-	for i := range arms {
-		arm := &arms[i]
-		if arm.tr.Default {
-			return arm, "", nil
-		}
-		if arm.guard == nil {
-			// No guard = always true.
-			return arm, "", nil
-		}
-		ok, err := expr.EvalBool(arm.guard, env)
-		if err != nil {
-			return nil, "", err
-		}
-		if ok {
-			return arm, "", nil
-		}
-		// Guard failed; capture the hint from the first failing guard.
-		if hint == "" && arm.tr.GuardHint != "" {
-			hint = arm.tr.GuardHint
-		}
-	}
-	return nil, hint, nil
-}
-
 // resolveTarget resolves a transition target relative to its owning state path.
 // Handles: "." (self), ".." relative refs, absolute refs.
 func resolveTarget(statePath, target string) string {
@@ -1712,96 +1636,6 @@ func (m *machineImpl) resolveInitial(path string, env expr.Env) (string, error) 
 	childPath := joinStatePath(path, childName)
 	// Recurse in case the child is itself a compound state.
 	return m.resolveInitial(childPath, env)
-}
-
-// applyEffects applies an ordered list of effects to a world snapshot and
-// returns the new world, any host calls, a "say" string builder, and effect events.
-func (m *machineImpl) applyEffects(effects []app.Effect, w world.World, env expr.Env) (world.World, []HostInvocation, strings.Builder, []store.Event, error) {
-	newWorld := cloneWorld(w)
-	var hostCalls []HostInvocation
-	var saySB strings.Builder
-	var effectEvents []store.Event
-
-	for _, eff := range effects {
-		switch {
-		case len(eff.Set) > 0:
-			for k, v := range eff.Set {
-				// Values may be expr-lang template strings.
-				resolved, err := resolveEffectValue(v, env, newWorld)
-				if err != nil {
-					return world.World{}, nil, saySB, nil, fmt.Errorf("effect set %q: %w", k, err)
-				}
-				newWorld.Vars[k] = resolved
-				// Update env.World so subsequent effects see the new value.
-				env.World = newWorld.Vars
-				effectEvents = append(effectEvents, newEvent(store.EffectApplied, map[string]any{
-					"set": map[string]any{k: resolved},
-				}))
-			}
-
-		case len(eff.Increment) > 0:
-			for k, delta := range eff.Increment {
-				cur := toInt64(newWorld.Vars[k])
-				newWorld.Vars[k] = cur + int64(delta)
-				env.World = newWorld.Vars
-				effectEvents = append(effectEvents, newEvent(store.EffectApplied, map[string]any{
-					"increment": map[string]any{k: delta},
-				}))
-			}
-
-		case eff.Say != "":
-			text, err := render.Pongo(eff.Say, env)
-			if err != nil {
-				return world.World{}, nil, saySB, nil, fmt.Errorf("effect say: %w", err)
-			}
-			if saySB.Len() > 0 {
-				saySB.WriteString("\n")
-			}
-			saySB.WriteString(text)
-			effectEvents = append(effectEvents, newEvent(store.EffectApplied, map[string]any{
-				"say": text,
-			}))
-
-		case eff.Invoke != "":
-			// Resolve with: args (templated values).  `resolvedArgs` is the
-			// best-effort up-front resolution against the world snapshot at
-			// machine-time; the orchestrator re-renders RawWith using the
-			// post-bind world before each invocation, so a downstream step
-			// in the same `on_enter:` can see an earlier step's binds.
-			resolvedArgs := make(map[string]any, len(eff.With))
-			for k, v := range eff.With {
-				resolved, err := resolveEffectValue(v, env, newWorld)
-				if err != nil {
-					return world.World{}, nil, saySB, nil, fmt.Errorf("effect invoke %q with %q: %w", eff.Invoke, k, err)
-				}
-				resolvedArgs[k] = resolved
-			}
-			// Snapshot the raw `with:` block so dispatch can re-render it.
-			rawWith := make(map[string]any, len(eff.With))
-			for k, v := range eff.With {
-				rawWith[k] = v
-			}
-			hc := HostInvocation{
-				Namespace:    eff.Invoke,
-				Args:         resolvedArgs,
-				RawWith:      rawWith,
-				Env:          env,
-				Bind:         eff.Bind,
-				OnError:      eff.OnError,
-				EmitEvent:    eff.Emit,
-				Background:   eff.Background,
-				OnComplete:   eff.OnComplete,
-				OraclePlugin: eff.OraclePlugin,
-			}
-			hostCalls = append(hostCalls, hc)
-			effectEvents = append(effectEvents, newEvent(store.HostInvoked, map[string]any{
-				"namespace":  eff.Invoke,
-				"args":       resolvedArgs,
-				"background": eff.Background,
-			}))
-		}
-	}
-	return newWorld, hostCalls, saySB, effectEvents, nil
 }
 
 // DispatchPostBindEmits — see Machine interface doc-comment.

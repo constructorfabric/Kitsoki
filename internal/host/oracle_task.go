@@ -41,7 +41,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 )
@@ -560,16 +559,4 @@ func readSubmittedPayload(outputFile string) (any, error) {
 // Kept as a shim so export_test.go's ExtractSessionIDExport continues to work.
 func extractSessionID(ctx context.Context) string {
 	return kitsokiSessionIDFromCtx(ctx)
-}
-
-// resolveTaskWorkingDir resolves a working_dir path; expands relative paths
-// against KITSOKI_APP_DIR when set, same as resolvePromptPath.
-func resolveTaskWorkingDir(dir string) string {
-	if filepath.IsAbs(dir) {
-		return dir
-	}
-	if base := os.Getenv(AppDirEnv); base != "" {
-		return filepath.Join(base, dir)
-	}
-	return dir
 }

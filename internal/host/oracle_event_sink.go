@@ -336,26 +336,6 @@ func storePromptIfLarge(ctx context.Context, callID string, prompt string) (stri
 	return filepath.Join("oracle-prompts", callID+".txt"), nil
 }
 
-// promptForEvent returns the prompt string to include in the OracleCalled event.
-// If the prompt is large and storage is configured, stores it separately and
-// returns "". Otherwise returns the full prompt (for small prompts stored inline
-// in future versions).
-func promptForEvent(ctx context.Context, callID string, prompt string) string {
-	const largeThreshold = 1024
-
-	if len(prompt) <= largeThreshold {
-		return prompt // Small; include inline
-	}
-
-	promptsDir := OraclePromptsDirFromCtx(ctx)
-	if promptsDir == "" {
-		return prompt // Storage not configured; include inline (may exceed PIPE_BUF)
-	}
-
-	// Large prompt with storage configured; don't include in event
-	return ""
-}
-
 // storeResponseIfLarge writes the response to a separate file if it's large (>1KB),
 // returning the file reference for the ResponseFile field, or "" if the response
 // was small or storage is not configured. Large responses are stored in
@@ -388,23 +368,4 @@ func storeResponseIfLarge(ctx context.Context, callID string, response json.RawM
 
 	// Return relative path for portability (relative to trace dir).
 	return filepath.Join("oracle-prompts", callID+"-response.json"), nil
-}
-
-// responseForEvent returns the response bytes to include in the OracleReturned event.
-// If the response is large and storage is configured, stores it separately and
-// returns nil. Otherwise returns the full response (for small responses stored inline).
-func responseForEvent(ctx context.Context, callID string, response json.RawMessage) json.RawMessage {
-	const largeThreshold = 1024
-
-	if len(response) <= largeThreshold {
-		return response // Small; include inline
-	}
-
-	promptsDir := OraclePromptsDirFromCtx(ctx)
-	if promptsDir == "" {
-		return response // Storage not configured; include inline (may exceed PIPE_BUF)
-	}
-
-	// Large response with storage configured; don't include in event
-	return nil
 }

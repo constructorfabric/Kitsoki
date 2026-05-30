@@ -277,15 +277,3 @@ func isRetryable(err error) bool {
 
 // Close is a no-op for LiveHarness (the anthropic client is shared/managed externally).
 func (h *LiveHarness) Close() error { return nil }
-
-// extractUsage returns the UsageInfo from a Message (for RecordingHarness).
-func extractUsage(resp *anthropic.Message) UsageInfo {
-	u := resp.Usage
-	return UsageInfo{
-		InputTokens:       u.InputTokens,
-		OutputTokens:      u.OutputTokens,
-		CacheReadTokens:   u.CacheReadInputTokens,
-		CacheCreateTokens: u.CacheCreationInputTokens,
-		CacheHit:          u.CacheReadInputTokens > 0,
-	}
-}

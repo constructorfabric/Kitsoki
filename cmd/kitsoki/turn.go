@@ -44,9 +44,6 @@ import (
 	"kitsoki/internal/store"
 )
 
-// turnExitAccepted is the exit code when an intent is accepted (turn succeeded).
-const turnExitAccepted = 0
-
 // turnExitRejected is the exit code when an intent is rejected by the machine.
 const turnExitRejected = 1
 

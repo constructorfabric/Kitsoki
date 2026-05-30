@@ -45,15 +45,6 @@ type taskToolEvent struct {
 	Seq           int    `json:"seq"`
 }
 
-// taskStreamEvent is the per-tool start/end payload sent to the StreamSink.
-type taskStreamEvent struct {
-	Kind    string `json:"kind"` // "task.tool.start" or "task.tool.end"
-	Tool    string `json:"tool"`
-	Preview string `json:"preview,omitempty"`
-	TraceID string `json:"trace_id,omitempty"`
-	Seq     int    `json:"seq"`
-}
-
 // observeTaskToolCalls reads cr.RawEvents (populated by runClaudeStreamJSON)
 // and emits a task.tool journal event for each tool_use block, plus a
 // task.tool.end event for each corresponding tool_result block.

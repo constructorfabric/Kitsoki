@@ -57,22 +57,6 @@ func makeSchemaFile(t *testing.T) string {
 	return p
 }
 
-// decideArgs returns a minimal valid args map for OracleDecideHandler.
-func decideArgs(promptPath, schemaPath string) map[string]any {
-	return map[string]any{
-		"prompt": "What should we do?",
-		"schema": schemaPath,
-	}
-}
-
-// decideArgsWithPath returns a minimal valid args map using prompt_path.
-func decideArgsWithPath(promptPath, schemaPath string) map[string]any {
-	return map[string]any{
-		"prompt_path": promptPath,
-		"schema":      schemaPath,
-	}
-}
-
 // ── 1. Verb contract ──────────────────────────────────────────────────────────
 
 // TestOracleDecide_SchemaRequired verifies that omitting schema: yields

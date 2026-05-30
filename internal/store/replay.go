@@ -143,18 +143,6 @@ func BuildJourney(def *app.AppDef, initialState app.StatePath, initialWorld worl
 	return js, nil
 }
 
-// isOffPathEvent reports whether kind is one of the four off-path event
-// kinds that fire on the orchestrator's side-channel rather than as part
-// of a foreground turn. These events must NOT advance js.Turn during
-// replay — see the BuildJourney comment.
-func isOffPathEvent(kind EventKind) bool {
-	switch kind {
-	case OffPathEntered, OffPathExited, OffPathQuestion, OffPathAnswer:
-		return true
-	}
-	return false
-}
-
 // effectPayload is the JSON structure for an EffectApplied event payload.
 type effectPayload struct {
 	Set       map[string]any `json:"set,omitempty"`

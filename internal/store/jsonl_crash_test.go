@@ -409,17 +409,5 @@ func TestLayer4_SymlinkInPath(t *testing.T) {
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
-func containsString(s, sub string) bool {
-	return len(s) >= len(sub) && (s == sub || len(sub) == 0 ||
-		func() bool {
-			for i := 0; i <= len(s)-len(sub); i++ {
-				if s[i:i+len(sub)] == sub {
-					return true
-				}
-			}
-			return false
-		}())
-}
-
 // Satisfy unused import of time (used in makeLongFixture via mkEvent).
 var _ = time.Now

@@ -30,12 +30,6 @@ func newClarifyModel() clarifyModel {
 	}
 }
 
-// isEnumSlot returns true if the slot should render as a numbered choice
-// list (Sub-mode A per §7.3). Free-form slots return false.
-func isEnumSlot(slot orchestrator.SlotNeed) bool {
-	return len(slot.Values) > 0 || slot.Type == "bool"
-}
-
 // Open activates the clarify model with the given slot needs.
 func (m *clarifyModel) Open(intentName string, slots []orchestrator.SlotNeed, existingSlots map[string]any) {
 	m.active = true

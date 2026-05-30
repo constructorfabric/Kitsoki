@@ -91,9 +91,6 @@ func resolveTicketsRoot(args map[string]any) (string, error) {
 	return cwd, nil
 }
 
-// bugsDir returns the canonical issues/bugs/ subdirectory under root.
-func bugsDir(root string) string { return filepath.Join(root, "issues", "bugs") }
-
 // ticketKindDirs enumerates the issues/* subdirectories scanned by the
 // local-files provider. Keys are the ticket-type label written into the
 // row's `type` field; values are the on-disk directory name. Stable

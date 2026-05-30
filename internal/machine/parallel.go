@@ -204,26 +204,6 @@ func validateParallelStates(prefix string, states map[string]*app.State) error {
 
 // ─── runtime helpers ─────────────────────────────────────────────────────────
 
-// findParallelAncestor walks from leafPath up the dotted path and returns
-// the deepest parallel-typed ancestor (if any).
-//
-// Returns ("", false) when no ancestor is parallel.
-func (m *machineImpl) findParallelAncestor(leafPath string) (string, bool) {
-	path := leafPath
-	for path != "" {
-		cs, ok := m.states[path]
-		if ok && cs.s != nil && cs.s.Type == "parallel" {
-			return path, true
-		}
-		idx := strings.LastIndexByte(path, '.')
-		if idx < 0 {
-			break
-		}
-		path = path[:idx]
-	}
-	return "", false
-}
-
 // resolveParallelEntry takes a parallel state's path and returns the
 // encoded parallel state-path with each region resolved to its initial leaf.
 func (m *machineImpl) resolveParallelEntry(parallelPath string, env expr.Env) (string, error) {

@@ -2133,16 +2133,6 @@ func (m RootModel) dispatchMenuEntry(entry *orchestrator.MenuEntry) (tea.Model, 
 	return m, nil
 }
 
-func (m RootModel) runTurn(input string) tea.Cmd {
-	orch := m.orch
-	sid := m.sid
-	return func() tea.Msg {
-		ctx := context.Background()
-		out, err := orch.Turn(ctx, sid, input)
-		return turnOutcomeMsg{outcome: out, input: input, err: err}
-	}
-}
-
 func (m RootModel) handleTurnOutcome(msg turnOutcomeMsg) (tea.Model, tea.Cmd) {
 	// Clear in-flight state (safe to call even if already cleared).
 	if m.inFlightCancel != nil {
@@ -3033,12 +3023,6 @@ func (m RootModel) handleMetaSendDone(msg metaSendDoneMsg) (tea.Model, tea.Cmd) 
 		return m.reloadOrchestratorAfterMetaWithFiles(msg.result.ChangedFiles)
 	}
 	return m, nil
-}
-
-// reloadOrchestratorAfterMeta is the no-file-list overload used by
-// the dormant legacy authoring-token dispatcher.
-func (m RootModel) reloadOrchestratorAfterMeta() (tea.Model, tea.Cmd) {
-	return m.reloadOrchestratorAfterMetaWithFiles(nil)
 }
 
 // handleReloadSlash implements `/reload`. It hot-swaps the app
@@ -4118,17 +4102,6 @@ func promptHeightFor(ta *textarea.Model) int {
 // keymap) was dropped during the rebase. Main's version handles every
 // requirement: Enter→submit, Alt+Enter/Ctrl+J newline, line numbers
 // off, cursor-line highlight off, per-line prefix via SetPromptFunc.
-
-// renderFooter builds the two-line footer above the prompt. Line 1 is
-// framework-defaulted from RootModel state (location · mode · queue ·
-// unread). Line 2 is the story/room pongo2 template result; empty by
-// default — story authors opt in.
-func (m RootModel) renderFooter() string {
-	r := blocks.New(m.width, m.currentTheme())
-	line1 := footerFrameworkLine(m)
-	line2 := footerStoryLine(m)
-	return r.Footer(line1, line2)
-}
 
 // footerFrameworkLine assembles the location-and-counters portion of
 // the framework footer: room · state · queue · unread. Mode label
