@@ -173,6 +173,39 @@ func TestMissingSlots(t *testing.T) {
 	require.Equal(t, app.StatePath("start"), res.NewState)
 }
 
+// A required slot explicitly provided as "" is present and must NOT be
+// reported as missing — emptiness is a schema-validation concern, not a
+// presence concern.
+func TestRequiredSlotEmptyStringIsPresent(t *testing.T) {
+	def := &app.AppDef{
+		App:   app.AppMeta{ID: "test"},
+		Root:  "start",
+		World: map[string]app.VarDef{},
+		Intents: map[string]app.Intent{
+			"say": {Slots: map[string]app.Slot{
+				"text": {Type: "string", Required: true},
+			}},
+		},
+		States: map[string]*app.State{
+			"start": {
+				On: map[string][]app.Transition{
+					"say": {{Target: "start"}},
+				},
+			},
+		},
+	}
+
+	m := mustNew(t, def)
+	w := world.New()
+
+	res, err := m.Turn(context.Background(), "start", w, intent.IntentCall{
+		Intent: "say",
+		Slots:  world.Slots{"text": ""}, // explicitly empty, but present
+	})
+	require.NoError(t, err)
+	require.Nil(t, res.ValidationError, "empty string is present, not missing")
+}
+
 // ─── (c) invalid enum slot value ─────────────────────────────────────────────
 
 func TestInvalidSlotValue(t *testing.T) {

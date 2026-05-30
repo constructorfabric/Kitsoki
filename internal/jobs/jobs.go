@@ -494,15 +494,24 @@ func (s *inMemoryScheduler) Subscribe(id JobID) (<-chan JobEvent, func()) {
 	// Check if the job is already terminal before registering the channel.
 	// If we registered first and then found it terminal, a concurrent fanout
 	// (e.g. Heartbeat calling fanoutLocked) could send on a channel we are
-	// about to close, causing a panic. By checking first under the write lock
-	// we avoid ever putting ch into rj.subs for a terminal job.
+	// about to close, causing a panic.
+	//
+	// The status read and the rj.subs registration must be atomic: a previous
+	// version released the RLock between the two, so a concurrent terminal
+	// transition (Submit's goroutine flipping status and fanning out under
+	// s.mu) could land in that window — we'd observe non-terminal status, then
+	// register ch AFTER the terminal fanout had already run, leaving ch
+	// registered on a terminal job with no event ever delivered (and no close).
+	// We therefore hold s.mu across both the check and the append. Lock
+	// ordering is s.mu -> rj.subMu, consistent with fanoutLocked, so this does
+	// not deadlock.
 	s.mu.RLock()
 	status := rj.job.Status
 	result := rj.job.Result
 	errStr := rj.job.Error
-	s.mu.RUnlock()
 
 	if status == JobDone || status == JobFailed || status == JobCancelled {
+		s.mu.RUnlock()
 		// Job is already terminal: send one event and close immediately.
 		// Do NOT register ch in rj.subs — a concurrent fanout would panic on
 		// the closed channel.
@@ -518,6 +527,7 @@ func (s *inMemoryScheduler) Subscribe(id JobID) (<-chan JobEvent, func()) {
 	rj.subMu.Lock()
 	rj.subs = append(rj.subs, ch)
 	rj.subMu.Unlock()
+	s.mu.RUnlock()
 
 	unsub := func() {
 		rj.subMu.Lock()
@@ -795,10 +805,16 @@ func (s *inMemoryScheduler) WaitSessionDrained(ctx context.Context, sid app.Sess
 	s.mu.RUnlock()
 
 	for _, sub := range subs {
+		// cancelled is read/written under sub.mu and lets the waiting goroutine
+		// break out of the cond loop even if pending never reaches zero, so it
+		// cannot leak when ctx is cancelled mid-wait. Mirrors the WaitIdle
+		// pattern above. A plain broadcast is racy: pending may still be >0 when
+		// the goroutine re-checks, so it would re-park and leak.
+		cancelled := false
 		done := make(chan struct{})
 		go func(sub *sessionSub) {
 			sub.mu.Lock()
-			for sub.pending > 0 {
+			for sub.pending > 0 && !cancelled {
 				sub.cond.Wait()
 			}
 			sub.mu.Unlock()
@@ -808,10 +824,13 @@ func (s *inMemoryScheduler) WaitSessionDrained(ctx context.Context, sid app.Sess
 		select {
 		case <-done:
 		case <-ctx.Done():
-			// Wake the cond goroutine so it can exit.
+			// Set the cancel flag and broadcast so the waiting goroutine exits,
+			// then wait for it to return before we do (no leak).
 			sub.mu.Lock()
+			cancelled = true
 			sub.cond.Broadcast()
 			sub.mu.Unlock()
+			<-done
 			return ctx.Err()
 		}
 	}

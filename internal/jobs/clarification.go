@@ -69,9 +69,20 @@ func (js *JobStore) RequestClarification(ctx context.Context, id JobID, schema C
 
 // AnswerClarification stores the user's answer and returns the job to running status.
 // The answer is any JSON-serialisable value.
+//
+// The status check and UPDATE are wrapped in a serializable transaction to
+// prevent a concurrent race where a second mutation (e.g. a Cancel flipping the
+// row to cancelled) could slip between the check and the UPDATE, clobbering the
+// terminal status. This mirrors RequestClarification above.
 func (js *JobStore) AnswerClarification(ctx context.Context, id JobID, answer any) error {
-	// Verify job is awaiting_input.
-	row := js.db.QueryRowContext(ctx, `SELECT status FROM jobs WHERE id=?`, id)
+	tx, err := js.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	if err != nil {
+		return fmt.Errorf("jobs.AnswerClarification: begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// Verify job is awaiting_input inside the transaction.
+	row := tx.QueryRowContext(ctx, `SELECT status FROM jobs WHERE id=?`, id)
 	var status string
 	if err := row.Scan(&status); err != nil {
 		return fmt.Errorf("jobs.AnswerClarification: %w", err)
@@ -86,11 +97,14 @@ func (js *JobStore) AnswerClarification(ctx context.Context, id JobID, answer an
 	}
 
 	now := time.Now().UnixMilli()
-	_, err = js.db.ExecContext(ctx, `
+	if _, err = tx.ExecContext(ctx, `
 		UPDATE jobs SET status=?, clarification_answer=?, updated_at=?
 		WHERE id=?`,
-		string(JobRunning), string(answerJSON), now, id)
-	return err
+		string(JobRunning), string(answerJSON), now, id); err != nil {
+		return fmt.Errorf("jobs.AnswerClarification: update: %w", err)
+	}
+
+	return tx.Commit()
 }
 
 // GetClarificationSchema returns the clarification schema for a job that is

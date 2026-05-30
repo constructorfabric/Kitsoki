@@ -7,6 +7,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"kitsoki/internal/app"
@@ -218,7 +219,9 @@ func (js *JobStore) UpdateJobStatus(ctx context.Context, id JobID, status JobSta
 		}
 		if resultJSON != nil {
 			var resultVal any
-			_ = json.Unmarshal(resultJSON, &resultVal)
+			if uerr := json.Unmarshal(resultJSON, &resultVal); uerr != nil {
+				slog.Warn("jobs.UpdateJobStatus: unmarshal result for journal entry failed", "id", id, "err", uerr)
+			}
 			ops = append(ops, map[string]any{"op": "replace", "path": "/result", "value": resultVal})
 		}
 		body := mustJobJSON(map[string]any{"ops": ops})
@@ -308,7 +311,9 @@ func scanJobs(rows *sql.Rows) ([]Job, error) {
 		}
 		j.Status = JobStatus(status)
 		j.OriginProposalID = originProposalID.String
-		_ = json.Unmarshal([]byte(payloadJSON), &j.Payload)
+		if uerr := json.Unmarshal([]byte(payloadJSON), &j.Payload); uerr != nil {
+			slog.Warn("jobs.scanJobs: unmarshal payload failed; leaving payload empty", "id", j.ID, "err", uerr)
+		}
 		j.Error = errStr.String
 		j.CreatedAt = time.UnixMilli(createdAtMs)
 		j.UpdatedAt = time.UnixMilli(updatedAtMs)
@@ -436,7 +441,9 @@ func (js *JobStore) ListNotifications(ctx context.Context, sessionID app.Session
 		n.TeleportProposalID = teleportProposalID.String
 		n.TeleportJobID = teleportJobID.String
 		if teleportSlotsJSON.Valid {
-			_ = json.Unmarshal([]byte(teleportSlotsJSON.String), &n.TeleportSlots)
+			if uerr := json.Unmarshal([]byte(teleportSlotsJSON.String), &n.TeleportSlots); uerr != nil {
+				slog.Warn("jobs.ListNotifications: unmarshal teleport_slots failed; leaving empty", "id", n.ID, "err", uerr)
+			}
 		}
 		out = append(out, n)
 	}

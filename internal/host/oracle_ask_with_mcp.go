@@ -1053,8 +1053,13 @@ func assembleResult(p runValidatorLoopParams, stdout string, exitCode int, stder
 	if p.OutputFormat == "json" && exitCode == 0 && stdout != "" {
 		var parsed any
 		if jErr := json.Unmarshal([]byte(stdout), &parsed); jErr == nil {
-			// See WrapTree comment in the non-validator branch above.
-			res.Data["stdout_json"] = sourcecolor.WrapTree(parsed)
+			// Do NOT wrap string leaves with source-color sentinels —
+			// see the non-validator branch above: stdout_json feeds
+			// `set:` bindings and `when:` guards and is forwarded
+			// verbatim to external transports (Jira/Bitbucket). Wrapping
+			// injects zero-width markers that break enum-equality guards
+			// (`action == 'edit'`) and leak into audit trails.
+			res.Data["stdout_json"] = parsed
 		} else {
 			res.Data["stdout_json_parse_error"] = jErr.Error()
 		}
@@ -1064,7 +1069,14 @@ func assembleResult(p runValidatorLoopParams, stdout string, exitCode int, stder
 		if vErr == nil && len(vBytes) > 0 {
 			var parsed any
 			if jErr := json.Unmarshal(vBytes, &parsed); jErr == nil {
-				res.Data["submitted"] = sourcecolor.WrapTree(unescapeOverEscapedStrings(parsed))
+				// Do NOT wrap string leaves with source-color sentinels —
+				// `submitted` is the MCP-validated canonical input for the
+				// state machine (bugfix reads `submitted.action == 'edit'`
+				// and copies `submitted.comment_replies[].reply_text`
+				// verbatim into Bitbucket/Jira). Wrapping injects zero-width
+				// markers that break enum-equality guards and leak into
+				// audit trails. This matches the non-validator path above.
+				res.Data["submitted"] = unescapeOverEscapedStrings(parsed)
 			} else {
 				// The validator only writes schema-passed payloads; a
 				// parse error here is a real bug.

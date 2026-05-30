@@ -1700,9 +1700,12 @@ func startAsyncTurn(
 	cmd := func() tea.Msg {
 		out, err := run(ctx)
 		if err != nil {
-			// If the context was cancelled, return a ModeCancelled outcome
-			// rather than a raw error.
-			if ctx.Err() != nil {
+			// Only treat this as a cancellation when the error itself is a
+			// context cancellation/deadline. Checking ctx.Err() alone is wrong:
+			// the ctx may have been cancelled asynchronously after a genuine
+			// non-cancellation error was produced, which would misclassify a
+			// real failure as a clean cancel.
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				return turnOutcomeMsg{
 					outcome: &orchestrator.TurnOutcome{Mode: orchestrator.ModeCancelled},
 					input:   input,

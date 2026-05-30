@@ -444,7 +444,20 @@ Output JSON: {session_id, deleted_tables: {events: N, snapshots: N, ...}}`,
 				fmt.Fprintf(cmd.ErrOrStderr(),
 					"Permanently delete session %s and all related data? [y/N]: ", sid)
 				scanner := bufio.NewScanner(cmd.InOrStdin())
-				scanner.Scan()
+				if !scanner.Scan() {
+					// EOF / I/O error (e.g. piped or closed stdin): treat as a
+					// non-confirmation and abort the destructive delete, but
+					// surface the I/O condition rather than reporting a bare
+					// "Aborted." that looks like a deliberate decline.
+					if err := scanner.Err(); err != nil {
+						fmt.Fprintf(cmd.ErrOrStderr(),
+							"Aborted: cannot read confirmation from stdin: %v\n", err)
+					} else {
+						fmt.Fprintln(cmd.ErrOrStderr(),
+							"Aborted: no confirmation on stdin (EOF); not deleting.")
+					}
+					return nil
+				}
 				answer := strings.TrimSpace(strings.ToLower(scanner.Text()))
 				if answer != "y" && answer != "yes" {
 					fmt.Fprintln(cmd.ErrOrStderr(), "Aborted.")

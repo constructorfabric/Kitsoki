@@ -182,12 +182,22 @@ func (m RootModel) submitOffPath(input string) (tea.Model, tea.Cmd) {
 	sid := m.sid
 	cmd := func() tea.Msg {
 		answer, err := orch.AskOffPath(ctx, sid, input)
-		if ctx.Err() != nil {
-			return offPathReplyMsg{question: input, err: ctx.Err()}
-		}
-		return offPathReplyMsg{question: input, answer: answer, err: err}
+		return offPathReplyFor(input, answer, err)
 	}
 	return m, tea.Batch(m.spinner.Tick, cmd)
+}
+
+// offPathReplyFor builds the reply message from an AskOffPath result. It
+// surfaces the actual error rather than the turn ctx's ctx.Err(): the ctx may
+// have been cancelled asynchronously after a genuine non-cancellation error was
+// produced, and reporting ctx.Err() in that case would both mask the real
+// failure and falsely label it a cancellation. The caller therefore must not
+// consult ctx.Err() to classify — the err returned by the call is authoritative.
+func offPathReplyFor(question, answer string, err error) offPathReplyMsg {
+	if err != nil {
+		return offPathReplyMsg{question: question, err: err}
+	}
+	return offPathReplyMsg{question: question, answer: answer, err: nil}
 }
 
 // handleOffPathReply processes the async reply from AskOffPath.

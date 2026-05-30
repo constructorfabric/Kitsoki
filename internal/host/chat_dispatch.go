@@ -28,6 +28,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 )
 
@@ -151,8 +152,17 @@ func DispatchDrive(ctx context.Context, cs ChatStore, driveID, workingDir string
 			// Infra failure: mark the drive failed with the underlying
 			// error so the row carries forensics, then re-surface to the
 			// caller as a Go error (the dispatcher itself is broken,
-			// not the drive).
-			_ = cs.MarkDriveFailed(lockedCtx, driveID, runErr.Error())
+			// not the drive). If the failed-mark itself errors we cannot
+			// recover the row here, but we must not silently swallow it:
+			// a stranded 'dispatching' row blocks the chat indefinitely,
+			// so log it at error level with enough context to find it.
+			if markErr := cs.MarkDriveFailed(lockedCtx, driveID, runErr.Error()); markErr != nil {
+				slog.ErrorContext(lockedCtx, "host.DispatchDrive: mark failed after infra error; drive may be stranded in 'dispatching'",
+					slog.String("drive_id", driveID),
+					slog.String("chat_id", drive.ChatID),
+					slog.String("run_err", runErr.Error()),
+					slog.String("mark_err", markErr.Error()))
+			}
 			return runErr
 		}
 

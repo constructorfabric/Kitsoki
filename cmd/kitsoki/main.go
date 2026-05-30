@@ -429,7 +429,20 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 						pickerHint,
 					)
 					scanner := bufio.NewScanner(cmd.InOrStdin())
-					scanner.Scan()
+					if !scanner.Scan() {
+						// EOF / I/O error (e.g. piped or closed stdin): we
+						// cannot prompt for a choice, so don't silently fall
+						// into the default (resume) branch. Surface the
+						// condition and abort rather than guessing intent.
+						if err := scanner.Err(); err != nil {
+							fmt.Fprintf(cmd.ErrOrStderr(),
+								"Aborted: cannot read choice from stdin: %v\n", err)
+						} else {
+							fmt.Fprintln(cmd.ErrOrStderr(),
+								"Aborted: no input on stdin (EOF).")
+						}
+						return errTempFail
+					}
 					choice := strings.TrimSpace(scanner.Text())
 					switch strings.ToLower(choice) {
 					case "q":

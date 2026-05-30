@@ -184,6 +184,61 @@ func TestSession_BindKey(t *testing.T) {
 	assert.Equal(t, sid, shown["session_id"])
 }
 
+// TestSession_ForgetEOFStdinAborts verifies the destructive `session forget`
+// confirmation prompt does NOT silently proceed (or report a bare "Aborted.")
+// when stdin is at EOF (piped/automated input with no answer). On EOF the
+// unchecked scanner.Scan() pattern returns "" which is correctly treated as a
+// non-confirmation, but the fix additionally surfaces the I/O condition so the
+// caller can tell an EOF apart from a deliberate "n". The session must remain
+// intact.
+func TestSession_ForgetEOFStdinAborts(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "sessions.db")
+
+	stdout, err := runKitsoki(t, "session", "create",
+		"--app", cloakAppFlag(),
+		"--db", dbPath,
+		"--key", "jira:FORGET-1",
+	)
+	require.NoError(t, err)
+	var created map[string]any
+	require.NoError(t, json.Unmarshal([]byte(stdout), &created))
+	sid, _ := created["session_id"].(string)
+	require.NotEmpty(t, sid)
+
+	// Run `session forget` (no --yes) with an EOF stdin: empty reader returns
+	// io.EOF on the first read, so scanner.Scan() is false.
+	cmd := rootForTest()
+	var out, errBuf bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errBuf)
+	cmd.SetIn(bytes.NewReader(nil)) // immediate EOF
+	cmd.SetArgs([]string{"session", "forget",
+		"--db", dbPath,
+		"--id", sid,
+	})
+	cmd.SetContext(context.Background())
+	runErr := cmd.Execute()
+
+	// Safe abort path: no error, and the I/O condition is surfaced on stderr
+	// (not a bare "Aborted.").
+	require.NoError(t, runErr)
+	stderr := errBuf.String()
+	assert.Contains(t, stderr, "EOF",
+		"EOF abort must surface the I/O condition, got: %q", stderr)
+
+	// The session must still exist (delete did not run).
+	stdout, err = runKitsoki(t, "session", "show",
+		"--app", cloakAppFlag(),
+		"--db", dbPath,
+		"--id", sid,
+	)
+	require.NoError(t, err)
+	var shown map[string]any
+	require.NoError(t, json.Unmarshal([]byte(stdout), &shown))
+	assert.Equal(t, sid, shown["session_id"])
+}
+
 // TestSession_ParseExternalKey covers the "transport:thread" parser edges.
 func TestSession_ParseExternalKey(t *testing.T) {
 	good := map[string][2]string{

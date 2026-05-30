@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -428,9 +429,11 @@ func (v *ValidatorServer) recordFailure(reason string) {
 
 // persistStateLocked rewrites the on-disk state file atomically. Caller
 // must hold v.mu. No-op when stateFilePath is empty. Failures are
-// silently ignored: a state-file write error must not block the LLM's
+// non-blocking: a state-file write error must not block the LLM's
 // response — the worst-case is that a subsequent restart loses one
-// iteration of state, which is recoverable.
+// iteration of state, which is recoverable. The failure is logged to
+// stderr at error level rather than swallowed, because the state file
+// drives the retry loop and a silent loss is hard to diagnose.
 func (v *ValidatorServer) persistStateLocked() {
 	if v.stateFilePath == "" {
 		return
@@ -444,7 +447,10 @@ func (v *ValidatorServer) persistStateLocked() {
 	if err != nil {
 		return
 	}
-	_ = writeOutputAtomically(v.stateFilePath, data)
+	if err := writeOutputAtomically(v.stateFilePath, data); err != nil {
+		slog.Error("validator: persist state file failed",
+			"path", v.stateFilePath, "err", err)
+	}
 }
 
 // maxRetriesExhaustedMessage is the LLM-facing sentinel returned once the

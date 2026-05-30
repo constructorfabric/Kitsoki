@@ -15,6 +15,7 @@ package orchestrator
 
 import (
 	"encoding/json"
+	"log/slog"
 	"time"
 
 	"kitsoki/internal/app"
@@ -137,7 +138,16 @@ func journalEntriesForEvents(
 				To     string `json:"to"`
 				Intent string `json:"intent"`
 			}
-			_ = json.Unmarshal(ev.Payload, &p)
+			if err := json.Unmarshal(ev.Payload, &p); err != nil {
+				// A malformed TransitionApplied payload would silently zero
+				// from/to/intent in the state.transition journal entry, making
+				// replay/inspection misleading. Surface it rather than discard.
+				slog.Default().Error("orchestrator: journal: unmarshal TransitionApplied payload",
+					slog.String("session_id", string(sid)),
+					slog.Int("turn", int(turnNum)),
+					slog.String("err", err.Error()),
+				)
+			}
 			e := newEntry(journal.KindStateTransition, "state", map[string]any{
 				"from":   p.From,
 				"to":     p.To,

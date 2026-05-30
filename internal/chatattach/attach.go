@@ -183,10 +183,22 @@ func Run(ctx context.Context, opts Options, runTmux func(sessionName string) err
 		}
 
 		// Heartbeat the chat lock until the runTmux callback returns.
+		//
+		// The heartbeat runs on an independent context, NOT lockedCtx:
+		// lockedCtx is cancelled when the interactive tmux attach is
+		// interrupted (e.g. the CLI caller gets SIGINT), and we still
+		// want the lock kept fresh until we genuinely release it below
+		// via `close(stop)`. Sharing lockedCtx would let an interrupted
+		// attach kill the heartbeat and leave the lock to go stale. The
+		// TUI /attach path already runs on context.Background() for the
+		// same reason. hbCancel guarantees the goroutine still exits on
+		// genuine release/shutdown.
+		hbCtx, hbCancel := context.WithCancel(context.Background())
+		defer hbCancel()
 		stop := make(chan struct{})
 		var hbWG sync.WaitGroup
 		hbWG.Add(1)
-		go heartbeatLoop(lockedCtx, opts.Store, opts.ChatID, stop, &hbWG, stderr)
+		go heartbeatLoop(hbCtx, opts.Store, opts.ChatID, stop, &hbWG, stderr)
 
 		attachErr := runTmux(sessionName)
 

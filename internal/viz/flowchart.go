@@ -602,7 +602,10 @@ func emitFlowchartStates(b *strings.Builder, a *app.AppDef, detail DetailLevel, 
 					label += " (default)"
 				}
 
-				toRoom := rooms.RoomOf[target]
+				toRoom, ok := rooms.RoomOf[target]
+				if !ok {
+					continue
+				}
 				if filtered && !selectedSet[toRoom] {
 					// Emit a stub edge to the external room.
 					stubID := "STUB_" + fcid(toRoom)

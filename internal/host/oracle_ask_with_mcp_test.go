@@ -900,7 +900,16 @@ func TestOracleAskWithMCP_OutcomeSuccess_FirstIteration(t *testing.T) {
 	require.Empty(t, res.Error)
 	submitted, ok := res.Data["submitted"].(map[string]any)
 	require.True(t, ok, "submitted payload missing")
-	assert.Equal(t, "first try worked", sourcecolor.Strip(submitted["summary"].(string)))
+	// The validated `submitted` payload is the canonical state-machine
+	// input — bug-fix reads `submitted.action == 'edit'` and copies
+	// reply text verbatim into Jira/Bitbucket. It must NOT carry
+	// source-color sentinels (commit 1f84882). Assert on the RAW value,
+	// not sourcecolor.Strip(...), or the wrap would be silently masked.
+	rawSummary := submitted["summary"].(string)
+	assert.Equal(t, "first try worked", rawSummary,
+		"submitted leaf must be verbatim with no zero-width sourcecolor markers")
+	assert.False(t, sourcecolor.IsWrapped(rawSummary),
+		"submitted payload must not contain source-color sentinels")
 }
 
 // TestOracleAskWithMCP_OutcomeAbandoned_SecondIteration_Success — iter 0

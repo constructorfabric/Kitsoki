@@ -11,8 +11,10 @@ package mcp_test
 // the same state file across iterations.
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -134,6 +136,50 @@ func TestValidator_StateFile_MalformedFileTreatedAsFresh(t *testing.T) {
 	assert.Equal(t, 0, attempts)
 	assert.Equal(t, 0, success)
 	assert.Empty(t, lastErr, "malformed state must be silently treated as fresh")
+}
+
+// TestValidator_StateFile_WriteFailureLoggedNotBlocking is the regression
+// for the silently-swallowed persist error. A failing state-file write
+// must NOT block (or fail) the LLM-facing submit response — the call still
+// succeeds — but the failure must be surfaced at error level on the
+// default slog logger (stderr) instead of being dropped, because the state
+// file drives the retry loop and a silent loss is otherwise undiagnosable.
+func TestValidator_StateFile_WriteFailureLoggedNotBlocking(t *testing.T) {
+	// Capture the default slog output. Not parallel-safe: slog.SetDefault
+	// is process-global, so this test must run serially and restore.
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	defer slog.SetDefault(prev)
+
+	// Point the state file inside a directory that does not exist, so
+	// writeOutputAtomically's CreateTemp fails. Loading still treats the
+	// missing file as a fresh session, so startup is unaffected.
+	stateFile := filepath.Join(t.TempDir(), "no-such-dir", "state.json")
+
+	cs, srv, done := connectValidatorWithCfg(t, kitsokimcp.ValidatorConfig{
+		StateFilePath: stateFile,
+	})
+	defer done()
+
+	// A valid submit: the persist write fails, but the response must still
+	// come back successfully (non-blocking guarantee).
+	r, err := cs.CallTool(context.Background(), &mcpsdk.CallToolParams{
+		Name:      "submit",
+		Arguments: validPayload(),
+	})
+	require.NoError(t, err)
+	require.False(t, r.IsError, "submit must still succeed despite state-file write failure")
+
+	// Counters advanced in memory even though the file write failed.
+	attempts, success, _ := srv.Stats()
+	assert.Equal(t, 1, attempts)
+	assert.Equal(t, 1, success)
+
+	// The failure must have been logged at error level — not swallowed.
+	logged := buf.String()
+	assert.Contains(t, logged, "level=ERROR", "persist failure must be logged at error level")
+	assert.Contains(t, logged, "persist state file failed", "log must describe the persist failure")
 }
 
 // TestValidator_StateFile_EmptyPathIsVolatile — when StateFilePath is

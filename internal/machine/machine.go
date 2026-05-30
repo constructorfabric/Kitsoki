@@ -624,7 +624,7 @@ func validateSlots(intentDef app.Intent, slots world.Slots) *intent.ValidationEr
 	var missing []string
 	for slotName, slotDef := range intentDef.Slots {
 		val, present := slots[slotName]
-		if slotDef.Required && (!present || val == nil || val == "") {
+		if slotDef.Required && (!present || val == nil) {
 			missing = append(missing, slotName)
 			continue
 		}

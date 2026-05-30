@@ -514,10 +514,21 @@ func (o *Orchestrator) RunInitialOnEnter(ctx context.Context, sid app.SessionID)
 // them to handleJobTerminal in a background goroutine. The goroutine exits
 // when the cancel func stored in cancelListeners is called.
 func (o *Orchestrator) startSessionListener(sid app.SessionID) {
+	// The listener must outlive the call that started it: NewSession's request
+	// context is cancelled as soon as NewSession returns, and
+	// EnsureSessionListener has no context at all. There is no orchestrator- or
+	// session-scoped lifetime context to derive from, so we root the listener at
+	// context.Background() and govern its lifetime explicitly via the cancel func
+	// stored in cancelListeners (cancelled by stopSessionListener on session
+	// close). Deriving from a request context here would orphan the cancel path
+	// AND prematurely tear the listener down. See stopSessionListener.
 	listenerCtx, cancel := context.WithCancel(context.Background())
 	o.mu.Lock()
 	o.cancelListeners[sid] = cancel
 	o.mu.Unlock()
+	o.logger.Debug("orchestrator: started session listener",
+		slog.String("session_id", string(sid)),
+	)
 
 	ch, ack, unsub := o.scheduler.SubscribeSession(sid)
 	go func() {
@@ -1389,6 +1400,9 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 					slog.String("err", bgErr.Error()),
 				)
 				w.Vars["last_error"] = bgErr.Error()
+				events = append(events, newOrchestratorEvent(store.EffectApplied, map[string]any{
+					"set": map[string]any{"last_error": bgErr.Error()},
+				}, 0))
 			} else {
 				w = bgWorld
 			}
@@ -1431,6 +1445,9 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 		if err != nil {
 			// Infrastructure failure (e.g. handler not registered): record and move on.
 			w.Vars["last_error"] = err.Error()
+			events = append(events, newOrchestratorEvent(store.EffectApplied, map[string]any{
+				"set": map[string]any{"last_error": err.Error()},
+			}, 0))
 			events = append(events, newOrchestratorEvent(store.HostReturned, map[string]any{
 				"namespace": hc.Namespace,
 				"error":     err.Error(),
@@ -1456,6 +1473,9 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 		}
 		if res.Error != "" {
 			w.Vars["last_error"] = res.Error
+			events = append(events, newOrchestratorEvent(store.EffectApplied, map[string]any{
+				"set": map[string]any{"last_error": res.Error},
+			}, 0))
 		}
 
 		// Emit one EffectApplied event per binding so replay reconstructs
@@ -2499,6 +2519,9 @@ func (o *Orchestrator) dispatchHostCallsDetailed(ctx context.Context, calls []ma
 			summary.Error = err.Error()
 			summaries = append(summaries, summary)
 			w.Vars["last_error"] = err.Error()
+			events = append(events, newOrchestratorEvent(store.EffectApplied, map[string]any{
+				"set": map[string]any{"last_error": err.Error()},
+			}, 0))
 			events = append(events, newOrchestratorEvent(store.HostReturned, map[string]any{
 				"namespace": hc.Namespace,
 				"error":     err.Error(),
@@ -2520,6 +2543,9 @@ func (o *Orchestrator) dispatchHostCallsDetailed(ctx context.Context, calls []ma
 		if res.Error != "" {
 			w.Vars["last_error"] = res.Error
 			summary.Error = res.Error
+			events = append(events, newOrchestratorEvent(store.EffectApplied, map[string]any{
+				"set": map[string]any{"last_error": res.Error},
+			}, 0))
 		}
 		if res.Data != nil {
 			summary.Data = res.Data

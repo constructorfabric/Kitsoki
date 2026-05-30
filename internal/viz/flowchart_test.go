@@ -405,6 +405,33 @@ func TestFlowchartFilterFromToMidSlice(t *testing.T) {
 	require.Contains(t, s, "SG_cloakroom")
 }
 
+// TestFlowchartUnknownTargetNoStubEdge guards against orphaned stub edges
+// for transition targets that don't resolve to any known state/room. Such a
+// target has no entry in rooms.RoomOf, so the filtered branch would otherwise
+// emit an edge to a STUB_ node that is never declared (the stub node itself is
+// suppressed because its room name is empty), leaving a dangling edge in the
+// mermaid output.
+func TestFlowchartUnknownTargetNoStubEdge(t *testing.T) {
+	def := minimalApp()
+	// Add a transition out of `working` that points at a state that does
+	// not exist anywhere in the app.
+	def.States["working"].On["escape_hatch"] = []app.Transition{{Target: "ghost_state"}}
+
+	// Filter to the `working` room so the cross-room stub-edge path is the
+	// one that handles this transition.
+	out, err := viz.FlowchartBytes(def, viz.DetailStates, viz.FlowchartFilter{Room: "working"})
+	require.NoError(t, err)
+	s := string(out)
+
+	// No node or edge should reference the unknown target.
+	require.NotContains(t, s, "ghost_state")
+	// The dangling intent must not produce any edge at all.
+	require.NotContains(t, s, "escape_hatch")
+	// And there must be no edge pointing at a bare/empty STUB_ node.
+	require.NotContains(t, s, "--> STUB_\n")
+	require.NotContains(t, s, `--> STUB_ `)
+}
+
 func TestFlowchartFilterValidate(t *testing.T) {
 	require.NoError(t, viz.FlowchartFilter{}.Validate())
 	require.NoError(t, viz.FlowchartFilter{Room: "foo"}.Validate())
