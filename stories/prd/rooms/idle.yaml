@@ -1,0 +1,116 @@
+# idle — idea discovery. A conversation, not a form.
+#
+# A free-form product idea is awkward to type into a single input field,
+# so intake is a chat: the operator talks, the `interviewer` agent replies
+# and helps sharpen the idea, and `start` distills the conversation into
+# world.idea before advancing to the structured clarification list.
+#
+# No `choice:` selector — the operator is dropped straight into the
+# conversation and just types. Free text routes through the LLM router
+# (discuss carries a required `message` slot, so the whole line is
+# captured whole); the closing prose names `ready` / `quit` so the
+# semantic router still catches those verbs. Same shape as the
+# selectorless testdata/apps/dev-story/rooms/oracle.yaml chat room.
+#
+# mode: conversational (the stories/oregon-trail/rooms/trail_guide.yaml
+# pattern). on_enter ONLY creates the persistent chat — the greeting is the
+# static `prose:` in the view, NOT an LLM call. The interviewer model runs
+# exclusively to process operator messages (the `discuss` self-loop), never
+# to produce intro text. The discuss arc uses `target: .` precisely so
+# on_enter does NOT re-fire (an explicit `target: idle` would re-enter and
+# re-create the chat each turn — see the discuss comment); the converse
+# call lives in the arc's own effects.
+
+states:
+
+  idle:
+    mode: conversational
+    description: "Describe your idea — talk it through; I'll help shape it."
+    view:
+      - heading: "PRD discovery"
+      # First turn only (idea_turns == 0): the full pitch prompt. Once the
+      # conversation is underway it would just be repeated intro text, so it
+      # gives way to the shorter "in progress" line below.
+      - prose: "Describe the product idea you want a PRD for — in your own words. Point me at any existing docs or code worth reading and I'll read them; I'll ask focused questions to sharpen it."
+        when: "world.idea_turns == 0"
+      - prose: "Discovery in progress — keep sharpening the idea with me."
+        when: "world.idea_turns > 0"
+      - kv:
+          pairs:
+            Output: "{{ world.workdir }}/{{ world.output_path }}"
+            Turns:  "{{ world.idea_turns }}"
+      - heading: "You"
+        when: "world.idea_message"
+      - prose: '{{ world.idea_message }}'
+        when: "world.idea_message"
+      - heading: "Analyst"
+        when: "world.idea_answer"
+      - prose: '{{ world.idea_answer }}'
+        when: "world.idea_answer"
+      # Verb hint — kept on every turn so the semantic router reliably catches
+      # `ready` / `quit` typed as free text (there is no choice selector).
+      - prose: "Say **ready** when it's clear enough and I'll move on to focused questions, or **quit** to abandon."
+    relevant_world: [workdir, output_path, idea, idea_message, idea_answer, idea_chat_title, idea_turns]
+    on_enter:
+      # Create the discovery chat once (skipped on the `discuss` self-
+      # transition). No kickoff converse — the greeting is the static
+      # prose in the view, so no LLM call fires until the operator speaks.
+      - invoke: host.chat.create
+        with:
+          app:       "prd"
+          room:      "idle"
+          scope_key: "{{ world.workdir }}"
+          title:     "PRD idea discovery"
+        bind:
+          idea_chat_id:    "chat_id"
+          idea_chat_title: "title"
+    on:
+      # Self-loop. `target: .` (NOT `target: idle`) is load-bearing: an
+      # explicit self-target counts as a re-entry and RE-FIRES on_enter
+      # (machine.go isReEntry, the same idiom the bugfix `refine:` arcs use).
+      # That would re-run chat.create every turn — spawning a fresh chat_id
+      # and discarding the conversation history — and, when on_enter still
+      # had a kickoff converse, clobber this reply with the intro greeting.
+      # `.` skips on_enter, so the chat persists and the converse call below
+      # is the only LLM call. idea_answer is cleared up front so a failure
+      # doesn't leave a stale reply paired with the new message.
+      discuss:
+        - target: .
+          effects:
+            - set:
+                idea_message: "{{ slots.message }}"
+                idea_answer:  ""
+            - increment: { idea_turns: 1 }
+            - invoke: host.oracle.converse
+              with:
+                chat_id:     "{{ world.idea_chat_id }}"
+                agent:       interviewer
+                working_dir: "{{ world.workdir }}"
+                question:    "{{ slots.message }}"
+              bind:
+                idea_answer:     "answer"
+                idea_chat_id:    "chat_id"
+                idea_session_id: "claude_session_id"
+
+      # Distill the whole conversation into a crisp idea statement, then
+      # advance to the structured clarification list.
+      start:
+        - target: clarifying
+          effects:
+            - invoke: host.oracle.converse
+              with:
+                chat_id:     "{{ world.idea_chat_id }}"
+                agent:       interviewer
+                working_dir: "{{ world.workdir }}"
+                question:    "The discovery conversation is complete. Write a single, crisp problem/idea statement (1-4 sentences) that captures what this PRD should be about, synthesising everything we discussed. Output ONLY that statement — no preamble, no questions."
+              bind:
+                idea: "answer"
+
+      quit:
+        - target: "@exit:abandoned"
+          effects:
+            - set:
+                abandon_reason: "abandoned_at_idle"
+                status:         "abandoned"
+      look:
+        - target: .

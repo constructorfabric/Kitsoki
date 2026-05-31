@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "prd_artifact",
+  "description": "Artifact produced by the drafting room: the PRD written to disk plus a checkpoint summary and a self-assessed completeness signal.",
+  "type": "object",
+  "required": ["title", "summary_markdown", "file_path", "confidence", "needs_clarification", "follow_up_questions"],
+  "properties": {
+    "title":            { "type": "string", "minLength": 4, "description": "PRD title." },
+    "summary_markdown": { "type": "string", "minLength": 80, "description": "Checkpoint view the operator reads: the PRD body, or a digest if the full doc is large. Markdown." },
+    "file_path":        { "type": "string", "minLength": 1, "description": "Path (relative to working_dir) the PRD markdown was written to." },
+    "confidence":       { "type": "number", "minimum": 0.0, "maximum": 1.0, "description": "Author's own estimate that the PRD is solid given the inputs." },
+    "needs_clarification": { "type": "boolean", "description": "True when the author judges more operator input is required before the PRD is solid." },
+    "follow_up_questions": {
+      "type": "array",
+      "description": "Questions to route into another clarification round when needs_clarification is true. Empty otherwise.",
+      "items": { "type": "string" }
+    },
+    "sections": {
+      "type": "array",
+      "description": "Optional outline of the PRD's top-level sections.",
+      "items": { "type": "string" }
+    }
+  },
+  "additionalProperties": true
+}

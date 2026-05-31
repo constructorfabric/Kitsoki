@@ -1,0 +1,25 @@
+{% comment %}
+prd — standalone base view. Mirrors stories/bugfix/views/base.pongo.
+
+This base is consulted only when prd runs STANDALONE. When imported under
+a parent story, the AppRenderer resolves `extends: "base"` against the
+HOST's base. The prd rooms use flattened typed-element views (because a
+`choice:` widget cannot live inside a `blocks:` map — see
+docs/choice-widget.md §3.1), so they do not extend this base; it is kept
+for block-contract parity with the other stories.
+
+Block contract:
+  status   — top status line; prd's "cycle · round · judge" readout
+  heading  — room title (default: state.description)
+  body     — main descriptive content
+  choices  — action list
+  footer   — optional bottom matter
+{% endcomment %}
+{% block status %}cycle {{ world.cycle }}  ·  clarify round {{ world.clarifying_cycle }}  ·  draft attempt {{ world.drafting_cycle }}  ·  judge {{ world.judge_mode }}{% endblock %}
+
+{% block heading %}{{ state.description }}{% endblock %}
+
+{% block body %}{% endblock %}
+
+{% block choices %}{% endblock %}
+{% block footer %}{% endblock %}

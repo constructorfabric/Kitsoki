@@ -1,0 +1,196 @@
+# prd — PRD-authoring operator story.
+#
+# A pipeline-shaped story that turns a free-form idea (plus any existing
+# upstream requirement docs) into a PRD markdown document, with a dynamic
+# clarification step and an iterative refine loop. Structurally identical
+# to stories/bugfix/ and stories/dev-story/; the novelty is the *document*
+# artifact and the multi-round clarification transcript.
+#
+# Graph (three rooms, two exits):
+#
+#   idle ── start ──▶ clarifying ── submit_answers / skip ──▶ drafting
+#                         │  (decide → only-new questions)        │  (task → PRD.md)
+#                         ├─ regenerate ─▶ clarifying (cycle++)   ├─ accept ─▶ @exit:done
+#                         └─ quit ─▶ @exit:abandoned              ├─ refine ─▶ drafting (budget→abandoned)
+#                              ▲                                  ├─ clarify ─▶ clarifying (another round)
+#                              └────────────── clarify ──────────┤
+#                                                                ├─ restart_from ─▶ idle | clarifying
+#                                                                └─ quit ─▶ @exit:abandoned
+#
+# drafting is the checkpoint room — same shape as every bugfix phase. The
+# clarify arc closes a multi-round clarification loop: each round *appends*
+# to world.clarification_log rather than overwriting it (see
+# rooms/clarifying.yaml). clarifying_budget caps the number of rounds.
+#
+# No host / engine / widget changes — everything composes existing
+# mechanisms (choice forms, host.oracle.*, the cycle-budget refine loop,
+# named agents, tracing). See README.md for the full contract + design.
+
+app:
+  id: prd
+  version: 0.1.0
+  title: "PRD authoring"
+  author: "Kitsoki"
+  license: "CC0"
+
+# Host allow-list. The intake room is a conversation (converse + a
+# persistent chat); clarifying/drafting use decide/task. v1 does not post
+# the finished PRD anywhere out-of-band (optional, trivial to add as an
+# effect on the accept arc later).
+hosts:
+  - host.oracle.converse
+  - host.oracle.decide
+  - host.oracle.task
+  - host.chat.create
+
+# Persona table — names a model + tool surface per step so the trace
+# attributes model + token usage to each step.
+#
+#   interviewer — converse; read-only; runs the idea-discovery chat.
+#   analyst     — decide;   read-only; generates the clarifying questions.
+#   author      — task;     may write the PRD to disk; produces prd_artifact.
+#   judge       — decide;    no tools; the optional auto-advance gate.
+agents:
+  interviewer:
+    system_prompt: "You are a product analyst running a discovery conversation to develop a raw idea into something a PRD can be written from. Ask one focused question at a time, reflect back what you heard, and help the user sharpen the problem, the users, and the scope. When the user points at existing docs or code, read them. Keep each reply short — a sentence or two plus at most one question."
+    model: claude-sonnet-4-6
+    tools: [Read, Grep, Glob]
+    external_side_effect: false
+
+  analyst:
+    system_prompt: "You are a product analyst. Read the user's idea and any upstream requirement docs, then surface the smallest set of genuinely-new clarifying questions needed to write a solid PRD."
+    model: claude-sonnet-4-6
+    tools: [Read, Grep, Glob]
+    external_side_effect: false
+
+  author:
+    system_prompt: "You are a product manager authoring a PRD. Read the idea, the upstream docs, and the clarification transcript, then write a complete, well-structured PRD markdown document to disk."
+    model: claude-sonnet-4-6
+    tools: [Read, Grep, Glob, Write, Edit]
+    external_side_effect: false
+
+  judge:
+    system_prompt: "You are a quality gate for PRDs. Evaluate the draft against the stated criteria and emit a structured verdict: accept, refine, clarify, or uncertain."
+    model: claude-sonnet-4-6
+    tools: []
+
+# World — every key read in a view, effect, or guard is declared here.
+world:
+  # ── intake ──────────────────────────────────────────────────────────
+  idea:            { type: string, default: "" }   # the distilled pitch (set when discovery ends)
+  upstream_paths:  { type: string, default: "" }   # space/comma-separated files or dirs
+  workdir:         { type: string, default: "." }  # where upstream lives + PRD is written
+  output_path:     { type: string, default: "PRD.md" }
+
+  # ── discovery chat (idle room) ───────────────────────────────────────
+  idea_chat_id:    { type: string, default: "" }   # persistent chat thread for the discovery conversation
+  idea_chat_title: { type: string, default: "" }
+  idea_message:    { type: string, default: "" }   # operator's latest message this turn
+  idea_answer:     { type: string, default: "" }   # interviewer's latest reply
+  idea_session_id: { type: string, default: "" }   # claude session id (resume across turns)
+  idea_turns:      { type: int,    default: 0 }
+
+  # ── clarification (accumulates across rounds — see rooms/clarifying.yaml) ─
+  clarifications:        { type: object, default: {} }  # decide result for THIS round: { questions: [{id, question, why}] }
+  clarification_answers: { type: string, default: "" }  # operator's free-text replies for THIS round
+  clarification_log:     { type: string, default: "" }  # growing transcript of every prior round's Q&A
+
+  # ── draft + refine ──────────────────────────────────────────────────
+  prd_artifact:    { type: object, default: {} }   # task result: { title, summary_markdown, file_path, confidence, needs_clarification, follow_up_questions }
+  refine_feedback: { type: string, default: "" }
+
+  # ── cycle counters / budgets ────────────────────────────────────────
+  cycle:             { type: int, default: 0 }     # global audit counter
+  clarifying_cycle:  { type: int, default: 0 }
+  clarifying_budget: { type: int, default: 3 }
+  drafting_cycle:    { type: int, default: 0 }
+  drafting_budget:   { type: int, default: 5 }
+
+  # ── checkpoint / judge / exit ───────────────────────────────────────
+  judge_mode:                 { type: string, default: "human" }  # human | llm | llm_then_human
+  judge_confidence_threshold: { type: float,  default: 0.8 }
+  llm_verdict:     { type: object, default: {} }   # { verdict, intent, reason, confidence }
+  abandon_reason:  { type: string, default: "" }
+  status:          { type: string, default: "" }
+  thread:          { type: string, default: "" }   # held for an optional future transport.post
+
+# Intent vocabulary.
+intents:
+  discuss:
+    description: "Send a message in the idea-discovery conversation."
+    examples: ["i want to build", "the idea is", "it's for", "tell me more", "here's what i'm thinking"]
+    priority: 40
+    slots:
+      # required: true forces the semantic router to fall through to the
+      # LLM router so the operator's free-text message is captured whole
+      # rather than parsed as a command.
+      message: { type: string, required: true }
+  start:
+    description: "Done discussing — distill the idea and move on to clarifying questions."
+    examples: ["ready", "i'm ready", "build the prd", "draft it", "let's go", "done discussing", "start"]
+    priority: 90
+  submit_answers:
+    description: "Submit answers to this round's clarification questions and advance to drafting."
+    examples: ["submit", "here are my answers", "done answering", "answers"]
+    priority: 80
+    slots:
+      # required: true forces the semantic router to fall through to the
+      # LLM router so the operator's trailing free-text answer blob is
+      # captured rather than dropped (same rationale as bugfix.refine).
+      answers: { type: string, required: true }
+  skip:
+    description: "Skip answering this round; draft with what we have."
+    examples: [skip, "no more questions", "just draft", "go ahead"]
+    priority: 60
+  regenerate:
+    description: "Re-generate this round's clarification questions (optionally with feedback)."
+    examples: [regenerate, "different questions", "ask again", "redo questions"]
+    priority: 65
+    slots:
+      feedback: { type: string, required: false }
+  accept:
+    description: "Accept the PRD draft and finish."
+    examples: ["accept", "approve", "looks good", "lgtm", "ship it", "done"]
+    priority: 85
+  refine:
+    description: "Refine the PRD draft with feedback; re-draft with the same inputs."
+    examples: [refine, rework, redo, revise]
+    priority: 70
+    slots:
+      feedback: { type: string, required: true }
+  clarify:
+    description: "Run another round of clarification questions, then re-draft with more to work from."
+    examples: [clarify, "more questions", "ask me more", "need more input"]
+    priority: 68
+  restart_from:
+    description: "Restart from an earlier stage: idle (re-pitch, wipes the clarification log) or clarifying (re-question)."
+    examples: [restart_from, restart, "start over"]
+    priority: 60
+    slots:
+      stage: { type: string, required: false }
+  quit:
+    description: "Abandon PRD authoring."
+    examples: [quit, abort, bail, cancel]
+    priority: 50
+  look:
+    description: "Re-render the current view."
+    examples: [look, "what now?"]
+    priority: 10
+
+# Intents lifted into a parent story's table when prd is imported.
+exports:
+  intents: [discuss, start, submit_answers, skip, regenerate, accept, refine, clarify, restart_from, quit, look]
+
+# Named return points. Standalone load synthesises __exit__done /
+# __exit__abandoned terminals.
+exits:
+  done:
+    description: "PRD accepted; prd_artifact is final."
+    requires: [prd_artifact]
+  abandoned:
+    description: "Operator or LLM bailed."
+
+root: idle
+
+include:
+  - rooms/*.yaml

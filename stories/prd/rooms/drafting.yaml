@@ -1,0 +1,191 @@
+# drafting — generate the PRD, then checkpoint.
+#
+# on_enter runs the author (host.oracle.task) which writes the PRD to
+# {{ workdir }}/{{ output_path }} and returns prd_artifact. The acceptance
+# schema requires needs_clarification + follow_up_questions so the author
+# can explicitly say "I need more input before this is solid" — surfaced
+# as a banner that points the operator at the clarify action.
+#
+# Checkpoint exits — three deliberately distinct moves:
+#   refine          keep the same inputs, ask the author to revise prose.
+#   clarify         the inputs are incomplete → another clarification
+#                   round that ADDS to the transcript, then re-drafts.
+#   restart_from    redo, not extend: idle wipes the log and re-pitches;
+#                   clarifying discards the record and re-questions.
+#
+# Optional LLM judge (judge_mode != human) runs after the draft and
+# auto-emits its verdict above the confidence floor — straight lift from
+# bugfix. Default human-only.
+
+states:
+
+  drafting:
+    description: "Draft the PRD; review and accept, refine, or clarify."
+    view:
+      - banner:
+          text:     "DRAFTING"
+          subtitle: "Generate the PRD markdown and review"
+          color:    "#8B5CF6"   # violet — synthesis
+      - prose: "cycle {{ world.cycle }} · draft attempt {{ world.drafting_cycle }} · clarify rounds {{ world.clarifying_cycle }} · judge {{ world.judge_mode }}"
+      - kv:
+          pairs:
+            Title:      '{{ world.prd_artifact.title|default:"(pending)" }}'
+            Confidence: '{{ world.prd_artifact.confidence|default:"(pending)" }}'
+            File:       '{{ world.prd_artifact.file_path|default:"(pending)" }}'
+      - prose: "⚠ The author flagged that more input is needed — see the follow-ups below, then use clarify."
+        when:  "world.prd_artifact.needs_clarification"
+      - code: |
+          {% for q in world.prd_artifact.follow_up_questions %}- {{ q }}
+          {% empty %}(no follow-ups){% endfor %}
+        when: "world.prd_artifact.needs_clarification"
+      - heading: "PRD"
+      - code: '{{ world.prd_artifact.summary_markdown|default:"(pending — oracle has not returned yet; the full PRD is written to the output file)" }}'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "accept"
+              hint:   "finish — the PRD is ready"
+              intent: accept
+            - label:  "refine"
+              hint:   "re-draft with feedback (same inputs)"
+              intent: refine
+              param:
+                slot:        feedback
+                type:        string
+                placeholder: "what to change"
+                required:    false
+            - label:  "clarify"
+              hint:   "another Q&A round, then re-draft with more to work from"
+              intent: clarify
+            - label:  "restart from clarifying"
+              hint:   "discard the clarification record and re-question"
+              intent: restart_from
+              slots:  { stage: clarifying }
+            - label:  "restart from idle"
+              hint:   "re-pitch from scratch (wipes the clarification log)"
+              intent: restart_from
+              slots:  { stage: idle }
+            - label:  "quit"
+              hint:   "abandon PRD authoring"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    relevant_world: [idea, upstream_paths, workdir, output_path, clarification_log, prd_artifact, refine_feedback, cycle, drafting_cycle, drafting_budget, clarifying_cycle, judge_mode, judge_confidence_threshold, llm_verdict]
+    on_enter:
+      # Write the PRD. working_dir pins the author's Read/Write to the
+      # operator's tree; its tool calls + files_changed land in the trace.
+      - invoke: host.oracle.task
+        with:
+          agent: author
+          working_dir: "{{ world.workdir }}"
+          acceptance:
+            schema: schemas/prd_artifact.json
+          context:
+            prompt: prompts/draft_prd.md
+            args:
+              idea:              "{{ world.idea }}"
+              upstream_paths:    "{{ world.upstream_paths }}"
+              clarification_log: "{{ world.clarification_log }}"
+              output_path:       "{{ world.output_path }}"
+              workdir:           "{{ world.workdir }}"
+              refine_feedback:   "{{ world.refine_feedback }}"
+              cycle:             "{{ world.cycle }}"
+        bind:
+          prd_artifact: submitted
+        on_error: idle
+
+      # Optional LLM judge (skipped in human mode).
+      - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
+        invoke: host.oracle.decide
+        with:
+          agent: judge
+          prompt: prompts/judge_prd.md
+          schema: schemas/judge_verdict.json
+          working_dir: "{{ world.workdir }}"
+          args:
+            idea:           "{{ world.idea }}"
+            artifact_title: "{{ world.prd_artifact.title }}"
+            artifact_body:  "{{ world.prd_artifact.summary_markdown }}"
+        bind:
+          llm_verdict: submitted
+
+      # Auto-fire the judge's verdict above the confidence floor.
+      # `uncertain` verdicts fall through to the human-mode view.
+      - when: |
+          world.judge_mode != 'human' &&
+          world.llm_verdict.confidence >= world.judge_confidence_threshold &&
+          world.llm_verdict.verdict != 'uncertain' &&
+          world.llm_verdict.intent != 'uncertain'
+        emit_intent: "{{ world.llm_verdict.intent }}"
+        slots:
+          feedback: "{{ world.llm_verdict.reason }}"
+    on:
+      # accept fires @exit:done. requires: [prd_artifact] is checked
+      # statically against this arc's effects — re-pin prd_artifact (it
+      # was bound on_enter) so the gate sees an explicit set. A bare
+      # `key: "{{ world.obj }}"` short-circuits to the typed map, which
+      # is exactly what we want here (store the object back).
+      accept:
+        - target: "@exit:done"
+          effects:
+            - set:
+                status:       "done"
+                prd_artifact: "{{ world.prd_artifact }}"
+
+      # Same inputs, revise the prose. Budget gate → @exit:abandoned.
+      refine:
+        - when: "world.drafting_cycle >= world.drafting_budget"
+          target: "@exit:abandoned"
+          effects:
+            - set:
+                abandon_reason: "drafting_budget_exhausted"
+                status:         "abandoned"
+        - target: drafting
+          effects:
+            - set:
+                refine_feedback: "{{ slots.feedback ?? world.llm_verdict.reason }}"
+                drafting_cycle:  "{{ world.drafting_cycle + 1 }}"
+                cycle:           "{{ world.cycle + 1 }}"
+
+      # Inputs are incomplete → another clarification round. Preserves
+      # clarification_log; the next round appends to it. refine_feedback
+      # is cleared so clarifying's analyst isn't steered by stale draft
+      # feedback (clarify is "ask more," not "redo the questions").
+      clarify:
+        - target: clarifying
+          effects:
+            - set:
+                refine_feedback: ""
+
+      # Heavier than clarify: redo rather than extend. idle re-pitches
+      # (wipes the log); clarifying re-questions (discards the record).
+      restart_from:
+        - when: "slots.stage == 'idle'"
+          target: idle
+          effects:
+            - set:
+                clarification_log:     ""
+                clarification_answers: ""
+                refine_feedback:       ""
+                clarifying_cycle:      0
+                drafting_cycle:        0
+                cycle:                 0
+        - target: clarifying
+          effects:
+            - set:
+                clarification_log:     ""
+                clarification_answers: ""
+                refine_feedback:       ""
+                clarifying_cycle:      0
+                cycle:                 0
+
+      quit:
+        - target: "@exit:abandoned"
+          effects:
+            - set:
+                abandon_reason: "abandoned_at_drafting"
+                status:         "abandoned"
+      look:
+        - target: .

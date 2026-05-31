@@ -1,0 +1,69 @@
+# happy_path — idle → clarifying → drafting → @exit:done.
+#
+# Intent-only (no LLM). The clarifying/drafting on_enter oracle calls are
+# served by stub host_handlers below. judge_mode=human so no judge runs.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  workdir:     "."
+  output_path: "PRD.md"
+  judge_mode:  "human"
+
+host_handlers:
+  host.chat.create:
+    data: { ok: true, chat_id: "chat-1", title: "PRD idea discovery" }
+  host.oracle.converse:
+    data: { ok: true, answer: "A CLI for X that helps developers do Y.", chat_id: "chat-1", claude_session_id: "sess-1" }
+  host.oracle.decide:
+    data:
+      ok: true
+      submitted:
+        questions:
+          - { id: "q1", question: "Who is the primary user?", why: "scopes the persona" }
+          - { id: "q2", question: "What is the single most important success metric?", why: "defines done" }
+  host.oracle.task:
+    data:
+      ok: true
+      submitted:
+        title:               "PRD: Example CLI"
+        summary_markdown:    "## PRD: Example CLI\n\nA sufficiently long summary body to satisfy the schema minimum length for the prd_artifact summary_markdown field, covering problem, users, goals, and metrics."
+        file_path:           "PRD.md"
+        confidence:          0.84
+        needs_clarification: false
+        follow_up_questions: []
+
+turns:
+  # Discovery conversation: the operator sends a message; the interviewer
+  # replies (stubbed). Stays in idle (self-transition).
+  - intent: { name: discuss, slots: { message: "I want a CLI for X" } }
+    expect_state: idle
+    expect_world:
+      idea_message: "I want a CLI for X"
+      idea_turns:   1
+
+  # `start` distills the conversation into world.idea and advances to
+  # clarifying.
+  - intent: { name: start, slots: {} }
+    expect_state: clarifying
+    expect_world:
+      idea: "A CLI for X that helps developers do Y."
+
+  # Answer the questions → drafting. The round is appended to the
+  # transcript and clarifying_cycle increments.
+  - intent: { name: submit_answers, slots: { answers: "1) developers 2) time-to-first-success" } }
+    expect_state: drafting
+    expect_world:
+      clarifying_cycle:      1
+      clarification_answers: "1) developers 2) time-to-first-success"
+
+  # Accept the draft → @exit:done. requires: [prd_artifact] is satisfied
+  # by the re-pin on the accept arc.
+  - intent: { name: accept, slots: {} }
+    expect_state: __exit__done
+    expect_world:
+      status: "done"
+
+expect_terminal: true
+expect_no_errors: true

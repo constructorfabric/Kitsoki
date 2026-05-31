@@ -1,0 +1,60 @@
+# multi_round_clarify — drafting —clarify→ clarifying —submit_answers→
+# drafting, twice. Proves the clarification transcript ACCUMULATES rather
+# than overwrites: clarifying_cycle reaches 2 (it is NOT reset when
+# clarify re-enters clarifying), and each submit appends a fresh round to
+# world.clarification_log.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: drafting
+initial_world:
+  idea:        "A CLI for X"
+  workdir:     "."
+  output_path: "PRD.md"
+  judge_mode:  "human"
+
+host_handlers:
+  host.oracle.task:
+    data:
+      ok: true
+      submitted:
+        title:               "PRD: Example CLI"
+        summary_markdown:    "## PRD: Example CLI\n\nA sufficiently long summary body to satisfy the schema minimum length for the prd_artifact summary_markdown field, covering problem, users, goals, and metrics."
+        file_path:           "PRD.md"
+        confidence:          0.84
+        needs_clarification: true
+        follow_up_questions: ["What is the scope boundary?"]
+  host.oracle.decide:
+    data:
+      ok: true
+      submitted:
+        questions:
+          - { id: "q1", question: "What is the scope boundary?", why: "scopes the work" }
+
+turns:
+  # Round 1.
+  - intent: { name: clarify, slots: {} }
+    expect_state: clarifying
+  - intent: { name: submit_answers, slots: { answers: "round one answers" } }
+    expect_state: drafting
+    expect_world:
+      clarifying_cycle:      1
+      clarification_answers: "round one answers"
+
+  # Round 2 — clarifying_cycle is preserved across the clarify re-entry,
+  # so submitting again advances it to 2 (accumulation, not reset).
+  - intent: { name: clarify, slots: {} }
+    expect_state: clarifying
+  - intent: { name: submit_answers, slots: { answers: "round two answers" } }
+    expect_state: drafting
+    expect_world:
+      clarifying_cycle:      2
+      clarification_answers: "round two answers"
+      # The transcript accumulates newest-round-first: Round 2 is prepended
+      # while Round 1 is preserved below it. This exact-match guards against
+      # a regression that overwrites instead of appending. The embedded
+      # `Questions: {...}` is the clarifications object spliced as compact
+      # sorted-key JSON (proposal §5.5).
+      clarification_log:     "── Round 2 ──\nQuestions: {\"questions\":[{\"id\":\"q1\",\"question\":\"What is the scope boundary?\",\"why\":\"scopes the work\"}]}\nAnswers: round two answers\n\n── Round 1 ──\nQuestions: {\"questions\":[{\"id\":\"q1\",\"question\":\"What is the scope boundary?\",\"why\":\"scopes the work\"}]}\nAnswers: round one answers\n\n\n\n"
+
+expect_no_errors: true

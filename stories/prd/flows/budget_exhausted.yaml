@@ -1,0 +1,43 @@
+# budget_exhausted — refine at drafting_cycle == drafting_budget routes
+# to @exit:abandoned with a structured reason instead of looping.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: drafting
+initial_world:
+  idea:            "A CLI for X"
+  workdir:         "."
+  output_path:     "PRD.md"
+  judge_mode:      "human"
+  drafting_cycle:  5
+  drafting_budget: 5
+
+host_handlers:
+  host.oracle.task:
+    data:
+      ok: true
+      submitted:
+        title:               "PRD: Example CLI"
+        summary_markdown:    "## PRD: Example CLI\n\nA sufficiently long summary body to satisfy the schema minimum length for the prd_artifact summary_markdown field, covering problem, users, goals, and metrics."
+        file_path:           "PRD.md"
+        confidence:          0.84
+        needs_clarification: false
+        follow_up_questions: []
+  host.oracle.decide:
+    data:
+      ok: true
+      submitted:
+        questions: []
+
+turns:
+  # Counter at budget; refine takes the @exit:abandoned arm.
+  - intent:
+      name: refine
+      slots: { feedback: "one more pass" }
+    expect_state: __exit__abandoned
+    expect_world:
+      abandon_reason: "drafting_budget_exhausted"
+      status:         "abandoned"
+
+expect_terminal: true
+expect_no_errors: true

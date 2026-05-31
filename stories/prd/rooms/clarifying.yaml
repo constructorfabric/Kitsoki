@@ -1,0 +1,139 @@
+# clarifying — generate clarifying questions, collect answers (multi-round).
+#
+# on_enter runs the analyst (host.oracle.decide) which reads the idea, the
+# upstream docs, and the accumulated clarification_log and returns
+# { questions: [{id, question, why}] } — instructed to ask only genuinely
+# new questions (or an empty list) so round 2+ doesn't re-ask resolved
+# points.
+#
+# The transcript ACCUMULATES. submit_answers appends this round's Q&A to
+# world.clarification_log (newest round first, so the block leads with a
+# literal `── Round …` divider rather than `{{` — a bare reference that
+# both starts with `{{` and ends with `}}` short-circuits to the typed
+# expr and fails to compile; see proposal §5.5). String-concat append —
+# no array mutation. clarifying_budget caps the number of rounds.
+
+states:
+
+  clarifying:
+    description: "Surface the gaps; ask the operator the questions that most change the PRD."
+    view:
+      - banner:
+          text:     "CLARIFYING"
+          subtitle: "Surface the gaps before drafting the PRD"
+          color:    "#3B82F6"   # blue — thinking
+      - prose: "cycle {{ world.cycle }} · clarify round {{ world.clarifying_cycle }} · judge {{ world.judge_mode }}"
+      - kv:
+          pairs:
+            Idea:           '{{ world.idea|default:"(none)"|truncatechars:80 }}'
+            Upstream:       '{{ world.upstream_paths|default:"(none)" }}'
+            "Prior rounds": "{{ world.clarifying_cycle }}"
+      - heading: "Questions for you"
+      - code: |
+          {% for q in world.clarifications.questions %}{{ forloop.Counter }}. {{ q.question }}
+             why: {{ q.why|default:"(no rationale given)" }}
+          {% empty %}(none — nothing material left to ask; type skip to draft){% endfor %}
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "submit_answers"
+              hint:   "type your replies (e.g. 1) … 2) …) and advance to drafting"
+              intent: submit_answers
+              param:
+                slot:        answers
+                type:        string
+                placeholder: "1) … 2) …"
+                required:    true
+            - label:  "skip"
+              hint:   "draft with what we have (no answers this round)"
+              intent: skip
+            - label:  "regenerate"
+              hint:   "re-ask the questions (optionally with feedback)"
+              intent: regenerate
+              param:
+                slot:        feedback
+                type:        string
+                placeholder: "what to focus on"
+                required:    false
+            - label:  "quit"
+              hint:   "abandon PRD authoring"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    relevant_world: [idea, upstream_paths, workdir, clarifications, clarification_log, clarifying_cycle, clarifying_budget, prd_artifact, refine_feedback, cycle, judge_mode]
+    on_enter:
+      # Generate this round's questions. working_dir pins the analyst's
+      # Read/Grep to where the upstream docs live; its tool calls land as
+      # oracle.tool_call trace events (serving the "what files were used"
+      # ask). Skipped state-seeding bypass: flow fixtures that seed
+      # initial_state=clarifying write events directly and do not re-fire
+      # this on_enter.
+      - invoke: host.oracle.decide
+        with:
+          agent: analyst
+          prompt_path: prompts/clarify.md
+          schema: schemas/clarifications.json
+          working_dir: "{{ world.workdir }}"
+          args:
+            idea:               "{{ world.idea }}"
+            upstream_paths:     "{{ world.upstream_paths }}"
+            clarification_log:  "{{ world.clarification_log }}"
+            follow_up:          "{{ world.prd_artifact.follow_up_questions }}"
+            feedback:           "{{ world.refine_feedback }}"
+        bind:
+          clarifications: submitted
+        on_error: idle
+    on:
+      # Append this round to the transcript and advance. Newest round
+      # FIRST so the block leads with the literal divider (see header).
+      submit_answers:
+        - target: drafting
+          effects:
+            # Build the transcript line FIRST, in its own effect, so the
+            # `── Round N ──` divider reads the pre-increment clarifying_cycle.
+            # Keeping the divider and the counter bump in one `set:` block is
+            # an ordering hazard: keys within a single set apply in Go's
+            # randomized map order, so the divider would intermittently see
+            # the already-incremented value (Round N+1). Separate effects run
+            # in declaration order, which is deterministic.
+            - set:
+                clarification_answers: "{{ slots.answers }}"
+                clarification_log: |
+                  ── Round {{ world.clarifying_cycle + 1 }} ──
+                  Questions: {{ world.clarifications }}
+                  Answers: {{ slots.answers }}
+
+                  {{ world.clarification_log }}
+            - set:
+                clarifying_cycle: "{{ world.clarifying_cycle + 1 }}"
+
+      # No answers this round — draft with what we have. No log append.
+      skip:
+        - target: drafting
+
+      # Re-ask: self-transition re-fires on_enter (regenerates questions
+      # with refine_feedback). Budget gate bails out instead of looping.
+      regenerate:
+        - when: "world.clarifying_cycle >= world.clarifying_budget"
+          target: "@exit:abandoned"
+          effects:
+            - set:
+                abandon_reason: "clarifying_budget_exhausted"
+                status:         "abandoned"
+        - target: clarifying
+          effects:
+            - set:
+                refine_feedback:  "{{ slots.feedback ?? '' }}"
+                clarifying_cycle: "{{ world.clarifying_cycle + 1 }}"
+                cycle:            "{{ world.cycle + 1 }}"
+
+      quit:
+        - target: "@exit:abandoned"
+          effects:
+            - set:
+                abandon_reason: "abandoned_at_clarifying"
+                status:         "abandoned"
+      look:
+        - target: .

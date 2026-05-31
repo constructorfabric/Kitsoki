@@ -1,0 +1,48 @@
+# refine_loop — refine re-enters drafting, drafting_cycle increments,
+# refine_feedback is set; a second accept exits via @exit:done.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: drafting
+initial_world:
+  idea:        "A CLI for X"
+  workdir:     "."
+  output_path: "PRD.md"
+  judge_mode:  "human"
+
+host_handlers:
+  host.oracle.task:
+    data:
+      ok: true
+      submitted:
+        title:               "PRD: Example CLI"
+        summary_markdown:    "## PRD: Example CLI\n\nA sufficiently long summary body to satisfy the schema minimum length for the prd_artifact summary_markdown field, covering problem, users, goals, and metrics."
+        file_path:           "PRD.md"
+        confidence:          0.84
+        needs_clarification: false
+        follow_up_questions: []
+  host.oracle.decide:
+    data:
+      ok: true
+      submitted:
+        questions: []
+
+turns:
+  # refine self-transitions back to drafting, carrying feedback into the
+  # next draft and bumping both counters.
+  - intent:
+      name: refine
+      slots: { feedback: "add a metrics section" }
+    expect_state: drafting
+    expect_world:
+      drafting_cycle:  1
+      cycle:           1
+      refine_feedback: "add a metrics section"
+
+  - intent: { name: accept, slots: {} }
+    expect_state: __exit__done
+    expect_world:
+      status: "done"
+
+expect_terminal: true
+expect_no_errors: true

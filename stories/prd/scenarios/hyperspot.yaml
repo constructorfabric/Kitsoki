@@ -1,0 +1,23 @@
+# Warp basis: author a PRD against the hyperspot repo.
+#
+# Points the interviewer/analyst/author agents at /home/cloud-user/code/hyperspot
+# as their working_dir, so upstream-doc reads and the written PRD land in
+# that tree. Starts parked at idle — talk the idea through with the
+# interviewer (`discuss`), then `start` to move on to clarifying questions.
+#
+#   kitsoki run stories/prd/app.yaml --warp scenarios/hyperspot.yaml \
+#     --claude-model opus
+#
+name:        "PRD authoring — hyperspot repo"
+description: "Author a PRD with the agents rooted in the hyperspot working tree."
+
+state: idle
+
+world:
+  workdir:        "/home/cloud-user/code/hyperspot"
+  output_path:    "PRD.md"
+  # The idea is gathered in the discovery conversation. Optionally pre-set
+  # upstream_paths (space/comma-separated) so the analyst/author read
+  # existing requirement docs without you having to mention them in chat.
+  upstream_paths: ""
+  judge_mode:     "human"
