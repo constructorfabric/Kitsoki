@@ -48,11 +48,13 @@ const props = defineProps<{ event: TraceEvent }>();
 const attrs = computed(() => props.event.attrs);
 
 const verb = computed(() => {
+  // Canonical: the verb lives in attrs.verb (engine emits oracle.call.*).
+  // Fall back to inferring from a legacy per-verb msg ("oracle.<verb>.complete")
+  // but never treat the canonical "call" token as a verb.
   const fromAttrs = typeof attrs.value.verb === "string" ? attrs.value.verb : "";
   if (fromAttrs) return fromAttrs;
-  // Infer from msg: "oracle.<verb>.complete" → "<verb>".
   const m = props.event.msg.match(/^oracle\.([a-z]+)\.complete$/);
-  return m ? m[1]! : "";
+  return m && m[1] !== "call" ? m[1]! : "";
 });
 const agent    = computed(() => String(attrs.value.agent ?? ""));
 const model    = computed(() => String(attrs.value.model ?? ""));

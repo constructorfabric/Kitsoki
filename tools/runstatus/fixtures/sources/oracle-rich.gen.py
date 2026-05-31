@@ -122,16 +122,16 @@ def turn1_decide() -> None:
     emit("INFO", "turn.start", turn, sp, input="start BUG-4711")
     emit("DEBUG", "machine.state_entered", turn, sp)
 
-    # oracle.decide.start — lightweight early-visibility event
-    emit("DEBUG", "oracle.decide.start", turn, sp,
+    # oracle.call.start (verb=decide) — lightweight early-visibility event
+    emit("DEBUG", "oracle.call.start", turn, sp,
          verb="decide",
          agent="strategy_router",
          model=MODEL)
 
     advance(0.8)
 
-    # oracle.decide.complete — full rich event
-    emit("DEBUG", "oracle.decide.complete", turn, sp, step=0.01,
+    # oracle.call.complete (verb=decide) — full rich event
+    emit("DEBUG", "oracle.call.complete", turn, sp, step=0.01,
          verb="decide",
          agent="strategy_router",
          model=MODEL,
@@ -191,16 +191,16 @@ def turn2_extract() -> None:
     advance(3)
     emit("INFO", "turn.start", turn, sp, input="(auto:executing)")
 
-    # oracle.extract.start
-    emit("DEBUG", "oracle.extract.start", turn, sp,
+    # oracle.call.start (verb=extract)
+    emit("DEBUG", "oracle.call.start", turn, sp,
          verb="extract",
          agent="intake_extractor",
          model=MODEL)
 
     advance(0.6)
 
-    # oracle.extract.complete
-    emit("DEBUG", "oracle.extract.complete", turn, sp, step=0.01,
+    # oracle.call.complete (verb=extract)
+    emit("DEBUG", "oracle.call.complete", turn, sp, step=0.01,
          verb="extract",
          agent="intake_extractor",
          model=MODEL,
@@ -267,16 +267,16 @@ def turn3_ask() -> None:
     emit("DEBUG", "machine.state_exited", turn, "reproducing._executing")
     emit("DEBUG", "machine.state_entered", turn, sp)
 
-    # oracle.ask.start
-    emit("DEBUG", "oracle.ask.start", turn, sp,
+    # oracle.call.start (verb=ask)
+    emit("DEBUG", "oracle.call.start", turn, sp,
          verb="ask",
          agent="idle_router",
          model=MODEL)
 
     advance(0.5)
 
-    # oracle.ask.complete
-    emit("DEBUG", "oracle.ask.complete", turn, sp, step=0.01,
+    # oracle.call.complete (verb=ask)
+    emit("DEBUG", "oracle.call.complete", turn, sp, step=0.01,
          verb="ask",
          agent="idle_router",
          model=MODEL,
@@ -325,16 +325,16 @@ def turn4_task() -> None:
     emit("DEBUG", "machine.state_exited", turn, "proposing._executing")
     emit("DEBUG", "machine.state_entered", turn, sp)
 
-    # oracle.task.start
-    emit("DEBUG", "oracle.task.start", turn, sp,
+    # oracle.call.start (verb=task)
+    emit("DEBUG", "oracle.call.start", turn, sp,
          verb="task",
          agent="reproducing_specialist",
          model=MODEL)
 
     advance(22)
 
-    # oracle.task.complete — rich event with tool_calls + files_changed
-    emit("DEBUG", "oracle.task.complete", turn, sp, step=0.01,
+    # oracle.call.complete (verb=task) — rich event with tool_calls + files_changed
+    emit("DEBUG", "oracle.call.complete", turn, sp, step=0.01,
          verb="task",
          agent="reproducing_specialist",
          model=MODEL,
@@ -582,16 +582,16 @@ def turn5_converse() -> None:
     advance(10)
     emit("INFO", "turn.start", turn, sp, input="before we fix this, question about shutdown semantics")
 
-    # oracle.converse.start
-    emit("DEBUG", "oracle.converse.start", turn, sp,
+    # oracle.call.start (verb=converse)
+    emit("DEBUG", "oracle.call.start", turn, sp,
          verb="converse",
          agent="clarification_agent",
          model=MODEL)
 
     advance(3)
 
-    # oracle.converse.complete
-    emit("DEBUG", "oracle.converse.complete", turn, sp, step=0.01,
+    # oracle.call.complete (verb=converse)
+    emit("DEBUG", "oracle.call.complete", turn, sp, step=0.01,
          verb="converse",
          agent="clarification_agent",
          model=MODEL,

@@ -81,14 +81,18 @@
               <span class="trace-timeline__turn-count">{{ group.events.length }} event{{ group.events.length !== 1 ? 's' : '' }}</span>
             </div>
 
-            <!-- Normal turn sub-header -->
+            <!-- Normal visit sub-header: one room visit = one accepted intent -->
             <div
               v-else
               class="trace-timeline__turn-header trace-timeline__turn-header--sub"
               @click="toggleTurnCollapse(group.groupKey)"
             >
               <span class="trace-timeline__turn-caret">{{ collapsedTurns.has(group.groupKey) ? '▶' : '▼' }}</span>
-              <span class="trace-timeline__turn-label">turn {{ group.turn }}</span>
+              <span v-if="group.intent" class="trace-timeline__intent-label">
+                <span class="trace-timeline__intent-kw">intent</span>
+                <span class="trace-timeline__intent-value">{{ group.intent }}</span>
+              </span>
+              <span class="trace-timeline__turn-label">{{ fmtTurnSpan(group.turnSpan) }}</span>
               <span class="trace-timeline__turn-count">{{ group.events.length }} event{{ group.events.length !== 1 ? 's' : '' }}</span>
             </div>
 
@@ -117,6 +121,10 @@
                       <span class="trace-timeline__effect-count">{{ row.effectGroup.count }} keys</span>
                     </template>
                     <template v-else-if="row.event.msg === 'turn.input'">{{ String(row.event.attrs.input ?? "") }}</template>
+                    <template v-else-if="row.narration != null">
+                      <span class="trace-timeline__say-label">say</span>
+                      <span class="trace-timeline__say-text">{{ row.narration }}</span>
+                    </template>
                     <template v-else>{{
                       row.oracle ? `oracle.${row.oracle.verb}`
                       : row.harnessCall ? row.harnessCall.namespace
@@ -159,7 +167,7 @@
                     <div v-if="row.harnessCall?.incomplete" class="trace-timeline__incomplete-banner">
                       Host call dispatched but no returned event was recorded.
                     </div>
-                    <EventDetail :event="row.oracle?.complete ?? row.event" :harnessCall="row.harnessCall" />
+                    <EventDetail :event="row.oracle?.merged ?? row.event" :harnessCall="row.harnessCall" />
                   </template>
                 </div>
               </div>
@@ -209,8 +217,14 @@ const emit = defineEmits<{
 const ALL_SUBSYSTEMS = ["turn", "machine", "world", "host", "oracle", "other"] as const;
 type Subsystem = (typeof ALL_SUBSYSTEMS)[number];
 
-const ORACLE_START_RE = /^oracle\.(decide|extract|ask|task|converse)\.start$/;
-const ORACLE_COMPLETE_RE = /^oracle\.(decide|extract|ask|task|converse)\.complete$/;
+// Canonical oracle events: the verb lives in attrs.verb, not the msg.  The
+// engine only ever emits oracle.call.start / oracle.call.complete; the per-verb
+// msg shape (oracle.decide.start, …) was a fiction the consumer used to assume.
+const ORACLE_START_MSG = "oracle.call.start";
+const ORACLE_COMPLETE_MSG = "oracle.call.complete";
+function oracleVerb(e: TraceEvent): string {
+  return typeof e.attrs.verb === "string" ? e.attrs.verb : "";
+}
 
 // Virtualisation is only worth the complexity for very large traces.  The
 // windowing math assumes a uniform row height, but rows (~27px) and turn
@@ -300,6 +314,16 @@ interface OracleMerge {
   complete: TraceEvent | null;
   durationMs: number | null;
   incomplete: boolean;
+  /**
+   * The single logical oracle call, presented to EventDetail/OracleDetail as
+   * one event. The engine records the *prompt* on oracle.call.start and the
+   * *response* on oracle.call.complete; this merge stitches them back together
+   * so the detail pane shows both. Shaped as the complete event (msg =
+   * oracle.call.complete) with the start's prompt/agent/model attrs folded in;
+   * complete attrs win on conflict. Faithful to the trace — it surfaces what
+   * the two paired events together recorded, inventing nothing.
+   */
+  merged: TraceEvent;
 }
 
 interface EffectGroupData {
@@ -329,6 +353,8 @@ interface AnnotatedEvent {
   harnessCall?: HarnessCallData;
   /** Present on the lead row of a grouped machine.effect[set] batch. */
   effectGroup?: EffectGroupData;
+  /** Operator narration text for a machine.say event. */
+  narration?: string;
 }
 
 // Compute world state before/after each turn's machine.effect[set] batch.
@@ -375,7 +401,7 @@ const worldStateByTurn = computed<Map<number, TurnWorldState>>(() => {
 const oracleStartCallIds = computed<Set<string>>(() => {
   const s = new Set<string>();
   for (const e of props.events) {
-    if (!ORACLE_START_RE.test(e.msg)) continue;
+    if (e.msg !== ORACLE_START_MSG) continue;
     const cid = e.attrs.call_id;
     if (typeof cid === "string") s.add(cid);
   }
@@ -385,7 +411,7 @@ const oracleStartCallIds = computed<Set<string>>(() => {
 const oracleCompleteByCallId = computed<Map<string, TraceEvent>>(() => {
   const m = new Map<string, TraceEvent>();
   for (const e of props.events) {
-    if (!ORACLE_COMPLETE_RE.test(e.msg)) continue;
+    if (e.msg !== ORACLE_COMPLETE_MSG) continue;
     const cid = e.attrs.call_id;
     if (typeof cid === "string") m.set(cid, e);
   }
@@ -505,9 +531,9 @@ const filteredEvents = computed<AnnotatedEvent[]>(() => {
       event.msg === "machine.state_entered"
     ) continue;
 
-    // Suppress oracle.*.complete rows whose paired start exists; the start
+    // Suppress oracle.call.complete rows whose paired start exists; the start
     // row carries the merged duration.
-    if (ORACLE_COMPLETE_RE.test(event.msg)) {
+    if (event.msg === ORACLE_COMPLETE_MSG) {
       const cid = event.attrs.call_id;
       if (typeof cid === "string" && startCids.has(cid)) continue;
     }
@@ -524,16 +550,31 @@ const filteredEvents = computed<AnnotatedEvent[]>(() => {
       continue;
     }
 
+    // machine.say carries operator narration; render it as a distinct row that
+    // shows its text (not a world mutation — world.update is set-only now).
+    if (event.msg === "machine.say") {
+      const text = typeof event.attrs.text === "string" ? event.attrs.text : "";
+      out.push({ index: i, event, subsystem, narration: text });
+      continue;
+    }
+
     let oracle: OracleMerge | undefined;
-    const startMatch = ORACLE_START_RE.exec(event.msg);
-    if (startMatch) {
-      const verb = startMatch[1]!;
+    if (event.msg === ORACLE_START_MSG) {
+      // Verb comes from attrs.verb; fall back to the complete event's verb.
       const cid = typeof event.attrs.call_id === "string" ? event.attrs.call_id : null;
       const complete = cid ? completeMap.get(cid) ?? null : null;
+      const verb = oracleVerb(event) || (complete ? oracleVerb(complete) : "");
       const dur = complete && typeof complete.attrs.duration_ms === "number"
         ? (complete.attrs.duration_ms as number)
         : null;
-      oracle = { verb, complete, durationMs: dur, incomplete: complete === null };
+      // Stitch the paired events into one logical call for the detail pane.
+      // Base on the complete event (so msg === oracle.call.complete routes to
+      // OracleDetail) and fold in the start's prompt/agent/model attrs, which
+      // the complete event does not carry. Complete attrs win on conflict.
+      const merged: TraceEvent = complete
+        ? { ...complete, attrs: { ...event.attrs, ...complete.attrs } }
+        : event;
+      oracle = { verb, complete, durationMs: dur, incomplete: complete === null, merged };
     }
 
     out.push({ index: i, event, subsystem, oracle });
@@ -541,19 +582,89 @@ const filteredEvents = computed<AnnotatedEvent[]>(() => {
   return out;
 });
 
-// Group by turn, descending.
+// A turn group is one *room visit* — a single occupancy of a room, which carries
+// exactly one accepted intent (the decider break that ends the visit).
 interface TurnGroup {
-  /** Unique key: "${statePath}:${turn}" — used for v-for and collapse state. */
+  /** Unique key: "${statePath}:visit:${decisionTurn}" (on-path) or
+   *  "offpath:${statePath}:${turn}" — used for v-for and collapse state. */
   groupKey: string;
+  /** Decision turn: the turn whose intent_accepted closes this visit. For
+   *  off-path / intent-less groups this is just the raw turn number. */
   turn: number;
   /** The state_path shared by all events in this group (may be empty). */
   statePath: string;
   events: AnnotatedEvent[];
+  /** The intent accepted for this visit ("" when none — e.g. terminal rooms,
+   *  off-path batches, or traces with no machine.intent_accepted events). */
+  intent: string;
+  /** Distinct raw turn numbers this visit spans, ascending. A visit normally
+   *  spans two turns: the room is entered at the tail of the previous decision's
+   *  turn (state_entered), then its own intent fires in the next turn. */
+  turnSpan: number[];
   /** True when all events in this group carry a non-zero parent_turn —
    *  i.e. this is a pure off-path batch that interrupted the foreground. */
   isOffPath: boolean;
   /** The foreground turn this off-path group interrupted (0 when isOffPath is false). */
   parentTurn: number;
+}
+
+// ---- visit resolution -------------------------------------------------------
+
+// A turn is one decider break and carries exactly one machine.intent_accepted.
+// But a turn straddles the transition it triggers: when room X's intent fires,
+// the *entered* room Y's state_entered (and its on-enter work) lands in that
+// SAME turn. So an event's own turn number is not the unit a reader reasons
+// about — a room visit is. We key each visit by the turn whose intent_accepted
+// closes it, and route every event for that room to the upcoming decision.
+//
+// decisionsByState maps a state_path → the (turn, intent) of each intent
+// accepted while occupying it, ascending by turn. A room visited more than once
+// (re-entry) has multiple entries; an event routes to the earliest decision at
+// or after its own turn, so a room's entry events (recorded in the prior
+// decision's turn) join the visit they actually belong to.
+const decisionsByState = computed<Map<string, { turn: number; intent: string }[]>>(() => {
+  const m = new Map<string, { turn: number; intent: string }[]>();
+  for (const e of props.events) {
+    if (e.msg !== "machine.intent_accepted") continue;
+    const intent = typeof e.attrs.intent === "string" ? e.attrs.intent : "";
+    const arr = m.get(e.state_path) ?? [];
+    arr.push({ turn: e.turn, intent });
+    m.set(e.state_path, arr);
+  }
+  for (const arr of m.values()) arr.sort((a, b) => a.turn - b.turn);
+  return m;
+});
+
+interface VisitInfo {
+  groupKey: string;
+  decisionTurn: number;
+  intent: string;
+  offPath: boolean;
+}
+
+function visitInfo(statePath: string, turn: number, parentTurn: number): VisitInfo {
+  const offPath = (parentTurn ?? 0) !== 0;
+  if (offPath) {
+    return { groupKey: `offpath:${statePath}:${turn}`, decisionTurn: turn, intent: "", offPath };
+  }
+  const decisions = decisionsByState.value.get(statePath);
+  let decisionTurn = turn;
+  let intent = "";
+  if (decisions && decisions.length > 0) {
+    // Earliest decision at or after this event's turn (the upcoming break);
+    // fall back to the last decision for trailing events past the final intent.
+    const d = decisions.find((x) => x.turn >= turn) ?? decisions[decisions.length - 1]!;
+    decisionTurn = d.turn;
+    intent = d.intent;
+  }
+  return { groupKey: `${statePath}:visit:${decisionTurn}`, decisionTurn, intent, offPath };
+}
+
+function fmtTurnSpan(turns: number[]): string {
+  if (turns.length === 0) return "";
+  const lo = turns[0]!;
+  const hi = turns[turns.length - 1]!;
+  return lo === hi ? `turn ${lo}` : `turn ${lo}–${hi}`;
 }
 
 // ---- phase resolution -------------------------------------------------------
@@ -604,60 +715,70 @@ function turnEventBucket(ae: AnnotatedEvent): number {
 }
 
 const groupedTurns = computed<TurnGroup[]>(() => {
-  // Group by (state_path, turn) so that turns spanning multiple states produce
-  // separate groups per state. This keeps the RIGHT panel consistent with the
-  // LEFT panel's per-state event lanes.
+  // Group by ROOM VISIT (state_path + the decision turn that closes the visit),
+  // not by raw turn. Because a turn straddles the transition, a room's entry
+  // events are recorded under the previous decision's turn; visitInfo routes
+  // them to the visit they belong to, so one phase visit = one group carrying
+  // its single intent — even though its events span two raw turns.
   const map = new Map<string, AnnotatedEvent[]>();
 
-  // turn.input (UserInputReceived) events are now real events written by the
+  // turn.input (UserInputReceived) events are real events written by the
   // orchestrator at the moment user input arrives, with the SAME turn number as
   // the TurnStarted that follows. The UI defers them to appear after the machine
-  // work in the same turn group (so the input chip renders at the logical "top"
-  // of the response thread, where the user's message appears before the engine's
+  // work in the same group (so the input chip renders at the logical "top" of
+  // the response thread, where the user's message appears before the engine's
   // reaction — a presentation convention, not a data correction).
-  //
-  // Note: the old comment "fromhistory places them at the end of the previous
-  // turn" is stale and has been removed. The event's turn number is correct as
-  // written; the deferral here is purely a display ordering preference.
   const deferredTurnInputs: AnnotatedEvent[] = [];
+
+  const keyFor = (ae: AnnotatedEvent): string =>
+    visitInfo(ae.event.state_path, ae.event.turn, ae.event.parent_turn ?? 0).groupKey;
 
   for (const ae of filteredEvents.value) {
     if (ae.event.msg === "turn.input") {
       deferredTurnInputs.push(ae);
       continue;
     }
-    const key = `${ae.event.state_path}:${ae.event.turn}`;
+    const key = keyFor(ae);
     const arr = map.get(key) ?? [];
     arr.push(ae);
     map.set(key, arr);
   }
 
-  // Resolve deferred turn.input events: place them in the same (state_path,turn)
-  // group as their peers, appended last so they render after the machine work.
+  // Resolve deferred turn.input events: place them in the same visit group as
+  // their peers, appended last so they render after the machine work.
   for (const ae of deferredTurnInputs) {
-    const key = `${ae.event.state_path}:${ae.event.turn}`;
+    const key = keyFor(ae);
     const arr = map.get(key) ?? [];
     arr.push(ae);
     map.set(key, arr);
   }
 
   return [...map.entries()]
-    .sort(([, a], [, b]) => {
-      // Primary: ascending turn; secondary: earliest event index within turn.
-      const ta = a[0]!.event.turn, tb = b[0]!.event.turn;
-      if (ta !== tb) return ta - tb;
-      return a[0]!.index - b[0]!.index;
-    })
     .map(([groupKey, events]) => {
       events.sort((a, b) => {
         const ba = turnEventBucket(a), bb = turnEventBucket(b);
         return ba !== bb ? ba - bb : a.index - b.index;
       });
       const statePath = events[0]!.event.state_path;
-      const turn = events[0]!.event.turn;
       const isOffPath = events.length > 0 && events.every((ae) => (ae.event.parent_turn ?? 0) !== 0);
       const parentTurn = isOffPath ? (events[0]!.event.parent_turn ?? 0) : 0;
-      return { groupKey, turn, statePath, events, isOffPath, parentTurn };
+      const vi = visitInfo(statePath, events[0]!.event.turn, parentTurn);
+      const turnSpan = [...new Set(events.map((e) => e.event.turn))].sort((a, b) => a - b);
+      return {
+        groupKey,
+        turn: vi.decisionTurn,
+        statePath,
+        events,
+        intent: vi.intent,
+        turnSpan,
+        isOffPath,
+        parentTurn,
+      };
+    })
+    .sort((a, b) => {
+      // Primary: ascending decision turn; secondary: earliest event index.
+      if (a.turn !== b.turn) return a.turn - b.turn;
+      return a.events[0]!.index - b.events[0]!.index;
     });
 });
 
@@ -671,21 +792,35 @@ interface PhaseSection {
 }
 
 const groupedPhases = computed<PhaseSection[]>(() => {
+  // Group by PHASE (not adjacency) so each phase header appears EXACTLY ONCE,
+  // even when a phase's work spans non-adjacent turns. A bugfix checkpoint
+  // spans two turns — entering a phase happens in turn N, accepting out of it
+  // in turn N+1 — and a phase can be revisited (proposing → testing →
+  // proposing), so a strict by-phase grouping is what keeps the right column
+  // parallel to the left (StateDiagram also shows each phase once).
+  //
+  // Section order follows the first turn group that resolves to each phase.
+  // Within a section, turn groups stay in their groupedTurns order (ascending
+  // turn, then event index), so the timeline reads chronologically within a
+  // phase.
+  const byPhase = new Map<string, PhaseSection>();
   const sections: PhaseSection[] = [];
   for (const group of groupedTurns.value) {
     const phase = phaseForStatePath(group.statePath);
-    const last = sections[sections.length - 1];
-    if (last && last.phase === phase) {
-      last.turnGroups.push(group);
-      last.totalEvents += group.events.length;
-    } else {
-      sections.push({
+    const key = phase ?? " —";
+    let section = byPhase.get(key);
+    if (!section) {
+      section = {
         phaseKey: `phase:${phase ?? ""}:${sections.length}`,
         phase,
-        turnGroups: [group],
-        totalEvents: group.events.length,
-      });
+        turnGroups: [],
+        totalEvents: 0,
+      };
+      byPhase.set(key, section);
+      sections.push(section);
     }
+    section.turnGroups.push(group);
+    section.totalEvents += group.events.length;
   }
   return sections;
 });
@@ -853,6 +988,14 @@ async function copyRow(row: AnnotatedEvent): Promise<void> {
   } else if (row.oracle) {
     const e = row.oracle.complete ?? row.event;
     payload = { type: "oracle", verb: row.oracle.verb, durationMs: row.oracle.durationMs, ...e };
+  } else if (row.narration != null) {
+    payload = {
+      type: "machine.say",
+      text: row.narration,
+      turn: row.event.turn,
+      state_path: row.event.state_path,
+      time: row.event.time,
+    };
   } else if (row.effectGroup) {
     payload = {
       type: "world.update",
@@ -927,7 +1070,9 @@ watch(
         break;
       }
     }
-    collapsedTurns.delete(`${target.event.state_path}:${target.event.turn}`);
+    collapsedTurns.delete(
+      visitInfo(target.event.state_path, target.event.turn, target.event.parent_turn ?? 0).groupKey,
+    );
     await nextTick();
 
     // When virtualised, the target row may be outside the rendered window —
@@ -1110,6 +1255,32 @@ watch(
   font-weight: 400;
 }
 
+/* Intent badge — the single decider break that closes a room visit. */
+.trace-timeline__intent-label {
+  display: inline-flex;
+  align-items: stretch;
+  border-radius: 3px;
+  overflow: hidden;
+  font-size: 0.65rem;
+  font-family: ui-monospace, monospace;
+  line-height: 1;
+}
+
+.trace-timeline__intent-kw {
+  background: #1e293b;
+  color: #64748b;
+  padding: 0.15rem 0.3rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.trace-timeline__intent-value {
+  background: #1e3a5f;
+  color: #93c5fd;
+  padding: 0.15rem 0.4rem;
+  font-weight: 600;
+}
+
 .trace-timeline__turn-phase {
   font-weight: 700;
   font-size: 0.875rem;
@@ -1186,6 +1357,25 @@ watch(
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.trace-timeline__say-label {
+  display: inline-block;
+  background: #14532d;
+  color: #86efac;
+  border: 1px solid #166534;
+  border-radius: 3px;
+  font-size: 0.65rem;
+  padding: 0.02rem 0.3rem;
+  margin-right: 0.4rem;
+  vertical-align: middle;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.trace-timeline__say-text {
+  color: #d1fae5;
+  font-style: italic;
 }
 
 .trace-timeline__effect-count {

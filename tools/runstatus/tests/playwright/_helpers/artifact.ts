@@ -33,6 +33,45 @@ function ensureArtifactsDir(): void {
 }
 
 /**
+ * Inline oracle-prompt sidecars into the snapshot so the artifact is fully
+ * self-contained. Under file:// the browser blocks a relative fetch() of the
+ * .txt sidecar, so usePromptLoader could never resolve prompt_file. We read
+ * each referenced sidecar (relative to the snapshot's dir) and copy its text
+ * into the matching inline attr, then drop the *_file ref. Unreadable sidecars
+ * are left untouched. Mirrors scripts/build-artifact.mjs#inlinePromptSidecars.
+ */
+function inlinePromptSidecars(snapshotJson: string, snapshotPath: string): string {
+  let snap: { events?: Array<{ attrs?: Record<string, unknown> }> };
+  try {
+    snap = JSON.parse(snapshotJson);
+  } catch {
+    return snapshotJson;
+  }
+  if (!Array.isArray(snap.events)) return snapshotJson;
+  const baseDir = path.dirname(snapshotPath);
+  const readSidecar = (rel: string): string | null => {
+    try {
+      return fs.readFileSync(path.resolve(baseDir, rel), "utf-8");
+    } catch {
+      return null;
+    }
+  };
+  for (const e of snap.events) {
+    const a = e && e.attrs;
+    if (!a || typeof a !== "object") continue;
+    if (typeof a.prompt_file === "string" && !a.prompt) {
+      const txt = readSidecar(a.prompt_file);
+      if (txt != null) { a.prompt = txt; delete a.prompt_file; }
+    }
+    if (typeof a.system_prompt_file === "string" && !a.system_prompt) {
+      const txt = readSidecar(a.system_prompt_file);
+      if (txt != null) { a.system_prompt = txt; delete a.system_prompt_file; }
+    }
+  }
+  return JSON.stringify(snap);
+}
+
+/**
  * Build a single-file artifact HTML from dist/index.html with the given
  * snapshot JSON inlined. Returns a file:// URL.
  */
@@ -46,7 +85,10 @@ export function buildArtifact(snapshotPath: string): string {
     );
   }
 
-  const snapshotJson = fs.readFileSync(snapshotPath, "utf-8");
+  const snapshotJson = inlinePromptSidecars(
+    fs.readFileSync(snapshotPath, "utf-8"),
+    snapshotPath
+  );
 
   // Inline the snapshot as a <script type="application/json"> tag.
   // Insert it just before the first <script> tag in the HTML so it's

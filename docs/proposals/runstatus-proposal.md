@@ -1,6 +1,22 @@
 # Run-status web UI
 
-**Status:** Draft v1. Nothing implemented yet.
+**Status:** Phase 1 (artifact mode) ~90% shipped; Phases 2–3 remain.
+Shipped: `FlowchartWithMap()`/`NodeRef` (`internal/viz/nodemap.go`),
+the `Snapshot` type (`internal/runstatus/`), `kitsoki export-status
+--from-trace`, and the full Vue 3 SPA with fixtures and Vitest +
+Playwright tests (`tools/runstatus/`). Remaining:
+- **Phase 1 step 6** — `export-status -o status.html` single-file
+  build from the in-process ring buffer (stubbed in
+  `cmd/kitsoki/export_status.go`).
+- **Phase 2** — timeline virtualization for large traces and
+  URL-persisted expand/collapse state.
+- **Phase 3** — live mode: an HTTP+SSE listener folded into `kitsoki
+  oracle serve` with the `runstatus.*` JSON-RPC handlers the SPA's
+  `live-source.ts` already expects.
+
+The shipped artifact surface is not yet covered in narrative docs;
+fold it into `docs/tracing/` when Phase 1 closes. The sections below
+are the actionable agenda for the three remaining items.
 
 ## Goal
 

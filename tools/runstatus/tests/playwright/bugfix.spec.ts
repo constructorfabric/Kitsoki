@@ -135,23 +135,32 @@ test.describe("bugfix fixture", () => {
     ).toBeGreaterThan(0);
   });
 
-  test("oracle.<verb>.complete events carry non-empty prompt and response", async ({ page }) => {
-    // Pre-flight: assert prompt/response in the snapshot JSON so the
-    // Playwright DOM test below is meaningful (if this fails, the fromhistory
-    // pipeline isn't merging journal attrs correctly).
+  test("canonical oracle.call events carry a prompt reference (start) and response (complete)", async ({ page }) => {
+    // Pre-flight: assert the canonical trace shape in the snapshot JSON so the
+    // Playwright DOM test below is meaningful. The engine emits oracle.call.start
+    // (verb in attrs.verb) carrying a prompt reference — inline `prompt` for
+    // small prompts, else a `prompt_file` sidecar — and oracle.call.complete
+    // carrying the `response`. (If this fails, the fromhistory pipeline isn't
+    // merging journal attrs correctly.)
     const snap = JSON.parse(fs.readFileSync(BUGFIX_SNAPSHOT, "utf-8"));
-    const oracleCompletes = (snap.events as Array<{ msg: string; attrs: Record<string, unknown> }>)
-      .filter((e) => /^oracle\.[a-z]+\.complete$/.test(e.msg));
+    const events = snap.events as Array<{ msg: string; attrs: Record<string, unknown> }>;
+    const oracleStarts = events.filter((e) => e.msg === "oracle.call.start");
+    const oracleCompletes = events.filter((e) => e.msg === "oracle.call.complete");
 
-    expect(oracleCompletes.length).toBeGreaterThan(0);
+    expect(oracleStarts.length, "Expected ≥1 oracle.call.start event").toBeGreaterThan(0);
+    expect(oracleCompletes.length, "Expected ≥1 oracle.call.complete event").toBeGreaterThan(0);
 
-    // At least one complete event must carry a non-empty prompt string.
-    const withPrompt = oracleCompletes.filter(
-      (e) => typeof e.attrs.prompt === "string" && (e.attrs.prompt as string).length > 0
+    // At least one start event must carry a prompt reference: inline `prompt`
+    // or a `prompt_file` sidecar ref. (build-artifact inlines the sidecar into
+    // `prompt` for the artifact, so the detail pane can render it under file://.)
+    const withPrompt = oracleStarts.filter(
+      (e) =>
+        (typeof e.attrs.prompt === "string" && (e.attrs.prompt as string).length > 0) ||
+        (typeof e.attrs.prompt_file === "string" && (e.attrs.prompt_file as string).length > 0)
     );
     expect(
       withPrompt.length,
-      "Expected at least one oracle.complete event to carry a non-empty prompt attr"
+      "Expected at least one oracle.call.start event to carry a prompt or prompt_file reference"
     ).toBeGreaterThan(0);
 
     // At least one complete event must carry a non-empty response.
@@ -164,7 +173,7 @@ test.describe("bugfix fixture", () => {
     });
     expect(
       withResponse.length,
-      "Expected at least one oracle.complete event to carry a non-empty response attr"
+      "Expected at least one oracle.call.complete event to carry a non-empty response attr"
     ).toBeGreaterThan(0);
   });
 

@@ -196,8 +196,12 @@ interface PhaseEventBox {
   durationMs?: number;
 }
 
-const ORACLE_START_RE_DIAG = /^oracle\.(decide|extract|ask|task|converse)\.start$/;
-const ORACLE_COMPLETE_RE_DIAG = /^oracle\.(decide|extract|ask|task|converse)\.complete$/;
+// Canonical oracle events: verb lives in attrs.verb, not the msg.
+const ORACLE_START_MSG_DIAG = "oracle.call.start";
+const ORACLE_COMPLETE_MSG_DIAG = "oracle.call.complete";
+function oracleVerbDiag(e: TraceEvent): string {
+  return typeof e.attrs.verb === "string" ? e.attrs.verb : "oracle";
+}
 
 function fmtDur(ms: number): string {
   return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
@@ -226,14 +230,14 @@ const eventLaneByPhase = computed<Map<string, PhaseEventBox[]>>(() => {
   const oracleCompleteDur = new Map<string, number | null>();
   const oracleStartCallIds = new Set<string>();
   for (const e of events) {
-    if (ORACLE_COMPLETE_RE_DIAG.test(e.msg)) {
+    if (e.msg === ORACLE_COMPLETE_MSG_DIAG) {
       const cid = e.attrs.call_id;
       if (typeof cid === "string") {
         const dur = typeof e.attrs.duration_ms === "number" ? (e.attrs.duration_ms as number) : null;
         oracleCompleteDur.set(cid, dur);
       }
     }
-    if (ORACLE_START_RE_DIAG.test(e.msg)) {
+    if (e.msg === ORACLE_START_MSG_DIAG) {
       const cid = e.attrs.call_id;
       if (typeof cid === "string") oracleStartCallIds.add(cid);
     }
@@ -287,18 +291,20 @@ const eventLaneByPhase = computed<Map<string, PhaseEventBox[]>>(() => {
       const parts = ns.split(".");
       const label = parts[parts.length - 1] ?? ns;
       box = { index: i, subsystem: "host", label };
-    } else if (ORACLE_COMPLETE_RE_DIAG.test(e.msg)) {
+    } else if (e.msg === ORACLE_COMPLETE_MSG_DIAG) {
       // Only show orphan completes (no paired start in this trace)
       const cid = typeof e.attrs.call_id === "string" ? e.attrs.call_id : null;
       if (cid && oracleStartCallIds.has(cid)) continue;
-      const m = ORACLE_COMPLETE_RE_DIAG.exec(e.msg);
-      box = { index: i, subsystem: "oracle", label: m ? m[1]! : "oracle" };
-    } else if (ORACLE_START_RE_DIAG.test(e.msg)) {
-      const m = ORACLE_START_RE_DIAG.exec(e.msg);
-      const verb = m ? m[1]! : "oracle";
+      box = { index: i, subsystem: "oracle", label: oracleVerbDiag(e) };
+    } else if (e.msg === ORACLE_START_MSG_DIAG) {
+      const verb = oracleVerbDiag(e);
       const cid = typeof e.attrs.call_id === "string" ? e.attrs.call_id : null;
       const dur = cid ? oracleCompleteDur.get(cid) : null;
       box = { index: i, subsystem: "oracle", label: verb, durationMs: dur ?? undefined };
+    } else if (e.msg === "machine.say") {
+      const text = typeof e.attrs.text === "string" ? e.attrs.text : "";
+      const label = "say: " + (text.slice(0, 18) + (text.length > 18 ? "…" : ""));
+      box = { index: i, subsystem: "machine", label };
     } else if (e.msg === "world.update" && e.attrs.set && typeof e.attrs.set === "object" && !Array.isArray(e.attrs.set)) {
       if (worldUpdateSeen.has(e.turn)) continue;
       worldUpdateSeen.add(e.turn);

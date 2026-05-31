@@ -394,6 +394,30 @@ Templates inside effects use the same `{{ … }}` syntax as views. Inside
 `stdout`, `exit_code`, `ok` for `host.run`; `answer`, `chat_id`, etc.
 for `host.oracle.converse`.
 
+### `on_error` redirects and the recursion cap
+
+When `invoke` returns an error and `on_error:` names another room, the
+orchestrator *enters* that room — it re-runs the target's `on_enter`
+chain and re-dispatches any host calls it produces. A **self-redirect**
+(`on_error:` pointing at the room you're already in) is detected and
+short-circuited. A **sibling redirect** (e.g. a checkpoint room with
+`on_error: idle`) is not: if the target room's `on_enter` re-invokes
+the same failing host call, the error bounces back and the cycle
+repeats.
+
+To keep a misconfigured loop from hanging a run, redirect entry is
+depth-capped (`EnterRedirectMaxDepth = 4`, distinct from the
+`EmitIntentMaxDepth = 8` budget for legitimate `emit_intent`
+composition). When the cap trips, the orchestrator appends a
+`HarnessError` event and ends the turn cleanly with the error surfaced
+on the outcome, rather than recursing forever. A `HarnessError` is the
+uniform operator-facing signal for "the engine stopped a runaway loop";
+host handlers that can leave reusable state (e.g. `host.git_worktree`
+finding an existing worktree at the target path) should prefer
+returning success idempotently over erroring, so the redirect never
+forms. See [`testing.md` §1.9](../tracing/testing.md#19-integration-tests-for-host-failure-paths)
+for how to test these paths.
+
 ---
 
 ## 6. The world

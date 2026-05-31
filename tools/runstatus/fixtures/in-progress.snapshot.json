@@ -1397,6 +1397,7 @@
         }
       }
     },
+    "Decider": null,
     "Agents": null,
     "Imports": null,
     "Exits": null,
@@ -1449,26 +1450,28 @@
     {
       "time": "2026-05-25T10:00:00.02Z",
       "level": "DEBUG",
-      "msg": "oracle.ask.start",
+      "msg": "oracle.call.start",
       "session_id": "sess-inprog-001",
       "turn": 1,
       "state_path": "foyer",
       "attrs": {
         "model": "claude-3-sonnet",
-        "prompt_tokens": 480
+        "prompt_tokens": 480,
+        "verb": "ask"
       }
     },
     {
       "time": "2026-05-25T10:00:00.18Z",
       "level": "DEBUG",
-      "msg": "oracle.ask.complete",
+      "msg": "oracle.call.complete",
       "session_id": "sess-inprog-001",
       "turn": 1,
       "state_path": "foyer",
       "attrs": {
         "intent": "look",
         "model": "claude-3-sonnet",
-        "response_tokens": 42
+        "response_tokens": 42,
+        "verb": "ask"
       }
     },
     {
@@ -1516,19 +1519,20 @@
     {
       "time": "2026-05-25T10:00:05.015Z",
       "level": "DEBUG",
-      "msg": "oracle.ask.start",
+      "msg": "oracle.call.start",
       "session_id": "sess-inprog-001",
       "turn": 2,
       "state_path": "foyer",
       "attrs": {
         "model": "claude-3-sonnet",
-        "prompt_tokens": 512
+        "prompt_tokens": 512,
+        "verb": "ask"
       }
     },
     {
       "time": "2026-05-25T10:00:05.17Z",
       "level": "DEBUG",
-      "msg": "oracle.ask.complete",
+      "msg": "oracle.call.complete",
       "session_id": "sess-inprog-001",
       "turn": 2,
       "state_path": "foyer",
@@ -1538,7 +1542,8 @@
         "response_tokens": 28,
         "slots": {
           "direction": "west"
-        }
+        },
+        "verb": "ask"
       }
     },
     {
@@ -1595,26 +1600,28 @@
     {
       "time": "2026-05-25T10:00:10.02Z",
       "level": "DEBUG",
-      "msg": "oracle.ask.start",
+      "msg": "oracle.call.start",
       "session_id": "sess-inprog-001",
       "turn": 3,
       "state_path": "cloakroom",
       "attrs": {
         "model": "claude-3-sonnet",
-        "prompt_tokens": 590
+        "prompt_tokens": 590,
+        "verb": "ask"
       }
     },
     {
       "time": "2026-05-25T10:00:10.165Z",
       "level": "DEBUG",
-      "msg": "oracle.ask.complete",
+      "msg": "oracle.call.complete",
       "session_id": "sess-inprog-001",
       "turn": 3,
       "state_path": "cloakroom",
       "attrs": {
         "intent": "look",
         "model": "claude-3-sonnet",
-        "response_tokens": 35
+        "response_tokens": 35,
+        "verb": "ask"
       }
     },
     {
@@ -1662,26 +1669,28 @@
     {
       "time": "2026-05-25T10:00:15.015Z",
       "level": "DEBUG",
-      "msg": "oracle.ask.start",
+      "msg": "oracle.call.start",
       "session_id": "sess-inprog-001",
       "turn": 4,
       "state_path": "cloakroom",
       "attrs": {
         "model": "claude-3-sonnet",
-        "prompt_tokens": 630
+        "prompt_tokens": 630,
+        "verb": "ask"
       }
     },
     {
       "time": "2026-05-25T10:00:15.08Z",
       "level": "DEBUG",
-      "msg": "oracle.ask.complete",
+      "msg": "oracle.call.complete",
       "session_id": "sess-inprog-001",
       "turn": 4,
       "state_path": "cloakroom",
       "attrs": {
         "intent": "hang_cloak",
         "model": "claude-3-sonnet",
-        "response_tokens": 18
+        "response_tokens": 18,
+        "verb": "ask"
       }
     },
     {
@@ -1742,26 +1751,28 @@
     {
       "time": "2026-05-25T10:00:20.02Z",
       "level": "DEBUG",
-      "msg": "oracle.ask.start",
+      "msg": "oracle.call.start",
       "session_id": "sess-inprog-001",
       "turn": 5,
       "state_path": "cloakroom",
       "attrs": {
         "model": "claude-3-sonnet",
-        "prompt_tokens": 645
+        "prompt_tokens": 645,
+        "verb": "ask"
       }
     },
     {
       "time": "2026-05-25T10:00:20.16Z",
       "level": "DEBUG",
-      "msg": "oracle.ask.complete",
+      "msg": "oracle.call.complete",
       "session_id": "sess-inprog-001",
       "turn": 5,
       "state_path": "cloakroom",
       "attrs": {
         "intent": "look",
         "model": "claude-3-sonnet",
-        "response_tokens": 38
+        "response_tokens": 38,
+        "verb": "ask"
       }
     },
     {
@@ -1809,26 +1820,28 @@
     {
       "time": "2026-05-25T10:00:25.015Z",
       "level": "DEBUG",
-      "msg": "oracle.ask.start",
+      "msg": "oracle.call.start",
       "session_id": "sess-inprog-001",
       "turn": 6,
       "state_path": "cloakroom",
       "attrs": {
         "model": "claude-3-sonnet",
-        "prompt_tokens": 655
+        "prompt_tokens": 655,
+        "verb": "ask"
       }
     },
     {
       "time": "2026-05-25T10:00:25.075Z",
       "level": "DEBUG",
-      "msg": "oracle.ask.complete",
+      "msg": "oracle.call.complete",
       "session_id": "sess-inprog-001",
       "turn": 6,
       "state_path": "cloakroom",
       "attrs": {
         "intent": "wear_cloak",
         "model": "claude-3-sonnet",
-        "response_tokens": 18
+        "response_tokens": 18,
+        "verb": "ask"
       }
     },
     {
@@ -1889,26 +1902,28 @@
     {
       "time": "2026-05-25T10:00:30.015Z",
       "level": "DEBUG",
-      "msg": "oracle.ask.start",
+      "msg": "oracle.call.start",
       "session_id": "sess-inprog-001",
       "turn": 7,
       "state_path": "cloakroom",
       "attrs": {
         "model": "claude-3-sonnet",
-        "prompt_tokens": 680
+        "prompt_tokens": 680,
+        "verb": "ask"
       }
     },
     {
       "time": "2026-05-25T10:00:30.07Z",
       "level": "DEBUG",
-      "msg": "oracle.ask.complete",
+      "msg": "oracle.call.complete",
       "session_id": "sess-inprog-001",
       "turn": 7,
       "state_path": "cloakroom",
       "attrs": {
         "intent": "hang_cloak",
         "model": "claude-3-sonnet",
-        "response_tokens": 18
+        "response_tokens": 18,
+        "verb": "ask"
       }
     },
     {
@@ -1969,19 +1984,20 @@
     {
       "time": "2026-05-25T10:00:35.015Z",
       "level": "DEBUG",
-      "msg": "oracle.ask.start",
+      "msg": "oracle.call.start",
       "session_id": "sess-inprog-001",
       "turn": 8,
       "state_path": "cloakroom",
       "attrs": {
         "model": "claude-3-sonnet",
-        "prompt_tokens": 695
+        "prompt_tokens": 695,
+        "verb": "ask"
       }
     },
     {
       "time": "2026-05-25T10:00:35.065Z",
       "level": "DEBUG",
-      "msg": "oracle.ask.complete",
+      "msg": "oracle.call.complete",
       "session_id": "sess-inprog-001",
       "turn": 8,
       "state_path": "cloakroom",
@@ -1991,7 +2007,8 @@
         "response_tokens": 24,
         "slots": {
           "direction": "east"
-        }
+        },
+        "verb": "ask"
       }
     },
     {

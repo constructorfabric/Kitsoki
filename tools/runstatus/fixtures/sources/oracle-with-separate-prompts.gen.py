@@ -83,7 +83,7 @@ def turn1_decide() -> None:
     emit("INFO", "turn.start", turn, sp, input="start BUG-4711")
     emit("DEBUG", "machine.state_entered", turn, sp)
 
-    emit("DEBUG", "oracle.decide.start", turn, sp,
+    emit("DEBUG", "oracle.call.start", turn, sp,
          verb="decide",
          call_id="call-decide-001",
          agent="strategy_router",
@@ -93,7 +93,7 @@ def turn1_decide() -> None:
 
     # Use prompt_file instead of inline prompt. The start/complete pair shares a
     # call_id so the timeline merges them into one row (as production traces do).
-    emit("DEBUG", "oracle.decide.complete", turn, sp, step=0.01,
+    emit("DEBUG", "oracle.call.complete", turn, sp, step=0.01,
          verb="decide",
          call_id="call-decide-001",
          agent="strategy_router",
@@ -130,7 +130,7 @@ def turn2_extract() -> None:
     advance(3)
     emit("INFO", "turn.start", turn, sp, input="(auto:executing)")
 
-    emit("DEBUG", "oracle.extract.start", turn, sp,
+    emit("DEBUG", "oracle.call.start", turn, sp,
          verb="extract",
          call_id="call-extract-001",
          agent="intake_extractor",
@@ -138,7 +138,7 @@ def turn2_extract() -> None:
 
     advance(0.6)
 
-    emit("DEBUG", "oracle.extract.complete", turn, sp, step=0.01,
+    emit("DEBUG", "oracle.call.complete", turn, sp, step=0.01,
          verb="extract",
          call_id="call-extract-001",
          agent="intake_extractor",

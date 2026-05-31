@@ -7,13 +7,16 @@ runstatus UI (which renders them).
 ## Event naming
 
 ```
-oracle.<verb>.start     lightweight; emitted when the LLM call begins
-oracle.<verb>.complete  full; emitted when the LLM call returns
+oracle.call.start     lightweight; emitted when the LLM call begins
+oracle.call.complete  full; emitted when the LLM call returns
 ```
 
-Where `<verb>` is one of: `decide`, `extract`, `ask`, `task`, `converse`.
+The verb lives in `attrs.verb`, **not** in the event name. This is the single
+canonical oracle trace shape the engine emits; the older `oracle.<verb>.start`
+naming (which the engine never produced) has been retired. `attrs.verb` is one
+of: `decide`, `extract`, `ask`, `task`, `converse`.
 
-### oracle.\<verb\>.start attrs
+### oracle.call.start attrs
 
 | Key          | Type   | Notes                                                                          |
 |--------------|--------|--------------------------------------------------------------------------------|
@@ -28,7 +31,7 @@ Purpose: give the UI early visibility that an LLM call is in flight before the
 
 ---
 
-## oracle.\<verb\>.complete attrs
+## oracle.call.complete attrs
 
 All keys below are present on every `.complete` event unless marked `?`
 (optional — omit the key entirely when not applicable, do not send `null`).
@@ -159,7 +162,7 @@ still present.
 
 ## Worked examples per verb
 
-### oracle.decide.complete
+### decide (oracle.call.complete, verb="decide")
 
 ```json
 {
@@ -183,7 +186,7 @@ still present.
 }
 ```
 
-### oracle.extract.complete
+### extract (oracle.call.complete, verb="extract")
 
 ```json
 {
@@ -211,7 +214,7 @@ still present.
 }
 ```
 
-### oracle.ask.complete
+### ask (oracle.call.complete, verb="ask")
 
 ```json
 {
@@ -232,7 +235,7 @@ still present.
 }
 ```
 
-### oracle.task.complete
+### task (oracle.call.complete, verb="task")
 
 ```json
 {
@@ -278,7 +281,7 @@ still present.
 }
 ```
 
-### oracle.converse.complete
+### converse (oracle.call.complete, verb="converse")
 
 ```json
 {

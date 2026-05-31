@@ -28,7 +28,7 @@ const EVENTS: TraceEvent[] = [
   makeEvent({ msg: "turn.start",          turn: 1, state_path: "root.active" }),
   makeEvent({ msg: "host.invoked",        turn: 1, state_path: "root.active", time: "2026-01-01T00:00:02Z" }),
   makeEvent({ msg: "host.returned",       turn: 1, state_path: "root.active", time: "2026-01-01T00:00:03Z" }),
-  makeEvent({ msg: "oracle.decide.start", turn: 2, state_path: "root.done",   time: "2026-01-01T00:00:04Z", attrs: { call_id: "c1", verb: "decide" } }),
+  makeEvent({ msg: "oracle.call.start", turn: 2, state_path: "root.done",   time: "2026-01-01T00:00:04Z", attrs: { call_id: "c1", verb: "decide" } }),
   makeEvent({ msg: "turn.end",            turn: 2, state_path: "root.done",   time: "2026-01-01T00:00:05Z" }),
 ];
 
@@ -286,19 +286,19 @@ describe("TraceTimeline — oracle start/complete merge", () => {
   function oracleEvents(): TraceEvent[] {
     return [
       makeEvent({
-        msg: "oracle.task.start",
+        msg: "oracle.call.start",
         turn: 1,
         time: "2026-01-01T00:00:01Z",
         attrs: { call_id: "call-paired", verb: "task", agent: "reproducer" },
       }),
       makeEvent({
-        msg: "oracle.task.complete",
+        msg: "oracle.call.complete",
         turn: 1,
         time: "2026-01-01T00:00:03Z",
         attrs: { call_id: "call-paired", duration_ms: 2000, verb: "task" },
       }),
       makeEvent({
-        msg: "oracle.ask.start",
+        msg: "oracle.call.start",
         turn: 1,
         time: "2026-01-01T00:00:04Z",
         attrs: { call_id: "call-orphan", verb: "ask" },
@@ -345,10 +345,10 @@ describe("TraceTimeline — turn.input ordering", () => {
   // renders LAST — after the host/world rows it triggered.
   function reproducingEvents(): TraceEvent[] {
     return [
-      makeEvent({ msg: "oracle.task.start",  turn: 1, state_path: "reproducing", time: "2026-01-01T00:00:01Z", attrs: { call_id: "c-task", verb: "task" } }),
-      makeEvent({ msg: "oracle.task.complete", turn: 1, state_path: "reproducing", time: "2026-01-01T00:00:02Z", attrs: { call_id: "c-task", duration_ms: 1000, verb: "task" } }),
-      makeEvent({ msg: "oracle.decide.start", turn: 1, state_path: "reproducing", time: "2026-01-01T00:00:03Z", attrs: { call_id: "c-decide", verb: "decide" } }),
-      makeEvent({ msg: "oracle.decide.complete", turn: 1, state_path: "reproducing", time: "2026-01-01T00:00:04Z", attrs: { call_id: "c-decide", duration_ms: 500, verb: "decide" } }),
+      makeEvent({ msg: "oracle.call.start",  turn: 1, state_path: "reproducing", time: "2026-01-01T00:00:01Z", attrs: { call_id: "c-task", verb: "task" } }),
+      makeEvent({ msg: "oracle.call.complete", turn: 1, state_path: "reproducing", time: "2026-01-01T00:00:02Z", attrs: { call_id: "c-task", duration_ms: 1000, verb: "task" } }),
+      makeEvent({ msg: "oracle.call.start", turn: 1, state_path: "reproducing", time: "2026-01-01T00:00:03Z", attrs: { call_id: "c-decide", verb: "decide" } }),
+      makeEvent({ msg: "oracle.call.complete", turn: 1, state_path: "reproducing", time: "2026-01-01T00:00:04Z", attrs: { call_id: "c-decide", duration_ms: 500, verb: "decide" } }),
       // turn.input carries the SAME turn (2) as the work it triggers, and the
       // UI defers it to the end of that turn group — so it should display LAST.
       makeEvent({ msg: "turn.input", turn: 2, state_path: "reproducing", time: "2026-01-01T00:00:05Z", attrs: { input: "[intent] accept" } }),
@@ -388,8 +388,8 @@ describe("TraceTimeline — turn.input ordering", () => {
   it("turn.input with no subsequent turn group stays in its original group", async () => {
     // Only turn 1 — no turn 2 to move turn.input into.
     const events: TraceEvent[] = [
-      makeEvent({ msg: "oracle.ask.start",   turn: 1, state_path: "root.active", attrs: { call_id: "cx", verb: "ask" } }),
-      makeEvent({ msg: "oracle.ask.complete", turn: 1, state_path: "root.active", time: "2026-01-01T00:00:02Z", attrs: { call_id: "cx", duration_ms: 100, verb: "ask" } }),
+      makeEvent({ msg: "oracle.call.start",   turn: 1, state_path: "root.active", attrs: { call_id: "cx", verb: "ask" } }),
+      makeEvent({ msg: "oracle.call.complete", turn: 1, state_path: "root.active", time: "2026-01-01T00:00:02Z", attrs: { call_id: "cx", duration_ms: 100, verb: "ask" } }),
       makeEvent({ msg: "turn.input", turn: 1, state_path: "root.active", time: "2026-01-01T00:00:03Z", attrs: { input: "[intent] done" } }),
     ];
 
@@ -469,6 +469,132 @@ describe("TraceTimeline — phase headers", () => {
       .findAll(".trace-timeline__phase-header .trace-timeline__turn-phase")
       .map((h) => h.text());
     expect(phaseNames).toEqual(["—"]);
+
+    wrapper.unmount();
+  });
+
+  // A phase whose work spans non-adjacent turns (entering in turn N, revisited
+  // later) must still produce EXACTLY ONE phase header. Before grouping by
+  // phase (rather than by adjacency), "proposing" appeared twice.
+  it("renders each phase header exactly once even when its turns are non-adjacent", async () => {
+    const events: TraceEvent[] = [
+      makeEvent({ msg: "host.invoked",  turn: 1, state_path: "proposing",   time: "2026-01-01T00:00:01Z" }),
+      makeEvent({ msg: "host.invoked",  turn: 2, state_path: "reproducing", time: "2026-01-01T00:00:02Z" }),
+      // proposing revisited in a later, non-adjacent turn:
+      makeEvent({ msg: "host.invoked",  turn: 3, state_path: "proposing",   time: "2026-01-01T00:00:03Z" }),
+    ];
+
+    const wrapper = mount(TraceTimeline, {
+      props: { events, selectedEventIndex: null, mermaidSource: MERMAID },
+    });
+    await flushPromises();
+
+    const phaseNames = wrapper
+      .findAll(".trace-timeline__phase-header .trace-timeline__turn-phase")
+      .map((h) => h.text());
+    // "proposing" must appear once, not twice.
+    expect(phaseNames.filter((n) => n === "proposing")).toEqual(["proposing"]);
+    expect(phaseNames).toContain("reproducing");
+
+    wrapper.unmount();
+  });
+});
+
+describe("TraceTimeline — visit grouping (intent, not raw turn)", () => {
+  // A turn straddles the transition it triggers: room X's intent fires in turn
+  // N, and the *entered* room Y's on-enter work + state_entered land in that
+  // SAME turn N — so a room's entry events carry the PREVIOUS decision's turn
+  // number. Grouping by raw turn therefore splits one room visit across two
+  // turn boxes. The timeline groups by VISIT instead: every event for a room
+  // routes to the turn whose machine.intent_accepted closes it, so one visit =
+  // one group carrying its single intent, even across two raw turns.
+  function reproducingVisit(): TraceEvent[] {
+    return [
+      // Entry: on-enter task, recorded under turn 1 (idle's decision turn).
+      makeEvent({ msg: "oracle.call.start",    turn: 1, state_path: "reproducing", time: "2026-01-01T00:00:01Z", attrs: { call_id: "c-task", verb: "task" } }),
+      makeEvent({ msg: "oracle.call.complete", turn: 1, state_path: "reproducing", time: "2026-01-01T00:00:02Z", attrs: { call_id: "c-task", duration_ms: 1000, verb: "task" } }),
+      // Decision: reproducing's own intent fires in turn 2.
+      makeEvent({ msg: "machine.intent_accepted", turn: 2, state_path: "reproducing", time: "2026-01-01T00:00:03Z", attrs: { intent: "accept" } }),
+      makeEvent({ msg: "harness.called",   turn: 2, state_path: "reproducing", time: "2026-01-01T00:00:04Z", attrs: { namespace: "host.append_to_file.post" } }),
+      makeEvent({ msg: "harness.dispatched", turn: 2, state_path: "reproducing", time: "2026-01-01T00:00:04Z", attrs: { namespace: "host.append_to_file.post" } }),
+      makeEvent({ msg: "harness.returned",   turn: 2, state_path: "reproducing", time: "2026-01-01T00:00:04Z", attrs: { namespace: "host.append_to_file.post" } }),
+    ];
+  }
+
+  it("merges a room's entry turn and decision turn into ONE visit group", async () => {
+    const wrapper = mount(TraceTimeline, {
+      props: { events: reproducingVisit(), selectedEventIndex: null },
+    });
+    await flushPromises();
+
+    // Old behaviour grouped by (state_path, turn) → 2 headers (turn 1, turn 2).
+    // Visit grouping collapses them into a single reproducing visit.
+    const headers = wrapper.findAll(".trace-timeline__turn-header");
+    expect(headers.length).toBe(1);
+
+    wrapper.unmount();
+  });
+
+  it("labels the visit with its accepted intent and the spanned turn range", async () => {
+    const wrapper = mount(TraceTimeline, {
+      props: { events: reproducingVisit(), selectedEventIndex: null },
+    });
+    await flushPromises();
+
+    const header = wrapper.find(".trace-timeline__turn-header");
+    // Intent badge carries the single decider break for the visit.
+    expect(header.find(".trace-timeline__intent-value").text()).toBe("accept");
+    // The raw turn span stays visible (faithful to the trace): turn 1–2.
+    expect(header.find(".trace-timeline__turn-label").text()).toBe("turn 1–2");
+
+    wrapper.unmount();
+  });
+
+  it("falls back to per-turn groups when no intent was accepted", async () => {
+    // Without a machine.intent_accepted to anchor a visit, we cannot identify
+    // the decision, so the faithful default is to group by raw turn.
+    const events: TraceEvent[] = [
+      makeEvent({ msg: "host.invoked",  turn: 1, state_path: "reproducing", time: "2026-01-01T00:00:01Z" }),
+      makeEvent({ msg: "host.invoked",  turn: 2, state_path: "reproducing", time: "2026-01-01T00:00:02Z" }),
+    ];
+    const wrapper = mount(TraceTimeline, {
+      props: { events, selectedEventIndex: null },
+    });
+    await flushPromises();
+
+    const headers = wrapper.findAll(".trace-timeline__turn-header");
+    expect(headers.length).toBe(2);
+    const labels = headers.map((h) => h.find(".trace-timeline__turn-label").text());
+    expect(labels).toEqual(["turn 1", "turn 2"]);
+
+    wrapper.unmount();
+  });
+});
+
+describe("TraceTimeline — machine.say narration", () => {
+  it("renders machine.say as a narration row showing its text", async () => {
+    const events: TraceEvent[] = [
+      makeEvent({
+        msg: "machine.say",
+        turn: 1,
+        state_path: "proposing",
+        attrs: { text: "Fix applied — TKT-001 done." },
+      }),
+    ];
+
+    const wrapper = mount(TraceTimeline, {
+      props: { events, selectedEventIndex: null },
+    });
+    await flushPromises();
+
+    const rows = wrapper.findAll(".trace-timeline__row");
+    expect(rows.length).toBe(1);
+    // The text must be shown (not a bare "machine.say" or "world.update").
+    const sayText = wrapper.find(".trace-timeline__say-text");
+    expect(sayText.exists()).toBe(true);
+    expect(sayText.text()).toContain("Fix applied — TKT-001 done.");
+    // The subsystem chip is "machine".
+    expect(rows[0]!.find(".trace-timeline__subsystem-chip").attributes("data-subsystem")).toBe("machine");
 
     wrapper.unmount();
   });

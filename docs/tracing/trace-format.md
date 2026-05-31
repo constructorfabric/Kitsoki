@@ -101,6 +101,7 @@ All kinds use the dotted form the SPA subsystem chip logic already consumes.
 | `machine.validation_failed`  | Machine.Validate rejects a tool call.                       |
 | `machine.guard_rejected`     | All guards for a transition failed.                         |
 | `machine.transition`         | After a successful transition fires.                        |
+| `machine.say`                | Once per `say:` effect that resolves. Payload `{"text": …}`; replay no-op. Split out of `world.update` so a timeline can render narration as its own row. |
 | `machine.state_exited`       | Machine leaves a state (compound or leaf).                  |
 | `machine.state_entered`      | Machine enters a state (compound or leaf).                  |
 | `machine.off_path_entered`   | User activates off-path mode.                               |

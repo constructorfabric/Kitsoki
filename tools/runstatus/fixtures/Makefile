@@ -7,9 +7,9 @@ APP        := $(REPO_ROOT)/testdata/apps/cloak/app.yaml
 SRC        := $(REPO_ROOT)/tools/runstatus/fixtures/sources
 OUT        := $(REPO_ROOT)/tools/runstatus/fixtures
 
-.PHONY: all in-progress completed edge-cases bugfix oracle-rich
+.PHONY: all in-progress completed edge-cases bugfix oracle-rich oracle-with-separate-prompts
 
-all: in-progress completed edge-cases bugfix oracle-rich
+all: in-progress completed edge-cases bugfix oracle-rich oracle-with-separate-prompts
 
 # bugfix: drive stories/bugfix/flows/happy_human.yaml through the REAL
 # orchestrator (in-memory store, host stubs from the flow) and dump the
@@ -44,3 +44,9 @@ edge-cases:
 # a new snapshot exercising all five oracle verbs with full rich attrs.
 oracle-rich:
 	python3 $(SRC)/oracle-rich.gen.py > $(OUT)/oracle-rich.snapshot.json
+
+# oracle-with-separate-prompts: like oracle-rich but with large prompts stored
+# in sidecar oracle-prompts/*.txt files (prompt_file / system_prompt_file).
+# Exercises usePromptLoader resolving sidecars under file://.
+oracle-with-separate-prompts:
+	python3 $(SRC)/oracle-with-separate-prompts.gen.py > $(OUT)/oracle-with-separate-prompts.snapshot.json

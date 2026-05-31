@@ -96,6 +96,28 @@ episodes:
 | `response.infra_error` | string | Returned as a Go `error` (infrastructure-level failure). Mutually exclusive with `response.error`. |
 | `delay` | string | Virtual-time duration (e.g. `200ms`, `2s`). Consumed by the fake clock's `Sleep`; requires the orchestrator path. |
 | `replay` | string | `any` allows the episode to be replayed on every matching call. Default: episode plays once and is marked played. |
+| `oracle` | map | Optional. Present when the episode was recorded against a `host.oracle.*` handler. Captures the oracle-call metadata so replay emits the same `oracle.call.start`/`oracle.call.complete` trace events a real session would (see [`trace-format.md`](trace-format.md)). Omitted for non-oracle episodes. |
+
+When present, the `oracle:` block carries: `verb` (`ask`\|`decide`\|`extract`\|`task`\|`converse`), `agent`, `model`, `duration_ms`, `prompt_tokens`, `response_tokens`, `cost_usd`, `system_prompt`, `prompt`, `input`, `response`, `error`, and `call_id` (advisory — recomputed on load). Long prompts and responses are best kept in `!include` sidecar files:
+
+```yaml
+  - id: phase_1_repro_oracle
+    match:
+      handler:     host.oracle.ask_with_mcp
+      phase:       phase_1
+      schema_name: 01-repro-report.schema.json
+    response:
+      data:
+        submitted: !include 01-repro-report.json
+    oracle:
+      verb:          ask
+      agent:         reproducer
+      model:         claude-opus-4-8
+      duration_ms:   4200
+      system_prompt: !include 01-repro-system.txt
+      prompt:        !include 01-repro-prompt.txt
+      response:      !include 01-repro-report.json
+```
 
 ---
 

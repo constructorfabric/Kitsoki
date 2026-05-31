@@ -161,9 +161,8 @@ async function copyAttrs(): Promise<void> {
   }
 }
 
-// oracle.<verb>.complete events get a rich sub-renderer.  Verb is taken from
-// attrs.verb when present, else inferred from the msg ("oracle.ask.complete"
-// → "ask") so lean traces without the full attrs payload still route here.
+// oracle.call.complete events get a rich sub-renderer (OracleDetail), which
+// reads attrs.verb to route to the per-verb body.
 const CLI_NAMESPACES = new Set([
   "host.local.run_tests", "host.local.build",
   "host.git.commit", "host.git.diff",
@@ -171,8 +170,10 @@ const CLI_NAMESPACES = new Set([
 ]);
 function isCliNamespace(ns: string): boolean { return CLI_NAMESPACES.has(ns); }
 
-const ORACLE_COMPLETE_RE = /^oracle\.(decide|extract|ask|task|converse)\.complete$/;
-const isOracleComplete = computed(() => ORACLE_COMPLETE_RE.test(props.event.msg));
+// Canonical oracle completion: the engine emits oracle.call.complete with the
+// verb in attrs.verb. OracleDetail reads attrs.verb to route to the per-verb
+// sub-renderer (DecideDetail / TaskDetail / …).
+const isOracleComplete = computed(() => props.event.msg === "oracle.call.complete");
 
 // Legacy: oracle.* start/other + turn.llm.* get the old prompt/response dump.
 const isLlmEvent = computed(() => !isOracleComplete.value && (props.event.msg.startsWith("oracle.") || props.event.msg.startsWith("turn.llm.")));

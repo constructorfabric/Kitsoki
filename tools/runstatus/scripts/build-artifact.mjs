@@ -168,10 +168,47 @@ function buildBanner(baseName) {
     `<style>#app{padding-top:1.75rem}</style>`;
 }
 
+// Inline oracle-prompt sidecars into the snapshot so the artifact is fully
+// self-contained: under file:// a relative fetch() of the .txt sidecar is
+// blocked by the browser, so usePromptLoader could never resolve prompt_file.
+// We read each referenced sidecar (resolved relative to the snapshot's dir)
+// and copy its text into the matching inline attr (prompt / system_prompt),
+// then drop the *_file ref. Sidecars that can't be read are left as-is.
+function inlinePromptSidecars(snapshotJson, snapshotPath) {
+  let snap;
+  try {
+    snap = JSON.parse(snapshotJson);
+  } catch {
+    return snapshotJson; // not JSON we understand; pass through untouched
+  }
+  if (!Array.isArray(snap.events)) return snapshotJson;
+  const baseDir = path.dirname(snapshotPath);
+  const readSidecar = (rel) => {
+    try {
+      return fs.readFileSync(path.resolve(baseDir, rel), "utf-8");
+    } catch {
+      return null;
+    }
+  };
+  for (const e of snap.events) {
+    const a = e && e.attrs;
+    if (!a || typeof a !== "object") continue;
+    if (typeof a.prompt_file === "string" && !a.prompt) {
+      const txt = readSidecar(a.prompt_file);
+      if (txt != null) { a.prompt = txt; delete a.prompt_file; }
+    }
+    if (typeof a.system_prompt_file === "string" && !a.system_prompt) {
+      const txt = readSidecar(a.system_prompt_file);
+      if (txt != null) { a.system_prompt = txt; delete a.system_prompt_file; }
+    }
+  }
+  return JSON.stringify(snap);
+}
+
 function buildOne(snapshotPath) {
   const baseName = path.basename(snapshotPath, ".snapshot.json");
   const dist = fs.readFileSync(distIndex, "utf-8");
-  const snap = fs.readFileSync(snapshotPath, "utf-8");
+  const snap = inlinePromptSidecars(fs.readFileSync(snapshotPath, "utf-8"), snapshotPath);
   const snapshotTag = `<script type="application/json" id="kitsoki-snapshot">${snap}</script>`;
   const banner = buildBanner(baseName);
   const regenComment = buildRegenComment(baseName, snapshotPath);

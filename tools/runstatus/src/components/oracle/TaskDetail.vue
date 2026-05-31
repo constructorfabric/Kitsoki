@@ -45,6 +45,7 @@
 
       <CollapsibleText label="System Prompt" :text="systemPrompt" />
       <CollapsibleText label="Prompt" :text="prompt" />
+      <CollapsibleText label="Response" :text="responseText" />
     </template>
 
     <!-- Tool transcript tab -->
@@ -132,6 +133,20 @@ const totalAdds = computed(() => filesChanged.value.reduce((s, f) => s + (f.addi
 const totalDels = computed(() => filesChanged.value.reduce((s, f) => s + (f.deletions ?? 0), 0));
 
 const { prompt, systemPrompt } = usePromptLoader(attrs);
+
+// A task response is the LLM's free-text body emitted alongside the submitted
+// artifact (oracle.call.complete attrs.response = { text: "..." }). The data is
+// in the trace; surface it in the Overview so an expanded task row shows the
+// response, not just the prompt. Falls back to a plain-string response.
+const responseText = computed<string>(() => {
+  const r = attrs.value.response as unknown;
+  if (typeof r === "string") return r;
+  if (r && typeof r === "object") {
+    const t = (r as Record<string, unknown>).text;
+    if (typeof t === "string") return t;
+  }
+  return "";
+});
 
 function statusClass(status: string): string {
   switch (status) {

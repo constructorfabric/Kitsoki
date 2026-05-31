@@ -108,6 +108,105 @@ args (snapshotted at machine time), and `HostDispatched` carries the
 saw, assert against `HostDispatched` — `HostInvoked` will still show
 the un-substituted template.
 
+### Expectation-based mocking: verify *who got called*
+
+A stub that returns a canned envelope tells you nothing about whether
+the room actually invoked it. A fixture that passes but never called
+`iface.vcs.branch` is a false positive. Pair every host stub with
+**call-verification assertions**: who was called, how many times, with
+what args. These shorthands expand into `HostDispatched` matches:
+
+| Field | Level | Meaning |
+|---|---|---|
+| `expect_host_calls:` | turn | List of `{handler, args?, times?}`. Each entry asserts a `HostDispatched` event fired this turn. `args:` is a partial match against the dispatched payload; `times:` pins an exact count (omit for "at least one"). |
+| `expect_no_host_calls:` | turn **or** fixture | List of handler names that must **never** fire. At fixture level it spans the whole run — use it to prove a walk never touched an op from a different pipeline. |
+
+```yaml
+turns:
+  - intent: { name: proceed }
+    expect_state: bf.reproducing_awaiting_reply
+    expect_host_calls:
+      - handler: iface.vcs.branch
+        args: { name: "fix/TKT-200", base: "main" }
+        times: 1
+      - handler: host.inbox.add
+    expect_no_host_calls: [iface.ci.run_tests]
+
+# fixture level — these handlers must not fire anywhere in the walk
+expect_no_host_calls: [host.github, host.jira_comment]
+```
+
+#### One stub, many ops: `by_op:`
+
+Prefix-fallback handlers (`host.local_files.ticket`, `host.git`,
+`host.cypilot_artifacts`, …) serve several ops under one name. `by_op:`
+keys distinct envelopes by the `op:` arg so a fixture can prove a room
+read the right fields from the right op. The key matches the `op:`
+value; the matching envelope's `data`/`error`/`infra_error` win over
+the top-level ones (which serve as the fallthrough). `delay:` and
+`request_clarification:` stay at the top level.
+
+```yaml
+host_handlers:
+  host.local_files.ticket:
+    by_op:
+      list_mine: { data: { tickets: [ { id: TKT-200, type: bug } ] } }
+      search:    { data: { tickets: [ { id: TKT-200, type: bug } ] } }
+      get:       { data: { id: TKT-200, type: bug, title: "…" } }
+```
+
+#### Asserting on-disk side effects: `expect_files:`
+
+When a transport stub lands artefacts on disk (e.g. the
+`host.artifacts_dir` transport binding writes `thread:` to a file under
+an `artifacts_root`), assert the side effect directly instead of
+inspecting transport-internal state. `expect_files:` is **fixture
+level**; each entry takes a literal `path:` (relative paths resolve
+against the fixture file's directory), an optional `content_matches:`
+Go regex, and an optional `must_not_exist: true` to assert a path was
+never written.
+
+```yaml
+expect_files:
+  - path: .artifacts/reproducing_TKT-200_0.md
+    content_matches: "## Reproduction"
+  - path: .artifacts/leaked-secret.md
+    must_not_exist: true
+```
+
+The end-to-end `cake_*` fixtures under `stories/dev-story/flows/`
+exercise all four primitives across the bugfix, feature, and epic
+pipelines against the `testdata/projects/cake/` demo project.
+
+### 1.9 Integration tests for host-failure paths
+
+Flow fixtures stub every host to `{ok: true}` so authors can write
+state-machine contracts without provisioning real services. The cost:
+**any code path predicated on a host returning `Result.Error` is
+invisible to the fixture suite.** On-error redirect arcs, idempotency
+recovery, and the redirect recursion cap (see
+[`state-machine.md` §5](../stories/state-machine.md#on_error-redirects-and-the-recursion-cap))
+never form when the stub never errors.
+
+For those paths, write an orchestrator-backed integration test against
+**real** host handlers — the pattern in
+`internal/orchestrator/dogfood_smoke_test.go`:
+
+- `t.TempDir()` for the repo root; `git init` + one commit on `main` so
+  worktree-add has a base.
+- A real registry — `host.NewRegistry()` then `host.RegisterBuiltins(reg)`
+  — with **no** stub for the handler under test.
+- Drive the real intent and assert the run reaches the expected state
+  within a `context.WithTimeout` (e.g. 30s). A redirect loop either
+  trips the cap (assert a `HarnessError` on the outcome) or hangs the
+  context (fails fast — no CI hang).
+- A companion case that pre-creates the conflicting on-disk state (e.g.
+  a leftover `.worktrees/bf-<id>/`) to exercise the idempotency /
+  HarnessError contract directly.
+
+Keep these sub-second (`git init` + one commit is ~50ms) and use
+`t.Parallel()` per case — the fast-tests mandate still holds.
+
 ---
 
 ## 2. Background-job fixtures
