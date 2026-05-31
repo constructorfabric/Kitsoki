@@ -5,8 +5,18 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/flosch/pongo2/v6"
+
 	"kitsoki/internal/expr"
 )
+
+// pongo2RegisterPanicFilter registers a filter that always panics, used to
+// exercise Pongo's panic-recovery seam (see TestPongo_RecoversFromFilterPanic).
+func pongo2RegisterPanicFilter() error {
+	return pongo2.RegisterFilter("kitsoki_test_panic", func(_ *pongo2.Value, _ *pongo2.Value) (*pongo2.Value, *pongo2.Error) {
+		panic("boom from a test filter")
+	})
+}
 
 // makeEnv builds an expr.Env with helpers populated against a menu shape
 // containing one primary intent ("start_journey") and one blocked intent
@@ -570,5 +580,72 @@ func TestToContext_KeysExposed(t *testing.T) {
 		if _, ok := ctx[key]; !ok {
 			t.Errorf("ToContext missing key %q", key)
 		}
+	}
+}
+
+// TestPongo_WordwrapNoPanic_ShortInput pins the exact crash that took down
+// the TUI: pongo2/v6's stock `wordwrap` panicked with
+// "slice bounds out of range [110:3]" on any input whose word count was
+// below the wrap argument. With our muesli-backed override the short input
+// is returned unchanged (it fits within the column budget) and no panic
+// escapes. Without the override OR the recover guard this test crashes the
+// test binary instead of failing cleanly.
+func TestPongo_WordwrapNoPanic_ShortInput(t *testing.T) {
+	env := makeEnv()
+	// 3 "words", wrapped at 110 columns — the precise shape from the panic.
+	out, err := Pongo(`{{ "a b c"|wordwrap:110 }}`, env)
+	if err != nil {
+		t.Fatalf("wordwrap short input errored: %v", err)
+	}
+	if out != "a b c" {
+		t.Fatalf("wordwrap short input: got %q want %q", out, "a b c")
+	}
+}
+
+// TestPongo_WordwrapColumnWidth proves the override wraps at COLUMNS (Django
+// semantics), not at a word count like the broken built-in. A line longer
+// than the budget is broken on whitespace.
+func TestPongo_WordwrapColumnWidth(t *testing.T) {
+	env := makeEnv()
+	out, err := Pongo(`{{ "one two three four"|wordwrap:7 }}`, env)
+	if err != nil {
+		t.Fatalf("wordwrap errored: %v", err)
+	}
+	if !strings.Contains(out, "\n") {
+		t.Fatalf("wordwrap:7 should have inserted a line break, got %q", out)
+	}
+	for _, line := range strings.Split(out, "\n") {
+		// muesli wraps greedily and never splits a single word, so a line
+		// may exceed the budget only when it holds one oversized word.
+		if n := len([]rune(line)); n > 7 && len(strings.Fields(line)) > 1 {
+			t.Fatalf("wordwrap:7 produced an over-wide multi-word line %q (%d cols)", line, n)
+		}
+	}
+}
+
+// panicFilterRegistered guards the one-time registration of the panicking
+// test filter so repeated test runs in one process don't double-register.
+var panicFilterRegistered sync.Once
+
+// TestPongo_RecoversFromFilterPanic proves the render seam converts a
+// panicking filter into an ordinary error rather than letting it unwind
+// into the TUI. We register a filter that always panics — independent of
+// pongo2's built-ins — so the guard is exercised even after the wordwrap
+// bug itself is fixed. Without the recover in Pongo this test panics the
+// test binary.
+func TestPongo_RecoversFromFilterPanic(t *testing.T) {
+	panicFilterRegistered.Do(func() {
+		_ = pongo2RegisterPanicFilter()
+	})
+	env := makeEnv()
+	out, err := Pongo(`{{ "x"|kitsoki_test_panic }}`, env)
+	if err == nil {
+		t.Fatalf("expected an error from a panicking filter, got out=%q nil err", out)
+	}
+	if out != "" {
+		t.Fatalf("expected empty output on panic, got %q", out)
+	}
+	if !strings.Contains(err.Error(), "panic during template execution") {
+		t.Fatalf("error should name the panic, got %v", err)
 	}
 }

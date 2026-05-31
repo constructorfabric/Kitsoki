@@ -95,8 +95,10 @@
 // # Non-goals
 //
 //   - No custom template DSL. pongo2/v6 is the abstraction boundary; the
-//     only kitsoki-specific surface is the ` ?? ` → `|default:` rewrite and
-//     the col/rcol/reverse filters. Authors learn Django's template grammar,
+//     only kitsoki-specific surface is the ` ?? ` → `|default:` rewrite, the
+//     col/rcol/reverse filters, and a corrected `wordwrap` (the stock pongo2
+//     one wraps by word count and panics on short input — see the
+//     ReplaceFilter call in init). Authors learn Django's template grammar,
 //     not a bespoke one, so the engine stays swappable and the docs stay
 //     thin.
 //   - No per-template syntax customization. Every render uses the same

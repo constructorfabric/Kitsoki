@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/flosch/pongo2/v6"
+	"github.com/muesli/reflow/wordwrap"
 
 	"kitsoki/internal/expr"
 )
@@ -55,6 +56,40 @@ func init() {
 	// `truncatechars:N-1|col:N`.
 	_ = pongo2.RegisterFilter("col", filterCol)
 	_ = pongo2.RegisterFilter("rcol", filterRcol)
+
+	// Override pongo2/v6's built-in `wordwrap`, which is doubly broken:
+	//
+	//  1. It wraps at a number of WORDS, not characters — the opposite of
+	//     Django's `wordwrap` (which wraps to N columns, breaking on
+	//     whitespace) that the name leads every author to expect. A
+	//     `question|wordwrap:115` meant to hard-wrap a long line at ~115
+	//     columns instead asks for "115 words per line" and does nothing.
+	//
+	//  2. Its line-count formula `wordsLen/wrapAt + wordsLen%wrapAt`
+	//     over-counts whenever wrapAt exceeds the word count, then indexes
+	//     past the end of the word slice. A 3-word string with
+	//     `wordwrap:110` slices words[110:3] and PANICS with
+	//     "slice bounds out of range [110:3]" — and because the panic
+	//     unwinds through tpl.Execute it escapes the TUI's render-error
+	//     fallback and crashes the whole bubbletea program.
+	//
+	// Replace it with muesli/reflow's character-width word wrap — the same
+	// wrapper the prose/kv/list view elements already use — so `wordwrap:N`
+	// means "wrap to N columns, breaking on whitespace" and never panics.
+	_ = pongo2.ReplaceFilter("wordwrap", filterWordwrap)
+}
+
+// filterWordwrap wraps the input to param visible columns, breaking on
+// whitespace, replacing pongo2's broken built-in (see the ReplaceFilter
+// call in init()). A non-positive width returns the input unchanged.
+// Backed by muesli/reflow/wordwrap so wrapping behaviour matches the
+// prose/kv/list elements.
+func filterWordwrap(in *pongo2.Value, param *pongo2.Value) (*pongo2.Value, *pongo2.Error) {
+	width := param.Integer()
+	if width <= 0 {
+		return in, nil
+	}
+	return pongo2.AsValue(wordwrap.String(in.String(), width)), nil
 }
 
 // filterCol pads or truncates the input to exactly N runes,
@@ -140,7 +175,7 @@ func PongoParse(src string) error {
 // view leaf strings that are pure prose.
 //
 // The signature matches expr.Render so call-site swaps are mechanical.
-func Pongo(src string, env expr.Env) (string, error) {
+func Pongo(src string, env expr.Env) (out string, err error) {
 	if !hasDelims(src) {
 		return src, nil
 	}
@@ -149,11 +184,24 @@ func Pongo(src string, env expr.Env) (string, error) {
 	if err != nil {
 		return "", wrapTemplateError(src, err)
 	}
-	out, err := tpl.Execute(ToContext(env))
+	// pongo2 filters (built-in and our own) execute arbitrary Go against
+	// author-controlled input that can panic rather than return an error —
+	// the stock `wordwrap` did exactly this on a short string (see init()).
+	// A panic here unwinds straight past every caller's render-error
+	// fallback and crashes the bubbletea program. Recover at this seam and
+	// turn the panic into an ordinary error so callers degrade gracefully
+	// (the transcript view falls back to raw source).
+	defer func() {
+		if r := recover(); r != nil {
+			out = ""
+			err = wrapTemplateError(src, fmt.Errorf("panic during template execution: %v", r))
+		}
+	}()
+	rendered, err := tpl.Execute(ToContext(env))
 	if err != nil {
 		return "", wrapTemplateError(src, err)
 	}
-	return out, nil
+	return rendered, nil
 }
 
 // preprocessCoalesce rewrites the kitsoki-author-friendly ` ?? ` null-
