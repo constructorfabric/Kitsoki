@@ -1,0 +1,133 @@
+# Controlled vocabulary — CORE (language- and tool-agnostic).
+#
+# This is the universe of pattern ids that reports aggregate by. Keep it small,
+# stable, and free of any one ecosystem's vocabulary (no "go test", no framework
+# names). Ecosystem specifics live in overlay-*.yaml, which only add example
+# *signatures*, never new ids.
+#
+# Each id is a cross-user merge key. Changing an id's MEANING is a breaking
+# change — bump vocab_version. Adding a new id (e.g. after promoting a corroborated
+# novel pattern) is also a vocab_version bump. Never silently repurpose an id.
+#
+# Per-run fields (occurrences, mechanical_fraction, pain) are MEASURED by the
+# extractor, not stored here. This file holds only the stable definition and the
+# default ladder target.
+
+vocab_version: "2026-05-31"
+
+# ladder targets (see README "Progressive determinism"): L0 ad hoc .. L4 fully deterministic
+patterns:
+  - id: explore-codebase
+    name: Explore codebase to answer a question
+    definition: Read-only investigation to learn how or where something works, before deciding anything.
+    signals: ["search/grep across files", "reading types/signatures/configs", "following a call chain", "no edits made"]
+    typical_decision_points: ["search by string vs symbol vs type", "canonical implementation vs dead code"]
+    default_ladder_target: L2
+
+  - id: build-compile-fix-loop
+    name: Build/compile then fix errors
+    definition: Run the build or compiler, read errors, edit, rebuild — repeat until it builds clean.
+    signals: ["build/compile command", "reading compiler/build errors", "edit then rebuild", "tight repeat cycle"]
+    typical_decision_points: ["which fix class (import vs signature vs type)"]
+    default_ladder_target: L3
+
+  - id: fix-failing-tests
+    name: Fix failing tests
+    definition: Run the test suite, read a failure, edit code or test, rerun until green.
+    signals: ["test-runner invocation", "reading a specific test failure", "edit then re-run same test"]
+    typical_decision_points: ["fix the code or fix the test expectation", "regression test vs fixture change"]
+    default_ladder_target: L2
+
+  - id: add-test-coverage
+    name: Add or update test coverage
+    definition: Write new tests or fixtures for behavior that was previously untested.
+    signals: ["new test file/function", "new fixture/golden data", "running a newly-written test"]
+    typical_decision_points: ["unit vs integration vs golden", "what assertion shape captures the behavior"]
+    default_ladder_target: L2
+
+  - id: debug-from-error-or-trace
+    name: Debug from an error or trace
+    definition: Root-cause an unexpected behavior from logs, traces, or runtime output (beyond a plain test failure).
+    signals: ["grepping logs/traces", "reading runtime output", "correlating an event sequence", "user reports a symptom"]
+    typical_decision_points: ["which subsystem owns the symptom", "symptom vs root cause", "add instrumentation vs read existing trace"]
+    default_ladder_target: L2
+
+  - id: refactor-rename-move
+    name: Refactor / rename / move
+    definition: Restructure code without changing behavior — rename symbols, split files, move modules.
+    signals: ["rename/move across files", "updating imports/references", "build/test to confirm no behavior change"]
+    typical_decision_points: ["scope (local vs cross-module)", "split vs keep together"]
+    default_ladder_target: L3
+
+  - id: implement-from-spec
+    name: Implement from a spec or proposal
+    definition: Build a feature from a written spec/proposal/ticket, usually phased.
+    signals: ["reading a spec/proposal", "task breakdown into phases", "implement-then-test per phase"]
+    typical_decision_points: ["phase boundaries", "test-first vs implement-first", "which optional items to defer"]
+    default_ladder_target: L1   # the value IS the judgment; keep a human/LLM in the loop
+
+  - id: review-feedback
+    name: Address review feedback
+    definition: Resolve review comments or automated-review findings.
+    signals: ["a list of findings/comments", "fix per finding", "re-run checks", "triage by severity"]
+    typical_decision_points: ["true bug vs false positive", "must-fix vs defer", "fix scope"]
+    default_ladder_target: L2
+
+  - id: verify-by-running
+    name: Verify a change by running it
+    definition: Run the app/CLI/service and observe behavior to confirm a change works (not just tests).
+    signals: ["launching the app/CLI", "exercising the changed path", "screenshot/trace/output capture"]
+    typical_decision_points: ["which scenario exercises the change", "interpret output as pass/fail"]
+    default_ladder_target: L2
+
+  - id: commit-or-pr
+    name: Commit or open/update a PR
+    definition: Stage changes, write a message, commit, and/or open or update a pull request.
+    signals: ["status/diff inspection", "staging", "commit with message", "PR create/update"]
+    typical_decision_points: ["commit scope (one concern vs bundled)"]
+    default_ladder_target: L3
+
+  - id: rebase-or-resolve-conflicts
+    name: Rebase / resolve merge conflicts
+    definition: Integrate branches and resolve conflicts.
+    signals: ["rebase/merge command", "conflict markers", "per-hunk resolution", "build/test after"]
+    typical_decision_points: ["ours vs theirs per hunk", "test each step vs batch"]
+    default_ladder_target: L3   # trivial hunks auto-resolve; judgment only on semantic conflicts
+
+  - id: branch-or-worktree-setup
+    name: Branch / worktree setup or teardown
+    definition: Create or remove a branch or worktree to isolate work.
+    signals: ["branch/worktree create or remove", "choosing a base", "initial setup commit"]
+    typical_decision_points: ["base from main vs current HEAD", "path/location"]
+    default_ladder_target: L3
+
+  - id: write-docs
+    name: Write or update docs / proposal
+    definition: Author or revise documentation or a proposal.
+    signals: ["writing/editing prose docs", "iterating on structure", "wiring into an index"]
+    typical_decision_points: ["doc type/template", "detail vs brevity"]
+    default_ladder_target: L1
+
+  - id: update-config-or-deps
+    name: Update config or dependencies
+    definition: Change configuration files, flags, or dependency manifests.
+    signals: ["editing config/manifest", "adding a flag/env var", "rebuild to apply"]
+    typical_decision_points: ["flag vs env vs config file", "backward-compat impact"]
+    default_ladder_target: L3
+
+  # ---- promoted from the novel queue (corroborated across >=2 contributors/agents) ----
+  - id: fan-out-agents-and-reconcile
+    name: Fan out parallel agents and reconcile
+    definition: Dispatch multiple agents/tasks in parallel, monitor them, and reconcile partial, stalled, or conflicting work.
+    signals: ["multiple task/agent dispatches", "monitoring progress", "stopping a stalled worker", "merging/finishing partial work"]
+    typical_decision_points: ["safe to parallelize (disjoint files)?", "wait vs kill a stalled worker", "merge/reconcile partial work"]
+    default_ladder_target: L2
+    promoted_from_novel: "2026-05-31 (independently reported by 4/6 extractor agents)"
+
+  - id: visual-verification-loop
+    name: Visual verification loop
+    definition: Iterate on visual output (UI/video) by rendering, sampling frames/screenshots, judging, and tweaking.
+    signals: ["render/screenshot", "frame extraction", "reading an image", "edit styles/layout then re-render"]
+    typical_decision_points: ["which frames to sample", "timing vs layout vs structure", "good enough?"]
+    default_ladder_target: L1
+    promoted_from_novel: "2026-05-31 (independently reported by 3/6 extractor agents)"

@@ -14,6 +14,10 @@ coverage.html
 # Go workspace
 /vendor/
 
+# Python bytecode cache (session-mining tooling)
+__pycache__/
+*.pyc
+
 # macOS
 .DS_Store
 

@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0",
+  "vocab_version": "2026-05-31",
+  "prompt_version": "1.0",
+  "context": { "languages": ["python"], "domain": "data-pipeline", "sessions_analyzed": 5 },
+  "contributor": "salt-bbbb",
+  "patterns": [
+    { "id": "fix-failing-tests", "source": "cataloged", "occurrences": 6, "sessions_seen": 4, "mechanical_fraction": 0.72, "pain": "med", "decision_points": ["flaky vs real failure"], "example_signatures": ["pytest -k <test> → edit → rerun"] },
+    { "id": "explore-codebase", "source": "cataloged", "occurrences": 14, "sessions_seen": 5, "mechanical_fraction": 0.90, "pain": "low", "decision_points": [], "example_signatures": ["grep <term> → read <file>.py"] },
+    { "id": "ci-log-triage", "source": "novel", "occurrences": 2, "corroboration": 1, "mechanical_fraction": 0.50, "pain": "high", "decision_points": ["flaky job vs real break"], "example_signatures": ["open CI run → read failing step → edit → push"] },
+    { "id": "notebook-cell-iteration", "source": "novel", "occurrences": 4, "corroboration": 2, "mechanical_fraction": 0.6, "pain": "med", "decision_points": ["rerun upstream cells?"], "example_signatures": ["edit cell → run → inspect output"] }
+  ]
+}

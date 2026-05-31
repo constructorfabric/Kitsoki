@@ -1,0 +1,103 @@
+{
+  "schema_version": "1.0",
+  "vocab_version": "2026-05-31",
+  "contributors": 2,
+  "reports_merged": 2,
+  "promote_min_contributors": 2,
+  "patterns": [
+    {
+      "occurrences": 15,
+      "sessions_seen": 7,
+      "contributors": 2,
+      "mechanical_fraction": 0.768,
+      "pain": "high",
+      "decision_points": [
+        "fix code vs fix test",
+        "flaky vs real failure"
+      ],
+      "example_signatures": [
+        "go test -run <Test> \u2192 Edit <file> \u2192 rerun",
+        "pytest -k <test> \u2192 edit \u2192 rerun"
+      ],
+      "id": "fix-failing-tests",
+      "determinism_priority": 0.768
+    },
+    {
+      "occurrences": 12,
+      "sessions_seen": 4,
+      "contributors": 1,
+      "mechanical_fraction": 0.88,
+      "pain": "med",
+      "decision_points": [
+        "which fix class"
+      ],
+      "example_signatures": [
+        "go build ./... \u2192 Edit \u2192 rebuild"
+      ],
+      "id": "build-compile-fix-loop",
+      "determinism_priority": 0.308
+    },
+    {
+      "occurrences": 14,
+      "sessions_seen": 5,
+      "contributors": 1,
+      "mechanical_fraction": 0.9,
+      "pain": "low",
+      "decision_points": [],
+      "example_signatures": [
+        "grep <term> \u2192 read <file>.py"
+      ],
+      "id": "explore-codebase",
+      "determinism_priority": 0.18
+    }
+  ],
+  "novel_promotion_candidates": [
+    {
+      "occurrences": 5,
+      "sessions_seen": 3,
+      "contributors": 2,
+      "mechanical_fraction": 0.53,
+      "pain": "high",
+      "decision_points": [
+        "which failing job to open first",
+        "flaky job vs real break"
+      ],
+      "example_signatures": [
+        "fetch CI log \u2192 grep failure \u2192 locate <file> \u2192 fix",
+        "open CI run \u2192 read failing step \u2192 edit \u2192 push"
+      ],
+      "id": "ci-log-triage",
+      "determinism_priority": 0.53
+    }
+  ],
+  "novel_quarantine": [
+    {
+      "occurrences": 1,
+      "sessions_seen": 1,
+      "contributors": 1,
+      "mechanical_fraction": 0.7,
+      "pain": "low",
+      "decision_points": [],
+      "example_signatures": [
+        "add --warp flag \u2192 run"
+      ],
+      "id": "warp-debug-flag",
+      "determinism_priority": 0.14
+    },
+    {
+      "occurrences": 4,
+      "sessions_seen": 2,
+      "contributors": 1,
+      "mechanical_fraction": 0.6,
+      "pain": "med",
+      "decision_points": [
+        "rerun upstream cells?"
+      ],
+      "example_signatures": [
+        "edit cell \u2192 run \u2192 inspect output"
+      ],
+      "id": "notebook-cell-iteration",
+      "determinism_priority": 0.21
+    }
+  ]
+}

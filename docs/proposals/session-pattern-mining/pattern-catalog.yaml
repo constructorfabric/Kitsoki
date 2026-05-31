@@ -1,0 +1,225 @@
+# Pattern catalog — kitsoki's reference-run findings (a DOWNSTREAM artifact).
+#
+# The CANONICAL, cross-user controlled vocabulary now lives in the standalone kit at
+# tools/session-mining/vocab/core.yaml (ids = merge keys). This file is kitsoki's own
+# scored results from the 2026-05-31 reference run; if an id here disagrees with
+# core.yaml, core.yaml wins.
+#
+# This is the concrete answer to "a way to keep track of different types of
+# patterns so we can rate the commonality and value to make deterministic."
+# One entry per canonical pattern. Append/merge as more sessions are mined;
+# never silently drop a pattern — demote it (lower `confidence`) instead.
+#
+# Scoring fields (all 0..1 unless noted), from the 12-session PoC run 2026-05-31:
+#   commonality      : how widespread. spread / 6 session-pairs, blended with volume.
+#   mechanical       : fraction of the work that is rote (avg of agent estimates).
+#   pain             : observed friction (retries, wrong turns, manual recovery). low/med/high.
+#   decision_density : number of *genuine* judgment points. fewer + crisper = better gate.
+#   determinism_priority = commonality * mechanical * pain_weight(low .4/med .7/high 1.0)
+#                          -- ranks "rote + frequent + currently painful" to the top.
+#   ladder_now / ladder_target : progressive-determinism stage (see method doc L0..L4).
+#
+# source: deductive seed (P*) or inductive/novel (N*, discovered by extractor).
+
+meta:
+  poc_run: 2026-05-31
+  sessions_mined: 12        # of 245 kitsoki sessions; top-12 by size
+  extractor: haiku x6 (2 sessions each), fixed seed taxonomy + "propose novel"
+  caveat: >
+    Single deductive pass. Novel patterns were a secondary ask, so their counts
+    are under-measured vs seed patterns (anchoring bias). A deeper run must do
+    the two-pass design in the method doc before these scores are load-bearing.
+
+patterns:
+  # ---- top determinism candidates (rote + frequent + painful + crisp gate) ----
+  - id: fix-failing-tests
+    source: P01
+    commonality: 0.70      # 15 occ across 5/6 pairs
+    mechanical: 0.77
+    pain: high             # flaky tests, wrong-fixture, test-pins-bug
+    decision_density: 1    # THE gate: "is the test wrong, or the code wrong?"
+    decision_points: ["fix code vs fix test expectation", "regression test vs fixture expansion"]
+    determinism_priority: 0.54
+    ladder_now: L1
+    ladder_target: L2      # script the run->read->edit->rerun loop; LLM only at the one gate
+    notes: cleanest single-gate candidate; loop is mechanical, one real judgment
+
+  - id: build-compile-fix-loop
+    source: P03
+    commonality: 0.95      # 27 occ across 6/6 pairs — most universal procedure
+    mechanical: 0.87
+    pain: med              # cascades on schema bumps / import cycles
+    decision_density: 1
+    decision_points: ["which fix class for this error (import vs signature vs type)"]
+    determinism_priority: 0.58
+    ladder_now: L1
+    ladder_target: L3      # most error classes have deterministic fixes -> default decider
+    notes: highest commonality; high mechanical; value capped by being already fast
+
+  - id: fan-out-agents-and-reconcile
+    source: N (novel)
+    commonality: 0.60      # surfaced independently by 4 agents incl. timeout-recovery
+    mechanical: 0.45       # orchestration + reconciliation is judgment-heavy
+    pain: high             # stalled agents, file conflicts, uncommitted work, manual finish
+    decision_density: 3
+    decision_points: ["safe-to-parallelize? (disjoint files)", "wait vs kill stalled agent", "merge/reconcile partial work"]
+    determinism_priority: 0.42
+    ladder_now: L0
+    ladder_target: L2
+    notes: >
+      STANDOUT NOVEL FINDING. Not in the seed list, yet recurred across the most
+      sessions. Maps directly to kitsoki's model (each reconcile = a recorded
+      decision). High pain, currently fully ad hoc.
+
+  - id: debug-from-error-or-trace
+    source: P08
+    commonality: 0.55      # 17 occ across 4/6 pairs
+    mechanical: 0.64
+    pain: high             # on_error:idle swallows cause; concurrent I/O scrambles output
+    decision_density: 3
+    decision_points: ["which subsystem owns the symptom", "symptom vs root cause", "add instrumentation vs read existing trace"]
+    determinism_priority: 0.39
+    ladder_now: L0
+    ladder_target: L2
+    notes: kitsoki's own superpower (recorded traces); good dogfood story
+
+  - id: rebase-or-resolve-conflicts
+    source: P02 (+ novel squash/resolve from agent3)
+    commonality: 0.30      # rare but high-impact when it happens
+    mechanical: 0.78
+    pain: high
+    decision_density: 2
+    decision_points: ["ours vs theirs per hunk", "test at each step vs batch"]
+    determinism_priority: 0.23
+    ladder_now: L1
+    ladder_target: L3      # trivial hunks auto-resolve; LLM/human only on semantic conflicts
+    notes: textbook progressive determinism — defaults handle the boring 80%
+
+  # ---- common but lower determinism value (judgment-heavy or already solved) ----
+  - id: explore-codebase-to-answer-question
+    source: P11
+    commonality: 1.00      # 37 occ, 6/6 — the single most frequent activity
+    mechanical: 0.90
+    pain: low              # grep+read is reliable; occasional wasted fan-out
+    decision_density: 2
+    determinism_priority: 0.36
+    ladder_now: L1
+    ladder_target: L2
+    notes: very common + mechanical, but low pain; partly served by Explore agent already
+
+  - id: verify-change-by-running-app
+    source: P13
+    commonality: 0.85
+    mechanical: 0.69
+    pain: high             # slow restarts, stale binary, wrong fixture, visual-only bugs
+    decision_density: 2
+    determinism_priority: 0.51
+    ladder_now: L1
+    ladder_target: L2
+    notes: overlaps with the novel visual-frame-QC pattern below
+
+  - id: implement-from-proposal-or-spec
+    source: P12
+    commonality: 0.75
+    mechanical: 0.60       # lots of judgment — poor pure-determinism target
+    pain: med
+    decision_density: 4
+    determinism_priority: 0.32
+    ladder_now: L0
+    ladder_target: L1
+    notes: high value but the value IS the judgment; keep human/LLM in the loop
+
+  - id: add-or-update-test-coverage
+    source: P05
+    commonality: 0.70
+    mechanical: 0.74
+    pain: med
+    decision_density: 3
+    determinism_priority: 0.36
+    ladder_now: L1
+    ladder_target: L2
+
+  - id: visual-frame-qc-loop
+    source: N (novel)
+    commonality: 0.40      # video (pellicule) + playwright UI; 3 agents
+    mechanical: 0.45
+    pain: high             # 7-12min renders, blank-frame root-causing, layout drift
+    decision_density: 3
+    determinism_priority: 0.28
+    ladder_now: L0
+    ladder_target: L1
+    notes: render -> extract frames -> read images -> tweak CSS; expensive iterations
+
+  # ---- recorded but low priority (mechanical & already low-friction) ----
+  - id: commit-or-open-pr
+    source: P04
+    commonality: 0.55
+    mechanical: 0.92
+    pain: low
+    decision_density: 1
+    determinism_priority: 0.20
+    ladder_now: L2         # already largely automated by skills
+    ladder_target: L3
+  - id: setup-or-teardown-worktree
+    source: P10
+    commonality: 0.40
+    mechanical: 0.93
+    pain: low
+    decision_density: 1
+    determinism_priority: 0.15
+    ladder_now: L1
+    ladder_target: L3
+  - id: refactor-rename-move
+    source: P07
+    commonality: 0.45
+    mechanical: 0.86
+    pain: med
+    decision_density: 2
+    determinism_priority: 0.27
+  - id: write-docs-or-proposal
+    source: P09
+    commonality: 0.70
+    mechanical: 0.73
+    pain: med
+    decision_density: 3
+    determinism_priority: 0.36
+  - id: address-code-review-feedback
+    source: P06
+    commonality: 0.35
+    mechanical: 0.72
+    pain: med
+    decision_density: 3
+    determinism_priority: 0.18
+  - id: update-config-or-dependencies
+    source: P14
+    commonality: 0.45
+    mechanical: 0.92
+    pain: low
+    decision_density: 1
+    determinism_priority: 0.17
+
+  # ---- novel, single-sighting: kept for the deeper run to confirm/merge ----
+  - id: capture-patterns-as-skill
+    source: N (novel, meta)
+    commonality: 0.15
+    mechanical: 0.90
+    pain: low
+    decision_density: 2
+    determinism_priority: 0.05
+    notes: >
+      The activity THIS exercise automates. Self-referential: a story that turns
+      mined patterns into stories closes the self-improvement loop.
+  - id: cross-app-flow-testing
+    source: N (novel)
+    commonality: 0.20
+    notes: write YAML flow fixture -> kitsoki test flows -> fix; under-measured
+  - id: add-cli-flag-for-ergonomics
+    source: N (novel)
+    commonality: 0.15
+  - id: multi-file-edit-cascade
+    source: N (novel)
+    commonality: 0.25
+    notes: often a sub-step of build-compile-fix-loop; may merge
+  - id: fixture-expansion-to-close-gaps
+    source: N (novel)
+    commonality: 0.20
