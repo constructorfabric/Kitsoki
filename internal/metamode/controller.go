@@ -43,7 +43,7 @@ type Controller struct {
 }
 
 // ChatStore is the controller-facing chat store seam. ResolveMeta
-// covers Enter; GetMeta / ListMeta / ArchiveMeta cover the Phase A.5
+// covers Enter; GetMeta / ListMeta / ArchiveMeta cover the chat
 // discovery surface (/meta list, /meta resume, /meta new). WithLock
 // is the singleton-lock primitive shared with the rest of the chats
 // subsystem — see Controller.Send for why meta-mode turns now
@@ -96,16 +96,34 @@ type OracleCaller interface {
 
 // AskInput is the typed input to one LLM turn.
 type AskInput struct {
-	SystemPrompt    string
-	UserMessage     string
-	ToolAllowlist   []string
-	Cwd             string
+	// SystemPrompt is the agent's system prompt. The adapter prefixes
+	// it to the user text (the handler has no native system-prompt arg).
+	SystemPrompt string
+	// UserMessage is the user's turn with the TurnContext preamble
+	// already prepended by the controller.
+	UserMessage string
+	// ToolAllowlist is the agent's declared tool surface. Forwarded as
+	// a visible hint; the handler does not gate by tool name today.
+	ToolAllowlist []string
+	// Cwd is the working directory the claude subprocess runs in, so
+	// its Read/Write/Edit tools land in the right story tree. Empty
+	// means the handler's own resolution rules apply.
+	Cwd string
+	// ClaudeSessionID is the per-chat claude session id for turn-to-turn
+	// memory. Captured and plumbed, but not yet honoured on the handler's
+	// non-chat path (see the package "# Non-goals").
 	ClaudeSessionID string
 }
 
 // AskOutput is the typed output from one LLM turn.
 type AskOutput struct {
-	Reply              string
+	// Reply is the assistant's text, with source-color sentinels
+	// stripped so it is safe to persist and re-feed on the next turn.
+	Reply string
+	// NewClaudeSessionID is the session id to record for resume. When
+	// the handler returns none, the adapter echoes the input id so the
+	// controller's "did it change?" check stays a no-op rather than
+	// clobbering a real id with empty.
 	NewClaudeSessionID string
 }
 
@@ -172,11 +190,17 @@ func (c *Controller) Enter(ctx context.Context, snap Snapshot, modeName string) 
 // from Room ("meta:foo" → "foo"); FirstUserMessage is truncated to
 // 100 chars (empty if no user turn yet).
 type ChatListing struct {
-	ID               string
-	ModeName         string
-	ScopeKey         string
-	Title            string
-	UpdatedAt        time.Time
+	// ID is the chat row's full ULID, for /meta resume.
+	ID string
+	// ModeName is the mode parsed from Room ("meta:foo" → "foo").
+	ModeName string
+	// ScopeKey is the entry state path the chat is keyed to.
+	ScopeKey string
+	// Title is the mode label (or mode name when unlabelled).
+	Title string
+	// UpdatedAt is the last-activity time; listings sort by it desc.
+	UpdatedAt time.Time
+	// FirstUserMessage is a truncated preview of the opening user turn.
 	FirstUserMessage string
 }
 
@@ -290,7 +314,7 @@ func (c *Controller) EnterByChatID(ctx context.Context, snap Snapshot, modeName,
 		return nil, fmt.Errorf("metamode.EnterByChatID: chat %q is not a meta chat (room=%q)", chatID, room)
 	}
 	// `self` chats key against the synthetic SelfAppID across all apps
-	// (proposal §1 cross-app keying). Allow them to resume from any
+	// (cross-app keying; see SelfAppID). Allow them to resume from any
 	// running app; reject only when the chat's app_id matches neither
 	// the running app nor SelfAppID.
 	if chat.AppID() != c.AppDef.App.ID && chat.AppID() != SelfAppID {
@@ -407,7 +431,10 @@ func (c *Controller) ResolveChatIDPrefix(ctx context.Context, appID, prefix stri
 // than one chat ID shares the given prefix. The TUI uses the typed
 // shape to render a disambiguation list to the user.
 type AmbiguousPrefixError struct {
-	Prefix  string
+	// Prefix is the ambiguous prefix the user typed.
+	Prefix string
+	// Matches is every full chat ID that shares Prefix, for the
+	// disambiguation list.
 	Matches []string
 }
 
@@ -448,9 +475,10 @@ func truncatePreview(s string, max int) string {
 // host.runOracleAskWithMCPWithChat (see oracle_ask_with_mcp.go) so
 // transcripts stay consistent with the orchestrator-driven path.
 //
-// WS-A4 wraps this method (or composes it) to set ReloadRequested
-// when an authoring.apply tool call lands during the turn. WS-A3
-// always returns ReloadRequested:false.
+// ReloadRequested is set on the returned SendResult whenever the turn
+// changed any file in the story tree (the agent edited app.yaml, an
+// include, a prompt, …), so the TUI reloads the orchestrator before the
+// next turn. A turn that changed nothing returns ReloadRequested:false.
 func (c *Controller) Send(ctx context.Context, s *Session, userText string, turn TurnContext) (SendResult, error) {
 	if c == nil {
 		return SendResult{}, fmt.Errorf("metamode.Send: nil controller")
@@ -542,7 +570,7 @@ func (c *Controller) sendLocked(ctx context.Context, s *Session, userText string
 	// prompts, scripts) — not just the manifest — and trigger an
 	// orchestrator reload + surface the change list on the way out.
 	//
-	// Imported-manifest dirs (proposal §16.4) are folded in as extra
+	// Imported-manifest dirs are folded in as extra
 	// roots so an edit in a sibling story (e.g. `stories/robbery/`
 	// while running `stories/oregon-trail/`) is detected the same way.
 	var (
@@ -593,7 +621,7 @@ func (c *Controller) sendLocked(ctx context.Context, s *Session, userText string
 
 	// Reload trigger: the agent edited ANY file in the story directory
 	// tree (app.yaml, an include, a prompt, a script…) — or in any
-	// imported child story's directory (proposal §16.4).
+	// imported child story's directory.
 	var (
 		changedFiles    []string
 		changedAbsPaths []string
@@ -792,8 +820,8 @@ func importedDirsFor(manifestPaths []string) []string {
 // reload-detection. Symlinks are not followed.
 //
 // extraRoots is the optional list of additional directories to fold in:
-// every imported manifest's directory (story-imports proposal §16.4),
-// so an edit in a sibling story (`stories/robbery/` while running
+// every imported manifest's directory, so an edit in a sibling story
+// (`stories/robbery/` while running
 // `stories/oregon-trail/`) triggers reload. Each extra root is walked
 // the same way as the main root. Keys in the returned snapshot are
 // prefixed with the absolute path so two roots with same-named files
@@ -926,16 +954,10 @@ func displayKey(k string) string {
 
 // Exit finalizes a meta-mode session.
 //
-// Disposition of pending proposals (decision flagged in the WS-A3
-// report): the meta-mode proposal §6.4 explicitly says that on
-// reentry the chat resumes "with that proposal still draft", so
-// drafts MUST survive Exit when the mode is persistent. We therefore
-// touch the ledger nothing in the nominal case — drafts remain so the
-// next Enter (which re-resolves the same chat for the same state) can
-// pick them up. Truly orphan proposals (the rare case where a Propose
-// call produced a shadow dir but the LLM crashed mid-turn before
-// recording it in the ledger) are out of scope for this method: by
-// definition they aren't in the ledger.
+// Persistent modes (the default) survive Exit untouched: re-entering
+// the same mode from the same state resumes the same chat with its full
+// transcript, so edits-in-progress and conversational context carry
+// over. Exit is deliberately a no-op for them.
 //
 // Ephemeral modes (mode.Persist == false): when the author opts out
 // of persistence, Exit archives the backing chat so it stops showing
@@ -1084,9 +1106,9 @@ func absolutiseAgainst(raw, baseDir string) string {
 }
 
 // metaRoom produces the chat-room key for a meta mode by name.
-// "meta:<modeName>" matches the convention in the meta-mode proposal
-// §3.1 step 3 and the existing `kitsoki chat list --scope-prefix meta:`
-// listing path.
+// "meta:<modeName>" matches the convention documented in
+// docs/stories/meta-mode.md and the existing
+// `kitsoki chat list --scope-prefix meta:` listing path.
 func metaRoom(modeName string) string { return "meta:" + modeName }
 
 // SelfAppID is the synthetic app_id under which kitsoki-target meta
@@ -1094,8 +1116,8 @@ func metaRoom(modeName string) string { return "meta:" + modeName }
 // could declare `app.id: kitsoki-self` and collide), so chats keyed
 // against it survive across every running app — a `kitsoki.edit`
 // conversation started while playing cloak is the same row the user
-// reopens while playing dev-story. Cross-app keying is the proposal §1
-// design (option a).
+// reopens while playing dev-story. Cross-app keying is documented in
+// docs/stories/meta-mode.md.
 const SelfAppID = "kitsoki-self"
 
 // isKitsokiTargetMode reports whether modeName addresses kitsoki itself
@@ -1106,7 +1128,7 @@ const SelfAppID = "kitsoki-self"
 // Covers both the new grouped keys (`kitsoki.edit`, `kitsoki.ask`,
 // `kitsoki.bug`) and the legacy single-token `self` key for any
 // in-flight back-compat callers — but the latter is no longer surfaced
-// by the trigger parser per proposal §7 clean break.
+// by the trigger parser.
 func isKitsokiTargetMode(modeName string) bool {
 	if modeName == "self" {
 		return true

@@ -1,18 +1,20 @@
 // Package mcp implements the MCP server exposing the `transition` tool to external
-// MCP clients (Claude Desktop, Claude Code, etc.) per §5. It uses the official
-// github.com/modelcontextprotocol/go-sdk v1.0.0.
+// MCP clients (Claude Desktop, Claude Code, etc.). It uses the official
+// github.com/modelcontextprotocol/go-sdk v1.0.0. See docs/architecture/overview.md
+// for where this server sits in the runtime.
 //
 // # Single `transition` tool
 //
-// Design §5 mandates one generic tool rather than per-intent tools. The intent and
+// kitsoki exposes one generic tool rather than per-intent tools. The intent and
 // slots arrive as arguments; the server resolves the session, validates via the
 // Machine, applies the transition, persists events, and returns TransitionOK or
-// a structured error envelope (§5.2).
+// a structured error envelope (see the MCP validator in
+// docs/architecture/developer-guide.md).
 //
 // # Session identity
 //
 // For MVP, the caller supplies a `session_id` argument. A production-grade design
-// would use MCP resource/session concepts; that is deferred to Stage 7.
+// would use MCP resource/session concepts; that is deferred.
 package mcp
 
 import (
@@ -30,7 +32,7 @@ import (
 	"kitsoki/internal/world"
 )
 
-// TransitionArgs is the typed input to the transition tool (§5.1).
+// TransitionArgs is the typed input to the transition tool.
 // The Go SDK auto-generates JSON Schema from struct tags.
 // Note: the jsonschema tag here is just the description text (no "key=value" format).
 type TransitionArgs struct {
@@ -54,24 +56,26 @@ type TransitionOK struct {
 	World any      `json:"world,omitempty"` // updated world snapshot (optional, for debugging)
 }
 
-// TransitionError is the structured error payload per §5.2.
+// TransitionError is the structured error payload returned when a transition is
+// rejected; see the MCP validator in docs/architecture/developer-guide.md.
 type TransitionError struct {
 	OK    bool                    `json:"ok"` // always false on this branch
 	Error *intent.ValidationError `json:"error"`
 }
 
-// ClarifyArgs is the typed input to the clarify tool (§5.1).
+// ClarifyArgs is the typed input to the clarify tool.
 type ClarifyArgs struct {
 	// Question is the natural-language clarification to show the user.
 	Question string `json:"question"`
-	// Candidates lists intent candidates driving the disambiguation UI (§7.4).
+	// Candidates lists intent candidates driving the disambiguation UI; see the
+	// AMBIGUOUS_INTENT disambiguation card in docs/architecture/semantic-routing.md.
 	Candidates []struct {
 		Intent string `json:"intent"`
 		Why    string `json:"why,omitempty"`
 	} `json:"candidates,omitempty"`
 }
 
-// OffPathArgs is the typed input to the off_path tool (§5.1).
+// OffPathArgs is the typed input to the off_path tool.
 type OffPathArgs struct {
 	// Reason explains why the harness is triggering off-path mode.
 	Reason string `json:"reason"`

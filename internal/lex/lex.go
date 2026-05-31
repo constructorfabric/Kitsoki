@@ -11,11 +11,17 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
-// Token is a normalised word produced by Tokenize.
+// Token is one normalised word produced by Tokenize. It is a plain value
+// with no pointers or invariants beyond Start <= End; the zero Token is a
+// valid empty token and Tokenize never emits one. Norm is the routing key
+// (callers match on it), Surface is what to echo back to a user, and the
+// IsStop/IsNum flags let consumers filter without re-deriving the
+// classification. Start/End are byte offsets into the NORMALISED source
+// (see the package doc), not the raw caller string.
 type Token struct {
 	Surface string // original (NFKC + lowercased) text, for echoing
-	Norm    string // lowercased + stemmed
-	Lemma   string // lemma if available, else == Norm
+	Norm    string // lowercased + stemmed; the routing key
+	Lemma   string // lemma if available, else == Norm (no dictionary source)
 	IsStop  bool   // stopword (builtin list ∪ extraStops)
 	IsNum   bool   // looks like a number (digit form or single-word numeral)
 	Start   int    // byte offset in the NFKC+lowered source
@@ -35,6 +41,11 @@ var englishLower = cases.Lower(language.English)
 // extraStops is appended to the builtin stopword list; pass nil for the
 // default. Each extraStops entry is matched literally against the
 // post-stem Norm string, so callers should provide lowercased forms.
+//
+// Returns nil for the empty string and for input that segments into no
+// word-like tokens (the empty and nil slices are interchangeable to
+// callers). Safe for concurrent use: holds no state and never mutates its
+// arguments.
 func Tokenize(s string, extraStops []string) []Token {
 	if s == "" {
 		return nil

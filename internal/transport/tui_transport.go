@@ -1,11 +1,3 @@
-// Package transport — TUI transport adapter.
-//
-// The TUI transport is the in-process default. It buffers Post calls in a
-// thread-safe ring and exposes them via Take/Drain so the running TUI program
-// can drain pending messages on each tick and append them to the transcript.
-//
-// In environments where no TUI is attached (CLI invocations, tests), the
-// buffer simply accumulates; consumers can drain or Close().
 package transport
 
 import (
@@ -16,8 +8,13 @@ import (
 	"kitsoki/internal/ulid"
 )
 
-// TUITransport buffers Post calls for in-process consumption by a Bubble Tea
-// program (the TUI) or by tests. Goroutine-safe.
+// TUITransport is the in-process default transport: rather than hitting a
+// network surface, it buffers each Post so the running Bubble Tea program can
+// drain pending messages on its tick and append them to the transcript. When
+// no TUI is attached (CLI runs, tests) the buffer simply accumulates until a
+// consumer calls [TUITransport.Drain] or [TUITransport.Close]. Safe for
+// concurrent use; the zero value is ready to use but [NewTUITransport] is the
+// conventional constructor.
 type TUITransport struct {
 	mu  sync.Mutex
 	buf []TUIPost

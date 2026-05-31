@@ -17,7 +17,8 @@ const (
 	defaultOffPathBanner  = "*** off the path — responses do not affect your story ***"
 )
 
-// offPathModel manages the §7.7 off-path mode state.
+// offPathModel manages the off-path mode state. See
+// docs/stories/state-machine.md §11 "Off-path: the global escape hatch".
 type offPathModel struct {
 	active bool
 	banner string
@@ -114,8 +115,7 @@ func (m RootModel) enterOffPath() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	// Close any active inline choice widget — the help banner takes
-	// over (choice-widget proposal §7 "Coexistence"). The next room
-	// entry's handleTurnOutcome re-opens.
+	// over. The next room entry's handleTurnOutcome re-opens.
 	if m.mode == ModeChoosing {
 		m.choice.Close()
 		m.transcript.FinalizeLive("")

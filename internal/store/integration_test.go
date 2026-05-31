@@ -6,7 +6,7 @@
 // matches what the machine produced live.
 //
 // This is the headline proof that "event-sourced replay reproduces journey
-// state deterministically" (§8, §6 Determinism Contract).
+// state deterministically" (Determinism Contract).
 package store_test
 
 import (

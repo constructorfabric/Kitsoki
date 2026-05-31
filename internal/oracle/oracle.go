@@ -1,20 +1,7 @@
-// Package oracle defines the plugin contract for all oracle transports
-// (in-process Go, subprocess JSON-RPC, MCP-over-HTTP, cassette).
-//
-// The Oracle interface is the narrow seam between kitsoki's deterministic state
-// machine and any external LLM or decision system. Kitsoki owns intents,
-// transitions, world bindings, and the audit trace; the plugin owns only the
-// reasoning that converts a rendered prompt into a schema-shaped JSON response.
-//
-// Three transports share this contract:
-//   - In-process Go (tests, stubs, deterministic oracles): New(AskFunc).
-//   - Subprocess JSON-RPC over stdio (B-3): binary speaks JSON-RPC 2.0.
-//   - MCP-over-HTTP (B-3): long-running service exposes a single `ask` tool.
-//   - Cassette (B-4): pre-recorded responses for deterministic replay.
-//
-// Backwards compatibility: rooms without an explicit `oracle:` declaration
-// resolve to `oracle.claude`, the existing default, which is wrapped via
-// FromHarness.
+// oracle.go holds the core plugin contract: the Oracle interface, its
+// AskRequest/AskResponse wire format, the typed AskError, and the package's
+// shared tuning constants. See doc.go for the package overview.
+
 package oracle
 
 import (
@@ -26,6 +13,24 @@ import (
 	"kitsoki/internal/store"
 	"kitsoki/internal/world"
 )
+
+// MaxHTTPResponseSize caps how many bytes the MCP-over-HTTP transport will read
+// from a single response body. It bounds memory against a hostile or buggy
+// plugin streaming an unbounded body; legitimate oracle submissions are far
+// smaller. 16 MiB is generous headroom, not a tuned limit.
+const MaxHTTPResponseSize = 16 * 1024 * 1024
+
+// SubprocessTerminateTimeout is how long Close waits for a subprocess to exit
+// after SIGTERM before escalating to SIGKILL. Long enough for a well-behaved
+// plugin to flush and exit, short enough that session shutdown is not held
+// hostage by a wedged process.
+const SubprocessTerminateTimeout = 2 * time.Second
+
+// ErrorDetailTruncateBytes caps the length of raw plugin bytes echoed into an
+// AskError.Detail (partial frames, HTTP error bodies, malformed responses).
+// Keeps a misbehaving plugin from flooding the trace while preserving enough
+// of the payload to diagnose the failure.
+const ErrorDetailTruncateBytes = 256
 
 // Oracle is the plugin contract for all oracle transports.
 // Each implementation must be safe for concurrent use from multiple goroutines
@@ -122,8 +127,8 @@ type AskResponse struct {
 	// SubEvents is an optional list of plugin-emitted events appended verbatim
 	// to the JSONL between the OracleCalled and OracleReturned lines. Plugins
 	// with meaningful internal tool calls (e.g. autofix's bash/read/edit bursts)
-	// MAY populate this to preserve audit fidelity; v1 plugins MAY leave it nil.
-	// B-4 wires SubEvents into the JSONL writer; B-1 defines the field only.
+	// MAY populate this to preserve audit fidelity; simple plugins MAY leave it
+	// nil. Kitsoki appends these verbatim to the JSONL trace.
 	SubEvents []store.Event `json:"sub_events,omitempty"`
 }
 

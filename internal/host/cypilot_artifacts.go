@@ -1,7 +1,7 @@
 // Package host — host.cypilot_artifacts — cypilot SDLC artifact provider.
 //
-// Implements the `artifact` host_interface introduced in proposal §2.6 / §6.4
-// against the cypilot `cpt` CLI.  PRD / ADR / DESIGN / DECOMPOSITION /
+// Implements the `artifact` host_interface against the cypilot `cpt` CLI.
+// PRD / ADR / DESIGN / DECOMPOSITION /
 // FEATURE / CODE artifacts are managed by cypilot's existing template +
 // checklist + validator machinery; this provider is a thin Go shell-out
 // layer that lets a kitsoki story drive cypilot's three workflows
@@ -10,15 +10,15 @@
 //
 // # Where the story lives vs. where the provider lives
 //
-// Per proposal §5.5, the cypilot STORY (rooms / prompts / schemas / flows)
-// is hosted interim in kitsoki and migrates to the cypilot upstream repo at
-// Phase 8.  This PROVIDER (the Go handler) is the permanent kitsoki side —
+// The cypilot STORY (rooms / prompts / schemas / flows)
+// is hosted interim in kitsoki and migrates to the cypilot upstream repo
+// later.  This PROVIDER (the Go handler) is the permanent kitsoki side —
 // it stays in this tree even after the story migrates, because it has no
 // cypilot-internal knowledge: it just shells out to the `cpt` binary.
 //
 // # Op → cpt CLI mapping
 //
-// The proposal §6.4 idealized command shapes:
+// Idealized command shapes:
 //
 //	list      →  cpt artifact list --kind <k>           (today's cpt may need
 //	                                                     a --json flag added;
@@ -41,8 +41,8 @@
 // Today's real cpt CLI (per cyber-repo/cypilot/.core/workflows/) uses
 // `--json` as a top-level flag (e.g. `cpt --json validate --artifact <path>`)
 // and slightly different subcommand verbs (`validate`, `list-ids`,
-// `chunk-input`, `info`, `update`).  The proposal flags this drift (§6.4
-// "today's cypilot CLI; may need a --json flag added") and accepts that
+// `chunk-input`, `info`, `update`).  This drift is known
+// (today's cypilot CLI may need a --json flag added) and we accept that
 // the v1 provider may need a thin adapter in cpt or a Go-side shim.  For
 // now we issue commands in the idealized shape; when cpt is absent or the
 // op returns a non-zero exit, we surface the stderr verbatim so the story
@@ -85,7 +85,7 @@ import (
 //     the process cwd.  Stories thread `world.workdir` here when the
 //     artifacts live in a per-task workspace.
 //
-// Per-op input/output follows the artifact iface schema in proposal §2.6.
+// Per-op input/output follows the artifact iface schema.
 func CypilotArtifactsHandler(ctx context.Context, args map[string]any) (Result, error) {
 	op, _ := args["op"].(string)
 	op = strings.TrimSpace(op)
@@ -204,7 +204,7 @@ func parseArtifactList(stdout string) ([]map[string]any, error) {
 }
 
 // cptArtifactGet implements artifact.get by reading the artifact file
-// directly.  Per proposal §6.4 the path conventions are owned by
+// directly.  The path conventions are owned by
 // `cypilot/config/artifacts.toml`; we don't reimplement that parser in
 // Go — we just accept the resolved path on the args.
 //
@@ -279,7 +279,7 @@ func cptArtifactGet(ctx context.Context, workdir string, args map[string]any) (R
 // Output Data: ok (bool), id (string), path (string).
 //
 // The handler does not attempt to interpret cpt's interactive prompts —
-// per proposal §6.4 final paragraph, interactive drafting is OUT OF SCOPE
+// interactive drafting is OUT OF SCOPE
 // for v1.  cpt is expected to run in a non-interactive mode when given
 // `--non-interactive` or similar; until that lands, the operator must
 // supply enough flags up-front that cpt does not prompt.  This v1 wraps

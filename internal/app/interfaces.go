@@ -1,7 +1,7 @@
 package app
 
 // App is a loaded, validated application definition. Pure data; no I/O.
-// This is one of the five core interfaces from §12.1.
+// This is one of the engine's core interfaces.
 type App interface {
 	// ID returns the app identifier from YAML.
 	ID() string
@@ -16,7 +16,7 @@ type App interface {
 	LookupState(p StatePath) (*State, bool)
 
 	// LookupIntent resolves an intent by name in the given state's scope,
-	// checking local intents first, then the global intent library (§3.4).
+	// checking local intents first, then the global intent library.
 	LookupIntent(ctx StatePath, name string) (Intent, bool)
 
 	// WorldSchema returns the typed schema for all world variables.

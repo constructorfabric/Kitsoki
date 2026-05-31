@@ -1,5 +1,6 @@
-// view_element.go — typed view element schema (Phase A of the
-// view-elements proposal in docs/proposals/view-elements-proposal.md §2 / §7).
+// view_element.go — typed view element schema. The element vocabulary is
+// documented in docs/stories/story-style.md; the schema reference lives in
+// docs/embedded/app-schema.md.
 //
 // Phase A is schema-only. The View type custom-unmarshals YAML and accepts
 // any of three author surfaces:
@@ -33,8 +34,8 @@
 //
 // Phase A performs no rendering and resolves no inheritance. The string
 // form continues to render identically through today's Glamour path; the
-// new array form is opt-in, file-by-file. See the proposal §2.3 and the
-// Phase A bullet in §7 for the migration discipline.
+// new array form is opt-in, file-by-file. See docs/stories/story-style.md
+// for the element vocabulary and migration discipline.
 
 package app
 
@@ -75,7 +76,7 @@ type View struct {
 	Blocks map[string][]ViewElement
 
 	// TemplateFile is the optional standalone-template form
-	// (proposal §3.3 option 2). When non-empty the view renders by
+	// (standalone .pongo template form). When non-empty the view renders by
 	// pulling <appDir>/views/<TemplateFile> through the AppRenderer
 	// and substituting against the runtime env. Mutually exclusive
 	// with Source, Elements, and Extends/Blocks. Phase H wires the
@@ -112,9 +113,9 @@ type ViewElement struct {
 	Color    string
 	When     string
 
-	// ---- Choice fields (Phase A of the choice-widget proposal).
+	// ---- Choice fields.
 	// Populated only when Kind == "choice"; otherwise zero. See
-	// docs/proposals/choice-widget-proposal.md §4.1 for the YAML shape.
+	// docs/stories/choice-widget.md for the YAML shape.
 
 	// ChoiceMode discriminates the three submodes: "single", "multi", "form".
 	// Default applied at unmarshal time is "single" per the proposal.
@@ -454,7 +455,7 @@ func (r rawViewElementYAML) toElement() (ViewElement, error) {
 // Phase A validates structure only — expression contents (When source,
 // pongo2 templates in leaf strings) are left to later phases.
 func (v View) Validate() error {
-	// At most one choice element per view (choice-widget proposal §4.5).
+	// At most one choice element per view (see docs/stories/choice-widget.md).
 	// Counted across the Elements slice; Blocks are forbidden from
 	// containing choice at all (checked below) so they don't participate.
 	choiceCount := 0
@@ -472,7 +473,7 @@ func (v View) Validate() error {
 	for name, els := range v.Blocks {
 		for i, el := range els {
 			// Choice elements cannot live inside an extends-form block
-			// (choice-widget proposal §4.5 / §8). The typed metadata is
+			// (see docs/stories/choice-widget.md). The typed metadata is
 			// lost through the inheritance pipeline, so authors must
 			// place the choice as a sibling of the extends form.
 			if el.Kind == "choice" {

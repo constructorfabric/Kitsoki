@@ -32,9 +32,9 @@ func (noopLoader) Get(path string) (io.Reader, error) {
 // {% include %} resolve names against <appDir>/views/.
 //
 // Use NewAppRenderer for dev / interactive mode (templates re-read on every
-// render so app-file edits take effect without restart, per ideas.md L37).
-// Use NewCachedAppRenderer for tests and production runs where templates
-// are stable.
+// render so app-file edits take effect without restart). Use
+// NewCachedAppRenderer for tests and production runs where templates are
+// stable.
 type AppRenderer struct {
 	set     *pongo2.TemplateSet
 	rootDir string
@@ -50,7 +50,7 @@ type AppRenderer struct {
 // / {% include %} lookups will error when the (absent) loader is asked
 // for a name. This tolerance lets the orchestrator build a renderer for
 // every app uniformly without paying for a per-app "do views exist?"
-// branch at every call site (phase H).
+// branch at every call site.
 func NewAppRenderer(appDir string) (*AppRenderer, error) {
 	return newAppRenderer(appDir, false)
 }

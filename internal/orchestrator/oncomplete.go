@@ -192,8 +192,9 @@ func (o *Orchestrator) handleJobTerminal(ctx context.Context, sid app.SessionID,
 		}
 
 		// If the on_complete chain included a say: effect the text is already
-		// captured as an EffectApplied{say: ...} event inside effectEvents.
-		// Log it so operators can see it in structured output as well.
+		// captured as a MachineSay{text: ...} event inside effectEvents
+		// as a separate MachineSay event. Log it so operators can see it in
+		// structured output as well.
 		if sayText != "" {
 			o.logger.InfoContext(ctx, trace.EvJobOnCompleteRun,
 				slog.String("session_id", string(sid)),
@@ -511,8 +512,8 @@ func (o *Orchestrator) resolveAndApplyOnCompleteTarget(
 		slog.String("to", resolved),
 	)
 
-	// Build the transition event sequence.  Mirrors machine.Turn's contract
-	// (§8 in machine.go): TransitionApplied → StateExited → StateEntered →
+	// Build the transition event sequence.  Mirrors machine.Turn's event
+	// ordering contract: TransitionApplied → StateExited → StateEntered →
 	// (on_enter EffectApplied*).
 	target := app.StatePath(resolved)
 	var events []store.Event

@@ -1,6 +1,6 @@
-// Package host — host.oracle.extract handler (oracle-split Phase 5).
+// Package host — host.oracle.extract handler.
 //
-// Implements the tiered resolver defined in §2.1 of the oracle-split proposal.
+// Implements the tiered resolver. See docs/architecture/oracle-cli.md.
 // Three resolver tiers are tried in declaration order; the first to produce a
 // schema-valid payload returns it:
 //
@@ -231,7 +231,7 @@ func OracleExtractHandler(ctx context.Context, args map[string]any) (Result, err
 	callStart := time.Now()
 
 	// Wave 3-oracle: write OracleCalled to the JSONL sink at dispatch time.
-	appendOracleCalledEvent(ctx, callStart, callID, OracleCalledPayload{
+	appendOracleCalledEvent(ctx, callStart, callID, ea.Input, OracleCalledPayload{
 		Verb:  "extract",
 		Agent: agentNameFromArgs(args),
 		Input: marshalInput(map[string]any{"schema": ea.SchemaPath, "input": ea.Input}),
@@ -311,7 +311,7 @@ func runExtract(ctx context.Context, ea ExtractArgs, bin string, rawArgs map[str
 
 	// Read-only contract safety net: reject any LLM-tier agent whose tools
 	// include a mutation tool before we attempt any resolver. Same contract as
-	// ask / decide (D5; proposal §2 invariant 1).
+	// ask / decide (precedence rule D5; the read-only contract invariant).
 	agents := AgentsFromContext(ctx)
 	for _, rd := range ea.Resolvers {
 		if rd.LLMConfig == nil || rd.LLMConfig.AgentName == "" {
@@ -789,8 +789,8 @@ func runExtractValidator(ctx context.Context, vd *ExtractValidatorDef, payload a
 }
 
 // emitExtractResolverMatched emits a synthetic journal/stream event so the TUI
-// gets a visible signal when a deterministic tier matches (proposal §2 invariant
-// 3, and §4.1 event kind extract.resolver.matched).
+// gets a visible signal when a deterministic tier matches (the streaming
+// invariant, via the extract.resolver.matched event kind).
 func emitExtractResolverMatched(ctx context.Context, tier, input string) {
 	slog.InfoContext(ctx, "extract.resolver.matched",
 		slog.String("tier", tier),

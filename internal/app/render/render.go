@@ -1,8 +1,3 @@
-// Package render produces human-readable Markdown documentation for a kitsoki
-// app definition. The output is a one-way work product — YAML is the source
-// of truth; this package never parses Markdown back. See `kitsoki docs
-// render-format` for the output shape and `kitsoki docs apply-proposal` for
-// the proposal-driven editing workflow.
 package render
 
 import (
@@ -14,7 +9,15 @@ import (
 	"kitsoki/internal/app"
 )
 
-// Markdown renders an AppDef as a Markdown document.
+// Markdown compiles an AppDef into a publishable Markdown document — the
+// derived, version-controllable artifact described in the package comment.
+// Output is deterministic and stable across runs (every map is walked in
+// sorted-key order), so the returned bytes are safe to commit and diff.
+//
+// def must be non-nil and is expected to be a loaded, validated AppDef
+// (the product of [app.Load]); Markdown does not validate it, it only
+// reads it. The only error condition is a nil def — Markdown never fails on
+// well-formed-but-unusual content, it renders whatever the AppDef holds.
 func Markdown(def *app.AppDef) ([]byte, error) {
 	if def == nil {
 		return nil, fmt.Errorf("render: AppDef is nil")

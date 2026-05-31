@@ -19,12 +19,14 @@ import (
 var choicePlaceholderRegex = regexp.MustCompile(`\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 
 // Choice is the static (non-interactive) renderer for `choice:` view
-// elements. It produces the body that `kitsoki render`, the Jira /
-// Bitbucket transports, and (until Phase C lands) the TUI consume.
+// elements. It produces the body that `kitsoki render` and the Jira /
+// Bitbucket transports consume, and the same body the TUI's interactive
+// widget overlays affordances on top of.
 //
-// The interactive widget (Phase C) overlays cursor / `[x]` / underline
+// The interactive widget overlays cursor / `[x]` / underline
 // affordances on top of this layout; the rendering rules below are
-// chosen so that overlay never has to re-measure column widths.
+// chosen so that overlay never has to re-measure column widths. See
+// docs/stories/choice-widget.md for the author-facing cookbook.
 //
 // All three modes share the same skeleton:
 //
@@ -38,7 +40,11 @@ var choicePlaceholderRegex = regexp.MustCompile(`\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 // env BEFORE column measurement (mirrors list.go) so guarded-away rows
 // don't reserve space for the survivors. Cross-references (intent /
 // slot validity, form `{name}` ↔ fields) are NOT re-checked here —
-// the loader (Phase A) owns that.
+// the loader owns that at load time.
+//
+// The zero value renders a bare footer (it defaults to "single" mode
+// with no items); a usable Choice is built from a typed app.ViewElement
+// by the dispatcher.
 type Choice struct {
 	Mode     string
 	Prompt   string
@@ -109,11 +115,11 @@ func (c Choice) Render(width int, env expr.Env, rr ViewRenderer) (string, error)
 		body, err = c.renderForm(width, env, rr)
 		footer = choiceFooterForm
 	default:
-		// "single" is the default per the proposal §4.1 and the
-		// unmarshal-time default-fill in internal/app/choice.go. We
-		// treat any unrecognized mode as single rather than erroring
-		// because the loader's schema validator already rejected the
-		// bad mode before we got here.
+		// "single" is the default mode, matching the unmarshal-time
+		// default-fill in internal/app/choice.go. We treat any
+		// unrecognized mode as single rather than erroring because the
+		// loader's schema validator already rejected the bad mode before
+		// we got here.
 		body, err = c.renderSingle(width, env, rr)
 		footer = choiceFooterSingle
 	}
@@ -123,11 +129,11 @@ func (c Choice) Render(width int, env expr.Env, rr ViewRenderer) (string, error)
 
 	var sb strings.Builder
 	if prompt != "" {
-		// Trailing ":" feels native to the proposal examples and
-		// matches the heading affordance without pulling in lipgloss
-		// styling (Phase C applies styling on top). The optional
+		// Trailing ":" reads as native and matches the heading
+		// affordance without pulling in lipgloss styling (the
+		// interactive widget applies styling on top). The optional
 		// multi-mode bounds suffix sits between the prompt body and
-		// the colon, matching proposal §3.2's "(1–5)" placement.
+		// the colon (e.g. "Select symptoms (1-5):").
 		sb.WriteString(prompt)
 		if promptSuffix != "" {
 			sb.WriteByte(' ')
@@ -177,7 +183,7 @@ func (c Choice) renderSingle(width int, env expr.Env, rr ViewRenderer) (string, 
 // renderMulti lays out multi-mode items. The cursor gutter is
 // followed by `[ ] `, then the label/hint pair as in single mode.
 // The second return value is the optional `(min–max)` suffix the
-// caller grafts onto the prompt header (proposal §3.2). Suffix is
+// caller grafts onto the prompt header. Suffix is
 // empty when the author left both bounds defaulted.
 func (c Choice) renderMulti(width int, env expr.Env, rr ViewRenderer) (string, string, error) {
 	rows, anyHint, err := c.collectItemRows(env, rr, true)
@@ -196,7 +202,7 @@ func (c Choice) renderMulti(width int, env expr.Env, rr ViewRenderer) (string, s
 
 // multiBounds renders the "(min–max)" suffix for multi-mode prompts.
 // Returns the empty string when neither bound was set explicitly
-// (the proposal's default is min=0, max=len(visible)) — the suffix
+// (the default is min=0, max=len(visible)) — the suffix
 // only adds noise when the author didn't constrain the selection.
 func (c Choice) multiBounds(visibleCount int) string {
 	// Nothing visible to pick from → suppress the bounds suffix
@@ -219,9 +225,9 @@ func (c Choice) multiBounds(visibleCount int) string {
 	if min == max {
 		return fmt.Sprintf("(%d)", min)
 	}
-	// En-dash matches the proposal §3.2 example ("Select symptoms
-	// (1–5)") which uses U+2013. Authors who want ASCII can override
-	// the prompt directly.
+	// En-dash (U+2013) renders the range as "(1–5)" to match the
+	// "Select symptoms (1–5)" convention. Authors who want ASCII can
+	// override the prompt directly.
 	return fmt.Sprintf("(%d–%d)", min, max)
 }
 
@@ -242,7 +248,7 @@ func (c Choice) collectItemRows(env expr.Env, rr ViewRenderer, multi bool) ([]ch
 		}
 		labelSrc := it.Label
 		if multi && labelSrc == "" {
-			// Multi mode: label defaults to value (proposal §4.1).
+			// Multi mode: label defaults to the item value.
 			labelSrc = it.Value
 		}
 		label, err := renderLeaf(rr, labelSrc, env)
@@ -327,7 +333,7 @@ func layoutChoiceRows(rows []choiceItemRow, prefix string, width int, anyHint bo
 		sb.WriteString(labelPadded)
 		sb.WriteString(strings.Repeat(" ", gutterWidth))
 		// We don't reflow the hint here — single/multi mode hints are
-		// expected to be short one-liners per the proposal examples,
+		// expected to be short one-liners,
 		// and a wrap would mis-align the cursor overlay in Phase C
 		// (which assumes one visual row per item). If a hint is too
 		// long for the terminal, the terminal truncates rather than
@@ -367,7 +373,7 @@ func (c Choice) renderForm(width int, env expr.Env, rr ViewRenderer) (string, er
 	// resolves; then walk the result and replace `{name}` literals.
 	// Order matters: a pongo expression that emits `{name}` should
 	// NOT be re-substituted (that would defeat the load-time
-	// validator's `{name}` ↔ fields check). The proposal's
+	// validator's `{name}` ↔ fields check). The
 	// `{name}` placeholders are author-source-level, not runtime.
 	// Concretely: we apply the literal-`{name}` pass on the
 	// AUTHOR template, then pongo-expand the resulting body. That
@@ -397,7 +403,7 @@ func (c Choice) renderForm(width int, env expr.Env, rr ViewRenderer) (string, er
 	}
 
 	// Indent the body two spaces so the form reads as a block under
-	// the prompt — mirrors the proposal §3.3 example. We DON'T
+	// the prompt — the form reads as an indented block. We DON'T
 	// reflow inside the indent: form templates are author-laid-out
 	// (one logical sentence per line) and the underlines must keep
 	// their character count to communicate field width.

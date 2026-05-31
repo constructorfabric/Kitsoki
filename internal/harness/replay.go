@@ -1,5 +1,3 @@
-// Package harness — ReplayHarness implementation (§10.5, §12.1).
-// Reads a recording YAML and returns deterministic CallToolParams without any LLM.
 package harness
 
 import (
@@ -15,7 +13,8 @@ import (
 	"kitsoki/internal/trace"
 )
 
-// recordingFile is the parsed recording YAML structure (§10.4).
+// recordingFile is the parsed recording YAML structure (see
+// docs/tracing/cassettes.md for the on-disk format).
 type recordingFile struct {
 	Kind          string           `yaml:"kind"`
 	AppID         string           `yaml:"app_id"`

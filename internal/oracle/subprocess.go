@@ -1,4 +1,4 @@
-// Package oracle — subprocess JSON-RPC transport (proposal §2 B-3).
+// subprocess.go implements the subprocess JSON-RPC transport.
 //
 // SubprocessOracle spawns an external binary that speaks a simple JSON-RPC 2.0
 // protocol over stdio. Framing is newline-delimited: each request/response is a
@@ -20,11 +20,13 @@
 //   - On subprocess crash (detected by a broken pipe or EOF before a complete
 //     response), the oracle records the crash via OracleError and respawns on
 //     the next Ask call.
-//   - Close() sends SIGTERM; if the process does not exit within 2 s, SIGKILL.
+//   - Close() sends SIGTERM; if the process does not exit within
+//     SubprocessTerminateTimeout, SIGKILL.
 //
 // Thread-safety: only one Ask call may be in-flight at a time. Concurrent
 // callers serialize through a mutex. (The subprocess has a single stdin/stdout
 // pipe; JSON-RPC multiplexing is not used.)
+
 package oracle
 
 import (
@@ -71,6 +73,9 @@ type subprocessState struct {
 }
 
 // SubprocessOracle implements Oracle via JSON-RPC 2.0 over a subprocess's stdio.
+// The zero value is not usable — construct it with NewSubprocess. Ask is
+// serialized through mu, so the oracle is safe for concurrent callers but does
+// not multiplex: a second Ask blocks until the first returns.
 type SubprocessOracle struct {
 	command string
 	args    []string
@@ -184,7 +189,7 @@ func (o *SubprocessOracle) Ask(ctx context.Context, req AskRequest) (AskResponse
 		o.killProc()
 		detail := fmt.Sprintf("subprocess oracle: read response: %v", rr.err)
 		if len(partial) > 0 {
-			detail = fmt.Sprintf("%s (partial bytes: %q)", detail, truncateBytes(partial, 256))
+			detail = fmt.Sprintf("%s (partial bytes: %q)", detail, truncateBytes(partial, ErrorDetailTruncateBytes))
 		}
 		return AskResponse{}, &AskError{
 			Kind:       "plugin_crash",
@@ -200,7 +205,7 @@ func (o *SubprocessOracle) Ask(ctx context.Context, req AskRequest) (AskResponse
 		return AskResponse{}, &AskError{
 			Kind:       "plugin_crash",
 			Underlying: err,
-			Detail:     fmt.Sprintf("subprocess oracle: unmarshal response frame: %v (raw: %q)", err, truncateBytes(rr.line, 256)),
+			Detail:     fmt.Sprintf("subprocess oracle: unmarshal response frame: %v (raw: %q)", err, truncateBytes(rr.line, ErrorDetailTruncateBytes)),
 		}
 	}
 
@@ -223,9 +228,9 @@ func (o *SubprocessOracle) Ask(ctx context.Context, req AskRequest) (AskResponse
 	return askResp, nil
 }
 
-// Close sends SIGTERM to the subprocess. If it does not exit within 2 seconds,
-// SIGKILL is sent. Close is idempotent; calling it on an unstarted oracle is a
-// no-op.
+// Close sends SIGTERM to the subprocess. If it does not exit within
+// SubprocessTerminateTimeout, SIGKILL is sent. Close is idempotent; calling it
+// on an unstarted oracle is a no-op.
 func (o *SubprocessOracle) Close() error {
 	o.mu.Lock()
 	defer o.mu.Unlock()
@@ -277,7 +282,8 @@ func (o *SubprocessOracle) killProc() {
 	o.proc = nil
 }
 
-// terminateProc sends SIGTERM, waits 2 s, then SIGKILL. Called with mu held.
+// terminateProc sends SIGTERM, waits SubprocessTerminateTimeout, then SIGKILL.
+// Called with mu held.
 func (o *SubprocessOracle) terminateProc() error {
 	if o.proc == nil {
 		return nil
@@ -301,7 +307,7 @@ func (o *SubprocessOracle) terminateProc() error {
 
 	select {
 	case <-done:
-	case <-time.After(2 * time.Second):
+	case <-time.After(SubprocessTerminateTimeout):
 		_ = p.cmd.Process.Signal(syscall.SIGKILL)
 		<-done
 	}

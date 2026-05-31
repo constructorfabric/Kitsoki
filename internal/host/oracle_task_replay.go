@@ -1,6 +1,6 @@
-// Package host — replay artifact capture for host.oracle.task (Phase 4).
+// Package host — replay artifact capture for host.oracle.task.
 //
-// Three sub-cases (oracle-split proposal §4.2):
+// Three sub-cases:
 //
 //	Mode A (file_diff)          — agent tools limited to Read/Edit/Write/Bash;
 //	                              no WebFetch/WebSearch/non-read_only MCP.
@@ -15,7 +15,7 @@
 //
 // The replay mode is labelled on the task.end journal event so eval tooling
 // can filter. Replay tooling skips Mode C spans by default and surfaces a
-// "skipped N external-side-effect spans" summary (§4.3).
+// "skipped N external-side-effect spans" summary.
 //
 // M4: read-tool outputs from the LLM's tool calls are capped via
 // capReadToolOutput applied in observeTaskToolCalls (oracle_task_transport.go)
@@ -398,7 +398,7 @@ func tarballDirectory(dir string) ([]byte, error) {
 }
 
 // capReadToolOutput captures a read-tool output for the journal using the
-// shared ReadSnapshotCap (oracle-split proposal §4.2 D9). When the output is
+// shared ReadSnapshotCap (decision D9). When the output is
 // within the cap it is returned verbatim. When it exceeds the cap, a summary
 // string "sha256:<hex> (first 4096 bytes follow)\n<prefix>" is returned so
 // replay can detect divergent inputs by comparing the hash.

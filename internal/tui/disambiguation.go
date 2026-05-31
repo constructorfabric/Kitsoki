@@ -9,8 +9,8 @@ import (
 	"kitsoki/internal/tui/blocks"
 )
 
-// disambiguationModel tracks the state of an in-progress disambiguation
-// (§7.4). It no longer owns the prompt area — the user types a number
+// disambiguationModel tracks the state of an in-progress disambiguation.
+// It no longer owns the prompt area — the user types a number
 // or the canonical intent name into the normal textarea, and the inline
 // "Did you mean?" block is rendered into the transcript. The legacy
 // numeric-hotkey path has been removed; selection goes through the

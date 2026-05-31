@@ -4,6 +4,7 @@ package machine_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"kitsoki/internal/app"
@@ -497,7 +498,7 @@ func TestEffectInvokeWithTemplatedListArgs(t *testing.T) {
 // ─── parallel state rejection ─────────────────────────────────────────────────
 
 // TestParallelStatesRejected — historical guard against the PoC restriction.
-// After §9.4 lifts the bare-rejection, this test was reframed: an empty
+// Now that the bare-rejection is lifted, this test was reframed: an empty
 // `type: parallel` state (no children) still fails, but on shape grounds
 // (regions count) rather than a blanket "parallel not supported" error.
 // The expanded parallel-state tests live in parallel_test.go.
@@ -626,18 +627,41 @@ func TestRunEffects(t *testing.T) {
 
 	// EffectApplied events for the set effect.
 	foundEffApplied := false
-	for _, ev := range evts {
-		if ev.Kind == store.EffectApplied {
+	// say narration is its own MachineSay event
+	// carrying {text}, NOT an EffectApplied{say}. world.update must mean only a
+	// world mutation. Assert the split holds at the machine layer.
+	var sayEvent *store.Event
+	for i := range evts {
+		ev := evts[i]
+		switch ev.Kind {
+		case store.EffectApplied:
 			foundEffApplied = true
-			break
+			// No EffectApplied may carry a `say` field anymore.
+			var p struct {
+				Say string `json:"say"`
+			}
+			_ = json.Unmarshal(ev.Payload, &p)
+			require.Empty(t, p.Say,
+				"EffectApplied (world.update) must NOT carry say narration")
+		case store.MachineSay:
+			e := evts[i]
+			sayEvent = &e
 		}
 	}
 	require.True(t, foundEffApplied, "EffectApplied event should be emitted for set effects")
+
+	require.NotNil(t, sayEvent, "a say: effect must emit a MachineSay (machine.say) event")
+	var sayPayload struct {
+		Text string `json:"text"`
+	}
+	require.NoError(t, json.Unmarshal(sayEvent.Payload, &sayPayload))
+	require.Contains(t, sayPayload.Text, "you said hi",
+		"MachineSay payload must carry the rendered narration under `text`")
 }
 
 // ─── Machine.Menu ────────────────────────────────────────────────────────────
 
-// TestMenu_EnumExpansionPrimaryVsBlocked exercises the §7.2 menu computation
+// TestMenu_EnumExpansionPrimaryVsBlocked exercises the menu computation
 // inside the machine package (where it now lives). An intent with a required
 // enum slot is expanded into per-value rows; rows whose guard dry-run fails
 // surface in Blocked with the failing arm's guard_hint.

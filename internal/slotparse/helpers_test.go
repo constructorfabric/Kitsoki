@@ -22,8 +22,9 @@ func tok(tb testing.TB, s string) []lex.Token {
 
 // fixtureProfessionSlot returns the canonical enum slot used by the
 // ParseEnum tests — three values with three synonyms each, mirroring
-// the §4.2 worked example. Keep this in sync with the corresponding
-// table in the proposal so authors reading both stay oriented.
+// the synonym-tier worked example. Keep this in sync with the slot
+// parser table in docs/architecture/semantic-routing.md so authors
+// reading both stay oriented.
 func fixtureProfessionSlot() app.Slot {
 	return app.Slot{
 		Type:   "enum",

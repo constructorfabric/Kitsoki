@@ -1,9 +1,9 @@
-// Package orchestrator — resume read path for continue-mode (proposal §4.5).
+// Package orchestrator — resume read path for continue-mode.
 //
 // AttachSession is the public entry point for the --continue TUI path.  It
 // returns a ResumeBundle that carries everything the TUI needs to reconstruct
 // the full session state without calling any harness, host handler, transport,
-// or LLM (§6.8 determinism contract).
+// or LLM (the resume determinism contract).
 package orchestrator
 
 import (
@@ -22,7 +22,7 @@ import (
 )
 
 // ResumeBundle is the result of AttachSession: the full rehydration set for a
-// resumed TUI session (continue-mode proposal §4.5).
+// resumed TUI session.
 //
 // Determinism contract: every field in this struct is derived from persisted
 // journal or store data — no LLM call, no host handler dispatch, no transport
@@ -49,7 +49,7 @@ type ResumeBundle struct {
 	InitialView string
 
 	// AwaitingJobs lists background jobs that were in awaiting_input status
-	// when the session was last active (proposal §6.3).  The TUI surfaces a
+	// when the session was last active.  The TUI surfaces a
 	// clarification UI for each on first frame.  Empty when no jobs await input
 	// or when no JobStore is wired into the orchestrator.
 	AwaitingJobs []AwaitingJob
@@ -253,7 +253,7 @@ func (o *Orchestrator) AttachSession(sid app.SessionID) (*ResumeBundle, error) {
 	bundle.TranscriptEntries = transcriptEntries
 	bundle.InitialView = latestViewText
 
-	// ── 4. Background jobs in awaiting_input state (proposal §6.3) ───────────
+	// ── 4. Background jobs in awaiting_input state ───────────────────────────
 	// The jobs table is its own source of truth; status survives restart
 	// natively.  AttachSession surfaces awaiting-input jobs so the TUI can
 	// open their clarification UI immediately.

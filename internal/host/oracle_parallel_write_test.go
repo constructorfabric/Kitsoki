@@ -126,8 +126,14 @@ func TestOracleAsk_ParallelWrite_Success(t *testing.T) {
 	if calledPayload["verb"] != "ask" {
 		t.Errorf("OracleCalled.payload.verb = %q, want \"ask\"", calledPayload["verb"])
 	}
-	if calledPayload["prompt"] == "" {
-		t.Error("OracleCalled.payload.prompt is empty; expected full prompt text")
+	// Trace-format prompt-reference contract: a small prompt must be embedded inline on
+	// the OracleCalled event so a consumer always has a prompt reference. The
+	// prompt text here is well under the 1KB offload threshold, so it lands in
+	// `prompt` (not `prompt_file`). Asserting the exact text (not just non-nil)
+	// makes this a real regression guard — an omitted key would be nil, and the
+	// previous `== ""` check passed vacuously against nil.
+	if got, _ := calledPayload["prompt"].(string); got != promptText {
+		t.Errorf("OracleCalled.payload.prompt = %q, want %q (inline prompt ref)", got, promptText)
 	}
 
 	// OracleReturned payload must carry the verb.

@@ -1,4 +1,5 @@
-// Package oracle — MCP-over-HTTP transport tests (proposal §2 B-3).
+// mcp_http_test.go covers the MCP-over-HTTP transport.
+
 package oracle
 
 import (

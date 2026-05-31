@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://kitsoki.dev/schemas/view/choice.json",
   "title": "Kitsoki choice view element",
-  "description": "Interactive picker / multi-select / mad-lib form element. See docs/proposals/choice-widget-proposal.md.",
+  "description": "Interactive picker / multi-select / mad-lib form element. See docs/stories/choice-widget.md.",
   "type": "object",
   "required": ["mode"],
   "properties": {

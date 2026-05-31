@@ -180,7 +180,7 @@ episodes:
 }
 
 // TestEpisodeOracle_ReplayAnyAllowed verifies that replay:any + oracle: is now
-// ALLOWED after the §6.3 constraint was relaxed (finding 2.10 / phase A).
+// ALLOWED after the load-time constraint was relaxed (finding 2.10 / phase A).
 // Each match produces a distinct OracleCalled/OracleReturned pair with a unique
 // call_id (different matchIdx), so multiple matches don't collide in the trace.
 func TestEpisodeOracle_ReplayAnyAllowed(t *testing.T) {
@@ -204,14 +204,14 @@ episodes:
 `)
 	cas, err := LoadCassette(p)
 	if err != nil {
-		t.Fatalf("replay:any + oracle: must be allowed after §6.3 relaxation; got error: %v", err)
+		t.Fatalf("replay:any + oracle: must be allowed; got error: %v", err)
 	}
 	if len(cas.Episodes) == 0 {
 		t.Fatal("expected one episode")
 	}
 }
 
-// TestEpisodeOracle_DerivedCallID verifies the deterministic call_id scheme §7.
+// TestEpisodeOracle_DerivedCallID verifies the deterministic call_id scheme.
 func TestEpisodeOracle_DerivedCallID(t *testing.T) {
 	t.Parallel()
 

@@ -1,5 +1,6 @@
-// Benchmarks for the SQLite turn cache. The proposal §5.4 commits to
-// ~80 µs/op for the SQLite-backed Get path; the benchmarks here let us
+// Benchmarks for the SQLite turn cache. The routing architecture commits
+// to ~80 µs/op for the SQLite-backed Get path (see the turn-cache section
+// of docs/architecture/semantic-routing.md); the benchmarks here let us
 // confirm that against actual hardware before claiming the budget.
 //
 // Run:

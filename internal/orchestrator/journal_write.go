@@ -1,4 +1,5 @@
-// Package orchestrator — dual-write helpers for continue-mode §4.9 Rule 1.
+// Package orchestrator — dual-write helpers for continue-mode (journal +
+// event store written together so a resumed session sees both).
 //
 // Wave 2a: every site that previously called store.AppendEventsAndJournal is
 // migrated to appendEventsAndJournal, which routes event writes through an
@@ -65,7 +66,7 @@ func (o *Orchestrator) appendEventsAndJournal(sid app.SessionID, events []store.
 // journalEntriesForEvents builds the journal.Entry batch that accompanies a
 // []store.Event batch being written via AppendEventsAndJournal.
 //
-// Rules (per continue-mode proposal §2.2 and call-sites notes):
+// Rules (which events earn a dedicated journal entry):
 //   - TurnStarted, IntentAccepted, StateExited, StateEntered, LLMToolCall,
 //     JobSubmitted, JobCompleted → no dedicated journal entry (covered by
 //     state.transition / world.patch summaries or out of scope).

@@ -1,4 +1,4 @@
-// Package orchestrator — Timeout: runtime (proposal gap §9.5).
+// Package orchestrator — Timeout: runtime.
 //
 // State declarations of the form
 //

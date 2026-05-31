@@ -2,7 +2,7 @@
 // host.oracle.decide.
 //
 // Three profiles restrict what Bash commands an LLM agent may run inside an
-// ask/decide call (oracle-split proposal §2.3). The profile is applied by the
+// ask/decide call. The profile is applied by the
 // kitsoki-bash MCP wrapper (bash_mcp.go): commands that don't match the profile
 // are replaced with a tool error so the LLM sees the rejection and cannot
 // mutate anything unexpected.

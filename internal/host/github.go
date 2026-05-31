@@ -1,13 +1,12 @@
 // Package host — host.gh.ticket — GitHub Issues-backed ticket provider.
 //
-// Implements the `ticket` host_interface declared in
-// docs/proposals/notes/dev-story-implementation-contract.md §2.1 against the
+// Implements the `ticket` host_interface (see docs/architecture/hosts.md) against the
 // GitHub `gh` CLI.  Mirrors the localfiles_ticket.go surface so a parent
 // story (kitsoki-dev, cyber-repo's devstory flavour) can rebind
 // `iface.ticket → host.gh.ticket` without touching room YAML.
 //
 // Why a separate handler?  GitHub Issues is the obvious "next provider after
-// local files" surface for the dogfood loop; per proposal §6.2 we ship a
+// local files" surface for the dogfood loop; we ship a
 // `gh`-CLI shell-out provider in kitsoki rather than reusing the file-backed
 // one when the operator wants live GitHub Issues.
 //
@@ -44,7 +43,7 @@ import (
 //   - repo (string): the `owner/repo` slug for the `--repo` flag.  When
 //     omitted, `gh` falls back to the current directory's git remote.
 //
-// Per-op input/output follows the contract §2.1.  See doc comments on each
+// Per-op input/output follows the ticket iface contract.  See doc comments on each
 // dispatch helper below.
 func GitHubTicketHandler(ctx context.Context, args map[string]any) (Result, error) {
 	op, _ := args["op"].(string)
@@ -294,7 +293,7 @@ func ghTicketListMine(ctx context.Context, args map[string]any) (Result, error) 
 // ─── Field projections ─────────────────────────────────────────────────────
 
 // ghIssueSummary projects a `gh issue list --json` row into the
-// provider-neutral ticket summary the contract pins (§2.1): id / title /
+// provider-neutral ticket summary the contract pins: id / title /
 // status / priority / assignee / url.  GitHub does not have a native
 // priority field; we leave priority empty (callers that need it can read it
 // off labels via per-team convention — out of scope for v1).

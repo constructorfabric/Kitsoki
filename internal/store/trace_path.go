@@ -1,4 +1,7 @@
-// Package store — trace_path.go: default on-disk paths for per-session JSONL traces.
+package store
+
+// trace_path.go derives default on-disk paths for per-session JSONL traces.
+// See doc.go for the package overview.
 //
 // Two path schemes are used:
 //
@@ -14,7 +17,6 @@
 //     Path:  <anchor>/.kitsoki/sessions/<UTC>-<app>.jsonl
 //     where <anchor> is the nearest ancestor directory containing a
 //     .kitsoki/ subdirectory or .kitsoki-root marker, falling back to cwd.
-package store
 
 import (
 	"crypto/sha256"

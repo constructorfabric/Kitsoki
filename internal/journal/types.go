@@ -118,7 +118,7 @@ const KindOffPathEntered = "offpath.entered"
 const KindOffPathExited = "offpath.exited"
 
 // KindViewRendered carries the literal rendered view text the TUI displayed at
-// the end of a turn (proposal §4.6). Resume reads these entries verbatim to
+// the end of a turn. Resume reads these entries verbatim to
 // rehydrate the transcript pane without re-evaluating any view template.
 const KindViewRendered = "view.rendered"
 

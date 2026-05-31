@@ -1,6 +1,6 @@
 package orchestrator
 
-// Engine-driven LLM decider (execution-modes proposal §3.2).
+// Engine-driven LLM decider for intent gates.
 //
 // When the synthetic emit chain rests at a multi-way decision gate that owes
 // an autonomous decision — one-shot mode (or a `decider: llm` pin) with no

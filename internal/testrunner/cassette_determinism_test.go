@@ -1,6 +1,6 @@
 package testrunner
 
-// cassette_determinism_test.go — §3.3 cassette corner cases.
+// cassette_determinism_test.go — cassette corner cases.
 //
 // Sub-cases from the proposal:
 //   - ReplayAnyDistinctCallIDs:       DeriveCallID scheme for distinct per-match IDs
@@ -54,7 +54,7 @@ func (s *testMemSink) History() store.History {
 	return out
 }
 
-// ─── §3.3.1: replay:any produces distinct call_ids ────────────────────────────
+// ─── replay:any produces distinct call_ids ───────────────────────────────────
 
 // TestCassettesDeterminism_ReplayAnyDistinctCallIDs verifies the DeriveCallID
 // scheme produces distinct IDs per matchIdx for replay:any episodes, and that
@@ -99,11 +99,11 @@ episodes:
 		t.Errorf("distinct matchIdx must produce distinct call_ids: %q %q %q", id0, id1, id2)
 	}
 
-	// oracle: + replay:any is currently forbidden per §6.3; relaxed in phase B.
-	t.Log("oracle: + replay:any combination requires phase B (§6.3 constraint relaxation)")
+	// oracle: + replay:any was previously forbidden; relaxed in phase B.
+	t.Log("oracle: + replay:any combination is allowed")
 }
 
-// ─── §3.3.2: matchIdx continuity across resume ────────────────────────────────
+// ─── matchIdx continuity across resume ───────────────────────────────────────
 
 // TestCassettesDeterminism_MatchIdxContinuity verifies the call_id derivation
 // scheme produces non-colliding IDs across the resume boundary.
@@ -144,7 +144,7 @@ func TestCassettesDeterminism_MatchIdxContinuity(t *testing.T) {
 }
 
 // TestCassettesDeterminism_MatchIdxContinuityFullRoundTrip exercises the full
-// engine path for §3.3.2 (finding 2.10):
+// engine path for matchIdx continuity across resume (finding 2.10):
 //
 //  1. Create a cassette with a replay:any oracle episode and a JSONL trace sink.
 //  2. Dispatch 3 times (pre-resume). The dispatcher (BuildCassetteDispatcherWithSink)
@@ -155,7 +155,7 @@ func TestCassettesDeterminism_MatchIdxContinuity(t *testing.T) {
 //  5. Dispatch 2 more times (post-resume). Verify match_idx 3 and 4, and that
 //     post-resume call_ids differ from pre-resume ones.
 //
-// §6.3 relaxation: replay:any + oracle: is now legal on the JSONL path because
+// replay:any + oracle: is now legal on the JSONL path because
 // each match produces a new event pair with a distinct call_id (matchIdx-keyed).
 func TestCassettesDeterminism_MatchIdxContinuityFullRoundTrip(t *testing.T) {
 	t.Parallel()
@@ -164,7 +164,7 @@ func TestCassettesDeterminism_MatchIdxContinuityFullRoundTrip(t *testing.T) {
 	const epID = "oracle_ep"
 
 	dir := t.TempDir()
-	// §6.3 relaxation: replay:any + oracle: is now valid (finding 2.10 / §3.1).
+	// replay:any + oracle: is now valid (finding 2.10).
 	casPath := writeCassetteFile(t, dir, "replay_any_oracle.yaml", `
 kind: host_cassette
 app_id: `+appID+`
@@ -320,7 +320,7 @@ episodes:
 	t.Logf("post-resume call_ids: %v", postCallIDs)
 }
 
-// ─── §3.3.3: Unmatched episodes are a blocking failure ────────────────────────
+// ─── Unmatched episodes are a blocking failure ───────────────────────────────
 
 // TestCassettesDeterminism_UnmatchedEpisodesBlocking verifies that
 // UnmatchedEpisodes() returns never-played episode IDs after a fixture run.
@@ -378,7 +378,7 @@ func requireAllEpisodesPlayed(t *testing.T, cas *Cassette) {
 	}
 }
 
-// ─── §3.3.4: Episode response fails schema ────────────────────────────────────
+// ─── Episode response fails schema ───────────────────────────────────────────
 
 // TestCassettesDeterminism_EpisodeResponseFailsSchema verifies that a cassette
 // whose recorded response fails the room's schema check produces an OracleError
@@ -484,7 +484,7 @@ episodes:
 	}
 }
 
-// ─── §3.3.5: Large episode via !include ────────────────────────────────────
+// ─── Large episode via !include ──────────────────────────────────────────────
 
 // TestCassettesDeterminism_LargeInclude verifies that a large !include
 // payload is resolved at load time and correctly written to JSONL
@@ -562,7 +562,7 @@ episodes:
 	}
 }
 
-// ─── §3.3.6: !include target missing ─────────────────────────────────────────
+// ─── !include target missing ─────────────────────────────────────────────────
 
 // TestCassettesDeterminism_IncludeTargetMissing verifies that a missing
 // !include target fails at cassette load time.
@@ -593,7 +593,7 @@ episodes:
 	}
 }
 
-// ─── §3.3.7: !include target outside story directory ─────────────────────────
+// ─── !include target outside story directory ─────────────────────────────────
 
 // TestCassettesDeterminism_IncludeTargetOutsideDir verifies cross-tree !include behaviour.
 // Current implementation resolves relative to the cassette dir and does not
@@ -629,7 +629,7 @@ episodes:
 	t.Logf("cross-tree !include correctly rejected: %v", err)
 }
 
-// ─── §3.3.8: Episode order across off-path interleave ────────────────────────
+// ─── Episode order across off-path interleave ────────────────────────────────
 
 // TestCassettesDeterminism_EpisodeOrderOffPath verifies that independent
 // dispatchers for different handlers don't cross-contaminate cassette episode state.
@@ -682,7 +682,7 @@ episodes:
 	requireAllEpisodesPlayed(t, cas)
 }
 
-// ─── §3.3.9: Cassette + crash recovery ───────────────────────────────────────
+// ─── Cassette + crash recovery ───────────────────────────────────────────────
 
 // TestCassettesDeterminism_CrashRecovery verifies that a trace ending on
 // OracleCalled (no OracleReturned — crash) can be reopened and folded.

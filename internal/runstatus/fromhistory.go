@@ -16,7 +16,12 @@ import (
 // to the JSONLSink that holds the history; use FromHistory when only a
 // History slice is available (e.g. in-memory synthetic histories in tests).
 //
-// Fallback: if sink is nil, FromSink falls back to FromHistory.
+// Contract: a nil sink yields the zero Snapshot and a nil error (the caller
+// simply has nothing to snapshot). Otherwise FromSink delegates to FromHistory
+// and shares its error contract — it propagates a [viz.FlowchartWithMap]
+// failure unchanged. The sink-retained bytes replace RawLines only when their
+// count matches the event count, so the Events[i]↔RawLines[i] alignment is
+// preserved even if the two ever diverge.
 func FromSink(sink *store.JSONLSink, def *app.AppDef, sessionID string) (Snapshot, error) {
 	if sink == nil {
 		return Snapshot{}, nil
@@ -45,8 +50,16 @@ func FromSink(sink *store.JSONLSink, def *app.AppDef, sessionID string) (Snapsho
 //
 // Every store.Event maps 1:1 to a TraceEvent; no synthesis or back-fill is
 // performed. Oracle events (OracleCalled, OracleReturned, OracleError) are
-// already written inline into the history by the orchestrator (wave 3-oracle)
-// and appear in Events verbatim.
+// already written inline into the history by the orchestrator and appear in
+// Events verbatim.
+//
+// Contract: def must be non-nil — it is dereferenced for the diagram render
+// and the terminal-state lookup. FromHistory returns the zero Snapshot and a
+// non-nil error only when [viz.FlowchartWithMap] fails to render def; all
+// other steps are infallible (a per-event marshal failure records a nil
+// RawLines entry rather than erroring). An empty hist yields a valid Snapshot
+// with no events and a zero-time StartedAt. The returned Snapshot is a value
+// safe for concurrent reads; see [Snapshot] for the shared-map caveat.
 func FromHistory(hist store.History, def *app.AppDef, sessionID string) (Snapshot, error) {
 	var (
 		currentState string
@@ -106,9 +119,10 @@ func FromHistory(hist store.History, def *app.AppDef, sessionID string) (Snapsho
 			Attrs:      attrs,
 		})
 
-		// Populate RawLines for Layer 7 byte-equality assertions (finding 2.5).
-		// MarshalEventLine produces the same bytes as JSONLSink.Append writes for
-		// the same event, so joinLines(snap.RawLines) == original JSONL event section.
+		// Populate RawLines for byte-equality assertions against the source
+		// trace. MarshalEventLine produces the same bytes as JSONLSink.Append
+		// writes for the same event, so joining snap.RawLines with newlines
+		// reproduces the original JSONL event section.
 		if raw, merr := store.MarshalEventLine(ev); merr == nil {
 			rawLines = append(rawLines, raw)
 		} else {

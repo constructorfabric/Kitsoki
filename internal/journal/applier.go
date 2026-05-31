@@ -20,7 +20,8 @@ type Applier interface {
 
 // engineInjectedKeys is the set of world-var keys that are maintained by the
 // engine itself rather than declared in app.WorldSchema. They round-trip via
-// plain JSON without schema-aware coercion (§6.1 case 4 of the proposal).
+// plain JSON without schema-aware coercion: they are not declared world vars,
+// so there is no schema type to coerce them back to.
 var engineInjectedKeys = map[string]struct{}{
 	"$inbox":     {},
 	"$proposal":  {},

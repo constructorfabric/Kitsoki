@@ -1,18 +1,3 @@
-// Package judges is the contract-encoder for LLM-judge verdicts in the
-// dev-story / bugfix pipeline.
-//
-// The package is intentionally tiny: it owns one canonical place where
-// the "is this verdict auto-fireable?" rule lives, so contract §6's gate
-// clause in stories/bugfix/rooms/*.yaml, the story flow tests, and any
-// future tooling all agree on the same semantics. See
-// docs/proposals/notes/dev-story-implementation-contract.md §5 (verdict
-// schema), §6 (canonical checkpoint shape), and proposal §4.4
-// (judge polymorphism).
-//
-// The package does NOT register a host handler — that is Slice β's
-// territory. It does NOT execute the LLM call — host.oracle.ask_with_mcp
-// already does that (with MCP-side schema enforcement). This is the
-// thin typed convenience layer callers use to interpret the result.
 package judges
 
 import (
@@ -24,23 +9,33 @@ import (
 	jsonschema "github.com/santhosh-tekuri/jsonschema/v6"
 )
 
-// Verdict is the typed shape of a judge's structured response. Matches
-// stories/bugfix/schemas/judge_verdict.json verbatim. Slice α owns the
-// canonical on-disk copy of that schema; the const below is the source
-// of truth inside this package so the tests do not reach across the
-// filesystem.
+// Verdict is the typed shape of a judge's structured response. The zero
+// Verdict is a valid value but never auto-fires (empty Verdict and Intent
+// strings fail neither the "uncertain" check nor — at a zero threshold —
+// the confidence check, but in practice a real verdict always comes from
+// [Parse]). Matches stories/bugfix/schemas/judge_verdict.json verbatim;
+// the on-disk schema is the canonical copy, and the const in this package
+// mirrors it so tests do not reach across the filesystem.
 type Verdict struct {
-	Verdict    string  `json:"verdict"`    // "pass" | "fail" | "uncertain"
-	Intent     string  `json:"intent"`     // "accept" | "refine" | "restart_from" | "quit" | "uncertain"
-	Reason     string  `json:"reason"`
+	// Verdict is the judge's overall call: "pass", "fail", or
+	// "uncertain". An "uncertain" verdict blocks auto-fire (see
+	// [Verdict.ShouldAutoFire]) so it can be routed to a human.
+	Verdict string `json:"verdict"`
+	// Intent is the named intent the runtime should dispatch on auto-fire:
+	// "accept", "refine", "restart_from", "quit", or "uncertain". It is the
+	// judge's decision rendered as a state-machine intent, not free text.
+	Intent string `json:"intent"`
+	// Reason is the judge's human-readable justification. The schema
+	// requires at least 4 characters so a verdict is never silently empty.
+	Reason string `json:"reason"`
+	// Confidence is the judge's self-reported confidence in [0.0, 1.0],
+	// compared against the caller's threshold by [Verdict.ShouldAutoFire].
 	Confidence float64 `json:"confidence"`
 }
 
-// schemaJSON mirrors §5 of
-// docs/proposals/notes/dev-story-implementation-contract.md. Keep this
-// in lockstep with stories/bugfix/schemas/judge_verdict.json — the
-// contract document is the source of truth; if it ever drifts, update
-// this constant.
+// schemaJSON mirrors the judge_verdict schema. Keep this in lockstep
+// with stories/bugfix/schemas/judge_verdict.json — that on-disk schema
+// is the source of truth; if it ever drifts, update this constant.
 const schemaJSON = `{
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title":   "judge_verdict",
@@ -77,9 +72,10 @@ func mustCompileSchema() *jsonschema.Schema {
 	return s
 }
 
-// ErrMalformedJSON is returned when the raw payload is not valid JSON.
-// Callers can errors.Is against this to route uncertain / malformed
-// verdicts to a human bail-out per proposal §4.4 (llm_then_human mode).
+// ErrMalformedJSON is returned (wrapped) when the raw payload is not
+// valid JSON. Callers can errors.Is against this to route malformed
+// verdicts to a human bail-out under the llm_then_human judge mode (see
+// docs/case-studies/bug-fix.md).
 var ErrMalformedJSON = errors.New("judges: malformed JSON")
 
 // ErrSchemaViolation is returned when the payload is valid JSON but
@@ -89,10 +85,15 @@ var ErrMalformedJSON = errors.New("judges: malformed JSON")
 var ErrSchemaViolation = errors.New("judges: schema violation")
 
 // Parse validates raw JSON output from an LLM judge call against the
-// canonical judge_verdict schema and returns a typed Verdict. Returns
-// a structured error wrapping ErrMalformedJSON or ErrSchemaViolation
-// on failure so callers can route uncertain / malformed verdicts to a
-// human bail-out per proposal §4.4 (llm_then_human mode).
+// canonical judge_verdict schema and returns a typed Verdict. It never
+// panics on caller input and never returns a partially-populated Verdict:
+// on failure it returns a zero Verdict and an error wrapping
+// [ErrMalformedJSON] (not valid JSON) or [ErrSchemaViolation] (valid JSON
+// that fails the schema), so callers can errors.Is the two apart and
+// route malformed verdicts to a human bail-out under the llm_then_human
+// judge mode (see docs/case-studies/bug-fix.md). The decoder uses
+// json.Number for confidence so the value is range-checked by the schema
+// before any float widening.
 func Parse(raw []byte) (Verdict, error) {
 	var probe any
 	dec := json.NewDecoder(bytes.NewReader(raw))
@@ -113,18 +114,19 @@ func Parse(raw []byte) (Verdict, error) {
 }
 
 // ShouldAutoFire returns true when the verdict meets the confidence
-// threshold and is not uncertain. Encodes the gate clause from contract
-// §6 in one place so flows and tests agree on the rule:
+// threshold and is not uncertain. It encodes the confidence-and-
+// uncertainty half of the auto-fire gate in one place so the room YAML,
+// the flow harness, and any future tooling agree on the rule:
 //
-//	world.judge_mode != 'human' &&
 //	world.llm_verdict.confidence >= world.judge_confidence_threshold &&
 //	world.llm_verdict.verdict != 'uncertain' &&
 //	world.llm_verdict.intent != 'uncertain'
 //
-// The judge_mode check is the caller's responsibility (this package
-// doesn't know about modes); the three remaining clauses are owned
-// here so the YAML, the flow harness, and any future tooling agree.
-// Comparison uses >= per contract §6.
+// The comparison is >= so a verdict whose confidence equals the threshold
+// exactly still fires. The judge_mode check (the other half of the gate)
+// is the caller's responsibility — this package does not know about modes
+// (see docs/case-studies/bug-fix.md for the full gate and the judge
+// polymorphism). Safe to call on the zero Verdict.
 func (v Verdict) ShouldAutoFire(threshold float64) bool {
 	if v.Confidence < threshold {
 		return false

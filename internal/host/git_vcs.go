@@ -1,7 +1,6 @@
 // Package host — host.git — git/gh-backed VCS provider.
 //
-// Implements the `vcs` host_interface declared in
-// docs/proposals/notes/dev-story-implementation-contract.md §2.2.  One
+// Implements the `vcs` host_interface (see docs/architecture/hosts.md).  One
 // prefix-fallback handler dispatches the seven vcs ops via the `op`
 // arg.  Local git ops shell out to the `git` CLI; PR ops shell out to
 // `gh`, which is optional — if missing or unauthenticated the handler
@@ -48,7 +47,7 @@ func runRealCommand(ctx context.Context, dir, name string, args ...string) (stri
 // Common optional args:
 //   - workdir (string): working directory for the git command; defaults to cwd.
 //
-// Per-op input/output follows the contract §2.2.
+// Per-op input/output follows the vcs iface contract.
 func GitVCSHandler(ctx context.Context, args map[string]any) (Result, error) {
 	op, _ := args["op"].(string)
 	op = strings.TrimSpace(op)

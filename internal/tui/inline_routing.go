@@ -11,8 +11,8 @@ import (
 	"kitsoki/internal/tui/blocks"
 )
 
-// inline_routing.go — single-pane-tui proposal §"Input feedback":
-// helpers that produce the inline routing-status block strings attached
+// inline_routing.go — input-feedback helpers that produce the inline
+// routing-status block strings attached
 // under each user-turn echo. submitInput / handleTurnOutcome use these
 // to build the in-flight and settled lines; the transcript model holds
 // them as live entries (AppendLive / UpdateLive / FinalizeLive).

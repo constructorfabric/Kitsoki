@@ -1,5 +1,6 @@
 // Integration tests for the Phase-4 semantic-template path through
-// the orchestrator (semantic-routing proposal §5.2). The matcher
+// the orchestrator (see docs/architecture/semantic-routing.md
+// "Synonym templates"). The matcher
 // itself is covered by internal/semroute/template_match_test.go;
 // these tests pin the orchestrator-side glue:
 //
@@ -26,7 +27,7 @@ import (
 )
 
 // newTemplateApp builds an AppDef with a single propose_purchase
-// intent declaring the §5.2 templates. The state accepts the intent
+// intent declaring synonym templates. The state accepts the intent
 // with any slot values; the test asserts on the orchestrator outcome,
 // not on the eventual world state.
 func newTemplateApp(t *testing.T) (*orchestrator.Orchestrator, *countingHarness, app.SessionID) {
@@ -97,7 +98,8 @@ states:
 	return orch, h, sid
 }
 
-// TestSemanticTemplate_AllSlotsResolveWithoutHarness pins §5.2: a
+// TestSemanticTemplate_AllSlotsResolveWithoutHarness pins the
+// synonym-template path: a
 // template that fills every slot must reach SubmitDirect without an
 // LLM call. The intent fires (ModeCompleted) because the test app's
 // state machine accepts the propose_purchase transition into the

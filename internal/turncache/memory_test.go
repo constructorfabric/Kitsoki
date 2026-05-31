@@ -463,8 +463,9 @@ func TestSweepCold_NothingToDeleteIsClean(t *testing.T) {
 	}
 }
 
-// TestSweepCold_ConfidenceDecayMatrix encodes §7.5: when ConfidenceDecay
-// is on, rows with Confidence<0.7 have their effective MaxAge halved.
+// TestSweepCold_ConfidenceDecayMatrix encodes the confidence-decay policy:
+// when ConfidenceDecay is on, rows with Confidence<0.7 have their effective
+// MaxAge halved.
 // The matrix below covers the four corners (low/high confidence ×
 // inside/outside half-life window).
 func TestSweepCold_ConfidenceDecayMatrix(t *testing.T) {
@@ -667,7 +668,7 @@ func TestDefaultConfig(t *testing.T) {
 }
 
 // TestClose_IsIdempotent pins that calling Close twice is safe — the
-// in-memory cache should be a no-op; Phase 6 will need to be safe too.
+// in-memory cache it is a no-op, and the SQLite backend must be safe too.
 func TestClose_IsIdempotent(t *testing.T) {
 	t.Parallel()
 	c := NewMemory(testConfig())
@@ -713,8 +714,8 @@ func TestContextCancellationHonoured(t *testing.T) {
 
 // TestConcurrentMutationsRaceClean is the -race smoke. Hammers Put,
 // RecordHit and RecordSynonymHit from many goroutines and confirms the
-// final state is consistent. The original Phase 5 agent only exercised
-// Put; this version also covers RecordSynonymHit per §9 of the test plan.
+// final state is consistent, covering both Put and RecordSynonymHit under
+// concurrency.
 func TestConcurrentMutationsRaceClean(t *testing.T) {
 	t.Parallel()
 	c := newCache(t, testConfig())

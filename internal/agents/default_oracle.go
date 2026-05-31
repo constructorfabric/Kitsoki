@@ -13,7 +13,7 @@ var defaultOraclePrompt string
 // a different default.
 func defaultOracle() Agent {
 	return Agent{
-		Name:         "default-oracle",
+		Name:         NameDefaultOracle,
 		SystemPrompt: defaultOraclePrompt,
 		Model:        "",
 		Tools:        nil,

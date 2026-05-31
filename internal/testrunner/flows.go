@@ -1,5 +1,5 @@
 // Package testrunner implements the Mode 2 (deterministic flow tests) and
-// Mode 1 (input→intent pass-rate tests) runners described in §10.
+// Mode 1 (input→intent pass-rate tests) runners. See docs/stories/state-machine.md.
 package testrunner
 
 import (
@@ -52,7 +52,7 @@ func publishAppDirForTestrunner(appPath string) {
 	}
 }
 
-// ─── Flow fixture YAML format (§10.3.1) ──────────────────────────────────────
+// ─── Flow fixture YAML format ────────────────────────────────────────────────
 
 // FlowFixture is the top-level flow fixture document.
 type FlowFixture struct {
@@ -200,7 +200,7 @@ type FlowTurn struct {
 	Intent *FlowIntent `yaml:"intent,omitempty"`
 	Input  string      `yaml:"input,omitempty"`
 
-	// WorldOverride mutates world before guard evaluation on this turn (§7.19).
+	// WorldOverride mutates world before guard evaluation on this turn.
 	// Lets fixtures probe arcs that would otherwise require a long preceding
 	// flow (e.g. the L2 cycle-budget feedback arcs).
 	WorldOverride map[string]any `yaml:"world_override,omitempty"`
@@ -233,7 +233,7 @@ type FlowTurn struct {
 	// fails the suite.
 	ExpectJobs []ExpectJob `yaml:"expect_jobs,omitempty"`
 
-	// Assertions (§10.3.2).
+	// Assertions.
 	ExpectState          string         `yaml:"expect_state,omitempty"`
 	ExpectNotState       string         `yaml:"expect_not_state,omitempty"`
 	ExpectStateIn        []string       `yaml:"expect_state_in,omitempty"`
@@ -631,10 +631,11 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 			}
 			seen[h] = true
 			handlerName := h
-			// Capture any existing (real) handler as fallback. Per proposal §3.2:
-			// when host_bindings: is set, builtins are pre-registered and act as
-			// the fallback for cassette misses. Without host_bindings: there are
-			// no pre-registered builtins, so fallback is nil (miss is a hard error).
+			// Capture any existing (real) handler as fallback. When host_bindings:
+			// is set, builtins are pre-registered and act as the fallback for
+			// cassette misses; without host_bindings: there are no pre-registered
+			// builtins, so fallback is nil (miss is a hard error). See
+			// docs/architecture/hosts.md (host_bindings) for the binding model.
 			var fallback host.Handler
 			if len(fixture.HostBindings) > 0 {
 				fallback, _ = reg.Get(handlerName)
@@ -718,7 +719,7 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 		orchestrator.WithScheduler(sched),
 		orchestrator.WithJobStore(js),
 		// Inject the same fake clock the scheduler uses so Timeout: firings
-		// (gap §9.5) run on virtual time alongside background-job delays.
+		// run on virtual time alongside background-job delays.
 		orchestrator.WithClock(clk),
 		// Dual-write every turn event to the JSONL trace (authority stays with
 		// SQLite for loadJourney; see WithEventSink doc).
@@ -1056,7 +1057,7 @@ func runOneFlowLegacy(ctx context.Context, def *app.AppDef, m machine.Machine, f
 			return nil, fmt.Errorf("turn %d: neither intent nor input is set", i+1)
 		}
 
-		// Apply world_override (§7.19) before guard evaluation. Mutations are
+		// Apply world_override before guard evaluation. Mutations are
 		// applied in-place to the running world so the rest of the turn (guard
 		// eval, effects, view render) sees them.
 		for k, v := range turn.WorldOverride {
@@ -1436,7 +1437,7 @@ func runOneFlowOrchestrator(ctx context.Context, def *app.AppDef, m machine.Mach
 			return nil, fmt.Errorf("turn %d: input: %q in orchestrator-path fixture; use intent: instead (recording routing not yet supported on orchestrator path)", i+1, turn.Input)
 		} else if turn.AdvanceClock != "" {
 			// Clock-only turn: no user input, just advance virtual time.  Used
-			// by Timeout: fixtures (gap §9.5) that need to fire a synthetic
+			// by Timeout: fixtures that need to fire a synthetic
 			// transition without first issuing a user intent.  Synthesise an
 			// empty TurnOutcome reflecting the current state so the assertion
 			// logic below can run.
@@ -1968,7 +1969,7 @@ func advanceAndWait(ctx context.Context, rig *orchRig, d time.Duration) error {
 		if err := rig.orch.WaitListenerIdle(ctx, rig.sid); err != nil {
 			return fmt.Errorf("listener WaitListenerIdle: %w", err)
 		}
-		// Drain any due Timeout: firings (gap §9.5).  The timeout dispatcher
+		// Drain any due Timeout: firings.  The timeout dispatcher
 		// runs its synthetic turns on independent goroutines, so neither
 		// scheduler.WaitIdle nor orch.WaitListenerIdle covers them.
 		if err := rig.orch.WaitTimeoutsDrained(ctx, rig.sid); err != nil {

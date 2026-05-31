@@ -19,10 +19,10 @@ var kitsokiExplainerPrompt string
 //   - Read + Glob + Grep — the agent explores the kitsoki repo to
 //     answer questions about it. No Edit, no Write, no Bash — the
 //     prompt's refusal pattern points the user at `/meta kitsoki
-//     edit` when they ask for a change. Per the bug format proposal
-//     §1.1, the `ask` verb is the read-only sibling of `edit`; its
-//     surface is exactly these three exploration tools so the agent
-//     has no means to mutate source or run tests.
+//     edit` when they ask for a change. The `ask` verb is the
+//     read-only sibling of `edit` (see docs/stories/meta-mode.md);
+//     its surface is exactly these three exploration tools so the
+//     agent has no means to mutate source or run tests.
 //
 // DefaultCwd uses the `${KITSOKI_REPO}` env var; the metamode adapter
 // runs os.ExpandEnv on cwd values, so an unset var resolves to the
@@ -30,7 +30,7 @@ var kitsokiExplainerPrompt string
 // the explainer in a random directory.
 func kitsokiExplainer() Agent {
 	return Agent{
-		Name:         "kitsoki-explainer",
+		Name:         NameKitsokiExplainer,
 		SystemPrompt: kitsokiExplainerPrompt,
 		Model:        "",
 		Tools: []string{

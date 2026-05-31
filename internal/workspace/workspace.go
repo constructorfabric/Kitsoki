@@ -1,24 +1,3 @@
-// Package workspace implements the typed workspace context (§6).
-//
-// The $workspace world variable holds structured information about the current
-// workspace (repos, branches, issue, PRs). It is loaded when entering a
-// Workspace Room and refreshed on explicit user action.
-//
-// # Provisional struct
-//
-// The Workspace struct is labeled provisional (§6.1) — it may be extended when
-// the schema DSL proves needed. For now it covers: id, root_path, repos,
-// issue_id?, pr_ids[].
-//
-// # Loading
-//
-// Workspace data is loaded via host.workspace_manager.get, parsed from JSON,
-// and stored under $workspace in world state.
-//
-// # Validation
-//
-// The JSON schema embedded in workspace.schema.json is used to validate the
-// structure of the parsed workspace data before storing it.
 package workspace
 
 import (
@@ -31,11 +10,17 @@ import (
 )
 
 const (
-	// WorldKey is the reserved world variable name for the workspace context.
+	// WorldKey is the reserved world variable name under which the workspace
+	// snapshot lives in [world.World]. It carries the leading "$" so it sorts
+	// and reads alongside the other engine-reserved world variables; rooms
+	// reference it as "$workspace" in guards and templates. Exactly one
+	// workspace occupies this key at a time.
 	WorldKey = "$workspace"
 )
 
-// Repo represents one repository in the workspace.
+// Repo represents one repository in the workspace. The zero Repo (empty Path)
+// fails [Workspace.Validate]; Path is the only required field, while Branch
+// and Dirty are advisory snapshot data captured at load time and may be stale.
 type Repo struct {
 	// Path is the filesystem path to the repository root.
 	Path string `json:"path"`
@@ -45,7 +30,12 @@ type Repo struct {
 	Dirty bool `json:"dirty"`
 }
 
-// Workspace is the provisional typed workspace context (§6.1).
+// Workspace is the typed projection of the `$workspace` world variable. It is
+// deliberately provisional — it carries only the fields current rooms consume
+// (see the package Reference) and is expected to gain fields additively, so
+// the JSON tags rather than positional layout are the stable contract. The
+// zero Workspace is invalid: obtain one through [Load] or build it explicitly
+// with id, root_path, and at least one repo set.
 type Workspace struct {
 	// ID is the workspace identifier.
 	ID string `json:"id"`
@@ -59,7 +49,13 @@ type Workspace struct {
 	PRIDs []string `json:"pr_ids,omitempty"`
 }
 
-// Validate checks that the workspace has required fields.
+// Validate reports whether the required fields are present: id, root_path,
+// and at least one repo whose path is set. It checks presence only — not value
+// formats, not cross-field rules, not a JSON Schema — because the struct is
+// provisional and the host is the authority on what a valid workspace is; this
+// guards against an empty or half-populated snapshot reaching world state, not
+// against a semantically wrong one. The error message names the first missing
+// field so a misconfigured handler is diagnosable from the log alone.
 func (w *Workspace) Validate() error {
 	if w.ID == "" {
 		return fmt.Errorf("workspace: id is required")
@@ -78,7 +74,12 @@ func (w *Workspace) Validate() error {
 	return nil
 }
 
-// ToMap converts the workspace to a map[string]any for world-state storage.
+// ToMap projects the workspace into the plain map[string]any shape world
+// state stores, emitting only strings, bools, and []any so the snapshot can
+// cross the MCP boundary and round-trip through SQLite — the Go structs
+// themselves never enter world. omitempty fields (issue_id, pr_ids) are
+// dropped when empty, mirroring the JSON tags, so [FromMap] is its inverse
+// for any validated Workspace.
 func (w *Workspace) ToMap() map[string]any {
 	repos := make([]any, len(w.Repos))
 	for i, r := range w.Repos {
@@ -107,8 +108,14 @@ func (w *Workspace) ToMap() map[string]any {
 	return m
 }
 
-// FromMap reconstructs a Workspace from a world-state map.
-// Returns nil if the map is nil or malformed.
+// FromMap reconstructs a Workspace from whatever sits under [WorldKey] in
+// world state. It is the tolerant inverse of [ToMap]: it reads the keys it
+// recognises and silently ignores anything malformed, so it never errors and
+// never panics on a partial or wrong-typed map — callers handle "absent or
+// junk" uniformly via the nil return. It returns nil only when raw is not a
+// map[string]any (including a nil interface), which is the signal for
+// "no workspace loaded." Validation is not its job; pass the result to
+// [Workspace.Validate] if you need the required-field guarantee.
 func FromMap(raw any) *Workspace {
 	m, ok := raw.(map[string]any)
 	if !ok || m == nil {
@@ -141,9 +148,19 @@ func FromMap(raw any) *Workspace {
 	return w
 }
 
-// Load fetches the workspace via host.workspace_manager.get and stores it in world.
-// workspaceID is optional; if empty the handler uses the current workspace.
-// Returns the updated world and the loaded workspace.
+// Load is the only path that populates `$workspace` from the host: it invokes
+// host.workspace_manager.get, parses and validates the result, and writes the
+// snapshot under [WorldKey]. It is also the only function here that validates,
+// so a Workspace reaching world via Load is guaranteed to satisfy
+// [Workspace.Validate]. workspaceID is optional — when empty the workspace_id
+// argument is omitted entirely and the handler resolves the current workspace;
+// this lets a room load "wherever I am" without knowing the id.
+//
+// Because [world.World] is immutable, Load returns a new world rather than
+// mutating w. On any failure it returns the unchanged input world, a nil
+// Workspace, and a wrapped error — distinguishing invoke failure, a non-empty
+// host Result.Error, empty/unparseable data, and validation failure in the
+// message so the cause is clear from the log.
 func Load(ctx context.Context, registry *host.Registry, workspaceID string, w world.World) (world.World, *Workspace, error) {
 	args := map[string]any{}
 	if workspaceID != "" {
@@ -188,7 +205,13 @@ func parseWorkspaceFromData(data map[string]any) (*Workspace, error) {
 	return &ws, nil
 }
 
-// SetInWorld stores a Workspace in a world snapshot under $workspace.
+// SetInWorld stores an already-constructed Workspace under [WorldKey] without
+// a host round-trip — the path for tests and for callers that built the value
+// themselves and have no reason to re-fetch it. It does NOT validate, so it
+// will happily store an invalid Workspace; use [Load] when the required-field
+// guarantee matters. A nil ws is a no-op: the input world is returned
+// unchanged so callers can pass the result of an optional build straight
+// through. The returned world is a new snapshot; w is not mutated.
 func SetInWorld(ws *Workspace, w world.World) world.World {
 	if ws == nil {
 		return w
@@ -196,7 +219,11 @@ func SetInWorld(ws *Workspace, w world.World) world.World {
 	return w.With(WorldKey, ws.ToMap())
 }
 
-// ClearFromWorld removes the $workspace key from world state.
+// ClearFromWorld returns a new world with [WorldKey] removed, used when
+// leaving a Workspace Room so a stale snapshot does not linger for the next
+// room's guards. It rebuilds the Vars map (rather than deleting in place)
+// because [world.World] is immutable and shared across turns; mutating it
+// would corrupt other snapshots. All other world variables are preserved.
 func ClearFromWorld(w world.World) world.World {
 	nw := world.New()
 	for k, v := range w.Vars {

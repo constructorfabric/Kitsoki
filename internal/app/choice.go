@@ -1,5 +1,5 @@
-// choice.go — Phase A of the choice-widget proposal
-// (docs/proposals/choice-widget-proposal.md §3, §4, §5).
+// choice.go — schema for the choice / multi-select / form widget.
+// Author-facing reference: docs/stories/choice-widget.md.
 //
 // Phase A is schema + types + load-time validation only. No rendering,
 // no TUI behavior changes. The renderer (Phase B) and the interactive
@@ -223,7 +223,7 @@ func (r *rawChoiceYAML) resolve(out *ViewElement) error {
 		}
 	}
 
-	// Default mode is "single" per the proposal (§4.1). Setting it
+	// Default mode is "single" (see docs/stories/choice-widget.md). Setting it
 	// here means downstream code can rely on ChoiceMode being
 	// non-empty after a successful unmarshal even when the author
 	// omitted the field — though the JSON Schema requires it
@@ -729,7 +729,7 @@ var choicePlaceholderRE = regexp.MustCompile(`\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 
 // validateChoiceCrossRefs walks a Kind=="choice" ViewElement and
 // resolves every intent / slot reference against the surrounding
-// intents map (choice-widget proposal §4.4).
+// intents map (see docs/stories/choice-widget.md).
 //
 // Resolution precedence: state-local intents shadow globals so a state
 // can specialise an intent's slot set without breaking sibling rooms.
@@ -798,7 +798,7 @@ func validateChoiceCrossRefs(e ViewElement, globalIntents map[string]Intent, sta
 			return fmt.Errorf("slot %q is not a declared slot of intent %q", e.ChoiceSlot, e.ChoiceIntent)
 		}
 		// Every items[].value must be a literal — a templated value
-		// defeats downstream type checks (choice-widget proposal §4.4 (5)).
+		// defeats downstream type checks.
 		for i, it := range e.ChoiceItems {
 			if containsTemplate(it.Value) {
 				return fmt.Errorf("items[%d].value: must be a string literal (templated values are not allowed in multi mode)", i)
@@ -819,7 +819,7 @@ func validateChoiceCrossRefs(e ViewElement, globalIntents map[string]Intent, sta
 			}
 		}
 		// Every {name} placeholder in the template body must have a
-		// matching fields: entry (choice-widget proposal §4.4 (4)).
+		// matching fields: entry.
 		fieldSet := make(map[string]struct{}, len(e.ChoiceFields))
 		for _, f := range e.ChoiceFields {
 			fieldSet[f.Name] = struct{}{}

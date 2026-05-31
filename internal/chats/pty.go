@@ -45,8 +45,8 @@ type PtySession struct {
 	WorkspacePath  string
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
-	// LastIdleAt is non-nil only after the §9.1 idle-detection has fired
-	// at least once for this row.
+	// LastIdleAt is non-nil only after idle-detection has fired at least
+	// once for this row (see [Store.MarkPTYIdle]).
 	LastIdleAt *time.Time
 }
 
@@ -135,7 +135,7 @@ func (s *Store) AttachPTY(ctx context.Context, opts AttachPTYOptions) (*PtySessi
 
 // DetachPTY flips an existing row to PtyModeBackground. Used when the
 // human leaves the attached tmux session but tmux + claude stay alive
-// (the default `prefix + d` keybinding from §6.5).
+// (the default `prefix + d` tmux detach keybinding).
 //
 // Returns ErrNoPTYSession when no row exists for the chat. Returns
 // ErrPTYCrossHost when the row's tmux_host is not this process —
@@ -268,7 +268,7 @@ func (s *Store) ListPTYForHost(ctx context.Context) ([]PtySession, error) {
 	return out, rows.Err()
 }
 
-// MarkPTYIdle bumps the chat's last_idle_at to now. Used by the §9.1
+// MarkPTYIdle bumps the chat's last_idle_at to now. Used by the
 // idle-detection watcher when it observes a turn complete in a
 // pty_background tmux session. Returns ErrNoPTYSession when no row
 // exists.

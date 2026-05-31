@@ -1,10 +1,10 @@
-// Package host — host.oracle.decide handler (oracle-split Phase 2).
+// Package host — host.oracle.decide handler.
 //
 // host.oracle.decide is the reasoning verdict verb: LLM judgment is required,
 // schema: is mandatory, submit is auto-attached, and the read-only tool surface
 // (same allowlist as host.oracle.ask) is optional. It does not mutate anything.
 //
-// Contract (oracle-split proposal §2.2):
+// Contract:
 //
 //   - schema: required — the verdict must be typed. The handler auto-attaches the
 //     kitsoki mcp-validator so the LLM must call submit() before exiting.
@@ -239,7 +239,7 @@ func OracleDecideHandler(ctx context.Context, args map[string]any) (Result, erro
 	}
 
 	// Wave 3-oracle: write OracleCalled to the JSONL sink at dispatch time.
-	appendOracleCalledEvent(ctx, callStart, callID, OracleCalledPayload{
+	appendOracleCalledEvent(ctx, callStart, callID, rendered, OracleCalledPayload{
 		Verb:  "decide",
 		Agent: agentNameFromArgs(args),
 		Model: agent.Model,
@@ -410,7 +410,7 @@ func rejectMutationTools(ctx context.Context, args map[string]any, agent Agent) 
 
 // errValidatorExceededContract is the sentinel returned when RunValidatorSandboxed
 // detects a write or network access attempt — i.e. the validator tried to mutate
-// state outside /tmp. Proposal §6: "validator exceeded read-only contract —
+// state outside /tmp: "validator exceeded read-only contract —
 // migrate this call to host.oracle.task".
 const errValidatorExceededContract = "validator exceeded read-only contract — migrate this call to host.oracle.task"
 

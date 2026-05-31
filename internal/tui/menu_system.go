@@ -17,8 +17,8 @@ const (
 	// modeName carries which one; the handler dispatches into
 	// startMetaMode(modeName).
 	menuActionMetaMode
-	// menuActionMetaSessions opens the foyer "meta sessions" panel
-	// (proposal §2.1) — an overlay that lists every active meta chat
+	// menuActionMetaSessions opens the foyer "meta sessions" panel —
+	// an overlay that lists every active meta chat
 	// (this app's plus cross-app `self` chats) and lets the user
 	// resume one without typing `/meta resume <id>`.
 	menuActionMetaSessions

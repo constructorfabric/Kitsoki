@@ -1,18 +1,10 @@
-// Package oracle — per-app oracle plugin registry.
+// registry.go holds the per-app oracle plugin registry.
 //
 // A Registry maps plugin alias names (e.g. "oracle.claude",
 // "oracle.autofix_fixer") to Oracle implementations. It is constructed at
-// app-load time from the `hosts:` YAML block and injected into the dispatch
-// context via host.WithOracleRegistry.
-//
-// Supported plugin values (B-3):
-//
-//   - "builtin.claude_cli" — the default; resolves to the claude-CLI-backed
-//     oracle registered via RegisterBuiltinClaudeCLI.
-//   - "builtin.inprocess" — an in-process oracle registered programmatically;
-//     used by tests that inject a stub AskFunc.
-//   - "subprocess" — JSON-RPC 2.0 over stdio; see SubprocessOracle.
-//   - "mcp_http" — MCP-over-HTTP; see MCPHTTPOracle.
+// session-construction time from the app's oracle_plugins declarations (see
+// BuildRegistryFromDef) and injected into the dispatch context.
+
 package oracle
 
 import (

@@ -1,8 +1,8 @@
 // Package oracle — B-5 oracle contract test suite.
 //
-// This file covers the §2 "Testing the oracle contract" sub-cases that were
+// This file covers the "Testing the oracle contract" sub-cases that were
 // not already pinned by B-1 through B-4 tests.  Every test here is a hard CI
-// gate per the proposal.
+// gate.
 //
 // Sub-cases covered (see docs/architecture/oracle-plugin.md for the full spec):
 //
@@ -425,7 +425,7 @@ func TestB5_SubeventsNilVsEmpty(t *testing.T) {
 	}
 }
 
-// ── §3.1: $ref story-load resolver (B-7) ──────────────────────────────────────
+// ── $ref story-load resolver (B-7) ────────────────────────────────────────────
 
 // TestB7_SchemaRefs_AbsolutePath verifies that an absolute $ref path is
 // rejected by ValidateSchemaRefs at story-load time.

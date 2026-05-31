@@ -1,8 +1,7 @@
 // Package host — host.local_files.ticket — file-backed ticket provider.
 //
-// Implements the `ticket` host_interface declared in
-// docs/proposals/notes/dev-story-implementation-contract.md §2.1. The
-// on-disk schema is the bug-format proposal (docs/proposals/bug-format-proposal.md §2):
+// Implements the `ticket` host_interface (see docs/architecture/hosts.md). The
+// on-disk bug format is documented in docs/stories/bugs.md:
 // YAML frontmatter, a markdown body, and `## Comment <ISO> by <author>`
 // blocks appended at the bottom.
 //
@@ -36,7 +35,7 @@ import (
 // Required args:
 //   - op (string): one of "search", "get", "comment", "transition", "list_mine".
 //
-// Per-op args/returns follow the contract §2.1.  See doc comments on each
+// Per-op args/returns follow the ticket iface contract.  See doc comments on each
 // dispatch helper below for the precise shape.
 //
 // Optional args (all ops):
@@ -127,7 +126,7 @@ type BugComment struct {
 
 // BugFile is the parsed shape of `issues/<kind>/<id>.md`.  Frontmatter
 // is kept as a generic map so unknown keys survive round-trips (per
-// bug-format-proposal §2.2).
+// docs/stories/bugs.md).
 type BugFile struct {
 	ID       string         // filename without `.md`
 	Kind     string         // "bug" | "feature" | "epic" — set by the lister
@@ -524,12 +523,12 @@ func ticketListMine(root string, args map[string]any) (Result, error) {
 // ─── Field accessors / projections ──────────────────────────────────────────
 
 // bugSummary projects a BugFile into the ticket summary shape the
-// contract pins (§2.1): id/title/status/severity/assignee/url. A
+// contract pins: id/title/status/severity/assignee/url. A
 // `type` key is added when the lister tagged the row by source dir
 // so dev-story can route on `ticket_type`.
 //
 // `severity` is the on-disk frontmatter field per `issues/README.md`
-// §2 and `docs/proposals/bug-format-proposal.md` §2. The earlier
+// and `docs/stories/bugs.md`. The earlier
 // summary shape projected `priority` instead; that field has been
 // removed entirely — no consumer in this repo branched on
 // `t.priority` after the 2026-05-20 dogfood cycle, and keeping a

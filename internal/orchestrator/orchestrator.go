@@ -1,4 +1,5 @@
-// Package orchestrator implements the turn-loop brain (§4.2).
+// Package orchestrator implements the turn-loop brain (see
+// docs/architecture/overview.md "The journey of one turn").
 // It is the ONLY component that calls store.AppendEvents.
 // The machine is pure (no I/O); the harness may call the LLM.
 package orchestrator
@@ -36,7 +37,7 @@ import (
 )
 
 // pendingClarify holds the in-flight slot-fill state while the TUI
-// is collecting missing slots from the user (§5.3 option a: in-memory).
+// is collecting missing slots from the user (held in-memory).
 type pendingClarify struct {
 	intentName string
 	slots      map[string]any // already-collected slots
@@ -77,21 +78,21 @@ type Orchestrator struct {
 	// aren't on host.ChatStore. Optional; nil disables the surfacing.
 	chatsConcrete *chats.Store
 
-	// oracleRegistry holds the per-app oracle plugin registry (proposal §2 B-2).
+	// oracleRegistry holds the per-app oracle plugin registry.
 	// When non-nil, injected into the dispatch context via host.WithOracleRegistry
 	// so oracle handlers can route through Oracle.Ask. When nil, handlers fall
 	// through to their existing direct claude-CLI logic (backwards compat).
 	// Set via WithOracleRegistry.
 	oracleRegistry *oracle.Registry
 
-	// journalWriter is the durable journal writer (continue-mode §4.9 Rule 1).
+	// journalWriter is the durable journal writer (continue-mode dual-write).
 	// When nil, callers fall through to the legacy AppendEvents path.
 	// Set via WithJournalWriter; individual turn-write call sites are migrated
 	// by the next agent.
 	journalWriter journal.Writer
 
 	// journalReader is the read-side counterpart to journalWriter, used by the
-	// AttachSession resume path (continue-mode §4.5).  When nil, AttachSession
+	// AttachSession resume path (continue-mode).  When nil, AttachSession
 	// falls back to LoadJourney-only (no transcript / no clarify rehydration).
 	// Set via WithJournalReader.
 	journalReader journal.Reader
@@ -119,7 +120,7 @@ type Orchestrator struct {
 	// resolve one-shot (or decider:llm) decision gates. nil disables it.
 	decider *DeciderConfig
 
-	// execMode is the run's execution mode (execution-modes proposal).
+	// execMode is the run's execution mode.
 	// The zero value (ExecOneShot) preserves the historical behaviour:
 	// synthetic emit_intent chains auto-advance through every gate within a
 	// turn. ExecStaged makes a multi-way decision gate end the turn so a
@@ -158,8 +159,8 @@ type Orchestrator struct {
 	obsMu     sync.Mutex
 	observers []SessionObserver
 
-	// matcher is the per-app semantic-routing index (semantic-routing
-	// proposal §2.1 / Phase 2). Compiled lazily on first
+	// matcher is the per-app semantic-routing index (see
+	// docs/architecture/semantic-routing.md). Compiled lazily on first
 	// TrySemantic call; subsequent calls reuse the cached *Matcher.
 	// matcherErr remembers a compile failure so we don't retry on
 	// every turn — the orchestrator surfaces the error once via
@@ -173,8 +174,9 @@ type Orchestrator struct {
 	matcher     *semroute.Matcher
 	matcherErr  error
 
-	// cache is the optional turn-result cache (semantic-routing
-	// proposal §2.2 + §7). Wired via WithTurnCache; nil disables
+	// cache is the optional turn-result cache (see
+	// docs/architecture/semantic-routing.md "Turn cache"). Wired via
+	// WithTurnCache; nil disables
 	// the cache tier entirely. The cache is per-orchestrator (and
 	// therefore per-app), so InvalidateOtherHashes / SweepCold /
 	// TrimLRU run at most once per orchestrator on first turn —
@@ -237,8 +239,9 @@ func New(def *app.AppDef, m machine.Machine, s store.Store, h harness.Harness, o
 }
 
 // ExecutionMode selects how the engine resolves intent gates — the set of
-// advancing intents available at the end of a room/phase's turn. See
-// docs/proposals/execution-modes-and-gate-deciders.md.
+// advancing intents available at the end of a room/phase's turn. Every
+// room/phase ends in an intent gate resolved by a decider (default /
+// LLM / human).
 type ExecutionMode int
 
 const (
@@ -341,7 +344,7 @@ func WithChatsConcrete(cs *chats.Store) Option {
 }
 
 // WithJournalWriter wires a journal.Writer for durable session journalling
-// (continue-mode §4.9 Rule 1). When nil (the default), turn writes fall through
+// (continue-mode dual-write). When nil (the default), turn writes fall through
 // to the legacy AppendEvents path. Individual call sites are migrated by the
 // next wave agent; this option only stores the writer for later use.
 func WithJournalWriter(w journal.Writer) Option {
@@ -673,7 +676,7 @@ func WithSupplementSlots(slots world.Slots) TurnOption {
 }
 
 // Turn processes one user utterance and returns a TurnOutcome.
-// Steps (§4.2):
+// Steps:
 //  1. Load journey (state + world) from the store.
 //  2. Call harness.RunTurn → mcp.CallToolParams.
 //  3. Parse the intent call from the params.
@@ -685,7 +688,7 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 		opt(&cfg)
 	}
 
-	// Semantic routing tier (semantic-routing proposal §1 Phase 2):
+	// Semantic routing tier (see docs/architecture/semantic-routing.md):
 	// run BEFORE acquiring the session lock so TrySemantic's own
 	// SubmitDirect call can take the lock without deadlocking. We
 	// skip the semantic tier when the caller passed supplemental
@@ -699,7 +702,7 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 		} else if hit {
 			return outcome, nil
 		}
-		// Turn-cache tier (semantic-routing proposal §5.4): after
+		// Turn-cache tier: after
 		// semroute misses and before the LLM, check whether this
 		// (state, signature) was resolved on a prior turn. On a
 		// successful re-Validate the cache short-circuits the LLM
@@ -834,11 +837,12 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 		slog.String("outcome", "hit"),
 		slog.String("intent", extractIntentName(params)),
 	)
-	// Semantic-routing proposal §1 / Phase 5 hook: emit a stable
+	// Routing breadcrumb: emit a stable
 	// `turn.llm_routed` breadcrumb so the future turncache writeback
-	// (and the TUI route badges in §8) have a deterministic place to
-	// observe LLM-resolved turns. The field schema is locked by §8 —
-	// don't rename intent/confidence/state_path/model. The model
+	// (and the TUI route badges) have a deterministic place to
+	// observe LLM-resolved turns. The field schema is locked (see
+	// docs/tracing/trace-format.md) — don't rename
+	// intent/confidence/state_path/model. The model
 	// name is empty in Phase 2: the harness owns its model choice
 	// and a future hook will plumb the resolved model up here.
 	tl.Debug(ctx, trace.EvTurnLLMRouted,
@@ -847,7 +851,7 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 		slog.String("model", ""),
 	)
 
-	// Append LLMCalled/LLMToolCall events.
+	// Append the LLMToolCall event recording the harness's resolved tool call.
 	llmEvent := newOrchestratorEvent(store.LLMToolCall, map[string]any{
 		"tool":   params.Name,
 		"intent": extractIntentName(params),
@@ -898,7 +902,7 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 		ve := result.ValidationError
 		switch ve.Code {
 		case intent.ErrMissingSlots:
-			// Do NOT persist events for clarify-required outcomes (§4.2 step 4).
+			// Do NOT persist events for clarify-required outcomes.
 			// Store the pending intent in memory.
 			slotsSoFar := slotsToMap(call.Slots)
 			o.mu.Lock()
@@ -1011,13 +1015,18 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 	// Success path: dispatch any host calls collected by the machine, apply
 	// their bindings to world, and refresh the view so the user sees the
 	// updated state on the same turn.
-	// Inject the turn number for oracle journal entries (§ oracle tracing).
-	ctxWithTurn := host.WithOracleCallCtx(ctx, host.OracleCallCtx{
+	// Stamp the foreground turn on ctx so every oracle.call.* event this turn
+	// emits — including those fired by the post-bind emit recursion
+	// (settlePostBindEmits), which is how the bugfix story advances phase to
+	// phase — carries the real foreground turn rather than turn=0
+	// (turn=0). dispatchHostCalls overwrites StatePath
+	// per call with the destination phase, so only Turn need be set here.
+	ctx = host.WithOracleCallCtx(ctx, host.OracleCallCtx{
 		SessionID: sid,
 		Turn:      turnNum,
 		StatePath: result.NewState,
 	})
-	hostEvents, hostWorld, hostView, hostRedirect, hostErr := o.dispatchHostCalls(ctxWithTurn, sid, result.HostCalls, result.World, result.NewState)
+	hostEvents, hostWorld, hostView, hostRedirect, hostErr := o.dispatchHostCalls(ctx, sid, result.HostCalls, result.World, result.NewState)
 	if hostErr != nil {
 		tl.Debug(ctx, trace.EvHarnessError, slog.String("host_dispatch_error", hostErr.Error()))
 	}
@@ -1096,7 +1105,7 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 		slog.String("outcome", "transitioned"),
 	)
 
-	// Cache writeback (semantic-routing proposal §5.4): record this
+	// Cache writeback: record this
 	// LLM-resolved verdict against the original input so subsequent
 	// turns at the same state with the same lexical signature can
 	// short-circuit. We deliberately key on journey.State (the state
@@ -1293,7 +1302,8 @@ func (o *Orchestrator) settlePostBindEmits(ctx context.Context, sid app.SessionI
 	// render error here used to silently zero the view (the user
 	// described it as "dumped into nothingness"). Log it so the
 	// failure is at least visible in the trace; the upstream view
-	// template needs to be hardened — see docs/stories/story-style.md §3.5.
+	// template needs to be hardened — see docs/stories/story-style.md
+	// "The view MUST always render to something visible".
 	v, rErr := o.machine.RenderState(res.NewState, res.World)
 	if rErr != nil {
 		slog.Warn("orchestrator.render_after_bind_failed",
@@ -1497,6 +1507,14 @@ func (o *Orchestrator) submitDirect(ctx context.Context, sid app.SessionID, inte
 		"direct": true,
 	}, turnNum)
 
+	// Stamp the foreground turn on ctx so oracle.call.* events fired by the
+	// on_enter chain and the post-bind emit recursion carry the real turn (not
+	// turn=0).
+	ctx = host.WithOracleCallCtx(ctx, host.OracleCallCtx{
+		SessionID: sid,
+		Turn:      turnNum,
+		StatePath: result.NewState,
+	})
 	hostEvents, hostWorld, hostView, hostRedirect, hostErr := o.dispatchHostCalls(ctx, sid, result.HostCalls, result.World, result.NewState)
 	if hostErr != nil {
 		tl.Debug(ctx, trace.EvHarnessError, slog.String("host_dispatch_error", hostErr.Error()))
@@ -1748,7 +1766,7 @@ func allowedNamesFromMachine(m machine.Machine, state app.StatePath, w world.Wor
 }
 
 // ContinueTurn retries the pending intent with supplemental slot values
-// collected from the clarification UI (§4.2 step 4 continuation).
+// collected from the clarification UI (the slot-fill continuation of a turn).
 func (o *Orchestrator) ContinueTurn(ctx context.Context, sid app.SessionID, supplementSlots map[string]any) (*TurnOutcome, error) {
 	// Serialise against handleJobTerminal — see Turn for rationale.
 	sessMu := o.sessionLock(sid)
@@ -2177,8 +2195,8 @@ func extractIntentName(params mcp.CallToolParams) string {
 
 // harnessConfidence extracts the LLM's self-reported confidence from
 // CallToolParams without erroring. Returns 0 when the field is absent
-// or non-numeric. Used by the EvTurnLLMRouted trace event (semantic-
-// routing proposal §1 / §8) so the TUI route badge can render the
+// or non-numeric. Used by the EvTurnLLMRouted trace event so the
+// TUI route badge can render the
 // LLM's own confidence number next to the magenta ✦ chip.
 func harnessConfidence(params mcp.CallToolParams) float64 {
 	if m, ok := params.Arguments.(map[string]any); ok {

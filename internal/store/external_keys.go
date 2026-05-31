@@ -1,14 +1,17 @@
-// Package store — external-key index and session writer lock.
+package store
+
+// external_keys.go holds the external-key index and the session writer lock.
 //
 // External keys map (transport, thread) pairs onto a session_id so external
 // orchestrators (loop.py, future webhook receivers) can address sessions by
 // their inbound surface — e.g. ("jira", "PLTFRM-12345") or
-// ("bitbucket", "DBI/repo/pulls/42"). Proposal §3.
+// ("bitbucket", "DBI/repo/pulls/42"). The session/transport model is
+// documented in docs/architecture/transports.md ("Sessions keyed by
+// transport").
 //
 // The writer lock serializes concurrent `kitsoki session continue` invocations
 // against the same session. The lock is row-keyed by session_id in
 // session_locks; stale locks (owner pid not alive) are reaped.
-package store
 
 import (
 	"context"

@@ -1,12 +1,32 @@
-// Package agents defines the (system prompt, model, tool surface,
-// optional cwd) tuples the meta-mode controller hands to the harness,
-// and a name-keyed registry of them. Builtins are baked in at process
-// start; future phases register additional agents.
 package agents
 
 import (
 	"sort"
 	"sync"
+)
+
+// Builtin agent names. These are the registry keys NewBuiltins seeds and
+// the strings meta-mode verbs in docs/stories/meta-mode.md resolve to;
+// they double as the public contract an app's agents: block overrides by
+// re-declaring under the same name. They live as constants so the name a
+// builder stamps onto its Agent.Name and the name BuiltinNames advertises
+// can never drift apart.
+const (
+	// NameDefaultOracle is the toolless fallback agent used when a caller
+	// names no agent.
+	NameDefaultOracle = "default-oracle"
+	// NameStoryAuthor is the conversational story/YAML editor.
+	NameStoryAuthor = "story-author"
+	// NameKitsokiEngineer edits Go code in the kitsoki repo and runs tests.
+	NameKitsokiEngineer = "kitsoki-engineer"
+	// NameStoryBugReporter files a bug against the running story.
+	NameStoryBugReporter = "story-bug-reporter"
+	// NameKitsokiBugReporter files a bug against kitsoki itself.
+	NameKitsokiBugReporter = "kitsoki-bug-reporter"
+	// NameStoryExplainer is the read-only Q&A sibling of story-author.
+	NameStoryExplainer = "story-explainer"
+	// NameKitsokiExplainer is the read-only Q&A sibling of kitsoki-engineer.
+	NameKitsokiExplainer = "kitsoki-explainer"
 )
 
 // Agent bundles the configuration the harness needs to run an LLM
@@ -23,6 +43,14 @@ type Agent struct {
 
 // Registry is a name → Agent lookup. Register overwrites on
 // name-collision; tests and future phases rely on that.
+//
+// The implementation returned by [NewBuiltins] / [BuildRegistry] is safe
+// for concurrent use: the typical pattern is a single load-time burst of
+// Register calls followed by read-only Get/List at runtime, but the
+// internal lock makes interleaved Registers safe too. Get and List never
+// error — a missing name surfaces as Get's ok=false, and List returns the
+// names in sorted order (distinct from [BuiltinNames], which preserves
+// registration order).
 type Registry interface {
 	Get(name string) (Agent, bool)
 	List() []string
@@ -49,13 +77,13 @@ func NewBuiltins() Registry {
 // need a stable lexicographic order should sort the returned slice.
 func BuiltinNames() []string {
 	return []string{
-		"default-oracle",
-		"story-author",
-		"kitsoki-engineer",
-		"story-bug-reporter",
-		"kitsoki-bug-reporter",
-		"story-explainer",
-		"kitsoki-explainer",
+		NameDefaultOracle,
+		NameStoryAuthor,
+		NameKitsokiEngineer,
+		NameStoryBugReporter,
+		NameKitsokiBugReporter,
+		NameStoryExplainer,
+		NameKitsokiExplainer,
 	}
 }
 

@@ -10,13 +10,13 @@ import (
 	"kitsoki/internal/tui/blocks"
 )
 
-// locationModel renders the §7.1 location indicator (breadcrumb + state description).
+// locationModel renders the location indicator (breadcrumb + state description).
 type locationModel struct {
 	loc     orchestrator.Location
 	offPath bool
 	width   int
 	// theme is the active blocks theme used to colour the location
-	// bar (single-pane-tui proposal §"Per-room theme swap"). Empty
+	// bar, swapped as the active context's accent changes. Empty
 	// falls back to the package-level locationStyle / locationOffPathStyle
 	// pair to preserve the pre-rooms behaviour for tests that build a
 	// bare locationModel.

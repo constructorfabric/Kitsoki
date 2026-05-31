@@ -1,4 +1,4 @@
-// Menu computation for the §7.2 progressive-disclosure surface.
+// Menu computation for the progressive-disclosure surface.
 //
 // Lives in internal/machine so view-render call sites can populate
 // env.Menu without depending on internal/orchestrator (which would
@@ -30,7 +30,7 @@ type MenuSlotRef struct {
 	Prompt string
 }
 
-// MenuEntry is one concrete row in the §7.2 menu. Unlike a bare AllowedIntent
+// MenuEntry is one concrete row in the menu. Unlike a bare AllowedIntent
 // (just the intent name), each MenuEntry represents a fully qualified
 // (intent + prefilled-slots) action that can either be submitted directly
 // (MissingSlots empty) or launched into the clarification flow.
@@ -60,7 +60,8 @@ type MenuEntry struct {
 	DestinationHint string
 }
 
-// MenuView is the computed "where can I go" surface for §7.2.
+// MenuView is the computed "where can I go" surface — the primary and blocked
+// action rows for a state, ready for the progressive-disclosure menu.
 type MenuView struct {
 	// Primary is the sorted list of available actions (guards pass or unresolved).
 	Primary []MenuEntry
@@ -130,7 +131,7 @@ func menuIntentPriority(name string, allowed []AllowedIntent) int {
 // expandIntent expands one intent into one or more MenuEntry rows based on
 // its slot schema and the guard dry-run results.
 //
-// Expansion rules (§spec):
+// Expansion rules:
 //  1. No required slots → one row, no guard dry-run needed (unless blocked).
 //  2. Exactly one required slot, with enum → one row per enum value; guard
 //     dry-run with synthetic slots map to classify each row as primary/blocked.

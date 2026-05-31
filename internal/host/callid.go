@@ -5,7 +5,7 @@
 // cassette-backed — so the trace's call_id is deterministic and the runstatus
 // SPA can pair OracleCalled with OracleReturned by value alone.
 //
-// Derivation (per proposal §3.1):
+// Derivation:
 //
 //	sha256("oracle-call:" + appID + ":" + key)[:16]
 //

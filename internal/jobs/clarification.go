@@ -1,11 +1,3 @@
-// Package jobs — clarification request support (§4.1, §4.3).
-//
-// A stalled job flips to awaiting_input, writes a typed clarification schema,
-// and posts an action_required notification. When the user submits an answer,
-// the answer is stored on the job row and the job can resume.
-//
-// Clarification collision = error: a handler attempting a second awaiting_input
-// while one is pending errors out.
 package jobs
 
 import (

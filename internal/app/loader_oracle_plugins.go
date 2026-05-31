@@ -1,9 +1,12 @@
-// Package app — oracle plugin declaration loader (proposal §2 Phase B-2).
+// Package app — oracle plugin declaration loader.
+//
+// See docs/architecture/oracle-plugin.md for the declaration format and the
+// resolution rules summarised below.
 //
 // resolveOraclePlugins is called after parseAndMerge / resolveImports to:
 //  1. Validate every OraclePluginDecl in def.OraclePlugins.
 //  2. Perform single-pass ${VAR} substitution in each plugin's Env and Headers
-//     maps (proposal §2 resolution 4). Unset env vars are hard errors.
+//     maps. Unset env vars are hard errors.
 //  3. Inject a default "oracle.claude" entry (plugin: builtin.claude_cli) when
 //     the story omits oracle_plugins: entirely or omits oracle.claude specifically,
 //     so all existing stories run unchanged.
@@ -106,7 +109,7 @@ func resolveOraclePlugins(def *AppDef, file string) []error {
 // original string.  When a ${VAR} token is expanded, the replacement value is
 // written to the output buffer but the scanner does NOT re-scan it — any ${
 // sequences inside a replacement value pass through verbatim.  This prevents
-// injection attacks and matches the documented §2 resolution 4 contract.
+// injection attacks and matches the documented ${VAR} substitution contract.
 func expandEnvVar(s string) (expanded, missing string) {
 	var buf strings.Builder
 	i := 0

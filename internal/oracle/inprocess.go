@@ -1,12 +1,11 @@
-// Package oracle — in-process transport.
+// inprocess.go implements the in-process transport.
 //
-// New wraps an AskFunc as an Oracle. This is the seam tests use throughout
-// phase B: any test that needs a deterministic or stubbed oracle constructs one
-// with New(func(...) AskResponse {...}).
-//
-// The in-process transport is also the building block for compiled-in custom
-// oracles (tools, stubs, deterministic decision trees) that ship alongside
-// kitsoki without any subprocess or network overhead.
+// New wraps an AskFunc as an Oracle. This is the seam tests use for a
+// deterministic or stubbed oracle: New(func(...) (AskResponse, error) {...}).
+// It is also the building block for compiled-in custom oracles (tools, stubs,
+// deterministic decision trees) that ship alongside kitsoki without any
+// subprocess or network overhead.
+
 package oracle
 
 import "context"

@@ -113,8 +113,9 @@ func TestLayer7_FromHistory_PurePassthrough(t *testing.T) {
 // TestLayer7_ByteEqualRoundTrip verifies the headline byte-equality gate:
 // parse JSONL → FromHistory → joinLines(snap.RawLines) == original event bytes.
 //
-// Finding 2.5: previous test only checked len/field equality; this test adds
-// the byte-equality assertion that the proposal §1.3.7 requires.
+// This closes the gap left by len/field-equality checks alone: it asserts that
+// the snapshot's RawLines reproduce the source trace byte for byte (the
+// exporter pass-through guarantee in docs/tracing/trace-format.md).
 func TestLayer7_ByteEqualRoundTrip(t *testing.T) {
 	t.Parallel()
 

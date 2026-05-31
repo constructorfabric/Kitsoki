@@ -296,6 +296,83 @@ func TestStatePathNonEmpty_RunIntent_Accepted(t *testing.T) {
 		"state_entered must carry the TO state (cloakroom)")
 }
 
+// TestRunIntent_EmitsTurnInputAndIntentAccepted is the regression guard for
+// trace fidelity on the flow path: a flow/RunIntent-driven turn must emit
+// turn.input (UserInputReceived) AND machine.intent_accepted, like a live
+// session does, so flow-driven traces match live ones. Before the fix RunIntent
+// emitted neither — the timeline showed transitions happening unprompted.
+func TestRunIntent_EmitsTurnInputAndIntentAccepted(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	tracePath := filepath.Join(dir, "trace_intent_events.jsonl")
+
+	def, err := app.Load("../../testdata/apps/cloak/app.yaml")
+	require.NoError(t, err)
+
+	m, err := machine.New(def)
+	require.NoError(t, err)
+
+	s, err := store.OpenMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	sink, err := store.OpenJSONL(tracePath)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sink.Close() })
+
+	hostReg := host.NewRegistry()
+	host.RegisterBuiltins(hostReg)
+
+	orch := orchestrator.New(def, m, s, noopHarness{},
+		orchestrator.WithHostRegistry(hostReg),
+		orchestrator.WithEventSink(sink),
+		orchestrator.WithEventSinkAuthority(true),
+	)
+	ctx := context.Background()
+
+	sid, err := orch.NewSession(ctx)
+	require.NoError(t, err)
+
+	out, err := orch.RunIntent(ctx, sid, "go", map[string]any{"direction": "west"})
+	require.NoError(t, err)
+	require.Equal(t, orchestrator.ModeTransitioned, out.Mode)
+
+	hist := sink.History()
+
+	var input, accepted *store.Event
+	for i := range hist {
+		switch hist[i].Kind {
+		case store.UserInputReceived:
+			ev := hist[i]
+			input = &ev
+		case store.IntentAccepted:
+			ev := hist[i]
+			accepted = &ev
+		}
+	}
+
+	require.NotNil(t, input, "RunIntent must emit a turn.input (UserInputReceived) event")
+	require.NotNil(t, accepted, "RunIntent must emit a machine.intent_accepted event")
+
+	// turn.input carries the unified {input, intent} payload.
+	var inputPayload map[string]any
+	require.NoError(t, json.Unmarshal(input.Payload, &inputPayload))
+	require.Equal(t, "go", inputPayload["intent"],
+		"turn.input payload must name the intent that drove the turn")
+
+	// machine.intent_accepted records WHAT advanced the turn.
+	var acceptedPayload map[string]any
+	require.NoError(t, json.Unmarshal(accepted.Payload, &acceptedPayload))
+	require.Equal(t, "go", acceptedPayload["intent"],
+		"machine.intent_accepted payload must name the accepted intent")
+
+	// Both must carry a turn and a non-empty state_path like every other event.
+	require.Equal(t, app.TurnNumber(1), input.Turn)
+	require.Equal(t, app.TurnNumber(1), accepted.Turn)
+	require.NotEmpty(t, string(input.StatePath))
+	require.NotEmpty(t, string(accepted.StatePath))
+}
+
 // TestStatePathNonEmpty_RunIntent_Rejected verifies every event written during
 // a rejected RunIntent turn (INTENT_NOT_ALLOWED) has a non-empty state_path.
 func TestStatePathNonEmpty_RunIntent_Rejected(t *testing.T) {

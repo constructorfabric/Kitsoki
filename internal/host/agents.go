@@ -54,7 +54,7 @@ type BashProfile struct {
 // through here.
 //
 // Tools, when non-empty, is forwarded as `--allowedTools` to claude. Per-call
-// `tools:` on an effect wins over this field (D5 in the oracle-split proposal);
+// `tools:` on an effect wins over this field (precedence rule D5);
 // the handler logs a warn-line when both are set.
 //
 // BashProfile is required when Bash is in Tools and the agent is used with
@@ -65,7 +65,7 @@ type BashProfile struct {
 // the effect's working_dir arg is absent.
 //
 // ExternalSideEffect declares whether this agent may mutate external state
-// (Mode C in the oracle-split proposal §4.2). Nil means the value was inferred
+// (Mode C). Nil means the value was inferred
 // from the tool surface at loader time. True → Mode C (not replayable);
 // false → Mode A/B (deterministically replayable from diff).
 type Agent struct {
@@ -135,7 +135,7 @@ func effectiveSystemPrompt(args map[string]any, agent Agent) string {
 }
 
 // effectiveTools resolves the final tool list for a handler call, honouring
-// the D5 precedence rule from the oracle-split proposal:
+// the D5 precedence rule:
 //
 //	per-call `tools:` arg wins over agent.Tools; warn when both are set.
 //

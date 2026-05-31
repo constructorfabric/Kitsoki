@@ -1,80 +1,3 @@
-// Package render wraps github.com/flosch/pongo2/v6 with the surface the rest
-// of kitsoki uses for templated string rendering (§3 of the view-elements
-// proposal). It intentionally shadows the shape of expr.Render so the
-// upcoming codemod can swap call sites one-for-one.
-//
-// # Engine split
-//
-// Pongo2 takes over every {{ }}-delimited or {% %}-delimited templated
-// string. Bare-expression fields (when:, guard predicates, pure
-// initial-child selectors) stay on internal/expr — see proposal §3.5.
-//
-// # Helpers
-//
-// The four view helpers from expr.Env (Available, Blocked, BlockedReason,
-// IntentStatus) are exposed as callable values on the pongo2.Context. Pongo2
-// resolves func-typed context entries as callables, so
-//
-//	{{ available('start_journey') }}
-//	{{ blocked_reason('start_journey') }}
-//
-// both work without any extra registration step. Per-render binding avoids
-// the global-mutable-state pitfall that pongo2.RegisterFilter would
-// introduce (filters are process-wide; helper closures are per-env).
-//
-// Filter-style invocation ({{ 'start' | available }}) is NOT supported by
-// design: pongo2 filters are registered globally on the engine, which can't
-// see a per-render env. Authors should use the function-call form everywhere
-// — the proposal's translation table (§3.1) uses that form exclusively.
-//
-// # Autoescape
-//
-// pongo2 defaults to HTML autoescape (escaping &, <, >, ', "). The kitsoki
-// renderer targets a terminal UI, where HTML escaping would corrupt
-// authored text like "A & B". This package disables autoescape globally
-// in an init() since pongo2's escape flag is a package-level var
-// (`pongo2.SetAutoescape`). Templates that DO want escaping can opt in
-// with the `|escape` filter.
-//
-// **DO NOT call `pongo2.SetAutoescape` anywhere else in this binary.**
-// pongo2 has no per-`TemplateSet` autoescape configuration — the only
-// public hook is the global. Flipping it from another init() or at
-// runtime would race with this package's renders (the global is read
-// once per `tpl.Execute` to seed each ExecutionContext). The sentinel
-// test `TestAutoescapeRemainsDisabledAcrossConcurrentRenders` in
-// `pongo_test.go` catches accidental flips by asserting that the
-// canonical HTML-escape characters survive a 100-way concurrent
-// render. Add to that test (or to package-level documentation) if you
-// introduce another caller of `pongo2.SetAutoescape`.
-//
-// # Undefined variables
-//
-// Pongo2 returns the empty string for undefined top-level variables and for
-// missing map keys. Chained access on a missing field (`{{ world.foo.bar }}`
-// when `foo` doesn't exist) short-circuits to nil instead of erroring,
-// matching pongo2's Django-compatible semantics.
-//
-// # Pongo2/v6 syntax quirks (vs. the proposal §3.1 translation table)
-//
-// pongo2/v6 implements Django's template language rather than Jinja2. Two
-// notable deviations from the proposal:
-//
-//  1. Filter arguments use Django's colon syntax, not Jinja parens:
-//     {{ slots.foo|default:"(unset)" }}   ✓ pongo2/v6
-//     {{ slots.foo|default('(unset)') }}  ✗ Jinja form, parser error
-//
-//  2. There is no expression-level ternary. Use the {% if %} … {% else %}
-//     … {% endif %} block form even for tiny conditionals:
-//     {% if x %}a{% else %}b{% endif %}    ✓
-//     {{ 'a' if x else 'b' }}              ✗ parser error
-//
-// The for-loop counter variable is `forloop.Counter` (1-based) /
-// `forloop.Counter0` (0-based) / `forloop.First` / `forloop.Last`, not
-// `loop.index` (that's Jinja). See pongo2's tags_for.go for the full
-// shape.
-//
-// These are pure syntax differences; the codemod (Phase C) must produce
-// the pongo2/v6 forms above when rewriting YAML.
 package render
 
 import (
@@ -85,6 +8,14 @@ import (
 
 	"kitsoki/internal/expr"
 )
+
+// TemplateErrorSnippetLength bounds the template source echoed in a wrapped
+// render error. Inline view leaves are usually short, but a multi-line
+// {% extends %} body or a long prose paragraph would flood the error log;
+// truncating to a fixed prefix keeps render failures scannable while still
+// showing enough of the source for an author to recognise the offending
+// template.
+const TemplateErrorSnippetLength = 200
 
 func init() {
 	// Disable HTML autoescape globally — see package doc.
@@ -413,9 +344,9 @@ func ToContext(env expr.Env) pongo2.Context {
 	return ctx
 }
 
-// hasDelims reports whether src contains pongo2 template syntax. The
-// proposal's fast path (§3) returns the source verbatim when no delimiters
-// are present.
+// hasDelims reports whether src contains pongo2 template syntax. The render
+// fast path returns the source verbatim when no delimiters are present, so
+// pure-prose leaves never pay the pongo2 parse cost.
 func hasDelims(src string) bool {
 	return strings.Contains(src, "{{") || strings.Contains(src, "{%")
 }
@@ -428,8 +359,8 @@ func wrapTemplateError(src string, err error) error {
 	// Single-line shorthand for short templates; for multi-line templates
 	// fall back to a quoted snippet to keep error logs scannable.
 	snippet := src
-	if len(snippet) > 200 {
-		snippet = snippet[:200] + "…"
+	if len(snippet) > TemplateErrorSnippetLength {
+		snippet = snippet[:TemplateErrorSnippetLength] + "…"
 	}
 	return fmt.Errorf("render: pongo2 template %q: %w", snippet, err)
 }

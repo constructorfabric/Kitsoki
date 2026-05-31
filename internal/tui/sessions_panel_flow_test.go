@@ -1,5 +1,5 @@
 // sessions_panel_flow_test.go — end-to-end TUI integration tests for
-// the foyer "meta sessions" overlay (proposal §2.1).
+// the foyer "meta sessions" overlay.
 //
 // These tests drive the full keystroke flow through RootModel.Update,
 // rather than poking at the panel model in isolation:

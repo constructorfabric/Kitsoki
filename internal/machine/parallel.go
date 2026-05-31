@@ -1,4 +1,6 @@
-// parallel.go implements `type: parallel` runtime support (proposal §9.4).
+// parallel.go implements `type: parallel` runtime support. The author-facing
+// model is the "Parallel state" section of docs/stories/state-machine.md; this
+// file is the runtime encoding and dispatch.
 //
 // # State-path encoding
 //
@@ -21,7 +23,7 @@
 // flow tests) — no struct changes to `app.StatePath`.
 //
 // Example: a parallel state `world_clock` with regions `calendar` and
-// `weather` (the canonical OT use case, §5.1) currently in `calendar.day1`
+// `weather` (the canonical Oregon Trail use case) currently in `calendar.day1`
 // and `weather.dry` encodes as:
 //
 //	"world_clock#world_clock.calendar.day1|world_clock.weather.dry"

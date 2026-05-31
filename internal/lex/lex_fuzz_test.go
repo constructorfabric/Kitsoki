@@ -1,5 +1,5 @@
 // Fuzz tests for the lex public surface. Each fuzz target is seeded with
-// the §3 corpus from docs/proposals/semantic-routing-proposal.md plus a
+// the tokenization corpus from docs/architecture/semantic-routing.md plus a
 // few pathological inputs (control characters, deep unicode, very long
 // strings).
 //
@@ -11,16 +11,17 @@ package lex
 
 import "testing"
 
-// fuzzCorpus is the shared seed list. Pulled from §3 of the proposal,
-// plus the §5.1/§5.2 worked examples, plus a few stress inputs.
+// fuzzCorpus is the shared seed list. Pulled from the tokenisation and
+// signature examples in docs/architecture/semantic-routing.md, plus a few
+// stress inputs.
 var fuzzCorpus = []string{
-	// §3 worked-example table
+	// signature equivalence-group table
 	"buy 6 oxen and 200 lbs of food",
 	"let's buy six oxen, 200 lbs food",
 	"purchase 6 oxen + 200lbs food",
 	"buy 6 oxen",
 
-	// §5.1 / §5.2 worked traces
+	// tokenisation worked traces
 	"wade across the river",
 	"buy 6 oxen and 200 lbs food for 240",
 	"let's hunt",

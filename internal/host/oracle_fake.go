@@ -1,4 +1,4 @@
-// Package host — per-verb fake helpers for flow tests (oracle-split Phase 1).
+// Package host — per-verb fake helpers for flow tests.
 //
 // The five new oracle verbs (extract, decide, ask, task, converse) each get a
 // factory function that returns a scripted ClaudeRunner stub. Flow tests inject

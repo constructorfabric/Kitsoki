@@ -237,7 +237,7 @@ func TestImports_Cycle(t *testing.T) {
 	require.Contains(t, err.Error(), "cycle detected")
 }
 
-// TestImports_MultiLayerIfaceComposition exercises proposal §11.2:
+// TestImports_MultiLayerIfaceComposition exercises multi-layer iface composition:
 // a grandparent rebinds a grandchild's host_interface by spelling
 // the alias-prefixed name (`<middle-alias>__<iface>`). The grandchild
 // declares the iface with one default; the middle layer inherits; the
@@ -246,7 +246,7 @@ func TestImports_Cycle(t *testing.T) {
 //
 // Topology: top → middle → leaf. Leaf declares iface `r` defaulting
 // to `host.run`. Top rebinds `leaf__r` to `host.diary` — proves the
-// grandparent surface works (the §11.2 "bindings compose" claim).
+// grandparent surface works (the "bindings compose" claim).
 func TestImports_MultiLayerIfaceComposition(t *testing.T) {
 	root := t.TempDir()
 

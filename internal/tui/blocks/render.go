@@ -8,8 +8,10 @@ import (
 )
 
 // Mode controls the prompt prefix glyph and (indirectly via the theme
-// chosen by the caller) the prompt colour. Listed in the proposal:
-// `> ` normal, `» ` meta, `# ` off-path, `? ` slot-filling, `… ` awaiting LLM.
+// chosen by the caller) the prompt colour. The mode-prefix glyphs are
+// the chat-view input vocabulary (docs/tui/README.md "Input, menu,
+// inbox, meta-mode"): `> ` normal, `» ` meta, `# ` off-path,
+// `? ` slot-filling, `… ` awaiting LLM.
 type Mode int
 
 const (
@@ -192,7 +194,7 @@ func (r *Renderer) WelcomeBlock(w Welcome) string {
 // ─── User turn ───────────────────────────────────────────────────────────
 
 // UserTurn renders the immediate echo of the user's submitted text.
-// Printed the instant Enter is pressed (proposal §"Input feedback").
+// Printed the instant Enter is pressed, for immediate input feedback.
 func (r *Renderer) UserTurn(text string) string {
 	return r.style(r.Theme.Primary, nil, true, false).Render("> " + text)
 }
@@ -250,9 +252,10 @@ const (
 
 // Resolved is the settled routing line that replaces the in-flight
 // RoutingStatus once the pipeline finishes. Kind is one of
-// nav | view | system | in-room | off-path (proposal "Settled-line
-// format"); detail varies per source — slots for slot-parser, confidence
-// for LLM, blank for deterministic.
+// nav | view | system | in-room | off-path; detail varies per source —
+// slots for slot-parser, confidence for LLM, blank for deterministic.
+// The settled-line format is documented in docs/tui/README.md
+// ("Observers: engine events → transcript").
 type Resolved struct {
 	Kind       string
 	Intent     string
@@ -261,8 +264,8 @@ type Resolved struct {
 	Detail     string
 }
 
-// RoutingResolved renders the settled resolution line. Format mirrors
-// the proposal's table:
+// RoutingResolved renders the settled resolution line. Format (see
+// docs/tui/README.md "Observers: engine events → transcript"):
 //
 //	→ nav: back   (deterministic · 1.00)
 //	→ in-room: pick_branch   (LLM · 0.84)   slots: {branch: "main"}
@@ -358,8 +361,9 @@ type MenuAction struct {
 }
 
 // Menu renders the room's actions block. By default it's a numbered
-// list; rooms can later override the pongo template (proposal:
-// "Rendering is room-provided"). Phase 0 ships the default.
+// list; rooms can later override the pongo template (docs/tui/README.md
+// "The view pipeline: typed elements + pongo2" — rendering is
+// room-provided). Phase 0 ships the default.
 func (r *Renderer) Menu(actions []MenuAction) string {
 	if len(actions) == 0 {
 		return r.style(r.Theme.Muted, nil, false, true).Render("  (no actions available)")
@@ -539,7 +543,7 @@ func (r *Renderer) Inbox(n InboxNotification) string {
 
 // BackgroundComplete renders the one-line completion summary printed
 // in the user's current room when a different room's queue finishes
-// in the background (proposal §"Queueing across navigation").
+// in the background.
 func (r *Renderer) BackgroundComplete(room, summary string) string {
 	line := fmt.Sprintf("✓ %s · %s", room, summary)
 	return r.style(r.Theme.Accent, nil, true, false).Render(line)

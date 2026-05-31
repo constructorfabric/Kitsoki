@@ -1,26 +1,3 @@
-// Package jobs implements the background job scheduler (§4).
-//
-// # Overview
-//
-// The Scheduler interface accepts JobSpecs and runs them as goroutines, one
-// per job. Each job runs a host.Handler (with context for cancellation).
-//
-// # Storage
-//
-// Jobs and notifications are persisted in two new SQLite tables introduced via
-// a migration applied on Open(). The store is session-scoped (all rows carry
-// session_id); no FK constraints.
-//
-// When a *JobStore is supplied to NewScheduler, the scheduler performs
-// SQLite write-through: Submit persists the initial job row, Heartbeat
-// debounces flushes to ≤ 2/s per job (§4.3), and terminal transitions
-// (done / failed / cancelled) are committed immediately.
-//
-// # Determinism / replay
-//
-// Host invocation inputs and outputs are written to the event log (via the
-// existing store) so replay can substitute recorded results. The job row is
-// materialized current-state; the event log is authoritative.
 package jobs
 
 import (
@@ -103,18 +80,35 @@ type Job struct {
 	ClarificationAnswer any
 }
 
-// Scheduler is the interface for submitting and managing background jobs (§4.1).
+// Scheduler is the interface for submitting and managing background jobs.
+//
+// Safe for concurrent use: every method holds the appropriate internal lock,
+// so callers may submit, subscribe, heartbeat, and wait from many goroutines.
+// There is no useful zero value — always construct via [NewScheduler] or
+// [NewInMemoryScheduler]. Unknown job IDs are reported, never panicked on:
+// [Scheduler.Cancel], [Scheduler.Heartbeat], [Scheduler.Awaiting], and
+// [Scheduler.Resumed] return [ErrJobNotFound]; [Scheduler.Get] returns ok=false;
+// [Scheduler.Subscribe] returns an already-closed channel.
 type Scheduler interface {
 	// Submit queues a new job and starts executing it immediately.
 	// Returns the JobID on success.
 	Submit(ctx context.Context, spec JobSpec) (JobID, error)
 	// Cancel requests cancellation of a running job.
 	Cancel(ctx context.Context, id JobID) error
-	// Subscribe returns a channel that receives events for the given job,
-	// and an unsubscribe function. The channel is closed when the job terminates.
+	// Subscribe returns a channel that receives events for the given job, and an
+	// unsubscribe function. Safe for concurrent calls. The channel is closed
+	// when the job terminates.
+	//
+	// Terminal and unknown jobs are handled without ever leaking a live channel:
+	// subscribing to an already-terminal job returns a buffered channel
+	// pre-loaded with the single terminal event and already closed; subscribing
+	// to an unknown id returns an already-closed empty channel. In both cases
+	// the unsubscribe function is a no-op but is still safe to call.
 	Subscribe(id JobID) (<-chan JobEvent, func())
-	// Heartbeat updates the job's progress and updated_at timestamp.
-	// Returns ErrJobNotFound if the job doesn't exist.
+	// Heartbeat updates the job's progress and updated_at timestamp and fans the
+	// progress out to subscribers. Safe for concurrent calls. When write-through
+	// is enabled it debounces the persisted flush (see heartbeatFlushInterval).
+	// Returns ErrJobNotFound if the job is unknown.
 	Heartbeat(id JobID, progress any) error
 	// SubscribeSession returns a buffered channel that receives terminal
 	// JobEvents for every job belonging to sessionID, an ack callback that the
@@ -174,8 +168,10 @@ type Scheduler interface {
 	// Returns ctx.Err() if the context is cancelled before the scheduler drains.
 	WaitIdle(ctx context.Context) error
 	// Get returns a snapshot of the job identified by id.  Returns (Job{}, false)
-	// when id is unknown.  The returned Job is a copy and is safe to read; callers
-	// must not mutate it.
+	// when id is unknown.  Safe for concurrent calls. The returned Job is a copy
+	// taken under the scheduler lock, so it is safe to read after Get returns;
+	// callers must not mutate it (mutation does not affect the live job but is
+	// pointless).
 	Get(id JobID) (Job, bool)
 }
 
@@ -183,7 +179,9 @@ type Scheduler interface {
 var ErrJobNotFound = fmt.Errorf("jobs: job not found")
 
 // heartbeatFlushInterval is the minimum gap between persisted Heartbeat writes
-// per job (§4.3 — debounce to ≤ 2/s).
+// per job. At 500ms this debounces progress flushes to at most two per second,
+// keeping a chatty handler from hammering SQLite while still surfacing progress
+// promptly.
 //
 // Ordering invariant: lastFlush is both checked and updated inside the s.mu
 // critical section in Heartbeat, so two concurrent heartbeat calls can never

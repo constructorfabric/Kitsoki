@@ -944,7 +944,7 @@ func TestController_Send_DirectEdit_CreateTriggersReload(t *testing.T) {
 }
 
 // TestController_Send_ImportedManifestEditTriggersReload covers the
-// story-imports proposal §16.4 auto-watch surface: an edit to a file
+// story-imports auto-watch surface: an edit to a file
 // in an IMPORTED sibling story's directory must trigger a reload,
 // even though that directory sits outside `filepath.Dir(turn.AppFile)`.
 // The TurnContext's ImportedManifestPaths threads the loader's list

@@ -1,5 +1,6 @@
 // Package orchestrator provides the turn-loop brain that wires together
-// the harness, machine, and store (§4.2).
+// the harness, machine, and store. See docs/architecture/overview.md
+// "The journey of one turn" for the narrative.
 package orchestrator
 
 import (
@@ -10,7 +11,7 @@ import (
 	"kitsoki/internal/store"
 )
 
-// OutcomeMode is the discriminant of a TurnOutcome (§5.3).
+// OutcomeMode is the discriminant of a TurnOutcome.
 type OutcomeMode int
 
 const (
@@ -22,7 +23,7 @@ const (
 	ModeRejected
 	// ModeCompleted means the new state is terminal.
 	ModeCompleted
-	// ModeOffPath indicates a free-form off-path chat turn (§7.7, §11).
+	// ModeOffPath indicates a free-form off-path chat turn.
 	// Off-path turns do NOT mutate world or state; they route through
 	// Orchestrator.AskOffPath, which fires host.oracle.talk against a
 	// per-session chat thread keyed by (app_id, room="off_path",
@@ -53,7 +54,7 @@ func (m OutcomeMode) String() string {
 	}
 }
 
-// TurnOutcome is the result of a single turn, ready for the TUI to render (§5.3, §9a.1).
+// TurnOutcome is the result of a single turn, ready for the TUI to render.
 // One struct that the TUI can pattern-match on.
 type TurnOutcome struct {
 	// Mode indicates what happened.
@@ -67,8 +68,8 @@ type TurnOutcome struct {
 	// TypedView, RenderEnv, and Renderer carry the typed-view payload
 	// for views that survived as typed elements (no extends, no
 	// template_file). Populated by machine.renderView when the state's
-	// view shape is element-array — the proposal §4's "templating
-	// happens before element layout" pipeline. TUI inspects TypedView
+	// view shape is element-array — the "templating happens before
+	// element layout" pipeline. TUI inspects TypedView
 	// to decide whether to use AppendTurnTyped (lipgloss reflow on
 	// resize) or fall back to AppendTurn with View (Glamour at
 	// width-time).
@@ -161,7 +162,7 @@ type OneShotResult struct {
 	SlotsNeeded    []SlotNeed        `json:"slots_needed,omitempty"`
 }
 
-// SlotNeed describes a single missing slot for the clarification UI (§7.3).
+// SlotNeed describes a single missing slot for the clarification UI.
 type SlotNeed struct {
 	// Name is the slot name.
 	Name string

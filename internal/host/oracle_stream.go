@@ -1,8 +1,8 @@
 // Package host — shared streaming helper for all host.oracle.* handlers.
 //
 // Every new verb (decide/ask/task/extract/converse) funnels its claude
-// invocation through OracleStreamer so the streaming invariant from the
-// oracle-split proposal (§2 invariant 3) is upheld by construction rather
+// invocation through OracleStreamer so the streaming invariant
+// (invariant 3) is upheld by construction rather
 // than by per-handler discipline:
 //
 //   - When a StreamSink is in ctx, --output-format stream-json is used and
@@ -39,7 +39,7 @@ import (
 // based on ctx.
 //
 // Per-call `tools:` (the effect-level override) wins over agent.Tools per
-// D5 of the oracle-split proposal. Callers are responsible for resolving
+// precedence rule D5. Callers are responsible for resolving
 // the effective tool list before calling OracleStreamer; this type only
 // handles the transport.
 type OracleStreamer struct {

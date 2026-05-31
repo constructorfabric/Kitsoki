@@ -1,17 +1,10 @@
-// Package viz — mermaid_rooms.go: per-room Mermaid diagrams + overview.
-//
-// The single-flat diagram is unreadable for apps with many states (devstory
-// has ~200). This emits an overview diagram (rooms-only) plus one detail
-// diagram per room. A "room" is:
-//
-//   - The top-level compound state, if a state lives inside one (e.g. cloak's
-//     `bar` covers `bar.dark` and `bar.lit`).
-//   - Otherwise, the prefix before the first `_` in the state name (so
-//     `bugfix_idle` and `bugfix_repro_executing` group into room `bugfix`).
-//
-// Cross-room transitions are rendered as edges into a stub external node
-// labelled "→ <room>" inside the detail diagram. The overview diagram
-// collapses every room to one node and aggregates inter-room intents.
+// mermaid_rooms.go splits a large app into per-room Mermaid diagrams plus an
+// overview, since a single flat diagram is unreadable past a few dozen states
+// (devstory has ~200). It emits an overview (rooms-only) plus one detail
+// diagram per room; cross-room transitions become edges into a stub external
+// node labelled "→ <room>" in the detail diagram. The room model
+// ([GroupRooms]) is shared with the flowchart mode. See doc.go for the
+// overview and # Algorithm for the room-detection heuristic.
 package viz
 
 import (
@@ -24,17 +17,25 @@ import (
 	"kitsoki/internal/app"
 )
 
-// Rooms is the result of grouping an AppDef into rooms.
+// Rooms is one partition of an app's states, viewed three coherent ways. The
+// three fields must stay in sync — they are produced together by [GroupRooms]
+// and consumed together by every emitter: every path in Members[room] maps
+// back to room in RoomOf, and Order is exactly the sorted keys of Members.
+// All three are sorted, which is what makes diagram output deterministic.
+// Treat a *Rooms as read-only once returned.
 type Rooms struct {
-	// Order is the deterministic display order for rooms.
+	// Order is the deterministic (sorted) display order for room names.
 	Order []string
-	// Members maps room → ordered absolute state paths in that room.
+	// Members maps a room to its sorted absolute state paths.
 	Members map[string][]string
-	// RoomOf maps absolute state path → room name.
+	// RoomOf is the inverse of Members: absolute state path to room name.
 	RoomOf map[string]string
 }
 
-// GroupRooms walks the state graph and returns a room grouping.
+// GroupRooms partitions every state path in def into rooms, applying the
+// room-detection heuristic (see doc.go # Algorithm) and returning all three
+// views ([Rooms.Order], [Rooms.Members], [Rooms.RoomOf]) in sync. A nil or
+// empty def yields an empty grouping rather than a nil map.
 func GroupRooms(def *app.AppDef) *Rooms {
 	r := &Rooms{
 		Members: map[string][]string{},
@@ -67,8 +68,12 @@ func roomOf(def *app.AppDef, path string) string {
 	return first
 }
 
-// ExportMermaidRooms writes a directory of per-room Mermaid files plus an
-// `_overview.mmd` and `index.md`. outDir is created if needed.
+// ExportMermaidRooms is the split-output mode for large apps: instead of one
+// unreadable diagram it writes a directory containing `_overview.mmd` (the
+// cross-room map), one `<room>.mmd` detail file per room, and an `index.md`
+// linking them. I/O is injected via mkdir and write rather than done directly,
+// so callers (and tests) control the filesystem and can capture output; the
+// first callback error aborts and is returned wrapped with the failing room.
 func ExportMermaidRooms(def *app.AppDef, outDir string, mkdir func(string) error, write func(path string, data []byte) error) error {
 	if err := mkdir(outDir); err != nil {
 		return err

@@ -12,7 +12,7 @@ import (
 // ── Minimal fixture structs — struct-level parse only (Stage 2). ─────────────
 // Full semantic validation of fixture→app consistency is a Stage 7 concern.
 
-// flowFixture is the minimal shape of a Mode 2 flow test file (§10.3).
+// flowFixture is the minimal shape of a Mode 2 flow test file.
 type flowFixture struct {
 	TestKind     string         `yaml:"test_kind"`
 	App          string         `yaml:"app"`
@@ -43,7 +43,7 @@ type expectError struct {
 	AllowedContains []string `yaml:"allowed_contains,omitempty"`
 }
 
-// intentFixture is the minimal shape of a Mode 1 intent test file (§10.2).
+// intentFixture is the minimal shape of a Mode 1 intent test file.
 type intentFixture struct {
 	TestKind string         `yaml:"test_kind"`
 	App      string         `yaml:"app"`
@@ -75,7 +75,7 @@ type expectFailure struct {
 	AnyOf []string `yaml:"any_of"`
 }
 
-// recordingFile is the minimal shape of a Mode 2 recording file (§10.4).
+// recordingFile is the minimal shape of a Mode 2 recording file.
 type recordingFile struct {
 	Kind        string           `yaml:"kind"`
 	AppID       string           `yaml:"app_id"`

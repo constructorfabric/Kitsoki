@@ -1,6 +1,6 @@
 package orchestrator_test
 
-// Tests for the engine-driven LLM decider (execution-modes proposal §3.2).
+// Tests for the engine-driven LLM decider.
 // A one-shot run rests at `choose` — a decision gate with two operator-only
 // forward intents and NO firing default emit. The engine invokes the
 // configured judge (stubbed here as host.oracle.decide) and either fires the

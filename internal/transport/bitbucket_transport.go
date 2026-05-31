@@ -1,33 +1,3 @@
-// Package transport — Bitbucket Server (Stash) Transport.Post driver.
-//
-// Posts comments to a Bitbucket Server pull request via the REST API,
-// authenticating with a Bearer personal-access token.  Mirrors the shape
-// of the Jira transport so the host.transport.post bridge dispatches into
-// either driver without special-casing.
-//
-// API surface:
-//
-//	POST {base}/rest/api/1.0/projects/{project}/repos/{slug}/pull-requests/{pr_id}/comments
-//	{"text": "<text>"}
-//	200 → {"id": 12345, "version": 0, ...}
-//
-// Routing
-// -------
-// Unlike Jira (where SessionKey.Thread is the issue key and that's all the
-// API needs), Bitbucket needs three coordinates to identify a PR:
-// project, repo slug, and PR id.  Those flow in via Message.Extra as
-// `pr_project`, `pr_slug`, `pr_id` — set by the orchestrator's
-// `host.transport.post` arg block in app.yaml.  SessionKey.Thread is kept
-// for orchestrator-side correlation (typically the Jira ticket key) but
-// has no role in routing the REST call.
-//
-// TLS
-// ---
-// The default deployment targets the Acronis ZTA proxy at
-// https://127.0.0.1:3128/bitbucket which presents a self-signed cert.
-// The default HTTP client therefore skips TLS verification.  Callers that
-// want strict verification supply their own *http.Client via
-// BitbucketConfig.HTTPClient.
 package transport
 
 import (
@@ -39,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 )
 
 // BitbucketConfig configures the Bitbucket transport.
@@ -58,7 +27,17 @@ type BitbucketConfig struct {
 	HTTPClient *http.Client
 }
 
-// BitbucketTransport implements Transport against Bitbucket Server REST.
+// BitbucketTransport posts comments to a Bitbucket Server (Stash) pull
+// request over the REST API, authenticating with a Bearer personal-access
+// token. Unlike Jira, the PR is addressed by three coordinates that do not
+// fit [SessionKey] — pr_project, pr_slug, pr_id — so they ride in
+// [Message].Extra (see the package Routing section); SessionKey.Thread is
+// kept only for orchestrator-side correlation. The default deployment targets
+// the Acronis ZTA proxy ([DefaultBitbucketBaseURL]), which presents a
+// self-signed cert, so the default HTTP client skips TLS verification; callers
+// wanting strict verification inject their own *http.Client via
+// [BitbucketConfig].HTTPClient. The zero value is not usable; construct via
+// [NewBitbucketTransport].
 type BitbucketTransport struct {
 	cfg    BitbucketConfig
 	client *http.Client
@@ -87,7 +66,7 @@ func NewBitbucketTransport(cfg BitbucketConfig) (*BitbucketTransport, error) {
 	client := cfg.HTTPClient
 	if client == nil {
 		client = &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: httpClientTimeout,
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 			},

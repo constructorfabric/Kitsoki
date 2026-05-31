@@ -1,54 +1,3 @@
-// Package elements implements the per-element renderers and the dispatcher
-// that turns a typed app.View into a final string for the TUI transcript
-// (Phase D of the view-elements design).
-//
-// # Pipeline
-//
-// For each element in view.Elements:
-//
-//  1. If the element carries a `when:` guard (expr-lang source), compile-
-//     and-evaluate it. A false result drops the element entirely (no blank
-//     stub row in a list, no extra blank line between siblings).
-//  2. Every leaf string on the element (prose / heading / code / template
-//     body, list-item label and hint, kv pair value) is rendered through
-//     render.Pongo BEFORE the element-kind renderer sees it. Element
-//     renderers operate on concrete text, never on un-substituted templates.
-//  3. The element-kind renderer (prose / heading / list / kv / code /
-//     template) lays the rendered leaves out at the supplied width.
-//
-// Element outputs are joined with one blank line between adjacent
-// elements. Two consecutive `kv` elements coalesce into a single block
-// with no blank line in between, matching the proposal §5.3 hint that
-// same-kind kv neighbours read more naturally as one table.
-//
-// # `template` kind — escape hatch
-//
-// The `template` kind is the escape hatch into today's Glamour pipe. The
-// dispatcher delegates back into the caller-supplied Glamour callback
-// (see RenderAll's `glamour` parameter) so the transcript model keeps
-// owning the Glamour renderer (it's terminal-style-aware, expensive to
-// rebuild, and needs to coexist with preserveLeadingIndent). Tests pass
-// an identity callback to inspect the post-Pongo source without invoking
-// Glamour.
-//
-// # Backward compatibility
-//
-// The orchestrator's pre-Phase-D pipeline still renders views to a string
-// before they reach the TUI. Today every state's View carries a single
-// {Kind: "template", Source: <legacy markdown>} element, so the
-// dispatcher's net effect is identical to today's path — the legacy
-// string flows through the template renderer and is handed to Glamour
-// verbatim. Phase E/F migrate apps to typed elements; only then does the
-// lipgloss-based layout kick in.
-//
-// # `when:` guard cache
-//
-// Per-element `when:` guards are compiled lazily and cached in a global
-// sync.Map keyed by the raw expression source. The cache is shared
-// across all views (a guard string like "available('start_journey')" used
-// by two different rooms compiles once). This matches the existing
-// guard-compilation cache in internal/expr (see anyProgCache /
-// boolProgCache).
 package elements
 
 import (
@@ -92,8 +41,16 @@ func IdentityGlamour(s string) string { return s }
 // given a View with `extends:` set, it pre-renders each block at the
 // dispatcher's width and then asks the ViewRenderer to splice them
 // into the base template. Tests can pass an extendsCapable mock or
-// stay on the legacy path by passing nil (RenderAll will refuse the
-// extends shape with a clear error).
+// stay on the legacy path by passing nil (RenderAll returns "" for the
+// extends shape rather than erroring — see RenderAll).
+//
+// A nil ViewRenderer is a valid argument everywhere it is accepted: it
+// selects the loader-less render.Pongo fast path. Implementations are
+// expected to be safe for concurrent use, since the dispatcher may be
+// invoked from multiple render goroutines; both interface methods are
+// read-only with respect to the renderer. Render returns a non-nil error
+// only when pongo expansion fails (malformed template, undefined include);
+// RenderExtended additionally errors when the extends target is missing.
 type ViewRenderer interface {
 	Render(src string, env expr.Env) (string, error)
 	RenderExtended(extends string, blocks map[string]string, env expr.Env) (string, error)
@@ -117,6 +74,13 @@ func renderLeaf(r ViewRenderer, src string, env expr.Env) (string, error) {
 // horizontal width, the expr.Env (leaf strings may carry pongo2
 // templates), and the per-app ViewRenderer (so leaf substitution
 // resolves {% include %} against <appDir>/views/).
+//
+// By convention every implementation in this package returns "" (and a
+// nil error) when its content is empty after leaf expansion and trimming,
+// so the dispatcher can drop the element without emitting blank spacing.
+// A nil ViewRenderer argument is always valid (it selects render.Pongo);
+// the error return is reserved for leaf-expansion failures, never for
+// "no content."
 type Renderer interface {
 	Render(width int, env expr.Env, rr ViewRenderer) (string, error)
 }
@@ -147,8 +111,19 @@ type Renderer interface {
 // blockRenderWidth=80 default that the machine pre-renders with). Before
 // this branch existed, the TUI fell back to the 80-wide pre-render, so
 // a single wide label in any block clamped the hint column to ~25 chars
-// even on a 150-col terminal. See stories/dev-story/rooms/main.yaml:62
-// for the wide-label canary.
+// even on a 150-col terminal. See stories/dev-story/rooms/main.yaml for
+// the wide-label canary.
+//
+// Contracts: RenderAll is safe for concurrent calls. Its only shared
+// state is the process-global whenCache (a sync.Map); it performs reads
+// and idempotent stores, never mutates the View or env, and relies on
+// the supplied ViewRenderer being concurrency-safe. The error return is
+// non-nil only when an element's `when:` guard fails to COMPILE, when a
+// leaf's pongo expansion fails, or when the extends branch's
+// RenderExtended fails; a guard that merely evaluates falsy, or an empty
+// element, yields no error. A nil glamour is normalised to IdentityGlamour
+// and a nil rr selects the loader-less render.Pongo path, so both are
+// valid arguments.
 func RenderAll(view app.View, env expr.Env, width int, glamour GlamourFunc, rr ViewRenderer) (string, error) {
 	if glamour == nil {
 		glamour = IdentityGlamour
@@ -246,7 +221,7 @@ func renderOne(el app.ViewElement, env expr.Env, width int, glamour GlamourFunc,
 }
 
 // joinElements joins rendered element strings with the inter-element
-// spacing policy from proposal §5.3:
+// spacing policy:
 //
 //   - One blank line between adjacent elements by default.
 //   - Two adjacent `kv` elements coalesce — no blank line between them.

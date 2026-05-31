@@ -1,16 +1,3 @@
-// Package harness — ClaudeCLIHarness implementation (§10.5).
-// Shells out to the `claude -p` CLI to route a user utterance to an IntentCall.
-// This avoids requiring ANTHROPIC_API_KEY: it picks up the user's existing
-// Claude Code login instead.
-//
-// Slot extraction goes through MCP tool-calling: the harness spawns the
-// kitsoki binary itself as a `mcp-validator` subprocess, attaches it via
-// `--mcp-config`, and tells the LLM to call `mcp__kitsoki-validator__submit`
-// with the routed payload. The validator captures the schema-validated
-// JSON to a side-channel file so we never have to scrape stdout for fences
-// or beg the model to "respond with raw JSON". Semantic formats declared
-// on slots (e.g. `format: jql`) are enforced by the validator, the same
-// way `host.oracle.ask_with_mcp` does it.
 package harness
 
 import (
@@ -64,14 +51,21 @@ type ClaudeCLIConfig struct {
 }
 
 // ClaudeCLIHarness shells out to `claude -p` to route user text → IntentCall.
-// Prompt composition reuses buildStablePrefix and buildDynamicSuffix from prompt.go
-// so the prompt shape is identical to LiveHarness.
+// It exists so kitsoki can route without an ANTHROPIC_API_KEY: the subprocess
+// reuses the user's existing Claude Code login. Prompt composition reuses the
+// same builders as LiveHarness so the prompt shape is identical across the two.
 //
-// Invocation: the complete prompt is piped to claude via stdin (avoids argv
-// size limits). A per-turn JSON Schema is written to a tempdir alongside
-// an --mcp-config file that points claude at `kitsoki mcp-validator`. The
-// validator captures the LLM's submit() payload to a file we read after
-// claude exits.
+// Slot extraction rides on MCP rather than stdout scraping: the harness spawns
+// the kitsoki binary itself as a validator subprocess (attached via
+// --mcp-config) and instructs the model to call mcp__kitsoki-validator__submit.
+// The validator writes the schema-validated payload to a side-channel file via
+// atomic rename, so we never have to parse fences out of free-form output or
+// beg the model for "raw JSON". Semantic slot formats (e.g. `format: jql`) are
+// enforced by that validator, the same way the Oracle host call enforces them.
+//
+// Invocation detail: the complete prompt is piped via stdin to avoid argv size
+// limits; the per-turn JSON Schema, the --mcp-config document, and the capture
+// file all live in one tempdir removed on return.
 type ClaudeCLIHarness struct {
 	appDef       *app.AppDef
 	cfg          ClaudeCLIConfig

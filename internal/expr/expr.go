@@ -1,39 +1,3 @@
-// Package expr wraps github.com/expr-lang/expr with an AST whitelist that
-// enforces the restricted expression language defined in §3.5 and §6.
-//
-// # Template rendering
-//
-// The view and guard_hint fields in the YAML use expr-lang template syntax
-// with {{ }} delimiters — NOT Go text/template. Constructs supported:
-//
-//	{{ expr }}                  — interpolate an expr-lang expression
-//	{{ if expr }}…{{ end }}     — conditional block
-//	{{ else }}                  — else branch (within an if-block)
-//	{{ range expr }}…{{ end }}  — iterate over a list (each item bound to `.`)
-//
-// The ternary operator (e.g. {{ world.wearing_cloak ? 'dark' : 'lit' }}) is
-// handled by expr-lang natively. Block constructs (if/else/range/end) are
-// handled by our custom Render function. Inside a range body, the special
-// identifier `.` refers to the current iteration element; field access
-// (`.display`, `.reason`, …) is rewritten to map/struct lookups against
-// that element.
-//
-// Design rationale: We chose a small custom parser over Go text/template because:
-//  1. The YAML already uses expr-lang expression syntax (ternary, ==, member access)
-//     inside {{ }}, which is NOT valid Go template syntax.
-//  2. text/template requires .world, .slots (with leading dot); the YAML omits the dot.
-//  3. A custom parser is ~100 lines and covers 100% of what the Cloak app needs.
-//
-// # AST whitelist
-//
-// Allowed built-in functions (a conservative subset of expr-lang's builtins):
-//
-//	len, trim, upper, lower, split, join, hasPrefix, hasSuffix, now,
-//	int, float, string, abs, round, type, get, keys, min, max
-//
-// Allowed identifier roots: slots, world, event, run.
-// Forbidden: lambda/predicate nodes, map literals, variable declarations (let),
-// raw user-defined function calls (CallNode — builtins are BuiltinNode).
 package expr
 
 import (
@@ -47,7 +11,11 @@ import (
 	"github.com/expr-lang/expr/vm"
 )
 
-// Env is the evaluation scope available to every expression (§3.5):
+// Env is the evaluation scope available to every expression — the set of
+// roots a guard, effect value, or view template may read. Its fields mirror
+// the scope documented in the authoring guide
+// (docs/stories/authoring.md §5.7) and the state-machine reference
+// (docs/stories/state-machine.md):
 //   - Slots   map[string]any  — the current intent's slot values
 //   - World   map[string]any  — the current world snapshot
 //   - Event   map[string]any  — the triggering event (if any)
@@ -162,7 +130,11 @@ func indexMenuForHelpers(menu map[string]any) (map[string]struct{}, map[string]s
 	return primary, blocked
 }
 
-// RunCtx holds the run-level metadata visible in expressions.
+// RunCtx holds the run-level metadata visible in expressions as the `run`
+// root, so authors can branch on session identity or turn number without the
+// orchestrator threading those values through every slot. The zero value
+// (empty ID, turn 0) is meaningful: it is what guards see before the first
+// turn is recorded.
 type RunCtx struct {
 	// ID is the session identifier.
 	ID string `expr:"id"`
@@ -170,15 +142,22 @@ type RunCtx struct {
 	Turn int64 `expr:"turn"`
 }
 
-// Program is a compiled expression, ready for repeated evaluation.
-// The underlying expr-lang program is stored opaquely so callers don't
-// import expr-lang/expr directly.
+// Program is a compiled, whitelist-checked expression ready for repeated
+// evaluation. The underlying expr-lang program is held opaquely so callers
+// never import expr-lang/expr directly — the only legal way to obtain one
+// is through [Compile] or [CompileBool], which guarantees the AST passed the
+// whitelist. The zero value is not usable; a *Program is immutable after
+// compilation and therefore safe for concurrent evaluation from many
+// goroutines.
 type Program struct {
 	source  string
 	program *vm.Program
 }
 
-// Source returns the original expression string.
+// Source returns the original expression string the Program was compiled
+// from. It exists so error messages and traces can quote the author's text
+// rather than a reconstructed form, keeping diagnostics matchable against
+// the YAML.
 func (p *Program) Source() string { return p.source }
 
 // allowedBuiltins is the set of expr-lang builtin function names that pass
@@ -215,9 +194,9 @@ var allowedRoots = map[string]bool{
 	"args":      true, // handler-local args (host invocations, prompt files)
 	"menu":      true, // computed menu (primary/blocked intents) for view templates
 	"item":      true, // current element inside a {{ range expr }} block
-	"proposal":  true, // $proposal slot (§3)
-	"inbox":     true, // $inbox slot (§4)
-	"workspace": true, // $workspace slot (§6)
+	"proposal":  true, // $proposal compound-state slot
+	"inbox":     true, // $inbox compound-state slot
+	"workspace": true, // $workspace compound-state slot
 	"result":    true, // host-call Result.Data, exposed to templated `bind:` values
 	// Boolean literals, which appear as identifiers in some expr-lang versions.
 	"true":  true,
@@ -335,19 +314,31 @@ func compileWithOpts(source string, extra ...exprpkg.Option) (*Program, error) {
 	return &Program{source: source, program: prog}, nil
 }
 
-// Compile compiles source into a Program that may return any type.
-// Use for effect value expressions and template interpolations.
+// Compile compiles source into a Program that may return any type, for
+// effect value expressions and template interpolations where the result is
+// rendered or bound rather than branched on. It returns an error when
+// expr-lang cannot parse the source or when the AST trips the whitelist
+// (forbidden builtin, lambda/predicate, map literal, let, or member access
+// on a non-allowed root); the error names the offending construct so the
+// author can fix the YAML.
 func Compile(source string) (*Program, error) {
 	return compileWithOpts(source, exprpkg.AsAny())
 }
 
-// CompileBool compiles source into a Program that must return a bool.
-// Use for guard expressions (when: clauses).
+// CompileBool compiles source into a Program constrained to return a bool,
+// for guard expressions (`when:` clauses) where a non-bool result is an
+// authoring mistake worth catching at load time rather than mid-turn. Its
+// error conditions are those of [Compile] plus a type error when the
+// expression cannot yield a bool.
 func CompileBool(source string) (*Program, error) {
 	return compileWithOpts(source, exprpkg.AsBool())
 }
 
-// EvalBool evaluates a guard program and returns a bool.
+// EvalBool evaluates a guard program against env and returns its bool result.
+// It returns an error if the underlying VM faults or if the program yields a
+// non-bool value, so a guard that silently drifts to a non-bool surfaces as
+// a turn error rather than a misread branch. EvalBool only reads p and env,
+// so a single *Program may be evaluated concurrently with different envs.
 func EvalBool(p *Program, env Env) (bool, error) {
 	out, err := vm.Run(p.program, env)
 	if err != nil {
@@ -360,7 +351,10 @@ func EvalBool(p *Program, env Env) (bool, error) {
 	return b, nil
 }
 
-// EvalAny evaluates a program and returns the raw value.
+// EvalAny evaluates a program against env and returns the raw value without
+// type coercion, leaving rendering or type assertions to the caller. Like
+// [EvalBool] it only reads its arguments, so one *Program is safe to evaluate
+// concurrently; it errors only when the underlying VM faults.
 func EvalAny(p *Program, env Env) (any, error) {
 	out, err := vm.Run(p.program, env)
 	if err != nil {
@@ -371,9 +365,15 @@ func EvalAny(p *Program, env Env) (any, error) {
 
 // ─── Render / template engine ─────────────────────────────────────────────────
 
-// Render interpolates an expr-lang template against an Env.
-// Supports {{ expr }}, {{ if expr }}...{{ else }}...{{ end }} blocks.
-// Literal text between blocks is passed through unchanged.
+// Render interpolates an expr-lang template against env and returns the
+// rendered string. It supports {{ expr }}, {{ if }}/{{ else }}/{{ end }}, and
+// {{ range }} blocks; literal text between blocks passes through unchanged. A
+// template with no {{ is returned verbatim, so the common no-interpolation
+// case skips the parser entirely. Errors are returned for malformed block
+// structure (unclosed/mismatched delimiters) or for any embedded expression
+// that fails to compile or evaluate. Render compiles each embedded expression
+// once and caches it process-wide, so repeated rendering of the same template
+// amortises compilation; the caches are concurrency-safe.
 func Render(tmpl string, env Env) (string, error) {
 	if !strings.Contains(tmpl, "{{") {
 		return tmpl, nil

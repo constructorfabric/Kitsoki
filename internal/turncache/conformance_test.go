@@ -3,8 +3,7 @@
 // called from both memory_test.go (TestMemoryConformance) and
 // sqlite_test.go (TestSQLiteConformance). When this suite passes
 // against a backend, the backend is interface-equivalent to the
-// in-memory reference implementation for the purposes of Phase 5/6
-// orchestrator integration.
+// in-memory reference implementation for orchestrator integration.
 //
 // The matrix here intentionally overlaps with the cases in
 // memory_test.go — that file is the per-backend smoke for the memory

@@ -12,8 +12,8 @@ import (
 )
 
 // TestClarifyEnumSlotInlineBlock verifies that a slot with enum values
-// renders an inline numbered choice list (§7.3 Sub-mode A, Phase 2
-// inline overlay). The legacy huh.Select sub-model is gone; enum/bool
+// renders an inline numbered choice list during slot-filling. The
+// legacy huh.Select sub-model is gone; enum/bool
 // slots are now presented as a numbered list and the user picks via the
 // normal prompt by typing a number or the canonical value.
 func TestClarifyEnumSlotInlineBlock(t *testing.T) {
@@ -145,7 +145,7 @@ func TestClarifyFreeFormSlotSubmit(t *testing.T) {
 }
 
 // TestClarifyBoolSlotInlineBlock verifies that a bool slot renders a
-// numbered choice list with true/false values (§7.3 Sub-mode A).
+// numbered choice list with true/false values during slot-filling.
 func TestClarifyBoolSlotInlineBlock(t *testing.T) {
 	boolSlot := orchestrator.SlotNeed{
 		Name:   "confirmed",

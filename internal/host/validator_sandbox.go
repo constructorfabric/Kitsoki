@@ -1,5 +1,5 @@
 // Package host — read-only subprocess sandbox for host.oracle.decide /
-// host.oracle.extract validators (oracle-split proposal §2.2).
+// host.oracle.extract validators.
 //
 // ValidatorSandbox runs a subprocess in a best-effort read-only environment so
 // a validator that attempts to mutate state outside /tmp fails with EACCES
@@ -22,7 +22,7 @@
 // Windows: write isolation is not supported in Phase 1. Callers must set
 // UnsafeNoSandbox: true in ValidatorSandboxOptions or the run returns an error.
 // The loader emits a warn-line when an app is loaded on Windows and a validator
-// is declared without this opt-out (oracle-split proposal D2).
+// is declared without this opt-out (decision D2: Windows requires explicit opt-out).
 //
 // All platforms: the subprocess inherits a curated environment (no HOME,
 // HTTP_PROXY set to an invalid value) and runs with its cwd set to the
@@ -100,7 +100,7 @@ func RunValidatorSandboxed(ctx context.Context, opts ValidatorSandboxOptions) (V
 	switch runtime.GOOS {
 	case "windows":
 		if !opts.UnsafeNoSandbox {
-			return ValidatorResult{}, fmt.Errorf("validator_sandbox: Windows does not support sandbox isolation in Phase 1; set unsafe_validator_no_sandbox: true on the validator declaration to opt out (oracle-split proposal D2)")
+			return ValidatorResult{}, fmt.Errorf("validator_sandbox: Windows does not support sandbox isolation in Phase 1; set unsafe_validator_no_sandbox: true on the validator declaration to opt out (decision D2)")
 		}
 		return runUnsandboxed(ctx, opts, scratchDir)
 	case "darwin":

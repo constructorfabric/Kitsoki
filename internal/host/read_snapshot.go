@@ -4,7 +4,7 @@
 // replayable from recording. Outputs over ReadSnapshotCap bytes are stored as a
 // sha256 hash plus the first ReadSnapshotPrefix bytes; replay detects "divergent
 // input" by comparing the hash but cannot reconstruct the full bytes from the
-// journal alone. (oracle-split proposal §4.2 decision D9.)
+// journal alone. (Decision D9: replay compares hashes, not full bytes.)
 //
 // The cap is configurable per-app via a constant redeclared in the app package
 // (not per-call). This file lives in the host package so decide and extract

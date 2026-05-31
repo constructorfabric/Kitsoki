@@ -13,7 +13,7 @@ func SetAskStructuredForTest(fn func(ctx context.Context, opts AskStructuredOpti
 	return func() { askStructuredFunc = prev }
 }
 
-// ── Phase 4 oracle-split task exports ────────────────────────────────────
+// ── oracle.task exports ────────────────────────────────────
 
 // InferReplayModeExport is the test-visible wrapper for inferReplayMode.
 func InferReplayModeExport(agent Agent, tools []string) ReplayMode {

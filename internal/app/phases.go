@@ -1,4 +1,6 @@
-// Package app — phase-template expansion (proposal §5).
+// Package app — phase-template expansion.
+//
+// See docs/stories/state-machine.md "Phase templates" for the authoring model.
 //
 // Phase templates declare reusable shapes; the `phases:` block instantiates
 // the template once per phase. The expander runs at load time, before

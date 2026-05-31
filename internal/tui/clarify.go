@@ -9,8 +9,8 @@ import (
 	"kitsoki/internal/tui/blocks"
 )
 
-// clarifyModel tracks the state of an in-progress slot-fill clarification
-// (§7.3). It no longer owns the prompt area — the user types values into
+// clarifyModel tracks the state of an in-progress slot-fill clarification.
+// It no longer owns the prompt area — the user types values into
 // the normal textarea with the `?` prefix, and the inline "Clarification
 // needed" block is rendered into the transcript. The legacy huh.Select /
 // embedded textinput rendering paths have been removed; enum / bool slots

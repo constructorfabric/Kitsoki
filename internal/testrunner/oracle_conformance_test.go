@@ -272,7 +272,7 @@ episodes:
 	t.Logf("all 4 transports agree on Submission: %s", refSub)
 }
 
-// TestConformance_CassetteReplayAny_MultipleCallIDs verifies the §3.1 guarantee:
+// TestConformance_CassetteReplayAny_MultipleCallIDs verifies the guarantee:
 // replay:any + oracle: episodes produce N distinct call_ids (different matchIdx)
 // sharing one episode_id. This is the full cassette Oracle path (no manual sink.Append).
 func TestConformance_CassetteReplayAny_MultipleCallIDs(t *testing.T) {

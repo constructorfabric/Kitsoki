@@ -1,5 +1,5 @@
 // Integration tests for the semantic-routing orchestrator wiring
-// (semantic-routing proposal §1, Phase 2). The unit tests for the
+// (see docs/architecture/semantic-routing.md). The unit tests for the
 // matcher itself live in internal/semroute/*_test.go; these tests
 // exercise the orchestrator-side glue:
 //

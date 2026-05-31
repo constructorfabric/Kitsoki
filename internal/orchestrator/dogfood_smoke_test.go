@@ -4,8 +4,9 @@ package orchestrator_test
 // the existing flow-fixture suite can't reach (every flow stubs every
 // host to {ok:true}, so any code path predicated on a host returning
 // Result.Error is invisible to fixtures). See
-// docs/proposals/dogfood-regression-testing-gap.md §4 and §5 for the
-// motivation; in particular these tests would have caught the
+// docs/tracing/testing.md "Integration tests for host-failure paths"
+// and docs/stories/state-machine.md "Effects" for
+// the motivation; in particular these tests would have caught the
 // 2026-05-18 `go_bugfix` redirect-loop hang (commit 9b58dc4) before
 // fa39746's `maxRedirectDepth` cap landed.
 //

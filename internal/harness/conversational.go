@@ -1,16 +1,3 @@
-// Package harness — ConversationalHarness for Oracle Room free-form Q&A (§7).
-//
-// The ConversationalHarness supports tool-use with a read-only tool allow-list:
-//   - file_read: read a file by path
-//   - code_search: grep for a pattern in a directory
-//
-// It does NOT advance the state machine — responses are returned as Markdown text
-// for direct display. The user exits via the "back" intent which pops the room
-// history stack (§5).
-//
-// This harness is entered when a state declares mode: conversational (Oracle Room).
-// It is stateless within a session: each call is independent (though callers may
-// pass conversation history in the system prompt).
 package harness
 
 import (
@@ -57,10 +44,18 @@ type ConversationalInput struct {
 	WorkingDir string
 }
 
-// ConversationalHarness is a read-only Q&A harness for the Oracle Room (§7).
-// It uses a stub implementation that exercises the tool allow-list without
-// requiring a live LLM connection. The live implementation would use the
-// Anthropic SDK with tool_use.
+// ConversationalHarness is the read-only Q&A backend for the Oracle Room
+// (a state with mode: conversational; see docs/architecture/oracle-plugin.md).
+// Unlike the routing harnesses it does NOT advance the state machine: it
+// answers in Markdown for direct display, and the user leaves via the "back"
+// intent that pops the room history stack. It supports tool use with a
+// read-only allow-list (file_read, code_search) and is stateless within a
+// session — each call is independent, though callers may thread prior context
+// through the system prompt.
+//
+// The current implementation is a stub that exercises the tool allow-list
+// without a live LLM connection; a live build would drive the Anthropic SDK
+// with tool_use enabled.
 type ConversationalHarness struct {
 	tools []ConversationalTool
 }
@@ -106,7 +101,7 @@ func (h *ConversationalHarness) InvokeToolByName(ctx context.Context, name strin
 	return "", fmt.Errorf("oracle: tool %q is not in the read-only allow-list", name)
 }
 
-// builtinConversationalTools returns the read-only tool set for the Oracle (§7.1).
+// builtinConversationalTools returns the read-only tool set for the Oracle.
 func builtinConversationalTools() []ConversationalTool {
 	return []ConversationalTool{
 		{

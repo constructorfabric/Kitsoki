@@ -1,6 +1,6 @@
 package host_test
 
-// Phase 1 oracle-split tests — Tools/--allowedTools plumbing (D5 precedence),
+// Oracle verb-ladder tests — Tools/--allowedTools plumbing (D5 precedence),
 // BashProfile threading, stub handler registration, and FakeXxx helpers.
 //
 // These tests do NOT fork the claude binary. They use the ClaudeRunner stub

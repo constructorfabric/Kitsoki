@@ -1,5 +1,6 @@
-// Package viz — dot.go implements a minimal Graphviz DOT exporter (§9a.7).
-// Uses github.com/emicklei/dot for graph building.
+// dot.go implements the Graphviz DOT exporter, the one mode that builds its
+// graph through github.com/emicklei/dot rather than hand-rolled string
+// templating. See doc.go for the package overview.
 package viz
 
 import (
@@ -11,8 +12,11 @@ import (
 	"kitsoki/internal/app"
 )
 
-// Export writes a Graphviz DOT representation of the app to w.
-// Compound states become cluster subgraphs. Transitions become labelled edges.
+// Export streams a Graphviz DOT state graph for a to w: compound states become
+// cluster subgraphs, leaf states become boxes (terminal states a filled
+// double-circle), and transitions become labelled edges from an invisible
+// start node into the initial state. Returns w's write error. Use [DOTBytes]
+// for the in-memory form.
 func Export(a *app.AppDef, w io.Writer) error {
 	g := dotlib.NewGraph(dotlib.Directed)
 	g.Attr("rankdir", "LR")
@@ -39,7 +43,8 @@ func Export(a *app.AppDef, w io.Writer) error {
 	return err
 }
 
-// DOTBytes returns the DOT representation as a byte slice.
+// DOTBytes is the in-memory form of [Export], returning the DOT source as
+// bytes. The error is whatever [Export] reports.
 func DOTBytes(a *app.AppDef) ([]byte, error) {
 	var sb strings.Builder
 	if err := Export(a, &sb); err != nil {
@@ -65,8 +70,8 @@ func addStatesToGraph(
 		fullPath := joinPath(prefix, name)
 
 		if len(s.States) > 0 {
-			// Compound state: cluster subgraph.  Parallel parents (§9.4) get
-			// a different visual cue so the sibling-region structure reads.
+			// Compound state: cluster subgraph. Parallel parents get a
+			// different visual cue so the sibling-region structure reads.
 			clusterID := "cluster_" + strings.ReplaceAll(fullPath, ".", "_")
 			sg := parent.Subgraph(clusterID, dotlib.ClusterOption{})
 			label := fullPath

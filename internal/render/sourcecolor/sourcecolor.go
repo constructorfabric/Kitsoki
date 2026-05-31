@@ -1,42 +1,3 @@
-// Package sourcecolor distinguishes templated text from LLM-generated
-// text in TUI output by switching the terminal background color at
-// the source boundary.
-//
-// # The contract
-//
-// LLM operators wrap their string outputs with [Wrap] at the result
-// boundary, before the value enters world state. The wrapped text
-// flows through pongo rendering, world serialization, transcript
-// queuing, and hard-wrapping unchanged: the sentinels are zero-width
-// Unicode characters, so they have no visible footprint and do not
-// disturb width-based layout. At the final write to the terminal,
-// [Colorize] walks the string and converts each sentinel pair into an
-// ANSI background-color switch:
-//
-//   - cool slate background for templated / deterministic text
-//   - warm bronze background for LLM-generated text
-//
-// Nesting is handled with a background-color stack: entering an LLM
-// span pushes the warm bg; exiting pops and restores the parent's bg
-// (never a bare reset). Multi-line LLM spans are detected as "blocks"
-// and each contained line is padded to the requested width so the
-// warm band reads as a solid rectangle.
-//
-// # Why two sentinels of only zero-width characters
-//
-// Earlier drafts used a sentinel like "​⁣LLM⁣" where
-// the visible "LLM" letters carried 3 columns of width. Any
-// width-aware truncator (lipgloss, runewidth, ansi.Hardwrap) could
-// then split the sentinel mid-letter and corrupt the marker. The
-// production sentinels here use only U+2061 / U+2062 / U+2063
-// (invisible math operators) — every rune in every sentinel is
-// width-0, so no width-based pass can ever bisect one.
-//
-// # Author contract
-//
-// Story authors write nothing special. They keep using
-// {{ llm.summary }} or whatever world var holds an LLM result. The
-// engine handles the rest.
 package sourcecolor
 
 import (
@@ -134,6 +95,12 @@ func Strip(s string) string {
 // Background escapes should set ONLY the background (e.g.
 // "\x1b[48;2;R;G;Bm") so that any foreground style applied by other
 // layers (lipgloss, the renderer) is preserved when the bg toggles.
+//
+// The zero Theme is usable but produces no color: with empty escape
+// strings [Colorize] emits no SGR codes and only [Theme.Reset] defaults
+// to "\x1b[0m". Use one of the predefined themes ([DarkTheme],
+// [LightTheme], [HighContrastTheme]) for the intended bands. Theme is a
+// value type; copying it is safe and there is no nil case to guard.
 type Theme struct {
 	Name  string
 	TplBG string // background for templated/deterministic text
@@ -142,8 +109,12 @@ type Theme struct {
 	Reset string // SGR sequence that clears everything (defaults to ESC [0m)
 }
 
-// Predefined themes. Hex values are also documented in
-// docs/stories/story-style.md §8 — keep the two in sync.
+// DarkTheme, HighContrastTheme, and LightTheme are the predefined
+// source-color palettes; the active TUI theme selects one at startup.
+// Each sets cool-slate template and warm-bronze LLM backgrounds. The hex
+// values are mirrored in the story style guide
+// (docs/stories/story-style.md, "Source-color" section) — keep the two
+// in sync.
 var (
 	DarkTheme = Theme{
 		Name:  "dark",
@@ -199,6 +170,12 @@ type Options struct {
 // Multi-line LLM spans get each contained line padded with spaces to
 // opts.Width (or the block's longest-line if opts.Width == 0). The
 // padding spaces carry the LLM bg, producing the solid warm band.
+//
+// Colorize never returns an error and never panics: a zero-value t
+// simply yields no color (Reset still defaults to "\x1b[0m"), and
+// unbalanced sentinels are handled silently (a stray close leaves the
+// stack at the template bg). It holds no state and is safe for
+// concurrent use.
 func Colorize(s string, t Theme, opts Options) string {
 	if !strings.Contains(s, llmOpen) && !strings.Contains(s, llmClose) && !opts.FillTemplate {
 		return s

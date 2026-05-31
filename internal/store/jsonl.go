@@ -1,9 +1,10 @@
-// Package store — jsonl.go: append-only JSONL session trace.
+package store
+
+// jsonl.go is the append-only JSONL session trace — the file-backed [EventSink].
 //
-// JSONLSink is the write side of the trace-as-state design.  One line per
-// event, O_APPEND + fsync, no line ever rewritten.  Every session entry point
-// (kitsoki turn, session continue, TUI) will eventually use this path; for
-// wave 1 it is added but not wired into the orchestrator.
+// [JSONLSink] is the write side of the trace-as-state design. One line per
+// event, O_APPEND + fsync, no line ever rewritten. See doc.go for the package
+// overview.
 //
 // File layout:
 //
@@ -14,7 +15,6 @@
 //   - NUL bytes anywhere in the marshalled line are rejected.
 //   - ts fields are RFC3339Nano in UTC with explicit Z suffix.
 //   - encoding/json rejects NaN/Inf by default; that default is preserved.
-package store
 
 import (
 	"bytes"
@@ -362,8 +362,7 @@ func splitLines(data []byte) ([]json.RawMessage, error) {
 // the orchestrator; no exporter-side back-fill is needed or performed.
 // episode_id and match_idx are present only on cassette-backed OracleCalled
 // events; they enable post-resume reconstruction of per-episode match counters
-// (§3.1 / §3.3.2) so replay:any episodes produce collision-free call_ids
-// after a reload.
+// so replay:any episodes produce collision-free call_ids after a reload.
 type traceEvent struct {
 	Turn       app.TurnNumber  `json:"turn"`
 	Seq        int             `json:"seq"`

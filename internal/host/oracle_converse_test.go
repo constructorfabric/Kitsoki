@@ -1,6 +1,6 @@
 package host_test
 
-// oracle-split Phase 7 — host.oracle.converse tests.
+// host.oracle.converse tests.
 //
 // All tests use FakeConverse / ClaudeRunner stubs (no real LLM). Tests are
 // independent and parallel where possible; each finishes in milliseconds.
@@ -457,7 +457,7 @@ func TestOracleConverse_BinaryMissing(t *testing.T) {
 // ── Replay shape ─────────────────────────────────────────────────────────────
 
 // TestRenderConverseSpan verifies that RenderConverseSpan produces the
-// opaque block format specified in §4.2 of the oracle-split proposal (D10).
+// opaque block format (decision D10: converse spans render as opaque blocks).
 func TestRenderConverseSpan(t *testing.T) {
 	t.Parallel()
 	out := host.RenderConverseSpan("chat-abc", 12, 18)

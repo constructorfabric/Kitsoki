@@ -12,8 +12,8 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// Store is event-sourced session persistence, backed by modernc.org/sqlite (§12.1).
-// This is one of the five core interfaces from §12.1.
+// Store is event-sourced session persistence, backed by modernc.org/sqlite.
+// It is one of the core persistence interfaces.
 //
 // Thread-safety: all methods are safe for concurrent use. The underlying
 // sqliteStore sets MaxOpenConns(1) to serialize writes at the connection level.
@@ -27,7 +27,7 @@ type Store interface {
 	AppendEvents(session app.SessionID, events []Event) error
 
 	// AppendEventsAndJournal atomically appends events and journal entries in a
-	// single transaction (§4.9 Rule 1). Either both writes succeed or both roll back.
+	// single transaction. Either both writes succeed or both roll back.
 	// Returns ErrSessionClosed if the session has been completed or abandoned.
 	AppendEventsAndJournal(session app.SessionID, events []Event, journalEntries []journal.Entry) error
 

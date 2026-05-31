@@ -59,7 +59,7 @@ type staticRecordingFile struct {
 }
 
 // NewStaticHarnessFromRecording parses a recording YAML and builds a StaticHarness.
-// The recording format is identical to the replay harness's (§10.4).
+// The recording format is identical to the replay harness's.
 func NewStaticHarnessFromRecording(recordingPath string) (*StaticHarness, error) {
 	data, err := os.ReadFile(recordingPath)
 	if err != nil {

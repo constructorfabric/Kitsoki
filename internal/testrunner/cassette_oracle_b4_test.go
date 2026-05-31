@@ -9,7 +9,7 @@
 //   - replay:any + oracle: is legal and produces N Ask calls with distinct matchIdx.
 //   - matchIdx advances per Ask call; Meta["episode_id"] + Meta["match_idx"] set.
 //   - Call_id in Meta is deterministic and consistent with DeriveCallID scheme.
-//   - §6.3 relaxation: replay:any + oracle: no longer rejected at load time.
+//   - replay:any + oracle: no longer rejected at load time.
 //   - Close is a no-op.
 package testrunner
 
@@ -263,7 +263,7 @@ episodes:
 	}
 }
 
-// ─── replay:any + oracle: (§6.3 relaxation) ──────────────────────────────────
+// ─── replay:any + oracle: (constraint relaxation) ───────────────────────────
 
 // TestCassetteOracle_ReplayAnyDistinctMatchIdx verifies that replay:any episodes
 // produce distinct matchIdx values on successive Ask calls, and that each call
@@ -289,7 +289,7 @@ episodes:
 `)
 	cas, err := LoadCassette(casPath)
 	if err != nil {
-		t.Fatalf("LoadCassette (§6.3 relaxed): %v", err)
+		t.Fatalf("LoadCassette (replay:any + oracle): %v", err)
 	}
 
 	o := NewCassetteOracle(cas, "oracle.fixer", nil, nil)
@@ -337,7 +337,7 @@ episodes:
 }
 
 // TestCassetteOracle_Section63_RelaxationLoads verifies that a cassette with
-// replay:any + oracle: loads cleanly after the §6.3 constraint was relaxed.
+// replay:any + oracle: loads cleanly after the load-time constraint was relaxed.
 // This was previously forbidden; the constraint is now gone.
 func TestCassetteOracle_Section63_RelaxationLoads(t *testing.T) {
 	t.Parallel()
@@ -357,7 +357,7 @@ episodes:
 `)
 	_, err := LoadCassette(casPath)
 	if err != nil {
-		t.Fatalf("replay:any + oracle: must be legal after §6.3 relaxation; got: %v", err)
+		t.Fatalf("replay:any + oracle: must be legal; got: %v", err)
 	}
 }
 

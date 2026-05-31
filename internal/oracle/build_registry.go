@@ -1,23 +1,23 @@
-// Package oracle — registry construction from app declarations (proposal §2 B-3).
+// build_registry.go assembles a Registry from an app's oracle_plugins
+// declarations at session construction time.
 //
 // Usage from an orchestrator setup:
 //
 //	reg, err := oracle.BuildRegistryFromDef(def, harness)
 //	orch := orchestrator.New(..., orchestrator.WithOracleRegistry(reg))
 //
-// BuildRegistry constructs an oracle.Registry from a map of OraclePluginDecl
-// entries as produced by the app loader. It is called at session construction
-// time by the orchestrator.
-//
-// Supported plugin values:
+// BuildRegistry maps each declaration's plugin value to a transport
+// constructor:
 //
 //   - "builtin.claude_cli" — FromHarness(h); requires h to be non-nil.
-//   - "builtin.inprocess"  — not constructable from YAML alone; the
-//     orchestrator must inject an in-process oracle programmatically via
-//     RegisterInProcess before calling BuildRegistry (or not use this value
-//     in production YAML). If encountered, an error is returned.
+//   - "builtin.inprocess"  — not constructable from YAML alone; the caller
+//     must build the in-process oracle (via New) and inject it with
+//     reg.Register before dispatch. Encountering it here returns an error.
+//   - "cassette"           — also injected programmatically (the
+//     implementation lives in internal/testrunner); returns an error here.
 //   - "subprocess"         — NewSubprocess(command, args, env).
 //   - "mcp_http"           — NewMCPHTTP(endpoint, tool, headers).
+
 package oracle
 
 import (
@@ -94,7 +94,7 @@ func BuildRegistry(plugins map[string]*PluginDecl, h harness.Harness) (*Registry
 			o = FromHarness(h)
 
 		case "builtin.inprocess":
-			return nil, fmt.Errorf("oracle: BuildRegistry: plugin %q cannot be constructed from YAML; inject via RegisterInProcess", name)
+			return nil, fmt.Errorf("oracle: BuildRegistry: plugin %q cannot be constructed from YAML; build with New and inject via reg.Register", name)
 
 		case "cassette":
 			// The cassette transport cannot be constructed from a YAML path alone here

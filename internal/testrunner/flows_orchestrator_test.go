@@ -122,7 +122,7 @@ expect_no_errors: true
 // ─── TestRunFlows_OrchestratorPath_Timeout ───────────────────────────────────
 
 // TestRunFlows_OrchestratorPath_Timeout verifies the Timeout: runtime
-// (gap §9.5).  The fixture seeds the session into a state whose `timeout:`
+// The fixture seeds the session into a state whose `timeout:`
 // declares a 10-day deadline, then uses `advance_clock: "11d"` to fire the
 // synthetic transition.  Post-advance assertions land on the terminal
 // destination state.

@@ -1,7 +1,6 @@
 // Package host — host.git_worktree — git-worktree-backed workspace provider.
 //
-// Implements the `workspace` host_interface declared in
-// docs/proposals/notes/dev-story-implementation-contract.md §2.4.  A
+// Implements the `workspace` host_interface (see docs/architecture/hosts.md).  A
 // single prefix-fallback handler dispatches the four workspace ops via
 // the `op` arg.  Operations shell out to `git worktree`.
 //

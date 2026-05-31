@@ -18,6 +18,8 @@ import (
 // the longest key, and values reflow into the remaining width. Values
 // are pongo2-expanded before alignment so a template like
 // "{{ world.money }}" doesn't push the column.
+//
+// The zero value (nil Pairs) is usable and renders to "".
 type KV struct {
 	Pairs goyaml.MapSlice
 }

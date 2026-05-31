@@ -1,6 +1,6 @@
 package host_test
 
-// Tests for host.oracle.extract (oracle-split Phase 5).
+// Tests for host.oracle.extract.
 //
 // Coverage:
 //   - First match wins: synonyms before slot_template before LLM.

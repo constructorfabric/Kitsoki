@@ -1,6 +1,8 @@
-// Package store implements event-sourced session persistence on modernc.org/sqlite (§8).
-// This file defines the Event type and the EventKind enum.
 package store
+
+// event.go defines the [Event] type and the [EventKind] enum — the on-disk
+// vocabulary every sink writes and [BuildJourney] reads. See doc.go for the
+// package overview.
 
 import (
 	"encoding/json"
@@ -23,8 +25,6 @@ const (
 	// TurnStarted that follows it. Replaces the exporter-side synthesised
 	// turn.input row — the real event is now in the history.
 	UserInputReceived EventKind = "turn.input"
-	// LLMCalled is appended immediately before the harness is invoked.
-	LLMCalled EventKind = "oracle.ask.start"
 	// LLMToolCall is appended when the LLM produces a tool call result.
 	LLMToolCall EventKind = "oracle.tool_call"
 	// ValidationFailed is appended when Machine.Validate rejects a tool call.
@@ -32,8 +32,18 @@ const (
 	// TransitionApplied is appended after a successful transition fires.
 	TransitionApplied EventKind = "machine.transition"
 	// EffectApplied is appended once per effect executed in a transition.
+	// It carries ONLY world mutations
+	// (`set:` / `increment:`); operator narration (`say:`) is split into the
+	// dedicated MachineSay kind below so `world.update` unambiguously means a
+	// world mutation.
 	EffectApplied EventKind = "world.update"
-	// HostInvoked is appended when a host.* side effect is dispatched (§11).
+	// MachineSay is appended once per `say:` effect that resolves. Payload
+	// carries {"text": "<narration>"}. Split out of EffectApplied
+	// so a runstatus timeline can render
+	// operator narration as its own row instead of a textless world.update.
+	// Replay treats it as a no-op — say does not mutate world or state.
+	MachineSay EventKind = "machine.say"
+	// HostInvoked is appended when a host.* side effect is dispatched.
 	// Snapshots the up-front-resolved args at machine time (pre-bind for any
 	// later step in the same on_enter block).  See HostDispatched for the
 	// post-rerender, dispatch-time args the handler actually receives.
@@ -47,7 +57,7 @@ const (
 	HostDispatched EventKind = "harness.dispatched"
 	// HostReturned is appended when the host.* invocation completes.
 	HostReturned EventKind = "harness.returned"
-	// OffPathEntered is appended when the user activates the off-path mode (§7.7).
+	// OffPathEntered is appended when the user activates the off-path mode.
 	OffPathEntered EventKind = "machine.off_path_entered"
 	// OffPathExited is appended when the user returns from off-path mode.
 	OffPathExited EventKind = "machine.off_path_exited"
@@ -91,8 +101,8 @@ const (
 	HarnessError EventKind = "harness.error"
 
 	// GateDecided is appended when the engine resolves an intent gate — the
-	// set of advancing intents available at the end of a room/phase's turn
-	// (see docs/proposals/execution-modes-and-gate-deciders.md). Payload
+	// set of advancing intents available at the end of a room/phase's turn,
+	// and which decider (human/llm/default) resolved it. Payload
 	// carries {"state": <path>, "available_intents": [<string>],
 	// "decider": "human"|"llm"|"default", "chosen_intent": <string>,
 	// "bailed_to_human": <bool>}. Replay treats it as a no-op — the
@@ -119,7 +129,7 @@ const (
 	OracleError EventKind = "oracle.call.error"
 )
 
-// Event is one row in the append-only event log (§8 DDL).
+// Event is one row in the append-only event log.
 // JSON tags mirror the SQLite payload_json column structure.
 type Event struct {
 	// Turn is the monotonic turn number within a session.
@@ -151,7 +161,7 @@ type Event struct {
 	// calls. Present only on OracleCalled events emitted by the cassette
 	// dispatcher. Together with MatchIdx it allows post-resume reconstruction
 	// of the per-episode match counter so resume generates collision-free
-	// call_ids (§3.1 / §3.3.2).
+	// call_ids.
 	EpisodeID string `json:"episode_id,omitempty"`
 	// MatchIdx is the 0-based match counter for replay:any cassette episodes.
 	// For a normal (non-replay:any) episode it is always 0. Present only on

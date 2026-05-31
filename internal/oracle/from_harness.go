@@ -1,4 +1,4 @@
-// Package oracle — harness adapter.
+// from_harness.go implements the harness adapter.
 //
 // FromHarness wraps a harness.Harness as an Oracle so that existing harness
 // implementations (claude_cli, live, replay, recording) can serve as oracle
@@ -10,6 +10,7 @@
 // Arguments field carries the LLM's tool-call payload. FromHarness marshals
 // Arguments to JSON as the AskResponse.Submission. The MCP type dependency is
 // entirely inside this file; all callers see only AskRequest / AskResponse.
+
 package oracle
 
 import (

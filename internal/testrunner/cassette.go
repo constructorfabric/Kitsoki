@@ -41,7 +41,7 @@ type Cassette struct {
 	// matched so far (keyed by episode ID). For replay:any episodes this
 	// is the running matchIdx counter; for normal episodes it is capped at 1.
 	// Protected by mu. Seeded from prior trace history via SeedMatchCountsFromHistory
-	// so post-resume matches produce collision-free call_ids (§3.3.2).
+	// so post-resume matches produce collision-free call_ids.
 	episodeMatchCounts map[string]int
 }
 
@@ -171,14 +171,14 @@ func LoadCassette(path string) (*Cassette, error) {
 		cas.phaseRegex = re
 	}
 
-	// §6.3 constraint (now relaxed): replay:any + oracle: was previously forbidden
-	// because re-invoking the same episode would produce duplicate journal rows in
-	// the SQLite oracle journal. With oracle events written to the JSONL event sink
-	// (wave 3-oracle / phase A), each match produces a distinct OracleCalled/
-	// OracleReturned pair with a unique call_id (different matchIdx) and the same
-	// episode_id. The constraint is lifted: replay:any + oracle: is now legal and
-	// means "this oracle exchange is replayable N times, each producing a fresh
-	// event pair." (Finding 2.10 / proposal §3.1 "§6.3 constraint goes away".)
+	// replay:any + oracle: was previously forbidden because re-invoking the same
+	// episode would produce duplicate journal rows in the SQLite oracle journal.
+	// With oracle events written to the JSONL event sink, each match produces a
+	// distinct OracleCalled/OracleReturned pair with a unique call_id (different
+	// matchIdx) and the same episode_id. The constraint is lifted: replay:any +
+	// oracle: is now legal and means "this oracle exchange is replayable N times,
+	// each producing a fresh event pair." See docs/architecture/oracle-plugin.md
+	// (cassette oracle, call_id derivation) for the recording format.
 	_ = cas.Episodes // no validation against replay:any + oracle: any more
 
 	cas.path = abs
@@ -299,7 +299,7 @@ func episodeIDs(eps []*CassetteEpisode) []string {
 // prior trace history. It scans OracleCalled events that carry an episode_id
 // field (written by writeCassetteOracleEvents) and sets each episode's counter
 // to max(match_idx)+1 so that the first post-resume match produces a fresh
-// matchIdx that does not collide with any pre-resume call_id (§3.3.2).
+// matchIdx that does not collide with any pre-resume call_id.
 //
 // This must be called before the cassette dispatcher processes any events.
 // Callers that hold a prior store.History (e.g. after reloading a JSONL trace)
@@ -486,7 +486,7 @@ func BuildCassetteDispatcherWithJournalAndSink(
 // BuildCassetteDispatcher. sink receives OracleCalled / OracleReturned /
 // OracleError events on replay (wave 3-oracle parallel write). When priorHist
 // is non-nil, SeedMatchCountsFromHistory is called first so that post-resume
-// matches produce collision-free call_ids (§3.3.2).
+// matches produce collision-free call_ids.
 func BuildCassetteDispatcherWithSink(
 	cas *Cassette,
 	handlerName string,
@@ -525,7 +525,7 @@ func buildCassetteDispatcherFull(
 			// being re-matchable (MatchEpisode skips only when played && not any).
 			ep.played = true
 			// Allocate and advance the per-episode match counter atomically under mu.
-			// This is the matchIdx used in call_id derivation (§3.1): for replay:any
+			// This is the matchIdx used in call_id derivation: for replay:any
 			// episodes each match gets a distinct idx; normal episodes always get 0.
 			if cas.episodeMatchCounts == nil {
 				cas.episodeMatchCounts = make(map[string]int)
@@ -552,7 +552,7 @@ func buildCassetteDispatcherFull(
 			// sink-only now. B-5 will delete oracle_journal.go entirely.
 			// matchIdx is threaded through so the emitted OracleCalled event carries
 			// episode_id and match_idx; on post-resume reload these are used by
-			// SeedMatchCountsFromHistory to restore the counter (§3.3.2).
+			// SeedMatchCountsFromHistory to restore the counter.
 			if oracleBlock != nil && eventSink != nil {
 				writeCassetteOracleEvents(ctx, eventSink, cas, epID, matchIdx, oracleBlock)
 			}
@@ -626,9 +626,9 @@ func buildCassetteDispatcherFull(
 // using host.DeriveCallID. matchIdx is the 0-based match counter allocated by
 // buildCassetteDispatcherFull atomically under cas.mu. For replay:any episodes
 // each call gets a distinct matchIdx so the call_id differs per match even
-// though the episode body is identical (§3.1). episode_id and match_idx are
+// though the episode body is identical. episode_id and match_idx are
 // written as top-level fields on the OracleCalled event so that post-resume
-// SeedMatchCountsFromHistory can reconstruct the counters (§3.3.2).
+// SeedMatchCountsFromHistory can reconstruct the counters.
 func writeCassetteOracleEvents(ctx context.Context, sink store.EventSink, cas *Cassette, epID string, matchIdx int, o *EpisodeOracle) {
 	callID := host.DeriveCallID(cas.AppID, fmt.Sprintf("%s:%d", epID, matchIdx))
 	oc := host.OracleCallCtxFrom(ctx)
@@ -643,12 +643,22 @@ func writeCassetteOracleEvents(ctx context.Context, sink store.EventSink, cas *C
 	}
 
 	// OracleCalled: use now as dispatch time (cassette replay is instantaneous).
-	// If the prompt is large, store it separately and set PromptFile.
+	// Guarantee a prompt reference on every oracle.call.start:
+	// large prompts spill to a sidecar file and
+	// are referenced via PromptFile; small (or any non-offloaded) prompts are
+	// embedded inline so a consumer never faces a missing reference. This mirrors
+	// the live host.Dispatch path (internal/host/oracle_dispatch.go) — the
+	// cassette replay emitter must produce the same invariant as production.
 	promptFile, _ := host.StorePromptIfLargeForTest(ctx, o.CallID, o.Prompt)
+	inlinePrompt := ""
+	if promptFile == "" {
+		inlinePrompt = o.Prompt
+	}
 	calledPayload := host.OracleCalledPayload{
 		Verb:       o.Verb,
 		Agent:      o.Agent,
 		Model:      o.Model,
+		Prompt:     inlinePrompt,
 		PromptFile: promptFile,
 		Input:      inputRaw,
 	}
@@ -735,7 +745,7 @@ func marshalOracleResponseString(s string) []byte {
 
 // oracleBodyToEpisode converts a host.OracleCallBody into an EpisodeOracle
 // suitable for embedding in a cassette episode. detCallID is the deterministic
-// call_id computed from the episode identity (§7); it overrides the UUID the
+// call_id computed from the episode identity; it overrides the UUID the
 // live handler generated.
 func oracleBodyToEpisode(b *host.OracleCallBody, detCallID string) *EpisodeOracle {
 	responseStr := ""

@@ -1,39 +1,3 @@
-// Package machine implements the pure deterministic state machine core (§4, §12.1).
-// No I/O; consumers are the MCP server, the replay harness, and tests.
-//
-// # Parallel states (proposal §9.4)
-//
-// `type: parallel` is supported with minimum-viable semantics. See
-// parallel.go for the full design notes — state-path encoding, first-region-
-// wins intent dispatch, and depth-capped emit propagation across sibling
-// regions.
-//
-// # Event ordering within a turn
-//
-// Natural ordering:
-//
-//	IntentAccepted → ValidationFailed (if rejected, stop) |
-//	TransitionApplied → EffectApplied* → StateExited* → StateEntered*
-//
-// §8 lists the canonical event kinds. We do not emit TurnStarted / TurnEnded
-// here; those are orchestrator-level events. The machine emits only the events
-// that result from evaluating a single IntentCall.
-//
-// # Guard-hint policy (§7.5 ambiguity)
-//
-// When multiple guarded transitions fail, we return the guard_hint from the
-// *first* failing transition (most specific in declaration order). This follows
-// "first-guard-wins" ordering — the first branch that was tried and failed is
-// the most relevant for the author to explain.
-//
-// # View precedence (§7.6)
-//
-// If the winning transition declares a view:, it is rendered and returned.
-// The target state's view is NOT additionally appended (it would be shown on
-// the next "look" or re-entry, not on the current transition). This keeps the
-// turn output unambiguous. Authors who want both should write both in the
-// transition view. If the transition has no view:, only the target state's
-// view is rendered.
 package machine
 
 import (
@@ -58,7 +22,7 @@ import (
 )
 
 // AllowedIntent describes one intent that is currently valid for the user,
-// as produced by Machine.AllowedIntents for the §7.2 progressive-disclosure menu.
+// as produced by Machine.AllowedIntents for the progressive-disclosure menu.
 type AllowedIntent struct {
 	Name        string   `json:"name"`
 	Title       string   `json:"title,omitempty"`
@@ -77,7 +41,14 @@ type ValidationResult struct {
 }
 
 // HostInvocation describes a host.* side-effect call that the caller must
-// dispatch outside the pure machine (§11).
+// dispatch outside the pure machine. The machine only constructs and returns
+// these; it never executes them, which is what keeps a turn reproducible.
+//
+// The zero value is a no-op descriptor (empty Namespace, nil maps); callers
+// dispatch only the non-zero entries the machine collected. A HostInvocation
+// is plain data with no internal synchronisation — a single turn's slice is
+// owned by one goroutine (the orchestrator dispatching them), so concurrent
+// mutation of the same value is the caller's responsibility, not the machine's.
 type HostInvocation struct {
 	Namespace string         `json:"namespace"`
 	Args      map[string]any `json:"args,omitempty"`
@@ -118,7 +89,15 @@ type HostInvocation struct {
 	OraclePlugin string `json:"oracle_plugin,omitempty"`
 }
 
-// TurnResult is returned by Machine.Turn after a successful transition.
+// TurnResult is returned by Machine.Turn after a successful transition. It is
+// a snapshot of one turn's outcome and carries no internal synchronisation: it
+// is safe to read from multiple goroutines once Turn has returned, but the
+// caller must not mutate its slices/maps concurrently. The zero value is the
+// "nothing happened" result (empty NewState, zero World, nil ValidationError);
+// Turn never returns it for an accepted call.
+//
+// When the intent was rejected, ValidationError is non-nil and NewState/World
+// equal the inputs unchanged — see Machine.Turn.
 type TurnResult struct {
 	NewState  app.StatePath    `json:"new_state"`
 	World     world.World      `json:"world"`
@@ -147,7 +126,8 @@ type TurnResult struct {
 	Renderer *render.AppRenderer `json:"-"`
 }
 
-// Machine is the pure deterministic core (§12.1).
+// Machine is the pure deterministic core. See the package doc for the turn
+// algorithm, event-ordering invariants, and concurrency contract.
 type Machine interface {
 	Turn(ctx context.Context, cur app.StatePath, w world.World, call intent.IntentCall) (TurnResult, error)
 	AllowedIntents(cur app.StatePath, w world.World) []AllowedIntent
@@ -182,7 +162,7 @@ type Machine interface {
 	// Callers should treat unresolved as primary (passes by default): the guard
 	// will be checked at submission time when all slots are present.
 	TryGuards(cur app.StatePath, w world.World, intentName string, prefillSlots map[string]any) GuardDryRunResult
-	// Menu returns the computed §7.2 menu (primary + blocked entries) for
+	// Menu returns the computed menu (primary + blocked entries) for
 	// the given state and world. View-render call sites populate env.Menu
 	// with the template-friendly view of this so authors can render the
 	// "what can I do right now" surface inline.
@@ -234,8 +214,9 @@ type Machine interface {
 	// emit at a state that is a multi-way decision gate (>1 advancing
 	// intent currently available) — a phase boundary ends the turn so a
 	// human can decide. A GateDecided event records the stop. In one-shot
-	// mode (staged=false) the chain advances exactly as before. See
-	// docs/proposals/execution-modes-and-gate-deciders.md.
+	// mode (staged=false) the chain advances exactly as before. See the
+	// "turn loop" section of docs/stories/state-machine.md for how staged
+	// and one-shot execution modes drive the orchestrator.
 	//
 	// onEnter, when non-nil, is fired once per synthetic hop with the room
 	// entered and that hop's say-text, so callers can stream per-room
@@ -258,7 +239,13 @@ type Machine interface {
 	ResolveInitialLeaf(cur app.StatePath, w world.World) (app.StatePath, error)
 }
 
-// GuardDryRunResult is the result of TryGuards.
+// GuardDryRunResult is the result of [Machine.TryGuards] — a read-only
+// "what would happen if I tried this intent now" probe used to build the menu
+// without mutating state or world. The zero value reads as "blocked, no
+// destination, no reason": every bool is false and both string fields empty,
+// which is the safe default for a guard that could not be resolved. Primary and
+// Blocked are mutually exclusive; Unresolved is reported as Primary (it passes
+// by default and is re-checked at submission time when all slots are present).
 type GuardDryRunResult struct {
 	// Primary is true when a guard arm matched (or is a default/no-guard branch).
 	Primary bool
@@ -319,7 +306,10 @@ type machineImpl struct {
 	importRenderers map[string]*render.AppRenderer
 }
 
-// MachineOption is a functional option for Machine construction.
+// MachineOption is a functional option for Machine construction. Options exist
+// so tests and specialised callers can customise the logger or renderer without
+// widening New's signature or exposing the unexported machineImpl — production
+// call sites pass none and get the documented defaults.
 type MachineOption func(*machineImpl)
 
 // WithMachineLogger sets the logger for guard/effect trace events.
@@ -346,7 +336,7 @@ func WithMachineRenderer(r *render.AppRenderer) MachineOption {
 // New creates a new Machine from a validated AppDef.
 // It pre-compiles all guards, view templates, and guard hints.
 // Returns an error (via errors.Join) listing every compilation failure.
-// Returns an error if any parallel state is malformed (proposal §9.4).
+// Returns an error if any parallel state is malformed.
 func New(def *app.AppDef, opts ...MachineOption) (Machine, error) {
 	m := &machineImpl{
 		appDef:          def,
@@ -533,7 +523,7 @@ func (m *machineImpl) hasWildcard(cur app.StatePath) bool {
 // given state (including inherited handlers from compound-state ancestors,
 // but for PoC we only look at the leaf state and its direct parent chain).
 //
-// Parallel-encoded paths (proposal §9.4) return the union of allowed intents
+// Parallel-encoded paths return the union of allowed intents
 // across every region leaf, so the orchestrator's menu and Validate code
 // see the full surface without needing to know about parallel encoding.
 func (m *machineImpl) allowedIntentNames(cur app.StatePath) []string {
@@ -673,8 +663,7 @@ func validateSlots(intentDef app.Intent, slots world.Slots) *intent.ValidationEr
 // Turn applies one accepted intent call and returns the result.
 // All state mutations are on a cloned world — the caller's world is not mutated.
 func (m *machineImpl) Turn(ctx context.Context, cur app.StatePath, w world.World, call intent.IntentCall) (TurnResult, error) {
-	// 0. Parallel-encoded path? Dispatch to the parallel-state turn handler
-	//    (proposal §9.4).
+	// 0. Parallel-encoded path? Dispatch to the parallel-state turn handler.
 	if par := parseParallel(string(cur)); par.IsParallel {
 		return m.turnParallel(ctx, par, w, call)
 	}
@@ -752,7 +741,7 @@ func (m *machineImpl) Turn(ctx context.Context, cur app.StatePath, w world.World
 
 	// 5. For compound states, resolve the initial child. resolveInitialAware
 	//    additionally expands a parallel target into its encoded composite
-	//    leaf-set (proposal §9.4).
+	//    leaf-set.
 	resolvedTarget, err := m.resolveInitialAware(targetPath, env)
 	if err != nil {
 		return TurnResult{}, fmt.Errorf("resolve initial for %q: %w", targetPath, err)
@@ -876,8 +865,7 @@ func (m *machineImpl) Turn(ctx context.Context, cur app.StatePath, w world.World
 		// in this slice. The staged gate-stop lives in the post-bind path
 		// (DispatchPostBindEmits), which is where the docs-review / bugfix
 		// decision emits actually fire (they gate on host-bound world keys).
-		// Threading the run mode through Machine.Turn is deferred — see
-		// docs/proposals/execution-modes-and-gate-deciders.md §6.
+		// Threading the run mode through Machine.Turn is deferred.
 		ds, dw, dhc, dssb, devs, derr := m.dispatchEmittedIntents(ctx, finalState, newWorld, emits, env, 0, false, nil)
 		if derr != nil {
 			return TurnResult{}, derr
@@ -988,7 +976,7 @@ func (m *machineImpl) Turn(ctx context.Context, cur app.StatePath, w world.World
 // stream per-room progress breadcrumbs LIVE during a one-shot chain instead
 // of merging all say into one blob prepended to the final view. Fired
 // synchronously; implementations MUST NOT block (the TUI sink fans out via
-// tea.Program.Send). See docs/proposals/execution-modes-and-gate-deciders.md.
+// tea.Program.Send).
 type onRoomEnterFn func(state string, say string)
 
 func (m *machineImpl) dispatchEmittedIntents(ctx context.Context, curState string, w world.World, emits []emittedIntent, parentEnv expr.Env, depth int, staged bool, onEnter onRoomEnterFn) (string, world.World, []HostInvocation, string, []store.Event, error) {
@@ -1004,8 +992,7 @@ func (m *machineImpl) dispatchEmittedIntents(ctx context.Context, curState strin
 	// a multi-way decision gate that owes a human decision (staged mode, or
 	// a `decider: human` pin), stop BEFORE firing this state's emits —
 	// drop them, rest here, and record why. One-shot mode (and `decider:
-	// llm` pins) skip this and advance as before. See
-	// docs/proposals/execution-modes-and-gate-deciders.md.
+	// llm` pins) skip this and advance as before.
 	if m.isStagedGate(ctx, curState, w, staged) {
 		m.logger.DebugContext(ctx, trace.EvIntentEmitted,
 			slog.String("state", curState),
@@ -1401,7 +1388,7 @@ func (m *machineImpl) applyEffectsTraced(ctx context.Context, effects []app.Effe
 	var emits []emittedIntent
 
 	for _, eff := range effects {
-		// Optional per-effect guard (§6.2.1, §9.6). An effect whose
+		// Optional per-effect guard. An effect whose
 		// `when:` expression evaluates false is silently skipped so
 		// authors can branch on_enter chains on world flags (e.g.
 		// `when: world.narration` vs `when: not world.narration`)
@@ -1497,8 +1484,10 @@ func (m *machineImpl) applyEffectsTraced(ctx context.Context, effects []app.Effe
 				slog.String("type", "say"),
 				slog.String("text", text),
 			)
-			effectEvents = append(effectEvents, newEvent(store.EffectApplied, map[string]any{
-				"say": text,
+			// narration is its own event kind so
+			// world.update means only a world mutation. Payload key is `text`.
+			effectEvents = append(effectEvents, newEvent(store.MachineSay, map[string]any{
+				"text": text,
 			}))
 
 		case eff.Invoke != "":
@@ -2207,7 +2196,7 @@ func (m *machineImpl) renderBlocks(blocks map[string][]app.ViewElement, env expr
 	return out, nil
 }
 
-// renderView computes the view text for a turn per §7.6 precedence:
+// renderView computes the view text for a turn per the view-precedence rule:
 //   - Transition view wins (if declared).
 //   - Otherwise, target state view.
 //   - If say text exists, prepend it.
@@ -2387,7 +2376,7 @@ func tryEvaluateArms(arms []compiledTransition, env expr.Env, statePath string) 
 // ─── Machine.AllowedIntents ──────────────────────────────────────────────────
 
 // AllowedIntents returns the list of intents currently allowed in the state,
-// populated with metadata for progressive disclosure (§7.2).
+// populated with metadata for progressive disclosure.
 func (m *machineImpl) AllowedIntents(cur app.StatePath, w world.World) []AllowedIntent {
 	names := m.allowedIntentNames(cur)
 	allowed := make([]AllowedIntent, 0, len(names))
@@ -2559,6 +2548,10 @@ func toInt64(v any) int64 {
 }
 
 // WorldFromSchema initialises a World from the app's world schema defaults.
+// Each call returns a fresh, independent, mutable World — callers may safely
+// mutate the result without affecting the schema or any other World. Vars are
+// populated only for schema entries that declare a non-nil Default; a nil or
+// empty schema yields an empty (but usable) World, never a nil one.
 func WorldFromSchema(schema app.WorldSchema) world.World {
 	w := world.New()
 	for k, def := range schema {

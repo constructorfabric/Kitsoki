@@ -1,7 +1,3 @@
-// Package runstatus defines the canonical Snapshot type shared across the
-// run-status feature: the JSON-RPC method returns (live mode), the
-// self-contained HTML artifact (export-status), and test fixtures all use
-// the same shape.
 package runstatus
 
 import (
@@ -13,10 +9,16 @@ import (
 )
 
 // Snapshot is the canonical, self-contained representation of a kitsoki session
-// at a point in time. It is the shape that:
-//   - kitsoki export-status --from-trace inlines into the HTML artifact (Phase 1),
-//   - runstatus.session.get / runstatus.session.trace return in live mode (Phase 3),
-//   - test fixtures under tools/runstatus/fixtures/ are authored against.
+// at a point in time. One shape feeds three consumers — the export-status HTML
+// artifact, the live runstatus.session.get / runstatus.session.trace RPC
+// returns, and the test fixtures under tools/runstatus/fixtures/ — so the live
+// and exported views cannot drift apart.
+//
+// A Snapshot is a plain value with no constructor of its own; build it via
+// [FromHistory] or [FromSink]. It is safe for concurrent reads, but the
+// TraceEvent.Attrs and Mermaid.NodeMap maps it carries are shared with the
+// builder's working state, not deep copied — treat a returned Snapshot as
+// read-only.
 type Snapshot struct {
 	Session SessionHeader   `json:"session"`
 	App     *app.AppDef     `json:"app"`
@@ -27,13 +29,13 @@ type Snapshot struct {
 	// entry per event, in the same order. RawLines[i] is the raw marshalled line
 	// (without trailing newline) that would appear on disk for Events[i].
 	//
-	// Purpose: the Layer 7 byte-equality test (proposal §1.3.7) asserts that
-	// joinLines(snap.RawLines) equals the original JSONL event section of the
-	// trace file. This field is not serialised (no json tag) — it exists only
-	// for test-side byte-equality assertions and for the SPA's "view raw" feature.
-	//
-	// Finding 2.5: previous tests only asserted len(Events)==len(hist) and
-	// per-field equality; this field closes the byte-equality gap.
+	// RawLines captures the original JSONL bytes so tests can assert
+	// byte-equality against the source trace file (joining the lines with
+	// newlines must reproduce the file's event section), and so the SPA's
+	// "view raw" feature can show the on-disk line verbatim. It is not
+	// serialised (json:"-"): it exists only as a fidelity check and a raw-view
+	// source, never as part of the wire/HTML payload. The exporter pass-through
+	// guarantee that motivates it is documented in docs/tracing/trace-format.md.
 	RawLines [][]byte `json:"-"`
 }
 
@@ -64,11 +66,14 @@ type NodeRef = viz.NodeRef
 
 // TraceEvent is one slog record from the JSONL trace file, parsed into a
 // typed shape. The well-known slog keys (time, level, msg, session_id, turn,
-// state_path) are promoted to named fields; any other key-value pair lands
-// in Attrs so no information is lost.
+// state_path) are promoted to named fields so the UI can address them without
+// string lookups; every other key-value pair lands in Attrs so no information
+// from the original record is lost.
 //
-// UnmarshalJSON implements the "known fields promoted, rest into Attrs" logic.
-// When marshalling back to JSON all fields are emitted normally.
+// The zero TraceEvent is a valid empty event (nil Attrs). A TraceEvent is
+// immutable once built and safe for concurrent reads, but its Attrs map is not
+// copied on assignment — callers sharing a TraceEvent share its Attrs and must
+// not mutate it. See [TraceEvent.UnmarshalJSON] for the decode contract.
 type TraceEvent struct {
 	Time      time.Time `json:"time"`
 	Level     string    `json:"level"`
@@ -102,10 +107,17 @@ var knownTraceKeys = map[string]bool{
 	"attrs":       true, // handled explicitly below for round-trip safety
 }
 
-// UnmarshalJSON implements json.Unmarshaler.
-// It decodes the well-known slog keys into the typed fields and routes any
-// remaining keys (event-specific payloads like `intent`, `handler`, etc.) into
-// the Attrs map so the full record is preserved for the UI.
+// UnmarshalJSON decodes the well-known slog keys into the typed fields and
+// routes any remaining keys (event-specific payloads like `intent`, `handler`,
+// etc.) into Attrs so the full record is preserved for the UI. A previously
+// serialised TraceEvent nests its overflow under an "attrs" object; that case
+// is merged directly into Attrs rather than under Attrs["attrs"], so a
+// marshal/unmarshal round-trip is stable.
+//
+// It is lenient by design: a malformed individual field (e.g. an unparseable
+// time) is skipped, leaving that field at its zero value, rather than failing
+// the whole record. An error is returned only when b is not a JSON object at
+// all. A nil receiver panics, per the json.Unmarshaler contract.
 func (e *TraceEvent) UnmarshalJSON(b []byte) error {
 	// Decode everything into a raw map first.
 	var raw map[string]json.RawMessage

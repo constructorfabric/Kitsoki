@@ -90,7 +90,7 @@ func Load(path string) (*AppDef, error) {
 // Intended caller: testrunner fixtures that need to rebind an iface
 // for one flow run without forking the production app.yaml. Production
 // code should use `imports.<alias>.host_bindings:` at the parent app
-// level — that's the proposal-§11.2 multi-layer compose path. This
+// level — that's the multi-layer compose path. This
 // entrypoint is the test seam below it.
 func LoadWithOverrides(path string, ifaceOverrides map[string]string) (*AppDef, error) {
 	b, err := os.ReadFile(path)
@@ -110,7 +110,7 @@ func LoadWithOverrides(path string, ifaceOverrides map[string]string) (*AppDef, 
 	// Stash the loader's base directory so downstream consumers
 	// (notably internal/render.AppRenderer, which roots its template
 	// loader at <BaseDir>/views/) don't have to recompute it from
-	// the manifest path. See view-elements proposal phase H §3.3.
+	// the manifest path. See docs/stories/story-style.md.
 	merged.BaseDir = baseDir
 
 	// Resolve imports recursively, folding each child into merged.
@@ -118,14 +118,14 @@ func LoadWithOverrides(path string, ifaceOverrides map[string]string) (*AppDef, 
 	// Seed LoadedManifests with the root manifest's canonical path; each
 	// folded import appends itself + its own transitive manifests. The
 	// metamode controller reads this list to auto-watch every file the
-	// loader actually touched (proposal §16.4).
+	// loader actually touched.
 	merged.LoadedManifests = appendUnique(merged.LoadedManifests, canonical)
 	if importErrs := resolveImports(merged, path, baseDir, []string{canonical}); len(importErrs) > 0 {
 		return nil, errors.Join(importErrs...)
 	}
 
 	// Expand phase templates into concrete states before validation so the
-	// referential-integrity pass sees the synthesised states (proposal §5).
+	// referential-integrity pass sees the synthesised states.
 	if expandErrs := expandPhases(merged, path); len(expandErrs) > 0 {
 		return nil, errors.Join(expandErrs...)
 	}
@@ -155,8 +155,7 @@ func LoadWithOverrides(path string, ifaceOverrides map[string]string) (*AppDef, 
 	// invocation, after all imports have folded their iface declarations
 	// into def.HostInterfaces (under alias-prefixed names) and after
 	// each layer's host_bindings have had a chance to override defaults.
-	// This is the surface that makes multi-layer rebinding compose per
-	// proposal §11.2.
+	// This is the surface that makes multi-layer rebinding compose.
 	if ifaceErrs := resolveAllInterfaces(merged, path); len(ifaceErrs) > 0 {
 		return nil, errors.Join(ifaceErrs...)
 	}
@@ -171,7 +170,7 @@ func LoadWithOverrides(path string, ifaceOverrides map[string]string) (*AppDef, 
 
 	// Resolve oracle plugin declarations from oracle_plugins: block. This
 	// validates plugin names, performs ${VAR} substitution in env/headers, and
-	// injects the default oracle.claude entry when absent (proposal §2 B-2).
+	// injects the default oracle.claude entry when absent.
 	if pluginErrs := resolveOraclePlugins(merged, path); len(pluginErrs) > 0 {
 		return nil, errors.Join(pluginErrs...)
 	}
@@ -325,7 +324,7 @@ func parseAndMerge(b []byte, file, baseDir string) (*AppDef, []error) {
 
 // mergeInto merges src into dst. States, proposals, hosts, intents, world keys,
 // phase_templates, phases, and checkpoint_intents from src are merged into dst.
-// Collisions are errors (§9.1).
+// Collisions are errors.
 func mergeInto(dst, src *AppDef, srcFile string) []error {
 	var errs []error
 	addErr := func(msg string) {
@@ -556,7 +555,7 @@ func resolveAgentDecls(def *AppDef, file, baseDir string) []error {
 
 		// external_side_effect inference: infer from the tool surface when
 		// the field is absent, and warn when declared value disagrees with
-		// the inferred value (oracle-split proposal §3.3, D3).
+		// the inferred value.
 		inferred := inferExternalSideEffect(decl.Tools)
 		if decl.ExternalSideEffect == nil {
 			// No explicit declaration — store the inferred value.
@@ -685,7 +684,7 @@ func validateDef(def *AppDef, file string) (*AppDef, []error) {
 	case string:
 		rootName = v
 	case map[string]interface{}:
-		// Inline compound/parallel root — §3.3. For PoC we only validate that
+		// Inline compound/parallel root. For PoC we only validate that
 		// "type" is present; deeper validation is a Stage-3 concern.
 	default:
 		addErr(fmt.Sprintf("root: unsupported value type %T; expected a state name string", def.Root))
@@ -745,13 +744,13 @@ func validateDef(def *AppDef, file string) (*AppDef, []error) {
 		}
 	}
 
-	// ── 7a. Semantic-routing schema checks (semantic-routing proposal Phase 0).
+	// ── 7a. Semantic-routing schema checks (see docs/architecture/semantic-routing.md).
 	// Validates Intent.Synonyms / Slot.Synonyms / AppDef.Routing against the
-	// rules in proposal §4 and §6. Errors here share the same shape as the
+	// routing rules. Errors here share the same shape as the
 	// surrounding validators (ValidationError via the errs slice).
 	validateRouting(file, def, &errs)
 
-	// ── 7b. (removed) off-path agent reference: superseded by §9b
+	// ── 7b. (removed) off-path agent reference: superseded by step 9b
 	// validateAgentReferences which also recognises builtin agent names
 	// like `story-author`.
 
@@ -765,7 +764,7 @@ func validateDef(def *AppDef, file string) (*AppDef, []error) {
 	// AppDef must resolve in AppDef.Agents or agents.BuiltinNames().
 	validateAgentReferences(file, def, &errs)
 
-	// ── 9c. reach-into-child guard (story-imports proposal §8 / §16.7).
+	// ── 9c. reach-into-child guard (see docs/stories/imports.md).
 	// Reject parent transitions that target a deep state inside an
 	// imported child (any path of the form `<alias>.<X>` where <X> is
 	// not the import's declared entry). The import alias itself
@@ -895,7 +894,7 @@ func intentReachable(statePath, name string, stateOnKeys map[string]map[string]s
 }
 
 // joinPath combines an optional parent prefix and a child name using dot separator.
-// The design uses "bar.dark" style (§3.1); YAML authors write "../../foyer" for
+// The design uses "bar.dark" style; YAML authors write "../../foyer" for
 // relative refs but we validate using the canonical dotted form.
 func joinPath(prefix, name string) string {
 	if prefix == "" {
@@ -1004,8 +1003,7 @@ func validateStates(
 		// Validate transcript/theme: only allowed on top-level (room)
 		// states. prefix is empty exactly at the top of def.States; any
 		// nested level carries the parent's dotted path. See the
-		// single-pane-tui proposal §"Per-room transcript buffers" and
-		// §"Per-room theme swap".
+		// top-level (room) states only.
 		if prefix != "" {
 			if s.Transcript != "" {
 				addErr(fmt.Sprintf("state %q: transcript: only allowed on top-level (room) states", statePath))
@@ -1025,7 +1023,7 @@ func validateStates(
 		// Validate on: intent names, transition targets, and effect hosts.
 		intentNames := sortedKeys(s.On)
 		for _, intentName := range intentNames {
-			// Wildcard "*" is always allowed (§3.1).
+			// Wildcard "*" is always allowed.
 			if intentName != "*" {
 				_, isGlobal := globalIntents[intentName]
 				_, isLocal := localIntents[intentName]
@@ -1041,7 +1039,7 @@ func validateStates(
 					addErr(fmt.Sprintf("state %q intent %q: transition view: %v", statePath, intentName, err))
 				} else {
 					// Cross-reference choice elements in transition views
-					// against the same intents map. (choice-widget proposal §4.4.)
+					// against the same intents map (see docs/stories/choice-widget.md).
 					for vi, el := range tr.View.Elements {
 						if el.Kind != "choice" {
 							continue
@@ -1110,7 +1108,7 @@ func validateStates(
 			}
 		}
 
-		// Validate parallel state shape (proposal §9.4): each parallel state
+		// Validate parallel state shape: each parallel state
 		// must declare ≥2 child regions and must not declare an `initial:`
 		// field on the parent (each region picks its own initial).
 		if s.Type == "parallel" {
@@ -1157,7 +1155,7 @@ func validateTransitionTarget(file, statePath, target string, allPaths map[strin
 }
 
 // resolveTarget resolves a YAML transition target relative to a state path.
-// The design uses slash-separated relative refs (§3.1) like "../../foyer" but
+// The design uses slash-separated relative refs like "../../foyer" but
 // the internal state paths use dots. We accept both slash-based relative refs
 // and direct dotted absolute references.
 func resolveTarget(statePath, target string) string {
@@ -1744,9 +1742,10 @@ func validateAgentReferences(file string, def *AppDef, errs *[]error) {
 	// background_jobs YAML type exists today. Once it lands, walk it here.
 }
 
-// validateNoReachIntoChild implements story-imports proposal §8/§16.7.
+// validateNoReachIntoChild implements the reach-into-child guard (see
+// docs/stories/imports.md).
 // A parent transition targeting `<alias>.<deeper>` couples the parent
-// to the child's internals, which the proposal forbids. The canonical
+// to the child's internals, which the import contract forbids. The canonical
 // way to invoke a child is `target: <alias>` (the wrapper itself);
 // `target: <alias>.<entry>` is also allowed since it's equivalent.
 // Anything deeper is rejected with a clear message naming both the
@@ -1824,7 +1823,7 @@ func checkStateTargetsAgainstWrappers(statePath string, s *State, wrappers map[s
 		*errs = append(*errs, &ValidationError{
 			File: file,
 			Message: fmt.Sprintf(
-				"state %q %s targets %q which reaches into the imported child %q past its entry %q; use target: %q to invoke the child or have the child expose a new exit (proposal §8/§16.7)",
+				"state %q %s targets %q which reaches into the imported child %q past its entry %q; use target: %q to invoke the child or have the child expose a new exit",
 				statePath, where, target, alias, wrapper.Entry, alias,
 			),
 		})
@@ -2042,7 +2041,7 @@ func lookupStateInMap(path string, states map[string]*State) (*State, bool) {
 }
 
 // LookupIntent resolves an intent by name, checking the state's local intents
-// first and then the global intent library (§3.4).
+// first and then the global intent library.
 func (a *appImpl) LookupIntent(ctx StatePath, name string) (Intent, bool) {
 	if s, ok := a.LookupState(ctx); ok && s != nil {
 		if intent, ok := s.Intents[name]; ok {

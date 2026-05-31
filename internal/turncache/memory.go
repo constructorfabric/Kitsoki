@@ -7,10 +7,25 @@ import (
 	"time"
 )
 
-// NewMemory returns an in-process [Cache] suitable for Phase 5. It uses a
+// cancellationCheckInterval is the number of rows the in-memory sweeps walk
+// between context-cancellation checks. The map iterations hold the cache
+// mutex, so a per-row ctx.Err() call would dominate the loop; checking once
+// per this many rows keeps cancellation responsive on large tables without
+// turning the hot path into a syscall storm. The value is a power of two
+// purely so the i%N test compiles to a mask; its magnitude is not load-bearing.
+const cancellationCheckInterval = 1024
+
+// confidenceDecayThreshold is the originating-verdict confidence below which
+// a row is treated as low-confidence for [Config.ConfidenceDecay]: such rows
+// have their effective MaxAge halved during [Cache.SweepCold]. The SQLite
+// backend hard-codes the same 0.7 in its WHERE clause; the two must agree for
+// the conformance suite to pass.
+const confidenceDecayThreshold = 0.7
+
+// NewMemory returns an in-process [Cache] with no persistence. It uses a
 // single mutex around two maps — the cache table and the synonym-hit
-// table. A future Phase 6 backend will replace this with a SQLite-backed
-// implementation behind the same interface.
+// table — so it is safe for concurrent use and cheapest on the read path.
+// Use [NewSQLite] instead when rows must survive a process restart.
 func NewMemory(cfg Config) Cache {
 	if cfg.RevalidateStrikes < 1 {
 		cfg.RevalidateStrikes = 1
@@ -115,7 +130,7 @@ func (c *memoryCache) InvalidateOtherHashes(ctx context.Context, app string, kee
 	// Cheap-check cancellation periodically while iterating.
 	i := 0
 	for k := range c.rows {
-		if i%1024 == 0 {
+		if i%cancellationCheckInterval == 0 {
 			if err := ctx.Err(); err != nil {
 				return deleted, err
 			}
@@ -134,7 +149,7 @@ func (c *memoryCache) InvalidateOtherHashes(ctx context.Context, app string, kee
 	// of which app it came from. Without this cleanup the table grows
 	// unbounded across YAML edits.
 	for sk := range c.synonyms {
-		if i%1024 == 0 {
+		if i%cancellationCheckInterval == 0 {
 			if err := ctx.Err(); err != nil {
 				return deleted, err
 			}
@@ -156,7 +171,7 @@ func (c *memoryCache) SweepCold(ctx context.Context, app string, olderThan time.
 	deleted := 0
 	i := 0
 	for k, v := range c.rows {
-		if i%1024 == 0 {
+		if i%cancellationCheckInterval == 0 {
 			if err := ctx.Err(); err != nil {
 				return deleted, err
 			}
@@ -166,7 +181,7 @@ func (c *memoryCache) SweepCold(ctx context.Context, app string, olderThan time.
 			continue
 		}
 		cutoff := olderThan
-		if c.cfg.ConfidenceDecay && v.Confidence < 0.7 && c.cfg.MaxAge > 0 {
+		if c.cfg.ConfidenceDecay && v.Confidence < confidenceDecayThreshold && c.cfg.MaxAge > 0 {
 			// Halve the effective max age by pulling the cutoff forward
 			// by half of MaxAge.
 			cutoff = olderThan.Add(c.cfg.MaxAge / 2)

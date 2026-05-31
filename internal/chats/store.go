@@ -71,7 +71,7 @@ func WithClock(c clock.Clock) Option {
 
 // WithJournalWriter injects a journal.Writer into the Store. When non-nil,
 // chat mutations emit typed journal entries alongside the SQLite writes
-// (continue-mode §4.9 dual-write). When nil (the default), no journal
+// (the continue-mode dual-write). When nil (the default), no journal
 // entries are written — this preserves backward compatibility for callers
 // that do not participate in the journal (e.g. flow tests, chathost adapter
 // in non-continue-mode builds).
@@ -526,8 +526,8 @@ func (s *Store) AppendMessage(ctx context.Context, chatID, role, content string,
 		Metadata:  m,
 		CreatedAt: time.UnixMicro(now),
 	}
-	// Site 19: emit chats.append for the new message (post-commit write;
-	// acceptable per spike R4 — chat appends serialise behind the chat lock).
+	// Emit chats.append for the new message. Post-commit write — acceptable
+	// because chat appends serialise behind the per-chat lock.
 	if s.journalWriter != nil {
 		sid := chatSessionID(ctx, s.db, chatID)
 		msgValue := map[string]any{

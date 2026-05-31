@@ -33,8 +33,8 @@ import (
 )
 
 // DispatchDriveRetryInterval is the poll cadence DispatchDriveWithTimeout
-// uses while waiting for a busy chat lock to free. Matches the proposal
-// §12 default heartbeat (5 s) — the lock holder refreshes its row at the
+// uses while waiting for a busy chat lock to free. Matches the
+// default heartbeat (5 s) — the lock holder refreshes its row at the
 // same cadence, so polling more frequently is wasted DB load. Exposed
 // (lower-cased copy on the package) for tests to drive faster.
 var dispatchDriveRetryInterval = 1 * time.Second

@@ -1,4 +1,5 @@
-// Package host implements the host invocation registry (§2).
+// Package host implements the host invocation registry.
+// See docs/architecture/hosts.md.
 //
 // Handlers are registered at process start and invoked from the effect executor
 // in internal/machine/ when an effect declares invoke: host.<name>.

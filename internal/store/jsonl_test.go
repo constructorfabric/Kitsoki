@@ -806,7 +806,7 @@ func TestJSONL_AppendAfterReopen(t *testing.T) {
 // a layer-5 error on reload).
 //
 // Concern 2 of the wave-4d perfection pass: confirm seq auto-assignment is
-// correct across an off-path interleave (§3.3 off-path interleave fixture).
+// correct across an off-path interleave fixture.
 func TestJSONL_OffPathInterleave_SeqIsPerTurn(t *testing.T) {
 	t.Parallel()
 
@@ -883,7 +883,7 @@ func TestJSONL_OffPathInterleave_SeqIsPerTurn(t *testing.T) {
 // write), both stores produce the same seq values for each event.
 //
 // Concern 2 of the wave-4d perfection pass: confirm dual-write stores agree on
-// seq (§4.9 Rule 1 invariant check).
+// seq (atomic append invariant check).
 func TestJSONL_DualWriteSeqParity(t *testing.T) {
 	t.Parallel()
 

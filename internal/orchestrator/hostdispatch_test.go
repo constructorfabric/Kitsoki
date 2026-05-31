@@ -243,8 +243,9 @@ func TestOrchestrator_HostDispatchOnError_SelfRedirectDoesNotLoop(t *testing.T) 
 		"host.fail must be invoked exactly once; self-redirect must not re-fire on_enter")
 }
 
-// TestOrchestrator_OnErrorRedirect_DepthCapBreaksLoop guards against the
-// regression the dogfood-regression-testing-gap proposal flagged: a
+// TestOrchestrator_OnErrorRedirect_DepthCapBreaksLoop guards against an
+// on-error redirect loop (see docs/stories/state-machine.md
+// "Effects" — the on_error recursion cap): a
 // host call whose on_error target is a SIBLING state (not self) whose
 // own on_enter re-invokes a failing host call with on_error pointing
 // back at the original state. The `target == prior` self-redirect

@@ -1,7 +1,8 @@
-// Package oracle — subprocess transport tests (proposal §2 B-3).
+// subprocess_test.go covers the subprocess JSON-RPC transport.
 //
 // These tests use a compiled echo_oracle binary (built at test time via go
 // build) to verify the JSON-RPC 2.0 subprocess transport without a real LLM.
+
 package oracle
 
 import (

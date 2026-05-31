@@ -4,7 +4,7 @@
 //
 // This is host.oracle.ask plus an mcp_servers: arg that is materialized into a
 // temporary --mcp-config file and passed to `claude -p`. The bug-fix room
-// uses this for every LLM-driven phase (proposal §5.2, §7.1).
+// uses this for every LLM-driven phase.
 //
 // Field naming note (N11): the canonical text-output field on this handler
 // is `stdout` (consistent with the rest of host.run / host.oracle.* surface).
@@ -458,7 +458,7 @@ func runOracleAskWithMCPViaAgent(ctx context.Context, agentName string, args map
 	}
 
 	// Tool allowlist hint. The handler today does NOT gate by tool name
-	// (open question §6.1 of the meta-mode proposal); we plumb the list
+	// (tool-name gating is a future extension; see docs/stories/meta-mode.md); we plumb the list
 	// through under the same key the metamode controller uses so a
 	// future gating pass has one consistent place to look. Tests assert
 	// on this key to confirm the agent's tool surface reached the call

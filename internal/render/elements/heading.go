@@ -14,9 +14,8 @@ import (
 // of the same visual language as the menu's action labels.
 //
 // Defined here (not in styles.go) because the elements package must
-// stand alone — see Phase D bullet "Files you may NOT touch" in the
-// brief. Once the colour palette is centralised under internal/tui we
-// can re-import from there.
+// stand alone and must not import internal/tui. Once the colour palette is
+// centralised under internal/tui we can re-import from there.
 var headingStyle = lipgloss.NewStyle().
 	Bold(true).
 	Foreground(lipgloss.Color("#10B981"))
@@ -24,6 +23,8 @@ var headingStyle = lipgloss.NewStyle().
 // Heading is a styled section break. Not bulleted, not prefixed. The
 // dispatcher pairs it with a trailing blank line via the standard inter-
 // element spacing.
+//
+// The zero value (empty Source) is usable and renders to "".
 type Heading struct {
 	Source string
 }

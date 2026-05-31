@@ -1,6 +1,6 @@
 package host_test
 
-// Phase 4 oracle-split tests — host.oracle.task handler.
+// Tests for host.oracle.task handler.
 //
 // All tests use the ClaudeRunner stub seam (WithClaudeRunner) and FakeTask so
 // no real subprocess is ever forked. Tests run in milliseconds.

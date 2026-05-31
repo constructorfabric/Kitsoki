@@ -124,8 +124,8 @@ func resolveImports(def *AppDef, file, baseDir string, parents []string) []error
 		}
 
 		// Record post-fold metadata: the alias, its declared entry, and
-		// the child manifest's path. Used by validation (§16.7) and the
-		// metamode auto-watch (§16.4).
+		// the child manifest's path. Used by the reach-into-child guard and
+		// the metamode auto-watch.
 		entryName := imp.Entry
 		if entryName == "" {
 			if s, ok := childDef.Root.(string); ok {
@@ -323,7 +323,7 @@ func foldChild(parent *AppDef, alias string, imp *ImportDef, child *AppDef, file
 		}
 	}
 
-	// 3a. Enforce per-exit `requires:` (proposal §7). For every transition
+	// 3a. Enforce per-exit `requires:`. For every transition
 	// in the child whose target is `@exit:X`, the transition's effects
 	// must collectively set every key in child.Exits[X].Requires. This is
 	// the best-effort static check; it catches the author-error of
@@ -716,8 +716,8 @@ func checkExitRequiresRec(statePath string, states map[string]*State, exits map[
 //   - relative `../...` chain — the consecutive `..` segments are
 //     counted; if they would walk above the child's wrapper (i.e.,
 //     exceed depthFromChildRoot + 1, where +1 is the wrapper level
-//     itself), the load fails per §8 "Transitions from inside the
-//     child to outside are forbidden."
+//     itself), the load fails: transitions from inside the
+//     child to outside are forbidden.
 //   - already-qualified targets (slashed or dotted, no leading `..`) —
 //     passed through; the validator will reject any that don't resolve.
 //
@@ -774,7 +774,7 @@ func rewriteChildStateTransitionsAtDepth(s *State, alias string, imp *ImportDef,
 			// Allowed: dotdots <= depth+1 (walks at most up to the wrapper).
 			// Forbidden: dotdots > depth+1 (escapes the wrapper).
 			if dotdots > depth+1 {
-				*errs = append(*errs, &ValidationError{File: file, Message: fmt.Sprintf("imports.%s: target %q walks above the child's namespace (depth %d, %d `..` segments); cross-boundary parent targets are forbidden per §8", alias, t, depth, dotdots)})
+				*errs = append(*errs, &ValidationError{File: file, Message: fmt.Sprintf("imports.%s: target %q walks above the child's namespace (depth %d, %d `..` segments); cross-boundary parent targets are forbidden", alias, t, depth, dotdots)})
 			}
 			return t
 		}

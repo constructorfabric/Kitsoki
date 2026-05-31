@@ -1,4 +1,4 @@
-// Package oracle — MCP-over-HTTP transport (proposal §2 B-3).
+// mcp_http.go implements the MCP-over-HTTP transport.
 //
 // MCPHTTPOracle is an Oracle that talks to a long-running external service
 // via HTTP. The plugin exposes a single MCP tool (default name "ask"); kitsoki
@@ -47,6 +47,7 @@
 // ${VAR}-substituted by the plugin loader at init time).
 //
 // Close: flushes idle connections via Transport.CloseIdleConnections.
+
 package oracle
 
 import (
@@ -84,7 +85,10 @@ type mcpHTTPResponse struct {
 	Error   *jsonrpcErrorObj   `json:"error,omitempty"`
 }
 
-// MCPHTTPOracle implements Oracle via HTTP MCP tool calls.
+// MCPHTTPOracle implements Oracle via HTTP MCP tool calls. The zero value is
+// not usable — construct it with NewMCPHTTP. It is safe for concurrent use:
+// the underlying http.Client pools connections, and Ask holds no per-call
+// state on the receiver.
 type MCPHTTPOracle struct {
 	endpoint string
 	tool     string
@@ -201,7 +205,7 @@ func (o *MCPHTTPOracle) Ask(ctx context.Context, req AskRequest) (AskResponse, e
 	}
 	defer httpResp.Body.Close()
 
-	respBody, err := io.ReadAll(io.LimitReader(httpResp.Body, 16*1024*1024))
+	respBody, err := io.ReadAll(io.LimitReader(httpResp.Body, MaxHTTPResponseSize))
 	if err != nil {
 		return AskResponse{}, &AskError{
 			Kind:       "transport_error",
@@ -214,7 +218,7 @@ func (o *MCPHTTPOracle) Ask(ctx context.Context, req AskRequest) (AskResponse, e
 	if httpResp.StatusCode >= 400 {
 		return AskResponse{}, &AskError{
 			Kind:   "transport_error",
-			Detail: fmt.Sprintf("mcp_http oracle: http %d: %s", httpResp.StatusCode, truncateBytes(respBody, 256)),
+			Detail: fmt.Sprintf("mcp_http oracle: http %d: %s", httpResp.StatusCode, truncateBytes(respBody, ErrorDetailTruncateBytes)),
 		}
 	}
 
@@ -224,7 +228,7 @@ func (o *MCPHTTPOracle) Ask(ctx context.Context, req AskRequest) (AskResponse, e
 		return AskResponse{}, &AskError{
 			Kind:       "transport_error",
 			Underlying: err,
-			Detail:     fmt.Sprintf("mcp_http oracle: unmarshal rpc response: %v (raw: %q)", err, truncateBytes(respBody, 256)),
+			Detail:     fmt.Sprintf("mcp_http oracle: unmarshal rpc response: %v (raw: %q)", err, truncateBytes(respBody, ErrorDetailTruncateBytes)),
 		}
 	}
 
@@ -253,7 +257,7 @@ func (o *MCPHTTPOracle) Ask(ctx context.Context, req AskRequest) (AskResponse, e
 		}
 		return AskResponse{}, &AskError{
 			Kind:   "transport_error",
-			Detail: fmt.Sprintf("mcp_http oracle: tool returned isError=true: %s", truncateBytes([]byte(errText), 256)),
+			Detail: fmt.Sprintf("mcp_http oracle: tool returned isError=true: %s", truncateBytes([]byte(errText), ErrorDetailTruncateBytes)),
 		}
 	}
 
@@ -277,7 +281,7 @@ func (o *MCPHTTPOracle) Ask(ctx context.Context, req AskRequest) (AskResponse, e
 		return AskResponse{}, &AskError{
 			Kind:       "transport_error",
 			Underlying: err,
-			Detail:     fmt.Sprintf("mcp_http oracle: unmarshal AskResponse from content text: %v (raw: %q)", err, truncateBytes([]byte(askRespText), 256)),
+			Detail:     fmt.Sprintf("mcp_http oracle: unmarshal AskResponse from content text: %v (raw: %q)", err, truncateBytes([]byte(askRespText), ErrorDetailTruncateBytes)),
 		}
 	}
 

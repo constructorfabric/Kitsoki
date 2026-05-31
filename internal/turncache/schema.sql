@@ -1,10 +1,11 @@
--- SQLite schema for the Phase 6 turn-cache backend.
+-- SQLite schema for the persistent turn-cache backend.
 -- Applied idempotently by turncache.NewSQLite via //go:embed; every
 -- statement is CREATE … IF NOT EXISTS so re-running this DDL on an
 -- existing DB is a no-op.
 --
--- The schema mirrors proposal §2.2 (turn_cache) and §7.6 (synonym_hits)
--- with one deliberate addition: the `app` column is part of the
+-- The schema carries two tables — turn_cache (cached verdicts) and
+-- synonym_hits (per-synonym counters) — with one deliberate addition:
+-- the `app` column is part of the
 -- turn_cache primary key alongside `app_hash`. The interface in
 -- turncache.Cache treats App and AppHash as separate fields on Key and
 -- several methods (InvalidateOtherHashes, SweepCold, TrimLRU) operate on

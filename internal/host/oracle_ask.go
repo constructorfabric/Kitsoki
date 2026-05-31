@@ -1,7 +1,7 @@
-// Package host — host.oracle.ask: read-only inspection handler (oracle-split Phase 3).
+// Package host — host.oracle.ask: read-only inspection handler.
 //
 // host.oracle.ask is the "read-only inspection" rung of the oracle verb ladder
-// (oracle-split proposal §2.3). The LLM may use read tools (Read, Grep, Glob,
+// (see docs/architecture/oracle-cli.md). The LLM may use read tools (Read, Grep, Glob,
 // WebFetch, WebSearch, Bash under a profile, read-only MCP servers) but cannot
 // mutate anything. Returns prose output; when a schema: is supplied the LLM also
 // calls a submit MCP tool and the handler returns typed JSON alongside stdout.
@@ -273,7 +273,7 @@ func OracleAskHandler(ctx context.Context, args map[string]any) (Result, error) 
 	// dispatch time, before the subprocess is started. Note: Prompt and
 	// SystemPrompt are omitted from the event to stay under PIPE_BUF (4096 bytes).
 	// The full prompt is available in AskRequest context (live) or cassette (replay).
-	appendOracleCalledEvent(ctx, callStart, callID, OracleCalledPayload{
+	appendOracleCalledEvent(ctx, callStart, callID, rendered, OracleCalledPayload{
 		Verb:  "ask",
 		Agent: agentNameFromArgs(args),
 		Model: agent.Model,

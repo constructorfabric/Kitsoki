@@ -1,22 +1,3 @@
-// Package clock provides an injectable time source for use across the kitsoki
-// runtime.
-//
-// # When to use Real vs Fake
-//
-// Use [Real] everywhere in production code that needs to track wall-clock time
-// (scheduler debounces, clarification poll loops, etc.).  Never call
-// time.Now(), time.After(), time.Sleep(), etc. directly in packages that need
-// to be tested deterministically; accept a Clock instead and inject Real() at
-// the call site.
-//
-// Use [NewFake] in tests.  A *Fake gives you:
-//   - [Fake.Advance] and [Fake.Set] to move time forward synchronously.
-//   - [Fake.BlockUntil] to wait until a known number of goroutines are blocked
-//     on this clock, giving you a race-free point from which to Advance.
-//
-// Timers and tickers returned by a *Fake use buffered channels of capacity 1 so
-// Advance is non-blocking: if the receiving goroutine hasn't consumed the
-// previous tick yet the new one is dropped (same semantics as time.Ticker).
 package clock
 
 import (
@@ -112,7 +93,13 @@ type waiter struct {
 // Fake is a deterministic clock for testing.  Unlike the real clock it does
 // not advance on its own; callers drive time forward with Advance or Set.
 //
-// All methods are safe for concurrent use.
+// A Fake must be constructed with [NewFake]; the zero value is not usable,
+// because its condition variable is nil and every method that touches the
+// waiter count would panic. Do not copy a Fake after first use — it carries a
+// [sync.Mutex] and a [sync.Cond] bound to that mutex.
+//
+// All methods are safe for concurrent use once the Fake has been built by
+// NewFake.
 type Fake struct {
 	mu      sync.Mutex
 	now     time.Time
@@ -190,6 +177,12 @@ func (f *Fake) NewTicker(d time.Duration) Ticker {
 // Advance moves the fake clock forward by d and fires all pending waiters
 // whose deadline is ≤ the new time.  For tickers, each elapsed period fires
 // one send (with overflow drops).  Safe to call from any goroutine.
+//
+// Re-entry contract: waiters fire while Advance holds the clock's lock, so a
+// handler that receives a fired tick must not call back into this same clock
+// (After, Sleep, NewTimer, NewTicker, Advance, Set) from the firing goroutine
+// — doing so deadlocks. If a handler needs to re-arm the clock, it must do so
+// from a separate goroutine.
 func (f *Fake) Advance(d time.Duration) {
 	f.mu.Lock()
 	f.now = f.now.Add(d)
@@ -199,6 +192,10 @@ func (f *Fake) Advance(d time.Duration) {
 
 // Set moves the fake clock to t (must be ≥ Now(); panics if t is before the
 // current fake time) and fires all pending waiters whose deadline ≤ t.
+//
+// Set carries the same re-entry contract as [Fake.Advance]: waiters fire under
+// the clock's lock, so a fired handler must not call back into this clock from
+// the firing goroutine or it will deadlock.
 func (f *Fake) Set(t time.Time) {
 	f.mu.Lock()
 	if t.Before(f.now) {

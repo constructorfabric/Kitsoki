@@ -1,7 +1,3 @@
-// Package harness — BuildTransitionSchema is the single source of truth for
-// the transition-tool input schema. Both LiveHarness and ClaudeCLIHarness
-// derive their tool schema from here so semantic formats declared on slots
-// (e.g. `format: jql`) flow through to slot extraction in either harness.
 package harness
 
 import (
@@ -11,8 +7,11 @@ import (
 	"kitsoki/internal/app"
 )
 
-// BuildTransitionSchema returns a JSON Schema (draft 2020-12) describing the
-// arguments to the transition tool. Top-level shape:
+// BuildTransitionSchema is the single source of truth for the transition
+// tool's input schema: both LiveHarness and ClaudeCLIHarness derive their tool
+// schema from here, so a semantic slot format (e.g. `format: jql`) declared once
+// flows into either harness identically. It returns a JSON Schema (draft
+// 2020-12) describing the arguments to the transition tool. Top-level shape:
 //
 //	{intent: <enum>, slots: {<flat union of all slot defs>}, confidence}
 //

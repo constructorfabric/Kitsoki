@@ -30,7 +30,7 @@ import (
 //  3. Returns an AskResponse whose Submission is the episode oracle response
 //     and whose Meta carries episode_id, match_idx, and call_id so that the
 //     OracleCalled event written by host.Dispatch carries the right fields for
-//     post-resume SeedMatchCountsFromHistory (§3.3.2).
+//     post-resume SeedMatchCountsFromHistory.
 type cassetteOracle struct {
 	cas      *Cassette
 	hostName string // oracle alias, used as the "handler" key in episode match
@@ -80,7 +80,7 @@ func NewCassetteOracle(cas *Cassette, hostName string, stateOf func() string, cl
 //
 // These Meta fields are read back by CassetteDispatchCalledEventMeta so that
 // the OracleCalled event written by host.Dispatch carries EpisodeID and MatchIdx
-// fields required by post-resume SeedMatchCountsFromHistory (§3.3.2).
+// fields required by post-resume SeedMatchCountsFromHistory.
 func (o *cassetteOracle) Ask(_ context.Context, req oracle.AskRequest) (oracle.AskResponse, error) {
 	statePath := o.stateOf()
 

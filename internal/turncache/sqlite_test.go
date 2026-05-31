@@ -294,7 +294,7 @@ func TestSQLite_SlotsJSONRoundTrip(t *testing.T) {
 // TestSQLite_AppHashInvalidationAcrossReopen seeds a row under the old
 // AppHash, closes the DB, reopens, and calls InvalidateOtherHashes for
 // the live hash. The old row must be gone; rows for a different app
-// must be untouched. This is the §7.1 contract.
+// must be untouched. This is the app-hash invalidation contract.
 func TestSQLite_AppHashInvalidationAcrossReopen(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "cache.db")

@@ -9,6 +9,39 @@ import (
 	"kitsoki/internal/lex"
 )
 
+// Date-parsing bounds. These name the magic numbers the hand-coded
+// date patterns lean on so they are discoverable in one place; none
+// is a tunable knob, they are the semantic limits of the dialect.
+const (
+	// maxDateNumberWindow bounds the spelled-cardinal scan inside a
+	// date context ("in three days"). It is smaller than
+	// [maxSpelledWindow] because a date's number is a count of days or
+	// weeks — short by construction — so a wider window would only
+	// invite false positives from surrounding prose.
+	maxDateNumberWindow = 8
+
+	// minYear4Digit is the smallest value a 4-digit numeric year is
+	// allowed to take. It exists to reject 3-digit-and-shorter runs
+	// that happen to fall in the 1..999 range from being read as years
+	// in the numeric "year month day" / "month day year" forms.
+	minYear4Digit = 1000
+
+	// minMonthValue / maxMonthValue bound a numeric month component.
+	minMonthValue = 1
+	maxMonthValue = 12
+
+	// minDayValue / maxDayValue bound a numeric day-of-month component.
+	// The upper bound is a coarse sanity gate (not per-month) — an
+	// invalid day like "feb 31" still normalises through time.Date.
+	minDayValue = 1
+	maxDayValue = 31
+
+	// minYearTwoFourDigit is the floor for the optional year in the
+	// "month day [year]" pattern; it accepts both 3- and 4-digit years
+	// declared explicitly, so the gate is lower than minYear4Digit.
+	minYearTwoFourDigit = 100
+)
+
 // ParseDate accepts a small whitelist of date phrasings and returns
 // a [time.Time] (UTC, midnight) as the Value. Strategies in order, first
 // hit wins:
@@ -48,9 +81,8 @@ func ParseDate(tokens []lex.Token) Result {
 }
 
 // ParseDateAt is the testable variant of [ParseDate]: now is the
-// reference point for relative phrases ("today", "tomorrow", "next
-// monday") and the year-rollover heuristic in §5. Tests pin now;
-// production callers go through ParseDate.
+// monday") and the month-day year-rollover heuristic (strategy 5
+// above). Tests pin now; production callers go through ParseDate.
 //
 // now is normalised to its date (year/month/day) before relative
 // arithmetic — sub-day components are ignored. The returned time is
@@ -188,7 +220,7 @@ func ParseDateAt(tokens []lex.Token, now time.Time) Result {
 			continue
 		}
 		day, dayOK := atoiSurface(tokens[j].Surface)
-		if !dayOK || day < 1 || day > 31 {
+		if !dayOK || day < minDayValue || day > maxDayValue {
 			continue
 		}
 		// Optional year — same path.
@@ -199,7 +231,7 @@ func ParseDateAt(tokens []lex.Token, now time.Time) Result {
 			k++
 		}
 		if k < len(tokens) && tokens[k].IsNum {
-			if y, ok2 := atoiSurface(tokens[k].Surface); ok2 && y >= 100 {
+			if y, ok2 := atoiSurface(tokens[k].Surface); ok2 && y >= minYearTwoFourDigit {
 				yearVal = y
 				yearEnd = k + 1
 			}
@@ -234,7 +266,7 @@ func ParseDateAt(tokens []lex.Token, now time.Time) Result {
 	//   year-month-day (Y is 4 digits)  — "2026 03 15"
 	//   month-day-year (Y is 4 digits)  — "3 15 2026"
 	//
-	// 2-digit years are deliberately NOT accepted: the proposal's
+	// 2-digit years are deliberately NOT accepted: the date
 	// whitelist is small and "yy" forms are an ambiguity magnet
 	// ("03 15 26" — what year?). Stick to 4-digit years so the
 	// matcher's surface stays predictable.
@@ -250,7 +282,7 @@ func ParseDateAt(tokens []lex.Token, now time.Time) Result {
 		}
 		// year-month-day (ISO ordering): a is 4-digit year, b in
 		// [1..12], c in [1..31].
-		if len(tokens[i].Surface) == 4 && a >= 1000 && b >= 1 && b <= 12 && c >= 1 && c <= 31 {
+		if len(tokens[i].Surface) == 4 && a >= minYear4Digit && b >= minMonthValue && b <= maxMonthValue && c >= minDayValue && c <= maxDayValue {
 			val := time.Date(a, time.Month(b), c, 0, 0, 0, 0, time.UTC)
 			return Result{
 				Value:    val,
@@ -261,7 +293,7 @@ func ParseDateAt(tokens []lex.Token, now time.Time) Result {
 		}
 		// month-day-year (US slash ordering): a in [1..12], b in
 		// [1..31], c is 4-digit year.
-		if a >= 1 && a <= 12 && b >= 1 && b <= 31 && len(tokens[i+2].Surface) == 4 && c >= 1000 {
+		if a >= minMonthValue && a <= maxMonthValue && b >= minDayValue && b <= maxDayValue && len(tokens[i+2].Surface) == 4 && c >= minYear4Digit {
 			val := time.Date(c, time.Month(a), b, 0, 0, 0, 0, time.UTC)
 			return Result{
 				Value:    val,
@@ -319,8 +351,8 @@ func dateOnly(t time.Time) time.Time {
 
 // readNumberAt parses a single number starting at tokens[start]. It
 // tries digit form first (single token), then a spelled cardinal run
-// (1..8 tokens forward; the same window [ParseInt] uses scaled down
-// for date contexts). Returns (value, endIdx, ok) where tokens[end] is
+// (up to maxDateNumberWindow tokens forward; the same window
+// [ParseInt] uses, scaled down for date contexts). Returns (value, endIdx, ok) where tokens[end] is
 // the first NON-consumed token. Stopwords are NOT skipped — the
 // caller has already stepped past them.
 func readNumberAt(tokens []lex.Token, start int) (int, int, bool) {
@@ -338,7 +370,7 @@ func readNumberAt(tokens []lex.Token, start int) (int, int, bool) {
 		return 0, 0, false
 	}
 	end := start
-	for end < len(tokens) && end-start < 8 && isAlphaSurface(tokens[end].Surface) {
+	for end < len(tokens) && end-start < maxDateNumberWindow && isAlphaSurface(tokens[end].Surface) {
 		end++
 	}
 	for hi := end; hi > start; hi-- {

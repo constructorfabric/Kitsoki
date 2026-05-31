@@ -1,4 +1,4 @@
-// Package host — host.oracle.task handler (oracle-split Phase 4).
+// Package host — host.oracle.task handler.
 //
 // host.oracle.task is the agentic call: the LLM may Edit/Write/Bash freely
 // within the declared working directory. Every tool call produces a task.tool
@@ -163,10 +163,9 @@ func OracleTaskHandler(ctx context.Context, args map[string]any) (Result, error)
 	callStart := time.Now()
 
 	// Wave 3-oracle: write OracleCalled to the JSONL sink at dispatch time.
-	// Note: Prompt and SystemPrompt are omitted from the event to stay under
-	// PIPE_BUF (4096 bytes). The full prompt is available in AskRequest context
-	// (live) or cassette (replay).
-	appendOracleCalledEvent(ctx, callStart, callID, OracleCalledPayload{
+	// The rendered context prompt is recorded as a reference (inline when
+	// small, else a sidecar file); see docs/tracing/trace-format.md.
+	appendOracleCalledEvent(ctx, callStart, callID, contextPrompt, OracleCalledPayload{
 		Verb:  "task",
 		Agent: agentName,
 		Model: agent.Model,

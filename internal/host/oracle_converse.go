@@ -1,4 +1,4 @@
-// Package host — host.oracle.converse handler (oracle-split Phase 7).
+// Package host — host.oracle.converse handler.
 //
 // Backs a free-form conversational Claude session with persistent chat
 // transcript and explicit permission_mode control. Renamed from
@@ -135,7 +135,7 @@ func OracleConverseHandler(ctx context.Context, args map[string]any) (Result, er
 	}
 
 	// Wave 3-oracle: write OracleCalled to the JSONL sink at dispatch time.
-	appendOracleCalledEvent(ctx, callStart, callID, OracleCalledPayload{
+	appendOracleCalledEvent(ctx, callStart, callID, question, OracleCalledPayload{
 		Verb:         "converse",
 		Agent:        agentNameFromArgs(args),
 		Model:        agent.Model,
@@ -278,7 +278,7 @@ func doConverseChatTurn(ctx context.Context, cs ChatStore, chatID, question, wor
 	callStart := time.Now()
 
 	// Wave 3-oracle: write OracleCalled to the JSONL sink at dispatch time.
-	appendOracleCalledEvent(ctx, callStart, callID, OracleCalledPayload{
+	appendOracleCalledEvent(ctx, callStart, callID, question, OracleCalledPayload{
 		Verb:         "converse",
 		Agent:        "",
 		Model:        model,
@@ -407,7 +407,7 @@ func doConverseChatTurn(ctx context.Context, cs ChatStore, chatID, question, wor
 }
 
 // RenderConverseSpan renders a converse span as the opaque block format
-// described in §4.2 of the oracle-split proposal (D10). Replay tooling
+// (decision D10: converse spans render as opaque blocks). Replay tooling
 // calls this instead of re-running the conversation — conversations are
 // the artifact, not a replayable sequence.
 //

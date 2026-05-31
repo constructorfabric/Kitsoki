@@ -1,5 +1,6 @@
 // Package app holds the loaded, validated application definition.
-// Types here map directly onto the YAML authoring format (§3) and carry
+// Types here map directly onto the YAML authoring format (see
+// docs/stories/authoring.md) and carry
 // yaml struct tags for deserialization via goccy/go-yaml.
 package app
 
@@ -14,7 +15,7 @@ import (
 )
 
 // BashProfileDecl is the YAML representation of a bash_profile: field on an
-// agent declaration. Three forms are supported (oracle-split proposal §2.3):
+// agent declaration. Three forms are supported:
 //
 //	bash_profile: read-only               # built-in read-only allowlist
 //	bash_profile:
@@ -162,7 +163,7 @@ type AppDef struct {
 	Root    any               `yaml:"root"` // string state name or inline compound/parallel root
 	States  map[string]*State `yaml:"states,omitempty"`
 	OffPath *OffPathDef       `yaml:"off_path,omitempty"`
-	// Hosts is the allow-list of host handler names this app may invoke (§2).
+	// Hosts is the allow-list of host handler names this app may invoke.
 	Hosts []string `yaml:"hosts,omitempty"`
 	// OraclePlugins declares oracle plugin configurations under the top-level
 	// `oracle_plugins:` YAML key (B-2 additive syntax). Keys are oracle alias
@@ -170,16 +171,17 @@ type AppDef struct {
 	// declarations. When absent or nil, the loader injects a default
 	// "oracle.claude" entry with plugin "builtin.claude_cli".
 	//
-	// Note: the proposal §2 named this block `hosts:` but that key conflicts
+	// Note: an earlier design named this block `hosts:` but that key conflicts
 	// with the existing AppDef.Hosts []string allow-list field. The YAML key
 	// `oracle_plugins:` is the stable authoring surface.
 	OraclePlugins map[string]*OraclePluginDecl `yaml:"oracle_plugins,omitempty"`
-	// Proposals declares named proposal kinds (§3).
+	// Proposals declares named proposal kinds.
 	Proposals map[string]*ProposalKind `yaml:"proposals,omitempty"`
-	// Include lists glob patterns for additional YAML files to merge (§9).
+	// Include lists glob patterns for additional YAML files to merge.
 	Include []string `yaml:"include,omitempty"`
 
-	// PhaseTemplates declares reusable phase shapes (proposal §5.2).
+	// PhaseTemplates declares reusable phase shapes (see
+	// docs/stories/state-machine.md "Phase templates").
 	// Authors instantiate templates by listing phases under `phases:`.
 	PhaseTemplates map[string]*PhaseTemplate `yaml:"phase_templates,omitempty"`
 
@@ -190,26 +192,27 @@ type AppDef struct {
 	// per-call primitive so different rooms / intents can speak in
 	// different voices through the same engine path.
 	// Phases declares the phase graph that instantiates a phase template
-	// (proposal §5.3). Expanded into States at load time.
+	// (see docs/stories/state-machine.md "Phase templates"). Expanded into
+	// States at load time.
 	Phases *PhasesBlock `yaml:"phases,omitempty"`
 	// CheckpointIntents is a per-room intent menu merged into every
-	// {id}_awaiting_reply state during phase-template expansion (proposal §6).
+	// {id}_awaiting_reply state during phase-template expansion.
 	CheckpointIntents map[string]Intent `yaml:"checkpoint_intents,omitempty"`
-	// MetaModes declares named off-path concerns (meta-mode proposal §2).
+	// MetaModes declares named off-path concerns (see docs/stories/meta-mode.md).
 	MetaModes map[string]*MetaModeDef `yaml:"meta_modes,omitempty"`
 
 	// Decider configures the engine-driven LLM decider used to resolve
 	// one-shot (or decider:llm) decision gates without per-room judge
-	// wiring (execution-modes proposal §3.2). Optional; nil disables it.
+	// wiring. Optional; nil disables it.
 	Decider *DeciderSpec `yaml:"decider,omitempty"`
-	// Agents declares named per-context agents (meta-mode proposal §2.1).
+	// Agents declares named per-context agents (see docs/stories/meta-mode.md).
 	// Generalises OffPathDef.Persona / OffPathDef.Agent into a top-level
 	// primitive any host.oracle.* call site can reference by name. Bound
 	// at startup via agents.BuildRegistry(def.AgentSpecs()) + host.SetAgentRegistry.
 	Agents map[string]*AgentDecl `yaml:"agents,omitempty"`
 
 	// Imports declares aliased composition with private worlds
-	// (see docs/stories/imports.md §3). Each import binds a child app
+	// (see docs/stories/imports.md). Each import binds a child app
 	// under a string alias; child states/world keys are namespaced
 	// under that alias at load time.
 	Imports map[string]*ImportDef `yaml:"imports,omitempty"`
@@ -221,11 +224,11 @@ type AppDef struct {
 	Exits map[string]*ExitDef `yaml:"exits,omitempty"`
 
 	// Exports declares what the child app surfaces to importers.
-	// Currently only intents (see docs/stories/imports.md §6).
+	// Currently only intents (see docs/stories/imports.md).
 	Exports *ExportsBlock `yaml:"exports,omitempty"`
 
 	// HostInterfaces declares named capabilities the app depends on
-	// (see docs/stories/imports.md §11). Importers rebind via
+	// (see docs/stories/imports.md). Importers rebind via
 	// imports.<alias>.host_bindings.
 	HostInterfaces map[string]*HostInterfaceDef `yaml:"host_interfaces,omitempty"`
 
@@ -233,11 +236,11 @@ type AppDef struct {
 	// folded into this AppDef. Populated by resolveImports; never set
 	// by YAML authors. Used by:
 	//   - validateDef to reject parent transitions targeting a deep
-	//     state inside an imported child (proposal §8 / §16.7);
+	//     state inside an imported child (see docs/stories/imports.md);
 	//   - the metamode controller's file-watch tree to include every
-	//     imported manifest directory (proposal §16.4);
+	//     imported manifest directory;
 	//   - the trace logger / future tooling to label states by the
-	//     import alias chain they live under (proposal §16.5).
+	//     import alias chain they live under.
 	ImportWrappers map[string]*ImportWrapperInfo `yaml:"-"`
 
 	// LoadedManifests is the set of absolute paths the loader read
@@ -248,7 +251,7 @@ type AppDef struct {
 	LoadedManifests []string `yaml:"-"`
 
 	// Routing holds the per-app semantic-routing configuration
-	// (semantic-routing proposal §6). Lives at the root app level and
+	// (see docs/architecture/semantic-routing.md). Lives at the root app level and
 	// is NOT merged across imports — when an importer folds a child,
 	// the importer's Routing block wins and the child's is dropped.
 	// A nil Routing means "use defaults" (see RoutingConfig.WithDefaults).
@@ -259,12 +262,12 @@ type AppDef struct {
 	// Downstream consumers — notably internal/render.AppRenderer —
 	// resolve <appDir>/views/ against this path so {% extends %} /
 	// {% include %} references in pongo2 templates locate per-app
-	// .pongo files (view-elements proposal phase H, §3.3).
+	// .pongo files (see docs/stories/story-style.md).
 	BaseDir string `yaml:"-"`
 }
 
 // RoutingConfig is the per-app semantic-routing block declared under
-// `app.routing:` in YAML (semantic-routing proposal §6). All fields are
+// `app.routing:` in YAML (see docs/architecture/semantic-routing.md). All fields are
 // optional; zero values are replaced by WithDefaults so a partially-
 // specified routing: block still loads with sane defaults. The loader
 // calls WithDefaults once after unmarshalling.
@@ -273,31 +276,31 @@ type RoutingConfig struct {
 	// to true; set false to keep today's deterministic-or-LLM behaviour.
 	Enabled bool `yaml:"enabled,omitempty"`
 	// SemanticHighBar is the confidence floor above which a semantic
-	// verdict is submitted directly (§2.1). Defaults to 0.80.
+	// verdict is submitted directly. Defaults to 0.80.
 	SemanticHighBar float64 `yaml:"semantic_high_bar,omitempty"`
 	// SemanticMidBar is the confidence floor above which a verdict
-	// triggers a clarification card (§2.1). Defaults to 0.65. Must be
+	// triggers a clarification card. Defaults to 0.65. Must be
 	// strictly less than SemanticHighBar.
 	SemanticMidBar float64 `yaml:"semantic_mid_bar,omitempty"`
-	// CacheEnabled toggles the turn-result cache (§2.2). Defaults to true.
+	// CacheEnabled toggles the turn-result cache. Defaults to true.
 	CacheEnabled bool `yaml:"cache_enabled,omitempty"`
 	// CacheMaxAge is the duration after which a cold cache row is
-	// evicted (§7.4). Defaults to 30 days. Set "0" to disable.
+	// evicted. Defaults to 30 days. Set "0" to disable.
 	CacheMaxAge Duration `yaml:"cache_max_age,omitempty"`
-	// StopwordsExtra extends the built-in stopword list (§2.3) with
+	// StopwordsExtra extends the built-in stopword list with
 	// app-specific filler ("yall", "wagon", …).
 	StopwordsExtra []string `yaml:"stopwords_extra,omitempty"`
 	// CacheCap is the row-count ceiling per app before LRU trim fires
-	// (§7.3). Defaults to 10000.
+	// Defaults to 10000.
 	CacheCap int `yaml:"cache_cap,omitempty"`
 	// CacheTrimFraction is the fraction of the cap evicted on overflow
-	// (§7.3). Defaults to 0.10.
+	// Defaults to 0.10.
 	CacheTrimFraction float64 `yaml:"cache_trim_fraction,omitempty"`
 	// RevalidateStrikes is the number of consecutive revalidate
-	// failures before a cache row is evicted (§7.2). Defaults to 3.
+	// failures before a cache row is evicted. Defaults to 3.
 	RevalidateStrikes int `yaml:"revalidate_strikes,omitempty"`
 	// ConfidenceDecay halves the effective CacheMaxAge for rows whose
-	// originating LLM verdict had confidence < 0.7 (§7.5). Default off.
+	// originating LLM verdict had confidence < 0.7. Default off.
 	ConfidenceDecay bool `yaml:"confidence_decay,omitempty"`
 }
 
@@ -388,16 +391,16 @@ type ImportWrapperInfo struct {
 	// don't lose the key.
 	Alias string
 	// Entry is the child state the import was declared to start in
-	// (the import's `entry:` field). Used by §16.7 to allow
-	// `<alias>.<entry>` from the parent while rejecting deeper paths.
+	// (the import's `entry:` field). Used by the reach-into-child guard to
+	// allow `<alias>.<entry>` from the parent while rejecting deeper paths.
 	Entry string
 	// SourcePath is the absolute path to the child manifest.
-	// Used by §16.4 for auto-watch and for diagnostic messages.
+	// Used by metamode auto-watch and for diagnostic messages.
 	SourcePath string
 }
 
 // ImportDef declares one entry in an AppDef's `imports:` block
-// (see docs/stories/imports.md §3).
+// (see docs/stories/imports.md).
 type ImportDef struct {
 	// Source resolves to a child app.yaml. Forms:
 	//   - "./relative/path"          — relative to importer's dir
@@ -407,7 +410,7 @@ type ImportDef struct {
 	// Version is optional metadata; v1 parses and stores it for
 	// traceability only — no semver resolution or compatibility check
 	// happens at load time. Reserved for a future registry / lockfile
-	// surface (proposal §4 and §16.2).
+	// surface.
 	Version string `yaml:"version,omitempty"`
 	// Entry is the child's initial state when this import is invoked.
 	// Path is in the *child's* namespace (not alias-prefixed). Required
@@ -424,12 +427,12 @@ type ImportDef struct {
 	// parent's. "inherit" (default) unions silently; "declared" requires
 	// the parent to list every child host explicitly.
 	Hosts string `yaml:"hosts,omitempty"`
-	// Intents declares parent↔child intent re-exports (§6).
+	// Intents declares parent↔child intent re-exports.
 	Intents *ImportIntents `yaml:"intents,omitempty"`
-	// Overrides patches child states/intents/prompts at import time (§10).
+	// Overrides patches child states/intents/prompts at import time.
 	Overrides *ImportOverrides `yaml:"overrides,omitempty"`
 	// HostBindings rebinds named child host_interfaces onto concrete
-	// handler names (§11).
+	// handler names.
 	HostBindings map[string]string `yaml:"host_bindings,omitempty"`
 }
 
@@ -443,7 +446,7 @@ type ImportExit struct {
 	Set map[string]any `yaml:"set,omitempty"`
 }
 
-// ImportIntents declares per-import intent re-exports (§6).
+// ImportIntents declares per-import intent re-exports.
 type ImportIntents struct {
 	// Export lists parent intent names made visible inside the child
 	// under the same name.
@@ -453,7 +456,7 @@ type ImportIntents struct {
 	Import []string `yaml:"import,omitempty"`
 }
 
-// ImportOverrides patches a child app's states / intents / prompts (§10).
+// ImportOverrides patches a child app's states / intents / prompts.
 type ImportOverrides struct {
 	// States replaces named child states whole-cloth. Each key must
 	// match an existing child state name; load fails otherwise.
@@ -465,7 +468,7 @@ type ImportOverrides struct {
 	Prompts map[string]string `yaml:"prompts,omitempty"`
 }
 
-// ExitDef declares one named exit the child app surfaces (§7).
+// ExitDef declares one named exit the child app surfaces.
 type ExitDef struct {
 	Description string `yaml:"description,omitempty"`
 	// Requires lists child world keys that must be set when this exit
@@ -473,12 +476,12 @@ type ExitDef struct {
 	Requires []string `yaml:"requires,omitempty"`
 }
 
-// ExportsBlock declares what an app surfaces to importers (§6).
+// ExportsBlock declares what an app surfaces to importers.
 type ExportsBlock struct {
 	Intents []string `yaml:"intents,omitempty"`
 }
 
-// HostInterfaceDef declares one named capability surface (§11.1).
+// HostInterfaceDef declares one named capability surface.
 type HostInterfaceDef struct {
 	Description string                      `yaml:"description,omitempty"`
 	Operations  map[string]*HostInterfaceOp `yaml:"operations,omitempty"`
@@ -486,7 +489,7 @@ type HostInterfaceDef struct {
 	Default string `yaml:"default,omitempty"`
 }
 
-// HostInterfaceOp declares one operation in a host interface (§11.1).
+// HostInterfaceOp declares one operation in a host interface.
 type HostInterfaceOp struct {
 	Input  map[string]any `yaml:"input,omitempty"`
 	Output map[string]any `yaml:"output,omitempty"`
@@ -539,7 +542,7 @@ type WorldSchema map[string]VarDef
 
 // State is a node in the directed graph. It may be atomic, compound, or parallel.
 // DeciderSpec is the app-level configuration for the engine-driven LLM
-// decider (execution-modes proposal §3.2). The engine invokes `agent` via
+// decider. The engine invokes `agent` via
 // host.oracle.decide at any decision gate that owes an autonomous decision,
 // passing the gate's candidate intents; the agent submits {intent, confidence,
 // reason} validated against `schema`.
@@ -560,23 +563,22 @@ type State struct {
 	// Type is "atomic" (default), "compound", or "parallel".
 	Type string `yaml:"type,omitempty"`
 	// Mode declares a special harness mode for this state.
-	// "conversational" enables the Oracle Room free-form harness (§7).
+	// "conversational" enables the Oracle Room free-form harness.
 	Mode string `yaml:"mode,omitempty"`
-	// Description is shown in the §7.1 location indicator.
+	// Description is shown in the location indicator.
 	Description string `yaml:"description,omitempty"`
 	// View is the render template shown to the user on arrival.
 	//
 	// The View type custom-unmarshals YAML and accepts either the legacy
 	// scalar string form (a Markdown / pongo2 template body) or the typed
-	// element-array form introduced by the view-elements proposal
-	// (docs/proposals/view-elements-proposal.md). See view_element.go for
+	// element-array form (see docs/stories/story-style.md and
+	// docs/embedded/app-schema.md). See view_element.go for
 	// the schema; the array form is opt-in per-state.
 	View View `yaml:"view,omitempty"`
 	// Terminal marks end states.
 	Terminal bool `yaml:"terminal,omitempty"`
 	// Decider pins how this room's intent gate is resolved, overriding the
-	// run's execution mode (the "mix" — see
-	// docs/proposals/execution-modes-and-gate-deciders.md). "" = follow the
+	// run's execution mode (the "mix"). "" = follow the
 	// run mode; "human" = always stop at a multi-way gate for an operator,
 	// even in one-shot; "llm" = always auto-advance (let the emit fire),
 	// even in staged. Validated at load time.
@@ -589,20 +591,19 @@ type State struct {
 	On map[string][]Transition `yaml:"on,omitempty"`
 	// OnEnter holds effects/invocations fired on state entry.
 	OnEnter []Effect `yaml:"on_enter,omitempty"`
-	// Intents holds locally-scoped intent definitions (§3.4).
+	// Intents holds locally-scoped intent definitions.
 	Intents map[string]Intent `yaml:"intents,omitempty"`
 	// Menu is an explicit list of allowed intent names overriding the default.
 	Menu []string `yaml:"menu,omitempty"`
-	// RelevantWorld pins world keys shown in the §7.1 location indicator.
+	// RelevantWorld pins world keys shown in the location indicator.
 	RelevantWorld []string `yaml:"relevant_world,omitempty"`
 	// Footer is an optional pongo2 template body rendered as the
-	// per-room status line beneath the prompt (single-pane-tui
-	// proposal §"Two-line footer"). Same expression env as Views
+	// per-room status line beneath the prompt. Same expression env as Views
 	// (world, slots, menu). Empty falls back to the framework
 	// default — room · state · mode · queue · unread. Only honoured
 	// on top-level states (one room = one footer).
 	Footer string `yaml:"footer,omitempty"`
-	// RelevantSlots pins slot names shown in the §7.1 location indicator.
+	// RelevantSlots pins slot names shown in the location indicator.
 	RelevantSlots []string `yaml:"relevant_slots,omitempty"`
 	// Timeout declares an automatic transition after a duration.
 	Timeout *TimeoutDef `yaml:"timeout,omitempty"`
@@ -639,8 +640,7 @@ type State struct {
 	// must leave it empty. Valid names match the themes shipped under
 	// internal/tui/blocks/themes.go: "default", "meta-blue",
 	// "meta-amber", "off-path". Unknown names fall back to "default"
-	// at render time. See the single-pane-tui proposal §"Per-room
-	// theme swap".
+	// at render time.
 	Theme string `yaml:"theme,omitempty"`
 }
 
@@ -654,9 +654,9 @@ type Transition struct {
 	Default bool `yaml:"default,omitempty"`
 	// Effects is the ordered list of world mutations applied when this transition fires.
 	Effects []Effect `yaml:"effects,omitempty"`
-	// GuardHint is a human-readable hint shown when the guard fails (§5.2, §7.5).
+	// GuardHint is a human-readable hint shown when the guard fails.
 	GuardHint string `yaml:"guard_hint,omitempty"`
-	// View is the transition-scoped narrative shown on this transition (§7.6).
+	// View is the transition-scoped narrative shown on this transition.
 	// When present it wins over the target state's view for this turn. Same
 	// schema as State.View — see view_element.go.
 	View View `yaml:"view,omitempty"`
@@ -664,7 +664,7 @@ type Transition struct {
 	Emit []string `yaml:"emit,omitempty"`
 	// PushHistory controls whether the outgoing state is pushed onto the history stack.
 	// Default true (push on every normal transition). Set false for utility transitions
-	// like entering the Oracle Room or Inbox (§5.1 stackless transitions).
+	// like entering the Oracle Room or Inbox (stackless transitions).
 	PushHistory *bool `yaml:"push_history,omitempty"`
 }
 
@@ -674,8 +674,8 @@ type Effect struct {
 	// and the expression evaluates false against the current world, the
 	// effect is skipped silently (no set/invoke/say/etc. runs). Empty =
 	// always-on. Used to branch on_enter / transition effects on world
-	// flags (e.g. `when: world.narration` vs `when: not world.narration`
-	// per proposal §6.2.1 / §9.6). Eval errors are non-fatal: a bad
+	// flags (e.g. `when: world.narration` vs `when: not world.narration`).
+	// Eval errors are non-fatal: a bad
 	// expression aborts the surrounding effects chain with an error so
 	// authors get a loud failure rather than a silently-skipped effect.
 	When string `yaml:"when,omitempty"`
@@ -685,7 +685,7 @@ type Effect struct {
 	Increment map[string]int `yaml:"increment,omitempty"`
 	// Say appends a narrative message (expr interpolation supported).
 	Say string `yaml:"say,omitempty"`
-	// Invoke calls a host-namespace function (§2, §11).
+	// Invoke calls a host-namespace function.
 	Invoke string `yaml:"invoke,omitempty"`
 	// With holds arguments for an Invoke call.
 	With map[string]any `yaml:"with,omitempty"`
@@ -755,12 +755,13 @@ type Effect struct {
 	// OraclePlugin names the oracle alias declared in `oracle_plugins:` that
 	// should handle this effect's oracle call (e.g. "oracle.autofix_fixer").
 	// Empty resolves to "oracle.claude" (the default). This field is populated
-	// when a room declares `oracle: oracle.<name>` on an effect (proposal §2
-	// "Shape"). When absent, the dispatcher resolves the default plugin.
+	// when a room declares `oracle: oracle.<name>` on an effect (see
+	// docs/architecture/oracle-plugin.md). When absent, the dispatcher
+	// resolves the default plugin.
 	OraclePlugin string `yaml:"oracle,omitempty"`
 }
 
-// ProposalKind declares a named proposal kind (§3).
+// ProposalKind declares a named proposal kind.
 type ProposalKind struct {
 	// Schema declares the typed fields of the proposal draft.
 	Schema map[string]string `yaml:"schema,omitempty"`
@@ -793,7 +794,8 @@ type ProposalExecute struct {
 	// OnSuccess declares the transition after successful execution.
 	// Valid values: "stay", "back", or a named state.
 	OnSuccess string `yaml:"on_success,omitempty"`
-	// Background, when true, runs the execute as a background job (§4).
+	// Background, when true, runs the execute as a background job (see
+	// docs/stories/background-jobs).
 	Background bool `yaml:"background,omitempty"`
 	// OnComplete declares effects to run when a background job completes.
 	OnComplete []Effect `yaml:"on_complete,omitempty"`
@@ -817,7 +819,7 @@ type Intent struct {
 	Hidden      bool            `yaml:"hidden,omitempty"`
 	Slots       map[string]Slot `yaml:"slots,omitempty"`
 	// Synonyms is the author-declared list of alternate phrasings that
-	// resolve to this intent (semantic-routing proposal §4.1, §4.3).
+	// resolve to this intent (see docs/architecture/semantic-routing.md).
 	// Each entry is either a plain phrase ("wade", "walk it") or a
 	// template-shaped phrase ("buy {items} for {total_cost}"). At
 	// Phase 0 the loader stores the raw strings and validates that
@@ -842,7 +844,7 @@ type Slot struct {
 	// which is documentation-only.
 	Format string `yaml:"format,omitempty"`
 	// Synonyms maps each enum value to a list of alternate phrasings
-	// (semantic-routing proposal §4.2). Only meaningful when
+	// (see docs/architecture/semantic-routing.md). Only meaningful when
 	// Type == "enum"; the loader rejects the field on non-enum slots
 	// and rejects keys that are not in Values.
 	Synonyms map[string][]string `yaml:"synonyms,omitempty"`
@@ -853,7 +855,7 @@ type GuardExpr struct {
 	Source string // original expr-lang source
 }
 
-// OffPathDef configures the off-path escape hatch (§3.1, §7.7).
+// OffPathDef configures the off-path escape hatch.
 type OffPathDef struct {
 	Trigger string `yaml:"trigger"`
 	Banner  string `yaml:"banner,omitempty"`
@@ -880,8 +882,8 @@ type TimeoutDef struct {
 	Target string `yaml:"target"`
 }
 
-// AgentDecl is one entry in the top-level agents: map (oracle-split proposal
-// §3.3). Exactly one of SystemPrompt or SystemPromptPath must be set; the
+// AgentDecl is one entry in the top-level agents: map.
+// Exactly one of SystemPrompt or SystemPromptPath must be set; the
 // loader resolves SystemPromptPath against the app YAML directory and
 // rewrites SystemPrompt with the file contents (clearing SystemPromptPath).
 type AgentDecl struct {
@@ -900,7 +902,7 @@ type AgentDecl struct {
 	BashProfile *BashProfileDecl `yaml:"bash_profile,omitempty"`
 
 	// ExternalSideEffect, when non-nil, declares whether the agent may
-	// mutate external state (Mode C in the oracle-split proposal §4.2).
+	// mutate external state (Mode C — read-write external side effects).
 	// When nil, the loader infers the value from the tool surface:
 	// WebFetch/WebSearch or any non-read_only MCP server → true; otherwise
 	// false. A disagreement between inferred and declared values produces a
@@ -919,7 +921,7 @@ type AgentDecl struct {
 // Backward compat: an un-namespaced YAML mode (key has no `.`) is
 // treated by the loader as having Group == its key and no default-verb
 // rule (a single-mode group is implicitly default-able). See
-// docs/stories/meta-mode.md §3.2 for the user-facing reference.
+// docs/stories/meta-mode.md for the user-facing reference.
 type MetaModeDef struct {
 	Trigger string `yaml:"trigger"`
 	// Group is the namespace token (`story`, `kitsoki`, or an

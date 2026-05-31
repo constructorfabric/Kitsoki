@@ -1,26 +1,23 @@
-// Package store implements event-sourced session persistence on modernc.org/sqlite (§8).
-// This file provides the sqliteStore implementation of the Store interface.
-//
-// # Connection strategy
-//
-// SQLite has a single-writer model. To avoid "database is locked" errors under
-// concurrent access we set db.SetMaxOpenConns(1): all callers share the same
-// physical connection. The write path uses BEGIN IMMEDIATE to acquire the write
-// lock up front, which is safe for our single-process PoC.
-//
-// # Snapshot policy
-//
-// Snapshots are stored in the `snapshots` table (§8 mandates the table).
-// The caller decides when to snapshot (e.g. every 20 turns) by calling Snapshot();
-// the store just persists and retrieves them. LoadHistory returns events since
-// the latest snapshot turn, so replay is always bounded.
-//
-// # MarkCompleted / MarkAbandoned behaviour
-//
-// Once a session is marked completed or abandoned, AppendEvents returns
-// ErrSessionClosed. This enforces the §8 append-only guarantee: completed
-// sessions are immutable history.
 package store
+
+// sqlite.go provides the sqliteStore implementation of the [Store] interface.
+// See doc.go for the package overview; the points below record the three
+// non-obvious decisions a maintainer trips on.
+//
+// Connection strategy: SQLite has a single-writer model. To avoid "database is
+// locked" errors under concurrent access we set db.SetMaxOpenConns(1): all
+// callers share the same physical connection. The write path uses BEGIN
+// IMMEDIATE to acquire the write lock up front, which is safe for the
+// single-process PoC.
+//
+// Snapshot policy: snapshots live in the `snapshots` table. The caller decides
+// when to snapshot (e.g. every 20 turns) by calling Snapshot(); the store just
+// persists and retrieves them. LoadHistory returns events since the latest
+// snapshot turn, so replay is always bounded.
+//
+// MarkCompleted / MarkAbandoned: once a session is marked completed or
+// abandoned, AppendEvents returns ErrSessionClosed. This enforces the
+// append-only guarantee — completed sessions are immutable history.
 
 import (
 	"context"
@@ -163,7 +160,7 @@ func (s *sqliteStore) appendEventsCtx(ctx context.Context, session app.SessionID
 		return nil
 	}
 
-	// BEGIN IMMEDIATE acquires the write lock up front (§8 write path).
+	// BEGIN IMMEDIATE acquires the write lock up front.
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("store.AppendEvents: begin tx: %w", err)
@@ -243,9 +240,9 @@ func appendEventsTx(ctx context.Context, tx *sql.Tx, session app.SessionID, even
 }
 
 // AppendEventsAndJournal atomically appends events and journal entries in a
-// single transaction. Either both writes succeed or both are rolled back
-// (§4.9 Rule 1). The events constraint (ErrSessionClosed / ErrSessionNotFound)
-// is checked before either insert proceeds.
+// single transaction. Either both writes succeed or both are rolled back.
+// The events constraint (ErrSessionClosed / ErrSessionNotFound) is checked
+// before either insert proceeds.
 func (s *sqliteStore) AppendEventsAndJournal(session app.SessionID, events []Event, journalEntries []journal.Entry) error {
 	ctx := context.Background()
 	if len(events) == 0 && len(journalEntries) == 0 {
@@ -297,7 +294,7 @@ func (s *sqliteStore) LoadHistory(session app.SessionID) (History, error) {
 }
 
 func (s *sqliteStore) loadHistoryCtx(ctx context.Context, session app.SessionID) (History, error) {
-	// Find the latest snapshot turn to bound the query (§8 resumption path).
+	// Find the latest snapshot turn to bound the query (resumption path).
 	afterTurn := int64(-1)
 	snap, ok, err := s.LatestSnapshot(session)
 	if err != nil {

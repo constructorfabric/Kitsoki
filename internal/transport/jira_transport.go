@@ -1,20 +1,3 @@
-// Package transport — Jira Transport.Post driver.
-//
-// Posts comments to a Jira issue via the REST API. Authenticates with HTTP
-// Basic using a username + API-token pair, sourced from env vars by default.
-//
-// For Atlassian Cloud: JIRA_USERNAME is the user's email; JIRA_API_TOKEN is
-// generated at https://id.atlassian.com/manage-profile/security/api-tokens.
-// For self-hosted/server installs: typically a username + personal access token.
-//
-// API surface (v2, broadly compatible across Cloud and self-hosted):
-//
-//	POST {base}/rest/api/2/issue/{issueKey}/comment
-//	{"body": "<text>"}
-//	200 → {"id": "10001", ...}
-//
-// The driver intentionally stays plain-text (no ADF doc tree) so it works
-// uniformly across Cloud and self-hosted; rich formatting can layer on later.
 package transport
 
 import (
@@ -25,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 )
 
 // JiraConfig configures the Jira transport.
@@ -46,7 +28,13 @@ type JiraConfig struct {
 	APIVersion string
 }
 
-// JiraTransport implements Transport against Jira REST.
+// JiraTransport posts comments to a Jira issue over the REST API, keyed by
+// [SessionKey].Thread (the issue key). It authenticates with HTTP Basic using
+// a username + API-token pair (Atlassian Cloud: the user's email plus a token
+// from id.atlassian.com; self-hosted: a username plus a personal access
+// token). It deliberately stays plain-text wiki (no ADF document tree) so a
+// single code path works across Cloud and self-hosted — see the package
+// Non-goals. The zero value is not usable; construct via [NewJiraTransport].
 type JiraTransport struct {
 	cfg    JiraConfig
 	client *http.Client
@@ -74,7 +62,7 @@ func NewJiraTransport(cfg JiraConfig) (*JiraTransport, error) {
 
 	client := cfg.HTTPClient
 	if client == nil {
-		client = &http.Client{Timeout: 30 * time.Second}
+		client = &http.Client{Timeout: httpClientTimeout}
 	}
 	return &JiraTransport{cfg: cfg, client: client}, nil
 }

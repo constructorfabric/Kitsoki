@@ -1,4 +1,7 @@
-// Package store — replay.go: journey reconstruction from an event history.
+package store
+
+// replay.go reconstructs a journey from an event history. See doc.go for the
+// package overview.
 //
 // BuildJourney folds an ordered History into a JourneyState by interpreting
 // each event according to its kind. The determinism contract: if you feed
@@ -18,7 +21,6 @@
 //	TurnStarted:       noted (used by orchestrator, not machine core).
 //	TurnEnded:         noted.
 //	All other kinds:   silently ignored (forward-compatible with future kinds).
-package store
 
 import (
 	"encoding/json"
@@ -78,7 +80,10 @@ func BuildJourney(def *app.AppDef, initialState app.StatePath, initialWorld worl
 			}
 
 		case EffectApplied:
-			// Payload: {"set": {...}} or {"increment": {...}} or {"say": "..."}
+			// Payload: {"set": {...}} or {"increment": {...}}.  Legacy traces
+			// (before say was split into MachineSay) may also carry {"say": "..."};
+			// the Say field is tolerated on decode and ignored here — narration
+			// now lands as a MachineSay event.
 			var p effectPayload
 			if err := json.Unmarshal(ev.Payload, &p); err != nil {
 				return nil, fmt.Errorf("replay: EffectApplied turn=%d seq=%d: %w", ev.Turn, ev.Seq, err)
@@ -99,6 +104,10 @@ func BuildJourney(def *app.AppDef, initialState app.StatePath, initialWorld worl
 			}
 			// Say effects don't affect world state; skip.
 
+		case MachineSay:
+			// Operator narration: annotation only — say does not mutate
+			// world or state. No-op on replay.
+
 		case StateExited, StateEntered:
 			// Noted for debugging but don't affect JourneyState directly.
 
@@ -112,15 +121,15 @@ func BuildJourney(def *app.AppDef, initialState app.StatePath, initialWorld worl
 		case TurnStarted, UserInputReceived, TurnEnded:
 			// Orchestrator-level bookkeeping. No state/world change.
 
-		case LLMCalled, LLMToolCall:
-			// LLM-layer events; no state/world change.
+		case LLMToolCall:
+			// LLM-layer event; no state/world change.
 
 		case HostInvoked, HostDispatched, HostReturned:
 			// Host side-effects are already materialized as EffectApplied events.
 			// Nothing to re-apply here.
 
 		case OffPathEntered, OffPathExited, OffPathQuestion, OffPathAnswer:
-			// Off-path turns do not mutate world or state (§7.7, §11).
+			// Off-path turns do not mutate world or state.
 			// All four kinds are annotation-only for the replay path.
 
 		case TimeoutFired:

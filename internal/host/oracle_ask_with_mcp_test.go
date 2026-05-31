@@ -1385,7 +1385,7 @@ func TestAskWithMCP_AgentArg_ConflictsWithPromptPath(t *testing.T) {
 // TestAskWithMCP_AgentArg_ToolsAllowlistApplied verifies that the
 // agent's Tools list reaches the handler's args as the canonical
 // allowlist hint (`__meta_tool_allowlist`). The handler today does NOT
-// gate by tool name (open question §6.1) but the hint is the shared
+// gate by tool name (tool-name gating is a future extension) but the hint is the shared
 // site every future gating pass will read, so we lock the contract here.
 //
 // We exercise this by registering a stub OracleAskWithMCP-compatible

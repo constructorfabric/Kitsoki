@@ -81,7 +81,7 @@ func TestFlowsLosingPath(t *testing.T) {
 	require.True(t, r.Passed, "losing path should pass")
 }
 
-// TestFlowsWorldOverride runs the world_override fixture (§7.19): forcing
+// TestFlowsWorldOverride runs the world_override fixture: forcing
 // wearing_cloak=false before the south transition routes the player into
 // bar.lit on the very first turn instead of bar.dark.
 func TestFlowsWorldOverride(t *testing.T) {

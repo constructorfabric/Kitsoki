@@ -25,7 +25,7 @@ func TestRenderAll_EmptyViewReturnsEmpty(t *testing.T) {
 }
 
 // TestRenderAll_MixedComposition exercises the full element-kind menu
-// in a single view and asserts the join policy from proposal §5.3 —
+// in a single view and asserts the inter-element join policy —
 // one blank line between unlike kinds, and the expected content
 // substrings in the expected order.
 func TestRenderAll_MixedComposition(t *testing.T) {
@@ -94,7 +94,7 @@ func TestRenderAll_BlankLineBetweenUnlikeKinds(t *testing.T) {
 	}
 }
 
-// TestRenderAll_AdjacentKVCoalesces asserts the §5.3 coalescing hint:
+// TestRenderAll_AdjacentKVCoalesces asserts the kv coalescing hint:
 // two `kv` elements in a row read as one block (no blank line
 // between).
 func TestRenderAll_AdjacentKVCoalesces(t *testing.T) {

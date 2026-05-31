@@ -23,8 +23,8 @@ import (
 //     is tested with a sorted-stem-set containment check: the
 //     stem-bag of the synonym phrase must be a subset of the
 //     stem-bag of the non-stop input tokens. This matches the
-//     semantic-routing proposal's §4.2 word-bag rule. Reason
-//     "synonym:<phrase>".
+//     synonym word-bag rule documented in
+//     docs/architecture/semantic-routing.md. Reason "synonym:<phrase>".
 //
 //  3. Damerau-Levenshtein-1 fuzzy match — any input token's Norm
 //     within edit distance 1 (via github.com/agnivade/levenshtein) of
@@ -155,8 +155,8 @@ func ParseEnum(tokens []lex.Token, slot app.Slot) Result {
 			// the two metrics agree (a single transposition is two
 			// substitutions in plain Levenshtein, so DL-1 ⊆ Lev-1 — and
 			// over our short stems the difference doesn't surface).
-			// This matches the proposal's "bankr → banker" worked
-			// example.
+			// This matches the "bankr → banker" worked
+			// example seeded in enum_fuzz_test.go.
 			if levenshtein.ComputeDistance(t.Norm, vs) == 1 {
 				fuzzyHits[v] = append(fuzzyHits[v], TokenRange{Start: i, End: i + 1})
 			}

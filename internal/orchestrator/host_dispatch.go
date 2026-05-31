@@ -78,17 +78,24 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 	if o.oracleRegistry != nil {
 		ctx = host.WithOracleRegistry(ctx, o.oracleRegistry)
 	}
-	// OracleCallCtx carries session/turn/state for journal Entry metadata.
-	// Turn is not directly available here (it lives in the Turn() local), so
-	// we inject a best-effort value of 0 when not provided; callers that
-	// inject the turn via WithOracleCallCtx before dispatchHostCalls override
-	// this default.
-	if existing := host.OracleCallCtxFrom(ctx); existing.SessionID == "" {
-		ctx = host.WithOracleCallCtx(ctx, host.OracleCallCtx{
-			SessionID: sid,
-			StatePath: state,
-		})
-	}
+	// OracleCallCtx carries session/turn/state so oracle.call.start /
+	// oracle.call.complete events are stamped with the FOREGROUND turn of the
+	// transition that entered `state` and with `state` itself as the
+	// destination phase (see docs/tracing/trace-format.md). The Turn is supplied
+	// by the turn entry point via WithOracleCallCtx on the ctx (Turn /
+	// RunIntent / SubmitDirect) and is inherited here — including across the
+	// post-bind emit recursion (settlePostBindEmits), which is how the bugfix
+	// story advances phase-to-phase. We always rewrite StatePath to `state`
+	// (the destination phase the on_enter chain is running in) so a stale
+	// entry-state path can never leak onto a phase's oracle events; the Turn
+	// is preserved from any existing ctx (zero only when no entry point set it,
+	// e.g. RunInitialOnEnter, which stamps turn=0 deliberately).
+	existing := host.OracleCallCtxFrom(ctx)
+	ctx = host.WithOracleCallCtx(ctx, host.OracleCallCtx{
+		SessionID: sid,
+		Turn:      existing.Turn,
+		StatePath: state,
+	})
 
 	var events []store.Event
 	applied := false

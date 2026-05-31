@@ -1,5 +1,5 @@
 // Package tui — routing_observer.go bridges slog routing events into
-// the [RoutingChip]'s tea.Msg stream (semantic-routing proposal §8).
+// the [RoutingChip]'s tea.Msg stream. See docs/architecture/semantic-routing.md.
 //
 // Background context: the orchestrator emits structured routing events
 // via slog (turn.semantic_hit / miss / ambiguous, turn.llm_routed,
@@ -21,7 +21,7 @@
 //
 // The observer also maintains a small in-memory ring of routing
 // records (the last N events grouped by turn number) so the ctrl+r
-// route-trace overlay (§8.3) can pretty-print "everything we know
+// route-trace overlay can pretty-print "everything we know
 // about turn N's routing pipeline" without re-reading the trace file.
 package tui
 

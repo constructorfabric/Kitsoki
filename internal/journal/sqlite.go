@@ -14,7 +14,8 @@ import (
 
 // sqliteWriter implements Writer backed by a *sql.DB (modernc.org/sqlite).
 // It shares the same *sql.DB as the session store so journal writes can be
-// included in the caller's transaction via AppendJournalTx (§4.9 Rule 1).
+// included in the caller's transaction via AppendJournalTx, so a journal write
+// and the matching events row commit (or roll back) together.
 type sqliteWriter struct {
 	db *sql.DB
 }
@@ -31,7 +32,8 @@ func NewSQLiteWriter(db *sql.DB) (Writer, error) {
 // Append writes a single entry to the journal inside its own transaction.
 // For doc-targeted patch entries the DocVersion is assigned by reading the
 // current MAX from the table and incrementing; this is consistent as long as
-// callers serialise writes through the session writer lock (§4.9 Rule 5).
+// callers serialise writes through the session writer lock — concurrent
+// unserialised Appends to the same (sid, doc) can race on the MAX read.
 func (w *sqliteWriter) Append(e Entry) error {
 	tx, err := w.db.Begin()
 	if err != nil {
@@ -92,8 +94,8 @@ func (w *sqliteWriter) Flush() error {
 // ---- Package-level helpers used by both Writer and the store layer ----------
 
 // AppendJournalTx inserts a batch of entries into the journal table within
-// the provided transaction. Callers that also write events rows (§4.9 Rule 1)
-// should pass their existing transaction here so both writes share atomicity.
+// the provided transaction. Callers that also write events rows should pass
+// their existing transaction here so both writes share atomicity.
 //
 // For patch entries that target a doc, DocVersion is assigned as
 // MAX(doc_version)+1 per (session_id, doc). For typed-only entries (Doc=="")

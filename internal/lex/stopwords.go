@@ -44,9 +44,11 @@ var builtinStopwords = map[string]struct{}{
 }
 
 // IsStopword reports whether norm is in the builtin or extra stopword
-// list. The lookup is case-insensitive on extras: each extraStops entry
-// is matched literally, so callers should pass lowercased forms (the
-// lex package lowercases extras on first use via stopSet).
+// list. Each extraStops entry is matched literally (exact string
+// equality), so callers must pass already-lowercased forms; mixed-case
+// extras silently never match. A nil or empty extraStops checks only the
+// builtin list. Safe for concurrent use: the builtin list is read-only
+// and the function holds no state.
 func IsStopword(norm string, extraStops []string) bool {
 	if _, ok := builtinStopwords[norm]; ok {
 		return true

@@ -1,4 +1,4 @@
-// Mode 1 (input→intent pass-rate) runner (§10.2).
+// Mode 1 (input→intent pass-rate) runner.
 package testrunner
 
 import (
@@ -22,7 +22,7 @@ import (
 
 // ─── Recording YAML types (local copies matching harness.recordingFile) ─────────────
 
-// recordingFile is the top-level recording YAML document (§10.4).
+// recordingFile is the top-level recording YAML document.
 type recordingFile struct {
 	Kind          string           `yaml:"kind"`
 	AppID         string           `yaml:"app_id"`
@@ -48,7 +48,7 @@ type recordingIntent struct {
 	Slots map[string]any `yaml:"slots,omitempty"`
 }
 
-// ─── Intent fixture YAML format (§10.2.1) ────────────────────────────────────
+// ─── Intent fixture YAML format ──────────────────────────────────────────────
 
 // IntentFixtureFile is the top-level document in an intent fixture file.
 type IntentFixtureFile struct {
@@ -155,7 +155,7 @@ type IntentOptions struct {
 	SkipOnRecordingMiss bool
 }
 
-// ─── Baseline format (§10.2.4) ───────────────────────────────────────────────
+// ─── Baseline format ─────────────────────────────────────────────────────────
 
 // Baseline is the persisted regression-tracking file.
 type Baseline struct {

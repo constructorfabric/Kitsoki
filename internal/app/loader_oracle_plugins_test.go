@@ -280,7 +280,7 @@ oracle_plugins:
 }
 
 // TestOraclePlugins_EnvVarWithLiteralDollarInValue pins the single-pass
-// substitution rule (proposal §2 resolution 4):
+// substitution rule:
 // When a resolved env var VALUE itself contains "${", that literal "${" is
 // NOT re-expanded.  The test sets OUTER_VAR to a value containing "${inner}"
 // and verifies the expanded result still contains the literal "${inner}".

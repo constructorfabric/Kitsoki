@@ -12,6 +12,12 @@ import (
 	"kitsoki/internal/ulid"
 )
 
+// journalPayloadSnippetMax caps the number of payload characters copied
+// into a chat.drive.submitted journal entry. The full payload can be an
+// entire turn's prompt; truncating keeps the journal compact while still
+// making the entry identifiable. Truncated snippets get a trailing "…".
+const journalPayloadSnippetMax = 256
+
 // ErrNoPendingDrive is returned by Dequeue when no pending row exists
 // for the requested chat. Callers loop until ErrNoPendingDrive, then
 // stop dispatching.
@@ -54,11 +60,18 @@ const (
 type DriveTransport string
 
 const (
-	DriveTransportTUI          DriveTransport = "tui"
-	DriveTransportJira         DriveTransport = "jira"
-	DriveTransportBitbucket    DriveTransport = "bitbucket"
-	DriveTransportMCP          DriveTransport = "mcp"
-	DriveTransportJob          DriveTransport = "job"
+	// DriveTransportTUI is a drive submitted from the interactive TUI.
+	DriveTransportTUI DriveTransport = "tui"
+	// DriveTransportJira is a drive originated by the Jira transport.
+	DriveTransportJira DriveTransport = "jira"
+	// DriveTransportBitbucket is a drive originated by the Bitbucket transport.
+	DriveTransportBitbucket DriveTransport = "bitbucket"
+	// DriveTransportMCP is a drive submitted through the MCP surface.
+	DriveTransportMCP DriveTransport = "mcp"
+	// DriveTransportJob is a drive enqueued by a background job.
+	DriveTransportJob DriveTransport = "job"
+	// DriveTransportStateMachine is a drive enqueued by a host.chat.drive
+	// effect inside a running state machine.
 	DriveTransportStateMachine DriveTransport = "state_machine"
 )
 
@@ -82,11 +95,11 @@ type Drive struct {
 	// OnCompleteJSON is the serialized []app.Effect chain that should
 	// fire when the drive transitions terminal (done or failed). Empty
 	// when the drive carries no chain. The chats package treats it as
-	// opaque; the orchestrator deserializes and runs it (proposal §9.2,
-	// Phase G follow-up).
+	// opaque; the orchestrator deserializes and runs it. See the drive
+	// transports in docs/architecture/transports.md.
 	OnCompleteJSON string
 	// OriginSessionID identifies which kitsoki session originated the
-	// drive. Used by the future Phase G consumer to route the
+	// drive. Used by the on_complete consumer to route the
 	// on_complete chain back to the right session listener. Empty when
 	// the drive was submitted outside an orchestrated session (CLI add,
 	// indirect transport, etc.).
@@ -142,12 +155,13 @@ func (s *Store) Enqueue(ctx context.Context, opts EnqueueOptions) (*Drive, error
 		return nil, fmt.Errorf("chats.Enqueue: insert: %w", err)
 	}
 	// Journal: chat.drive.submitted. Post-commit; OK to be a separate write —
-	// the queue row is already durable. payload_snippet is the first 256
-	// chars (full payload would balloon the journal for large turns).
+	// the queue row is already durable. payload_snippet is the first
+	// journalPayloadSnippetMax chars (full payload would balloon the journal
+	// for large turns).
 	if s.journalWriter != nil {
 		snippet := opts.Payload
-		if len(snippet) > 256 {
-			snippet = snippet[:256] + "…"
+		if len(snippet) > journalPayloadSnippetMax {
+			snippet = snippet[:journalPayloadSnippetMax] + "…"
 		}
 		appendJournalEntry(s.journalWriter, journal.Entry{
 			Ts:      s.clock.Now(),

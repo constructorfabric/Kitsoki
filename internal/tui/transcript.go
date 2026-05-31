@@ -57,6 +57,29 @@ func detectAutoStyle() string {
 	return autoStyleName
 }
 
+// sourceColorThemeFor maps a detectAutoStyle() result to the
+// sourcecolor palette. A light terminal gets LightTheme so the
+// LLM/template bands read as pale tints; dark and notty (test / piped)
+// terminals keep DarkTheme — the historical default — so existing
+// output and test assertions are unchanged.
+//
+// Without this, FlushPending hard-coded DarkTheme, painting a dark
+// bronze band behind LLM-sourced text even on a light terminal: the
+// "dark-mode background with no dark background" regression a
+// light-terminal operator hit after the source-color feature landed.
+func sourceColorThemeFor(styleName string) sourcecolor.Theme {
+	if styleName == "light" {
+		return sourcecolor.LightTheme
+	}
+	return sourcecolor.DarkTheme
+}
+
+// sourceColorTheme resolves the active sourcecolor palette from the
+// detected terminal background.
+func sourceColorTheme() sourcecolor.Theme {
+	return sourceColorThemeFor(detectAutoStyle())
+}
+
 // transcriptEntry is one item in the transcript history.
 type transcriptEntry struct {
 	// header is the user-turn header, e.g. "> go south"
@@ -219,7 +242,7 @@ func (m *transcriptModel) FlushPending() tea.Cmd {
 	items := m.pending
 	m.pending = nil
 	joined := strings.Join(items, "\n")
-	joined = sourcecolor.Colorize(joined, sourcecolor.DarkTheme, sourcecolor.Options{
+	joined = sourcecolor.Colorize(joined, sourceColorTheme(), sourcecolor.Options{
 		Width: m.queueWrapWidth(),
 	})
 	return tea.Println(joined)
@@ -236,8 +259,7 @@ func (m *transcriptModel) LiveLine() string { return m.liveLine }
 // the orchestrator. Pairs with AppendAgentBody for the body that lands
 // once the orchestrator finishes.
 //
-// Used by submitInput in the single-pane redesign (proposal §"Input
-// feedback").
+// Used by submitInput to give immediate input feedback.
 func (m *transcriptModel) AppendUserInputEcho(input string) {
 	if input == "" {
 		return
@@ -488,7 +510,7 @@ func (m *transcriptModel) AppendTurn(userInput, view string) {
 // option (a)). It stores the parsed View, the runtime env, and the
 // per-app renderer so the entry can be re-rendered at the new
 // viewport width on WindowSizeMsg without losing the "templating
-// happens before element layout" contract of the proposal §4.
+// happens before element layout" contract.
 //
 // The fallback string view (rendered at the machine's stable width)
 // is used immediately for the initial paint; subsequent resize-driven
@@ -1065,8 +1087,8 @@ func (m transcriptModel) View() string {
 // ReconstructFromEntries replays a slice of journal entries (ordered by turn,
 // seq) into the transcript model, rehydrating it from durable journal data.
 //
-// This is the read side of the continue-mode transcript rehydration path
-// (proposal §4.6).  Each recognised entry kind maps to the corresponding live
+// This is the read side of the continue-mode transcript rehydration path.
+// Each recognised entry kind maps to the corresponding live
 // constructor; unrecognised kinds are skipped with a debug log line — the
 // method never panics on unknown kinds.
 //

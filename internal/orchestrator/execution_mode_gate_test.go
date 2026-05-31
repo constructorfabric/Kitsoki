@@ -1,7 +1,6 @@
 package orchestrator_test
 
-// Tests for the execution-modes engine mechanism
-// (docs/proposals/execution-modes-and-gate-deciders.md): a synthetic
+// Tests for the execution-modes engine mechanism: a synthetic
 // emit_intent chain auto-advances through a multi-way decision gate in
 // one-shot mode (the historical default) but STOPS at it in staged mode,
 // ending the turn so a human picks the next intent.

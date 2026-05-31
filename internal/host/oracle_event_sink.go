@@ -117,9 +117,15 @@ func EventSinkFromOracleCtx(ctx context.Context) store.EventSink {
 // This ensures deterministic replay while staying under atomic write limits.
 // See oracle_dispatch.go appendOracleCalledEventWithEpisode for details.
 type OracleCalledPayload struct {
-	Verb       string          `json:"verb"`
-	Agent      string          `json:"agent,omitempty"`
-	Model      string          `json:"model,omitempty"`
+	Verb string `json:"verb"`
+	Agent string `json:"agent,omitempty"`
+	Model string `json:"model,omitempty"`
+	// Prompt is the inline rendered prompt, present when it is small enough to
+	// embed (≤ the offload threshold). Larger prompts are written to a sidecar
+	// file and referenced via PromptFile instead. Exactly one of Prompt /
+	// PromptFile is set on every oracle.call.start (see docs/tracing/trace-format.md),
+	// so a consumer always has a prompt reference to resolve.
+	Prompt string `json:"prompt,omitempty"`
 	PromptFile string          `json:"prompt_file,omitempty"` // Path to external prompt file if large
 	Input      json.RawMessage `json:"input,omitempty"`
 }
@@ -157,12 +163,30 @@ type OracleErrorPayload struct {
 // appendOracleCalledEvent appends an OracleCalled event to the EventSink in
 // ctx (if any). callID and ts are the deterministic call identifier and the
 // dispatch timestamp respectively. oc carries the session/turn/state.
-func appendOracleCalledEvent(ctx context.Context, ts time.Time, callID string, payload OracleCalledPayload) {
+//
+// promptText is the rendered prompt for this call. It is always recorded as a
+// reference on the event (see docs/tracing/trace-format.md): small prompts are
+// embedded inline in payload.Prompt; large prompts are written to a sidecar
+// file and referenced via payload.PromptFile. Callers should leave both
+// Prompt and PromptFile unset on the payload they pass — this helper fills the
+// appropriate one. Pass "" for promptText to record neither (e.g. verbs with
+// no single prompt string).
+func appendOracleCalledEvent(ctx context.Context, ts time.Time, callID string, promptText string, payload OracleCalledPayload) {
 	sink := EventSinkFromOracleCtx(ctx)
 	if sink == nil {
 		return
 	}
 	oc := OracleCallCtxFrom(ctx)
+
+	// Guarantee a prompt reference: offload large prompts to a sidecar file,
+	// otherwise embed inline so a consumer never faces a missing reference.
+	if promptText != "" {
+		if promptFile, _ := storePromptIfLarge(ctx, callID, promptText); promptFile != "" {
+			payload.PromptFile = promptFile
+		} else {
+			payload.Prompt = promptText
+		}
+	}
 
 	raw, err := json.Marshal(payload)
 	if err != nil {

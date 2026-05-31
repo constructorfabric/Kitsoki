@@ -1,18 +1,18 @@
-// Package oracle — schema validation helper.
+// validate.go holds the schema-validation helpers.
 //
 // ValidateSubmission is the single entry point for kitsoki-side JSON-Schema
 // validation of oracle responses. The validation authority lives here, not in
 // plugins. Plugins are dumb pipes.
 //
 // Library choice: github.com/santhosh-tekuri/jsonschema/v6 is already a direct
-// dependency in go.mod (pulled in by an existing package). It is pure-Go,
-// CGO-free, supports JSON Schema draft 2020-12, and accepts json.RawMessage
-// cleanly via UnmarshalJSON + AddResource. No new dependency is needed.
+// dependency in go.mod. It is pure-Go, CGO-free, supports JSON Schema draft
+// 2020-12, and accepts json.RawMessage cleanly via UnmarshalJSON +
+// AddResource, so no new dependency is needed.
 //
-// $ref resolution: in B-1 the compiler is rooted with no base URL, so $ref to
-// sibling files will fail at compile time with a loader error. B-2 wiring
-// passes the story directory as the schema base URL so relative $refs resolve
-// against the story's schemas/ directory.
+// $ref resolution: the compiler here is rooted with no filesystem base URL, so
+// a $ref to a sibling file fails at compile time. Story-directory-rooted
+// resolution is enforced separately at story-load time by ValidateSchemaRefs.
+
 package oracle
 
 import (
@@ -41,12 +41,10 @@ var englishPrinter = message.NewPrinter(language.English)
 // The Detail field of the returned AskError includes the JSON Pointer path
 // and the rule that failed, drawn from the ValidationError tree.
 //
-// B-2 note: $ref resolution is currently rooted with no base URL. When B-2
-// wires the story directory, it should construct a Compiler with a URL loader
-// rooted at the story's schemas/ directory and pass the base URL as a
-// parameter to a lower-level helper. The ValidateSubmission signature is
-// intentionally kept narrow here so B-2 can add a variant without changing
-// existing call sites.
+// $ref note: this compiler is rooted with no filesystem base URL, so a $ref to
+// a sibling file fails at compile time. The signature is kept narrow so a
+// story-directory-rooted variant can be added later without changing existing
+// call sites.
 func ValidateSubmission(schema, submission json.RawMessage) error {
 	if schema == nil {
 		return nil // intentional skip
@@ -65,7 +63,8 @@ func ValidateSubmission(schema, submission json.RawMessage) error {
 
 	// Compile the schema. Each call to ValidateSubmission compiles fresh; at
 	// PoC scale (single call per oracle turn) this is acceptable. A caching
-	// layer can be added in B-2 if profiling shows it is hot.
+	// layer can be added later if profiling shows it is hot (see the
+	// schema-cache Non-goal in doc.go).
 	compiled, err := compileSchema(schema)
 	if err != nil {
 		return &AskError{
@@ -87,8 +86,8 @@ func ValidateSubmission(schema, submission json.RawMessage) error {
 }
 
 // compileSchema parses and compiles schema bytes using jsonschema/v6.
-// The compiler uses no filesystem loader so $ref to sibling files will fail
-// at compile time in B-1. B-2 wiring adds a URL-rooted loader.
+// The compiler uses no filesystem loader, so a $ref to a sibling file fails
+// at compile time.
 func compileSchema(schema json.RawMessage) (*jsonschema.Schema, error) {
 	var schemaVal any
 	if err := json.Unmarshal(schema, &schemaVal); err != nil {
@@ -148,8 +147,9 @@ func collectLeaves(verr *jsonschema.ValidationError, msgs *[]string) {
 }
 
 // ValidateSchemaRefs checks that all $ref values in schema are safe relative
-// paths within storyDir. This is the story-load-time enforcement described in
-// proposal §3.1: "out-of-tree references fail at story-load time, not at Ask time."
+// paths within storyDir. This is the story-load-time enforcement of the rule
+// that out-of-tree references fail at story-load time, not at Ask time —
+// keeping a story's schema graph self-contained and auditable.
 //
 // Rules:
 //   - $ref with an absolute path → rejected.

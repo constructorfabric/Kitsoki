@@ -1,4 +1,7 @@
-// Package store — sink_adapter.go: StoreSinkAdapter bridges Store to EventSink.
+package store
+
+// sink_adapter.go bridges [Store] to [EventSink] via StoreSinkAdapter. See
+// doc.go for the package overview.
 //
 // Wave 2a seam: every orchestrator call site that previously called
 // store.AppendEventsAndJournal now routes event writes through StoreSinkAdapter.
@@ -14,7 +17,6 @@
 // therefore exposes AppendBatch for callers that have the full turn slice ready
 // before writing.  The single-event Append path is provided for EventSink
 // compatibility and buffers internally until Flush is called.
-package store
 
 import (
 	"sync"

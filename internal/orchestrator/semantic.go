@@ -98,7 +98,7 @@ func (o *Orchestrator) routingEnabled() bool {
 // can apply the same gate TrySemantic enforces in production. Counting
 // a verdict as "semroute-routed" when production would fall through to
 // the LLM understates the LLM cost; calibration must apply the same
-// guard or its published number drifts from reality (proposal §10).
+// guard or its published number drifts from reality.
 func RequiresUnfilledSlot(def *app.AppDef, state app.StatePath, intentID string, prefilled map[string]any) bool {
 	if def == nil {
 		return false
@@ -121,7 +121,7 @@ func RequiresUnfilledSlot(def *app.AppDef, state app.StatePath, intentID string,
 	return false
 }
 
-// recordSynonymHit notes a §7.6 hit against the cache when the
+// recordSynonymHit notes a synonym hit against the cache when the
 // orchestrator has one. Nil-cache (orchestrator built without
 // WithTurnCache), empty MatchPattern/MatchKind (a tie verdict, or a
 // match that never reached the matcher's bare/template branches), and
@@ -152,7 +152,7 @@ func (o *Orchestrator) recordSynonymHit(ctx context.Context, verdict semroute.Ve
 
 // semanticBars returns the (high, mid) confidence floors for the
 // app, honouring app.Routing overrides and falling back to the
-// proposal defaults from app.DefaultRoutingConfig.
+// built-in defaults from app.DefaultRoutingConfig.
 func (o *Orchestrator) semanticBars() (high, mid float64) {
 	if o.def != nil && o.def.Routing != nil {
 		return o.def.Routing.SemanticHighBar, o.def.Routing.SemanticMidBar
@@ -164,11 +164,11 @@ func (o *Orchestrator) semanticBars() (high, mid float64) {
 // TrySemantic attempts to route input via the semantic-routing tier
 // without calling the LLM. It is the sibling of [TryDeterministic]:
 // the orchestrator runs deterministic first, semantic second, LLM
-// last (semantic-routing proposal §1).
+// last (see docs/architecture/semantic-routing.md "The four tiers").
 //
 // After the oracle-split Phase 5, this method dispatches through
 // [host.RunExtractForRouting] — making the semantic router one consumer
-// of the host.oracle.extract tiered-resolver (proposal §2.1, D13).
+// of the host.oracle.extract tiered-resolver (oracle-split D13).
 // The transport-level routing tests are unaffected: they test Turn()
 // outcomes, not the internal routing path.
 //
@@ -182,7 +182,7 @@ func (o *Orchestrator) semanticBars() (high, mid float64) {
 //     A matcher compile error is NOT returned here — it is logged
 //     once on first Matcher() call and the tier acts as a no-op.
 //
-// The behaviour by verdict band (§2.1):
+// The behaviour by verdict band:
 //
 //   - Confidence ≥ HighBar (default 0.80) → SubmitDirect immediately.
 //   - HighBar > Confidence ≥ MidBar (default 0.65) → ComputeClarification
@@ -266,7 +266,7 @@ func (o *Orchestrator) TrySemantic(ctx context.Context, sid app.SessionID, input
 
 	case verdict.Confidence >= highBar:
 		// Phase 2 caveat: a bare-string synonym match cannot fill
-		// slots (proposal §4.4 — that's Phase 4's template syntax).
+		// slots (that needs Phase 4's template syntax).
 		// If the matched intent declares ANY required slot that the
 		// verdict didn't fill, fall through to the LLM so the slot
 		// gets extracted. Without this guard a synonym like
@@ -292,7 +292,7 @@ func (o *Orchestrator) TrySemantic(ctx context.Context, sid app.SessionID, input
 		if slots == nil {
 			slots = map[string]any{}
 		}
-		// §7.6 — record the per-synonym hit so inspect surfaces
+		// Record the per-synonym hit so inspect surfaces
 		// (--unused-synonyms, --routing-stats, --synonym-suggestions)
 		// see real production data. Cache may be nil (orchestrator
 		// constructed without WithTurnCache); guard accordingly. We

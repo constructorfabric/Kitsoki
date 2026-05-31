@@ -1,4 +1,4 @@
-// Package host — oracle dispatcher (proposal §2 B-2 / B-4).
+// Package host — oracle dispatcher. See docs/architecture/oracle-plugin.md.
 //
 // OracleDispatch is the shared dispatcher that routes oracle handler calls
 // through the Oracle plugin interface. It:
@@ -6,9 +6,9 @@
 //  1. Resolves the oracle plugin from the registry injected in context.
 //  2. Calls oracle.Ask(ctx, req).
 //  3. Writes OracleCalled to the EventSink, using episode_id/match_idx from
-//     resp.Meta when the transport is cassette-backed (§3.1 / B-4).
+//     resp.Meta when the transport is cassette-backed.
 //  4. Validates SubEvents (namespace, call_id, size) before appending verbatim
-//     between OracleCalled and OracleReturned (§2 resolution 2 / B-4).
+//     between OracleCalled and OracleReturned.
 //  5. Validates resp.Submission against req.SchemaJSON (kitsoki is validation authority).
 //  6. Writes OracleReturned or OracleError.
 //  7. Returns (submission, meta, error).
@@ -181,7 +181,7 @@ func TryDispatchVerb(ctx context.Context, verb, renderedPrompt, systemPrompt, ag
 
 	pluginName := OraclePluginNameFromCtx(ctx)
 
-	// Backwards compat (proposal §2 "Existing stories don't change"): the plugin
+	// Backwards compat (existing stories don't change): the plugin
 	// dispatch path is opt-in. Only route through it when the story explicitly
 	// named an oracle via the effect's `oracle:` field (the orchestrator injects
 	// the plugin name into context only in that case). With no explicit plugin,
@@ -293,10 +293,20 @@ func Dispatch(ctx context.Context, dr OracleDispatchRequest) (OracleDispatchResu
 	// - Separate prompt file (referenced via prompt_file field)
 	// - Cassette via !include (replay mode)
 	promptFile, _ := storePromptIfLarge(ctx, callID, dr.PromptText)
+	// Guarantee a prompt reference on every oracle.call.start
+	// (see docs/tracing/trace-format.md): when the prompt was small enough that it
+	// was not offloaded to a sidecar file, embed it inline so a consumer always
+	// has the prompt without a missing-file fallback. promptFile != "" means
+	// the prompt is large and lives in that file; we don't duplicate it inline.
+	inlinePrompt := ""
+	if promptFile == "" {
+		inlinePrompt = dr.PromptText
+	}
 	appendOracleCalledEventWithEpisode(ctx, callStart, callID, episodeID, matchIdx, OracleCalledPayload{
 		Verb:       dr.Verb,
 		Agent:      dr.Agent,
 		Model:      dr.Model,
+		Prompt:     inlinePrompt,
 		PromptFile: promptFile,
 		Input:      marshalInput(dr.InputDesc),
 	})
@@ -329,7 +339,7 @@ func Dispatch(ctx context.Context, dr OracleDispatchRequest) (OracleDispatchResu
 
 		// Validation passed: append SubEvents with kitsoki-assigned ts.
 		// Plugin-supplied ts is discarded; kitsoki's monotonic clock wins
-		// (proposal §2 testing "Sub-events ordered after the response").
+		// (sub-events are ordered after the response).
 		appendSubEventsValidated(ctx, resp.SubEvents, callID)
 	}
 
@@ -402,7 +412,7 @@ func validateSubEvents(subEvents []store.Event, pluginName, parentCallID string)
 
 // appendSubEventsValidated appends sub-events that have already passed
 // validateSubEvents. Kitsoki re-stamps each sub-event's ts using time.Now()
-// so the plugin's claimed ts is ignored (proposal §2 "Sub-events ordered after
+// so the plugin's claimed ts is ignored (sub-events are ordered after
 // the response" — kitsoki's monotonic clock is the source of truth for all ts
 // fields in the JSONL trace).
 //

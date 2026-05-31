@@ -1,52 +1,3 @@
-// Package metamode implements the runtime coordinator for a single
-// meta-mode chat: entering it (snapshot + chat resolve), conversing
-// inside it (Send), and exiting (cleanup of any session-scoped
-// authoring proposals).
-//
-// This is workstream WS-A3 of the meta-mode proposal (see
-// docs/proposals/meta-mode-proposal.md §2–§3). Two preceding pieces are
-// already merged on feat/meta-mode:
-//
-//   - internal/agents (WS-A1) supplies a name-keyed Agent registry whose
-//     Agent struct bundles the system prompt, model, declared tool
-//     surface, and an optional default cwd.
-//   - internal/app (WS-A2) loads the meta_modes: YAML block into
-//     app.AppDef.MetaModes (a name → *app.MetaModeDef map). Helpers
-//     PersistOrDefault / ExitIntentOrDefault live there.
-//
-// Locked design decisions (per the WS-A3 brief):
-//
-//  1. The meta mode is a TUI-side overlay; the orchestrator FSM is
-//     paused, never transitioned. Enter captures a Snapshot (state +
-//     world + entered-at timestamp); Exit returns it for defensive
-//     comparison only. No Teleport call in Phase A — the snapshot's
-//     job is "did the orchestrator drift while we were away?", not
-//     "restore by writing back".
-//
-//  2. Chat key shape: Room = "meta:<modeName>", ScopeKey = the entry
-//     state path. Re-entering the same mode from the same state
-//     resumes the same chat (proposal §2.1: single active session per
-//     mode per story).
-//
-//  3. The controller does not call the orchestrator. It uses the chats
-//     store (via ChatStore adapter) for transcript persistence and the
-//     oracle (via OracleCaller adapter) for the actual LLM dispatch.
-//
-//  4. The agent edits files in the story tree directly via Edit/Write
-//     tools. metamode.sendLocked diffs a pre/post snapshot of the
-//     tree to detect changes, then commits them via
-//     host.CommitChangedFiles (see internal/host/meta_commit.go).
-//     SendResult.ReloadRequested is set whenever an edit lands so the
-//     TUI can reload the orchestrator before the next turn.
-//
-// Resolved imports (the brief listed sketch types; here are the real
-// names used in this codebase):
-//
-//   - app.SessionID is defined in internal/app/types.go.
-//   - app.StatePath is also defined there (slash-separated state path,
-//     e.g. "bar/dark").
-//   - world.World lives in internal/world/world.go (a snapshot struct
-//     with a Vars map[string]any).
 package metamode
 
 import (
@@ -59,13 +10,19 @@ import (
 
 // Snapshot is the orchestrator state captured at the moment of Enter.
 // On Exit the controller returns the saved Snapshot so the TUI can
-// confirm the live orchestrator hasn't drifted; in Phase A nothing is
-// written back through the orchestrator. The TUI restores by simply
-// re-rendering at the saved state.
+// confirm the live orchestrator hasn't drifted; nothing is ever written
+// back through the orchestrator (overlay-only — see the package doc).
+// The TUI restores by simply re-rendering at the saved state.
 type Snapshot struct {
+	// SessionID identifies the orchestrator session this overlay sits on.
 	SessionID app.SessionID
-	State     app.StatePath
-	World     world.World
+	// State is the FSM state path at Enter — also the chat ScopeKey, so
+	// re-entry from the same state resumes the same chat.
+	State app.StatePath
+	// World is the world snapshot at Enter, for the Exit drift check.
+	World world.World
+	// EnteredAt is the entry timestamp; Enter stamps it from the
+	// controller clock when the caller leaves it zero.
 	EnteredAt time.Time
 }
 
@@ -124,7 +81,7 @@ type TurnContext struct {
 
 	// ImportedManifestPaths is the absolute-path list of every
 	// imported child manifest the loader visited during the current
-	// AppDef's recursive load (story-imports proposal §16.4). The
+	// AppDef's recursive load (the story-imports auto-watch surface). The
 	// metamode controller folds the parent directories of each into
 	// its post-call snapshot tree so an edit in a sibling story (e.g.
 	// `stories/robbery/` while running `stories/oregon-trail/`)
@@ -136,13 +93,16 @@ type TurnContext struct {
 
 // SendResult is the per-turn outcome surfaced to the TUI.
 //
-// ReloadRequested is the WS-A4 ↔ WS-A5 handshake: when an
-// authoring.apply tool call succeeds inside a turn (Phase B), the
-// authoring side flips this bit so the TUI knows to reload the
-// orchestrator's AppDef from disk and refresh its rendering before
-// the next turn. WS-A3 always emits false.
+// ReloadRequested is the edit-to-reload handshake: when an edit lands
+// inside a turn (the agent wrote to the story tree), the controller
+// flips this bit so the TUI knows to reload the orchestrator's AppDef
+// from disk and refresh its rendering before the next turn. A turn that
+// changed no files emits false.
 type SendResult struct {
-	Assistant       string
+	// Assistant is the LLM reply text (empty on error).
+	Assistant string
+	// ReloadRequested asks the TUI to reload the orchestrator's AppDef
+	// before the next turn because an edit landed this turn.
 	ReloadRequested bool
 	// ChangedFiles lists the paths (relative to the story directory)
 	// whose mtime/size changed during this turn — typically because
@@ -167,7 +127,9 @@ type SendResult struct {
 	// hood, so the user can hand off to an interactive
 	// claude --resume session against the same conversation history.
 	ChatID string
-	Err    error
+	// Err carries the turn's failure, if any. The other fields are only
+	// meaningful when Err is nil.
+	Err error
 }
 
 // ChatHandle is the tiny subset of the chat row the controller needs.
@@ -177,7 +139,7 @@ type SendResult struct {
 // AppendMessage's role is one of "user" | "assistant" | "system" |
 // "tool" to match internal/chats.Message semantics.
 //
-// Title / UpdatedAt / FirstUserMessage support the Phase A.5 listing
+// Title / UpdatedAt / FirstUserMessage support the chat-listing
 // surface (/meta list). They sit on the handle so the controller can
 // produce ChatListing rows without re-importing internal/chats.
 type ChatHandle interface {

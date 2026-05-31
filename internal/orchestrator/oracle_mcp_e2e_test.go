@@ -1,6 +1,6 @@
 package orchestrator_test
 
-// oracle_mcp_e2e_test.go — §5.10 exit-gate test: MCP-over-HTTP oracle end-to-end.
+// oracle_mcp_e2e_test.go — exit-gate test: MCP-over-HTTP oracle end-to-end.
 //
 // TestStoryOracle_MCPHTTPEndToEnd is the stories-side exit gate that verifies
 // the full production wiring: a story with oracle_plugins: { oracle.test_fixer:
@@ -223,6 +223,145 @@ states:
 
 	t.Logf("OracleCalled call_id=%s verb=%s", calledEvt.CallID, calledPayload.Verb)
 	t.Logf("OracleReturned call_id=%s response=%s", returnedEvt.CallID, retPayload.Response)
+}
+
+// cannedMCPServer stands up an httptest MCP-over-HTTP server that always
+// returns the given Submission. Shared by the e2e oracle tests.
+func cannedMCPServer(t *testing.T, submission json.RawMessage) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		type jsonrpcReq struct {
+			ID int `json:"id"`
+		}
+		var req jsonrpcReq
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		askResp := oracle.AskResponse{
+			Submission: submission,
+			Meta:       map[string]any{"transport": "mcp_http", "test": true},
+		}
+		respBytes, _ := json.Marshal(askResp)
+		resp := map[string]any{
+			"jsonrpc": "2.0",
+			"id":      req.ID,
+			"result": map[string]any{
+				"content": []map[string]any{{"type": "text", "text": string(respBytes)}},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+}
+
+// TestStoryOracle_TransitionStampsForegroundTurn is the regression guard for
+// foreground-turn trace stamping: when an oracle call fires from the on_enter
+// chain of a state entered by a real transition (not the initial state), the
+// OracleCalled / OracleReturned events must carry the FOREGROUND turn of that
+// transition — not turn=0 — and the destination phase as state_path. Before the
+// fix, on_enter oracle dispatch fell through to a default OracleCallCtx{turn:0}
+// (the runstatus loader then hand-patched turns with an off-by-one nearestTurn
+// hack); stamping the real turn at the source makes that hack unnecessary.
+func TestStoryOracle_TransitionStampsForegroundTurn(t *testing.T) {
+	t.Parallel()
+
+	srv := cannedMCPServer(t, json.RawMessage(`{"fixed":true}`))
+	defer srv.Close()
+
+	storyYAML := fmt.Sprintf(`
+app:
+  id: oracle-turn-stamp-test
+  version: 0.1.0
+
+oracle_plugins:
+  oracle.test_fixer:
+    plugin: mcp_http
+    endpoint: %s
+    tool: ask
+
+world:
+  fixer_result:
+    type: any
+
+root: idle
+
+intents:
+  go:
+    description: advance into the fixing phase
+
+states:
+  idle:
+    on:
+      go:
+        - target: fixing
+  fixing:
+    terminal: true
+    on_enter:
+      - invoke: host.oracle.ask
+        oracle: oracle.test_fixer
+        with:
+          prompt: "fix this bug please"
+        bind:
+          fixer_result: submission
+`, srv.URL)
+
+	def, err := app.LoadBytes([]byte(storyYAML))
+	require.NoError(t, err)
+
+	oracleReg, err := oracle.BuildRegistryFromDef(def, noopHarness{})
+	require.NoError(t, err)
+	defer oracleReg.Close()
+
+	m, err := machine.New(def)
+	require.NoError(t, err)
+
+	s, err := store.OpenMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	sink := &e2eMemSink{}
+
+	hostReg := host.NewRegistry()
+	host.RegisterBuiltins(hostReg)
+
+	orch := orchestrator.New(def, m, s, noopHarness{},
+		orchestrator.WithHostRegistry(hostReg),
+		orchestrator.WithOracleRegistry(oracleReg),
+		orchestrator.WithEventSink(sink),
+	)
+
+	ctx := context.Background()
+	sid, err := orch.NewSession(ctx)
+	require.NoError(t, err)
+
+	// Drive the transition idle --go--> fixing. The on_enter oracle call fires
+	// as part of THIS turn (turn 1), not the synthetic turn-0 init path.
+	out, err := orch.RunIntent(ctx, sid, "go", nil)
+	require.NoError(t, err)
+	require.Equal(t, orchestrator.ModeCompleted, out.Mode)
+
+	var called, returned *store.Event
+	for i := range sink.Events() {
+		ev := sink.Events()[i]
+		switch ev.Kind {
+		case store.OracleCalled:
+			called = &ev
+		case store.OracleReturned:
+			returned = &ev
+		}
+	}
+	require.NotNil(t, called, "OracleCalled event must appear in trace")
+	require.NotNil(t, returned, "OracleReturned event must appear in trace")
+
+	// Foreground turn, not 0.
+	require.Equal(t, app.TurnNumber(1), called.Turn,
+		"OracleCalled must carry the foreground turn (1), not turn=0")
+	require.Equal(t, app.TurnNumber(1), returned.Turn,
+		"OracleReturned must carry the same foreground turn as its start")
+
+	// state_path is the destination phase, not the pre-transition state.
+	require.Equal(t, app.StatePath("fixing"), called.StatePath,
+		"OracleCalled.state_path must be the destination phase (fixing)")
+	require.Equal(t, app.StatePath("fixing"), returned.StatePath,
+		"OracleReturned.state_path must be the destination phase (fixing)")
 }
 
 // e2eMemSink is a thread-safe in-memory EventSink for the e2e test.

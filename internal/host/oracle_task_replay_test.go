@@ -1,11 +1,11 @@
 package host_test
 
-// Phase 4 oracle-split replay tests — Mode A/B/C classification and
+// Replay tests for host.oracle.task — Mode A/B/C classification and
 // tarball/hash helpers.
 //
 // Tests in oracle_task_test.go cover the lower-level functions (captureInitialStateHash,
 // captureFinalDiff, etc.). This file focuses on the higher-level classification
-// contract and boundary conditions documented in §4.2 of the proposal.
+// contract and boundary conditions.
 
 import (
 	"context"

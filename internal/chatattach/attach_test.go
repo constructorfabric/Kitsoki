@@ -279,7 +279,7 @@ func TestRun_HappyPath_SpawnsAndFlipsToBackground(t *testing.T) {
 // callback (claude crash, tmux session vanished mid-attach) is
 // returned to the caller verbatim. The row still flips to
 // pty_background — chatattach treats the row state as orthogonal to
-// the attach exit code, matching the proposal §10 recovery semantics.
+// the attach exit code, described in docs/architecture/overview.md (persistence and recovery).
 func TestRun_RunTmuxErrorPropagates(t *testing.T) {
 	setupEnv(t)
 	chatattach.HeartbeatInterval = 10 * time.Millisecond

@@ -1,4 +1,5 @@
-// Package orchestrator — off-path runtime (§7.7, §11).
+// Package orchestrator — off-path runtime. See docs/stories/meta-mode.md
+// for the read-only off-path / meta agent narrative.
 //
 // Off-path is the global escape hatch: a free-form chat with the oracle
 // that DOES NOT mutate world or state. It is intentionally orthogonal to

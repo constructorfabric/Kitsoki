@@ -1,6 +1,7 @@
-// Package tui implements the full-screen Bubble Tea interface (§9a).
+// Package tui implements the full-screen Bubble Tea interface.
 // It composes sub-models for the location header, transcript pane,
-// menu list, inbox panel (§2.2), graph overlay, prompt input, and slot-fill modals.
+// menu list, inbox panel, graph overlay, prompt input, and slot-fill modals.
+// See docs/tui/README.md for the surface overview.
 //
 // The inbox panel displays background-job notifications below the Actions menu in
 // the right column. It polls a *jobs.JobStore every 2 s (200 ms when a job is
@@ -43,17 +44,18 @@ import (
 	"kitsoki/internal/world"
 )
 
-// Mode describes which interaction mode the TUI is currently in (§7.3, §7.7).
+// Mode describes which interaction mode the TUI is currently in.
 type Mode int
 
 const (
 	// ModeOnPath is the default on-path mode.
 	ModeOnPath Mode = iota
-	// ModeOffPath is the visually-framed free-form mode (§7.7).
+	// ModeOffPath is the visually-framed free-form mode. See
+	// docs/stories/state-machine.md §11 "Off-path: the global escape hatch".
 	ModeOffPath
-	// ModeSlotFilling is active while the user fills missing slots (§7.3).
+	// ModeSlotFilling is active while the user fills missing slots.
 	ModeSlotFilling
-	// ModeDisambiguating is active while the disambiguation menu is shown (§7.4).
+	// ModeDisambiguating is active while the disambiguation menu is shown.
 	ModeDisambiguating
 	// ModeAwaitingLLM is active while the LLM harness is processing a turn.
 	// Input is disabled and a spinner is shown.
@@ -62,24 +64,24 @@ const (
 	ModeMenu
 	// ModeMeta is active while a /meta overlay owns the prompt and
 	// transcript (named, persistent sidebar conversation against a
-	// declared meta mode). See docs/proposals/meta-mode-proposal.md §3.
+	// declared meta mode). See docs/stories/meta-mode.md.
 	// Replaces the former ModeEdit / edit-mode overlay (Phase B).
 	ModeMeta
 	// ModeMetaSessions is active while the "Meta sessions" foyer
-	// overlay (proposal §2.1) is on screen. Arrow keys navigate the
+	// overlay is on screen. Arrow keys navigate the
 	// listed chats; Enter resumes one; Esc closes the overlay and
 	// returns to ModeOnPath.
 	ModeMetaSessions
 	// ModeWorldView is active while /world's dedicated hierarchical
 	// viewer owns the pane. Arrow keys move the cursor; Enter expands
-	// or collapses nodes; q/Esc returns to chat. Single-pane-tui
-	// proposal §"Phase 1.5".
+	// or collapses nodes; q/Esc returns to chat.
 	ModeWorldView
 	// ModeChoosing is active while an inline choice widget owns the
 	// keyboard focus. Arrow keys / Space / Tab / Enter drive the
 	// picker; Esc cancels; a printable letter defocuses the widget
 	// back to the prompt textarea so the user always has the free-
-	// text escape hatch (choice-widget proposal §2.2 / §5 Phase C).
+	// text escape hatch. See docs/stories/choice-widget.md §2.10
+	// "Coexisting with a free-text verb".
 	ModeChoosing
 )
 
@@ -120,7 +122,7 @@ type continueTurnOutcomeMsg struct {
 	err     error
 }
 
-// RootModel is the top-level Bubble Tea model composing all sub-models (§9a.1).
+// RootModel is the top-level Bubble Tea model composing all sub-models.
 // It uses pointer receivers so the same *RootModel can be type-asserted after
 // being returned from Update as a tea.Model interface.
 type RootModel struct {
@@ -250,7 +252,7 @@ type RootModel struct {
 
 	// journalWriter, when non-nil, receives typed journal entries for
 	// inbox read/dismiss (sites 27) and disambiguation (site 31)
-	// lifecycle events (continue-mode §4.9 dual-write).
+	// lifecycle events (continue-mode dual-write).
 	// Nil disables journal writes (back-compat default for tests).
 	journalWriter journal.Writer
 
@@ -304,7 +306,6 @@ type RootModel struct {
 	// other-room completions the user has been notified about but
 	// not yet visited via /jump. Bounded at recentBackgroundCap so
 	// the slice doesn't grow unbounded across a long session.
-	// Single-pane-tui proposal §"Queueing across navigation".
 	backgroundCompletions []backgroundCompletion
 
 	// inputQueue is the room-local FIFO of in-room submissions
@@ -313,8 +314,7 @@ type RootModel struct {
 	// the queue scaffolding; phase 6 splits it per-room.
 	inputQueue []string
 
-	// transcripts is the per-room transcript buffer map (single-pane-tui
-	// proposal §"Per-room transcript buffers"). The active room's
+	// transcripts is the per-room transcript buffer map. The active room's
 	// transcript lives on m.transcript; on every room change the
 	// outgoing buffer is saved here under its room key and the
 	// incoming room's buffer is loaded back into m.transcript. See
@@ -413,7 +413,7 @@ func WithExternalTraceFile(path string) RootModelOption {
 
 // WithJournalWriter injects a journal.Writer into the RootModel. When non-nil,
 // inbox read/dismiss events (site 27) and disambiguation choice events (site 31)
-// emit typed journal entries for continue-mode durability (§4.9 dual-write).
+// emit typed journal entries for continue-mode durability (dual-write).
 // When nil (the default), no journal entries are written — this preserves
 // backward compatibility for tests and headless callers.
 func WithJournalWriter(jw journal.Writer) RootModelOption {
@@ -450,7 +450,7 @@ func WithMetaStreamSink(sink *MetaStreamSink) RootModelOption {
 // WithRoutingObserver wires a *RoutingObserver into the RootModel. The
 // observer is the slog→tea.Msg bridge that converts orchestrator
 // routing events into RoutingTier*Msg deliveries for the progressive
-// resolution chip (semantic-routing proposal §8). The caller is
+// resolution chip (see docs/architecture/semantic-routing.md). The caller is
 // responsible for inserting the observer as one handler in the slog
 // pipeline (typically alongside the trace ring buffer) and for
 // invoking obs.Attach(prog) once the *tea.Program is constructed.
@@ -471,8 +471,8 @@ func WithRoutingObserver(obs *RoutingObserver) RootModelOption {
 // The initialView passed to NewRootModel should already be the view
 // rendered from the journey (via orch.RenderState) by the caller.
 //
-// NOTE: A full Bubble Tea overlay picker (§5.4) is a follow-up; this option
-// is phase-A plumbing only.
+// NOTE: A full Bubble Tea overlay picker is a follow-up; this option
+// is initial plumbing only.
 func WithResumedJourney(state app.StatePath, w world.World, turn app.TurnNumber) RootModelOption {
 	return func(m *RootModel) {
 		m.currentState = state
@@ -485,7 +485,7 @@ func WithResumedJourney(state app.StatePath, w world.World, turn app.TurnNumber)
 }
 
 // WithResumedTranscript seeds the transcript pane from journal entries
-// collected by AttachSession (continue-mode §4.6 transcript rehydration).
+// collected by AttachSession (continue-mode transcript rehydration).
 //
 // The entries slice must be ordered by (turn, seq) — the order AttachSession
 // returns them in.  Each entry is mapped to the matching live transcript
@@ -671,7 +671,7 @@ func metaMenuEntries(def *app.AppDef) []metaMenuEntry {
 
 // defaultMetaLabel synthesises a display label for a meta mode that
 // declares no explicit `label:`. Grouped keys render as
-// `<Group> › <Trigger>` (proposal §1.1 cosmetic), ungrouped keys keep
+// `<Group> › <Trigger>` (cosmetic), ungrouped keys keep
 // the legacy `meta: <name>` form so back-compat apps look the same.
 func defaultMetaLabel(name string, mode *app.MetaModeDef) string {
 	if mode != nil && mode.Group != "" && mode.Trigger != "" {
@@ -1571,7 +1571,7 @@ func (m RootModel) dispatchInput(input string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Single-pane redesign (proposal §"Input feedback"): echo the
+	// Input feedback: echo the
 	// user's input into the transcript immediately, before any routing
 	// or dispatch. The transcript — not the input area — is the source
 	// of truth for "what just happened."
@@ -1602,7 +1602,7 @@ func (m RootModel) dispatchInput(input string) (tea.Model, tea.Cmd) {
 	// events into RoutingTier{Miss,Hit,Ambiguous,Cancel}Msg
 	// deliveries which the dispatcher above feeds through
 	// UpdateLive. The settled line stays in the transcript as a
-	// permanent record (proposal §"Input feedback" step 3).
+	// permanent record.
 	m.transcript.AppendLive(ir.phaseLine(blocks.PhaseDeterministic))
 
 	// Cheap, side-effect-free match against the current menu. This avoids the
@@ -2163,9 +2163,8 @@ func (m RootModel) handleTurnOutcome(msg turnOutcomeMsg) (tea.Model, tea.Cmd) {
 	case orchestrator.ModeTransitioned, orchestrator.ModeCompleted:
 		m.currentState = out.NewState
 		// Swap the transcript buffer if this transition crossed a
-		// room boundary (single-pane-tui proposal §"Per-room
-		// transcript buffers"). No-op when prev/new share a top-level
-		// segment.
+		// room boundary (each room keeps its own transcript buffer).
+		// No-op when prev/new share a top-level segment.
 		m.maybeSwitchRoomOnState(app.StatePath(prevState), out.NewState)
 		// Settle the inline routing block if it's still in flight
 		// (deterministic-hit paths already settled at submit time;
@@ -2626,8 +2625,8 @@ func metaListColumns() []string {
 	return []string{"ID", "MODE", "SCOPE", "UPDATED", "PREVIEW"}
 }
 
-// openSessionsPanel kicks off the foyer "meta sessions" overlay
-// (proposal §2.1). The controller call is async (it touches the
+// openSessionsPanel kicks off the foyer "meta sessions" overlay.
+// The controller call is async (it touches the
 // chats DB), so we leave the model in ModeOnPath until the
 // sessionsPanelLoadedMsg comes back. If meta plumbing is missing
 // we surface a hint via the transcript instead of opening an empty
@@ -3248,7 +3247,7 @@ func (m RootModel) updateMeta(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// pivot between meta chats (or close the current one) without
 	// forcing /onpath first. /attach hands the terminal to a
 	// tmux-hosted `claude --resume` session against the active
-	// meta chat (proposal §4.2 / §9.3); /sessions list and
+	// meta chat; /sessions list and
 	// /sessions attach <N> work too so the user can hop to any
 	// background claude conversation without leaving /meta.
 	// Anything else with a "/" prefix is still discouraged.
@@ -3321,7 +3320,7 @@ func (m RootModel) buildMetaTurnContext() metamode.TurnContext {
 	// Surface the imported-manifest paths so the metamode controller's
 	// file-watch tree includes every sibling story's directory. Without
 	// this, an edit in stories/robbery/ while running stories/oregon-trail/
-	// would not auto-reload. (Story-imports proposal §16.4.)
+	// would not auto-reload. See docs/stories/imports.md.
 	var importedPaths []string
 	if def := m.orch.AppDef(); def != nil {
 		importedPaths = append(importedPaths, def.LoadedManifests...)
@@ -3345,7 +3344,7 @@ func (m RootModel) exitMetaMode() RootModel {
 	ctrl := m.metaController
 	sess := m.metaMode.session
 	if ctrl != nil && sess != nil {
-		// Exit is currently a no-op (proposal §4.3: drafts survive).
+		// Exit is currently a no-op (drafts survive).
 		// Capture the error for diagnostics but don't block the UX.
 		if err := ctrl.Exit(context.Background(), sess); err != nil {
 			slog.Warn("tui.meta: controller.Exit error", "err", err)
@@ -3536,7 +3535,7 @@ func (m RootModel) updateDisambiguating(msg tea.Msg) (tea.Model, tea.Cmd) {
 //     ModeOnPath, restoring the pre-widget draft.
 //   - Cancel == false: the user finalised. Dispatch through
 //     asyncSubmitDirect, the same call dispatchMenuEntry uses for the
-//     right-pane menu (proposal §2.3 — dispatch parity).
+//     right-pane menu (dispatch parity).
 func (m RootModel) updateChoosing(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:

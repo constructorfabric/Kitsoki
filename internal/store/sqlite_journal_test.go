@@ -1,6 +1,6 @@
 package store_test
 
-// Atomicity test for AppendEventsAndJournal (§4.9 Rule 1).
+// Atomicity test for AppendEventsAndJournal.
 //
 // The test verifies that when AppendJournalTx fails mid-transaction the events
 // row does NOT survive — i.e. the BEGIN/COMMIT wraps both writes.

@@ -1,7 +1,6 @@
 // Package host — host.local — build/test runner provider.
 //
-// Implements the `ci` host_interface declared in
-// docs/proposals/notes/dev-story-implementation-contract.md §2.3.  A
+// Implements the `ci` host_interface (see docs/architecture/hosts.md).  A
 // single prefix-fallback handler dispatches the three ci ops via the
 // `op` arg.
 //

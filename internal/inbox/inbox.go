@@ -1,41 +1,3 @@
-// Package inbox implements the notification inbox and teleport system (§4).
-//
-// The inbox provides:
-//   - $inbox.unread world value for TUI badge rendering
-//   - Teleport: rehydrates a target state and proposal from a notification
-//   - InboxState type for the machine to render an inbox listing
-//
-// Teleport pushes the inbox predecessor onto the room history stack (§5.1),
-// so pressing `back` from the teleport destination returns the user to wherever
-// they were before visiting the inbox.
-//
-// # Clarification round-trip
-//
-// When a background handler calls host.RequestClarification, the following
-// sequence executes:
-//
-//  1. The handler calls host.RequestClarification(ctx, schema).
-//  2. host.RequestClarification calls jc.Store.RequestClarificationAny (which
-//     writes the schema to the DB and flips the job row to awaiting_input),
-//     then calls jc.awaiting(jobID) to signal the scheduler.
-//  3. The scheduler's Awaiting method fans out a JobEvent{Status: JobAwaitingInput}
-//     on per-job and per-session channels.
-//  4. The orchestrator's session listener receives the event and calls
-//     handleJobAwaitingInput, which loads the clarification schema and posts
-//     an action_required notification via jobs.JobStore.PostClarificationNotification.
-//  5. The notification's TeleportTarget carries TeleportJobID and TeleportState
-//     (the job's OriginState). The TUI surfaces it as a banner.
-//  6. The user selects the notification; the TUI calls Orchestrator.Teleport to
-//     the TeleportState (a "*_clarifying" state in the originating room).
-//  7. The user submits the answer_clarification intent with slots
-//     {job_id, answer}. The machine fires the intent, which invokes
-//     host.jobs.answer_clarification via an effect.
-//  8. host.jobs.answer_clarification calls ClarificationAnswerer.AnswerClarification,
-//     which writes the answer to the DB and flips the job back to running.
-//  9. host.RequestClarification's poll loop detects the non-NULL answer and
-//     returns it to the handler, which resumes normally.
-//  10. The handler returns a result; the scheduler posts a JobDone event and
-//     the orchestrator fires the on_complete chain.
 package inbox
 
 import (
@@ -51,7 +13,11 @@ const (
 	WorldKey = "$inbox"
 )
 
-// InboxSummary is stored under $inbox in world state.
+// InboxSummary is the badge state stored under [WorldKey] in world state.
+// It is a derived projection of the store's unread counts, not a source of
+// truth: the only supported way to obtain a meaningful summary is
+// [RefreshSummary]. The zero value (both counts 0) is a valid "nothing
+// unread" summary and is what a freshly initialised world reports.
 type InboxSummary struct {
 	// Unread is the total count of unread notifications.
 	Unread int `json:"unread"`
@@ -59,7 +25,10 @@ type InboxSummary struct {
 	NeedsAttention int `json:"needs_attention"`
 }
 
-// ToMap converts the summary to a map for world-state storage.
+// ToMap renders the summary as the `map[string]any` shape world state and
+// pongo2 templates consume, rather than storing the struct directly:
+// world values must be JSON-ish maps so views can read `$inbox.unread`
+// without a Go-typed accessor. Keys mirror the json tags.
 func (s InboxSummary) ToMap() map[string]any {
 	return map[string]any{
 		"unread":          s.Unread,
@@ -67,7 +36,11 @@ func (s InboxSummary) ToMap() map[string]any {
 	}
 }
 
-// TeleportTarget describes where a teleport transition should land.
+// TeleportTarget describes where a teleport transition should land and
+// what to rehydrate once there. It is the orchestrator's input, decoupled
+// from the stored [jobs.Notification] so navigation can be exercised
+// without the store. An empty State means "not teleportable" — the caller
+// must check before navigating.
 type TeleportTarget struct {
 	// State is the destination state path.
 	State app.StatePath
@@ -79,7 +52,10 @@ type TeleportTarget struct {
 	JobID string
 }
 
-// FromNotification extracts a TeleportTarget from a Notification.
+// FromNotification projects a stored notification's teleport fields into a
+// [TeleportTarget]. It is total and pure: it touches no store and never
+// errors, so a missing destination surfaces as an empty
+// [TeleportTarget.State] rather than a failure. Safe for concurrent use.
 func FromNotification(n jobs.Notification) TeleportTarget {
 	return TeleportTarget{
 		State:      app.StatePath(n.TeleportState),
@@ -89,8 +65,13 @@ func FromNotification(n jobs.Notification) TeleportTarget {
 	}
 }
 
-// RefreshSummary queries the job store for unread counts and updates $inbox in world.
-// Returns a new world with $inbox updated.
+// RefreshSummary folds the store's per-severity unread counts into an
+// [InboxSummary] and returns a new world with [WorldKey] updated; the input
+// world is never mutated. On a store error it returns w unchanged together
+// with the error, so a failed refresh leaves the previous (stale but valid)
+// `$inbox` in place rather than a partial summary. Safe for concurrent use
+// to the extent the underlying [jobs.JobStore] is — it holds no state of
+// its own and only reads.
 func RefreshSummary(ctx context.Context, js *jobs.JobStore, sessionID app.SessionID, w world.World) (world.World, error) {
 	counts, err := js.UnreadCount(ctx, sessionID)
 	if err != nil {
@@ -106,8 +87,13 @@ func RefreshSummary(ctx context.Context, js *jobs.JobStore, sessionID app.Sessio
 	return w.With(WorldKey, sum.ToMap()), nil
 }
 
-// PostJobNotification creates a notification for a completed job.
-// Called by the scheduler after a job reaches a terminal state.
+// PostJobNotification writes a single completion notification for a job
+// that reached a terminal state, stamping the job's origin state and id (and
+// proposal id, if any) so the resulting notification teleports back to where
+// the work began. The scheduler calls it once per terminal job. It does not
+// itself refresh `$inbox`; the orchestrator calls [RefreshSummary]
+// afterward. Safe for concurrent use to the extent the underlying
+// [jobs.JobStore] is.
 func PostJobNotification(ctx context.Context, js *jobs.JobStore, sessionID app.SessionID, j *jobs.Job, title, body string, sev jobs.NotificationSeverity) error {
 	n := &jobs.Notification{
 		SessionID:     sessionID,

@@ -10,7 +10,7 @@ import (
 )
 
 // TestLoadCloak_Positive loads the Cloak of Darkness app and asserts
-// structural invariants derived from the §3.1 port.
+// structural invariants of the loaded app.
 func TestLoadCloak_Positive(t *testing.T) {
 	def, err := Load("../../testdata/apps/cloak/app.yaml")
 	require.NoError(t, err, "Cloak app must load cleanly")
@@ -154,7 +154,7 @@ func TestNegative(t *testing.T) {
 }
 
 // TestLoad_Include verifies that the include: directive merges states from
-// separate files (roadmap step 2 / §9).
+// separate files.
 func TestLoad_Include(t *testing.T) {
 	def, err := Load("testdata/include_test/main.yaml")
 	require.NoError(t, err, "include test app must load cleanly")

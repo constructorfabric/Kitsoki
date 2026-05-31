@@ -1,4 +1,3 @@
-// Package jobs — SQLite-backed persistence for jobs and notifications.
 package jobs
 
 import (
@@ -31,7 +30,7 @@ const (
 	SeverityActionRequired NotificationSeverity = "action_required"
 )
 
-// Notification is one inbox entry (§4.1).
+// Notification is one inbox entry.
 type Notification struct {
 	ID                 string
 	SessionID          app.SessionID
@@ -52,7 +51,11 @@ type Notification struct {
 }
 
 // JobStore provides SQLite-backed persistence for jobs and notifications.
-// It operates on an existing *sql.DB (opened by the parent store package).
+// It operates on an existing *sql.DB (opened by the parent store package), so
+// it shares that connection's concurrency guarantees: methods are safe for
+// concurrent use to the extent the underlying *sql.DB is. The zero value is not
+// usable — construct via [NewJobStore], which applies the schema migration. A
+// nil *JobStore must not be called.
 type JobStore struct {
 	db            *sql.DB
 	journalWriter journal.Writer
@@ -63,8 +66,8 @@ type JobStoreOption func(*JobStore)
 
 // WithJobJournalWriter injects a journal.Writer into the JobStore. When non-nil,
 // job and notification mutations emit typed journal entries alongside the SQLite
-// writes (continue-mode §4.9 dual-write). When nil (the default), no journal
-// entries are written — this preserves backward compatibility.
+// writes — the dual-write described in docs/tracing. When nil (the default), no
+// journal entries are written, which preserves backward compatibility.
 func WithJobJournalWriter(jw journal.Writer) JobStoreOption {
 	return func(js *JobStore) {
 		js.journalWriter = jw
@@ -206,8 +209,9 @@ func (js *JobStore) UpdateJobStatus(ctx context.Context, id JobID, status JobSta
 		return err
 	}
 	// Site 25: emit jobs.update for the status transition.
-	// Checkpoint policy (§4.4 "checkpoint on every status transition") is the
+	// Checkpoint policy ("checkpoint on every status transition") is the
 	// responsibility of a higher-level driver; we emit only the patch entry here.
+	// See docs/tracing for how these entries feed checkpoints and replay.
 	if js.journalWriter != nil {
 		// Fetch the job's session_id so the journal entry can be attributed.
 		sid := jobSessionID(ctx, js.db, id)

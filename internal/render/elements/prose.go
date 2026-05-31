@@ -17,6 +17,8 @@ import (
 // Authors who want hard line breaks should use `code` (preserves layout
 // exactly) or split into multiple `prose:` elements (each renders as its
 // own paragraph with a blank line in between, courtesy of the dispatcher).
+//
+// The zero value (empty Source) is usable and renders to "".
 type Prose struct {
 	Source string
 }

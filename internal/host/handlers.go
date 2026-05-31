@@ -245,7 +245,7 @@ func RegisterBuiltins(r *Registry) {
 	// Dev-story / bugfix unify Slice β handlers — one prefix-fallback
 	// handler per provider surface (the registry dispatches every
 	// host.<name>.<op> call to the longest registered prefix).  See
-	// docs/proposals/notes/dev-story-implementation-contract.md §3.
+	// docs/architecture/hosts.md.
 	r.Register("host.local_files.ticket", LocalFilesTicketHandler)
 	r.Register("host.git", GitVCSHandler)
 	r.Register("host.local", LocalCIHandler)
@@ -257,12 +257,11 @@ func RegisterBuiltins(r *Registry) {
 	// Wave 3 / Phase 5 — GitHub Issues + cypilot artifact providers.
 	// `host.gh.ticket` backs the `ticket` iface against the gh CLI; the
 	// existing `host.git` already routes PR ops through gh.  `host.cypilot_artifacts`
-	// shells out to cpt for the SDLC artifact iface introduced in §2.6
-	// of the dev-story-bugfix unify proposal.
+	// shells out to cpt for the SDLC artifact iface.
 	r.Register("host.gh.ticket", GitHubTicketHandler)
 	r.Register("host.cypilot_artifacts", CypilotArtifactsHandler)
 
-	// Oracle-split five verbs (Phases 2–7 implementations).
+	// Oracle five verbs.
 	// host.oracle.ask is registered above.
 	r.Register("host.oracle.extract", OracleExtractHandler)
 	r.Register("host.oracle.decide", OracleDecideHandler)
@@ -270,10 +269,10 @@ func RegisterBuiltins(r *Registry) {
 	r.Register("host.oracle.converse", OracleConverseHandler)
 }
 
-// OracleExtractHandler is implemented in oracle_extract.go (oracle-split Phase 5).
+// OracleExtractHandler is implemented in oracle_extract.go.
 
-// OracleDecideHandler is the Phase 2 implementation of host.oracle.decide.
+// OracleDecideHandler is the implementation of host.oracle.decide.
 // See oracle_decide.go for the full contract.
 
-// OracleTaskHandler is defined in oracle_task.go (oracle-split Phase 4).
-// OracleConverseHandler is defined in oracle_converse.go (oracle-split Phase 7).
+// OracleTaskHandler is defined in oracle_task.go.
+// OracleConverseHandler is defined in oracle_converse.go.

@@ -9,6 +9,7 @@ import (
 
 	"kitsoki/internal/app"
 	"kitsoki/internal/harness"
+	"kitsoki/internal/host"
 	"kitsoki/internal/intent"
 	"kitsoki/internal/journal"
 	"kitsoki/internal/machine"
@@ -257,6 +258,21 @@ func (o *Orchestrator) RunIntent(ctx context.Context, sid app.SessionID, intentN
 		"direct": true,
 	}, turnNum)
 
+	// Emit turn.input on the flow/RunIntent path
+	// too, mirroring the live Turn() and SubmitDirect() entry points, so a
+	// flow-driven trace carries the same user-input row a live session would.
+	// Payload uses the unified {input, intent} shape SubmitDirect emits.
+	riInputPayload, _ := json.Marshal(map[string]any{
+		"input":  fmt.Sprintf("[intent] %s", intentName),
+		"intent": intentName,
+	})
+	inputEvent := store.Event{
+		Kind:      store.UserInputReceived,
+		Turn:      turnNum,
+		StatePath: journey.State,
+		Payload:   riInputPayload,
+	}
+
 	allowedNames := allowedNamesFromMachine(o.machine, journey.State, journey.World)
 
 	if result.ValidationError != nil {
@@ -298,7 +314,7 @@ func (o *Orchestrator) RunIntent(ctx context.Context, sid app.SessionID, intentN
 			}, nil
 		}
 
-		failureEvents := append([]store.Event{startEvent}, result.Events...)
+		failureEvents := append([]store.Event{inputEvent, startEvent}, result.Events...)
 		endEvent := newOrchestratorEvent(store.TurnEnded, map[string]any{
 			"outcome": "rejected",
 			"code":    string(ve.Code),
@@ -333,6 +349,15 @@ func (o *Orchestrator) RunIntent(ctx context.Context, sid app.SessionID, intentN
 	}
 
 	// Success path: dispatch host calls, persist events.
+	// Stamp the foreground turn on ctx so oracle.call.* events fired by the
+	// on_enter chain and the post-bind emit recursion carry the real turn (not
+	// turn=0). dispatchHostCalls rewrites the
+	// StatePath per call to the destination phase.
+	ctx = host.WithOracleCallCtx(ctx, host.OracleCallCtx{
+		SessionID: sid,
+		Turn:      turnNum,
+		StatePath: result.NewState,
+	})
 	hostEvents, hostWorld, hostView, hostRedirect, hostErr := o.dispatchHostCalls(ctx, sid, result.HostCalls, result.World, result.NewState)
 	if hostErr != nil {
 		tl.Debug(ctx, trace.EvHarnessError, slog.String("host_dispatch_error", hostErr.Error()))
@@ -357,7 +382,16 @@ func (o *Orchestrator) RunIntent(ctx context.Context, sid app.SessionID, intentN
 		}
 	}
 
-	successEvents := append([]store.Event{startEvent}, result.Events...)
+	// The intent passed Validate (no
+	// ValidationError on the success path), so record machine.intent_accepted —
+	// what advanced this turn — between the user-input/turn-start prefix and the
+	// machine's transition events. Payload carries the accepted intent + slots.
+	acceptedEvent := newOrchestratorEvent(store.IntentAccepted, map[string]any{
+		"intent": intentName,
+		"slots":  map[string]any(call.Slots),
+	}, turnNum)
+
+	successEvents := append([]store.Event{inputEvent, startEvent, acceptedEvent}, result.Events...)
 	endEvent := newOrchestratorEvent(store.TurnEnded, map[string]any{
 		"outcome": "transitioned",
 		"to":      string(result.NewState),

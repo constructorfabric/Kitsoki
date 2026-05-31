@@ -1,4 +1,6 @@
-// Package app — story-imports overrides (§10).
+// Package app — story-imports overrides.
+//
+// See docs/stories/imports.md for the import/override authoring model.
 //
 // Overrides patch a child app's states / intents / prompts at import time.
 // The import declares:
@@ -49,7 +51,7 @@ func applyOverrides(child *AppDef, ov *ImportOverrides, file, alias, parentBaseD
 	// State overrides — replace by child-local name. The match must exist
 	// somewhere in the child's state tree (top-level or nested); we only
 	// replace top-level matches in v1 because nested replacement gets
-	// surprising (the proposal §10 says "replaces the child's state of
+	// surprising (the override contract says "replaces the child's state of
 	// that name" without disambiguating nesting; we pick the safe rule).
 	for _, name := range sortedKeys(ov.States) {
 		newState := ov.States[name]

@@ -18,6 +18,25 @@ import (
 	"unicode/utf8"
 )
 
+const (
+	// wideCodepointBoundary is the first code point (U+10000) that UTF-8
+	// encodes in four bytes. Jira Server's MySQL `utf8` charset (not
+	// `utf8mb4`) rejects four-byte sequences, so everything at or above this
+	// boundary — emoji, astral-plane symbols — is replaced before posting.
+	wideCodepointBoundary = 0x10000
+
+	// tabWidth is the number of columns a tab expands to when measuring list
+	// indentation. It matches Python's str.expandtabs(4) so kitsoki and
+	// tools/loopy compute the same nesting depth for the same input.
+	tabWidth = 4
+
+	// indentFallback is the secondary indentation stop (in columns) used when
+	// an indent is not a clean multiple of tabWidth. Two-space indents are a
+	// common LLM convention, so they must still nest rather than collapse to
+	// depth 1.
+	indentFallback = 2
+)
+
 // sanitizeForJira converts Markdown to Jira Server wiki markup and strips
 // codepoints that Jira's MySQL utf8 (not utf8mb4) backend rejects.
 //
@@ -162,7 +181,7 @@ func stripWideCodepoints(s string) string {
 	b.Grow(len(s))
 	for i := 0; i < len(s); {
 		r, size := utf8.DecodeRuneInString(s[i:])
-		if r >= 0x10000 {
+		if r >= wideCodepointBoundary {
 			b.WriteString("(emoji)")
 		} else {
 			b.WriteRune(r)
@@ -174,7 +193,7 @@ func stripWideCodepoints(s string) string {
 
 func containsWideRune(s string) bool {
 	for _, r := range s {
-		if r >= 0x10000 {
+		if r >= wideCodepointBoundary {
 			return true
 		}
 	}
@@ -215,13 +234,13 @@ func closeUnclosedFences(text string) string {
 //	"      " → 3
 //	"        " → 3
 func depthForIndent(indent int) int {
-	if indent >= 4 && indent%4 == 0 {
-		return indent/4 + 1
+	if indent >= tabWidth && indent%tabWidth == 0 {
+		return indent/tabWidth + 1
 	}
-	if indent >= 2 && indent%2 == 0 {
-		return indent/2 + 1
+	if indent >= indentFallback && indent%indentFallback == 0 {
+		return indent/indentFallback + 1
 	}
-	d := indent/4 + 1
+	d := indent/tabWidth + 1
 	if d < 1 {
 		return 1
 	}
@@ -234,7 +253,7 @@ func tabExpandedLen(s string) int {
 	n := 0
 	for _, r := range s {
 		if r == '\t' {
-			n += 4 - (n % 4)
+			n += tabWidth - (n % tabWidth)
 		} else {
 			n++
 		}

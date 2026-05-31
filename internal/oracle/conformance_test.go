@@ -1,8 +1,9 @@
-// Package oracle — transport conformance test (proposal §2 B-3 / B-5 exit gate).
+// conformance_test.go is the transport conformance gate.
 //
 // Verifies that in-process, subprocess, and MCP-over-HTTP transports all produce
 // the same AskResponse.Submission for the same AskRequest, modulo Meta and
-// transport-specific fields. The cassette transport joins in B-4.
+// transport-specific fields.
+
 package oracle
 
 import (
