@@ -213,8 +213,8 @@ github.com/.../tui.(*Model).Update(...)
 | Concept | Code |
 |---|---|
 | CLI subcommands (`create`, `list`, `show`) | [`cmd/kitsoki/bug.go`](../cmd/kitsoki/bug.go) |
-| `story-bug-reporter` agent (prompt + tool surface) | [`internal/agents/story_bug_reporter.md`](../internal/agents/story_bug_reporter.md), [`internal/agents/story_bug_reporter.go`](../internal/agents/story_bug_reporter.go) |
-| `kitsoki-bug-reporter` agent | [`internal/agents/kitsoki_bug_reporter.md`](../internal/agents/kitsoki_bug_reporter.md), [`internal/agents/kitsoki_bug_reporter.go`](../internal/agents/kitsoki_bug_reporter.go) |
+| `story-bug-reporter` agent (prompt + tool surface) | [`internal/agents/story_bug_reporter.md`](../../internal/agents/story_bug_reporter.md), [`internal/agents/story_bug_reporter.go`](../internal/agents/story_bug_reporter.go) |
+| `kitsoki-bug-reporter` agent | [`internal/agents/kitsoki_bug_reporter.md`](../../internal/agents/kitsoki_bug_reporter.md), [`internal/agents/kitsoki_bug_reporter.go`](../internal/agents/kitsoki_bug_reporter.go) |
 | Builtin `story.bug` and `kitsoki.bug` meta modes | [`internal/app/builtin_meta_modes.go`](../internal/app/builtin_meta_modes.go) |
 
 ---
@@ -225,7 +225,7 @@ Pushing bugs to GitHub Issues or Jira is **not** implemented. The
 on-disk frontmatter is laid out so that a future `kitsoki bug sync`
 command can write the remote issue id back into a new `external:`
 block without touching the body — design notes are in
-[`proposals/bug-sync-proposal.md`](proposals/bug-sync-proposal.md).
+[`proposals/bug-sync-proposal.md`](../proposals/bug-sync-proposal.md).
 Until that ships, move a bug to a tracker by copying the body
 verbatim into a new issue and pasting the file path back in as a
 comment.

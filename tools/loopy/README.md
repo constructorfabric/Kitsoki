@@ -176,4 +176,4 @@ Use this sparingly. Every unannotated `claude -p` call in `stories/` or
 | `oracle.task` | Agentic mutation with acceptance loop (rarely needed in validators). |
 | `oracle.converse` | Free-form session; not typical in automated scripts. |
 
-Full CLI reference: [`docs/oracle-cli.md`](../../docs/oracle-cli.md).
+Full CLI reference: [`docs/architecture/oracle-cli.md`](../../docs/architecture/oracle-cli.md).

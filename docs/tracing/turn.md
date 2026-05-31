@@ -100,6 +100,6 @@ kitsoki turn app.yaml --state cloakroom --intent look \
 
 ## See also
 
-- `docs/trace-format.md` — full JSONL trace schema and event vocabulary.
+- `docs/tracing/trace-format.md` — full JSONL trace schema and event vocabulary.
 - `kitsoki run` — interactive TUI session (uses the same EventSink trace internally).
 - `kitsoki trace <path>` — pretty-print a trace file.

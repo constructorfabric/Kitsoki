@@ -1,7 +1,7 @@
 # Developer Guide
 
 For people working *on* kitsoki — not just authoring apps that run on it.
-If you want to write a kitsoki app, see [`authoring.md`](authoring.md) and
+If you want to write a kitsoki app, see [`authoring.md`](../stories/authoring.md) and
 the embedded `kitsoki docs app-schema`.
 
 ---
@@ -198,7 +198,7 @@ jq 'select(.kind=="machine.state_entered") | .state_path' trace.jsonl  # jq
 
 **Trace format:** one JSON object per line in the `store.Event` shape
 (`turn`, `seq`, `ts`, `kind`, `state_path`, `payload`). The full schema and
-event-kind vocabulary are in [`docs/trace-format.md`](trace-format.md).
+event-kind vocabulary are in [`docs/tracing/trace-format.md`](../tracing/trace-format.md).
 
 **Path schemes:**
 
@@ -280,7 +280,7 @@ schema-shaped prompt.
 ## 7. Coding conventions
 
 - **One responsibility per package.** The package map in
-  [`architecture.md`](architecture.md#3-package-map) is the contract.
+  [`architecture.md`](overview.md#3-package-map) is the contract.
   If a feature spans two packages, the higher-level one calls the
   lower; never the reverse.
 - **Effects belong in the orchestrator.** The machine is pure and the
@@ -290,7 +290,7 @@ schema-shaped prompt.
 - **Errors use the `intent.ErrorCode` enum at the boundary.** Inside a
   package, ordinary `error` is fine; at the harness/MCP boundary,
   every failure must be one of the documented codes (see
-  [`state-machine.md`](state-machine.md#4-intents-and-slots)).
+  [`state-machine.md`](../stories/state-machine.md#4-intents-and-slots)).
 - **No silent defaults in `app.yaml`.** YAML parsing is strict
   (`KnownFields`); unknown keys are errors. Add a default in the type
   itself, not by skipping a missing field.
@@ -338,12 +338,12 @@ binaries are built ad hoc with `go build -o kitsoki ./cmd/kitsoki`.
 
 ## 10. Pointers
 
-- **Architecture overview** → [`architecture.md`](architecture.md)
-- **State machine** → [`state-machine.md`](state-machine.md)
-- **Authoring an app** → [`authoring.md`](authoring.md)
-- **Background jobs** → [`background-jobs/`](background-jobs/README.md)
+- **Architecture overview** → [`architecture.md`](overview.md)
+- **State machine** → [`state-machine.md`](../stories/state-machine.md)
+- **Authoring an app** → [`authoring.md`](../stories/authoring.md)
+- **Background jobs** → [`background-jobs/`](../stories/background-jobs/README.md)
 - **Hosts and transports** → [`hosts.md`](hosts.md), [`transports.md`](transports.md)
-- **Testing** → [`testing.md`](testing.md)
+- **Testing** → [`testing.md`](../tracing/testing.md)
 - **Embedded LLM operator manual** → `kitsoki docs llm-guide`
 - **Authoritative `app.yaml` schema** → `kitsoki docs app-schema`
 - **Prior art and comparative grounding** → [`prior-art.md`](prior-art.md)

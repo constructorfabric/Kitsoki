@@ -1,7 +1,7 @@
 # Proposal — Remote sync for bug reports (`kitsoki bug sync`)
 
 **Status:** Draft. Not implemented. The on-disk format
-([`docs/bugs.md`](../bugs.md)) was deliberately shaped so this
+([`docs/stories/bugs.md`](../stories/bugs.md)) was deliberately shaped so this
 command lands as an additive write to a new frontmatter block,
 without breaking any existing file. The format is the contract;
 this proposal is the command that consumes it.
@@ -77,7 +77,7 @@ directory keeps the sync path exercisable without network access.
 
 ## 5. Why the v1 format already supports this
 
-The format choices in [`docs/bugs.md`](../bugs.md) that make this
+The format choices in [`docs/stories/bugs.md`](../stories/bugs.md) that make this
 land as a pure-additive change:
 
 - Frontmatter is at the top → cheap to read without parsing the

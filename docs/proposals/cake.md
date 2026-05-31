@@ -2,7 +2,7 @@ end-to-end integration test. all inputs mockable for stable runs. needs a demo p
 
 # the test
 
-four flow fixtures, all `test_kind: flow` (see `docs/testing.md` §1):
+four flow fixtures, all `test_kind: flow` (see `docs/tracing/testing.md` §1):
 
 ```
 stories/dev-story/flows/

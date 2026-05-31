@@ -5,13 +5,13 @@ three have shipped and are now documented in normal docs:
 
 - **View-rendered bytes in the trace** — `view_rendered` field on
   `turn.done` events. See
-  [`docs/architecture.md` §11.5](../architecture.md) and the
+  [`docs/architecture/overview.md` §11.5](../architecture/overview.md) and the
   emit sites in `internal/orchestrator/orchestrator.go`.
 - **`kitsoki turn`** — stateless one-shot turn execution. See
-  [`docs/developer-guide.md` §6](../developer-guide.md) and
+  [`docs/architecture/developer-guide.md` §6](../architecture/developer-guide.md) and
   `cmd/kitsoki/turn.go`.
 - **`kitsoki inspect --session-id <id>`** — read-only session
-  snapshot. See [`docs/developer-guide.md` §6](../developer-guide.md)
+  snapshot. See [`docs/architecture/developer-guide.md` §6](../architecture/developer-guide.md)
   and `cmd/kitsoki/inspect.go`.
 
 The two surfaces below remain in design. The TUI's automatic

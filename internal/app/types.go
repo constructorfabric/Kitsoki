@@ -209,7 +209,7 @@ type AppDef struct {
 	Agents map[string]*AgentDecl `yaml:"agents,omitempty"`
 
 	// Imports declares aliased composition with private worlds
-	// (see docs/imports.md §3). Each import binds a child app
+	// (see docs/stories/imports.md §3). Each import binds a child app
 	// under a string alias; child states/world keys are namespaced
 	// under that alias at load time.
 	Imports map[string]*ImportDef `yaml:"imports,omitempty"`
@@ -221,11 +221,11 @@ type AppDef struct {
 	Exits map[string]*ExitDef `yaml:"exits,omitempty"`
 
 	// Exports declares what the child app surfaces to importers.
-	// Currently only intents (see docs/imports.md §6).
+	// Currently only intents (see docs/stories/imports.md §6).
 	Exports *ExportsBlock `yaml:"exports,omitempty"`
 
 	// HostInterfaces declares named capabilities the app depends on
-	// (see docs/imports.md §11). Importers rebind via
+	// (see docs/stories/imports.md §11). Importers rebind via
 	// imports.<alias>.host_bindings.
 	HostInterfaces map[string]*HostInterfaceDef `yaml:"host_interfaces,omitempty"`
 
@@ -397,7 +397,7 @@ type ImportWrapperInfo struct {
 }
 
 // ImportDef declares one entry in an AppDef's `imports:` block
-// (see docs/imports.md §3).
+// (see docs/stories/imports.md §3).
 type ImportDef struct {
 	// Source resolves to a child app.yaml. Forms:
 	//   - "./relative/path"          — relative to importer's dir
@@ -919,7 +919,7 @@ type AgentDecl struct {
 // Backward compat: an un-namespaced YAML mode (key has no `.`) is
 // treated by the loader as having Group == its key and no default-verb
 // rule (a single-mode group is implicitly default-able). See
-// docs/meta-mode.md §3.2 for the user-facing reference.
+// docs/stories/meta-mode.md §3.2 for the user-facing reference.
 type MetaModeDef struct {
 	Trigger string `yaml:"trigger"`
 	// Group is the namespace token (`story`, `kitsoki`, or an

@@ -17,7 +17,7 @@ machine.
 | `converse` | `host.oracle.converse` | Free-form conversational session with `permission_mode` control. |
 
 The verbs map 1:1 to the handlers documented in
-[`docs/hosts.md`](hosts.md#hostoracleextract). All flags mirror the
+[`docs/architecture/hosts.md`](hosts.md#hostoracleextract). All flags mirror the
 `with:` fields accepted by each handler.
 
 ---

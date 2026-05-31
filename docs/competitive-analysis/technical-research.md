@@ -104,7 +104,7 @@ Zigflow ([Simon Emms, 2026][zigflow]) takes the same bet kitsoki does — descri
 
 ### 3.1 Choice
 
-Kitsoki's runtime model is a finite-state machine (rooms/states with declared intent alphabets) whose transitions are recorded as an append-only event log. State is reconstructible by replaying the log; tests replay recorded LLM responses to make CI deterministic and free of inference cost. ([`docs/architecture.md`][architecture]; [`docs/state-machine.md`][state-machine])
+Kitsoki's runtime model is a finite-state machine (rooms/states with declared intent alphabets) whose transitions are recorded as an append-only event log. State is reconstructible by replaying the log; tests replay recorded LLM responses to make CI deterministic and free of inference cost. ([`docs/architecture/overview.md`][architecture]; [`docs/stories/state-machine.md`][state-machine])
 
 ### 3.2 Validation
 
@@ -117,7 +117,7 @@ The 2026 academic and OSS literature has converged on essentially this exact pat
 
 ### 3.3 Cost of the choice
 
-- The event log must be schema-stable across versions, or replays break. Kitsoki addresses this with documented recording format ([`docs/testing.md`][testing]) and version pinning.
+- The event log must be schema-stable across versions, or replays break. Kitsoki addresses this with documented recording format ([`docs/tracing/testing.md`][testing]) and version pinning.
 - Replay correctness depends on capturing every non-deterministic input. Kitsoki's harness abstraction (§6) is precisely the seam where non-determinism is captured.
 
 ### 3.4 Verdict
@@ -130,7 +130,7 @@ The 2026 academic and OSS literature has converged on essentially this exact pat
 
 ### 4.1 Choice
 
-Kitsoki's MCP server registers a single `transition` tool with `{intent, slots}` payload, not a typed tool per intent or per state. ([`docs/prior-art.md` §5][prior-art])
+Kitsoki's MCP server registers a single `transition` tool with `{intent, slots}` payload, not a typed tool per intent or per state. ([`docs/architecture/prior-art.md` §5][prior-art])
 
 ### 4.2 Justification
 
@@ -159,7 +159,7 @@ The 2026 MCP specification ([modelcontextprotocol.io][mcp-spec]) is silent on si
 
 ### 5.1 Choice
 
-Every user turn passes through four tiers before the LLM is invoked: deterministic exact-match, synonym (bare), synonym templates (with typed slot capture), turncache (semantic cache). Only unmatched turns reach the LLM. ~78% of recorded Oregon Trail turns route deterministically or via author-declared synonyms; the LLM fires only on the genuinely open-ended ones. ([`docs/semantic-routing.md`][semantic-routing])
+Every user turn passes through four tiers before the LLM is invoked: deterministic exact-match, synonym (bare), synonym templates (with typed slot capture), turncache (semantic cache). Only unmatched turns reach the LLM. ~78% of recorded Oregon Trail turns route deterministically or via author-declared synonyms; the LLM fires only on the genuinely open-ended ones. ([`docs/architecture/semantic-routing.md`][semantic-routing])
 
 ### 5.2 Validation
 
@@ -177,7 +177,7 @@ Kitsoki's four-tier stack maps onto each pillar of the consensus:
 Two distinctive properties of kitsoki's stack vs the 2026 default:
 
 1. **Stack order is author-visible and reproducible.** A trace event names which tier resolved each turn; the route badge in the TUI shows it live. Most semantic caches are opaque.
-2. **The synonym library is grow-by-trace.** `kitsoki inspect --synonym-suggestions` proposes synonyms from real recorded turns that fell through to the LLM ([`docs/semantic-routing.md`][semantic-routing]). The library improves with usage without ML training.
+2. **The synonym library is grow-by-trace.** `kitsoki inspect --synonym-suggestions` proposes synonyms from real recorded turns that fell through to the LLM ([`docs/architecture/semantic-routing.md`][semantic-routing]). The library improves with usage without ML training.
 
 ### 5.3 Cost of the choice
 
@@ -212,7 +212,7 @@ Distinctive to kitsoki: the *replay* harness is a first-class citizen. Mainstrea
 
 ### 7.1 Choice
 
-Local TUI, Jira ticket comments, and Bitbucket PR comments are three *transports* over one shared state-machine implementation. Sessions are keyed by external thread ID, so a Jira comment posted in response to a TUI checkpoint resumes the same state-machine instance. ([`docs/transports.md`][transports])
+Local TUI, Jira ticket comments, and Bitbucket PR comments are three *transports* over one shared state-machine implementation. Sessions are keyed by external thread ID, so a Jira comment posted in response to a TUI checkpoint resumes the same state-machine instance. ([`docs/architecture/transports.md`][transports])
 
 ### 7.2 Validation
 
@@ -236,7 +236,7 @@ Kitsoki's audit-grade buyer (per [`domain-research.md`][domain]) explicitly want
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
 | Go ecosystem lags Python for new LLM features | Medium | Low | Harness abstraction means new models are plugged in at the backend; YAML authoring is language-neutral |
-| YAML scales poorly past N=1000 states | Medium | Medium | Imports / composition (`imports:` block, [`docs/imports.md`][imports]) shard a large app into reusable pieces; this is the documented escape hatch |
+| YAML scales poorly past N=1000 states | Medium | Medium | Imports / composition (`imports:` block, [`docs/stories/imports.md`][imports]) shard a large app into reusable pieces; this is the documented escape hatch |
 | MCP protocol breaking changes | Medium | Medium | Single-tool design is more change-tolerant than a multi-tool design; the validator-as-gatekeeper layer absorbs schema changes |
 | Replay correctness depends on deterministic LLM (T=0) | High | Medium-High | Acknowledged in `prior-art.md`; the replay tier records actual responses so non-determinism is replayed-from-truth, not regenerated |
 | Audit-trail integrity requires append-only storage | High | High | On-disk artifact-as-conversation is naturally append-only; SQLite for session metadata is documented; tamper-evidence (signing) is a known future work item |
@@ -298,13 +298,13 @@ Kitsoki's audit-grade buyer (per [`domain-research.md`][domain]) explicitly want
 
 ### Internal kitsoki references
 - [`README.md` — top-level overview][readme]
-- [`docs/architecture.md` — layers, packages, data flow, persistence model][architecture]
-- [`docs/state-machine.md` — rooms, phases, states, intents, slots, world, guards][state-machine]
-- [`docs/prior-art.md` — comparative grounding, including §5 on single-tool MCP design][prior-art]
-- [`docs/semantic-routing.md` — the four-tier routing stack reference][semantic-routing]
-- [`docs/transports.md` — multi-surface session abstraction][transports]
-- [`docs/testing.md` — Mode 1 (intent pass-rate) and Mode 2 (deterministic flow) tests][testing]
-- [`docs/imports.md` — composing apps across files and repos][imports]
+- [`docs/architecture/overview.md` — layers, packages, data flow, persistence model][architecture]
+- [`docs/stories/state-machine.md` — rooms, phases, states, intents, slots, world, guards][state-machine]
+- [`docs/architecture/prior-art.md` — comparative grounding, including §5 on single-tool MCP design][prior-art]
+- [`docs/architecture/semantic-routing.md` — the four-tier routing stack reference][semantic-routing]
+- [`docs/architecture/transports.md` — multi-surface session abstraction][transports]
+- [`docs/tracing/testing.md` — Mode 1 (intent pass-rate) and Mode 2 (deterministic flow) tests][testing]
+- [`docs/stories/imports.md` — composing apps across files and repos][imports]
 - [`docs/market-research.md` — companion market research report][market]
 - [`docs/domain-research.md` — companion domain research report][domain]
 

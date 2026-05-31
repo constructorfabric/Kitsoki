@@ -37,7 +37,7 @@ Today the only ways to inspect a run are:
 - Tailing the JSONL trace file by hand.
 
 For dogfood debugging and for showing the system to non-authors,
-these aren't enough. The proposal in `docs/concept.md` calls out
+these aren't enough. The proposal in `docs/architecture/concept.md` calls out
 "every decision is a labelled datapoint" as the core architectural
 commitment — without a UI that lets a human walk that record, the
 commitment is invisible. The pitch video pipeline

@@ -23,7 +23,7 @@ source_verification: true
 
 ## Research Overview
 
-Market research (see [`market-research.md`](./market-research.md)) located kitsoki on the 2026 conversational-AI landscape. This document drops one level deeper: into the actual *engineering domain* kitsoki was designed against — LLM-assisted software engineering workflows that have to be auditable, reproducible, and runnable across multiple surfaces (local TUI, Jira ticket comments, Bitbucket PR comments).
+Market research (see [`market-research.md`](market-research.md)) located kitsoki on the 2026 conversational-AI landscape. This document drops one level deeper: into the actual *engineering domain* kitsoki was designed against — LLM-assisted software engineering workflows that have to be auditable, reproducible, and runnable across multiple surfaces (local TUI, Jira ticket comments, Bitbucket PR comments).
 
 The domain is currently being reshaped by two converging forces:
 
@@ -125,7 +125,7 @@ A domain-specific constraint that adjacent markets (customer service, chat) do n
 
 All four surfaces should share *one logical state machine instance* keyed by external thread ID. The domain expert mental model is "one conversation, four surfaces" — not "four parallel conversations to reconcile later."
 
-Kitsoki implements this directly via its transport abstraction ([`docs/transports.md`][transports]). Sessions are keyed by external thread, so a Jira comment posted in response to a TUI checkpoint resumes the same state machine. None of the major dialogue-manager competitors (Rasa, Dialogflow CX, LangGraph) offer this — they assume a single front-end channel per conversation.
+Kitsoki implements this directly via its transport abstraction ([`docs/architecture/transports.md`][transports]). Sessions are keyed by external thread, so a Jira comment posted in response to a TUI checkpoint resumes the same state machine. None of the major dialogue-manager competitors (Rasa, Dialogflow CX, LangGraph) offer this — they assume a single front-end channel per conversation.
 
 ### 3.3 The author–operator–auditor triad
 
@@ -249,8 +249,8 @@ Each departure is documented and justified. For a domain-expert auditor or migra
 
 ### Internal kitsoki references
 - [`README.md` — top-level kitsoki overview, dogfood mode][readme]
-- [`docs/prior-art.md` — Inform/TADS/XState/Rasa/LangGraph genealogy][prior-art]
-- [`docs/transports.md` — multi-surface session abstraction][transports]
+- [`docs/architecture/prior-art.md` — Inform/TADS/XState/Rasa/LangGraph genealogy][prior-art]
+- [`docs/architecture/transports.md` — multi-surface session abstraction][transports]
 
 [addy-osmani-2026]: https://addyosmani.com/blog/ai-coding-workflow/
 [sobonix-2026]: https://www.sobonix.com/blog/ai-assisted-software-engineering-in-2026-the-rise-of-human-guided-coding-agents/

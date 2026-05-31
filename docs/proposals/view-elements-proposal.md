@@ -1126,7 +1126,7 @@ Concrete touchpoints when the phases land:
   `internal/tui/transcript.go:267-293` — `preserveLeadingIndent`
   retires once all non-`template` content stops going through
   Glamour. Move under the `template` branch in the interim.
-- **Docs.** Update `docs/authoring.md` once phase D ships with
+- **Docs.** Update `docs/stories/authoring.md` once phase D ships with
   at least one migrated view. The string form stays
   documented; the array form and the pongo2 syntax cheatsheet
   (§3.1) are documented alongside. Add a `docs/views.md`

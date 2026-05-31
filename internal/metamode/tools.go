@@ -23,7 +23,7 @@ import "strings"
 // The list this produces is informational today — every claude
 // subprocess runs with --permission-mode bypassPermissions, so the
 // allowlist documents intent for prompts and human reviewers rather
-// than acting as a runtime gate. See docs/meta-mode.md §10.
+// than acting as a runtime gate. See docs/stories/meta-mode.md §10.
 func NormaliseToolName(name string) string {
 	if name == "" {
 		return name

@@ -2,9 +2,9 @@
 
 **Status:** v1 shipped. All seven phases plus the TUI route badges
 landed on branch `semantic-routing-proposal`. The shipped reference
-moved to **[`../semantic-routing.md`](../semantic-routing.md)**;
-[`../architecture.md`](../architecture.md) §3 covers where the
-tiers sit in the broader turn pipeline; [`../authoring.md`](../authoring.md)
+moved to **[`../semantic-routing.md`](../architecture/semantic-routing.md)**;
+[`../architecture.md`](../architecture/overview.md) §3 covers where the
+tiers sit in the broader turn pipeline; [`../authoring.md`](../stories/authoring.md)
 §6.1 is the authoring cheat-sheet for `synonyms:`. This document
 keeps only the **open questions** the design raised and the
 **calibration history** for Oregon Trail.

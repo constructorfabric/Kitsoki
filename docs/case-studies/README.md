@@ -1,6 +1,6 @@
 # Case studies
 
-Worked examples of [progressive determinism](../concept.md#4-progressive-determinism)
+Worked examples of [progressive determinism](../architecture/concept.md#4-progressive-determinism)
 applied to real workflows. Each case study tells the same story from a
 different angle:
 

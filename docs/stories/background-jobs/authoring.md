@@ -312,4 +312,4 @@ distinguishing it from generic "Job done: <kind>" notifications.
 - [`recipes.md`](recipes.md) — runnable patterns including the chat-aware turn.
 - [`testing.md`](testing.md) — how to test background jobs in flow fixtures.
 - [`runtime.md`](runtime.md) — how the orchestrator processes these fields at runtime.
-- [`embedded/app-schema.md` §Background jobs](../embedded/app-schema.md#background-jobs) — field reference table.
+- [`embedded/app-schema.md` §Background jobs](../../embedded/app-schema.md#background-jobs) — field reference table.

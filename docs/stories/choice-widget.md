@@ -7,9 +7,9 @@ Companion documents:
 
 - `kitsoki docs app-schema` §`choice:` — the authoritative field
   reference and TUI keymap tables.
-- [`docs/story-style.md`](story-style.md) §3.6 — prescriptive prompt /
+- [`docs/stories/story-style.md`](story-style.md) §3.6 — prescriptive prompt /
   label / hint conventions.
-- [`docs/proposals/choice-widget-proposal.md`](proposals/choice-widget-proposal.md)
+- [`docs/proposals/choice-widget-proposal.md`](../proposals/choice-widget-proposal.md)
   — the design spec (rationale, dispatch parity, migration map).
 - [`testdata/apps/choice_smoke/`](../testdata/apps/choice_smoke/) — the
   canonical 23-spoke fixture; every snippet below has a matching
@@ -689,6 +689,6 @@ left blank).
 - **Runnable examples** — `./kitsoki run testdata/apps/choice_smoke/app.yaml`
   drops you on the walkthrough, or pick a specific spoke from the
   feature menu.
-- **Style guidance** — [`docs/story-style.md`](story-style.md) §3.6.
+- **Style guidance** — [`docs/stories/story-style.md`](story-style.md) §3.6.
 - **Design rationale** —
-  [`docs/proposals/choice-widget-proposal.md`](proposals/choice-widget-proposal.md).
+  [`docs/proposals/choice-widget-proposal.md`](../proposals/choice-widget-proposal.md).

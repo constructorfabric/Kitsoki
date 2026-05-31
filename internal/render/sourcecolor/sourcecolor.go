@@ -143,7 +143,7 @@ type Theme struct {
 }
 
 // Predefined themes. Hex values are also documented in
-// docs/story-style.md §8 — keep the two in sync.
+// docs/stories/story-style.md §8 — keep the two in sync.
 var (
 	DarkTheme = Theme{
 		Name:  "dark",

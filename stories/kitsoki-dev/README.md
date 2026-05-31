@@ -161,7 +161,7 @@ $ kitsoki run stories/kitsoki-dev/app.yaml
 
 The first command writes a markdown file under `$KITSOKI_REPO/issues/bugs/`
 with the frontmatter schema documented in
-[`docs/bugs.md`](../../docs/bugs.md) (and mirrored in
+[`docs/stories/bugs.md`](../../docs/stories/bugs.md) (and mirrored in
 [`../../issues/README.md`](../../issues/README.md)). The second command
 boots the dogfood instance, which scans the same directory via
 `host.local_files.ticket` and picks the file up as a ticket.
@@ -333,7 +333,7 @@ caveats:
    The bug-filing CLI (`kitsoki bug create`) ships on main and
    `/meta kitsoki bug` writes to `$KITSOKI_REPO/issues/bugs/`;
    `/meta story bug` writes to `<app-dir>/issues/bugs/`. Both use the
-   same on-disk format documented in [`docs/bugs.md`](../../docs/bugs.md).
+   same on-disk format documented in [`docs/stories/bugs.md`](../../docs/stories/bugs.md).
    The dogfood loop reads + transitions the file the producer wrote;
    the loop is now closed end-to-end.
 

@@ -1,4 +1,4 @@
-// Package app — story imports (reference: docs/imports.md).
+// Package app — story imports (reference: docs/stories/imports.md).
 //
 // Imports compose one app inside another with an aliased namespace and an
 // explicit world projection. Each import binds a child manifest under an

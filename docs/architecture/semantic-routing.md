@@ -5,7 +5,7 @@ before the LLM gets to look at the input. This doc covers the tiers,
 how to grow the synonym library, and how the turncache works.
 
 The original design discussion lives in
-[`proposals/semantic-routing-proposal.md`](proposals/semantic-routing-proposal.md);
+[`proposals/semantic-routing-proposal.md`](../proposals/semantic-routing-proposal.md);
 this page is the user-facing reference for what shipped.
 
 ## 1. The four tiers
@@ -335,13 +335,13 @@ Transport tests continue to pass unchanged; the seam is below the
 
 ## 6. See also
 
-- [`architecture.md`](architecture.md) §3 — where the routing tiers
+- [`architecture.md`](overview.md) §3 — where the routing tiers
   sit in the broader turn pipeline.
-- [`authoring.md`](authoring.md) §6.1 — the YAML reference for
+- [`authoring.md`](../stories/authoring.md) §6.1 — the YAML reference for
   `synonyms:`.
 - [`hosts.md`](hosts.md#hostoracleextract) — `host.oracle.extract`
   reference (oracle-split Phase 5 handler).
-- [`proposals/semantic-routing-proposal.md`](proposals/semantic-routing-proposal.md)
+- [`proposals/semantic-routing-proposal.md`](../proposals/semantic-routing-proposal.md)
   — the design discussion + open questions.
 - `internal/slotparse/` godoc — every typed parser's exact contract.
 - `internal/semroute/` godoc — the matcher, template compiler, and

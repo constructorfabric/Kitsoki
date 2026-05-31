@@ -100,7 +100,7 @@ with line ranges to lock down exact `lines:` for each stale section.
        paraphrasing its current claim.
 5. **Empty diffstat / shallow repo / dependency-only?** Do a
    structural audit instead: compare `stories/*/README.md` against
-   each story's `app.yaml`, walk `docs/hosts.md` against
+   each story's `app.yaml`, walk `docs/architecture/hosts.md` against
    `internal/host/handlers.go`, skim `README.md` / `CLAUDE.md` for
    outdated paths or removed features. `commits[]` may be empty;
    cite `commit: "structural"` on the invalidation records.

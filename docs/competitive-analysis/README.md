@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-19
 **Author:** Brad Smith
-**Purpose:** Synthesis of [`market-research.md`](./market-research.md), [`domain-research.md`](./domain-research.md), and [`technical-research.md`](./technical-research.md) into a single competitive-analysis-style document. Source for the *Business Value Proposition* section of the kitsoki presentation.
+**Purpose:** Synthesis of [`market-research.md`](market-research.md), [`domain-research.md`](domain-research.md), and [`technical-research.md`](technical-research.md) into a single competitive-analysis-style document. Source for the *Business Value Proposition* section of the kitsoki presentation.
 
 ---
 
@@ -236,7 +236,7 @@ Suggested slide structure (three sub-bullets per pillar, each grounded in a rese
 
 #### **Pillar 5 — Author at the speed of conversation (`/meta`)**
 
-- The running app can pause its FSM, hand control to a named LLM author-agent that edits the app's YAML in place, then resume — with the meta-mode chat persisted per state ([`docs/meta-mode.md`][meta-mode]).
+- The running app can pause its FSM, hand control to a named LLM author-agent that edits the app's YAML in place, then resume — with the meta-mode chat persisted per state ([`docs/stories/meta-mode.md`][meta-mode]).
 - A non-YAML-fluent operator asks in natural language ("add `wade across` as a synonym for ford"); the meta-agent generates the diff and the schema validates before it applies.
 - *Why it matters:* Build-time and run-time collapse into one workflow, with introspectable evidence of every change. The iteration loop closes inside the running process — useful for compliance audit, internal dev tooling, product debugging, and rapid prototyping alike. LangGraph requires a code edit and fresh process; Rasa requires retraining; Dialogflow CX requires a flow republish. No competitor offers this surface.
 

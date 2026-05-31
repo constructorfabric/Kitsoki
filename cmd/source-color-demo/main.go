@@ -5,7 +5,7 @@
 // The colorize pass and theme palette live in the
 // internal/render/sourcecolor package — this binary is a thin wrapper
 // around that package so the demo cannot drift from production
-// behaviour. The visual scheme is documented in docs/story-style.md §8.
+// behaviour. The visual scheme is documented in docs/stories/story-style.md §8.
 //
 // Run:
 //

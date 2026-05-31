@@ -6,7 +6,7 @@ into the test runner (commit 5a9bf56, `internal/testrunner/cassette.go`)
 have landed: cassette replays now emit `oracle.<verb>.start/.complete`
 trace events that the runstatus UI consumes. Remaining work — if any —
 is around fully retiring this proposal into narrative docs
-(`docs/cassettes.md`, `docs/trace-format.md`); operator should confirm
+(`docs/tracing/cassettes.md`, `docs/tracing/trace-format.md`); operator should confirm
 whether any unfinished aspects justify keeping the proposal before
 deletion.
 

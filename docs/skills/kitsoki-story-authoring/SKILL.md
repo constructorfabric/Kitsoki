@@ -24,10 +24,10 @@ existing room:
 | `stories/dev-story/` | Live-result lists (`iface.ticket.search` bound into a `code:` `{% for %}`), readiness banners with `available()` / `blocked_reason()` helpers. |
 
 The authoritative schema is `kitsoki docs app-schema`. The authoring
-prose lives at `docs/authoring.md`, the style guide at
-`docs/story-style.md`, the state-machine semantics at
-`docs/state-machine.md`, the imports / composition reference at
-`docs/imports.md`, and the host registry at `docs/hosts.md`. When in
+prose lives at `docs/stories/authoring.md`, the style guide at
+`docs/stories/story-style.md`, the state-machine semantics at
+`docs/stories/state-machine.md`, the imports / composition reference at
+`docs/stories/imports.md`, and the host registry at `docs/architecture/hosts.md`. When in
 doubt about a field, **grep the gold-standard stories first; consult
 the schema doc second; ask the user last**.
 
@@ -255,7 +255,7 @@ Rules:
   `on_complete:` (an effect list) for the completion turn. Result lands
   in `world.last_job_result` only inside `on_complete:`.
 
-The built-in handlers (full reference in `docs/hosts.md`):
+The built-in handlers (full reference in `docs/architecture/hosts.md`):
 
 | Handler | Use for |
 |---|---|

@@ -225,5 +225,5 @@ external driver.
   [`internal/store/external_keys.go`](../internal/store/external_keys.go).
 - The `loop.py` external driver lives in a separate repo and is the
   reference inbound poller; for the live bug-fix flow design see
-  [`../stories/bugfix/README.md`](../stories/bugfix/README.md).
+  [`../stories/bugfix/README.md`](../../stories/bugfix/README.md).
 - CLI reference: `kitsoki session --help`, `kitsoki chat --help`.

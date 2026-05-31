@@ -883,7 +883,7 @@ Migration is complete when:
   — verdict patterns in bugfix / dev-story / cypilot use the
   `accept / refine / restart_from / jump_to / quit` arc that this
   proposal migrates to `single` mode.
-- [`docs/semantic-routing.md`](../semantic-routing.md) — the
+- [`docs/architecture/semantic-routing.md`](../architecture/semantic-routing.md) — the
   routing stack the choice widget short-circuits. After migration,
   any text typed *while a choice is active* still flows through
   semroute as today; choice is only authoritative when the user

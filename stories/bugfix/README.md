@@ -191,7 +191,7 @@ The judge auto-fire works whether bugfix runs **standalone** or
 `core.bf` under kitsoki-dev). The runtime resolves the LLM's bare
 intent name (`accept`) through the leaf state's `IntentAliases` map
 to the rewriter-renamed arc (`bf__accept` / `core__bf__accept`) at
-dispatch time — see `docs/imports.md` "emit_intent across the fold
+dispatch time — see `docs/stories/imports.md` "emit_intent across the fold
 boundary" and `resolveEmittedIntentName` for the mechanism.
 
 ## Cycle budgets and shortcuts (Wave 3 / Phase 4)
@@ -353,7 +353,7 @@ stories/bugfix/
   — the full design.
 - [`docs/proposals/notes/dev-story-implementation-contract.md`](../../docs/proposals/notes/dev-story-implementation-contract.md)
   — Slice α / β / γ contract.
-- [`docs/imports.md`](../../docs/imports.md) — the imports authoring
+- [`docs/stories/imports.md`](../../docs/stories/imports.md) — the imports authoring
   reference for parent stories that wrap `bugfix`.
 - [`stories/robbery/`](../robbery/) — the canonical importable
   sub-story (smaller, used by `oregon-trail` as an imports demo).

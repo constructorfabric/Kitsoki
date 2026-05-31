@@ -195,7 +195,7 @@ stories/pr-refinement/
   — the full design (§4.3 — pr-refinement as first-class story).
 - [`docs/proposals/notes/dev-story-implementation-contract.md`](../../docs/proposals/notes/dev-story-implementation-contract.md)
   — the contract (Wave 2 appendix at the bottom).
-- [`docs/imports.md`](../../docs/imports.md) — imports authoring
+- [`docs/stories/imports.md`](../../docs/stories/imports.md) — imports authoring
   reference.
 - [`stories/bugfix/`](../bugfix/) — the upstream story that hands off
   here.

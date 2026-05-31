@@ -242,7 +242,7 @@ From `ideas.md` lines 58, 59, 66, 72:
   menu, so you can't type `1.5` or "10 PRs". Fix: drop numeric
   quick-select entirely. Numbers are normal text. Action selection
   is always `/actions <n>` or typing the action name (semantic
-  routing handles synonyms — see `docs/semantic-routing.md`).
+  routing handles synonyms — see `docs/architecture/semantic-routing.md`).
 - **Input history**: already wired via ↑/↓ (`tui.go:1110-1200`,
   `inputHistory` / `historyPrev` / `historyNext`). Keep this
   binding. Shift+↑/↓ or PageUp/PageDown reserved for transcript

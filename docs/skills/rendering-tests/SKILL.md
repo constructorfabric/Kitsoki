@@ -162,7 +162,7 @@ for _, width := range []int{80, 120, 200} {
 
 - **`rendering_test_utils.go`** — RenderingAnalyzer implementation
 - **`rendering_regression_test.go`** — Example tests (copy these patterns)
-- **`docs/guides/rendering-test-guide.md`** — Full documentation
+- **`docs/tui/rendering-tests.md`** — Full documentation
 
 ## Common Mistakes
 

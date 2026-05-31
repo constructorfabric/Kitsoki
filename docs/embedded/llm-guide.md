@@ -53,7 +53,7 @@ kitsoki version
 `--warp <path>` bootstraps a session directly into a primed mid-game
 state from a YAML "warp basis" — same file the TUI's `/warp file:<path>`
 slash command loads. Useful for smoke-testing an imported sub-story
-without playing through the intro. See `docs/imports.md`
+without playing through the intro. See `docs/stories/imports.md`
 ("Operator tooling: /warp and --warp") for the basis schema.
 
 Every subcommand supports `--help`. Flags shown below are the ones you will
@@ -524,7 +524,7 @@ What to remember when writing apps:
   `kitsoki turn`, and non-TUI transports bypass the widget and submit the
   underlying intent directly; the same `app.yaml` runs everywhere. See
   `kitsoki docs app-schema §choice` for the field reference and
-  `docs/choice-widget.md` for the author cookbook.
+  `docs/stories/choice-widget.md` for the author cookbook.
 
 ## 10. Error codes you will see (and how to react)
 

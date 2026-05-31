@@ -22,7 +22,7 @@ auditable.
 
 For the full thesis — control inversion, narrow LLM domains,
 progressive determinism, the spectrum from CLI wizards to free agent
-workflows — see [`docs/concept.md`](docs/concept.md).
+workflows — see [`docs/architecture/concept.md`](docs/architecture/concept.md).
 
 **Free-text in, deterministic transitions out.**
 
@@ -47,7 +47,7 @@ go build -o kitsoki ./cmd/kitsoki
   most user input in microseconds without calling the LLM. On the
   Oregon Trail story ~78% of recorded turns route deterministically
   or via author-declared synonyms — the LLM only fires on the genuinely
-  open-ended ones. See [`docs/semantic-routing.md`](docs/semantic-routing.md).
+  open-ended ones. See [`docs/architecture/semantic-routing.md`](docs/architecture/semantic-routing.md).
 
 It is **not** a chat agent. The LLM has no latitude to invent actions
 outside the intent alphabet you declare.
@@ -146,26 +146,26 @@ schema. The dogfood multi-glob covers both kitsoki-self bugs
 
 | Doc | What |
 |---|---|
-| **[`docs/concept.md`](docs/concept.md)** | The thesis: control inversion, narrow LLM domains, progressive determinism, the spectrum of stories. **Start here.** |
-| **[`docs/architecture.md`](docs/architecture.md)** | Layers, packages, data flow, persistence model, conversation surfaces. |
-| **[`docs/state-machine.md`](docs/state-machine.md)** | Rooms, phases, states, intents, slots, world, guards, the turn loop. The directed cyclic graph in detail. |
-| **[`docs/authoring.md`](docs/authoring.md)** | How to write an `app.yaml`. Patterns, scaling-up, pitfalls. |
-| **[`docs/choice-widget.md`](docs/choice-widget.md)** | Author cookbook for `choice:` view elements (single / multi / form picker). |
-| **[`docs/story-style.md`](docs/story-style.md)** | Story style guide — typed view elements, narration voice, choice-widget conventions. |
-| **[`docs/developer-guide.md`](docs/developer-guide.md)** | For contributors: build, test, debug, add features. |
-| **[`docs/testing.md`](docs/testing.md)** | Mode 1 (intent pass-rate) and Mode 2 (deterministic flow) tests. |
-| **[`docs/hosts.md`](docs/hosts.md)** | Every built-in `host.*` handler with input/output contracts. |
-| **[`docs/oracle-plugin.md`](docs/oracle-plugin.md)** | Oracle plugin contract: `oracle_plugins:`, `host.oracle.<verb>` effects, subprocess / MCP-over-HTTP transports, schema validation. |
-| **[`docs/oracle-cli.md`](docs/oracle-cli.md)** | The five-verb `host.oracle.*` surface. |
-| **[`docs/trace-format.md`](docs/trace-format.md)** | The JSONL trace schema — event vocabulary, `EventSink` contract, `call_id` derivation. The trace is the session's authoritative state. |
-| **[`docs/cassettes.md`](docs/cassettes.md)** | Host cassette file-format reference: episode matching, `!include`, record mode, CI safety. |
-| **[`docs/transports.md`](docs/transports.md)** | TUI / Jira / Bitbucket transports; sessions keyed by external thread. |
-| **[`docs/background-jobs/`](docs/background-jobs/README.md)** | Long-running handlers, notifications, clarifications. |
+| **[`docs/architecture/concept.md`](docs/architecture/concept.md)** | The thesis: control inversion, narrow LLM domains, progressive determinism, the spectrum of stories. **Start here.** |
+| **[`docs/architecture/overview.md`](docs/architecture/overview.md)** | Layers, packages, data flow, persistence model, conversation surfaces. |
+| **[`docs/stories/state-machine.md`](docs/stories/state-machine.md)** | Rooms, phases, states, intents, slots, world, guards, the turn loop. The directed cyclic graph in detail. |
+| **[`docs/stories/authoring.md`](docs/stories/authoring.md)** | How to write an `app.yaml`. Patterns, scaling-up, pitfalls. |
+| **[`docs/stories/choice-widget.md`](docs/stories/choice-widget.md)** | Author cookbook for `choice:` view elements (single / multi / form picker). |
+| **[`docs/stories/story-style.md`](docs/stories/story-style.md)** | Story style guide — typed view elements, narration voice, choice-widget conventions. |
+| **[`docs/architecture/developer-guide.md`](docs/architecture/developer-guide.md)** | For contributors: build, test, debug, add features. |
+| **[`docs/tracing/testing.md`](docs/tracing/testing.md)** | Mode 1 (intent pass-rate) and Mode 2 (deterministic flow) tests. |
+| **[`docs/architecture/hosts.md`](docs/architecture/hosts.md)** | Every built-in `host.*` handler with input/output contracts. |
+| **[`docs/architecture/oracle-plugin.md`](docs/architecture/oracle-plugin.md)** | Oracle plugin contract: `oracle_plugins:`, `host.oracle.<verb>` effects, subprocess / MCP-over-HTTP transports, schema validation. |
+| **[`docs/architecture/oracle-cli.md`](docs/architecture/oracle-cli.md)** | The five-verb `host.oracle.*` surface. |
+| **[`docs/tracing/trace-format.md`](docs/tracing/trace-format.md)** | The JSONL trace schema — event vocabulary, `EventSink` contract, `call_id` derivation. The trace is the session's authoritative state. |
+| **[`docs/tracing/cassettes.md`](docs/tracing/cassettes.md)** | Host cassette file-format reference: episode matching, `!include`, record mode, CI safety. |
+| **[`docs/architecture/transports.md`](docs/architecture/transports.md)** | TUI / Jira / Bitbucket transports; sessions keyed by external thread. |
+| **[`docs/stories/background-jobs/`](docs/stories/background-jobs/README.md)** | Long-running handlers, notifications, clarifications. |
 | **[`docs/embedded/llm-guide.md`](docs/embedded/llm-guide.md)** | Operator manual aimed at an LLM driving kitsoki. Also `kitsoki docs llm-guide`. |
 | **[`docs/embedded/app-schema.md`](docs/embedded/app-schema.md)** | Authoritative `app.yaml` schema reference. Also `kitsoki docs app-schema`. |
 | **[`docs/embedded/apply-proposal.md`](docs/embedded/apply-proposal.md)** | LLM guide for implementing a prose proposal against `app.yaml`. |
 | **[`docs/embedded/render-format.md`](docs/embedded/render-format.md)** | Shape of the Markdown produced by `kitsoki render`. |
-| **[`docs/prior-art.md`](docs/prior-art.md)** | Comparative grounding: what kitsoki borrows from interactive fiction, statecharts, dialogue managers, and LLM orchestration. |
+| **[`docs/architecture/prior-art.md`](docs/architecture/prior-art.md)** | Comparative grounding: what kitsoki borrows from interactive fiction, statecharts, dialogue managers, and LLM orchestration. |
 
 ## Project layout
 
@@ -177,7 +177,7 @@ kitsoki/
 │                          extract, journal, oracle, oracle-serve,
 │                          migrate-oracle, mcp-bash, mcp-validator,
 │                          export-status, ui, version
-├── internal/              platform packages — see docs/architecture.md
+├── internal/              platform packages — see docs/architecture/overview.md
 ├── docs/                  narrative documentation
 ├── docs/embedded/         CLI-embedded reference docs (//go:embed)
 ├── stories/               first-party story state machines (kitsoki-dev,
@@ -242,13 +242,13 @@ under 10 seconds.
 
 Recent frontier work:
 
-- **Oracle plugin system** (`docs/oracle-plugin.md`,
-  `docs/oracle-cli.md`) — pluggable oracle transports declared under
+- **Oracle plugin system** (`docs/architecture/oracle-plugin.md`,
+  `docs/architecture/oracle-cli.md`) — pluggable oracle transports declared under
   `oracle_plugins:`, dispatched through `host.oracle.<verb>` effects
   with schema validation, subprocess / MCP-over-HTTP transports, and
   a registry/dispatch seam audited end-to-end.
 - **JSONL trace as authoritative state**
-  (`docs/trace-format.md`) — the unified event log (`oracle.call.start`
+  (`docs/tracing/trace-format.md`) — the unified event log (`oracle.call.start`
   / `.complete` / `.error`, `EventSink`, deterministic `call_id`) is
   now the session's source of truth, with replay guarantees layered
   on top.

@@ -1,0 +1,66 @@
+# Stories
+
+Everything you need to write a kitsoki story — the YAML state machines
+under `../../stories/<name>/`. *Audience: story authors.*
+
+A story is a directed cyclic graph of **rooms** (and **phases** that
+template repeated rooms), each room a **state** with **intents**,
+**slots**, **guards**, **transitions**, and **effects**, all operating
+over a typed **world**. The runtime drives the graph; the LLM is called
+only for narrow interpretive sub-tasks. (For *why* it is built this
+way, see [`../architecture/concept.md`](../architecture/concept.md).)
+
+---
+
+## The model
+
+- **[`state-machine.md`](state-machine.md)** — the complete vocabulary:
+  rooms, phases, states, intents, slots, world, guards, transitions,
+  effects, and the orchestrator's turn loop. The reference you will
+  return to most.
+- **[`authoring.md`](authoring.md)** — the how-to: a minimal `app.yaml`,
+  the authoring loop, common patterns and mistakes, synonyms, host
+  calls, and scaling a story up.
+- **[`imports.md`](imports.md)** — composing apps across files and
+  repos via the `imports:` block; aliased namespaces, world
+  projection, host rebinding, exits, and the `/warp` operator smoke
+  test.
+
+## Presentation and interaction
+
+- **[`story-style.md`](story-style.md)** — how a story should *look* and
+  *read*: blocks, typed view elements, colors, action menus, narration
+  voice, placeholders. The short guide; copy Oregon Trail when in
+  doubt. (How those elements render is [`../tui/`](../tui/README.md).)
+- **[`choice-widget.md`](choice-widget.md)** — the choice widget
+  cookbook: single-select, multi-select, and form modes, with patterns
+  drawn from production stories. (Its on-screen rendering lives in the
+  [`../tui/`](../tui/README.md) section.)
+- **[`meta-mode.md`](meta-mode.md)** — persistent sidebar conversations
+  with named agents (story-author, kitsoki-engineer): declaring
+  `agents:` and `meta_modes:`, slash commands, and how edits land in
+  the story directory.
+
+## Long-running work and operations
+
+- **[`background-jobs/`](background-jobs/README.md)** — long-running
+  handlers, inbox notifications, and mid-flight clarifications:
+  [`authoring`](background-jobs/authoring.md),
+  [`runtime`](background-jobs/runtime.md),
+  [`testing`](background-jobs/testing.md),
+  [`recipes`](background-jobs/recipes.md), and
+  [`troubleshooting`](background-jobs/troubleshooting.md).
+- **[`bugs.md`](bugs.md)** — filing story and kitsoki bug reports
+  (`/meta story bug`, `kitsoki bug create`), the on-disk format, and
+  target resolution.
+
+## See also
+
+- **[`../recipes/`](../recipes/README.md)** — copy-paste starting
+  points for the patterns above.
+- **[`../tracing/testing.md`](../tracing/testing.md)** — how to lock
+  your story's behaviour with deterministic flow tests.
+- **The `host.*` reference** lives under architecture:
+  [`../architecture/hosts.md`](../architecture/hosts.md).
+- **The authoritative schema**: `kitsoki docs app-schema` (source at
+  [`../embedded/app-schema.md`](../embedded/app-schema.md)).

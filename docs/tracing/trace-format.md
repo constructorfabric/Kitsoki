@@ -167,7 +167,7 @@ payloads remain inline.
 | `error`      | string | Human-readable error message; kind is in `AskError.Kind`. |
 
 For the full oracle plugin contract (transports, lifecycle, auth/secrets, and
-sub-events), see [`docs/oracle-plugin.md`](oracle-plugin.md).
+sub-events), see [`docs/architecture/oracle-plugin.md`](../architecture/oracle-plugin.md).
 
 ---
 

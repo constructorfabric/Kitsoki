@@ -91,7 +91,7 @@ func (r *Registry) Replace(name string, h Handler) bool {
 // Lookup tries an exact match first. If no handler is registered at
 // the full name, Get falls back to the longest registered prefix
 // (split on '.'). This is the dispatch surface for host_interface ops
-// (docs/imports.md, "host_interfaces"): a name like "host.diary.announce"
+// (docs/stories/imports.md, "host_interfaces"): a name like "host.diary.announce"
 // resolves to a registered "host.diary.announce" handler when one
 // exists, otherwise to a registered "host.diary" handler that takes
 // the op via args. Author convention: register per-op handlers when

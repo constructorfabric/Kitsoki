@@ -6,8 +6,8 @@ identified, traceable decision points or tasks.**
 
 This document is the thesis. It explains *why* kitsoki is shaped the
 way it is. For the runtime mechanics — rooms, intents, guards, the
-turn loop — see [`architecture.md`](architecture.md) and
-[`state-machine.md`](state-machine.md).
+turn loop — see [`architecture.md`](overview.md) and
+[`state-machine.md`](../stories/state-machine.md).
 
 ---
 
@@ -347,13 +347,13 @@ A few consequences fall out of the commitment.
 
 ## 8. Where to go next
 
-- **[`architecture.md`](architecture.md)** — the runtime: layers,
+- **[`architecture.md`](overview.md)** — the runtime: layers,
   packages, the turn loop, persistence, transports.
-- **[`state-machine.md`](state-machine.md)** — the vocabulary: rooms,
+- **[`state-machine.md`](../stories/state-machine.md)** — the vocabulary: rooms,
   intents, slots, world, guards, transitions.
-- **[`authoring.md`](authoring.md)** — how to write an `app.yaml`.
+- **[`authoring.md`](../stories/authoring.md)** — how to write an `app.yaml`.
 - **[`semantic-routing.md`](semantic-routing.md)** — the routing
   stack between deterministic match and LLM call, and how authors
   grow the synonym library from traces.
-- **[`testing.md`](testing.md)** — the two test modes (intent
+- **[`testing.md`](../tracing/testing.md)** — the two test modes (intent
   pass-rate vs. deterministic flow) that fall out of the architecture.

@@ -1,7 +1,7 @@
 ## Proposal — devstory as overseer: unify bugfix + cypilot + implementation, dogfood on kitsoki itself
 
 **Status:** Draft v2. Nothing implemented yet. Hard-depends on shipped
-imports/composition (`docs/imports.md`) and on the pending
+imports/composition (`docs/stories/imports.md`) and on the pending
 [bug-format proposal](bug-format-proposal.md) for the on-disk ticket
 schema. v1 of this doc was bugfix-only; v2 folds in cypilot's SDLC
 waterfall as a third sub-story and lifts the dogfood loop to be the
@@ -30,7 +30,7 @@ machine, one cypilot waterfall, four transports, zero code changes
 when switching providers.
 
 **Mechanism.** The provider abstraction is `host_interfaces:` (already
-shipped — see `docs/imports.md` §11 and `stories/robbery/`). The
+shipped — see `docs/stories/imports.md` §11 and `stories/robbery/`). The
 general-purpose stories declare named capability surfaces (`ticket`,
 `vcs`, `ci`, `workspace`, `transport`, plus cypilot's `artifact`)
 with typed `operations:` blocks. Each provider is a small kitsoki
@@ -425,7 +425,7 @@ cyber-repo/
         │   └── component_registry.yaml
         ├── prompts/                     # cyber-specific overrides for LLM phases
         ├── hosts/                       # Go: jira, bitbucket, jenkins, standctl, workspace-manager
-        └── overrides/                   # per docs/imports.md §10 — surgical replacements only
+        └── overrides/                   # per docs/stories/imports.md §10 — surgical replacements only
 ```
 
 The cyber-repo `stories/bugfix/` standalone disappears: its 14 phases
@@ -891,7 +891,7 @@ author-of-record for `stories/devstory/` once Phase 7 lands.
 | Step | What moves | What stays |
 |---|---|---|
 | 1 | `kitsoki/stories/cypilot/{app.yaml, rooms/, prompts/, schemas/, flows/, README.md}` → `cypilot/stories/cypilot/` (or whichever path the cypilot repo prefers) | `kitsoki/internal/hosts/cypilot_artifacts/` (the Go provider) — stays in kitsoki, no reason to move it. |
-| 2 | `stories/dev-story/app.yaml` import line: `source: ../cypilot` → `source: '@cypilot/cypilot'` | Everything else in dev-story is unchanged. The `@cypilot/<name>` resolver walks up from the importer just like `@kitsoki/<name>` (docs/imports.md §"Source resolution"); add `.cypilot-root` marker or a `cypilot` module name to the upstream repo's root. |
+| 2 | `stories/dev-story/app.yaml` import line: `source: ../cypilot` → `source: '@cypilot/cypilot'` | Everything else in dev-story is unchanged. The `@cypilot/<name>` resolver walks up from the importer just like `@kitsoki/<name>` (docs/stories/imports.md §"Source resolution"); add `.cypilot-root` marker or a `cypilot` module name to the upstream repo's root. |
 | 3 | Cyber-repo `stories/devstory/` already imports `@kitsoki/dev-story` — its cypilot reach-through goes through dev-story's import, so it picks up the new path automatically. | No cyber-repo change needed. |
 | 4 | kitsoki's `stories/cypilot/` directory is deleted; the migration is one-way (no copy left behind, no symlink hack). | Git history preserves the authoring trail. |
 
@@ -1204,7 +1204,7 @@ not on kitsoki's clock.
 
 - **The shipped imports machinery.** Everything here uses
   `imports:`, `host_interfaces:`, `host_bindings:`, `exits:`,
-  `world_in/set:` as documented in `docs/imports.md`. No loader
+  `world_in/set:` as documented in `docs/stories/imports.md`. No loader
   changes.
 - **The existing oracle/transport host registry.** Both stay.
 - **loop.py's autonomous-driver model.** Same `set_session_context` +
@@ -1303,9 +1303,9 @@ not on kitsoki's clock.
   prerequisite**: the `issues/bugs/<id>.md` schema, the `group + verb`
   meta-mode triggers, and the kitsoki-vs-story target split. Phase 0
   of this proposal's migration is "land bug-format Phases A + B."
-- [`docs/imports.md`](../imports.md) — the composition primitives this
+- [`docs/stories/imports.md`](../stories/imports.md) — the composition primitives this
   proposal stands on.
-- [`docs/hosts.md`](../hosts.md) — host registry + iface dispatch
+- [`docs/architecture/hosts.md`](../architecture/hosts.md) — host registry + iface dispatch
   semantics, including the prefix-fallback used by `iface.X.op`
   dispatch.
 - [`continue-mode-proposal.md`](continue-mode-proposal.md) — the

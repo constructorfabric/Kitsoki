@@ -6,12 +6,12 @@ of states, the **intents** that drive transitions, the **slots** they
 carry, the **world** they read and write, and the **phase templates**
 that compress repeated pipelines.
 
-If you have not already, skim [`architecture.md`](architecture.md) first
+If you have not already, skim [`architecture.md`](../architecture/overview.md) first
 to see where the machine sits in the larger picture.
 
 For the bytes-on-disk authoritative schema, run `kitsoki docs app-schema`
 or open
-[`embedded/app-schema.md`](embedded/app-schema.md).
+[`embedded/app-schema.md`](../embedded/app-schema.md).
 
 ---
 
@@ -58,7 +58,7 @@ Why this shape — three older idioms collapse into the same vocabulary:
 A statechart's *parallel region* falls out the same way: a file-editor
 state runs alongside a background-validator state that emits
 `saved`/`error` events the editor consumes. The borrowings from each
-of these traditions are catalogued in [`prior-art.md`](prior-art.md).
+of these traditions are catalogued in [`prior-art.md`](../architecture/prior-art.md).
 
 ---
 
@@ -340,7 +340,7 @@ With one generic tool the harness's job is uniform across apps and
 across states: call `transition` with one of the intents listed in the
 system prompt for the current state. The validator turns the resulting
 `{intent, slots}` into the appropriate structured error envelope when
-the LLM picks something invalid — see [`prior-art.md` §5](prior-art.md#5-why-one-generic-mcp-tool-not-per-state-typed-tools)
+the LLM picks something invalid — see [`prior-art.md` §5](../architecture/prior-art.md#5-why-one-generic-mcp-tool-not-per-state-typed-tools)
 for the full comparison.
 
 Error codes the machine emits — full list in `internal/intent`:
@@ -380,7 +380,7 @@ effects:
 | `set` | Assign one or more world variables. Values are templates. |
 | `increment` | Integer delta (positive or negative) on a numeric world variable. |
 | `say` | Append a narrative line to the rendered view. |
-| `invoke` | Call a registered `host.*` handler. See [`hosts.md`](hosts.md). |
+| `invoke` | Call a registered `host.*` handler. See [`hosts.md`](../architecture/hosts.md). |
 | `with` | Templated arguments passed to the host. |
 | `bind` | `{world_key: result_key}` — copy fields out of `host.Result.Data` into world. |
 | `on_error` | Transition target if `invoke` returns an error. Sets `$host_error` for the next guard. |

@@ -73,5 +73,5 @@ enough to confuse the operator.
 - `internal/tui/transcript.go` — view render entry point.
 - `internal/orchestrator/orchestrator.go` — `runOnEnter` ordering vs
   TUI subscription notification.
-- `docs/authoring.md` — would document either the runtime fix or the
+- `docs/stories/authoring.md` — would document either the runtime fix or the
   `??` discipline.

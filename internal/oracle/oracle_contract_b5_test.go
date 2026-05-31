@@ -4,7 +4,7 @@
 // not already pinned by B-1 through B-4 tests.  Every test here is a hard CI
 // gate per the proposal.
 //
-// Sub-cases covered (see docs/oracle-plugin.md for the full spec):
+// Sub-cases covered (see docs/architecture/oracle-plugin.md for the full spec):
 //
 //	Schema validation:
 //	  TestB5_Schema_RefFails                — $ref to sibling file fails (no filesystem loader)

@@ -31,12 +31,12 @@ kitsoki feature, you want to see it work here first, before you
 wire the real external system.
 
 Where this README overlaps with the authoritative docs —
-[`docs/state-machine.md`](../../docs/state-machine.md),
-[`docs/authoring.md`](../../docs/authoring.md),
-[`docs/testing.md`](../../docs/testing.md),
-[`docs/hosts.md`](../../docs/hosts.md),
-[`docs/transports.md`](../../docs/transports.md),
-[`docs/background-jobs/README.md`](../../docs/background-jobs/README.md) —
+[`docs/stories/state-machine.md`](../../docs/stories/state-machine.md),
+[`docs/stories/authoring.md`](../../docs/stories/authoring.md),
+[`docs/tracing/testing.md`](../../docs/tracing/testing.md),
+[`docs/architecture/hosts.md`](../../docs/architecture/hosts.md),
+[`docs/architecture/transports.md`](../../docs/architecture/transports.md),
+[`docs/stories/background-jobs/README.md`](../../docs/stories/background-jobs/README.md) —
 defer to those. The byte-exact schema view is in
 [`APP.md`](./APP.md), produced by `kitsoki render`.
 
@@ -87,7 +87,7 @@ go run ./cmd/kitsoki run stories/oregon-trail/app.yaml \
 Available scenarios live in [`scenarios/`](./scenarios/); the same
 file can also be loaded interactively from the TUI via
 `/warp file:scenarios/chimney_robbery.yaml`. Both routes share the
-same loader — see [`../../docs/imports.md` §Operator tooling](../../docs/imports.md#operator-tooling-warp-and---warp).
+same loader — see [`../../docs/stories/imports.md` §Operator tooling](../../docs/stories/imports.md#operator-tooling-warp-and---warp).
 
 ---
 
@@ -195,13 +195,13 @@ want to see the resulting compiled graph.
 |---|---|---|
 | Every arrival shows up as a "Trail Diary" entry | `host.transport.post` to `tui` on every `_awaiting_reply.on_enter`; `phase_id:` is templated per leg for de-dup on re-entry | [`phases.yaml`](./phases.yaml) `_awaiting_reply.on_enter`; flow [`flows/trail_diary_smoke.yaml`](./flows/trail_diary_smoke.yaml) |
 | Death obituary posts to the same thread | `ended_lost.on_enter` posts a final entry | [`rooms/ended.yaml`](./rooms/ended.yaml) |
-| Same state machine runs on a Jira ticket | The transport is configured at session-create time (`kitsoki session create --key jira:OT-1`); no manifest change | (engine-side; see [`docs/transports.md`](../../docs/transports.md)) |
+| Same state machine runs on a Jira ticket | The transport is configured at session-create time (`kitsoki session create --key jira:OT-1`); no manifest change | (engine-side; see [`docs/architecture/transports.md`](../../docs/architecture/transports.md)) |
 
 ### 3.7 Engine surfaces with no game equivalent
 
 | Surface | Kitsoki primitive | Where |
 |---|---|---|
-| Aliased sub-story composition with private worlds | `imports:` — Oregon Trail's `bandits` encounter is a three-layer chain (`oregon-trail` → `frontier_event` → `robbery`) with `world_in:` / per-exit `set:` projections, `host_bindings:` rebinding through to the grandchild, intent re-export both directions, and a state/intent/prompt override triplet. Full reference: [`../../docs/imports.md`](../../docs/imports.md). | [`app.yaml`](./app.yaml) §`imports.frontier`; flows `flows/robbery_*.yaml` |
+| Aliased sub-story composition with private worlds | `imports:` — Oregon Trail's `bandits` encounter is a three-layer chain (`oregon-trail` → `frontier_event` → `robbery`) with `world_in:` / per-exit `set:` projections, `host_bindings:` rebinding through to the grandchild, intent re-export both directions, and a state/intent/prompt override triplet. Full reference: [`../../docs/stories/imports.md`](../../docs/stories/imports.md). | [`app.yaml`](./app.yaml) §`imports.frontier`; flows `flows/robbery_*.yaml` |
 | Parallel state with cross-region `emit:` | `world_clock` compound with `type: parallel` and two sibling regions (`weather`, `calendar`); weather `on:` arms emit `precip_heavy` / `snow_starts`, calendar `on:` arms bind the witnesses into world | [`rooms/world_clock.yaml`](./rooms/world_clock.yaml); flow [`flows/parallel_weather.yaml`](./flows/parallel_weather.yaml) |
 | `Effect.When` for "only fire if narration is on" | `when:` on individual `on_enter` effects — paired with a `not world.narration` arm for the deterministic side | [`phases.yaml`](./phases.yaml) `event_*.on_enter` |
 | `Slot.Default` filling | `propose_crossing` declares `confidence` as `required: false, default: 50`; the engine fills the default into the slot bag before effects run so the templated cost math doesn't crash on a bare `slots.confidence` | [`intents.yaml`](./intents.yaml) `propose_crossing`; flow [`flows/river_ford_no_confidence.yaml`](./flows/river_ford_no_confidence.yaml) |

@@ -819,7 +819,7 @@ func containsSGRParam(s, param string) bool {
 // 9b. Form-mode min/max bounds — block commit + render red --------------
 
 // TestChoiceFormIntMinViolation pins the contract documented in
-// docs/choice-widget.md and docs/story-style.md: an out-of-bounds
+// docs/stories/choice-widget.md and docs/stories/story-style.md: an out-of-bounds
 // int/float field must (a) block the form submit, and (b) render its
 // buffer in the same red error style used for "invalid type" inputs.
 // Mirrors the multi-mode min/max enforcement at coerceFormSlots

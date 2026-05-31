@@ -3,7 +3,7 @@
 **Status:** Partially implemented (2026-05-29). The engine core + the
 docs-review migration + the CLI/flow surface have landed; the items in
 §8 remain. Keep this proposal until they do, then fold the model into
-narrative docs (`docs/state-machine.md`, `docs/authoring.md`) and delete.
+narrative docs (`docs/stories/state-machine.md`, `docs/stories/authoring.md`) and delete.
 
 **Landed:**
 - `ExecutionMode` (one-shot / staged) on the orchestrator
@@ -221,8 +221,8 @@ room's choice menu so a staged operator can pick it.
    (`human` → staged, `llm`/`llm_then_human` → one-shot). High blast
    radius (bugfix is the dogfood story) — do it deliberately with the
    flow suite as the guard.
-3. **Narrative docs.** Fold §§1–4 into `docs/state-machine.md` /
-   `docs/authoring.md` (execution modes, the gate rule, the `decider:`
+3. **Narrative docs.** Fold §§1–4 into `docs/stories/state-machine.md` /
+   `docs/stories/authoring.md` (execution modes, the gate rule, the `decider:`
    state field + app block, `--mode`) and delete this proposal.
 
 ## 7. Verification

@@ -69,5 +69,5 @@ the registry's prefix-fallback).
 
 - `stories/robbery/README.md` — the inner sub-story this wrapper imports.
 - `stories/oregon-trail/app.yaml` — the canonical three-layer consumer.
-- `docs/imports.md` — `host_interfaces` and multi-layer composition
+- `docs/stories/imports.md` — `host_interfaces` and multi-layer composition
   (the surface this story is built to exercise).

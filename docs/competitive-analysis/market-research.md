@@ -152,7 +152,7 @@ Three pain points appear in every published 2026 comparison and align directly w
 
 1. **"My LLM agent can't reproduce its own decisions."** Most deployments fail audit replay ([DFAH][dfah]); decision determinism and task accuracy are *not correlated* — a system can be accurate but non-deterministic, which is the worst failure mode for compliance.
 2. **"Every commit costs me LLM tokens to test."** No pure-agentic framework has a credible no-LLM regression-test story. Kitsoki's flow tests do.
-3. **"I'm exposing the LLM to actions it shouldn't be allowed to invent."** Tool-use frameworks expose typed tool lists per state; the LLM can still pick wrong tools, mis-fill slots, or hallucinate flags. Kitsoki's single-tool `transition` design with validator-as-gatekeeper closes this gap ([docs/prior-art.md §5][prior-art]).
+3. **"I'm exposing the LLM to actions it shouldn't be allowed to invent."** Tool-use frameworks expose typed tool lists per state; the LLM can still pick wrong tools, mis-fill slots, or hallucinate flags. Kitsoki's single-tool `transition` design with validator-as-gatekeeper closes this gap ([docs/architecture/prior-art.md §5][prior-art]).
 
 ---
 
@@ -174,14 +174,14 @@ Three pain points appear in every published 2026 comparison and align directly w
 |---|---|---|---|
 | **Rasa** | Mature, self-hostable, GDPR-friendly; pivoting to CALM | Heavy training-data burden; "feels like overkill for teams that want a simple generative bot" | [Dasha, 2026][dasha-rasa-alternatives] |
 | **Dialogflow CX** | Visual state machine, regulated-industry friendly | Google Cloud lock-in; expensive vs Rasa or self-host | [Dasha, 2026][dasha-rasa-alternatives] |
-| **Microsoft Bot Framework Adaptive Dialogs** | Enterprise support, event-driven | Microsoft ecosystem gravity; weaker LLM-native story | [docs/prior-art.md §3][prior-art] |
+| **Microsoft Bot Framework Adaptive Dialogs** | Enterprise support, event-driven | Microsoft ecosystem gravity; weaker LLM-native story | [docs/architecture/prior-art.md §3][prior-art] |
 
 **Deterministic workflow engines** — generic, repurposed for LLM.
 
 | Player | Strength | Weakness vs kitsoki | Source |
 |---|---|---|---|
 | **Akka Workflow** | Stateful, replayable, enterprise-scale | Generic — buyer still has to build the dialogue layer | [Akka, 2026][akka-frameworks] |
-| **Temporal** | Event-sourced determinism, mature | Workers/activities are overkill for one-conversation-per-session | [docs/prior-art.md §2][prior-art] |
+| **Temporal** | Event-sourced determinism, mature | Workers/activities are overkill for one-conversation-per-session | [docs/architecture/prior-art.md §2][prior-art] |
 
 **The emerging "deterministic backbone + LLM-as-recognizer" category** — kitsoki's actual peer set.
 
@@ -216,7 +216,7 @@ Kitsoki is alone in the upper-left quadrant *for a working implementation at the
 ### 4.3 Competitive threats
 
 1. **Rasa's CALM pivot.** Rasa is explicitly positioning toward LLM-agent competition ([Dasha, 2026][dasha-rasa-alternatives]). If CALM gains determinism guarantees, kitsoki loses some of its differentiation against the largest installed base of dialogue-manager users.
-2. **LangGraph adding replay primitives.** LangChain has the funding and shipping cadence to add `SqliteSaver` / replay-feedback loops natively (already partly there, [docs/prior-art.md §2][prior-art]). The closer LangGraph gets to deterministic replay, the smaller kitsoki's defensible moat on that single axis.
+2. **LangGraph adding replay primitives.** LangChain has the funding and shipping cadence to add `SqliteSaver` / replay-feedback loops natively (already partly there, [docs/architecture/prior-art.md §2][prior-art]). The closer LangGraph gets to deterministic replay, the smaller kitsoki's defensible moat on that single axis.
 3. **CompileAgent and the OSS deterministic-execution wave.** Framework-agnostic determinism layers — CompileAgent specifically markets "deterministic, auditable, replayable execution graph" — are kitsoki's closest peers and the most likely *direct* competitor in the next 12 months.
 4. **Hyperscaler integration.** If Anthropic, Google, or OpenAI ship a first-party "deterministic agent" runtime, the category compresses fast.
 
@@ -253,7 +253,7 @@ The 2026 academic frontier (Trend 5 in §2.2) has codified self-improving / life
 
 ### 4.6 Plugin marketplace (roadmap differentiator)
 
-Kitsoki stories are already YAML-defined composable units; the `imports:` block already lets one app pull rooms, intents, slots, and host-handlers from another file or repo ([`docs/imports.md`][imports]). A plugin marketplace formalises this pattern into a distribution channel: third parties publish kitsoki story packages, and authors install them with one command — exactly the way Claude Code's plugin marketplace works for skills (and exactly the way this conversation just installed the `bmad-method-lifecycle` and `bmad-pro-skills` plugins).
+Kitsoki stories are already YAML-defined composable units; the `imports:` block already lets one app pull rooms, intents, slots, and host-handlers from another file or repo ([`docs/stories/imports.md`][imports]). A plugin marketplace formalises this pattern into a distribution channel: third parties publish kitsoki story packages, and authors install them with one command — exactly the way Claude Code's plugin marketplace works for skills (and exactly the way this conversation just installed the `bmad-method-lifecycle` and `bmad-pro-skills` plugins).
 
 The fit with kitsoki's architecture is not retrofitted; it is *native*:
 
@@ -291,7 +291,7 @@ The fit with kitsoki's architecture is not retrofitted; it is *native*:
 
 ### 4.7 Live story editing (shipped) and dynamic stories (roadmap)
 
-A capability that no major competitor offers in any form: **the running app can pause itself, hand the FSM over to a named LLM agent that edits the app's YAML in-place, then resume from the same state with the new definition loaded.** This is `/meta` mode ([`docs/meta-mode.md`][meta-mode]), shipped today.
+A capability that no major competitor offers in any form: **the running app can pause itself, hand the FSM over to a named LLM agent that edits the app's YAML in-place, then resume from the same state with the new definition loaded.** This is `/meta` mode ([`docs/stories/meta-mode.md`][meta-mode]), shipped today.
 
 The shape:
 
@@ -412,7 +412,7 @@ Avoid positioning kitsoki as:
 
 1. **Internal Acronis dogfood first.** kitsoki-dev already solves real Acronis bugs through its own UI — that's the engineering-tooling segment producing the first credibility artefact. Land a regulated-industry use case inside Acronis in parallel for the audit-grade narrative.
 2. **OSS-first community release.** Conditional on (1). The buyer persona spans engineering leads, product engineers, and researchers — all discover tools via GitHub and arXiv, not sales decks. The breadth of segments compounds the OSS case.
-3. **Citation-grade docs.** [docs/prior-art.md][prior-art] already does this. Extend with a published benchmark against CompileAgent / LangGraph on replay determinism.
+3. **Citation-grade docs.** [docs/architecture/prior-art.md][prior-art] already does this. Extend with a published benchmark against CompileAgent / LangGraph on replay determinism.
 4. **Commercial tier (later):** support contracts for regulated buyers' procurement; private-marketplace tier for enterprise plugin distribution; Acronis-style enterprise integrations for buyers who already pay for Rasa/Dialogflow.
 
 ### 5.3 Risks and mitigations
@@ -513,9 +513,9 @@ When the audience is specifically regulated industry, a tighter variant works:
 - [`cyber-repo/tools/loopy/docs/SELF-IMPROVEMENT.md`][loopy-self-improvement] — Acronis-internal precedent: the 4-layer model already shipped in production for autonomous bug-fix.
 
 ### Internal kitsoki references
-- [`docs/prior-art.md`][prior-art] — kitsoki's comparative grounding across IF parsers, statecharts, dialogue managers, and LLM orchestration.
-- [`docs/meta-mode.md`][meta-mode] — `/meta` mode reference: pause-FSM, hand to named agent for in-place story editing, resume on `/onpath`.
-- [`docs/imports.md`][imports] — composable apps via the `imports:` block; the substrate for the plugin-marketplace roadmap.
+- [`docs/architecture/prior-art.md`][prior-art] — kitsoki's comparative grounding across IF parsers, statecharts, dialogue managers, and LLM orchestration.
+- [`docs/stories/meta-mode.md`][meta-mode] — `/meta` mode reference: pause-FSM, hand to named agent for in-place story editing, resume on `/onpath`.
+- [`docs/stories/imports.md`][imports] — composable apps via the `imports:` block; the substrate for the plugin-marketplace roadmap.
 - [`docs/domain-research.md`][domain-paradox] — domain analysis including the AI productivity paradox finding.
 
 [fbi-cai]: https://www.fortunebusinessinsights.com/conversational-ai-market-109850

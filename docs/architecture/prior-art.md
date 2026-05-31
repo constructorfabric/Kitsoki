@@ -103,7 +103,7 @@ designing transitions
    (XState, SCXML). Side-effecting guards are a nightmare to replay.
 3. Event-history-as-truth (Temporal). Replay is straightforward when
    the log is the source of state — see
-   [`architecture.md` §7](architecture.md#7-persistence-replay-and-auditability).
+   [`architecture.md` §7](overview.md#7-persistence-replay-and-auditability).
 4. Event-based gateways (BPMN) — "wait for whichever event arrives
    first" is the clean way to model LLM retry timeouts.
 
@@ -257,7 +257,7 @@ The pieces:
 - **Checkpointers** (`SqliteSaver`, `PostgresSaver`,
   `AsyncRedisSaver`) snapshot the full state per super-step under a
   `thread_id`; this is the persistence layer kitsoki's
-  [`architecture.md` §7](architecture.md#7-persistence-replay-and-auditability)
+  [`architecture.md` §7](overview.md#7-persistence-replay-and-auditability)
   cites as inspiration
   ([LangGraph Persistence](https://langchain-ai.github.io/langgraph/concepts/persistence/)).
 - **Interrupts** for human-in-the-loop: static
@@ -326,7 +326,7 @@ That's a lot of overlap. Now the gaps that matter.
    Python; the "effect" is whatever the function does.
 6. **No host-binding / capability surface.** Kitsoki imports declare
    `host_interfaces:` and parents rebind them per alias
-   ([`docs/imports.md`](imports.md)). LangGraph subgraphs share a
+   ([`docs/stories/imports.md`](../stories/imports.md)). LangGraph subgraphs share a
    process-global namespace of functions and tools; rebinding is
    "pass a different function in the closure."
 7. **No emit-across-import-boundary mechanism.** Kitsoki's
@@ -383,7 +383,7 @@ so the LLM sees them and can self-correct
    before falling through to a clarify-the-human surface.
 2. Structured tool errors in-band, always JSON, with a `suggestions`
    array the LLM can read. The error-code enum in
-   [`state-machine.md` §4](state-machine.md#4-intents-and-slots) is the
+   [`state-machine.md` §4](../stories/state-machine.md#4-intents-and-slots) is the
    stable contract for those errors.
 
 **Avoid:**
@@ -452,7 +452,7 @@ contract property:
 > Every `_awaiting_reply` state runs **the same `on_enter` chain** in
 > all three modes. The seven checkpointed rooms have identical
 > `on_enter` shapes; only `<phase>` and the next-room target vary.
-> ([`stories/bugfix/README.md`](../stories/bugfix/README.md))
+> ([`stories/bugfix/README.md`](../../stories/bugfix/README.md))
 
 The judge runs a single `host.oracle.decide` call gated by `when:
 judge_mode != "human"`. The verdict lands in `world.llm_verdict`; an
@@ -520,7 +520,7 @@ budget, the next `refine` routes to `@exit:abandoned` with
 `restart_from` rewinds and resets the target phase's counter to 0.
 
 The phase-template version of this (
-[`state-machine.md` §13](state-machine.md#13-phase-templates))
+[`state-machine.md` §13](../stories/state-machine.md#13-phase-templates))
 compresses the seven-room expansion into one template plus per-phase
 parameters; the loader auto-synthesises the counter increments and
 guards.
@@ -576,7 +576,7 @@ What this gives:
   the rewriter-renamed arc (`bf__accept` or, two layers deep,
   `core__bf__accept`). The author writes `emit_intent: accept` once;
   the runtime makes it work at any import depth. See
-  [`docs/imports.md`](imports.md) "emit_intent across the fold
+  [`docs/stories/imports.md`](../stories/imports.md) "emit_intent across the fold
   boundary" and `resolveEmittedIntentName` in the runtime.
 
 This composition story has no equivalent in CALM, Dialogflow CX, or
@@ -591,7 +591,7 @@ rebinds per child instance.
 
 Each oracle call in `bugfix` carries an `agent:` selecting a persona,
 and uses the verb dictated by the call's blast radius
-([`stories/bugfix/README.md` §Oracle-split persona table](../stories/bugfix/README.md)):
+([`stories/bugfix/README.md` §Oracle-split persona table](../../stories/bugfix/README.md)):
 
 | Persona | Verb | Why this verb |
 |---|---|---|
@@ -603,7 +603,7 @@ The verb is the framework-level guarantee. `ask` and `decide` cannot
 mutate files because the host handler enforces it (read-only Bash
 profile, sandboxed validator). `task` carries an acceptance loop
 with replay modes A/B/C
-([`docs/hosts.md`](hosts.md) §replay modes). The author picks the
+([`docs/architecture/hosts.md`](hosts.md) §replay modes). The author picks the
 verb; the runtime enforces the contract.
 
 CALM has one `action:` step type; the read-only vs read-write

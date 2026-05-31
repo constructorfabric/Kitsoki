@@ -10,7 +10,7 @@ For comparative grounding — what kitsoki borrows from interactive
 fiction, statechart frameworks, dialogue managers, and LLM
 orchestration — see [`prior-art.md`](prior-art.md). For runnable
 apps, see [`testdata/apps/`](../testdata/apps). For the state-machine
-vocabulary in detail, see [`state-machine.md`](state-machine.md).
+vocabulary in detail, see [`state-machine.md`](../stories/state-machine.md).
 
 ---
 
@@ -398,7 +398,7 @@ Concretely, every layer below assumes a hostile LLM:
   evaluate against a typed scope (`world.*`, `slots.*`, `event.*`,
   `run.*`) with a fixed operator and function set; no reflection, no
   I/O, no user-defined functions. See
-  [`state-machine.md` §7](state-machine.md#7-guards-the-expr-language).
+  [`state-machine.md` §7](../stories/state-machine.md#7-guards-the-expr-language).
 - **Effects are an enumerated alphabet.** `set`, `increment`, `say`,
   `emit`, `invoke: host.*`. The LLM never writes `world` directly —
   only the effects on a transition the *author* declared do that.
@@ -409,7 +409,7 @@ Concretely, every layer below assumes a hostile LLM:
   able to invoke it.
 - **Slot validation runs before any guard.** A malicious payload
   cannot escape the enum/regex/range constraints declared on the
-  slot — see [`state-machine.md` §4](state-machine.md#4-intents-and-slots).
+  slot — see [`state-machine.md` §4](../stories/state-machine.md#4-intents-and-slots).
 - **Off-path is marked and opt-in.** Operators can disable free-form
   chat entirely. When enabled, the TUI visibly frames the session so
   the user knows they are outside the deterministic graph.
@@ -487,7 +487,7 @@ the operator gets a replayable log.
 The conceptual model above is realised by a small set of Go packages
 under `internal/`. This section is for someone working on kitsoki
 itself; if you're an application author or a user, you can stop
-here and head to [`authoring.md`](authoring.md) or
+here and head to [`authoring.md`](../stories/authoring.md) or
 [`developer-guide.md`](developer-guide.md).
 
 ### 11.1 Layered view
@@ -656,7 +656,7 @@ Enum entries live in
   path (pair with `--trace-pretty -` to also pretty-print to stdout).
   Each line is one JSON object covering `turn.*`, `harness.*`,
   `machine.*`, `store.*`, `host.*`, and `jobs.*` events. See
-  [`docs/trace-format.md`](trace-format.md) for the schema.
+  [`docs/tracing/trace-format.md`](../tracing/trace-format.md) for the schema.
 - **Inspect** — `kitsoki inspect --session-id <id>` prints a read-only
   JSON snapshot of a stored session.
 - **Visualise** — `kitsoki viz` emits Graphviz DOT or Mermaid.
@@ -671,7 +671,7 @@ complete after-the-fact transcript.
 The oracle-split work separates the oracle surface into five named verbs
 ordered by blast radius (`extract`, `decide`, `ask`, `task`, `converse`).
 Phase 1 lands the shared infrastructure all five verbs build on.
-See [`docs/hosts.md` — Oracle verb summary](hosts.md#oracle-verb-summary)
+See [`docs/architecture/hosts.md` — Oracle verb summary](hosts.md#oracle-verb-summary)
 for the verb table and selection guide.
 
 ### Streaming sink (`internal/host/oracle_stream.go`)
@@ -880,11 +880,11 @@ runs `kitsoki turn` or other kitsoki subcommands as tools.
 
 ## 14. Where to go next
 
-- **Authoring an app** → [`authoring.md`](authoring.md) and
+- **Authoring an app** → [`authoring.md`](../stories/authoring.md) and
   `kitsoki docs app-schema`.
-- **State machine vocabulary** → [`state-machine.md`](state-machine.md).
+- **State machine vocabulary** → [`state-machine.md`](../stories/state-machine.md).
 - **Building or contributing** → [`developer-guide.md`](developer-guide.md).
-- **Testing** → [`testing.md`](testing.md).
-- **Background jobs** → [`background-jobs/`](background-jobs/README.md).
+- **Testing** → [`testing.md`](../tracing/testing.md).
+- **Background jobs** → [`background-jobs/`](../stories/background-jobs/README.md).
 - **Hosts and transports** → [`hosts.md`](hosts.md), [`transports.md`](transports.md).
 - **Prior art and comparative grounding** → [`prior-art.md`](prior-art.md).

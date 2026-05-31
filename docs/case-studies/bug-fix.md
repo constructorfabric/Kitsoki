@@ -9,7 +9,7 @@ typed sub-tasks). The shipping implementation lives in
 [`stories/bugfix/`](../../stories/bugfix/).
 
 The point isn't the bug-fix domain. It's to show what
-[progressive determinism](../concept.md#4-progressive-determinism)
+[progressive determinism](../architecture/concept.md#4-progressive-determinism)
 *feels like* when you apply it to a workflow you already have running.
 
 ---
@@ -183,7 +183,7 @@ the runtime can re-run**. Not a JSON object with a boolean
 into the worktree, that exits non-zero against the unfixed code and
 zero against the fixed code.
 
-This is the difference [concept.md §3](../concept.md#interpretation-has-two-shapes--and-one-is-better)
+This is the difference [concept.md §3](../architecture/concept.md#interpretation-has-two-shapes--and-one-is-better)
 calls out: schema-validated object vs. script-producing form. A
 `reproducing_artifact: { reproduces: true, evidence: "..." }` would
 have validated. It would have looked done. But it would have meant
@@ -359,13 +359,13 @@ impossible to ignore.
 
 ## See also
 
-- [`docs/concept.md`](../concept.md) — the thesis behind progressive
+- [`docs/architecture/concept.md`](../architecture/concept.md) — the thesis behind progressive
   determinism.
 - [`stories/bugfix/`](../../stories/bugfix/) — the shipping
   implementation.
 - [`stories/bugfix/README.md`](../../stories/bugfix/README.md) — the
   authoring contract: rooms, intents, artifacts, judge modes, cycle
   budgets.
-- [`docs/state-machine.md`](../state-machine.md) — the vocabulary
+- [`docs/stories/state-machine.md`](../stories/state-machine.md) — the vocabulary
   (rooms, intents, transitions, effects, host calls) this case study
   uses.

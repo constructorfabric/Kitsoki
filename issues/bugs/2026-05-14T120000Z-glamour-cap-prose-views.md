@@ -76,7 +76,7 @@ expects.
 - `internal/tui/transcript.go` — `renderMarkdown` and the Glamour
   config.
 - `internal/tui/` — would gain an `elements/` subpackage.
-- `docs/authoring.md` — view-element authoring story.
+- `docs/stories/authoring.md` — view-element authoring story.
 - `ideas.md` — has the full design sketch under "Tech debt".
 
 ### Not blocking

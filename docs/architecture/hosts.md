@@ -14,11 +14,11 @@ For the effect-level shape (`invoke:`, `with:`, `bind:`, `on_error:`,
 `background:`, `on_complete:`) see `kitsoki docs app-schema`.
 
 For named-capability composition (`host_interfaces:` declared on a
-sub-story, rebound by importers) see [`imports.md`](imports.md) §11.
+sub-story, rebound by importers) see [`imports.md`](../stories/imports.md) §11.
 
 For invoking oracle handlers directly from scripts, CI jobs, or
 validator subprocesses — without a running state machine — see
-[`docs/oracle-cli.md`](oracle-cli.md). That document covers
+[`docs/architecture/oracle-cli.md`](oracle-cli.md). That document covers
 `kitsoki oracle <verb>`, `kitsoki oracle-serve` (unix-socket daemon),
 the JSON-RPC method shapes, and `KITSOKI_SESSION_ID` trace continuity.
 
@@ -575,7 +575,7 @@ Resume a background job that called `host.RequestClarification`.
 
 The orchestrator persists the answer and the handler's poll loop
 returns it as raw JSON. Full round-trip in
-[`background-jobs/authoring.md`](background-jobs/authoring.md).
+[`background-jobs/authoring.md`](../stories/background-jobs/authoring.md).
 
 ---
 
@@ -682,7 +682,7 @@ The handler lives at
 the dispatcher (claim → claude → mark-terminal) lives in
 [`internal/host/chat_dispatch.go`](../internal/host/chat_dispatch.go).
 Full design rationale in
-[`docs/proposals/claude-code-sessions-proposal.md`](proposals/claude-code-sessions-proposal.md)
+[`docs/proposals/claude-code-sessions-proposal.md`](../proposals/claude-code-sessions-proposal.md)
 §9.2.
 
 | Field | Type | Required | Notes |

@@ -4,7 +4,7 @@
 > mechanism. The plugin contract is the seam that lets an external system
 > (a CI-failure responder, a bounded fixer agent, a user's own MCP server)
 > register itself as the LLM behind a kitsoki oracle call without compiling
-> into kitsoki. See [`docs/trace-format.md §5`](trace-format.md) for the JSONL
+> into kitsoki. See [`docs/tracing/trace-format.md §5`](../tracing/trace-format.md) for the JSONL
 > events each call produces.
 
 An **oracle plugin** is the component that receives a rendered prompt and
@@ -115,7 +115,7 @@ states:
 
 ## 3. Wire types: `AskRequest` / `AskResponse`
 
-See [`docs/trace-format.md §5`](trace-format.md) for the JSONL event shapes
+See [`docs/tracing/trace-format.md §5`](../tracing/trace-format.md) for the JSONL event shapes
 that surround each oracle call.  The Go types are in
 `internal/oracle/oracle.go`.
 
@@ -262,4 +262,4 @@ episodes:
 ---
 
 *For the trace event format produced by oracle calls, see
-[`docs/trace-format.md §5`](trace-format.md).*
+[`docs/tracing/trace-format.md §5`](../tracing/trace-format.md).*

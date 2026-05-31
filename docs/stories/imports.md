@@ -366,7 +366,7 @@ The mandatory README documents: entry state, exits with semantics,
 
 ## See also
 
-- [`hosts.md`](hosts.md) — host registry behavior, including the
+- [`hosts.md`](../architecture/hosts.md) — host registry behavior, including the
   prefix-fallback used by iface dispatch.
 - [`authoring.md`](authoring.md) — general `app.yaml` authoring.
 - `stories/robbery/`, `stories/frontier_event/`, `stories/oregon-trail/`

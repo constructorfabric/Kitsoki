@@ -8,8 +8,8 @@ surface — `kitsoki chat queue …`, `kitsoki chat attach/detach/gc`,
 `/attach` and `/sessions` inside the TUI, `host.chat.drive` —
 extends `internal/chats/` exactly as this draft describes. User-
 facing docs for the shipped pieces live in
-[`docs/meta-mode.md`](../meta-mode.md) (§5 covers `/attach` and
-`/sessions`) and [`docs/hosts.md`](../hosts.md) (covers
+[`docs/stories/meta-mode.md`](../stories/meta-mode.md) (§5 covers `/attach` and
+`/sessions`) and [`docs/architecture/hosts.md`](../architecture/hosts.md) (covers
 `host.chat.drive`). See the **"Shipped surface"** table below for
 the per-section status; the **"Future work"** section near the
 bottom (§§13–17) is now the actionable agenda.
@@ -218,7 +218,7 @@ What chats *doesn't* do yet — the gaps this proposal fills:
   defer."
 - **The kitsoki inbox doesn't know about chat-turn
   completion.** The existing inbox
-  ([`architecture.md` §6](../architecture.md#6-long-running-work-and-notifications))
+  ([`architecture.md` §6](../architecture/overview.md#6-long-running-work-and-notifications))
   surfaces background-job results. It has no event for "chat X
   just generated a reply and is awaiting input" — which is
   exactly the signal the human needs when they've detached
@@ -233,7 +233,7 @@ What chats *doesn't* do yet — the gaps this proposal fills:
   the one this proposal makes central (§9.3).
 
 The state-machine philosophy from
-[`state-machine.md` §10](../state-machine.md#10-controlled-navigation-back-jumps-restart-and-feedback-arcs)
+[`state-machine.md` §10](../stories/state-machine.md#10-controlled-navigation-back-jumps-restart-and-feedback-arcs)
 already gives us the right model: every incoming event is a
 typed arc, not a free-form interrupt. This proposal applies
 that to chat I/O.
@@ -705,7 +705,7 @@ entering the room) and always get out (by reading the ribbon).
 ### 9.1 The kitsoki inbox is the notification surface
 
 The inbox primitive
-([`architecture.md` §6](../architecture.md#6-long-running-work-and-notifications),
+([`architecture.md` §6](../architecture/overview.md#6-long-running-work-and-notifications),
 `internal/inbox/`) is unchanged. This proposal adds **chats** as
 a new producer.
 
@@ -790,7 +790,7 @@ contract is **async-with-completion-event** to match the
 **Completion signal in async mode.** When `await: false`, the
 calling phase needs to know when the turn completed without
 blocking. We mirror the existing
-[`background-jobs/authoring.md`](../background-jobs/authoring.md)
+[`background-jobs/authoring.md`](../stories/background-jobs/authoring.md)
 pattern: each drive optionally has an `on_complete:` effect set
 declared in the calling state, which fires as a synthetic
 turn when the drive completes. The drive carries the
@@ -1241,7 +1241,7 @@ This is **opt-in per chat**, with the default being safe
   That proposal makes kitsoki more inspectable; this one
   makes claude more controllable.
 - **Independent of story imports (shipped; see
-  [`docs/imports.md`](../imports.md)).** Story composition is
+  [`docs/stories/imports.md`](../stories/imports.md)).** Story composition is
   load-time; this is runtime.
 
 ---
@@ -1342,7 +1342,7 @@ the frame and bindings allow.
 | **F. Chat container rooms + TUI handoff** *(critical-path)* | Manifest schema extension for `chat_container:`; loader/validator changes; kitsoki TUI's state-entry handler suspends bubbletea, invokes the PTY frame helper, and resumes with the detach result bound into `on_detach:` / `on_chat_end:` arcs. Nested-tmux behaviour (§17.9) finalized here. **The user-facing payoff lands in this phase.** | ~1 week |
 | **G. Inbox notification producer** | Tail claude session JSONL (or whatever §0 A2 validates), detect idle, write inbox entries. Selecting a notification opens the chat container room (if the entering app exposes one) or invokes `kitsoki chat attach`. | ~3-4 days |
 | **H. Indirect transport integration + permission UX** | Jira/Bitbucket pollers route via `kitsoki chat queue add` / `host.chat.drive` instead of running the existing harness directly. `kitsoki chat allow-bypass` and the per-chat permission level. End-to-end: ticket comment → drive → headless turn → reply posted. | ~1 week |
-| **I. Docs + polish** | `docs/chats-pty.md` (or extend `docs/hosts.md` and the chats package doc); CLI help; recovery scenarios; the `chat_container:` authoring guide; consumer-repo example wiring. | ~3-4 days |
+| **I. Docs + polish** | `docs/chats-pty.md` (or extend `docs/architecture/hosts.md` and the chats package doc); CLI help; recovery scenarios; the `chat_container:` authoring guide; consumer-repo example wiring. | ~3-4 days |
 
 Phase 0 is a hard gate. Phases A-C are unblocked by 0; phases
 D-E build the frame and bindings; **phase F is where the

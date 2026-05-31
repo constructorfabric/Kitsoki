@@ -4,8 +4,8 @@ How to write a kitsoki application. The companion documents:
 
 - [`state-machine.md`](state-machine.md) — the conceptual model.
 - `kitsoki docs app-schema` — the authoritative YAML reference.
-- [`testing.md`](testing.md) — flow and intent fixtures.
-- [`hosts.md`](hosts.md) — every built-in host handler.
+- [`testing.md`](../tracing/testing.md) — flow and intent fixtures.
+- [`hosts.md`](../architecture/hosts.md) — every built-in host handler.
 
 If you only read one source other than the schema, read that.
 
@@ -194,7 +194,7 @@ states:
 `host.oracle.ask` runs `claude -p` against a prompt template file with
 templated `{{ args.X }}` placeholders; bind `stdout` back into world.
 Full contract and the `ask_with_mcp` / `talk` variants in
-[`hosts.md`](hosts.md). End-to-end worked example (shell-repair) in
+[`hosts.md`](../architecture/hosts.md). End-to-end worked example (shell-repair) in
 `kitsoki docs llm-guide` §11.1 LLM-backed effects.
 
 ### 5.5 Background job
@@ -241,7 +241,7 @@ effects:
 ```
 
 The transport handles markup conversion (Markdown → Jira wiki for
-Jira, etc.). See [`transports.md`](transports.md) for the registry.
+Jira, etc.). See [`transports.md`](../architecture/transports.md) for the registry.
 
 ### 5.7 Template interpolation: how complex values render
 
@@ -306,7 +306,7 @@ Don't use them on a five-state app.
 
 > The full story (latency budget, calibration workflow, cache
 > behaviour) lives in
-> **[`semantic-routing.md`](semantic-routing.md)**. This section is
+> **[`semantic-routing.md`](../architecture/semantic-routing.md)**. This section is
 > the authoring cheat-sheet.
 
 Intents and enum slots accept a `synonyms:` block. Each intent
@@ -424,7 +424,7 @@ The turn-result cache reads `routing.cache_*` to size and expire
 its rows. Calibrate the synonym library with
 `kitsoki replay-routing <app.yaml> --target 0.30` and grow it with
 `kitsoki inspect --synonym-suggestions --cache-db <path>` — see
-[`semantic-routing.md`](semantic-routing.md) for the full workflow.
+[`semantic-routing.md`](../architecture/semantic-routing.md) for the full workflow.
 
 ---
 
@@ -507,7 +507,7 @@ tier. Add it to your synonyms file to shrink the LLM dependency.
 | In-TUI `/warp` | Slash command equivalent. `/warp <state> world.X=Y` for inline; `/warp file:<path>` to load a basis. |
 | `kitsoki docs apply-proposal` | LLM-facing guide for "implement this prose proposal against `app.yaml`". |
 | `kitsoki extract suggest-synonym <session-id> <call-id>` | Propose a synonym entry from a recorded LLM-tier `host.oracle.extract` call. |
-| In-TUI `Edit mode` | Hot-reload editing — see [`developer-guide.md` §8](developer-guide.md#8-hot-reload-edit-mode). |
+| In-TUI `Edit mode` | Hot-reload editing — see [`developer-guide.md` §8](../architecture/developer-guide.md#8-hot-reload-edit-mode). |
 
 `kitsoki render` is one-way: the Markdown never feeds back into the
 engine. Re-run after every change to keep `APP.md` in sync.
@@ -603,4 +603,4 @@ the `external_side_effect:` field.
   `testdata/apps/proposal_smoke`, `testdata/apps/background_jobs`.
 - **Embedded operator manual** — `kitsoki docs llm-guide`.
 - **The state machine in depth** — [`state-machine.md`](state-machine.md).
-- **Agent declaration reference** — [`hosts.md` §Agent declaration](hosts.md#agent-declaration).
+- **Agent declaration reference** — [`hosts.md` §Agent declaration](../architecture/hosts.md#agent-declaration).

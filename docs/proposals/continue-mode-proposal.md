@@ -1033,7 +1033,7 @@ A session journal can outlive an app edit. Cases:
    the session, (b) teleport to a named recovery state declared in
    app.yaml (`recovery_state:` — a new optional top-level key,
    §6.7), or (c) drop to the off-path runtime
-   ([`../meta-mode.md`](../meta-mode.md)) for manual rescue.
+   ([`../meta-mode.md`](../stories/meta-mode.md)) for manual rescue.
 6. **Intent alphabet shrunk** — a transition the journal applied is
    no longer declared. Diagnostic warning at resume time; it does
    not block resume, because the journal’s state record is

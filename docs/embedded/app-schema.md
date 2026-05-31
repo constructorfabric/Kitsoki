@@ -34,7 +34,7 @@ host_interfaces: { <name>: <HostInterfaceDef> }  # optional — named capability
   the story-imports surface — aliased composition with private worlds,
   projected world_in/world_out, named exits, intent re-export, and
   rebindable host_interfaces. Full reference and worked examples in
-  [`docs/imports.md`](../imports.md).
+  [`docs/stories/imports.md`](../stories/imports.md).
 
 ## `AppMeta`
 
@@ -121,7 +121,7 @@ view:
 ```
 
 The typed form is preferred (story-style guidance:
-[`docs/story-style.md`](../story-style.md)) because each element
+[`docs/stories/story-style.md`](../stories/story-style.md)) because each element
 renders in isolation — a single broken `{{ ... }}` cannot zero the
 whole view.
 
@@ -149,7 +149,7 @@ view:
 
 Every element accepts an optional element-level `when:` guard (expr-lang)
 evaluated against `world.*` / `slots.*`. Items in a `list:` accept their
-own `when:`. Examples: see [`docs/story-style.md`](../story-style.md) §2.
+own `when:`. Examples: see [`docs/stories/story-style.md`](../stories/story-style.md) §2.
 
 ## `choice:` — interactive picker / multi / form
 
@@ -386,7 +386,7 @@ prefix the loader uses for other view-element errors.
   one intent per selected item."
 - **`form.<other_field>` is NOT live in `expr:`.** Readonly fields
   see `world.*` / `slots.*` at widget-open time only — sibling buffer
-  changes don't re-trigger the eval. See [`docs/choice-widget.md`](../choice-widget.md)
+  changes don't re-trigger the eval. See [`docs/stories/choice-widget.md`](../stories/choice-widget.md)
   §3.3 for the worked example and precompute-into-world workaround.
 - **`when:` on items / fields is renderer-side, not behavioural.**
   A guard-false item is hidden but the underlying `on:` arc still
@@ -395,8 +395,8 @@ prefix the loader uses for other view-element errors.
 
 Full design rationale: [`docs/proposals/choice-widget-proposal.md`](../proposals/choice-widget-proposal.md)
 (§3 YAML shapes, §4 authoritative shape, §8 limitations).
-Author-facing cookbook: [`docs/choice-widget.md`](../choice-widget.md).
-Story-style guidance: [`docs/story-style.md`](../story-style.md) §3.6.
+Author-facing cookbook: [`docs/stories/choice-widget.md`](../stories/choice-widget.md).
+Story-style guidance: [`docs/stories/story-style.md`](../stories/story-style.md) §3.6.
 
 ## `Transition`
 
@@ -457,7 +457,7 @@ Conventional order within a single effect: `set` → `increment` → `say` →
 
 ## Background jobs
 
-> Detailed reference: [docs/background-jobs/](../background-jobs/README.md)
+> Detailed reference: [docs/stories/background-jobs/](../stories/background-jobs/README.md)
 
 Background jobs let a state machine fire a long-running shell command or LLM
 call without blocking the current turn. The job runs in a goroutine; when it
@@ -749,7 +749,7 @@ Each entry is either:
 
 Both shapes feed the same `*semroute.Matcher` and emit a `Verdict`
 the orchestrator routes via `TrySemantic`. See
-[`../../docs/semantic-routing.md`](../../docs/semantic-routing.md)
+[`../../docs/architecture/semantic-routing.md`](../architecture/semantic-routing.md)
 for the full reference (slot parser types, calibration workflow,
 cache behaviour).
 
@@ -779,7 +779,7 @@ phrasings. Each key must appear in `values`. The enum parser tries
 three tiers in order — direct stem match, synonym word-bag
 containment, then Damerau-Levenshtein-1 fuzzy — so `"banker"`,
 `"rich guy"`, `"money man"`, and the typo `"bankr"` all resolve to
-`banker`. See [`../../docs/semantic-routing.md`](../../docs/semantic-routing.md)
+`banker`. See [`../../docs/architecture/semantic-routing.md`](../architecture/semantic-routing.md)
 for the slot-parser tier order.
 
 ## `OffPathDef`
@@ -908,7 +908,7 @@ top-level Load, every `iface.<name>.<op>` is rewritten to
 `<binding>.<op>` → `<binding>` when no per-op handler is registered.
 
 Full reference, including the multi-layer composition surface, is in
-[`docs/imports.md`](../imports.md).
+[`docs/stories/imports.md`](../stories/imports.md).
 
 ## Validation (what the loader enforces)
 

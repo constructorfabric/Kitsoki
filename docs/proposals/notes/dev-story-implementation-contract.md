@@ -20,7 +20,7 @@ Status: spec for Phase 1 only. Phase 2+ extends the contract as needed.
 - Story directories use the existing convention: `stories/<name>/{app.yaml,
   README.md, rooms/*.yaml, prompts/*.md, schemas/*.json, flows/*.yaml,
   scenarios/*.yaml}`. The mandatory README documents the contract per
-  `docs/imports.md` "File layout."
+  `docs/stories/imports.md` "File layout."
 - Use `kitsoki test flows stories/<name>/app.yaml` for story-level testing
   (works today — see `stories/oregon-trail/flows/`).
 
@@ -430,7 +430,7 @@ Wave 1 has three independent slices. They never touch the same file.
 ### Slice α — bugfix story author
 - Creates: `stories/bugfix/{app.yaml, README.md, rooms/*.yaml, prompts/*.md, schemas/judge_verdict.json, flows/*.yaml}`
 - Reads (does not modify): `stories/robbery/`, `stories/oregon-trail/`,
-  `testdata/apps/dev-story/rooms/bugfix.yaml`, `docs/imports.md`,
+  `testdata/apps/dev-story/rooms/bugfix.yaml`, `docs/stories/imports.md`,
   this contract.
 - Test: `kitsoki test flows stories/bugfix/app.yaml`
 

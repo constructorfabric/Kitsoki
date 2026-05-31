@@ -100,7 +100,7 @@ the turn to fail with `UNKNOWN_INTENT`.
 When step N+1 of an `on_enter:` block references a slot bound by step
 N, the orchestrator re-renders step N+1's args against the post-bind
 world at dispatch time (see
-[`architecture.md` §11.5](architecture.md#115-chained-host-call-rerender-contract)).
+[`architecture.md` §11.5](../architecture/overview.md#115-chained-host-call-rerender-contract)).
 Two events fire for each call: `HostInvoked` carries the *pre-bind*
 args (snapshotted at machine time), and `HostDispatched` carries the
 *post-rerender* args (what the handler actually receives) plus a
@@ -187,7 +187,7 @@ side-effect dispatch. A job that transitions from `awaiting_input` →
 `done` after a clarification answer counts as newly terminal this turn.
 
 The full lifecycle (clarification, retry, error paths) is documented
-in [`background-jobs/testing.md`](background-jobs/testing.md).
+in [`background-jobs/testing.md`](../stories/background-jobs/testing.md).
 
 ---
 
@@ -267,7 +267,7 @@ hard error before any fixture runs — CI sets this to prevent accidental
 re-recording against live transports.
 
 For the complete cassette file format, matching rules, `!include` semantics,
-and `record_mode` details, see [`docs/cassettes.md`](cassettes.md).
+and `record_mode` details, see [`docs/tracing/cassettes.md`](cassettes.md).
 
 ---
 

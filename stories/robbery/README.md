@@ -1,7 +1,7 @@
 # Robbery — an importable bandit-encounter sub-story
 
 A self-contained kitsoki story exercising the story-imports proposal
-(`docs/imports.md`). A masked rider demands
+(`docs/stories/imports.md`). A masked rider demands
 tribute; the player chooses to pay, fight, or flee. Each path has a
 named exit the importer maps to whatever follow-up state fits.
 
@@ -138,7 +138,7 @@ stories/robbery/
 
 ## See also
 
-- `docs/imports.md` — the imports authoring reference this story is
+- `docs/stories/imports.md` — the imports authoring reference this story is
   built to exercise.
 - `stories/frontier_event/` — a wrapper sub-story that imports
   `robbery` and adds a scouting beat. Demonstrates multi-layer composition.
