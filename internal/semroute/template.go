@@ -10,7 +10,7 @@ import (
 	"kitsoki/internal/slotparse"
 )
 
-// Template grammar (proposal §4.3) is deliberately tiny:
+// Template grammar is deliberately tiny:
 //
 //   - A template is a sequence of segments. Each segment is either a
 //     literal run of stemmed tokens or a `{slot_name}` capture.
@@ -340,7 +340,7 @@ type templateMatch struct {
 	filledCount int
 	// totalSlots records len(slots) + len(missingSlots) — the number
 	// of {slot} captures the template declared. Used together with
-	// filledCount to drive the §2.1 band selection.
+	// filledCount to drive the confidence-band selection.
 	totalSlots int
 }
 
@@ -348,7 +348,7 @@ type templateMatch struct {
 // Returns a templateMatch with ok=true iff every literal segment was
 // found in input order; the caller decides band based on missingSlots.
 //
-// Algorithm (proposal §5.2):
+// Algorithm:
 //
 //  1. Walk the template's segments from left to right.
 //  2. Each literal segment seeks forward in the input for a matching
@@ -365,9 +365,9 @@ type templateMatch struct {
 //  6. A single-capture template `{x}` absorbs every input token.
 //
 // Each capture range is then handed to slotparse.For(slotDef). String
-// slots without a parser fall back to the joined Surface text (proposal
-// §4.4 alternate form). A capture whose typed parser returns OK=false
-// goes into missingSlots; the verdict's band drops from 0.80 to 0.65.
+// slots without a parser fall back to the joined Surface text. A capture
+// whose typed parser returns OK=false goes into missingSlots; the
+// verdict's band drops from 0.80 to 0.65.
 func matchTemplate(t *compiledTemplate, tokens []lex.Token) templateMatch {
 	var (
 		// cursor is the index in tokens up to which we've already
@@ -387,8 +387,8 @@ func matchTemplate(t *compiledTemplate, tokens []lex.Token) templateMatch {
 		slotDef := t.slotDefs[slotName]
 		parser := slotparse.For(slotDef)
 		if parser == nil {
-			// Proposal §4.4: a string slot without a typed parser
-			// returns the captured raw text verbatim (joined surfaces).
+			// A string slot without a typed parser returns the
+			// captured raw text verbatim (joined surfaces).
 			// Any other type with no parser (only "list"/"date" today)
 			// is unparseable and becomes a missingSlot.
 			if slotDef.Type == "string" || slotDef.Type == "" {
@@ -562,8 +562,8 @@ func findLiteralAnchor(tokens []lex.Token, start int, want []string) (int, int, 
 
 // joinSurfaces concatenates the Surface fields of a token run,
 // preserving the original case and inserting a single space between
-// tokens. Stopwords ARE preserved here — the proposal §4.4 string-
-// slot path quotes the user's exact phrasing, including filler
+// tokens. Stopwords ARE preserved here — the string-slot path quotes
+// the user's exact phrasing, including filler
 // (otherwise "name the wagon the rolling thunder" → "rolling thunder"
 // drops the article the author may want to keep).
 func joinSurfaces(toks []lex.Token) string {

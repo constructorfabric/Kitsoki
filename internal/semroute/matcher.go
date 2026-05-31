@@ -55,9 +55,9 @@ func (m *Matcher) IsEmpty() bool {
 // cancellation checks through what is otherwise a hot path.
 //
 // statePath is currently unused at the matching level: Phase 2 has
-// no state-scoped synonyms (see proposal §11 open question 1). It's
-// accepted on the signature because callers already have it, and
-// reserving the slot avoids a Phase-4 API change.
+// no state-scoped synonyms (an open design question). It's accepted on
+// the signature because callers already have it, and reserving the
+// slot avoids a Phase-4 API change.
 func (m *Matcher) Match(ctx context.Context, statePath string, allowed []string, input string) (Verdict, error) {
 	if err := ctx.Err(); err != nil {
 		return Verdict{}, err
@@ -80,8 +80,8 @@ func (m *Matcher) Match(ctx context.Context, statePath string, allowed []string,
 	}
 
 	// Try the bare-string path first. A whole-utterance synonym hit
-	// (Confidence 0.90) outranks any template hit (0.80/0.65) per
-	// §2.1, so we only consult templates when bare matching missed.
+	// (Confidence 0.90) outranks any template hit (0.80/0.65), so we
+	// only consult templates when bare matching missed.
 	// We keep the bare-string fast-path inline (a separate helper
 	// would split state across two methods unnecessarily).
 	if v, ok := m.matchBare(allow, input); ok {
@@ -122,9 +122,8 @@ func (m *Matcher) matchBare(allow map[string]struct{}, input string) (Verdict, b
 	// We use MatchThreadSafe because [github.com/cloudflare/ahocorasick]
 	// .Matcher.Match mutates internal per-node bookkeeping that is
 	// safe in single-threaded use but races under concurrent reads.
-	// The proposal commits to a per-app cached Matcher that any
-	// goroutine can call; MatchThreadSafe is the documented form
-	// for that pattern.
+	// The Matcher is a per-app cached index that any goroutine can
+	// call; MatchThreadSafe is the documented form for that pattern.
 	joined := strings.Join(inputBag, " ")
 	hits := m.idx.ac.MatchThreadSafe([]byte(joined))
 
@@ -239,9 +238,9 @@ func (m *Matcher) matchBare(allow map[string]struct{}, input string) (Verdict, b
 // (3) is a deliberate guardrail. A template that fills more slots
 // on intent A than the matched template on intent B is not
 // automatically a "better" match — it might just be that A's
-// templates declare more slots. The proposal §4.3 only commits to
-// most-specific-wins within an intent; we keep cross-intent ties as
-// ties so the disambiguation card surfaces both options.
+// templates declare more slots. Most-specific-wins applies only
+// within an intent; we keep cross-intent ties as ties so the
+// disambiguation card surfaces both options.
 func (m *Matcher) matchTemplates(allow map[string]struct{}, input string) (Verdict, error) {
 	if len(m.idx.templateIntents) == 0 {
 		return Verdict{}, nil
@@ -315,7 +314,7 @@ func (m *Matcher) matchTemplates(allow map[string]struct{}, input string) (Verdi
 // template hit. All-captures-parsed → 0.80; ≥1 missing → 0.65.
 //
 // MatchPattern carries the verbatim template source so the
-// orchestrator's §7.6 hit-tracking can key by the author's string
+// orchestrator's hit-tracking can key by the author's string
 // (e.g. "buy {items} for {total_cost}"). MatchKind is always
 // "template" for this path — the bare-string path is the only place
 // "bare" and "example" originate.

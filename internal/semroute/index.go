@@ -126,7 +126,7 @@ type compiledIndex struct {
 	// templates groups every successfully compiled template synonym
 	// by owning intent id. Order within each slice mirrors the
 	// declaration order from YAML, which is what the most-specific-
-	// wins tie-break consults (proposal §4.3).
+	// wins tie-break consults.
 	templates map[string][]*compiledTemplate
 	// templateIntents is the sorted intent-id slice for the templates
 	// map — iterating it gives a deterministic walk order for the

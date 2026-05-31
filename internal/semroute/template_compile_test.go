@@ -1,5 +1,5 @@
 // Template-compile tests for the Phase-4 `{slot_name}` capture
-// syntax (proposal §4.3). Structural failure modes are covered in
+// syntax (the template grammar). Structural failure modes are covered in
 // matcher_test.go's TestCompile_TemplateStructuralErrors; this file
 // pins the happy-path shape of the compiled segments.
 package semroute
@@ -84,12 +84,12 @@ func TestCompileTemplate_LiteralCaptureLiteral(t *testing.T) {
 
 // TestCompileTemplate_LeadingCapture pins that "{x} more text"
 // compiles to capture-then-literal. Leading captures are explicitly
-// allowed (§4.3).
+// allowed by the template grammar.
 //
 // We use a non-stopword literal ("now") so the post-compile shape is
 // unambiguous; template literals preserve stopwords as positional
 // anchors (see compileLiteralStems), which is a separate property
-// pinned by the §5.2 worked example test.
+// pinned by the worked example test.
 func TestCompileTemplate_LeadingCapture(t *testing.T) {
 	t.Parallel()
 	def := mkApp(t, map[string]app.Intent{
@@ -192,7 +192,7 @@ func TestCompileTemplate_SingleCapture(t *testing.T) {
 	}
 }
 
-// TestCompileTemplate_UnknownSlot pins the §4.3 invariant: a capture
+// TestCompileTemplate_UnknownSlot pins the template-grammar invariant: a capture
 // must reference a declared slot. The error message must name both
 // the intent and the offending slot.
 func TestCompileTemplate_UnknownSlot(t *testing.T) {

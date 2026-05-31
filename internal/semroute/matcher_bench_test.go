@@ -28,8 +28,8 @@ func benchApp() *app.AppDef {
 }
 
 // BenchmarkMatch_Hit measures the hot path: input contains one
-// synonym's stem set, exactly one intent allowed. Proposal §5.1
-// commits to ~3 µs; the bench validates the order of magnitude.
+// synonym's stem set, exactly one intent allowed. The design target
+// is ~3 µs; the bench validates the order of magnitude.
 func BenchmarkMatch_Hit(b *testing.B) {
 	def := benchApp()
 	m, err := Compile(def)

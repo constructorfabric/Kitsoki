@@ -1,14 +1,14 @@
 // Template-match tests for the Phase-4 `{slot_name}` capture
-// (proposal §4.3, §5.2). Structural-compile tests live in
+// (the template grammar). Structural-compile tests live in
 // template_compile_test.go; this file pins runtime behaviour:
 //
-//   - §5.2 worked example resolves to Confidence 0.80, intent
+//   - the worked example resolves to Confidence 0.80, intent
 //     propose_purchase, slots = {items, total_cost}.
 //   - The 0.65 band: when a named slot's parser returns OK=false,
 //     the verdict downgrades and lists the slot in MissingSlots.
 //   - Most-specific-wins within an intent (more filled slots).
 //   - Cross-intent ties surface as 0.50.
-//   - §4.4 string-slot-no-parser: capture text becomes the slot value.
+//   - string-slot-no-parser: capture text becomes the slot value.
 //   - Empty input → zero Verdict.
 //   - Leading and trailing capture forms both work.
 //   - Order matters: positional templates do NOT match shuffled input.
@@ -27,7 +27,7 @@ import (
 
 // ====================== fixtures ======================
 
-// proposePurchaseApp builds the §5.2 fixture: propose_purchase with
+// proposePurchaseApp builds the template fixture: propose_purchase with
 // the three canonical templates and string/int slots.
 func proposePurchaseApp() *app.AppDef {
 	return &app.AppDef{
@@ -48,9 +48,9 @@ func proposePurchaseApp() *app.AppDef {
 	}
 }
 
-// ====================== §5.2 worked example ======================
+// ====================== worked example ======================
 
-// TestTemplateMatch_WorkedExample pins the proposal's canonical
+// TestTemplateMatch_WorkedExample pins the canonical
 // trace: "buy 6 oxen and 200 lbs food for 240" routes to
 // propose_purchase with items=raw text and total_cost=240.
 func TestTemplateMatch_WorkedExample(t *testing.T) {
@@ -192,7 +192,7 @@ func TestTemplateMatch_MostSpecificWins_TieBreakByOrder(t *testing.T) {
 
 // ====================== inter-intent tie ======================
 
-// TestTemplateMatch_InterIntentTie pins §2.1: two intents matching
+// TestTemplateMatch_InterIntentTie pins the tie band: two intents matching
 // the same input with the same fill count → ConfidenceTie (0.50)
 // with both candidates in the verdict.
 func TestTemplateMatch_InterIntentTie(t *testing.T) {
@@ -228,9 +228,9 @@ func TestTemplateMatch_InterIntentTie(t *testing.T) {
 	}
 }
 
-// ====================== string slot without a parser (§4.4) ======================
+// ====================== string slot without a parser ======================
 
-// TestTemplateMatch_StringSlotNoParser pins §4.4: a string-typed slot
+// TestTemplateMatch_StringSlotNoParser pins the string-slot-no-parser rule: a string-typed slot
 // with no further parser specialisation has its captured raw text
 // taken as the slot value, joined with single spaces and preserving
 // original surface case.
@@ -439,7 +439,7 @@ func TestTemplateMatch_AllowedFilter(t *testing.T) {
 
 // TestTemplateMatch_BareStringWinsOverTemplate — when a bare-string
 // synonym already matched at Confidence 0.90, the template path is
-// skipped entirely. Pins the §2.1 band ordering.
+// skipped entirely. Pins the band ordering.
 func TestTemplateMatch_BareStringWinsOverTemplate(t *testing.T) {
 	t.Parallel()
 	def := mkApp(t, map[string]app.Intent{
@@ -654,7 +654,7 @@ func TestTemplateMatch_StopwordBetweenLiterals_AdversarialMultiStopword(t *testi
 	}
 	got, _ := v.Slots["direction"].(string)
 	// Stopwords inside a capture are preserved verbatim via
-	// joinSurfaces (§4.4). Pinning the exact phrase guards against
+	// joinSurfaces (string-slot-no-parser rule). Pinning the exact phrase guards against
 	// future "strip stopwords inside captures" regressions.
 	want := "and then quickly to the south"
 	if normalizeSpaces(got) != normalizeSpaces(want) {
@@ -697,9 +697,9 @@ func TestProperty_StopwordInsertionInvariance(t *testing.T) {
 	//   the template can't match if anything precedes the first
 	//   literal (matchTemplate's `anchor != cursor` guard).
 	// Position 2: between "river" and the capture — this is INSIDE
-	//   the captured run (per the proposal's "(except inside the
+	//   the captured run (per the "(except inside the
 	//   captured run)" exclusion); stopwords here are preserved
-	//   verbatim by joinSurfaces (§4.4) and become part of the slot
+	//   verbatim by joinSurfaces (string-slot-no-parser rule) and become part of the slot
 	//   text. Test TestTemplateMatch_StringSlotNoParser pins this.
 	// Position 3: after "dog" — trailing-stopword exception path,
 	//   orthogonal to C1.

@@ -4,9 +4,10 @@ Kitsoki resolves every user turn through a four-tier routing stack
 before the LLM gets to look at the input. This doc covers the tiers,
 how to grow the synonym library, and how the turncache works.
 
-The original design discussion lives in
-[`proposals/semantic-routing-proposal.md`](../proposals/semantic-routing-proposal.md);
-this page is the user-facing reference for what shipped.
+This page is the user-facing reference for what shipped; the
+implementation lives in [`internal/semroute/`](../../internal/semroute)
+(matcher, template compiler, Aho-Corasick wiring) and
+[`internal/slotparse/`](../../internal/slotparse) (typed slot parsers).
 
 ## 1. The four tiers
 
@@ -52,7 +53,7 @@ A declared synonym is a plain phrase listed under `synonyms:` on an
 intent. The matcher runs UAX#29 word segmentation + Porter2 stemming
 + stopword stripping over both the input and the declared synonyms.
 A hit fires when the synonym's stem-bag is a subset of the input's
-stem-bag (semantic-routing proposal §4.1).
+stem-bag.
 
 ```yaml
 intents:
@@ -143,7 +144,7 @@ consults the SQLite-backed turncache. The cache key is
 - `app_id` namespaces rows so one cache file can serve many apps.
 - `app_hash` is a SHA-1 over the intents + slots + synonyms surface;
   it invalidates the cache the moment the routing-relevant YAML
-  changes (semantic-routing proposal §7.1).
+  changes.
 - `state_path` keeps "let's hunt" at the trail from leaking into
   "let's hunt" at a fort, where the verb may mean something else.
 - `lex.Signature(input)` is the sorted stem-bag with stopwords
@@ -151,7 +152,7 @@ consults the SQLite-backed turncache. The cache key is
 
 On a hit the orchestrator re-runs `Machine.Validate` against the
 live world before applying. A re-validate failure increments a
-strike count; three strikes evicts the row (proposal §7.2).
+strike count; three strikes evicts the row.
 
 #### When does the cache help?
 
@@ -267,7 +268,7 @@ intents:
       - "let's just ford it"
 ```
 
-**Auto-promotion is deliberately not implemented** (proposal §7.7):
+**Auto-promotion is deliberately not implemented**:
 every declared synonym should be one a human has eyeballed. The
 synonym table is part of the app's contract with its users —
 auto-growing it would erode that contract. The inspect surface is
@@ -341,8 +342,6 @@ Transport tests continue to pass unchanged; the seam is below the
   `synonyms:`.
 - [`hosts.md`](hosts.md#hostoracleextract) — `host.oracle.extract`
   reference (oracle-split Phase 5 handler).
-- [`proposals/semantic-routing-proposal.md`](../proposals/semantic-routing-proposal.md)
-  — the design discussion + open questions.
 - `internal/slotparse/` godoc — every typed parser's exact contract.
 - `internal/semroute/` godoc — the matcher, template compiler, and
   Aho-Corasick wiring.

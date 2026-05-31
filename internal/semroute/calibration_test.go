@@ -2,9 +2,9 @@
 // definition + its recording, re-routes every entry through the full
 // deterministic → semroute → turncache stack (with the LLM stubbed
 // to return the recorded intent), and asserts the LLM-fallthrough
-// rate stays at or below the Phase-7 proposal target of 30%.
+// rate stays at or below the calibration target of 30%.
 //
-// This is the safety net the §10 phasing brief calls out: any future
+// This is the safety net the calibration plan calls out: any future
 // change that regresses the matcher or breaks a synonym's stem-set
 // containment surfaces here as a test failure, not as a quality
 // regression in production.
@@ -34,8 +34,7 @@ import (
 	"kitsoki/internal/world"
 )
 
-// llmFallthroughTarget is the Phase-7 calibration ceiling. See the
-// semantic-routing proposal §10 / Phase 7 description.
+// llmFallthroughTarget is the calibration ceiling.
 //
 // Updated for issue H2: the previous 0.30 ceiling was set against a
 // gate that didn't include production's `RequiresUnfilledSlot`
@@ -45,9 +44,9 @@ import (
 // honest measured rate on the Oregon Trail recording is 37.5%
 // (24 of 64 turns). 0.40 leaves a small margin so the test isn't
 // flaky against minor matcher/recording reshuffles; meaningful
-// regressions still trip it. The synonym-authoring plan in §10
+// regressions still trip it. The synonym-authoring plan
 // stays the same; the next round of work should bring this back
-// under 30% by adding slot-level synonyms (proposal §4.2) so the
+// under 30% by adding slot-level synonyms so the
 // matcher can fill required enum slots from bare-string matches
 // instead of needing an explicit `{slot}` template per phrasing.
 const llmFallthroughTarget = 0.40

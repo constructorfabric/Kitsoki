@@ -12,9 +12,9 @@ import (
 	"kitsoki/internal/semroute"
 )
 
-// ExampleMatcher_Match is the canonical §5.1 worked example: a
-// single-intent app with one synonym, matching the proposal's
-// "wade across the river" input.
+// ExampleMatcher_Match is the canonical bare-synonym worked example: a
+// single-intent app with one synonym, matching the "wade across the
+// river" input (the same trace shown in the package doc).
 func ExampleMatcher_Match() {
 	def := &app.AppDef{
 		App: app.AppMeta{ID: "demo", Version: "v0"},
@@ -47,8 +47,8 @@ func ExampleMatcher_Match() {
 	// reason:     synonym:wade
 }
 
-// ExampleMatcher_Match_template is the proposal §5.2 worked example:
-// a Phase-4 template fills both {items} and {total_cost} from one
+// ExampleMatcher_Match_template is the template worked example: a
+// Phase-4 template fills both {items} and {total_cost} from one
 // utterance, producing a Confidence-0.80 Verdict.
 func ExampleMatcher_Match_template() {
 	def := &app.AppDef{

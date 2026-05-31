@@ -7,7 +7,7 @@ import (
 	"kitsoki/internal/app"
 )
 
-// benchTemplateApp builds the §5.2 fixture for steady-state template
+// benchTemplateApp builds the worked-example fixture for steady-state template
 // benchmarks. Three templates × two slots — mirrors what an authored
 // intent looks like in practice.
 func benchTemplateApp() *app.AppDef {
@@ -29,7 +29,7 @@ func benchTemplateApp() *app.AppDef {
 	}
 }
 
-// BenchmarkTemplate_Match_Hit measures the §5.2 hot path — a template
+// BenchmarkTemplate_Match_Hit measures the template hot path — a template
 // match that fills every slot. Compare with BenchmarkMatch_Hit
 // (Phase 2 bare-string).
 func BenchmarkTemplate_Match_Hit(b *testing.B) {
