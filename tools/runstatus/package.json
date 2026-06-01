@@ -10,8 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "playwright": "playwright test",
-    "playwright:install": "playwright install --with-deps chromium",
-    "artifact": "node scripts/build-artifact.mjs"
+    "playwright:install": "playwright install --with-deps chromium"
   },
   "dependencies": {
     "pinia": "^2.3.1",

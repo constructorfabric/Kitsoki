@@ -91,12 +91,15 @@ func TestExportStatus_FromTrace_TableDriven(t *testing.T) {
 			require.NoError(t, err, "load cloak app.yaml")
 
 			// Parse trace.
-			events, err := parseTraceFile(fixturePath)
-			require.NoError(t, err)
+			events := parseTraceFixture(t, fixturePath)
 			require.Len(t, events, tc.wantEventsLen, "events count must match fixture line count")
 
 			// Synthesise header.
-			header := synthesiseSessionHeader(def, events, tc.sessionIDFlag, tc.currentStateFlag, tc.startedAtFlag)
+			header := runstatus.SessionHeaderFromTrace(def, events, runstatus.HeaderOverrides{
+				SessionID:    tc.sessionIDFlag,
+				CurrentState: tc.currentStateFlag,
+				StartedAt:    tc.startedAtFlag,
+			})
 
 			assert.Equal(t, tc.wantSessionID, header.SessionID, "SessionID")
 			assert.Equal(t, "cloak-of-darkness", header.AppID, "AppID always from AppDef")
@@ -252,7 +255,7 @@ func TestAggregateTaskDetails(t *testing.T) {
 		},
 	}
 
-	aggregateTaskDetails(events)
+	runstatus.AggregateTaskDetails(events)
 
 	// oracle.task.complete must have tool_calls and files_changed.
 	taskComplete := events[4]
@@ -276,12 +279,13 @@ func TestAggregateTaskDetails(t *testing.T) {
 	assert.Nil(t, decideComplete.Attrs["tool_calls"], "oracle.decide.complete must not gain tool_calls")
 }
 
-// TestIsStateTerminal asserts the terminal-state look-up helper against
-// the cloak app's known state graph:
+// TestTerminalDetection asserts terminal-state detection (exercised through
+// SessionHeaderFromTrace's CurrentState override → Terminal) against the cloak
+// app's known state graph:
 //   - "ended" is terminal
 //   - "foyer", "bar", "cloakroom", "bar.dark", "bar.lit" are NOT terminal
-//   - unknown paths return false without panicking
-func TestIsStateTerminal(t *testing.T) {
+//   - empty / unknown paths are not terminal and do not panic
+func TestTerminalDetection(t *testing.T) {
 	t.Parallel()
 
 	def, err := app.Load(cloakAppYAML)
@@ -304,8 +308,20 @@ func TestIsStateTerminal(t *testing.T) {
 		tc := tc
 		t.Run(tc.path, func(t *testing.T) {
 			t.Parallel()
-			got := isStateTerminal(def, tc.path)
-			assert.Equal(t, tc.want, got, "isStateTerminal(%q)", tc.path)
+			hdr := runstatus.SessionHeaderFromTrace(def, nil, runstatus.HeaderOverrides{CurrentState: tc.path})
+			assert.Equal(t, tc.want, hdr.Terminal, "Terminal for state %q", tc.path)
 		})
 	}
+}
+
+// parseTraceFixture opens a JSONL trace fixture and parses it into TraceEvents,
+// failing the test on any read/scan error.
+func parseTraceFixture(t *testing.T, path string) []runstatus.TraceEvent {
+	t.Helper()
+	f, err := os.Open(path)
+	require.NoError(t, err)
+	defer func() { _ = f.Close() }()
+	events, err := runstatus.ParseTrace(f, nil)
+	require.NoError(t, err)
+	return events
 }

@@ -1,22 +1,47 @@
 # Run-status web UI
 
-**Status:** Phase 1 (artifact mode) ~90% shipped; Phases 2–3 remain.
-Shipped: `FlowchartWithMap()`/`NodeRef` (`internal/viz/nodemap.go`),
-the `Snapshot` type (`internal/runstatus/`), `kitsoki export-status
---from-trace`, and the full Vue 3 SPA with fixtures and Vitest +
-Playwright tests (`tools/runstatus/`). Remaining:
-- **Phase 1 step 6** — `export-status -o status.html` single-file
-  build from the in-process ring buffer (stubbed in
-  `cmd/kitsoki/export_status.go`).
-- **Phase 2** — timeline virtualization for large traces and
-  URL-persisted expand/collapse state.
-- **Phase 3** — live mode: an HTTP+SSE listener folded into `kitsoki
-  oracle serve` with the `runstatus.*` JSON-RPC handlers the SPA's
-  `live-source.ts` already expects.
+**Status:** Phases 1 and 3 shipped; only Phase 2 (frontend polish)
+remains. Narrative docs now live at
+[`docs/tracing/run-status-ui.md`](../tracing/run-status-ui.md) — read
+that for how to use the shipped surfaces; this proposal is kept only
+for the remaining Phase 2 agenda below.
 
-The shipped artifact surface is not yet covered in narrative docs;
-fold it into `docs/tracing/` when Phase 1 closes. The sections below
-are the actionable agenda for the three remaining items.
+Shipped:
+- `FlowchartWithMap()`/`NodeRef`, the `Snapshot` type, the full Vue 3
+  SPA with fixtures and Vitest + Playwright tests.
+- **The SPA is bundled into the `kitsoki` binary** (`//go:embed` under
+  `internal/runstatus/web/`, built and staged by `make build`). No
+  Node toolchain is needed at runtime; the old
+  `tools/runstatus/scripts/build-artifact.mjs` is deleted and its
+  injection logic ported to Go (`internal/runstatus.RenderArtifact`).
+- **Phase 1 step 6** — `kitsoki export-status -o run.html` emits the
+  self-contained HTML artifact (snapshot inlined into the embedded
+  SPA), from `--from-trace` or from an existing snapshot via
+  `--from-snapshot` (the build-artifact.mjs replacement).
+- **Phase 3 (live mode)** — `kitsoki status serve <app.yaml> --trace
+  run.jsonl` serves the embedded SPA plus the `runstatus.*` JSON-RPC
+  methods and the SSE stream the SPA's `live-source.ts` expects
+  (`internal/runstatus/server/`).
+
+  **Deviation from the original plan, with reason:** the live listener
+  is a new `kitsoki status serve` command reading the **JSONL trace**,
+  not an `--http` flag on `oracle serve` reading the session store. The
+  oracle-serve daemon is a stateless per-call RPC with no session
+  history, and — decisively — the SQLite session store does not persist
+  per-event `state_path` / `call_id` / `parent_turn`. Those live only
+  in the JSONL trace, and the SPA needs them (oracle-call pairing by
+  `call_id`, state grouping by `state_path`). Sourcing live mode from
+  the store would have been silently lossy, violating the "the trace
+  must always be correct" rule. The trace-backed command is both
+  higher-fidelity and simpler (tail a growing file). The
+  artifact and live paths share `SnapshotFromTrace`, so they can't
+  drift.
+
+**Remaining — Phase 2 (frontend only):** timeline virtualization for
+very large traces and URL-persisted expand/collapse state. Pure SPA
+work under `tools/runstatus/`; see the Phase 2 section below. When that
+ships, fold any remaining notes into the narrative doc and delete this
+proposal.
 
 ## Goal
 

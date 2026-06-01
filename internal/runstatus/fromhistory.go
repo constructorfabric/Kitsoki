@@ -40,6 +40,47 @@ func FromSink(sink *store.JSONLSink, def *app.AppDef, sessionID string) (Snapsho
 	return snap, nil
 }
 
+// ToTraceEvent maps a single store.Event to a TraceEvent exactly as
+// [FromHistory] does per event: the JSON Payload is decoded into Attrs, the
+// off-band CallID is merged into Attrs so the SPA sees it, Msg is the event
+// Kind, and Level is "ERROR" for the failure kinds (HarnessError,
+// ValidationFailed, GuardRejected) and "INFO" otherwise.
+//
+// It is the single per-event mapping shared by [FromHistory] (and available to
+// any other consumer mapping store.Events one at a time) so that path cannot
+// drift from the snapshot view. Note that the SQLite store does not persist
+// per-event state_path / call_id / parent_turn — those survive only in the
+// JSONL trace — so events loaded from the store carry them empty; the
+// full-fidelity trace path is [ParseTrace] over the JSONL.
+func ToTraceEvent(ev store.Event) TraceEvent {
+	var attrs map[string]any
+	if len(ev.Payload) > 0 {
+		_ = json.Unmarshal(ev.Payload, &attrs)
+	}
+	if ev.CallID != "" {
+		if attrs == nil {
+			attrs = make(map[string]any)
+		}
+		attrs["call_id"] = ev.CallID
+	}
+
+	level := "INFO"
+	switch ev.Kind {
+	case store.HarnessError, store.ValidationFailed, store.GuardRejected:
+		level = "ERROR"
+	}
+
+	return TraceEvent{
+		Time:       ev.Ts,
+		Level:      level,
+		Msg:        string(ev.Kind),
+		Turn:       int(ev.Turn),
+		StatePath:  string(ev.StatePath),
+		ParentTurn: int(ev.ParentTurn),
+		Attrs:      attrs,
+	}
+}
+
 // FromHistory converts a real store.History into a Snapshot suitable for the
 // runstatus UI. Used by both the fromsession exporter (real SQLite-backed
 // sessions) and the fromflow exporter (in-memory store from a flow run), so
@@ -75,49 +116,23 @@ func FromHistory(hist store.History, def *app.AppDef, sessionID string) (Snapsho
 			started = ev.Ts
 		}
 
-		// Decode payload into attrs.
-		var attrs map[string]any
-		if len(ev.Payload) > 0 {
-			_ = json.Unmarshal(ev.Payload, &attrs)
-		}
+		te := ToTraceEvent(ev)
 
 		// Track current state for SessionHeader.
 		if ev.Kind == store.StateEntered {
-			if sp, ok := attrs["state"].(string); ok {
+			if sp, ok := te.Attrs["state"].(string); ok {
 				currentState = sp
 			}
 		}
-		if string(ev.StatePath) != "" {
-			currentState = string(ev.StatePath)
+		if te.StatePath != "" {
+			currentState = te.StatePath
 		}
 
-		if int(ev.Turn) > lastTurn {
-			lastTurn = int(ev.Turn)
+		if te.Turn > lastTurn {
+			lastTurn = te.Turn
 		}
 
-		// call_id lives on the Event directly; merge into attrs so the SPA sees it.
-		if ev.CallID != "" {
-			if attrs == nil {
-				attrs = make(map[string]any)
-			}
-			attrs["call_id"] = ev.CallID
-		}
-
-		level := "INFO"
-		switch ev.Kind {
-		case store.HarnessError, store.ValidationFailed, store.GuardRejected:
-			level = "ERROR"
-		}
-
-		events = append(events, TraceEvent{
-			Time:       ev.Ts,
-			Level:      level,
-			Msg:        string(ev.Kind),
-			Turn:       int(ev.Turn),
-			StatePath:  string(ev.StatePath),
-			ParentTurn: int(ev.ParentTurn),
-			Attrs:      attrs,
-		})
+		events = append(events, te)
 
 		// Populate RawLines for byte-equality assertions against the source
 		// trace. MarshalEventLine produces the same bytes as JSONLSink.Append

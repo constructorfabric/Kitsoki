@@ -176,7 +176,8 @@ prompt/response panes.
 - `tools/runstatus/fixtures/bugfix.snapshot.json` is the regression contract;
   regenerate via `make -C tools/runstatus/fixtures bugfix` after the producer
   fixes, then rebuild `.artifacts/bugfix.html` with
-  `node scripts/build-artifact.mjs bugfix`.
+  `kitsoki export-status --from-snapshot tools/runstatus/fixtures/bugfix.snapshot.json -o .artifacts/bugfix.html`
+  (or `make -C tools/runstatus/fixtures artifacts` for all fixtures).
 - Bundle the `oracle-prompts/*.txt` sidecars into the artifact (or inline them
   into the snapshot) so `usePromptLoader` resolves them under `file://`.
 - `bugfix.spec.ts`: the 3 oracle assertions go green; add invariants — (a) each

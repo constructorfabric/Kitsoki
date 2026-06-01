@@ -6,10 +6,24 @@ REPO_ROOT := $(shell git rev-parse --show-toplevel)
 APP        := $(REPO_ROOT)/testdata/apps/cloak/app.yaml
 SRC        := $(REPO_ROOT)/tools/runstatus/fixtures/sources
 OUT        := $(REPO_ROOT)/tools/runstatus/fixtures
+ARTIFACTS  := $(REPO_ROOT)/.artifacts
 
-.PHONY: all in-progress completed edge-cases bugfix oracle-rich oracle-with-separate-prompts
+.PHONY: all in-progress completed edge-cases bugfix oracle-rich oracle-with-separate-prompts artifacts
 
 all: in-progress completed edge-cases bugfix oracle-rich oracle-with-separate-prompts
+
+# artifacts: build a self-contained HTML artifact for every *.snapshot.json
+# here, via the kitsoki binary (the Go replacement for the old
+# scripts/build-artifact.mjs). The SPA must be bundled into the binary first:
+# run `make -C $(REPO_ROOT) web` (or `make build`), otherwise export-status
+# reports the SPA as unbuilt. Output lands in <repo-root>/.artifacts/.
+artifacts:
+	@mkdir -p $(ARTIFACTS)
+	@for snap in $(OUT)/*.snapshot.json; do \
+		name=$$(basename $$snap .snapshot.json); \
+		echo "→ $(ARTIFACTS)/$$name.html"; \
+		go run $(REPO_ROOT)/cmd/kitsoki export-status --from-snapshot $$snap -o $(ARTIFACTS)/$$name.html || exit 1; \
+	done
 
 # bugfix: drive stories/bugfix/flows/happy_human.yaml through the REAL
 # orchestrator (in-memory store, host stubs from the flow) and dump the

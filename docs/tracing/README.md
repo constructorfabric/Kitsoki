@@ -67,6 +67,15 @@ and contributors alike.*
   the host-call errors that the TUI's `on_error:` arcs swallow. Invoke
   it before guessing.
 
+## Inspecting a run in a browser
+
+- **[`run-status-ui.md`](run-status-ui.md)** — the run-status web UI: an
+  interactive state diagram, a filterable trace timeline, and a detail drawer,
+  bundled into the `kitsoki` binary. Export a self-contained `.html` artifact
+  with `kitsoki export-status … -o run.html`, or serve a live, updating view
+  with `kitsoki status serve … --trace run.jsonl`. Built from the trace, so it
+  shows exactly what the trace records.
+
 ## See also
 
 - **[`../tui/rendering-tests.md`](../tui/rendering-tests.md)** —
