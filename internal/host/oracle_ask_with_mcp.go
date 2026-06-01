@@ -26,9 +26,7 @@ import (
 	"sort"
 	"strings"
 
-	"kitsoki/internal/expr"
 	kitsokimcp "kitsoki/internal/mcp"
-	"kitsoki/internal/render"
 	"kitsoki/internal/render/sourcecolor"
 )
 
@@ -324,8 +322,8 @@ func OracleAskWithMCPHandler(ctx context.Context, args map[string]any) (Result, 
 		return Result{Error: "host.oracle.ask_with_mcp: prompt_path (or prompt) argument is required"}, nil
 	}
 
-	resolved := resolvePromptPath(promptPath)
-	raw, err := os.ReadFile(resolved)
+	resolved := resolvePromptPathCtx(ctx, promptPath)
+	raw, err := readPromptFile(resolved)
 	if err != nil {
 		return Result{Error: fmt.Sprintf("host.oracle.ask_with_mcp: read prompt %q: %v", resolved, err)}, nil
 	}
@@ -341,7 +339,7 @@ func OracleAskWithMCPHandler(ctx context.Context, args map[string]any) (Result, 
 	if templateArgs == nil {
 		templateArgs = args
 	}
-	rendered, err := render.Pongo(string(raw), expr.Env{Args: templateArgs})
+	rendered, err := renderPromptBytes(ctx, string(raw), templateArgs)
 	if err != nil {
 		return Result{Error: fmt.Sprintf("host.oracle.ask_with_mcp: render prompt %q: %v", resolved, err)}, nil
 	}
@@ -421,7 +419,7 @@ func runOracleAskWithMCPViaAgent(ctx context.Context, agentName string, args map
 	if templateArgs == nil {
 		templateArgs = map[string]any{}
 	}
-	rendered, rerr := render.Pongo(ag.SystemPrompt, expr.Env{Args: templateArgs})
+	rendered, rerr := renderPromptBytes(ctx, ag.SystemPrompt, templateArgs)
 	if rerr != nil {
 		return Result{Error: fmt.Sprintf("host.oracle.ask_with_mcp: render agent %q SystemPrompt: %v", agentName, rerr)}, nil
 	}

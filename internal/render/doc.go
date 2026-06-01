@@ -7,15 +7,28 @@
 // selectors) stay on [kitsoki/internal/expr]. Its [Pongo] signature
 // deliberately mirrors expr.Render so call sites swap one-for-one.
 //
-// Two entry shapes share one engine:
+// Three entry shapes share one engine:
 //
 //   - Loader-less rendering — [Pongo] / [PongoParse] render an inline
 //     string against an [expr.Env] with no on-disk template root. Used by
 //     callers that only need {{ }}/{% %} substitution, never
 //     {% extends %} / {% include %}.
-//   - App-scoped rendering — an [AppRenderer] owns a per-app
+//   - App-scoped view rendering — an [AppRenderer] owns a per-app
 //     pongo2.TemplateSet rooted at <appDir>/views/, so {% extends %} and
 //     {% include %} resolve names against that directory.
+//   - Prompt rendering — [NewPromptRenderer] builds an [AppRenderer] whose
+//     loader resolves prompt references across an ordered overlay → story
+//     search path plus the @story / @shared namespaces, so a project's
+//     overlay prompt can {% extends %} a story's base prompt and fill
+//     {% block spec_<name> %} extension points without forking the story.
+//     This is the engine half of prompt extension; the author-facing
+//     contract is docs/stories/prompts.md. The search-path policy lives in
+//     a single bespoke pongo2.TemplateLoader (identity Abs; all resolution
+//     in Get) because stock multi-loader stacking resolves {% extends %} /
+//     {% include %} targets against loaders[0] relative to the parent
+//     template, which cannot express overlay-first bare names. [SpecBlock] /
+//     [EnumerateSpecBlocks] discover the spec_ surface by scanning prompt
+//     source (pongo2 exposes no block-introspection API).
 //
 // # Algorithm
 //

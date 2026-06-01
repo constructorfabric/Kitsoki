@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -62,6 +63,18 @@ type Orchestrator struct {
 	// chatStore is the SQLite-backed chat store used by chat-aware oracle handlers
 	// and the host.chat.* built-ins. Optional; nil disables chat persistence.
 	chatStore host.ChatStore
+
+	// promptRenderer renders oracle prompt files through the story's prompt
+	// search path (overlay → story) so a prompt can {% extends %} / {% include %}
+	// the story's base prompts and a project can extend a story without forking
+	// it. Built once from def.BaseDir + def.Prompts; nil when there's no
+	// on-disk story dir (LoadBytes / tests), in which case oracle handlers use
+	// the legacy KITSOKI_APP_DIR + render.Pongo path. See docs/stories/prompts.md.
+	promptRenderer *render.AppRenderer
+
+	// promptOverlay is a run-time prompt-overlay dir (kitsoki run
+	// --prompt-overlay) that overrides def.Prompts.Overlay when set.
+	promptOverlay string
 
 	// roomEnterSink, when non-nil, receives a pre-rendered banner string
 	// every time a turn transitions into a new room (top-level state).
@@ -203,6 +216,11 @@ func New(def *app.AppDef, m machine.Machine, s store.Store, h harness.Harness, o
 	for _, opt := range opts {
 		opt(o)
 	}
+	// Build the prompt renderer from the story's base dir + prompts config so
+	// oracle prompt files render through a search-path TemplateSet ({% extends %}
+	// / {% include %}, @story / @shared, overlay-first). nil when there's no
+	// on-disk story dir (LoadBytes / tests) — handlers then use the legacy path.
+	o.promptRenderer = buildPromptRenderer(def, o.promptOverlay)
 	// Construct the timeout dispatcher.  Build a SQLite-backed TimeoutStore
 	// from the session store's shared *sql.DB so pending timeouts survive a
 	// process restart.  If the store has no DB (e.g. in-memory test rig), or
@@ -272,6 +290,16 @@ type Option func(*Orchestrator)
 // WithExecutionMode sets the run's execution mode (one-shot vs staged).
 func WithExecutionMode(mode ExecutionMode) Option {
 	return func(o *Orchestrator) { o.execMode = mode }
+}
+
+// WithPromptOverlay sets a project prompt-overlay directory for this run,
+// overriding any overlay declared in the app's prompts: block. The overlay's
+// prompt files shadow the story's (resolved overlay-first) and may
+// {% extends "@story/…" %} the base they shadow — letting a project specialize
+// a story's prompts without forking it. Empty is a no-op. See
+// docs/stories/prompts.md.
+func WithPromptOverlay(dir string) Option {
+	return func(o *Orchestrator) { o.promptOverlay = dir }
 }
 
 // WithLogger sets the logger used for structured tracing.
@@ -2323,6 +2351,67 @@ func stampStatePath(evs []store.Event, state, fallback app.StatePath) {
 			evs[i].StatePath = effective
 		}
 	}
+}
+
+// buildPromptRenderer constructs the prompt renderer for a story from its
+// base dir and optional prompts: config. Returns nil when def has no on-disk
+// base dir (LoadBytes / tests) so oracle handlers fall back to the legacy
+// KITSOKI_APP_DIR + render.Pongo path. Shared/overlay paths are resolved
+// relative to BaseDir when not absolute. The renderer is uncached so an
+// author's prompt edits take effect on the next turn without a restart, the
+// same hot-reload behavior NewAppRenderer gives views.
+func buildPromptRenderer(def *app.AppDef, overlayOverride string) *render.AppRenderer {
+	if def == nil || def.BaseDir == "" {
+		return nil
+	}
+	pp := render.PromptPath{Story: def.BaseDir}
+	if pc := def.Prompts; pc != nil {
+		for _, s := range pc.Shared {
+			pp.Shared = append(pp.Shared, resolveUnderBase(def.BaseDir, s))
+		}
+		if pc.Overlay != "" {
+			pp.Overlay = resolveUnderBase(def.BaseDir, pc.Overlay)
+		}
+	}
+	// Expose each immediate import's prompt root as @import/<alias>/… so a
+	// parent override prompt can extend the imported story's base instead of
+	// swapping it wholesale (docs/stories/imports.md). SourcePath is the
+	// child manifest; its dir is the child's prompt base.
+	for alias, w := range def.ImportWrappers {
+		if w == nil || w.SourcePath == "" {
+			continue
+		}
+		if pp.Imports == nil {
+			pp.Imports = map[string]string{}
+		}
+		pp.Imports[alias] = filepath.Dir(w.SourcePath)
+	}
+	// A run-time --prompt-overlay wins over a story-declared default. It is
+	// resolved against the process cwd when relative (it's project-supplied,
+	// not part of the shared story).
+	if overlayOverride != "" {
+		if filepath.IsAbs(overlayOverride) {
+			pp.Overlay = overlayOverride
+		} else if abs, err := filepath.Abs(overlayOverride); err == nil {
+			pp.Overlay = abs
+		} else {
+			pp.Overlay = overlayOverride
+		}
+	}
+	r, err := render.NewPromptRenderer(pp, false)
+	if err != nil {
+		return nil
+	}
+	return r
+}
+
+// resolveUnderBase joins a possibly-relative path against base; absolute paths
+// pass through unchanged.
+func resolveUnderBase(base, p string) string {
+	if filepath.IsAbs(p) {
+		return p
+	}
+	return filepath.Join(base, p)
 }
 
 // agentsForContext translates the app-side AgentDef map into the host-side

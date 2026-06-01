@@ -182,6 +182,16 @@ type HostStub struct {
 	// falls through to the top-level envelope. Delay and RequestClarification
 	// stay at the top level.
 	ByOp map[string]HostStubEnvelope `yaml:"by_op,omitempty"`
+	// ByCall lets one stub serve multiple call sites that share a handler name
+	// (the common case: two `host.oracle.decide` invokes in one room) with
+	// distinct envelopes per call. Keys are the author-assigned `id:` on the
+	// invoke effect, threaded into args under the reserved `call` key. Values
+	// are the per-call envelope (Data + Error + InfraError). Resolution order:
+	// ByCall is tried before ByOp; when neither matches, the stub falls through
+	// to the top-level envelope. This is what makes oracle calls addressable
+	// without distorting the story (picking a different verb) or splitting the
+	// phase. Delay and RequestClarification stay at the top level.
+	ByCall map[string]HostStubEnvelope `yaml:"by_call,omitempty"`
 }
 
 // HostStubEnvelope is one per-op canned response under HostStub.ByOp.
@@ -530,7 +540,21 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 					return host.Result{Error: cErr.Error()}, nil
 				}
 			}
-			// 3. Per-op envelope (HostStub.ByOp) — when set, the stub
+			// 3a. Per-call envelope (HostStub.ByCall) — when set, the stub
+			// dispatches on args["call"] (the author-assigned invoke `id:`)
+			// and returns the matching envelope. Tried before ByOp so a call
+			// site is addressable even under a prefix-fallback handler. Falls
+			// through to the top-level Data/Error when no key matches.
+			if len(stub.ByCall) > 0 {
+				call, _ := args["call"].(string)
+				if env, ok := stub.ByCall[call]; ok {
+					if env.InfraError != "" {
+						return host.Result{}, errors.New(env.InfraError)
+					}
+					return host.Result{Data: env.Data, Error: env.Error}, nil
+				}
+			}
+			// 3b. Per-op envelope (HostStub.ByOp) — when set, the stub
 			// dispatches on args["op"] and returns the matching envelope.
 			// Falls through to the top-level Data/Error when no key matches.
 			if len(stub.ByOp) > 0 {

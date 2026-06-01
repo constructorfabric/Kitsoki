@@ -46,15 +46,25 @@ states:
       - prose: "Say **ready** when it's clear enough and I'll move on to focused questions, or **quit** to abandon."
     relevant_world: [workdir, output_path, idea, idea_message, idea_answer, idea_chat_title, idea_turns]
     on_enter:
-      # Get-or-create the discovery chat, keyed by (prd, idle, workdir).
-      # MUST be `host.chat.resolve` (get-or-create), NOT `host.chat.create`
-      # (unconditional INSERT): on_enter can re-fire — e.g. `/reload`'s
-      # RerunOnEnter, or a future re-entry — and `create` would spawn a
-      # fresh EMPTY chat each time, orphaning the conversation so far while
-      # leaving idea_turns/idea_message intact. The next `start` would then
-      # distill an empty chat. resolve returns the SAME chat, so the thread
-      # survives a reload. No kickoff converse — the greeting is the static
-      # prose in the view, so no LLM call fires until the operator speaks.
+      # Get-or-create the discovery chat. MUST be `host.chat.resolve`
+      # (get-or-create), NOT `host.chat.create` (unconditional INSERT):
+      # on_enter can re-fire — e.g. `/reload`'s RerunOnEnter, or a future
+      # re-entry — and `create` would spawn a fresh EMPTY chat each time,
+      # orphaning the conversation so far while leaving idea_turns/idea_message
+      # intact. The next `start` would then distill an empty chat. resolve
+      # returns the SAME chat, so the thread survives a reload. No kickoff
+      # converse — the greeting is the static prose in the view, so no LLM call
+      # fires until the operator speaks.
+      #
+      # Discovery is per-session: host.chat.* is always session-scoped (the
+      # session id is folded into the chat identity — see chatScopeKey in
+      # internal/host/chat_handlers.go), so a brand-new `kitsoki run` starts a
+      # FRESH discovery conversation rather than resuming a previous session's
+      # thread (which would replay whatever persona/context leaked into it).
+      # `/reload` and resume of the SAME session keep the id, so they reuse the
+      # chat. scope_key=workdir only discriminates WITHIN a session (one
+      # discovery thread per working directory). A chat never persists across
+      # sessions — that is an engine invariant, not a per-story choice.
       - invoke: host.chat.resolve
         with:
           app:       "prd"

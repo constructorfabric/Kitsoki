@@ -32,8 +32,6 @@ import (
 	"strings"
 	"time"
 
-	"kitsoki/internal/expr"
-	"kitsoki/internal/render"
 	"kitsoki/internal/render/sourcecolor"
 )
 
@@ -105,8 +103,8 @@ func OracleAskHandler(ctx context.Context, args map[string]any) (Result, error) 
 
 	switch {
 	case strings.TrimSpace(promptPath) != "":
-		resolved := resolvePromptPath(strings.TrimSpace(promptPath))
-		raw, readErr := os.ReadFile(resolved)
+		resolved := resolvePromptPathCtx(ctx, strings.TrimSpace(promptPath))
+		raw, readErr := readPromptFile(resolved)
 		if readErr != nil {
 			return Result{Error: fmt.Sprintf("host.oracle.ask: read prompt %q: %v", resolved, readErr)}, nil
 		}
@@ -114,7 +112,7 @@ func OracleAskHandler(ctx context.Context, args map[string]any) (Result, error) 
 		if templateArgs == nil {
 			templateArgs = args
 		}
-		r, tmplErr := render.Pongo(string(raw), expr.Env{Args: templateArgs})
+		r, tmplErr := renderPromptBytes(ctx, string(raw), templateArgs)
 		if tmplErr != nil {
 			return Result{Error: fmt.Sprintf("host.oracle.ask: render prompt %q: %v", resolved, tmplErr)}, nil
 		}
@@ -126,14 +124,14 @@ func OracleAskHandler(ctx context.Context, args map[string]any) (Result, error) 
 		// than leading/trailing, resolves to an existing file).
 		candidate := strings.TrimSpace(inlinePrompt)
 		if !strings.ContainsAny(candidate, "\n\r") {
-			resolved := resolvePromptPath(candidate)
-			if raw, readErr := os.ReadFile(resolved); readErr == nil {
+			resolved := resolvePromptPathCtx(ctx, candidate)
+			if raw, readErr := readPromptFile(resolved); readErr == nil {
 				// File exists — treat as a path alias (backward compat).
 				templateArgs, _ := args["args"].(map[string]any)
 				if templateArgs == nil {
 					templateArgs = args
 				}
-				r, tmplErr := render.Pongo(string(raw), expr.Env{Args: templateArgs})
+				r, tmplErr := renderPromptBytes(ctx, string(raw), templateArgs)
 				if tmplErr != nil {
 					return Result{Error: fmt.Sprintf("host.oracle.ask: render prompt %q: %v", resolved, tmplErr)}, nil
 				}
@@ -273,11 +271,19 @@ func OracleAskHandler(ctx context.Context, args map[string]any) (Result, error) 
 	// dispatch time, before the subprocess is started. Note: Prompt and
 	// SystemPrompt are omitted from the event to stay under PIPE_BUF (4096 bytes).
 	// The full prompt is available in AskRequest context (live) or cassette (replay).
+	provRef := strings.TrimSpace(promptPath)
+	if provRef == "" {
+		provRef = strings.TrimSpace(inlinePrompt)
+	}
+	promptOverlay, specDefaulted, specOverridden := promptTraceProvenance(ctx, provRef)
 	appendOracleCalledEvent(ctx, callStart, callID, rendered, OracleCalledPayload{
-		Verb:  "ask",
-		Agent: agentNameFromArgs(args),
-		Model: agent.Model,
-		Input: marshalInput(map[string]any{}),
+		Verb:           "ask",
+		Agent:          agentNameFromArgs(args),
+		Model:          agent.Model,
+		Input:          marshalInput(map[string]any{}),
+		PromptOverlay:  promptOverlay,
+		SpecDefaulted:  specDefaulted,
+		SpecOverridden: specOverridden,
 	})
 
 	cr, _, runErr := OracleStreamer{

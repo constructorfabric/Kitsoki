@@ -1509,6 +1509,16 @@ func (m *machineImpl) applyEffectsTraced(ctx context.Context, effects []app.Effe
 			for k, v := range eff.With {
 				rawWith[k] = v
 			}
+			// Thread the author-assigned call-site id (effect-level `id:`) into
+			// the args under the reserved `call` key, so flow stubs (`by_call:`)
+			// and cassettes (`match: { call: <id> }`) can address two calls that
+			// share a handler name. A plain string with no template, so the
+			// dispatch-time re-render of rawWith returns it unchanged. Mirrors
+			// the `op` arg that `by_op:` keys on.
+			if eff.Id != "" {
+				resolvedArgs["call"] = eff.Id
+				rawWith["call"] = eff.Id
+			}
 			hc := HostInvocation{
 				Namespace:    eff.Invoke,
 				Args:         resolvedArgs,

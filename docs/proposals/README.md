@@ -87,12 +87,6 @@ thought.
   per-state decider. Engine core, CLI/flow surface, and docs-review
   migration shipped; pre-bind staging and the bugfix-story migration
   remain (§8).
-- [`prompt-extension.md`](prompt-extension.md) — render prompts through a
-  per-app template set with an overlay search path so a project can
-  `{% extends %}` a story's base prompts and fill `{% block %}` extension
-  points instead of forking the story. Brings prompts to parity with views;
-  generalizes the imports prompt-swap to overlay-extend. Nothing implemented
-  yet; docs are a first-class deliverable.
 - [`prd-design.md`](prd-design.md) — a standalone PRD-authoring
   operator story (`stories/prd/`). Early draft; untracked work in
   progress.

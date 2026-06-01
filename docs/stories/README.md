@@ -25,6 +25,11 @@ way, see [`../architecture/concept.md`](../architecture/concept.md).)
   repos via the `imports:` block; aliased namespaces, world
   projection, host rebinding, exits, and the `/warp` operator smoke
   test.
+- **[`prompts.md`](prompts.md)** — prompt extension: specialize a
+  generic story's prompts for a project via an overlay that
+  `{% extends %}` the base and fills `spec_` blocks, instead of
+  forking the story. The `prompts:` config, `--prompt-overlay`, and
+  `kitsoki prompts spec`.
 
 ## Presentation and interaction
 

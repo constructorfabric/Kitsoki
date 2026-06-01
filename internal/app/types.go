@@ -250,6 +250,15 @@ type AppDef struct {
 	// imported story trigger reload.
 	LoadedManifests []string `yaml:"-"`
 
+	// Prompts declares the prompt search roots for prompt extension
+	// (see docs/stories/prompts.md): the optional shared-fragment dirs a
+	// prompt addresses via `@shared/…`, and an optional project overlay dir
+	// whose files {% extends %} the story's base prompts. A nil Prompts (or an
+	// empty block) means "story-only" — prompts resolve relative to BaseDir
+	// exactly as before, and a story with no overlay and no blocks renders
+	// byte-identically to the pre-extension path.
+	Prompts *PromptsConfig `yaml:"prompts,omitempty"`
+
 	// Routing holds the per-app semantic-routing configuration
 	// (see docs/architecture/semantic-routing.md). Lives at the root app level and
 	// is NOT merged across imports — when an importer folds a child,
@@ -264,6 +273,22 @@ type AppDef struct {
 	// {% include %} references in pongo2 templates locate per-app
 	// .pongo files (see docs/stories/story-style.md).
 	BaseDir string `yaml:"-"`
+}
+
+// PromptsConfig declares a story's prompt search roots for prompt extension.
+// All paths are relative to the app's BaseDir unless absolute. See
+// docs/stories/prompts.md.
+type PromptsConfig struct {
+	// Shared lists directories holding reusable prompt fragments addressed
+	// via `@shared/<path>` from a story's prompts. Defaults to none.
+	Shared []string `yaml:"shared,omitempty"`
+
+	// Overlay is a project overlay directory whose prompt files shadow the
+	// story's (resolved overlay-first) and may `{% extends "@story/…" %}` the
+	// base they shadow. Usually supplied at run time (kitsoki run
+	// --prompt-overlay) rather than committed into the shared story, but a
+	// story may declare a default here. Empty means no overlay.
+	Overlay string `yaml:"overlay,omitempty"`
 }
 
 // RoutingConfig is the per-app semantic-routing block declared under
@@ -687,6 +712,16 @@ type Effect struct {
 	Say string `yaml:"say,omitempty"`
 	// Invoke calls a host-namespace function.
 	Invoke string `yaml:"invoke,omitempty"`
+	// Id is an optional, author-assigned address for this invoke's call site.
+	// It is threaded into the dispatched args under the reserved `call` key so
+	// a single fixture can stub or match two calls that share a handler name —
+	// e.g. two `host.oracle.decide` call sites in one room. Flow stubs select on
+	// it via `by_call:`; cassettes via `match: { call: <id> }`. Distinct from the
+	// deterministic 16-hex `call_id` correlation hash (see host.DeriveCallID):
+	// this is a stable human label the author controls, independent of verb,
+	// agent, and schema. Empty = no address (the call falls back to handler-name
+	// keying). Only meaningful on Invoke effects.
+	Id string `yaml:"id,omitempty"`
 	// With holds arguments for an Invoke call.
 	With map[string]any `yaml:"with,omitempty"`
 	// Bind extracts keys from the host result into world variables: bind: {world_key: result_key}.

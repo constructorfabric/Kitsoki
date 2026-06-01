@@ -22,13 +22,48 @@ import (
 	"time"
 )
 
+// chatScopeKey folds the kitsoki session id into the caller's logical scope_key
+// so a resolved/created chat belongs to the session that opened it. This is an
+// ABSOLUTE invariant of the chat host handlers, not a tunable default:
+//
+//   - a chat NEVER persists beyond the session that created it — a brand-new
+//     kitsoki session never adopts a prior session's conversation;
+//   - a /reload (on_enter re-fires) or a resume of the SAME session reuses the
+//     chat, because the session id is unchanged.
+//
+// scope_key is only an additional discriminator WITHIN a session. There is no
+// opt-out: cross-session continuity is not a thing chats do. (Explicitly
+// continuing a named chat by id — `kitsoki chat continue <id>`, host.chat.get —
+// bypasses scope resolution and is a separate, deliberate act.)
+//
+// When there is no session id in context — stateless `kitsoki turn`, unit
+// tests, and the metamode / off-path paths that call the store directly — there
+// is no session to scope to, so the bare scope_key is used unchanged.
+//
+// The fold MUST be applied identically by resolve / create / list / resolve_ref
+// or they would disagree on a chat's identity (created under one key, then not
+// found under another). The \x00-delimited marker keeps a folded key
+// self-describing in the DB and unable to collide with any bare scope_key.
+func chatScopeKey(ctx context.Context, scopeKey string) string {
+	sid := string(OracleCallCtxFrom(ctx).SessionID)
+	if sid == "" {
+		return scopeKey
+	}
+	return "\x00session=" + sid + "\x00" + scopeKey
+}
+
 // ChatResolveHandler implements host.chat.resolve.
 //
 // Args:
-//   - app        (string, required): app ID
-//   - room       (string, required): room name
-//   - scope_key  (string, optional): per-user or per-workspace scope; default ""
-//   - title      (string, optional): title for new chats; default "<room> chat"
+//   - app           (string, required): app ID
+//   - room          (string, required): room name
+//   - scope_key     (string, optional): per-user or per-workspace scope; default ""
+//   - title         (string, optional): title for new chats; default "<room> chat"
+//
+// The chat is always SESSION-SCOPED — the session id is folded into the
+// identity (chatScopeKey), so a new session starts a fresh chat and only a
+// /reload or resume of the same session reuses it. scope_key only discriminates
+// WITHIN a session; chats never persist across sessions.
 //
 // Returns Result.Data with:
 //   - chat_id (string)
@@ -59,7 +94,7 @@ func ChatResolveHandler(ctx context.Context, args map[string]any) (Result, error
 	// no separate List+check pre-pass is needed (and a pre-pass would have
 	// a TOCTOU window where another caller could insert between the two
 	// queries, making is_new unreliable).
-	c, created, err := cs.Resolve(ctx, appID, room, scopeKey, title)
+	c, created, err := cs.Resolve(ctx, appID, room, chatScopeKey(ctx, scopeKey), title)
 	if err != nil {
 		return Result{Error: fmt.Sprintf("host.chat.resolve: %v", err)}, nil
 	}
@@ -99,7 +134,7 @@ func ChatListHandler(ctx context.Context, args map[string]any) (Result, error) {
 	}
 	scopeKey, _ := args["scope_key"].(string)
 
-	chats, err := cs.List(ctx, appID, room, scopeKey)
+	chats, err := cs.List(ctx, appID, room, chatScopeKey(ctx, scopeKey))
 	if err != nil {
 		return Result{Error: fmt.Sprintf("host.chat.list: %v", err)}, nil
 	}
@@ -575,7 +610,7 @@ func ChatCreateHandler(ctx context.Context, args map[string]any) (Result, error)
 	title, _ := args["title"].(string)
 	title = sanitizeChatTitle(title)
 
-	c, err := cs.Create(ctx, appID, room, scopeKey, title)
+	c, err := cs.Create(ctx, appID, room, chatScopeKey(ctx, scopeKey), title)
 	if err != nil {
 		return Result{Error: fmt.Sprintf("host.chat.create: %v", err)}, nil
 	}
@@ -806,7 +841,7 @@ func ChatResolveRefHandler(ctx context.Context, args map[string]any) (Result, er
 	}
 
 	// Need the list for both position and prefix resolution.
-	chats, err := cs.List(ctx, appID, room, scopeKey)
+	chats, err := cs.List(ctx, appID, room, chatScopeKey(ctx, scopeKey))
 	if err != nil {
 		return Result{Error: fmt.Sprintf("host.chat.resolve_ref: list: %v", err)}, nil
 	}

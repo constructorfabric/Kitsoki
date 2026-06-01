@@ -142,7 +142,15 @@ For a key `k` in an episode's `match:` map:
 3. **`schema_name`** — matched against `filepath.Base(args["schema"])`. Authors
    who dispatch two oracle calls in the same phase with different schemas use
    this to distinguish them without splitting phases.
-4. **Any other key** — looked up directly in the call's `args` map (the `with:`
+4. **`call`** — the author-assigned call-site id (`id:` on the invoke effect),
+   threaded into args under the reserved `call` key. This is the most direct
+   way to address two calls that share a handler name *and* a schema — give
+   each invoke an `id:` and match with `call: <id>`. Preferred over picking a
+   different oracle verb to force distinct handler names. Distinct from the
+   deterministic 16-hex `call_id` correlator recorded under each episode's
+   `oracle:` block. (Resolved via the general arg branch below; called out
+   here because it is the canonical addressing key.)
+5. **Any other key** — looked up directly in the call's `args` map (the `with:`
    values the effect threaded through).
 
 ### Match semantics

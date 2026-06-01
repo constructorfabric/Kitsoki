@@ -20,6 +20,7 @@ and [`../tracing/`](../tracing/README.md).
 | [Collect a form](choice-form.md) | Gather several typed fields in one submission |
 | [Flow test + cassette](flow-test-with-cassette.md) | Lock behaviour with a deterministic test |
 | [Background job](background-job.md) | Run long work off the turn and notify on completion |
+| [Project prompt overlay](prompt-overlay-example/README.md) | Specialize a generic story's prompts for a project without forking it |
 
 ## Larger worked examples
 

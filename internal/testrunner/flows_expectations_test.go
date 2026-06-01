@@ -101,6 +101,84 @@ expect_no_errors: true
 	require.Equal(t, 1, report.Passed)
 }
 
+// TestHostStub_ByCall_DispatchesPerCallSite verifies a single stub serves
+// different envelopes for two invokes that share a handler name AND identical
+// args, distinguished only by the author-assigned `id:` on each invoke. This
+// is the case that handler-name keying alone cannot express — the workaround
+// it replaces is picking a different verb or splitting the phase. Without the
+// `id:` → args["call"] threading both calls would key on call="" and miss
+// every named by_call entry, falling through to the (empty) top-level
+// envelope, leaving both world vars at their defaults — so this test fails if
+// the threading regresses.
+func TestHostStub_ByCall_DispatchesPerCallSite(t *testing.T) {
+	dir := t.TempDir()
+	appYAML := `
+app:
+  id: bycall_test
+  version: 0.1.0
+  title: "by_call test"
+  author: a
+  license: CC0
+hosts:
+  - host.oracle.decide
+world:
+  analyst_out: { type: string, default: "" }
+  judge_out:   { type: string, default: "" }
+root: idle
+intents:
+  enter:
+    description: "Enter the two-decide room."
+    examples: ["go"]
+states:
+  idle:
+    on:
+      enter:
+        - target: loaded
+  loaded:
+    on_enter:
+      # Two decide calls, identical args, addressable only by id.
+      - invoke: host.oracle.decide
+        id: analyst
+        with:
+          prompt: "same prompt"
+        bind:
+          analyst_out: verdict
+      - invoke: host.oracle.decide
+        id: judge
+        with:
+          prompt: "same prompt"
+        bind:
+          judge_out: verdict
+    on:
+      enter:
+        - target: loaded
+`
+	flowYAML := `
+test_kind: flow
+app: ` + filepath.Join(dir, "app.yaml") + `
+initial_state: idle
+host_handlers:
+  host.oracle.decide:
+    by_call:
+      analyst:
+        data: { verdict: "from-analyst" }
+      judge:
+        data: { verdict: "from-judge" }
+turns:
+  - intent: { name: enter }
+    expect_state: loaded
+    expect_world:
+      analyst_out: "from-analyst"
+      judge_out:   "from-judge"
+expect_no_errors: true
+`
+	appPath, flowPath := writeFixture(t, dir, appYAML, flowYAML)
+	report, err := testrunner.RunFlows(t.Context(), appPath, flowPath, testrunner.FlowOptions{})
+	require.NoError(t, err)
+	require.Equal(t, 0, report.Failed, "report: %+v", report.Results)
+	require.Equal(t, 1, report.Passed)
+}
+
 // TestExpectHostCalls_PinsArgs verifies expect_host_calls matches a
 // HostDispatched event and partial-matches args.
 func TestExpectHostCalls_PinsArgs(t *testing.T) {

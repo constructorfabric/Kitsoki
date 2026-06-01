@@ -239,11 +239,16 @@ func OracleDecideHandler(ctx context.Context, args map[string]any) (Result, erro
 	}
 
 	// Wave 3-oracle: write OracleCalled to the JSONL sink at dispatch time.
+	decidePromptRef, _ := args["prompt_path"].(string)
+	dOverlay, dDefaulted, dOverridden := promptTraceProvenance(ctx, decidePromptRef)
 	appendOracleCalledEvent(ctx, callStart, callID, rendered, OracleCalledPayload{
-		Verb:  "decide",
-		Agent: agentNameFromArgs(args),
-		Model: agent.Model,
-		Input: marshalInput(decideInputDesc),
+		Verb:           "decide",
+		Agent:          agentNameFromArgs(args),
+		Model:          agent.Model,
+		Input:          marshalInput(decideInputDesc),
+		PromptOverlay:  dOverlay,
+		SpecDefaulted:  dDefaulted,
+		SpecOverridden: dOverridden,
 	})
 
 	// If a validator block is present, run the retry loop. Otherwise use
@@ -358,7 +363,7 @@ func emitDecideJournal(ctx context.Context, callID string, callStart time.Time, 
 // resolveDecidePrompt renders the prompt for a decide call. Accepts either
 // a `prompt:` inline string or a `prompt_path:` file reference. Returns
 // (rendered, errorMsg). On success errorMsg is "".
-func resolveDecidePrompt(_ context.Context, args map[string]any) (string, string) {
+func resolveDecidePrompt(ctx context.Context, args map[string]any) (string, string) {
 	promptInline, _ := args["prompt"].(string)
 	promptPath, _ := args["prompt_path"].(string)
 	promptInline = strings.TrimSpace(promptInline)
@@ -373,8 +378,8 @@ func resolveDecidePrompt(_ context.Context, args map[string]any) (string, string
 
 	var raw string
 	if promptPath != "" {
-		resolved := resolvePromptPath(promptPath)
-		b, err := os.ReadFile(resolved)
+		resolved := resolvePromptPathCtx(ctx, promptPath)
+		b, err := readPromptFile(resolved)
 		if err != nil {
 			return "", fmt.Sprintf("host.oracle.decide: read prompt %q: %v", resolved, err)
 		}
@@ -388,7 +393,7 @@ func resolveDecidePrompt(_ context.Context, args map[string]any) (string, string
 	if templateArgs == nil {
 		templateArgs = args
 	}
-	rendered, err := renderAndStripPrompt(raw, templateArgs)
+	rendered, err := renderAndStripPrompt(ctx, raw, templateArgs)
 	if err != nil {
 		return "", fmt.Sprintf("host.oracle.decide: render prompt: %v", err)
 	}

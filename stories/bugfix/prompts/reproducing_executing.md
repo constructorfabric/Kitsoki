@@ -7,6 +7,8 @@ Your job is to produce evidence — a deterministic reproduction (a test, a
 script, a recorded sequence) — that the bug is real, plus the components /
 modules / services implicated.
 
+{% block spec_project_context %}{% endblock %}
+
 {% if args.refine_feedback %}## ⚠ Operator refinement directive (cycle {{ args.cycle }})
 
 This is a refine cycle — the previous reproduction artifact was
@@ -34,13 +36,13 @@ Before submitting:
 
 ## Constraints
 
-- Do not fabricate evidence. `bug_verified` is `true` only when a
+{% block spec_repro_conventions %}- Do not fabricate evidence. `bug_verified` is `true` only when a
   deterministic reproduction artifact was actually produced (test file on
   disk, recorded shell session, screen capture).
 - `involved_components[*].name` must be a real component / module / service
   in the codebase; phantom components corrupt downstream context.
 - `summary_markdown` is what a human reviewer will read in the checkpoint
-  inbox — write it for them, not for yourself.
+  inbox — write it for them, not for yourself.{% endblock %}
 
 ## Output
 

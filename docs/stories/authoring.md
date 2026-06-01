@@ -197,6 +197,16 @@ Full contract and the `ask_with_mcp` / `talk` variants in
 [`hosts.md`](../architecture/hosts.md). End-to-end worked example (shell-repair) in
 `kitsoki docs llm-guide` §11.1 LLM-backed effects.
 
+Prompt files are first-class, extensible templates: they can
+`{% extends %}` / `{% include %}` other prompts, and you mark the
+sections a *project* is expected to specialize with `{% block spec_<name> %}`
+extension points. A project then drops an overlay that extends your base
+prompt and fills those blocks — specializing your story without forking it.
+This is the supported way to inject project-specific context (repo
+conventions, domain rubric, house tone); see
+[`prompts.md`](prompts.md) for the search path, the `spec_` convention,
+`--prompt-overlay`, and `kitsoki prompts spec`.
+
 ### 5.5 Background job
 
 ```yaml

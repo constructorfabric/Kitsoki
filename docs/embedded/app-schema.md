@@ -442,6 +442,7 @@ Fields (any subset):
 | `increment`   | Integer delta on numeric world variables                             |
 | `say`         | Append narrative line (Go template over world/slots)                 |
 | `invoke`      | Call a host handler; must appear in top-level `hosts:` list          |
+| `id`          | Author-assigned call-site address; threaded into args as `call` so flow stubs (`by_call:`) and cassettes (`match: { call: … }`) can tell two same-handler invokes apart |
 | `with`        | Arguments for `invoke`                                               |
 | `bind`        | `{ world_key: result_key }` — copy host result into world            |
 | `on_error`    | Transition target if host invoke errors; sets `$host_error`          |

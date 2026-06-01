@@ -110,6 +110,32 @@ Don't refactor unrelated code. Don't reorganize files. Don't move
 things between layers unless the user explicitly asks. If the
 request really only needs one file changed, change one file.
 
+# Provisional prompt sections (spec_* blocks)
+
+A prompt section written as `{% block spec_<name> %}…{% endblock %}`
+marks a **specialization surface**: its default is *provisional*. An
+empty body is a hole a project is expected to fill; a non-empty body
+is a working default the author flagged as generic and likely to need
+project-specific specialization. Non-`spec_` blocks are structural —
+leave them alone. (`kitsoki prompts spec <app.yaml>` lists a story's
+spec_* surface.)
+
+When a request is about a project-specific gap that a `spec_*` section
+covers — repo conventions, house tone, a domain rubric — the correct
+fix is to **specialize that block in a project overlay**, NOT to edit
+the story's base prompt:
+
+- Add/extend the overlay prompt that mirrors the base path and does
+  `{% extends "@story/<path>" %}`, then override the relevant
+  `spec_*` block. The base prompt stays generic and reusable.
+- Only edit the base `spec_*` default itself when the change improves
+  the *generic* default for every project — not when it bakes one
+  project's specifics into the shared story.
+
+Treat a non-`spec_` section as off-limits for project specialization:
+if a project need can't be met without editing structural text, say so
+rather than forking the shared logic. See docs/stories/prompts.md.
+
 **View-pinning rule:** if the user references words, phrases, menu
 items, or labels that appear in the rendered view they're staring
 at, the file you edit MUST be the one that produces that view (the

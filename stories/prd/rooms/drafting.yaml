@@ -96,9 +96,14 @@ states:
           prd_artifact: submitted
         on_error: idle
 
-      # Optional LLM judge (skipped in human mode).
+      # Optional LLM judge (skipped in human mode). The `id:` addresses this
+      # decide call site independently of clarifying's analyst decide, so a
+      # single flow fixture that traverses clarifying → drafting in llm mode
+      # can stub the two with distinct `by_call:` envelopes — no need to give
+      # the judge a different verb just to dodge a stub-name collision.
       - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
         invoke: host.oracle.decide
+        id: judge_verdict
         with:
           agent: judge
           prompt: prompts/judge_prd.md

@@ -224,6 +224,7 @@ effect — useful inside `on_enter:` for conditional host calls.
 
 ```yaml
 - invoke: host.oracle.decide
+  id: proposing_verdict        # optional call-site address (see below)
   with:
     prompt: prompts/proposing_executing.md
     schema: schemas/proposing_artifact.json
@@ -248,6 +249,15 @@ Rules:
   side may be a bare key name (`bind: artifact: submitted`), a dotted
   path into the result (`party_member_1: "submitted.names[0]"`), or a
   templated expression.
+- `id:` is an optional author-assigned address for the call site. When two
+  invokes in one room share a handler name (e.g. an analyst and a judge both
+  using `host.oracle.decide`), the `id:` is what lets a single flow fixture
+  stub them apart (`host_handlers.<handler>.by_call.<id>`) and a cassette
+  match them apart (`match: { call: <id> }`). It threads into the args under
+  the reserved `call` key. **Never pick a different oracle verb just to dodge
+  a stub-name collision** — that distorts the story to satisfy the harness;
+  give the call an `id:` instead. Distinct from the deterministic 16-hex
+  `call_id` trace correlator.
 - `on_error:` redirects to the named state when the handler returns an
   error. The orchestrator sets `$host_error.{code,hint}` for the target
   state's first guard. **Beware the silent-bounce anti-pattern** — see §10.
@@ -410,6 +420,38 @@ Every importable story needs a `README.md` documenting entry state,
 exits + `requires:`, `world_in:` contract, intent export/import surface,
 `host_interfaces:` contract, and host requirements. `stories/robbery/README.md`
 and `stories/bugfix/README.md` are the templates.
+
+### Prompt extension (`spec_` blocks + overlays)
+
+Prompt files (`prompts/*.md`) are extensible templates: they can
+`{% extends %}` / `{% include %}` other prompts, and a *project* can drop an
+overlay that extends a story's base prompt and overrides named blocks — so a
+generic story is specialized for a project **without forking it**. Full
+contract: [`docs/stories/prompts.md`](../../stories/prompts.md).
+
+When authoring a prompt, mark the sections a project will plausibly need to
+change with a `spec_`-prefixed block — the one machine-readable signal that
+the default is *provisional*:
+
+- **Hole** (project must fill): `{% block spec_project_context %}{% endblock %}`
+- **Provisional default** (project may refine): `{% block spec_rubric %}working default{% endblock %}`
+- **Structural** (not a specialization target): a plain non-`spec_` block or plain text.
+
+Checklist when adding/editing a prompt:
+
+- [ ] Project-specific context (repo layout, domain, house tone) → a `spec_` **hole**.
+- [ ] Generic-but-likely-to-change guidance → a `spec_` **provisional default**.
+- [ ] Scaffolding that every project shares → leave structural (no `spec_`).
+- [ ] Name shared fragments and pull them via `{% include "@shared/…" %}`.
+- [ ] An overlay extends the base via `{% extends "@story/<path>" %}` — never
+      duplicate the base prompt.
+- [ ] Verify the surface: `kitsoki prompts spec <app.yaml>`.
+
+When a request is about a project-specific gap a `spec_` section covers, fix it
+by **specializing that block in an overlay** (`--prompt-overlay` or the
+`prompts.overlay:` config), not by editing the story's shared base prompt.
+`overrides.prompts` (above) is the whole-file *swap* — reach for it only when
+you mean to replace a prompt wholesale, not extend it.
 
 ## 8. Phase templates (compressing repeated rooms)
 

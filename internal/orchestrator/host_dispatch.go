@@ -60,6 +60,10 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 	// `with: { agent: <name> }` references to a host.Agent value. Built
 	// once per dispatch (cheap — translation is tag-equivalent).
 	ctx = host.WithAgents(ctx, agentsForContext(o.def))
+	// Inject the prompt renderer so oracle handlers resolve and render prompt
+	// files through the story's overlay → story search path. nil is safe
+	// (handlers use the legacy path).
+	ctx = host.WithPromptRenderer(ctx, o.promptRenderer)
 
 	// Wave 3-oracle: inject the EventSink so oracle handlers can parallel-write
 	// OracleCalled / OracleReturned / OracleError events to the JSONL alongside
@@ -529,6 +533,10 @@ func (o *Orchestrator) dispatchHostCallsDetailed(ctx context.Context, calls []ma
 		ctx = host.WithChatStore(ctx, o.chatStore)
 	}
 	ctx = host.WithAgents(ctx, agentsForContext(o.def))
+	// Inject the prompt renderer so oracle handlers resolve and render prompt
+	// files through the story's overlay → story search path. nil is safe
+	// (handlers use the legacy path).
+	ctx = host.WithPromptRenderer(ctx, o.promptRenderer)
 
 	summaries := make([]HostCallSummary, 0, len(calls))
 	var events []store.Event

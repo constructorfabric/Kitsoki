@@ -155,6 +155,31 @@ host_handlers:
       get:       { data: { id: TKT-200, type: bug, title: "…" } }
 ```
 
+#### One stub, many call sites: `by_call:`
+
+Two invokes in one room often share a handler name — most commonly an
+analyst and a judge both calling `host.oracle.decide`. Handler-name keying
+alone cannot tell them apart, so a single stub would serve both calls the
+same envelope. Give each invoke an `id:` (see the story-authoring skill,
+§5) and key the stub on it with `by_call:`. The `id` threads into the args
+under the reserved `call` key; the matching envelope's
+`data`/`error`/`infra_error` win over the top-level fallthrough. `by_call:`
+is tried before `by_op:`. **Do not pick a different oracle verb just to
+dodge the collision** — that distorts the story to satisfy the harness.
+
+```yaml
+host_handlers:
+  host.oracle.decide:
+    by_call:
+      analyst_questions:        # matches the invoke with `id: analyst_questions`
+        data: { submitted: { questions: [ … ] } }
+      judge_verdict:            # matches the invoke with `id: judge_verdict`
+        data: { submitted: { verdict: uncertain, intent: uncertain, … } }
+```
+
+See `stories/prd/flows/llm_judge.yaml` for a live fixture that traverses
+clarifying → drafting and stubs both decide calls apart this way.
+
 #### Asserting on-disk side effects: `expect_files:`
 
 When a transport stub lands artefacts on disk (e.g. the

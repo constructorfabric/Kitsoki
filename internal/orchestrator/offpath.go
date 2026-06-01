@@ -109,6 +109,7 @@ func (o *Orchestrator) AskOffPath(ctx context.Context, sid app.SessionID, questi
 	// by the off-path-via-agent path above when Model is set on the
 	// resolved agent) without having to import the app package.
 	ctx = host.WithAgents(ctx, agentsForContext(o.def))
+	ctx = host.WithPromptRenderer(ctx, o.promptRenderer)
 
 	// Always log the question first — even if the call below fails, the
 	// trace shows the user spoke off-path.

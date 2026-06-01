@@ -15,13 +15,12 @@
 package host
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 
-	"kitsoki/internal/expr"
-	"kitsoki/internal/render"
 	"kitsoki/internal/render/sourcecolor"
 )
 
@@ -30,8 +29,8 @@ import (
 // is the read→render→strip core shared by the decide and task prompt
 // resolvers (and structurally by ask/ask_with_mcp). Callers own the
 // prompt-path-vs-inline detection and args-fallback policy.
-func renderAndStripPrompt(tmpl string, templateArgs map[string]any) (string, error) {
-	rendered, err := render.Pongo(tmpl, expr.Env{Args: templateArgs})
+func renderAndStripPrompt(ctx context.Context, tmpl string, templateArgs map[string]any) (string, error) {
+	rendered, err := renderPromptBytes(ctx, tmpl, templateArgs)
 	if err != nil {
 		return "", err
 	}

@@ -64,7 +64,7 @@ imports:
       intents:
         <child-intent>: {...}       # full intent definition replacement
       prompts:
-        <child-rel-path>: <parent-rel-path>  # path substitution in Effect.With["prompt"]
+        <child-rel-path>: <parent-rel-path>  # whole-FILE prompt swap (see note below)
 
     # strict allow-list (proposal §9)
     hosts: declared                 # "inherit" (default) | "declared"
@@ -175,6 +175,17 @@ imports:
       prompts:
         "prompts/scout_brief.md": "prompts/scout_brief_trail.md"  # §10 prompt swap
 ```
+
+> **Swap vs. extend.** `overrides.prompts` is the **whole-file** form: the
+> parent replaces a child prompt wholesale. It's the right tool when you mean
+> to replace. When you instead want to *specialize* a prompt — fill a
+> `spec_` block or override one section while inheriting the rest — point the
+> override at a file that `{% extends "@import/<alias>/<path>" %}` the imported
+> child's base and overrides only the blocks you care about. The
+> `@import/<alias>` namespace resolves to that imported story's prompt root.
+> See [`prompts.md`](prompts.md) ("Extending an imported story's prompts");
+> `stories/oregon-trail/prompts/scout_brief_trail.md` is a worked example. The
+> whole-file swap is the degenerate, replace-everything case of the same idea.
 
 Run all 28 oregon-trail flows to see the chain in action:
 

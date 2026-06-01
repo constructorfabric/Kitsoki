@@ -75,6 +75,7 @@ states:
       # initial_state=clarifying write events directly and do not re-fire
       # this on_enter.
       - invoke: host.oracle.decide
+        id: analyst_questions
         with:
           agent: analyst
           prompt_path: prompts/clarify.md

@@ -602,12 +602,35 @@ returns it as raw JSON. Full round-trip in
 
 ## host.chat.* — persistent chat threads
 
-Chats are global, persistent multi-turn conversations scoped by
+Chats are persistent multi-turn conversations scoped by
 `(app_id, room, scope_key)`. They have their own per-chat singleton
 lock so the TUI and an external driver can both interact with the
 same session without racing on a chat. Backed by `internal/chats/`.
 
 The full CLI surface is `kitsoki chat new|list|show|continue|fork|archive|unlock`.
+
+### Session scoping (an invariant)
+
+A chat **never persists beyond the session that created it.** `resolve` /
+`create` / `list` / `resolve_ref` fold the current kitsoki session id into the
+chat identity (`chatScopeKey` in `internal/host/chat_handlers.go`). This is an
+engine invariant, not a tunable — there is no cross-session opt-out.
+
+- A brand-new `kitsoki run` starts a **fresh** chat — it never adopts a prior
+  session's conversation. (This closes a real bug: the prd discovery chat was
+  keyed only by `workdir`, so every run resumed the same thread and replayed a
+  persona that had leaked into the transcript once.)
+- A `/reload` (on_enter re-fires) or a **resume of the same session** keeps the
+  id, so the in-session thread is reused — `resolve` is idempotent in-session.
+- `scope_key` is only an additional discriminator **within** a session.
+- With no session in context (stateless `kitsoki turn`, tests, and the
+  metamode / off-path paths that call the store directly) there is no session
+  to scope to, so resolution keys on the bare `scope_key`.
+
+To deliberately reopen a specific past conversation, name it by id —
+`kitsoki chat continue <id>` / `host.chat.get` resolve by chat id and bypass
+scope resolution entirely. That is an explicit operator act, not scope-based
+get-or-create silently inheriting a previous session.
 
 ### host.chat.resolve
 
@@ -618,7 +641,7 @@ room always knows its chat.
 |---|---|---|---|
 | `app` | string | yes | App ID. |
 | `room` | string | yes | Logical room name. |
-| `scope_key` | string | no | Sub-scope inside the room (e.g. a workspace ID). |
+| `scope_key` | string | no | Sub-scope inside the room (e.g. a workspace ID); discriminates within a session — see "Session scoping" above. |
 | `title` | string | no | Title to use if a new chat is created. |
 
 Returns: `{ chat_id, title, status, is_new }`.

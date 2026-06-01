@@ -39,6 +39,13 @@ type AppRenderer struct {
 	set     *pongo2.TemplateSet
 	rootDir string
 	cached  bool
+
+	// prompts is set only when this renderer was built by NewPromptRenderer
+	// (its loader is a search-path loader rather than the views
+	// LocalFilesystemLoader). It is nil for view renderers. Exposed methods
+	// that resolve overlay-first prompt references consult it; on a view
+	// renderer they no-op.
+	prompts *searchPathLoader
 }
 
 // NewAppRenderer builds an uncached renderer rooted at <appDir>/views/.
@@ -114,7 +121,7 @@ func newAppRenderer(appDir string, cached bool) (*AppRenderer, error) {
 // for non-templated text) is preserved; the `??` → `|default:` rewrite
 // runs at the same seam as in package-level Pongo so story templates
 // using `{{ world.x ?? "(none)" }}` parse uniformly under either path.
-func (r *AppRenderer) Render(src string, env expr.Env) (string, error) {
+func (r *AppRenderer) Render(src string, env expr.Env) (out string, err error) {
 	if !hasDelims(src) {
 		return src, nil
 	}
@@ -123,7 +130,18 @@ func (r *AppRenderer) Render(src string, env expr.Env) (string, error) {
 	if err != nil {
 		return "", wrapTemplateError(src, err)
 	}
-	out, err := tpl.Execute(ToContext(env))
+	// pongo2 filters execute arbitrary Go against author-controlled input and
+	// can panic rather than return an error (the stock wordwrap did exactly
+	// this). Recover at this seam — as package-level Pongo does — so a filter
+	// panic degrades to an ordinary render error instead of unwinding past the
+	// caller (the TUI's render-error fallback / the oracle dispatch goroutine).
+	defer func() {
+		if rec := recover(); rec != nil {
+			out = ""
+			err = wrapTemplateError(src, fmt.Errorf("panic during template execution: %v", rec))
+		}
+	}()
+	out, err = tpl.Execute(ToContext(env))
 	if err != nil {
 		return "", wrapTemplateError(src, err)
 	}

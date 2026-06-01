@@ -1,0 +1,82 @@
+# llm_judge — idle → clarifying → drafting in llm judge mode, proving the two
+# `host.oracle.decide` call sites (clarifying's `analyst_questions`, drafting's
+# `judge_verdict`) are stubbed INDEPENDENTLY in one fixture via `by_call:`.
+#
+# Both calls share the handler name `host.oracle.decide`. Before invoke-`id:`
+# addressing, a single fixture could not give them distinct responses without
+# either giving the judge a different verb (distorting the story) or splitting
+# the traversal across fixtures. Here the analyst returns clarifying questions
+# and the judge returns a verdict — keyed apart purely by the call-site id.
+#
+# The judge returns verdict=uncertain so it falls through to the human-mode
+# view (the auto-fire guard requires verdict/intent != 'uncertain'); drafting
+# is the resting state and llm_verdict is bound from the judge's envelope.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  workdir:     "."
+  output_path: "PRD.md"
+  judge_mode:  "llm"
+
+host_handlers:
+  host.chat.resolve:
+    data: { ok: true, chat_id: "chat-1", title: "PRD idea discovery", is_new: true }
+  host.oracle.converse:
+    data: { ok: true, answer: "A CLI for X that helps developers do Y.", chat_id: "chat-1", claude_session_id: "sess-1" }
+  # One stub, two call sites — addressed by the invoke `id:`.
+  host.oracle.decide:
+    by_call:
+      analyst_questions:
+        data:
+          ok: true
+          submitted:
+            questions:
+              - { id: "q1", question: "Who is the primary user?", why: "scopes the persona" }
+              - { id: "q2", question: "What is the single most important success metric?", why: "defines done" }
+      judge_verdict:
+        data:
+          ok: true
+          submitted:
+            verdict:    "uncertain"
+            intent:     "uncertain"
+            reason:     "The draft is plausible but the success metric is still thin."
+            confidence: 0.55
+  host.oracle.task:
+    data:
+      ok: true
+      submitted:
+        title:               "PRD: Example CLI"
+        summary_markdown:    "## PRD: Example CLI\n\nA sufficiently long summary body to satisfy the schema minimum length for the prd_artifact summary_markdown field, covering problem, users, goals, and metrics."
+        file_path:           "PRD.md"
+        confidence:          0.84
+        needs_clarification: false
+        follow_up_questions: []
+
+turns:
+  # Discovery conversation, then distill into world.idea and advance.
+  - intent: { name: discuss, slots: { message: "I want a CLI for X" } }
+    expect_state: idle
+  - intent: { name: start, slots: {} }
+    expect_state: clarifying
+    expect_world:
+      idea: "A CLI for X that helps developers do Y."
+
+  # Answer the analyst's questions → drafting. The author drafts and the
+  # judge runs; the uncertain verdict leaves us at drafting with llm_verdict
+  # bound from the `judge_verdict` envelope (NOT the analyst's questions).
+  - intent: { name: submit_answers, slots: { answers: "1) developers 2) time-to-first-success" } }
+    expect_state: drafting
+    expect_world:
+      clarifying_cycle: 1
+      # Proof the judge_verdict envelope (not the analyst_questions one) bound
+      # here: llm_verdict holds the judge's object verbatim. The two decide
+      # calls were addressed apart by their invoke `id:`.
+      llm_verdict:
+        verdict:    "uncertain"
+        intent:     "uncertain"
+        reason:     "The draft is plausible but the success metric is still thin."
+        confidence: 0.55
+
+expect_no_errors: true

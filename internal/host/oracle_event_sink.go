@@ -194,7 +194,7 @@ func EventSinkFromOracleCtx(ctx context.Context) store.EventSink {
 // This ensures deterministic replay while staying under atomic write limits.
 // See oracle_dispatch.go appendOracleCalledEventWithEpisode for details.
 type OracleCalledPayload struct {
-	Verb string `json:"verb"`
+	Verb  string `json:"verb"`
 	Agent string `json:"agent,omitempty"`
 	Model string `json:"model,omitempty"`
 	// Prompt is the inline rendered prompt, present when it is small enough to
@@ -202,9 +202,23 @@ type OracleCalledPayload struct {
 	// file and referenced via PromptFile instead. Exactly one of Prompt /
 	// PromptFile is set on every oracle.call.start (see docs/tracing/trace-format.md),
 	// so a consumer always has a prompt reference to resolve.
-	Prompt string `json:"prompt,omitempty"`
+	Prompt     string          `json:"prompt,omitempty"`
 	PromptFile string          `json:"prompt_file,omitempty"` // Path to external prompt file if large
 	Input      json.RawMessage `json:"input,omitempty"`
+	// PromptOverlay records the project prompt-overlay directory that was in
+	// effect when this prompt was rendered, when one was. It is the provenance
+	// of an extended prompt: the rendered bytes (Prompt / PromptFile) already
+	// capture what the LLM saw, and PromptOverlay records that an overlay
+	// contributed and which one. Empty for the common no-overlay case. See
+	// docs/stories/prompts.md.
+	PromptOverlay string `json:"prompt_overlay,omitempty"`
+	// SpecOverridden / SpecDefaulted record which of the story base's spec_
+	// specialization blocks the overlay overrode vs. left at their provisional
+	// default on this render — the labeled datapoint behind "this provisional
+	// default was never specialized here". Populated only when an overlay
+	// contributed spec_ provenance.
+	SpecOverridden []string `json:"spec_overridden,omitempty"`
+	SpecDefaulted  []string `json:"spec_defaulted,omitempty"`
 }
 
 // OracleReturnedPayload is the payload written to OracleReturned events.

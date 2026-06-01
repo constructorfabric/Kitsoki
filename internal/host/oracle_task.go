@@ -144,7 +144,7 @@ func OracleTaskHandler(ctx context.Context, args map[string]any) (Result, error)
 	}
 
 	// ── Context prompt (optional) ─────────────────────────────────────────
-	contextPrompt, contextErr := resolveTaskContextPrompt(args)
+	contextPrompt, contextErr := resolveTaskContextPrompt(ctx, args)
 	if contextErr != "" {
 		return Result{Error: "host.oracle.task: " + contextErr}, nil
 	}
@@ -165,10 +165,18 @@ func OracleTaskHandler(ctx context.Context, args map[string]any) (Result, error)
 	// Wave 3-oracle: write OracleCalled to the JSONL sink at dispatch time.
 	// The rendered context prompt is recorded as a reference (inline when
 	// small, else a sidecar file); see docs/tracing/trace-format.md.
+	var taskPromptRef string
+	if cm, ok := args["context"].(map[string]any); ok {
+		taskPromptRef, _ = cm["prompt"].(string)
+	}
+	tOverlay, tDefaulted, tOverridden := promptTraceProvenance(ctx, taskPromptRef)
 	appendOracleCalledEvent(ctx, callStart, callID, contextPrompt, OracleCalledPayload{
-		Verb:  "task",
-		Agent: agentName,
-		Model: agent.Model,
+		Verb:           "task",
+		Agent:          agentName,
+		Model:          agent.Model,
+		PromptOverlay:  tOverlay,
+		SpecDefaulted:  tDefaulted,
+		SpecOverridden: tOverridden,
 	})
 
 	slog.InfoContext(ctx, "task.start",
@@ -444,7 +452,7 @@ func parseTaskAcceptance(args map[string]any) (taskAcceptanceOptions, string) {
 
 // resolveTaskContextPrompt renders the optional context.prompt + context.args
 // block into a string to be used as stdin for the agent's first turn.
-func resolveTaskContextPrompt(args map[string]any) (string, string) {
+func resolveTaskContextPrompt(goctx context.Context, args map[string]any) (string, string) {
 	ctx, _ := args["context"].(map[string]any)
 	if ctx == nil {
 		return "", ""
@@ -455,14 +463,14 @@ func resolveTaskContextPrompt(args map[string]any) (string, string) {
 	}
 	// Resolve as a file path or inline text.
 	rendered := promptVal
-	if resolved := resolvePromptPath(promptVal); resolved != promptVal {
-		data, err := os.ReadFile(resolved)
+	if resolved := resolvePromptPathCtx(goctx, promptVal); resolved != promptVal {
+		data, err := readPromptFile(resolved)
 		if err == nil {
 			rendered = string(data)
 		}
 	} else {
 		// Try reading as a relative file too.
-		if data, err := os.ReadFile(resolvePromptPath(promptVal)); err == nil {
+		if data, err := readPromptFile(resolvePromptPathCtx(goctx, promptVal)); err == nil {
 			rendered = string(data)
 		}
 	}
@@ -477,7 +485,7 @@ func resolveTaskContextPrompt(args map[string]any) (string, string) {
 			templateArgs[k] = v
 		}
 	}
-	result, renderErr := renderAndStripPrompt(rendered, templateArgs)
+	result, renderErr := renderAndStripPrompt(goctx, rendered, templateArgs)
 	if renderErr != nil {
 		return "", fmt.Sprintf("render context.prompt: %v", renderErr)
 	}
