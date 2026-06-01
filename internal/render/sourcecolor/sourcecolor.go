@@ -89,6 +89,87 @@ func Strip(s string) string {
 	return s
 }
 
+// VisibleLen counts the runes in s that contribute visible width — every
+// rune except the zero-width sentinels. It is the rune count callers
+// actually mean when they truncate or pad sentinel-bearing text.
+func VisibleLen(s string) int {
+	if !strings.Contains(s, llmOpen) && !strings.Contains(s, llmClose) {
+		return utf8.RuneCountInString(s)
+	}
+	n, i := 0, 0
+	for i < len(s) {
+		if strings.HasPrefix(s[i:], llmOpen) {
+			i += len(llmOpen)
+			continue
+		}
+		if strings.HasPrefix(s[i:], llmClose) {
+			i += len(llmClose)
+			continue
+		}
+		_, sz := utf8.DecodeRuneInString(s[i:])
+		n++
+		i += sz
+	}
+	return n
+}
+
+// Truncate shortens s to at most n VISIBLE runes, appending "..." when it
+// truncates — matching pongo2's truncatechars semantics, with two crucial
+// differences that keep source-colored text intact:
+//
+//   - The zero-width sentinels do not count toward n (pongo2's rune-based
+//     truncatechars counts them, so a value wrapped in sentinels truncates a
+//     few visible chars short).
+//   - Sentinel balance is preserved. A naive truncation can drop a span's
+//     closing sentinel off the end, leaving a dangling open that makes every
+//     downstream colorizer (the TUI's Colorize, slidey, …) "bleed" the LLM
+//     band across the rest of the view. If the cut falls inside an open span,
+//     Truncate re-appends the matching close after the ellipsis.
+//
+// For sentinel-free input the result is byte-identical to pongo2's helper.
+func Truncate(s string, n int) string {
+	if n < 0 {
+		n = 0
+	}
+	if VisibleLen(s) <= n {
+		return s
+	}
+	// Mirror pongo2: the "..." eats into the budget; below 3 there is no room
+	// for an ellipsis so it hard-cuts.
+	keep, ellipsis := n, ""
+	if n >= 3 {
+		keep, ellipsis = n-3, "..."
+	}
+	var out strings.Builder
+	depth, emitted, i := 0, 0, 0
+	for i < len(s) && emitted < keep {
+		if strings.HasPrefix(s[i:], llmOpen) {
+			out.WriteString(llmOpen)
+			depth++
+			i += len(llmOpen)
+			continue
+		}
+		if strings.HasPrefix(s[i:], llmClose) {
+			out.WriteString(llmClose)
+			if depth > 0 {
+				depth--
+			}
+			i += len(llmClose)
+			continue
+		}
+		_, sz := utf8.DecodeRuneInString(s[i:])
+		out.WriteString(s[i : i+sz])
+		emitted++
+		i += sz
+	}
+	out.WriteString(ellipsis)
+	// Re-balance: close any spans still open at the cut so the band stops here.
+	for k := 0; k < depth; k++ {
+		out.WriteString(llmClose)
+	}
+	return out.String()
+}
+
 // Theme is a pair of ANSI background-color escape sequences plus the
 // foreground and reset codes used between them.
 //

@@ -8,6 +8,7 @@ import (
 	"github.com/muesli/reflow/wordwrap"
 
 	"kitsoki/internal/expr"
+	"kitsoki/internal/render/sourcecolor"
 )
 
 // TemplateErrorSnippetLength bounds the template source echoed in a wrapped
@@ -77,6 +78,23 @@ func init() {
 	// wrapper the prose/kv/list view elements already use — so `wordwrap:N`
 	// means "wrap to N columns, breaking on whitespace" and never panics.
 	_ = pongo2.ReplaceFilter("wordwrap", filterWordwrap)
+
+	// Override pongo2/v6's built-in `truncatechars` with a source-color-aware
+	// version. The stock filter counts every rune — including the zero-width
+	// source-color sentinels — and slices off the tail, which drops a span's
+	// closing sentinel when an LLM-wrapped value (e.g. `world.idea`) is
+	// truncated. The dangling open then makes the TUI's Colorize (and every
+	// other consumer) bleed the warm "LLM" band across the rest of the view.
+	// sourcecolor.Truncate counts only visible runes and re-closes any span
+	// open at the cut; for sentinel-free input it is byte-identical to the
+	// built-in. See internal/render/sourcecolor.Truncate.
+	_ = pongo2.ReplaceFilter("truncatechars", filterTruncatechars)
+}
+
+// filterTruncatechars is the source-color-aware replacement for pongo2's
+// built-in truncatechars (registered in init()). See sourcecolor.Truncate.
+func filterTruncatechars(in *pongo2.Value, param *pongo2.Value) (*pongo2.Value, *pongo2.Error) {
+	return pongo2.AsValue(sourcecolor.Truncate(in.String(), param.Integer())), nil
 }
 
 // filterWordwrap wraps the input to param visible columns, breaking on

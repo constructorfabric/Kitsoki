@@ -8,6 +8,7 @@ import (
 	"github.com/flosch/pongo2/v6"
 
 	"kitsoki/internal/expr"
+	"kitsoki/internal/render/sourcecolor"
 )
 
 // pongo2RegisterPanicFilter registers a filter that always panics, used to
@@ -647,5 +648,30 @@ func TestPongo_RecoversFromFilterPanic(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "panic during template execution") {
 		t.Fatalf("error should name the panic, got %v", err)
+	}
+}
+
+// TestTruncatechars_PreservesSourceColorBalance pins the override of pongo2's
+// built-in truncatechars: a world var carrying LLM source-color sentinels (the
+// shape `world.idea` has after an oracle bind) must keep its sentinel pair
+// balanced when truncated, so a downstream colorizer cannot bleed the LLM band
+// across the rest of the view. The stock filter drops the close off the tail.
+func TestTruncatechars_PreservesSourceColorBalance(t *testing.T) {
+	t.Parallel()
+	idea := sourcecolor.Wrap("A Vue 3 web notes app for power users who capture, organize, and search notes with AI")
+	env := expr.Env{World: map[string]any{"idea": idea}}
+	got, err := Pongo(`Idea: {{ world.idea|truncatechars:40 }}`, env)
+	if err != nil {
+		t.Fatalf("render error: %v", err)
+	}
+	o := strings.Count(got, sourcecolor.LLMOpen)
+	c := strings.Count(got, sourcecolor.LLMClose)
+	if o != 1 || c != 1 {
+		t.Fatalf("truncatechars unbalanced source-color sentinels: open=%d close=%d\n%q", o, c, got)
+	}
+	// The truncation actually happened (visible length bounded) and the visible
+	// text is clean.
+	if !strings.Contains(sourcecolor.Strip(got), "...") {
+		t.Fatalf("expected an ellipsis in the truncated view, got %q", sourcecolor.Strip(got))
 	}
 }
