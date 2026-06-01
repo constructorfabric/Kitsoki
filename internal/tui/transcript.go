@@ -310,6 +310,11 @@ func (m *transcriptModel) AppendLive(body string) int {
 	return 0
 }
 
+// hasLive reports whether an in-flight live line is active (not yet settled).
+// Callers guard FinalizeLive on it so a turn-completion finalizer and an
+// observer hit event can't both commit the same routing line.
+func (m *transcriptModel) hasLive() bool { return m.liveLine != "" }
+
 // UpdateLive replaces the in-flight line. No-op when no live line is
 // active — defensive against late-arriving tier events that fire
 // after settlement.
@@ -1248,4 +1253,3 @@ func max(a, b int) int {
 	}
 	return b
 }
-

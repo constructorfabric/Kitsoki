@@ -9,6 +9,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,6 +18,19 @@ import (
 	"syscall"
 	"time"
 )
+
+// freeTCPPort asks the OS for an unused localhost TCP port and returns it. There
+// is a small window between closing the listener and llama-server binding the
+// port; for a single-operator local sidecar that race is acceptable (and a bind
+// failure surfaces as a health-check timeout, not corruption).
+func freeTCPPort() (int, error) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return 0, err
+	}
+	defer l.Close()
+	return l.Addr().(*net.TCPAddr).Port, nil
+}
 
 // Default tuning for managed startup. These are deliberately conservative
 // constants rather than knobs: a local sidecar is a single-operator convenience,
@@ -165,6 +179,17 @@ func (s *Sidecar) EnsureRunning(ctx context.Context) (string, error) {
 
 	if s.proc != nil {
 		return s.baseURL, nil
+	}
+
+	// A port of 0 means "the author didn't pin one" — pick a free ephemeral
+	// port so we bind (and health-check) a real address. Without this the server
+	// would launch on :0 while we probe 127.0.0.1:0 and never go green.
+	if s.port == 0 {
+		p, err := freeTCPPort()
+		if err != nil {
+			return "", fmt.Errorf("allocate llama-server port: %w", err)
+		}
+		s.port = p
 	}
 
 	// Provision the binary and weights (cached after first fetch).

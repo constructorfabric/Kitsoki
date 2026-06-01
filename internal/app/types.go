@@ -354,6 +354,10 @@ type RoutingConfig struct {
 	// otherwise-unrouted turn. See docs/architecture/semantic-routing.md
 	// and docs/architecture/oracle-plugin.md "Local model backend".
 	ExtractLLMOnNoMatch bool `yaml:"extract_llm_on_no_match,omitempty"`
+	// ExtractLLMOracle is the oracle_plugins alias the no_match LLM routing
+	// tier dispatches to (see ExtractLLMOnNoMatch). Empty defaults to
+	// "oracle.local" — the convention for the local-model backend.
+	ExtractLLMOracle string `yaml:"extract_llm_oracle,omitempty"`
 }
 
 // DefaultRoutingConfig returns the all-defaults RoutingConfig used when

@@ -103,6 +103,37 @@ func (o *Orchestrator) extractLLMOnNoMatch() bool {
 	return o.def.Routing.ExtractLLMOnNoMatch
 }
 
+// extractLLMOracle is the oracle_plugins alias the no_match LLM routing tier
+// dispatches to. It honours RoutingConfig.ExtractLLMOracle and defaults to
+// "oracle.local" (the local-model backend convention).
+func (o *Orchestrator) extractLLMOracle() string {
+	if o.def != nil && o.def.Routing != nil && o.def.Routing.ExtractLLMOracle != "" {
+		return o.def.Routing.ExtractLLMOracle
+	}
+	return "oracle.local"
+}
+
+// routeViaLLM runs the LLM tier of the semantic router on a deterministic
+// no_match: it dispatches host.RunRoutingLLM through the configured oracle
+// plugin (typically oracle.local) and returns the resulting verdict. The caller
+// feeds a successful verdict through the same confidence-band switch as the
+// deterministic tiers. Returns ok=false (and the caller falls through to the
+// main-turn LLM) when no registry is wired, no intent fits, or the call errors.
+func (o *Orchestrator) routeViaLLM(ctx context.Context, sid app.SessionID, turn app.TurnNumber, state app.StatePath, input string, allowed []string) (semroute.Verdict, bool, error) {
+	if o.oracleRegistry == nil {
+		return semroute.Verdict{}, false, nil
+	}
+	llmCtx := host.WithOracleRegistry(ctx, o.oracleRegistry)
+	llmCtx = host.WithOraclePluginName(llmCtx, o.extractLLMOracle())
+	llmCtx = host.WithOracleCallCtx(llmCtx, host.OracleCallCtx{
+		SessionID: sid,
+		Turn:      turn,
+		StatePath: state,
+	})
+	llmCtx = host.WithOracleUsageBox(llmCtx)
+	return host.RunRoutingLLM(llmCtx, input, string(state), allowed)
+}
+
 // RequiresUnfilledSlot returns true when the intent definition (looked
 // up via [lookupIntentByPath]) declares ≥1 required slot that the
 // supplied prefill map does not cover. Used by [TrySemantic] to
@@ -247,28 +278,42 @@ func (o *Orchestrator) TrySemantic(ctx context.Context, sid app.SessionID, input
 
 	verdict := extractRes.Verdict
 	if extractRes.ResolvedBy == host.ResolvedByNoMatch() {
-		// No hit from the deterministic extract tiers (synonyms /
-		// slot_template). When the app opted into ExtractLLMOnNoMatch the
-		// intent is to let the extract LLM tier — backed by a cheap local
-		// model via oracle: oracle.local — take a schema-bounded routing
-		// attempt before the main-turn LLM. The free-form-verdict →
-		// semroute.Verdict confidence-band mapping is uncalibrated (proposal
-		// Open Question 4), so we do not fabricate a verdict here yet: the
-		// flag is honoured as a breadcrumb so the chosen path is auditable,
-		// and the turn falls through to the LLM exactly as before. Wiring the
-		// actual local-model routing call lands with the verdict-mapping
-		// calibration. Default-off apps emit the standard miss.
-		if o.extractLLMOnNoMatch() {
-			tl.Debug(ctx, trace.EvTurnSemanticMiss,
-				slog.String("input", input),
-				slog.String("note", "extract_llm_on_no_match: opted in (verdict mapping pending calibration; falling through to LLM)"),
+		// The deterministic extract tiers (synonyms / slot_template) missed.
+		// Record it NOW — before the (potentially multi-second) local-model
+		// call — so the routing pipeline advances to the local-LLM layer live
+		// instead of looking stuck on "semantic" for the whole call.
+		tl.Debug(ctx, trace.EvTurnSemanticMiss, slog.String("input", input))
+
+		// When the app opted into ExtractLLMOnNoMatch, run the LLM tier — backed
+		// by a cheap local model via oracle: oracle.local — for a schema-bounded
+		// routing attempt before the main-turn LLM. A "none"/out-of-list verdict,
+		// no registry, or an error falls through to the main-turn LLM.
+		if !o.extractLLMOnNoMatch() {
+			return nil, false, nil
+		}
+		llmVerdict, ok, llmErr := o.routeViaLLM(ctx, sid, turnNum, journey.State, input, allowedNames)
+		if llmErr != nil {
+			// A local-model failure must never abort the turn — record the
+			// local-LLM miss (so the pipeline marks that layer) and fall through
+			// to the main-turn LLM.
+			tl.Debug(ctx, trace.EvTurnLLMMiss,
+				slog.String("model", o.extractLLMOracle()),
+				slog.String("reason", "error"),
+				slog.String("err", llmErr.Error()),
 			)
 			return nil, false, nil
 		}
-		tl.Debug(ctx, trace.EvTurnSemanticMiss,
-			slog.String("input", input),
-		)
-		return nil, false, nil
+		if !ok {
+			tl.Debug(ctx, trace.EvTurnLLMMiss,
+				slog.String("model", o.extractLLMOracle()),
+				slog.String("reason", "no_match"),
+			)
+			return nil, false, nil
+		}
+		// LLM tier hit: adopt the verdict and fall through to the band switch,
+		// which emits EvTurnLLMRouted naming the backend so the pipeline
+		// attributes the hit to the local-LLM layer.
+		verdict = llmVerdict
 	}
 
 	highBar, midBar := o.semanticBars()
@@ -315,11 +360,23 @@ func (o *Orchestrator) TrySemantic(ctx context.Context, sid app.SessionID, input
 			)
 			return nil, false, nil
 		}
-		tl.Debug(ctx, trace.EvTurnSemanticHit,
-			slog.String("intent", verdict.Intent),
-			slog.String("reason", verdict.MatchReason),
-			slog.Float64("confidence", verdict.Confidence),
-		)
+		if verdict.MatchKind == "llm" {
+			// The local-model LLM tier resolved this. Emit the LLM-routed event
+			// (model = the backend plugin) so the routing pipeline marks the LLM
+			// layer as the winner and names the backend, distinct from a
+			// deterministic synonym hit.
+			tl.Debug(ctx, trace.EvTurnLLMRouted,
+				slog.String("intent", verdict.Intent),
+				slog.String("model", o.extractLLMOracle()),
+				slog.Float64("confidence", verdict.Confidence),
+			)
+		} else {
+			tl.Debug(ctx, trace.EvTurnSemanticHit,
+				slog.String("intent", verdict.Intent),
+				slog.String("reason", verdict.MatchReason),
+				slog.Float64("confidence", verdict.Confidence),
+			)
+		}
 		slots := verdict.Slots
 		if slots == nil {
 			slots = map[string]any{}
@@ -338,11 +395,17 @@ func (o *Orchestrator) TrySemantic(ctx context.Context, sid app.SessionID, input
 		// confidence). Operators reading inspect.LastTurns[].Input,
 		// replay-from-journal, and anyone diagnosing an unexpected
 		// transition all need this. See RouteProvenance.
-		outcome, err := o.SubmitDirectRouted(ctx, sid, verdict.Intent, slots, input, RouteProvenance{
-			Source:     "semantic",
-			MatchType:  verdict.MatchReason,
-			Confidence: verdict.Confidence,
-		})
+		// Record WHICH tier routed. The LLM tier (verdict.MatchKind=="llm")
+		// reports source "llm" and names the backend plugin (e.g. oracle.local)
+		// so the trace shows a local-model route is distinct from a deterministic
+		// synonym — and from a main-turn claude route. (The matching oracle.call.*
+		// events also carry the plugin name.)
+		prov := RouteProvenance{Source: "semantic", MatchType: verdict.MatchReason, Confidence: verdict.Confidence}
+		if verdict.MatchKind == "llm" {
+			prov.Source = "llm"
+			prov.MatchType = o.extractLLMOracle()
+		}
+		outcome, err := o.SubmitDirectRouted(ctx, sid, verdict.Intent, slots, input, prov)
 		if err != nil {
 			return nil, false, err
 		}

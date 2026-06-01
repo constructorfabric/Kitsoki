@@ -17,6 +17,9 @@ package host
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
 
 	"kitsoki/internal/semroute"
 )
@@ -114,4 +117,102 @@ func RunExtractForRouting(ctx context.Context, m *semroute.Matcher, args Routing
 		kind = resolvedBySlotTemplate
 	}
 	return RoutingExtractResult{Verdict: verdict, ResolvedBy: kind}, nil
+}
+
+// RunRoutingLLM is the LLM tier of the semantic router: it asks an oracle
+// (typically a cheap local model via oracle: oracle.local) to classify input
+// into one of the allowed intents, returning a semroute.Verdict the caller
+// feeds through the same confidence-band logic as the deterministic tiers.
+//
+// It dispatches through the oracle plugin contract, so the caller MUST have
+// injected the registry (WithOracleRegistry), the plugin alias
+// (WithOraclePluginName), and an OracleCallCtx. When no plugin is named the
+// dispatch is a no-op and this returns ok=false (the caller falls through to
+// the main-turn LLM exactly as before).
+//
+// The schema pins {intent ∈ allowed∪"none", confidence ∈ [0,1]} — flat, in the
+// grammar subset, so a grammar-capable backend constrains the decode. The model
+// is interpretive; ValidateSubmission remains the structural guarantee, and a
+// verdict naming "none" or an out-of-list intent is treated as a miss.
+func RunRoutingLLM(ctx context.Context, input, state string, allowed []string) (semroute.Verdict, bool, error) {
+	if len(allowed) == 0 {
+		return semroute.Verdict{}, false, nil
+	}
+
+	// Build a flat, in-subset schema: intent enum (allowed + "none") + confidence.
+	enum := make([]string, 0, len(allowed)+1)
+	enum = append(enum, allowed...)
+	enum = append(enum, "none")
+	schema, err := json.Marshal(map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"intent", "confidence"},
+		"properties": map[string]any{
+			"intent": map[string]any{"type": "string", "enum": enum},
+			// No min/max: llama.cpp's grammar constrains the JSON type but NOT a
+			// numeric range, so a small model commonly emits confidence as a
+			// percentage (e.g. 95). Bounding it here would make ValidateSubmission
+			// reject every such verdict and defeat the whole tier; we accept any
+			// number and clamp in code instead.
+			"confidence": map[string]any{"type": "number"},
+		},
+	})
+	if err != nil {
+		return semroute.Verdict{}, false, err
+	}
+
+	var b strings.Builder
+	b.WriteString("You are an intent router. Map the user's command to EXACTLY ONE intent id from the list below, or \"none\" if none fits. ")
+	b.WriteString("Respond only with the structured verdict {intent, confidence}, where confidence is your certainty from 0 to 1 (a decimal, NOT a percentage).\n\nAllowed intents:\n")
+	for _, name := range allowed {
+		fmt.Fprintf(&b, "- %s\n", name)
+	}
+	fmt.Fprintf(&b, "\nUser command: %s\n", input)
+
+	res, handled, derr := TryDispatchVerb(ctx, "extract", b.String(), "", "", "", map[string]any{
+		"routing_state": state,
+	}, json.RawMessage(schema))
+	if derr != nil {
+		return semroute.Verdict{}, false, derr
+	}
+	if !handled {
+		return semroute.Verdict{}, false, nil
+	}
+
+	sub, _ := res.Data["submission"].(map[string]any)
+	if sub == nil {
+		return semroute.Verdict{}, false, nil
+	}
+	intent, _ := sub["intent"].(string)
+	if intent == "" || intent == "none" {
+		return semroute.Verdict{}, false, nil
+	}
+	// Guard: the model must name an allowed intent (the enum should enforce this,
+	// but a fail-open backend can drift — keep the router sound).
+	inAllowed := false
+	for _, a := range allowed {
+		if a == intent {
+			inAllowed = true
+			break
+		}
+	}
+	if !inAllowed {
+		return semroute.Verdict{}, false, nil
+	}
+
+	conf, _ := sub["confidence"].(float64)
+	if conf < 0 {
+		conf = 0
+	}
+	if conf > 1 {
+		conf = 1
+	}
+
+	return semroute.Verdict{
+		Intent:      intent,
+		Slots:       map[string]any{},
+		Confidence:  conf,
+		MatchReason: "llm-routing",
+		MatchKind:   "llm",
+	}, true, nil
 }

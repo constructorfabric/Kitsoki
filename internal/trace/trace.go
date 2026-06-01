@@ -78,9 +78,9 @@ const (
 	// Fires at any of the three sites that previously disagreed:
 	// machine.dispatchEmittedIntents, parallel.turnParallel (transition or
 	// on_enter), and machine.DispatchPostBindEmits.
-	EvIntentEmitted              = "machine.intent.emitted"
-	EvIntentEmitDepthCap         = "machine.intent.emit.depth_cap"
-	EvIntentEmitParallelDropped  = "machine.intent.emit.parallel_dropped"
+	EvIntentEmitted             = "machine.intent.emitted"
+	EvIntentEmitDepthCap        = "machine.intent.emit.depth_cap"
+	EvIntentEmitParallelDropped = "machine.intent.emit.parallel_dropped"
 
 	// Expr.
 	EvExprCompileError = "expr.compile_error"
@@ -119,6 +119,14 @@ const (
 	// docs/architecture/semantic-routing.md); Phase 2 only emits the
 	// trace breadcrumb.
 	EvTurnLLMRouted = "turn.llm_routed"
+
+	// EvTurnLLMMiss fires when the local-model routing tier (oracle.local on a
+	// semantic no_match) was tried but did not produce a usable verdict — it
+	// returned "none"/low-confidence or errored — so routing falls through to
+	// the main-turn LLM. The `model` attr names the backend that missed. Lets
+	// the routing pipeline mark the local-LLM layer as tried-and-missed rather
+	// than inferring it only when the cloud model later wins.
+	EvTurnLLMMiss = "turn.llm_miss"
 
 	// Off-path side-channel.  The off-path runtime is intentionally
 	// orthogonal to the state machine — no Turn() fires, no transition events

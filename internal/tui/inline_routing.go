@@ -2,27 +2,20 @@ package tui
 
 import (
 	"encoding/json"
-	"fmt"
-	"sort"
-	"strings"
 
-	"kitsoki/internal/orchestrator"
 	"kitsoki/internal/store"
 	"kitsoki/internal/tui/blocks"
 )
 
-// inline_routing.go — input-feedback helpers that produce the inline
-// routing-status block strings attached
-// under each user-turn echo. submitInput / handleTurnOutcome use these
-// to build the in-flight and settled lines; the transcript model holds
-// them as live entries (AppendLive / UpdateLive / FinalizeLive).
-//
-// These helpers wrap blocks.Renderer so the inline lines visually match
-// the same Phase 0 preview output the design golden tests pin.
+// inline_routing.go — helpers for the inline routing-status strings shown under
+// each user-turn echo. The live, multi-layer routing PIPELINE lives in
+// routing_pipeline.go; this file keeps the thin Renderer wrapper used for
+// one-off settled lines (slash commands, off-path) plus the event readers the
+// pipeline's completion path uses to recover routing provenance and the
+// resolved intent from a TurnOutcome.
 
-// inlineRouter is a thin Renderer wrapper bound to the transcript's
-// current width — kept short because every call site rebuilds it
-// per-turn to pick up width changes.
+// inlineRouter is a thin Renderer wrapper bound to the transcript's current
+// width — rebuilt per call site to pick up width changes.
 type inlineRouter struct {
 	r *blocks.Renderer
 }
@@ -38,15 +31,9 @@ func (m RootModel) newInlineRouter() inlineRouter {
 	return inlineRouter{r: blocks.New(w, m.currentTheme())}
 }
 
-// phaseLine builds an "  routing: <phase>…" placeholder. Returned
-// verbatim so AppendLive / UpdateLive can store the styled string.
-func (ir inlineRouter) phaseLine(p blocks.RoutingPhase) string {
-	return ir.r.RoutingStatus(p)
-}
-
-// settledLine builds the final resolved line. kind is one of
-// nav | view | system | in-room | off-path. source is the tier that
-// hit; confidence is only used when source == LLM.
+// settledLine builds a one-off resolved line for paths that bypass the routing
+// pipeline (slash commands, off-path). kind is one of nav | view | system |
+// in-room | off-path; source is the tier; confidence is only used for LLM.
 func (ir inlineRouter) settledLine(kind, intent string, source blocks.RoutingSource, confidence float64, detail string) string {
 	return ir.r.RoutingResolved(blocks.Resolved{
 		Kind:       kind,
@@ -57,153 +44,46 @@ func (ir inlineRouter) settledLine(kind, intent string, source blocks.RoutingSou
 	})
 }
 
-// classifyKind infers nav vs in-room from a turn outcome — the cheap
-// classification the inline settled line uses. nav = state changed;
-// in-room = same state. The proposal's full kind table (nav | view |
-// system | in-room | off-path) is reached by callers that have
-// out-of-band knowledge (slash commands know they're "system",
-// /meta knows it's a room switch, etc.); this helper only handles
-// the regular-turn case.
-func classifyKind(prev, next string) string {
-	if prev != next {
-		return "nav"
-	}
-	return "in-room"
-}
-
-// settledFromOutcome derives a Resolved from a TurnOutcome. The intent
-// name comes from the first IntentAccepted event in out.Events (which
-// is where the orchestrator records the resolved intent); falls back
-// to the user input's first word so the line is still informative
-// when no event was emitted. Source is deterministic when MatchDeterministic
-// already hit at submit time; LLM otherwise. Confidence is not yet
-// carried on TurnOutcome — Phase 2 wires the slog tier events into the
-// transcript so confidence ends up on the settled line.
-func settledFromOutcome(out *orchestrator.TurnOutcome, prevState, userInput string, deterministic bool) blocks.Resolved {
-	intent := intentFromEvents(out.Events)
-	if intent == "" {
-		intent = strings.SplitN(strings.TrimSpace(userInput), " ", 2)[0]
-	}
-	source := blocks.SourceLLM
-	if deterministic {
-		source = blocks.SourceDeterministic
-	}
-	return blocks.Resolved{
-		Kind:   classifyKind(prevState, string(out.NewState)),
-		Intent: intent,
-		Source: source,
-	}
-}
-
-// intentFromEvents scans events for the first IntentAccepted entry and
-// extracts its "intent" payload field. Returns "" if no event carried
-// the intent — settledFromOutcome falls back to the user input.
-func intentFromEvents(events []store.Event) string {
+// provenanceFromEvents reads the RouteProvenance stamped on the TurnStarted
+// event: routed_by (the tier), match_type (tier detail — for the LLM tier the
+// backend plugin name), and confidence. Zero values when none was recorded
+// (e.g. a main-turn LLM route). The routing pipeline uses this at turn
+// completion to attribute the win to the right layer.
+func provenanceFromEvents(events []store.Event) (routedBy, matchType string, confidence float64) {
 	for _, ev := range events {
-		if ev.Kind != store.IntentAccepted {
+		if ev.Kind != store.TurnStarted {
 			continue
 		}
 		var p struct {
-			Intent string `json:"intent"`
+			RoutedBy   string  `json:"routed_by"`
+			MatchType  string  `json:"match_type"`
+			Confidence float64 `json:"confidence"`
 		}
-		if err := json.Unmarshal(ev.Payload, &p); err != nil {
-			continue
+		if err := json.Unmarshal(ev.Payload, &p); err == nil {
+			return p.RoutedBy, p.MatchType, p.Confidence
 		}
-		if p.Intent != "" {
-			return p.Intent
+	}
+	return "", "", 0
+}
+
+// intentFromEvents returns the resolved intent for a turn: IntentAccepted first,
+// then the machine.transition event. "" when neither carried an intent.
+func intentFromEvents(events []store.Event) string {
+	for _, want := range []store.EventKind{store.IntentAccepted, store.TransitionApplied} {
+		for _, ev := range events {
+			if ev.Kind != want {
+				continue
+			}
+			var p struct {
+				Intent string `json:"intent"`
+			}
+			if err := json.Unmarshal(ev.Payload, &p); err != nil {
+				continue
+			}
+			if p.Intent != "" {
+				return p.Intent
+			}
 		}
 	}
 	return ""
-}
-
-// Force the orchestrator import to stay even when the only consumer in
-// this file is a parameter type — keeps go vet happy in headless
-// builds.
-var _ = (*orchestrator.TurnOutcome)(nil)
-
-// missTierPhase maps a routing-chip tier (which is what miss/hit Msgs
-// carry) onto the proposal's phase labels. A miss at deterministic
-// shows "synonyms…" next (we just moved past deterministic), and so on
-// through the pipeline.
-func missTierPhase(t RoutingTier) blocks.RoutingPhase {
-	switch t {
-	case TierDeterministic:
-		return blocks.PhaseSynonyms
-	case TierSemantic, TierTemplate:
-		return blocks.PhaseSlotParser
-	case TierTurncache:
-		return blocks.PhaseLLM
-	default:
-		return blocks.PhaseLLM
-	}
-}
-
-// hitTierSource maps a hit tier onto the settled-line source enum.
-func hitTierSource(t RoutingTier) blocks.RoutingSource {
-	switch t {
-	case TierDeterministic:
-		return blocks.SourceDeterministic
-	case TierSemantic:
-		return blocks.SourceSynonym
-	case TierTemplate:
-		return blocks.SourceSlotParser
-	case TierTurncache:
-		return blocks.SourceCache
-	case TierLLM:
-		return blocks.SourceLLM
-	case TierOffpath:
-		return blocks.SourceOffPath
-	default:
-		return blocks.SourceLLM
-	}
-}
-
-// hitTierKind picks a coarse kind for the settled line. Without
-// knowing the resulting state path (the chip fires before the
-// machine transitions), we default to "in-room" — the cheap inference
-// for whether the turn changes rooms requires waiting for the
-// outcome, which the live block can't do. handleTurnOutcome refines
-// this when the outcome arrives if the chip already settled.
-func hitTierKind(_ RoutingTier, _ /*currentState*/ interface{}) string {
-	return "in-room"
-}
-
-// hitTierDetail composes the detail trailer attached to the settled
-// line — slot dump for slot-parser hits, "hits=N" for cache, latency
-// for LLM, etc.
-func hitTierDetail(m RoutingTierHitMsg) string {
-	switch m.Tier {
-	case TierTemplate:
-		if len(m.Slots) > 0 {
-			return "slots: " + slotsString(m.Slots)
-		}
-	case TierTurncache:
-		if m.Hits > 0 {
-			return ""
-		}
-	case TierLLM:
-		if m.Latency > 0 {
-			return ""
-		}
-	}
-	return ""
-}
-
-// slotsString stringifies a slot map for the inline-routing detail
-// trailer. Keeps it small — long maps fall through to a count.
-func slotsString(m map[string]any) string {
-	if len(m) == 0 {
-		return ""
-	}
-	if len(m) > 3 {
-		// Render the cardinality only — full dump bloats the inline
-		// line.
-		return fmt.Sprintf("(%d slots)", len(m))
-	}
-	parts := make([]string, 0, len(m))
-	for k, v := range m {
-		parts = append(parts, fmt.Sprintf("%s: %v", k, v))
-	}
-	sort.Strings(parts)
-	return "{" + strings.Join(parts, ", ") + "}"
 }

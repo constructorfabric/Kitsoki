@@ -935,9 +935,11 @@ func TestTUISpinnerPresent(t *testing.T) {
 	require.True(t, ok)
 	rm = tuipkg.SimulateSlowHarnessTurnStart(rm)
 
-	// The view should contain the "thinking via claude…" label.
+	// The view should contain the backend-neutral "thinking…" spinner label
+	// (the router path may resolve via the local model or claude, so the caption
+	// no longer names a specific backend).
 	view := rm.View()
-	require.Contains(t, view, "thinking via claude", "spinner label should appear in in-flight mode")
+	require.Contains(t, view, "thinking", "spinner label should appear in in-flight mode")
 }
 
 // TestTUISlashCommandDuringInFlight verifies that slash commands work even during

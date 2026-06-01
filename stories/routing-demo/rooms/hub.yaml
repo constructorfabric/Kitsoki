@@ -1,0 +1,62 @@
+states:
+  hub:
+    description: "Routing Playground — pick a lesson"
+    relevant_world: [lamp, budget, last_action]
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "Every command you type is mapped to an intent by a four-tier router. Each lesson isolates one tier so you can feel the difference. Type a lesson name (or its number) to enter — navigation is routed too, so try a paraphrase as well."
+          - heading: "The four tiers (run in order, first hit wins)"
+          - list:
+              items:
+                - label: "1. synonyms / examples"
+                  hint: "exact, bare-synonym, and menu-example matches — instant, offline"
+                - label: "2. slot_template"
+                  hint: "patterns like 'budget {amount}' that also fill slots — offline"
+                - label: "3. semantic bands"
+                  hint: "a hit's confidence picks the action: route / clarify / disambiguate"
+                - label: "4. local model on no_match"
+                  hint: "deterministic miss → oracle.local classifies → confident routes, else main-LLM"
+          - heading: "The routing config (this story's app.yaml)"
+          - code: |
+              routing:
+                enabled: true
+                semantic_high_bar: 0.80          # >= this confidence -> route directly
+                semantic_mid_bar:  0.65          # >= this -> ask a clarification first
+                extract_llm_on_no_match: true    # tier 4 on/off
+                extract_llm_oracle: oracle.local # which model backend tier 4 uses
+        choices:
+          - heading: "Lessons"
+          - list:
+              items:
+                - label: "deterministic"
+                  hint: "tiers 1 & 2 — synonyms, examples, slot_template"
+                - label: "local model"
+                  hint: "tier 4 — paraphrases routed by oracle.local"
+                - label: "ambiguous"
+                  hint: "tie → disambiguation card"
+                - label: "quit"
+                  hint: "leave the playground"
+        footer:
+          - prose: "Last routed action: {{ world.last_action }}"
+    on:
+      goto_deterministic:
+        - target: deterministic
+      goto_local:
+        - target: local_model
+      goto_ambiguous:
+        - target: ambiguous
+      look:
+        - target: .
+      quit:
+        - target: ended
+
+  ended:
+    terminal: true
+    description: "Playground closed"
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "Routing playground closed. Re-run to start over."

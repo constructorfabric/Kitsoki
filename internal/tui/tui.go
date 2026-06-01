@@ -155,6 +155,11 @@ type RootModel struct {
 	// composing.
 	pendingDraft string
 
+	// routing tracks the live routing-pipeline state for the in-flight turn:
+	// which tiers were tried/missed and which one won. Reset at submit time,
+	// updated by RoutingTier{Miss,Hit}Msg, and finalized at turn completion.
+	routing routingPipeline
+
 	// chatStore is the persistent chat row backend; used by the
 	// metamode controller to resolve / append. nil disables /meta
 	// (no controller is constructed in NewRootModel).
@@ -1013,15 +1018,20 @@ func (m RootModel) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 		ir := m.newInlineRouter()
 		switch tm := msg.(type) {
 		case RoutingTierMissMsg:
-			m.transcript.UpdateLive(ir.phaseLine(missTierPhase(tm.Tier)))
+			// A tier was tried with no confident match — advance the pipeline.
+			// Reason carries the backend for a local-LLM miss so the right LLM
+			// layer is marked.
+			m.routing.markMiss(tm.Tier, tm.Reason)
+			m.transcript.UpdateLive(m.routing.renderProgress())
 		case RoutingTierHitMsg:
-			m.transcript.FinalizeLive(ir.r.RoutingResolved(blocks.Resolved{
-				Kind:       hitTierKind(tm.Tier, m.currentState),
-				Intent:     tm.Intent,
-				Source:     hitTierSource(tm.Tier),
-				Confidence: tm.Confidence,
-				Detail:     hitTierDetail(tm),
-			}))
+			// Mark the winning layer (the LLM layer's detail names the backend,
+			// e.g. oracle.local) and settle the resolved line. Guard on hasLive so
+			// this and the turn-completion finalizer can't both commit (whichever
+			// runs first settles; the other sees no live line and skips).
+			m.routing.markHit(tm.Tier, tm.Intent, hitDetailFor(tm), tm.Confidence, tm.Tier == TierLLM)
+			if m.transcript.hasLive() {
+				m.transcript.FinalizeLive(m.routing.renderResolved())
+			}
 		case RoutingAmbiguousMsg:
 			m.transcript.UpdateLive(ir.r.RoutingResolved(blocks.Resolved{
 				Source: blocks.SourceAmbiguous,
@@ -1647,7 +1657,8 @@ func (m RootModel) dispatchInput(input string) (tea.Model, tea.Cmd) {
 	// deliveries which the dispatcher above feeds through
 	// UpdateLive. The settled line stays in the transcript as a
 	// permanent record.
-	m.transcript.AppendLive(ir.phaseLine(blocks.PhaseDeterministic))
+	m.routing = newRoutingPipeline()
+	m.transcript.AppendLive(m.routing.renderProgress())
 
 	// Cheap, side-effect-free match against the current menu. This avoids the
 	// LLM round-trip when the user typed something we can route locally — but
@@ -1665,18 +1676,19 @@ func (m RootModel) dispatchInput(input string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if hit {
-		settled := ir.settledLine(
-			"in-room", intent,
-			blocks.SourceDeterministic, 0, "",
-		)
-		m.transcript.FinalizeLive(settled)
+		// Deterministic match at submit time — the pipeline resolves on the
+		// first layer and settles immediately (this path has no completion-time
+		// finalizer because handleTurnOutcome skips deterministic turns).
+		m.routing.markHit(TierDeterministic, intent, "", 0, false)
+		m.transcript.FinalizeLive(m.routing.renderResolved())
 		return startAsyncTurn(m, input, asyncSubmitDirectFromInput(orch, sid, intent, slots, input, orchestrator.RouteProvenance{Source: "deterministic"}), pendingDeterministic)
 	}
 
-	// No deterministic match — advance the live routing block to
-	// "LLM…" and dispatch through the LLM router. The settled line
-	// lands in handleTurnOutcome.
-	m.transcript.UpdateLive(ir.phaseLine(blocks.PhaseLLM))
+	// No deterministic match — the deterministic layer is passed-through; the
+	// async router (semantic → LLM) drives the rest via RoutingTier*Msg, and
+	// handleTurnOutcome finalizes. Advance the live pipeline now.
+	m.routing.markMiss(TierDeterministic, "")
+	m.transcript.UpdateLive(m.routing.renderProgress())
 	return startAsyncTurn(m, input, asyncTurn(orch, sid, input), pendingLLM)
 }
 
@@ -2225,15 +2237,26 @@ func (m RootModel) handleTurnOutcome(msg turnOutcomeMsg) (tea.Model, tea.Cmd) {
 		// LLM paths settle here). Then append the agent's body as a
 		// separate entry — the header was already echoed at submit
 		// time so AppendAgentBody / AppendAgentBodyTyped omit it.
-		ir := m.newInlineRouter()
-		// pendingKind tracks why the model was AwaitingLLM. We use it
-		// to distinguish deterministic (already-settled) from LLM
-		// (needs settling here). Defaults to LLM on the unsettled path
-		// because pendingKind isn't reset elsewhere.
+		// pendingKind tracks why the model was AwaitingLLM. Deterministic turns
+		// already settled their pipeline at submit time; the LLM path settles
+		// here — the SINGLE finalizer, so a late hit event can't double-settle.
 		deterministic := m.pendingKind == pendingDeterministic
-		if !deterministic {
-			res := settledFromOutcome(out, prevState, msg.input, false)
-			m.transcript.FinalizeLive(ir.r.RoutingResolved(res))
+		// Finalize the routing line only if an observer hit hasn't already (the
+		// hit handler clears the live line when it settles). hasLive guards
+		// against a double-commit regardless of which runs first.
+		if !deterministic && m.transcript.hasLive() {
+			// Turns that bypassed submitInput (e.g. a warp) never initialized the
+			// pipeline — give it layers before resolving.
+			if len(m.routing.layers) == 0 {
+				m.routing = newRoutingPipeline()
+			}
+			// No hit event arrived live — fill the winner from the authoritative
+			// TurnStarted provenance (or main-turn claude).
+			if !m.routing.resolved() {
+				routedBy, matchType, conf := provenanceFromEvents(out.Events)
+				m.routing.resolveFromProvenance(routedBy, matchType, conf, intentFromEvents(out.Events))
+			}
+			m.transcript.FinalizeLive(m.routing.renderResolved())
 		}
 		// If the new view declares an interactive choice widget,
 		// open it FIRST so we can strip the choice element from the
@@ -4067,7 +4090,11 @@ func (m RootModel) View() string {
 		// the queue affordance is obvious. The hourglass icon also
 		// replaces the textarea's normal "> " prefix on row 0 so
 		// the visual cue is unmistakable.
-		caption := "thinking via claude… (Ctrl+C to cancel)"
+		// Backend-neutral: the pendingLLM path runs the whole router, which may
+		// resolve via the local-model routing tier (oracle.local) OR fall through
+		// to the main-turn claude. Naming a specific backend here mislabels a
+		// local-model route as "claude", so the caption stays neutral.
+		caption := "thinking… (Ctrl+C to cancel)"
 		if m.pendingKind == pendingDeterministic {
 			caption = "running…  (Ctrl+C to cancel)"
 		}

@@ -361,6 +361,14 @@ func translateToTeaMsg(msg string, attrs map[string]any) (tea.Msg, bool) {
 			Latency:    attrDuration(attrs, "dur"),
 		}, true
 
+	case trace.EvTurnLLMMiss:
+		// The local-model routing tier was tried and missed; Reason carries the
+		// backend so the pipeline marks the local-LLM layer (not main-LLM).
+		return RoutingTierMissMsg{
+			Tier:   TierLLM,
+			Reason: attrString(attrs, "model"),
+		}, true
+
 	case trace.EvTurnOffpathRouted:
 		return RoutingTierHitMsg{
 			Tier:   TierOffpath,
@@ -385,6 +393,7 @@ func isRoutingMsg(msg string) bool {
 		trace.EvTurnSemanticAmbiguous,
 		trace.EvTurnTurncacheHit,
 		trace.EvTurnLLMRouted,
+		trace.EvTurnLLMMiss,
 		trace.EvTurnOffpathRouted,
 		trace.EvTurnCancelled:
 		return true

@@ -51,6 +51,10 @@ const (
 // turn.semantic_miss / equivalent slog events.
 type RoutingTierMissMsg struct {
 	Tier RoutingTier
+	// Reason carries tier detail — for a TierLLM miss it is the backend that
+	// missed (e.g. "oracle.local"), so the pipeline marks the local-LLM layer
+	// rather than the main-LLM one.
+	Reason string
 }
 
 // RoutingTierHitMsg finalises the inline routing block at a tier with
