@@ -69,7 +69,7 @@ phase_templates:
         on:
           done:
             - target: "{{ tpl.id }}_awaiting_reply"
-              when: "tpl.checkpoint == true"
+              when: "{{ tpl.checkpoint }} == true"
               effects:
                 - invoke: host.transport.post
                   with:

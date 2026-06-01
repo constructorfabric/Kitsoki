@@ -385,6 +385,98 @@ func Render(tmpl string, env Env) (string, error) {
 	return execTmplTree(tree, env)
 }
 
+// ValidateTemplate compile-checks a multi-interpolation template string
+// WITHOUT evaluating it, so a load-time validator can reject a malformed
+// template the moment an app is parsed rather than mid-turn when [Render]
+// first runs it. It mirrors Render's parse path exactly — same tokeniser,
+// same {{ }} / {{ if }} / {{ range }} grammar — so it neither false-positives
+// on a valid template nor false-negatives on a broken one. A template with no
+// {{ is a pure literal and passes trivially. For every embedded expression,
+// guard condition, and range list it walks, ValidateTemplate runs the same
+// whitelist-checked [Compile] the renderer would use, surfacing parse errors
+// (e.g. a stray pongo `|filter:` operator) and whitelist violations as a
+// returned error. It does not touch the per-expression eval caches.
+func ValidateTemplate(tmpl string) error {
+	if !strings.Contains(tmpl, "{{") {
+		return nil
+	}
+	tree, err := parseTemplate(tmpl)
+	if err != nil {
+		return err
+	}
+	return validateNodes(tree.nodes)
+}
+
+// validateNodes compile-checks every expression embedded in a parsed template
+// tree, recursing through if/range bodies. Guard conditions compile as bool
+// programs (matching the renderer's evalBoolCached path); interpolations and
+// range lists compile as any-typed programs (matching evalExprCached). The
+// range-body dot-rewrite is applied so `.field` references inside a
+// `{{ range }}` validate against the `item` root just as they evaluate.
+func validateNodes(nodes []*tmplNode) error {
+	for _, n := range nodes {
+		switch n.kind {
+		case nodeText:
+			// Literal text — nothing to compile.
+		case nodeExpr:
+			if _, err := Compile(n.exprSrc); err != nil {
+				return err
+			}
+		case nodeIf:
+			if _, err := CompileBool(n.cond); err != nil {
+				return err
+			}
+			if err := validateNodes(n.thenBody); err != nil {
+				return err
+			}
+			if err := validateNodes(n.elseBody); err != nil {
+				return err
+			}
+		case nodeRange:
+			if _, err := Compile(n.cond); err != nil {
+				return err
+			}
+			if err := validateRangeNodes(n.thenBody); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// validateRangeNodes mirrors validateNodes for the body of a {{ range }} block,
+// applying the same leading-dot rewrite the renderer uses (see
+// rewriteDotsForRange) so `.field` accesses compile against the `item` root.
+func validateRangeNodes(nodes []*tmplNode) error {
+	for _, n := range nodes {
+		switch n.kind {
+		case nodeText:
+		case nodeExpr:
+			if _, err := Compile(rewriteDotsForRange(n.exprSrc)); err != nil {
+				return err
+			}
+		case nodeIf:
+			if _, err := CompileBool(rewriteDotsForRange(n.cond)); err != nil {
+				return err
+			}
+			if err := validateRangeNodes(n.thenBody); err != nil {
+				return err
+			}
+			if err := validateRangeNodes(n.elseBody); err != nil {
+				return err
+			}
+		case nodeRange:
+			if _, err := Compile(rewriteDotsForRange(n.cond)); err != nil {
+				return err
+			}
+			if err := validateRangeNodes(n.thenBody); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // ─── Template AST ─────────────────────────────────────────────────────────────
 
 type nodeKind int
@@ -762,14 +854,22 @@ func coerceToList(v any) ([]any, error) {
 // or multiple blocks), it falls back to Render and returns a string.
 func RenderValue(tmpl string, env Env) (any, error) {
 	stripped := strings.TrimSpace(tmpl)
-	// Check for single {{ expr }} wrapping the entire value.
+	// Check for a single {{ expr }} block wrapping the ENTIRE value. The
+	// HasPrefix/HasSuffix pair is necessary but not sufficient: a
+	// multi-interpolation template like "{{ a }}Q{{ b }}: {{ c }}" also
+	// begins with "{{" and ends with "}}", yet it is a string template,
+	// not one expression. Requiring the inner text to contain no further
+	// delimiters keeps that case on the Render path — compiling its
+	// middle ("a }}Q{{ b }}: {{ c") as a single expr would fail.
 	if strings.HasPrefix(stripped, "{{") && strings.HasSuffix(stripped, "}}") {
 		inner := stripped[2 : len(stripped)-2]
-		inner = strings.TrimSpace(inner)
-		// Only treat as a typed value if it doesn't start with a block keyword.
-		kw, _ := splitKeyword(inner)
-		if kw != "if" && kw != "else" && kw != "end" {
-			return evalExprCached(inner, env)
+		if !strings.Contains(inner, "{{") && !strings.Contains(inner, "}}") {
+			inner = strings.TrimSpace(inner)
+			// Only treat as a typed value if it doesn't start with a block keyword.
+			kw, _ := splitKeyword(inner)
+			if kw != "if" && kw != "else" && kw != "end" {
+				return evalExprCached(inner, env)
+			}
 		}
 	}
 	// Fallback to string render.

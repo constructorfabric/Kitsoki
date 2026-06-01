@@ -729,6 +729,14 @@ func validateDef(def *AppDef, file string) (*AppDef, []error) {
 	}
 	validateStates(file, "", def.States, globalIntents, def.Intents, nil, worldKeys, allStatePaths, stateOnKeys, allowedHosts, declaredAgents, &errs)
 
+	// ── 7a'. static expression compile-check ──────────────────────────────────
+	// Compile (never evaluate) every effect value and guard expression so a
+	// malformed expr-lang expression — e.g. a pongo-only `|default:` filter
+	// written into an effect value — fails the load with a precise diagnostic
+	// instead of exploding mid-turn the first time its transition fires. See
+	// validate_exprs.go.
+	validateExprs(file, def, &errs)
+
 	// Validate the engine-driven decider config (execution-modes proposal).
 	if d := def.Decider; d != nil {
 		if strings.TrimSpace(d.Agent) == "" {
