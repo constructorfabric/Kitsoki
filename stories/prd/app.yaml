@@ -95,6 +95,7 @@ world:
   clarifications:        { type: object, default: {} }  # decide result for THIS round: { questions: [{id, question, why}] }
   clarification_answers: { type: string, default: "" }  # operator's replies for THIS round — accumulates one line per answered question (see rooms/clarifying.yaml `answer`)
   answered_count:        { type: int,    default: 0 }   # how many questions answered THIS round (drives the "Answered so far (N/total)" readout); reset on every new round
+  answered_ids:          { type: string, default: "" }  # which question numbers are answered THIS round, as a "|n|"-delimited set (e.g. "|1||3|") — drives removing answered questions from the live list; reset alongside answered_count
   clarification_log:     { type: string, default: "" }  # growing transcript of every prior round's Q&A
 
   # ── draft + refine ──────────────────────────────────────────────────

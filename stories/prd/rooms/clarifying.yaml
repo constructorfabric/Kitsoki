@@ -12,6 +12,15 @@
 # both starts with `{{` and ends with `}}` short-circuits to the typed
 # expr and fails to compile; see proposal §5.5). String-concat append —
 # no array mutation. clarifying_budget caps the number of rounds.
+#
+# No `choice:` selector (same as rooms/idle.yaml): the operator answers
+# questions by typing them one at a time ("3 our enterprise tenants only"),
+# which the router parses into the `answer` arc (n/text). A choice element
+# would force the TUI into its picker widget on entry and re-open it on
+# every `answer` self-transition, kicking the operator out of text-input
+# mode after each reply. The action verbs (submit / skip / regenerate /
+# quit) live in the closing `prose:` hint so the semantic router catches
+# them as free text instead.
 
 states:
 
@@ -29,45 +38,35 @@ states:
             Upstream:       '{{ world.upstream_paths|default:"(none)" }}'
             "Prior rounds": "{{ world.clarifying_cycle }}"
       - heading: "Questions for you"
+      # Answered questions drop out of this list (they're shown verbatim in
+      # "Answered so far" below). The `{% if %}` skips any question whose
+      # number is in world.answered_ids — but the displayed number is still
+      # forloop.Counter (the question's ORIGINAL 1-based position), so the
+      # remaining numbers stay stable with gaps (1, 3, 4…) rather than
+      # renumbering. Stable numbers keep "answer 3" pointing at the same
+      # question across turns and keep the "Qn:" labels below consistent.
+      # `"|" + forloop.Counter + "|"` builds the delimited needle that the
+      # answer arc appends (the trailing/leading `|` make "|1|" a non-match
+      # inside "|12|"). When every question is answered the list renders the
+      # all-answered hint instead of going blank.
       - code: |
-          {% for q in world.clarifications.questions %}{{ forloop.Counter }}. {{ q.question|wordwrap:115 }}
+          {% for q in world.clarifications.questions %}{% if not ("|" + forloop.Counter + "|" in world.answered_ids) %}{{ forloop.Counter }}. {{ q.question|wordwrap:115 }}
              why: {{ q.why|default:"(no rationale given)"|wordwrap:110 }}
-          {% if not forloop.Last %}
-          {% endif %}{% empty %}(none — nothing material left to ask; type skip to draft){% endfor %}
-      - prose: "Answer a question by its number — e.g. type `3 our enterprise tenants only`. Work through them one at a time; **submit** when you're done, or **skip** to draft with what we have."
+          {% endif %}{% empty %}(none — nothing material left to ask; type skip to draft){% endfor %}{% if world.clarifications.questions|length > 0 and world.answered_count >= world.clarifications.questions|length %}(all questions answered — type submit to draft the PRD){% endif %}
+      - prose: "Answer a question by its number — e.g. type `3 our enterprise tenants only`. Work through them one at a time; the answers fill in below."
       - heading: 'Answered so far ({{ world.answered_count }}/{{ world.clarifications.questions|length }})'
       - code: |
           {{ world.clarification_answers|default:"(none yet — answer a question by number, e.g. `3 our enterprise tenants only`)" }}
-      - choice:
-          mode: single
-          prompt: "Actions"
-          items:
-            - label:  "submit_answers"
-              hint:   "advance to drafting with the answers gathered so far"
-              intent: submit_answers
-              param:
-                slot:        answers
-                type:        string
-                placeholder: "(optional) paste a full answer blob to override"
-                required:    false
-            - label:  "skip"
-              hint:   "draft with what we have (no answers this round)"
-              intent: skip
-            - label:  "regenerate"
-              hint:   "re-ask the questions (optionally with feedback)"
-              intent: regenerate
-              param:
-                slot:        feedback
-                type:        string
-                placeholder: "what to focus on"
-                required:    false
-            - label:  "quit"
-              hint:   "abandon PRD authoring"
-              intent: quit
-            - label:  "look"
-              hint:   "re-render"
-              intent: look
-    relevant_world: [idea, upstream_paths, workdir, clarifications, clarification_answers, answered_count, clarification_log, clarifying_cycle, clarifying_budget, prd_artifact, refine_feedback, cycle, judge_mode]
+      # Verb hints — kept on every turn so the semantic router reliably
+      # catches the action verbs typed as free text. There is intentionally
+      # NO `choice:` selector here: this room is a free-text answering loop
+      # (the `answer` arc parses "3 our enterprise tenants only" into
+      # n=3/text=…), and a choice element would make the TUI open the picker
+      # widget on entry AND on every `answer` self-transition (target: .),
+      # bouncing the operator out of text-input mode after each reply. Same
+      # selectorless free-text idiom as rooms/idle.yaml.
+      - prose: "When you've covered enough, say **submit** to draft the PRD now, **skip** to draft with what we have, **regenerate** to re-ask the questions, or **quit** to abandon."
+    relevant_world: [idea, upstream_paths, workdir, clarifications, clarification_answers, answered_count, answered_ids, clarification_log, clarifying_cycle, clarifying_budget, prd_artifact, refine_feedback, cycle, judge_mode]
     on_enter:
       # Generate this round's questions. working_dir pins the analyst's
       # Read/Grep to where the upstream docs live; its tool calls land as
@@ -107,6 +106,11 @@ states:
                 clarification_answers: |
                   {{ world.clarification_answers }}Q{{ slots.n }}: {{ slots.text }}
             - increment: { answered_count: 1 }
+            # Mark this question number answered so the view drops it from
+            # the live list. "|n|"-wrapped append (delimiter-safe membership;
+            # re-answering just appends a redundant "|n|", still a match).
+            - set:
+                answered_ids: "{{ world.answered_ids }}|{{ slots.n }}|"
 
       # Done answering — advance to drafting. Newest round FIRST so the
       # block leads with the literal divider (see header).
@@ -115,10 +119,12 @@ states:
           effects:
             # Resolve THIS round's answers: a pasted blob (slots.answers)
             # wins when the operator typed one, otherwise the answers
-            # accumulated one-by-one via `answer`. The `default:` filter
-            # treats an empty slot as falsy and falls back.
+            # accumulated one-by-one via `answer`. Effect values are
+            # expr-lang (NOT pongo) — there is no `|default:` filter here
+            # (that idiom is for views). The ternary treats both a missing
+            # slot (`?? ''`) and an empty string as "no blob → fall back".
             - set:
-                clarification_answers: "{{ slots.answers|default:world.clarification_answers }}"
+                clarification_answers: "{{ (slots.answers ?? '') != '' ? slots.answers : world.clarification_answers }}"
             # Build the transcript line in its OWN effect, so the
             # `── Round N ──` divider reads the pre-increment clarifying_cycle
             # and the just-resolved clarification_answers. Keeping the divider
@@ -158,6 +164,7 @@ states:
                 refine_feedback:       "{{ slots.feedback ?? '' }}"
                 clarification_answers: ""
                 answered_count:        0
+                answered_ids:          ""
                 clarifying_cycle:      "{{ world.clarifying_cycle + 1 }}"
                 cycle:                 "{{ world.cycle + 1 }}"
 

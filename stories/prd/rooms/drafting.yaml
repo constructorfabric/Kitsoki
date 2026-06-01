@@ -160,6 +160,7 @@ states:
                 refine_feedback:       ""
                 clarification_answers: ""
                 answered_count:        0
+                answered_ids:          ""
 
       # Heavier than clarify: redo rather than extend. idle re-pitches
       # (wipes the log); clarifying re-questions (discards the record).
@@ -171,6 +172,7 @@ states:
                 clarification_log:     ""
                 clarification_answers: ""
                 answered_count:        0
+                answered_ids:          ""
                 refine_feedback:       ""
                 clarifying_cycle:      0
                 drafting_cycle:        0
@@ -181,6 +183,7 @@ states:
                 clarification_log:     ""
                 clarification_answers: ""
                 answered_count:        0
+                answered_ids:          ""
                 refine_feedback:       ""
                 clarifying_cycle:      0
                 cycle:                 0
