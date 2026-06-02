@@ -58,6 +58,7 @@ states:
             - label: "✗ pr — {{ blocked_reason('go_pr_refinement') }}"
               intent: go_pr_refinement
               when:   "!available('go_pr_refinement')"
+            - { label: "idea",           intent: go_idea,          hint: "draft an ad hoc proposal — no ticket needed" }
             - { label: "code review",    intent: go_code_review,   hint: "review a teammate's PR" }
             - { label: "inbox",          intent: go_inbox,         hint: "read notifications ({{ world.inbox_unread }} unread)" }
             - { label: "oracle",         intent: go_oracle,        hint: "ask the LLM a one-shot question" }
@@ -89,6 +90,10 @@ states:
             - set: { prev_state: "main" }
       go_standup:
         - target: standup
+          effects:
+            - set: { prev_state: "main" }
+      go_idea:
+        - target: proposal
           effects:
             - set: { prev_state: "main" }
       go_code_review:

@@ -1,0 +1,96 @@
+# proposal — ad hoc idea capture and proposal drafting.
+#
+# The operator arrives here without a ticket. They describe their idea
+# via `capture_idea` (free-form text); oracle structures it into a
+# formatted proposal draft. They can iterate via `refine_idea` until
+# satisfied, then return to main or navigate elsewhere.
+#
+# No file is written here — the draft lives in world.proposal_draft for
+# the session. The operator can copy it into an issue file manually or
+# use a future `save` intent (Wave N) to write it to issues/features/.
+
+states:
+
+  proposal:
+    description: "Ad hoc proposal room — capture and structure an idea without a ticket."
+    relevant_world: [proposal_idea, proposal_draft]
+    view:
+      - prose: "Describe your idea and the oracle will structure it into a proposal draft."
+        when: "world.proposal_draft == ''"
+      - prose: "{{ world.proposal_draft }}"
+        when: "world.proposal_draft != ''"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "capture"
+              intent: capture_idea
+              hint:   "describe your idea — oracle will draft a proposal"
+              param:
+                slot:        idea
+                type:        string
+                placeholder: "what's your idea?"
+                required:    true
+            - label: "refine"
+              intent: refine_idea
+              hint:   "give feedback to improve the draft"
+              when:   "available('refine_idea')"
+              param:
+                slot:        feedback
+                type:        string
+                placeholder: "what needs changing?"
+                required:    true
+            - label: "✗ refine — {{ blocked_reason('refine_idea') }}"
+              intent: refine_idea
+              when:   "!available('refine_idea')"
+            - { label: "go_main", intent: go_main, hint: "return to the engineer's day landing" }
+            - { label: "look",    intent: look,    hint: "re-render" }
+    on:
+      capture_idea:
+        - target: proposal_drafting
+          effects:
+            - set:
+                proposal_idea:  "{{ slots.idea }}"
+                proposal_draft: ""
+      refine_idea:
+        - when: "world.proposal_draft != ''"
+          target: proposal_drafting
+          effects:
+            - set: { proposal_idea: "{{ world.proposal_idea }}\n\nOperator feedback: {{ slots.feedback }}" }
+        - default: true
+          target: proposal
+          guard_hint: "draft a proposal first — describe your idea with `capture`"
+      go_main:
+        - target: main
+      look:
+        - target: .
+
+  proposal_drafting:
+    description: "Structuring the idea into a proposal draft via oracle."
+    relevant_world: [proposal_idea, proposal_draft]
+    view:
+      - kv:
+          pairs:
+            Idea:  "{{ world.proposal_idea }}"
+            Draft: '{{ world.proposal_draft|default:"(pending — oracle structuring your idea)" }}'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - { label: "go_back", intent: go_back, hint: "return to proposal" }
+            - { label: "look",    intent: look,    hint: "re-render" }
+    on_enter:
+      - invoke: host.oracle.ask
+        with:
+          agent: oracle_qa
+          prompt: prompts/proposal_draft.md
+          args:
+            idea:           "{{ world.proposal_idea }}"
+        bind:
+          proposal_draft: stdout
+        on_error: proposal
+    on:
+      go_back:
+        - target: proposal
+      look:
+        - target: .

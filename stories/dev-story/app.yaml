@@ -214,6 +214,10 @@ world:
   oracle_question:     { type: string, default: "" }
   oracle_answer:       { type: string, default: "" }
 
+  # ── Ad hoc proposal ───────────────────────────────────────────────
+  proposal_idea:       { type: string, default: "" }
+  proposal_draft:      { type: string, default: "" }
+
   # ── PR handoff (lifted from `pr` import's exits.merged.set) ───────
   last_pr_url:         { type: string, default: "" }
   status:              { type: string, default: "open" }   # open | merged | abandoned
@@ -267,6 +271,10 @@ intents:
     description: "Prep for standup."
     examples: [standup, "daily", "prep standup"]
     priority: 35
+  go_idea:
+    description: "Start an ad hoc idea or proposal — no ticket required."
+    examples: ["idea", "new idea", "propose", "ad hoc", "draft proposal", "i have an idea"]
+    priority: 32
   go_code_review:
     description: "Review a teammate's PR."
     examples: ["code review", "review prs"]
@@ -378,6 +386,26 @@ intents:
       question:
         type: string
         required: true
+
+  capture_idea:
+    description: "Describe an ad hoc idea for the oracle to structure into a proposal draft."
+    examples: ["my idea is", "capture idea", "describe idea"]
+    priority: 78
+    slots:
+      idea:
+        type: string
+        required: true
+        description: "Raw description of the idea."
+
+  refine_idea:
+    description: "Provide feedback to improve the current proposal draft."
+    examples: ["refine", "improve the draft", "change this"]
+    priority: 76
+    slots:
+      feedback:
+        type: string
+        required: true
+        description: "Feedback on the current draft."
 
   # Standup / generic ack
   summarize_day:
