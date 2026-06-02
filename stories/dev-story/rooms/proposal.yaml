@@ -41,7 +41,7 @@ states:
         - target: proposal_drafting
           effects:
             - set:
-                proposal_idea:  "{{ slots.message }}"
+                proposal_idea:  "{{ slots.idea }}"
                 proposal_draft: ""
                 proposal_file:  ""
       refine_idea:
@@ -49,7 +49,7 @@ states:
           target: proposal_drafting
           effects:
             - set:
-                proposal_idea: "{{ world.proposal_idea }}\n\nOperator feedback: {{ slots.message }}"
+                proposal_idea: "{{ world.proposal_idea }}\n\nOperator feedback: {{ slots.feedback }}"
                 proposal_file: ""
         - default: true
           target: proposal
