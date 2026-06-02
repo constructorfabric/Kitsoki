@@ -1,0 +1,231 @@
+# Bug reports
+
+A bug filed from inside a running app lands as a single markdown file
+on disk. There is no service, no database, and no schema beyond what
+this doc describes — the pile is grep-friendly, hand-editable, and
+survives a `git mv` without losing meaning.
+
+Two filing targets exist:
+
+- **Story bugs** — the surface that surprised you was the *app you
+  were playing*. Filed under the running app's directory.
+- **Kitsoki bugs** — the surface was the *engine itself* (the TUI,
+  the orchestrator, a host handler, …). Filed under `$KITSOKI_REPO`.
+
+Both targets use the same CLI and the same on-disk format; the
+distinction is in the trigger you pick when filing.
+
+---
+
+## 1. Filing a bug
+
+### 1.1 From a running app — the meta-mode flow
+
+While playing an app, drop into one of the bug meta modes:
+
+| Trigger | Target | Agent |
+|---|---|---|
+| `/meta story bug` | the running app | `story-bug-reporter` |
+| `/meta kitsoki bug` | kitsoki itself | `kitsoki-bug-reporter` |
+
+The agent reads the per-turn `[context]` block (state, view, world,
+trace file — see [`meta-mode.md`](meta-mode.md) §6), asks what was
+expected vs what happened, confirms a title, and runs
+`kitsoki bug create` with `--target story` or `--target kitsoki`
+already filled in.
+
+The split is in the *trigger*, not in agent reasoning — there is no
+inference step, no "is this a story bug or a kitsoki bug?" dialogue.
+If you file under the wrong target by mistake, the file is fine — set
+`target:` in the frontmatter and `mv` the file across; the layout is
+symmetric on both sides.
+
+### 1.2 From the shell — the CLI surface
+
+`kitsoki bug` has three subcommands. All of them resolve a
+`<target-root>` per the rules below.
+
+```
+kitsoki bug create --target story|kitsoki \
+  --title "one-line summary" \
+  --body  "expected vs actual vs why it matters" \
+  [--repro "step 1" --repro "step 2" ...] \
+  [--state-path main.foyer]      # story-target only
+  [--app-id    cloak]            # story-target only
+  [--component tui]              # kitsoki-target only
+  [--severity  low|med|high]     # free-form
+  [--trace-ref traces/2026-…jsonl] \
+  [--target-dir <path>]          # escape hatch (overrides resolution)
+
+kitsoki bug list --target story|kitsoki [--target-dir <path>]
+kitsoki bug show <id>           --target story|kitsoki [--target-dir <path>]
+```
+
+`--target` is **required** on every subcommand — the CLI never guesses
+based on cwd. The agent prompts know their own target and pass it
+explicitly, so there is no ambiguity at the call site.
+
+Target-root resolution:
+
+- `--target story`: root is `--target-dir` if set, else `$PWD`.
+  Bugs land at `<root>/issues/bugs/`.
+- `--target kitsoki`: root is `--target-dir` if set, else
+  `$KITSOKI_REPO`. Errors when neither is set.
+
+`--component` is a free-form string. The bug-reporter prompts suggest
+the canonical kitsoki package names (`tui`, `host`, `transport`,
+`metamode`, `app`, `agents`, `chats`) as starting points but accept
+anything.
+
+Story-only flags passed to a kitsoki bug (and vice versa) produce a
+one-line stderr warning but don't fail the filing — the unrelated
+flag is silently dropped from the frontmatter.
+
+`kitsoki bug list` prints one row per bug under
+`<target-root>/issues/bugs/`, columns: `id`, `severity`, `status`,
+`title`. Sort is newest first (filenames lead with the UTC timestamp,
+so lex order is chrono order). An empty or missing directory prints
+nothing; not an error.
+
+`kitsoki bug show <id>` writes the bug's markdown verbatim to stdout.
+The `<id>` is the filename without `.md`. Missing file exits 1.
+
+---
+
+## 2. On-disk layout
+
+```
+<target-root>/
+  issues/
+    bugs/
+      2026-05-14T103205Z-tui-hangs-on-esc.md
+      2026-05-14T112011Z-foyer-banner-truncated.md
+```
+
+The extra `issues/` prefix reserves room for sibling categories
+(`issues/features/`, `issues/incidents/`) without re-shuffling later.
+Only `issues/bugs/` ships today; the parent dir is a stable namespace.
+
+The filename is `<UTC-timestamp>-<slug>.md`. Slug is the title
+lowercased, ASCII-only, hyphenated, truncated to 60 characters. Two
+bugs filed in the same second with the same title produce the same
+filename, and the second `WriteFile` silently overwrites the first —
+intentional, so an agent retry after a transient error is idempotent.
+
+---
+
+## 3. File format
+
+Each bug is YAML frontmatter followed by markdown body.
+
+### 3.1 Anatomy
+
+```markdown
+---
+# --- identity ------------------------------------------------
+id: "2026-05-14T103205Z-tui-hangs-on-esc"      # filename without .md
+title: "Esc in foyer hangs the TUI"
+target: "kitsoki"                              # story | kitsoki
+filed_at: 2026-05-14T10:32:05Z                 # RFC 3339, UTC
+filed_by: "brad"                               # $USER at write time
+
+# --- target context ------------------------------------------
+app_id: "cloak"                                # story-target only
+state_path: "main.foyer"                       # story-target only
+component: "tui"                               # kitsoki-target only
+kitsoki_rev: "7331630"                         # kitsoki-target only, short SHA at filing time
+
+# --- classification ------------------------------------------
+severity: "med"                                # free-form; agent prompts use low|med|high
+status: "open"                                 # open | resolved (default open)
+labels: []                                     # free-form strings
+
+# --- evidence ------------------------------------------------
+trace_ref: "traces/2026-05-14T103200Z-cloak.jsonl"   # relative path or session id
+related: []                                    # other bug ids
+---
+
+# Esc in foyer hangs the TUI
+
+**Expected.** Esc returns me to the meta-mode menu.
+
+**Actual.** TUI freezes; only Ctrl-C exits.
+
+**Why it matters.** Esc is the documented escape hatch; if it
+hangs, users lose any unsaved chat input.
+
+## Steps to reproduce
+
+1. `kitsoki run stories/cloak/app.yaml`
+2. From `main.foyer`, press `/meta kitsoki bug` to enter this mode
+3. Press Esc
+4. Observe: status line freezes, no further keystrokes register
+
+## Logs / stack
+
+\`\`\`
+goroutine 1 [select]:
+github.com/.../tui.(*Model).Update(...)
+        internal/tui/tui.go:432 +0x1c4
+…
+\`\`\`
+```
+
+### 3.2 Field rules
+
+- **Required everywhere.** `id`, `title`, `target`, `filed_at`,
+  `status`. Everything else is optional. The CLI always emits the
+  required set; the optional fields are emitted only when populated
+  (with two exceptions: `labels: []` and `related: []` are always
+  emitted so a hand-editor doesn't have to re-add the key).
+- **Story-target required.** `app_id`. `state_path` is strongly
+  encouraged. (The CLI does not hard-fail on omission; the agent
+  prompts ensure both are passed.)
+- **Kitsoki-target required.** `kitsoki_rev`. `component` is strongly
+  encouraged. `kitsoki_rev` is populated by the CLI from
+  `git -C <target-root> rev-parse --short HEAD`; if that fails (not a
+  git repo, git missing) the field is left empty and a one-line
+  stderr warning is printed — the bug still files successfully.
+- **`status`** is a two-value flag (`open`, `resolved`). No
+  in-progress / triage states — those belong in a remote tracker
+  once `kitsoki bug sync` ships. A user closes a local bug by
+  editing the file.
+- **Unknown frontmatter keys are preserved.** The format is YAML; a
+  user who adds `team: platform` keeps it across any future read
+  path. Forward-compat for free.
+
+### 3.3 What is *not* in the frontmatter
+
+- **Long-form repro steps.** They live in the markdown body under
+  `## Steps to reproduce`. YAML lists do not handle multi-line steps
+  with code fences gracefully.
+- **Comments / discussion.** A bug file is a single author's
+  artifact. Discussion happens in the eventual GitHub / Jira issue;
+  local files do not grow a comment thread.
+- **Attachments.** Drop next to the markdown (e.g.
+  `2026-05-14T103205Z-tui-hangs-on-esc.png`) and reference from the
+  body.
+
+---
+
+## 4. Where the implementation lives
+
+| Concept | Code |
+|---|---|
+| CLI subcommands (`create`, `list`, `show`) | [`cmd/kitsoki/bug.go`](../cmd/kitsoki/bug.go) |
+| `story-bug-reporter` agent (prompt + tool surface) | [`internal/agents/story_bug_reporter.md`](../internal/agents/story_bug_reporter.md), [`internal/agents/story_bug_reporter.go`](../internal/agents/story_bug_reporter.go) |
+| `kitsoki-bug-reporter` agent | [`internal/agents/kitsoki_bug_reporter.md`](../internal/agents/kitsoki_bug_reporter.md), [`internal/agents/kitsoki_bug_reporter.go`](../internal/agents/kitsoki_bug_reporter.go) |
+| Builtin `story.bug` and `kitsoki.bug` meta modes | [`internal/app/builtin_meta_modes.go`](../internal/app/builtin_meta_modes.go) |
+
+---
+
+## 5. Future work — remote sync
+
+Pushing bugs to GitHub Issues or Jira is **not** implemented. The
+on-disk frontmatter is laid out so that a future `kitsoki bug sync`
+command can write the remote issue id back into a new `external:`
+block without touching the body — design notes are in
+[`proposals/bug-sync-proposal.md`](proposals/bug-sync-proposal.md).
+Until that ships, move a bug to a tracker by copying the body
+verbatim into a new issue and pasting the file path back in as a
+comment.
