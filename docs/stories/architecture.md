@@ -560,6 +560,37 @@ flows through the harness and store — every event is replayable — but the
 inner graph is intentionally undeclared. It is the *only* place free-form
 chat is allowed on-path. ([`state-machine.md` §11](state-machine.md#11-off-path-the-global-escape-hatch).)
 
+### The oracle off-ramp — a no-match door into the same chat
+
+Off-path is reached through a **typed-trigger door**: the user must type
+the declared trigger string. A planned companion adds a second,
+*automatic* door scoped to a single room — the **oracle off-ramp**. A room
+that declares `oracle_off_ramp:` says, in effect, "if the user says
+something I can't map to any of my intents, don't bounce them — answer."
+When routing and the LLM resolve to **no declared intent**
+(`UNKNOWN_INTENT` / `INTENT_UNKNOWN`) in such a room, the orchestrator
+hands the original free text to an oracle `converse` turn instead of
+returning the usual "I didn't catch that" rejection (§6), and the room
+stays put — no transition, no world write. It is automatic, room-scoped
+off-path entry, triggered by a no-match rather than a typed trigger, and
+it shares off-path's `converse` mechanism and agent/persona precedence.
+
+The off-ramp fires **only** on a genuine no-match. A
+recognised-but-blocked intent — `GUARD_FAILED`,
+`INTENT_NOT_ALLOWED_IN_STATE`, a missing slot — still rejects or clarifies
+as today, because those are signals the author wants surfaced, not chat
+fodder. The decision to off-ramp is deterministic (a room flag × which
+error code came back); only the answer is interpretive, and it is recorded
+like any off-path turn.
+
+> **Not implemented today.** No `State` field enables this yet; a no-match
+> in any room returns `ModeRejected` and re-prompts with the menu. Design,
+> the load-time invariants, and the orchestrator seam are specced in
+> [`../proposals/oracle-off-ramp.md`](../proposals/oracle-off-ramp.md). It
+> rides the same convergence as the note below — once off-path becomes
+> `/meta default-oracle`, the off-ramp is "auto-enter that agent on a
+> no-match."
+
 ### Meta mode — persistent named-agent sidebars
 
 Meta mode is the richer surface that supersedes the old edit mode. The

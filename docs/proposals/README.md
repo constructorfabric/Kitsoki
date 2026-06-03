@@ -92,6 +92,10 @@ thought.
   OpenAI-compatible HTTP, with grammar-forced schema-valid output, for
   routing and small `decide` verdicts. Nothing implemented yet; spike (§0)
   required before committing.
+- [`oracle-off-ramp.md`](oracle-off-ramp.md) — a per-room
+  `oracle_off_ramp:` opt-in: when free text maps to no declared intent,
+  hand the turn to an oracle `converse` answer instead of rejecting, with
+  no state/world change. Nothing implemented yet.
 - [`prd-design.md`](prd-design.md) — a standalone PRD-authoring
   operator story (`stories/prd/`). Early draft; untracked work in
   progress.
