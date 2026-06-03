@@ -167,6 +167,10 @@ func rebaseWithMap(with map[string]any, childDir string) {
 		}
 		with[key] = filepath.Join(childDir, raw)
 	}
+	// host.oracle.task nests prompt/prompt_path under with.context.
+	if ctx, ok := with["context"].(map[string]any); ok {
+		rebaseWithMap(ctx, childDir)
+	}
 }
 
 // containsTemplate reports whether s carries a pongo2/expr template

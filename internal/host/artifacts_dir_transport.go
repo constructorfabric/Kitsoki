@@ -68,12 +68,14 @@ func ArtifactsDirTransportHandler(ctx context.Context, args map[string]any) (Res
 	}
 
 	// Resolve the file path. A thread that already names a path under
-	// root is honoured as-is; a bare name gets `.md` and is joined under
-	// root. A bare name with an extension (e.g. `.json`) is not modified.
+	// root is honoured as-is; a bare name without any extension gets
+	// `.md` appended; a bare name that already carries an extension
+	// (e.g. `foo.json`, `verdict.yaml`) is honoured verbatim so authors
+	// can produce non-markdown artifacts via this same handler.
 	name := thread
-	hasSeparator := strings.ContainsAny(name, string(os.PathSeparator)+"\\")
-	hasExtension := strings.Contains(filepath.Base(name), ".")
-	if !hasExtension && !hasSeparator {
+	hasExt := filepath.Ext(name) != ""
+	hasSep := strings.ContainsAny(name, string(os.PathSeparator)+"\\")
+	if !hasExt && !hasSep {
 		name = name + ".md"
 	}
 	path := name
@@ -131,10 +133,11 @@ func ArtifactsDirTransportHandler(ctx context.Context, args map[string]any) (Res
 		}
 	}
 
-	basename := filepath.Base(path)
-	ext := filepath.Ext(basename)
-	nameWithoutExt := strings.TrimSuffix(basename, ext)
-	id := fmt.Sprintf("%s#%d", nameWithoutExt, counter)
+	base := filepath.Base(path)
+	if ext := filepath.Ext(base); ext != "" {
+		base = strings.TrimSuffix(base, ext)
+	}
+	id := fmt.Sprintf("%s#%d", base, counter)
 	return Result{Data: map[string]any{
 		"ok":         true,
 		"path":       path,
