@@ -113,6 +113,15 @@ const (
 	EvTurnSemanticMiss      = "turn.semantic_miss"
 	EvTurnSemanticAmbiguous = "turn.semantic_ambiguous"
 
+	// EvTurnDefaultRouted fires when deterministic + semantic (+ turn-cache)
+	// all missed and the current state declares a free-text default_intent:
+	// the whole utterance is routed deterministically to that intent's single
+	// required string slot, with no main-turn LLM. The `intent` and `slot`
+	// attrs name where the text landed. This is the conversational-room sink
+	// (e.g. a discovery room's `discuss`) so plain prose never has to survive
+	// an LLM classification that can mis-pick a command intent.
+	EvTurnDefaultRouted = "turn.default_routed"
+
 	// EvTurnLLMRouted fires once on the orchestrator side after the
 	// harness resolves an intent via the LLM. Phase 5's cache
 	// writeback hooks into the same event (see the turn-cache tier in

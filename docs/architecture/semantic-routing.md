@@ -20,7 +20,11 @@ that resolves:
 | Synonym (bare)  | `TrySemantic`        | 0.90       | `turn.semantic_hit`      | `⌁`  |
 | Synonym template| `TrySemantic`        | 0.80 / 0.65| `turn.semantic_hit`      | `◐`  |
 | Turn cache      | `tryTurnCache`       | varies     | `turn.turncache_hit`     | `⟲`  |
+| Default intent  | `routeViaDefaultIntent` | 1.00    | `turn.default_routed`    | `⤳`  |
 | LLM             | `harness.RunTurn`    | varies     | `turn.llm_routed`        | `✦`  |
+
+The default-intent tier only runs when the current state declares one;
+otherwise the stack falls straight through to the LLM.
 
 The TUI route badge next to the user's input names the tier that
 resolved the turn. `ctrl+r` toggles the full route trace overlay
@@ -176,6 +180,48 @@ reset; the orchestrator will recreate it lazily.
 
 A more surgical approach: bump the routing-relevant YAML and let the
 §7.1 `app_hash` sweep handle the invalidation automatically.
+
+### 1.5 Default intent (free-text sink)
+
+A `mode: conversational` / discovery room is mostly free prose: the
+operator types a description, a question, a half-formed idea. None of
+that matches a command intent deterministically, and handing it to the
+LLM router risks a near-miss — a real dogfood bug had "this doc" routed
+to `look` instead of the room's `discuss` arc, so the message never
+reached the conversation.
+
+A state can name a **default intent** — the deterministic sink for
+anything the match-based tiers don't claim:
+
+```yaml
+states:
+  proposal:
+    mode: conversational
+    default_intent: discuss          # the free-text sink
+    on:
+      discuss:                       # one required string slot
+        - target: .
+          effects:
+            - invoke: host.oracle.converse
+              with: { question: "{{ slots.message }}" }
+      begin_proposal: [ ... ]        # named commands still win earlier
+      quit: [ ... ]
+```
+
+When deterministic + synonym + turn-cache all miss, the orchestrator
+routes the **whole utterance** to `default_intent`, filling its single
+required string slot (`slots.message` here) — no LLM classification.
+Commands the operator does name ("ready", "quit", "see docs/…") still
+resolve in the earlier tiers, so only genuinely unmatched prose reaches
+the sink.
+
+Contract (enforced at load time): the named intent must have an `on:`
+arc in the state and declare **exactly one required string slot**. The
+tier is opt-in — a state without `default_intent` falls straight through
+to the LLM as before. The intent name is import-rewritten like any other
+arc, so a bare `discuss` keeps working when the room is folded under an
+alias (`core__discuss`). Trace event: `turn.default_routed`
+(`routed_by: "default"`).
 
 ## 2. Per-app routing config
 

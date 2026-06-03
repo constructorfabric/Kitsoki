@@ -120,6 +120,14 @@ func (rw *childRewriter) rewriteState(s *State) {
 		s.On = newOn
 	}
 
+	// DefaultIntent is an intent ref (the state's free-text sink); prefix it
+	// like any other so the folded state names the renamed arc directly. The
+	// orchestrator also resolves it through IntentAliases at runtime, so a bare
+	// name still works, but rewriting here keeps the folded def self-consistent.
+	if s.DefaultIntent != "" {
+		s.DefaultIntent = rw.rewriteIntentRef(s.DefaultIntent)
+	}
+
 	// OnEnter.
 	for i := range s.OnEnter {
 		rw.rewriteEffect(&s.OnEnter[i])

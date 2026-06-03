@@ -651,6 +651,17 @@ type State struct {
 	Intents map[string]Intent `yaml:"intents,omitempty"`
 	// Menu is an explicit list of allowed intent names overriding the default.
 	Menu []string `yaml:"menu,omitempty"`
+	// DefaultIntent names the free-text sink for this state: when an utterance
+	// matches no intent deterministically or semantically, the engine routes it
+	// straight to this intent with the whole input filling its single required
+	// string slot — no main-turn LLM classification. This is how a
+	// conversational/discovery room (e.g. one whose `discuss` arc converses)
+	// guarantees plain prose reaches the conversation instead of being
+	// mis-classified into a command intent. The named intent must be reachable
+	// from this state (have an `on:` arc) and declare exactly one required
+	// string slot. Authored bare; resolved through IntentAliases at runtime so
+	// it survives import-folding.
+	DefaultIntent string `yaml:"default_intent,omitempty"`
 	// RelevantWorld pins world keys shown in the location indicator.
 	RelevantWorld []string `yaml:"relevant_world,omitempty"`
 	// Footer is an optional pongo2 template body rendered as the
@@ -766,6 +777,24 @@ type Effect struct {
 	// (or default last_job_id) instead of running synchronously. Requires
 	// Invoke to be non-empty; validated at load time.
 	Background bool `yaml:"background,omitempty"`
+	// Once, when true, makes the Invoke idempotent on re-entry: the engine
+	// SKIPS the call when every one of its Bind target world keys is already
+	// "set" (non-empty), and runs it normally otherwise — binding as usual.
+	// The bind target IS the cache, so clearing it (e.g. a re-run intent's
+	// `set: {key: ""}` / `{}`) re-arms the call. This generalizes the
+	// hand-rolled `when: "<result_key> == ''"` reload guard so an on_enter
+	// host call (oracle.decide/task/converse, artifacts_dir write) does not
+	// re-fire on /reload, self-transitions, or on_error re-entry.
+	//
+	// "Set" means: nil, empty string "", empty map {}, and empty slice []
+	// all count as UNSET; anything else is SET (see machine.allBindTargetsSet).
+	// Scalar int/bool binds are AMBIGUOUS (a real 0 / false reads as unset),
+	// so Once is intended for object / string / path binds — guard scalars by
+	// hand with When instead. Requires a non-empty Bind (validated at load
+	// time: Once with nothing to cache is meaningless). Only meaningful on
+	// Invoke effects. The skip is recorded on the existing EffectApplied
+	// event with `skipped: "cached"` so a trace shows the elision and why.
+	Once bool `yaml:"once,omitempty"`
 	// OnComplete fires after the job terminates. Effects in this list run in
 	// the originating state's context. Cannot itself contain background: true
 	// (validated at load time).

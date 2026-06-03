@@ -809,6 +809,16 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 		} else if hit {
 			return outcome, nil
 		}
+		// Default free-text tier: after all match-based tiers miss, if the
+		// state declares a default_intent, sink the whole utterance into it
+		// deterministically (one required string slot) instead of letting the
+		// main-turn LLM classify — which can mis-pick a near-miss command. Only
+		// fires when default_intent is declared; otherwise falls through.
+		if outcome, hit, defErr := o.routeViaDefaultIntent(ctx, sid, input); defErr != nil {
+			return nil, defErr
+		} else if hit {
+			return outcome, nil
+		}
 	}
 
 	// Serialise foreground turn against any concurrent handleJobTerminal for

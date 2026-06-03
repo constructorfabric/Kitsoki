@@ -23,6 +23,11 @@ states:
 
   proposal:
     mode: conversational
+    # Free-text sink: plain prose that matches no command intent
+    # (begin_proposal/capture_existing/quit/…) routes straight to `discuss`
+    # with the whole utterance as slots.message — deterministically, no
+    # main-turn LLM classification that could mis-pick a near-miss command.
+    default_intent: discuss
     description: "Describe the change you want to propose — talk it through; I'll help shape it."
     view:
       - heading: "Proposal discovery"

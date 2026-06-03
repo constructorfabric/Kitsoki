@@ -994,6 +994,39 @@ func validateStates(
 			}
 		}
 
+		// Validate default_intent (the free-text sink): it must be reachable
+		// from this state (have an on: arc) and declare exactly one required
+		// string slot, since the engine fills that slot with the whole
+		// unmatched utterance. Both On keys and DefaultIntent are import-
+		// rewritten consistently, so they match here regardless of fold depth.
+		if di := s.DefaultIntent; di != "" {
+			if _, ok := s.On[di]; !ok {
+				addErr(fmt.Sprintf("state %q: default_intent %q has no matching on: arc in this state", statePath, di))
+			}
+			idef, found := inScopeIntents[di]
+			if !found {
+				idef, found = globalIntentDefs[di]
+			}
+			switch {
+			case !found:
+				addErr(fmt.Sprintf("state %q: default_intent %q is not a declared intent", statePath, di))
+			default:
+				reqCount, reqString := 0, true
+				for _, sl := range idef.Slots {
+					if !sl.Required {
+						continue
+					}
+					reqCount++
+					if sl.Type != "" && sl.Type != "string" {
+						reqString = false
+					}
+				}
+				if reqCount != 1 || !reqString {
+					addErr(fmt.Sprintf("state %q: default_intent %q must declare exactly one required string slot to receive the free-text utterance", statePath, di))
+				}
+			}
+		}
+
 		// Validate the typed view payload (Phase A of the view-elements
 		// proposal). Catches unknown element kinds, missing required
 		// element fields, and non-string kv values at load time so authors
@@ -1235,6 +1268,11 @@ func validateBackgroundEffectAware(file, location, originStatePath string, eff E
 	}
 	if eff.Background && eff.Invoke == "" {
 		addErr(fmt.Sprintf("%s: background: true requires invoke: to be set", location))
+	}
+	// once: caches the invoke's bind targets — with nothing to cache it is
+	// meaningless. Fail fast, mirroring the background: invariant above.
+	if eff.Once && len(eff.Bind) == 0 {
+		addErr(fmt.Sprintf("%s: once: true requires a non-empty bind: (the bind target is the cache that arms the skip)", location))
 	}
 	// target: is only meaningful inside on_complete: blocks. The async
 	// terminal context is the only place where a synthetic transition
