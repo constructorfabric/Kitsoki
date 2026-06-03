@@ -134,12 +134,26 @@ string) — so the operator always sees that the editor is listening.
 
 **Ambient selection.** Before each oracle-bearing turn, if connected, the TUI
 reads the editor's live selection via `host.ide.get_selection` and threads it
-onto the turn as `args.ide` (`{{ args.ide.file }}` / `{{ args.ide.selection }}`
-in a prompt; see `internal/host/ide_ambient.go`), then appends exactly one
-settled transcript line — `⧉ Selected N lines from <file>` — as the operator's
-source of truth for what rode the turn. This is the same affordance Claude
-Code gives. The selection is read at submit, and the echo reflects the exact
-range read.
+onto the turn ctx (`host.WithIDEAmbient`; see `internal/host/ide_ambient.go`),
+then appends exactly one settled transcript line —
+`⧉ Selected N lines from <file>` — as the operator's source of truth for what
+rode the turn. This is the same affordance Claude Code gives. The selection is
+read at submit, and the echo reflects the exact range read.
+
+The selection then reaches the model **two ways**:
+
+- **Always-on (no opt-in).** The operator-facing oracle verbs — `host.oracle.ask`,
+  `host.oracle.ask_with_mcp`, and `host.oracle.converse` — automatically append a
+  standardized `## Active editor selection (via /ide)` block to the rendered
+  prompt, so a selection feeds requests like "do this idea" in *every* story
+  without each prompt opting in. It is a no-op when nothing is selected (the
+  prompt is byte-identical). The decision verbs (`decide`/`extract`) and the
+  `task` delegation verb are intentionally **excluded** so routing/extraction and
+  sub-agent context are not biased by an editor selection.
+- **Explicit scope.** The same fields are also exposed as `args.ide`
+  (`{{ args.ide.file }}` / `{{ args.ide.selection }}` / `{{ args.ide.range }}`)
+  for a prompt that wants to place the selection precisely rather than take the
+  appended block.
 
 **Deny list.** Because kitsoki cannot read Claude Code's own `Read`
 deny-rules and must not assume parity, ambient attach is gated on an explicit,

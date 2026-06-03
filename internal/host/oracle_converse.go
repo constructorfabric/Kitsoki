@@ -82,6 +82,11 @@ func OracleConverseHandler(ctx context.Context, args map[string]any) (Result, er
 	if strings.TrimSpace(question) == "" {
 		return Result{Error: "host.oracle.converse: question argument is required"}, nil
 	}
+	// Always-on editor context: append the operator's live `/ide` selection to
+	// the question so it rides the conversational turn (and is stored on the
+	// chat message) exactly like the typed text. A no-op when no selection rode
+	// the turn. Applied before any dispatch branch so all paths carry it.
+	question = appendIDEAmbient(ctx, question)
 
 	// B-7: If an oracle plugin registry is wired in context, route through
 	// host.Dispatch. For converse the prompt is the question.

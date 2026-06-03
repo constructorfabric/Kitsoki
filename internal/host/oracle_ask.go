@@ -149,6 +149,12 @@ func OracleAskHandler(ctx context.Context, args map[string]any) (Result, error) 
 		return Result{Error: "host.oracle.ask: prompt_path (or prompt) argument is required"}, nil
 	}
 
+	// Always-on editor context: append the operator's live `/ide` selection so
+	// it feeds the request without the prompt having to reference args.ide. A
+	// no-op when no selection rode the turn. Done before plugin dispatch so both
+	// the Dispatch and subprocess paths carry it.
+	rendered = appendIDEAmbient(ctx, rendered)
+
 	// B-7: If an oracle plugin registry is wired in context, route through
 	// host.Dispatch (the Oracle plugin interface) instead of the subprocess.
 	// This is the production wiring for the `oracle:` field on effects.

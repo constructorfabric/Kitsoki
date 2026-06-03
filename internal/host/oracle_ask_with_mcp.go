@@ -350,6 +350,12 @@ func OracleAskWithMCPHandler(ctx context.Context, args map[string]any) (Result, 
 	// would otherwise consume tokens for no semantic value.
 	rendered = sourcecolor.Strip(rendered)
 
+	// Always-on editor context: append the operator's live `/ide` selection so
+	// it feeds the request without the prompt having to reference args.ide. A
+	// no-op when no selection rode the turn. Applied before the chat and core
+	// dispatch paths so both carry it.
+	rendered = appendIDEAmbient(ctx, rendered)
+
 	// Chat-aware path: chat_id provided AND ChatStore available.
 	chatID, _ := args["chat_id"].(string)
 	if chatID != "" {

@@ -2,12 +2,22 @@
 //
 // When the TUI holds a live IDE link it reads the active selection at
 // turn-submit and threads it onto the turn ctx with WithIDEAmbient. The oracle
-// handlers (oracle_ask.go, oracle_ask_with_mcp.go, oracle_task.go) merge it into
-// the prompt template scope under the reserved `args.ide` key, so a story prompt
-// can reference `{{ args.ide.file }}` / `{{ args.ide.selection }}` without the
-// orchestrator having to plumb editor state through world slots. When no link is
-// connected (CLI one-shots, flow tests, headless runs, or `/ide` not connected)
-// no ambient value is set and the template scope is byte-identical to today.
+// operator-facing handlers (oracle_ask.go, oracle_ask_with_mcp.go,
+// oracle_converse.go) expose it two ways:
+//
+//   - As the reserved `args.ide` template key (mergeIDEAmbient), so a prompt can
+//     reference `{{ args.ide.file }}` / `{{ args.ide.selection }}` for precise
+//     placement when it wants to.
+//   - As a standardized block appended to the rendered prompt automatically
+//     (IDEAmbientPreamble / appendIDEAmbient), so the selection feeds the request
+//     by default without any story-author opt-in — the "always injected when
+//     /ide is connected" behavior. Decision verbs (decide/extract) and the task
+//     delegation verb are intentionally excluded so routing/extraction and
+//     sub-agent context are not biased by an editor selection.
+//
+// When no link is connected (CLI one-shots, flow tests, headless runs, or `/ide`
+// not connected) no ambient value is set: the template scope and the rendered
+// prompt are byte-identical to a run with no editor.
 //
 // The capture is read-at-submit and gated TUI-side on a deny list; the echo line
 // the operator sees (`⧉ Selected N lines from <file>`) is the source of truth for
@@ -15,7 +25,11 @@
 // /ide") and docs/hosts.md ("host.ide.*").
 package host
 
-import "context"
+import (
+	"context"
+	"fmt"
+	"strings"
+)
 
 // IDEAmbient is the editor context captured at turn-submit and exposed to
 // prompt templates as `args.ide`. Fields are the selection's source file and
@@ -88,4 +102,50 @@ func mergeIDEAmbient(ctx context.Context, templateArgs map[string]any) map[strin
 	}
 	merged["ide"] = amb.asMap()
 	return merged
+}
+
+// ideAmbientPreambleHeader marks the auto-injected editor-selection block so it
+// is unmistakable in a rendered prompt (and greppable in a recorded trace).
+const ideAmbientPreambleHeader = "## Active editor selection (via /ide)"
+
+// IDEAmbientPreamble renders the standardized editor-selection block that is
+// appended to an operator-facing oracle prompt (ask / ask_with_mcp / converse)
+// whenever a selection rode the turn — the "always injected when /ide is
+// connected" seam. It returns "" when no selection is present (the `/ide` link
+// is off, nothing was selected, or the file was deny-ruled TUI-side), so a turn
+// with no editor context produces a byte-identical prompt. Unlike the
+// `args.ide.*` template scope (which each prompt must reference explicitly),
+// this block lands without any story-author opt-in, so a selection feeds
+// requests like "do this idea" everywhere by default. The block is appended,
+// not prepended: a prompt's role and instructions come first, then the selected
+// code as trailing context.
+func IDEAmbientPreamble(ctx context.Context) string {
+	amb, ok := IDEAmbientFromCtx(ctx)
+	if !ok || strings.TrimSpace(amb.File) == "" || amb.Selection == "" {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("\n\n")
+	sb.WriteString(ideAmbientPreambleHeader)
+	sb.WriteString("\n\n")
+	sb.WriteString(fmt.Sprintf("The operator currently has the following selected in `%s`", amb.File))
+	if amb.Range != "" {
+		sb.WriteString(fmt.Sprintf(" (%s)", amb.Range))
+	}
+	sb.WriteString(". Treat it as the concrete subject of the request unless they say otherwise:\n\n")
+	sb.WriteString("```\n")
+	sb.WriteString(amb.Selection)
+	if !strings.HasSuffix(amb.Selection, "\n") {
+		sb.WriteString("\n")
+	}
+	sb.WriteString("```")
+	return sb.String()
+}
+
+// appendIDEAmbient returns prompt with the editor-selection preamble appended
+// when a selection rode the turn, else prompt unchanged. It is the one-liner the
+// operator-facing verb handlers call right before dispatch so the block lands on
+// both the plugin (Dispatch) and subprocess paths.
+func appendIDEAmbient(ctx context.Context, prompt string) string {
+	return prompt + IDEAmbientPreamble(ctx)
 }

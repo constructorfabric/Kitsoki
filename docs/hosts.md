@@ -784,6 +784,17 @@ to ride the operator's selection into the prompt as ambient context.
 Returns: `{ connected, file, text, range }` (empty strings / null when not
 connected).
 
+**Ambient injection.** When the TUI captures a selection at submit it threads
+it onto the turn ctx (`host.WithIDEAmbient`). The operator-facing oracle verbs
+(`ask`, `ask_with_mcp`, `converse`) then append a standardized
+`## Active editor selection (via /ide)` block to the rendered prompt
+automatically — no story opt-in — and also expose the fields as `args.ide.*`
+for prompts that want explicit placement. The decision verbs (`decide`,
+`extract`) and `task` are excluded so routing/extraction and delegated context
+stay unbiased by a selection. A turn with no selection renders a byte-identical
+prompt. See `internal/host/ide_ambient.go` and docs/tui/README.md
+("Editor awareness: /ide").
+
 ### get_open_editors
 
 Maps to `getOpenEditors`. Read-only.
