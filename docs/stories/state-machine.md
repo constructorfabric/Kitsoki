@@ -878,6 +878,15 @@ the declarative `agents:` block — see [`meta-mode.md`](meta-mode.md).
 Meta mode is what most authors should reach for today; off-path remains
 the simple banner-only escape hatch.
 
+Off-path is reached through a *typed-trigger* door. A planned companion —
+the **oracle off-ramp** — adds an *automatic*, room-scoped door into the
+same free-form `converse` mechanism: a room that declares
+`oracle_off_ramp:` routes a genuine no-match (`UNKNOWN_INTENT` /
+`INTENT_UNKNOWN`, §4) into an oracle answer instead of rejecting, with no
+transition and no world write. Not implemented today; design and the
+orchestrator seam are in
+[`../proposals/oracle-off-ramp.md`](../proposals/oracle-off-ramp.md).
+
 ---
 
 ## 12. Worked example: one turn through Cloak of Darkness

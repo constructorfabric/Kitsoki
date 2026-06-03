@@ -30,21 +30,24 @@ Where this doc summarises, the deep dives are authoritative:
 
 ```mermaid
 flowchart LR
-    User["User<br/>(or external thread)"]
-    Router["Router<br/>(synonyms → templates → cache → LLM)"]
-    App["Story<br/>(state graph)"]
+    subgraph Room["Room"]
+        User["User<br/>(or external thread)"]
+        Router["Router<br/>(synonyms → templates → cache → LLM)"]
+        App["State Machine<br/>(options defined by room)"]
+    end
     World["World<br/>(typed, persisted)"]
     Hosts["Hosts + Oracle<br/>(host.* / LLM calls)"]
     Ext["Environment<br/>(shell · files · LLM · Jira · …)"]
 
     User -- "free text" --> Router
     Router -- "named intent + typed slots" --> App
-    App -- "transition + effects (binds results)" --> World
-    World -- "rendered view" --> User
+    App -- "transition + effects\n(binds results)" --> World
+    World -- "read world state" --> App
+    App -- "rendered view" --> User
 
     App -- "invoke: (declared effects)" --> Hosts
-    Hosts -- "side effects" --> Ext
-    Ext -- "typed result" --> Hosts
+    Hosts -- "actions" --> Ext
+    Ext -- "typed results" --> Hosts
     Hosts -- "result → bind" --> App
 ```
 
