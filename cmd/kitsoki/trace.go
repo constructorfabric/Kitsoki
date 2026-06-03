@@ -202,6 +202,196 @@ func prettyPrint(r io.Reader, w io.Writer) error {
 	return scanner.Err()
 }
 
+// digestTurn is one turn's story, distilled from its events for the --turns view.
+type digestTurn struct {
+	num       int64
+	state     string
+	input     string
+	intent    string
+	routedBy  string
+	matchType string
+	hostCalls []string
+	prompts   []string // "verb: <truncated prompt>"
+	ide       string   // ide.context_captured summary
+	redirects []string // host.on_error.redirect targets
+	errors    []string // any payload.error
+	outcome   string
+	newState  string
+}
+
+// digestTurns groups a trace by turn and prints a compact per-turn narrative:
+// the operator input, which routing tier resolved it (and why), the host calls
+// fired, the PROMPT each oracle verb dispatched (the source of truth for what
+// the model saw — truncated), any editor context captured, on_error redirects,
+// errors, and the outcome. This is the "what actually happened to my turn" view
+// you otherwise reconstruct by hand with grep+jq.
+func digestTurns(r io.Reader, w io.Writer) error {
+	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 1<<20), 64<<20)
+
+	var order []int64
+	byTurn := map[int64]*digestTurn{}
+	get := func(turn int64) *digestTurn {
+		d, ok := byTurn[turn]
+		if !ok {
+			d = &digestTurn{num: turn}
+			byTurn[turn] = d
+			order = append(order, turn)
+		}
+		return d
+	}
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var rec eventRecord
+		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+			continue
+		}
+		p, _ := rec.Payload.(map[string]any)
+		d := get(rec.Turn)
+		if rec.StatePath != "" {
+			d.state = rec.StatePath
+		}
+		if e := str(p["error"]); e != "" {
+			d.errors = append(d.errors, rec.Kind+": "+e)
+		}
+		switch {
+		case rec.Kind == "turn.input":
+			if v := str(p["input"]); v != "" {
+				d.input = v
+			}
+			if v := str(p["intent"]); v != "" {
+				d.intent = v
+			}
+		case rec.Kind == "turn.start":
+			if v := str(p["input"]); v != "" && d.input == "" {
+				d.input = v
+			}
+			d.routedBy = str(p["routed_by"])
+			d.matchType = str(p["match_type"])
+		case rec.Kind == "harness.called", rec.Kind == "harness.dispatched":
+			if ns := str(p["namespace"]); ns != "" {
+				d.hostCalls = appendUniq(d.hostCalls, ns)
+			}
+		case rec.Kind == "oracle.call.start":
+			d.prompts = append(d.prompts, str(p["verb"])+": "+truncate1(str(p["prompt"]), 160))
+		case rec.Kind == "ide.context_captured":
+			d.ide = fmtIDECapture(p)
+		case rec.Kind == "host.on_error.redirect":
+			d.redirects = append(d.redirects, str(p["to"])+" ("+str(p["from"])+")")
+		case rec.Kind == "turn.end":
+			d.outcome = str(p["outcome"])
+			if v := str(p["to"]); v != "" {
+				d.newState = v
+			} else if v := str(p["new_state"]); v != "" {
+				d.newState = v
+			}
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+
+	for _, n := range order {
+		d := byTurn[n]
+		// Skip bookkeeping-only turns (e.g. turn 0's story snapshot) that carry
+		// no input, host call, prompt, outcome, or error.
+		if d.input == "" && d.intent == "" && len(d.hostCalls) == 0 &&
+			len(d.prompts) == 0 && d.outcome == "" && len(d.errors) == 0 {
+			continue
+		}
+		renderDigestTurn(w, d)
+	}
+	return nil
+}
+
+func renderDigestTurn(w io.Writer, d *digestTurn) {
+	hdr := fmt.Sprintf("T%d", d.num)
+	if d.state != "" {
+		hdr += "  " + d.state
+	}
+	fmt.Fprintln(w, styleFor(hdr, colorTurn))
+	if d.input != "" || d.intent != "" {
+		route := d.routedBy
+		if route == "" {
+			route = "—"
+		}
+		if d.matchType != "" {
+			route += " (" + d.matchType + ")"
+		}
+		in := d.input
+		if in == "" {
+			in = "[intent] " + d.intent
+		}
+		fmt.Fprintf(w, "  in     %-40s route=%s\n", truncate1(in, 40), route)
+	}
+	if d.ide != "" {
+		fmt.Fprintf(w, "  ide    %s\n", d.ide)
+	}
+	for _, hc := range d.hostCalls {
+		fmt.Fprintf(w, "  host   %s\n", hc)
+	}
+	for _, pr := range d.prompts {
+		fmt.Fprintf(w, "  prompt %s\n", pr)
+	}
+	for _, rd := range d.redirects {
+		fmt.Fprintf(w, "  %s\n", styleFor("on_error → "+rd, colorErr))
+	}
+	for _, e := range d.errors {
+		fmt.Fprintf(w, "  %s\n", styleFor("ERROR "+e, colorErr))
+	}
+	out := d.outcome
+	if d.newState != "" {
+		out += " → " + d.newState
+	}
+	if strings.TrimSpace(out) != "" {
+		fmt.Fprintf(w, "  out    %s\n", out)
+	}
+	fmt.Fprintln(w)
+}
+
+// fmtIDECapture renders an ide.context_captured payload as a one-liner.
+func fmtIDECapture(p map[string]any) string {
+	s := "source=" + str(p["source"])
+	if f := str(p["file"]); f != "" {
+		s += " file=" + f
+	}
+	if inj, ok := p["injected"].(bool); ok {
+		s += fmt.Sprintf(" injected=%v", inj)
+	}
+	if r := str(p["reason"]); r != "" {
+		s += " reason=" + r
+	}
+	return s
+}
+
+func str(v any) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return ""
+}
+
+func truncate1(s string, n int) string {
+	s = strings.ReplaceAll(s, "\n", "⏎")
+	if len(s) > n {
+		return s[:n] + "…"
+	}
+	return s
+}
+
+func appendUniq(xs []string, s string) []string {
+	for _, x := range xs {
+		if x == s {
+			return xs
+		}
+	}
+	return append(xs, s)
+}
+
 // ─── CLI command ──────────────────────────────────────────────────────────────
 
 func traceCmd() *cobra.Command {
@@ -215,6 +405,14 @@ Each line is one store.Event encoded as:
   {"turn":<n>,"seq":<n>,"ts":"<RFC3339Nano>","kind":"<dotted>","state_path":"<path>","payload":{...}}
 
 If path is '-', reads from stdin.
+
+--turns prints a compact per-turn DIGEST instead of the raw event stream: for
+each turn it shows the operator input, which routing tier resolved it (and why),
+the host calls fired, the PROMPT each oracle verb dispatched (the source of
+truth for what the model actually saw), any editor context captured
+(ide.context_captured), on_error redirects, errors, and the outcome. This is
+the "what actually happened to my turn" view — use it first when a turn ran but
+did the wrong thing (selection didn't reach the prompt, input mis-routed, …).
 
 For ad-hoc field extraction, jq works equally well:
   jq 'select(.kind=="machine.state_entered") | .state_path' trace.jsonl`,
@@ -235,9 +433,13 @@ For ad-hoc field extraction, jq works equally well:
 				defer func() { _ = f.Close() }()
 				r = f
 			}
+			if byTurn, _ := cmd.Flags().GetBool("turns"); byTurn {
+				return digestTurns(r, cmd.OutOrStdout())
+			}
 			return prettyPrint(r, cmd.OutOrStdout())
 		},
 	}
+	cmd.Flags().Bool("turns", false, "print a compact per-turn digest (input → route → prompt → outcome) instead of the raw event stream")
 
 	cmd.AddCommand(traceToFlowCmd())
 	return cmd

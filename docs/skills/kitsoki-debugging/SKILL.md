@@ -9,12 +9,40 @@ The TUI hides almost everything useful behind `on_error: idle` arcs. When the us
 
 ## When you read a user's "bounce to idle" report
 
-You have four primary tools, in order of cost:
+You have five primary tools, in order of cost:
 
-1. **`kitsoki turn`** — one-shot a turn against the real repo, dump host calls + errors as JSON. Cheap, repeatable, runs against the actual on-disk state. **Use first.**
-2. **Trace JSONL** at `/tmp/kitsoki-dogfood-trace.jsonl` — what the user actually saw, including every `machine.transition`, `host.on_error.redirect`, `machine.effect.applied`. **Use to confirm the user's trace matches your reproduction.**
-3. **Go tests under `internal/orchestrator/dogfood_smoke_test.go`** — `t.TempDir()` + real `git init` + real host registry, oracle stubbed. **Use to lock in regressions.**
-4. **The actual TUI** — slow, hard to script, hard to inspect mid-flight. Use last.
+1. **`kitsoki trace --turns <session.jsonl>`** — a compact per-turn digest of a real session: input → which routing tier resolved it (and why) → host calls → the **prompt each oracle verb dispatched** → editor context → on_error redirects → errors → outcome. This is the "what actually happened to my turn" view; it collapses a grep+jq loop into one command. **Use first to read a user's session.** (Sessions live at `~/.kitsoki/sessions/<app>/*.jsonl`.)
+2. **`kitsoki turn`** — one-shot a turn against the real repo, dump host calls + errors as JSON. Cheap, repeatable, runs against the actual on-disk state. **Use to reproduce in isolation.**
+3. **Raw trace JSONL** (`kitsoki trace <file>` or `jq`) — every `machine.transition`, `host.on_error.redirect`, `machine.effect.applied`, `oracle.call.start`, `ide.context_captured`. **Use to confirm the digest and dig into a specific event.**
+4. **Go tests under `internal/orchestrator/dogfood_smoke_test.go`** — `t.TempDir()` + real `git init` + real host registry, oracle stubbed. **Use to lock in regressions.**
+5. **The actual TUI** — slow, hard to script, hard to inspect mid-flight. Use last.
+
+## Two failure classes — pick the right lens
+
+- **Bounce / stuck / silent fail** — a host call errored and `on_error:` swallowed it, or the intent was rejected. The state didn't go where expected. → §"Step 1" (`kitsoki turn`), §3 (store events).
+- **The turn *ran* but did the wrong thing** — `next_state` advanced cleanly, no error, yet the output is wrong or empty (the LLM "didn't see" something; free text mis-routed; a feature silently no-op'd). **`next_state` advancing proves nothing about whether the work happened.** → read on.
+
+### The turn ran but did the wrong thing
+
+The single source of truth for *what the model actually saw* is the **dispatched prompt**, recorded as `oracle.call.start` (`payload.prompt`). If context you expected (an editor selection, a world value, a prior answer) isn't in that prompt, it never reached the model — regardless of what the host verbs returned upstream.
+
+```sh
+# The per-turn story — start here:
+kitsoki trace --turns ~/.kitsoki/sessions/<app>/<id>.jsonl
+
+# The exact prompt a verb dispatched (truncated in the digest; full here):
+jq -r 'select(.kind=="oracle.call.start") | .payload.prompt' <session>.jsonl
+
+# WHY an input routed where it did (the routing provenance):
+jq -c 'select(.kind=="turn.start") | {input:.payload.input, routed_by:.payload.routed_by, match_type:.payload.match_type}' <session>.jsonl
+
+# Editor context the TUI captured at submit (connected? what rode? why not?):
+jq -c 'select(.kind=="ide.context_captured") | .payload' <session>.jsonl
+```
+
+Provenance vocabulary on `turn.start`: `routed_by` ∈ {`deterministic`, `semantic`, `llm`, `default`, `turncache`}; `match_type` names the synonym/template or `free_text` for the default-intent tier. A `routed_by: "default"` means free text fell through to the room's `default_intent` sink (see semantic-routing.md §1.5). If an input you expected to converse instead shows `routed_by: "deterministic"` to `look`, that's a routing miss, not a prompt bug.
+
+**Boundary caveat:** `kitsoki turn` drives the orchestrator + host layers, but **NOT** the TUI command surface — slash dispatch (`handleSlashCommand`), ambient capture (`captureIDEAmbient`), the prompt textarea. A bug there (a panic in `/foo`, a selection not captured) won't reproduce via `kitsoki turn`; it needs a TUI-level test (`internal/tui/*_test.go`) or the live TUI. When the trace shows a turn never started for an input the user typed, suspect the TUI layer.
 
 ## Step 1 — reproduce with `kitsoki turn`
 
@@ -211,6 +239,9 @@ A warp doubles as a regression artifact: the same file is a flow-fixture-shaped 
 | Commit fails with `git.commit: ` (empty message) | git's "nothing to commit" goes to **stdout**, not stderr; lenient-mode checks missed it | Check `gitCommit` in `internal/host/git_vcs.go` reads both streams |
 | Worktree create says "already exists" but you can't find it | Path-comparison bug: relative vs absolute | `git worktree list --porcelain` always emits absolute; handlers must `filepath.Abs` or match by basename |
 | Conversation "lost its state" / analyst forgot everything after a `/reload` | `on_enter` re-fired on reload and a non-idempotent `host.chat.create` spawned a fresh empty chat, overwriting the bound `*_chat_id` while world counters survived | Grep the trace for a `turn.end` with `outcome:"reloaded"`, then a `host.chat.create` (not `resolve`) firing right after and a new `chat_id` in `world.update`. Fix: use `host.chat.resolve` in `on_enter`. See state-machine.md §"`on_enter` must be idempotent". |
+| "The model didn't see X" (a selection, the open doc, a world value) — yet the turn ran fine | The context never reached the dispatched prompt: a verb returned it but no prompt template/seam consumed it, OR an upstream parser returned empty against a real wire shape | `kitsoki trace --turns` → check the `prompt` line for that turn. If X isn't in it, it never reached the model. For host.ide.*, check `ide.context_captured` for `source:none` + `reason`. |
+| Free text "did nothing" / re-rendered the room instead of conversing | Routed to a navigation intent (e.g. `look`) instead of the conversational sink | `turn.start.routed_by` / `match_type`. Fix: give the conversational room a `default_intent` (semantic-routing.md §1.5). |
+| A feature "works" in tests but is broken live | A test double diverged from the real contract (stub returned invented shapes the parser was also written against), or the test asserted a verb result, not the model-facing prompt | Capture real wire bytes into the stub (the `ide.context_captured` `detail` field grabs raw editor envelopes); assert to the dispatched prompt; mutation-test the e2e (revert the fix → it must fail); add an opt-in live test (`//go:build ide_live`). |
 
 ## A note on `on_error: idle` as an anti-pattern
 

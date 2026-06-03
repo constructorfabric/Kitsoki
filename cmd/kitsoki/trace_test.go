@@ -23,6 +23,43 @@ const cannedTrace = `{"kind":"session.header","schema_version":1,"written_at":"2
 {"turn":2,"seq":1,"ts":"2026-04-21T13:02:50.500Z","kind":"turn.end","state_path":"bar.dark","payload":{"outcome":"transitioned"}}
 `
 
+// digestTrace exercises the --turns digest: routing provenance, the dispatched
+// oracle prompt, an ide.context_captured datapoint, and the outcome.
+const digestTrace = `{"turn":0,"kind":"session.story","payload":{"app_id":"x"}}
+{"turn":1,"kind":"turn.start","state_path":"core.proposal","payload":{"input":"use this doc","routed_by":"default","match_type":"free_text"}}
+{"turn":1,"kind":"ide.context_captured","state_path":"core.proposal","payload":{"connected":true,"source":"selection","file":"/repo/a.go","injected":true}}
+{"turn":1,"kind":"harness.called","state_path":"core.proposal","payload":{"namespace":"host.oracle.converse"}}
+{"turn":1,"kind":"oracle.call.start","state_path":"core.proposal","payload":{"verb":"converse","prompt":"use this doc\n\n## Active editor selection (via /ide)"}}
+{"turn":1,"kind":"turn.end","state_path":"core.proposal","payload":{"outcome":"transitioned","to":"core.proposal"}}
+`
+
+func TestDigestTurns(t *testing.T) {
+	var buf bytes.Buffer
+	require.NoError(t, digestTurns(strings.NewReader(digestTrace), &buf))
+	out := buf.String()
+
+	assert.NotContains(t, out, "T0", "bookkeeping-only turn 0 is suppressed")
+	assert.Contains(t, out, "use this doc")
+	assert.Contains(t, out, "route=default (free_text)")
+	assert.Contains(t, out, "source=selection")
+	assert.Contains(t, out, "injected=true")
+	assert.Contains(t, out, "host.oracle.converse")
+	assert.Contains(t, out, "## Active editor selection (via /ide)")
+	assert.Contains(t, out, "transitioned → core.proposal")
+}
+
+func TestDigestTurns_SurfacesErrors(t *testing.T) {
+	const tr = `{"turn":1,"kind":"turn.start","state_path":"implementing","payload":{"input":"go","routed_by":"deterministic"}}
+{"turn":1,"kind":"host.on_error.redirect","state_path":"implementing","payload":{"from":"implementing","to":"idle"}}
+{"turn":1,"kind":"machine.error","state_path":"implementing","payload":{"error":"git.commit: nothing to commit"}}
+`
+	var buf bytes.Buffer
+	require.NoError(t, digestTurns(strings.NewReader(tr), &buf))
+	out := buf.String()
+	assert.Contains(t, out, "on_error → idle")
+	assert.Contains(t, out, "git.commit: nothing to commit")
+}
+
 // TestPrettyPrintStructure feeds the canned JSONL and checks the output structure.
 func TestPrettyPrintStructure(t *testing.T) {
 	r := strings.NewReader(cannedTrace)
