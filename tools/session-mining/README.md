@@ -15,7 +15,36 @@ your machine except a report you've explicitly scrubbed and gated.
 
 ---
 
-## Quickstart
+## Two modes
+
+The kit serves two distinct jobs over the same distilled traces:
+
+| | **Pattern mining** (this README) | **Focused idea mining** |
+|---|---|---|
+| Question | "Which recurring workflows are worth scripting?" | "What have I said about **topic X**?" |
+| Output | A redacted, shareable, aggregatable `report.json` + `BRIEF.md` | A local, ranked, themed Markdown brief of ideas/pain/design notes |
+| Redaction | **Mandatory** — a model scores the traces, the report is shared | **None** — stays in `/tmp`, never shared; redaction would strip the content you want |
+| Extractor | `prompts/extractor.md` (vocabulary-scored) | a fan-out workflow (one reader per batch) keyed to your topic |
+| Driver | the Quickstart below | the **`session-idea-mining`** skill (`docs/skills/session-idea-mining/`) |
+
+Both modes share `distill.jq` and the new **`prep.py`** (distill + bin-pack into
+byte-balanced batches in one command — replaces the hand-rolled `for f in $(ls -S
+…)` loop). Pattern mining runs `prep.py … --redact`; idea mining omits `--redact`.
+
+---
+
+## Quickstart (pattern mining)
+
+Fast path with `prep.py` (distill **and** redact **and** batch in one step):
+
+```sh
+cd tools/session-mining
+python3 prep.py ~/.claude/projects/<your-project-dir> --out /tmp/sm --redact
+# -> /tmp/sm/traces/*.txt (redacted), /tmp/sm/batches/batch-NN.txt, manifest.json
+# then run the extractor (step 3 below) over the batches, and continue at step 4.
+```
+
+The longhand pipeline (equivalent, step by step):
 
 ```sh
 cd tools/session-mining
@@ -256,8 +285,10 @@ merges mixed `vocab_version`s. The extractor prompt is a versioned artifact
 
 ```
 distill.jq              raw JSONL transcript -> compact action trace
+prep.py                 distill + (optional --redact) + bin-pack into byte-balanced batches; one command, both modes
 redact.py               deterministic scrubber; `--report` scrubs a report's free-text, `--scan` is the share-gate
-report.py               render an aggregate into an actionable BRIEF.md (verdict + gates + skeleton + first step)
+report.py               render a pattern-mining aggregate into an actionable BRIEF.md (verdict + gates + skeleton + first step)
+focus_brief.py          render a focused idea-mining synthesis JSON into a ranked themed Markdown brief (idea-mining mode)
 prompts/extractor.md    the versioned extractor prompt (the reproducible core)
 vocab/core.yaml         controlled vocabulary (cross-user merge keys)
 vocab/overlay-go.yaml   Go/backend example signatures (copy per ecosystem)
