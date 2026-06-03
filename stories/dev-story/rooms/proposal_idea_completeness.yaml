@@ -18,11 +18,10 @@ states:
           subtitle: "Problem · why kitsoki · how it's used"
           color:    "#F59E0B"
       - prose: 'Completeness check saved to  {{ world.proposal_completeness_path|default:"(checking…)" }}'
-      - kv:
-          pairs:
-            Problem:     '{{ world.proposal_completeness.problem|default:"(pending)"|truncatechars:90 }}'
-            Why kitsoki: '{{ world.proposal_completeness.why_kitsoki|default:"(pending)"|truncatechars:90 }}'
-            Usage:       '{{ world.proposal_completeness.usage|default:"(pending)"|truncatechars:90 }}'
+      # The judge's reading — shown whole as wrapping prose, never truncated.
+      - prose: '**Problem** — {{ world.proposal_completeness.problem|default:"(pending)" }}'
+      - prose: '**Why kitsoki** — {{ world.proposal_completeness.why_kitsoki|default:"(pending)" }}'
+      - prose: '**Usage** — {{ world.proposal_completeness.usage|default:"(pending)" }}'
       - prose: '✓ The idea reads as complete — **confirm** to gather references.'
         when:  "world.proposal_completeness.complete"
       - prose: '⚠ The idea has gaps — **clarify** to revise the brief, or **confirm** to draft anyway.'
@@ -51,7 +50,11 @@ states:
               intent: look
     relevant_world: [proposal_idea, proposal_workspace, proposal_brief_path, proposal_existing_state, proposal_completeness, proposal_completeness_path]
     on_enter:
-      - invoke: host.oracle.decide
+      # GUARDED for reload-safety (proposal_completeness_path is bound only
+      # after a real check): /reload skips the LLM and re-renders the stored
+      # verdict.
+      - when: "world.proposal_completeness_path == ''"
+        invoke: host.oracle.decide
         id: completeness_check
         with:
           agent: proposal_completeness_judge
@@ -68,8 +71,9 @@ states:
 
       # Host-call `with:` args are expr-lang (no pongo loops); a BARE typed
       # object pretty-prints as JSON (same as references). No title ⇒ no
-      # injected header.
-      - invoke: host.artifacts_dir
+      # injected header. Same reload guard.
+      - when: "world.proposal_completeness_path == ''"
+        invoke: host.artifacts_dir
         with:
           artifacts_root: "{{ world.proposal_workspace }}"
           thread:         "003-idea-completeness"
@@ -81,9 +85,18 @@ states:
       confirm:
         - target: proposal_references
 
-      # Step back to revise the brief (keeps the workspace + slug).
+      # Step back to revise the brief (keeps the workspace + slug). Reset the
+      # downstream results so the revised brief re-runs the forward pipeline
+      # fresh (the on_enter guards would otherwise re-show stale scans).
       clarify:
         - target: proposal_brief
+          effects:
+            - set:
+                proposal_brief_decision:   {}
+                proposal_existing_path:    ""
+                proposal_overlap_decision: ""
+                proposal_change_target:    ""
+                proposal_completeness_path: ""
 
       quit:
         - target: main

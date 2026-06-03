@@ -67,7 +67,12 @@ states:
               intent: look
     relevant_world: [proposal_idea, proposal_kind, proposal_workspace, proposal_brief_path, proposal_existing_state, proposal_change_target, proposal_references, proposal_artifact, proposal_refine_feedback, proposal_cycle, proposal_draft_cycle, proposal_draft_budget]
     on_enter:
-      - invoke: host.oracle.task
+      # GUARDED for reload-safety (the agentic author is the most expensive
+      # call in the pipeline): runs only when no draft has been produced yet.
+      # /reload re-renders the stored draft; `refine` clears proposal_artifact
+      # to force a re-draft.
+      - when: "(world.proposal_artifact.file_path ?? '') == ''"
+        invoke: host.oracle.task
         with:
           agent: proposal_author
           working_dir: "."
@@ -105,14 +110,28 @@ states:
                 prev_state: "main"
         - target: proposal_draft
           effects:
+            # Clear the artifact so the guarded author re-drafts.
             - set:
+                proposal_artifact:        {}
                 proposal_refine_feedback: "{{ slots.feedback ?? '' }}"
                 proposal_draft_cycle:     "{{ world.proposal_draft_cycle + 1 }}"
                 proposal_cycle:           "{{ world.proposal_cycle + 1 }}"
 
-      # Inputs were incomplete — step back to revise the brief.
+      # Inputs were incomplete — step back to revise the brief. Reset
+      # downstream results so the revised brief re-runs the forward pipeline
+      # fresh (guards would otherwise show stale scans / the old draft).
       clarify:
         - target: proposal_brief
+          effects:
+            - set:
+                proposal_brief_decision:    {}
+                proposal_existing_path:     ""
+                proposal_overlap_decision:  ""
+                proposal_change_target:     ""
+                proposal_completeness_path: ""
+                proposal_references_path:   ""
+                proposal_references:        {}
+                proposal_artifact:          {}
 
       quit:
         - target: main

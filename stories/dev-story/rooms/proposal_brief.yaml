@@ -31,10 +31,13 @@ states:
       - prose: "proposal cycle {{ world.proposal_cycle }} · brief checks {{ world.proposal_brief_cycle }}/{{ world.proposal_brief_budget }}"
       # The editable file path on its own prominent line — open it in VS Code.
       - prose: 'Brief saved to  {{ world.proposal_brief_path|default:"(writing 001-brief.md…)" }}'
+      # The distilled idea is 1-4 sentences — show it whole as wrapping prose,
+      # never truncated.
+      - heading: "Idea"
+      - prose: '{{ world.proposal_idea|default:"(none captured — restart from intake to re-pitch)" }}'
       - kv:
           pairs:
-            Idea:     '{{ world.proposal_idea|default:"(none)"|truncatechars:80 }}'
-            Existing: '{{ world.proposal_existing_paths|default:"(none)" }}'
+            Existing docs: '{{ world.proposal_existing_paths|default:"(none)" }}'
       # Advisory verdict from the judge.
       - heading: "Sanity check"
       - prose: '✓ The brief reads as ready — **confirm** to check for overlapping work.'
@@ -119,7 +122,15 @@ states:
       # the judge reads 001-brief.md directly. `id:` addresses this decide
       # call site so flow fixtures can stub it apart from the other rooms'
       # decides.
-      - invoke: host.oracle.decide
+      #
+      # GUARDED for reload-safety: on_enter re-fires on /reload (RerunOnEnter).
+      # Without this guard the judge re-runs the LLM on every reload (and a
+      # transient decide error bounces to `proposal` via on_error). Run only
+      # when no verdict is yet recorded; `recheck`/`regenerate` clear the
+      # decision to force a fresh run after an edit. See state-machine.md
+      # §"on_enter must be idempotent".
+      - when: "(world.proposal_brief_decision.verdict ?? '') == ''"
+        invoke: host.oracle.decide
         id: brief_check
         with:
           agent: proposal_brief_judge
@@ -148,7 +159,11 @@ states:
                 prev_state: "main"
         - target: proposal_brief
           effects:
+            # Clear the verdict so the guarded brief_check re-runs against the
+            # freshly-edited brief (the skeleton itself is kept — only the
+            # decision is recomputed).
             - set:
+                proposal_brief_decision: {}
                 proposal_brief_cycle: "{{ world.proposal_brief_cycle + 1 }}"
                 proposal_cycle:       "{{ world.proposal_cycle + 1 }}"
 

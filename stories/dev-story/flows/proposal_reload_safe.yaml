@@ -1,0 +1,54 @@
+# proposal_reload_safe — on_enter is idempotent: a room whose result is
+# already present does NOT re-run its oracle call.
+#
+# This is the reload-safety contract. /reload re-fires on_enter; the guards
+# (`when: <result> == ''`) make the expensive decide/task a no-op when the
+# result is already in world. We prove it here without a real reload: enter
+# proposal_existing_state with proposal_existing_path ALREADY set and a
+# distinctive proposal_existing_state preset. The existing_scan stub returns
+# a DIFFERENT (empty) result — so if the guard failed and the scan re-ran,
+# the preset would be overwritten. Asserting the preset survives proves the
+# scan was skipped.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: proposal_brief
+initial_world:
+  judge_mode:          "human"
+  proposal_idea:       "Add a per-session working folder primitive."
+  proposal_workspace:  "docs/proposals/.workspace/wf"
+  proposal_brief_path: "docs/proposals/.workspace/wf/001-brief.md"
+  # Brief already checked — entering brief on reload must not re-run either.
+  proposal_brief_decision: { verdict: "continue", reason: "ready", questions: [] }
+  # Overlap scan already done — the preset the guard must preserve.
+  proposal_existing_path:  "docs/proposals/.workspace/wf/002-existing-state.md"
+  proposal_existing_state:
+    overlaps:
+      - { path: "docs/proposals/PRESET-SURVIVED.md", kind: "accepted", summary: "preset", recommendation: "amend" }
+    roadmap_fit: "preset-survived"
+
+host_handlers:
+  host.oracle.decide:
+    by_call:
+      # If the guards failed, these would fire and overwrite the presets.
+      brief_check:
+        data: { ok: true, submitted: { verdict: "clarify", reason: "SHOULD-NOT-RUN", questions: ["x"] } }
+      existing_scan:
+        data: { ok: true, submitted: { overlaps: [], roadmap_fit: "SHOULD-NOT-RUN" } }
+  host.artifacts_dir:
+    data: { ok: true, path: "docs/proposals/.workspace/wf/out.md", message_id: "out#1" }
+
+turns:
+  # Enter the overlap room (its on_enter fires). proposal_existing_path is
+  # already set ⇒ the guarded scan + write are SKIPPED, so the preset state
+  # survives verbatim (overlaps still names PRESET-SURVIVED, roadmap_fit
+  # unchanged) — not the stub's empty result.
+  - intent: { name: confirm, slots: {} }
+    expect_state: proposal_existing_state
+    expect_world:
+      proposal_existing_state:
+        overlaps:
+          - { path: "docs/proposals/PRESET-SURVIVED.md", kind: "accepted", summary: "preset", recommendation: "amend" }
+        roadmap_fit: "preset-survived"
+
+expect_no_errors: true

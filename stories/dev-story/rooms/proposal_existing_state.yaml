@@ -25,10 +25,9 @@ states:
           subtitle: "Overlap with in-flight / accepted proposals?"
           color:    "#F59E0B"   # amber — gathering
       - prose: 'Overlap report saved to  {{ world.proposal_existing_path|default:"(scanning…)" }}'
-      - kv:
-          pairs:
-            Idea:        '{{ world.proposal_idea|default:"(none)"|truncatechars:80 }}'
-            Roadmap fit: '{{ world.proposal_existing_state.roadmap_fit|default:"(pending)" }}'
+      - heading: "Idea"
+      - prose: '{{ world.proposal_idea|default:"(none)" }}'
+      - prose: 'Roadmap fit — {{ world.proposal_existing_state.roadmap_fit|default:"(pending)" }}'
       - heading: "Overlaps"
       - code: |
           {% for o in world.proposal_existing_state.overlaps %}{{ forloop.Counter }}. [{{ o.kind }}] {{ o.path }}
@@ -70,7 +69,12 @@ states:
     on_enter:
       # Scan the repo for overlapping work. working_dir is the repo root (".")
       # so the scout can read docs/proposals/ and issues/.
-      - invoke: host.oracle.decide
+      #
+      # GUARDED for reload-safety (proposal_existing_path is bound only after a
+      # real scan): on /reload the scan + write are skipped and the stored
+      # report re-renders — no LLM re-run, no on_error bounce.
+      - when: "world.proposal_existing_path == ''"
+        invoke: host.oracle.decide
         id: existing_scan
         with:
           agent: proposal_scout
@@ -89,8 +93,9 @@ states:
       # BARE `{{ world.proposal_existing_state }}` resolves to the typed
       # object, which host.artifacts_dir pretty-prints as JSON (the documented
       # map/slice coercion, same as the references room). title is omitted so
-      # no `### ` header is injected.
-      - invoke: host.artifacts_dir
+      # no `### ` header is injected. Same reload guard as the scan above.
+      - when: "world.proposal_existing_path == ''"
+        invoke: host.artifacts_dir
         with:
           artifacts_root: "{{ world.proposal_workspace }}"
           thread:         "002-existing-state"

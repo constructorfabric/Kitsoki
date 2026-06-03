@@ -5,9 +5,9 @@
 # confirm → proposal_references → confirm → proposal_draft → accept →
 # proposal_publish → go_main → main.
 #
-# The four decide call sites (brief_check / existing_scan /
+# The five decide call sites (name_slug / brief_check / existing_scan /
 # completeness_check / references_research) are stubbed apart by their
-# invoke `id:` via by_call; the two host.run sites (slugify / publish)
+# invoke `id:` via by_call; the two host.run sites (uniquify / publish)
 # likewise. judge_mode is irrelevant here (the proposal gates are
 # human-floored, advisory verdicts only).
 
@@ -24,6 +24,10 @@ host_handlers:
     data: { ok: true, answer: "Add a per-session working folder primitive so process stories get a concurrency-safe scratch dir for free.", chat_id: "chat-1", claude_session_id: "sess-1" }
   host.oracle.decide:
     by_call:
+      name_slug:
+        data:
+          ok: true
+          submitted: { slug: "first-class-working-folder", rationale: "the runtime primitive being proposed" }
       brief_check:
         data:
           ok: true
@@ -62,7 +66,7 @@ host_handlers:
         follow_up_questions: []
   host.run:
     by_call:
-      slugify:
+      uniquify:
         data:
           ok: true
           exit_code: 0
@@ -87,8 +91,10 @@ turns:
       proposal_slug:      "first-class-working-folder"
       proposal_workspace: "docs/proposals/.workspace/first-class-working-folder"
     expect_host_calls:
+      # the uniquify call receives the slug the name_slug decide just bound —
+      # proves a later invoke's with: args see an earlier invoke's bind.
       - handler: host.run
-        args: { call: "slugify" }
+        args: { call: "uniquify", args: ["stories/dev-story/scripts/proposal_workspace.py", "first-class-working-folder"] }
       - handler: host.artifacts_dir
         args: { thread: "001-brief" }
 

@@ -26,9 +26,13 @@ import re
 import sys
 
 
+MAX_SLUG_WORDS = 6
+
+
 def slugify(text: str) -> str:
-    first_line = text.strip().split("\n")[0][:80]
+    first_line = text.strip().split("\n")[0]
     slug = re.sub(r"[^a-z0-9]+", "-", first_line.lower()).strip("-")
+    slug = "-".join(slug.split("-")[:MAX_SLUG_WORDS])
     return slug or "proposal"
 
 

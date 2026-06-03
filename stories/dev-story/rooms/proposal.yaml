@@ -94,17 +94,34 @@ states:
                 question:    "The discovery conversation is complete. Write a single, crisp problem/idea statement (1-4 sentences) capturing what this proposal should be about, synthesising everything we discussed. Output ONLY that statement — no preamble, no questions."
               bind:
                 proposal_idea: "answer"
-            # slugify prints JSON; bind BOTH slug + workspace from it. (A
-            # `set: proposal_workspace` in this same list would be evaluated
-            # against the pre-invoke snapshot and miss the just-bound slug —
-            # so derive both via binds instead.)
+            # Name the proposal — an interpretive decision, so oracle.decide
+            # (a raw-sentence slug is terrible). The schema enforces a short
+            # kebab slug; the namer avoids obviously-taken names.
+            - invoke: host.oracle.decide
+              id: name_slug
+              with:
+                agent: proposal_namer
+                prompt_path: prompts/proposal_slug.md
+                schema: schemas/slug.json
+                working_dir: "."
+                args:
+                  idea: "{{ world.proposal_idea }}"
+              bind:
+                proposal_slug: "submitted.slug"
+              on_error: proposal
+            # Deterministic uniqueness check (completes the validation
+            # sandwich): collide-proofs the slug against accepted proposals +
+            # in-progress workspaces, appending -N, and returns the workspace
+            # path. Reads the slug the decide just bound (a later invoke's
+            # with: args see earlier binds); binds both keys so no `set:`
+            # reads a same-list bind.
             - invoke: host.run
-              id: slugify
+              id: uniquify
               with:
                 cmd: python3
                 args:
-                  - "stories/dev-story/scripts/proposal_slug.py"
-                  - "{{ world.proposal_idea }}"
+                  - "stories/dev-story/scripts/proposal_workspace.py"
+                  - "{{ world.proposal_slug }}"
               bind:
                 proposal_slug:      "stdout_json.slug"
                 proposal_workspace: "stdout_json.workspace"

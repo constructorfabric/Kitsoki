@@ -64,7 +64,11 @@ states:
               intent: look
     relevant_world: [proposal_idea, proposal_workspace, proposal_brief_path, proposal_existing_state, proposal_references, proposal_references_path, proposal_references_cycle, proposal_references_budget, proposal_references_revise, proposal_refine_feedback, proposal_cycle]
     on_enter:
-      - invoke: host.oracle.decide
+      # GUARDED for reload-safety: the researcher only runs when no list has
+      # been persisted yet. /reload re-renders the stored list; `refine` /
+      # `regenerate` clear proposal_references_path to force a fresh search.
+      - when: "world.proposal_references_path == ''"
+        invoke: host.oracle.decide
         id: references_research
         with:
           agent: proposal_researcher
@@ -83,8 +87,9 @@ states:
         on_error: proposal_brief
 
       # Persist as a real .json (extension honoured verbatim; no title so the
-      # bare-object → pretty-JSON body stays valid JSON).
-      - invoke: host.artifacts_dir
+      # bare-object → pretty-JSON body stays valid JSON). Same reload guard.
+      - when: "world.proposal_references_path == ''"
+        invoke: host.artifacts_dir
         with:
           artifacts_root: "{{ world.proposal_workspace }}"
           thread:         "004-references.json"
@@ -112,7 +117,9 @@ states:
                 prev_state: "main"
         - target: proposal_references
           effects:
+            # Clear the persisted path so the guarded researcher re-runs.
             - set:
+                proposal_references_path:   ""
                 proposal_refine_feedback:   "{{ slots.feedback }}"
                 proposal_references_revise: true
                 proposal_references_cycle:  "{{ world.proposal_references_cycle + 1 }}"
@@ -128,15 +135,28 @@ states:
                 prev_state: "main"
         - target: proposal_references
           effects:
+            # Clear the persisted path so the guarded researcher re-runs.
             - set:
+                proposal_references_path:   ""
                 proposal_refine_feedback:   "{{ slots.feedback ?? '' }}"
                 proposal_references_revise: false
                 proposal_references_cycle:  "{{ world.proposal_references_cycle + 1 }}"
                 proposal_cycle:             "{{ world.proposal_cycle + 1 }}"
 
-      # Step back to revise the brief.
+      # Step back to revise the brief. Reset downstream results so the revised
+      # brief re-runs the forward pipeline fresh (guards would otherwise show
+      # stale scans).
       clarify:
         - target: proposal_brief
+          effects:
+            - set:
+                proposal_brief_decision:    {}
+                proposal_existing_path:     ""
+                proposal_overlap_decision:  ""
+                proposal_change_target:     ""
+                proposal_completeness_path: ""
+                proposal_references_path:   ""
+                proposal_references:        {}
 
       quit:
         - target: main

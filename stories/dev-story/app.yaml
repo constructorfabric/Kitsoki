@@ -95,6 +95,12 @@ agents:
     tools: [Read, Grep, Glob]
     external_side_effect: false
 
+  proposal_namer:
+    system_prompt: "You name kitsoki proposals. Turn an idea into a short, meaningful 2-5 word kebab-case slug (like an existing docs/proposals/<slug>.md filename) — never a raw sentence. Glance at the existing proposals + in-progress workspace to match the house style and avoid an already-taken name."
+    model: claude-sonnet-4-6
+    tools: [Read, Grep, Glob]
+    external_side_effect: false
+
   proposal_brief_judge:
     system_prompt: "You are a proposal reviewer sanity-checking a brief an operator has just filled in. Read the brief from disk and decide whether it has enough signal to proceed (a crisp Why, a one-screen What-changes, and a named kind) or whether it needs clarification. When it needs work, return the smallest set of specific clarifying questions."
     model: claude-sonnet-4-6
