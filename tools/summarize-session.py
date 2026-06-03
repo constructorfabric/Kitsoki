@@ -72,6 +72,17 @@ cursor = int(cursor_file.read_text().strip()) if cursor_file.exists() else 0
 
 new_turns = []
 new_user_turns = 0
+# Recursion guard: only count user messages authored by the *operator*.
+# Two ways a transcript "user" record can be system-injected:
+#   1. isMeta == True  — the harness wraps any hook's stderr (or any
+#      other system-side text) as a meta user turn. This catches the
+#      Stop-hook-feedback rewrite loop generically, regardless of
+#      which hook wrote the stderr.
+#   2. content starts with a known wrapper tag — <task-notification>
+#      and <system-reminder> arrive as non-meta user turns but are
+#      still system-authored.
+# Anything else is real operator input.
+SYSTEM_USER_PREFIXES = ("<task-notification>", "<system-reminder>")
 for rec in records[cursor:]:
     role = rec.get("message", {}).get("role")
     if role not in ("user", "assistant"):
@@ -82,10 +93,16 @@ for rec in records[cursor:]:
             block.get("text", "") for block in content if block.get("type") == "text"
         )
     text = content.strip()
-    if text:
-        new_turns.append(f"{role}: {text}")
-        if role == "user" and not text.startswith("<task-notification>") and not text.startswith("<system-reminder>"):
-            new_user_turns += 1
+    if not text:
+        continue
+    new_turns.append(f"{role}: {text}")
+    if role != "user":
+        continue
+    if rec.get("isMeta") is True:
+        continue
+    if text.startswith(SYSTEM_USER_PREFIXES):
+        continue
+    new_user_turns += 1
 
 # Only fire if a real user has said something new — prevents recursion on
 # hook-generated turns (task-notifications, system-reminders, assistant responses).
