@@ -272,15 +272,31 @@ func TestSelectionEcho_AppearsOncePerTurn(t *testing.T) {
 			"deny-ruled file must not stage ambient context")
 	})
 
-	t.Run("empty selection echoes nothing", func(t *testing.T) {
+	t.Run("no active editor and no open tabs echoes nothing", func(t *testing.T) {
 		rm, _ := tuipkg.ExtractRootModel(buildModel(t, orch, sid))
 		fake := tuipkg.NewFakeIDELink("VS Code", "/ws", 1)
-		fake.SetSelection(file, "", nil)
+		// Empty file = no active text editor; no open tabs either.
+		fake.SetSelection("", "", nil)
 		tuipkg.SetIDELinkForTest(&rm, fake)
 
 		rm = tuipkg.CaptureIDEAmbientForTest(rm)
 		require.NotContains(t, tuipkg.GetTranscriptContent(rm), "⧉ Selected")
+		require.NotContains(t, tuipkg.GetTranscriptContent(rm), "⧉ Editor open")
 		require.Empty(t, tuipkg.PendingIDEAmbientForTest(rm).File)
+	})
+
+	t.Run("cursor in a file with no highlight rides as the active document", func(t *testing.T) {
+		rm, _ := tuipkg.ExtractRootModel(buildModel(t, orch, sid))
+		fake := tuipkg.NewFakeIDELink("VS Code", "/ws", 1)
+		// getCurrentSelection reports the focused file with empty text.
+		fake.SetSelection(file, "", nil)
+		tuipkg.SetIDELinkForTest(&rm, fake)
+
+		rm = tuipkg.CaptureIDEAmbientForTest(rm)
+		amb := tuipkg.PendingIDEAmbientForTest(rm)
+		require.Equal(t, file, amb.File, "the focused file rides even with no selection")
+		require.Empty(t, amb.Selection, "no highlighted text")
+		require.Contains(t, tuipkg.GetTranscriptContent(rm), "⧉ Editor open on "+file)
 	})
 }
 
@@ -413,8 +429,10 @@ func TestSelectionEcho_InjectsOnlyOnChange(t *testing.T) {
 		rm = tuipkg.CaptureIDEAmbientForTest(rm)
 		require.Equal(t, "same", tuipkg.PendingIDEAmbientForTest(rm).Selection)
 
-		// Deselect: an empty selection resets the change-tracker.
-		fake.SetSelection(file, "", nil)
+		// Close the editor (no active text editor, no tabs) — resets the
+		// change-tracker. An empty *file* (not just empty text) is "nothing
+		// focused"; empty text with a file would still ride as the active doc.
+		fake.SetSelection("", "", nil)
 		rm = tuipkg.CaptureIDEAmbientForTest(rm)
 		require.Empty(t, tuipkg.PendingIDEAmbientForTest(rm).File)
 

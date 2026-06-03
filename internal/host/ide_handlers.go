@@ -193,17 +193,32 @@ func IDEGetSelectionHandler(ctx context.Context, args map[string]any) (Result, e
 
 	data := map[string]any{"connected": true, "file": "", "text": "", "range": nil}
 	if m, ok := payload.(map[string]any); ok {
-		if v, ok := m["file"]; ok {
-			data["file"] = v
-		}
+		// File path: editors disagree on the key. VS Code's getCurrentSelection
+		// returns "filePath"; others use "file"/"fileName", or only a "uri"/
+		// "fileUrl" (file://…). Take the first present, stripping the scheme.
+		data["file"] = firstStringField(m, "file", "filePath", "fileName", "uri", "fileUrl")
 		if v, ok := m["text"]; ok {
 			data["text"] = v
 		}
+		// Range: "range" or VS Code's "selection".
 		if v, ok := m["range"]; ok {
+			data["range"] = v
+		} else if v, ok := m["selection"]; ok {
 			data["range"] = v
 		}
 	}
 	return Result{Data: data}, nil
+}
+
+// firstStringField returns the first key whose value is a non-empty string,
+// stripping a file:// scheme so callers always see a plain path.
+func firstStringField(m map[string]any, keys ...string) string {
+	for _, k := range keys {
+		if s, ok := m[k].(string); ok && strings.TrimSpace(s) != "" {
+			return strings.TrimPrefix(s, "file://")
+		}
+	}
+	return ""
 }
 
 // IDEGetOpenEditorsHandler implements host.ide.get_open_editors.
@@ -235,8 +250,12 @@ func IDEGetOpenEditorsHandler(ctx context.Context, args map[string]any) (Result,
 	case []any:
 		data["editors"] = v
 	case map[string]any:
+		// The editor may key the list as "editors" or "tabs" (VS Code's
+		// TabGroups API returns {"tabs":[…]}). Accept either.
 		if e, ok := v["editors"]; ok {
 			data["editors"] = e
+		} else if tabs, ok := v["tabs"]; ok {
+			data["editors"] = tabs
 		}
 	}
 	return Result{Data: data}, nil

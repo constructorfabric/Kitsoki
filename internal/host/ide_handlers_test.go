@@ -188,6 +188,52 @@ func TestIDEGetOpenEditors_Connected(t *testing.T) {
 	}
 }
 
+// TestIDEGetSelection_VSCodeWireShape: the real getCurrentSelection returns the
+// file under "filePath" (not "file") and the range under "selection" (not
+// "range"). The handler must normalise both, stripping any file:// scheme.
+func TestIDEGetSelection_VSCodeWireShape(t *testing.T) {
+	link := &fakeLink{
+		connected: true,
+		results: map[string]json.RawMessage{
+			"getCurrentSelection": envelope(
+				`{"filePath":"file:///repo/a.go","text":"","selection":{"start":{"line":3,"character":0},"end":{"line":3,"character":0}}}`, false),
+		},
+	}
+	ctx := host.WithIDELink(context.Background(), link)
+	res, err := host.IDEGetSelectionHandler(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Data["file"] != "/repo/a.go" {
+		t.Fatalf("filePath must normalise to file (scheme stripped); got %v", res.Data["file"])
+	}
+	if res.Data["range"] == nil {
+		t.Fatal("selection must normalise to range")
+	}
+}
+
+// TestIDEGetOpenEditors_TabsWireShape: the real getOpenEditors returns the list
+// under "tabs" (VS Code TabGroups API), with paths under "fileName"/"uri". The
+// handler must accept "tabs" as an alias for "editors".
+func TestIDEGetOpenEditors_TabsWireShape(t *testing.T) {
+	link := &fakeLink{
+		connected: true,
+		results: map[string]json.RawMessage{
+			"getOpenEditors": envelope(
+				`{"tabs":[{"uri":"file:///repo/a.go","fileName":"/repo/a.go","isActive":true}]}`, false),
+		},
+	}
+	ctx := host.WithIDELink(context.Background(), link)
+	res, err := host.IDEGetOpenEditorsHandler(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	eds, ok := res.Data["editors"].([]any)
+	if !ok || len(eds) != 1 {
+		t.Fatalf("tabs must surface as editors; got %v", res.Data["editors"])
+	}
+}
+
 func TestIDEOpenFile_Connected(t *testing.T) {
 	link := &fakeLink{
 		connected: true,

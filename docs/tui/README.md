@@ -144,12 +144,20 @@ turn. Two layers, in priority order:
 
 - **Selection** (`host.ide.get_selection`): highlighted text wins. Echo:
   `⧉ Selected N lines from <file>`.
-- **Active open file** (`host.ide.get_open_editors`): with nothing highlighted,
-  the focused file's *path* rides (no file read — the agent reads it with its
-  own tools if needed) so "reference the open doc" works without selecting.
-  Echo: `⧉ Editor open on <file>`. Focus is the editor flagged active, or the
-  sole open editor; several editors with none active is ambiguous and rides
-  nothing.
+- **Active document** (`host.ide.get_selection` with empty text): with nothing
+  highlighted, `getCurrentSelection` still names the focused editor's file — the
+  one the cursor is in — so its *path* rides (no file read; the agent reads it
+  with its own tools if needed). This is the reliable "reference the open doc"
+  signal: unambiguous even with many tabs open. Echo: `⧉ Editor open on <file>`.
+- **Active open tab** (`host.ide.get_open_editors`): the fallback when the editor
+  reports no active text editor (e.g. focus is in the kitsoki terminal). Uses the
+  tab flagged active, or the sole open tab; several tabs with none active is
+  ambiguous and rides nothing (recorded as `reason: ambiguous_focus`).
+
+Field names vary by editor: `getCurrentSelection` returns the path under
+`filePath`/`file`/`fileName`/`uri`, and `getOpenEditors` keys the list as `tabs`
+or `editors` with items under `fileName`/`uri` — the handlers normalise all of
+these.
 
 This is the same affordance Claude Code gives. Context is read at submit, and
 the echo reflects exactly what rode the turn.

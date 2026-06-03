@@ -216,7 +216,7 @@ func (m RootModel) captureIDEAmbient() RootModel {
 		return m
 	}
 
-	cand, source, reason := m.readIDEContext()
+	cand, source, reason, detail := m.readIDEContext()
 	injected := false
 	switch {
 	case cand.File == "":
@@ -248,24 +248,37 @@ func (m RootModel) captureIDEAmbient() RootModel {
 		Range:     cand.Range,
 		Injected:  injected,
 		Reason:    reason,
+		Detail:    detail,
 	})
 	return m
 }
 
 // readIDEContext resolves the editor context for this turn in priority order:
-// a live selection wins; with nothing highlighted it falls back to the focused
-// open file (path only). Returns the ambient plus a source tag
-// ("selection" | "active_editor" | "none") and, when nothing usable was found,
-// a reason for the trace.
-func (m RootModel) readIDEContext() (host.IDEAmbient, string, string) {
+//
+//  1. A live selection (get_selection with highlighted text) — source "selection".
+//  2. The active text editor's file with no highlight (get_selection returns the
+//     focused file but empty text) — source "active_editor". This is the most
+//     reliable "the open doc" signal: it names the one editor the cursor is in,
+//     unambiguous even with many tabs open.
+//  3. The active open tab (get_open_editors) — the fallback when the editor
+//     reports no active text editor (e.g. focus is in the terminal). Ambiguous
+//     when several tabs are open and none is flagged active.
+//
+// Returns the ambient plus a source tag and, when nothing usable was found, a
+// reason and the raw getOpenEditors envelope as diagnostic detail for the trace.
+func (m RootModel) readIDEContext() (host.IDEAmbient, string, string, string) {
 	if sel := m.readIDESelection(); sel.File != "" {
-		return sel, "selection", ""
+		if sel.Selection != "" {
+			return sel, "selection", "", ""
+		}
+		// File but no highlight: the focused document itself rides (path only).
+		return host.IDEAmbient{File: sel.File}, "active_editor", "", ""
 	}
-	amb, reason := m.readActiveEditor()
+	amb, reason, detail := m.readActiveEditor()
 	if amb.File != "" {
-		return amb, "active_editor", ""
+		return amb, "active_editor", "", ""
 	}
-	return host.IDEAmbient{}, "none", reason
+	return host.IDEAmbient{}, "none", reason, detail
 }
 
 // ideAmbientEcho renders the settled-line echo for what rode the turn: the
@@ -285,27 +298,46 @@ func ideAmbientEcho(a host.IDEAmbient) string {
 // is the no-selection fallback so the open document still feeds the turn — path
 // only, no file read (the agent reads it with its own tools if it needs the
 // body).
-func (m RootModel) readActiveEditor() (host.IDEAmbient, string) {
+func (m RootModel) readActiveEditor() (host.IDEAmbient, string, string) {
 	if !m.ideConnected() {
-		return host.IDEAmbient{}, "not_connected"
+		return host.IDEAmbient{}, "not_connected", ""
 	}
 	ctx := host.WithIDELink(context.Background(), m.ideLink)
 	res, err := host.IDEGetOpenEditorsHandler(ctx, nil)
 	if err != nil || res.Data == nil {
-		return host.IDEAmbient{}, "not_connected"
+		return host.IDEAmbient{}, "not_connected", ""
 	}
 	if connected, _ := res.Data["connected"].(bool); !connected {
-		return host.IDEAmbient{}, "not_connected"
+		return host.IDEAmbient{}, "not_connected", ""
 	}
 	editors, _ := res.Data["editors"].([]any)
 	file, reason := activeEditorFile(editors)
 	if file == "" {
-		return host.IDEAmbient{}, reason
+		// Detection found no usable path. Capture the raw getOpenEditors
+		// envelope (paths/labels — no file body or selection) so an
+		// unexpected editor wire-shape is fixable straight from the trace.
+		return host.IDEAmbient{}, reason, m.rawOpenEditorsEnvelope()
 	}
 	if m.ideFileDenied(file) {
-		return host.IDEAmbient{}, "deny_ruled"
+		return host.IDEAmbient{}, "deny_ruled", ""
 	}
-	return host.IDEAmbient{File: file}, ""
+	return host.IDEAmbient{File: file}, "", ""
+}
+
+// rawOpenEditorsEnvelope fetches the raw getOpenEditors MCP envelope for
+// diagnosis when active-editor detection found nothing. Truncated; best-effort
+// (a call error is returned as the detail string).
+func (m RootModel) rawOpenEditorsEnvelope() string {
+	raw, err := m.ideLink.CallTool(context.Background(), "getOpenEditors", map[string]any{})
+	if err != nil {
+		return "getOpenEditors call error: " + err.Error()
+	}
+	s := string(raw)
+	const cap = 900
+	if len(s) > cap {
+		s = s[:cap] + "…(truncated)"
+	}
+	return s
 }
 
 // activeEditorFile returns the path of the editor flagged active; when none is
@@ -344,7 +376,7 @@ func activeEditorFile(editors []any) (string, string) {
 // common key names and stripping a file:// scheme so the echo and prompt show a
 // plain path.
 func editorFilePath(m map[string]any) string {
-	for _, k := range []string{"file", "path", "fsPath", "uri"} {
+	for _, k := range []string{"fileName", "file", "path", "fsPath", "uri", "fileUrl"} {
 		if s, ok := m[k].(string); ok && strings.TrimSpace(s) != "" {
 			return strings.TrimPrefix(s, "file://")
 		}
@@ -362,13 +394,14 @@ func isActiveEditor(m map[string]any) bool {
 	return false
 }
 
-// readIDESelection reads the active editor selection through the slice-1
-// host.ide.get_selection handler (one selection-parsing path) and returns it as
-// an IDEAmbient, or the zero value when there is no usable selection: the link
-// is off, the handler reports not-connected, nothing is selected, or the active
-// file is deny-ruled (parity with Claude Code's Read deny-rule suppression).
-// The handler returns the typed not-connected/empty result rather than an
-// error, so this never fails a turn.
+// readIDESelection reads the active text editor through the slice-1
+// host.ide.get_selection handler (getCurrentSelection). It returns an IDEAmbient
+// with the focused file always set when one is reported — Selection carries the
+// highlighted text, or "" when the cursor sits in a file with nothing selected
+// (the caller treats a file-with-no-text as the active document). It returns the
+// zero value only when there is no active editor at all (link off, not-connected,
+// no file reported) or the file is deny-ruled. The handler returns the typed
+// not-connected/empty result rather than an error, so this never fails a turn.
 func (m RootModel) readIDESelection() host.IDEAmbient {
 	if !m.ideConnected() {
 		return host.IDEAmbient{}
@@ -383,7 +416,9 @@ func (m RootModel) readIDESelection() host.IDEAmbient {
 	}
 	file, _ := res.Data["file"].(string)
 	text, _ := res.Data["text"].(string)
-	if strings.TrimSpace(file) == "" || text == "" {
+	if strings.TrimSpace(file) == "" {
+		// No active text editor (e.g. focus is in the terminal) — let the
+		// caller fall back to the open-tabs probe.
 		return host.IDEAmbient{}
 	}
 	if m.ideFileDenied(file) {

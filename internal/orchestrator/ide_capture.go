@@ -26,6 +26,9 @@ type IDECaptureRecord struct {
 	Range     string // selection range label ("" when not a selection)
 	Injected  bool   // did this context ride the prompt this turn (fresh + file)
 	Reason    string // why nothing rode, when Source=="none" (e.g. "ambiguous_focus")
+	Detail    string // diagnostic detail when Source=="none" — e.g. the raw
+	// getOpenEditors envelope (file paths/labels, never selection or file body)
+	// so an unexpected editor wire-shape is fixable from the trace.
 }
 
 // RecordIDEContext appends an `ide.context_captured` event describing the editor
@@ -74,6 +77,9 @@ func (o *Orchestrator) RecordIDEContext(ctx context.Context, sid app.SessionID, 
 	}
 	if rec.Reason != "" {
 		payload["reason"] = rec.Reason
+	}
+	if rec.Detail != "" {
+		payload["detail"] = rec.Detail
 	}
 	raw, err := json.Marshal(payload)
 	if err != nil {
