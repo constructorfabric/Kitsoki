@@ -1,0 +1,124 @@
+# proposal_draft — generate the proposal, then checkpoint.
+#
+# Mirrors stories/prd/rooms/drafting.yaml. on_enter runs the
+# `proposal_author` (host.oracle.task) which classifies the kind, copies
+# the matching docs/proposals/templates/<kind>.md, fills the Why / What
+# changes / Impact spine, and writes 005-proposal.md into the workspace —
+# OR, when the overlap gate chose change_existing, amends
+# proposal_change_target in place. working_dir is the repo root so both the
+# workspace write and an amend of docs/proposals/<file>.md resolve.
+#
+# The acceptance schema requires needs_clarification + follow_up_questions
+# so the author can say "the inputs left gaps" — surfaced as a banner that
+# points the operator back to the brief via `clarify`.
+#
+# Checkpoint exits: accept → publish; refine → re-draft (budget-capped);
+# clarify → back to the brief.
+
+states:
+
+  proposal_draft:
+    description: "Draft the proposal; review and accept, refine, or step back."
+    view:
+      - banner:
+          text:     "DRAFTING"
+          subtitle: "Fill the template, review, publish"
+          color:    "#8B5CF6"   # violet — synthesis
+      - prose: "proposal cycle {{ world.proposal_cycle }} · draft attempt {{ world.proposal_draft_cycle }}/{{ world.proposal_draft_budget }}"
+      - prose: 'Proposal written to  {{ world.proposal_artifact.file_path|default:"(drafting — writes 005-proposal.md)" }}'
+      - prose: 'Amending existing proposal:  {{ world.proposal_change_target }}'
+        when:  "world.proposal_change_target"
+      - kv:
+          pairs:
+            Title:      '{{ world.proposal_artifact.title|default:"(pending)" }}'
+            Kind:       '{{ world.proposal_artifact.kind|default:"(pending)" }}'
+            Confidence: '{{ world.proposal_artifact.confidence|default:"(pending)" }}'
+      - prose: "⚠ The author flagged that more input is needed — see the follow-ups, then use clarify to revise the brief."
+        when:  "world.proposal_artifact.needs_clarification"
+      - code: |
+          {% for q in world.proposal_artifact.follow_up_questions %}- {{ q }}
+          {% empty %}(no follow-ups){% endfor %}
+        when: "world.proposal_artifact.needs_clarification"
+      - heading: "Proposal"
+      - code: '{{ world.proposal_artifact.summary_markdown|default:"(pending — oracle has not returned yet; the full proposal is written to the output file)" }}'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "accept"
+              hint:   "publish — the proposal is ready"
+              intent: accept
+            - label:  "refine"
+              hint:   "re-draft with feedback (same inputs)"
+              intent: refine
+              param:
+                slot:        feedback
+                type:        string
+                placeholder: "what to change"
+                required:    false
+            - label:  "clarify"
+              hint:   "the inputs were incomplete — step back to revise the brief"
+              intent: clarify
+            - label:  "quit"
+              hint:   "abandon this proposal"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    relevant_world: [proposal_idea, proposal_kind, proposal_workspace, proposal_brief_path, proposal_existing_state, proposal_change_target, proposal_references, proposal_artifact, proposal_refine_feedback, proposal_cycle, proposal_draft_cycle, proposal_draft_budget]
+    on_enter:
+      - invoke: host.oracle.task
+        with:
+          agent: proposal_author
+          working_dir: "."
+          acceptance:
+            schema: schemas/proposal-artifact.json
+          context:
+            prompt: prompts/proposal_draft.md
+            args:
+              idea:            "{{ world.proposal_idea }}"
+              kind:            "{{ world.proposal_kind }}"
+              workdir:         "{{ world.proposal_workspace }}"
+              brief_path:      "{{ world.proposal_brief_path }}"
+              existing_state:  "{{ world.proposal_existing_state }}"
+              change_target:   "{{ world.proposal_change_target }}"
+              references:      "{{ world.proposal_references }}"
+              output_path:     "{{ world.proposal_workspace }}/005-proposal.md"
+              refine_feedback: "{{ world.proposal_refine_feedback }}"
+              cycle:           "{{ world.proposal_cycle }}"
+        bind:
+          proposal_artifact: submitted
+          proposal_kind:     "submitted.kind"
+        on_error: proposal_brief
+    on:
+      # Accept — publish the proposal.
+      accept:
+        - target: proposal_publish
+
+      # Same inputs, revise the prose. Budget gate → main (no @exit in the hub).
+      refine:
+        - when: "world.proposal_draft_cycle >= world.proposal_draft_budget"
+          target: main
+          effects:
+            - set:
+                last_error: "proposal abandoned — draft budget exhausted"
+                prev_state: "main"
+        - target: proposal_draft
+          effects:
+            - set:
+                proposal_refine_feedback: "{{ slots.feedback ?? '' }}"
+                proposal_draft_cycle:     "{{ world.proposal_draft_cycle + 1 }}"
+                proposal_cycle:           "{{ world.proposal_cycle + 1 }}"
+
+      # Inputs were incomplete — step back to revise the brief.
+      clarify:
+        - target: proposal_brief
+
+      quit:
+        - target: main
+          effects:
+            - set:
+                last_error: "proposal abandoned at draft"
+                prev_state: "main"
+      look:
+        - target: .

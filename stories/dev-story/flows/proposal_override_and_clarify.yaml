@@ -1,0 +1,54 @@
+# proposal_override_and_clarify — override_new despite an overlap, then the
+# clarify back-edge to the brief.
+#
+# Covers the two arcs the happy/overlap flows don't: `override_new` (force a
+# new proposal even though the scout found an overlap — recorded as decision
+# "new") and `clarify` (step back from a later gate to revise the brief). The
+# completeness → brief clarify edge here is structurally identical to the
+# references → brief and draft → brief clarify edges (all `target:
+# proposal_brief`, no effects).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: proposal_brief
+initial_world:
+  judge_mode:          "human"
+  proposal_idea:       "Add a local model oracle sidecar."
+  proposal_workspace:  "docs/proposals/.workspace/lmo"
+  proposal_brief_path: "docs/proposals/.workspace/lmo/001-brief.md"
+
+host_handlers:
+  host.oracle.decide:
+    by_call:
+      brief_check:
+        data: { ok: true, submitted: { verdict: "continue", reason: "ready.", questions: [] } }
+      existing_scan:
+        data:
+          ok: true
+          submitted:
+            overlaps:
+              - { path: "docs/proposals/local-model-oracle.md", kind: "accepted", summary: "Already proposes a sidecar.", recommendation: "amend" }
+            roadmap_fit: "Overlaps the accepted proposal."
+      completeness_check:
+        data: { ok: true, submitted: { complete: false, problem: "p", why_kitsoki: "w", usage: "u", gaps: ["scope is unclear"] } }
+  host.artifacts_dir:
+    data: { ok: true, path: "docs/proposals/.workspace/lmo/out.md", message_id: "out#1" }
+
+turns:
+  # Confirm brief → overlap check (scout reports an accepted overlap).
+  - intent: { name: confirm, slots: {} }
+    expect_state: proposal_existing_state
+
+  # Force a new proposal despite the overlap — decision recorded as "new",
+  # no change_target set.
+  - intent: { name: override_new, slots: {} }
+    expect_state: proposal_idea_completeness
+    expect_world:
+      proposal_overlap_decision: "new"
+      proposal_change_target:    ""
+
+  # The completeness judge flagged gaps — step back to revise the brief.
+  - intent: { name: clarify, slots: {} }
+    expect_state: proposal_brief
+
+expect_no_errors: true

@@ -1,0 +1,137 @@
+# proposal_happy_path — the full proposal pipeline, intent-only (no LLM).
+#
+# proposal (intake) → begin_proposal → proposal_brief → confirm →
+# proposal_existing_state → proceed_new → proposal_idea_completeness →
+# confirm → proposal_references → confirm → proposal_draft → accept →
+# proposal_publish → go_main → main.
+#
+# The four decide call sites (brief_check / existing_scan /
+# completeness_check / references_research) are stubbed apart by their
+# invoke `id:` via by_call; the two host.run sites (slugify / publish)
+# likewise. judge_mode is irrelevant here (the proposal gates are
+# human-floored, advisory verdicts only).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: proposal
+initial_world:
+  judge_mode: "human"
+
+host_handlers:
+  host.chat.resolve:
+    data: { ok: true, chat_id: "chat-1", title: "Proposal idea discovery", is_new: true }
+  host.oracle.converse:
+    data: { ok: true, answer: "Add a per-session working folder primitive so process stories get a concurrency-safe scratch dir for free.", chat_id: "chat-1", claude_session_id: "sess-1" }
+  host.oracle.decide:
+    by_call:
+      brief_check:
+        data:
+          ok: true
+          submitted: { verdict: "continue", reason: "Crisp why, one-screen change, kind named.", questions: [] }
+      existing_scan:
+        data:
+          ok: true
+          submitted: { overlaps: [], roadmap_fit: "A net-new runtime primitive; no overlap with the current queue." }
+      completeness_check:
+        data:
+          ok: true
+          submitted:
+            complete:    true
+            problem:     "Process stories hand-roll per-session scratch dirs and collide under concurrency."
+            why_kitsoki: "The engine already keys sessions; a reserved world.workdir is a natural primitive."
+            usage:       "Stories get a safe scratch dir for free and only choose what to write."
+            gaps:        []
+      references_research:
+        data:
+          ok: true
+          submitted:
+            items:
+              - { path: "docs/proposals/process-design.md", sections: "§4.3", rationale: "names the first-class workdir as a future runtime slice" }
+  host.artifacts_dir:
+    data: { ok: true, path: "docs/proposals/.workspace/x/out.md", message_id: "out#1" }
+  host.oracle.task:
+    data:
+      ok: true
+      submitted:
+        title:               "Runtime: first-class per-session working folder"
+        kind:                "runtime"
+        summary_markdown:    "## Runtime: first-class per-session working folder\n\nThe engine establishes a gitignored, session-keyed working folder at session start, exposed as a reserved world.workdir, and cleans it up on exit."
+        file_path:           "docs/proposals/.workspace/x/005-proposal.md"
+        confidence:          0.82
+        needs_clarification: false
+        follow_up_questions: []
+  host.run:
+    by_call:
+      slugify:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"slug":"first-class-working-folder","workspace":"docs/proposals/.workspace/first-class-working-folder"}'
+          stdout_json: { slug: "first-class-working-folder", workspace: "docs/proposals/.workspace/first-class-working-folder" }
+      publish:
+        data: { ok: true, exit_code: 0, stdout: "docs/proposals/first-class-working-folder.md" }
+
+turns:
+  # Discovery conversation (self-loop; on_enter does not re-fire).
+  - intent: { name: discuss, slots: { message: "I want a per-session working folder primitive" } }
+    expect_state: proposal
+    expect_world:
+      proposal_idea_turns: 1
+
+  # Distill → mint slug + workspace → enter the brief (skeleton write +
+  # sanity-check both fire on entry).
+  - intent: { name: begin_proposal, slots: {} }
+    expect_state: proposal_brief
+    expect_world:
+      proposal_idea:      "Add a per-session working folder primitive so process stories get a concurrency-safe scratch dir for free."
+      proposal_slug:      "first-class-working-folder"
+      proposal_workspace: "docs/proposals/.workspace/first-class-working-folder"
+    expect_host_calls:
+      - handler: host.run
+        args: { call: "slugify" }
+      - handler: host.artifacts_dir
+        args: { thread: "001-brief" }
+
+  # Confirm the brief → overlap check (existing_scan + 002 write).
+  - intent: { name: confirm, slots: {} }
+    expect_state: proposal_existing_state
+    expect_host_calls:
+      - handler: host.artifacts_dir
+        args: { thread: "002-existing-state" }
+
+  # No overlap → proceed to a new proposal (completeness_check + 003 write).
+  - intent: { name: proceed_new, slots: {} }
+    expect_state: proposal_idea_completeness
+    expect_world:
+      proposal_overlap_decision: "new"
+    expect_host_calls:
+      - handler: host.artifacts_dir
+        args: { thread: "003-idea-completeness" }
+
+  # Idea complete → gather references (references_research + 004 write).
+  - intent: { name: confirm, slots: {} }
+    expect_state: proposal_references
+    expect_host_calls:
+      - handler: host.artifacts_dir
+        args: { thread: "004-references.json" }
+
+  # References good → draft (the author task writes 005-proposal.md).
+  - intent: { name: confirm, slots: {} }
+    expect_state: proposal_draft
+    expect_world:
+      proposal_kind: "runtime"
+
+  # Accept → publish (publish_proposal.py moves it into the queue).
+  - intent: { name: accept, slots: {} }
+    expect_state: proposal_publish
+    expect_world:
+      proposal_file: "docs/proposals/first-class-working-folder.md"
+    expect_host_calls:
+      - handler: host.run
+        args: { call: "publish" }
+
+  # Back to the day landing.
+  - intent: { name: go_main, slots: {} }
+    expect_state: main
+
+expect_no_errors: true

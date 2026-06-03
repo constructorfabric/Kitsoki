@@ -77,6 +77,7 @@ agents:
     system_prompt: "You are a bug reproduction analyst. Read the codebase, reproduce the reported bug, identify the affected components, and produce a structured reproduction artifact."
     model: claude-sonnet-4-6
     tools: [Read, Grep, Glob, Bash]
+    bash_profile: read-only
     external_side_effect: false
 
   proposer:
@@ -89,18 +90,21 @@ agents:
     system_prompt: "You are a software engineer applying a proposed fix. Read the proposal artifact, locate the affected files, and apply the minimal correct edit to fix the bug."
     model: claude-sonnet-4-6
     tools: [Read, Grep, Glob, Edit, Write, Bash]
+    bash_profile: read-only
     external_side_effect: false
 
   test_author:
     system_prompt: "You are a software engineer reviewing test coverage and authoring regression tests. Read the applied fix, run the tests, and produce a structured test-review artifact."
     model: claude-sonnet-4-6
     tools: [Read, Grep, Glob, Edit, Write, Bash]
+    bash_profile: read-only
     external_side_effect: false
 
   validator:
     system_prompt: "You are a validation engineer verifying a fix in a full environment. Build the project, run tests, check the fix applies, and produce a structured validation artifact."
     model: claude-sonnet-4-6
     tools: [Read, Grep, Glob, Bash]
+    bash_profile: read-only
     external_side_effect: false
 
   judge:

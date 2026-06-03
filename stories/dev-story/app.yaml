@@ -58,6 +58,18 @@ hosts:
   - host.inbox.add
   - host.oracle.ask
   - host.run
+  # ── Proposal-authoring pipeline (rooms/proposal*.yaml) ────────────
+  # The intake room is a discovery conversation (converse + a persistent
+  # chat); the brief / existing-state / completeness / references rooms
+  # run decide gates; the draft room runs an agentic task; the brief and
+  # the gate artifacts are persisted under the per-session workspace via
+  # host.artifacts_dir. An instance importing dev-story with
+  # `hosts: declared` must list all five in its own allow-list.
+  - host.oracle.converse
+  - host.oracle.decide
+  - host.oracle.task
+  - host.chat.resolve
+  - host.artifacts_dir
 
 # Persona table (oracle-split proposal §3.5).
 #
@@ -71,6 +83,47 @@ agents:
     model: claude-sonnet-4-6
     tools: [Read, Grep, Glob]
     bash_profile: read-only
+
+  # ── Proposal-authoring personas (rooms/proposal*.yaml) ────────────
+  # One persona per pipeline step so the trace attributes model + token
+  # usage per phase, the same discipline as stories/prd/. All are
+  # read-only except the author, which writes the proposal markdown into
+  # the per-session workspace.
+  proposal_interviewer:
+    system_prompt: "You are a kitsoki maintainer running a discovery conversation to develop a raw idea into something a *proposal* can be written from. kitsoki is a deterministic-state-machine PoC for LLM workflows. Ask one focused question at a time and help the operator sharpen: the problem, why kitsoki is the right tool, how an operator would use the change, and which layer it touches (story / runtime / tui / tracing). When pointed at existing docs or code, read them. Keep each reply to a sentence or two plus at most one question."
+    model: claude-sonnet-4-6
+    tools: [Read, Grep, Glob]
+    external_side_effect: false
+
+  proposal_brief_judge:
+    system_prompt: "You are a proposal reviewer sanity-checking a brief an operator has just filled in. Read the brief from disk and decide whether it has enough signal to proceed (a crisp Why, a one-screen What-changes, and a named kind) or whether it needs clarification. When it needs work, return the smallest set of specific clarifying questions."
+    model: claude-sonnet-4-6
+    tools: [Read, Grep, Glob]
+    external_side_effect: false
+
+  proposal_scout:
+    system_prompt: "You are a kitsoki maintainer checking whether a proposed idea overlaps with work already in flight. Search the proposals workspace (docs/proposals/.workspace/), the accepted proposals (docs/proposals/*.md), and the feature/bug docs for anything the idea duplicates, extends, or conflicts with. When you find an overlap, recommend AMENDING the existing proposal rather than creating a new one. Report where the idea fits on the roadmap."
+    model: claude-sonnet-4-6
+    tools: [Read, Grep, Glob]
+    external_side_effect: false
+
+  proposal_completeness_judge:
+    system_prompt: "You are a proposal reviewer judging whether an idea is complete enough to draft. Decide whether the brief answers: what problem it solves, why kitsoki is the right tool, and how an operator will use it. Return the concrete gaps when it is not yet complete."
+    model: claude-sonnet-4-6
+    tools: [Read, Grep, Glob]
+    external_side_effect: false
+
+  proposal_researcher:
+    system_prompt: "You are a kitsoki maintainer curating the reference materials a proposal must build on. Read the idea and the brief, then search the repo's DOCUMENTATION, rules, and guidelines — docs/, READMEs, gold-standard stories, the proposal templates and skill — for prior art, constraints, and conventions the proposal must honour. For each reference give the path, the specific section(s) / line range that matter, and a one-line rationale. Prefer a short, high-signal list."
+    model: claude-sonnet-4-6
+    tools: [Read, Grep, Glob]
+    external_side_effect: false
+
+  proposal_author:
+    system_prompt: "You are a kitsoki maintainer authoring a proposal. Classify the change kind (story / runtime / tui / tracing / epic), copy the matching template under docs/proposals/templates/, and fill it — the Why / What changes / Impact spine first, then only the kind-specific sections that apply — grounding every claim in the cited references. Write the proposal markdown to disk."
+    model: claude-sonnet-4-6
+    tools: [Read, Grep, Glob, Write, Edit]
+    external_side_effect: false
 
 # Six host_interfaces — same provider-neutral surfaces declared by the
 # imported stories. Declaring them here too lets the dev-story hub
@@ -215,10 +268,57 @@ world:
   oracle_question:     { type: string, default: "" }
   oracle_answer:       { type: string, default: "" }
 
-  # ── Ad hoc proposal ───────────────────────────────────────────────
-  proposal_idea:       { type: string, default: "" }
-  proposal_draft:      { type: string, default: "" }
-  proposal_file:       { type: string, default: "" }
+  # ── Proposal-authoring pipeline (rooms/proposal*.yaml) ────────────
+  # A full prd-style spine prefixed `proposal_` so it never clobbers the
+  # bf/pr pipeline's shared keys (workdir, cycle, status, thread). The
+  # per-session scratch dir is `proposal_workspace` — NOT world.workdir
+  # (that is the bf/pr worktree). See docs/proposals/process-design.md
+  # §4 for the working-folder discipline.
+  proposal_slug:           { type: string, default: "" }   # meaningful slug; seeds the workspace dir + final filename
+  proposal_workspace:      { type: string, default: "" }   # docs/proposals/.workspace/<slug> — gitignored scratch
+  proposal_idea:           { type: string, default: "" }   # distilled pitch (set when intake ends)
+  proposal_kind:           { type: string, default: "" }   # story | runtime | tui | tracing | epic (chosen by the author)
+  proposal_existing_paths: { type: string, default: "" }   # operator-named existing docs to point the pipeline at
+
+  # intake discovery chat (proposal room)
+  proposal_chat_id:        { type: string, default: "" }
+  proposal_chat_title:     { type: string, default: "" }
+  proposal_idea_message:   { type: string, default: "" }   # operator's latest message this turn
+  proposal_idea_answer:    { type: string, default: "" }   # interviewer's latest reply
+  proposal_idea_turns:     { type: int,    default: 0 }
+
+  # brief skeleton + its decide gate (001-brief.md, brief-decision.json)
+  proposal_brief_path:     { type: string, default: "" }   # path of the operator-editable 001-brief.md (empty ⇒ skeleton not yet written)
+  proposal_brief_decision: { type: object, default: {} }   # decide verdict: { verdict: continue|clarify, questions: [...], reason }
+
+  # existing-state overlap gate (002-existing-state.md)
+  proposal_existing_state:   { type: object, default: {} } # { overlaps: [{path, kind, summary, recommendation}], roadmap_fit }
+  proposal_existing_path:    { type: string, default: "" } # path 002-existing-state.md was written to
+  proposal_overlap_decision: { type: string, default: "" } # "" | new | change_existing (operator's verdict on the overlap report)
+  proposal_change_target:    { type: string, default: "" } # path of the proposal to amend when change_existing
+
+  # idea-completeness gate (003-idea-completeness.md)
+  proposal_completeness:      { type: object, default: {} } # { complete: bool, problem, why_kitsoki, usage, gaps: [...] }
+  proposal_completeness_path: { type: string, default: "" }
+
+  # references (004-references.json)
+  proposal_references:        { type: object, default: {} } # { items: [{ path, sections, rationale }] }
+  proposal_references_path:   { type: string, default: "" }
+  proposal_references_revise: { type: bool,   default: false } # true on `refine` (revise current list), false on a fresh `regenerate`
+
+  # draft (005-proposal.md) + publish
+  proposal_artifact:       { type: object, default: {} }   # task result: { title, summary_markdown, file_path, kind, confidence, needs_clarification, follow_up_questions }
+  proposal_file:           { type: string, default: "" }   # final published path docs/proposals/<slug>.md
+
+  # refine feedback + per-phase cycle budgets
+  proposal_refine_feedback:   { type: string, default: "" }
+  proposal_cycle:             { type: int, default: 0 }     # global audit counter for the proposal flow
+  proposal_brief_cycle:       { type: int, default: 0 }
+  proposal_brief_budget:      { type: int, default: 5 }
+  proposal_references_cycle:  { type: int, default: 0 }
+  proposal_references_budget: { type: int, default: 3 }
+  proposal_draft_cycle:       { type: int, default: 0 }
+  proposal_draft_budget:      { type: int, default: 5 }
 
   # ── PR handoff (lifted from `pr` import's exits.merged.set) ───────
   last_pr_url:         { type: string, default: "" }
@@ -389,25 +489,70 @@ intents:
         type: string
         required: true
 
-  capture_idea:
-    description: "Describe an ad hoc idea for the oracle to structure into a proposal draft."
-    examples: ["my idea is", "capture idea", "describe idea"]
+  # ── Proposal-authoring pipeline vocabulary ────────────────────────
+  # The intake room is a discovery conversation; the rest are checkpoint
+  # gates. `begin_proposal` (not `start`) advances out of intake, because
+  # `start` is already a bare parent intent lifted from the bf import.
+  discuss:
+    description: "Send a message in the proposal-discovery conversation."
+    examples: ["i want to build", "the idea is", "it's for", "tell me more", "here's what i'm thinking"]
+    priority: 40
+    slots:
+      # required forces the semantic router to fall through to the LLM
+      # router so the operator's free-text message is captured whole.
+      message: { type: string, required: true }
+  begin_proposal:
+    description: "Done discussing — distill the idea and move on to the brief."
+    examples: ["ready", "draft it", "let's go", "done discussing", "write the proposal"]
+    priority: 90
+  capture_existing:
+    description: "Point the proposal pipeline at existing docs to read."
+    examples: ["see docs/foo.md", "based on the auth spec", "read these docs"]
     priority: 78
     slots:
-      idea:
-        type: string
-        required: true
-        description: "Raw description of the idea."
-
-  refine_idea:
-    description: "Provide feedback to improve the current proposal draft."
-    examples: ["refine", "improve the draft", "change this"]
-    priority: 76
+      paths: { type: string, required: true, description: "Space/comma-separated files or dirs." }
+  confirm:
+    description: "Confirm the current review step (brief, completeness, references) and move on."
+    examples: ["confirm", "proceed", "looks right", "the brief is good", "continue to the next step"]
+    priority: 82
+  recheck:
+    description: "Re-run the sanity check against the brief you just edited on disk."
+    examples: ["recheck", "check again", "re-run the check", "i edited it"]
+    priority: 66
+  clarify:
+    description: "Step back to revise the brief before continuing."
+    examples: [clarify, "more detail", "let me revise", "back to the brief"]
+    priority: 68
+  regenerate:
+    description: "Re-generate the current step's machine output, optionally with feedback."
+    examples: [regenerate, "search again", "redo the references", "rewrite the brief"]
+    priority: 65
     slots:
-      feedback:
-        type: string
-        required: true
-        description: "Feedback on the current draft."
+      feedback: { type: string, required: false }
+  refine:
+    description: "Refine the current artifact with feedback, building on it (NOT a fresh start)."
+    examples: [refine, rework, revise, "add a reference", "drop that doc", "re-scope that section"]
+    priority: 70
+    slots:
+      feedback: { type: string, required: true }
+  accept:
+    description: "Accept the proposal draft and publish it."
+    examples: ["accept", "approve", "looks good", "lgtm", "publish it"]
+    priority: 85
+  proceed_new:
+    description: "No meaningful overlap — create a brand-new proposal."
+    examples: ["proceed", "create new", "it's new", "no overlap"]
+    priority: 64
+  change_existing:
+    description: "Amend an existing overlapping proposal instead of creating a new one."
+    examples: ["amend the existing one", "change that proposal", "fold into", "extend"]
+    priority: 67
+    slots:
+      target: { type: string, required: true, description: "Path of the existing proposal to amend." }
+  override_new:
+    description: "Create a new proposal despite the detected overlap (recorded for audit)."
+    examples: ["new anyway", "ignore the overlap", "still create new"]
+    priority: 58
 
   # Standup / generic ack
   summarize_day:

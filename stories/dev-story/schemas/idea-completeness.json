@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "idea_completeness",
+  "description": "The completeness judge's verdict on whether the idea is ready to draft: it must answer what problem it solves, why kitsoki is the right tool, and how an operator will use it.",
+  "type": "object",
+  "required": ["complete", "problem", "why_kitsoki", "usage", "gaps"],
+  "properties": {
+    "complete":    { "type": "boolean", "description": "True when problem / why_kitsoki / usage are all answered well enough to draft." },
+    "problem":     { "type": "string", "description": "The problem the idea solves, as the judge understands it." },
+    "why_kitsoki": { "type": "string", "description": "Why kitsoki (a deterministic-graph LLM-workflow engine) is the right tool for this." },
+    "usage":       { "type": "string", "description": "How an operator would use the change." },
+    "gaps": {
+      "type": "array",
+      "description": "The concrete gaps that keep the idea from being complete; empty when complete.",
+      "items": { "type": "string" }
+    }
+  },
+  "additionalProperties": true
+}

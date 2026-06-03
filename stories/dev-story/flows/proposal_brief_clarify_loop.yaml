@@ -1,0 +1,55 @@
+# proposal_brief_clarify_loop — the brief sanity-gate's clarify/recheck loop.
+#
+# The brief judge returns verdict=clarify with questions; `recheck` re-runs
+# the judge against the (edited) brief on disk, incrementing
+# proposal_brief_cycle each time WITHOUT clobbering the operator's edits
+# (the skeleton write is guarded on proposal_brief_path == "", which is set
+# here). The human floor: `confirm` advances despite the clarify verdict.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: proposal_brief
+initial_world:
+  judge_mode:          "human"
+  proposal_idea:       "Add a per-session working folder primitive."
+  proposal_slug:       "wf"
+  proposal_workspace:  "docs/proposals/.workspace/wf"
+  # Non-empty ⇒ the skeleton write is skipped (operator already edited it).
+  proposal_brief_path: "docs/proposals/.workspace/wf/001-brief.md"
+
+host_handlers:
+  host.oracle.decide:
+    by_call:
+      brief_check:
+        data:
+          ok: true
+          submitted:
+            verdict:   "clarify"
+            reason:    "The What-changes is vague and no kind is named."
+            questions: ["Which engine seam does this touch?", "What does the operator do differently?"]
+      existing_scan:
+        data:
+          ok: true
+          submitted: { overlaps: [], roadmap_fit: "net-new." }
+  host.artifacts_dir:
+    data: { ok: true, path: "docs/proposals/.workspace/wf/out.md", message_id: "out#1" }
+
+turns:
+  # Edited the brief; re-run the check. The skeleton is NOT rewritten
+  # (proposal_brief_path stays set) and the cycle counter advances.
+  - intent: { name: recheck, slots: {} }
+    expect_state: proposal_brief
+    expect_world:
+      proposal_brief_cycle: 1
+      proposal_brief_path:  "docs/proposals/.workspace/wf/001-brief.md"
+
+  - intent: { name: recheck, slots: {} }
+    expect_state: proposal_brief
+    expect_world:
+      proposal_brief_cycle: 2
+
+  # Human floor — confirm despite the clarify verdict → overlap check.
+  - intent: { name: confirm, slots: {} }
+    expect_state: proposal_existing_state
+
+expect_no_errors: true

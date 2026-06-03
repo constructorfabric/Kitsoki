@@ -1,0 +1,136 @@
+# proposal_existing_state — overlap gate (proposals.md: the "propose a
+# change rather than blindly create new" requirement).
+#
+# on_enter runs the `proposal_scout` (host.oracle.decide) against the REPO
+# ROOT so it can read both in-progress drafts (docs/proposals/.workspace/)
+# and accepted proposals (docs/proposals/) plus feature/bug docs, returning
+# { overlaps: [...], roadmap_fit }. The report is persisted to
+# 002-existing-state.md in the workspace for the operator + the publish
+# archive.
+#
+# The gate cardinality IS the overlap decision (process-design.md §2.1):
+#   - no overlap  → `proceed_new` (the only enabled "go" action).
+#   - overlap     → `change_existing` (amend, the recommended path) or
+#                   `override_new` (force a new proposal, recorded for audit).
+# proceed_new is GUARDED on an empty overlap list, so even a free-typed
+# "proceed" can't skip past a real overlap.
+
+states:
+
+  proposal_existing_state:
+    description: "Check whether the idea overlaps work already in flight; amend or proceed."
+    view:
+      - banner:
+          text:     "EXISTING STATE"
+          subtitle: "Overlap with in-flight / accepted proposals?"
+          color:    "#F59E0B"   # amber — gathering
+      - prose: 'Overlap report saved to  {{ world.proposal_existing_path|default:"(scanning…)" }}'
+      - kv:
+          pairs:
+            Idea:        '{{ world.proposal_idea|default:"(none)"|truncatechars:80 }}'
+            Roadmap fit: '{{ world.proposal_existing_state.roadmap_fit|default:"(pending)" }}'
+      - heading: "Overlaps"
+      - code: |
+          {% for o in world.proposal_existing_state.overlaps %}{{ forloop.Counter }}. [{{ o.kind }}] {{ o.path }}
+             {{ o.summary|wordwrap:104 }}
+             recommend: {{ o.recommendation }}
+          {% empty %}(none found — the idea is new; proceed to a fresh proposal){% endfor %}
+      - prose: "No overlap — **proceed_new** to draft a fresh proposal."
+        when:  "len(world.proposal_existing_state.overlaps ?? []) == 0"
+      - prose: "Overlap found — **change_existing** to amend one of the proposals above (the recommended move), or **override_new** to create a new one anyway."
+        when:  "len(world.proposal_existing_state.overlaps ?? []) > 0"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "proceed_new"
+              hint:   "no overlap — draft a new proposal"
+              intent: proceed_new
+              when:   "len(world.proposal_existing_state.overlaps ?? []) == 0"
+            - label:  "change_existing"
+              hint:   "amend an existing overlapping proposal (give its path)"
+              intent: change_existing
+              when:   "len(world.proposal_existing_state.overlaps ?? []) > 0"
+              param:
+                slot:        target
+                type:        string
+                placeholder: "docs/proposals/<file>.md"
+                required:    true
+            - label:  "override_new"
+              hint:   "create a new proposal anyway, despite the overlap"
+              intent: override_new
+              when:   "len(world.proposal_existing_state.overlaps ?? []) > 0"
+            - label:  "quit"
+              hint:   "abandon this proposal"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    relevant_world: [proposal_idea, proposal_workspace, proposal_existing_state, proposal_existing_path, proposal_overlap_decision, proposal_change_target]
+    on_enter:
+      # Scan the repo for overlapping work. working_dir is the repo root (".")
+      # so the scout can read docs/proposals/ and issues/.
+      - invoke: host.oracle.decide
+        id: existing_scan
+        with:
+          agent: proposal_scout
+          prompt_path: prompts/proposal_existing_state.md
+          schema: schemas/existing-state.json
+          working_dir: "."
+          args:
+            idea:       "{{ world.proposal_idea }}"
+            brief_path: "{{ world.proposal_brief_path }}"
+        bind:
+          proposal_existing_state: submitted
+        on_error: proposal_brief
+
+      # Persist the report for the operator + the publish archive. Host-call
+      # `with:` args are expr-lang (NOT pongo), so the body can't loop — a
+      # BARE `{{ world.proposal_existing_state }}` resolves to the typed
+      # object, which host.artifacts_dir pretty-prints as JSON (the documented
+      # map/slice coercion, same as the references room). title is omitted so
+      # no `### ` header is injected.
+      - invoke: host.artifacts_dir
+        with:
+          artifacts_root: "{{ world.proposal_workspace }}"
+          thread:         "002-existing-state"
+          mode:           "replace"
+          body:           "{{ world.proposal_existing_state }}"
+        bind:
+          proposal_existing_path: "path"
+    on:
+      # No overlap — draft new. Guarded so a free-typed "proceed" can't skip
+      # a real overlap; the default arm explains.
+      proceed_new:
+        - when: "len(world.proposal_existing_state.overlaps ?? []) == 0"
+          target: proposal_idea_completeness
+          effects:
+            - set: { proposal_overlap_decision: "new" }
+        - default: true
+          target: .
+          effects:
+            - say: "Overlapping work exists — amend it with `change_existing`, or `override_new` to force a new proposal."
+
+      # Amend an existing overlapping proposal (the recommended path). The
+      # draft room reads proposal_change_target and edits that file in place.
+      change_existing:
+        - target: proposal_idea_completeness
+          effects:
+            - set:
+                proposal_overlap_decision: "change_existing"
+                proposal_change_target:    "{{ slots.target }}"
+
+      # Force a new proposal despite the overlap; recorded in the decision.
+      override_new:
+        - target: proposal_idea_completeness
+          effects:
+            - set: { proposal_overlap_decision: "new" }
+
+      quit:
+        - target: main
+          effects:
+            - set:
+                last_error: "proposal abandoned at existing-state"
+                prev_state: "main"
+      look:
+        - target: .

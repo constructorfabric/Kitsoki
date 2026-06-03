@@ -1,0 +1,59 @@
+# proposal_overlap_proposes_change — the overlap gate (proposals.md:26).
+#
+# When the scout finds an overlapping proposal, `proceed_new` is GUARDED
+# (a free-typed "proceed" bounces back, default arm), and the operator is
+# steered to `change_existing` — which records change_existing + the target
+# path so the draft room amends the existing proposal instead of creating a
+# new one, even though the original intent was "create a new proposal".
+
+test_kind: flow
+app: ../app.yaml
+initial_state: proposal_brief
+initial_world:
+  judge_mode:          "human"
+  proposal_idea:       "Add a local model oracle sidecar."
+  proposal_slug:       "lmo"
+  proposal_workspace:  "docs/proposals/.workspace/lmo"
+  proposal_brief_path: "docs/proposals/.workspace/lmo/001-brief.md"
+
+host_handlers:
+  host.oracle.decide:
+    by_call:
+      brief_check:
+        data:
+          ok: true
+          submitted: { verdict: "continue", reason: "ready.", questions: [] }
+      existing_scan:
+        data:
+          ok: true
+          submitted:
+            overlaps:
+              - { path: "docs/proposals/local-model-oracle.md", kind: "accepted", summary: "Already proposes a llama.cpp sidecar for routing/small-decide.", recommendation: "amend" }
+            roadmap_fit: "Duplicates the accepted local-model-oracle proposal."
+      completeness_check:
+        data:
+          ok: true
+          submitted: { complete: true, problem: "p", why_kitsoki: "w", usage: "u", gaps: [] }
+  host.artifacts_dir:
+    data: { ok: true, path: "docs/proposals/.workspace/lmo/out.md", message_id: "out#1" }
+
+turns:
+  # Confirm the brief → overlap check; the scout reports an accepted overlap.
+  - intent: { name: confirm, slots: {} }
+    expect_state: proposal_existing_state
+
+  # proceed_new is guarded on an empty overlap list — with an overlap present
+  # it bounces back (default arm) rather than skipping the overlap.
+  - intent: { name: proceed_new, slots: {} }
+    expect_state: proposal_existing_state
+    expect_world:
+      proposal_overlap_decision: ""
+
+  # Amend the existing proposal instead — records the decision + target.
+  - intent: { name: change_existing, slots: { target: "docs/proposals/local-model-oracle.md" } }
+    expect_state: proposal_idea_completeness
+    expect_world:
+      proposal_overlap_decision: "change_existing"
+      proposal_change_target:    "docs/proposals/local-model-oracle.md"
+
+expect_no_errors: true

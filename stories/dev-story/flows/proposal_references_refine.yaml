@@ -1,0 +1,53 @@
+# proposal_references_refine — the references room's revise/search/budget loop.
+#
+# `refine` revises the CURRENT list in place (proposal_references_revise=true,
+# feedback recorded, cycle++); `regenerate` searches fresh (revise=false);
+# both are budget-capped — at the cap they bail to `main` (the hub has no
+# @exit). Mirrors stories/prd/flows/references_refine.yaml +
+# references_budget.yaml.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: proposal_references
+initial_world:
+  judge_mode:                 "human"
+  proposal_idea:              "Add a per-session working folder primitive."
+  proposal_workspace:         "docs/proposals/.workspace/wf"
+  proposal_brief_path:        "docs/proposals/.workspace/wf/001-brief.md"
+  proposal_references_budget:  2
+
+host_handlers:
+  host.oracle.decide:
+    by_call:
+      references_research:
+        data:
+          ok: true
+          submitted:
+            items:
+              - { path: "docs/proposals/process-design.md", sections: "§4.3", rationale: "names the workdir primitive" }
+  host.artifacts_dir:
+    data: { ok: true, path: "docs/proposals/.workspace/wf/004-references.json", message_id: "004-references#1" }
+
+turns:
+  # Revise in place: revise flag set, feedback recorded, cycle 0→1.
+  - intent: { name: refine, slots: { feedback: "also cite docs/stories/state-machine.md" } }
+    expect_state: proposal_references
+    expect_world:
+      proposal_references_revise:   true
+      proposal_refine_feedback:     "also cite docs/stories/state-machine.md"
+      proposal_references_cycle:    1
+
+  # Fresh search: revise flag cleared, cycle 1→2.
+  - intent: { name: regenerate, slots: {} }
+    expect_state: proposal_references
+    expect_world:
+      proposal_references_revise:  false
+      proposal_references_cycle:   2
+
+  # At budget (cycle 2 >= budget 2) → bail to the hub with a last_error.
+  - intent: { name: refine, slots: { feedback: "one more" } }
+    expect_state: main
+    expect_world:
+      last_error: "proposal abandoned — references budget exhausted"
+
+expect_no_errors: true

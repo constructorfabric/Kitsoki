@@ -79,6 +79,12 @@ hosts:
   # `hosts: declared` import on `core` requires every transitively-
   # exposed host to appear here too.
   - host.run
+  # Proposal-authoring pipeline (dev-story rooms/proposal*.yaml): the
+  # discovery chat + the per-session workspace artifact writes. Required
+  # under `hosts: declared` — the loader cross-checks every host the
+  # imported chain may invoke against this allow-list at fold time.
+  - host.chat.resolve
+  - host.artifacts_dir
 
 # This instance has no day-level rooms of its own — every visible
 # state comes from the imported dev-story hub. Imports are folded in

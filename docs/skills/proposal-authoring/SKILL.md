@@ -41,6 +41,44 @@ Tie-breaker: choose the template whose **design sections you'll actually
 fill in**, and note spillover under **Impact**. If two kinds each carry
 real design weight, it's an epic.
 
+## Two ways to author: by hand, or the interactive `idea` flow
+
+This skill covers authoring a proposal **by hand** (below). kitsoki also
+ships the same discipline as a **process story** you can drive
+interactively — the `idea` flow in `stories/dev-story/` (reachable from the
+dogfood instance):
+
+```
+kitsoki run stories/kitsoki-dev/app.yaml   # land in main; type `idea`
+```
+
+It walks the proposal process from `docs/proposals/proposals.md`:
+
+1. **intake** — a discovery conversation that distils a crisp idea.
+2. **brief** — scaffolds a pre-filled `001-brief.md` (the shared
+   spine — Why / What changes / Impact + kind) into a per-session
+   workspace at `docs/proposals/.workspace/<slug>/`; **you edit it in VS
+   Code**, then an `oracle.decide` judge sanity-checks it (continue /
+   clarify).
+3. **existing-state** — the overlap gate: scans in-progress
+   (`.workspace/`) and accepted (`docs/proposals/*.md`) proposals + feature
+   docs, and steers you to **amend** an existing one rather than create a
+   duplicate (proposals.md's core rule).
+4. **idea-completeness** — gate on problem / why-kitsoki / usage.
+5. **references** — curates the docs the proposal must build on
+   (`004-references.json`).
+6. **draft** — an `oracle.task` that classifies the kind, copies the
+   matching `templates/<kind>.md`, and writes `005-proposal.md`.
+7. **publish** — moves the draft into `docs/proposals/<slug>.md`; the
+   numbered checks stay in the (gitignored) workspace as the record.
+
+The interactive flow **applies the same spine + template selection** this
+skill describes — use whichever fits. The design discipline behind it
+(deterministic vs. decide vs. task, the validation sandwich, the
+working-folder ergonomics) is [`docs/proposals/process-design.md`](../../proposals/process-design.md) §§1–5;
+the room-by-room mechanics are in `stories/dev-story/rooms/proposal*.yaml`,
+modelled on the gold-standard `stories/prd/`.
+
 ## Authoring a focused proposal
 
 1. **Confirm the kind** with the table above. State your pick and why in

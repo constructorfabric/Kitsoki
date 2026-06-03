@@ -1,0 +1,95 @@
+# proposal_idea_completeness — is the idea complete enough to draft?
+#
+# on_enter runs the `proposal_completeness_judge` (host.oracle.decide):
+# does the brief answer what problem it solves, why kitsoki is the right
+# tool, and how an operator will use it? The verdict + the judge's reading
+# is persisted to 003-idea-completeness.md. Advisory with a human floor
+# (process-design.md §3): when the judge flags gaps the view steers the
+# operator back to the brief; `confirm` stays available so the human can
+# override.
+
+states:
+
+  proposal_idea_completeness:
+    description: "Confirm the idea answers problem / why-kitsoki / usage before drafting."
+    view:
+      - banner:
+          text:     "COMPLETENESS"
+          subtitle: "Problem · why kitsoki · how it's used"
+          color:    "#F59E0B"
+      - prose: 'Completeness check saved to  {{ world.proposal_completeness_path|default:"(checking…)" }}'
+      - kv:
+          pairs:
+            Problem:     '{{ world.proposal_completeness.problem|default:"(pending)"|truncatechars:90 }}'
+            Why kitsoki: '{{ world.proposal_completeness.why_kitsoki|default:"(pending)"|truncatechars:90 }}'
+            Usage:       '{{ world.proposal_completeness.usage|default:"(pending)"|truncatechars:90 }}'
+      - prose: '✓ The idea reads as complete — **confirm** to gather references.'
+        when:  "world.proposal_completeness.complete"
+      - prose: '⚠ The idea has gaps — **clarify** to revise the brief, or **confirm** to draft anyway.'
+        when:  "!world.proposal_completeness.complete"
+      - heading: "Gaps"
+        when: "!world.proposal_completeness.complete"
+      - code: |
+          {% for g in world.proposal_completeness.gaps %}- {{ g }}
+          {% empty %}(no gaps){% endfor %}
+        when: "!world.proposal_completeness.complete"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "confirm"
+              hint:   "the idea is solid — gather the references"
+              intent: confirm
+            - label:  "clarify"
+              hint:   "step back to revise the brief"
+              intent: clarify
+            - label:  "quit"
+              hint:   "abandon this proposal"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    relevant_world: [proposal_idea, proposal_workspace, proposal_brief_path, proposal_existing_state, proposal_completeness, proposal_completeness_path]
+    on_enter:
+      - invoke: host.oracle.decide
+        id: completeness_check
+        with:
+          agent: proposal_completeness_judge
+          prompt_path: prompts/proposal_completeness.md
+          schema: schemas/idea-completeness.json
+          working_dir: "{{ world.proposal_workspace }}"
+          args:
+            idea:           "{{ world.proposal_idea }}"
+            brief_path:     "001-brief.md"
+            existing_state: "{{ world.proposal_existing_state }}"
+        bind:
+          proposal_completeness: submitted
+        on_error: proposal_brief
+
+      # Host-call `with:` args are expr-lang (no pongo loops); a BARE typed
+      # object pretty-prints as JSON (same as references). No title ⇒ no
+      # injected header.
+      - invoke: host.artifacts_dir
+        with:
+          artifacts_root: "{{ world.proposal_workspace }}"
+          thread:         "003-idea-completeness"
+          mode:           "replace"
+          body:           "{{ world.proposal_completeness }}"
+        bind:
+          proposal_completeness_path: "path"
+    on:
+      confirm:
+        - target: proposal_references
+
+      # Step back to revise the brief (keeps the workspace + slug).
+      clarify:
+        - target: proposal_brief
+
+      quit:
+        - target: main
+          effects:
+            - set:
+                last_error: "proposal abandoned at completeness"
+                prev_state: "main"
+      look:
+        - target: .

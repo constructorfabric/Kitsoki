@@ -1,0 +1,62 @@
+# proposal_publish — move the draft out of the workspace into the queue.
+#
+# DETERMINISTIC (process-design.md §5 publish step). on_enter runs
+# publish_proposal.py: it moves 005-proposal.md from the workspace to
+# docs/proposals/<slug>.md (collision-safe) — or leaves an amended
+# change_target in place — and archives the numbered check artifacts
+# (001..004) alongside so they survive the gitignored workspace. The script
+# prints the published path; exit 0 gates the advance.
+#
+# Guarded `when: proposal_file == ''` so a /reload re-fire doesn't try to
+# move an already-moved file.
+
+states:
+
+  proposal_publish:
+    description: "Publish the proposal into docs/proposals/ and archive the checks."
+    view:
+      - banner:
+          text:     "PUBLISHED"
+          subtitle: "Proposal moved into the queue"
+          color:    "#10B981"
+      - prose: 'Proposal published to  {{ world.proposal_file|default:"(publishing…)" }}'
+      - prose: 'Checks archived under  {{ world.proposal_workspace }}/  (001-brief … 004-references)'
+      - kv:
+          pairs:
+            Title: '{{ world.proposal_artifact.title|default:"(n/a)" }}'
+            Kind:  '{{ world.proposal_artifact.kind|default:"(n/a)" }}'
+      - prose: "Open the published proposal to review or trim it. **main** returns to your day."
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "main"
+              hint:   "back to the engineer's day landing"
+              intent: go_main
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    relevant_world: [proposal_workspace, proposal_slug, proposal_change_target, proposal_artifact, proposal_file]
+    on_enter:
+      - when: "world.proposal_file == ''"
+        invoke: host.run
+        id: publish
+        with:
+          cmd: python3
+          args:
+            - "stories/dev-story/scripts/publish_proposal.py"
+            - "{{ world.proposal_workspace }}"
+            - "{{ world.proposal_slug }}"
+            - "{{ world.proposal_change_target }}"
+        bind:
+          proposal_file: stdout
+        on_error: proposal_draft
+    on:
+      go_main:
+        - target: main
+          effects:
+            - set:
+                last_error: ""
+                prev_state: "main"
+      look:
+        - target: .

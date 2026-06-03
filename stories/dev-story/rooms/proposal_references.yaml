@@ -1,0 +1,148 @@
+# proposal_references — curate the docs/rules the proposal must build on.
+#
+# Mirrors stories/prd/rooms/references.yaml. on_enter runs the
+# `proposal_researcher` (host.oracle.decide) against the repo root, reading
+# the proposal templates/skill/process-design + the gold-standard stories +
+# the relevant docs, and returns { items: [{ path, sections, rationale }] }.
+# An empty list is valid. The list is persisted to 004-references.json (a
+# real .json file: the `.json` thread extension is honoured verbatim and no
+# `title:` is set, so the bare-object body is written as pretty JSON the
+# draft author can read).
+#
+# Two re-run actions, both budget-capped self-transitions that re-fire
+# on_enter: `refine` revises the CURRENT list in place
+# (proposal_references_revise=true), `regenerate` searches fresh (false).
+
+states:
+
+  proposal_references:
+    description: "Curate the existing docs the proposal must build on; confirm to draft."
+    view:
+      - banner:
+          text:     "REFERENCES"
+          subtitle: "Docs, rules + conventions the proposal must honour"
+          color:    "#F59E0B"
+      - prose: "proposal cycle {{ world.proposal_cycle }} · references round {{ world.proposal_references_cycle }}/{{ world.proposal_references_budget }}"
+      - prose: 'Reference list saved to  {{ world.proposal_references_path|default:"(searching…)" }}'
+      - heading: "References found"
+      - code: |
+          {% for r in world.proposal_references.items %}{{ forloop.Counter }}. {{ r.path }}{% if r.sections %} §{{ r.sections }}{% endif %}
+             why: {{ r.rationale|default:"(no rationale given)"|wordwrap:104 }}
+          {% empty %}(none found — refine to add specific docs, regenerate to search again, or clarify to sharpen the brief){% endfor %}
+      - prose: "**confirm** to draft, **refine** to adjust this list (add / drop / re-scope), **regenerate** to search fresh, or **clarify** to revise the brief."
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "confirm"
+              hint:   "references are right — draft the proposal"
+              intent: confirm
+            - label:  "refine"
+              hint:   "adjust THIS list — add a doc, drop one, re-scope a section"
+              intent: refine
+              param:
+                slot:        feedback
+                type:        string
+                placeholder: "e.g. drop the rate-limit doc; also cite docs/stories/state-machine.md §gates"
+                required:    true
+            - label:  "regenerate"
+              hint:   "discard the list and search the docs fresh (optionally steer)"
+              intent: regenerate
+              param:
+                slot:        feedback
+                type:        string
+                placeholder: "what to look for"
+                required:    false
+            - label:  "clarify"
+              hint:   "step back to revise the brief"
+              intent: clarify
+            - label:  "quit"
+              hint:   "abandon this proposal"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    relevant_world: [proposal_idea, proposal_workspace, proposal_brief_path, proposal_existing_state, proposal_references, proposal_references_path, proposal_references_cycle, proposal_references_budget, proposal_references_revise, proposal_refine_feedback, proposal_cycle]
+    on_enter:
+      - invoke: host.oracle.decide
+        id: references_research
+        with:
+          agent: proposal_researcher
+          prompt_path: prompts/proposal_references.md
+          schema: schemas/references.json
+          working_dir: "."
+          args:
+            idea:               "{{ world.proposal_idea }}"
+            brief_path:         "{{ world.proposal_brief_path }}"
+            existing_state:     "{{ world.proposal_existing_state }}"
+            feedback:           "{{ world.proposal_refine_feedback }}"
+            revise:             "{{ world.proposal_references_revise }}"
+            current_references: "{{ world.proposal_references }}"
+        bind:
+          proposal_references: submitted
+        on_error: proposal_brief
+
+      # Persist as a real .json (extension honoured verbatim; no title so the
+      # bare-object → pretty-JSON body stays valid JSON).
+      - invoke: host.artifacts_dir
+        with:
+          artifacts_root: "{{ world.proposal_workspace }}"
+          thread:         "004-references.json"
+          mode:           "replace"
+          body:           "{{ world.proposal_references }}"
+        bind:
+          proposal_references_path: "path"
+    on:
+      # Confirmed — draft. Clear refine feedback + the revise flag so a
+      # reference instruction doesn't bleed into the author as draft steering.
+      confirm:
+        - target: proposal_draft
+          effects:
+            - set:
+                proposal_refine_feedback:   ""
+                proposal_references_revise: false
+
+      # Revise the CURRENT list in place. Budget-capped.
+      refine:
+        - when: "world.proposal_references_cycle >= world.proposal_references_budget"
+          target: main
+          effects:
+            - set:
+                last_error: "proposal abandoned — references budget exhausted"
+                prev_state: "main"
+        - target: proposal_references
+          effects:
+            - set:
+                proposal_refine_feedback:   "{{ slots.feedback }}"
+                proposal_references_revise: true
+                proposal_references_cycle:  "{{ world.proposal_references_cycle + 1 }}"
+                proposal_cycle:             "{{ world.proposal_cycle + 1 }}"
+
+      # Search fresh. Budget-capped.
+      regenerate:
+        - when: "world.proposal_references_cycle >= world.proposal_references_budget"
+          target: main
+          effects:
+            - set:
+                last_error: "proposal abandoned — references budget exhausted"
+                prev_state: "main"
+        - target: proposal_references
+          effects:
+            - set:
+                proposal_refine_feedback:   "{{ slots.feedback ?? '' }}"
+                proposal_references_revise: false
+                proposal_references_cycle:  "{{ world.proposal_references_cycle + 1 }}"
+                proposal_cycle:             "{{ world.proposal_cycle + 1 }}"
+
+      # Step back to revise the brief.
+      clarify:
+        - target: proposal_brief
+
+      quit:
+        - target: main
+          effects:
+            - set:
+                last_error: "proposal abandoned at references"
+                prev_state: "main"
+      look:
+        - target: .

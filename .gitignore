@@ -54,6 +54,12 @@ tools/pellicule/node_modules/
 tools/pellicule/*.mp4
 tools/pellicule/frames/
 
+# Proposal-authoring per-session workspace (dev-story `idea` flow):
+# scratch dir holding the numbered check artifacts (001-brief …
+# 004-references). The proposal.md is published into docs/proposals/ on
+# accept; the checks stay here as the per-proposal record.
+docs/proposals/.workspace/
+
 # Run-status SPA — single-file HTML artifacts (built by `kitsoki
 # export-status … -o *.html` and by the Playwright artifact suite).
 .artifacts/

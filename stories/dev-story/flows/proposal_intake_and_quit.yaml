@@ -1,0 +1,40 @@
+# proposal_intake_and_quit — the intake room's secondary arcs + a quit.
+#
+# `capture_existing` records the operator-named docs (read by the scout /
+# researcher / author downstream) and stays on the discovery screen;
+# `quit` abandons the proposal back to the hub landing with a last_error.
+# The per-room quit arcs are structurally identical across the pipeline
+# (all `target: main` + last_error), so proving one covers the shape.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: proposal
+initial_world:
+  judge_mode: "human"
+
+host_handlers:
+  host.chat.resolve:
+    data: { ok: true, chat_id: "chat-1", title: "Proposal idea discovery", is_new: true }
+  host.oracle.converse:
+    data: { ok: true, answer: "Tell me more about the trigger.", chat_id: "chat-1", claude_session_id: "sess-1" }
+
+turns:
+  # Discovery message (self-loop; on_enter does not re-fire).
+  - intent: { name: discuss, slots: { message: "I have an idea for X" } }
+    expect_state: proposal
+    expect_world:
+      proposal_idea_turns: 1
+
+  # Point the pipeline at existing docs — recorded, stays on the chat screen.
+  - intent: { name: capture_existing, slots: { paths: "docs/auth.md docs/stories/state-machine.md" } }
+    expect_state: proposal
+    expect_world:
+      proposal_existing_paths: "docs/auth.md docs/stories/state-machine.md"
+
+  # Abandon → back to the hub landing.
+  - intent: { name: quit, slots: {} }
+    expect_state: main
+    expect_world:
+      last_error: "proposal abandoned at intake"
+
+expect_no_errors: true

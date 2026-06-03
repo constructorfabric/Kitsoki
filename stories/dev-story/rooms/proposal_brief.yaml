@@ -1,0 +1,173 @@
+# proposal_brief — scaffold an editable brief, then sanity-check it.
+#
+# The brief is the §4 working-folder ergonomic: the room writes a
+# PRE-POPULATED skeleton (the proposal-authoring shared spine, seeded with
+# the distilled idea) into the per-session workspace, the operator EDITS it
+# in VS Code, and a host.oracle.decide judge reads it back from disk and
+# returns an advisory verdict { continue | clarify + questions }. The human
+# is the floor (process-design.md §3): the judge steers, the operator
+# confirms.
+#
+# on_enter has two calls:
+#   1. Skeleton write — GUARDED `when: proposal_brief_path == ''`. mode:
+#      replace would clobber the operator's edits on every on_enter re-fire
+#      (/reload, recheck self-loop); the guard fires the write only on first
+#      entry. `regenerate` clears proposal_brief_path so the skeleton is
+#      rewritten fresh on the next entry (discarding edits, on purpose).
+#   2. Judge — ALWAYS runs; re-reads the (edited) 001-brief.md each turn.
+#
+# No title on the artifact write so renderArtifact injects no `### ` header
+# — the file is clean markdown the operator owns end to end.
+
+states:
+
+  proposal_brief:
+    description: "Review + edit the brief on disk, then confirm to check for overlap."
+    view:
+      - banner:
+          text:     "BRIEF"
+          subtitle: "Fill in the brief on disk, then confirm"
+          color:    "#10B981"   # green — a settled input
+      - prose: "proposal cycle {{ world.proposal_cycle }} · brief checks {{ world.proposal_brief_cycle }}/{{ world.proposal_brief_budget }}"
+      # The editable file path on its own prominent line — open it in VS Code.
+      - prose: 'Brief saved to  {{ world.proposal_brief_path|default:"(writing 001-brief.md…)" }}'
+      - kv:
+          pairs:
+            Idea:     '{{ world.proposal_idea|default:"(none)"|truncatechars:80 }}'
+            Existing: '{{ world.proposal_existing_paths|default:"(none)" }}'
+      # Advisory verdict from the judge.
+      - heading: "Sanity check"
+      - prose: '✓ The brief reads as ready — **confirm** to check for overlapping work.'
+        when:  "world.proposal_brief_decision.verdict == 'continue'"
+      - prose: '⚠ The reviewer thinks the brief needs work — edit 001-brief.md to address the questions below, then **recheck**.'
+        when:  "world.proposal_brief_decision.verdict == 'clarify'"
+      - prose: '{{ world.proposal_brief_decision.reason|default:"(checking…)" }}'
+      - code: |
+          {% for q in world.proposal_brief_decision.questions %}- {{ q }}
+          {% empty %}(no open questions){% endfor %}
+        when: "world.proposal_brief_decision.verdict == 'clarify'"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "confirm"
+              hint:   "the brief is right — check for overlapping work"
+              intent: confirm
+            - label:  "recheck"
+              hint:   "I edited the brief — re-run the sanity check"
+              intent: recheck
+            - label:  "regenerate"
+              hint:   "discard my edits and rewrite the skeleton fresh"
+              intent: regenerate
+            - label:  "quit"
+              hint:   "abandon this proposal"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    relevant_world: [proposal_idea, proposal_existing_paths, proposal_workspace, proposal_brief_path, proposal_brief_decision, proposal_brief_cycle, proposal_brief_budget, proposal_cycle]
+    on_enter:
+      # 1. Scaffold the editable brief — ONCE (guarded). The body is the
+      # proposal-authoring shared spine seeded with the distilled idea; the
+      # operator fills it. No `title:` so no injected header. A literal `#`
+      # leads the body (a value that both starts with `{{` and ends with
+      # `}}` short-circuits to a typed expr; a literal prefix keeps it pongo).
+      - when: "world.proposal_brief_path == ''"
+        invoke: host.artifacts_dir
+        with:
+          artifacts_root: "{{ world.proposal_workspace }}"
+          thread:         "001-brief"
+          mode:           "replace"
+          body: |
+            # Proposal Brief
+
+            > Fill this in, then save. The reviewer reads it from disk to decide
+            > whether to proceed or ask for clarification. Keep it
+            > skim-in-two-minutes; link to code (`file:line`) and existing docs
+            > rather than restating them. See docs/proposals/templates/README.md.
+
+            **Kind:** <story | runtime | tui | tracing | epic — which layer does this touch?>
+
+            ## Idea (seed — refine me)
+
+            {{ world.proposal_idea }}
+
+            ## Why
+
+            <The problem in the reader's terms. What is missing or painful today?>
+
+            ## What changes
+
+            <The specific change, in one screen.>
+
+            ## Impact
+
+            <What it touches: files, stories, hosts, docs, compatibility.>
+
+            ## Why kitsoki
+
+            <Why kitsoki's deterministic-graph model is the right tool for this.>
+
+            ## How it's used
+
+            <The concrete operator interaction: what they run, see, and decide.>
+        bind:
+          proposal_brief_path: "path"
+        on_error: proposal
+
+      # 2. Sanity-check the brief on disk. working_dir is the workspace so
+      # the judge reads 001-brief.md directly. `id:` addresses this decide
+      # call site so flow fixtures can stub it apart from the other rooms'
+      # decides.
+      - invoke: host.oracle.decide
+        id: brief_check
+        with:
+          agent: proposal_brief_judge
+          prompt_path: prompts/proposal_brief_check.md
+          schema: schemas/brief-decision.json
+          working_dir: "{{ world.proposal_workspace }}"
+          args:
+            brief_path: "001-brief.md"
+            idea:       "{{ world.proposal_idea }}"
+        bind:
+          proposal_brief_decision: submitted
+        on_error: proposal
+    on:
+      # Confirmed — go check for overlapping work.
+      confirm:
+        - target: proposal_existing_state
+
+      # Re-run the judge against the edited brief (keep the file). Budget-
+      # capped: dev-story has no @exit, so exhaustion routes to main.
+      recheck:
+        - when: "world.proposal_brief_cycle >= world.proposal_brief_budget"
+          target: main
+          effects:
+            - set:
+                last_error: "proposal abandoned — brief check budget exhausted"
+                prev_state: "main"
+        - target: proposal_brief
+          effects:
+            - set:
+                proposal_brief_cycle: "{{ world.proposal_brief_cycle + 1 }}"
+                proposal_cycle:       "{{ world.proposal_cycle + 1 }}"
+
+      # Discard edits and rewrite the skeleton: clearing proposal_brief_path
+      # re-arms the guarded skeleton write on the next on_enter.
+      regenerate:
+        - target: proposal_brief
+          effects:
+            - set:
+                proposal_brief_path:     ""
+                proposal_brief_decision: {}
+                proposal_brief_cycle:    "{{ world.proposal_brief_cycle + 1 }}"
+                proposal_cycle:          "{{ world.proposal_cycle + 1 }}"
+
+      quit:
+        - target: main
+          effects:
+            - set:
+                last_error: "proposal abandoned at brief"
+                prev_state: "main"
+      look:
+        - target: .
