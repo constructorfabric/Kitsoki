@@ -4,8 +4,8 @@ How a kitsoki story should look. Short by design — when a new room
 doesn't fit a section below, copy the closest Oregon Trail room and
 edit. That's the style guide in one sentence.
 
-The gold standard is [`stories/oregon-trail/`](../stories/oregon-trail/).
-[`stories/robbery/`](../stories/robbery/) shows the same shape in a
+The gold standard is [`stories/oregon-trail/`](../../stories/oregon-trail/).
+[`stories/robbery/`](../../stories/robbery/) shows the same shape in a
 small sub-story. The typed-element schema reference lives in
 [`embedded/app-schema.md`](../embedded/app-schema.md).
 
@@ -15,9 +15,9 @@ small sub-story. The typed-element schema reference lives in
 
 Authors don't write color. They pick elements; the renderer paints.
 The palette lives in
-[`internal/tui/styles.go`](../internal/tui/styles.go) and the
+[`internal/tui/styles.go`](../../internal/tui/styles.go) and the
 element renderers under
-[`internal/render/elements/`](../internal/render/elements/).
+[`internal/render/elements/`](../../internal/render/elements/).
 
 | Visual | Means | Where it lands |
 |---|---|---|
@@ -92,7 +92,7 @@ Rules of thumb:
   you picked the wrong element — use `kv:` or `list:` with a hint.
 - Shared content (an inventory readout used in three rooms) goes in
   `views/partials/*.pongo` and is `{% include %}`d from a `code:`
-  element. See [`stories/oregon-trail/views/partials/inventory.pongo`](../stories/oregon-trail/views/partials/inventory.pongo).
+  element. See [`stories/oregon-trail/views/partials/inventory.pongo`](../../stories/oregon-trail/views/partials/inventory.pongo).
 
 ---
 
@@ -323,7 +323,7 @@ Authoring checklist (additive to the §7 list):
 - [ ] No `readonly:` field whose `expr:` is a literal — use
       `prose:` instead.
 
-Worked end-to-end reference: [`testdata/apps/choice_smoke/`](../testdata/apps/choice_smoke/)
+Worked end-to-end reference: [`testdata/apps/choice_smoke/`](../../testdata/apps/choice_smoke/)
 covers every feature combo across 23 spokes.
 
 ---

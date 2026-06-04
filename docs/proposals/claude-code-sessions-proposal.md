@@ -144,7 +144,7 @@ notification when a chat goes idle while the user is detached.
   §0.
 
 This proposal honours
-[`bugfix-room-proposal.md` §9](bugfix-room-proposal.md#9-explicit-non-goals)
+[the bug-fix story's explicit non-goals](../../stories/bugfix/README.md)
 — it ships *without* `kitsoki serve` — and slots into the
 chats roadmap rather than alongside it.
 
@@ -756,7 +756,7 @@ a different mechanism and the UX degrades.
 
 A new host effect that enqueues a drive against a chat. The
 contract is **async-with-completion-event** to match the
-[`background-jobs`](background-jobs-proposal.md) pattern.
+[`background-jobs`](../stories/background-jobs/README.md) pattern.
 
 **Inputs:**
 
@@ -1228,11 +1228,11 @@ This is **opt-in per chat**, with the default being safe
   schema, no parallel lock. Two adjunct tables, several new
   CLI verbs, one new host.
 - **Honours
-  [`bugfix-room-proposal.md` §9](bugfix-room-proposal.md#9-explicit-non-goals).**
+  [the bug-fix story's explicit non-goals](../../stories/bugfix/README.md).**
   No daemon in v1. The bug-fix flow adopts PTY mode
   incrementally once chats v2 features are useful to it.
 - **Complements
-  [`background-jobs-proposal.md`](background-jobs-proposal.md).**
+  [`background-jobs`](../stories/background-jobs/README.md).**
   Background jobs are kitsoki goroutines; drives are
   chat-level requests. `host.chat.drive` with `await: false`
   follows the same async + on-complete pattern.

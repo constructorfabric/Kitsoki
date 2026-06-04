@@ -93,7 +93,7 @@ stateDiagram-v2
 ```
 
 (Cloak of Darkness — full source at
-[`testdata/apps/cloak/app.yaml`](../testdata/apps/cloak/app.yaml). To
+[`testdata/apps/cloak/app.yaml`](../../testdata/apps/cloak/app.yaml). To
 generate this graph for any app, run `kitsoki viz app.yaml` and pipe to
 `dot`, or `kitsoki viz --mermaid` for the same shape as above.)
 
@@ -644,7 +644,7 @@ Substitution rules:
 3. A trailing `default: true` → `<phase>_error` with the guard hint.
 
 The fixture at
-[`internal/app/testdata/phases/three-phase.yaml`](../internal/app/testdata/phases/three-phase.yaml)
+[`internal/app/testdata/phases/three-phase.yaml`](../../internal/app/testdata/phases/three-phase.yaml)
 exercises every variant and is the regression baseline.
 
 `checkpoint_intents:` (a top-level map) is merged into every

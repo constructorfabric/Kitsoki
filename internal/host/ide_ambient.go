@@ -22,7 +22,7 @@
 // The capture is read-at-submit and gated TUI-side on a deny list; the echo line
 // the operator sees (`⧉ Selected N lines from <file>`) is the source of truth for
 // the exact range that rode the turn. See docs/tui/README.md ("Editor awareness:
-// /ide") and docs/hosts.md ("host.ide.*").
+// /ide") and docs/architecture/hosts.md ("host.ide.*").
 package host
 
 import (

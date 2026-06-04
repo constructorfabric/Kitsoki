@@ -8,7 +8,7 @@ states:
     description: "Standup — what's on my plate today."
     # Flattened view (no extends/blocks) — `choice:` cannot live inside a
     # `blocks:` map (typed metadata is lost through the inheritance
-    # pipeline; see docs/choice-widget.md §3.1).
+    # pipeline; see docs/stories/choice-widget.md §3.1).
     view:
       - kv:
           pairs:

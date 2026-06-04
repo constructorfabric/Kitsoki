@@ -1,6 +1,6 @@
 {% comment %}
 dev-story — app-wide base view. Mirrors stories/oregon-trail/views/base.pongo
-and follows the style-guide block convention (docs/story-style.md §2):
+and follows the style-guide block convention (docs/stories/story-style.md §2):
 
   status   — top status line; dev-story's "ticket · workspace · branch · PR · inbox" readout
   heading  — room title (default: state.description)

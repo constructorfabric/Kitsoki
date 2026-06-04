@@ -10,7 +10,7 @@
 // non-connection error from the link) surfaces as a Go error.
 //
 // The verb→tool mapping and arg/result shapes are documented in
-// docs/hosts.md ("host.ide.*"). open_diff is non-blocking in v1:
+// docs/architecture/hosts.md ("host.ide.*"). open_diff is non-blocking in v1:
 // it acknowledges the tool call and returns {ok:true}; the editor's
 // accept/reject happens out-of-band and is not captured (epic open question #2).
 package host

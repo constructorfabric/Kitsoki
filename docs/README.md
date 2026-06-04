@@ -86,12 +86,13 @@ live in the sections above.
 
 ## Historical material
 
-- [`proposals/`](proposals/README.md) — proposal documents in design or
-  partially shipped; kept for design context. A shipped proposal keeps
-  its design discussion here while the user-facing reference moves into
-  one of the sections above (e.g. the semantic-routing proposal's
-  reference now lives at
-  [`architecture/semantic-routing.md`](architecture/semantic-routing.md)).
-- [`competitive-analysis/`](competitive-analysis/README.md),
-  [`reviews/`](reviews/), and [`features/mvp.md`](features/mvp.md) —
-  research, code-review records, and the MVP scope list.
+- [`proposals/`](proposals/README.md) — proposal documents still in
+  design or partially shipped; kept for design context. As a proposal
+  ships, its user-facing reference moves into one of the sections above
+  (e.g. semantic routing now lives at
+  [`architecture/semantic-routing.md`](architecture/semantic-routing.md))
+  and the fully-shipped proposal is deleted.
+- [`features/mvp.md`](features/mvp.md) — the MVP scope list.
+- [`competitive-analysis/`](competitive-analysis/README.md) — market,
+  domain, and technical research. Business/positioning material, not part
+  of the product manual.

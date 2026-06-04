@@ -213,9 +213,9 @@ github.com/.../tui.(*Model).Update(...)
 | Concept | Code |
 |---|---|
 | CLI subcommands (`create`, `list`, `show`) | [`cmd/kitsoki/bug.go`](../cmd/kitsoki/bug.go) |
-| `story-bug-reporter` agent (prompt + tool surface) | [`internal/agents/story_bug_reporter.md`](../../internal/agents/story_bug_reporter.md), [`internal/agents/story_bug_reporter.go`](../internal/agents/story_bug_reporter.go) |
-| `kitsoki-bug-reporter` agent | [`internal/agents/kitsoki_bug_reporter.md`](../../internal/agents/kitsoki_bug_reporter.md), [`internal/agents/kitsoki_bug_reporter.go`](../internal/agents/kitsoki_bug_reporter.go) |
-| Builtin `story.bug` and `kitsoki.bug` meta modes | [`internal/app/builtin_meta_modes.go`](../internal/app/builtin_meta_modes.go) |
+| `story-bug-reporter` agent (prompt + tool surface) | [`internal/agents/story_bug_reporter.md`](../../internal/agents/story_bug_reporter.md), [`internal/agents/story_bug_reporter.go`](../../internal/agents/story_bug_reporter.go) |
+| `kitsoki-bug-reporter` agent | [`internal/agents/kitsoki_bug_reporter.md`](../../internal/agents/kitsoki_bug_reporter.md), [`internal/agents/kitsoki_bug_reporter.go`](../../internal/agents/kitsoki_bug_reporter.go) |
+| Builtin `story.bug` and `kitsoki.bug` meta modes | [`internal/app/builtin_meta_modes.go`](../../internal/app/builtin_meta_modes.go) |
 
 ---
 

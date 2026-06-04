@@ -1,5 +1,5 @@
 # Robbery — a reusable sub-story exemplifying the imports/extension
-# pattern (see docs/imports.md). A masked rider demands tribute
+# pattern (see docs/stories/imports.md). A masked rider demands tribute
 # from the party. The player chooses to pay, fight, or flee; each path
 # has a named exit the importer maps to whatever follow-up state fits
 # the host game.

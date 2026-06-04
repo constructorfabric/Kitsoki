@@ -34,7 +34,7 @@ stories — routed and recorded.
   demo app.
 
 **Narrative docs:** `docs/hosts.md` and `docs/architecture/hosts.md`
-(`host.ide.*`), `docs/transports.md` §7 (the IDE link as a connection-oriented,
+(`host.ide.*`), `docs/architecture/transports.md` §7 (the IDE link as a connection-oriented,
 inbound-capable transport), `docs/tui/README.md` ("Editor awareness: /ide").
 Verified wire contract: `.context/claude-code-ide-interface.md`.
 

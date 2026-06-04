@@ -1114,7 +1114,7 @@ recovery_state: foyer
 Optional. If set, resume-time state-path-rename failures teleport
 here instead of becoming a hard error. Defaults to unset; opt-in per
 app. The
-[`oregon-trail-proposal.md`](oregon-trail-proposal.md) example app
+[`oregon-trail`](../../stories/oregon-trail/README.md) example app
 declares it as a demo of graceful upgrades.
 
 #### 6.8 Determinism contract

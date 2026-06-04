@@ -9,7 +9,7 @@ Companion documents:
   reference and TUI keymap tables.
 - [`docs/stories/story-style.md`](story-style.md) §3.6 — prescriptive prompt /
   label / hint conventions.
-- [`testdata/apps/choice_smoke/`](../testdata/apps/choice_smoke/) — the
+- [`testdata/apps/choice_smoke/`](../../testdata/apps/choice_smoke/) — the
   canonical 23-spoke fixture; every snippet below has a matching
   spoke that runs end-to-end.
 
@@ -97,7 +97,7 @@ When NOT to reach for `choice:`:
 
 Every snippet is runnable as-is against an app that declares the named
 intent and its slots. The fixture column links to a spoke in
-[`testdata/apps/choice_smoke/`](../testdata/apps/choice_smoke/) that
+[`testdata/apps/choice_smoke/`](../../testdata/apps/choice_smoke/) that
 exercises the same shape end-to-end.
 
 ### 2.1 Confirm / cancel split

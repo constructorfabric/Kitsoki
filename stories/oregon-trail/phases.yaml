@@ -1193,7 +1193,7 @@ phase_templates:
                 - set:
                     last_job_originating_state: "{{ tpl.id }}_awaiting_reply"
 
-          # Imported wrapper sub-story (see docs/imports.md): the
+          # Imported wrapper sub-story (see docs/stories/imports.md): the
           # `frontier` compound state is the alias under which
           # stories/frontier_event (which itself imports stories/robbery)
           # is folded into oregon-trail. Targeting the compound enters

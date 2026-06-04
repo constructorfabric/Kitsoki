@@ -101,9 +101,9 @@ thought.
   `oracle_off_ramp:` opt-in: when free text maps to no declared intent,
   hand the turn to an oracle `converse` answer instead of rejecting, with
   no state/world change. Nothing implemented yet.
-- [`prd-design.md`](prd-design.md) — a standalone PRD-authoring
-  operator story (`stories/prd/`). Early draft; untracked work in
-  progress.
+- [`stories/prd/`](../../stories/prd/README.md) — a standalone
+  PRD-authoring operator story. Shipped; the design proposal was never
+  committed, so its reference is the story README.
 - [`runstatus-proposal.md`](runstatus-proposal.md) — Vue 3 web UI
   for inspecting a run: clickable state diagram + trace timeline +
   detail drawer. Phase 1 (artifact mode) ~90% shipped; the single-file

@@ -9,7 +9,7 @@ lives.
 For comparative grounding — what kitsoki borrows from interactive
 fiction, statechart frameworks, dialogue managers, and LLM
 orchestration — see [`prior-art.md`](prior-art.md). For runnable
-apps, see [`testdata/apps/`](../testdata/apps). For the state-machine
+apps, see [`testdata/apps/`](../../testdata/apps). For the state-machine
 vocabulary in detail, see [`state-machine.md`](../stories/state-machine.md).
 
 ---
@@ -612,7 +612,7 @@ external_keys        (transport, thread) → session_id
 
 The orchestrator is the only writer to `events` and `sessions`; chats
 and jobs each have their own per-row lock. The full event-kind enum
-is defined in [`internal/store/event.go`](../internal/store/event.go).
+is defined in [`internal/store/event.go`](../../internal/store/event.go).
 
 ### 11.5 Chained host-call rerender contract
 
@@ -630,7 +630,7 @@ expression error against the current world), only *that leaf* falls
 back to its corresponding pre-render value from the up-front-resolved
 `hc.Args`. Sibling leaves still render against the fresh world.
 Implemented in
-[`internal/orchestrator/orchestrator.go::rerenderHostArgs`](../internal/orchestrator/orchestrator.go)
+[`internal/orchestrator/orchestrator.go::rerenderHostArgs`](../../internal/orchestrator/orchestrator.go)
 and the recursive walk in `resolveTemplateValueLeafFallback`.
 
 **`HostDispatched` event.** Emitted immediately before each handler
@@ -645,7 +645,7 @@ actually received, distinct from the pre-bind args snapshotted by
 pre-bind args; existing replay cassettes and traces are unchanged.
 `HostDispatched` is additive — store replay treats it as a no-op.
 Enum entries live in
-[`internal/store/event.go`](../internal/store/event.go).
+[`internal/store/event.go`](../../internal/store/event.go).
 
 ### 11.6 Observability
 

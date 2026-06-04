@@ -1,6 +1,6 @@
 {% comment %}
 code-review — sub-story base view. Mirrors stories/bugfix/views/base.pongo
-and follows the style-guide block convention (docs/story-style.md §2).
+and follows the style-guide block convention (docs/stories/story-style.md §2).
 
 This base IS consulted only when code-review runs STANDALONE. When imported
 under dev-story (alias `rev`), the AppRenderer resolves `extends: "base"`

@@ -254,7 +254,7 @@ include:
   - proposals.yaml
   - rooms/*.yaml
 
-# ── Story imports (see docs/imports.md) ───────────────────────────────
+# ── Story imports (see docs/stories/imports.md) ───────────────────────────────
 # Three-layer composition demonstrates every section of the proposal:
 #
 #   oregon-trail  ──imports──>  frontier_event  ──imports──>  robbery

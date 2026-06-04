@@ -113,8 +113,8 @@ an in-flight LLM call.
 over the same lock-file + MCP-over-WebSocket mechanism Claude Code uses, so
 the editor becomes an always-on context source the operator can see. The
 link substrate (discovery, auth, the ws client, `host.ide.*`) is the runtime
-layer — [`../hosts.md`](../hosts.md#hostide--editor-awareness) and
-[`../transports.md`](../transports.md#7-the-ide-link); this is the operator
+layer — [`architecture/hosts.md`](../architecture/hosts.md#hostide--editor-awareness) and
+[`architecture/transports.md`](../architecture/transports.md#7-the-ide-link); this is the operator
 surface on top, in `commands_ide.go`.
 
 **Commands.**

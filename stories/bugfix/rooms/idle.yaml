@@ -24,7 +24,7 @@ states:
     description: "Bug-fix pipeline parked. Waiting for start."
     # Flattened view (no extends/blocks chrome) — `choice:` cannot live
     # inside a `blocks:` map (typed metadata is lost through the
-    # inheritance pipeline; see docs/choice-widget.md §3.1). The
+    # inheritance pipeline; see docs/stories/choice-widget.md §3.1). The
     # status/heading the base.pongo used to render is now inlined as a
     # prose status line + the kv body; the standalone-only border
     # chrome is dropped.

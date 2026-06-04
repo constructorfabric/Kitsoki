@@ -3,7 +3,7 @@
 # binds the answer. The existing pattern (testdata/apps/dev-story/
 # rooms/oracle.yaml) has multi-turn chat surfaces; Wave 3 ports those.
 #
-# Per docs/choice-widget.md §1 the oracle is an open-ended chat
+# Per docs/stories/choice-widget.md §1 the oracle is an open-ended chat
 # surface — the canonical "type your question" mode is still the
 # semroute path. We expose `ask_question` here as a `single + param:`
 # row anyway so operators driving by widget have a deterministic entry,
@@ -16,7 +16,7 @@ states:
     description: "Oracle — Q&A with Claude."
     # Flattened view (no extends/blocks) — `choice:` cannot live inside a
     # `blocks:` map (typed metadata is lost through the inheritance
-    # pipeline; see docs/choice-widget.md §3.1).
+    # pipeline; see docs/stories/choice-widget.md §3.1).
     view:
       - kv:
           pairs:

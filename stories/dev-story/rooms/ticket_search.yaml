@@ -33,7 +33,7 @@ states:
           ticket_results: tickets
         on_error: ticket_search
     # Flattened view (no extends/blocks) — `choice:` cannot live
-    # inside a `blocks:` map (see docs/choice-widget.md §3.1).
+    # inside a `blocks:` map (see docs/stories/choice-widget.md §3.1).
     #
     # The ticket list is dynamic (world.ticket_results), so the
     # picker uses `param:` to capture the id rather than a literal

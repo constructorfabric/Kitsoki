@@ -7,7 +7,7 @@ states:
     description: "Docs — write / edit documentation (Wave 3 stub)."
     # Flattened view (no extends/blocks) — `choice:` cannot live inside a
     # `blocks:` map (typed metadata is lost through the inheritance
-    # pipeline; see docs/choice-widget.md §3.1). The base.pongo
+    # pipeline; see docs/stories/choice-widget.md §3.1). The base.pongo
     # status/heading chrome is dropped on the standalone path.
     view:
       - prose: "Docs (Wave 3 stub)."

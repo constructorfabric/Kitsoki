@@ -84,7 +84,7 @@ surfaces the existing `AMBIGUOUS_INTENT` disambiguation card.
 
 A `{slot_name}` inside a synonym string captures a contiguous run of
 tokens for the named slot. The captured run is fed to the typed
-parser in [`internal/slotparse`](../internal/slotparse) keyed off
+parser in [`internal/slotparse`](../../internal/slotparse) keyed off
 `slot.type`.
 
 ```yaml

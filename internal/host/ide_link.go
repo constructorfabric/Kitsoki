@@ -9,7 +9,7 @@
 // branches on — never a Go error. The boundary is the host.IDELink interface
 // so internal/host never imports internal/ide (ide imports host for
 // host.Handler; the dependency must not invert). See
-// docs/transports.md ("The IDE link") and docs/hosts.md ("host.ide.*").
+// docs/architecture/transports.md ("The IDE link") and docs/architecture/hosts.md ("host.ide.*").
 package host
 
 import (

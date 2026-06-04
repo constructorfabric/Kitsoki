@@ -580,7 +580,7 @@ Returns: `{ ok, path, message_id }`. `path` is the absolute file path
 written; `message_id` is `<basename-without-ext>#<append-counter>` for
 parity with `host.append_to_file`.
 
-Implementation: [`internal/host/artifacts_dir_transport.go`](../internal/host/artifacts_dir_transport.go).
+Implementation: [`internal/host/artifacts_dir_transport.go`](../../internal/host/artifacts_dir_transport.go).
 
 ---
 
@@ -589,7 +589,7 @@ Implementation: [`internal/host/artifacts_dir_transport.go`](../internal/host/ar
 Shells out to a `workspace-manager` CLI and parses the JSON output
 into a typed `Workspace` (id, root path, repos, issue, PRs). Fields
 are validated against
-[`internal/workspace/schema.json`](../internal/workspace/schema.json).
+[`internal/workspace/schema.json`](../../internal/workspace/schema.json).
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
@@ -745,9 +745,9 @@ drainer). The sync path acquires the chat singleton lock, runs
 the new `chat_messages.seq`.
 
 The handler lives at
-[`internal/host/chat_handlers.go:ChatDriveHandler`](../internal/host/chat_handlers.go);
+[`internal/host/chat_handlers.go:ChatDriveHandler`](../../internal/host/chat_handlers.go);
 the dispatcher (claim → claude → mark-terminal) lives in
-[`internal/host/chat_dispatch.go`](../internal/host/chat_dispatch.go).
+[`internal/host/chat_dispatch.go`](../../internal/host/chat_dispatch.go).
 Full design rationale in
 [`docs/proposals/claude-code-sessions-proposal.md`](../proposals/claude-code-sessions-proposal.md)
 §9.2.
@@ -829,7 +829,7 @@ and a new, inbound-capable class of transport; its discovery/auth/lifecycle
 and the env-isolation rationale live in
 [`transports.md`](transports.md#7-the-ide-link) and the Hermetic-isolation
 section above. The five verbs and their arg/result tables are the user-facing
-reference in [`hosts.md`](../hosts.md#hostide--editor-awareness):
+reference in [the `host.ide.*` section below](#hostide--editor-awareness):
 `get_diagnostics`, `get_selection`, `get_open_editors`, `open_file`,
 `open_diff`.
 

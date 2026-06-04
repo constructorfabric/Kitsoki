@@ -5,7 +5,7 @@ This base is consulted only when prd runs STANDALONE. When imported under
 a parent story, the AppRenderer resolves `extends: "base"` against the
 HOST's base. The prd rooms use flattened typed-element views (because a
 `choice:` widget cannot live inside a `blocks:` map — see
-docs/choice-widget.md §3.1), so they do not extend this base; it is kept
+docs/stories/choice-widget.md §3.1), so they do not extend this base; it is kept
 for block-contract parity with the other stories.
 
 Block contract:

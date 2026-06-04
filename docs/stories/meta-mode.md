@@ -535,10 +535,10 @@ contract.
 | Inbox status-bar watcher (pushes severity-coloured notification counts into the attached session's tmux `status-right` every 2s while `/attach` is live) | `internal/tui/meta_attach.go:runStatusBarWatcher` |
 
 In-tree apps with a working `meta_modes.story`:
-[`testdata/apps/cloak/app.yaml`](../testdata/apps/cloak/app.yaml),
-[`testdata/apps/dev-story/app.yaml`](../testdata/apps/dev-story/app.yaml),
-[`testdata/apps/background_jobs/app.yaml`](../testdata/apps/background_jobs/app.yaml),
-[`testdata/apps/proposal_smoke/app.yaml`](../testdata/apps/proposal_smoke/app.yaml).
+[`testdata/apps/cloak/app.yaml`](../../testdata/apps/cloak/app.yaml),
+[`testdata/apps/dev-story/app.yaml`](../../testdata/apps/dev-story/app.yaml),
+[`testdata/apps/background_jobs/app.yaml`](../../testdata/apps/background_jobs/app.yaml),
+[`testdata/apps/proposal_smoke/app.yaml`](../../testdata/apps/proposal_smoke/app.yaml).
 
 ---
 

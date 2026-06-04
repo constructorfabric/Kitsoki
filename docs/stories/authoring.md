@@ -285,7 +285,7 @@ repr, which no standard parser can read.
 On marshal failure (cyclic graph, unsupported type) the renderer
 falls back to `%v` so a corrupt slot doesn't crash the template.
 Implemented in
-[`internal/expr/expr.go::anyToString`](../internal/expr/expr.go).
+[`internal/expr/expr.go::anyToString`](../../internal/expr/expr.go).
 
 ---
 
@@ -422,7 +422,7 @@ Template authoring rules:
   (most-specific-wins); declaration order breaks fill-count ties.
 
 Enum-slot `synonyms:` are consumed by
-[`internal/slotparse`](../internal/slotparse/). The slot parser
+[`internal/slotparse`](../../internal/slotparse/). The slot parser
 runs three tiers in order — direct stem match, synonym word-bag
 containment, and Damerau-Levenshtein-1 fuzzy match — so the same
 `pick_profession` fixture above will route "banker", "rich guy",
