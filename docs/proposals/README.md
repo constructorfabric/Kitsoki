@@ -61,9 +61,33 @@ thought.
 ## Current proposals
 
 - [`ai-collaboration-proposal.md`](ai-collaboration-proposal.md) —
-  two remaining AI-collaborator surfaces (`kitsoki drive`,
-  per-state `loading_view`). The other three v1 surfaces shipped
-  and are documented in `docs/architecture/developer-guide.md` §6.
+  one remaining AI-collaborator surface (per-state `loading_view`).
+  Three v1 surfaces shipped (`docs/architecture/developer-guide.md` §6);
+  the scripted `kitsoki drive` (§1) is superseded by the
+  [`story-qa-agent`](story-qa-agent.md) epic, which makes it interactive.
+- [`story-qa-agent.md`](story-qa-agent.md) — **epic.** A Claude agent
+  that QAs a story by *using* it: given a persona + scenario it walks the
+  story turn-by-turn, reading the exact human-fidelity screen (and a real
+  screenshot of it), and reports view/navigation/intuitiveness/objective
+  findings. Nothing implemented yet; decomposed into four slices:
+  - [`qa-frame-seam.md`](qa-frame-seam.md) (tui) — one composer that
+    returns the full screen (body + chrome) as `{text, ansi, metadata}`
+    at any width; the live TUI renders through it too.
+  - [`qa-drive-command.md`](qa-drive-command.md) (runtime) —
+    `kitsoki drive`: persistent trace session, free-text input,
+    `--harness live|replay`, VCR record/playback modes; emits the frame
+    per turn.
+  - [`qa-screenshot.md`](qa-screenshot.md) (tui) — `kitsoki shot`:
+    ANSI→PNG of a frame for visual review.
+  - [`qa-agent-skill.md`](qa-agent-skill.md) (tooling) — the `story-qa`
+    subagent: persona + scenario → drive loop → scored UX rubric +
+    report + screenshots + bug list.
+- [`effect-taxonomy.md`](effect-taxonomy.md) — one effect taxonomy
+  (`effect: pure | read | write | external` + an orthogonal `deterministic`
+  bit) shared by host calls **and** agents, replacing the overloaded
+  `external_side_effect` boolean. Converse read-only enforcement, task replay
+  mode, and future trace-replay/caching all derive from it; adds a load-time
+  hard-fail for a read-only call holding a mutator. Nothing implemented yet.
 - [`auto-advance-states-proposal.md`](auto-advance-states-proposal.md) —
   auto-fire `done` after `on_enter` chains complete, with `wait: true`
   to opt out. Nothing implemented yet.
@@ -87,11 +111,20 @@ thought.
   per-state decider. Engine core, CLI/flow surface, and docs-review
   migration shipped; pre-bind staging and the bugfix-story migration
   remain (§8).
+- [`task-fs-sandbox.md`](task-fs-sandbox.md) — confine a `task` agent's
+  writes at the **OS level** (`sandbox:` → bubblewrap/Landlock: repo read-only,
+  one workspace read-write), so NO tool — Write, Bash, python, sed — can write
+  outside its declared output; the engine then validates + persists the
+  workspace diff, with out-of-allowlist persists gated by an `oracle.decide`.
+  Nothing implemented yet; PoC proven on this host. Fixes the proposal_author
+  YOLO (it implemented `web.go` instead of just proposing it) at the kernel.
 - [`idempotent-on-enter.md`](idempotent-on-enter.md) — an opt-in `once:`
   flag on `invoke:` effects so the engine skips an on_enter host call whose
   `bind:` target is already populated — making `/reload` (and re-entry)
-  idempotent without per-room `when:` guards. Nothing implemented yet;
-  generalizes the hand-guards now in `stories/dev-story/rooms/proposal_*.yaml`.
+  idempotent without per-room `when:` guards. **`once:` shipped** (see
+  `docs/stories/state-machine.md` §"`on_enter` must be idempotent"; the
+  `proposal_*.yaml` rooms are migrated); the `/reload --force` companion to
+  bypass it during authoring (Open question 1) remains.
 - [`local-model-oracle.md`](local-model-oracle.md) — a `builtin.local_llm`
   oracle plugin that drives a local llama.cpp `llama-server` sidecar over
   OpenAI-compatible HTTP, with grammar-forced schema-valid output, for
@@ -121,8 +154,30 @@ thought.
   meaningful aspect renders once per column. Producer half shipped
   and documented in `docs/tracing/trace-format.md`; the runstatus
   consumer rewrite and fixture migration remain.
+- [`starlark-host.md`](starlark-host.md) —
+  `host.starlark.run` capability: sandboxed Starlark scripts bundled with a
+  story, with a typed `ctx` API for HTTP and world access, fully integrated
+  with the cassette/flow test system. Extends the deterministic replay border
+  to cover scripted logic. Nothing implemented yet.
 - [`semantic-routing-proposal.md`](semantic-routing-proposal.md) —
   v1 shipped. The trimmed proposal keeps only open questions and
   the Oregon Trail calibration history. The user-facing reference
   for the shipped surface lives at
   [`../architecture/semantic-routing.md`](../architecture/semantic-routing.md).
+- [`view-rendering-readability.md`](view-rendering-readability.md) —
+  **epic.** Make the typed element tree the single canonical view
+  representation so prose reads cleanly across the TUI and the web,
+  and give authors a `kitsoki view` proofing command + lint. Nothing
+  implemented yet; decomposed into four slices:
+  - [`view-canonical-typed.md`](view-canonical-typed.md) (runtime) —
+    normalize every view shape to typed elements at load; always
+    populate `TypedView`; `say:`→leading prose; demote `View string`.
+  - [`view-tui-rendering.md`](view-tui-rendering.md) (tui) — collapse
+    the four-stage width chain; render typed elements direct-to-styled;
+    shrink Glamour to the code/raw escape hatch.
+  - [`view-trace-and-web-typed.md`](view-trace-and-web-typed.md) (tracing) —
+    record the typed tree in the trace; web renders every turn through
+    `ViewElement`; delete the 80-col fossil fallback.
+  - [`view-proofing-tooling.md`](view-proofing-tooling.md) (tui) —
+    `kitsoki view` + lint catalog + cross-env golden/property tests +
+    authoring-skill wiring.

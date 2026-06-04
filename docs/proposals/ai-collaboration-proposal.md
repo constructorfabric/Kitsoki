@@ -14,9 +14,18 @@ three have shipped and are now documented in normal docs:
   snapshot. See [`docs/architecture/developer-guide.md` §6](../architecture/developer-guide.md)
   and `cmd/kitsoki/inspect.go`.
 
-The two surfaces below remain in design. The TUI's automatic
-spinner (the alternative noted in §2 of this file) is already
-implemented; `loading_view` per-state YAML is not.
+One surface below remains in design: `loading_view` per-state YAML
+(§2). The TUI's automatic spinner (the alternative noted in §2) is
+already implemented.
+
+§1 (`kitsoki drive`) has been **superseded** by the
+[`story-qa-agent`](story-qa-agent.md) epic. The scripted-input driver
+sketched there is the wrong shape for an AI *agent*, which decides its
+next input from what it just saw; the epic's
+[`qa-drive-command.md`](qa-drive-command.md) reframes it as an
+**interactive** free-text driver (live or replay harness, VCR cassette
+modes, human-fidelity frame per turn). §1 is retained below only as the
+original sketch the epic builds on.
 
 **Context.** The motivating `devstory` story is built by an AI
 agent and driven by a human. Every bug that only the human sees
