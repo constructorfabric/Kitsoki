@@ -167,9 +167,15 @@ func rebaseWithMap(with map[string]any, childDir string) {
 		}
 		with[key] = filepath.Join(childDir, raw)
 	}
-	// host.oracle.task nests prompt/prompt_path under with.context.
+	// host.oracle.task nests prompt/prompt_path under with.context and the
+	// acceptance schema under with.acceptance.schema. Both must rebase to the
+	// defining story's dir, else the runtime joins them against the PARENT
+	// app dir ($KITSOKI_APP_DIR) and the file isn't found.
 	if ctx, ok := with["context"].(map[string]any); ok {
 		rebaseWithMap(ctx, childDir)
+	}
+	if acc, ok := with["acceptance"].(map[string]any); ok {
+		rebaseWithMap(acc, childDir)
 	}
 }
 
