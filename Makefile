@@ -52,9 +52,12 @@ web-clean:
 
 # test runs the Go unit tests AND the Mode-2 deterministic story flow suites
 # (no LLM, no cost). The flow suites guard the shipped stories under stories/,
-# which `go test ./...` does not touch.
-test: test-flows
-	go test ./...
+# which `go test ./...` does not touch. scripts/run-tests.sh collects every
+# failure across both suites (never bails early), prints a terse summary on
+# success / full detail on failure, and always writes a rotated full report to
+# .artifacts/test-reports/.
+test:
+	@./scripts/run-tests.sh
 
 # test-flows replays every story's flow fixtures against a scratch binary built
 # from the working tree (plain `go build` — no SPA embed needed), so it tracks
