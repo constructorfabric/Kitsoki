@@ -35,7 +35,11 @@ states:
               intent: quit
     relevant_world: [pr_id, pr_title, merge_strategy, merge_sha]
     on_enter:
+      # once: true — merging is the most destructive external side-effect in
+      # the pipeline; a /reload of merge_executing would attempt a second
+      # merge. Skipped once merge_sha is bound. No re-run re-enters here.
       - invoke: iface.vcs.merge
+        once: true
         with:
           pr_id:    "{{ world.pr_id }}"
           strategy: "{{ world.merge_strategy }}"

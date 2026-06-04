@@ -121,6 +121,7 @@ world:
   # ── brief + references (review rooms before drafting) ────────────────
   brief_path:       { type: string, default: "" }   # path the brief artifact was written to (.artifacts/prd_brief.md)
   references:       { type: object, default: {} }   # researcher result: { items: [{ path, sections, rationale }] }
+  references_prev:  { type: object, default: {} }   # snapshot of `references` taken on a `refine` so the researcher can revise it in place: `refine` clears `references` to re-arm the on_enter `once:`, so the prompt reads `current_references` from this snapshot, not the (now-cleared) live key. `regenerate` (fresh search) needs no snapshot.
   references_path:  { type: string, default: "" }   # path the reference-list artifact was written to (.artifacts/prd_references.md)
   references_cycle: { type: int,    default: 0 }    # references re-search rounds consumed; caps via references_budget
   references_budget: { type: int,   default: 3 }    # max references regenerations before regenerate abandons

@@ -71,7 +71,13 @@ states:
       # `working_dir` pins the oracle subprocess to the bugfix worktree
       # so greps/reads against the live tree land on the feature branch,
       # not on main. See implementing.yaml header for the regression.
+      # `once: true` for reload-safety: keyed off its own bind
+      # (propose_fix_artifact), so /reload (or self/on_error re-entry)
+      # re-renders the stored proposal without re-running the oracle.
+      # The refine + restart_from-to-proposing arms clear
+      # propose_fix_artifact to re-arm a fresh run.
       - invoke: host.oracle.decide
+        once: true
         with:
           agent: proposer
           prompt_path: prompts/proposing_executing.md
@@ -135,26 +141,32 @@ states:
         - target: proposing
           effects:
             - set:
-                refine_feedback:  "{{ slots.feedback ?? world.llm_verdict.reason }}"
-                proposing_cycle:  "{{ world.proposing_cycle + 1 }}"
-                cycle:            "{{ world.cycle + 1 }}"
+                refine_feedback:      "{{ slots.feedback ?? world.llm_verdict.reason }}"
+                proposing_cycle:      "{{ world.proposing_cycle + 1 }}"
+                cycle:                "{{ world.cycle + 1 }}"
+                # Clear the once: bind so on_enter re-runs the oracle.
+                propose_fix_artifact: {}
 
       restart_from:
         - when: "slots.stage == 'reproducing'"
           target: reproducing
           effects:
             - set:
-                restart_from_stage: "reproducing"
-                refine_feedback:    ""
-                reproducing_cycle:  0
-                cycle:              0
+                restart_from_stage:    "reproducing"
+                refine_feedback:       ""
+                reproducing_cycle:     0
+                cycle:                 0
+                # Clear reproducing's once: bind so it re-runs fresh.
+                reproduction_artifact: {}
         - target: proposing
           effects:
             - set:
-                restart_from_stage: "{{ slots.stage ?? 'proposing' }}"
-                refine_feedback:    ""
-                proposing_cycle:    0
-                cycle:              0
+                restart_from_stage:   "{{ slots.stage ?? 'proposing' }}"
+                refine_feedback:      ""
+                proposing_cycle:      0
+                cycle:                0
+                # Clear the once: bind so on_enter re-runs the oracle fresh.
+                propose_fix_artifact: {}
 
       jump_to:
         - when: "slots.stage == 'testing' || slots.stage == 'test'"

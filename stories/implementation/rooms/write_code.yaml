@@ -39,7 +39,11 @@ states:
             - { label: "look", intent: look, hint: "re-render" }
     relevant_world: [ticket_id, ticket_title, code_artifact, task_summary_artifact, cycle, refine_feedback]
     on_enter:
+      # once: skip the regenerate when code_artifact is already bound
+      # (reload / self-re-entry safe). Every arc that re-enters
+      # write_code_executing for a FRESH run clears the bind below.
       - invoke: host.oracle.decide
+        once: true
         with:
           prompt: prompts/write_code_executing.md
           schema: schemas/code_artifact.json
@@ -72,6 +76,9 @@ states:
             - set:
                 restart_from_stage: "{{ slots.stage ?? 'review_task' }}"
                 cycle: 0
+                # Re-entering review_task_executing for a fresh run — clear
+                # its once: cache so the task summary regenerates.
+                task_summary_artifact: {}
       quit:
         - target: "@exit:abandoned"
       look:
@@ -154,18 +161,26 @@ states:
                 last_reply_author: "{{ slots.author ?? 'human' }}"
                 refine_feedback:   ""
                 cycle:             0
+                # Advancing to test_executing for a fresh run — clear its
+                # once: cache so the test artifact regenerates.
+                test_artifact:     {}
       refine:
         - target: write_code_executing
           effects:
             - set:
                 refine_feedback: "{{ slots.feedback ?? world.llm_verdict.reason }}"
                 cycle:           "{{ world.cycle + 1 }}"
+                # Clear the once: cache so the code artifact regenerates.
+                code_artifact:   {}
       restart_from:
         - target: review_task_executing
           effects:
             - set:
                 restart_from_stage: "{{ slots.stage ?? 'review_task' }}"
                 cycle:              0
+                # Re-entering review_task_executing for a fresh run — clear
+                # its once: cache so the task summary regenerates.
+                task_summary_artifact: {}
       quit:
         - target: "@exit:abandoned"
       look:

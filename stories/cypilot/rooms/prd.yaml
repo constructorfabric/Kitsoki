@@ -56,8 +56,11 @@ states:
               intent: look
     relevant_world: [ticket_id, ticket_title, feature_slug, prd_artifact, validate_ok, validate_report, cycle]
     on_enter:
-      # 1. Create the PRD artifact via cpt generate.
+      # 1. Create the PRD artifact via cpt generate.  once: skips the
+      #    re-create on /reload or self re-entry once prd_artifact is set —
+      #    the refine arc clears it to force a fresh generate.
       - invoke: iface.artifact.create
+        once: true
         with:
           kind:    "prd"
           title:   "{{ world.ticket_title }}"
@@ -70,15 +73,19 @@ states:
         on_error: idle
       # 2. Run cpt analyze deterministically to surface a report.  We do
       #    NOT gate the room transition on this; the LLM-judge at the
-      #    checkpoint reads the report and decides.
+      #    checkpoint reads the report and decides.  once: keys off the
+      #    string validate_report (validate_ok is a bool — a real `false`
+      #    reads as "set", so it's an unsafe cache key); the refine arc
+      #    clears validate_report so the analyze re-runs on the new artifact.
       - invoke: iface.artifact.validate
+        once: true
         with:
           id:      "{{ world.prd_artifact.id }}"
           mode:    "deterministic"
           workdir: "{{ world.workdir }}"
         bind:
-          validate_ok:     ok
           validate_report: report
+          validate_ok:     ok
     on:
       proceed:
         - target: prd_awaiting_reply
@@ -88,6 +95,10 @@ states:
             - set:
                 refine_feedback: "{{ slots.feedback }}"
                 cycle:           "{{ world.cycle + 1 }}"
+                # Clear the once: caches so re-entry regenerates + re-validates.
+                prd_artifact:    {}
+                validate_report: ""
+                validate_ok:     false
       quit:
         - target: "@exit:abandoned"
       look:
@@ -182,6 +193,10 @@ states:
             - set:
                 refine_feedback: "{{ slots.feedback ?? world.llm_verdict.reason }}"
                 cycle:           "{{ world.cycle + 1 }}"
+                # Clear the once: caches so re-entry regenerates + re-validates.
+                prd_artifact:    {}
+                validate_report: ""
+                validate_ok:     false
       quit:
         - target: "@exit:abandoned"
       look:

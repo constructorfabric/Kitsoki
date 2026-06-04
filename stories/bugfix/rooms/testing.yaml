@@ -106,7 +106,15 @@ states:
       # the bugfix worktree — without it, any grep/read the oracle runs
       # to verify the fix lands on the wrong tree (kitsoki's cwd = main,
       # where the fix never lives).
+      # `once: true` for reload-safety: keyed off its own bind
+      # (implement_review_artifact), so /reload (or self/on_error
+      # re-entry) re-renders the stored review without re-running the
+      # oracle. NOTE: iface.ci.run_tests above is intentionally NOT
+      # once: — ci_log is shared scratch, not a phase artifact. The
+      # refine + restart_from arms below clear implement_review_artifact
+      # to re-arm a fresh run.
       - invoke: host.oracle.task
+        once: true
         with:
           agent: test_author
           working_dir: "{{ world.workdir }}"
@@ -173,6 +181,9 @@ states:
                 refine_feedback:    "{{ world.implement_review_artifact.summary_markdown }}"
                 implementing_cycle: "{{ world.implementing_cycle + 1 }}"
                 cycle:              "{{ world.cycle + 1 }}"
+                # Re-enter implementing for a fresh re-apply: clear its
+                # once: bind so the implementer oracle runs again.
+                implement_artifact: {}
 
         # passed (or legacy/missing status) — post and advance. The
         # bugfix_mode=quick path skips reviewing + validating and lands
@@ -213,27 +224,33 @@ states:
         - target: testing
           effects:
             - set:
-                refine_feedback: "{{ slots.feedback ?? world.llm_verdict.reason }}"
-                testing_cycle:   "{{ world.testing_cycle + 1 }}"
-                cycle:           "{{ world.cycle + 1 }}"
+                refine_feedback:           "{{ slots.feedback ?? world.llm_verdict.reason }}"
+                testing_cycle:             "{{ world.testing_cycle + 1 }}"
+                cycle:                     "{{ world.cycle + 1 }}"
+                # Clear the once: bind so on_enter re-runs the oracle.
+                implement_review_artifact: {}
 
       restart_from:
         - when: "slots.stage == 'reproducing'"
           target: reproducing
           effects:
             - set:
-                restart_from_stage: "reproducing"
-                refine_feedback:    ""
-                reproducing_cycle:  0
-                cycle:              0
+                restart_from_stage:    "reproducing"
+                refine_feedback:       ""
+                reproducing_cycle:     0
+                cycle:                 0
+                # Clear reproducing's once: bind so it re-runs fresh.
+                reproduction_artifact: {}
         - when: "slots.stage == 'proposing' || slots.stage == 'propose_fix'"
           target: proposing
           effects:
             - set:
-                restart_from_stage: "{{ slots.stage }}"
-                refine_feedback:    ""
-                proposing_cycle:    0
-                cycle:              0
+                restart_from_stage:   "{{ slots.stage }}"
+                refine_feedback:      ""
+                proposing_cycle:      0
+                cycle:                0
+                # Clear proposing's once: bind so it re-runs fresh.
+                propose_fix_artifact: {}
         - when: "slots.stage == 'implementing' || slots.stage == 'implement'"
           target: implementing
           effects:
@@ -242,13 +259,17 @@ states:
                 refine_feedback:     ""
                 implementing_cycle:  0
                 cycle:               0
+                # Clear implementing's once: bind so it re-applies fresh.
+                implement_artifact:  {}
         - target: proposing
           effects:
             - set:
-                restart_from_stage: "{{ slots.stage ?? 'proposing' }}"
-                refine_feedback:    ""
-                proposing_cycle:    0
-                cycle:              0
+                restart_from_stage:   "{{ slots.stage ?? 'proposing' }}"
+                refine_feedback:      ""
+                proposing_cycle:      0
+                cycle:                0
+                # Clear proposing's once: bind so it re-runs fresh.
+                propose_fix_artifact: {}
 
       jump_to:
         - when: "slots.stage == 'validating' || slots.stage == 'validate'"

@@ -72,7 +72,14 @@ states:
       # done's postmortem oracle mostly reads upstream artifact text —
       # consistency across rooms means an operator never has to remember
       # which oracle calls see which tree.
+      # `once: true` for reload-safety: keyed off its own bind
+      # (done_artifact), so /reload (or self/on_error re-entry) re-renders
+      # the stored close-out without re-running the oracle. The refine arm
+      # clears done_artifact to re-arm a fresh run. The accept arc
+      # RE-PINS done_artifact for the @exit:done requires: check — that is
+      # intentional and left intact.
       - invoke: host.oracle.decide
+        once: true
         with:
           agent: proposer
           prompt_path: prompts/done_executing.md
@@ -151,24 +158,30 @@ states:
                 refine_feedback: "{{ slots.feedback ?? world.llm_verdict.reason }}"
                 done_cycle:      "{{ world.done_cycle + 1 }}"
                 cycle:           "{{ world.cycle + 1 }}"
+                # Clear the once: bind so on_enter re-runs the oracle.
+                done_artifact:   {}
 
       restart_from:
         - when: "slots.stage == 'reproducing'"
           target: reproducing
           effects:
             - set:
-                restart_from_stage: "reproducing"
-                refine_feedback:    ""
-                reproducing_cycle:  0
-                cycle:              0
+                restart_from_stage:    "reproducing"
+                refine_feedback:       ""
+                reproducing_cycle:     0
+                cycle:                 0
+                # Clear reproducing's once: bind so it re-runs fresh.
+                reproduction_artifact: {}
         - when: "slots.stage == 'proposing' || slots.stage == 'propose_fix'"
           target: proposing
           effects:
             - set:
-                restart_from_stage: "{{ slots.stage }}"
-                refine_feedback:    ""
-                proposing_cycle:    0
-                cycle:              0
+                restart_from_stage:   "{{ slots.stage }}"
+                refine_feedback:      ""
+                proposing_cycle:      0
+                cycle:                0
+                # Clear proposing's once: bind so it re-runs fresh.
+                propose_fix_artifact: {}
         - when: "slots.stage == 'implementing' || slots.stage == 'implement_review'"
           target: implementing
           effects:
@@ -177,14 +190,18 @@ states:
                 refine_feedback:     ""
                 implementing_cycle:  0
                 cycle:               0
+                # Clear implementing's once: bind so it re-applies fresh.
+                implement_artifact:  {}
         - when: "slots.stage == 'testing' || slots.stage == 'test'"
           target: testing
           effects:
             - set:
-                restart_from_stage: "{{ slots.stage }}"
-                refine_feedback:    ""
-                testing_cycle:      0
-                cycle:              0
+                restart_from_stage:        "{{ slots.stage }}"
+                refine_feedback:           ""
+                testing_cycle:             0
+                cycle:                     0
+                # Clear testing's once: bind so it re-runs fresh.
+                implement_review_artifact: {}
         - when: "slots.stage == 'validating' || slots.stage == 'validate'"
           target: validating
           effects:
@@ -193,6 +210,8 @@ states:
                 refine_feedback:    ""
                 validating_cycle:   0
                 cycle:              0
+                # Clear validating's once: bind so it re-runs fresh.
+                validate_artifact:  {}
         - target: validating
           effects:
             - set:
@@ -200,6 +219,8 @@ states:
                 refine_feedback:    ""
                 validating_cycle:   0
                 cycle:              0
+                # Clear validating's once: bind so it re-runs fresh.
+                validate_artifact:  {}
 
       quit:
         - target: "@exit:abandoned"

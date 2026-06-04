@@ -42,7 +42,9 @@ states:
               intent: look
     relevant_world: [prd_artifact, feature_slug, design_artifact, validate_ok, validate_report, cycle]
     on_enter:
+      # once: skips re-create once design_artifact is set; refine clears it.
       - invoke: iface.artifact.create
+        once: true
         with:
           kind:      "design"
           title:     "DESIGN for {{ world.ticket_title }}"
@@ -52,14 +54,17 @@ states:
         bind:
           design_artifact: artifact
         on_error: adr_awaiting_reply
+      # once: keyed off the string validate_report (validate_ok is a bool —
+      # unsafe cache key); refine clears it so analyze re-runs.
       - invoke: iface.artifact.validate
+        once: true
         with:
           id:      "{{ world.design_artifact.id }}"
           mode:    "consistency"
           workdir: "{{ world.workdir }}"
         bind:
-          validate_ok:     ok
           validate_report: report
+          validate_ok:     ok
     on:
       proceed:
         - target: design_awaiting_reply
@@ -67,8 +72,12 @@ states:
         - target: design_executing
           effects:
             - set:
-                refine_feedback: "{{ slots.feedback }}"
-                cycle:           "{{ world.cycle + 1 }}"
+                refine_feedback:  "{{ slots.feedback }}"
+                cycle:            "{{ world.cycle + 1 }}"
+                # Clear the once: caches so re-entry regenerates + re-validates.
+                design_artifact:  {}
+                validate_report:  ""
+                validate_ok:      false
       quit:
         - target: "@exit:abandoned"
       look:
@@ -157,8 +166,12 @@ states:
         - target: design_executing
           effects:
             - set:
-                refine_feedback: "{{ slots.feedback ?? world.llm_verdict.reason }}"
-                cycle:           "{{ world.cycle + 1 }}"
+                refine_feedback:  "{{ slots.feedback ?? world.llm_verdict.reason }}"
+                cycle:            "{{ world.cycle + 1 }}"
+                # Clear the once: caches so re-entry regenerates + re-validates.
+                design_artifact:  {}
+                validate_report:  ""
+                validate_ok:      false
       quit:
         - target: "@exit:abandoned"
       look:

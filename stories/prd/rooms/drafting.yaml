@@ -78,7 +78,12 @@ states:
     on_enter:
       # Write the PRD. working_dir pins the author's Read/Write to the
       # operator's tree; its tool calls + files_changed land in the trace.
+      # `once: true` for reload-safety: keyed off its own bind (prd_artifact).
+      # /reload re-renders the stored draft; `refine` clears prd_artifact (its
+      # own bind) to force a fresh author run. clarify/restart_from re-enter
+      # via clarifying, so drafting re-runs naturally when reached again.
       - invoke: host.oracle.task
+        once: true
         with:
           agent: author
           working_dir: "{{ world.workdir }}"
@@ -107,7 +112,14 @@ states:
       # single flow fixture that traverses clarifying → drafting in llm mode
       # can stub the two with distinct `by_call:` envelopes — no need to give
       # the judge a different verb just to dodge a stub-name collision.
+      # `once: true` is SAFE here: in prd the judge is single-use (only this
+      # drafting room runs a judge; llm_verdict is not reused across other
+      # checkpoints), so keying off llm_verdict is unambiguous. `refine`
+      # clears llm_verdict ({}) to re-arm it. Reload-safety bonus: the
+      # downstream auto-fire emit_intent won't re-fire on /reload because the
+      # stored verdict short-circuits the re-run.
       - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
+        once: true
         invoke: host.oracle.decide
         id: judge_verdict
         with:
@@ -155,8 +167,14 @@ states:
                 status:         "abandoned"
         - target: drafting
           effects:
+            # Capture the refine steer BEFORE clearing llm_verdict (in case it
+            # came from the judge's reason), then clear both once: binds so the
+            # author re-drafts and the judge re-evaluates the new draft.
             - set:
                 refine_feedback: "{{ slots.feedback ?? world.llm_verdict.reason }}"
+            - set:
+                prd_artifact:    {}
+                llm_verdict:     {}
                 drafting_cycle:  "{{ world.drafting_cycle + 1 }}"
                 cycle:           "{{ world.cycle + 1 }}"
 
@@ -167,7 +185,14 @@ states:
       clarify:
         - target: clarifying
           effects:
+            # Clear clarifications so clarifying's analyst `once:` re-arms (new
+            # round vs. the preserved log), and clear the drafting once: binds
+            # (prd_artifact / llm_verdict) so the eventual return to drafting
+            # re-drafts + re-judges rather than no-opping on the stale draft.
             - set:
+                clarifications:        {}
+                prd_artifact:          {}
+                llm_verdict:           {}
                 refine_feedback:       ""
                 clarification_answers: ""
                 answered_count:        0
@@ -180,6 +205,9 @@ states:
           target: idle
           effects:
             - set:
+                clarifications:        {}
+                prd_artifact:          {}
+                llm_verdict:           {}
                 clarification_log:     ""
                 clarification_answers: ""
                 answered_count:        0
@@ -190,7 +218,13 @@ states:
                 cycle:                 0
         - target: clarifying
           effects:
+            # Clear clarifications (analyst-decide bind) + the drafting once:
+            # binds so re-questioning regenerates and the eventual re-draft
+            # actually runs.
             - set:
+                clarifications:        {}
+                prd_artifact:          {}
+                llm_verdict:           {}
                 clarification_log:     ""
                 clarification_answers: ""
                 answered_count:        0

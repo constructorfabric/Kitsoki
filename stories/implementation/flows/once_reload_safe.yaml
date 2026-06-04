@@ -1,0 +1,69 @@
+# once_reload_safe — on_enter is idempotent: a room whose artifact is
+# already present does NOT re-run its oracle decide.
+#
+# This is the reload-safety contract for the `once: true` invokes on the
+# four _executing rooms. /reload (and self-re-entry / on_error) re-fires
+# on_enter; `once: true` makes the expensive host.oracle.decide a no-op
+# whenever its bind target is already set in world. We prove it here by
+# entering review_task_executing (its on_enter fires) with
+# task_summary_artifact ALREADY preset. The oracle stub returns a
+# DIFFERENT (SHOULD-NOT-RUN) artifact — so if `once:` failed and the
+# decide re-ran, the preset would be overwritten. Asserting the preset
+# survives verbatim proves the decide was skipped.
+#
+# We enter via idle → start, the one forward arc that does NOT clear
+# task_summary_artifact (it's the cold-start path); presetting the
+# artifact there models the "room re-entered with its result already in
+# world" case the engine hits on /reload.
+#
+# (Mirrors stories/dev-story/flows/proposal_reload_safe.yaml.)
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  ticket_id:       "TKT-T-RS1"
+  ticket_title:    "Reload-safety probe"
+  thread:          "TKT-T-RS1"
+  workdir:         ".worktrees/tkt-t-rs1"
+  judge_mode:      "human"
+  cycle:           0
+  # Artifact already produced — entering review_task_executing must NOT
+  # re-run the decide. This is the preset the `once:` guard must preserve.
+  task_summary_artifact:
+    summary_title:    "PRESET-SURVIVED"
+    summary_markdown: "Preset task summary that must survive the on_enter replay."
+    acceptance_criteria: ["preset criterion"]
+
+host_handlers:
+  # iface.ticket.get — cheap idempotent read, fires every entry (no once:).
+  host.local_files.ticket:
+    data:
+      ok:    true
+      id:    "TKT-T-RS1"
+      title: "Reload-safety probe"
+      body:  "Probe body."
+      url:   "issues/tasks/tkt-t-rs1.md"
+  # If `once:` failed, this would fire and overwrite the preset artifact.
+  host.oracle.decide:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "SHOULD-NOT-RUN"
+        summary_markdown: "If you see this, the once: guard failed and the decide re-ran."
+        acceptance_criteria: ["SHOULD-NOT-RUN"]
+
+turns:
+  # start → review_task_executing; its on_enter fires. task_summary_artifact
+  # is already set ⇒ the `once: true` decide is SKIPPED, so the preset
+  # survives verbatim (summary_title still PRESET-SURVIVED) rather than being
+  # clobbered by the stub's SHOULD-NOT-RUN value.
+  - intent: { name: start, slots: {} }
+    expect_state: review_task_executing
+    expect_world:
+      task_summary_artifact:
+        summary_title:    "PRESET-SURVIVED"
+        summary_markdown: "Preset task summary that must survive the on_enter replay."
+        acceptance_criteria: ["preset criterion"]
+
+expect_no_errors: true

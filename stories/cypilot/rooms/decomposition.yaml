@@ -45,7 +45,14 @@ states:
               intent: look
     relevant_world: [prd_artifact, decomposition_artifact, feature_count, cycle]
     on_enter:
+      # once: skips re-running cpt plan on /reload or self re-entry once
+      # the decomposition_artifact OBJECT is set.  The object is the real
+      # gate: feature_count is an int (a real 0 reads as "set", so it can
+      # never gate on its own), but allBindTargetsSet requires EVERY bind
+      # target set — and the object defaults to {} (unset) on first entry,
+      # so the whole invoke runs.  refine clears the object to force a re-run.
       - invoke: iface.artifact.decompose
+        once: true
         with:
           id:      "{{ world.prd_artifact.id }}"
           workdir: "{{ world.workdir }}"
@@ -66,8 +73,10 @@ states:
         - target: decomposition_executing
           effects:
             - set:
-                refine_feedback: "{{ slots.feedback }}"
-                cycle:           "{{ world.cycle + 1 }}"
+                refine_feedback:        "{{ slots.feedback }}"
+                cycle:                  "{{ world.cycle + 1 }}"
+                # Clear the once: cache (the OBJECT gate) to re-run cpt plan.
+                decomposition_artifact: {}
       quit:
         - target: "@exit:abandoned"
       look:
@@ -154,8 +163,10 @@ states:
         - target: decomposition_executing
           effects:
             - set:
-                refine_feedback: "{{ slots.feedback ?? world.llm_verdict.reason }}"
-                cycle:           "{{ world.cycle + 1 }}"
+                refine_feedback:        "{{ slots.feedback ?? world.llm_verdict.reason }}"
+                cycle:                  "{{ world.cycle + 1 }}"
+                # Clear the once: cache (the OBJECT gate) to re-run cpt plan.
+                decomposition_artifact: {}
       quit:
         - target: "@exit:abandoned"
       look:

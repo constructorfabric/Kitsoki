@@ -104,7 +104,13 @@ states:
       #    `working_dir` pins the oracle subprocess to the bugfix
       #    worktree so any greps/reads the oracle runs read the right
       #    tree. See implementing.yaml header for the regression context.
+      # `once: true` for reload-safety: keyed off its own bind
+      # (reproduction_artifact), so on /reload (or any self/on_error
+      # re-entry) the stored artifact re-renders without re-running the
+      # oracle. The refine + restart_from arms below clear
+      # reproduction_artifact to re-arm a fresh run.
       - invoke: host.oracle.task
+        once: true
         with:
           agent: reproducer
           working_dir: "{{ world.workdir }}"
@@ -181,9 +187,11 @@ states:
         - target: reproducing
           effects:
             - set:
-                refine_feedback:    "{{ slots.feedback ?? world.llm_verdict.reason }}"
-                reproducing_cycle:  "{{ world.reproducing_cycle + 1 }}"
-                cycle:              "{{ world.cycle + 1 }}"
+                refine_feedback:        "{{ slots.feedback ?? world.llm_verdict.reason }}"
+                reproducing_cycle:      "{{ world.reproducing_cycle + 1 }}"
+                cycle:                  "{{ world.cycle + 1 }}"
+                # Clear the once: bind so on_enter re-runs the oracle.
+                reproduction_artifact:  {}
 
       # restart_from re-enters this phase fresh; nothing earlier to
       # rewind to from reproducing.
@@ -191,10 +199,12 @@ states:
         - target: reproducing
           effects:
             - set:
-                restart_from_stage: "{{ slots.stage ?? 'reproducing' }}"
-                refine_feedback:    ""
-                reproducing_cycle:  0
-                cycle:              0
+                restart_from_stage:    "{{ slots.stage ?? 'reproducing' }}"
+                refine_feedback:       ""
+                reproducing_cycle:     0
+                cycle:                 0
+                # Clear the once: bind so on_enter re-runs the oracle fresh.
+                reproduction_artifact: {}
 
       # jump_to skips ahead. Audited via world.unsafe_jumps_made.
       jump_to:

@@ -105,7 +105,12 @@ states:
       clarify:
         - target: clarifying
           effects:
+            # Clear clarifications (clarifying's analyst-decide bind) so its
+            # `once:` re-arms and a NEW round of questions is generated against
+            # the preserved transcript — without this the re-fired on_enter
+            # no-ops and re-shows the prior round's questions.
             - set:
+                clarifications:        {}
                 refine_feedback:       ""
                 clarification_answers: ""
                 answered_count:        0
@@ -120,6 +125,7 @@ states:
           target: idle
           effects:
             - set:
+                clarifications:        {}
                 clarification_log:     ""
                 clarification_answers: ""
                 answered_count:        0
@@ -131,7 +137,10 @@ states:
                 cycle:                 0
         - target: clarifying
           effects:
+            # Clear clarifications (analyst-decide bind) so its `once:` re-arms
+            # and re-questions from scratch.
             - set:
+                clarifications:        {}
                 clarification_log:     ""
                 clarification_answers: ""
                 answered_count:        0

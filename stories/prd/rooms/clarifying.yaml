@@ -84,7 +84,13 @@ states:
       # ask). Skipped state-seeding bypass: flow fixtures that seed
       # initial_state=clarifying write events directly and do not re-fire
       # this on_enter.
+      # `once: true` for reload-safety: keyed off its own bind
+      # (clarifications). /reload re-renders the stored question list; the
+      # `regenerate` arc clears clarifications (its own bind) to force a
+      # fresh analyst run. clarify/restart_from re-enter from elsewhere with
+      # clarifications cleared (or seeded empty), so they re-run too.
       - invoke: host.oracle.decide
+        once: true
         id: analyst_questions
         with:
           agent: analyst
@@ -172,8 +178,12 @@ states:
         - target: clarifying
           effects:
             # Fresh questions are coming → discard this round's answers so
-            # they don't bleed into the regenerated list.
+            # they don't bleed into the regenerated list. Clear clarifications
+            # (the analyst decide's own bind) to re-arm its `once:` — without
+            # this the re-fired on_enter would silently no-op and re-show the
+            # SAME questions.
             - set:
+                clarifications:        {}
                 refine_feedback:       "{{ slots.feedback ?? '' }}"
                 clarification_answers: ""
                 answered_count:        0

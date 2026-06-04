@@ -1,0 +1,139 @@
+# once_reload_safe — the `once: true` idempotency contract for cypilot's
+# artifact builders, proven without a real /reload.
+#
+# Mirrors stories/dev-story/flows/proposal_reload_safe.yaml.  Three things are
+# asserted in one walk, all in the feature room (the highest-value target —
+# it's the one room walked N times, so it carries both the refine clear AND
+# the non-refine next_feature clear):
+#
+#   SCENARIO A (cache hit → skip).  Re-entering feature_executing while
+#   feature_artifact + validate_report are already set MUST skip both once:
+#   invokes (create + validate).  We prove it via the `look` self-loop (a
+#   `target: .` re-entry re-fires on_enter): neither iface fires, the preset
+#   survives.  [look does NOT clear the caches, unlike refine.]
+#
+#   SCENARIO B (refine re-arms).  refine clears feature_artifact +
+#   validate_report, so the self re-entry re-runs BOTH once: invokes — the
+#   stub artifact now lands, proving the clear re-armed the calls.
+#
+#   SCENARIO C (multi-feature re-gen — THE trap).  accept on feature 0 with
+#   more phases remaining clears feature_artifact (the non-refine clear) and
+#   advances feature_index → 1.  feature_executing's once: create MUST fire
+#   again on the feature-1 entry; if the clear were missing it would skip and
+#   render feature 0's artifact.  We assert the create DOES fire.
+#
+# on_enter only fires on a real TRANSITION, not for the seeded initial state
+# (see code_artifact_round_trip.yaml).  So we enter feature_executing via
+# decomposition accept rather than seeding it directly.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: decomposition_awaiting_reply
+initial_world:
+  ticket_id:    "ONCE-001"
+  ticket_title: "Idempotent on_enter for cypilot"
+  feature_slug: "once-flag"
+  thread:       "ONCE-001"
+  workdir:      ".worktrees/once-001"
+  judge_mode:   "human"          # suppress the LLM judge; drive arcs by hand
+  judge_confidence_threshold: 0.8
+  feature_index: 0
+  feature_count: 2               # two phases → feature 0 then feature 1
+  prd_artifact:
+    id: "prd-once-001"
+  decomposition_artifact:
+    plan_path: ".plans/once-flag"
+    phase_count: 2
+
+host_handlers:
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+  host.inbox.add:
+    data: { ok: true, id: "ib-1" }
+  host.cypilot_artifacts:
+    data:
+      ok: true
+      id: "art-once-feature"
+      path: "cypilot/artifacts/once-feature.md"
+      report: "FRESH report from cpt"
+      findings: []
+      plan_path: ".plans/once-flag"
+      phase_count: 2
+      artifact:
+        id:               "art-once-feature"
+        path:             "cypilot/artifacts/once-feature.md"
+        kind:             "feature"
+        summary_title:    "Fresh feature artifact"
+        summary_markdown: "Fresh feature body."
+        pr_title:         "ONCE-001"
+        pr_body:          "body"
+        tests_passed:     1
+        tests_failed:     0
+  host.local:
+    data: { ok: true, log: "PASS", passed: 1, failed: 0 }
+
+turns:
+  # decomposition accept → feature_executing (feature_index 0).  on_enter
+  # fires: feature_artifact was empty ({}) so the once: create + validate BOTH
+  # run and bind the fresh stub artifact.
+  # NOTE on assertions: expect_host_calls / expect_no_host_calls match the
+  # HostDispatched `namespace`, which is the RESOLVED host name with the iface
+  # op appended (host.cypilot_artifacts.create / .validate), not the iface
+  # name.  expect_world does full-equality on object values, so we assert the
+  # scalar validate_report / feature_index instead — the host-call assertions
+  # are the authoritative skip-vs-run signal.
+  - intent: { name: accept, slots: {} }
+    expect_state: feature_executing
+    expect_world:
+      feature_index: 0
+      validate_report: "FRESH report from cpt"
+    expect_host_calls:
+      - handler: host.cypilot_artifacts.create
+        args: { kind: "feature" }
+      - handler: host.cypilot_artifacts.validate
+
+  # ── SCENARIO A: cache hit → skip ──────────────────────────────────────
+  # look is a `target: .` self re-entry: on_enter re-fires, but feature_artifact
+  # + validate_report are now SET, so BOTH once: invokes SKIP — NO iface fires.
+  # (look does NOT clear the caches, unlike refine.)
+  - intent: { name: look, slots: {} }
+    expect_state: feature_executing
+    expect_world:
+      validate_report: "FRESH report from cpt"
+    expect_no_host_calls:
+      - host.cypilot_artifacts.create
+      - host.cypilot_artifacts.validate
+
+  # ── SCENARIO B: refine re-arms ────────────────────────────────────────
+  # refine clears feature_artifact + validate_report + validate_ok, so the
+  # self re-entry re-runs BOTH once: invokes.  They fire again and re-bind.
+  - intent: { name: refine, slots: { feedback: "add an edge case" } }
+    expect_state: feature_executing
+    expect_world:
+      validate_report: "FRESH report from cpt"
+    expect_host_calls:
+      - handler: host.cypilot_artifacts.create
+        args: { kind: "feature" }
+      - handler: host.cypilot_artifacts.validate
+
+  # proceed → feature_awaiting_reply (judge_mode=human → no auto-accept).
+  - intent: { name: proceed, slots: {} }
+    expect_state: feature_awaiting_reply
+
+  # ── SCENARIO C: multi-feature re-gen (THE trap) ───────────────────────
+  # accept with feature_index+1 (=1) < feature_count (=2): advance to feature
+  # 1.  The accept arc's non-refine clear wipes feature_artifact, so
+  # feature_executing's once: create MUST re-run for feature 1.  If the clear
+  # were missing, the create would skip (cached) and feature 1 would inherit
+  # feature 0's artifact.  Asserting the create fires proves the clear works.
+  - intent: { name: accept, slots: {} }
+    expect_state: feature_executing
+    expect_world:
+      feature_index: 1
+    expect_host_calls:
+      - handler: host.cypilot_artifacts.create
+        args: { kind: "feature" }
+      - handler: host.cypilot_artifacts.validate
+
+expect_terminal: false
+expect_no_errors: true

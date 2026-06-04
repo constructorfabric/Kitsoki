@@ -52,7 +52,11 @@ states:
         bind:
           ci_log: diff
         on_error: idle
+      # once: skip the regenerate when review_artifact is already bound
+      # (reload / self-re-entry safe). Every arc that re-enters
+      # review_executing for a FRESH run clears the bind below.
       - invoke: host.oracle.decide
+        once: true
         with:
           prompt: prompts/review_executing.md
           schema: schemas/review_artifact.json
@@ -74,6 +78,9 @@ states:
             - set:
                 restart_from_stage: "{{ slots.stage ?? 'review_task' }}"
                 cycle:              0
+                # Re-entering review_task_executing for a fresh run — clear
+                # its once: cache so the task summary regenerates.
+                task_summary_artifact: {}
       quit:
         - target: "@exit:abandoned"
       look:
@@ -173,12 +180,17 @@ states:
             - set:
                 refine_feedback: "{{ slots.feedback ?? world.llm_verdict.reason }}"
                 cycle:           "{{ world.cycle + 1 }}"
+                # Clear the once: cache so the code artifact regenerates.
+                code_artifact:   {}
       restart_from:
         - target: review_task_executing
           effects:
             - set:
                 restart_from_stage: "{{ slots.stage ?? 'review_task' }}"
                 cycle:              0
+                # Re-entering review_task_executing for a fresh run — clear
+                # its once: cache so the task summary regenerates.
+                task_summary_artifact: {}
       quit:
         - target: "@exit:abandoned"
       look:

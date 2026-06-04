@@ -44,7 +44,10 @@ states:
               intent: quit
     relevant_world: [pr_id, pr_title, ci_failed_checks, ci_log, diagnose_artifact, cycle]
     on_enter:
+      # once: true — the diagnoser LLM re-fires on /reload otherwise. Skipped
+      # once diagnose_artifact is bound; both `refine` arcs clear it to re-run.
       - invoke: host.oracle.decide
+        once: true
         with:
           agent: diagnoser
           prompt: prompts/diagnose_executing.md
@@ -66,6 +69,7 @@ states:
         - target: diagnose_executing
           effects:
             - set:
+                diagnose_artifact: {}   # clear the once: cache so the diagnoser re-runs
                 refine_feedback: "{{ slots.feedback }}"
                 cycle:           "{{ world.cycle + 1 }}"
       quit:
@@ -158,6 +162,7 @@ states:
         - target: diagnose_executing
           effects:
             - set:
+                diagnose_artifact: {}   # clear the once: cache so the diagnoser re-runs
                 refine_feedback: "{{ slots.feedback ?? world.llm_verdict.reason }}"
                 cycle:           "{{ world.cycle + 1 }}"
       quit:

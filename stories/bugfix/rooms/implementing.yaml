@@ -98,8 +98,18 @@ states:
       # step the room is a no-op and testing observes "fix not
       # applied". See the file header above for the regression
       # history.
+      # `once: true` for reload-safety: keyed off its own bind
+      # (implement_artifact). This oracle MUTATES FILES, so re-running it
+      # on every /reload / self-transition / on_error re-entry would
+      # re-apply edits against an already-patched tree. Skipping when the
+      # artifact is already bound makes the apply idempotent. Every arc
+      # that re-enters implementing for a FRESH apply — testing's
+      # failed/blocked accept arms, validating's fail_short arm, and the
+      # restart_from-to-implementing arms — clears implement_artifact to
+      # re-arm the apply.
       - when: "world.workdir != ''"
         invoke: host.oracle.task
+        once: true
         with:
           agent: implementer
           working_dir: "{{ world.workdir }}"
@@ -145,25 +155,31 @@ states:
           target: reproducing
           effects:
             - set:
-                restart_from_stage: "reproducing"
-                refine_feedback:    ""
-                reproducing_cycle:  0
-                cycle:              0
+                restart_from_stage:    "reproducing"
+                refine_feedback:       ""
+                reproducing_cycle:     0
+                cycle:                 0
+                # Clear reproducing's once: bind so it re-runs fresh.
+                reproduction_artifact: {}
         - when: "slots.stage == 'proposing' || slots.stage == 'propose_fix'"
           target: proposing
           effects:
             - set:
-                restart_from_stage: "{{ slots.stage }}"
-                refine_feedback:    ""
-                proposing_cycle:    0
-                cycle:              0
+                restart_from_stage:   "{{ slots.stage }}"
+                refine_feedback:      ""
+                proposing_cycle:      0
+                cycle:                0
+                # Clear proposing's once: bind so it re-runs fresh.
+                propose_fix_artifact: {}
         - target: proposing
           effects:
             - set:
-                restart_from_stage: "{{ slots.stage ?? 'proposing' }}"
-                refine_feedback:    ""
-                proposing_cycle:    0
-                cycle:              0
+                restart_from_stage:   "{{ slots.stage ?? 'proposing' }}"
+                refine_feedback:      ""
+                proposing_cycle:      0
+                cycle:                0
+                # Clear proposing's once: bind so it re-runs fresh.
+                propose_fix_artifact: {}
 
       quit:
         - target: "@exit:abandoned"

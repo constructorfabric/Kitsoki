@@ -38,7 +38,11 @@ states:
       # default binding; flow fixtures stub the handler to return
       # {ok, url, pr_id}. A parent story may rebind iface.vcs to
       # host.github or host.bitbucket without touching this YAML.
+      # once: true — opening a PR is a non-idempotent external mutation; on a
+      # /reload of open_pr it would create a duplicate. Skipped once pr_id +
+      # pr_url are bound. No re-run intent re-enters open_pr, so no clear.
       - invoke: iface.vcs.open_pr
+        once: true
         with:
           workdir:  "{{ world.workdir }}"
           title:    "{{ world.pr_title }}"

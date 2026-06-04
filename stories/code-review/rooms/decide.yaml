@@ -48,7 +48,14 @@ states:
       # Produce the structured decision artifact; the verdict is
       # informational (the actual decide intents below carry the
       # approve / request_changes flag to iface.vcs.pr_comment).
+      # `once: true` for reload-safety: keyed off its own bind
+      # (decision_artifact), so /reload re-renders the stored decision instead
+      # of re-running the oracle. The only arc that re-enters this room for a
+      # fresh decide is decide_awaiting_reply's `refine` (→ comment_executing →
+      # proceed → decide_executing); that arc clears decision_artifact to
+      # re-arm this once:.
       - invoke: host.oracle.decide
+        once: true
         with:
           prompt: prompts/judge_decide.md
           schema: schemas/decision_artifact.json
@@ -218,6 +225,13 @@ states:
             - set:
                 refine_feedback: "{{ slots.feedback ?? world.llm_verdict.reason }}"
                 cycle:           "{{ world.cycle + 1 }}"
+                # This back-edge re-runs the redraft → re-decide pipeline, so
+                # clear EVERY downstream once: bind it will flow through:
+                # comment_executing keys off draft_comment, decide_executing
+                # off decision_artifact. Leaving either set would make that
+                # room skip its oracle call and re-render stale output.
+                draft_comment:     ""
+                decision_artifact: {}
       quit:
         - target: "@exit:abandoned"
       look:

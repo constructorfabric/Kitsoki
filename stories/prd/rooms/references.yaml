@@ -93,7 +93,14 @@ states:
       # current list in place — current_references is the starting point)
       # from a fresh `regenerate` search (current_references is reference
       # only). See prompts/references.md.
+      # `once: true` for reload-safety: keyed off its own bind (references).
+      # /reload re-renders the stored list; `refine` / `regenerate` clear
+      # references (the object — its own bind) to force a fresh researcher
+      # run. On `refine` the current list is snapshotted into references_prev
+      # FIRST (so clearing references to re-arm once: doesn't lose it), and
+      # current_references reads from that snapshot — see the `refine` arc.
       - invoke: host.oracle.decide
+        once: true
         id: references_research
         with:
           agent: researcher
@@ -106,7 +113,10 @@ states:
             upstream_paths:      "{{ world.upstream_paths }}"
             feedback:            "{{ world.refine_feedback }}"
             revise:              "{{ world.references_revise }}"
-            current_references:  "{{ world.references }}"
+            # Read the pre-refine snapshot, NOT the live references: `refine`
+            # clears references to re-arm once:, so the live key is empty
+            # mid-revise. references_prev holds the list the researcher edits.
+            current_references:  "{{ world.references_prev }}"
         bind:
           references: submitted
         on_error: idle
@@ -115,7 +125,11 @@ states:
       # to the typed object, which host.artifacts_dir pretty-prints as JSON
       # (the documented map/slice coercion) — a faithful, readable record.
       # mode: replace keeps on_enter idempotent across re-fires.
+      # `once: true` keyed off its bind (references_path); cleared alongside
+      # references on refine/regenerate so the write re-runs with the fresh
+      # list. mode: replace keeps it idempotent even when it does re-run.
       - invoke: host.artifacts_dir
+        once: true
         with:
           artifacts_root: "{{ world.workdir }}/.artifacts"
           thread:         "prd_references"
@@ -134,6 +148,7 @@ states:
             - set:
                 refine_feedback:   ""
                 references_revise: false
+                references_prev:   {}
 
       # Refine the CURRENT list in place: keep what applies, apply the
       # operator's add/drop/re-scope instruction. revise=true tells the
@@ -148,7 +163,17 @@ states:
                 status:         "abandoned"
         - target: references
           effects:
+            # Snapshot the current list FIRST (its OWN effect so it lands
+            # before the clear — set: keys within one effect have no ordering
+            # guarantee). The researcher revises references_prev in place.
             - set:
+                references_prev:   "{{ world.references }}"
+            # Then clear BOTH once: binds (the object + its write-path) so the
+            # researcher (keyed off references) AND the write (keyed off
+            # references_path) re-run with revise=true.
+            - set:
+                references:        {}
+                references_path:   ""
                 refine_feedback:   "{{ slots.feedback }}"
                 references_revise: true
                 references_cycle:  "{{ world.references_cycle + 1 }}"
@@ -165,7 +190,12 @@ states:
                 status:         "abandoned"
         - target: references
           effects:
+            # Fresh search: clear BOTH once: binds (object + write-path) so
+            # both on_enter invokes re-run. revise:false ⇒ no snapshot needed;
+            # the researcher starts over rather than editing current_references.
             - set:
+                references:        {}
+                references_path:   ""
                 refine_feedback:   "{{ slots.feedback ?? '' }}"
                 references_revise: false
                 references_cycle:  "{{ world.references_cycle + 1 }}"
@@ -178,11 +208,17 @@ states:
       clarify:
         - target: clarifying
           effects:
+            # Clear clarifications (clarifying's analyst-decide bind) so its
+            # `once:` re-arms and the analyst asks a NEW round against the
+            # preserved clarification_log — without this the re-fired on_enter
+            # no-ops and re-shows the prior round's questions.
             - set:
+                clarifications:        {}
                 refine_feedback:       ""
                 clarification_answers: ""
                 answered_count:        0
                 answered_ids:          ""
+                references_prev:       {}
 
       # Inputs are wrong — go re-question (discards the clarification record).
       restart_from:
@@ -190,23 +226,30 @@ states:
           target: idle
           effects:
             - set:
+                clarifications:        {}
                 clarification_log:     ""
                 clarification_answers: ""
                 answered_count:        0
                 answered_ids:          ""
                 refine_feedback:       ""
+                references_prev:       {}
                 clarifying_cycle:      0
                 references_cycle:      0
                 drafting_cycle:        0
                 cycle:                 0
         - target: clarifying
           effects:
+            # Clear clarifications (clarifying's analyst-decide bind) so its
+            # `once:` re-arms and re-questions fresh; references_prev for
+            # hygiene.
             - set:
+                clarifications:        {}
                 clarification_log:     ""
                 clarification_answers: ""
                 answered_count:        0
                 answered_ids:          ""
                 refine_feedback:       ""
+                references_prev:       {}
                 clarifying_cycle:      0
                 references_cycle:      0
                 cycle:                 0

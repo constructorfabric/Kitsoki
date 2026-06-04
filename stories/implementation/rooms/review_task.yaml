@@ -53,7 +53,11 @@ states:
           ticket_url:   url
         on_error: idle
       # Produce the structured task summary.
+      # once: skip the regenerate when task_summary_artifact is already
+      # bound (reload / self-re-entry safe). Every arc that re-enters
+      # review_task_executing for a FRESH run clears the bind below.
       - invoke: host.oracle.decide
+        once: true
         with:
           prompt: prompts/review_task_executing.md
           schema: schemas/task_summary_artifact.json
@@ -76,6 +80,8 @@ states:
             - set:
                 refine_feedback: "{{ slots.feedback }}"
                 cycle: 0
+                # Clear the once: cache so the task summary regenerates.
+                task_summary_artifact: {}
       quit:
         - target: "@exit:abandoned"
       look:
@@ -158,18 +164,25 @@ states:
                 last_reply_author: "{{ slots.author ?? 'human' }}"
                 refine_feedback:   ""
                 cycle:             0
+                # Advancing to write_code_executing for a fresh run — clear
+                # its once: cache so the code artifact regenerates.
+                code_artifact:     {}
       refine:
         - target: review_task_executing
           effects:
             - set:
                 refine_feedback: "{{ slots.feedback ?? world.llm_verdict.reason }}"
                 cycle:           "{{ world.cycle + 1 }}"
+                # Clear the once: cache so the task summary regenerates.
+                task_summary_artifact: {}
       restart_from:
         - target: review_task_executing
           effects:
             - set:
                 restart_from_stage: "{{ slots.stage ?? 'review_task' }}"
                 cycle:              0
+                # Clear the once: cache so the task summary regenerates.
+                task_summary_artifact: {}
       quit:
         - target: "@exit:abandoned"
       look:

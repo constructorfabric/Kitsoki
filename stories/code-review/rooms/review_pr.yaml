@@ -62,8 +62,14 @@ states:
         bind:
           pr_comments: comments
         on_error: idle
-      # LLM reviewer pass.
+      # LLM reviewer pass. `once: true` for reload-safety: keyed off its own
+      # bind (review_summary_artifact), so /reload (and the refine self-loop)
+      # skips the expensive reviewer and re-renders the stored artifact. The
+      # `refine` arc below clears review_summary_artifact to re-arm it. The two
+      # preceding iface.vcs reads (diff / pr_status) are intentionally left
+      # unguarded — they are cheap read-only refreshes that SHOULD re-fetch.
       - invoke: host.oracle.decide
+        once: true
         with:
           prompt: prompts/review_pr_executing.md
           schema: schemas/review_summary_artifact.json
@@ -87,6 +93,8 @@ states:
             - set:
                 refine_feedback: "{{ slots.feedback }}"
                 cycle:           "{{ world.cycle + 1 }}"
+                # Clear the once: bind so the reviewer re-runs with feedback.
+                review_summary_artifact: {}
       quit:
         - target: "@exit:abandoned"
       look:
@@ -176,6 +184,9 @@ states:
             - set:
                 refine_feedback: "{{ slots.feedback ?? world.llm_verdict.reason }}"
                 cycle:           "{{ world.cycle + 1 }}"
+                # Clear the once: bind on review_pr_executing so the reviewer
+                # re-runs with the feedback instead of re-rendering the cache.
+                review_summary_artifact: {}
       dismiss:
         - target: "@exit:dismissed"
           effects:
