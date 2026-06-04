@@ -20,12 +20,17 @@ import (
 // Missing fields are omitted.
 func stubConverseRunner() host.ClaudeRunner {
 	return func(_ context.Context, args []string, stdin, _ string) (host.ClaudeRun, error) {
-		var permMode, sessionID, resumeID, systemPrompt, model, tools string
+		var permMode, sessionID, resumeID, systemPrompt, model, tools, denied string
 		for i := 0; i < len(args); i++ {
 			switch args[i] {
 			case "--permission-mode":
 				if i+1 < len(args) {
 					permMode = args[i+1]
+					i++
+				}
+			case "--disallowedTools":
+				if i+1 < len(args) {
+					denied = args[i+1]
 					i++
 				}
 			case "--session-id":
@@ -74,6 +79,9 @@ func stubConverseRunner() host.ClaudeRunner {
 		}
 		if tools != "" {
 			out += " tools=[" + tools + "]"
+		}
+		if denied != "" {
+			out += " denied=[" + denied + "]"
 		}
 		return host.ClaudeRun{Stdout: out}, nil
 	}
@@ -138,7 +146,7 @@ func TestOracleConverse_DefaultPermissionMode(t *testing.T) {
 }
 
 // TestOracleConverse_PermissionModeAsk verifies permission_mode: ask is
-// forwarded to claude --permission-mode ask.
+// translated to the CLI-valid enforcing mode (claude rejects "ask" verbatim).
 func TestOracleConverse_PermissionModeAsk(t *testing.T) {
 	t.Parallel()
 	ctx := host.WithClaudeRunner(context.Background(), stubConverseRunner())
@@ -154,13 +162,17 @@ func TestOracleConverse_PermissionModeAsk(t *testing.T) {
 		t.Fatalf("unexpected Result.Error: %s", res.Error)
 	}
 	ans, _ := res.Data["answer"].(string)
-	if !strings.Contains(ans, "permission=[ask]") {
-		t.Fatalf("expected permission_mode ask forwarded; got %q", ans)
+	if !strings.Contains(ans, "permission=[default]") {
+		t.Fatalf("expected ask translated to permission_mode default; got %q", ans)
+	}
+	if strings.Contains(ans, "permission=[ask]") {
+		t.Fatalf("permission_mode ask must not reach the CLI verbatim; got %q", ans)
 	}
 }
 
 // TestOracleConverse_PermissionModeDenyAll verifies permission_mode: denyAll is
-// forwarded to claude --permission-mode denyAll.
+// translated to the enforcing mode plus a hard --disallowedTools deny of every
+// mutating tool (claude rejects "denyAll" verbatim).
 func TestOracleConverse_PermissionModeDenyAll(t *testing.T) {
 	t.Parallel()
 	ctx := host.WithClaudeRunner(context.Background(), stubConverseRunner())
@@ -176,8 +188,13 @@ func TestOracleConverse_PermissionModeDenyAll(t *testing.T) {
 		t.Fatalf("unexpected Result.Error: %s", res.Error)
 	}
 	ans, _ := res.Data["answer"].(string)
-	if !strings.Contains(ans, "permission=[denyAll]") {
-		t.Fatalf("expected permission_mode denyAll forwarded; got %q", ans)
+	if !strings.Contains(ans, "permission=[default]") {
+		t.Fatalf("expected denyAll translated to permission_mode default; got %q", ans)
+	}
+	for _, tool := range []string{"Write", "Edit", "Bash"} {
+		if !strings.Contains(ans, tool) {
+			t.Fatalf("expected denyAll to disallow %s; got %q", tool, ans)
+		}
 	}
 }
 
@@ -405,8 +422,8 @@ func TestOracleConverse_ChatStore_PermissionModeForwarded(t *testing.T) {
 		t.Fatalf("unexpected Result.Error: %s", res.Error)
 	}
 	ans, _ := res.Data["answer"].(string)
-	if !strings.Contains(ans, "permission=[ask]") {
-		t.Fatalf("expected permission=[ask] in answer; got %q", ans)
+	if !strings.Contains(ans, "permission=[default]") {
+		t.Fatalf("expected ask translated to permission=[default] on the chat path; got %q", ans)
 	}
 }
 

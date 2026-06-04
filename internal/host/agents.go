@@ -184,6 +184,79 @@ func appendAllowedToolsFlag(cliArgs []string, tools []string) []string {
 	return append(cliArgs, "--allowedTools", strings.Join(tools, ","))
 }
 
+// appendDisallowedToolsFlag appends --disallowedTools <csv> to cliArgs when
+// tools is non-empty. Unlike --allowedTools (which only auto-approves under an
+// enforcing permission mode), --disallowedTools is a HARD deny that the CLI
+// honours under *every* permission mode — including bypassPermissions — so it
+// is the reliable backstop for a read-only agent.
+func appendDisallowedToolsFlag(cliArgs []string, tools []string) []string {
+	if len(tools) == 0 {
+		return cliArgs
+	}
+	return append(cliArgs, "--disallowedTools", strings.Join(tools, ","))
+}
+
+// readOnlyDeniedTools are the repo-mutating / arbitrary-exec tools a converse
+// agent that declares external_side_effect:false must never run. Bash is in
+// the set because it is arbitrary code execution — a "read-only" agent with
+// Bash can still write files via `echo >`, python, sed, … (the leak the
+// task-fs-sandbox proposal calls out). WebFetch/WebSearch are deliberately NOT
+// denied: they read external state, which a read-only agent may legitimately
+// do.
+var readOnlyDeniedTools = []string{"Write", "Edit", "MultiEdit", "NotebookEdit", "Bash"}
+
+// agentIsReadOnly reports whether an agent has explicitly declared
+// external_side_effect: false. Unset (nil) is treated as write-capable so the
+// posture only tightens for agents that opted into read-only.
+func agentIsReadOnly(a Agent) bool {
+	return a.ExternalSideEffect != nil && !*a.ExternalSideEffect
+}
+
+// converseToolPolicy computes the CLI permission posture for a converse call:
+// the --permission-mode value the `claude` binary actually receives and the
+// --disallowedTools backstop. It does two jobs.
+//
+// (1) Translate kitsoki's permission_mode vocabulary into a value the CLI
+// accepts. The CLI's --permission-mode choices are
+// acceptEdits|auto|bypassPermissions|default|dontAsk|plan; "ask" and "denyAll"
+// are kitsoki-facing names, NOT CLI flags, so forwarding them verbatim makes
+// claude exit with an "invalid choice" error. They map as:
+//   - bypassPermissions → bypassPermissions (the documented default; no
+//     allowlist enforcement)
+//   - ask               → default (the allowlist binds; tools outside it are
+//     not auto-approved — a headless `-p` run has no interactive confirm loop,
+//     so an unapproved mutation is denied rather than prompted)
+//   - denyAll           → default + the readOnlyDeniedTools deny-set
+//
+// (2) Tighten for a read-only agent (external_side_effect:false) regardless of
+// the requested mode: downgrade bypassPermissions to "default" so the
+// --allowedTools allowlist is actually honoured (under bypassPermissions the
+// CLI approves EVERY tool, making the allowlist advisory — how the
+// proposal_interviewer, declared tools:[Read,Grep,Glob], was able to Write a
+// proposal file mid-discovery), and carry readOnlyDeniedTools as a hard
+// backstop.
+//
+// A write-capable agent (external_side_effect unset or true) gets only the
+// vocabulary translation.
+func converseToolPolicy(permMode string, agent Agent) (cliMode string, disallowed []string) {
+	switch permMode {
+	case "denyAll":
+		cliMode, disallowed = "default", readOnlyDeniedTools
+	case "ask":
+		cliMode = "default"
+	default: // bypassPermissions
+		cliMode = permMode
+	}
+
+	if agentIsReadOnly(agent) {
+		if cliMode == "bypassPermissions" {
+			cliMode = "default"
+		}
+		disallowed = readOnlyDeniedTools
+	}
+	return cliMode, disallowed
+}
+
 // oracleSettingSources is the --setting-sources value applied to every oracle
 // subagent invocation. It deliberately OMITS the "user" source so a story's
 // agents never inherit the operator's user-global Claude Code configuration —

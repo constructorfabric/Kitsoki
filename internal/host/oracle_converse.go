@@ -9,10 +9,13 @@
 // persisted to the transcript, and the claude session ID is stored on
 // the chat row so turns resume correctly even after restarts.
 //
-// permission_mode controls what mutation tools the agent may execute:
-//   - ask              — operator confirms each mutation through the TUI
-//   - bypassPermissions — no confirms (matches legacy talk behaviour); default
-//   - denyAll          — mutations rejected
+// permission_mode controls what mutation tools the agent may execute. These
+// are kitsoki-facing names translated into a real `claude` --permission-mode
+// value by converseToolPolicy (the CLI rejects "ask"/"denyAll" verbatim):
+//   - bypassPermissions — no enforcement (matches legacy talk behaviour); default
+//   - ask              — enforcing "default" mode: the --allowedTools allowlist
+//     binds and tools outside it are denied (a headless -p run can't prompt)
+//   - denyAll          — enforcing mode plus a hard deny of all mutating tools
 //
 // background: is handled by the orchestrator, not the handler; the
 // handler runs normally and the orchestrator binds the job_id when
@@ -59,7 +62,8 @@ var validPermissionModes = map[string]bool{
 //   - agent           (string, optional): name of an entry in AppDef.Agents
 //     (injected via WithAgents) whose SystemPrompt is applied to this call
 //     and whose Model and Tools, when non-empty, are forwarded to claude.
-//   - permission_mode  (string, optional): ask | bypassPermissions | denyAll.
+//   - permission_mode  (string, optional): ask | bypassPermissions | denyAll
+//     (kitsoki-facing names; converseToolPolicy maps them to a CLI mode).
 //     Default: bypassPermissions (matches legacy talk behaviour).
 //   - working_dir     (string, optional): cwd passed to claude (scopes tool access)
 //   - session_id      (string, optional, non-chat path only): UUID for session
@@ -127,6 +131,10 @@ func OracleConverseHandler(ctx context.Context, args map[string]any) (Result, er
 	systemPrompt := effectiveSystemPrompt(args, agent)
 	workingDir = appendDefaultCwd(workingDir, agent)
 	tools := effectiveTools(ctx, args, agent)
+	// Enforce a read-only agent's declared posture: drop bypassPermissions so
+	// the allowlist binds, and hard-deny the mutating tool set. See
+	// converseToolPolicy.
+	permMode, disallowedTools := converseToolPolicy(permMode, agent)
 
 	callID := newUUID()
 	callStart := time.Now()
@@ -159,6 +167,7 @@ func OracleConverseHandler(ctx context.Context, args map[string]any) (Result, er
 		cliArgs = append(cliArgs, "--model", agent.Model)
 	}
 	cliArgs = appendAllowedToolsFlag(cliArgs, tools)
+	cliArgs = appendDisallowedToolsFlag(cliArgs, disallowedTools)
 
 	cr, _, runErr := OracleStreamer{
 		Bin:        bin,
@@ -259,10 +268,14 @@ func runConverseWithChat(ctx context.Context, cs ChatStore, chatID, question, pe
 	model := agent.Model
 	workingDir = appendDefaultCwd(workingDir, agent)
 	tools := effectiveTools(ctx, args, agent)
+	// Enforce a read-only agent's declared posture (see converseToolPolicy):
+	// this is the path the proposal_interviewer takes (it passes a chat_id),
+	// so without this a read-only discovery agent could Write to the repo.
+	permMode, disallowedTools := converseToolPolicy(permMode, agent)
 
 	var out Result
 	lockErr := cs.WithLock(ctx, chatID, func(ctx context.Context) error {
-		inner, runErr := doConverseChatTurn(ctx, cs, chatID, question, workingDir, systemPrompt, model, permMode, tools)
+		inner, runErr := doConverseChatTurn(ctx, cs, chatID, question, workingDir, systemPrompt, model, permMode, tools, disallowedTools)
 		out = inner
 		return runErr
 	})
@@ -279,7 +292,7 @@ func runConverseWithChat(ctx context.Context, cs ChatStore, chatID, question, pe
 //
 // Step ordering: allocate/persist the Claude session ID BEFORE appending the
 // user message to prevent orphan transcript rows on session-write failures.
-func doConverseChatTurn(ctx context.Context, cs ChatStore, chatID, question, workingDir, systemPrompt, model, permMode string, tools []string) (Result, error) {
+func doConverseChatTurn(ctx context.Context, cs ChatStore, chatID, question, workingDir, systemPrompt, model, permMode string, tools, disallowedTools []string) (Result, error) {
 	callID := newUUID()
 	callStart := time.Now()
 
@@ -337,6 +350,7 @@ func doConverseChatTurn(ctx context.Context, cs ChatStore, chatID, question, wor
 		cliArgs = append(cliArgs, "--model", model)
 	}
 	cliArgs = appendAllowedToolsFlag(cliArgs, tools)
+	cliArgs = appendDisallowedToolsFlag(cliArgs, disallowedTools)
 
 	cr, _, runErr := OracleStreamer{
 		Bin:        bin,
