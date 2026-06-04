@@ -28,6 +28,29 @@ import (
 // while letting the bugfix room's 2-step `on_enter:` pattern compose
 // cleanly.  See `internal/machine/machine.go` HostInvocation for the
 // machine-side contract.
+// dispatchRerenderWorld builds the world to re-render an invoke's RawWith
+// against: the invoke's machine-time WorldSnapshot (the world AS OF the
+// invoke's position in the effect chain — earlier set:/increment: reflected,
+// later ones NOT) overlaid with the binds accumulated from earlier invokes in
+// the same dispatch loop. This is what lets a later `set:` clearing a key not
+// clobber an earlier invoke's `with:` arg referencing it (proposal/restart's
+// archive-then-clear), while still letting a downstream invoke read an earlier
+// invoke's bind. Falls back to the live world `w` when no snapshot was
+// captured (HostInvocations built outside the effect-walk / test stubs).
+func dispatchRerenderWorld(hc machine.HostInvocation, binds map[string]any, w world.World) world.World {
+	if hc.WorldSnapshot == nil {
+		return w
+	}
+	vars := make(map[string]any, len(hc.WorldSnapshot)+len(binds))
+	for k, v := range hc.WorldSnapshot {
+		vars[k] = v
+	}
+	for k, v := range binds {
+		vars[k] = v
+	}
+	return world.World{Vars: vars}
+}
+
 func rerenderHostArgs(hc machine.HostInvocation, w world.World) (map[string]any, bool) {
 	if len(hc.RawWith) == 0 {
 		return hc.Args, false

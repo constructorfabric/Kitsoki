@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -65,8 +66,20 @@ type HostInvocation struct {
 	// Env is the expression-evaluation environment to use for re-rendering
 	// RawWith.  Captured from the machine's effect-walk so the orchestrator
 	// has access to the same slots/event/run scope (the World is overridden
-	// at re-render time with the latest world).
+	// at re-render time with the world snapshot below plus dispatch binds).
 	Env any `json:"-"`
+	// WorldSnapshot is a clone of the world AS OF THIS INVOKE'S POSITION in
+	// the effect list — earlier `set:`/`increment:` effects are reflected,
+	// LATER ones are NOT. The orchestrator re-renders RawWith against this
+	// snapshot overlaid with the binds accumulated from earlier invokes in
+	// the same chain. Using the snapshot (rather than the final post-chain
+	// world) is what keeps a later `set:` from clobbering an earlier
+	// invoke's `with:` arg — e.g. proposal/restart archives the chat with
+	// `{{ world.proposal_chat_id }}` and then a following `set:` clears that
+	// key; the archive must still see the pre-clear value. Empty for
+	// HostInvocations built outside the effect-walk (older paths / test
+	// stubs), in which case the orchestrator falls back to the live world.
+	WorldSnapshot map[string]any `json:"-"`
 	// Bind maps world variable names to keys in the host result's Data map.
 	// e.g. bind: {workspace: "id"} copies result.Data["id"] into world["workspace"].
 	Bind map[string]string `json:"bind,omitempty"`
@@ -1505,6 +1518,26 @@ func (m *machineImpl) applyEffectsTraced(ctx context.Context, effects []app.Effe
 			}))
 
 		case eff.Invoke != "":
+			// once: idempotent re-entry guard. When every bind target world
+			// key is already SET (non-empty), the invoke is a no-op — its
+			// result is already cached in world, so re-entry (/reload,
+			// self-transition, on_error) re-renders from the cache instead of
+			// recomputing an expensive, non-idempotent call. Skipping does NOT
+			// abort the rest of the on_enter chain; the engine continues to the
+			// next effect. The skip is recorded on EffectApplied so a trace
+			// shows the elision and why. See app.Effect.Once.
+			if eff.Once && allBindTargetsSet(eff.Bind, newWorld.Vars) {
+				m.logger.DebugContext(ctx, trace.EvMachineEffectApplied,
+					slog.String("type", "invoke"),
+					slog.String("namespace", eff.Invoke),
+					slog.String("skipped", "cached"),
+				)
+				effectEvents = append(effectEvents, newEvent(store.EffectApplied, map[string]any{
+					"namespace": eff.Invoke,
+					"skipped":   "cached",
+				}))
+				continue
+			}
 			// Resolve with: args (templated values).  `resolvedArgs` is the
 			// best-effort up-front resolution against the world snapshot at
 			// machine-time; the orchestrator re-renders RawWith using the
@@ -1533,17 +1566,26 @@ func (m *machineImpl) applyEffectsTraced(ctx context.Context, effects []app.Effe
 				resolvedArgs["call"] = eff.Id
 				rawWith["call"] = eff.Id
 			}
+			// Snapshot the world as of THIS invoke's position so the
+			// orchestrator can re-render RawWith without a later `set:` in
+			// the same chain leaking back into these args. See
+			// HostInvocation.WorldSnapshot.
+			worldSnapshot := make(map[string]any, len(newWorld.Vars))
+			for k, v := range newWorld.Vars {
+				worldSnapshot[k] = v
+			}
 			hc := HostInvocation{
-				Namespace:    eff.Invoke,
-				Args:         resolvedArgs,
-				RawWith:      rawWith,
-				Env:          env,
-				Bind:         eff.Bind,
-				OnError:      eff.OnError,
-				EmitEvent:    eff.Emit,
-				Background:   eff.Background,
-				OnComplete:   eff.OnComplete,
-				OraclePlugin: eff.OraclePlugin,
+				Namespace:     eff.Invoke,
+				Args:          resolvedArgs,
+				RawWith:       rawWith,
+				Env:           env,
+				WorldSnapshot: worldSnapshot,
+				Bind:          eff.Bind,
+				OnError:       eff.OnError,
+				EmitEvent:     eff.Emit,
+				Background:    eff.Background,
+				OnComplete:    eff.OnComplete,
+				OraclePlugin:  eff.OraclePlugin,
 			}
 			hostCalls = append(hostCalls, hc)
 			m.logger.DebugContext(ctx, trace.EvMachineEffectApplied,
@@ -2431,6 +2473,53 @@ func (m *machineImpl) AllowedIntents(cur app.StatePath, w world.World) []Allowed
 // ─── Event helpers ───────────────────────────────────────────────────────────
 
 var eventSeq atomic.Int64 // package-level monotonic seq; safe for concurrent use
+
+// allBindTargetsSet reports whether every LHS world key in an invoke's
+// bind: map is already "set" (non-empty) in the given world vars. It backs
+// the `once:` idempotent-invoke guard (app.Effect.Once): when it returns
+// true the engine skips the invoke because its result is already cached in
+// world. An empty bind map returns false so a misconfigured once: (caught at
+// load time) never silently skips. A value counts as UNSET when it is nil,
+// an empty string "", an empty map, or an empty slice; anything else is SET.
+// Scalar int/bool binds are intentionally NOT special-cased — a real 0 /
+// false reads as SET (non-empty), so authors should guard scalars by hand
+// with When rather than once:.
+func allBindTargetsSet(bind map[string]string, vars map[string]any) bool {
+	if len(bind) == 0 {
+		return false
+	}
+	for worldKey := range bind {
+		if !worldValueSet(vars[worldKey]) {
+			return false
+		}
+	}
+	return true
+}
+
+// worldValueSet reports whether a world value counts as SET for once:.
+// UNSET: nil, "", empty map, empty slice. Everything else is SET.
+func worldValueSet(v any) bool {
+	switch t := v.(type) {
+	case nil:
+		return false
+	case string:
+		return t != ""
+	case map[string]any:
+		return len(t) > 0
+	case []any:
+		return len(t) > 0
+	default:
+		rv := reflect.ValueOf(v)
+		switch rv.Kind() {
+		case reflect.Map, reflect.Slice, reflect.Array:
+			return rv.Len() > 0
+		case reflect.Ptr, reflect.Interface:
+			return !rv.IsNil()
+		default:
+			return true
+		}
+	}
+}
 
 func newEvent(kind store.EventKind, payload map[string]any) store.Event {
 	b, _ := json.Marshal(payload)

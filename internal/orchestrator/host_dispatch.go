@@ -116,6 +116,14 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 	applied := false
 	var redirect app.StatePath
 
+	// dispatchBinds accumulates the world keys bound by host results as the
+	// loop progresses, so a later invoke's `with:` re-render sees an earlier
+	// invoke's bind. It is layered on top of each invoke's machine-time
+	// WorldSnapshot — NOT the live post-chain world — so a `set:` positioned
+	// AFTER an invoke in the same chain cannot clobber that invoke's args.
+	// See machine.HostInvocation.WorldSnapshot.
+	dispatchBinds := map[string]any{}
+
 	for _, hc := range calls {
 		// Background invocations go to the scheduler; foreground go to the host registry.
 		if hc.Background && o.scheduler != nil {
@@ -143,8 +151,11 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 		// effects in the same `on_enter:` block see prior binds.  Falls
 		// back to hc.Args if RawWith isn't set (older HostInvocation
 		// instances or test stubs).  See the corresponding machine-side
-		// note on HostInvocation.RawWith.
-		invokeArgs, fellBack := rerenderHostArgs(hc, w)
+		// note on HostInvocation.RawWith. The world is the invoke's
+		// position-snapshot + accumulated binds, NOT the live post-chain
+		// world, so a later `set:` cannot clobber these args — see
+		// dispatchRerenderWorld.
+		invokeArgs, fellBack := rerenderHostArgs(hc, dispatchRerenderWorld(hc, dispatchBinds, w))
 
 		// HostDispatched records the *actual* args the handler is about
 		// to receive (post-rerender), so the event trace is honest even
@@ -263,6 +274,7 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 				}
 			}
 			w.Vars[wkey] = val
+			dispatchBinds[wkey] = val
 			events = append(events, newOrchestratorEvent(store.EffectApplied, map[string]any{
 				"set": map[string]any{wkey: val},
 			}, 0))
@@ -567,10 +579,20 @@ func (o *Orchestrator) dispatchHostCallsDetailed(ctx context.Context, calls []ma
 	applied := false
 	var redirect app.StatePath
 
+	// dispatchBinds accumulates the world keys bound by host results as the
+	// loop progresses, so a later invoke's `with:` re-render sees an earlier
+	// invoke's bind. It is layered on top of each invoke's machine-time
+	// WorldSnapshot — NOT the live post-chain world — so a `set:` positioned
+	// AFTER an invoke in the same chain cannot clobber that invoke's args.
+	// See machine.HostInvocation.WorldSnapshot.
+	dispatchBinds := map[string]any{}
+
 	for _, hc := range calls {
-		// Re-render templates against the current world so chained
-		// `on_enter:` host calls compose — see rerenderHostArgs above.
-		invokeArgs, fellBack := rerenderHostArgs(hc, w)
+		// Re-render templates against the invoke's position-snapshot +
+		// accumulated binds (NOT the live post-chain world) so chained
+		// `on_enter:` host calls compose without a later `set:` clobbering
+		// earlier args — see dispatchRerenderWorld / rerenderHostArgs above.
+		invokeArgs, fellBack := rerenderHostArgs(hc, dispatchRerenderWorld(hc, dispatchBinds, w))
 		summary := HostCallSummary{Namespace: hc.Namespace, Args: invokeArgs}
 		events = append(events, newOrchestratorEvent(store.HostDispatched, map[string]any{
 			"namespace":          hc.Namespace,
@@ -633,6 +655,7 @@ func (o *Orchestrator) dispatchHostCallsDetailed(ctx context.Context, calls []ma
 				continue
 			}
 			w.Vars[wkey] = val
+			dispatchBinds[wkey] = val
 			events = append(events, newOrchestratorEvent(store.EffectApplied, map[string]any{
 				"set": map[string]any{wkey: val},
 			}, 0))

@@ -659,6 +659,109 @@ func TestRunEffects(t *testing.T) {
 		"MachineSay payload must carry the rendered narration under `text`")
 }
 
+// ─── once: idempotent invoke ───────────────────────────────────────────────
+
+// onceDef builds a minimal app with a single state whose on_enter is one
+// `invoke: host.noop` with `once: true` binding world key "result".
+func onceDef(t *testing.T) *app.AppDef {
+	t.Helper()
+	return &app.AppDef{
+		App:   app.AppMeta{ID: "once-test"},
+		Root:  "s",
+		Hosts: []string{"host.noop"},
+		World: map[string]app.VarDef{
+			"result": {Type: "object", Default: map[string]any{}},
+		},
+		Intents: map[string]app.Intent{},
+		States: map[string]*app.State{
+			"s": {
+				View: app.LegacyView("state s"),
+				OnEnter: []app.Effect{
+					{
+						Invoke: "host.noop",
+						Once:   true,
+						Bind:   map[string]string{"result": "submitted"},
+					},
+				},
+			},
+		},
+	}
+}
+
+// runOnce drives the once: on_enter against a world with the given `result`
+// value and returns the collected host calls + effect events.
+func runOnce(t *testing.T, result any) ([]machine.HostInvocation, []store.Event) {
+	t.Helper()
+	m := mustNew(t, onceDef(t))
+	w := world.New()
+	w.Vars["result"] = result
+	def := onceDef(t)
+	_, hostCalls, _, evts, err := m.RunEffects(
+		context.Background(), "s", w, def.States["s"].OnEnter,
+	)
+	require.NoError(t, err)
+	return hostCalls, evts
+}
+
+// TestOnce_SkipsWhenBindTargetSet asserts a `once: true` invoke whose bind
+// target is already populated produces NO HostInvocation and records the
+// skip on an EffectApplied{skipped:"cached"} event.
+func TestOnce_SkipsWhenBindTargetSet(t *testing.T) {
+	hostCalls, evts := runOnce(t, map[string]any{"verdict": "continue"})
+	require.Empty(t, hostCalls,
+		"once: must skip the invoke when the bind target is already set")
+
+	// The skip is recorded on EffectApplied{skipped:"cached"}.
+	var foundSkip bool
+	for _, ev := range evts {
+		if ev.Kind != store.EffectApplied {
+			continue
+		}
+		var p struct {
+			Namespace string `json:"namespace"`
+			Skipped   string `json:"skipped"`
+		}
+		_ = json.Unmarshal(ev.Payload, &p)
+		if p.Skipped == "cached" {
+			foundSkip = true
+			require.Equal(t, "host.noop", p.Namespace)
+		}
+	}
+	require.True(t, foundSkip,
+		"a skipped once: invoke must emit EffectApplied{skipped:\"cached\"}")
+
+	// And it must NOT emit a HostInvoked event (the call never dispatched).
+	for _, ev := range evts {
+		require.NotEqual(t, store.HostInvoked, ev.Kind,
+			"a skipped once: invoke must not emit HostInvoked")
+	}
+}
+
+// TestOnce_RunsWhenBindTargetEmpty asserts a `once: true` invoke whose bind
+// target is empty DOES dispatch (collected as a HostInvocation) and binds as
+// usual — covering nil, "", {}, and [] as the unset shapes.
+func TestOnce_RunsWhenBindTargetEmpty(t *testing.T) {
+	cases := []struct {
+		name  string
+		value any
+	}{
+		{"nil", nil},
+		{"empty string", ""},
+		{"empty map", map[string]any{}},
+		{"empty slice", []any{}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			hostCalls, _ := runOnce(t, tc.value)
+			require.Len(t, hostCalls, 1,
+				"once: must run the invoke when the bind target is unset (%s)", tc.name)
+			require.Equal(t, "host.noop", hostCalls[0].Namespace)
+			require.Equal(t, map[string]string{"result": "submitted"}, hostCalls[0].Bind,
+				"the invoke must carry its bind so the result is cached")
+		})
+	}
+}
+
 // ─── Machine.Menu ────────────────────────────────────────────────────────────
 
 // TestMenu_EnumExpansionPrimaryVsBlocked exercises the menu computation

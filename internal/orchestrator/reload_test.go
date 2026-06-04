@@ -1,8 +1,10 @@
 package orchestrator_test
 
 import (
+	"context"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -161,6 +163,76 @@ states:
 	w = orch.CurrentWorld(sid)
 	assert.Equal(t, int64(3), toInt64(w.Vars["counter"]),
 		"repeated RerunOnEnter should keep advancing the counter")
+}
+
+// TestRerunOnEnter_OnceSkipsCachedInvoke is the `once:` reload-safety
+// contract: a state whose on_enter has an `invoke: … once: true` binding an
+// already-populated world key must fire ZERO host calls on /reload
+// (RerunOnEnter) — the cached bind target re-renders instead of recomputing.
+// The handler counts its invocations; the assertion is the count stays 0.
+// Clearing the bind target re-arms the call (proven by a second pass that
+// DOES fire after a reset).
+func TestRerunOnEnter_OnceSkipsCachedInvoke(t *testing.T) {
+	def := &app.AppDef{
+		App:   app.AppMeta{ID: "once-reload-test", Title: "once-reload-test"},
+		Root:  "start",
+		Hosts: []string{"host.expensive"},
+		World: map[string]app.VarDef{
+			// Pre-populated default: the bind target is "already cached".
+			"result": {Type: "object", Default: map[string]any{"verdict": "continue"}},
+		},
+		Intents: map[string]app.Intent{"look": {Title: "Look"}},
+		States: map[string]*app.State{
+			"start": {
+				View: app.LegacyView("result={{ world.result.verdict }}"),
+				OnEnter: []app.Effect{
+					{
+						Invoke: "host.expensive",
+						Once:   true,
+						Bind:   map[string]string{"result": "submitted"},
+					},
+				},
+				On: map[string][]app.Transition{"look": {{Target: "."}}},
+			},
+		},
+	}
+
+	m, err := machine.New(def)
+	require.NoError(t, err)
+	s, err := store.OpenMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	var calls atomic.Int64
+	reg := host.NewRegistry()
+	reg.Register("host.expensive", func(_ context.Context, _ map[string]any) (host.Result, error) {
+		calls.Add(1)
+		return host.Result{Data: map[string]any{"submitted": map[string]any{"verdict": "fresh"}}}, nil
+	})
+
+	orch := orchestrator.New(def, m, s, noopHarness{},
+		orchestrator.WithHostRegistry(reg))
+
+	ctx := t.Context()
+	sid, err := orch.NewSession(ctx)
+	require.NoError(t, err)
+	require.NoError(t, orch.RunInitialOnEnter(ctx, sid))
+
+	// Initial entry: result is already set (the schema default) ⇒ once: skips.
+	require.Equal(t, int64(0), calls.Load(),
+		"once: must skip the expensive call when the bind target is pre-populated")
+
+	// /reload twice — still zero calls; the cached verdict re-renders.
+	_, err = orch.RerunOnEnter(ctx, sid)
+	require.NoError(t, err)
+	_, err = orch.RerunOnEnter(ctx, sid)
+	require.NoError(t, err)
+	require.Equal(t, int64(0), calls.Load(),
+		"RerunOnEnter on a once: room must fire zero oracle/host calls")
+
+	w := orch.CurrentWorld(sid)
+	require.Equal(t, "continue", w.Vars["result"].(map[string]any)["verdict"],
+		"the cached verdict must survive reload (never overwritten by the stub's 'fresh')")
 }
 
 // TestRerunOnEnter_NoOnEnter_StillRenders covers the "edited a view
