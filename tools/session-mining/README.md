@@ -31,6 +31,16 @@ Both modes share `distill.jq` and the new **`prep.py`** (distill + bin-pack into
 byte-balanced batches in one command — replaces the hand-rolled `for f in $(ls -S
 …)` loop). Pattern mining runs `prep.py … --redact`; idea mining omits `--redact`.
 
+A third, lighter consumer rides the same distillation: **`recap.sh`** — a
+recency-first wrapper over `prep.py` that answers *"what have we been working on
+lately?"* for the current repo. It resolves the repo's `~/.claude/projects/<slug>`
+dir, distills the most recent N sessions (no redaction — local), and prints the
+trace paths newest-first. It's driven by the **`session-recap`** agent
+(`.claude/agents/session-recap.md`, pinned to Haiku) so the transcript volume
+never lands in the calling session's context — the caller gets back only a short
+recap. Use it for "catch me up" / "remind me where we left off", optionally
+`--grep`-focused on a topic.
+
 ---
 
 ## Quickstart (pattern mining)

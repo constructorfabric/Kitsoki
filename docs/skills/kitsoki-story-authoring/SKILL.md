@@ -215,10 +215,22 @@ ones.
 | `say` | `say: "..."` | Appends a narrative line to the rendered view. Templated. |
 | `emit` | `emit: event_name` | Broadcasts to parallel siblings. |
 | `emit_intent` | `emit_intent: accept` + optional `slots: { ... }` | Dispatches a synthetic intent against the current state — used to auto-advance from `on_enter` after a confident LLM judge. Mutually exclusive with `target:`. Depth-capped at 8. |
-| `invoke` | `invoke: host.X` + `with:` `bind:` `on_error:` | See §5. |
+| `invoke` | `invoke: host.X` + `with:` `bind:` `on_error:` `once:` | See §5. `once: true` skips the call on re-entry while its `bind:` targets are already set — reload-safe (§10). |
 
 `when:` on an effect (not just on a transition) gates that single
 effect — useful inside `on_enter:` for conditional host calls.
+
+`once: true` on an `invoke:` makes it **idempotent on re-entry**: the
+engine skips the call when every one of its `bind:` targets is already
+set (non-empty — `nil`/`""`/`{}`/`[]` count as unset), so `/reload`,
+self-transitions, and `on_error:` re-entry re-render from the cached
+world instead of re-running an expensive, non-idempotent host call. The
+bind target IS the cache — clear it (in the re-run intent's effects) to
+force a fresh run. Requires a non-empty `bind:` (load error otherwise);
+suited to object/string binds, not scalar `int`/`bool` (a real `0`/`false`
+reads as "set"). The lean replacement for a hand `when: "<result> == ''"`
+guard — see §10 and `docs/stories/state-machine.md` §"on_enter must be
+idempotent".
 
 ## 5. Host calls (`invoke:`)
 
@@ -590,8 +602,14 @@ The renderer / runtime traps — invisible until a user hits them:
   `on_error:` redirects — so any `invoke:` there runs 2+ times per
   session. A `host.chat.create` (unconditional INSERT) in `on_enter`
   spawns a *fresh empty chat* on every `/reload`, orphaning the
-  conversation; use `host.chat.resolve` (get-or-create) instead, or guard
-  the invoke with `when: "world.<id_key> == ''"`. **Reload must always be
+  conversation; use `host.chat.resolve` (get-or-create) instead. For an
+  expensive/non-idempotent call that *binds a result* (an `host.oracle.*`
+  decide/task/converse, a workspace/artifact write), set **`once: true`**
+  on the invoke (§4) — the engine skips it on re-entry while its `bind:`
+  target is already populated, and the re-run intent clears that target to
+  force a fresh run. `once:` is the preferred remedy; a hand
+  `when: "world.<key> == ''"` guard is the manual fallback (and the only
+  option for a scalar bind or a no-`bind:` mutator). **Reload must always be
   safe.** See [state-machine.md §"`on_enter` must be idempotent"](../../stories/state-machine.md#on_enter-must-be-idempotent).
 - **Happy-path test that only checks `next_state`.** Rooms can advance
   while running a no-op `on_enter:`. Assert the side effects: `git show
