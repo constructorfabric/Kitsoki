@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "brief_distill",
+  "description": "Result of the per-turn brief-writer pass: it rewrites 001-brief.md in place from the discovery so far and reports a crisp one-line idea + a note on what changed.",
+  "type": "object",
+  "required": ["idea", "note"],
+  "properties": {
+    "idea": {
+      "type": "string",
+      "minLength": 4,
+      "description": "A crisp 1-2 sentence problem/idea statement synthesised from the discovery so far — the short pitch the downstream overlap / draft rooms read (world.proposal_idea)."
+    },
+    "note": {
+      "type": "string",
+      "description": "One line: what changed in the brief this pass (e.g. 'filled What-changes; still missing the Kind')."
+    }
+  },
+  "additionalProperties": true
+}

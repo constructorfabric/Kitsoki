@@ -84,7 +84,14 @@ hosts:
   # under `hosts: declared` — the loader cross-checks every host the
   # imported chain may invoke against this allow-list at fold time.
   - host.chat.resolve
+  # proposal room's `restart` intent archives the discovery chat so a fresh
+  # one is resolved on re-enter.
+  - host.chat.archive
   - host.artifacts_dir
+  # proposal room auto-opens the editable 001-brief.md in the operator's editor
+  # on first scaffold (degrades to just the cmd-clickable path when no /ide
+  # link is live).
+  - host.ide.open_file
 
 # This instance has no day-level rooms of its own — every visible
 # state comes from the imported dev-story hub. Imports are folded in

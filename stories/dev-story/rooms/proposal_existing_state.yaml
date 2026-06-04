@@ -70,11 +70,12 @@ states:
       # Scan the repo for overlapping work. working_dir is the repo root (".")
       # so the scout can read docs/proposals/ and issues/.
       #
-      # GUARDED for reload-safety (proposal_existing_path is bound only after a
-      # real scan): on /reload the scan + write are skipped and the stored
-      # report re-renders — no LLM re-run, no on_error bounce.
-      - when: "world.proposal_existing_path == ''"
-        invoke: host.oracle.decide
+      # `once: true` for reload-safety: the scan keys off its own bind
+      # (proposal_existing_state), so on /reload it is skipped and the stored
+      # report re-renders — no LLM re-run, no on_error bounce. A downstream
+      # `clarify` back-edge clears proposal_existing_state to re-arm it.
+      - invoke: host.oracle.decide
+        once: true
         id: existing_scan
         with:
           agent: proposal_scout
@@ -86,16 +87,17 @@ states:
             brief_path: "{{ world.proposal_brief_path }}"
         bind:
           proposal_existing_state: submitted
-        on_error: proposal_brief
+        on_error: proposal
 
       # Persist the report for the operator + the publish archive. Host-call
       # `with:` args are expr-lang (NOT pongo), so the body can't loop — a
       # BARE `{{ world.proposal_existing_state }}` resolves to the typed
       # object, which host.artifacts_dir pretty-prints as JSON (the documented
       # map/slice coercion, same as the references room). title is omitted so
-      # no `### ` header is injected. Same reload guard as the scan above.
-      - when: "world.proposal_existing_path == ''"
-        invoke: host.artifacts_dir
+      # no `### ` header is injected. `once: true` keyed off its bind
+      # (proposal_existing_path); cleared on the same clarify back-edges.
+      - invoke: host.artifacts_dir
+        once: true
         with:
           artifacts_root: "{{ world.proposal_workspace }}"
           thread:         "002-existing-state"

@@ -77,8 +77,28 @@ dev rebinds to `host.local_files.ticket`. Same YAML, two providers.
 | `inbox` | Wave 2 | Navigation surface; the runtime's inbox subsystem manages items. |
 | `oracle` | Wave 2 | One-shot ask_question via `host.oracle.ask` (agent: `oracle_qa`). |
 | `standup` | Wave 2 | Aggregates iface.ticket.list_mine. |
+| `proposal*` | — | Proposal-authoring pipeline: discovery+brief (one room: the first message mints the workspace + scaffolds an editable brief, then every turn converses + distils it; `ready` runs the quality judge and a passing brief auto-advances) → existing-state → completeness → references → draft → publish. |
+| `ideas` | — | Ideas-backlog reviewer (see below). |
 | `code_review` | Wave 3 stub | Reserves the room; imports `stories/code-review/` in Wave 3. |
 | `deploy`, `observability`, `incident`, `docs` | Wave 3 stubs | Routing-back-to-main placeholders. |
+
+### Ideas reviewer (`ideas`)
+
+Reached from `main` via `ideas`. Reconciles the hand-maintained ideas backlog
+(`world.ideas_path`, default repo-root `ideas.md`, with `## Done` /
+`## Partial / in progress` / `## Ideas` sections) against work that has actually
+shipped. `on_enter` runs the read-only `ideas_reviewer` agent against the repo
+root — it reads the backlog, the commit history (`git log`), and the docs
+(especially `docs/proposals/`) and proposes section **moves**, each backed by
+concrete evidence, plus a few high-value **candidates** worth proposing next.
+
+The decide is interpretation; the mutation is deterministic. `apply` is a
+confirm gate: it hands the persisted report to `scripts/ideas_reconcile.py`,
+which rewrites the backlog file (the same decide→script discipline as the
+proposal slug step). `pick N` seeds `world.proposal_seed_idea` from candidate N
+and jumps into the `proposal` intake — so a blocked author flows straight into
+authoring a proposal (slug + workspace minting is reused as-is). `regenerate`
+re-scans the rewritten backlog.
 
 ## Intent surface
 

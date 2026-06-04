@@ -64,11 +64,12 @@ states:
               intent: look
     relevant_world: [proposal_idea, proposal_workspace, proposal_brief_path, proposal_existing_state, proposal_references, proposal_references_path, proposal_references_cycle, proposal_references_budget, proposal_references_revise, proposal_refine_feedback, proposal_cycle]
     on_enter:
-      # GUARDED for reload-safety: the researcher only runs when no list has
-      # been persisted yet. /reload re-renders the stored list; `refine` /
-      # `regenerate` clear proposal_references_path to force a fresh search.
-      - when: "world.proposal_references_path == ''"
-        invoke: host.oracle.decide
+      # `once: true` for reload-safety: keyed off its own bind
+      # (proposal_references). /reload re-renders the stored list; `refine` /
+      # `regenerate` clear proposal_references (the object — its own bind) to
+      # force a fresh search.
+      - invoke: host.oracle.decide
+        once: true
         id: references_research
         with:
           agent: proposal_researcher
@@ -81,15 +82,19 @@ states:
             existing_state:     "{{ world.proposal_existing_state }}"
             feedback:           "{{ world.proposal_refine_feedback }}"
             revise:             "{{ world.proposal_references_revise }}"
-            current_references: "{{ world.proposal_references }}"
+            # On `refine` the current list is snapshotted into _prev (the live
+            # proposal_references is cleared to re-arm once:); the researcher
+            # revises the snapshot in place.
+            current_references: "{{ world.proposal_references_prev }}"
         bind:
           proposal_references: submitted
-        on_error: proposal_brief
+        on_error: proposal
 
       # Persist as a real .json (extension honoured verbatim; no title so the
-      # bare-object → pretty-JSON body stays valid JSON). Same reload guard.
-      - when: "world.proposal_references_path == ''"
-        invoke: host.artifacts_dir
+      # bare-object → pretty-JSON body stays valid JSON). `once: true` keyed
+      # off its bind (proposal_references_path); cleared on refine/regenerate.
+      - invoke: host.artifacts_dir
+        once: true
         with:
           artifacts_root: "{{ world.proposal_workspace }}"
           thread:         "004-references.json"
@@ -106,6 +111,7 @@ states:
             - set:
                 proposal_refine_feedback:   ""
                 proposal_references_revise: false
+                proposal_references_prev:   {}
 
       # Revise the CURRENT list in place. Budget-capped.
       refine:
@@ -117,8 +123,15 @@ states:
                 prev_state: "main"
         - target: proposal_references
           effects:
-            # Clear the persisted path so the guarded researcher re-runs.
+            # Snapshot the current list FIRST (separate effect so it lands
+            # before the clear — set: keys within one effect have no ordering).
+            # The researcher revises proposal_references_prev in place.
             - set:
+                proposal_references_prev: "{{ world.proposal_references }}"
+            # Then clear BOTH once: binds so both the researcher (keyed off
+            # proposal_references) and the write (keyed off …_path) re-run.
+            - set:
+                proposal_references:        {}
                 proposal_references_path:   ""
                 proposal_refine_feedback:   "{{ slots.feedback }}"
                 proposal_references_revise: true
@@ -135,8 +148,10 @@ states:
                 prev_state: "main"
         - target: proposal_references
           effects:
-            # Clear the persisted path so the guarded researcher re-runs.
+            # Fresh search: clear BOTH once: binds (object + path). revise:false
+            # ⇒ no snapshot needed; the researcher starts over.
             - set:
+                proposal_references:        {}
                 proposal_references_path:   ""
                 proposal_refine_feedback:   "{{ slots.feedback ?? '' }}"
                 proposal_references_revise: false
@@ -144,19 +159,33 @@ states:
                 proposal_cycle:             "{{ world.proposal_cycle + 1 }}"
 
       # Step back to revise the brief. Reset downstream results so the revised
-      # brief re-runs the forward pipeline fresh (guards would otherwise show
-      # stale scans).
+      # brief re-runs the forward pipeline fresh. Clear each once: invoke's OWN
+      # bind: the decide-objects (proposal_existing_state / _completeness /
+      # _references) AND the write-paths (…_path) — clearing only the path
+      # leaves the upstream decide's once: armed.
       clarify:
-        - target: proposal_brief
+        - target: proposal
           effects:
             - set:
-                proposal_brief_decision:    {}
+                # A clarify sentinel (NOT {}): landing back in the merged
+                # discovery+brief room must NOT re-arm + auto-run the once: brief
+                # judge — an empty decision would, and a still-passing brief
+                # would immediately round-trip forward before the operator can
+                # revise. The sentinel keeps the judge disarmed so they rest in
+                # discovery; `ready` clears it and re-runs the check.
+                proposal_brief_decision:
+                  verdict: "clarify"
+                  reason:  "Stepped back from a later gate — revise the brief (edit it or keep talking), then say ready to re-run the check."
+                  questions: []
+                proposal_existing_state:    {}
                 proposal_existing_path:     ""
                 proposal_overlap_decision:  ""
                 proposal_change_target:     ""
+                proposal_completeness:      {}
                 proposal_completeness_path: ""
                 proposal_references_path:   ""
                 proposal_references:        {}
+                proposal_references_prev:   {}
 
       quit:
         - target: main

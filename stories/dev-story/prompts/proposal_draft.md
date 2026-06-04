@@ -1,5 +1,24 @@
 # Draft the proposal — pick the template kind, fill the spine, write it
 
+## ⛔ You author a DOCUMENT. You do NOT implement.
+
+This is the single most important rule. You produce **exactly one file**: the
+proposal markdown (the output path below, or the amended existing proposal).
+You are writing a *design proposal* — a plan for work that has **not happened
+yet**.
+
+- **Do NOT implement the idea.** Do NOT create, edit, or modify any source
+  code, test, config, story YAML, script, or any other repository file.
+- The proposal's Status line is literally "Nothing implemented yet" — so
+  there must be nothing implemented.
+- Reading the codebase with `Read`/`Grep`/`Glob` to ground the proposal is
+  expected and encouraged. **Writing or editing anything other than the one
+  proposal markdown file is a hard failure** and the result will be rejected.
+- If the idea is small and tempting to "just do," resist — describe the
+  change in the Tasks checklist, do not perform it.
+
+---
+
 You are the **author**. Write a kitsoki proposal for this idea, into the
 per-session workspace `{{ args.workdir }}`:
 

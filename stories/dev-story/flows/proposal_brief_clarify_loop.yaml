@@ -1,20 +1,24 @@
-# proposal_brief_clarify_loop — the brief sanity-gate's clarify/recheck loop.
+# proposal_brief_clarify_loop — the brief quality gate's clarify loop.
 #
-# The brief judge returns verdict=clarify with questions; `recheck` re-runs
-# the judge against the (edited) brief on disk, incrementing
-# proposal_brief_cycle each time WITHOUT clobbering the operator's edits
-# (the skeleton write is guarded on proposal_brief_path == "", which is set
-# here). The human floor: `confirm` advances despite the clarify verdict.
+# In the merged discovery+brief room, `ready` (begin_proposal) runs the judge
+# against 001-brief.md every time. A `clarify` verdict re-renders here with the
+# specific gaps and increments proposal_brief_cycle WITHOUT advancing — the
+# gate out of discovery IS a passing brief, so a non-passing brief keeps the
+# operator in discovery to address the questions (or edit the brief directly).
+# The `continue` verdict that auto-advances is covered by proposal_happy_path.
+#
+# The brief already exists on disk (proposal_brief_path set), so `ready` skips
+# the first-message mint and goes straight to the judge.
 
 test_kind: flow
 app: ../app.yaml
-initial_state: proposal_brief
+initial_state: proposal
 initial_world:
   judge_mode:          "human"
   proposal_idea:       "Add a per-session working folder primitive."
   proposal_slug:       "wf"
   proposal_workspace:  "docs/proposals/.workspace/wf"
-  # Non-empty ⇒ the skeleton write is skipped (operator already edited it).
+  # Non-empty ⇒ `ready` runs the judge instead of the first-message mint.
   proposal_brief_path: "docs/proposals/.workspace/wf/001-brief.md"
 
 host_handlers:
@@ -27,29 +31,27 @@ host_handlers:
             verdict:   "clarify"
             reason:    "The What-changes is vague and no kind is named."
             questions: ["Which engine seam does this touch?", "What does the operator do differently?"]
-      existing_scan:
-        data:
-          ok: true
-          submitted: { overlaps: [], roadmap_fit: "net-new." }
-  host.artifacts_dir:
-    data: { ok: true, path: "docs/proposals/.workspace/wf/out.md", message_id: "out#1" }
 
 turns:
-  # Edited the brief; re-run the check. The skeleton is NOT rewritten
-  # (proposal_brief_path stays set) and the cycle counter advances.
-  - intent: { name: recheck, slots: {} }
-    expect_state: proposal_brief
+  # ready → judge says clarify → stay in discovery, cycle 0→1, verdict shown.
+  - intent: { name: begin_proposal, slots: {} }
+    expect_state: proposal
     expect_world:
       proposal_brief_cycle: 1
       proposal_brief_path:  "docs/proposals/.workspace/wf/001-brief.md"
+      proposal_brief_decision:
+        verdict:   "clarify"
+        reason:    "The What-changes is vague and no kind is named."
+        questions: ["Which engine seam does this touch?", "What does the operator do differently?"]
+    expect_host_calls:
+      - handler: host.oracle.decide
+        args: { call: "brief_check" }
 
-  - intent: { name: recheck, slots: {} }
-    expect_state: proposal_brief
+  # Edited the brief / talked more, ready again → still clarify → cycle 1→2,
+  # no advance: the brief still hasn't passed review.
+  - intent: { name: begin_proposal, slots: {} }
+    expect_state: proposal
     expect_world:
       proposal_brief_cycle: 2
-
-  # Human floor — confirm despite the clarify verdict → overlap check.
-  - intent: { name: confirm, slots: {} }
-    expect_state: proposal_existing_state
 
 expect_no_errors: true

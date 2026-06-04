@@ -1,16 +1,16 @@
 # proposal_override_and_clarify — override_new despite an overlap, then the
-# clarify back-edge to the brief.
+# clarify back-edge to discovery.
 #
 # Covers the two arcs the happy/overlap flows don't: `override_new` (force a
 # new proposal even though the scout found an overlap — recorded as decision
 # "new") and `clarify` (step back from a later gate to revise the brief). The
-# completeness → brief clarify edge here is structurally identical to the
-# references → brief and draft → brief clarify edges (all `target:
-# proposal_brief`, no effects).
+# completeness → discovery clarify edge here is structurally identical to the
+# references → discovery and draft → discovery clarify edges (all now `target:
+# proposal`, the merged discovery+brief room, no effects beyond resets).
 
 test_kind: flow
 app: ../app.yaml
-initial_state: proposal_brief
+initial_state: proposal
 initial_world:
   judge_mode:          "human"
   proposal_idea:       "Add a local model oracle sidecar."
@@ -35,8 +35,8 @@ host_handlers:
     data: { ok: true, path: "docs/proposals/.workspace/lmo/out.md", message_id: "out#1" }
 
 turns:
-  # Confirm brief → overlap check (scout reports an accepted overlap).
-  - intent: { name: confirm, slots: {} }
+  # ready → brief passes → overlap check (scout reports an accepted overlap).
+  - intent: { name: begin_proposal, slots: {} }
     expect_state: proposal_existing_state
 
   # Force a new proposal despite the overlap — decision recorded as "new",
@@ -47,8 +47,9 @@ turns:
       proposal_overlap_decision: "new"
       proposal_change_target:    ""
 
-  # The completeness judge flagged gaps — step back to revise the brief.
+  # The completeness judge flagged gaps — step back to revise the brief
+  # (lands in the merged discovery+brief room).
   - intent: { name: clarify, slots: {} }
-    expect_state: proposal_brief
+    expect_state: proposal
 
 expect_no_errors: true

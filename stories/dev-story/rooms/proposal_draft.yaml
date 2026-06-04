@@ -67,12 +67,13 @@ states:
               intent: look
     relevant_world: [proposal_idea, proposal_kind, proposal_workspace, proposal_brief_path, proposal_existing_state, proposal_change_target, proposal_references, proposal_artifact, proposal_refine_feedback, proposal_cycle, proposal_draft_cycle, proposal_draft_budget]
     on_enter:
-      # GUARDED for reload-safety (the agentic author is the most expensive
-      # call in the pipeline): runs only when no draft has been produced yet.
-      # /reload re-renders the stored draft; `refine` clears proposal_artifact
-      # to force a re-draft.
-      - when: "(world.proposal_artifact.file_path ?? '') == ''"
-        invoke: host.oracle.task
+      # `once: true` for reload-safety (the agentic author is the most
+      # expensive call in the pipeline): keyed off its binds (proposal_artifact
+      # + proposal_kind — both unset on first entry, both set after). /reload
+      # re-renders the stored draft; `refine`/`clarify` clear proposal_artifact
+      # (an unset bind ⇒ once: re-arms) to force a re-draft.
+      - invoke: host.oracle.task
+        once: true
         with:
           agent: proposal_author
           working_dir: "."
@@ -94,7 +95,7 @@ states:
         bind:
           proposal_artifact: submitted
           proposal_kind:     "submitted.kind"
-        on_error: proposal_brief
+        on_error: proposal
     on:
       # Accept — publish the proposal.
       accept:
@@ -119,18 +120,31 @@ states:
 
       # Inputs were incomplete — step back to revise the brief. Reset
       # downstream results so the revised brief re-runs the forward pipeline
-      # fresh (guards would otherwise show stale scans / the old draft).
+      # fresh. Clear each once: invoke's OWN bind: the decide-objects AND the
+      # write-paths (clearing only the path leaves the upstream decide armed).
       clarify:
-        - target: proposal_brief
+        - target: proposal
           effects:
             - set:
-                proposal_brief_decision:    {}
+                # A clarify sentinel (NOT {}): landing back in the merged
+                # discovery+brief room must NOT re-arm + auto-run the once: brief
+                # judge — an empty decision would, and a still-passing brief
+                # would immediately round-trip forward before the operator can
+                # revise. The sentinel keeps the judge disarmed so they rest in
+                # discovery; `ready` clears it and re-runs the check.
+                proposal_brief_decision:
+                  verdict: "clarify"
+                  reason:  "Stepped back from a later gate — revise the brief (edit it or keep talking), then say ready to re-run the check."
+                  questions: []
+                proposal_existing_state:    {}
                 proposal_existing_path:     ""
                 proposal_overlap_decision:  ""
                 proposal_change_target:     ""
+                proposal_completeness:      {}
                 proposal_completeness_path: ""
                 proposal_references_path:   ""
                 proposal_references:        {}
+                proposal_references_prev:   {}
                 proposal_artifact:          {}
 
       quit:

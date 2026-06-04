@@ -1,23 +1,34 @@
-# proposal — proposal-authoring intake. A discovery conversation.
+# proposal — discovery + brief, in one room.
 #
-# Entry room of the proposal pipeline (reached from main via go_idea).
-# A free-form idea is awkward to type into one field, so intake is a chat:
-# the operator talks, the `proposal_interviewer` replies and helps sharpen
-# the idea (problem / why-kitsoki / usage / which layer), and
-# `begin_proposal` distills the conversation into world.proposal_idea, mints
-# a slug + per-session workspace, and advances to the brief.
+# Entry room of the proposal pipeline (reached from main via go_idea). It is a
+# discovery CONVERSATION that produces an editable brief on disk as you go:
+#
+#   1. You describe the change (free text → `discuss`).
+#   2. On the FIRST message the room mints a per-session workspace, scaffolds
+#      an editable 001-brief.md from the proposal spine, and opens it in your
+#      editor (host.ide.open_file — degrades to just the cmd-clickable path
+#      when no /ide link is live).
+#   3. Every following message does two things: the `proposal_interviewer`
+#      replies to sharpen the idea, and the `proposal_brief_writer` folds the
+#      exchange into 001-brief.md so the brief on disk stays current. You can
+#      ALSO just edit 001-brief.md yourself — both paths feed the same file.
+#   4. Say **ready** to run the brief quality review (`proposal_brief_judge`).
+#      The gate out of discovery IS a passing brief: a `continue` verdict
+#      auto-advances to the overlap check; a `clarify` verdict shows the
+#      specific gaps and keeps you here to address them.
 #
 # mode: conversational, no `choice:` selector — the operator is dropped
 # straight into the conversation and just types (the prd/idle.yaml shape).
-# Free text routes through the LLM router; the closing prose names
-# `ready` / `quit` so the semantic router catches those verbs.
+# Free text routes through `default_intent: discuss`; the closing prose names
+# `ready` / `start over` / `quit` so the router catches those verbs.
 #
 # on_enter ONLY get-or-creates the persistent chat (host.chat.resolve, NOT
 # host.chat.create — resolve is idempotent across on_enter re-fires like
-# /reload; create would orphan the conversation each reload). The greeting
-# is the static prose in the view, so no LLM call fires until the operator
-# speaks. The `discuss` self-loop uses `target: .` so on_enter does NOT
-# re-fire (which would re-create the chat); the converse lives in the arc.
+# /reload; create would orphan the conversation each reload). The greeting is
+# the static prose in the view, so no LLM call fires until the operator speaks.
+# The minting + scaffold live in the FIRST `discuss` arm (guarded on an empty
+# proposal_brief_path), so they run exactly once and only after the operator
+# has actually said something to name the slug from.
 
 states:
 
@@ -28,23 +39,49 @@ states:
     # with the whole utterance as slots.message — deterministically, no
     # main-turn LLM classification that could mis-pick a near-miss command.
     default_intent: discuss
-    description: "Describe the change you want to propose — talk it through; I'll help shape it."
+    description: "Talk the idea through — I scaffold an editable brief and keep it in sync; say ready when it passes review."
     view:
-      - heading: "Proposal discovery"
-      - prose: 'Seeded from your ideas backlog: **{{ world.proposal_seed_idea }}** — talk it through to sharpen it, then say **ready**.'
+      - banner:
+          text:     "DISCOVERY + BRIEF"
+          subtitle: "Talk it through — the brief writes itself; edit it too"
+          color:    "#10B981"   # green — a settled input surface
+      - prose: 'Seeded from your ideas backlog: **{{ world.proposal_seed_idea }}** — talk it through to sharpen it.'
         when: "world.proposal_seed_idea != ''"
-      - prose: "Two ways to start, whichever fits your idea:\n\n- **Point me at a doc** that already captures it — say `see docs/…` and I'll read it.\n- **Describe it free-form** — just type the change you want to propose for kitsoki, in your own words.\n\nEither way, I'll ask focused questions to sharpen the problem, why kitsoki fits, and how an operator would use it."
-        when: "world.proposal_idea_turns == 0"
-      - prose: "Discovery in progress — keep sharpening the idea with me."
-        when: "world.proposal_idea_turns > 0"
+      # ── Before the first message: how to start ────────────────────────
+      - prose: "Two ways to start, whichever fits your idea:\n\n- **Point me at a doc** that already captures it — say `see docs/…` and I'll read it.\n- **Describe it free-form** — just type the change you want to propose for kitsoki, in your own words.\n\nOn your first message I'll scaffold an editable brief and we'll sharpen it together."
+        when: "world.proposal_brief_path == ''"
+      # ── After the brief exists: the editable file + the two ways to work ─
+      - prose: '📄 Brief — open it (cmd-click) and edit, or keep talking and I keep it in sync:'
+        when: "world.proposal_brief_path != ''"
+      - prose: '{{ world.proposal_brief_path }}'
+        when: "world.proposal_brief_path != ''"
+      - heading: "Idea"
+        when:    "world.proposal_brief_path != ''"
+      - prose: '{{ world.proposal_idea|default:"(distilling…)" }}'
+        when:  "world.proposal_brief_path != ''"
       - kv:
           pairs:
             Existing docs: '{{ world.proposal_existing_paths|default:"(none — say `see docs/…` to point me at some)" }}'
             Turns:         "{{ world.proposal_idea_turns }}"
+            Brief checks:  "{{ world.proposal_brief_cycle }}/{{ world.proposal_brief_budget }}"
+      # The interviewer's latest reply.
       - prose: '{{ world.proposal_idea_answer }}'
         when: "world.proposal_idea_answer"
-      - prose: "Say **ready** when it's clear enough and I'll move on to the brief, **start over** to discard this idea and begin a fresh discovery, or **quit** to drop it."
-    relevant_world: [proposal_existing_paths, proposal_idea, proposal_idea_message, proposal_idea_answer, proposal_chat_id, proposal_chat_title, proposal_idea_turns, proposal_seed_idea]
+      # ── Quality-review verdict (only after a `ready` check) ────────────
+      - heading: "Quality review"
+        when:    "world.proposal_brief_decision.verdict"
+      - prose: '⚠ The reviewer thinks the brief needs work — address the questions below (edit 001-brief.md or keep talking), then say **ready** again.'
+        when:  "world.proposal_brief_decision.verdict == 'clarify'"
+      - prose: '{{ world.proposal_brief_decision.reason }}'
+        when:  "world.proposal_brief_decision.verdict == 'clarify'"
+      - code: |
+          {% for q in world.proposal_brief_decision.questions %}- {{ q }}
+          {% empty %}(no open questions){% endfor %}
+        when: "world.proposal_brief_decision.verdict == 'clarify'"
+      # ── Closing prose: the verbs the router catches ───────────────────
+      - prose: "Say **ready** to run the quality check (a passing brief moves on automatically), **start over** to discard and begin fresh, or **quit** to drop it."
+        when: "world.proposal_brief_path != ''"
+    relevant_world: [proposal_existing_paths, proposal_idea, proposal_idea_message, proposal_idea_answer, proposal_chat_id, proposal_chat_title, proposal_idea_turns, proposal_seed_idea, proposal_slug, proposal_workspace, proposal_brief_path, proposal_brief_decision, proposal_brief_cycle, proposal_brief_budget]
     on_enter:
       # Get-or-create the discovery chat. resolve (not create) so a /reload
       # re-fire returns the SAME thread rather than spawning a fresh empty
@@ -58,12 +95,184 @@ states:
         bind:
           proposal_chat_id:    "chat_id"
           proposal_chat_title: "title"
+
+      # The brief quality gate. Runs ONLY on an explicit `ready` (begin_proposal
+      # clears proposal_brief_decision to re-arm the once: AND re-enters with a
+      # FULL target so on_enter re-fires); it does NOT fire on first entry
+      # (guarded on a non-empty brief), on a `discuss` self-loop (target: . skips
+      # on_enter), or on /reload (once: skips while the verdict is set). The
+      # decide → emit_intent idiom is the same as pr-refinement's confident
+      # judge: a `continue` verdict auto-advances via the post-bind emit below;
+      # a `clarify` verdict re-renders here with the gaps. No on_error — a judge
+      # error bubbles as a turn error (the operator just says `ready` again),
+      # matching the gold-standard judge rooms; an on_error: proposal here would
+      # risk a re-entry loop.
+      - invoke: host.oracle.decide
+        once: true
+        id: brief_check
+        when: "world.proposal_brief_path != ''"
+        with:
+          agent: proposal_brief_judge
+          prompt_path: prompts/proposal_brief_check.md
+          schema: schemas/brief-decision.json
+          working_dir: "{{ world.proposal_workspace }}"
+          args:
+            brief_path: "001-brief.md"
+            idea:       "{{ world.proposal_idea }}"
+        bind:
+          proposal_brief_decision: submitted
+      # Auto-advance on a passing brief. Re-evaluated in the post-bind pass
+      # (DispatchPostBindEmits walks on_enter) so it sees the verdict the decide
+      # above just bound. A `clarify` verdict leaves the operator here.
+      - when: "world.proposal_brief_decision.verdict == 'continue'"
+        emit_intent: advance_brief
     on:
-      # Self-loop. `target: .` skips on_enter (so the chat is not re-created);
-      # the converse call below is the only LLM call. idea_answer is cleared
-      # up front so a failure doesn't pair a stale reply with the new message.
+      # The conversation. Two arms:
+      #
+      #   arm 1 (first message — proposal_brief_path still empty): MINT. Name a
+      #     slug from the idea (oracle.decide — a raw sentence is a terrible
+      #     slug), collide-proof it + get the workspace path (deterministic
+      #     host.run), scaffold the editable 001-brief.md, and open it in the
+      #     editor. THEN converse + distil exactly as the steady-state arm. The
+      #     mint steps need no `once:` — the `proposal_brief_path == ''` guard
+      #     IS the idempotency: once the brief exists this arm never runs again.
+      #     The chain works because a later invoke's `with:` args see earlier
+      #     binds in the same effect list (slug → workspace → brief_path).
+      #
+      #   arm 2 (steady state): converse + distil only.
+      #
+      # `target: .` skips on_enter (so the chat is not re-resolved); the LLM
+      # calls live in the arc. idea_answer is cleared up front so a failure
+      # doesn't pair a stale reply with the new message.
       discuss:
-        - target: .
+        - when: "world.proposal_brief_path == ''"
+          target: .
+          effects:
+            - set:
+                proposal_idea_message: "{{ slots.message }}"
+                proposal_idea_answer:  ""
+                # Immediate pitch for the view; the distiller refines it below.
+                # Fold in the backlog seed when this proposal came from one.
+                proposal_idea: "{{ world.proposal_seed_idea != '' ? world.proposal_seed_idea + ' — ' + slots.message : slots.message }}"
+                proposal_seed_idea: ""
+            - increment: { proposal_idea_turns: 1 }
+            # Name the proposal — an interpretive decision (oracle.decide); the
+            # schema enforces a short kebab slug; the namer avoids taken names.
+            - invoke: host.oracle.decide
+              id: name_slug
+              with:
+                agent: proposal_namer
+                prompt_path: prompts/proposal_slug.md
+                schema: schemas/slug.json
+                working_dir: "."
+                args:
+                  idea: "{{ world.proposal_seed_idea != '' ? world.proposal_seed_idea + ' — ' + slots.message : slots.message }}"
+              bind:
+                proposal_slug: "submitted.slug"
+              on_error: proposal
+            # Deterministic uniqueness check (completes the validation
+            # sandwich): collide-proofs the slug against accepted proposals +
+            # in-progress workspaces, appending -N, and returns the workspace
+            # path. Reads the slug the decide just bound.
+            - invoke: host.run
+              id: uniquify
+              with:
+                cmd: python3
+                args:
+                  - "stories/dev-story/scripts/proposal_workspace.py"
+                  - "{{ world.proposal_slug }}"
+              bind:
+                proposal_slug:      "stdout_json.slug"
+                proposal_workspace: "stdout_json.workspace"
+              on_error: proposal
+            # Scaffold the editable brief — the proposal-authoring shared spine.
+            # No `title:` so renderArtifact injects no `### ` header — the file
+            # is clean markdown the operator owns end to end. A literal `#`
+            # leads the body so the value stays pongo (a value that both starts
+            # with `{{` and ends with `}}` short-circuits to a typed expr).
+            - invoke: host.artifacts_dir
+              with:
+                artifacts_root: "{{ world.proposal_workspace }}"
+                thread:         "001-brief"
+                mode:           "replace"
+                body: |
+                  # Proposal Brief
+
+                  > A living brief — I keep it in sync as we talk, and you can
+                  > edit it directly any time. The reviewer reads it from disk
+                  > when you say `ready`. Keep it skim-in-two-minutes; link to
+                  > code (`file:line`) and existing docs rather than restating
+                  > them. See docs/proposals/templates/README.md.
+
+                  **Kind:** <story | runtime | tui | tracing | epic — which layer does this touch?>
+
+                  ## Idea (seed — refine me)
+
+                  {{ world.proposal_idea }}
+
+                  ## Why
+
+                  <The problem in the reader's terms. What is missing or painful today?>
+
+                  ## What changes
+
+                  <The specific change, in one screen.>
+
+                  ## Impact
+
+                  <What it touches: files, stories, hosts, docs, compatibility.>
+
+                  ## Why kitsoki
+
+                  <Why kitsoki's deterministic-graph model is the right tool for this.>
+
+                  ## How it's used
+
+                  <The concrete operator interaction: what they run, see, and decide.>
+              bind:
+                proposal_brief_path: "path"
+              on_error: proposal
+            # Pop the brief open in the editor (cmd-clickable path stays in the
+            # view as the fallback). Graceful when no /ide link is live
+            # (returns ok:false, not an error), so it never bounces the turn.
+            - invoke: host.ide.open_file
+              with:
+                path: "{{ world.proposal_brief_path }}"
+            # Interviewer reply — sharpen the idea.
+            - invoke: host.oracle.converse
+              with:
+                chat_id:     "{{ world.proposal_chat_id }}"
+                agent:       proposal_interviewer
+                working_dir: "."
+                question:    "{{ slots.message }}"
+              bind:
+                proposal_idea_answer: "answer"
+                proposal_chat_id:     "chat_id"
+              on_error: proposal
+            # Distil the exchange into the brief on disk + refine the one-line
+            # idea. Runs EVERY turn (no `once:`): the brief on disk is the
+            # accumulated memory the writer builds on. working_dir is the
+            # workspace so the writer only ever touches 001-brief.md.
+            - invoke: host.oracle.task
+              id: brief_distill
+              with:
+                agent: proposal_brief_writer
+                working_dir: "{{ world.proposal_workspace }}"
+                acceptance:
+                  schema: schemas/brief-distill.json
+                context:
+                  prompt: prompts/proposal_brief_distill.md
+                  args:
+                    brief_path: "001-brief.md"
+                    message:    "{{ slots.message }}"
+                    reply:      "{{ world.proposal_idea_answer }}"
+                    turns:      "{{ world.proposal_idea_turns }}"
+              bind:
+                proposal_idea: "submitted.idea"
+              on_error: proposal
+
+        - default: true
+          target: .
           effects:
             - set:
                 proposal_idea_message: "{{ slots.message }}"
@@ -78,6 +287,24 @@ states:
               bind:
                 proposal_idea_answer: "answer"
                 proposal_chat_id:     "chat_id"
+              on_error: proposal
+            - invoke: host.oracle.task
+              id: brief_distill
+              with:
+                agent: proposal_brief_writer
+                working_dir: "{{ world.proposal_workspace }}"
+                acceptance:
+                  schema: schemas/brief-distill.json
+                context:
+                  prompt: prompts/proposal_brief_distill.md
+                  args:
+                    brief_path: "001-brief.md"
+                    message:    "{{ slots.message }}"
+                    reply:      "{{ world.proposal_idea_answer }}"
+                    turns:      "{{ world.proposal_idea_turns }}"
+              bind:
+                proposal_idea: "submitted.idea"
+              on_error: proposal
 
       # Record the docs the operator pointed at (read by the scout /
       # researcher / author downstream). Stays on the chat screen.
@@ -87,72 +314,50 @@ states:
             - set:
                 proposal_existing_paths: "{{ slots.paths }}"
 
-      # Distill the conversation into a crisp idea, mint a slug + workspace,
-      # and advance to the brief. The slugify host.run is deterministic so a
-      # flow fixture can stub it by id (`slugify`).
+      # `ready` — run the brief quality review. The gate out of discovery IS a
+      # passing brief. The judge itself lives in on_enter (so its verdict can
+      # drive a post-bind emit_intent — see above); this arc just re-arms it and
+      # re-enters the room with a FULL target so on_enter re-fires: clear the
+      # decision (re-arms the once: judge) and bump the cycle counters. The
+      # re-entry runs the judge; a `continue` verdict auto-advances, a `clarify`
+      # verdict lands back here with the gaps.
       begin_proposal:
-        - target: proposal_brief
+        # Nothing to check yet.
+        - when: "world.proposal_brief_path == ''"
+          target: .
           effects:
-            - invoke: host.oracle.converse
-              with:
-                chat_id:     "{{ world.proposal_chat_id }}"
-                agent:       proposal_interviewer
-                working_dir: "."
-                # Fold in the seed idea (when this proposal was started from an
-                # ideas-backlog candidate) so even a no-discussion "ready" still
-                # distills a real statement. with: args are expr-lang — a ternary
-                # builds the prefix; no pongo filters here.
-                question:    "{{ world.proposal_seed_idea != '' ? 'The starting idea, picked from the ideas backlog, was: ' + world.proposal_seed_idea + '. ' : '' }}The discovery conversation is complete. Write a single, crisp problem/idea statement (1-4 sentences) capturing what this proposal should be about, synthesising everything we discussed. Output ONLY that statement — no preamble, no questions."
-              bind:
-                proposal_idea: "answer"
-            # Name the proposal — an interpretive decision, so oracle.decide
-            # (a raw-sentence slug is terrible). The schema enforces a short
-            # kebab slug; the namer avoids obviously-taken names.
-            - invoke: host.oracle.decide
-              id: name_slug
-              with:
-                agent: proposal_namer
-                prompt_path: prompts/proposal_slug.md
-                schema: schemas/slug.json
-                working_dir: "."
-                args:
-                  idea: "{{ world.proposal_idea }}"
-              bind:
-                proposal_slug: "submitted.slug"
-              on_error: proposal
-            # Deterministic uniqueness check (completes the validation
-            # sandwich): collide-proofs the slug against accepted proposals +
-            # in-progress workspaces, appending -N, and returns the workspace
-            # path. Reads the slug the decide just bound (a later invoke's
-            # with: args see earlier binds); binds both keys so no `set:`
-            # reads a same-list bind.
-            - invoke: host.run
-              id: uniquify
-              with:
-                cmd: python3
-                args:
-                  - "stories/dev-story/scripts/proposal_workspace.py"
-                  - "{{ world.proposal_slug }}"
-              bind:
-                proposal_slug:      "stdout_json.slug"
-                proposal_workspace: "stdout_json.workspace"
-              on_error: proposal
-            # Seed consumed — clear it so a future ad hoc `idea` entry doesn't
-            # re-show the backlog-candidate banner. (Runs after the converse
-            # above, which read it.)
+            - say: "Tell me the idea first — I'll scaffold the brief, then `ready` runs the quality check."
+        # Budget exhausted — dev-story has no @exit, so bail to main.
+        - when: "world.proposal_brief_cycle >= world.proposal_brief_budget"
+          target: main
+          effects:
             - set:
-                proposal_seed_idea: ""
+                last_error: "proposal abandoned — brief check budget exhausted"
+                prev_state: "main"
+        - default: true
+          target: proposal   # FULL target → on_enter re-fires the judge
+          effects:
+            - set:
+                proposal_brief_decision: {}   # re-arm the once: judge
+                proposal_brief_cycle: "{{ world.proposal_brief_cycle + 1 }}"
+                proposal_cycle:       "{{ world.proposal_cycle + 1 }}"
 
-      # Start over: discard this discovery thread and begin a fresh one
-      # without leaving the room (vs quit, which bails to main, or starting a
-      # whole new session). Archives the current chat FIRST — reading the live
-      # proposal_chat_id before the resets clear it — so on_enter's resolve
-      # mints a NEW thread instead of returning this one (Resolve skips
-      # archived rows; same mechanism as /meta new). Then clears the discovery
-      # progress and re-enters `proposal` with a FULL target (not `.`) so
-      # on_enter re-fires and resolves the fresh chat. The seed idea is
-      # cleared too — "start over" means a blank slate, not a redo of the
-      # same backlog candidate, so the seeded banner doesn't reappear.
+      # Synthetic — fired by the on_enter emit_intent when the brief passes.
+      advance_brief:
+        - when: "world.proposal_brief_decision.verdict == 'continue'"
+          target: proposal_existing_state
+        - default: true
+          target: .
+
+      # Start over: discard this discovery thread + brief and begin a fresh one
+      # without leaving the room (vs quit, which bails to main). Archives the
+      # current chat FIRST — reading the live proposal_chat_id before the resets
+      # clear it — so on_enter's resolve mints a NEW thread instead of returning
+      # this one (Resolve skips archived rows; same mechanism as /meta new).
+      # Then clears all discovery + brief progress and re-enters `proposal` with
+      # a FULL target (not `.`) so on_enter re-fires and resolves the fresh
+      # chat. The brief file on disk is left as scratch; the next mint writes a
+      # new workspace.
       restart:
         - target: proposal
           effects:
@@ -168,6 +373,10 @@ states:
                 proposal_existing_paths: ""
                 proposal_seed_idea:      ""
                 proposal_idea_turns:     0
+                proposal_slug:           ""
+                proposal_workspace:      ""
+                proposal_brief_path:     ""
+                proposal_brief_decision: {}
 
       quit:
         - target: main

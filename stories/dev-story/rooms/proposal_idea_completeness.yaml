@@ -50,11 +50,12 @@ states:
               intent: look
     relevant_world: [proposal_idea, proposal_workspace, proposal_brief_path, proposal_existing_state, proposal_completeness, proposal_completeness_path]
     on_enter:
-      # GUARDED for reload-safety (proposal_completeness_path is bound only
-      # after a real check): /reload skips the LLM and re-renders the stored
-      # verdict.
-      - when: "world.proposal_completeness_path == ''"
-        invoke: host.oracle.decide
+      # `once: true` for reload-safety: keyed off its own bind
+      # (proposal_completeness), so /reload skips the LLM and re-renders the
+      # stored verdict. A `clarify` back-edge clears proposal_completeness to
+      # re-arm it.
+      - invoke: host.oracle.decide
+        once: true
         id: completeness_check
         with:
           agent: proposal_completeness_judge
@@ -67,13 +68,14 @@ states:
             existing_state: "{{ world.proposal_existing_state }}"
         bind:
           proposal_completeness: submitted
-        on_error: proposal_brief
+        on_error: proposal
 
       # Host-call `with:` args are expr-lang (no pongo loops); a BARE typed
       # object pretty-prints as JSON (same as references). No title ⇒ no
-      # injected header. Same reload guard.
-      - when: "world.proposal_completeness_path == ''"
-        invoke: host.artifacts_dir
+      # injected header. `once: true` keyed off its bind
+      # (proposal_completeness_path).
+      - invoke: host.artifacts_dir
+        once: true
         with:
           artifacts_root: "{{ world.proposal_workspace }}"
           thread:         "003-idea-completeness"
@@ -87,15 +89,29 @@ states:
 
       # Step back to revise the brief (keeps the workspace + slug). Reset the
       # downstream results so the revised brief re-runs the forward pipeline
-      # fresh (the on_enter guards would otherwise re-show stale scans).
+      # fresh. Each `once:` invoke keys off ITS OWN bind, so clear BOTH the
+      # decide-object (proposal_existing_state / proposal_completeness) AND the
+      # write-path (…_path) — clearing only the path would leave the upstream
+      # decide's once: armed and it would skip on re-entry.
       clarify:
-        - target: proposal_brief
+        - target: proposal
           effects:
             - set:
-                proposal_brief_decision:   {}
-                proposal_existing_path:    ""
-                proposal_overlap_decision: ""
-                proposal_change_target:    ""
+                # A clarify sentinel (NOT {}): landing back in the merged
+                # discovery+brief room must NOT re-arm + auto-run the once: brief
+                # judge — an empty decision would, and a still-passing brief
+                # would immediately round-trip forward before the operator can
+                # revise. The sentinel keeps the judge disarmed so they rest in
+                # discovery; `ready` clears it and re-runs the check.
+                proposal_brief_decision:
+                  verdict: "clarify"
+                  reason:  "Stepped back from a later gate — revise the brief (edit it or keep talking), then say ready to re-run the check."
+                  questions: []
+                proposal_existing_state:    {}
+                proposal_existing_path:     ""
+                proposal_overlap_decision:  ""
+                proposal_change_target:     ""
+                proposal_completeness:      {}
                 proposal_completeness_path: ""
 
       quit:

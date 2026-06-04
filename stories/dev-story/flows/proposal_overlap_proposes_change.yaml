@@ -8,7 +8,7 @@
 
 test_kind: flow
 app: ../app.yaml
-initial_state: proposal_brief
+initial_state: proposal
 initial_world:
   judge_mode:          "human"
   proposal_idea:       "Add a local model oracle sidecar."
@@ -38,8 +38,8 @@ host_handlers:
     data: { ok: true, path: "docs/proposals/.workspace/lmo/out.md", message_id: "out#1" }
 
 turns:
-  # Confirm the brief → overlap check; the scout reports an accepted overlap.
-  - intent: { name: confirm, slots: {} }
+  # ready → brief passes → overlap check; the scout reports an accepted overlap.
+  - intent: { name: begin_proposal, slots: {} }
     expect_state: proposal_existing_state
 
   # proceed_new is guarded on an empty overlap list — with an overlap present
