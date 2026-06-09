@@ -60,6 +60,14 @@ thought.
 
 ## Current proposals
 
+- [`agent-action-transcripts.md`](agent-action-transcripts.md) — (tracing)
+  surface langfuse-grade per-tool-call detail for every agent in the web UI by
+  persisting the claude stream-json we already capture (`ClaudeRun.RawEvents`)
+  to a per-call **sidecar** keyed by `call_id` — referenced from the trace by a
+  pointer only (no detail inlined) — and generalizing it as an optional
+  `AskResponse.Transcript` Oracle-interface seam (claude / `local_llm` /
+  subprocess). Detailed prior-art survey (Langfuse, OTel GenAI, Phoenix et al.,
+  Claude Code jsonl, OSS viewers). Nothing implemented yet.
 - [`ai-collaboration-proposal.md`](ai-collaboration-proposal.md) —
   one remaining AI-collaborator surface (per-state `loading_view`).
   Three v1 surfaces shipped (`docs/architecture/developer-guide.md` §6);
