@@ -127,3 +127,4 @@
 - tool usage disappears after final message - it should be collapsed but inspectable
 - video/slidey edit/feedback mode w/ chat and timestamping/png generation built-in so it's easy to flag a scene or a range and instruct the llm - add it to web ui
 - make web-dev - keyboard shortcut (press r to reload?) that restarts the backend with any changes to go code
+- good fake claude with expectations and cassette playback options, allow good tests about what the harness is expected to do (like check the rendered template for a specific oracle instance as received by the cli)
