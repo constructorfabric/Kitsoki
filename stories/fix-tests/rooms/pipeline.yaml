@@ -1,0 +1,303 @@
+states:
+
+  # ── idle ────────────────────────────────────────────────────────────
+  # Entry. The make target dispatches `start` directly.
+  idle:
+    description: "Test auto-fixer parked. Run start to begin."
+    relevant_world: [test_cmd, max_cycles]
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "Runs `{{ world.test_cmd }}`, fixes any failures with claude (sonnet), re-runs to confirm, then writes a report."
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "start"
+                  hint:  "run the suite and auto-fix failures"
+                - label: "look"
+    on:
+      start:
+        - target: running
+          effects:
+            - set:
+                cycle:   0
+                outcome: ""
+                # Optional overrides supplied as slots; fall back to the
+                # world defaults when the slot is absent.
+                test_cmd:   "{{ slots.test_cmd ?? world.test_cmd }}"
+                max_cycles: "{{ slots.max_cycles ?? world.max_cycles }}"
+      look:
+        - target: .
+
+  # ── running ─────────────────────────────────────────────────────────
+  # First test run. Green → done_clean; red → fixing.
+  running:
+    description: "Running the test suite."
+    relevant_world: [test_cmd, cycle, tests_passed]
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "Running `{{ world.test_cmd }}` to discover failures."
+          - kv:
+              pairs:
+                Status: '{% if world.tests_passed %}all green{% else %}(pending — tests running){% endif %}'
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "look"
+    on_enter:
+      - invoke: host.run
+        id: run_initial
+        with:
+          cmd: "{{ world.test_cmd }}"
+          cwd: "{{ world.workdir }}"
+        bind:
+          run_exit_code: exit_code
+          run_stdout:    stdout
+        on_error: blocked
+      - set:
+          tests_passed:   "{{ world.run_exit_code == 0 }}"
+          first_failures: "{{ world.run_stdout }}"
+          last_failures:  "{{ world.run_stdout }}"
+      - emit_intent: route
+    on:
+      route:
+        - when: "world.tests_passed"
+          target: done_clean
+          effects:
+            - set: { outcome: "clean" }
+        - target: fixing
+      look:
+        - target: .
+
+  # ── fixing ──────────────────────────────────────────────────────────
+  # Agentic fix with claude (sonnet). needs_decision → blocked; else verify.
+  fixing:
+    description: "Fixing failing tests with claude (sonnet)."
+    relevant_world: [cycle, max_cycles, last_failures, fix_artifact]
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "Cycle {{ world.cycle }} of {{ world.max_cycles }} — the fixer is reading the failures and applying a fix."
+          - kv:
+              pairs:
+                "Last fix": '{{ world.fix_artifact.summary_title|default:"(pending — fixer running)" }}'
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "look"
+    on_enter:
+      - invoke: host.oracle.task
+        id: fix
+        with:
+          agent: fixer
+          working_dir: "{{ world.workdir }}"
+          acceptance:
+            schema: schemas/fix_artifact.json
+            max_retries: 3
+          context:
+            prompt: prompts/fix.md
+            args:
+              test_cmd:        "{{ world.test_cmd }}"
+              failures:        "{{ world.last_failures }}"
+              refine_feedback: "{{ world.refine_feedback }}"
+              cycle:           "{{ world.cycle }}"
+              max_cycles:      "{{ world.max_cycles }}"
+        bind:
+          fix_artifact: submitted
+        on_error: blocked
+      - increment: { cycle: 1 }
+      - emit_intent: route
+    on:
+      route:
+        - when: "world.fix_artifact.needs_decision"
+          target: blocked
+          effects:
+            - set: { outcome: "blocked" }
+        - target: verifying
+      look:
+        - target: .
+
+  # ── verifying ───────────────────────────────────────────────────────
+  # Re-run the suite. Green → done_clean; red & budget left → fixing;
+  # red & budget exhausted → done_exhausted.
+  verifying:
+    description: "Re-running the test suite to confirm the fix."
+    relevant_world: [cycle, max_cycles, tests_passed]
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "Cycle {{ world.cycle }} — re-running `{{ world.test_cmd }}` to confirm the fix held."
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "look"
+    on_enter:
+      - invoke: host.run
+        id: verify_run
+        with:
+          cmd: "{{ world.test_cmd }}"
+          cwd: "{{ world.workdir }}"
+        bind:
+          run_exit_code: exit_code
+          run_stdout:    stdout
+        on_error: blocked
+      - set:
+          tests_passed:  "{{ world.run_exit_code == 0 }}"
+          last_failures: "{{ world.run_stdout }}"
+      - emit_intent: route
+    on:
+      route:
+        - when: "world.tests_passed"
+          target: done_clean
+          effects:
+            - set: { outcome: "fixed" }
+        - when: "world.cycle >= world.max_cycles"
+          target: done_exhausted
+          effects:
+            - set: { outcome: "exhausted" }
+        - target: fixing
+          effects:
+            - set:
+                refine_feedback: "{{ world.last_failures }}"
+      look:
+        - target: .
+
+  # ── done_clean ──────────────────────────────────────────────────────
+  # Terminal: tests green (either first run or after a fix). Exit 0.
+  done_clean:
+    description: "All tests passing."
+    relevant_world: [outcome, cycle, report_path]
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: '{% if world.outcome == "clean" %}All tests passed on the first run — nothing to fix.{% else %}Tests are green after {{ world.cycle }} fix cycle(s).{% endif %}'
+          - kv:
+              pairs:
+                Report: '{{ world.report_path|default:"(pending)" }}'
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "look"
+    on_enter:
+      - invoke: host.run
+        id: write_report
+        with:
+          cmd: python3
+          args:
+            - "stories/fix-tests/scripts/write_report.py"
+            - "{{ world.outcome }}"
+            - "{{ world.cycle }}"
+            - "{{ world.max_cycles }}"
+            - "{{ world.fix_artifact }}"
+            - "true"
+        bind:
+          report_path: stdout
+      - invoke: host.inbox.add
+        with:
+          kind:  checkpoint
+          title: "fix-tests: green ({{ world.outcome }})"
+          state: done_clean
+          body:  "Tests passing after {{ world.cycle }} cycle(s). Report: {{ world.report_path }}"
+      - say: "Tests green ({{ world.outcome }}). Report: {{ world.report_path }}"
+    on:
+      look:
+        - target: .
+
+  # ── done_exhausted ──────────────────────────────────────────────────
+  # Terminal: still red after max_cycles. Exit nonzero.
+  done_exhausted:
+    description: "Tests still failing after the fix budget was exhausted."
+    relevant_world: [outcome, cycle, max_cycles, report_path]
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "Still failing after {{ world.max_cycles }} fix cycle(s). The remaining failures need a human."
+          - kv:
+              pairs:
+                Report: '{{ world.report_path|default:"(pending)" }}'
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "look"
+    on_enter:
+      - invoke: host.run
+        id: write_report
+        with:
+          cmd: python3
+          args:
+            - "stories/fix-tests/scripts/write_report.py"
+            - "{{ world.outcome }}"
+            - "{{ world.cycle }}"
+            - "{{ world.max_cycles }}"
+            - "{{ world.fix_artifact }}"
+            - "false"
+        bind:
+          report_path: stdout
+      - invoke: host.inbox.add
+        with:
+          kind:  checkpoint
+          title: "fix-tests: still red (exhausted)"
+          state: done_exhausted
+          body:  "Tests still failing after {{ world.cycle }} cycle(s). Report: {{ world.report_path }}"
+      - say: "Tests still red after {{ world.cycle }} cycle(s). Report: {{ world.report_path }}"
+    on:
+      look:
+        - target: .
+
+  # ── blocked ─────────────────────────────────────────────────────────
+  # Terminal: the fixer hit a question that needs a human answer (or the
+  # fixer/test run errored). Exit nonzero so CI/operator notices.
+  blocked:
+    description: "Blocked — the fixer needs a decision before it can continue."
+    relevant_world: [fix_artifact, report_path]
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "The fixer stopped and is asking for a decision rather than guessing."
+          - code: '{{ world.fix_artifact.summary_markdown|default:"(the fixer or a test run errored before producing an artifact — see the linked test report)" }}'
+          - kv:
+              pairs:
+                Report: '{{ world.report_path|default:"(pending)" }}'
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "look"
+    on_enter:
+      - invoke: host.run
+        id: write_report
+        with:
+          cmd: python3
+          args:
+            - "stories/fix-tests/scripts/write_report.py"
+            - "blocked"
+            - "{{ world.cycle }}"
+            - "{{ world.max_cycles }}"
+            - "{{ world.fix_artifact }}"
+            - "false"
+        bind:
+          report_path: stdout
+      - invoke: host.inbox.add
+        with:
+          kind:  checkpoint
+          title: "fix-tests: blocked — decision needed"
+          state: blocked
+          body:  "The fixer needs a decision. Report: {{ world.report_path }}"
+      - say: "Blocked — decision needed. Report: {{ world.report_path }}"
+    on:
+      look:
+        - target: .
