@@ -49,6 +49,8 @@ func main() {
 		allowRecur  = flag.Bool("recursion", false, "allow recursive functions")
 		recurse     = flag.Bool("r", false, "recurse into directories, validating every *.star / *.bzl / *.sky file")
 		quiet       = flag.Bool("q", false, "only print errors, not the per-file OK lines")
+		requireMain = flag.String("require-def", "", "require the file to define a top-level `def` with this name (e.g. main)")
+		kitsoki     = flag.Bool("kitsoki", false, "kitsoki host.starlark.run profile: predeclared={json,math}, strict dialect, requires def main(ctx). Mirrors internal/host/starlark exactly.")
 	)
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "usage: starcheck [flags] <file-or-dir>...\n\n")
@@ -59,6 +61,19 @@ func main() {
 	if flag.NArg() == 0 {
 		flag.Usage()
 		os.Exit(2)
+	}
+
+	// The -kitsoki profile pins the exact host.starlark.run sandbox surface so a
+	// `starcheck -kitsoki script.star` answers "would this load in kitsoki?"
+	// without booting an app. It overrides the individual dialect/predeclared
+	// flags rather than composing with them — see internal/host/starlark/run.go
+	// (predeclared = {json, math}; strict FileOptions) and run.go's mainFuncName.
+	if *kitsoki {
+		*predeclared = "json,math"
+		*allowWhile, *allowTLC, *allowSet, *allowReassign, *allowRecur = false, false, false, false, false
+		if *requireMain == "" {
+			*requireMain = "main"
+		}
 	}
 
 	opts := &syntax.FileOptions{
@@ -93,7 +108,7 @@ func main() {
 
 	failed := false
 	for _, path := range files {
-		if errs := check(opts, path, isPredeclared, isUniversal); len(errs) > 0 {
+		if errs := check(opts, path, isPredeclared, isUniversal, *requireMain); len(errs) > 0 {
 			failed = true
 			for _, e := range errs {
 				fmt.Fprintln(os.Stderr, e)
@@ -108,20 +123,43 @@ func main() {
 }
 
 // check parses then resolves one file, returning a slice of formatted
-// diagnostics (empty if the file is clean). It never executes the code.
-func check(opts *syntax.FileOptions, path string, isPredeclared, isUniversal func(string) bool) []string {
+// diagnostics (empty if the file is clean). It never executes the code. When
+// requireDef is non-empty the file must define a top-level `def` of that name
+// (the kitsoki sandbox calls main(ctx); a script that omits it loads fine but
+// fails at dispatch, so catching it statically is worth a line).
+func check(opts *syntax.FileOptions, path string, isPredeclared, isUniversal func(string) bool, requireDef string) []string {
 	src, err := os.ReadFile(path)
 	if err != nil {
 		return []string{fmt.Sprintf("%s: %v", path, err)}
 	}
 	f, err := opts.Parse(path, src, 0)
 	if err != nil {
+		// A syntax error means there is no usable AST — report it alone.
 		return formatErr(err)
 	}
-	if err := resolve.File(f, isPredeclared, isUniversal); err != nil {
-		return formatErr(err)
+	// Accumulate resolve diagnostics and the structural def check independently
+	// so a script that both references an ungranted name AND omits main(ctx)
+	// surfaces both problems in one run rather than one-at-a-time.
+	var errs []string
+	if rerr := resolve.File(f, isPredeclared, isUniversal); rerr != nil {
+		errs = append(errs, formatErr(rerr)...)
 	}
-	return nil
+	if requireDef != "" && !definesTopLevelDef(f, requireDef) {
+		errs = append(errs, fmt.Sprintf("%s: missing required top-level definition: def %s(...)", path, requireDef))
+	}
+	return errs
+}
+
+// definesTopLevelDef reports whether the file declares a top-level `def name`.
+// It scans only module-level statements (a nested def does not count), matching
+// how the sandbox resolves the entry point from the module globals.
+func definesTopLevelDef(f *syntax.File, name string) bool {
+	for _, stmt := range f.Stmts {
+		if def, ok := stmt.(*syntax.DefStmt); ok && def.Name != nil && def.Name.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 // formatErr renders the parser's and resolver's error shapes — both a single

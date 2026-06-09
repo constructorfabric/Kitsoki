@@ -14,7 +14,7 @@ SPA_SOURCES   := $(shell find $(RUNSTATUS_DIR)/src $(RUNSTATUS_DIR)/index.html \
 # Every shipped story whose deterministic flow suite `make test` exercises.
 STORY_APPS := $(wildcard stories/*/app.yaml)
 
-.PHONY: all build install uninstall test test-flows vet fmt tidy clean web web-clean web-dev web-dev-logs e2e-docker \
+.PHONY: all build install uninstall test test-flows starcheck-kitsoki vet fmt tidy clean web web-clean web-dev web-dev-logs e2e-docker \
 	fetch-models fetch-llama-server demo-tour demo-tour-fast demo-tour-qa
 
 all: build
@@ -101,6 +101,21 @@ test-flows:
 		printf '\n-- flows: %s\n' "$$app"; \
 		./.kitsoki-flows test flows "$$app" || rc=1; \
 	done; rm -f ./.kitsoki-flows; exit $$rc
+
+# starcheck-kitsoki is the static host.starlark.run pre-flight: it runs the
+# starcheck tool's -kitsoki profile (predeclared={json,math}, strict dialect,
+# requires def main) over every story's *.star glue scripts. It parses +
+# resolves WITHOUT executing — so it is instant, safe, and catches scripts that
+# would fail to load (a missing main, a reference outside the sandbox surface)
+# long before `make test-flows` boots an app. starcheck is its own Go module
+# (docs/skills/starlark/tools/starcheck) so we invoke it from there with the
+# scripts passed as absolute paths.
+STARCHECK_DIR := docs/skills/starlark/tools/starcheck
+starcheck-kitsoki:
+	@scripts=$$(find stories -type f -name '*.star' | sort); \
+	if [ -z "$$scripts" ]; then echo "starcheck-kitsoki: no .star scripts under stories/"; exit 0; fi; \
+	abs=$$(for f in $$scripts; do echo "$(CURDIR)/$$f"; done); \
+	cd $(STARCHECK_DIR) && go run . -kitsoki $$abs
 
 # fix-tests drives the stories/fix-tests auto-fixer: it runs the full test
 # suite (`make test`), and if anything fails it uses claude (sonnet), via the
