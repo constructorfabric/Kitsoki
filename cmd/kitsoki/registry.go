@@ -28,7 +28,10 @@ import (
 
 	"github.com/google/uuid"
 
+	"kitsoki/internal/agents"
 	"kitsoki/internal/app"
+	"kitsoki/internal/chats"
+	"kitsoki/internal/metamode"
 	"kitsoki/internal/runstatus"
 	"kitsoki/internal/runstatus/server"
 	"kitsoki/internal/store"
@@ -53,6 +56,12 @@ type entry struct {
 	source    *server.LiveSession
 	driver    server.Driver
 	sink      *store.JSONLSink
+
+	// metaController is the lazily-built meta-mode controller for this
+	// session, cached so the persistent chat store / agent registry / AppDef
+	// binding survives across turns. Reload nils it so the next meta turn
+	// rebuilds against the reloaded AppDef.
+	metaController *metamode.Controller
 }
 
 // SessionRegistry implements [server.SessionProvider]. It is safe for concurrent
@@ -66,6 +75,15 @@ type SessionRegistry struct {
 	mu       sync.Mutex
 	stories  []webconfig.StoryMeta
 	sessions map[string]*entry
+
+	// Meta-mode shared resources, all guarded by mu. agentReg is the builtin
+	// agent registry every meta controller resolves names against. The self*
+	// fields back the home-screen (session-less) meta driver for the cross-app
+	// kitsoki.* modes; they are opened lazily on first home-screen meta use.
+	agentReg     agents.Registry
+	metaSelfStr  store.Store
+	metaSelfChat *chats.Store
+	metaSelfCtrl *metamode.Controller
 }
 
 // NewRegistry constructs a registry over the resolved story dirs. cfg carries
@@ -94,6 +112,9 @@ func (r *SessionRegistry) Close() {
 		if e.rt != nil {
 			e.rt.Close()
 		}
+	}
+	if r.metaSelfStr != nil {
+		_ = r.metaSelfStr.Close()
 	}
 }
 
@@ -197,7 +218,11 @@ func (r *SessionRegistry) Get(sessionID string) (server.Entry, bool) {
 	if !ok {
 		return server.Entry{}, false
 	}
-	return server.Entry{Source: e.source, Driver: e.driver}, true
+	return server.Entry{
+		Source: e.source,
+		Driver: e.driver,
+		Meta:   &metaDriver{ctrl: r.metaControllerForLocked(e), chats: e.rt.ChatStore, entry: e},
+	}, true
 }
 
 // List returns a runstatus.SessionHeader per live session, for
@@ -266,9 +291,12 @@ func (r *SessionRegistry) Reload(ctx context.Context, sessionID string) (bool, e
 		return res.PrevStateExists, fmt.Errorf("reload: record effective story: %w", err)
 	}
 
-	// Keep the entry's display def in sync with the reloaded definition.
+	// Keep the entry's display def in sync with the reloaded definition, and
+	// drop the cached meta controller so the next meta turn rebuilds against
+	// the reloaded AppDef (a story edit may have changed meta_modes).
 	r.mu.Lock()
 	e.Def = res.Def
+	e.metaController = nil
 	r.mu.Unlock()
 
 	// (4) Re-fire on_enter only when the current state survived the edit; a
@@ -342,5 +370,95 @@ func storyTitle(def *app.AppDef) string {
 	return def.App.ID
 }
 
-// Compile-time assertion that SessionRegistry satisfies the provider seam.
-var _ server.SessionProvider = (*SessionRegistry)(nil)
+// ── Meta mode wiring ───────────────────────────────────────────────────────
+
+// agentRegistryLocked returns the shared builtin agent registry every meta
+// controller resolves agent names against, building it once. Caller holds r.mu.
+//
+// Builtins cover the modes the web surface exposes (story-author / -explainer,
+// kitsoki-explainer); per-app agent overrides for meta modes are out of scope
+// for the web surface.
+func (r *SessionRegistry) agentRegistryLocked() agents.Registry {
+	if r.agentReg == nil {
+		r.agentReg = agents.NewBuiltins()
+	}
+	return r.agentReg
+}
+
+// oracleForMeta picks the meta-mode oracle: the deterministic no-LLM stub when
+// the server runs in flow posture (--flow / --host-cassette), else the real
+// claude-CLI adapter. This is the seam that keeps `kitsoki web --flow` (and the
+// Playwright demo) free of any LLM call.
+func (r *SessionRegistry) oracleForMeta() metamode.OracleCaller {
+	if r.base.Flow != nil {
+		return metamode.NewStubOracleCaller()
+	}
+	return metamode.NewOracleCallerAdapter()
+}
+
+// metaControllerForLocked returns e's meta controller, building it lazily and
+// caching it on the entry. Caller holds r.mu.
+func (r *SessionRegistry) metaControllerForLocked(e *entry) *metamode.Controller {
+	if e.metaController == nil {
+		e.metaController = &metamode.Controller{
+			Chats:  metamode.NewChatStoreAdapter(e.rt.ChatStore),
+			Agents: r.agentRegistryLocked(),
+			AppDef: e.rt.Orch.AppDef(),
+			Oracle: r.oracleForMeta(),
+		}
+	}
+	return e.metaController
+}
+
+// MetaSelf returns the session-less ("self") meta driver for the home screen —
+// the cross-app kitsoki.* modes that need no running story. It is opened lazily
+// on first use; ok is false when the resources can't be built (e.g. DB open
+// failure), in which case home-screen meta reports not-available.
+func (r *SessionRegistry) MetaSelf() (server.MetaDriver, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if err := r.ensureSelfMetaLocked(); err != nil {
+		return nil, false
+	}
+	return &metaDriver{ctrl: r.metaSelfCtrl, chats: r.metaSelfChat, entry: nil}, true
+}
+
+// ensureSelfMetaLocked lazily opens the self-meta store + chat store and builds
+// the self controller over a synthetic AppDef carrying the builtin meta_modes.
+// Caller holds r.mu. Idempotent: a no-op once built.
+func (r *SessionRegistry) ensureSelfMetaLocked() error {
+	if r.metaSelfCtrl != nil {
+		return nil
+	}
+	s, err := store.Open(r.base.DBPath)
+	if err != nil {
+		return fmt.Errorf("meta self: open store: %w", err)
+	}
+	cs, err := chats.NewStore(s.DB())
+	if err != nil {
+		_ = s.Close()
+		return fmt.Errorf("meta self: open chat store: %w", err)
+	}
+	// Synthetic AppDef: the self modes (kitsoki.*) key under metamode.SelfAppID
+	// at resolve time, so the App.ID here is only a fallback label. Injecting
+	// the builtins gives the controller the kitsoki.* mode declarations.
+	def := &app.AppDef{}
+	def.App.ID = metamode.SelfAppID
+	app.InjectBuiltinMetaModes(def)
+
+	r.metaSelfStr = s
+	r.metaSelfChat = cs
+	r.metaSelfCtrl = &metamode.Controller{
+		Chats:  metamode.NewChatStoreAdapter(cs),
+		Agents: r.agentRegistryLocked(),
+		AppDef: def,
+		Oracle: r.oracleForMeta(),
+	}
+	return nil
+}
+
+// Compile-time assertions that SessionRegistry satisfies the provider seams.
+var (
+	_ server.SessionProvider  = (*SessionRegistry)(nil)
+	_ server.MetaSelfProvider = (*SessionRegistry)(nil)
+)

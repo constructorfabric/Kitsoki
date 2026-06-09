@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync"
 
+	goyaml "github.com/goccy/go-yaml"
+
 	"kitsoki/internal/app"
 	"kitsoki/internal/expr"
 	"kitsoki/internal/render"
@@ -184,6 +186,121 @@ func RenderAll(view app.View, env expr.Env, width int, glamour GlamourFunc, rr V
 	}
 
 	return joinElements(parts, kinds), nil
+}
+
+// EvalElements evaluates element-level when: guards and pongo Sources against
+// env, returning a new View with concrete (non-template) element Sources.
+// Elements whose when: guard is false are omitted. Sources are expanded through
+// pongo but no terminal styling (ANSI) is applied — the result is safe for
+// browser rendering where the client applies its own CSS per element Kind.
+//
+// Only the element-array form is supported (view.Extends and view.Source are
+// ignored; callers should fall back to the pre-rendered View text for those
+// shapes). Returns a zero View and an error when a guard fails to compile or
+// a Source fails pongo expansion.
+func EvalElements(view app.View, env expr.Env, rr ViewRenderer) (app.View, error) {
+	if len(view.Elements) == 0 {
+		return app.View{}, nil
+	}
+	out := make([]app.ViewElement, 0, len(view.Elements))
+	for i, el := range view.Elements {
+		keep, err := evalWhen(el.When, env)
+		if err != nil {
+			return app.View{}, fmt.Errorf("view[%d] (%s) when: %w", i, el.Kind, err)
+		}
+		if !keep {
+			continue
+		}
+		evaluated, err := evalElementSources(el, env, rr)
+		if err != nil {
+			return app.View{}, fmt.Errorf("view[%d] (%s): %w", i, el.Kind, err)
+		}
+		out = append(out, evaluated)
+	}
+	return app.View{Elements: out}, nil
+}
+
+// evalElementSources evaluates pongo templates in the fields of a single
+// element without applying terminal styling. Called by EvalElements.
+func evalElementSources(el app.ViewElement, env expr.Env, rr ViewRenderer) (app.ViewElement, error) {
+	switch el.Kind {
+	case "prose", "heading", "code", "template":
+		src, err := renderLeaf(rr, el.Source, env)
+		if err != nil {
+			return el, err
+		}
+		el.Source = strings.TrimSpace(src)
+	case "list":
+		items := make([]app.ListItem, 0, len(el.Items))
+		for j, item := range el.Items {
+			keep, err := evalWhen(item.When, env)
+			if err != nil {
+				return el, fmt.Errorf("list[%d] when: %w", j, err)
+			}
+			if !keep {
+				continue
+			}
+			label, err := renderLeaf(rr, item.Label, env)
+			if err != nil {
+				return el, fmt.Errorf("list[%d] label: %w", j, err)
+			}
+			hint, err := renderLeaf(rr, item.Hint, env)
+			if err != nil {
+				return el, fmt.Errorf("list[%d] hint: %w", j, err)
+			}
+			items = append(items, app.ListItem{Label: strings.TrimRight(label, " \t"), Hint: strings.TrimSpace(hint)})
+		}
+		el.Items = items
+	case "kv":
+		pairs := make(goyaml.MapSlice, 0, len(el.Pairs))
+		for j, pair := range el.Pairs {
+			key := fmt.Sprintf("%v", pair.Key)
+			raw, _ := pair.Value.(string)
+			val, err := renderLeaf(rr, raw, env)
+			if err != nil {
+				return el, fmt.Errorf("kv[%d] (%s): %w", j, key, err)
+			}
+			pairs = append(pairs, goyaml.MapItem{Key: key, Value: val})
+		}
+		el.Pairs = pairs
+	case "banner":
+		src, err := renderLeaf(rr, el.Source, env)
+		if err != nil {
+			return el, err
+		}
+		el.Source = strings.TrimSpace(src)
+		if el.Subtitle != "" {
+			sub, err := renderLeaf(rr, el.Subtitle, env)
+			if err != nil {
+				return el, err
+			}
+			el.Subtitle = strings.TrimSpace(sub)
+		}
+	case "choice":
+		if el.ChoicePrompt != "" {
+			prompt, err := renderLeaf(rr, el.ChoicePrompt, env)
+			if err != nil {
+				return el, err
+			}
+			el.ChoicePrompt = strings.TrimSpace(prompt)
+		}
+		// Evaluate per-item When guards so the browser receives only the
+		// items that are visible for the current world state.
+		if len(el.ChoiceItems) > 0 {
+			filtered := make([]app.ChoiceItem, 0, len(el.ChoiceItems))
+			for _, item := range el.ChoiceItems {
+				keep, err := evalWhen(item.When, env)
+				if err != nil {
+					return el, fmt.Errorf("choice item %q when: %w", item.Label, err)
+				}
+				if keep {
+					filtered = append(filtered, item)
+				}
+			}
+			el.ChoiceItems = filtered
+		}
+	}
+	return el, nil
 }
 
 // renderOne dispatches a single element through its kind's renderer.

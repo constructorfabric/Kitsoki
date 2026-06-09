@@ -111,6 +111,13 @@ func builtinMetaModes() map[string]*MetaModeDef {
 	return out
 }
 
+// InjectBuiltinMetaModes is the exported entrypoint to injectBuiltinMetaModes,
+// for callers outside the loader that need the builtin meta_modes on a
+// synthetic AppDef the loader never produced — specifically `kitsoki web`'s
+// home-screen "self" meta controller, which serves the cross-app `kitsoki.*`
+// modes without a running story behind them. Same KITSOKI_REPO gating applies.
+func InjectBuiltinMetaModes(def *AppDef) { injectBuiltinMetaModes(def) }
+
 // injectBuiltinMetaModes adds any builtin meta mode whose name isn't
 // already present in def.MetaModes. Called between merge and validate
 // in both load paths so the validator sees the full effective set —

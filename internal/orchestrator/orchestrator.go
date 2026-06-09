@@ -2214,6 +2214,35 @@ func (o *Orchestrator) LoadJourney(sid app.SessionID) (*store.JourneyState, erro
 	return o.loadJourney(sid)
 }
 
+// PatchWorld injects world-key overrides into the session's event log without
+// advancing a turn. Mirrors the flow-test runner's injectWorldOverride
+// mechanism: each key-value pair is written as an EffectApplied event at
+// turn = journey.Turn + 1 so the next RunIntent sees the patched values.
+//
+// Intended for demo/test tooling only (the runstatus web server exposes this
+// as runstatus.session.patch_world). Never call from production story paths.
+func (o *Orchestrator) PatchWorld(ctx context.Context, sid app.SessionID, patch map[string]any) error {
+	if len(patch) == 0 {
+		return nil
+	}
+	j, err := o.loadJourney(sid)
+	if err != nil {
+		return fmt.Errorf("PatchWorld: load journey: %w", err)
+	}
+	overrideTurn := j.Turn + 1
+	events := make([]store.Event, 0, len(patch))
+	for k, v := range patch {
+		payload, _ := json.Marshal(map[string]any{"set": map[string]any{k: v}})
+		events = append(events, store.Event{
+			Kind:    store.EffectApplied,
+			Turn:    overrideTurn,
+			Payload: payload,
+		})
+	}
+	sink := store.NewStoreSinkAdapter(o.store, sid)
+	return sink.AppendBatch(events)
+}
+
 // RenderState renders the view template for (state, world) without touching
 // the store. Thin wrapper around machine.RenderState for symmetry with
 // LoadJourney.
@@ -2259,27 +2288,30 @@ func (o *Orchestrator) CurrentView(_ context.Context, sid app.SessionID) (*TurnO
 		TurnNumber:     j.Turn,
 	}
 
-	// We deliberately populate ONLY the rendered text View, never TypedView.
-	// TypedView carries the raw view template (element Sources hold unevaluated
-	// `{{ … }}` pongo); the TUI renders it with RenderEnv+Renderer at display
-	// time, but the browser cannot evaluate pongo — so shipping the raw typed
-	// view leaks `{{ world.x }}` literals into the page. The rendered text (the
-	// FIRST return of InitialViewTyped / RenderStateTyped) is already correct
-	// and is exactly what the turn path (SubmitDirect/Turn) sends, so the web
-	// surface stays consistent: rendered text only. See tools/runstatus/CLAUDE.md
-	// — the render must be correct at the source, never patched in the UI.
+	// Populate View (rendered text) and TypedView (structured elements).
+	// TypedView is now pre-evaluated by newTurnResult before sending to the
+	// browser (Sources evaluated via pongo, when: guards applied), so it is
+	// safe to carry it here for element-array views. Non-element-array views
+	// (extends, source, template_file) leave TypedView nil and the browser
+	// falls back to the ANSI-stripped View text. See tools/runstatus/CLAUDE.md.
 	if j.State == o.InitialState() {
-		text, _, _, _, verr := o.InitialViewTyped(j.World)
+		text, tv, env, rr, verr := o.InitialViewTyped(j.World)
 		if verr != nil {
 			return nil, fmt.Errorf("current view: initial view: %w", verr)
 		}
 		out.View = text
+		out.TypedView = tv
+		out.RenderEnv = env
+		out.Renderer = rr
 		return out, nil
 	}
 
-	// Arbitrary (non-initial) state: rendered text.
-	if text, _, _, _, verr := o.machine.RenderStateTyped(j.State, j.World); verr == nil {
+	// Arbitrary (non-initial) state: rendered text + optional typed view.
+	if text, tv, env, rr, verr := o.machine.RenderStateTyped(j.State, j.World); verr == nil {
 		out.View = text
+		out.TypedView = tv
+		out.RenderEnv = env
+		out.Renderer = rr
 	} else if text, rerr := o.machine.RenderState(j.State, j.World); rerr == nil {
 		out.View = text
 	} else {

@@ -49,9 +49,15 @@ type SessionProvider interface {
 // write [Driver]. The provider owns the lifecycle; the server only reads these
 // two seams per routed RPC. Driver may be nil for a read-only session (e.g. the
 // `status serve` adapter), in which case write RPCs return [codeReadOnly].
+//
+// Meta is the optional meta-mode seam (the `runstatus.meta.*` overlay chat). It
+// is nil for read-only surfaces and for the single-entry adapter, in which case
+// meta RPCs return [codeReadOnly]. Only the live multi-session registry stamps
+// it, because meta mode needs a chat store the read-only surfaces don't own.
 type Entry struct {
 	Source Source
 	Driver Driver
+	Meta   MetaDriver
 }
 
 // singleEntryProvider adapts one [Source] (+ optional [Driver]) to the FULL

@@ -503,6 +503,23 @@ func (s *Server) dispatch(ctx context.Context, method string, params map[string]
 		}
 		return newTurnResult(out, entry.Driver), nil
 
+	case "runstatus.session.patch_world":
+		// Demo/test tooling: inject world key-value overrides without advancing
+		// a turn. Mirrors the flow-test runner's world_override mechanism so
+		// Playwright demo specs can keep the event roll below the event threshold.
+		entry, rerr := s.resolve(params)
+		if rerr != nil {
+			return nil, rerr
+		}
+		if entry.Driver == nil {
+			return nil, readOnlyErr(method)
+		}
+		patch, _ := params["patch"].(map[string]any)
+		if err := entry.Driver.PatchWorld(ctx, patch); err != nil {
+			return nil, serverErr(err)
+		}
+		return map[string]any{"ok": true}, nil
+
 	case "runstatus.session.offpath":
 		entry, rerr := s.resolve(params)
 		if rerr != nil {
@@ -518,9 +535,112 @@ func (s *Server) dispatch(ctx context.Context, method string, params map[string]
 		}
 		return map[string]any{"answer": answer}, nil
 
+	// ── Meta mode (overlay chat) ────────────────────────────────────────────
+	// session_id == "" routes to the home-screen "self" driver (kitsoki.* modes);
+	// a non-empty session_id routes to that session's per-state driver.
+	case "runstatus.meta.modes":
+		md, rerr := s.resolveMeta(params)
+		if rerr != nil {
+			return nil, rerr
+		}
+		modes, err := md.Modes(ctx)
+		if err != nil {
+			return nil, serverErr(err)
+		}
+		return map[string]any{"modes": modes}, nil
+
+	case "runstatus.meta.enter":
+		md, rerr := s.resolveMeta(params)
+		if rerr != nil {
+			return nil, rerr
+		}
+		mode, _ := params["mode"].(string)
+		if mode == "" {
+			return nil, &rpcError{Code: codeServerError, Message: "meta.enter: missing 'mode'"}
+		}
+		chatID, _ := params["chat_id"].(string)
+		sess, err := md.Enter(ctx, mode, chatID)
+		if err != nil {
+			return nil, serverErr(err)
+		}
+		return sess, nil
+
+	case "runstatus.meta.send":
+		md, rerr := s.resolveMeta(params)
+		if rerr != nil {
+			return nil, rerr
+		}
+		mode, _ := params["mode"].(string)
+		if mode == "" {
+			return nil, &rpcError{Code: codeServerError, Message: "meta.send: missing 'mode'"}
+		}
+		chatID, _ := params["chat_id"].(string)
+		input, _ := params["input"].(string)
+		res, err := md.Send(ctx, mode, chatID, input)
+		if err != nil {
+			return nil, serverErr(err)
+		}
+		return res, nil
+
+	case "runstatus.meta.new":
+		md, rerr := s.resolveMeta(params)
+		if rerr != nil {
+			return nil, rerr
+		}
+		mode, _ := params["mode"].(string)
+		if mode == "" {
+			return nil, &rpcError{Code: codeServerError, Message: "meta.new: missing 'mode'"}
+		}
+		chatID, _ := params["chat_id"].(string)
+		sess, err := md.NewChat(ctx, mode, chatID)
+		if err != nil {
+			return nil, serverErr(err)
+		}
+		return sess, nil
+
+	case "runstatus.meta.transcript":
+		md, rerr := s.resolveMeta(params)
+		if rerr != nil {
+			return nil, rerr
+		}
+		chatID, _ := params["chat_id"].(string)
+		if chatID == "" {
+			return nil, &rpcError{Code: codeServerError, Message: "meta.transcript: missing 'chat_id'"}
+		}
+		msgs, err := md.Transcript(ctx, chatID)
+		if err != nil {
+			return nil, serverErr(err)
+		}
+		return map[string]any{"messages": msgs}, nil
+
 	default:
 		return nil, &rpcError{Code: codeMethodMissing, Message: "unknown method: " + method}
 	}
+}
+
+// resolveMeta picks the [MetaDriver] for a meta RPC. A non-empty session_id
+// routes to that session's per-state driver (Entry.Meta); an empty session_id
+// routes to the provider's home-screen "self" driver (the cross-app kitsoki.*
+// modes) when the provider implements [MetaSelfProvider]. Either path returns
+// codeReadOnly when no meta driver is available on that surface.
+func (s *Server) resolveMeta(params map[string]any) (MetaDriver, *rpcError) {
+	sid, _ := params["session_id"].(string)
+	if sid == "" {
+		if sp, ok := s.provider.(MetaSelfProvider); ok {
+			if md, ok := sp.MetaSelf(); ok && md != nil {
+				return md, nil
+			}
+		}
+		return nil, readOnlyErr("meta (no session)")
+	}
+	entry, ok := s.provider.Get(sid)
+	if !ok {
+		return nil, &rpcError{Code: codeNotFound, Message: "unknown session_id: " + sid}
+	}
+	if entry.Meta == nil {
+		return nil, readOnlyErr("meta")
+	}
+	return entry.Meta, nil
 }
 
 // resolve looks up the entry for the session_id param, returning a structured

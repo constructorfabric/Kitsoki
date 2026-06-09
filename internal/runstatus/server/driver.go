@@ -3,8 +3,11 @@ package server
 import (
 	"context"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"kitsoki/internal/app"
 	"kitsoki/internal/orchestrator"
+	"kitsoki/internal/render/elements"
 )
 
 // Driver is the write side of the runstatus surface: the server calls it to
@@ -33,6 +36,9 @@ type Driver interface {
 	// newTurnResult can enrich the menu the browser renders. Returns the zero
 	// value with ok=false when the name does not resolve.
 	IntentInfo(name string, state string) (intentInfo, bool)
+	// PatchWorld injects world-key overrides into the session event log without
+	// advancing a turn. For demo/test tooling (runstatus.session.patch_world).
+	PatchWorld(ctx context.Context, patch map[string]any) error
 }
 
 // OrchestratorDriver adapts a live *orchestrator.Orchestrator + session id to
@@ -61,6 +67,10 @@ func (d OrchestratorDriver) AskOffPath(ctx context.Context, input string) (strin
 
 func (d OrchestratorDriver) View(ctx context.Context) (*orchestrator.TurnOutcome, error) {
 	return d.Orch.CurrentView(ctx, d.SID)
+}
+
+func (d OrchestratorDriver) PatchWorld(ctx context.Context, patch map[string]any) error {
+	return d.Orch.PatchWorld(ctx, d.SID, patch)
 }
 
 // IntentInfo resolves the intent's slot schema against `state` and derives the
@@ -144,11 +154,26 @@ func newTurnResult(out *orchestrator.TurnOutcome, resolver Driver) turnResult {
 	if out == nil {
 		return turnResult{}
 	}
+	// Strip ANSI terminal codes from the text view — the browser cannot
+	// render them. The TUI reads View off TurnOutcome directly (before this
+	// function runs) so stripping here only affects the web response.
+	plainView := ansi.Strip(out.View)
+
+	// Pre-evaluate element Sources so the browser gets concrete text rather
+	// than raw pongo templates (e.g. "Party of {{ world.party_size }}").
+	// Falls back to nil when TypedView is unavailable or evaluation fails.
+	var browserTypedView *app.View
+	if out.TypedView != nil && len(out.TypedView.Elements) > 0 {
+		if ev, err := elements.EvalElements(*out.TypedView, out.RenderEnv, out.Renderer); err == nil {
+			browserTypedView = &ev
+		}
+	}
+
 	tr := turnResult{
 		Mode:           out.Mode.String(),
 		State:          string(out.NewState),
-		View:           out.View,
-		TypedView:      out.TypedView,
+		View:           plainView,
+		TypedView:      browserTypedView,
 		AllowedIntents: out.AllowedIntents,
 		SlotsNeeded:    out.SlotsNeeded,
 		PendingIntent:  out.PendingIntent,
