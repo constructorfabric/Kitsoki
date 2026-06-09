@@ -73,24 +73,15 @@ hosts:
   - host.oracle.ask
   - host.oracle.decide
   - host.oracle.task
-  - host.oracle.converse
   # Pulled in transitively via dev-story → cypilot import (cypilot
   # uses host.run for its prd/adr/decomposition rooms). The strict
   # `hosts: declared` import on `core` requires every transitively-
   # exposed host to appear here too.
   - host.run
-  # Proposal-authoring pipeline (dev-story rooms/proposal*.yaml): the
-  # discovery chat + the per-session workspace artifact writes. Required
-  # under `hosts: declared` — the loader cross-checks every host the
-  # imported chain may invoke against this allow-list at fold time.
-  - host.chat.resolve
-  # proposal room's `restart` intent archives the discovery chat so a fresh
-  # one is resolved on re-enter.
-  - host.chat.archive
+  # Proposal-authoring pipeline (dev-story rooms/proposal*.yaml):
+  # 4-stage pipeline using decide/task gates, workspace artifact writes,
+  # and IDE open on first brief scaffold. Required under `hosts: declared`.
   - host.artifacts_dir
-  # proposal room auto-opens the editable 001-brief.md in the operator's editor
-  # on first scaffold (degrades to just the cmd-clickable path when no /ide
-  # link is live).
   - host.ide.open_file
 
 # This instance has no day-level rooms of its own — every visible
