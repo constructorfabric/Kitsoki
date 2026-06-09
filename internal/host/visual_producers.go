@@ -77,13 +77,24 @@ func SlideyRenderHandler(ctx context.Context, args map[string]any) (Result, erro
 	}
 
 	// Discover the slidey entry point.
-	nodeScript, err := resolveSlideyScript()
+	slideyPath, useNode, err := resolveSlideyScript()
 	if err != nil {
 		return Result{Error: fmt.Sprintf("host.slidey.render: %v", err)}, nil
 	}
 
+	// buildArgs returns the program and argument slice for a slidey invocation.
+	// When useNode is true the entry point is a raw .js file that must be run
+	// via node; when false slideyPath is an executable wrapper invoked directly.
+	buildArgs := func(extra ...string) (string, []string) {
+		if useNode {
+			return "node", append([]string{slideyPath}, extra...)
+		}
+		return slideyPath, extra
+	}
+
 	// Step 1 — validate.
-	valStdout, valStderr, valCode, valErr := cliExec(ctx, "", "node", nodeScript, "--validate", specPath)
+	validateProg, validateArgs := buildArgs("--validate", specPath)
+	valStdout, valStderr, valCode, valErr := cliExec(ctx, "", validateProg, validateArgs...)
 	if valErr != nil {
 		return Result{Error: fmt.Sprintf("host.slidey.render: validation exec: %v", valErr)}, nil
 	}
@@ -93,7 +104,8 @@ func SlideyRenderHandler(ctx context.Context, args map[string]any) (Result, erro
 	}
 
 	// Step 2 — render.
-	stdout, stderr, exitCode, execErr := cliExec(ctx, "", "node", nodeScript, specPath, outputPath)
+	renderProg, renderArgs := buildArgs(specPath, outputPath)
+	stdout, stderr, exitCode, execErr := cliExec(ctx, "", renderProg, renderArgs...)
 	if execErr != nil {
 		return Result{Error: fmt.Sprintf("host.slidey.render: render exec: %v", execErr)}, nil
 	}
@@ -120,35 +132,28 @@ func SlideyRenderHandler(ctx context.Context, args map[string]any) (Result, erro
 	return Result{Data: data}, nil
 }
 
-// resolveSlideyScript returns the absolute path to slidey's index.js entry
-// point. Discovery order:
-//  1. $SLIDEY_HOME/src/index.js (explicit env override).
-//  2. `slidey` on PATH — when found, we assume it is a wrapper that accepts
-//     the same argv as `node src/index.js` and exec it directly via cliExec
-//     (the "node" prefix is skipped; caller gets back the wrapper path so
-//     it can be passed as the sole program argument to cliExec).
+// resolveSlideyScript discovers the slidey entry point. Discovery order:
+//  1. $SLIDEY_HOME/src/index.js (explicit env override) — useNode=true.
+//  2. `slidey` on PATH (wrapper script / global install) — useNode=false.
+//
+// The second return value useNode indicates whether the caller must prepend
+// "node" when building the argv: true for a raw .js script (path 1), false
+// for a PATH-installed executable wrapper (path 2).
 //
 // Returns an error when neither is available.
-func resolveSlideyScript() (string, error) {
+func resolveSlideyScript() (path string, useNode bool, err error) {
 	if home := os.Getenv("SLIDEY_HOME"); home != "" {
 		candidate := filepath.Join(home, "src", "index.js")
-		if _, err := os.Stat(candidate); err == nil {
-			return candidate, nil
+		if _, statErr := os.Stat(candidate); statErr == nil {
+			return candidate, true, nil
 		}
-		return "", fmt.Errorf("slidey not found: SLIDEY_HOME=%q set but %q does not exist", home, candidate)
+		return "", false, fmt.Errorf("slidey not found: SLIDEY_HOME=%q set but %q does not exist", home, candidate)
 	}
-	if _, err := exec.LookPath("slidey"); err == nil {
-		// A `slidey` wrapper is on PATH — it expects the same args as
-		// `node src/index.js`, so the caller should exec it directly.
-		// We encode this by returning the sentinel string "slidey" and
-		// the caller passes "slidey" as both program and first arg to
-		// the `node` invocation.  To keep the call-site clean we return
-		// a special sentinel; the caller detects the "not a .js path"
-		// case and adjusts.
-		p, _ := exec.LookPath("slidey")
-		return p, nil
+	if p, lookErr := exec.LookPath("slidey"); lookErr == nil {
+		// A `slidey` wrapper is on PATH — exec it directly without node.
+		return p, false, nil
 	}
-	return "", fmt.Errorf("slidey not found: set SLIDEY_HOME to the slidey checkout or add `slidey` to PATH")
+	return "", false, fmt.Errorf("slidey not found: set SLIDEY_HOME to the slidey checkout or add `slidey` to PATH")
 }
 
 // slideyMIME returns the MIME type and media kind for a given render format.

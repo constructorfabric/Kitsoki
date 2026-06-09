@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
+	"iter"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -15,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"kitsoki/internal/app"
+	"kitsoki/internal/journal"
 	"kitsoki/internal/runstatus"
 	"kitsoki/internal/runstatus/server"
 	"kitsoki/internal/store"
@@ -365,4 +368,182 @@ func TestReadOnlySurface_LifecycleUnsupported(t *testing.T) {
 	var hdr runstatus.SessionHeader
 	rpcCall(t, ts, "runstatus.session.get", map[string]any{"session_id": "s-1"}, &hdr)
 	assert.Equal(t, "s-1", hdr.SessionID)
+}
+
+// ── JournalArtifactResolver unit tests ───────────────────────────────────────
+
+// makeArtifactEntry creates a real journal.Entry for an artifact.emitted event
+// using the canonical ArtifactEvent body shape.
+func makeArtifactEntry(t *testing.T, sid app.SessionID, ev journal.ArtifactEvent) journal.Entry {
+	t.Helper()
+	body, err := json.Marshal(ev)
+	require.NoError(t, err)
+	return journal.Entry{
+		Session: sid,
+		Turn:    1,
+		Seq:     1,
+		Kind:    journal.KindArtifactEmitted,
+		Body:    json.RawMessage(body),
+	}
+}
+
+// TestJournalArtifactResolver_Found proves LookupArtifact returns the correct
+// path and mime when the journal contains a matching artifact.emitted entry.
+func TestJournalArtifactResolver_Found(t *testing.T) {
+	t.Parallel()
+	sid := app.SessionID("sess-jar-1")
+	store := journal.NewMemStore()
+	w := journal.NewMemWriter(store)
+	r := journal.NewMemReader(store)
+
+	// Write a non-artifact typed entry first (should be skipped).
+	otherBody, _ := json.Marshal(map[string]string{"foo": "bar"})
+	require.NoError(t, w.Append(journal.Entry{
+		Session: sid, Turn: 1, Seq: 0,
+		Kind: journal.KindHostInvoked,
+		Body: json.RawMessage(otherBody),
+	}))
+
+	// Write the target artifact entry.
+	require.NoError(t, w.Append(makeArtifactEntry(t, sid, journal.ArtifactEvent{
+		ID:       "clip#ab12cd34",
+		Kind:     "video",
+		Mime:     "video/mp4",
+		Label:    "Demo clip",
+		Path:     "/artifacts/clip.mp4",
+		Producer: "host.artifacts_dir",
+	})))
+
+	resolver := &server.JournalArtifactResolver{Reader: r, SID: sid}
+	path, mime, ok := resolver.LookupArtifact("clip#ab12cd34")
+
+	require.True(t, ok, "expected artifact to be found")
+	assert.Equal(t, "/artifacts/clip.mp4", path)
+	assert.Equal(t, "video/mp4", mime)
+}
+
+// TestJournalArtifactResolver_SkipsWrongKind proves that non-artifact.emitted
+// typed entries (e.g. host.invoked) are skipped and do not interfere with
+// the lookup result.
+func TestJournalArtifactResolver_SkipsWrongKind(t *testing.T) {
+	t.Parallel()
+	sid := app.SessionID("sess-jar-2")
+	store := journal.NewMemStore()
+	w := journal.NewMemWriter(store)
+	r := journal.NewMemReader(store)
+
+	// Only write entries of a different kind — no artifact.emitted at all.
+	otherBody, _ := json.Marshal(map[string]string{"verb": "decide"})
+	for i := range 3 {
+		require.NoError(t, w.Append(journal.Entry{
+			Session: sid, Turn: 1, Seq: i,
+			Kind: journal.KindHostReturned,
+			Body: json.RawMessage(otherBody),
+		}))
+	}
+
+	resolver := &server.JournalArtifactResolver{Reader: r, SID: sid}
+	path, mime, ok := resolver.LookupArtifact("clip#anything")
+
+	assert.False(t, ok, "no artifact.emitted entries → should not be found")
+	assert.Empty(t, path)
+	assert.Empty(t, mime)
+}
+
+// TestJournalArtifactResolver_MalformedBodySkipped proves that an
+// artifact.emitted entry whose body is not valid JSON is silently skipped
+// (the resolver continues scanning) and a subsequent valid entry is still found.
+func TestJournalArtifactResolver_MalformedBodySkipped(t *testing.T) {
+	t.Parallel()
+	sid := app.SessionID("sess-jar-3")
+	store := journal.NewMemStore()
+	w := journal.NewMemWriter(store)
+	r := journal.NewMemReader(store)
+
+	// Malformed artifact entry (invalid JSON body) — must be skipped.
+	require.NoError(t, w.Append(journal.Entry{
+		Session: sid, Turn: 1, Seq: 0,
+		Kind: journal.KindArtifactEmitted,
+		Body: json.RawMessage(`{not valid json`),
+	}))
+
+	// Valid artifact entry after the malformed one — must still be found.
+	require.NoError(t, w.Append(makeArtifactEntry(t, sid, journal.ArtifactEvent{
+		ID:       "img#deadbeef",
+		Kind:     "image",
+		Mime:     "image/png",
+		Path:     "/artifacts/shot.png",
+		Producer: "host.artifacts_dir",
+	})))
+
+	resolver := &server.JournalArtifactResolver{Reader: r, SID: sid}
+	path, mime, ok := resolver.LookupArtifact("img#deadbeef")
+
+	require.True(t, ok, "valid artifact after malformed entry should be found")
+	assert.Equal(t, "/artifacts/shot.png", path)
+	assert.Equal(t, "image/png", mime)
+}
+
+// TestJournalArtifactResolver_NotFound proves LookupArtifact returns
+// ("", "", false) when no entry in the journal matches the requested handle.
+func TestJournalArtifactResolver_NotFound(t *testing.T) {
+	t.Parallel()
+	sid := app.SessionID("sess-jar-4")
+	store := journal.NewMemStore()
+	w := journal.NewMemWriter(store)
+	r := journal.NewMemReader(store)
+
+	require.NoError(t, w.Append(makeArtifactEntry(t, sid, journal.ArtifactEvent{
+		ID:       "known#00000001",
+		Kind:     "pdf",
+		Mime:     "application/pdf",
+		Path:     "/artifacts/doc.pdf",
+		Producer: "host.artifacts_dir",
+	})))
+
+	resolver := &server.JournalArtifactResolver{Reader: r, SID: sid}
+	path, mime, ok := resolver.LookupArtifact("unknown#ffffffff")
+
+	assert.False(t, ok, "unknown handle must not be found")
+	assert.Empty(t, path)
+	assert.Empty(t, mime)
+}
+
+// errReader is a [journal.Reader] stub whose ReplayTyped returns an iterator
+// that immediately stops and whose errFn always returns a non-nil error. Used
+// to exercise the errFn branch in JournalArtifactResolver.
+type errReader struct{ scanErr error }
+
+func (e *errReader) ReplayTyped(_ app.SessionID) (iter.Seq[journal.Entry], func() error) {
+	seq := func(yield func(journal.Entry) bool) {} // empty — yields nothing
+	return seq, func() error { return e.scanErr }
+}
+
+func (e *errReader) LoadDocument(_ app.SessionID, _ journal.DocID) (json.RawMessage, journal.Version, error) {
+	return nil, 0, nil
+}
+func (e *errReader) ReplayFrom(_ app.SessionID, _ journal.DocID, _ journal.Version) (iter.Seq[journal.Entry], func() error) {
+	return func(func(journal.Entry) bool) {}, func() error { return nil }
+}
+func (e *errReader) LatestCheckpoint(_ app.SessionID, _ journal.DocID) (journal.Entry, bool, error) {
+	return journal.Entry{}, false, nil
+}
+func (e *errReader) ListLiveDocs(_ app.SessionID) []journal.DocID { return nil }
+
+// TestJournalArtifactResolver_ErrFnPath proves LookupArtifact returns
+// ("", "", false) when the journal reader signals a scan error via errFn,
+// treating the truncated-stream case as not-found.
+func TestJournalArtifactResolver_ErrFnPath(t *testing.T) {
+	t.Parallel()
+	sid := app.SessionID("sess-jar-5")
+	resolver := &server.JournalArtifactResolver{
+		Reader: &errReader{scanErr: errors.New("db read error")},
+		SID:    sid,
+	}
+
+	path, mime, ok := resolver.LookupArtifact("any#handle")
+
+	assert.False(t, ok, "scan error must be treated as not-found")
+	assert.Empty(t, path)
+	assert.Empty(t, mime)
 }
