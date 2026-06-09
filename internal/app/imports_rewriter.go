@@ -529,5 +529,11 @@ func (rw *childRewriter) rewriteViewElement(el ViewElement) ViewElement {
 			out.ChoiceRaw = raw
 		}
 	}
+	if el.Kind == "media" {
+		out.MediaHandle = el.MediaHandle
+		out.MediaCaption = rw.rewriteExpr(el.MediaCaption)
+		out.MediaKind = el.MediaKind
+		out.MediaPath = rw.rewriteExpr(el.MediaPath)
+	}
 	return out
 }

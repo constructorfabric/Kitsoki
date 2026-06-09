@@ -2,7 +2,10 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 
+	"kitsoki/internal/app"
+	"kitsoki/internal/journal"
 	"kitsoki/internal/runstatus"
 )
 
@@ -45,6 +48,18 @@ type SessionProvider interface {
 	Rescan() ([]StoryHeader, error)
 }
 
+// ArtifactResolver looks up a media artifact by its opaque handle ID and
+// returns the absolute path and MIME type of the file on disk.  It is set on
+// [Entry] by the live registry for sessions whose orchestrator wires a journal
+// writer; the server uses it to serve the `GET /artifact/{id}` route.
+// Nil is a safe sentinel: the server returns 404 for that session.
+type ArtifactResolver interface {
+	// LookupArtifact scans the journal for the named handle ID and returns the
+	// absolute file path and MIME type. ok is false when the id is unknown or the
+	// journal has no record of it.
+	LookupArtifact(id string) (path, mime string, ok bool)
+}
+
 // Entry is one live session as seen by the [Server]: its read [Source] and its
 // write [Driver]. The provider owns the lifecycle; the server only reads these
 // two seams per routed RPC. Driver may be nil for a read-only session (e.g. the
@@ -54,10 +69,54 @@ type SessionProvider interface {
 // is nil for read-only surfaces and for the single-entry adapter, in which case
 // meta RPCs return [codeReadOnly]. Only the live multi-session registry stamps
 // it, because meta mode needs a chat store the read-only surfaces don't own.
+//
+// Artifacts is the optional artifact-lookup seam for the `GET /artifact/{id}`
+// route. It is nil for read-only surfaces and single-entry adapters.
 type Entry struct {
-	Source Source
-	Driver Driver
-	Meta   MetaDriver
+	Source    Source
+	Driver    Driver
+	Meta      MetaDriver
+	Artifacts ArtifactResolver
+}
+
+// ── JournalArtifactResolver ───────────────────────────────────────────────────
+
+// JournalArtifactResolver implements [ArtifactResolver] by scanning the typed
+// journal entries for session sid, filtering for [journal.KindArtifactEmitted]
+// entries, and returning the first whose ID matches the requested handle.
+//
+// Scanning is O(n) over the session's typed journal entries on every lookup.
+// For the PoC this is acceptable: artifact lookups are browser-fetch-triggered,
+// rare, and the journal is small. A future optimisation would build an in-memory
+// index at start-up and invalidate it on journal append.
+type JournalArtifactResolver struct {
+	Reader journal.Reader
+	SID    app.SessionID
+}
+
+// LookupArtifact scans the session's typed journal entries for an
+// [journal.ArtifactEvent] whose ID equals handle. Returns (path, mime, true) on
+// the first match, or ("", "", false) when not found or on any scan error.
+func (r *JournalArtifactResolver) LookupArtifact(handle string) (path, mime string, ok bool) {
+	seq, errFn := r.Reader.ReplayTyped(r.SID)
+	for entry := range seq {
+		if entry.Kind != journal.KindArtifactEmitted {
+			continue
+		}
+		var ev journal.ArtifactEvent
+		if err := json.Unmarshal(entry.Body, &ev); err != nil {
+			continue
+		}
+		if ev.ID == handle {
+			_ = errFn() // scan complete; ignore trailing error
+			return ev.Path, ev.Mime, true
+		}
+	}
+	if err := errFn(); err != nil {
+		// scan ended on a DB error — treat as not found
+		return "", "", false
+	}
+	return "", "", false
 }
 
 // singleEntryProvider adapts one [Source] (+ optional [Driver]) to the FULL

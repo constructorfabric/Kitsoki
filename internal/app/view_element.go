@@ -98,6 +98,12 @@ type View struct {
 //     holds an optional CSS-style hex foreground (e.g. "#06B6D4"). The
 //     renderer generates the figlet-style art at render time from Source
 //     so authors don't have to paste pre-baked ASCII into YAML.
+//   - "media" — MediaHandle holds the artifact id/handle to display;
+//     MediaCaption holds an optional caption shown beneath the artifact;
+//     MediaKind holds the artifact kind (video/image/pdf/html/slideshow)
+//     used to select the pointer icon; MediaPath holds the optional
+//     resolved .artifacts/ path (pongo2 template, bound from a world slot).
+//     This element is display-only (no input bar, no choices).
 //
 // When is the optional element-level guard expression (expr-lang source).
 // Phase A stores it verbatim; the Phase D renderer evaluates it against
@@ -112,6 +118,24 @@ type ViewElement struct {
 	Subtitle string
 	Color    string
 	When     string
+
+	// ---- Media fields.
+	// Populated only when Kind == "media"; otherwise zero.
+
+	// MediaHandle is the artifact id/handle that identifies the media to
+	// display. Required — an empty handle is a load-time error.
+	MediaHandle string
+	// MediaCaption is an optional one-line caption rendered beneath the
+	// media artifact.
+	MediaCaption string
+	// MediaKind is the artifact kind (video/image/pdf/html/slideshow).
+	// Used at render time to pick the pointer icon. Empty means unknown.
+	MediaKind string
+	// MediaPath is the resolved .artifacts/ path to display in the TUI
+	// pointer line. Authors supply this as a pongo2 template bound from
+	// a world slot that holds the path returned by host.artifacts_dir.
+	// When empty, the TUI pointer falls back to displaying MediaHandle.
+	MediaPath string
 
 	// ---- Choice fields.
 	// Populated only when Kind == "choice"; otherwise zero. See
@@ -302,7 +326,22 @@ type rawViewElementYAML struct {
 	KV       *rawKVYAML     `yaml:"kv,omitempty"`
 	Banner   *rawBannerYAML `yaml:"banner,omitempty"`
 	Choice   *rawChoiceYAML `yaml:"choice,omitempty"`
+	Media    *rawMediaYAML  `yaml:"media,omitempty"`
 	When     string         `yaml:"when,omitempty"`
+}
+
+// rawMediaYAML decodes the media element body. Handle is the required
+// artifact id/handle; Caption is an optional one-line label shown beneath
+// the artifact in the rendered view. Kind is the media type
+// (video/image/pdf/html/slideshow) used to pick the pointer icon at
+// render time. Path is the optional resolved .artifacts/ path; authors
+// may supply it as a pongo2 template expression bound from a world slot
+// that holds the path returned by host.artifacts_dir.
+type rawMediaYAML struct {
+	Handle  string `yaml:"handle"`
+	Caption string `yaml:"caption,omitempty"`
+	Kind    string `yaml:"kind,omitempty"`
+	Path    string `yaml:"path,omitempty"`
 }
 
 // rawBannerYAML decodes the banner element body. Text is the phase name
@@ -434,6 +473,17 @@ func (r rawViewElementYAML) toElement() (ViewElement, error) {
 			out.When = when
 		}
 	}
+	if r.Media != nil {
+		set = append(set, "media")
+		out = ViewElement{
+			Kind:         "media",
+			MediaHandle:  r.Media.Handle,
+			MediaCaption: r.Media.Caption,
+			MediaKind:    r.Media.Kind,
+			MediaPath:    r.Media.Path,
+			When:         when,
+		}
+	}
 	switch len(set) {
 	case 0:
 		return ViewElement{}, fmt.Errorf("element has no kind (expected one of prose / heading / list / kv / code / template / banner / choice)")
@@ -522,7 +572,12 @@ func (e ViewElement) validate() error {
 		return nil
 	case "choice":
 		return validateChoice(e)
+	case "media":
+		if strings.TrimSpace(e.MediaHandle) == "" {
+			return fmt.Errorf("media requires a non-empty handle")
+		}
+		return nil
 	default:
-		return fmt.Errorf("unknown element kind %q (expected one of prose / heading / list / kv / code / template / banner / choice)", e.Kind)
+		return fmt.Errorf("unknown element kind %q (expected one of prose / heading / list / kv / code / template / banner / choice / media)", e.Kind)
 	}
 }

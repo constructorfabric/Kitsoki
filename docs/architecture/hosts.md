@@ -63,6 +63,8 @@ carrier handler when the op name is dispatched from `with:` args.
 | [`host.chat.resolve_ref`](#hostchatresolve_ref) | Resolve a chat reference (id, alias, or "current") to a chat row. |
 | [`host.chat.drive`](#hostchatdrive) | Enqueue a turn against a chat; optionally `await` completion. |
 | [`host.ide.*`](#hostide--editor-awareness) | Editor awareness over the live IDE link: diagnostics, selection, open editors, open file/diff. |
+| [`host.slidey.render`](#hostslideyrender) | Validate + render a JSON scene spec to MP4, PDF, or interactive HTML via the slidey pipeline. |
+| [`host.contact_sheet`](#hostcontact_sheet) | Assemble a PNG contact-sheet montage from a directory of PNG frames via ffmpeg. |
 
 Every handler must be present in the app's top-level `hosts:`
 allow-list to be invokable.
@@ -580,6 +582,36 @@ Returns: `{ ok, path, message_id }`. `path` is the absolute file path
 written; `message_id` is `<basename-without-ext>#<append-counter>` for
 parity with `host.append_to_file`.
 
+### Media-emit extension
+
+When `src_path` is supplied (non-empty), the handler switches to the **media-emit
+path** instead of the markdown-body path. It copies the source file into the
+artifacts root, emits an `artifact.emitted` journal event, and returns a stable
+handle that a `media` view element can reference.
+
+Additional args (media-emit path — activated when `src_path` is non-empty):
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `src_path` | string | yes | Absolute path of an existing regular file to copy under the artifacts root. |
+| `kind` | string | yes | Media kind: `video`, `image`, `pdf`, `html`, or `slideshow`. |
+| `mime` | string | no | MIME type override (e.g. `video/mp4`). Auto-detected from the file extension when absent. |
+| `label` | string | no | Human-readable display name recorded in the journal event and returned in the handle. |
+
+Returns (media-emit path): `{ ok, handle, path, mime, kind }`. `handle` is the
+`id` field of the recorded `artifact.emitted` event (`<basename>#<counter>`) and
+is the stable key used by `GET /artifact/{id}` and by `media` view elements.
+
+The existing markdown-body path is unchanged: pass `body` (no `src_path`) and the
+handler behaves exactly as before. The `thread:` arg names the destination file in
+both paths.
+
+Path-escape guard: the resolved destination must remain under the artifacts root;
+`..` components in `thread` or `src_path` are rejected.
+
+For the recorded `artifact.emitted` event shape see
+[`docs/tracing/trace-format.md` §Artifact event kind](../tracing/trace-format.md).
+
 Implementation: [`internal/host/artifacts_dir_transport.go`](../../internal/host/artifacts_dir_transport.go).
 
 ---
@@ -1092,6 +1124,104 @@ for chat-aware metamode. It is **not** a registered verb — apps cannot invoke
 Future work folds the chat-aware metamode path onto `host.oracle.converse` (or a
 dedicated chat-aware oracle abstraction); that work removes the leftover entry
 point and its tests.
+
+---
+
+---
+
+## host.slidey.render
+
+Validate and render a JSON scene spec to a finished visual file using the
+[slidey](https://github.com/cyberfabric/slidey) declarative-video pipeline.
+Deterministic, no LLM in the render loop. The rendered output is a file on disk;
+pass its path to `host.artifacts_dir` (media-emit path) to record it as an
+`artifact.emitted` datapoint and obtain a stable handle.
+
+**Tool discovery order:**
+
+1. `$SLIDEY_HOME/src/index.js` (explicit env override).
+2. A `slidey` binary on `PATH` (wrapper script / global install).
+
+When neither is found, `Result.Error` is set (`host.slidey.render: slidey not
+found`) so story `on_error:` arcs can degrade gracefully without crashing.
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `spec_path` | string | yes | Path to the JSON scene spec. |
+| `format` | string | yes | Output format: `mp4`, `pdf`, or `html`. |
+| `output_path` | string | no | Destination file. Defaults to `<spec_path without extension>.<format>`. |
+
+Returns:
+
+| Field | Type | Notes |
+|---|---|---|
+| `ok` | bool | True when the render completed with exit code 0. |
+| `path` | string | Absolute path of the rendered output file. |
+| `mime` | string | MIME type for the chosen format: `video/mp4`, `application/pdf`, or `text/html`. |
+| `kind` | string | Media kind: `video`, `pdf`, or `html`. |
+| `exit_code` | int | Raw exit code from the slidey process. |
+| `stdout` | string | Combined stdout from the render step. |
+| `stderr` | string | Combined stderr from the render step. |
+
+The handler runs `--validate` against the spec before the full render. A
+validation failure sets `Result.Error` rather than attempting a broken render.
+
+**Example (render then emit):**
+
+```yaml
+- invoke: host.slidey.render
+  with:
+    spec_path: "{{ world.deck_spec_path }}"
+    format: mp4
+  bind:
+    rendered_path: path
+    rendered_mime: mime
+    rendered_kind: kind
+  on_error: room_render_failed
+
+- invoke: host.artifacts_dir
+  with:
+    thread: walkthrough
+    src_path: "{{ world.rendered_path }}"
+    kind: "{{ world.rendered_kind }}"
+    mime: "{{ world.rendered_mime }}"
+    label: Architecture walkthrough
+  bind:
+    deck_handle: handle
+```
+
+Implementation: [`internal/host/visual_producers.go`](../../internal/host/visual_producers.go).
+
+---
+
+## host.contact_sheet
+
+Assemble a PNG contact-sheet montage from a directory of PNG frames using
+`ffmpeg`'s tile filter. Useful as a quick per-scene visual summary of a rendered
+video. When `ffmpeg` is absent, `Result.Error` is set so `on_error:` can degrade
+gracefully.
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `dir` | string | yes | Directory containing PNG frame files. |
+| `glob` | string | no | Glob pattern for frame selection within `dir`. Defaults to `*.png`. |
+| `cols` | int | no | Number of columns in the tile grid. Defaults to 4. |
+| `tile_width` | int | no | Width of each tile in pixels. Defaults to 320. |
+| `output_path` | string | no | Destination PNG path. Defaults to `<dir>/contact_sheet.png`. |
+
+Returns:
+
+| Field | Type | Notes |
+|---|---|---|
+| `ok` | bool | True when ffmpeg completed with exit code 0. |
+| `path` | string | Absolute path of the generated PNG montage. |
+| `mime` | string | Always `image/png`. |
+| `kind` | string | Always `image`. |
+
+Frames are sorted and fed to ffmpeg via a concat demuxer list (not shell glob
+expansion), so ordering is deterministic across systems.
+
+Implementation: [`internal/host/visual_producers.go`](../../internal/host/visual_producers.go).
 
 ---
 

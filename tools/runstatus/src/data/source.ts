@@ -108,6 +108,16 @@ export interface DataSource {
   ): Promise<MetaSession>;
   /** Read a chat row's transcript (for rehydration). */
   metaTranscript(sessionId: string, chatId: string): Promise<MetaMessage[]>;
+
+  // ── Media artifacts ───────────────────────────────────────────────────────
+
+  /**
+   * Resolve a URL for a named artifact handle. In live mode returns the
+   * server-side `/artifact/<handle>` path; in snapshot mode returns a
+   * relative sidecar path `./artifacts/<handle>` (the handle is the
+   * filename under the snapshot's sibling `artifacts/` directory).
+   */
+  artifactUrl(handle: string): string;
 }
 
 /**

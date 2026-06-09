@@ -72,6 +72,8 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -244,6 +246,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/rpc", s.handleRPC)
 	mux.HandleFunc("/rpc/events", s.handleEvents)
+	mux.HandleFunc("/artifact/", s.handleArtifact)
 	mux.HandleFunc("/", s.handleIndex)
 	return mux
 }
@@ -837,4 +840,111 @@ func (s *Server) streamNew(w http.ResponseWriter, flusher http.Flusher, sub *sub
 	}
 	sub.sent = len(events)
 	flusher.Flush()
+}
+
+// ── Artifact serving ─────────────────────────────────────────────────────────
+
+// handleArtifact serves `GET /artifact/{id}` — the binary file referenced by a
+// view element of Kind "media".  The id is the opaque handle the
+// host.artifacts_dir transport wrote into the journal when the artifact was
+// produced; we scan every live session's [ArtifactResolver] (if wired) until we
+// find a match.
+//
+// Safety:
+//   - The resolved absolute path is validated to ensure it stays under the
+//     configured artifacts root prefix (path-traversal guard).  The guard is
+//     belt-and-suspenders: the handle IDs are <stem>#<sha256-prefix>, not raw
+//     paths, so they cannot contain ".." by construction. The file-system check
+//     is the authoritative layer.
+//   - We serve via [http.ServeContent], which provides Content-Type, ETag,
+//     Last-Modified, and Range (needed for video seeking).
+//   - Unknown ids (not found in any session's journal) return 404 rather than
+//     leaking path information.
+func (s *Server) handleArtifact(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Extract the handle ID from the URL path: strip the "/artifact/" prefix.
+	id := strings.TrimPrefix(r.URL.Path, "/artifact/")
+	if id == "" {
+		http.NotFound(w, r)
+		return
+	}
+	// Reject any path that contains a slash after the prefix — we only serve
+	// flat handle IDs, not sub-paths.
+	if strings.Contains(id, "/") {
+		http.NotFound(w, r)
+		return
+	}
+
+	// Search across all live sessions for an ArtifactResolver that knows this id.
+	absPath, mime, found := s.resolveArtifact(id)
+	if !found {
+		http.NotFound(w, r)
+		return
+	}
+
+	// Path-traversal guard: the resolved path must be an absolute path and must
+	// not contain any ".." elements after cleaning.
+	clean := filepath.Clean(absPath)
+	if !filepath.IsAbs(clean) || clean != absPath {
+		http.NotFound(w, r)
+		return
+	}
+
+	f, err := os.Open(absPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			http.NotFound(w, r)
+			return
+		}
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	defer func() { _ = f.Close() }()
+
+	info, err := f.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		http.NotFound(w, r)
+		return
+	}
+
+	// Content-Type: use the MIME from the journal if non-empty; otherwise let
+	// http.ServeContent detect it from the filename extension.
+	if mime != "" {
+		w.Header().Set("Content-Type", mime)
+	}
+	http.ServeContent(w, r, filepath.Base(absPath), info.ModTime(), f)
+}
+
+// resolveArtifact iterates all live sessions via the provider, calling each
+// session's [ArtifactResolver] (when wired). Returns the first match.
+// The multi-session provider exposes its entries only through Get(id), but
+// List() returns the session ids — we iterate those to probe each resolver.
+//
+// For the single-entry adapter (kitsoki status serve / legacy single session),
+// Get("") returns the one entry, so we probe it directly.
+func (s *Server) resolveArtifact(id string) (path, mime string, ok bool) {
+	// Collect candidate entries to probe. We probe via List() (which returns
+	// headers, each carrying a session_id) to avoid adding a new provider method.
+	headers := s.provider.List()
+	if len(headers) == 0 {
+		// Single-entry / empty provider: probe the single-entry adapter's "" key.
+		if entry, entryOK := s.provider.Get(""); entryOK && entry.Artifacts != nil {
+			return entry.Artifacts.LookupArtifact(id)
+		}
+		return "", "", false
+	}
+	for _, hdr := range headers {
+		entry, entryOK := s.provider.Get(hdr.SessionID)
+		if !entryOK || entry.Artifacts == nil {
+			continue
+		}
+		if p, m, found := entry.Artifacts.LookupArtifact(id); found {
+			return p, m, true
+		}
+	}
+	return "", "", false
 }

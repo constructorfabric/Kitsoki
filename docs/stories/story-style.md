@@ -328,6 +328,67 @@ covers every feature combo across 23 spokes.
 
 ---
 
+## 3.7 `media:` — showing a recorded artifact
+
+A `media:` element is how a room says "here is the file this step
+produced." It is display-only — no input bar, no intent dispatch. The
+TUI renders a labeled pointer block (path to the `.artifacts/` file);
+the web UI renders the artifact inline (`<video>`, `<img>`, PDF/HTML
+embed). Full schema reference: `kitsoki docs app-schema` §`media:`.
+
+**Canonical usage pattern:**
+
+1. A step invokes `host.artifacts_dir` with `src_path` set to the file
+   the step produced. The handler copies the file under `.artifacts/`,
+   records an `artifact.emitted` trace event, and returns a stable
+   `handle`. Bind the handle into world:
+
+   ```yaml
+   - invoke: host.artifacts_dir
+     with:
+       src_path: "{{ world.output_path }}"
+       kind:     video
+       label:    "Session walkthrough"
+       thread:   walkthrough
+     bind: { walkthrough_handle: handle }
+   ```
+
+2. Reference the handle in a `media:` element. Guard the element so it
+   stays invisible before the artifact is ready:
+
+   ```yaml
+   view:
+     extends: "base"
+     blocks:
+       body:
+         - prose: >
+             The walkthrough recording is ready.
+         - media:
+             handle:  "{{ world.walkthrough_handle }}"
+             caption: "Session walkthrough"
+             kind:    video
+             when:    "world.walkthrough_handle != ''"
+   ```
+
+`handle` is required. `caption` (optional) overrides the default label.
+`kind` (optional) picks the TUI pointer icon and the web embed strategy;
+values: `video`, `image`, `pdf`, `html`, `slideshow`.
+
+Add a `when:` guard to suppress the element when the artifact is not yet
+ready (a world var bound by the preceding host call), following the same
+pattern as §4 placeholders.
+
+Cross-references:
+
+- [`embedded/app-schema.md`](../embedded/app-schema.md) §`media:` — full
+  field reference and emit-then-reference example.
+- [`docs/architecture/hosts.md`](../architecture/hosts.md#hostartifacts_dir)
+  §`host.artifacts_dir` — how to emit an artifact and obtain a handle.
+- [`docs/tracing/trace-format.md`](../tracing/trace-format.md) — the
+  `artifact.emitted` trace event shape.
+
+---
+
 ## 4. Placeholders for empty / pending values
 
 Lowercase, in parentheses. The pongo `|default` filter is the standard

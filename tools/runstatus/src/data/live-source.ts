@@ -201,6 +201,17 @@ export class LiveSource implements DataSource {
       .then((r) => r.messages ?? []);
   }
 
+  // ── Media artifacts ───────────────────────────────────────────────────────
+
+  /**
+   * Returns the server-side artifact URL for the given handle. The Go server
+   * exposes `GET /artifact/<handle>` which validates path traversal and serves
+   * the file via http.ServeContent (ETag, Range, Content-Type).
+   */
+  artifactUrl(handle: string): string {
+    return `/artifact/${handle}`;
+  }
+
   // ── Multi-story lifecycle RPCs ───────────────────────────────────────────
   //
   // These drive the home screen (story browser + live-session list +

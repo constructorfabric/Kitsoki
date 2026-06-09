@@ -1,8 +1,16 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { mount } from "@vue/test-utils";
 
 import ViewElement from "../../src/components/ViewElement.vue";
 import type { ViewElement as VE } from "../../src/types.js";
+
+// Mock createDataSource so ViewElement.vue's module-init call returns a stub
+// that resolves artifact handles to predictable fake URLs without a real server.
+vi.mock("../../src/data/source.js", () => ({
+  createDataSource: () => ({
+    artifactUrl: (handle: string) => `/fake-artifact/${handle}`,
+  }),
+}));
 
 function render(element: VE) {
   return mount(ViewElement, { props: { element } });
@@ -115,5 +123,102 @@ describe("ViewElement", () => {
     const kv = render({ Kind: "kv", Pairs: null });
     expect(kv.findAll("dt").length).toBe(0);
     kv.unmount();
+  });
+
+  // ── media element tests ────────────────────────────────────────────────────
+  // artifactUrl is supplied by the vi.mock stub above; no server involved.
+
+  it("media video/mp4 renders <video> with src from artifactUrl", () => {
+    const w = render({
+      Kind: "media",
+      Handle: "clip.mp4",
+      Mime: "video/mp4",
+    });
+    const wrapper = w.find(".ve-media");
+    expect(wrapper.exists()).toBe(true);
+    const video = wrapper.find("video.ve-media-video");
+    expect(video.exists()).toBe(true);
+    expect(video.attributes("src")).toBe("/fake-artifact/clip.mp4");
+    expect(video.attributes("controls")).toBeDefined();
+    w.unmount();
+  });
+
+  it("media image/png renders <img> with lazy loading and resolved src", () => {
+    const w = render({
+      Kind: "media",
+      Handle: "screenshot.png",
+      Mime: "image/png",
+    });
+    const img = w.find("img.ve-media-image");
+    expect(img.exists()).toBe(true);
+    expect(img.attributes("src")).toBe("/fake-artifact/screenshot.png");
+    expect(img.attributes("loading")).toBe("lazy");
+    w.unmount();
+  });
+
+  it("media application/pdf renders <iframe> with resolved src", () => {
+    const w = render({
+      Kind: "media",
+      Handle: "report.pdf",
+      Mime: "application/pdf",
+    });
+    const frame = w.find("iframe.ve-media-iframe");
+    expect(frame.exists()).toBe(true);
+    expect(frame.attributes("src")).toBe("/fake-artifact/report.pdf");
+    // PDF iframe must NOT have a sandbox attribute (needs plugin access)
+    expect(frame.attributes("sandbox")).toBeUndefined();
+    w.unmount();
+  });
+
+  it("media text/html renders a sandboxed <iframe>", () => {
+    const w = render({
+      Kind: "media",
+      Handle: "preview.html",
+      Mime: "text/html",
+    });
+    const frame = w.find("iframe.ve-media-iframe");
+    expect(frame.exists()).toBe(true);
+    expect(frame.attributes("src")).toBe("/fake-artifact/preview.html");
+    // sandbox attribute must be present (value may be "" or "true" in happy-dom)
+    expect(frame.attributes("sandbox")).toBeDefined();
+    w.unmount();
+  });
+
+  it("media unknown MIME renders a labeled <a> download link", () => {
+    const w = render({
+      Kind: "media",
+      Handle: "data.bin",
+      Mime: "application/octet-stream",
+      Caption: "Binary blob",
+    });
+    const link = w.find("a.ve-media-link");
+    expect(link.exists()).toBe(true);
+    expect(link.attributes("href")).toBe("/fake-artifact/data.bin");
+    expect(link.attributes("download")).toBe("data.bin");
+    expect(link.text()).toBe("Binary blob");
+    w.unmount();
+  });
+
+  it("media element renders caption below the media when Caption is set", () => {
+    const w = render({
+      Kind: "media",
+      Handle: "photo.jpg",
+      Mime: "image/jpeg",
+      Caption: "A test photo",
+    });
+    const caption = w.find("p.ve-media-caption");
+    expect(caption.exists()).toBe(true);
+    expect(caption.text()).toBe("A test photo");
+    w.unmount();
+  });
+
+  it("media element with no Handle renders the outer wrapper but no media tag", () => {
+    // A media element missing its Handle (zero-value from Go) must not crash;
+    // the template guard skips the inner <template v-if="el.Handle">.
+    const w = render({ Kind: "media", Mime: "image/png" });
+    expect(w.find(".ve-media").exists()).toBe(true);
+    expect(w.find("img").exists()).toBe(false);
+    expect(w.find("video").exists()).toBe(false);
+    w.unmount();
   });
 });

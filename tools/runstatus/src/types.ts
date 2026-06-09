@@ -112,10 +112,11 @@ export interface ChoiceItem {
  * ViewElement is one typed entry of a View's Elements slice, discriminated by
  * `Kind`. The kinds prose / heading / code / template / banner carry their body
  * in `Source`; list carries `Items`; kv carries `Pairs`; choice carries the
- * `Choice*` fields. All fields beyond `Kind` are optional because Go marshals
- * the full struct with zero values for the kinds that don't use them (e.g. a
- * prose element still emits `Items: null`, `Pairs: null`, …). `When` is the
- * optional element-level guard expression.
+ * `Choice*` fields; media carries `Handle`, `Mime`, and `Label`. All fields
+ * beyond `Kind` are optional because Go marshals the full struct with zero
+ * values for the kinds that don't use them (e.g. a prose element still emits
+ * `Items: null`, `Pairs: null`, …). `When` is the optional element-level guard
+ * expression.
  */
 export interface ViewElement {
   Kind:
@@ -126,8 +127,16 @@ export interface ViewElement {
     | "list"
     | "kv"
     | "banner"
-    | "choice";
+    | "choice"
+    | "media";
   Source?: string;
+  // ── Media fields (populated only when Kind === "media"). ──
+  /** Artifact handle/ref — resolved to a URL via the DataSource. */
+  Handle?: string;
+  /** MIME type, e.g. "video/mp4", "image/png". */
+  Mime?: string;
+  /** Optional human-readable display caption or alt text. */
+  Caption?: string;
   Items?: ListItem[] | null;
   Pairs?: KVPair[] | null;
   Marker?: string;

@@ -16,11 +16,27 @@
 //
 // For a live, updating view of an in-progress run, see `kitsoki status serve`
 // (cmd/kitsoki/status_serve.go) and docs/tracing/run-status-ui.md.
+//
+// # Media artifact sidecar export
+//
+// After writing the HTML or JSON output, both modes scan the session's journal
+// (the SQLite store at [defaultDBPath]) for [journal.KindArtifactEmitted]
+// entries and copy each artifact file into an `artifacts/` subdirectory next
+// to the output file, matching the `./artifacts/<handle>` relative URL that
+// [tools/runstatus/src/data/snapshot-source.ts] uses to serve media elements
+// in file:// (offline) mode.
+//
+// The scan is best-effort: if the store cannot be opened (e.g. no live session
+// exists for the trace, or the DB is absent), or if a source file has been
+// deleted, the copy is skipped with a warning and the export continues. The
+// HTML/JSON output is always written regardless of whether any artifacts could
+// be copied.
 package main
 
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -29,8 +45,11 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"kitsoki/internal/app"
+	"kitsoki/internal/journal"
 	"kitsoki/internal/runstatus"
 	"kitsoki/internal/runstatus/web"
+	"kitsoki/internal/store"
 )
 
 func exportStatusCmd() *cobra.Command {
@@ -152,12 +171,16 @@ func runExportFromTrace(tracePath, appPath, currentStateFlag, sessionIDFlag, sta
 		if err != nil {
 			return fmt.Errorf("marshal snapshot: %w", err)
 		}
-		return writeHTMLArtifact(snapJSON, runstatus.ArtifactOptions{
+		if err := writeHTMLArtifact(snapJSON, runstatus.ArtifactOptions{
 			Name:    artifactBaseName(outPath),
 			Commit:  gitShort("HEAD"),
 			Branch:  gitBranch(),
 			BuiltAt: time.Now(),
-		}, outPath)
+		}, outPath); err != nil {
+			return err
+		}
+		copyMediaArtifacts(snap.Session.SessionID, filepath.Dir(outPath))
+		return nil
 	}
 
 	// ── JSON output ───────────────────────────────────────────────────────
@@ -175,6 +198,7 @@ func runExportFromTrace(tracePath, appPath, currentStateFlag, sessionIDFlag, sta
 	if err := enc.Encode(snap); err != nil {
 		return fmt.Errorf("encode snapshot: %w", err)
 	}
+	copyMediaArtifacts(snap.Session.SessionID, filepath.Dir(outPath))
 	return nil
 }
 
@@ -202,7 +226,16 @@ func runExportFromSnapshot(snapshotPath, outPath string) error {
 		SidecarDir:   filepath.Dir(snapshotPath),
 		RegenComment: runstatus.RegenComment(relTo(root, snapshotPath), relTo(root, outPath)),
 	}
-	return writeHTMLArtifact(snapJSON, opts, outPath)
+	if err := writeHTMLArtifact(snapJSON, opts, outPath); err != nil {
+		return err
+	}
+	// Best-effort media sidecar copy: extract the session_id from the snapshot
+	// JSON and copy artifact files next to the HTML output.
+	sessionID := sessionIDFromSnapshotJSON(snapJSON)
+	if sessionID != "" {
+		copyMediaArtifacts(sessionID, filepath.Dir(outPath))
+	}
+	return nil
 }
 
 // writeHTMLArtifact renders snapshotJSON into the bundled SPA and writes the
@@ -274,4 +307,116 @@ func relTo(base, target string) string {
 		return rel
 	}
 	return target
+}
+
+// copyMediaArtifacts copies media artifact files referenced in the session's
+// journal into <outDir>/artifacts/<id> so that the snapshot HTML can resolve
+// them via the relative URL ./artifacts/<handle> used by snapshot-source.ts.
+//
+// The scan opens the default session store (see [defaultDBPath]) and calls
+// [journal.Reader.ReplayTyped] to find every [journal.KindArtifactEmitted]
+// entry for the session.  For each entry the source file is copied to
+// <outDir>/artifacts/<id>.  Both the DB open and individual file copies are
+// best-effort: any failure is printed to stderr and the function continues so
+// the caller's export always completes, even when the journal or source files
+// are unavailable (e.g. offline replay of an old fixture trace).
+func copyMediaArtifacts(sessionID, outDir string) {
+	if sessionID == "" {
+		return
+	}
+
+	// Open the session store to get the journal reader.
+	dbPath := defaultDBPath()
+	s, err := store.Open(dbPath)
+	if err != nil {
+		// DB absent or inaccessible — silently skip (common for fixture traces).
+		return
+	}
+	defer func() { _ = s.Close() }()
+
+	jr, err := journal.NewSQLiteReader(s.DB())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "export-status: open journal reader: %v\n", err)
+		return
+	}
+
+	sid := app.SessionID(sessionID)
+	seq, errFn := jr.ReplayTyped(sid)
+
+	artifactsDir := filepath.Join(outDir, "artifacts")
+	dirCreated := false
+
+	for entry := range seq {
+		if entry.Kind != journal.KindArtifactEmitted {
+			continue
+		}
+		var ev journal.ArtifactEvent
+		if err := json.Unmarshal(entry.Body, &ev); err != nil {
+			fmt.Fprintf(os.Stderr, "export-status: unmarshal artifact event: %v\n", err)
+			continue
+		}
+		if ev.ID == "" || ev.Path == "" {
+			continue
+		}
+
+		// Ensure the artifacts directory exists on first use.
+		if !dirCreated {
+			if mkErr := os.MkdirAll(artifactsDir, 0o755); mkErr != nil {
+				fmt.Fprintf(os.Stderr, "export-status: create artifacts dir %q: %v\n", artifactsDir, mkErr)
+				break
+			}
+			dirCreated = true
+		}
+
+		dest := filepath.Join(artifactsDir, ev.ID)
+		if copyErr := copyFileForExport(ev.Path, dest); copyErr != nil {
+			// Source may have been deleted or moved; warn and continue.
+			fmt.Fprintf(os.Stderr, "export-status: skip artifact %q: %v\n", ev.ID, copyErr)
+		}
+	}
+
+	// Non-nil error means the scan ended on a DB error (not a clean end).
+	if scanErr := errFn(); scanErr != nil {
+		fmt.Fprintf(os.Stderr, "export-status: scan journal: %v\n", scanErr)
+	}
+}
+
+// copyFileForExport copies src to dst, skipping gracefully when src does not
+// exist.  Returns an error only when src exists but the copy fails.
+func copyFileForExport(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// Source gone — treat as a warning, not a hard failure.
+			return fmt.Errorf("source file not found: %w", err)
+		}
+		return fmt.Errorf("open source %q: %w", src, err)
+	}
+	defer func() { _ = in.Close() }()
+
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err != nil {
+		return fmt.Errorf("create dest %q: %w", dst, err)
+	}
+	defer func() { _ = out.Close() }()
+
+	if _, err := io.Copy(out, in); err != nil {
+		return fmt.Errorf("copy to %q: %w", dst, err)
+	}
+	return out.Close()
+}
+
+// sessionIDFromSnapshotJSON extracts the session_id from the top-level
+// "session" object of a serialised [runstatus.Snapshot] JSON blob.
+// Returns "" when the field is absent or the JSON cannot be parsed.
+func sessionIDFromSnapshotJSON(snapJSON []byte) string {
+	var partial struct {
+		Session struct {
+			SessionID string `json:"session_id"`
+		} `json:"session"`
+	}
+	if err := json.Unmarshal(snapJSON, &partial); err != nil {
+		return ""
+	}
+	return partial.Session.SessionID
 }

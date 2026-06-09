@@ -180,6 +180,20 @@ thought.
   the Oregon Trail calibration history. The user-facing reference
   for the shipped surface lives at
   [`../architecture/semantic-routing.md`](../architecture/semantic-routing.md).
+- [`visual-outputs.md`](visual-outputs.md) — **epic.** Make a visual output
+  a step produces (MP4 / PNG slideshow / slidey deck) a first-class,
+  **recorded** media artifact: emitted under `.artifacts/`, recorded in the
+  trace, shown inline in the web UI, pointed at in the TUI. Nothing
+  implemented yet; decomposed into three slices:
+  - [`media-artifact-substrate.md`](media-artifact-substrate.md) (runtime) —
+    producer-agnostic core: a recorded `artifact` datapoint + opaque world
+    handle + a `media` typed-view element + minimal TUI pointer rendering.
+  - [`visual-producers.md`](visual-producers.md) (runtime) —
+    `host.slidey.render` + `host.contact_sheet` host calls wrapping the
+    existing standalone slidey + `contact-sheet.sh`, deterministically.
+  - [`web-media-rendering.md`](web-media-rendering.md) (tui) — Vue `media`
+    element (`<video>`/`<img>`/embed) + a `kitsoki web` route serving
+    artifact binaries (live) and sidecar files (static export).
 - [`view-rendering-readability.md`](view-rendering-readability.md) —
   **epic.** Make the typed element tree the single canonical view
   representation so prose reads cleanly across the TUI and the web,

@@ -276,6 +276,12 @@ func RegisterBuiltins(r *Registry) {
 	r.Register("host.ide.get_open_editors", IDEGetOpenEditorsHandler)
 	r.Register("host.ide.open_file", IDEOpenFileHandler)
 	r.Register("host.ide.open_diff", IDEOpenDiffHandler)
+
+	// Visual output producers (visual-outputs epic, Slice 2).
+	// host.slidey.render — validate + render a JSON scene spec via slidey.
+	// host.contact_sheet — PNG montage of frames via ffmpeg tile filter.
+	r.Register("host.slidey.render", SlideyRenderHandler)
+	r.Register("host.contact_sheet", ContactSheetHandler)
 }
 
 // OracleExtractHandler is implemented in oracle_extract.go.

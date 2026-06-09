@@ -191,6 +191,41 @@ const KindTaskAcceptanceAttempt = "task.acceptance.attempt"
 // "external_side_effect".
 const KindTaskEnd = "task.end"
 
+// ---- artifact tracing -------------------------------------------------------
+
+// KindArtifactEmitted records that a host call produced a named media artifact
+// (e.g. a rendered PNG, MP4, PDF, HTML page, or slideshow). Emitted by the
+// host.artifacts_dir handler when the caller supplies src_path + kind instead
+// of body text.
+//
+// Body shape (ArtifactEvent):
+//
+//	{id, kind, mime, label, path, producer, size_bytes, created_at}
+//
+// id         — stable handle (<basename>#<counter>, same shape as message_id)
+// kind       — one of: video / image / pdf / html / slideshow
+// mime       — MIME type (e.g. "video/mp4", "image/png")
+// label      — human-readable display name (from args["label"])
+// path       — absolute path of the file under the artifacts root
+// producer   — host call name that produced the artifact (always "host.artifacts_dir")
+// size_bytes — file size in bytes after copy
+// created_at — timestamp of the copy operation
+const KindArtifactEmitted = "artifact.emitted"
+
+// ArtifactEvent is the body shape for KindArtifactEmitted entries.
+// Writers marshal this to json.RawMessage and assign it to Entry.Body.
+// Readers switch on Entry.Kind == KindArtifactEmitted and unmarshal here.
+type ArtifactEvent struct {
+	ID        string    `json:"id"`
+	Kind      string    `json:"kind"`
+	Mime      string    `json:"mime,omitempty"`
+	Label     string    `json:"label,omitempty"`
+	Path      string    `json:"path"`
+	Producer  string    `json:"producer"`
+	SizeBytes int64     `json:"size_bytes"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 // ---- IDE link tracing -------------------------------------------------------
 
 // KindIDEContextCaptured records one host.ide.get_* pull whose result feeds a

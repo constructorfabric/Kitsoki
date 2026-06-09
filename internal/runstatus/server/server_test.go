@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -233,5 +234,145 @@ func TestServer_SubscribeAndStream(t *testing.T) {
 		assert.Equal(t, "exit", res.ev.StatePath)
 	case <-ctx.Done():
 		t.Fatal("timed out waiting for SSE event")
+	}
+}
+
+// ── /artifact/{id} route tests ───────────────────────────────────────────────
+
+// stubArtifactResolver is a minimal ArtifactResolver that maps handle IDs to
+// (path, mime) pairs. It is used to wire the server's artifact route without
+// touching a real journal or orchestrator.
+type stubArtifactResolver struct {
+	entries map[string]artifactEntry
+}
+
+type artifactEntry struct {
+	path string
+	mime string
+}
+
+func newStubResolver(entries map[string]artifactEntry) *stubArtifactResolver {
+	return &stubArtifactResolver{entries: entries}
+}
+
+func (r *stubArtifactResolver) LookupArtifact(id string) (path, mime string, ok bool) {
+	e, ok := r.entries[id]
+	return e.path, e.mime, ok
+}
+
+// buildArtifactServer spins up a test server whose single-entry provider has
+// an ArtifactResolver stub. It returns the httptest.Server and the absolute
+// path of the fixture file written into a temp directory.
+func buildArtifactServer(t *testing.T, handle, mimeType string, content []byte, ext string) (*httptest.Server, string) {
+	t.Helper()
+	dir := t.TempDir()
+	fname := handle + ext
+	fpath := filepath.Join(dir, fname)
+	require.NoError(t, os.WriteFile(fpath, content, 0o644))
+
+	resolver := newStubResolver(map[string]artifactEntry{
+		handle: {path: fpath, mime: mimeType},
+	})
+
+	// Build a server via NewMulti with a stub provider that has the resolver.
+	p := newStubProvider()
+	p.mu.Lock()
+	p.entries["sess-art"] = server.Entry{
+		Source:    &stubSource{header: runstatus.SessionHeader{SessionID: "sess-art"}, def: testDef()},
+		Artifacts: resolver,
+	}
+	p.mu.Unlock()
+
+	ts := httptest.NewServer(server.NewMulti(p).Handler())
+	t.Cleanup(ts.Close)
+	return ts, fpath
+}
+
+// urlEncodeHandle percent-encodes the '#' in a handle ID so the HTTP client
+// does not treat it as a URL fragment separator. The server strips the
+// /artifact/ prefix from the raw URL path, so the encoded form must be used
+// in the path.
+func urlEncodeHandle(h string) string {
+	return strings.ReplaceAll(h, "#", "%23")
+}
+
+// TestArtifact_ServesFixtureWithContentType proves GET /artifact/{id} returns
+// 200 with the correct Content-Type header and the exact file content.
+func TestArtifact_ServesFixtureWithContentType(t *testing.T) {
+	t.Parallel()
+	handle := "demo_video#ab12cd34"
+	content := []byte("FAKEVIDEO")
+	ts, _ := buildArtifactServer(t, handle, "video/mp4", content, ".mp4")
+
+	resp, err := http.Get(ts.URL + "/artifact/" + urlEncodeHandle(handle))
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, "video/mp4", resp.Header.Get("Content-Type"))
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Equal(t, content, body)
+}
+
+// TestArtifact_HonorsRangeRequest proves the server supports HTTP Range
+// requests (needed for video seeking in the browser). It requests the last
+// 4 bytes and expects a 206 Partial Content response with the correct slice.
+func TestArtifact_HonorsRangeRequest(t *testing.T) {
+	t.Parallel()
+	handle := "range_video#00000001"
+	content := []byte("ABCDEFGHIJ") // 10 bytes
+	ts, _ := buildArtifactServer(t, handle, "video/mp4", content, ".mp4")
+
+	req, err := http.NewRequest(http.MethodGet, ts.URL+"/artifact/"+urlEncodeHandle(handle), nil)
+	require.NoError(t, err)
+	req.Header.Set("Range", "bytes=6-9") // 4 bytes: G H I J
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	require.Equal(t, http.StatusPartialContent, resp.StatusCode, "Range request should return 206")
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Equal(t, []byte("GHIJ"), body, "Range slice must match bytes 6-9 of the fixture")
+}
+
+// TestArtifact_UnknownIDReturns404 proves an unknown handle returns 404
+// without leaking path information.
+func TestArtifact_UnknownIDReturns404(t *testing.T) {
+	t.Parallel()
+	handle := "known_video#aaaabbbb"
+	ts, _ := buildArtifactServer(t, handle, "video/mp4", []byte("X"), ".mp4")
+
+	resp, err := http.Get(ts.URL + "/artifact/no_such_handle%23ffffffff")
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+}
+
+// TestArtifact_PathEscapeGuard proves that URL paths containing encoded slashes
+// (which could smuggle ".." path components) after the /artifact/ prefix are
+// rejected with 404 — the server must not serve files outside the artifacts
+// root. Note: literal "../.." in URLs is cleaned by net/http's ServeMux before
+// reaching the handler; the meaningful attack vector is percent-encoded slashes
+// (%2F) that bypass the mux's clean step but still contain "/" after decoding.
+func TestArtifact_PathEscapeGuard(t *testing.T) {
+	t.Parallel()
+	ts, _ := buildArtifactServer(t, "legit#00000001", "video/mp4", []byte("X"), ".mp4")
+
+	// These all contain "/" in the decoded id segment — the server rejects them.
+	for _, rawSuffix := range []string{
+		"..%2F..%2Fetc%2Fpasswd",          // ../ decoded by server
+		"legit%2300000001%2Fextra",         // slash after handle
+		"legit%2300000001%2F..%2Fsecret",   // slash + traversal after handle
+	} {
+		resp, err := http.Get(ts.URL + "/artifact/" + rawSuffix)
+		require.NoError(t, err)
+		_ = resp.Body.Close()
+		assert.Equal(t, http.StatusNotFound, resp.StatusCode,
+			"path %q should be rejected as 404", rawSuffix)
 	}
 }

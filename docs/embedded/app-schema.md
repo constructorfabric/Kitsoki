@@ -146,10 +146,60 @@ view:
 | `code:`     | `<string>`                                                | Layout-preserved content (tables, ASCII art, includes).  |
 | `template:` | `<string>` (pongo2 body)                                  | Raw pongo escape hatch.                                  |
 | `choice:`   | `{ mode, prompt, items / fields, ... }` (see below)       | Interactive picker / multi-select / mad-lib form.        |
+| `media:`    | `{ handle, caption?, kind? }` (see below)                 | Display a recorded media artifact; TUI pointer / web inline. |
 
 Every element accepts an optional element-level `when:` guard (expr-lang)
 evaluated against `world.*` / `slots.*`. Items in a `list:` accept their
 own `when:`. Examples: see [`docs/stories/story-style.md`](../stories/story-style.md) §2.
+
+## `media:` — media artifact display
+
+A `media:` element references a media artifact recorded by a prior step.
+It is display-only (no input, no dispatch). The TUI renders a labeled
+pointer block showing the artifact kind icon, handle, and resolved path.
+The web UI renders it inline (`<video>`, `<img>`, PDF/HTML embed) via the
+`GET /artifact/{id}` route.
+
+```yaml
+view:
+  - media:
+      handle:  "{{ world.walkthrough_handle }}"   # required — artifact id from host.artifacts_dir
+      caption: "Walkthrough recording"             # optional one-line label
+      kind:    video                               # optional hint: video/image/pdf/html/slideshow
+```
+
+| Field     | Required | Notes                                                                                        |
+|-----------|----------|----------------------------------------------------------------------------------------------|
+| `handle`  | yes      | Artifact id/handle bound into world by `host.artifacts_dir` (`bind: { my_handle: handle }`). May be a pongo2 template. |
+| `caption` | no       | One-line label shown beneath the artifact. Defaults to `handle` when absent.                 |
+| `kind`    | no       | Selects the pointer icon in the TUI and the embed strategy in the web UI. Values: `video`, `image`, `pdf`, `html`, `slideshow`. Unknown/absent kinds use a generic attachment icon. |
+
+The optional element-level `when:` guard (expr-lang) suppresses the element
+when false, e.g. `when: "world.walkthrough_handle != ''"`.
+
+**How to emit an artifact and reference it:**
+
+1. Run a render step (e.g. `host.slidey.render` or `host.run` calling ffmpeg).
+2. Register the output file with `host.artifacts_dir` using the `src_path` /
+   `kind` fields — this records an `artifact.emitted` trace event and returns a
+   stable `handle`. Bind the handle into world:
+
+   ```yaml
+   - invoke: host.artifacts_dir
+     with:
+       src_path: "{{ world.output_path }}"
+       kind:     video
+       label:    "Session walkthrough"
+       thread:   walkthrough
+     bind: { walkthrough_handle: handle }
+   ```
+
+3. Reference the handle in a `media:` element (see example above).
+
+For the `artifact.emitted` trace event shape see
+[`docs/tracing/trace-format.md` §Artifact event kind](../tracing/trace-format.md).
+For the full `host.artifacts_dir` media-emit arg reference see
+[`docs/architecture/hosts.md` §host.artifacts_dir](../architecture/hosts.md#hostartifacts_dir).
 
 ## `choice:` — interactive picker / multi / form
 

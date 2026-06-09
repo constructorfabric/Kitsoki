@@ -219,9 +219,10 @@ func (r *SessionRegistry) Get(sessionID string) (server.Entry, bool) {
 		return server.Entry{}, false
 	}
 	return server.Entry{
-		Source: e.source,
-		Driver: e.driver,
-		Meta:   &metaDriver{ctrl: r.metaControllerForLocked(e), chats: e.rt.ChatStore, entry: e},
+		Source:    e.source,
+		Driver:    e.driver,
+		Meta:      &metaDriver{ctrl: r.metaControllerForLocked(e), chats: e.rt.ChatStore, entry: e},
+		Artifacts: &server.JournalArtifactResolver{Reader: e.rt.JournalRead, SID: e.sid},
 	}, true
 }
 

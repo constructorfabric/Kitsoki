@@ -210,6 +210,7 @@ All kinds use the dotted form the SPA subsystem chip logic already consumes.
 | `world.update`               | One effect applied during a transition.                     |
 | `scheduler.submitted`        | Background job dispatched.                                  |
 | `scheduler.completed`        | Background job reached a terminal state.                    |
+| `artifact.emitted`           | A host call produced a named media artifact (see §Artifact event). |
 
 **Forward compatibility:** unknown `kind` values are preserved verbatim on
 round-trip — `BuildJourney` ignores them; the JSONL reader passes them through
@@ -265,6 +266,53 @@ payloads remain inline.
 
 For the full oracle plugin contract (transports, lifecycle, auth/secrets, and
 sub-events), see [`docs/architecture/oracle-plugin.md`](../architecture/oracle-plugin.md).
+
+### Artifact event kind
+
+`artifact.emitted` is written by `host.artifacts_dir` when the caller supplies
+`src_path` + `kind` (the media-emit path) rather than a markdown `body`. The
+event records the produced file as a first-class, queryable fact in the trace —
+consumers (the web UI's `/artifact/{id}` route, the TUI pointer) read from this
+record rather than reconstructing file paths from world state
+(memory: *narration-belongs-in-trace*).
+
+Source type: `ArtifactEvent` in `internal/journal/types.go`.
+
+| Field        | Type   | Description                                                                          |
+|--------------|--------|--------------------------------------------------------------------------------------|
+| `id`         | string | Stable handle: `<basename>#<counter>`, same shape as `host.artifacts_dir` `message_id`. The web server resolves `GET /artifact/{id}` against this field. |
+| `kind`       | string | Media kind: `video`, `image`, `pdf`, `html`, or `slideshow`.                        |
+| `mime`       | string | MIME type, e.g. `video/mp4`, `image/png`, `application/pdf`. Auto-detected when absent from the call args. |
+| `label`      | string | Human-readable display name supplied via `args["label"]`.                            |
+| `path`       | string | Absolute path of the copied file under the artifacts root. Never crossed into world (the world handle carries only `id`). |
+| `producer`   | string | Host call that emitted the artifact; currently always `"host.artifacts_dir"`.        |
+| `size_bytes` | int64  | File size in bytes after the copy operation.                                         |
+| `created_at` | string | RFC3339Nano timestamp of the copy operation.                                         |
+
+Example wire shape:
+
+```json
+{
+  "turn": 3, "seq": 7, "ts": "2026-06-09T12:00:00Z",
+  "kind": "artifact.emitted",
+  "state_path": "render_deck",
+  "payload": {
+    "id": "walkthrough#1",
+    "kind": "video",
+    "mime": "video/mp4",
+    "label": "Architecture walkthrough",
+    "path": "/home/user/project/.artifacts/session-abc/walkthrough#1.mp4",
+    "producer": "host.artifacts_dir",
+    "size_bytes": 12582912,
+    "created_at": "2026-06-09T12:00:00.123456789Z"
+  }
+}
+```
+
+`artifact.emitted` events are **no-ops for replay** — `BuildJourney` ignores them.
+The event is written exactly once per `host.artifacts_dir` media-emit call (i.e. once
+per file copied under the artifacts root). The `id` is stable across replays because
+it is derived from the filename and append counter, not from a random UUID.
 
 ---
 

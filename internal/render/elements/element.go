@@ -299,6 +299,23 @@ func evalElementSources(el app.ViewElement, env expr.Env, rr ViewRenderer) (app.
 			}
 			el.ChoiceItems = filtered
 		}
+	case "media":
+		// Expand pongo2 templates in caption and path so world slot
+		// references (e.g. {{world.artifact_path}}) resolve at render time.
+		if el.MediaCaption != "" {
+			cap, err := renderLeaf(rr, el.MediaCaption, env)
+			if err != nil {
+				return el, fmt.Errorf("media caption: %w", err)
+			}
+			el.MediaCaption = strings.TrimSpace(cap)
+		}
+		if el.MediaPath != "" {
+			p, err := renderLeaf(rr, el.MediaPath, env)
+			if err != nil {
+				return el, fmt.Errorf("media path: %w", err)
+			}
+			el.MediaPath = strings.TrimSpace(p)
+		}
 	}
 	return el, nil
 }
@@ -331,6 +348,13 @@ func renderOne(el app.ViewElement, env expr.Env, width int, glamour GlamourFunc,
 			Min: el.ChoiceMin, MinSet: el.ChoiceMinSet,
 			Max: el.ChoiceMax, MaxSet: el.ChoiceMaxSet,
 			Template: el.ChoiceTemplate, Fields: el.ChoiceFields,
+		}.Render(width, env, rr)
+	case "media":
+		return Media{
+			Handle:  el.MediaHandle,
+			Caption: el.MediaCaption,
+			Kind:    el.MediaKind,
+			Path:    el.MediaPath,
 		}.Render(width, env, rr)
 	default:
 		return "", fmt.Errorf("unknown element kind %q", el.Kind)

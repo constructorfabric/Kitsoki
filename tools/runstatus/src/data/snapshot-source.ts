@@ -162,4 +162,15 @@ export class SnapshotSource implements DataSource {
   metaTranscript(_sessionId: string, _chatId: string): Promise<MetaMessage[]> {
     return this.readOnly("metaTranscript");
   }
+
+  // ── Media artifacts ───────────────────────────────────────────────────────
+
+  /**
+   * Returns a relative sidecar path for offline/snapshot mode. The snapshot
+   * HTML artifact is expected to live alongside an `artifacts/` directory
+   * containing the media files keyed by handle (filename).
+   */
+  artifactUrl(handle: string): string {
+    return `./artifacts/${handle}`;
+  }
 }

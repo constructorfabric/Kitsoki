@@ -1,0 +1,10 @@
+# Deterministic no-LLM flow for the media-demo story.
+# Starts in show_media so the SPA immediately shows the media ViewElements.
+# No turns needed — the spec navigates to the chat view and asserts the
+# <video> and <img> elements are rendered with /artifact/* src attributes.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: show_media
+initial_world: {}
+turns: []
