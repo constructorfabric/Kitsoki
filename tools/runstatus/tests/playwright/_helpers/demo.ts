@@ -20,41 +20,19 @@
  *  - Dwell timing must scale with WEB_CHAT_PACE so the same spec validates fast
  *    (PACE=0) and records at watch-speed (PACE=1). → dwell.
  *
- * See docs/skills/kitsoki-ui-demo/SKILL.md → "Deterministic recording".
+ * These compose with the video lifecycle helpers in _helpers/server.ts —
+ * `prepareVideoDir` (beforeAll) + `saveAndRemuxVideo` (after context.close) —
+ * which are the canonical save path (a plain copy from the video dir picks a
+ * stale file and skips the remux that fixes VP8 webm duration metadata). See
+ * docs/skills/kitsoki-ui-demo/SKILL.md → "Deterministic recording".
  */
-import { type Browser, type BrowserContext, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
 import path from "path";
 import fs from "fs";
 import { PACE } from "./server.js";
 
 /** Fixed MacBook-ish recording resolution — keep every demo identical. */
 export const DEMO_VIEWPORT = { width: 1600, height: 900 } as const;
-
-/**
- * A recording browser context at the fixed resolution, with any stale `.webm`
- * in videoDir cleared first so the published demo is always THIS run's video
- * (Playwright names videos by an internal id, so a prior run would otherwise be
- * picked up by name).
- */
-export async function recordingContext(browser: Browser, videoDir: string): Promise<BrowserContext> {
-  fs.mkdirSync(videoDir, { recursive: true });
-  for (const f of fs.readdirSync(videoDir)) {
-    if (f.endsWith(".webm")) fs.rmSync(path.join(videoDir, f));
-  }
-  return browser.newContext({
-    viewport: { ...DEMO_VIEWPORT },
-    recordVideo: { dir: videoDir, size: { ...DEMO_VIEWPORT } },
-  });
-}
-
-/** Copy the recorded webm to a stable name the render scripts expect. */
-export function publishVideo(videoDir: string, artifactDir: string, name: string): string | null {
-  const vids = fs.readdirSync(videoDir).filter((f) => f.endsWith(".webm"));
-  if (vids.length === 0) return null;
-  const stable = path.join(artifactDir, name);
-  fs.copyFileSync(path.join(videoDir, vids[0]!), stable);
-  return stable;
-}
 
 /** Dwell scaled by WEB_CHAT_PACE (0 = fast validation, 1 = watch-speed). */
 export function dwell(page: Page, ms: number): Promise<void> {

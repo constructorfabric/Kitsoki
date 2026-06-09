@@ -30,12 +30,19 @@
  * Then:    docs/skills/kitsoki-ui-demo/scripts/render.sh \
  *            .artifacts/diagram-showcase/diagram-showcase-demo.webm
  */
-import { test, expect, chromium, type Browser, type Page } from "@playwright/test";
+import { test, expect, chromium, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import path from "path";
-import { startWebServer, repoRoot, makeShot, waitForState, type WebServer } from "./_helpers/server.js";
 import {
-  recordingContext,
-  publishVideo,
+  startWebServer,
+  repoRoot,
+  makeShot,
+  waitForState,
+  prepareVideoDir,
+  saveAndRemuxVideo,
+  type WebServer,
+} from "./_helpers/server.js";
+import {
+  DEMO_VIEWPORT,
   dwell,
   installCurtain,
   liftCurtain,
@@ -52,6 +59,7 @@ const BEAT = 5000;
 
 let server: WebServer;
 test.beforeAll(async () => {
+  prepareVideoDir(VIDEO_DIR); // clear stale webm so saveAndRemuxVideo picks THIS run's
   server = await startWebServer({ addr: ADDR, flow: FLOW, storiesDir: STORY_DIR });
 });
 test.afterAll(() => server?.stop());
@@ -72,8 +80,12 @@ async function stageDiagram(page: Page): Promise<void> {
 test("state-diagram four-view showcase (dev-story, no-LLM)", async () => {
   test.setTimeout(300000);
   const browser: Browser = await chromium.launch({ headless: true });
-  const context = await recordingContext(browser, VIDEO_DIR);
+  const context: BrowserContext = await browser.newContext({
+    viewport: { ...DEMO_VIEWPORT },
+    recordVideo: { dir: VIDEO_DIR, size: { ...DEMO_VIEWPORT } },
+  });
   const page: Page = await context.newPage();
+  const video = page.video(); // capture BEFORE context.close()
   const shot = makeShot(ARTIFACT_DIR);
   const { mark, onThrow } = captureDiagnostics(page, ARTIFACT_DIR);
 
@@ -189,10 +201,8 @@ test("state-diagram four-view showcase (dev-story, no-LLM)", async () => {
     onThrow(err);
     throw err;
   } finally {
-    await context.close();
+    await context.close(); // finalises the recording
+    await saveAndRemuxVideo(video, ARTIFACT_DIR, "diagram-showcase-demo");
     await browser.close();
   }
-
-  const stable = publishVideo(VIDEO_DIR, ARTIFACT_DIR, "diagram-showcase-demo.webm");
-  if (stable) console.log(`[diagram-showcase] demo: ${stable}`);
 });

@@ -70,9 +70,11 @@ them.** The reference spec is `tests/playwright/diagram-showcase.spec.ts`.
   down the user's `make web-dev` servers (`/tmp/kitsoki-fixed web …`). Give each
   spec its own port and let `afterAll` stop only its own server.
 
-The shared helpers (`_helpers/demo.ts`): `recordingContext` (fixed 1600×900,
-clears stale webm), `installCurtain` / `liftCurtain`, `makeCaption` → `beat`,
-`captureDiagnostics`, `dwell` (PACE-scaled), `publishVideo`.
+The shared helpers (`_helpers/demo.ts`): `installCurtain` / `liftCurtain`,
+`makeCaption` → `beat`, `captureDiagnostics`, `dwell` (PACE-scaled),
+`DEMO_VIEWPORT`. For the recording lifecycle use `_helpers/server.ts`'s
+`prepareVideoDir` (beforeAll) + `saveAndRemuxVideo` (after `context.close`) — the
+remux pattern documented below, **not** a plain copy from the video dir.
 
 ## The loop
 
