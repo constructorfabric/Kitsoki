@@ -185,6 +185,8 @@ func exchangesFromContext(ictx context.Context) []HTTPExchange {
 		return c.Exchanges
 	case *ReplayClient:
 		return c.Exchanges()
+	case *RecordReplayClient:
+		return c.Exchanges()
 	default:
 		return nil
 	}

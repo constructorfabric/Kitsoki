@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 
 	"go.starlark.net/starlark"
 )
@@ -155,9 +156,16 @@ func (r *httpResponse) Attr(name string) (starlark.Value, error) {
 	case "status":
 		return starlark.MakeInt(r.resp.Status), nil
 	case "headers":
+		// Insert in sorted key order so a script that iterates resp.headers sees
+		// a deterministic order across runs (Go map iteration is randomised).
 		d := starlark.NewDict(len(r.resp.Headers))
-		for k, v := range r.resp.Headers {
-			if err := d.SetKey(starlark.String(k), starlark.String(v)); err != nil {
+		keys := make([]string, 0, len(r.resp.Headers))
+		for k := range r.resp.Headers {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			if err := d.SetKey(starlark.String(k), starlark.String(r.resp.Headers[k])); err != nil {
 				return nil, err
 			}
 		}

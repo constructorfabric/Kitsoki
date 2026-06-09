@@ -4,13 +4,18 @@
 # effect's on_error: arc fires → the session lands in `failed` with
 # world.last_error set. A non-2xx is NOT a transport error, so the real handler
 # runs to completion and the cassette never opens a socket.
+#
+# Recorded against the real jsonplaceholder API (GET /users/999 → 404) and
+# trimmed to the Content-Type header. See enrich_user.http.yaml for the
+# re-record command.
 kind: http_cassette
+record_mode: none
 exchanges:
-  - match:
+  - request:
       method: GET
-      url: "https://jsonplaceholder.typicode.com/users/999"
+      url: https://jsonplaceholder.typicode.com/users/999
     response:
       status: 404
       headers:
-        Content-Type: application/json
+        Content-Type: application/json; charset=utf-8
       body: "{}"

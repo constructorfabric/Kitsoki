@@ -476,6 +476,12 @@ type orchRig struct {
 	// Retained so runOneFlowOrchestrator can check for unmatched (orphan)
 	// episodes after all turns complete.
 	cassette *Cassette
+
+	// httpCassetteFlush persists newly recorded Starlark HTTP exchanges back to
+	// the starlark_http_cassette: file after all turns complete. nil unless the
+	// effective HTTP record mode is non-none. Called from runOneFlowOrchestrator
+	// before cleanup so a record run leaves the cassette on disk.
+	httpCassetteFlush func() error
 }
 
 // buildOrchestratorRig constructs a fully wired orchestrator rig for one flow
@@ -686,7 +692,34 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 			_ = st.Close()
 			return nil, fmt.Errorf("buildOrchestratorRig: parse starlark http cassette %q: %w", cassettePath, uerr)
 		}
-		rc := starlarkhost.NewReplayClient(&cas)
+
+		// Effective record mode: KITSOKI_HTTP_CASSETTE_RECORD wins over the
+		// cassette's record_mode: field; empty means replay-only ("none").
+		mode := cas.RecordMode
+		if env := os.Getenv("KITSOKI_HTTP_CASSETTE_RECORD"); env != "" {
+			mode = env
+		}
+		if vErr := starlarkhost.ValidateRecordMode(mode); vErr != nil {
+			_ = st.Close()
+			return nil, fmt.Errorf("buildOrchestratorRig: %w", vErr)
+		}
+		// KITSOKI_CASSETTE_STRICT forbids recording (CI guard), mirroring the
+		// oracle host_cassette strict check.
+		if CassetteStrictRecording() && mode != "" && mode != starlarkhost.RecordModeNone {
+			_ = st.Close()
+			return nil, fmt.Errorf("buildOrchestratorRig: KITSOKI_CASSETTE_STRICT=1 but starlark http record_mode is %q", mode)
+		}
+
+		// Replay-only uses the lightweight ReplayClient; any record mode uses a
+		// RecordReplayClient backed by a real transport, flushed after the run.
+		var httpClient starlarkhost.HTTPClient
+		if mode == "" || mode == starlarkhost.RecordModeNone {
+			httpClient = starlarkhost.NewReplayClient(&cas)
+		} else {
+			rrc := starlarkhost.NewRecordReplayClient(&cas, mode, starlarkhost.NewRecordingClient())
+			httpClient = rrc
+			rig.httpCassetteFlush = func() error { return rrc.Flush(cassettePath, "") }
+		}
 
 		// The real host.starlark.run handler must be registered to wrap it. When
 		// host_bindings: is set, builtins are already registered above; otherwise
@@ -696,7 +729,7 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 		}
 		real, _ := reg.Get("host.starlark.run")
 		reg.Replace("host.starlark.run", func(ctx context.Context, args map[string]any) (host.Result, error) {
-			return real(starlarkhost.WithHTTP(ctx, rc), args)
+			return real(starlarkhost.WithHTTP(ctx, httpClient), args)
 		})
 	}
 
@@ -1724,6 +1757,15 @@ func runOneFlowOrchestrator(ctx context.Context, def *app.AppDef, m machine.Mach
 	// where the fixture lives.
 	if len(fixture.ExpectFiles) > 0 {
 		sessionFailures = append(sessionFailures, assertExpectFiles(filepath.Dir(filePath), fixture.ExpectFiles)...)
+	}
+
+	// Persist any newly recorded Starlark HTTP exchanges back to the cassette
+	// file (no-op for replay-only runs). Done before the orphan check / cleanup
+	// so a record run leaves the regenerated cassette on disk.
+	if rig.httpCassetteFlush != nil {
+		if ferr := rig.httpCassetteFlush(); ferr != nil {
+			sessionFailures = append(sessionFailures, fmt.Sprintf("flush starlark http cassette: %v", ferr))
+		}
 	}
 
 	// Post-run cassette orphan check: when strict_cassette_coverage: true is

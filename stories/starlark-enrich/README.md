@@ -74,6 +74,18 @@ cassette via the fixture's `starlark_http_cassette:` field:
 go test ./internal/testrunner/ -run TestStarlarkEnrichExample
 ```
 
+The HTTP cassettes follow a VCR.py-style model — record modes
+(`none`/`once`/`new_episodes`/`all`), configurable `match_on`, and
+redact-on-write — documented in
+[`docs/architecture/hosts.md`](../../docs/architecture/hosts.md#record--replay-http-cassettes).
+The committed cassettes here were recorded against the live API and trimmed; to
+re-record:
+
+```sh
+KITSOKI_HTTP_CASSETTE_RECORD=all \
+  go test ./internal/testrunner/ -run TestStarlarkEnrichExample -count=1
+```
+
 The [`flows/`](./flows/) fixtures drive both paths end-to-end:
 
 - [`enrich.yaml`](./flows/enrich.yaml) — happy path: `GET /users/1` is served

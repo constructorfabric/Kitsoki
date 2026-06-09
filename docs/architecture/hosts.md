@@ -222,7 +222,7 @@ with.inputs ─▶ validate inputs against sidecar (types, required)
             Result.Data = outputs (+ __http_exchanges) ─▶ effect bind:
 ```
 
-### Deterministic replay (HTTP cassettes)
+### Record / replay (HTTP cassettes)
 
 All network access funnels through one `HTTPClient` interface — the sandbox's
 only I/O boundary. In production the adapter injects a recording client (real
@@ -234,28 +234,66 @@ from disk — no socket, fully deterministic, no LLM and no cost.
 This `http_cassette` is intentionally a **different** kind from the oracle
 `host_cassette`: a `host_cassette` episode replaces a whole handler with a
 canned `Result`, whereas this one lets the real handler run and only replays its
-HTTP.
+HTTP. The model is deliberately close to Python's [VCR.py](https://vcrpy.readthedocs.io/)
+— record modes, configurable request matchers, secret redaction, and per-
+interaction request/response capture — so the workflow is familiar.
 
 ```yaml
 kind: http_cassette
+record_mode: none                  # none | once | new_episodes | all (default none)
+match_on: [method, url]            # any of: method, url/uri, scheme, host, port, path, query, body, headers
+ignore_hosts: ["metrics.internal"] # optional: pass straight through, never record/replay
+ignore_localhost: false
+filter_headers: ["X-Api-Key"]              # redacted to REDACTED on write …
+filter_query_parameters: ["token"]         # … (Authorization/Cookie/Set-Cookie always are)
+filter_post_data_parameters: ["password"]
+allow_playback_repeats: false      # global form of per-episode `replay: any`
 exchanges:
-  - match:
-      method: GET                                    # optional; case-insensitive
-      url: "https://api.example.com/v1/widgets/42"   # optional; exact compare …
-      url_pattern: "/widgets/[0-9]+$"                # … OR a Go regexp over the URL
+  - request:                       # the recorded (VCR-style) form
+      method: GET
+      url: "https://api.example.com/v1/widgets/42"
+      headers: { Accept: application/json }
+      body: ""
     response:
       status: 200
       headers: { Content-Type: application/json }
       body: '{"id":42,"name":"sprocket"}'
-    replay: any                                      # optional; default consumes after one match
+    replay: any                    # optional; default consumes after one match
 ```
 
-An episode matches when every *present* match field matches; the first
-not-yet-consumed match wins (consumed once unless `replay: any`); an episode
-with no selector is a catch-all. A miss is a loud error listing the available
-selectors. A fixture that wants the script to run with **no** HTTP simply omits
-the cassette — any `ctx.http` call then fails with the deny-all client, the
-desired loud failure.
+**Record modes** (mirroring VCR.py), set via the cassette's `record_mode:` or
+the `KITSOKI_HTTP_CASSETTE_RECORD` env var (env wins):
+
+| Mode | Behaviour |
+|---|---|
+| `none` (default) | Replay only; a request that misses the cassette is a loud error. |
+| `once` | Record when the cassette starts empty, otherwise replay-only. |
+| `new_episodes` | Replay matches; record (append) anything that misses. |
+| `all` | Never replay; re-record every request, discarding prior recordings. |
+
+A recording run hits the real API, captures request+response, and on completion
+writes the cassette back to disk (YAML, or JSON via the serializer). Secrets are
+**redacted on write** — `Authorization`, `Cookie`, `Set-Cookie`,
+`Proxy-Authorization` always, plus anything in `filter_headers` /
+`filter_query_parameters` / `filter_post_data_parameters` — so a first-run
+recording is safe to commit. `KITSOKI_CASSETTE_STRICT=1` forbids recording (a CI
+guard). The redaction applies only to the written file; the live run still serves
+real values to the script.
+
+**Matching.** A recorded (`request:`) episode matches when every field named in
+`match_on` matches (`query` is compared order-insensitively; `headers` is a
+subset check; default `[method, url]`). A legacy hand-authored episode uses a
+`match:` selector instead — `method` (case-insensitive), `url` (exact), or
+`url_pattern` (a Go regexp) — and is matched on that selector regardless of
+`match_on`, so existing cassettes keep working. The first not-yet-consumed match
+wins (consumed once unless `replay: any` or `allow_playback_repeats`). A miss is
+a loud error listing the available selectors. A fixture that wants the script to
+run with **no** HTTP simply omits the cassette — any `ctx.http` call then fails
+with the deny-all client.
+
+A runnable end-to-end example (record-once cassette, happy + 404 error paths)
+lives in [`stories/starlark-enrich/`](../../stories/starlark-enrich/); its
+cassettes under `cassettes/` were recorded against a live API and trimmed.
 
 See the [state-machine](../stories/state-machine.md#5-effects) §Effects note for
 where this sits in the effect vocabulary.
