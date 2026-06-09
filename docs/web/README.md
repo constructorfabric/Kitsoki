@@ -254,6 +254,96 @@ see the **Hot reload** bullet under [the turn loop in
 
 ---
 
+## Meta mode (overlay chat)
+
+A global **Meta** button (bottom-right, on every screen) opens a large,
+**persistent** overlay chat with one of kitsoki's named meta agents — the web
+surface for the same overlay the TUI reaches with `/meta` (see
+[`docs/stories/meta-mode.md`](../stories/meta-mode.md) for the engine
+mechanism). The dropdown offers three modes:
+
+| Mode | Agent | Writes? | Scope |
+|---|---|---|---|
+| **Story edit** | `story-author` | yes — edits the story YAML, commits, reloads | the running session's state |
+| **Story Q&A** | `story-explainer` | no (read-only) | the running session's state |
+| **Kitsoki help** | `kitsoki-explainer` | no (read-only) | cross-app (needs `$KITSOKI_REPO`) |
+
+- **Persistent** — the overlay state lives in an app-global store, so closing it
+  and navigating (Drive ⇄ Observe ⇄ home) and reopening returns to the **same
+  conversation**. The durable backing is the chat row in the session's
+  `chats.Store`, keyed by `(mode, state)` exactly as the TUI keys it, so a full
+  page reload resumes the same transcript. **New chat** archives the active row
+  and starts fresh.
+- **Story modes need a session.** On the home screen (no session) the two story
+  modes are disabled; **Kitsoki help** is cross-app and works there.
+- **Edit → reload content, not the page.** When a Story-edit turn changes a file
+  in the story tree, the server returns `reload_requested` + `changed_files`;
+  the SPA then calls `session.reload` and **re-hydrates the run store in place**
+  (no `window.location.reload`), so the edited story takes effect live. This
+  reuses the [Reload](#reload-parity-with-the-tui-reload) path verbatim.
+
+**Architecture.** The server exposes a separate optional `MetaDriver` seam
+(`internal/runstatus/server/meta.go`) on each `Entry`; the concrete
+implementation (`cmd/kitsoki/meta_driver.go`) wraps an
+`internal/metamode.Controller` built per session from that session's
+`chats.Store` + agent registry + `AppDef` (the home-screen "self" driver uses a
+synthetic `AppDef` for the cross-app `kitsoki.*` modes). Read-only surfaces
+(`kitsoki status serve`) leave `Entry.Meta` nil, so meta RPCs report
+`codeReadOnly`.
+
+**No-LLM posture.** Under `--flow` / `--host-cassette` the meta oracle is
+replaced by a deterministic stub (`internal/metamode/stub_oracle.go`): read-only
+modes return a scripted reply; Story-edit makes a real, controlled disk write so
+the edit→commit→reload handshake fires for real with no LLM. This is what the
+Playwright demo (`tests/playwright/meta-mode.spec.ts`) records.
+
+---
+
+## Onboarding tour
+
+A **generic, story-agnostic** guided tour walks a first-time user from the home
+screen into a live run, spotlighting each control with a tooltip. It auto-starts
+on first login (gated by a `localStorage` flag, **home route only**) and is
+replayable anytime via the persistent **?** button (bottom-right, above the Meta
+launcher). It is also the surface we use to **highlight new features over time** —
+adding a spotlight is one entry appended to the manifest, no other code.
+
+- **One manifest, two consumers.** The ordered steps live in a single Vue-free
+  module, `tools/runstatus/src/tour/manifest.ts`. The live overlay
+  (`components/tour/TourOverlay.vue`, fed by `stores/tour.ts`) renders them, and
+  the Playwright video demo imports the **same** array — so the recording can
+  never drift from the shipped tour. The store is a render-free Pinia store
+  mirroring [Meta mode](#meta-mode-overlay-chat)'s `stores/meta.ts`; the overlay
+  owns all route / DOM observation.
+- **Generic by construction.** Every step anchors to a `data-testid` that exists
+  on *every* story and *every* run — the top bar (`current-state`, `state-badge`,
+  `observe-link`), the chat (`chat-section`), the input bar (`input-bar`), the
+  trace panels (`trace-diagram`, `trace-timeline`), and the global `meta-button`.
+  Steps **never** wait on a story-specific state or an LLM turn, so the tour is
+  robust for any story and any harness, and never strands on a slow turn.
+- **Explain vs. action steps.** Almost every step is `explain` (highlight + a
+  four-rect spotlight with a clickable hole + the popover's **Next**). The only
+  `action` step is "start a session" (`route-match` → the interactive view) —
+  cheap, universal navigation. A per-step watchdog auto-skips any step that
+  can't anchor within a grace window, and the holding state is non-blocking and
+  always dismissible, so the tour can never freeze the UI.
+- **Robustness guards.** The tour self-disables in snapshot/artifact mode
+  (`window.__KITSOKI_SNAPSHOT__`) and under browser automation
+  (`navigator.webdriver`, so it can't sabotage the other Playwright UI specs).
+
+**Video demo.** `tests/playwright/tour-video.spec.ts` runs the generic tour
+against a real `kitsoki web` server in the [no-LLM posture](#deterministic-no-llm-for-development-demos-playwright)
+(it picks the Oregon Trail card at the one navigation step and drives one real
+turn so the trace lights up), asserts each step's title against the live popover,
+and records to `.artifacts/tour-video/`. A companion guard,
+`tests/playwright/tour-onboarding.spec.ts`, simulates a real first-time user and
+asserts the tour auto-starts, is dismissible, never blocks the UI, and does not
+auto-start on a deep-linked session. See the
+[`kitsoki-ui-demo`](../skills/kitsoki-ui-demo/SKILL.md) recipe for rendering
+shareable MP4/GIF/contact-sheet artifacts.
+
+---
+
 ## Flags
 
 `kitsoki web` takes **no positional argument**. The story directories come from
@@ -334,6 +424,20 @@ surface unaffected](#read-only-surface-unaffected)):
 | `runstatus.session.submit` | `{intent, slots}` | `SubmitDirect` (chosen intent) |
 | `runstatus.session.continue` | `{slots}` | `ContinueTurn` (supply missing slots) |
 | `runstatus.session.offpath` | `{input}` | `AskOffPath` (read-only side question) |
+
+### Meta-mode methods (the overlay chat)
+
+Routed to the session's optional **`MetaDriver`** seam (`Entry.Meta`); a
+`session_id` of `""` targets the home-screen session-less "self" driver
+(`kitsoki.*` modes). See [Meta mode](#meta-mode-overlay-chat).
+
+| Method | Params | Returns |
+|---|---|---|
+| `runstatus.meta.modes` | `{session_id}` | `{modes: []MetaModeInfo}` (`{key, label, banner, agent, read_only, group}`) |
+| `runstatus.meta.enter` | `{session_id, mode, chat_id?}` | `MetaSession` (`{chat_id, mode_key, messages}`) — resumes by scope when `chat_id` omitted |
+| `runstatus.meta.send` | `{session_id, mode, chat_id, input}` | `MetaSendResult` (`{assistant, chat_id, reload_requested, changed_files, commit_sha}`) |
+| `runstatus.meta.new` | `{session_id, mode, chat_id}` | `MetaSession` (fresh, empty) |
+| `runstatus.meta.transcript` | `{session_id, chat_id}` | `{messages: []MetaMessage}` |
 
 ### `turnResult` (the write / `view` response)
 
@@ -435,6 +539,21 @@ It records a stable video and per-scene screenshots into `.artifacts/multi-story
 by default (visible typing, a beat before each action, a dwell on each scene) so
 the recording is watchable; set `WEB_CHAT_PACE=0` to collapse the delays for a
 fast assertion-only CI run.
+
+A second spec, `tools/runstatus/tests/playwright/meta-mode.spec.ts`, demos
+[Meta mode](#meta-mode-overlay-chat) end-to-end (home help → drive → Story Q&A →
+Story-edit reload → persistence across navigation → new chat). It runs against a
+**throwaway copy** of `stories/` (a Story-edit commits into the story's git repo,
+so the demo keeps the real repo clean) with `$KITSOKI_REPO` exported so the
+`kitsoki.*` modes light up.
+
+A third spec, `tools/runstatus/tests/playwright/tour-video.spec.ts`, drives the
+[onboarding tour](#onboarding-tour) end-to-end against the Oregon Trail story,
+walking the shared step manifest and asserting each step's title against the live
+popover. All three specs share the live-server harness
+(`tests/playwright/_helpers/server.ts`) and follow the reusable
+[`kitsoki-ui-demo`](../skills/kitsoki-ui-demo/SKILL.md) recipe for rendering
+shareable MP4/GIF/contact-sheet artifacts.
 
 Other tests: `cd tools/runstatus && pnpm test` (Vitest, frontend);
 `go test ./internal/runstatus/... ./cmd/kitsoki/` (backend).
