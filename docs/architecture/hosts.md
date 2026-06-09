@@ -44,6 +44,7 @@ carrier handler when the op name is dispatched from `with:` args.
 | Handler | Purpose |
 |---|---|
 | [`host.run`](#hostrun) | Execute a shell command in a working directory. |
+| [`host.starlark.run`](#hoststarlarkrun) | Run a sandboxed, deterministic Starlark glue script (`main(ctx) -> dict`) with typed inputs/outputs and replayable HTTP. |
 | [`host.oracle.extract`](#hostoracleextract) | Tiered resolver: synonyms → slot_template → llm. Returns typed JSON + `resolved_by`. |
 | [`host.oracle.ask`](#hostoracleask) | Read-only inspection call: read tools + Bash under a profile; no mutation. Returns prose + optional typed JSON. |
 | [`host.oracle.decide`](#hostoracledecide) | Typed LLM verdict (schema required; submit auto-attached; read-only tools optional). |
@@ -98,6 +99,214 @@ Returns:
 `host.run` is the canonical example for `background: true`. The
 `stdout` / `exit_code` / `stdout_json` fields end up in
 `world.last_job_result` when the job terminates.
+
+---
+
+## host.starlark.run
+
+Run a small, author-supplied [Starlark](https://github.com/google/starlark-go)
+script in a tightly restricted, **deterministic** interpreter and bind its
+named outputs into world. This is the escape hatch for glue that is too fiddly
+for the expr-lang `with:`/guard vocabulary (shaping a payload, deriving several
+fields, calling a plain HTTP API) but too small to justify a bespoke Go
+handler. Unlike `host.run` it is sandboxed, introspectable, and replayable: no
+filesystem, no environment, no subprocess, no clock, no randomness — so a
+recorded run replays byte-for-byte.
+
+The authoritative source is `internal/host/starlark/` (the sandbox) and
+`internal/host/starlark_run.go` (the `host.Handler` adapter); see
+`internal/host/starlark/doc.go` for the design rationale.
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `script` | string | yes | Path to the `.star` file, relative to the app root. The loader resolves it against the manifest dir, rejects `../` escapes, and requires both the `.star` and its `.star.yaml` sidecar to exist at load time. By dispatch the path is absolute. Templated (`{{…}}`) paths skip the load-time check and are validated at runtime. |
+| `inputs` | object | no | The named inputs exposed to the script as `ctx.inputs["name"]`. Type-validated against the sidecar's `inputs:` block before evaluation. Values are templated like any other `with:` arg. |
+
+Returns: the script's `main(ctx)` **must return a dict**; each key/value becomes
+a named output. The output dict is validated against the sidecar's `outputs:`
+block (see below), then handed to the effect's `bind:` exactly like any other
+handler's `Result.Data`. Bind only the keys you name — nothing reaches world
+unasked-for. One reserved key, `__http_exchanges`, is added automatically: a
+body-free list of `{method, url, status}` for the HTTP calls the script made,
+so they ride the `harness.returned` trace event. Authors **must not** declare an
+output named `__http_exchanges`.
+
+Number conversion back to Go: an integer becomes `int64` (or `float64` when out
+of `int64` range); a float becomes `float64`. The sidecar's `int` and `number`
+types both accept either.
+
+### The sidecar contract
+
+Every script has a sidecar named `<script>.star.yaml` sitting beside it. The
+sidecar — not the script — is the **authoritative** declaration of the script's
+interface; the engine validates against it and ignores any in-script
+`INPUTS`/`OUTPUTS` convention dicts.
+
+```yaml
+inputs:
+  <name>: { type: <T>, required: <bool> }   # required defaults to false
+outputs:
+  <name>: { type: <T> }                     # every declared output is mandatory
+```
+
+`<T>` is one of `string | int | number | bool | object | list | any` (an empty
+type means `any`; an unknown type fails the app load). Validation semantics:
+
+- **Inputs** — a missing `required: true` input, or a type mismatch, is an
+  error. Inputs *not* declared in the sidecar pass through untouched (the script
+  may still read them via `ctx.inputs`).
+- **Outputs** — when `outputs:` is non-empty, **every declared output must be
+  returned** (a forgotten one is an error) and **every returned key must be
+  declared** (an undeclared return is rejected), each value type-checked. This
+  keeps the world-binding surface exactly what the sidecar promises.
+
+A malformed sidecar fails the app at **load time** (`validateStarlarkEffects` in
+`internal/app/loader.go`); a type/shape mismatch at **run time** is an expected
+domain error (see below).
+
+### The `ctx` surface (deliberately narrow)
+
+`main` takes one argument, `ctx`, a struct with **exactly three** attributes and
+nothing else. The narrowness *is* the sandbox: any unknown attribute (e.g.
+`ctx.fs`, `ctx.env`) fails at eval with a clear Starlark "has no `.X` field"
+traceback, surfaced as a domain error. There is no static AST analyzer — the
+fixed `ctx` is the enforcement.
+
+```
+ctx.inputs["name"]                          # dict of the resolved, type-checked inputs
+ctx.world.get("key")                        # read-only world snapshot; None when absent
+ctx.http.get(url, headers={})               # -> response
+ctx.http.post(url, body=..., headers={})    # -> response
+```
+
+- `ctx.inputs` is a **dict**, accessed by key (not attribute).
+- `ctx.world.get(key)` returns the value or `None`. The orchestrator threads a
+  **read-only snapshot of the live world** (as it stands after earlier `on_enter`
+  binds) into every call, so `ctx.world` reflects current state with no author
+  plumbing. There is no `set` — outputs flow **only** through `main`'s return
+  dict, so a script can never mutate world out-of-band.
+- `ctx.http.post` `body` may be a Starlark dict (JSON-encoded, `Content-Type`
+  defaulted to `application/json`) or a string (sent verbatim). `headers` is a
+  dict of string→string.
+- The **response** object exposes `.status` (int), `.headers` (dict), `.text()`
+  (string method) and `.json()` (parses the body to a Starlark value; a parse
+  error is a Starlark error). A response is truthy iff its status is in
+  `200..299`. A non-2xx status is **not** an error — branch on it in-script.
+
+Predeclared stdlib: `json` and `math` **only** (no `time`, no `random`).
+`FileOptions` are strict defaults (no `set` builtin, no global reassignment, no
+recursion); execution is capped at 10,000,000 steps to turn an accidental hot
+loop into a clean error.
+
+### Error mapping
+
+A `*DomainError` — bad input/output shape, a malformed or failing script, a
+missing `main`, an HTTP-replay miss propagated through the script — becomes
+`Result.Error`, which fires the effect's `on_error:` arc and sets
+`world.last_error`. Only a true infrastructure failure (e.g. the script file
+vanished after load) is a Go error.
+
+### Flow of one call
+
+```
+with.inputs ─▶ validate inputs against sidecar (types, required)
+                 │  bad shape ─▶ DomainError ─▶ Result.Error ─▶ on_error:
+                 ▼
+            sandboxed eval: main(ctx)
+                 │   ctx = { inputs, world(read-only), http }
+                 │   ctx.http.* ─▶ HTTPClient (recording in prod / replay in tests)
+                 ▼
+            validate returned dict against sidecar outputs (declared + types)
+                 │  bad shape ─▶ DomainError ─▶ Result.Error ─▶ on_error:
+                 ▼
+            Result.Data = outputs (+ __http_exchanges) ─▶ effect bind:
+```
+
+### Deterministic replay (HTTP cassettes)
+
+All network access funnels through one `HTTPClient` interface — the sandbox's
+only I/O boundary. In production the adapter injects a recording client (real
+`net/http`, 30s timeout) that records a body-free `{method, url, status}`
+summary per call. In a flow fixture the testrunner injects a **replay client**
+backed by an HTTP cassette, so the *real* script runs with its network served
+from disk — no socket, fully deterministic, no LLM and no cost.
+
+This `http_cassette` is intentionally a **different** kind from the oracle
+`host_cassette`: a `host_cassette` episode replaces a whole handler with a
+canned `Result`, whereas this one lets the real handler run and only replays its
+HTTP.
+
+```yaml
+kind: http_cassette
+exchanges:
+  - match:
+      method: GET                                    # optional; case-insensitive
+      url: "https://api.example.com/v1/widgets/42"   # optional; exact compare …
+      url_pattern: "/widgets/[0-9]+$"                # … OR a Go regexp over the URL
+    response:
+      status: 200
+      headers: { Content-Type: application/json }
+      body: '{"id":42,"name":"sprocket"}'
+    replay: any                                      # optional; default consumes after one match
+```
+
+An episode matches when every *present* match field matches; the first
+not-yet-consumed match wins (consumed once unless `replay: any`); an episode
+with no selector is a catch-all. A miss is a loud error listing the available
+selectors. A fixture that wants the script to run with **no** HTTP simply omits
+the cassette — any `ctx.http` call then fails with the deny-all client, the
+desired loud failure.
+
+See the [state-machine](../stories/state-machine.md#5-effects) §Effects note for
+where this sits in the effect vocabulary.
+
+### Worked example
+
+Effect (in a room's `on_enter` or a transition's `effects:`):
+
+```yaml
+hosts: [host.starlark.run]   # must be in the app-level allow-list
+
+# …
+effects:
+  - invoke: host.starlark.run
+    with:
+      script: scripts/widget_name.star
+      inputs:
+        widget_id: "{{ world.selected_widget }}"
+    bind:
+      widget_name: name      # copy the script's `name` output into world.widget_name
+    on_error: lookup_failed
+```
+
+`scripts/widget_name.star`:
+
+```python
+def main(ctx):
+    wid = ctx.inputs["widget_id"]
+    resp = ctx.http.get("https://api.example.com/v1/widgets/" + wid)
+    if not resp:                      # truthy iff 2xx
+        fail("widget lookup failed: " + str(resp.status))
+    body = resp.json()
+    return {"name": body["name"]}
+```
+
+`scripts/widget_name.star.yaml`:
+
+```yaml
+inputs:
+  widget_id: { type: string, required: true }
+outputs:
+  name: { type: string }
+```
+
+A flow fixture exercises this against the **real** handler by adding a
+`starlark_http_cassette:` field (resolved relative to the fixture) whose
+`http_cassette` serves the `GET …/widgets/<id>` call; the testrunner injects the
+replay client, the script runs for real, and the `__http_exchanges` summary
+lands in the `harness.returned` event for `expect_events`. (The polished example
+app and its fixture live under `testdata/apps/` / `stories/`; reference whichever
+is present in the tree.)
 
 ---
 

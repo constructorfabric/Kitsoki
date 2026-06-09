@@ -1,0 +1,16 @@
+# HTTP cassette variant that returns 404 for the lookup, to exercise the
+# script's error path: `if not resp: fail(...)` (a response is falsy when its
+# status is outside 200..299). The fail() surfaces as a domain error → the
+# effect's on_error: arc fires → the session lands in `failed` with
+# world.last_error set. A non-2xx is NOT a transport error, so the real handler
+# runs to completion and the cassette never opens a socket.
+kind: http_cassette
+exchanges:
+  - match:
+      method: GET
+      url: "https://jsonplaceholder.typicode.com/users/999"
+    response:
+      status: 404
+      headers:
+        Content-Type: application/json
+      body: "{}"

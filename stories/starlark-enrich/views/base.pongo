@@ -1,0 +1,19 @@
+{% comment %}
+Starlark Enrichment — app-wide base view. Every room extends this and
+overrides only the blocks it needs.
+
+Block contract:
+  status   — a permanent one-liner: which user id is loaded, the script path.
+  heading  — room title; default = state.description.
+  body     — the room content.
+  choices  — the action menu.
+  footer   — optional bottom line.
+{% endcomment %}
+{% block status %}user #{{ world.user_id }}   |   glue: scripts/enrich_user.star (deterministic, replayable){% endblock %}
+
+{% block heading %}{{ state.description }}{% endblock %}
+
+{% block body %}{% endblock %}
+
+{% block choices %}{% endblock %}
+{% block footer %}{% endblock %}

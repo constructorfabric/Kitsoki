@@ -183,6 +183,9 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 		if hc.OraclePlugin != "" {
 			invokeCtx = host.WithOraclePluginName(invokeCtx, hc.OraclePlugin)
 		}
+		// Expose the world as it stands at this call (after earlier binds in the
+		// same on_enter block) so host.starlark.run scripts can read ctx.world.
+		invokeCtx = host.WithWorldSnapshot(invokeCtx, w.Vars)
 
 		res, err := o.hosts.Invoke(invokeCtx, hc.Namespace, invokeArgs)
 		if err != nil {
@@ -601,9 +604,9 @@ func (o *Orchestrator) dispatchHostCallsDetailed(ctx context.Context, calls []ma
 			"background":         hc.Background,
 		}, 0))
 		// B-7: inject oracle plugin alias for summary dispatch path.
-		invokeCtx2 := ctx
+		invokeCtx2 := host.WithWorldSnapshot(ctx, w.Vars)
 		if hc.OraclePlugin != "" {
-			invokeCtx2 = host.WithOraclePluginName(ctx, hc.OraclePlugin)
+			invokeCtx2 = host.WithOraclePluginName(invokeCtx2, hc.OraclePlugin)
 		}
 		res, err := o.hosts.Invoke(invokeCtx2, hc.Namespace, invokeArgs)
 		if err != nil {

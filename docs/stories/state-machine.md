@@ -394,6 +394,25 @@ Templates inside effects use the same `{{ … }}` syntax as views. Inside
 `stdout`, `exit_code`, `ok` for `host.run`; `answer`, `chat_id`, etc.
 for `host.oracle.converse`.
 
+### Deterministic logic beyond expr-lang
+
+When a transformation is too fiddly for an expr-lang `with:` arg or a
+guard (shaping a payload, deriving several fields, a plain HTTP call) but
+is still **deterministic** — no LLM judgement needed — reach for
+[`host.starlark.run`](../architecture/hosts.md#hoststarlarkrun): a
+sandboxed Starlark script (`main(ctx) -> dict`) with typed inputs/outputs
+and replayable HTTP. It is the deterministic counterpart to an oracle
+call.
+
+```yaml
+- invoke: host.starlark.run
+  with:  { script: scripts/derive.star, inputs: { id: "{{ world.id }}" } }
+  bind:  { label: name }
+```
+
+See [`hosts.md`](../architecture/hosts.md#hoststarlarkrun) for the full
+contract (sidecar, `ctx` surface, HTTP cassettes, worked example).
+
 ### `on_error` redirects and the recursion cap
 
 When `invoke` returns an error and `on_error:` names another room, the

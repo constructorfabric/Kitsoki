@@ -1,0 +1,26 @@
+# Error-path flow: the lookup 404s, so the script fail()s and the room's
+# on_error: failed arc routes the session into the `failed` room with
+# world.last_error set. Proves the on_error: wiring end-to-end, deterministically.
+test_kind: flow
+app: ../app.yaml
+initial_state: lobby
+initial_world:
+  # An id the cassette only answers with a 404.
+  user_id: 999
+
+starlark_http_cassette: ../cassettes/enrich_user_404.http.yaml
+
+turns:
+  # enrich → the on_enter host.starlark.run call runs; the GET is a 404, so the
+  # script fail()s → Result.Error → on_error: failed.
+  - intent: { name: enrich, slots: {} }
+    expect_state: failed
+    expect_view_matches: "user lookup failed: HTTP 404"
+    expect_host_calls:
+      - handler: host.starlark.run
+
+  # back → clears last_error and returns to the lobby.
+  - intent: { name: back, slots: {} }
+    expect_state: lobby
+
+expect_terminal: false

@@ -1,0 +1,31 @@
+# HTTP cassette for the enrich_user.star script (kind: http_cassette).
+#
+# This is a SEPARATE cassette kind from the oracle host_cassette: host_cassette
+# replaces a whole handler, whereas this lets the REAL host.starlark.run handler
+# run and only replays the network it reaches through ctx.http. The testrunner
+# loads this via the fixture's `starlark_http_cassette:` field, builds a
+# ReplayClient, and injects it on the context — so no socket is ever opened.
+#
+# An episode matches when EVERY present match field matches (method is
+# case-insensitive; url is an exact string compare; url_pattern is a Go regexp).
+# This single episode pins the GET the script makes for user #1. The body is a
+# trimmed copy of the public jsonplaceholder.typicode.com/users/1 shape.
+kind: http_cassette
+exchanges:
+  - match:
+      method: GET
+      url: "https://jsonplaceholder.typicode.com/users/1"
+    response:
+      status: 200
+      headers:
+        Content-Type: application/json
+      body: |
+        {
+          "id": 1,
+          "name": "Leanne Graham",
+          "username": "Bret",
+          "email": "Sincere@april.biz",
+          "address": { "city": "Gwenborough" },
+          "company": { "name": "Romaguera-Crona" },
+          "website": "Hildegard.org"
+        }

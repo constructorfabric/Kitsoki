@@ -1,0 +1,31 @@
+# starlark_nosidecar — a host.starlark.run app whose script has no sidecar.
+# It MUST fail to load: validateStarlarkEffects requires both the .star file and
+# its .star.yaml sidecar to exist. Consumed by the missing-sidecar load-error
+# test in internal/testrunner/starlark_flows_test.go.
+
+app:
+  id: starlark-nosidecar
+  version: 0.1.0
+  title: "Starlark No Sidecar"
+
+hosts:
+  - host.starlark.run
+
+intents:
+  go:
+    title: "Go"
+
+root: lobby
+
+states:
+  lobby:
+    description: "Lobby."
+    view: |
+      Lobby.
+    on_enter:
+      - invoke: host.starlark.run
+        with:
+          script: scripts/orphan.star
+    on:
+      go:
+        - target: lobby

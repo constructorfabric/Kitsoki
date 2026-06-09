@@ -204,11 +204,6 @@ thought.
     replay-call`: reconstruct one recorded oracle call from the embedded story
     and re-dispatch it against a different operator / edited prompt, then diff
     the verdict — the pluggable-operator moat made visible.
-- [`starlark-host.md`](starlark-host.md) —
-  `host.starlark.run` capability: sandboxed Starlark scripts bundled with a
-  story, with a typed `ctx` API for HTTP and world access, fully integrated
-  with the cassette/flow test system. Extends the deterministic replay border
-  to cover scripted logic. Nothing implemented yet.
 - [`semantic-routing-proposal.md`](semantic-routing-proposal.md) —
   v1 shipped. The trimmed proposal keeps only open questions and
   the Oregon Trail calibration history. The user-facing reference

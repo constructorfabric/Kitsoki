@@ -277,6 +277,11 @@ func RegisterBuiltins(r *Registry) {
 	r.Register("host.ide.open_file", IDEOpenFileHandler)
 	r.Register("host.ide.open_diff", IDEOpenDiffHandler)
 
+	// Deterministic Starlark glue (host.starlark.run). Registered at the full
+	// name so the registry's longest-prefix fallback resolves it exactly. The
+	// handler is a thin adapter over internal/host/starlark; see starlark_run.go.
+	r.Register("host.starlark.run", StarlarkRunHandler)
+
 	// Visual output producers (visual-outputs epic, Slice 2).
 	// host.slidey.render — validate + render a JSON scene spec via slidey.
 	// host.contact_sheet — PNG montage of frames via ffmpeg tile filter.

@@ -1,0 +1,32 @@
+states:
+  lobby:
+    description: "Starlark Enrichment — look up a user and derive a profile"
+    relevant_world: [user_id, display_name]
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "This story knows one thing: a bare user id (#{{ world.user_id }}). Type 'enrich' to hand that id to a deterministic Starlark script, which calls a JSON HTTP API and reshapes the response into a display-ready profile. The script is sandboxed — no clock, no randomness, no filesystem — so a recorded run replays byte-for-byte."
+          - heading: "What the script does (scripts/enrich_user.star)"
+          - list:
+              items:
+                - label: "reads ctx.inputs[\"user_id\"] / [\"api_base\"]"
+                  hint: "typed, validated against the sidecar before it runs"
+                - label: "GET {api_base}/users/{user_id} via ctx.http"
+                  hint: "the only side effect; recorded as a {method,url,status} summary"
+                - label: "reshapes the JSON with the json + string stdlib"
+                  hint: "display_name, contact, domain, is_complete"
+                - label: "returns a typed dict bound into world"
+                  hint: "outputs validated against the sidecar after it runs"
+        choices:
+          - list:
+              items:
+                - label: "enrich"
+                  hint: "run the script and show the derived profile"
+                - label: "quit"
+                  hint: "leave"
+    on:
+      enrich:
+        - target: profile
+      quit:
+        - target: ended

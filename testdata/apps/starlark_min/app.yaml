@@ -1,0 +1,85 @@
+# starlark_min — minimal fixture app for host.starlark.run.
+#
+# A lobby room routes `fetch` into a `fetching` room whose on_enter invokes
+# host.starlark.run against scripts/fetch_widget.star. The script fetches a
+# widget over ctx.http (served from an HTTP cassette in flow tests) and returns
+# its name, which is bound into world. A non-2xx response makes the script
+# fail(), which surfaces as a domain error so the effect's on_error: arc routes
+# to the `failed` room with world.last_error set.
+#
+# This app exists only to exercise the host.starlark.run verification matrix in
+# internal/testrunner/starlark_flows_test.go. It needs no LLM and opens no
+# socket — its HTTP is always cassette-served.
+
+app:
+  id: starlark-min
+  version: 0.1.0
+  title: "Starlark Min"
+
+# host.starlark.run must be declared in the top-level allow-list. The registry
+# resolves the exact full name (longest-prefix fallback).
+hosts:
+  - host.starlark.run
+
+world:
+  # widget_name stays nil until the host.starlark.run bind lands; branching on
+  # it nil-until-bound triggers the machine's emit_intent deferral so the guard
+  # re-evaluates against the post-bind world (the ide_awareness pattern).
+  widget_name: { type: str }
+  last_error:  { type: str, default: "" }
+
+intents:
+  fetch:
+    title: "Fetch a widget"
+    description: "Fetch a widget by id over HTTP via a Starlark glue script."
+    examples: ["fetch widget", "get the widget"]
+
+  # Synthetic gate intent emitted by the fetching room's guarded on_enter once
+  # the widget_name bind lands — not operator-facing.
+  fetched: { title: "(synthetic) widget fetched" }
+
+root: lobby
+
+states:
+  lobby:
+    description: "Lobby — type 'fetch' to fetch a widget."
+    view: |
+      Lobby. Type 'fetch' to fetch a widget.
+    on:
+      fetch:
+        - target: fetching
+
+  fetching:
+    description: "Fetching the widget via a Starlark script."
+    view: |
+      Fetching widget…
+    on_enter:
+      - invoke: host.starlark.run
+        id: fetch_widget
+        with:
+          script: scripts/fetch_widget.star
+          inputs:
+            widget_id: "42"
+        bind:
+          widget_name: widget_name
+        # A script fail() / bad status surfaces as a domain error → this arc.
+        on_error: failed
+      # Deterministic branch on the bound output. widget_name is nil at
+      # machine-time, so this emit_intent guard defers to the post-bind pass.
+      - when: "world.widget_name != nil"
+        emit_intent: fetched
+    on:
+      fetched:
+        - target: reviewed
+
+  reviewed:
+    terminal: true
+    description: "Widget fetched — name captured."
+    view: |
+      Fetched widget: {{ world.widget_name }}.
+
+  failed:
+    terminal: true
+    description: "The Starlark script failed; last_error captured."
+    view: |
+      Fetch failed: {{ world.last_error }}.

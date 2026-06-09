@@ -1,0 +1,55 @@
+# Starlark Enrichment — a runnable example of host.starlark.run.
+#
+# It does ONE thing: take a bare numeric user id, call a plain JSON HTTP API,
+# and reshape the response into display-ready profile fields — all inside a
+# deterministic Starlark sandbox. This is the canonical "glue" use case for
+# host.starlark.run: deterministic data wrangling + a single HTTP call that is
+# too fiddly for YAML effects and too small for a bespoke Go host handler.
+#
+# See README.md for the full walkthrough, and the script + sidecar under
+# scripts/. The story is intentionally tiny so the capability is the subject.
+
+app:
+  id: starlark-enrich
+  version: 0.1.0
+  title: "Starlark Enrichment"
+  author: "kitsoki"
+  license: "CC0"
+
+# host.starlark.run MUST be declared in the allow-list. It is registered at the
+# exact full name; the registry's longest-prefix fallback resolves it.
+hosts:
+  - host.starlark.run
+
+world:
+  # The only input the story knows up front: a bare user id, surfaced to the
+  # script via the effect's with.inputs (see rooms/profile.yaml).
+  user_id: { type: int, default: 1 }
+
+  # The script's typed outputs land here via bind:. They start empty so the
+  # enrich room's `once: true` re-arms cleanly if the bind targets are cleared.
+  display_name: { type: string, default: "" }
+  contact:      { type: string, default: "" }
+  domain:       { type: string, default: "" }
+  is_complete:  { type: bool,   default: false }
+
+  # Set by the engine when host.starlark.run returns a Result.Error (a script
+  # fail()/bad-output/non-2xx). The error room reads it.
+  last_error: { type: string, default: "" }
+
+intents:
+  enrich:
+    title: "Look up & enrich the user"
+    description: "Call the API and derive a display profile."
+    examples: ["enrich", "look up", "fetch profile", "go"]
+  back:
+    title: "Back to the lobby"
+    examples: ["back", "again", "retry", "home"]
+  quit:
+    title: "Quit"
+    examples: ["quit", "exit", "done"]
+
+root: lobby
+
+include:
+  - rooms/*.yaml

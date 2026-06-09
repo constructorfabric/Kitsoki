@@ -1,0 +1,17 @@
+# HTTP ERROR: a non-2xx response makes the script fail(), which surfaces as a
+# domain error so the effect's on_error: arc fires and routes to `failed` with
+# world.last_error set. The REAL handler runs; the 404 is replayed from
+# cassettes/widget_404.http.yaml.
+test_kind: flow
+app: starlark-min
+initial_state: lobby
+starlark_http_cassette: ../cassettes/widget_404.http.yaml
+
+turns:
+  - intent: { name: fetch, slots: {} }
+    expect_state: failed
+    # widget_name never binds because the script failed before returning.
+    expect_world:
+      widget_name: null
+    # last_error carries the domain-error message from the failing script.
+    expect_view_matches: "status 404"

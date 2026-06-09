@@ -1,0 +1,28 @@
+# HAPPY PATH: the REAL host.starlark.run handler runs, its HTTP is replayed
+# from cassettes/widget_ok.http.yaml, and the script's declared output is bound
+# into world. No socket is opened; no LLM is involved.
+test_kind: flow
+app: starlark-min
+initial_state: lobby
+starlark_http_cassette: ../cassettes/widget_ok.http.yaml
+expect_no_errors: true
+
+turns:
+  - intent: { name: fetch, slots: {} }
+    # The on_enter host.starlark.run binds widget_name and the post-bind
+    # emit_intent (fetched) auto-advances the gate to reviewed.
+    expect_state: reviewed
+    expect_world:
+      widget_name: sprocket
+    expect_view_matches: "Fetched widget: sprocket"
+    # The body-free HTTP exchange summary rides the HostReturned trace event
+    # (harness.returned) under the reserved __http_exchanges key, alongside the
+    # script's bound output. matchEvent does exact equality on the `data` value,
+    # so we assert the whole envelope.
+    expect_events:
+      - kind: harness.returned
+        effect:
+          data:
+            widget_name: sprocket
+            __http_exchanges:
+              - { method: GET, url: "https://api.example.com/widgets/42", status: 200 }

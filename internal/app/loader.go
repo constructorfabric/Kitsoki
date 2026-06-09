@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"kitsoki/internal/agents"
+	starlarkhost "kitsoki/internal/host/starlark"
 	"kitsoki/internal/oracle/grammar"
 
 	goyaml "github.com/goccy/go-yaml"
@@ -799,6 +800,13 @@ func validateDef(def *AppDef, file string) (*AppDef, []error) {
 	// translatable grammar subset; otherwise grammar would silently fail open at
 	// runtime. Reject out-of-subset schemas at load time.
 	validateLocalLLMGrammarSubset(file, def, &errs)
+
+	// ── 9f. host.starlark.run effect validation. Every such effect must name a
+	// script that — together with its .star.yaml sidecar — exists on disk inside
+	// the app root, and whose sidecar parses. Catching this at load time turns a
+	// typo'd script path or a malformed sidecar into an actionable boot error
+	// rather than a runtime on_error: bounce on the first turn that hits the room.
+	validateStarlarkEffects(file, def, &errs)
 
 	// ── 10. proposal execute effect validation ────────────────────────────────
 	// ProposalExecute.Background and ProposalExecute.OnComplete are not covered
@@ -1639,6 +1647,68 @@ func validateLocalLLMGrammarSubset(file string, def *AppDef, errs *[]error) {
 				"%s: oracle %q is builtin.local_llm with grammar: true but its decide schema %q is outside the llama.cpp grammar subset: %v",
 				loc, eff.OraclePlugin, schemaPath, subErr,
 			))
+		}
+	})
+}
+
+// validateStarlarkEffects enforces the load-time contract for every
+// host.starlark.run effect: with.script must be a non-empty string, resolve to
+// a path inside the app root (no `../` escape), and BOTH the .star file and its
+// .star.yaml sidecar must exist and the sidecar must parse. This is the
+// fail-fast counterpart to the runtime sandbox — an app with a missing script
+// or malformed sidecar refuses to load rather than bouncing through on_error:
+// on the first turn that reaches the room.
+func validateStarlarkEffects(file string, def *AppDef, errs *[]error) {
+	addErr := func(msg string) {
+		*errs = append(*errs, &ValidationError{File: file, Message: msg})
+	}
+
+	walkAllEffects(def.States, func(loc string, eff Effect) {
+		if eff.Invoke != "host.starlark.run" {
+			return
+		}
+		rawScript, _ := eff.With["script"].(string)
+		rawScript = strings.TrimSpace(rawScript)
+		if rawScript == "" {
+			addErr(fmt.Sprintf("%s: host.starlark.run requires a non-empty with.script", loc))
+			return
+		}
+		// Templated paths cannot be resolved statically; skip (the runtime
+		// adapter + sandbox validate them once rendered).
+		if strings.Contains(rawScript, "{{") {
+			return
+		}
+
+		// Resolve against the app root and reject any path that escapes it via
+		// `../`. Both story-root and app-level scripts/ dirs are fine — only an
+		// escape outside BaseDir is rejected.
+		resolved := rawScript
+		if !filepath.IsAbs(resolved) && def.BaseDir != "" {
+			resolved = filepath.Join(def.BaseDir, resolved)
+		}
+		if def.BaseDir != "" {
+			rel, relErr := filepath.Rel(def.BaseDir, filepath.Clean(resolved))
+			if relErr != nil || strings.HasPrefix(rel, "..") {
+				addErr(fmt.Sprintf("%s: host.starlark.run script %q resolves outside the app root", loc, rawScript))
+				return
+			}
+		}
+
+		if _, statErr := os.Stat(resolved); statErr != nil {
+			addErr(fmt.Sprintf("%s: host.starlark.run script %q not found (resolved to %q)", loc, rawScript, resolved))
+			return
+		}
+
+		// The sidecar is mandatory: it is authoritative over the script's
+		// inputs/outputs. A missing or malformed sidecar is a load error.
+		sidecarPath := resolved + ".yaml"
+		raw, readErr := os.ReadFile(sidecarPath)
+		if readErr != nil {
+			addErr(fmt.Sprintf("%s: host.starlark.run script %q has no sidecar (expected %q): %v", loc, rawScript, sidecarPath, readErr))
+			return
+		}
+		if _, parseErr := starlarkhost.ParseSidecar(raw); parseErr != nil {
+			addErr(fmt.Sprintf("%s: host.starlark.run sidecar %q is malformed: %v", loc, sidecarPath, parseErr))
 		}
 	})
 }

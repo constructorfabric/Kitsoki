@@ -23,6 +23,7 @@ import (
 	"kitsoki/internal/expr"
 	"kitsoki/internal/harness"
 	"kitsoki/internal/host"
+	starlarkhost "kitsoki/internal/host/starlark"
 	"kitsoki/internal/intent"
 	"kitsoki/internal/jobs"
 	"kitsoki/internal/journal"
@@ -87,6 +88,17 @@ type FlowFixture struct {
 	// host_cassette: is set. Default false preserves backward compatibility —
 	// fixtures that reuse a shared cassette for a subset of turns won't fail.
 	StrictCassetteCoverage bool `yaml:"strict_cassette_coverage,omitempty"`
+
+	// StarlarkHTTPCassette is the path to an HTTP cassette (kind: http_cassette)
+	// that serves ctx.http.* calls made by host.starlark.run scripts. Unlike
+	// HostCassette (which replaces a whole handler with a canned Result), this
+	// lets the REAL host.starlark.run handler run — reading the script + sidecar
+	// from disk and validating inputs/outputs — and only replays its HTTP from
+	// disk. The testrunner injects a starlark.ReplayClient via WithHTTP; the
+	// adapter leaves it in place because HasHTTPClient(ctx) is then true.
+	// Relative paths resolve against the fixture file's directory. Setting this
+	// field opts the fixture into the orchestrator-backed runner.
+	StarlarkHTTPCassette string `yaml:"starlark_http_cassette,omitempty"`
 
 	// HostBindings rebinds named ifaces to alternative handlers for
 	// this fixture only. Mirrors the production `imports.<alias>.
@@ -652,6 +664,42 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 		}
 	}
 
+	// Wire starlark_http_cassette: when set. This is the Starlark HTTP replay
+	// seam (distinct from host_cassette: which replaces a whole handler). We
+	// load the cassette, build a ReplayClient, and WRAP the real
+	// host.starlark.run handler so it runs against the injected replay client.
+	// The adapter checks starlarkhost.HasHTTPClient(ctx) and skips installing a
+	// production RecordingClient when a client is already present, so the
+	// ReplayClient is the one used — no socket is ever opened.
+	if fixture.StarlarkHTTPCassette != "" {
+		cassettePath := fixture.StarlarkHTTPCassette
+		if !filepath.IsAbs(cassettePath) {
+			cassettePath = filepath.Join(filepath.Dir(filePath), cassettePath)
+		}
+		raw, rerr := os.ReadFile(cassettePath)
+		if rerr != nil {
+			_ = st.Close()
+			return nil, fmt.Errorf("buildOrchestratorRig: read starlark http cassette: %w", rerr)
+		}
+		var cas starlarkhost.HTTPCassette
+		if uerr := yaml.Unmarshal(raw, &cas); uerr != nil {
+			_ = st.Close()
+			return nil, fmt.Errorf("buildOrchestratorRig: parse starlark http cassette %q: %w", cassettePath, uerr)
+		}
+		rc := starlarkhost.NewReplayClient(&cas)
+
+		// The real host.starlark.run handler must be registered to wrap it. When
+		// host_bindings: is set, builtins are already registered above; otherwise
+		// register it here so reg.Get finds it.
+		if _, ok := reg.Get("host.starlark.run"); !ok {
+			reg.Register("host.starlark.run", host.StarlarkRunHandler)
+		}
+		real, _ := reg.Get("host.starlark.run")
+		reg.Replace("host.starlark.run", func(ctx context.Context, args map[string]any) (host.Result, error) {
+			return real(starlarkhost.WithHTTP(ctx, rc), args)
+		})
+	}
+
 	// Use a no-op harness; the orchestrator path calls RunIntent directly
 	// for intent: turns and never falls through to the harness in normal use.
 	h := &noopHarness{}
@@ -803,6 +851,9 @@ func shouldUseOrchestrator(fixture *FlowFixture) bool {
 		return true
 	}
 	if fixture.HostCassette != "" {
+		return true
+	}
+	if fixture.StarlarkHTTPCassette != "" {
 		return true
 	}
 	for _, t := range fixture.Turns {

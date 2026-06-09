@@ -1,0 +1,99 @@
+states:
+  profile:
+    description: "Profile — derived by the Starlark glue"
+    relevant_world: [display_name, contact, domain, is_complete]
+    on_enter:
+      # THE SUBJECT OF THIS STORY. A single deterministic Starlark call:
+      #   with.script  — the .star file (resolved against the app root at load
+      #                   time; the sidecar enrich_user.star.yaml must sit beside
+      #                   it and is validated at load time).
+      #   with.inputs  — the named inputs exposed to the script as
+      #                   ctx.inputs[...]. user_id is a single-expr template so it
+      #                   stays a typed int; api_base is a literal string.
+      #   bind         — the script's typed outputs → world keys.
+      #   once: true   — idempotent on re-entry / reload: the call is skipped when
+      #                   all its bind targets are already set, and re-armed when
+      #                   they are cleared (the `back` intent clears them).
+      #   on_error     — a script fail()/bad-output/non-2xx sets world.last_error
+      #                   and routes here instead of advancing.
+      - invoke: host.starlark.run
+        id: enrich_user
+        with:
+          script: scripts/enrich_user.star
+          inputs:
+            user_id: "{{ world.user_id }}"
+            api_base: "https://jsonplaceholder.typicode.com"
+        bind:
+          display_name: display_name
+          contact:      contact
+          domain:       domain
+          is_complete:  is_complete
+        once: true
+        on_error: failed
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "The id was enriched entirely inside the Starlark sandbox — the only thing that left the process was a single GET, replayable from a cassette in tests."
+          - heading: "Derived profile"
+          - kv:
+              pairs:
+                Name:     "{{ world.display_name }}"
+                Contact:  "{{ world.contact }}"
+                Domain:   "{{ world.domain }}"
+                Complete: "{% if world.is_complete %}yes{% else %}no (missing a field){% endif %}"
+        choices:
+          - list:
+              items:
+                - label: "back"
+                  hint: "clear the derived fields and return to the lobby (re-arms the once: call)"
+                - label: "quit"
+                  hint: "leave"
+        footer:
+          - prose: "Bound from the script's return dict; the {method,url,status} summary rides the trace under __http_exchanges."
+    on:
+      back:
+        # Clear the bind targets so the profile room's once: call re-arms and
+        # re-runs on the next visit (reload-safe re-entry).
+        - target: lobby
+          effects:
+            - set:
+                display_name: ""
+                contact: ""
+                domain: ""
+                is_complete: false
+      quit:
+        - target: ended
+
+  failed:
+    description: "Enrichment failed"
+    relevant_world: [last_error]
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "The Starlark call returned an error, so the on_error: arc routed here. The engine set world.last_error from the script's fail() / a bad output / a non-2xx response."
+          - heading: "Error"
+          - code: "{{ world.last_error|default:'(none)' }}"
+        choices:
+          - list:
+              items:
+                - label: "back"
+                  hint: "return to the lobby and try again"
+    on:
+      back:
+        - target: lobby
+          effects:
+            - set:
+                last_error: ""
+      quit:
+        - target: ended
+
+  ended:
+    terminal: true
+    description: "Closed"
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "Done. Re-run to start over."
