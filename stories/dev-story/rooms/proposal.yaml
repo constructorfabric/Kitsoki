@@ -29,6 +29,8 @@ states:
           text:     "INTAKE"
           subtitle: "Describe your idea — search runs next"
           color:    "#10B981"
+      - template: "⚠ **Something went wrong** — the pipeline hit an error and reset. Try again below."
+        when: "world.last_error != ''"
       - prose: 'Seeded from your ideas backlog: **{{ world.proposal_seed_idea }}** — describe or expand it to start the search.'
         when: "world.proposal_seed_idea != ''"
       - prose: "Describe the change you want to propose — as rough or specific as you like. One message starts the pipeline: I'll search for prior art and relevant docs before we shape the brief.\n\nOptionally, point me at existing docs first with `see docs/…` — they'll be passed to the search."
@@ -46,23 +48,15 @@ states:
             - set:
                 proposal_idea: "{{ world.proposal_seed_idea != '' ? world.proposal_seed_idea + ' — ' + slots.message : slots.message }}"
                 proposal_seed_idea: ""
+                last_error: ""
             - invoke: host.oracle.decide
               id: name_slug
+              oracle: oracle.local_llm
               with:
-                agent: proposal_namer
                 prompt_path: prompts/proposal_slug.md
                 schema: schemas/slug.json
-                working_dir: "."
                 args:
                   idea: "{{ world.proposal_seed_idea != '' ? world.proposal_seed_idea + ' — ' + slots.message : slots.message }}"
-                # Force the verdict through the submit tool. Without this the
-                # model can satisfy the prompt by writing a ```json block in its
-                # narration, which the engine recovers from stdout but which
-                # ALSO streams to the operator as a raw fenced block (and the
-                # deviation only shows as a WARN). The validator's state-file
-                # loop nudges the model to actually call submit() instead.
-                validator:
-                  max_retries: 3
               bind:
                 proposal_slug: "submitted.slug"
               on_error: proposal

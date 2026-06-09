@@ -52,6 +52,15 @@ app:
   author: "Kitsoki"
   license: "CC0"
 
+# Local model for cheap, offline slug naming. Qwen2.5-1.5B-Instruct at Q4_K_M;
+# grammar: true enables constrained decoding so the JSON schema is satisfied on
+# the first decode without retries.
+oracle_plugins:
+  oracle.local_llm:
+    plugin: builtin.local_llm
+    model: qwen2.5-1.5b-instruct
+    grammar: true
+
 # Hosts that the day-level rooms call directly. Iface-resolved hosts
 # are unioned implicitly at fold time via resolveAllInterfaces.
 hosts:

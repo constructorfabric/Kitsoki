@@ -16,8 +16,10 @@
 #
 # Branching on the scout result:
 #   - overlaps present → the view STRONGLY urges continuing the existing
-#     draft. `change_existing <path>` amends it (→ proposal_refine, NO new
-#     folder); `override_new` is the discouraged escape hatch (→ materialize).
+#     draft. Each overlap renders as its own labelled choice item (up to 3;
+#     a free-form fallback handles the rare case of more). Selecting one
+#     fires `change_existing` with the path pre-bound (→ proposal_refine,
+#     NO new folder); `override_new` is the discouraged escape hatch.
 #     `confirm` is guarded and bounces while overlaps remain.
 #   - no overlaps → `confirm` advances to proposal_materialize cleanly.
 #   - `regenerate` discards the scan and re-fires on_enter.
@@ -42,7 +44,7 @@ states:
       - heading: "Overlap scan"
       - prose: '{{ world.proposal_existing_state.roadmap_fit|default:"(running — waiting for scout result)" }}'
       # ── Overlap detected: strong bail toward the existing case ──────────
-      - prose: "⚠ **This idea is already in flight.** You have existing draft(s)/proposal(s) for it (listed below). **Continue the existing case — do NOT start a new one.** A fresh proposal here just creates another duplicate folder to reconcile later."
+      - template: "⚠ **This idea is already in flight.** You have existing draft(s)/proposal(s) for it (listed below). **Continue the existing case — do NOT start a new one.** A fresh proposal here just creates another duplicate folder to reconcile later."
         when: "len(world.proposal_existing_state.overlaps ?? []) > 0"
       # One wrapping paragraph per overlap. This is a `template:` (not `code:`
       # or `prose:`): long prose summaries must reflow, which rules out `code:`
@@ -60,7 +62,7 @@ states:
 
           {% endif %}{% endfor %}
         when: "len(world.proposal_existing_state.overlaps ?? []) > 0"
-      - prose: "→ Use **change_existing** with the path of the draft to continue (pick the one marked `AMEND`). Only use `override_new` if you are certain none of the above is the same idea."
+      - prose: "→ Select the matching draft below to continue it — the `AMEND`-tagged one is recommended. Only use `override_new` if you are certain none applies."
         when: "len(world.proposal_existing_state.overlaps ?? []) > 0"
       # ── No overlap: clean path ──────────────────────────────────────────
       - prose: "No overlapping work found — `confirm` to create the workspace and proceed to brief authoring."
@@ -69,13 +71,37 @@ states:
           mode: single
           prompt: "Actions"
           items:
-            - label:  "change_existing"
-              hint:   "continue an existing draft instead of starting new (recommended on overlap)"
+            # ── Per-overlap amend items (up to 3) ──────────────────────────
+            # Each item is shown only when the corresponding overlap exists.
+            # Labels and slots are pongo-expanded at render time; the when:
+            # guard fires before expansion so index access is always safe.
+            - label:  "{{ world.proposal_existing_state.overlaps.0.path }}"
+              hint:   "{{ world.proposal_existing_state.overlaps.0.recommendation|upper }} — amend this existing draft"
               intent: change_existing
+              when: "len(world.proposal_existing_state.overlaps ?? []) >= 1"
+              slots:
+                target: "{{ world.proposal_existing_state.overlaps.0.path }}"
+            - label:  "{{ world.proposal_existing_state.overlaps.1.path }}"
+              hint:   "{{ world.proposal_existing_state.overlaps.1.recommendation|upper }} — amend this existing draft"
+              intent: change_existing
+              when: "len(world.proposal_existing_state.overlaps ?? []) >= 2"
+              slots:
+                target: "{{ world.proposal_existing_state.overlaps.1.path }}"
+            - label:  "{{ world.proposal_existing_state.overlaps.2.path }}"
+              hint:   "{{ world.proposal_existing_state.overlaps.2.recommendation|upper }} — amend this existing draft"
+              intent: change_existing
+              when: "len(world.proposal_existing_state.overlaps ?? []) >= 3"
+              slots:
+                target: "{{ world.proposal_existing_state.overlaps.2.path }}"
+            # Fallback for the rare case of more than 3 overlaps.
+            - label:  "change_existing (specify path)"
+              hint:   "more than 3 overlaps — enter the path of the draft to amend"
+              intent: change_existing
+              when: "len(world.proposal_existing_state.overlaps ?? []) > 3"
               param:
                 slot:        target
                 type:        string
-                placeholder: "docs/proposals/.workspace/<existing-draft>/"
+                placeholder: "docs/proposals/..."
                 required:    true
             - label:  "confirm"
               hint:   "no overlap — create the workspace and proceed"

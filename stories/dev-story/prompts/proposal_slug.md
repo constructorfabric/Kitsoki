@@ -1,7 +1,7 @@
 # Name the proposal — a short kebab-case slug
 
-You are naming a new kitsoki proposal. Turn the idea below into a **short,
-meaningful slug** — the kind of name a maintainer would give the file.
+Turn the idea below into a **short, meaningful slug** — the kind of name
+a maintainer would give the file.
 
 The idea:
 
@@ -13,23 +13,10 @@ The idea:
   `per-session-workdir`, `jsonl-trace-export`).
 - Captures the **essence** — the thing being proposed — not the whole
   sentence. A raw sentence makes a terrible slug.
-- Matches the house style of the existing proposals.
-
-## Avoid collisions
-
-Look at the existing names (use `Glob`/`Read`) and pick one that is **not
-already taken**:
-
-- `docs/proposals/*.md` — accepted proposals.
-- `docs/proposals/.workspace/*/` — proposals being drafted right now.
-
-If your first choice is taken, pick a distinct, still-meaningful
-alternative. (Uniqueness is also enforced downstream, but a clean,
-non-colliding name is better than a `-2` suffix.)
 
 ## Output
 
-Return your answer by **calling the `submit` tool** with a `slug` object (see
-`schemas/slug.json`): `{ slug, rationale }`. Do not print the JSON in your
-reply — call the tool. A fenced ```json block in the message body is not a
-valid response and will be rejected.
+Return ONLY a raw JSON object — no prose, no markdown, no code fences:
+`{ "slug": "my-proposal-slug", "rationale": "one line why" }`
+
+Do NOT wrap the JSON in ```json … ``` or any other formatting.
