@@ -656,7 +656,57 @@ The loader enforces exactly one `choice:` element per view. To
 offer two distinct picks, use two states — or keep one as a prose
 hint that the semantic router can resolve (cookbook §2.10).
 
-### 3.8 Form-mode `default:` discipline
+### 3.8 `param:` in conversational rooms causes duplicate text inputs
+
+**The trap.** A `choice:` item with `param:` renders as a visible text-input
+form in the web UI. Separately, any global intent that declares a `string`
+slot (`required: true` **or** `required: false`) is also exposed as a
+"text-slot" intent, which the web UI renders as a free-text textarea below
+the choice buttons. When these overlap in a `mode: conversational` room the
+author gets two text inputs for the same intent — one from the param form,
+one from the textarea — which is confusing and looks like a bug.
+
+This bit the proposal pipeline twice:
+
+- `change_existing` (intent with `target: string, required: true`) + "amend
+  existing…" choice item with `param: { slot: target }` → two "Amend
+  Existing" inputs in `proposal_search`.
+- Adding `intent: discuss, param: { slot: message }` to `proposal_refine`
+  (a conversational room) + the existing `discuss` textarea → two message
+  inputs.
+
+**Rules.**
+
+1. **Never use `param:` in a conversational room.** The `discuss` textarea
+   already captures free text. For a "re-run with no feedback" button, use
+   a plain button that fires the intent with a pre-filled empty slot instead:
+
+   ```yaml
+   # RIGHT — plain button; discuss textarea still handles typed feedback.
+   - label:  "refine"
+     intent: discuss
+     slots:  { message: "" }
+
+   # WRONG — adds a second text input alongside the discuss textarea.
+   - label:  "refine"
+     intent: discuss
+     param:  { slot: message, type: string, required: false }
+   ```
+
+2. **`param:` is safe in non-conversational rooms**, provided no global
+   intent with the same name also declares a matching string slot. The web
+   engine now suppresses the text-slot textarea for any intent already
+   covered by a plain button in the choice list (`InputBar.vue`
+   `coveredByChoiceItem`), but the design intent — not the suppression — is
+   what matters. If you rely on the suppression your story will be brittle.
+
+3. **`required: false` on a string slot still creates a textarea.** The
+   `required` flag tells the semantic router whether to force LLM slot
+   extraction; it does not suppress the web input. If you don't want a
+   textarea, don't declare the string slot at all, or ensure the intent is
+   covered by a choice button.
+
+### 3.9 Form-mode `default:` discipline
 
 `default:` on a numeric field renders the buffer non-empty at
 widget-open. That's right for fields where the operator's job is to

@@ -592,6 +592,15 @@ The renderer / runtime traps — invisible until a user hits them:
   a non-guarded `prose:` line at the bottom of `body:`.
 - **`{% for %}` over a possibly-absent world key.** Guard with `{% if %}`
   or use a typed `list:` with `from:`.
+- **`param:` on a choice item in a conversational room produces two text
+  inputs in the web UI.** Any global intent with a `string` slot also
+  appears as a free-text textarea alongside the choice buttons. In a
+  `mode: conversational` room the `discuss` textarea already provides
+  free-text input — adding `param:` on a choice item that maps to
+  `discuss` creates a duplicate. Use pre-filled `slots:` instead of
+  `param:` for "run with no extra input" buttons:
+  `slots: { message: "" }` fires the intent while leaving the textarea
+  for typed feedback. See [choice-widget.md §3.8](../../stories/choice-widget.md#38-param-in-conversational-rooms-causes-duplicate-text-inputs) for the full pattern.
 - **`on_error: idle` everywhere.** This is "silent fail" — the user gets
   bounced with no diagnostic. Prefer making the handler idempotent
   (idle's auto-create with the `bf_autostart_attempted` flag is the
