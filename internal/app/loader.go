@@ -177,6 +177,12 @@ func LoadWithOverrides(path string, ifaceOverrides map[string]string) (*AppDef, 
 		return nil, errors.Join(pluginErrs...)
 	}
 
+	// Resolve provider declarations from the providers: block (validate +
+	// ${VAR} substitution in env). Reference validation runs inside validateDef.
+	if provErrs := resolveProviders(merged, path); len(provErrs) > 0 {
+		return nil, errors.Join(provErrs...)
+	}
+
 	// Now fully validate the merged definition.
 	_, validErrs := validateDef(merged, path)
 	if len(validErrs) > 0 {
@@ -452,6 +458,19 @@ func mergeInto(dst, src *AppDef, srcFile string) []error {
 		dst.Agents[k] = v
 	}
 
+	// Merge provider declarations. Collision on key is an error, mirroring the
+	// agents merge above.
+	for k, v := range src.Providers {
+		if _, exists := dst.Providers[k]; exists {
+			addErr(fmt.Sprintf("include: provider %q is already declared", k))
+			continue
+		}
+		if dst.Providers == nil {
+			dst.Providers = make(map[string]*ProviderDecl)
+		}
+		dst.Providers[k] = v
+	}
+
 	return errs
 }
 
@@ -659,6 +678,11 @@ func loadAndValidate(b []byte, file string) (*AppDef, []error) {
 		return nil, pluginErrs
 	}
 
+	// Resolve provider declarations from the providers: block.
+	if provErrs := resolveProviders(&def, file); len(provErrs) > 0 {
+		return nil, provErrs
+	}
+
 	return validateDef(&def, file)
 }
 
@@ -778,6 +802,11 @@ func validateDef(def *AppDef, file string) (*AppDef, []error) {
 	// ── 9b. cross-reference: every agent name referenced anywhere in the
 	// AppDef must resolve in AppDef.Agents or agents.BuiltinNames().
 	validateAgentReferences(file, def, &errs)
+
+	// ── 9c. cross-reference: every provider name referenced by an agent's
+	// provider: field or an effect's with.provider must resolve in
+	// AppDef.Providers.
+	validateProviderReferences(file, def, &errs)
 
 	// ── 9c. reach-into-child guard (see docs/stories/imports.md).
 	// Reject parent transitions that target a deep state inside an

@@ -129,6 +129,7 @@ func OracleConverseHandler(ctx context.Context, args map[string]any) (Result, er
 
 	workingDir, _ := args["working_dir"].(string)
 	agent, _ := resolveAgent(ctx, args)
+	ctx, agent = applyProvider(ctx, args, agent)
 	systemPrompt := effectiveSystemPrompt(args, agent)
 	workingDir = appendDefaultCwd(workingDir, agent)
 	tools := effectiveTools(ctx, args, agent)
@@ -266,6 +267,7 @@ func emitConverseJournal(ctx context.Context, callID string, callStart time.Time
 func runConverseWithChat(ctx context.Context, cs ChatStore, chatID, question, permMode string, args map[string]any) (Result, error) {
 	workingDir, _ := args["working_dir"].(string)
 	agent, _ := resolveAgent(ctx, args)
+	ctx, agent = applyProvider(ctx, args, agent)
 	systemPrompt := effectiveSystemPrompt(args, agent)
 	model := agent.Model
 	workingDir = appendDefaultCwd(workingDir, agent)

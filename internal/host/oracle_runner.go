@@ -223,7 +223,7 @@ func runClaudeOneShotReal(ctx context.Context, bin string, cliArgs []string, std
 	cmd := exec.CommandContext(ctx, bin, cliArgs...)
 	cmd.Stdin = strings.NewReader(stdin)
 	cmd.Dir = workingDir
-	cmd.Env = envWithSessionID(envWithKitsokiBinOnPath(os.Environ()), sessionID)
+	cmd.Env = envWithProvider(envWithSessionID(envWithKitsokiBinOnPath(os.Environ()), sessionID), OracleProviderEnvFromCtx(ctx))
 	// When kitsoki holds the one IDE link, scrub the auto-connect signals so the
 	// inner claude doesn't open its own socket (shared decision #1). No-op (env
 	// untouched) when no link is connected. Outermost wrap so it sees the
@@ -319,7 +319,7 @@ func runClaudeStreamJSON(ctx context.Context, bin string, cliArgs []string, stdi
 	cmd := exec.CommandContext(ctx, bin, cliArgs...)
 	cmd.Stdin = strings.NewReader(stdin)
 	cmd.Dir = workingDir
-	cmd.Env = envWithSessionID(envWithKitsokiBinOnPath(os.Environ()), sid)
+	cmd.Env = envWithProvider(envWithSessionID(envWithKitsokiBinOnPath(os.Environ()), sid), OracleProviderEnvFromCtx(ctx))
 	// IDE auto-connect scrub (shared decision #1) — outermost wrap, gated on a
 	// connected link in ctx; no-op otherwise so the env is byte-identical to
 	// today on every headless/flow path.
@@ -923,6 +923,55 @@ func envWithSessionID(env []string, sessionID string) []string {
 	}
 	if !found {
 		out = append(out, key+"="+sessionID)
+	}
+	return out
+}
+
+// envWithProvider returns a copy of env with each provider override applied:
+// for every KEY in provEnv, any existing KEY= entry is replaced (last wins),
+// and absent keys are appended. When provEnv is empty the input env is returned
+// unchanged so the non-provider path is byte-identical to today's behavior.
+//
+// This is how a selected provider points the `claude` subprocess at an
+// alternate backend — typically ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN /
+// NODE_EXTRA_CA_CERTS — without mutating the process-global environment, so
+// concurrent invocations on different providers don't race.
+func envWithProvider(env []string, provEnv map[string]string) []string {
+	if len(provEnv) == 0 {
+		return env
+	}
+	// Deterministic key order so the produced env slice is stable across runs
+	// (tests assert on it; nondeterministic map iteration would flake).
+	keys := make([]string, 0, len(provEnv))
+	for k := range provEnv {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	out := make([]string, 0, len(env)+len(provEnv))
+	// Track which provider keys still need appending after the rewrite pass.
+	remaining := make(map[string]bool, len(provEnv))
+	for _, k := range keys {
+		remaining[k] = true
+	}
+	for _, kv := range env {
+		replaced := false
+		for _, k := range keys {
+			if strings.HasPrefix(kv, k+"=") {
+				out = append(out, k+"="+provEnv[k])
+				remaining[k] = false
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			out = append(out, kv)
+		}
+	}
+	for _, k := range keys {
+		if remaining[k] {
+			out = append(out, k+"="+provEnv[k])
+		}
 	}
 	return out
 }

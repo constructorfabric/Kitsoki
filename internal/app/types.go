@@ -172,6 +172,26 @@ type OraclePluginDecl struct {
 	ServerBin string `yaml:"server_bin,omitempty"`
 }
 
+// ProviderDecl declares one named LLM backend profile (see AppDef.Providers).
+//
+// A provider is a thin, transport-agnostic override applied to the `claude`
+// subprocess: Env entries are merged onto the process environment for the
+// invocation (overriding any ambient value of the same key), and Model, when
+// set, supplies the --model default for an invocation whose agent declares no
+// explicit model. Both fields are optional — a provider with only Env keeps
+// each call's own model; a provider with only Model just retargets the model
+// against the ambient backend.
+type ProviderDecl struct {
+	// Model is the --model value used for invocations that select this provider
+	// and whose agent (and effect) declare no explicit model. Optional.
+	Model string `yaml:"model,omitempty"`
+	// Env maps environment-variable names → values merged onto the claude
+	// subprocess environment (supports ${VAR} interpolation at load time).
+	// Typical keys: ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN,
+	// NODE_EXTRA_CA_CERTS. An entry overrides any ambient value of the same key.
+	Env map[string]string `yaml:"env,omitempty"`
+}
+
 // AppDef is the top-level deserialized application definition.
 type AppDef struct {
 	App     AppMeta           `yaml:"app"`
@@ -192,6 +212,17 @@ type AppDef struct {
 	// with the existing AppDef.Hosts []string allow-list field. The YAML key
 	// `oracle_plugins:` is the stable authoring surface.
 	OraclePlugins map[string]*OraclePluginDecl `yaml:"oracle_plugins,omitempty"`
+	// Providers declares named LLM backend profiles under the top-level
+	// `providers:` YAML key. A provider bundles a default model and a set of
+	// environment-variable overrides applied to the `claude` subprocess for any
+	// oracle invocation that selects it (via an agent's `provider:` field or an
+	// effect's `with: { provider: <name> }` arg). This lets some oracle calls run
+	// against the ambient Anthropic auth while others point claude at an
+	// alternate backend (e.g. an internal LiteLLM proxy) by overriding
+	// ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN / NODE_EXTRA_CA_CERTS. Selecting
+	// no provider preserves today's behavior (ambient environment). Env values
+	// support ${VAR} interpolation, resolved at load time.
+	Providers map[string]*ProviderDecl `yaml:"providers,omitempty"`
 	// Proposals declares named proposal kinds.
 	Proposals map[string]*ProposalKind `yaml:"proposals,omitempty"`
 	// Include lists glob patterns for additional YAML files to merge.
@@ -1029,6 +1060,13 @@ type AgentDecl struct {
 	Model string   `yaml:"model,omitempty"`
 	Tools []string `yaml:"tools,omitempty"`
 	Cwd   string   `yaml:"cwd,omitempty"`
+
+	// Provider names an entry in AppDef.Providers whose env overrides (and, when
+	// this agent sets no model:, default model) apply to every oracle invocation
+	// that resolves to this agent. An effect's `with: { provider: <name> }` arg
+	// overrides this per call. Empty means the ambient environment (today's
+	// behavior).
+	Provider string `yaml:"provider,omitempty"`
 
 	// InheritClaudeDefault opts this agent OUT of the layered system prompt and
 	// back to the legacy posture: the persona is passed via

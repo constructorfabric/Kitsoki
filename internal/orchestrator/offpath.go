@@ -109,6 +109,7 @@ func (o *Orchestrator) AskOffPath(ctx context.Context, sid app.SessionID, questi
 	// by the off-path-via-agent path above when Model is set on the
 	// resolved agent) without having to import the app package.
 	ctx = host.WithAgents(ctx, agentsForContext(o.def))
+	ctx = host.WithProviders(ctx, providersForContext(o.def))
 	ctx = host.WithPromptRenderer(ctx, o.promptRenderer)
 	ctx = host.WithProjectContext(ctx, projectContextFor(o.def))
 	// Inject the live IDE link (nil-safe) so the off-path oracle subprocess

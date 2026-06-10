@@ -180,6 +180,7 @@ func OracleAskHandler(ctx context.Context, args map[string]any) (Result, error) 
 
 	// Resolve the agent (optional) and compute effective tools.
 	agent, _ := resolveAgent(ctx, args)
+	ctx, agent = applyProvider(ctx, args, agent)
 	tools := effectiveTools(ctx, args, agent)
 
 	// Safety net: reject mutation tools regardless of source.

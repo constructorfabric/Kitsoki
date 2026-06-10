@@ -2709,6 +2709,7 @@ func agentsForContext(def *app.AppDef) map[string]host.Agent {
 			Model:                a.Model,
 			DefaultCwd:           a.Cwd,
 			InheritClaudeDefault: a.InheritClaudeDefault,
+			Provider:             a.Provider,
 		}
 		if len(a.Tools) > 0 {
 			agent.Tools = append([]string(nil), a.Tools...)
@@ -2721,6 +2722,32 @@ func agentsForContext(def *app.AppDef) map[string]host.Agent {
 			agent.ExternalSideEffect = &v
 		}
 		out[name] = agent
+	}
+	return out
+}
+
+// providersForContext translates the app-side ProviderDecl map into the
+// host-side Provider map injected per dispatch (via host.WithProviders) so
+// oracle handlers can resolve an agent's Provider / an effect's `provider:` arg
+// to its env overrides + default model. Returns nil when the app declares no
+// providers so handlers see a clean "no providers wired" signal.
+func providersForContext(def *app.AppDef) map[string]host.Provider {
+	if def == nil || len(def.Providers) == 0 {
+		return nil
+	}
+	out := make(map[string]host.Provider, len(def.Providers))
+	for name, p := range def.Providers {
+		if p == nil {
+			continue
+		}
+		prov := host.Provider{Model: p.Model}
+		if len(p.Env) > 0 {
+			prov.Env = make(map[string]string, len(p.Env))
+			for k, v := range p.Env {
+				prov.Env[k] = v
+			}
+		}
+		out[name] = prov
 	}
 	return out
 }

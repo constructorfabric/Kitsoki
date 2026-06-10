@@ -130,6 +130,7 @@ func OracleDecideHandler(ctx context.Context, args map[string]any) (Result, erro
 
 	// Resolve agent and validate tools.
 	agent, _ := resolveAgent(ctx, args)
+	ctx, agent = applyProvider(ctx, args, agent)
 	if errMsg := rejectMutationTools(ctx, args, agent); errMsg != "" {
 		return Result{Error: errMsg}, nil
 	}

@@ -641,6 +641,7 @@ func oracleAskWithMCPCore(ctx context.Context, rendered, resolvedPrompt string, 
 	// original session's system prompt forward implicitly, so we only
 	// need to append the flag on iteration 0 (handled by BaseCLIArgs).
 	agent, _ := resolveAgent(ctx, args)
+	ctx, agent = applyProvider(ctx, args, agent)
 	cliArgs, _ = appendComposedSystemPrompt(ctx, cliArgs, sysprompt.AskWithMCP,
 		effectiveSystemPrompt(args, agent), agent.InheritClaudeDefault)
 	if strings.TrimSpace(agent.Model) != "" {

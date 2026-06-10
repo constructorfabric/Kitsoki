@@ -81,6 +81,110 @@ type Agent struct {
 	// layers and passed via --system-prompt. Migration escape hatch; default
 	// false. See internal/sysprompt and docs/architecture/system-prompt.md.
 	InheritClaudeDefault bool
+
+	// Provider names a backend profile (see Provider / WithProviders) whose env
+	// overrides and default model apply to invocations resolving to this agent.
+	// An effect's `with: { provider: <name> }` arg overrides this per call.
+	// Empty means the ambient environment (today's behavior).
+	Provider string
+}
+
+// Provider is a backend profile applied to the `claude` subprocess for an
+// oracle invocation: Env entries are merged onto the process environment
+// (overriding ambient values of the same key) and Model, when non-empty,
+// supplies the --model default for an invocation whose agent declares no
+// explicit model. It is the host-side translation of app.ProviderDecl, kept
+// here so the host package needs no app import.
+type Provider struct {
+	Model string
+	Env   map[string]string
+}
+
+// providersKey is the unexported context key for the injected providers map.
+type providersKey struct{}
+
+// WithProviders injects the named-provider map into ctx so oracle handlers can
+// resolve an agent's Provider / an effect's `provider:` arg to a Provider value.
+// Passing nil is safe; handlers that see no providers map leave every call on
+// the ambient environment.
+func WithProviders(ctx context.Context, providers map[string]Provider) context.Context {
+	if providers == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, providersKey{}, providers)
+}
+
+// ProvidersFromContext returns the providers map previously injected with
+// WithProviders, or nil when none was injected.
+func ProvidersFromContext(ctx context.Context) map[string]Provider {
+	if v, ok := ctx.Value(providersKey{}).(map[string]Provider); ok {
+		return v
+	}
+	return nil
+}
+
+// providerEnvKey is the unexported context key carrying the resolved provider's
+// env overrides down to the claude exec layer (runClaudeOneShotReal /
+// runClaudeStreamJSON).
+type providerEnvKey struct{}
+
+// WithOracleProviderEnv returns a child context carrying env as the per-call
+// provider environment overrides applied to the claude subprocess. A nil/empty
+// map is a no-op so callers needn't guard. The most recent call wins (a nested
+// override replaces, not merges).
+func WithOracleProviderEnv(ctx context.Context, env map[string]string) context.Context {
+	if len(env) == 0 {
+		return ctx
+	}
+	return context.WithValue(ctx, providerEnvKey{}, env)
+}
+
+// OracleProviderEnvFromCtx returns the provider env overrides installed by
+// WithOracleProviderEnv, or nil when none is installed (ambient environment).
+func OracleProviderEnvFromCtx(ctx context.Context) map[string]string {
+	if v, ok := ctx.Value(providerEnvKey{}).(map[string]string); ok {
+		return v
+	}
+	return nil
+}
+
+// applyProvider resolves the provider for one oracle invocation and returns the
+// context and agent to use downstream. Selection precedence (principle of least
+// surprise, mirroring system_prompt / tools): an effect's `with: { provider }`
+// arg wins over the resolved agent's Provider; neither set means the ambient
+// environment (the returned ctx/agent are unchanged).
+//
+// When a provider resolves:
+//   - its Env is installed via WithOracleProviderEnv so the claude exec layer
+//     merges it onto the subprocess environment, and
+//   - when the agent declares no explicit Model, the provider's Model becomes
+//     the agent's effective model (an explicit agent/effect model still wins).
+//
+// An unknown provider name (no providers map, or a name absent from it) is a
+// no-op here — load-time validation already rejects unknown static references;
+// a runtime miss only happens on test scaffolding that skips the app loader,
+// where falling back to ambient is the safe behavior.
+func applyProvider(ctx context.Context, args map[string]any, agent Agent) (context.Context, Agent) {
+	name, _ := args["provider"].(string)
+	if name == "" {
+		name = agent.Provider
+	}
+	if name == "" {
+		return ctx, agent
+	}
+	providers := ProvidersFromContext(ctx)
+	if providers == nil {
+		return ctx, agent
+	}
+	prov, ok := providers[name]
+	if !ok {
+		return ctx, agent
+	}
+	if strings.TrimSpace(agent.Model) == "" && strings.TrimSpace(prov.Model) != "" {
+		agent.Model = prov.Model
+	}
+	ctx = WithOracleProviderEnv(ctx, prov.Env)
+	return ctx, agent
 }
 
 // agentsKey is the unexported context key for the injected agents map.

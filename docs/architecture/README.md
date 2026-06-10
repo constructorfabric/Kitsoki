@@ -39,6 +39,10 @@ these surfaces.
   `invoke: host.oracle.<verb>` + `oracle:` effect shape, the
   subprocess / MCP-over-HTTP transports, schema validation, and
   sub-events.
+- **[`oracle-providers.md`](oracle-providers.md)** — the `providers:`
+  block: retargeting the `claude` subprocess at an alternate
+  Anthropic-compatible backend (model + env overrides) per invocation,
+  selected by an agent's `provider:` or an effect's `with: { provider }`.
 - **[`oracle-cli.md`](oracle-cli.md)** — the `host.oracle.*` verb
   surface as a standalone CLI (`kitsoki oracle …`, `oracle-serve`) for
   validators and CI outside a running state machine.

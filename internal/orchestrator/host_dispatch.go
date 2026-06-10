@@ -62,6 +62,7 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 	// `with: { agent: <name> }` references to a host.Agent value. Built
 	// once per dispatch (cheap — translation is tag-equivalent).
 	ctx = host.WithAgents(ctx, agentsForContext(o.def))
+	ctx = host.WithProviders(ctx, providersForContext(o.def))
 	// Inject the prompt renderer so oracle handlers resolve and render prompt
 	// files through the story's overlay → story search path. nil is safe
 	// (handlers use the legacy path).
@@ -590,6 +591,7 @@ func (o *Orchestrator) dispatchHostCallsDetailed(ctx context.Context, calls []ma
 		ctx = host.WithChatStore(ctx, o.chatStore)
 	}
 	ctx = host.WithAgents(ctx, agentsForContext(o.def))
+	ctx = host.WithProviders(ctx, providersForContext(o.def))
 	// Inject the prompt renderer so oracle handlers resolve and render prompt
 	// files through the story's overlay → story search path. nil is safe
 	// (handlers use the legacy path).

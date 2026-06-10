@@ -550,6 +550,9 @@ func tryLLMResolver(ctx context.Context, ea ExtractArgs, lc *ExtractLLMConfig, b
 	}
 
 	agent, _ := resolveAgent(ctx, map[string]any{"agent": agentName})
+	// Provider selection for extract rides on the resolved agent's Provider
+	// (extract has no effect-level with: args threaded into this helper).
+	ctx, agent = applyProvider(ctx, map[string]any{}, agent)
 
 	cliArgs := []string{
 		"-p",
