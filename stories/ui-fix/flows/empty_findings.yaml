@@ -1,0 +1,46 @@
+# empty_findings — all findings below severity floor → short-circuit to done.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  verdict_path:   "stories/ui-fix/testdata/verdict.json"
+  severity_floor: "error"
+  media_format:   "slideshow"
+
+host_handlers:
+  host.run:
+    data:
+      ok: true
+      exit_code: 0
+      stdout: ""
+      stdout_json:
+        overall: "info"
+        strict: false
+        server: ""
+        summary: { total: 2, error: 0, warn: 0, info: 2 }
+        findings:
+          - { source: "geometry", check: "tiny-text", severity: "info", surface: "tour", viewport: "desktop", frame: "01@desktop.png", detail: "small text", recommendation: "bigger font", selector: ".foo", count: 1, frames: ["01@desktop.png"] }
+
+  host.starlark.run:
+    data:
+      # dedupe_findings returns no items after applying "error" floor
+      findings:
+        items: []
+        total_before: 2
+        total_after:  0
+      item: {}
+      result:
+        cleared: false
+        remaining: 0
+        regressions: []
+        after_frames: []
+      bucket: { items: [] }
+      groups: { items: [] }
+
+turns:
+  - intent: { name: look, slots: {} }
+    expect_state: done
+
+expect_terminal: false
+expect_no_errors: true

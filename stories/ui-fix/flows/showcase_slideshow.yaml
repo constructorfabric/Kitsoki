@@ -1,0 +1,119 @@
+# showcase_slideshow — reach showcase; assert media_handle bound by on_enter; next advances cursor.
+#
+# Starts at fixing with 2 groups; accept → verifying → cleared → showcase (one turn chain).
+# Verifies that contact_sheet + artifacts_dir stubs are called and media_handle bound.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: fixing
+initial_world:
+  severity_floor: "warn"
+  media_format:   "slideshow"
+  cursor: 0
+  group_budget:   5
+  group_cycle:    0
+  groups:
+    items:
+      - { id: "g1", title: "Tap target", pattern: "P1", root_cause: "C1", severity: "error", member_ids: ["fp1"], surfaces: ["trace-view"], viewports: ["mobile"], before_frames: ["f1.png"], recommendation: "R1" }
+      - { id: "g2", title: "Popover",    pattern: "P2", root_cause: "C2", severity: "error", member_ids: ["fp2"], surfaces: ["home"],       viewports: ["mobile"], before_frames: ["f2.png"], recommendation: "R2" }
+  current:
+    id: "g1"
+    title: "Tap target"
+    pattern: "P1"
+    root_cause: "C1"
+    severity: "error"
+    member_ids: ["fp1"]
+    surfaces: ["trace-view"]
+    viewports: ["mobile"]
+    before_frames: ["f1.png"]
+    recommendation: "R1"
+  fix_result:
+    applied: true
+    files: ["src/TraceView.vue"]
+    summary: "Fixed."
+    diff_excerpt: "+  min: 44px"
+    notes: ""
+  verify_raw:    {}
+  verify_result: {}
+  showcase_path: ""
+  showcase_mime: ""
+  showcase_kind: ""
+  media_handle:  ""
+  fixed: { items: [] }
+  skipped: { items: [] }
+  still_failing: { items: [] }
+
+starlark_http_cassette: ../testdata/empty.http.yaml
+
+host_handlers:
+  host.oracle.task:
+    data:
+      submitted:
+        applied: true
+        files: ["src/TraceView.vue"]
+        summary: "Fixed."
+        diff_excerpt: "+  fix"
+        notes: ""
+
+  host.run:
+    data:
+      ok: true
+      exit_code: 0
+      stdout: ""
+      stdout_json:
+        findings: []
+
+  host.starlark.run:
+    data:
+      item:
+        id: "g1"
+        title: "Tap target"
+        pattern: "P1"
+        root_cause: "C1"
+        severity: "error"
+        member_ids: ["fp1"]
+        surfaces: ["trace-view"]
+        viewports: ["mobile"]
+        before_frames: ["f1.png"]
+        recommendation: "R1"
+      result:
+        cleared: true
+        remaining: 0
+        regressions: []
+        after_frames: []
+      bucket:
+        items:
+          - { group: { id: "g1", title: "Tap target" }, media_handle: "ui-fix-g1#1", reason: "fixed" }
+      groups: { items: [] }
+
+  host.contact_sheet:
+    data:
+      ok: true
+      path: "/tmp/ui-fix-g1-sheet.png"
+      mime: "image/png"
+      kind: "image"
+
+  host.artifacts_dir:
+    data:
+      ok: true
+      handle: "ui-fix-g1#1"
+      path: ".artifacts/ui-fix/g1-before-after.png"
+      mime: "image/png"
+      kind: "image"
+
+turns:
+  # fixing → accept → verifying → (cleared emit) → showcase (single turn chain)
+  # on_enter of showcase: contact_sheet + artifacts_dir → media_handle bound
+  - intent: { name: accept, slots: {} }
+    expect_state: showcase
+    expect_world:
+      media_handle: "ui-fix-g1#1"
+
+  # next: record fixed, advance cursor → fixing group 2
+  - intent: { name: next, slots: {} }
+    expect_state: fixing
+    expect_world:
+      cursor: 1
+
+expect_terminal: false
+expect_no_errors: true

@@ -1,0 +1,32 @@
+# review_merge_then_start — merge two groups to 1, then start.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: review
+initial_world:
+  verdict_path:   "stories/ui-fix/testdata/verdict.json"
+  severity_floor: "warn"
+  media_format:   "slideshow"
+  group_budget:   5
+  findings:
+    items: []
+    total_before: 5
+    total_after: 5
+  groups:
+    items:
+      - { id: "g1", title: "Group 1", pattern: "Pattern 1", root_cause: "Cause 1", severity: "error", member_ids: ["fp1"], surfaces: ["s1"], viewports: ["mobile"], before_frames: ["f1.png"], recommendation: "Fix 1" }
+      - { id: "g2", title: "Group 2", pattern: "Pattern 2", root_cause: "Cause 2", severity: "warn",  member_ids: ["fp2"], surfaces: ["s2"], viewports: ["desktop"], before_frames: ["f2.png"], recommendation: "Fix 2" }
+      - { id: "g3", title: "Group 3", pattern: "Pattern 3", root_cause: "Cause 3", severity: "warn",  member_ids: ["fp3"], surfaces: ["s3"], viewports: ["tablet"],  before_frames: ["f3.png"], recommendation: "Fix 3" }
+
+turns:
+  - intent: { name: merge, slots: { a: g1, b: g2 } }
+    expect_state: review
+
+  - intent: { name: start, slots: {} }
+    expect_state: fixing
+    expect_world:
+      cursor: 0
+      group_cycle: 0
+
+expect_terminal: false
+expect_no_errors: true

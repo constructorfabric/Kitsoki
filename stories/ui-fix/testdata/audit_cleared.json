@@ -1,0 +1,18 @@
+{
+  "server": "",
+  "viewports": ["desktop", "mobile", "tablet"],
+  "steps": [],
+  "captures": [],
+  "summary": { "total": 1, "error": 0, "warn": 0, "info": 1 },
+  "findings": [
+    {
+      "source":   "geometry",
+      "check":    "tiny-text",
+      "severity": "info",
+      "selector": ".some-other-element",
+      "viewport": "desktop",
+      "step":     "home",
+      "frame":    "01-home@desktop.png"
+    }
+  ]
+}

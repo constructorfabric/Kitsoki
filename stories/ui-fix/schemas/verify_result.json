@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "VerifyResult",
+  "description": "Delta from the deterministic re-audit in verifying.",
+  "type": "object",
+  "required": ["cleared", "remaining", "regressions", "after_frames"],
+  "additionalProperties": false,
+  "properties": {
+    "cleared":      { "type": "boolean", "description": "True when none of the group's fingerprints appear in the fresh audit." },
+    "remaining":    { "type": "integer", "description": "Count of group member fingerprints still present." },
+    "regressions":  { "type": "array",   "items": { "type": "string" }, "description": "Fingerprints that newly appeared (new problems introduced)." },
+    "after_frames": { "type": "array",   "items": { "type": "string" }, "description": "Paths to newly-captured 'after' frames." }
+  }
+}

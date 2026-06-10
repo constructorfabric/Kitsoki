@@ -1,0 +1,140 @@
+# review — interpretive gate: oracle clusters findings into ranked groups.
+#
+# The one place where judgment lives. host.oracle.decide reads the deduped
+# findings (from idle) and the review-report summary, then emits a group_set:
+# a ranked list of patterns where each group is exactly one code fix.
+#
+# The operator confirms, reorders, drops, merges, or re-reviews before `start`
+# commits the scope and enters the fix loop.
+
+states:
+
+  review:
+    description: "Identify patterns in the deduped findings; confirm scope before fixing."
+    relevant_world: [findings, groups, review_feedback, severity_floor]
+    view:
+      - prose: "UI fix pipeline · review · {{ world.severity_floor }} floor · {{ world.findings.total_after|default:0 }} deduped findings"
+      - kv:
+          pairs:
+            Findings (deduped): "{{ world.findings.total_after|default:0 }} (from {{ world.findings.total_before|default:0 }} raw)"
+            Groups proposed:    '{{ world.groups.items|length|default:"(pending — oracle identifying patterns)" }}'
+      - heading: "Proposed groups"
+      - template: |
+          {% if world.groups.items %}
+          {% for g in world.groups.items %}
+          {{ forloop.counter }}. [{{ g.severity }}] {{ g.title }}
+             Pattern: {{ g.pattern }}
+             Surfaces × viewports: {{ g.surfaces|join:", " }} × {{ g.viewports|join:", " }}
+             Members: {{ g.member_ids|length }} finding(s)
+             Root cause: {{ g.root_cause }}
+          {% endfor %}
+          {% else %}
+          (pending — oracle has not returned yet)
+          {% endif %}
+      - list:
+          items:
+            - label: "start"
+              hint:  "accept groups and begin fix loop"
+            - label: "reorder ids=g1,g2,…"
+              hint:  "highest-leverage group first"
+            - label: "drop id=<id>"
+              hint:  "remove a group from scope"
+            - label: "merge a=<id> b=<id>"
+              hint:  "collapse two groups (same root cause)"
+            - label: "floor level=error|warn|info"
+              hint:  "raise severity floor and re-dedupe"
+            - label: "re_review"
+              hint:  "re-run pattern identification with guidance"
+            - label: "quit"
+              hint:  "abandon the pipeline"
+            - label: "look"
+              hint:  "re-render"
+    on_enter:
+      # Identify patterns. once: true keyed on groups.
+      # The re_review intent clears groups to re-arm this.
+      - invoke: host.oracle.decide
+        once: true
+        with:
+          prompt: prompts/identify_patterns.md
+          schema: schemas/group_set.json
+          args:
+            findings_json:   "{{ world.findings.items }}"
+            total_deduped:   "{{ world.findings.total_after }}"
+            severity_floor:  "{{ world.severity_floor }}"
+            review_feedback: "{{ world.review_feedback }}"
+        bind:
+          groups: submitted
+        on_error: idle
+    on:
+      start:
+        - when: "len(world.groups.items) == 0"
+          target: .
+          effects:
+            - say: "No groups to fix — use re_review or drop the floor level."
+        - target: fixing
+          effects:
+            - set:
+                cursor:      0
+                group_cycle: 0
+
+      reorder:
+        - target: .
+          effects:
+            - invoke: host.starlark.run
+              with:
+                script: scripts/manage_groups.star
+                inputs:
+                  op:      reorder
+                  ids_str: "{{ slots.ids }}"
+              bind:
+                groups: groups
+
+      drop:
+        - target: .
+          effects:
+            - invoke: host.starlark.run
+              with:
+                script: scripts/manage_groups.star
+                inputs:
+                  op: drop
+                  a:  "{{ slots.id }}"
+              bind:
+                groups: groups
+
+      merge:
+        - target: .
+          effects:
+            - invoke: host.starlark.run
+              with:
+                script: scripts/manage_groups.star
+                inputs:
+                  op: merge
+                  a:  "{{ slots.a }}"
+                  b:  "{{ slots.b }}"
+              bind:
+                groups: groups
+
+      floor:
+        - target: idle
+          effects:
+            - set:
+                severity_floor: "{{ slots.level }}"
+                # Clear both once: binds to re-run the full dedupe
+                verdict_raw: {}
+                findings:    {}
+                groups:      {}
+
+      re_review:
+        - target: review
+          effects:
+            - set:
+                review_feedback: '{{ slots.feedback ?? "" }}'
+                # Clear groups to re-arm the once: oracle call
+                groups: {}
+
+      quit:
+        - target: "@exit:abandoned"
+          effects:
+            - set: { abandon_reason: "quit_at_review" }
+      look:
+        - target: .

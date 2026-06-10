@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "FixVerdict",
+  "description": "Result from the oracle.task fix agent.",
+  "type": "object",
+  "required": ["applied", "files", "summary"],
+  "additionalProperties": true,
+  "properties": {
+    "applied":       { "type": "boolean", "description": "True when the agent successfully applied the fix." },
+    "files":         { "type": "array",   "items": { "type": "string" }, "description": "Relative paths of modified files." },
+    "summary":       { "type": "string",  "description": "One-paragraph human-readable summary of what was changed." },
+    "diff_excerpt":  { "type": "string",  "description": "Key diff lines (not the full diff)." },
+    "notes":         { "type": "string",  "description": "Optional notes about adjacent findings or trade-offs." }
+  }
+}

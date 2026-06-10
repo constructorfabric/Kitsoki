@@ -1,0 +1,165 @@
+# happy_path — full pipeline: idle → review → start → 2 groups fixed → done.
+#
+# All host calls stubbed. Starlark logic is tested separately via unit tests;
+# flow tests verify state machine wiring only.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  verdict_path:   "stories/ui-fix/testdata/verdict.json"
+  severity_floor: "warn"
+  media_format:   "slideshow"
+  group_budget:   5
+  groups:         {}
+  fixed:          { items: [] }
+  skipped:        { items: [] }
+  still_failing:  { items: [] }
+
+host_handlers:
+  # idle: read verdict.json
+  host.run:
+    data:
+      ok: true
+      exit_code: 0
+      stdout: ""
+      stdout_json:
+        overall: "error"
+        strict: false
+        server: ""
+        summary: { total: 5, error: 2, warn: 2, info: 1 }
+        findings:
+          - { source: "geometry", check: "tap-target",       severity: "error", surface: "trace-view",   viewport: "mobile",  frame: "01-trace@mobile.png",  detail: "tap target 19x16px", recommendation: "Add min 44px",   selector: ".trace-filter-chip",         count: 1, frames: ["01-trace@mobile.png"] }
+          - { source: "geometry", check: "tap-target",       severity: "error", surface: "trace-view",   viewport: "tablet",  frame: "01-trace@tablet.png",  detail: "tap target 19x16px", recommendation: "Add min 44px",   selector: ".trace-filter-chip",         count: 1, frames: ["01-trace@tablet.png"] }
+          - { source: "vision",   check: "responsive-break", severity: "error", surface: "home-rescan",  viewport: "mobile",  frame: "03-home@mobile.png",   detail: "popover overlap",    recommendation: "Bottom anchor",  selector: "",                            count: 1, frames: ["03-home@mobile.png"] }
+          - { source: "geometry", check: "tiny-text",        severity: "warn",  surface: "tour-popover", viewport: "desktop", frame: "01-trace@desktop.png", detail: "9.92px font",        recommendation: "11px floor",     selector: ".tour__progress",            count: 1, frames: ["01-trace@desktop.png"] }
+          - { source: "a11y",     check: "select-name",      severity: "warn",  surface: "trace-view",   viewport: "desktop", frame: "01-trace@desktop.png", detail: "no aria label",      recommendation: "Add aria-label", selector: "select.trace-filter-select", count: 1, frames: ["01-trace@desktop.png"] }
+
+  # idle: dedupe (starlark), verifying: delta (starlark), fixing/showcase: accumulate (starlark), get_current (starlark)
+  host.starlark.run:
+    data:
+      # dedupe_findings output
+      findings:
+        items:
+          - { id: "geometry|tap-target|.trace-filter-chip", source: "geometry", check: "tap-target",       severity: "error", selector: ".trace-filter-chip",         detail: "tap target", recommendation: "Add min 44px",   surfaces: ["trace-view"],   viewports: ["mobile","tablet"],   frames: ["01-trace@mobile.png","01-trace@tablet.png"],  count: 2 }
+          - { id: "vision|responsive-break|home-rescan|mobile", source: "vision", check: "responsive-break", severity: "error", selector: "",                           detail: "overlap",    recommendation: "Bottom anchor",  surfaces: ["home-rescan"], viewports: ["mobile"],            frames: ["03-home@mobile.png"],                          count: 1 }
+          - { id: "geometry|tiny-text|.tour__progress",     source: "geometry", check: "tiny-text",        severity: "warn",  selector: ".tour__progress",            detail: "9.92px",     recommendation: "11px floor",     surfaces: ["tour-popover"], viewports: ["desktop"],           frames: ["01-trace@desktop.png"],                       count: 1 }
+          - { id: "a11y|select-name|select.trace-filter-select", source: "a11y", check: "select-name",     severity: "warn",  selector: "select.trace-filter-select", detail: "no label",   recommendation: "Add aria-label", surfaces: ["trace-view"],   viewports: ["desktop"],           frames: ["01-trace@desktop.png"],                       count: 1 }
+        total_before: 5
+        total_after:  4
+      # get_current / verify_delta outputs
+      item:
+        id: "tap-target-trace-chips"
+        title: "Trace chip tap target too small"
+        pattern: "Tap targets on .trace-filter-chip are 19x16px"
+        root_cause: "Missing min-width/min-height in TraceView.vue"
+        severity: "error"
+        member_ids: ["geometry|tap-target|.trace-filter-chip"]
+        surfaces: ["trace-view"]
+        viewports: ["mobile", "tablet"]
+        before_frames: ["01-trace@mobile.png", "01-trace@tablet.png"]
+        recommendation: "Add min-width: 44px; min-height: 44px"
+      result:
+        cleared:      true
+        remaining:    0
+        regressions:  []
+        after_frames: ["01-trace@mobile-after.png"]
+      # accumulate outputs
+      bucket:
+        items:
+          - { group: { id: "tap-target-trace-chips" }, media_handle: "ui-fix-tap-target#1", reason: "fixed" }
+      groups:
+        items: []
+
+  host.oracle.decide:
+    data:
+      submitted:
+        items:
+          - id: "tap-target-trace-chips"
+            title: "Trace chip tap target too small"
+            pattern: "Tap targets on .trace-filter-chip are 19×16px across mobile and tablet"
+            root_cause: "Missing min-width/min-height on .trace-filter-chip in TraceView.vue"
+            severity: "error"
+            member_ids: ["geometry|tap-target|.trace-filter-chip"]
+            surfaces: ["trace-view"]
+            viewports: ["mobile", "tablet"]
+            before_frames: ["01-trace@mobile.png", "01-trace@tablet.png"]
+            recommendation: "Add min-width: 44px; min-height: 44px to .trace-filter-chip"
+          - id: "tour-popover-mobile-overlap"
+            title: "Tour popover occludes content at mobile width"
+            pattern: "Tour popover drops into middle of screen at mobile"
+            root_cause: "TourPopover.vue lacks mobile placement logic"
+            severity: "error"
+            member_ids: ["vision|responsive-break|home-rescan|mobile"]
+            surfaces: ["home-rescan"]
+            viewports: ["mobile"]
+            before_frames: ["03-home@mobile.png"]
+            recommendation: "Detect mobile viewport and position popover bottom-anchored"
+
+  host.oracle.task:
+    data:
+      submitted:
+        applied: true
+        files: ["tools/runstatus/src/components/TraceView.vue"]
+        summary: "Added min-width: 44px and min-height: 44px to .trace-filter-chip."
+        diff_excerpt: "+  min-width: 44px;\n+  min-height: 44px;"
+        notes: ""
+
+  host.contact_sheet:
+    data:
+      ok: true
+      path: "/tmp/ui-fix-before-after.png"
+      mime: "image/png"
+      kind: "image"
+
+  host.artifacts_dir:
+    data:
+      ok: true
+      handle: "ui-fix-group1#1"
+      path: ".artifacts/ui-fix/before-after.png"
+      mime: "image/png"
+      kind: "image"
+
+turns:
+  # idle: look → re-enters idle (isReEntry=true) → on_enter runs → stubs bind
+  #       findings (total_after=4 > 0) → emit_intent:loaded → review
+  - intent: { name: look, slots: {} }
+    expect_state: review
+
+  # review: oracle identified 2 groups; start the fix loop
+  - intent: { name: start, slots: {} }
+    expect_state: fixing
+    expect_world:
+      cursor: 0
+      group_cycle: 0
+
+  # fixing group 1: accept → verifying → (cleared emit in same turn) → showcase
+  - intent: { name: accept, slots: {} }
+    expect_state: showcase
+
+  # showcase: look to re-render (stay in showcase, on_enter already ran)
+  - intent: { name: look, slots: {} }
+    expect_state: showcase
+
+  # showcase: artifacts bound; next → fixing group 2 (cursor=1)
+  - intent: { name: next, slots: {} }
+    expect_state: fixing
+    expect_world:
+      cursor: 1
+
+  # fixing group 2: accept → verifying → (cleared emit) → showcase
+  - intent: { name: accept, slots: {} }
+    expect_state: showcase
+
+  # showcase group 2: look
+  - intent: { name: look, slots: {} }
+    expect_state: showcase
+
+  # showcase group 2: next → done (cursor=2, past end)
+  - intent: { name: next, slots: {} }
+    expect_state: done
+    expect_world:
+      cursor: 2
+
+expect_terminal: false
+expect_no_errors: true

@@ -1,0 +1,23 @@
+{
+  "title": "UI Fix — Before / After",
+  "scenes": [
+    {
+      "type": "title",
+      "heading": "UI Fix",
+      "subheading": "Before / After",
+      "narration": "This video shows the before and after state of a UI fix group."
+    },
+    {
+      "type": "image",
+      "src": "__BEFORE_FRAME__",
+      "caption": "Before",
+      "narration": "Before the fix was applied."
+    },
+    {
+      "type": "image",
+      "src": "__AFTER_FRAME__",
+      "caption": "After",
+      "narration": "After the fix was applied."
+    }
+  ]
+}

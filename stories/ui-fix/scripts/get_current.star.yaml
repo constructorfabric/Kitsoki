@@ -1,0 +1,5 @@
+inputs:
+  cursor:  { type: int, required: true }
+
+outputs:
+  item:    { type: object }

@@ -1,0 +1,123 @@
+# showcase — produce before/after media for the cleared group (deterministic, no LLM).
+#
+# on_enter:
+#   slideshow mode: host.contact_sheet over a temp dir with before+after frames
+#                   → host.artifacts_dir (media-emit) → media_handle
+#   video mode:     host.starlark.run before_after_spec.star → spec file
+#                   → host.slidey.render → host.artifacts_dir → media_handle
+#
+# Operator sees the before/after inline (media view element) then `next` advances.
+
+states:
+
+  showcase:
+    description: "Before/after media for the cleared group."
+    relevant_world: [current, verify_result, media_handle, media_format, frames_dir, fixed]
+    view:
+      - prose: "UI fix pipeline · showcase · {{ world.current.title|default:'(group)' }} fixed ✓"
+      - kv:
+          pairs:
+            Group:       '{{ world.current.title|default:"—" }}'
+            Before:      '{{ world.current.before_frames|length }} frame(s)'
+            After:       '{{ world.verify_result.after_frames|length }} frame(s)'
+            Media format: "{{ world.media_format }}"
+      - heading: "Before / After"
+      - media:
+          handle:  "{{ world.media_handle }}"
+          caption: "{{ world.current.title }} — before / after"
+      - list:
+          items:
+            - label: "next"
+              hint:  "record as fixed and advance to next group"
+            - label: "look"
+              hint:  "re-render"
+    on_enter:
+      # Slideshow path (default): assemble before+after into contact sheet.
+      - when: "world.media_format == 'slideshow'"
+        invoke: host.contact_sheet
+        once: true
+        with:
+          dir:  "{{ world.frames_dir }}"
+          glob: "*.png"
+          cols: 4
+        bind:
+          showcase_path: path
+          showcase_mime: mime
+          showcase_kind: kind
+        on_error: idle
+
+      # Video path: render before/after MP4 using static slidey spec template.
+      # Falls back to slideshow on_error if slidey is not available.
+      - when: "world.media_format == 'video'"
+        invoke: host.slidey.render
+        once: true
+        with:
+          spec_path: "spec/before_after.json"
+          format:    mp4
+        bind:
+          showcase_path: path
+          showcase_mime: mime
+          showcase_kind: kind
+        on_error: idle
+
+      # Emit to artifacts_dir to get a stable handle.
+      - invoke: host.artifacts_dir
+        once: true
+        with:
+          thread:    "ui-fix-{{ world.current.id }}"
+          src_path:  "{{ world.showcase_path }}"
+          kind:      "{{ world.showcase_kind }}"
+          mime:      "{{ world.showcase_mime }}"
+          label:     "{{ world.current.title }} — before/after"
+        bind:
+          media_handle: handle
+        on_error: idle
+    on:
+      next:
+        - when: "world.cursor + 1 < len(world.groups.items)"
+          target: fixing
+          effects:
+            - invoke: host.starlark.run
+              with:
+                script: scripts/accumulate.star
+                inputs:
+                  bucket_key:   fixed
+                  media_handle: "{{ world.media_handle }}"
+                  reason:       fixed
+              bind:
+                fixed: bucket
+            - set:
+                cursor:        "{{ world.cursor + 1 }}"
+                current:       {}
+                fix_result:    {}
+                verify_result: {}
+                verify_raw:    {}
+                media_handle:  ""
+                showcase_path: ""
+                showcase_mime: ""
+                showcase_kind: ""
+                group_cycle:   0
+        - target: done
+          effects:
+            - invoke: host.starlark.run
+              with:
+                script: scripts/accumulate.star
+                inputs:
+                  bucket_key:   fixed
+                  media_handle: "{{ world.media_handle }}"
+                  reason:       fixed
+              bind:
+                fixed: bucket
+            - set:
+                cursor:        "{{ world.cursor + 1 }}"
+                current:       {}
+                fix_result:    {}
+                verify_result: {}
+                verify_raw:    {}
+                media_handle:  ""
+                showcase_path: ""
+                showcase_mime: ""
+                showcase_kind: ""
+                group_cycle:   0
+      look:
+        - target: .

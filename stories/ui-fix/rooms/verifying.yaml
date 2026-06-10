@@ -1,0 +1,133 @@
+# verifying — deterministic re-audit + delta. No LLM, no cost.
+#
+# on_enter:
+#   1. host.run capture.sh (geometry+axe only) for current.surfaces → fresh frames + audit.json
+#   2. host.run cat fresh audit.json → bind: fresh_audit: stdout_json
+#   3. host.starlark.run verify_delta.star → bind: verify_result: result
+#
+# Routes:
+#   cleared == true  → showcase
+#   cleared == false → back to fixing (with regressions shown); at budget → skip
+
+states:
+
+  verifying:
+    description: "Re-audit the group's surfaces; check all member findings cleared."
+    relevant_world: [current, verify_result, group_cycle, group_budget]
+    view:
+      - prose: "UI fix pipeline · verifying · {{ world.current.title|default:'(group)' }}"
+      - kv:
+          pairs:
+            Group:    '{{ world.current.title|default:"—" }}'
+            Surfaces: '{{ world.current.surfaces|join:", "|default:"—" }}'
+      - heading: "Verify result"
+      - kv:
+          when: "world.verify_result.cleared != nil"
+          pairs:
+            Cleared:     '{{ world.verify_result.cleared }}'
+            Remaining:   '{{ world.verify_result.remaining }}'
+            Regressions: '{{ world.verify_result.regressions|length }}'
+      - when: "world.verify_result.cleared == nil"
+        prose: "(running re-audit…)"
+      - list:
+          items:
+            - label: "look"
+              hint:  "re-render"
+    on_enter:
+      # Step 1: re-capture (geometry + axe only). Stubbed in flow tests.
+      - invoke: host.run
+        with:
+          cmd: docs/skills/kitsoki-ui-review/scripts/capture.sh
+          args:
+            - "--no-build"
+            - "--fast"
+          fail_on_error: false
+        on_error: idle
+
+      # Step 2: read fresh audit. jq -c . compacts to one line for stdout_json.
+      - invoke: host.run
+        with:
+          cmd: jq
+          args: ["-c", ".", ".artifacts/ui-review/audit.json"]
+          fail_on_error: true
+        bind:
+          verify_raw: stdout_json
+        on_error: idle
+
+      # Step 3: compute delta. Script reads world.verify_raw and world.current directly.
+      - invoke: host.starlark.run
+        with:
+          script: scripts/verify_delta.star
+          inputs: {}
+        bind:
+          verify_result: result
+        on_error: idle
+
+      # Route cleared → showcase; not cleared → back to fixing.
+      - when: "world.verify_result.cleared == true"
+        emit_intent: cleared
+
+      - when: "world.verify_result.cleared == false && world.group_cycle >= world.group_budget"
+        emit_intent: verify_exhausted
+
+      - when: "world.verify_result.cleared == false && world.group_cycle < world.group_budget"
+        emit_intent: regressed
+
+    on:
+      cleared:
+        - target: showcase
+          effects:
+            - set:
+                verify_raw:  {}
+
+      regressed:
+        - target: fixing
+          effects:
+            - set:
+                group_cycle:  "{{ world.group_cycle + 1 }}"
+                fix_result:   {}
+                verify_result: {}
+                verify_raw:   {}
+            - say: "Re-audit found {{ world.verify_result.remaining }} member finding(s) still present. Regressions: {{ world.verify_result.regressions|length }}."
+
+      verify_exhausted:
+        - when: "world.cursor + 1 < len(world.groups.items)"
+          target: fixing
+          effects:
+            - invoke: host.starlark.run
+              with:
+                script: scripts/accumulate.star
+                inputs:
+                  bucket_key: still_failing
+                  reason:     verify_budget_exhausted
+              bind:
+                still_failing: bucket
+            - set:
+                cursor:        "{{ world.cursor + 1 }}"
+                current:       {}
+                fix_result:    {}
+                verify_result: {}
+                verify_raw:    {}
+                group_cycle:   0
+            - say: "Verify budget exhausted — recording group as still-failing."
+        - target: done
+          effects:
+            - invoke: host.starlark.run
+              with:
+                script: scripts/accumulate.star
+                inputs:
+                  bucket_key: still_failing
+                  reason:     verify_budget_exhausted
+              bind:
+                still_failing: bucket
+            - set:
+                cursor:        "{{ world.cursor + 1 }}"
+                current:       {}
+                fix_result:    {}
+                verify_result: {}
+                verify_raw:    {}
+                group_cycle:   0
+            - say: "Verify budget exhausted on last group — recording as still-failing."
+
+      look:
+        - target: .

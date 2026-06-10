@@ -1,0 +1,164 @@
+# idle — detect repo root, load verdict.json, deduplicate findings.
+#
+# on_enter steps:
+#   0. git rev-parse --show-toplevel → bind repo_root (once: true; cheap)
+#   1. set verdict_path to absolute if still at the default relative value
+#   2. jq -c . verdict_path → bind verdict_raw (once: true; clears on path/floor change)
+#   3. host.starlark.run dedupe_findings.star → bind findings (once: true)
+#   4. emit_intent: loaded / empty
+#
+# User actions when load fails:
+#   path <file>   — set an explicit absolute path and retry
+#   run_audit     — capture geometry+axe audit and generate verdict.json (~2 min)
+#   look          — retry with current path
+
+states:
+
+  idle:
+    description: "Load verdict.json and deduplicate findings."
+    relevant_world: [verdict_path, severity_floor, findings, last_error, repo_root]
+    view:
+      - prose: "UI fix pipeline"
+      - kv:
+          pairs:
+            Verdict path:   "{{ world.verdict_path }}"
+            Severity floor: "{{ world.severity_floor }}"
+            Findings:       '{{ world.findings.total_after|default:"(loading…)" }}/{{ world.findings.total_before|default:"—" }} after dedup'
+      - when: "world.last_error != ''"
+        prose: 'Cannot read {{ world.verdict_path }}: {{ world.last_error }}'
+      - when: "world.last_error != ''"
+        prose: 'Type  path <absolute/path/to/verdict.json>  or  run_audit  to generate one.'
+      - list:
+          items:
+            - label: "run_audit"
+              hint:  "capture geometry+axe audit and produce verdict.json (~2 min, no LLM)"
+            - label: "path /abs/path/to/verdict.json"
+              hint:  "set an explicit path and reload"
+            - label: "look"
+              hint:  "retry with current path"
+    on_enter:
+      # Step 0: detect main repo root (once: true keyed on repo_root).
+      # Uses --git-common-dir so worktrees resolve to the main repo, not the worktree root.
+      - invoke: host.run
+        once: true
+        with:
+          cmd: bash
+          args: ["-c", "d=$(git rev-parse --git-common-dir 2>/dev/null) && git -C \"$(dirname \"$d\")\" rev-parse --show-toplevel 2>/dev/null | tr -d '[:space:]'"]
+        bind:
+          repo_root: stdout
+
+      # Step 1: resolve paths post-bind. Runs every entry (idempotent pure fn).
+      # Starlark sees repo_root already bound by step 0.
+      - invoke: host.starlark.run
+        with:
+          script: scripts/resolve_paths.star
+          inputs: {}
+        bind:
+          verdict_path: verdict_path
+          frames_dir:   frames_dir
+
+      # Step 2: read verdict.json. once: true keyed on verdict_raw.
+      - invoke: host.run
+        once: true
+        with:
+          cmd: jq
+          args: ["-c", ".", "{{ world.verdict_path }}"]
+          fail_on_error: true
+        bind:
+          verdict_raw: stdout_json
+        on_error: idle
+
+      # Step 3: dedupe. Script reads world.verdict_raw directly via ctx.world.
+      - invoke: host.starlark.run
+        once: true
+        with:
+          script: scripts/dedupe_findings.star
+          inputs:
+            severity_floor: "{{ world.severity_floor }}"
+        bind:
+          findings: findings
+        on_error: idle
+
+      # Route.
+      - when: "(world.findings.total_after ?? 0) > 0"
+        emit_intent: loaded
+
+      - when: "(world.findings.total_after ?? -1) == 0"
+        emit_intent: empty
+
+    on:
+      # Set explicit absolute path, clear cache, re-enter to retry.
+      path:
+        - target: idle
+          effects:
+            - set:
+                verdict_path: "{{ slots.file }}"
+                verdict_raw:  {}
+                findings:     {}
+                last_error:   ""
+
+      # Run geometry+axe capture → verdict.json.
+      run_audit:
+        - target: auditing
+
+      # Synthetics — not user-typeable.
+      loaded:
+        - target: review
+      empty:
+        - target: done
+          effects:
+            - say: "No findings at or above '{{ world.severity_floor }}' severity."
+      look:
+        - target: idle
+
+
+  # ── auditing ──────────────────────────────────────────────────────────────
+  # Background job: capture.sh (playwright geometry+axe) + minimal report.sh.
+  # No LLM. Takes ~2 min. On complete, emits audit_done → back to idle.
+
+  auditing:
+    description: "Running geometry+axe audit — please wait (~2 min)."
+    relevant_world: [repo_root, verdict_path, last_error]
+    view:
+      - prose: "UI fix pipeline · auditing"
+      - prose: "Running geometry+axe capture (playwright) and producing verdict.json."
+      - prose: "This takes about 2 minutes. The view will update when done."
+      - when: "world.last_error != ''"
+        prose: "Audit error: {{ world.last_error }}"
+      - list:
+          items:
+            - label: "look"
+              hint:  "re-render (audit is running in background)"
+    on_enter:
+      - invoke: host.run
+        background: true
+        with:
+          cmd: bash
+          args:
+            - "-c"
+            - |
+              set -e
+              root=$(git rev-parse --show-toplevel)
+              skill="$root/docs/skills/kitsoki-ui-review/scripts"
+              art="$root/.artifacts/ui-review"
+              mkdir -p "$art"
+              "$skill/capture.sh" --no-build --fast
+              # Produce verdict.json from geometry+axe only (no vision/LLM).
+              echo '{"findings":[]}' > /tmp/ui-fix-empty-vision.json
+              "$skill/report.sh" \
+                --audit "$art/audit.json" \
+                --vision /tmp/ui-fix-empty-vision.json \
+                --out "$art/review-report.md" \
+                --verdict "$art/verdict.json" || true
+        on_complete:
+          - set:
+              verdict_raw: {}
+              findings:    {}
+              last_error:  ""
+          - emit_intent: audit_done
+    on:
+      # Fired by on_complete above — return to idle to reload.
+      audit_done:
+        - target: idle
+      look:
+        - target: .

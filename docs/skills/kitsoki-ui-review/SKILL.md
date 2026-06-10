@@ -152,6 +152,10 @@ JSON with full context but are not expanded as cards, to keep the report skimmab
 - The isolated driver: the `kitsoki-ui-review` agent (`.claude/agents/`) runs this
   pipeline in its own context and returns only the gated verdict, so the frames
   never enter the calling session.
+- **Found problems? Drive `stories/ui-fix`** to review findings into root-cause
+  groups, fix each group with a scoped agent, prove it cleared with a re-audit,
+  and record a before/after media artifact per group. See
+  [`docs/stories/ui-fix.md`](../../stories/ui-fix.md).
 - Sibling skills: [[kitsoki-ui-demo]] (records a video), [[kitsoki-ui-qa]]
   (scenario validation), `kitsoki-web-debug` (when the UI is actually broken/500ing).
 - The vision agent is the local `claude` CLI: `internal/host/oracle_runner.go`.
