@@ -125,6 +125,13 @@ and **non-empty acceptance + test_plan** per brief. On failure: fix the manifest
 (go back to step 3 with the errors as the brief) and re-run until clean. This
 gate has teeth independent of any LLM — trust it over your own read.
 
+There is also a Starlark equivalent (`validate_decomposition.star`) that covers
+the pure-logic checks (unique ids, acyclic DAG, acceptance/test_plan) and can be
+called via `host.starlark.run` from a story room — pass the parsed manifest as
+`inputs.manifest`. It does **not** cover JSON-schema shape or scope-path bounds
+(those need filesystem access and the `jsonschema` library; use the Python script
+for those).
+
 ### 5. Adversarial review — feasibility + completeness
 
 Now switch hats and **attack your own manifest as a skeptic** (or, for a real
@@ -165,7 +172,7 @@ acceptance + scope + test_plan`) — which is exactly what the proposal's
 | Load proposal/epic | read `docs/proposals/<slug>.md` (+ children) | right source confirmed |
 | Discovery | short conversation → `.context/` scope note | slicing rationale in 2 sentences |
 | Decompose | emit manifest → `.artifacts/decompose/<slug>/decomposition.yaml` | schema-shaped |
-| **Validate** | `validate_decomposition.py` | **exit code 0** |
+| **Validate** | `validate_decomposition.py` (CLI) or `host.starlark.run validate_decomposition.star` (story room) | **exit code 0 / ok: true** |
 | **Review** | skeptic pass (or sub-agent) | **verdict: accept** |
 | Hand back | board + coverage note + verdict | — |
 
