@@ -69,8 +69,12 @@ type BashProfile struct {
 // from the tool surface at loader time. True → Mode C (not replayable);
 // false → Mode A/B (deterministically replayable from diff).
 type Agent struct {
-	SystemPrompt       string
-	Model              string
+	SystemPrompt string
+	Model        string
+	// Effort, when non-empty, is forwarded to `claude --effort`
+	// (low|medium|high|xhigh|max). An effect's `with: { effort }` arg overrides
+	// it per call; empty leaves the CLI default.
+	Effort             string
 	Tools              []string
 	BashProfile        *BashProfile
 	DefaultCwd         string
@@ -97,7 +101,10 @@ type Agent struct {
 // here so the host package needs no app import.
 type Provider struct {
 	Model string
-	Env   map[string]string
+	// Effort supplies the --effort default for an invocation whose agent (and
+	// effect) declare no explicit effort. Empty leaves the agent/CLI default.
+	Effort string
+	Env    map[string]string
 }
 
 // providersKey is the unexported context key for the injected providers map.
@@ -183,6 +190,9 @@ func applyProvider(ctx context.Context, args map[string]any, agent Agent) (conte
 	if strings.TrimSpace(agent.Model) == "" && strings.TrimSpace(prov.Model) != "" {
 		agent.Model = prov.Model
 	}
+	if strings.TrimSpace(agent.Effort) == "" && strings.TrimSpace(prov.Effort) != "" {
+		agent.Effort = prov.Effort
+	}
 	ctx = WithOracleProviderEnv(ctx, prov.Env)
 	return ctx, agent
 }
@@ -242,6 +252,18 @@ func effectiveSystemPrompt(args map[string]any, agent Agent) string {
 		return inline
 	}
 	return agent.SystemPrompt
+}
+
+// effectiveEffort resolves the final --effort level for a handler call. An
+// inline `effort:` arg in the effect's with: block WINS over the resolved
+// agent's Effort (mirroring effectiveSystemPrompt) so authors can dial one
+// call up or down without rewriting the agents block. Returns "" when neither
+// source is set (no --effort flag added; claude uses its own default).
+func effectiveEffort(args map[string]any, agent Agent) string {
+	if inline, _ := args["effort"].(string); inline != "" {
+		return inline
+	}
+	return agent.Effort
 }
 
 // effectiveTools resolves the final tool list for a handler call, honouring

@@ -147,7 +147,7 @@ func DispatchDrive(ctx context.Context, cs ChatStore, driveID, workingDir string
 		// preamble the enqueuer chose to attach), and there is no
 		// per-drive agent override yet. When future revisions plumb
 		// agent metadata onto the drive row, thread it through here.
-		turn, runErr := doConverseChatTurn(lockedCtx, cs, drive.ChatID, drive.Payload, workingDir, "", "", "bypassPermissions", nil, nil, false)
+		turn, runErr := doConverseChatTurn(lockedCtx, cs, drive.ChatID, drive.Payload, workingDir, "", "", "", "bypassPermissions", nil, nil, false)
 		if runErr != nil {
 			// Infra failure: mark the drive failed with the underlying
 			// error so the row carries forensics, then re-surface to the

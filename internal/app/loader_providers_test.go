@@ -125,6 +125,63 @@ states:
 	}
 }
 
+func TestAgentEffort_ValidAccepted(t *testing.T) {
+	yaml := providersAppHeader + `
+agents:
+  judge:
+    system_prompt: be helpful
+    effort: xhigh
+`
+	def, err := app.LoadBytes([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadBytes: %v", err)
+	}
+	if def.Agents["judge"].Effort != "xhigh" {
+		t.Errorf("agent.effort: got %q", def.Agents["judge"].Effort)
+	}
+}
+
+func TestAgentEffort_InvalidRejected(t *testing.T) {
+	yaml := providersAppHeader + `
+agents:
+  judge:
+    system_prompt: be helpful
+    effort: turbo
+`
+	_, err := app.LoadBytes([]byte(yaml))
+	if err == nil || !strings.Contains(err.Error(), "turbo") {
+		t.Fatalf("expected invalid-effort error naming turbo; got %v", err)
+	}
+}
+
+func TestProviderEffort_InvalidRejected(t *testing.T) {
+	yaml := providersAppHeader + `
+providers:
+  local_llm:
+    model: m
+    effort: ludicrous
+`
+	_, err := app.LoadBytes([]byte(yaml))
+	if err == nil || !strings.Contains(err.Error(), "ludicrous") {
+		t.Fatalf("expected invalid provider-effort error naming ludicrous; got %v", err)
+	}
+}
+
+func TestProviderEffort_OnlyEffortAccepted(t *testing.T) {
+	yaml := providersAppHeader + `
+providers:
+  effort_only:
+    effort: high
+`
+	def, err := app.LoadBytes([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadBytes: %v", err)
+	}
+	if def.Providers["effort_only"].Effort != "high" {
+		t.Errorf("provider.effort: got %q", def.Providers["effort_only"].Effort)
+	}
+}
+
 func TestProviders_AbsentIsClean(t *testing.T) {
 	def, err := app.LoadBytes([]byte(providersAppHeader))
 	if err != nil {

@@ -185,6 +185,10 @@ type ProviderDecl struct {
 	// Model is the --model value used for invocations that select this provider
 	// and whose agent (and effect) declare no explicit model. Optional.
 	Model string `yaml:"model,omitempty"`
+	// Effort is the --effort value (low|medium|high|xhigh|max) used for
+	// invocations that select this provider and whose agent (and effect) declare
+	// no explicit effort. Optional.
+	Effort string `yaml:"effort,omitempty"`
 	// Env maps environment-variable names → values merged onto the claude
 	// subprocess environment (supports ${VAR} interpolation at load time).
 	// Typical keys: ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN,
@@ -1060,6 +1064,13 @@ type AgentDecl struct {
 	Model string   `yaml:"model,omitempty"`
 	Tools []string `yaml:"tools,omitempty"`
 	Cwd   string   `yaml:"cwd,omitempty"`
+
+	// Effort, when non-empty, is forwarded to `claude --effort` for every oracle
+	// invocation that resolves to this agent (ask, decide, task, ask_structured,
+	// converse). Valid values: low, medium, high, xhigh, max. An effect's
+	// `with: { effort: <level> }` arg overrides this per call. Empty leaves the
+	// claude CLI default.
+	Effort string `yaml:"effort,omitempty"`
 
 	// Provider names an entry in AppDef.Providers whose env overrides (and, when
 	// this agent sets no model:, default model) apply to every oracle invocation

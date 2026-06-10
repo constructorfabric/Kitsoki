@@ -2707,6 +2707,7 @@ func agentsForContext(def *app.AppDef) map[string]host.Agent {
 		agent := host.Agent{
 			SystemPrompt:         a.SystemPrompt,
 			Model:                a.Model,
+			Effort:               a.Effort,
 			DefaultCwd:           a.Cwd,
 			InheritClaudeDefault: a.InheritClaudeDefault,
 			Provider:             a.Provider,
@@ -2740,7 +2741,7 @@ func providersForContext(def *app.AppDef) map[string]host.Provider {
 		if p == nil {
 			continue
 		}
-		prov := host.Provider{Model: p.Model}
+		prov := host.Provider{Model: p.Model, Effort: p.Effort}
 		if len(p.Env) > 0 {
 			prov.Env = make(map[string]string, len(p.Env))
 			for k, v := range p.Env {

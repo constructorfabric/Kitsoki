@@ -542,6 +542,12 @@ func resolveAgentDecls(def *AppDef, file, baseDir string) []error {
 			decl.Cwd = expanded
 		}
 
+		// Validate the effort enum (empty is fine — leaves the CLI default).
+		if msg := validateEffort(fmt.Sprintf("agent %q", name), decl.Effort); msg != "" {
+			addErr(msg)
+			continue
+		}
+
 		// Normalise tools to fully-qualified form. Logic duplicates
 		// metamode.NormaliseToolName here because internal/metamode imports
 		// internal/app already; importing back would create a cycle.

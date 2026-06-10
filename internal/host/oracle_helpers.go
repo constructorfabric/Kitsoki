@@ -93,7 +93,8 @@ func validateBashProfile(verb string, tools []string, agent Agent) (bool, string
 // buildBaseCLIArgs assembles the base `claude -p` argument prefix shared by the
 // ask / decide / task handlers: -p, --permission-mode bypassPermissions, the
 // layered system-prompt flags (see appendComposedSystemPrompt — verb selects
-// the per-verb dynamic-sections policy), and --model. Tools and --mcp-config are
+// the per-verb dynamic-sections policy), --model, and --effort (the inline
+// `effort:` arg wins over the agent's, see effectiveEffort). Tools and --mcp-config are
 // appended by each caller afterward (they differ in ordering and gating).
 // oracle_converse.go intentionally differs (session management) and does not use
 // this.
@@ -107,6 +108,9 @@ func buildBaseCLIArgs(ctx context.Context, verb sysprompt.Verb, args map[string]
 		effectiveSystemPrompt(args, agent), agent.InheritClaudeDefault)
 	if strings.TrimSpace(agent.Model) != "" {
 		cliArgs = append(cliArgs, "--model", agent.Model)
+	}
+	if effort := strings.TrimSpace(effectiveEffort(args, agent)); effort != "" {
+		cliArgs = append(cliArgs, "--effort", effort)
 	}
 	return cliArgs
 }
