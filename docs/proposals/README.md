@@ -255,20 +255,30 @@ thought.
   group** via the shipped `visual-outputs` media seam (`host.contact_sheet` /
   `host.slidey.render` → `media` element). `done` is a before/after gallery.
   Composes existing hosts only. Nothing implemented yet.
-- [`story-editor-view.md`](story-editor-view.md) — **epic.** A story
-  editor surface in `kitsoki web`: rooms ordered by BFS distance from the
-  entry point, each showing its hook + domain model + typed view; meta chat
-  in the left column; an oracle workbench for cassette browsing and isolated
-  oracle replay; a reusable story viewer component. Nothing implemented yet;
-  decomposed into three slices:
-  - [`story-graph-api.md`](story-graph-api.md) (runtime) — read-only
-    backend: BFS room ordering, oracle contract extraction, cassette
-    discovery endpoints.
-  - [`story-editor-shell.md`](story-editor-shell.md) (tui) — room list +
-    hook / domain-model display + meta chat integration + IDE deep-link.
-  - [`oracle-workbench.md`](oracle-workbench.md) (tui) — cassette browser,
-    oracle contract display, isolated replay, and the reusable
-    `StoryViewer.vue` component.
+- ~~story-editor-view (epic) + story-graph-api / story-editor-shell /
+  oracle-workbench (slices)~~ — **shipped.** The story editor surface
+  (`/editor` route, BFS room list, hook / domain-model / typed-view detail,
+  meta chat, oracle workbench with cassette browser + isolated replay, reusable
+  `StoryViewer.vue`) now lives in narrative docs:
+  [`docs/tui/story-editor.md`](../tui/story-editor.md). Proposals deleted.
+- [`mockup-video-studio.md`](mockup-video-studio.md) — **epic.** Author UI
+  design-proposal walkthrough videos as a recorded process **and** improve
+  them in the web UI: flag a scene or time-range, grab the frame, instruct
+  the LLM, watch the video re-render. Builds on the `visual-outputs` media
+  seam (slices 2–3 are prerequisites). Nothing implemented yet; decomposed
+  into three slices:
+  - [`video-frame-seam.md`](video-frame-seam.md) (runtime) — a
+    producer-agnostic **chapter sidecar** (scene↔timestamp + `source_ref`) +
+    a deterministic `host.video.frame` still-grab, backed by one
+    `internal/video` extractor shared by a host call and the slice-2 web RPC.
+  - [`video-feedback-mode.md`](video-feedback-mode.md) (tui) — a `/review`
+    web panel: player + chapter timeline + flag-scene/range + per-flag PNG +
+    chat → structured, source-targeted **feedback notes** (capture + dispatch;
+    the LLM edit is the story's recorded decision).
+  - [`mockup-video-authoring.md`](mockup-video-authoring.md) (story) — a new
+    `stories/mockup-video/`: brief → author HTML+tour *or* slidey deck
+    (`medium: tour | deck`) → render (chapter sidecar) → review → refine-loop
+    on each flag → gallery.
 - [`work-decomposition.md`](work-decomposition.md) — **story.** A new
   `stories/decompose/` sub-story imported into dev-story: hand it an accepted
   proposal (or epic + children) and an interactive discovery conversation
@@ -278,3 +288,12 @@ thought.
   `oracle.decide` judges feasibility + completeness, and a coordination board
   dispatches each brief into the `impl` import one at a time with a human gate.
   Nothing implemented yet.
+- [`hybrid-session-driving.md`](hybrid-session-driving.md) — **runtime.** Let
+  `kitsoki web` drive a live session (e.g. `stories/bugfix`) from the browser
+  while Jira/Bitbucket keep receiving artifacts write-only. Decouples *driving*
+  (inbound intents) from *transport* (output-only): the runstatus server stamps
+  an operator identity into `last_reply_author` (so ACL-guarded `continue` stops
+  silently no-opping), attaches to the persisted session store loop.py uses (so
+  one ticket can be co-driven), and gains an opt-in inbound poll→intent bridge
+  for Jira/PR replies. All opt-in; loop.py's existing path unchanged. Nothing
+  implemented yet.

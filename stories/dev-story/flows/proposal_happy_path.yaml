@@ -163,6 +163,9 @@ turns:
     expect_host_calls:
       - handler: host.oracle.decide
         args: { call: "brief_check" }
+    # The draft room surfaces the target path as a discrete "Draft" kv (the
+    # golden-example view change).
+    expect_view_matches: "Draft.*004-proposal\\.md"
 
   # Stage 4: accept — publish inline (no separate proposal_publish room).
   - intent: { name: accept, slots: {} }
@@ -172,6 +175,8 @@ turns:
     expect_host_calls:
       - handler: host.run
         args: { call: "publish" }
+    # The done room surfaces the published path as a discrete "Published" kv.
+    expect_view_matches: "Published.*first-class-working-folder\\.md"
 
   # Back to the day landing.
   - intent: { name: go_main, slots: {} }

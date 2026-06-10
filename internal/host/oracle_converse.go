@@ -169,6 +169,9 @@ func OracleConverseHandler(ctx context.Context, args map[string]any) (Result, er
 	if strings.TrimSpace(agent.Model) != "" {
 		cliArgs = append(cliArgs, "--model", agent.Model)
 	}
+	if effort := strings.TrimSpace(effectiveEffort(args, agent)); effort != "" {
+		cliArgs = append(cliArgs, "--effort", effort)
+	}
 	cliArgs = appendAllowedToolsFlag(cliArgs, tools)
 	cliArgs = appendDisallowedToolsFlag(cliArgs, disallowedTools)
 
@@ -270,6 +273,7 @@ func runConverseWithChat(ctx context.Context, cs ChatStore, chatID, question, pe
 	ctx, agent = applyProvider(ctx, args, agent)
 	systemPrompt := effectiveSystemPrompt(args, agent)
 	model := agent.Model
+	effort := effectiveEffort(args, agent)
 	workingDir = appendDefaultCwd(workingDir, agent)
 	tools := effectiveTools(ctx, args, agent)
 	// Enforce a read-only agent's declared posture (see converseToolPolicy):
@@ -279,7 +283,7 @@ func runConverseWithChat(ctx context.Context, cs ChatStore, chatID, question, pe
 
 	var out Result
 	lockErr := cs.WithLock(ctx, chatID, func(ctx context.Context) error {
-		inner, runErr := doConverseChatTurn(ctx, cs, chatID, question, workingDir, systemPrompt, model, permMode, tools, disallowedTools, agent.InheritClaudeDefault)
+		inner, runErr := doConverseChatTurn(ctx, cs, chatID, question, workingDir, systemPrompt, model, effort, permMode, tools, disallowedTools, agent.InheritClaudeDefault)
 		out = inner
 		return runErr
 	})
@@ -296,7 +300,7 @@ func runConverseWithChat(ctx context.Context, cs ChatStore, chatID, question, pe
 //
 // Step ordering: allocate/persist the Claude session ID BEFORE appending the
 // user message to prevent orphan transcript rows on session-write failures.
-func doConverseChatTurn(ctx context.Context, cs ChatStore, chatID, question, workingDir, systemPrompt, model, permMode string, tools, disallowedTools []string, inheritDefault bool) (Result, error) {
+func doConverseChatTurn(ctx context.Context, cs ChatStore, chatID, question, workingDir, systemPrompt, model, effort, permMode string, tools, disallowedTools []string, inheritDefault bool) (Result, error) {
 	callID := newUUID()
 	callStart := time.Now()
 	// Install the active call_id so the claude transport tees its stream-json
@@ -353,6 +357,9 @@ func doConverseChatTurn(ctx context.Context, cs ChatStore, chatID, question, wor
 	cliArgs, _ = appendComposedSystemPrompt(ctx, cliArgs, sysprompt.Converse, systemPrompt, inheritDefault)
 	if strings.TrimSpace(model) != "" {
 		cliArgs = append(cliArgs, "--model", model)
+	}
+	if e := strings.TrimSpace(effort); e != "" {
+		cliArgs = append(cliArgs, "--effort", e)
 	}
 	cliArgs = appendAllowedToolsFlag(cliArgs, tools)
 	cliArgs = appendDisallowedToolsFlag(cliArgs, disallowedTools)

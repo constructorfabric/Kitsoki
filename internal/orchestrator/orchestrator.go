@@ -77,6 +77,13 @@ type Orchestrator struct {
 	// --prompt-overlay) that overrides def.Prompts.Overlay when set.
 	promptOverlay string
 
+	// oracleBackendName selects the coding-agent CLI every host.oracle.* call
+	// (and the intent-routing harness) forks: "" / "claude" (default) or
+	// "copilot". Installed into the dispatch context via
+	// host.WithOracleBackendNamed alongside the agents/providers maps. Set via
+	// WithOracleBackendName (kitsoki --oracle / $KITSOKI_ORACLE).
+	oracleBackendName string
+
 	// roomEnterSink, when non-nil, receives a pre-rendered banner string
 	// every time a turn transitions into a new room (top-level state).
 	// Fired AFTER the machine collects on_enter side-effects but BEFORE
@@ -373,6 +380,13 @@ func WithExecutionMode(mode ExecutionMode) Option {
 // docs/stories/prompts.md.
 func WithPromptOverlay(dir string) Option {
 	return func(o *Orchestrator) { o.promptOverlay = dir }
+}
+
+// WithOracleBackendName selects the coding-agent CLI backend ("claude" default,
+// or "copilot") for every host.oracle.* call. An empty/"claude" name keeps the
+// default; an unrecognized name degrades safely to claude.
+func WithOracleBackendName(name string) Option {
+	return func(o *Orchestrator) { o.oracleBackendName = name }
 }
 
 // WithLogger sets the logger used for structured tracing.
@@ -2707,6 +2721,7 @@ func agentsForContext(def *app.AppDef) map[string]host.Agent {
 		agent := host.Agent{
 			SystemPrompt:         a.SystemPrompt,
 			Model:                a.Model,
+			Effort:               a.Effort,
 			DefaultCwd:           a.Cwd,
 			InheritClaudeDefault: a.InheritClaudeDefault,
 			Provider:             a.Provider,
@@ -2740,7 +2755,7 @@ func providersForContext(def *app.AppDef) map[string]host.Provider {
 		if p == nil {
 			continue
 		}
-		prov := host.Provider{Model: p.Model}
+		prov := host.Provider{Model: p.Model, Effort: p.Effort}
 		if len(p.Env) > 0 {
 			prov.Env = make(map[string]string, len(p.Env))
 			for k, v := range p.Env {

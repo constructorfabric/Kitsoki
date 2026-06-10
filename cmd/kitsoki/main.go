@@ -144,6 +144,7 @@ func runCmd() *cobra.Command {
 	var (
 		harnessType      string
 		claudeModel      string
+		oracleBackend    string
 		recordingPath    string
 		recordPath       string
 		dbPath           string
@@ -256,6 +257,7 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 				ExecMode:      execMode,
 				HarnessType:   harnessType,
 				ClaudeModel:   claudeModel,
+				OracleBackend: resolveOracleBackend(oracleBackend),
 				RecordingPath: recordingPath,
 				RecordPath:    recordPath,
 				PromptOverlay: promptOverlay,
@@ -721,6 +723,8 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 		"harness type: claude|live|replay|recording (default: claude if `claude` binary on PATH, else live if an Anthropic credential is found, else replay)")
 	cmd.Flags().StringVar(&claudeModel, "claude-model", "",
 		fmt.Sprintf("model passed to claude -p --model (default: %s); use 'opus' for higher quality at higher cost", harness.DefaultClaudeModel))
+	cmd.Flags().StringVar(&oracleBackend, "oracle", "",
+		"coding-agent CLI backend for host.oracle.* calls: claude|copilot (default: claude, or $KITSOKI_ORACLE)")
 	cmd.Flags().StringVar(&recordingPath, "recording", "",
 		"path to recording YAML file (required for --harness replay)")
 	cmd.Flags().StringVar(&recordPath, "record", "",
@@ -773,16 +777,50 @@ func autoSelectHarness() string {
 	return "replay"
 }
 
+// resolveOracleBackend resolves the oracle backend selector with precedence
+// flag → $KITSOKI_ORACLE → "" (claude default). The runtime treats "" / "claude"
+// identically (the default backend), so an empty result is fine.
+func resolveOracleBackend(flag string) string {
+	if strings.TrimSpace(flag) != "" {
+		return flag
+	}
+	return os.Getenv("KITSOKI_ORACLE")
+}
+
 // buildHarness constructs the appropriate harness based on the harness type flag.
 // If harnessType is empty, autoSelectHarness() is called to pick one.
 // claudeModel is the model name for the ClaudeCLIHarness; pass "" to use the default.
-func buildHarness(harnessType, claudeModel, recordingPath, recordPath string, def *app.AppDef) (harness.Harness, error) {
+func buildHarness(harnessType, claudeModel, oracleBackend, recordingPath, recordPath string, def *app.AppDef) (harness.Harness, error) {
 	if harnessType == "" {
 		harnessType = autoSelectHarness()
 	}
 
 	switch harnessType {
 	case "claude":
+		// Intent routing reuses the claude-CLI harness shell even for the
+		// copilot backend: it builds a claude-shaped invocation and the
+		// runner's TranslateInvocation (installed via the copilot backend on
+		// the Exec context) rewrites it onto copilot's flags. Point the harness
+		// at the copilot binary and tag the Exec context so the one engine that
+		// forks the subprocess uses the copilot backend.
+		if oracleBackend == "copilot" {
+			copilotBin, err := exec.LookPath("copilot")
+			if env := os.Getenv(host.CopilotBinEnv); env != "" {
+				copilotBin, err = env, nil
+			}
+			if err != nil {
+				return nil, fmt.Errorf("--oracle copilot: %w", host.ErrOracleUnavailable)
+			}
+			copilotExec := func(ctx context.Context, bin string, args []string, stdin, workingDir string) (string, error) {
+				return host.RunClaudeOneShotForHarness(host.WithOracleBackendNamed(ctx, "copilot"), bin, args, stdin, workingDir)
+			}
+			return harness.NewClaudeCLI(def, harness.ClaudeCLIConfig{
+				Model:         claudeModel,
+				ClaudeBin:     copilotBin,
+				Exec:          copilotExec,
+				ValidatorTool: "kitsoki-validator-submit",
+			})
+		}
 		return harness.NewClaudeCLI(def, harness.ClaudeCLIConfig{Model: claudeModel, Exec: host.RunClaudeOneShotForHarness})
 
 	case "replay":

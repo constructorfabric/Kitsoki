@@ -132,7 +132,7 @@
     </template>
 
     <form
-      v-if="textIntents.length"
+      v-if="textIntents.length && !choiceItems.length && !formElement"
       class="input-bar__composer"
       data-testid="composer"
       :data-active-intent="selectedTextName"

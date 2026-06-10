@@ -33,10 +33,13 @@ type Transport interface {
 `Title`, `Body`, `Attachments`, and a `BotMarker` (default `"[kitsoki]"`)
 that polling external drivers use to filter their own output.
 
-The interface is deliberately output-only in v1. Inbound events come
-in via `cmd/kitsoki session continue` — an external driver (today
-`loop.py`) handles polling and posts each new comment as a session
-turn. Webhooks are a future inbound surface.
+The interface is deliberately output-only. Posting an artifact and
+*driving* the state machine are two orthogonal axes — see
+[§8 Driving vs transport](#8-driving-vs-transport). Inbound events
+reach a session either through `cmd/kitsoki session continue` (an
+external driver such as `loop.py` polls and posts each comment as a
+turn) or through the in-process **inbound bridge** (§8.2). No
+`Transport` implementation ever grows a read path.
 
 Source: [`internal/transport/transport.go`](../../internal/transport/transport.go).
 
@@ -218,9 +221,87 @@ external driver.
 
 ---
 
-## 7. Pointers
+## 8. Driving vs transport
 
-- Source: [`internal/transport/`](../../internal/transport/).
+**Transport** (outbound) and **drive** (inbound) are orthogonal. A
+transport decides *where artifacts go*; driving decides *who advances
+the FSM*. The same session can be driven from several sources at once
+while its artifacts mirror to a write-only transport:
+
+```
+DRIVE (inbound, advances the FSM)          TRANSPORT (outbound, output-only)
+  loop.py  ── session continue ──┐           host.transport.post ──▶ jira
+  browser  ── session.submit  ───┼─▶ intent                      ──▶ bitbucket
+  inbound  ── poll→intent     ───┘   (+author)                   ──▶ tui
+  bridge
+```
+
+Every drive source resolves an **operator identity** and records it as
+the turn's author, so a session driven by three sources reconstructs
+into one ordered, attributed intent log.
+
+### 8.1 Operator identity
+
+A drive turn records who took it. The runstatus web server resolves the
+author with this precedence and injects it as the reserved `author`
+slot before the turn (`server.WithDefaultActor`,
+`internal/runstatus/server/server.go`):
+
+1. `X-Kitsoki-Actor` request header (a fronting proxy / future auth layer);
+2. an explicit `actor` field on the drive RPC;
+3. the server's configured default (`kitsoki web --actor <name>`).
+
+A story consumes it via `slots.author` (e.g. bugfix's
+`last_reply_author: "{{ slots.author ?? 'human' }}"`). If a story
+*gates* a turn on an author ACL (reads `allowed_authors` in a guard)
+but the server has no configured identity, the registry **fails fast at
+session start** rather than letting a browser turn record the anonymous
+fallback and silently bounce off the guard
+(`SessionRegistry.checkAuthorIdentity`). No story ships such a guard
+today — `allowed_authors` is declared but unread.
+
+### 8.2 The inbound bridge
+
+[`internal/transport/inbound`](../../internal/transport/inbound) is the
+in-process counterpart to the external `loop.py` poller. A `Bridge`
+ties three injected seams:
+
+- a **`Source`** that reads new replies for one `(transport, thread)`
+  (concrete Jira / Bitbucket REST sources plug in here);
+- a **`Classifier`** — the default `PrefixClassifier` is deterministic
+  (no LLM): `continue` / `refine: <text>` / `restart_from <state>` /
+  `jump_to <state>`;
+- a **`Driver`** that advances the session under the writer lock.
+
+Each cycle filters the BotMarker self-echo (§6), filters by author,
+de-dups by reply id, classifies, and drives a turn — best-effort, so a
+transient failure (e.g. the writer lock is held) retries next poll
+rather than dropping the reply.
+
+### 8.3 Co-driving one persisted session
+
+`kitsoki web` attaches a live session to an **existing persisted
+session** by external key
+(`runstatus.session.attach {story_path, key}` →
+`SessionRegistry.AttachExternal`): it looks the key up in the shared
+`--db` store (creating + binding when absent) and drives it under the
+per-session **writer lock**, so a browser, the inbound bridge, and a
+separate `kitsoki session continue` process serialise rather than
+interleave — a loser gets `ErrSessionBusy` (`EX_TEMPFAIL`) and retries.
+
+Live SSE reflects turns the web process itself drives. A turn another
+**process** commits is visible on the next session reload (read from the
+shared store), not pushed over SSE: the trace JSONL takes an exclusive
+flock, so two processes cannot share one live trace stream. A
+cross-process live stream (teeing store events to a shared, lock-free
+trace reader) is the remaining engine work.
+
+---
+
+## 9. Pointers
+
+- Source: [`internal/transport/`](../../internal/transport/),
+  [`internal/transport/inbound/`](../../internal/transport/inbound/).
 - Session store: [`internal/store/`](../../internal/store/) and
   [`internal/store/external_keys.go`](../../internal/store/external_keys.go).
 - The `loop.py` external driver lives in a separate repo and is the

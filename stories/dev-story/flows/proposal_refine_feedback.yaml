@@ -1,0 +1,92 @@
+# proposal_refine_feedback — the refine room's conversational feedback loop.
+#
+# Locks in the golden behaviour added when the idea-proposal room graduated to
+# a golden example (see the proposal_refine room's "You asked" / open-questions
+# view block and the stable-question-numbering rule in prompts/proposal_refine.md):
+#
+#   1. Typing feedback in the brief room routes to `discuss` (the room's
+#      default_intent). The arc FIRST records the operator's message into
+#      world.proposal_last_refine_message, THEN re-runs the refiner with that
+#      message folded into its context (id=refine_brief_update).
+#   2. The re-rendered view echoes the instruction back ("You asked: …") so the
+#      operator gets confirmation the refiner heard them.
+#   3. The refiner's `gaps` carry STABLE numbers. When a question is resolved it
+#      is dropped from the list, but the survivors keep their original numbers
+#      (no re-sequencing to 1..N) and a genuinely new question takes the next
+#      unused integer. The view renders the gap strings VERBATIM, so the stable
+#      numbering the refiner emits is exactly what the operator sees.
+#
+# The brief already exists (proposal_brief_path set) and the refiner has already
+# run once (proposal_refine_analysis set with the initial gaps), so the on_enter
+# scaffold/open/refiner steps are all once-guarded and must NOT re-fire — only
+# the discuss arc's refine_brief_update task runs.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: proposal_refine
+initial_world:
+  judge_mode:           "human"
+  proposal_idea:        "Add a per-session working folder primitive."
+  proposal_slug:        "wf"
+  proposal_workspace:   "docs/proposals/.workspace/wf"
+  proposal_brief_path:  "docs/proposals/.workspace/wf/001-brief.md"
+  proposal_refine_analysis:
+    summary: "Idea is clear; cleanup timing and the engine seam are open."
+    # Two open questions, each carrying its STABLE permanent number.
+    gaps:
+      - "1. When is the working folder cleaned up — on session end, or lazily?"
+      - "2. Which engine seam establishes the folder at session start?"
+
+host_handlers:
+  host.ide.open_file:
+    data: { ok: true, connected: true }
+  host.oracle.task:
+    by_call:
+      # The discuss arc folds the operator's message into the brief and returns
+      # the UPDATED gap list: question 1 is now answered (dropped), question 2 is
+      # unchanged and KEEPS its number (not renumbered to 1), and a genuinely new
+      # question takes the next unused integer (3) — never a recycled one.
+      refine_brief_update:
+        data:
+          ok: true
+          submitted:
+            summary: "Cleanup timing settled (session end); seam + import-cache interaction still open."
+            gaps:
+              - "2. Which engine seam establishes the folder at session start?"
+              - "3. How does the per-session folder interact with the existing import cache?"
+
+turns:
+  # Operator types feedback. It routes to discuss (default_intent), records the
+  # message, and re-runs the refiner — staying in the refine room.
+  - intent:
+      name: discuss
+      slots: { message: "Clean it up on session end, not lazily." }
+    expect_state: proposal_refine
+    expect_world:
+      # The operator's instruction is recorded for the echo line.
+      proposal_last_refine_message: "Clean it up on session end, not lazily."
+      # The refiner's updated analysis replaces the prior one. Stable numbering:
+      # #1 dropped (answered), #2 unchanged, #3 new — never re-sequenced.
+      proposal_refine_analysis:
+        summary: "Cleanup timing settled (session end); seam + import-cache interaction still open."
+        gaps:
+          - "2. Which engine seam establishes the folder at session start?"
+          - "3. How does the per-session folder interact with the existing import cache?"
+    expect_host_calls:
+      - handler: host.oracle.task
+        args: { call: "refine_brief_update" }
+    # on_enter scaffold/open/refiner are once-guarded (brief_path + analysis
+    # already set) so they must NOT re-fire on this self-transition.
+    expect_no_host_calls: [host.artifacts_dir]
+    # The view echoes the instruction back and renders the stable-numbered gaps
+    # VERBATIM — survivor #2 keeps its number, new question is #3, no #1.
+    expect_view_matches: "You asked.*Clean it up on session end"
+
+  # A second look re-renders the same primed state (no host calls) and proves the
+  # open-questions block renders the survivor and new gap with their stable
+  # numbers — and that the dropped #1 is gone.
+  - intent: { name: look, slots: {} }
+    expect_state: proposal_refine
+    expect_view_matches: "2\\. Which engine seam[\\s\\S]*3\\. How does the per-session folder"
+
+expect_no_errors: true

@@ -45,6 +45,9 @@ turns:
     expect_state: proposal_search
     expect_world:
       proposal_overlap_decision: ""
+    # The overlap is surfaced as a discrete "Overlap 1" kv (the golden-example
+    # view change) so the operator can see the matching draft's path at a glance.
+    expect_view_matches: "Overlap 1.*local-model-oracle\\.md"
 
   # Amend the existing proposal instead — records the decision + target,
   # advances to proposal_refine.

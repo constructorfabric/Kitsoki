@@ -16,6 +16,14 @@ import type {
   MetaMessage,
 } from "./source.js";
 import type { TranscriptData, TranscriptEvent } from "./transcript.js";
+import type {
+  RoomSummary as EditorRoomSummary,
+  RoomDetail as EditorRoomDetail,
+  OraclesResult as EditorOraclesResult,
+  CassetteKey as EditorCassetteKey,
+  CassetteEpisodeSummary as EditorCassetteEpisode,
+  ReplayResult as EditorReplayResult,
+} from "./editor.js";
 
 /** One SSE frame from /rpc/meta-stream. */
 export interface MetaStreamEvent {
@@ -445,6 +453,68 @@ export class LiveSource implements DataSource {
   /** Re-scan the configured story directories and return the fresh catalogue. */
   rescanStories(): Promise<StoryHeader[]> {
     return this.client.post<StoryHeader[]>("runstatus.stories.rescan", {});
+  }
+
+  // ── Story editor (per-story static reads; no session) ─────────────────────
+
+  /** BFS-ordered room list for a story (runstatus.editor.rooms). */
+  editorRooms(storyPath: string): Promise<EditorRoomSummary[]> {
+    return this.client
+      .post<{ rooms: EditorRoomSummary[] }>("runstatus.editor.rooms", {
+        story_path: storyPath,
+      })
+      .then((r) => r.rooms ?? []);
+  }
+
+  /** Full detail for one room (runstatus.editor.room). */
+  editorRoom(storyPath: string, roomId: string): Promise<EditorRoomDetail> {
+    return this.client.post<EditorRoomDetail>("runstatus.editor.room", {
+      story_path: storyPath,
+      room_id: roomId,
+    });
+  }
+
+  /** Oracle contracts + cassette globs for a room (runstatus.editor.oracles). */
+  editorOracles(
+    storyPath: string,
+    roomId: string
+  ): Promise<EditorOraclesResult> {
+    return this.client.post<EditorOraclesResult>("runstatus.editor.oracles", {
+      story_path: storyPath,
+      room_id: roomId,
+    });
+  }
+
+  /** Cassette episodes matching a key (runstatus.editor.cassettes). */
+  editorCassettes(
+    storyPath: string,
+    cassetteKey: EditorCassetteKey
+  ): Promise<EditorCassetteEpisode[]> {
+    return this.client
+      .post<{ episodes: EditorCassetteEpisode[] }>(
+        "runstatus.editor.cassettes",
+        { story_path: storyPath, cassette_key: cassetteKey }
+      )
+      .then((r) => r.episodes ?? []);
+  }
+
+  /** Cassette-override replay of an oracle call (runstatus.editor.replay). */
+  editorReplay(
+    storyPath: string,
+    roomId: string,
+    oracleIndex: number,
+    cassetteFile?: string
+  ): Promise<EditorReplayResult> {
+    const params: Record<string, unknown> = {
+      story_path: storyPath,
+      room_id: roomId,
+      oracle_index: oracleIndex,
+    };
+    if (cassetteFile) params["cassette_file"] = cassetteFile;
+    return this.client.post<EditorReplayResult>(
+      "runstatus.editor.replay",
+      params
+    );
   }
 
   /**

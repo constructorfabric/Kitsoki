@@ -70,6 +70,21 @@ type ClaudeCLIConfig struct {
 	// Production wires host.RunClaudeOneShotForHarness at construction so all
 	// claude invocations flow through the one canonical engine.
 	Exec ClaudeExec
+	// ValidatorTool overrides the MCP tool name the model is told to call in
+	// the output contract. Empty uses validatorToolName (the claude
+	// "mcp__<server>__submit" form). The copilot backend sets this to
+	// "kitsoki-validator-submit" because copilot namespaces MCP tools as
+	// "<server>-<tool>".
+	ValidatorTool string
+}
+
+// validatorTool returns the configured submit-tool name, defaulting to the
+// claude form when unset.
+func (c ClaudeCLIConfig) validatorTool() string {
+	if c.ValidatorTool != "" {
+		return c.ValidatorTool
+	}
+	return validatorToolName
 }
 
 // ClaudeCLIHarness shells out to `claude -p` to route user text → IntentCall.
@@ -164,16 +179,19 @@ type claudeJSONEnvelope struct {
 	IsError bool   `json:"is_error"`
 }
 
-// submitInstruction is appended to every prompt. It tells the LLM the only
-// way to "respond" is to call the validator's submit tool with a payload
-// that matches the schema attached to that tool.
-const submitInstruction = `
+// buildSubmitInstruction returns the output-contract block appended to every
+// routing prompt. It tells the LLM the only way to "respond" is to call the
+// validator's submit tool (named toolName, which differs per backend:
+// "mcp__kitsoki-validator__submit" for claude, "kitsoki-validator-submit" for
+// copilot) with a payload that matches the schema attached to that tool.
+func buildSubmitInstruction(toolName string) string {
+	return `
 
 ---
 
 ## Output Contract
 
-You must call the tool ` + "`" + validatorToolName + "`" + ` exactly once with an object of shape:
+You must call the tool ` + "`" + toolName + "`" + ` exactly once with an object of shape:
 
   {"intent": "<one of the allowed intent names>",
    "slots":  {"<slot>": <value>, ...},
@@ -186,6 +204,7 @@ intent values, the slot shape per intent, and any semantic format checks
 Once submit returns OK, your turn is done — write at most a one-line
 acknowledgement; do not repeat the JSON.
 `
+}
 
 // RunTurn pipes the user utterance and app context to `claude -p` and extracts
 // the resulting IntentCall via the MCP validator's side-channel capture file.
@@ -261,7 +280,7 @@ func (h *ClaudeCLIHarness) RunTurn(ctx context.Context, in TurnInput) (mcp.CallT
 	composed := sysprompt.Compose(sysprompt.Spec{
 		Verb:    sysprompt.Route,
 		Project: projectLayer(h.appDef),
-		Task:    h.stablePrefix + submitInstruction,
+		Task:    h.stablePrefix + buildSubmitInstruction(h.cfg.validatorTool()),
 	})
 	systemPrompt := composed.SystemPrompt
 	userMessage := dynamic + "\n## User Input\n\n" + in.UserText + "\n"
@@ -305,8 +324,8 @@ func (h *ClaudeCLIHarness) RunTurn(ctx context.Context, in TurnInput) (mcp.CallT
 		_ = json.Unmarshal(raw, &env)
 		message := strings.TrimSpace(env.Result)
 		underlying := fmt.Errorf(
-			"harness/claude-cli: LLM did not call %s (no validated payload captured); claude said: %q",
-			validatorToolName, truncate(message, 200),
+			"harness/claude-cli: LLM did not call %s (no validated payload captured); model said: %q",
+			h.cfg.validatorTool(), truncate(message, 200),
 		)
 		return mcp.CallToolParams{}, &ClarifyResponse{
 			Message:    message,

@@ -55,10 +55,32 @@ states:
             Brief:  '{{ world.proposal_brief_path|default:"(scaffolding…)" }}'
             Cycle:  '{{ world.proposal_brief_cycle }}'
         when: "world.proposal_change_target == ''"
+      # Echo the operator's last instruction back so a refine turn visibly
+      # acknowledges what was asked (a non-empty message means the operator
+      # typed feedback; the blank-message `refine` choice skips this line).
+      - kv:
+          pairs:
+            You asked: '{{ world.proposal_last_refine_message }}'
+        when: "world.proposal_last_refine_message != '' ?? false"
       - kv:
           pairs:
             Refiner: '{{ world.proposal_refine_analysis.summary|default:"(refiner running…)" }}'
         when: "world.proposal_brief_path != ''"
+      # The refiner's open questions. A `template:` (not `code:`) so long gap
+      # text reflows in both surfaces — see proposal_search.yaml for the
+      # paragraph-only / no-bold-no-bullets parity rationale.
+      #
+      # Each gap string carries its OWN stable number (assigned by the refiner
+      # and persisted in the brief's "Open questions" section). We render it
+      # verbatim — no forloop.Counter — so a resolved question dropping off the
+      # list never renumbers the survivors.
+      - template: |
+          Open questions the brief still needs to settle:
+
+          {% for g in world.proposal_refine_analysis.gaps %}{{ g }}{% if not forloop.Last %}
+
+          {% endif %}{% endfor %}
+        when: "len(world.proposal_refine_analysis.gaps ?? []) > 0"
       - kv:
           pairs:
             Judge: '{{ world.proposal_brief_decision.verdict }} — {{ world.proposal_brief_decision.reason }}'
@@ -93,7 +115,7 @@ states:
             - label:  "look"
               hint:   "re-render"
               intent: look
-    relevant_world: [proposal_idea, proposal_workspace, proposal_brief_path, proposal_existing_state, proposal_change_target, proposal_references, proposal_refine_analysis, proposal_brief_decision, proposal_brief_cycle, proposal_brief_budget]
+    relevant_world: [proposal_idea, proposal_workspace, proposal_brief_path, proposal_existing_state, proposal_change_target, proposal_references, proposal_refine_analysis, proposal_last_refine_message, proposal_brief_decision, proposal_brief_cycle, proposal_brief_budget]
     on_enter:
       # 1. Scaffold the brief — write 001-brief.md (once: brief_path not yet set).
       - invoke: host.artifacts_dir
@@ -175,6 +197,12 @@ states:
       discuss:
         - target: .
           effects:
+            # Record what the operator just asked so the view can echo it back
+            # after the refiner runs — confirmation the instruction was heard.
+            # (Empty when the `refine` choice fires with a blank message, in
+            # which case the view falls back to "re-ran on the saved brief".)
+            - set:
+                proposal_last_refine_message: "{{ slots.message }}"
             - invoke: host.oracle.task
               id: refine_brief_update
               with:
@@ -221,6 +249,7 @@ states:
                 proposal_brief_decision:   {}
                 proposal_brief_cycle:      0
                 proposal_refine_analysis:  {}
+                proposal_last_refine_message: ""
 
       quit:
         - target: main

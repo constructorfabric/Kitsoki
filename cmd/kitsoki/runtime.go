@@ -93,6 +93,9 @@ type runtimeConfig struct {
 	RecordingPath string
 	RecordPath    string
 	PromptOverlay string
+	// OracleBackend selects the coding-agent CLI backend ("" / "claude" |
+	// "copilot") for host.oracle.* calls. Empty keeps the default (claude).
+	OracleBackend string
 
 	// WantRoomEnterSink allocates a TUI room-enter sink and wires it into the
 	// orchestrator. `kitsoki run` sets this; `kitsoki web` does not.
@@ -122,6 +125,7 @@ type runtimeBase struct {
 	ClaudeModel   string
 	RecordingPath string
 	RecordPath    string
+	OracleBackend string
 
 	// Flow / FlowFilePath select the deterministic flow-driven posture for the
 	// whole server: when Flow != nil every session is built with a nil harness
@@ -129,6 +133,13 @@ type runtimeBase struct {
 	// calls. A Playwright demo drives the live web UI with no LLM through this.
 	Flow         *testrunner.FlowFixture
 	FlowFilePath string
+
+	// DefaultActor is the operator identity the web server records as
+	// slots.author on a browser-driven turn when no header / actor param
+	// supplies one (see server.WithDefaultActor). Empty = none configured;
+	// the registry fails a session start fast if a story enforces an author
+	// ACL guard but no identity is configured.
+	DefaultActor string
 }
 
 // config materialises a per-session runtimeConfig for the story at storyPath
@@ -146,6 +157,7 @@ func (b runtimeBase) config(storyPath string, def *app.AppDef) runtimeConfig {
 		ClaudeModel:   b.ClaudeModel,
 		RecordingPath: b.RecordingPath,
 		RecordPath:    b.RecordPath,
+		OracleBackend: b.OracleBackend,
 		Flow:          b.Flow,
 		FlowFilePath:  b.FlowFilePath,
 	}
@@ -299,7 +311,7 @@ func buildSessionRuntime(cfg runtimeConfig) (*sessionRuntime, error) {
 			return nil, fmt.Errorf("validate hosts: %w", err)
 		}
 
-		h, err = buildHarness(cfg.HarnessType, cfg.ClaudeModel, cfg.RecordingPath, cfg.RecordPath, def)
+		h, err = buildHarness(cfg.HarnessType, cfg.ClaudeModel, cfg.OracleBackend, cfg.RecordingPath, cfg.RecordPath, def)
 		if err != nil {
 			return nil, fmt.Errorf("build harness: %w", err)
 		}
@@ -363,6 +375,9 @@ func buildSessionRuntime(cfg runtimeConfig) (*sessionRuntime, error) {
 	}
 	if cfg.PromptOverlay != "" {
 		runOpts = append(runOpts, orchestrator.WithPromptOverlay(cfg.PromptOverlay))
+	}
+	if cfg.OracleBackend != "" {
+		runOpts = append(runOpts, orchestrator.WithOracleBackendName(cfg.OracleBackend))
 	}
 	if d := def.Decider; d != nil {
 		runOpts = append(runOpts, orchestrator.WithDecider(orchestrator.DeciderConfig{

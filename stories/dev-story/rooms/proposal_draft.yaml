@@ -27,9 +27,13 @@ states:
           subtitle: "Fill the template, review, publish"
           color:    "#8B5CF6"
       - prose: "proposal cycle {{ world.proposal_cycle }} · draft attempt {{ world.proposal_draft_cycle }}/{{ world.proposal_draft_budget }}"
-      - prose: 'Proposal written to  {{ world.proposal_artifact.file_path|default:"(drafting — writes 004-proposal.md)" }}'
-      - prose: 'Amending existing proposal:  {{ world.proposal_change_target }}'
-        when:  "world.proposal_change_target"
+      - kv:
+          pairs:
+            Draft: '{{ world.proposal_artifact.file_path|default:"(drafting — writes 004-proposal.md)" }}'
+      - kv:
+          pairs:
+            Amending: '{{ world.proposal_change_target }}'
+        when: "world.proposal_change_target"
       - kv:
           pairs:
             Title:      '{{ world.proposal_artifact.title|default:"(pending)" }}'
@@ -168,7 +172,9 @@ states:
           text:     "PUBLISHED"
           subtitle: "Proposal moved into the queue"
           color:    "#10B981"
-      - prose: 'Proposal published to  {{ world.proposal_file|default:"(publishing…)" }}'
+      - kv:
+          pairs:
+            Published: '{{ world.proposal_file|default:"(publishing…)" }}'
       - prose: 'Checks archived under  {{ world.proposal_workspace }}/'
       - kv:
           pairs:

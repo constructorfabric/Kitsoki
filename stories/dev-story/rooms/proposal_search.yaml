@@ -62,6 +62,18 @@ states:
 
           {% endif %}{% endfor %}
         when: "len(world.proposal_existing_state.overlaps ?? []) > 0"
+      - kv:
+          pairs:
+            "Overlap 1": '{{ world.proposal_existing_state.overlaps.0.path }}'
+        when: "len(world.proposal_existing_state.overlaps ?? []) >= 1"
+      - kv:
+          pairs:
+            "Overlap 2": '{{ world.proposal_existing_state.overlaps.1.path }}'
+        when: "len(world.proposal_existing_state.overlaps ?? []) >= 2"
+      - kv:
+          pairs:
+            "Overlap 3": '{{ world.proposal_existing_state.overlaps.2.path }}'
+        when: "len(world.proposal_existing_state.overlaps ?? []) >= 3"
       - prose: "→ Select the matching draft below to continue it — the `AMEND`-tagged one is recommended. Only use `override_new` if you are certain none applies."
         when: "len(world.proposal_existing_state.overlaps ?? []) > 0"
       # ── No overlap: clean path ──────────────────────────────────────────

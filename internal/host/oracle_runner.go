@@ -107,6 +107,18 @@ func runClaudeOneShot(ctx context.Context, bin string, cliArgs []string, stdin, 
 		sid = sessionID[0]
 	}
 
+	// Non-claude backends (copilot) expose only one JSON mode — JSONL, one
+	// event per line — so there is no separate buffered-envelope contract to
+	// honor. Route every one-shot through the streaming parser, which already
+	// synthesizes the final reply text and captures usage from the JSONL.
+	// TranslateInvocation (inside runClaudeStreamJSON) rewrites the claude argv
+	// the caller built into the backend's real flags.
+	if OracleBackendFromContext(ctx).Name() != "claude" {
+		cr, _, err := runClaudeStreamJSON(ctx, bin, cliArgs, stdin, workingDir, sid)
+		cr.Stdout = strings.TrimRight(cr.Stdout, "\n")
+		return cr, err
+	}
+
 	// Explicit --output-format json: preserve the buffered envelope contract.
 	if requestedOutputFormat(cliArgs) == "json" {
 		var (
@@ -293,11 +305,15 @@ func runClaudeStreamJSON(ctx context.Context, bin string, cliArgs []string, stdi
 		sid = sessionID[0]
 	}
 
-	if r := ClaudeRunnerFromContext(ctx); r != nil {
+	backend := OracleBackendFromContext(ctx)
+	inv := backend.TranslateInvocation(cliArgs, stdin, workingDir)
+
+	if r := backend.runnerFromContext(ctx); r != nil {
 		// Test seam: stub almost certainly emits non-JSONL text. Run
-		// it once, parse what we can (zero or more JSONL events), and
-		// fall back to using its raw output as the assistant reply.
-		cr, err := r(ctx, cliArgs, stdin, workingDir)
+		// it once (with the backend's translated argv/stdin), parse what
+		// we can (zero or more JSONL events), and fall back to using its
+		// raw output as the assistant reply.
+		cr, err := r(ctx, inv.Args, inv.Stdin, inv.WorkingDir)
 		if err != nil {
 			return cr, "", err
 		}
@@ -316,9 +332,9 @@ func runClaudeStreamJSON(ctx context.Context, bin string, cliArgs []string, stdi
 		return cr, parsedSID, nil
 	}
 
-	cmd := exec.CommandContext(ctx, bin, cliArgs...)
-	cmd.Stdin = strings.NewReader(stdin)
-	cmd.Dir = workingDir
+	cmd := exec.CommandContext(ctx, bin, inv.Args...)
+	cmd.Stdin = strings.NewReader(inv.Stdin)
+	cmd.Dir = inv.WorkingDir
 	cmd.Env = envWithProvider(envWithSessionID(envWithKitsokiBinOnPath(os.Environ()), sid), OracleProviderEnvFromCtx(ctx))
 	// IDE auto-connect scrub (shared decision #1) — outermost wrap, gated on a
 	// connected link in ctx; no-op otherwise so the env is byte-identical to
@@ -372,6 +388,7 @@ func runClaudeStreamJSON(ctx context.Context, bin string, cliArgs []string, stdi
 		rawEvents     []json.RawMessage
 		resultUsage   map[string]any
 		resultCost    float64
+		sumOutTokens  int
 	)
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -392,28 +409,36 @@ func runClaudeStreamJSON(ctx context.Context, bin string, cliArgs []string, stdi
 		sawAnyJSON = true
 		rawEvents = append(rawEvents, json.RawMessage(trimmed))
 		if teeTranscript {
-			transcriptW.Append(transcriptCallID, claudeTranscriptFormat,
+			transcriptW.Append(transcriptCallID, backend.TranscriptFormat(),
 				json.RawMessage(trimmed), time.Since(callStart).Milliseconds())
 		}
-		emitStreamEvent(ctx, ev)
-		text, _, _, isResult, resultText, sid := classifyStreamEvent(ev)
-		if text != "" {
-			assembledText.WriteString(text)
+		ce := backend.Classify(ev)
+		emitClassified(ctx, ce)
+		sumOutTokens += ce.OutputTokens
+		if ce.Text != "" {
+			assembledText.WriteString(ce.Text)
 		}
-		if isResult {
-			if resultText != "" {
-				finalResult = resultText
+		if ce.IsResult {
+			if ce.ResultText != "" {
+				finalResult = ce.ResultText
 			}
 			// The terminal result event carries the authoritative
 			// cumulative token usage + cost for the whole turn.
-			if u, cost := resultEventUsage(ev); u != nil || cost != 0 {
-				resultUsage, resultCost = u, cost
+			if ce.Usage != nil || ce.Cost != 0 {
+				resultUsage, resultCost = ce.Usage, ce.Cost
 			}
 		}
-		if sid != "" && parsedSID == "" {
-			parsedSID = sid
+		// Copilot streams the final reply incrementally and never stamps a
+		// dedicated result-text field; keep the latest non-empty assistant
+		// message as the running reply so the fallback below picks it up.
+		if !ce.IsResult && ce.Type == "assistant.message" && ce.Text != "" {
+			finalResult = ce.Text
+		}
+		if ce.SessionID != "" && parsedSID == "" {
+			parsedSID = ce.SessionID
 		}
 	}
+	resultUsage = mergeOutputTokens(resultUsage, sumOutTokens)
 	// scanner.Err() can return a "token too long" error if a single
 	// JSON line exceeds the 8 MiB cap. Surface that so the caller
 	// doesn't silently truncate the reply.
@@ -464,21 +489,17 @@ func runClaudeStreamJSON(ctx context.Context, bin string, cliArgs []string, stdi
 // The sink call happens BEFORE the slog emit so a panicking sink can't
 // swallow the trace record — though sink implementations are required
 // to be non-blocking and non-panicking by contract.
-func emitStreamEvent(ctx context.Context, ev map[string]any) {
-	evType, _ := ev["type"].(string)
-	subtype, _ := ev["subtype"].(string)
-	text, tool, toolArgs, isResult, resultText, sessionID := classifyStreamEvent(ev)
-
+func emitClassified(ctx context.Context, ce classifiedEvent) {
 	// preview is the compact, single-line value for the slog trace and
 	// the tool-use breadcrumb: tool args when this is a tool_use event,
 	// otherwise a clipped peek at the narration / result text. Full
 	// content blocks would dwarf the log.
-	previewSrc := toolArgs
+	previewSrc := ce.ToolArgs
 	if previewSrc == "" {
-		previewSrc = text
+		previewSrc = ce.Text
 	}
-	if isResult && resultText != "" {
-		previewSrc = resultText
+	if ce.IsResult && ce.ResultText != "" {
+		previewSrc = ce.ResultText
 	}
 	preview := onelinePreview(previewSrc, 120)
 
@@ -486,63 +507,82 @@ func emitStreamEvent(ctx context.Context, ev map[string]any) {
 	// structured form so the consumer doesn't have to re-parse strings.
 	if sink := StreamSinkFrom(ctx); sink != nil {
 		out := StreamEvent{
-			Type:    evType,
-			Subtype: subtype,
-			Tool:    tool,
+			Type:    ce.Type,
+			Subtype: ce.Subtype,
+			Tool:    ce.Tool,
 			Preview: preview,
-			Tools:   assistantToolUses(ev),
+			Tools:   ce.Tools,
 			// Full narration prose, untruncated — the transcript word-
 			// wraps it. Cutting it mid-sentence was the truncation bug.
-			Text:      text,
-			SessionID: sessionID,
-			IsResult:  isResult,
+			Text:      ce.Text,
+			SessionID: ce.SessionID,
+			IsResult:  ce.IsResult,
 		}
-		if isResult {
-			if cost, ok := ev["total_cost_usd"].(float64); ok {
-				out.CostUSD = cost
-			}
-			if usage, _ := ev["usage"].(map[string]any); usage != nil {
-				out.InputTokens = usageInt(usage, "input_tokens")
-				out.OutputTokens = usageInt(usage, "output_tokens")
-				out.CacheReadTokens = usageInt(usage, "cache_read_input_tokens")
-				out.CacheCreationTokens = usageInt(usage, "cache_creation_input_tokens")
+		if ce.IsResult {
+			out.CostUSD = ce.Cost
+			if ce.Usage != nil {
+				out.InputTokens = usageInt(ce.Usage, "input_tokens")
+				out.OutputTokens = usageInt(ce.Usage, "output_tokens")
+				out.CacheReadTokens = usageInt(ce.Usage, "cache_read_input_tokens")
+				out.CacheCreationTokens = usageInt(ce.Usage, "cache_creation_input_tokens")
 			}
 		}
 		sink.OnStreamEvent(ctx, out)
 	}
 
 	attrs := []any{
-		"type", evType,
+		"type", ce.Type,
 	}
-	if subtype != "" {
-		attrs = append(attrs, "subtype", subtype)
+	if ce.Subtype != "" {
+		attrs = append(attrs, "subtype", ce.Subtype)
 	}
-	if tool != "" {
-		attrs = append(attrs, "tool", tool)
+	if ce.Tool != "" {
+		attrs = append(attrs, "tool", ce.Tool)
 	}
 	if preview != "" {
 		attrs = append(attrs, "preview", preview)
 	}
-	if isResult {
-		if cost, ok := ev["total_cost_usd"].(float64); ok {
-			attrs = append(attrs, "total_cost_usd", cost)
+	if ce.IsResult {
+		if ce.Cost != 0 {
+			attrs = append(attrs, "total_cost_usd", ce.Cost)
 		}
-		if isErr, ok := ev["is_error"].(bool); ok {
-			attrs = append(attrs, "is_error", isErr)
+		if ce.IsError {
+			attrs = append(attrs, "is_error", ce.IsError)
 		}
-		if sessionID != "" {
-			attrs = append(attrs, "session_id", sessionID)
+		if ce.SessionID != "" {
+			attrs = append(attrs, "session_id", ce.SessionID)
 		}
-		if usage, _ := ev["usage"].(map[string]any); usage != nil {
+		if ce.Usage != nil {
 			attrs = append(attrs,
-				"input_tokens", usageInt(usage, "input_tokens"),
-				"output_tokens", usageInt(usage, "output_tokens"),
-				"cache_read_input_tokens", usageInt(usage, "cache_read_input_tokens"),
-				"cache_creation_input_tokens", usageInt(usage, "cache_creation_input_tokens"),
+				"input_tokens", usageInt(ce.Usage, "input_tokens"),
+				"output_tokens", usageInt(ce.Usage, "output_tokens"),
+				"cache_read_input_tokens", usageInt(ce.Usage, "cache_read_input_tokens"),
+				"cache_creation_input_tokens", usageInt(ce.Usage, "cache_creation_input_tokens"),
 			)
 		}
 	}
 	slog.InfoContext(ctx, "metamode.oracle.event", attrs...)
+}
+
+// mergeOutputTokens injects a summed per-message output-token count into a
+// terminal usage map when that map carries no output_tokens of its own. This is
+// the copilot case: its result event reports premium_requests + durations but no
+// token totals, while each assistant.message carries an outputTokens count. For
+// claude (whose result usage already has output_tokens) and for any run with no
+// per-message tokens (sum == 0) the usage map is returned unchanged, so the
+// behavior is byte-identical on the existing path. A nil usage map with a
+// positive sum is materialized so the count is not lost.
+func mergeOutputTokens(usage map[string]any, sumOutTokens int) map[string]any {
+	if sumOutTokens <= 0 {
+		return usage
+	}
+	if usage == nil {
+		return map[string]any{"output_tokens": float64(sumOutTokens)}
+	}
+	if _, present := usage["output_tokens"]; !present {
+		usage["output_tokens"] = float64(sumOutTokens)
+	}
+	return usage
 }
 
 // usageInt reads a token-count field from a claude usage object. JSON numbers
@@ -802,6 +842,8 @@ func parseStreamJSONOutput(ctx context.Context, raw string) (reply, sessionID st
 	if t, ok := CallStartFrom(ctx); ok {
 		callStart = t
 	}
+	backend := OracleBackendFromContext(ctx)
+	sumOutTokens := 0
 	scanner := bufio.NewScanner(strings.NewReader(raw))
 	scanner.Buffer(make([]byte, 0, 64*1024), 8*1024*1024)
 	for scanner.Scan() {
@@ -815,26 +857,31 @@ func parseStreamJSONOutput(ctx context.Context, raw string) (reply, sessionID st
 		}
 		rawEvents = append(rawEvents, json.RawMessage(line))
 		if teeTranscript {
-			transcriptW.Append(transcriptCallID, claudeTranscriptFormat,
+			transcriptW.Append(transcriptCallID, backend.TranscriptFormat(),
 				json.RawMessage(line), time.Since(callStart).Milliseconds())
 		}
-		emitStreamEvent(ctx, ev)
-		text, _, _, isResult, resultText, sid := classifyStreamEvent(ev)
-		if text != "" {
-			assembled.WriteString(text)
+		ce := backend.Classify(ev)
+		emitClassified(ctx, ce)
+		sumOutTokens += ce.OutputTokens
+		if ce.Text != "" {
+			assembled.WriteString(ce.Text)
 		}
-		if isResult {
-			if resultText != "" {
-				finalResult = resultText
+		if ce.IsResult {
+			if ce.ResultText != "" {
+				finalResult = ce.ResultText
 			}
-			if u, c := resultEventUsage(ev); u != nil || c != 0 {
-				usage, cost = u, c
+			if ce.Usage != nil || ce.Cost != 0 {
+				usage, cost = ce.Usage, ce.Cost
 			}
 		}
-		if sid != "" && sessionID == "" {
-			sessionID = sid
+		if !ce.IsResult && ce.Type == "assistant.message" && ce.Text != "" {
+			finalResult = ce.Text
+		}
+		if ce.SessionID != "" && sessionID == "" {
+			sessionID = ce.SessionID
 		}
 	}
+	usage = mergeOutputTokens(usage, sumOutTokens)
 	reply = finalResult
 	if strings.TrimSpace(reply) == "" {
 		reply = assembled.String()
@@ -976,14 +1023,21 @@ func envWithProvider(env []string, provEnv map[string]string) []string {
 	return out
 }
 
-// resolveOracleBin returns the path to the claude binary, honoring
+// resolveOracleBin returns the path to the binary of the oracle backend
+// selected on ctx (claude by default), honoring that backend's bin-override env
+// and test-stub seam. Verb handlers call this; the backend owns the details.
+func resolveOracleBin(ctx context.Context) (string, error) {
+	return OracleBackendFromContext(ctx).ResolveBin(ctx)
+}
+
+// resolveClaudeBin returns the path to the claude binary, honoring
 // OracleBinEnv and falling back to a PATH lookup. Returns
 // ErrOracleUnavailable if neither is set.
 //
 // When a ClaudeRunner is installed in ctx (tests) the function
 // short-circuits with a sentinel path because the runner stub does
 // not need a real binary on disk.
-func resolveOracleBin(ctx context.Context) (string, error) {
+func resolveClaudeBin(ctx context.Context) (string, error) {
 	if ClaudeRunnerFromContext(ctx) != nil {
 		return "stub://claude", nil
 	}

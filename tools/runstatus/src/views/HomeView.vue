@@ -48,6 +48,11 @@
             >
               {{ startingPath === story.path ? "Starting…" : "New session" }}
             </button>
+            <router-link
+              class="home__btn home__btn--ghost"
+              data-testid="edit-story-btn"
+              :to="{ path: '/editor', query: { story: story.path } }"
+            >Edit story</router-link>
           </div>
           <div
             v-if="startError && startErrorPath === story.path"

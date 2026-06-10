@@ -43,6 +43,10 @@ these surfaces.
   block: retargeting the `claude` subprocess at an alternate
   Anthropic-compatible backend (model + env overrides) per invocation,
   selected by an agent's `provider:` or an effect's `with: { provider }`.
+- **[`oracle-backends.md`](oracle-backends.md)** — the `--oracle
+  claude|copilot` switch: which coding-agent CLI kitsoki forks behind
+  every oracle verb + routing, the claude→copilot flag translation, and
+  the interface-compliance conformance suite.
 - **[`oracle-cli.md`](oracle-cli.md)** — the `host.oracle.*` verb
   surface as a standalone CLI (`kitsoki oracle …`, `oracle-serve`) for
   validators and CI outside a running state machine.

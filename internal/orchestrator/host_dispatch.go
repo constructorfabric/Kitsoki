@@ -63,6 +63,7 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 	// once per dispatch (cheap — translation is tag-equivalent).
 	ctx = host.WithAgents(ctx, agentsForContext(o.def))
 	ctx = host.WithProviders(ctx, providersForContext(o.def))
+	ctx = host.WithOracleBackendNamed(ctx, o.oracleBackendName)
 	// Inject the prompt renderer so oracle handlers resolve and render prompt
 	// files through the story's overlay → story search path. nil is safe
 	// (handlers use the legacy path).
@@ -592,6 +593,7 @@ func (o *Orchestrator) dispatchHostCallsDetailed(ctx context.Context, calls []ma
 	}
 	ctx = host.WithAgents(ctx, agentsForContext(o.def))
 	ctx = host.WithProviders(ctx, providersForContext(o.def))
+	ctx = host.WithOracleBackendNamed(ctx, o.oracleBackendName)
 	// Inject the prompt renderer so oracle handlers resolve and render prompt
 	// files through the story's overlay → story search path. nil is safe
 	// (handlers use the legacy path).

@@ -542,6 +542,12 @@ func resolveAgentDecls(def *AppDef, file, baseDir string) []error {
 			decl.Cwd = expanded
 		}
 
+		// Validate the effort enum (empty is fine — leaves the CLI default).
+		if msg := validateEffort(fmt.Sprintf("agent %q", name), decl.Effort); msg != "" {
+			addErr(msg)
+			continue
+		}
+
 		// Normalise tools to fully-qualified form. Logic duplicates
 		// metamode.NormaliseToolName here because internal/metamode imports
 		// internal/app already; importing back would create a cycle.
@@ -2285,3 +2291,17 @@ func (a *appImpl) LookupIntent(ctx StatePath, name string) (Intent, bool) {
 }
 
 func (a *appImpl) WorldSchema() WorldSchema { return WorldSchema(a.def.World) }
+
+// TopLevelStateIDs returns every declared top-level state id (room id),
+// including states unreachable from the initial state. The order is
+// unspecified. This is the enumeration the story-graph tooling
+// (internal/app/graph) needs to surface orphaned rooms the App interface's
+// path-based LookupState cannot discover on its own. It is additive — callers
+// type-assert for it via an optional interface.
+func (a *appImpl) TopLevelStateIDs() []string {
+	out := make([]string, 0, len(a.def.States))
+	for id := range a.def.States {
+		out = append(out, id)
+	}
+	return out
+}

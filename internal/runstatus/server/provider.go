@@ -53,6 +53,22 @@ type SessionProvider interface {
 	Rescan() ([]StoryHeader, error)
 }
 
+// ExternalAttachProvider is an optional extension of [SessionProvider]: a
+// provider that can attach a live session to an EXISTING persisted session
+// addressed by an external key (`transport:thread`, e.g. `jira:PLTFRM-12345`),
+// or create-and-bind one when the key is unknown. The session is driven against
+// the shared persisted store under the session writer lock, so a browser and an
+// inbound bridge (or a separate `kitsoki session continue` process) co-drive one
+// session without interleaving writes. The server type-asserts this interface
+// for the `runstatus.session.attach` RPC; a provider that does not implement it
+// reports codeReadOnly for that method (e.g. the single-entry adapter).
+type ExternalAttachProvider interface {
+	// AttachExternal returns the live session id for the story at storyPath bound
+	// to the external key, attaching to the persisted session if one exists and
+	// creating+binding it otherwise. It fails fast on an invalid story / key.
+	AttachExternal(ctx context.Context, storyPath, key string) (sessionID string, err error)
+}
+
 // ArtifactResolver looks up a media artifact by its opaque handle ID and
 // returns the absolute path and MIME type of the file on disk.  It is set on
 // [Entry] by the live registry for sessions whose orchestrator wires a journal

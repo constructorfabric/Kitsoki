@@ -429,7 +429,8 @@ transcript persistence. Returns prose; returns typed JSON too when
 | Field | Type | Required | Notes |
 |---|---|---|---|
 | `prompt_path` (or `prompt`) | string | yes | Path to a prompt template file. Relative paths resolve against `KITSOKI_APP_DIR`; absolute paths are used as-is. |
-| `agent` | string | no | Name of an entry in `agents:`. Supplies `SystemPrompt`, `Model`, `Tools`, `BashProfile`, `DefaultCwd`. |
+| `agent` | string | no | Name of an entry in `agents:`. Supplies `SystemPrompt`, `Model`, `Effort`, `Tools`, `BashProfile`, `DefaultCwd`. |
+| `effort` | string | no | Per-call `claude --effort` level (`low\|medium\|high\|xhigh\|max`). Wins over `agent.effort` / provider default; omit to leave the CLI default. |
 | `system_prompt` | string | no | Inline persona; wins over `agent.SystemPrompt` when both are set. |
 | `working_dir` | string | no | CWD for the spawned `claude`. Precedence: per-call > `agent.DefaultCwd` > prompt file directory. |
 | `args` | map | no | Explicit prompt-template variables. Surfaced as `{{ args.X }}` inside the prompt. Falls back to the full call-args map for legacy compatibility. |
@@ -474,6 +475,7 @@ agents:
   failure-explainer:
     system_prompt_path: prompts/explain.md
     model: claude-sonnet-4-6
+    effort: high            # forwarded to `claude --effort` for every call
     tools: [Read, Grep, Bash]
     bash_profile:
       commands: [git, jq, grep]

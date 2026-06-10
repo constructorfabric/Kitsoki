@@ -129,3 +129,6 @@
 - make web-dev - keyboard shortcut (press r to reload?) that restarts the backend with any changes to go code
 - good fake claude with expectations and cassette playback options, allow good tests about what the harness is expected to do (like check the rendered template for a specific oracle instance as received by the cli)
 - right-click any item to open a meta chat about the story or kitsoki, and the meta agent will have the exact dom context you clicked and a screenshot for context
+- flow test coverage, identify untested branches
+- set up proper lint/coverage
+- use semantic routing for deterministic cassettes, combine with prompt caching maybe?  it should be useful for testing purposes to be somewhat realistic

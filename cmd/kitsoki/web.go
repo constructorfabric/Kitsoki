@@ -46,6 +46,7 @@ func webCmd() *cobra.Command {
 		addr          string
 		harnessType   string
 		claudeModel   string
+		oracleBackend string
 		recordingPath string
 		recordPath    string
 		dbPath        string
@@ -54,6 +55,7 @@ func webCmd() *cobra.Command {
 		hostCassette  string
 		configPath    string
 		storyDirs     []string
+		actor         string
 	)
 
 	cmd := &cobra.Command{
@@ -164,10 +166,12 @@ authentication.`,
 				ExecMode:      execMode,
 				HarnessType:   harnessType,
 				ClaudeModel:   claudeModel,
+				OracleBackend: resolveOracleBackend(oracleBackend),
 				RecordingPath: recordingPath,
 				RecordPath:    recordPath,
 				Flow:          fixture,
 				FlowFilePath:  flowFilePath,
+				DefaultActor:  actor,
 			}
 
 			// ── Registry + initial story catalogue ──────────────────────────
@@ -179,7 +183,7 @@ authentication.`,
 			}
 
 			// ── Serve (session-routing) ──────────────────────────────────────
-			srv := server.NewMulti(registry)
+			srv := server.NewMulti(registry, server.WithDefaultActor(actor))
 			// Attach the cross-session notification relay sink so each new
 			// session's background-turn fan-out reaches the runstatus.notification
 			// SSE feed. Set before any session.new call.
@@ -219,12 +223,14 @@ authentication.`,
 	cmd.Flags().StringVar(&addr, "addr", "127.0.0.1:7777", "HTTP listen address")
 	cmd.Flags().StringVar(&harnessType, "harness", "", "harness: claude | live | replay | recording (default: auto-select; ignored with --flow)")
 	cmd.Flags().StringVar(&claudeModel, "claude-model", "", "claude model when --harness=claude (e.g. opus, sonnet)")
+	cmd.Flags().StringVar(&oracleBackend, "oracle", "", "coding-agent CLI backend for host.oracle.* calls: claude|copilot (default: claude, or $KITSOKI_ORACLE)")
 	cmd.Flags().StringVar(&recordingPath, "recording", "", "path to recording YAML (for --harness replay)")
 	cmd.Flags().StringVar(&recordPath, "record", "", "path to output JSONL recording (for --harness recording)")
 	cmd.Flags().StringVar(&dbPath, "db", "", "SQLite session store path (default: nearest .kitsoki/sessions.db)")
 	cmd.Flags().StringVar(&execModeFlag, "mode", "staged", "execution mode: staged | one-shot")
 	cmd.Flags().StringVar(&flowPath, "flow", "", "drive every session deterministically from a flow fixture (no LLM; host_handlers stub host.* calls, intents are submitted explicitly)")
 	cmd.Flags().StringVar(&hostCassette, "host-cassette", "", "host cassette file backing host.* calls (deterministic, no LLM); combinable with --flow")
+	cmd.Flags().StringVar(&actor, "actor", "", "operator identity recorded on browser-driven turns as slots.author (default: none; the X-Kitsoki-Actor header and an explicit actor RPC param override it)")
 
 	return cmd
 }

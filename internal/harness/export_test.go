@@ -46,7 +46,7 @@ func RoutingSystemPromptForTest(h *ClaudeCLIHarness, in TurnInput) string {
 	composed := sysprompt.Compose(sysprompt.Spec{
 		Verb:    sysprompt.Route,
 		Project: projectLayer(h.appDef),
-		Task:    h.stablePrefix + submitInstruction,
+		Task:    h.stablePrefix + buildSubmitInstruction(h.cfg.validatorTool()),
 	})
 	return composed.SystemPrompt
 }

@@ -19,6 +19,27 @@ import (
 	"strings"
 )
 
+// validEffortLevels are the values claude's --effort flag accepts. An empty
+// effort is always allowed (it leaves the CLI default); only a non-empty value
+// outside this set is rejected at load time.
+var validEffortLevels = map[string]struct{}{
+	"low": {}, "medium": {}, "high": {}, "xhigh": {}, "max": {},
+}
+
+// validateEffort reports an error message when effort is non-empty and not one
+// of validEffortLevels, or "" when the value is acceptable. site prefixes the
+// message (e.g. `agent "judge"` or `providers.openrouter`).
+func validateEffort(site, effort string) string {
+	e := strings.TrimSpace(effort)
+	if e == "" {
+		return ""
+	}
+	if _, ok := validEffortLevels[e]; !ok {
+		return fmt.Sprintf("%s: effort %q is invalid (valid: low, medium, high, xhigh, max)", site, effort)
+	}
+	return ""
+}
+
 // resolveProviders validates and resolves all provider declarations. It must be
 // called after parseAndMerge. Errors are returned (not appended to a shared
 // slice) so the caller threads them the same way as resolveOraclePlugins.
@@ -36,8 +57,12 @@ func resolveProviders(def *AppDef, file string) []error {
 			addErr(fmt.Sprintf("providers.%s: empty declaration", name))
 			continue
 		}
-		if strings.TrimSpace(decl.Model) == "" && len(decl.Env) == 0 {
-			addErr(fmt.Sprintf("providers.%s: a provider must set model: and/or env: (an empty provider has no effect)", name))
+		if strings.TrimSpace(decl.Model) == "" && len(decl.Env) == 0 && strings.TrimSpace(decl.Effort) == "" {
+			addErr(fmt.Sprintf("providers.%s: a provider must set model:, effort:, and/or env: (an empty provider has no effect)", name))
+			continue
+		}
+		if msg := validateEffort(fmt.Sprintf("providers.%s", name), decl.Effort); msg != "" {
+			addErr(msg)
 			continue
 		}
 		for k, v := range decl.Env {

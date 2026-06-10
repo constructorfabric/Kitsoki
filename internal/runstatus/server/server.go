@@ -89,11 +89,67 @@ import (
 // appended events. localhost debug tool; 500ms is responsive without busy-spin.
 const defaultPollInterval = 500 * time.Millisecond
 
+// actorHeader is the request header a fronting proxy / future auth layer sets to
+// attribute a drive turn to a real operator. It is the highest-precedence
+// identity source (above the `actor` RPC param and the configured default).
+const actorHeader = "X-Kitsoki-Actor"
+
+// actorCtxKey keys the request's resolved operator identity in the dispatch
+// context (set from actorHeader in handleRPC).
+type actorCtxKey struct{}
+
+// authorSlot is the reserved slot name a story's `last_reply_author` effect
+// reads (`slots.author ?? 'human'`). The server injects the resolved operator
+// identity here before a drive turn so the recorded author is a real principal.
+const authorSlot = "author"
+
+// resolveActor picks the operator identity for a drive turn, highest precedence
+// first: the X-Kitsoki-Actor request header (carried on ctx) > an explicit
+// `actor` RPC param > the server's configured default actor. ok is false when
+// none of the three supplies a non-empty value.
+func (s *Server) resolveActor(ctx context.Context, params map[string]any) (string, bool) {
+	if v, ok := ctx.Value(actorCtxKey{}).(string); ok && v != "" {
+		return v, true
+	}
+	if v, ok := params["actor"].(string); ok {
+		if v = strings.TrimSpace(v); v != "" {
+			return v, true
+		}
+	}
+	if s.defaultActor != "" {
+		return s.defaultActor, true
+	}
+	return "", false
+}
+
+// injectAuthor returns slots with the resolved operator identity set under
+// authorSlot, unless the caller already supplied an explicit author (an
+// author the operator typed wins over the ambient identity). A nil slots map is
+// allocated only when there is an author to record. When no identity resolves,
+// slots is returned untouched — the story falls back to its own default.
+func (s *Server) injectAuthor(ctx context.Context, params map[string]any, slots map[string]any) map[string]any {
+	author, ok := s.resolveActor(ctx, params)
+	if !ok {
+		return slots
+	}
+	if slots == nil {
+		slots = map[string]any{}
+	}
+	if existing, present := slots[authorSlot]; !present || existing == nil || existing == "" {
+		slots[authorSlot] = author
+	}
+	return slots
+}
+
 // Server answers the runstatus live contract by routing every RPC to the right
 // session via a [SessionProvider]. It is safe for concurrent use.
 type Server struct {
 	provider SessionProvider
 	poll     time.Duration
+
+	// defaultActor is the lowest-precedence operator identity injected as
+	// slots.author on a drive turn (see WithDefaultActor). Empty = none.
+	defaultActor string
 
 	mu     sync.Mutex
 	subs   map[string]*subscription
@@ -125,8 +181,9 @@ type Option func(*serverConfig)
 // serverConfig collects the options before the Server is built. The single-entry
 // constructors fold driver into the adapter; NewMulti ignores it.
 type serverConfig struct {
-	poll   time.Duration
-	driver Driver
+	poll         time.Duration
+	driver       Driver
+	defaultActor string
 }
 
 // WithPollInterval overrides the SSE trace-poll interval.
@@ -145,6 +202,21 @@ func WithPollInterval(d time.Duration) Option {
 // [NewMulti] server — there each entry carries its own [Driver].
 func WithDriver(d Driver) Option {
 	return func(c *serverConfig) { c.driver = d }
+}
+
+// WithDefaultActor configures the operator identity recorded on a drive turn
+// (session.submit / session.continue) when no other source supplies one. It is
+// the lowest-precedence identity source: the `X-Kitsoki-Actor` request header
+// wins over it, and an explicit `actor` RPC param wins over the header. The
+// resolved value is injected as `slots.author` before the Driver advances the
+// turn, so a story's `last_reply_author` records a known principal instead of
+// the literal `'human'` fallback. `kitsoki web --actor <name>` sets it; empty
+// means "no configured default" (turns fall back to whatever the story does
+// with an absent `slots.author`).
+//
+// See the drive-vs-transport model in docs/architecture/transports.md.
+func WithDefaultActor(actor string) Option {
+	return func(c *serverConfig) { c.defaultActor = actor }
 }
 
 // New builds a Server that serves the run recorded in the JSONL trace at
@@ -185,10 +257,11 @@ func newConfig(opts []Option) serverConfig {
 
 func newServer(provider SessionProvider, cfg serverConfig) *Server {
 	return &Server{
-		provider: provider,
-		poll:     cfg.poll,
-		subs:     make(map[string]*subscription),
-		notifs:   newNotifBuffer(),
+		provider:     provider,
+		poll:         cfg.poll,
+		defaultActor: cfg.defaultActor,
+		subs:         make(map[string]*subscription),
+		notifs:       newNotifBuffer(),
 	}
 }
 
@@ -354,7 +427,16 @@ func (s *Server) handleRPC(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, rerr := s.dispatch(r.Context(), req.Method, req.Params)
+	// Carry the request's operator identity header (if any) into the dispatch
+	// context so the drive RPCs can resolve slots.author. `kitsoki web` has no
+	// authentication (trusted localhost); this header is the hook a fronting
+	// proxy / future auth layer uses to attribute a turn to a real principal.
+	ctx := r.Context()
+	if actor := strings.TrimSpace(r.Header.Get(actorHeader)); actor != "" {
+		ctx = context.WithValue(ctx, actorCtxKey{}, actor)
+	}
+
+	result, rerr := s.dispatch(ctx, req.Method, req.Params)
 	resp := rpcResponse{JSONRPC: "2.0", ID: req.ID}
 	if rerr != nil {
 		resp.Error = rerr
@@ -413,6 +495,25 @@ func (s *Server) dispatch(ctx context.Context, method string, params map[string]
 		if err != nil {
 			// An invalid story is surfaced as a structured error so the UI can
 			// show it before navigating (decided lean).
+			return nil, lifecycleErr(err)
+		}
+		return map[string]any{"session_id": sid}, nil
+
+	case "runstatus.session.attach":
+		storyPath, _ := params["story_path"].(string)
+		if storyPath == "" {
+			return nil, &rpcError{Code: codeServerError, Message: "session.attach: missing 'story_path'"}
+		}
+		key, _ := params["key"].(string)
+		if key == "" {
+			return nil, &rpcError{Code: codeServerError, Message: "session.attach: missing 'key' (transport:thread)"}
+		}
+		ap, ok := s.provider.(ExternalAttachProvider)
+		if !ok {
+			return nil, readOnlyErr(method)
+		}
+		sid, err := ap.AttachExternal(ctx, storyPath, key)
+		if err != nil {
 			return nil, lifecycleErr(err)
 		}
 		return map[string]any{"session_id": sid}, nil
@@ -535,6 +636,7 @@ func (s *Server) dispatch(ctx context.Context, method string, params map[string]
 			return nil, &rpcError{Code: codeServerError, Message: "session.submit: missing 'intent'"}
 		}
 		slots, _ := params["slots"].(map[string]any)
+		slots = s.injectAuthor(ctx, params, slots)
 		out, err := entry.Driver.SubmitDirect(ctx, name, slots)
 		if err != nil {
 			return nil, serverErr(err)
@@ -550,6 +652,7 @@ func (s *Server) dispatch(ctx context.Context, method string, params map[string]
 			return nil, readOnlyErr(method)
 		}
 		slots, _ := params["slots"].(map[string]any)
+		slots = s.injectAuthor(ctx, params, slots)
 		out, err := entry.Driver.ContinueTurn(ctx, slots)
 		if err != nil {
 			return nil, serverErr(err)
@@ -886,6 +989,13 @@ func (s *Server) dispatch(ctx context.Context, method string, params map[string]
 		return out, nil
 
 	default:
+		// ── Story editor (per-story, no session) ─────────────────────────────
+		// The editor.* family operates on a story selected from the registry
+		// catalogue rather than a live session; dispatchEditor reports handled
+		// so unknown non-editor methods still fall through to method-missing.
+		if result, rerr, handled := s.dispatchEditor(method, params); handled {
+			return result, rerr
+		}
 		return nil, &rpcError{Code: codeMethodMissing, Message: "unknown method: " + method}
 	}
 }

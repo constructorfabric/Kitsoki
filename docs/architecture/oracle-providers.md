@@ -7,6 +7,11 @@
 > the [oracle plugin](./oracle-plugin.md) mechanism: plugins choose *which
 > component answers*; providers choose *which backend the claude component
 > talks to*.
+>
+> It is also orthogonal to the [oracle **backend**](./oracle-backends.md)
+> switch (`--oracle claude|copilot`): the backend chooses *which coding-agent
+> CLI* kitsoki forks (`claude` vs GitHub `copilot`); a provider retargets the
+> endpoint of the `claude` CLI specifically and is a no-op under copilot.
 
 Kitsoki's default oracle verbs (`host.oracle.{decide,ask,task,extract,converse,ask_with_mcp}`)
 fork the local `claude` binary, which talks to whatever backend the ambient
@@ -35,13 +40,14 @@ providers:
       NODE_EXTRA_CA_CERTS: /home/me/itca-r2.pem
 ```
 
-A declaration must set `model:` and/or `env:` — an empty provider is rejected at
-load time (it would have no effect). Fields:
+A declaration must set `model:`, `effort:`, and/or `env:` — an empty provider is
+rejected at load time (it would have no effect). Fields:
 
-| Field   | Meaning |
-|---------|---------|
-| `model` | The `--model` value used for an invocation that selects this provider **and** whose agent (and effect) declare no explicit model. An explicit agent/effect model always wins. Optional. |
-| `env`   | Environment-variable overrides merged onto the `claude` subprocess (overriding any ambient value of the same key). Typical keys: `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `NODE_EXTRA_CA_CERTS`. Values support `${VAR}` interpolation, resolved at load time; an unset `${VAR}` is a hard load error. Optional. |
+| Field    | Meaning |
+|----------|---------|
+| `model`  | The `--model` value used for an invocation that selects this provider **and** whose agent (and effect) declare no explicit model. An explicit agent/effect model always wins. Optional. |
+| `effort` | The `--effort` default (`low\|medium\|high\|xhigh\|max`) used for an invocation that selects this provider **and** whose agent (and effect) declare no explicit effort. An explicit agent/effect effort always wins. Optional. |
+| `env`    | Environment-variable overrides merged onto the `claude` subprocess (overriding any ambient value of the same key). Typical keys: `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `NODE_EXTRA_CA_CERTS`. Values support `${VAR}` interpolation, resolved at load time; an unset `${VAR}` is a hard load error. Optional. |
 
 > **Secrets:** put the token in your environment and reference it as
 > `${LOCAL_LLM_TOKEN}` — never inline a literal token in the story file. This
@@ -89,7 +95,8 @@ agent default), so authors carry one mental model.
 
 The loader fails fast on:
 
-- a provider that sets neither `model:` nor `env:`,
+- a provider that sets none of `model:`, `effort:`, or `env:`,
+- an `effort:` (on a provider or agent) outside `low\|medium\|high\|xhigh\|max`,
 - an unset `${VAR}` referenced in any provider `env:` value,
 - an `agents.<name>.provider` naming an undeclared provider,
 - an effect `with.provider` naming an undeclared provider, or used on a

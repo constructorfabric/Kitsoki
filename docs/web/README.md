@@ -700,6 +700,19 @@ Other tests: `cd tools/runstatus && pnpm test` (Vitest, frontend);
 
 ---
 
+## The story editor
+
+The same server hosts the [story editor](../tui/story-editor.md) at the
+`/editor` hash route — a **per-story static inspector** (BFS room list, per-room
+hooks / domain model / typed view / IDE deep-link, and the Oracle Workbench with
+its cassette browser + cassette-only replay). It needs no session: the
+`runstatus.editor.*` RPC family recompiles the story off disk on every call,
+backed by the registry's optional `EditorProvider` capability. See the
+[story-editor doc](../tui/story-editor.md#editor-rpc-surface) for the endpoint
+shapes and safety rules.
+
+---
+
 ## Limitations & non-goals
 
 - **No auth, single-tenant.** Localhost / trusted-network dev server.
@@ -725,6 +738,8 @@ Other tests: `cd tools/runstatus && pnpm test` (Vitest, frontend);
   runtime + `runtimeBase`: `cmd/kitsoki/runtime.go`
 - Discovery / config: `internal/webconfig/`
 - Server / provider / RPC / SSE: `internal/runstatus/server/{server,provider,live,driver}.go`
+- Story editor: `internal/runstatus/server/editor.go`, pure graph
+  `internal/app/graph/` — narrative: [story editor](../tui/story-editor.md)
 - SPA: `tools/runstatus/src/` (`views/{HomeView,RunView,InteractiveView}.vue`,
   `data/live-source.ts`, `router.ts`)
 - Reload mechanics (canonical): [`docs/stories/state-machine.md`](../stories/state-machine.md#8-the-turn-loop-state-machine-of-the-orchestrator)

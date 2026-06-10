@@ -16,7 +16,9 @@ screen.*
 > Prefer a browser? The same app can be driven interactively over HTTP with
 > [`kitsoki web`](../web/README.md) — a multi-story story browser plus chat-style
 > session surfaces beside a live trace and state diagram. It shares the
-> orchestrator with this TUI.
+> orchestrator with this TUI. That server also hosts the
+> [story editor](story-editor.md) — a per-story static inspector (rooms, world,
+> oracle contracts, cassettes) that needs no session.
 
 ---
 

@@ -332,6 +332,7 @@ world:
   proposal_brief_path:      { type: string, default: "" }  # path of the operator-editable 001-brief.md
   proposal_brief_decision:  { type: object, default: {} }  # decide verdict: { verdict: continue|clarify, questions: [...], reason }
   proposal_refine_analysis: { type: object, default: {} }  # refiner output: { gaps: [...], summary }
+  proposal_last_refine_message: { type: string, default: "" }  # operator's last refine instruction, echoed in the brief view
 
   # draft (004-proposal.md) + publish
   proposal_artifact:       { type: object, default: {} }   # task result: { title, summary_markdown, file_path, kind, confidence, needs_clarification, follow_up_questions }
