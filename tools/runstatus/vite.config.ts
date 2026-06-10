@@ -16,6 +16,11 @@ export default defineConfig({
     },
     host: "127.0.0.1",
     port: parseInt(process.env.VITE_PORT ?? "5173"),
+    // Vite 6 rejects any request whose Host header isn't localhost/127.0.0.1
+    // ("Blocked request. This host is not allowed."), which breaks access
+    // through SSH/cloudflared/ngrok tunnels that present a different Host.
+    // This is a localhost-bound dev server, so accept any Host header.
+    allowedHosts: true,
     proxy: {
       // timeout: 0 / proxyTimeout: 0 disables http-proxy's built-in timeout so
       // LLM-backed turn/submit/continue/offpath calls (which can take 30-120s)
