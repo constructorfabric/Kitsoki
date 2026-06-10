@@ -32,7 +32,7 @@ import path from "path";
 import fs from "fs";
 import os from "os";
 import { spawn, type ChildProcess } from "child_process";
-import { prepareVideoDir, saveAndRemuxVideo } from "./_helpers/server.js";
+import { prepareVideoDir, saveVideoAsMp4 } from "./_helpers/server.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -191,7 +191,7 @@ test.describe("multi-story web UI (live, no-LLM)", () => {
       recordVideo: { dir: VIDEO_DIR, size: { width: 1440, height: 900 } },
     });
     const page = await context.newPage();
-    // Capture before context closes — saveAndRemuxVideo needs this reference.
+    // Capture before context closes — saveVideoAsMp4 needs this reference.
     const video = page.video();
 
     try {
@@ -345,7 +345,7 @@ test.describe("multi-story web UI (live, no-LLM)", () => {
     } finally {
       await page.close();
       await context.close(); // finalises the video
-      await saveAndRemuxVideo(video, ARTIFACT_DIR, "multi-story-demo");
+      await saveVideoAsMp4(video, ARTIFACT_DIR, "multi-story-demo");
       await browser.close();
     }
 

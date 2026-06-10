@@ -183,12 +183,13 @@ fetch-llama-server:
 	go run ./tools/oracle-fetch -binary
 
 # demo-tour records the onboarding tour as a shareable MP4/GIF at watch-speed
-# and renders all three post-production artifacts. Requires pnpm + ffmpeg.
-# Output: .artifacts/tour-video/ (webm, mp4, gif, contact-sheet, per-step PNGs).
+# and renders the post-production artifacts. Requires pnpm + ffmpeg.
+# The spec emits the canonical MP4 directly (never .webm); render adds GIF +
+# contact sheet. Output: .artifacts/tour-video/ (mp4, gif, contact-sheet, PNGs).
 demo-tour: build
 	cd $(RUNSTATUS_DIR) && pnpm install --frozen-lockfile --silent
 	cd $(RUNSTATUS_DIR) && pnpm exec playwright test tour-video --project=chromium
-	docs/skills/kitsoki-ui-demo/scripts/render.sh .artifacts/tour-video/tour-video-demo.webm
+	docs/skills/kitsoki-ui-demo/scripts/render.sh .artifacts/tour-video/tour-video-demo.mp4
 
 # demo-tour-fast validates the tour spec assertions only (no dwells, no render).
 # Use this in CI or to iterate on spec changes quickly.

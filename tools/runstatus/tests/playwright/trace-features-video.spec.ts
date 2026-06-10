@@ -25,7 +25,7 @@ import {
   repoRoot,
   makeShot,
   prepareVideoDir,
-  saveAndRemuxVideo,
+  saveVideoAsMp4,
   dwell,
   cinematicGoto,
   SETTLE_MS,
@@ -191,7 +191,7 @@ test("trace introspection feature-spotlight video", async () => {
     await expect(page.getByTestId("tour-overlay")).toHaveCount(0, { timeout: 5000 });
   } finally {
     await context.close();
-    await saveAndRemuxVideo(video, ARTIFACT_DIR, "trace-features-demo");
+    await saveVideoAsMp4(video, ARTIFACT_DIR, "trace-features-demo");
     await browser.close();
   }
 

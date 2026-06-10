@@ -26,7 +26,7 @@ import {
   makeShot,
   waitForState,
   prepareVideoDir,
-  saveAndRemuxVideo,
+  saveVideoAsMp4,
   PACE,
   type WebServer,
 } from "./_helpers/server.js";
@@ -215,7 +215,7 @@ test("onboarding tour video (no-LLM)", async () => {
     // reference (avoids picking a stale file). saveAs must happen after context
     // close but before browser close.
     await context.close();
-    await saveAndRemuxVideo(video, ARTIFACT_DIR, "tour-video-demo");
+    await saveVideoAsMp4(video, ARTIFACT_DIR, "tour-video-demo");
     await browser.close();
   }
 

@@ -34,7 +34,7 @@ import {
   repoRoot,
   makeShot,
   prepareVideoDir,
-  saveAndRemuxVideo,
+  saveVideoAsMp4,
   dwell,
   cinematicGoto,
   SETTLE_MS,
@@ -332,7 +332,7 @@ test("agent action transcripts feature-spotlight video", async () => {
     throw e;
   } finally {
     await context.close();
-    await saveAndRemuxVideo(video, ARTIFACT_DIR, "agent-actions-demo");
+    await saveVideoAsMp4(video, ARTIFACT_DIR, "agent-actions-demo");
     await browser.close();
   }
 

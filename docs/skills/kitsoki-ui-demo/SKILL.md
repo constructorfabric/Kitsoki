@@ -1,6 +1,6 @@
 ---
 name: kitsoki-ui-demo
-description: Produce a deterministic, no-LLM demo video (plus per-scene screenshots, a shareable MP4/GIF, and a contact sheet) of the kitsoki web UI by driving a real `kitsoki web` server through Playwright. Use when asked to record, refresh, or author a demo / walkthrough / screen-capture of the kitsoki browser UI (home screen, a story being driven, reload, etc.).
+description: Produce a deterministic, no-LLM demo / tour video of the kitsoki web UI (plus per-scene screenshots and a shareable MP4 / GIF / contact sheet) by driving a real `kitsoki web` server through Playwright. Use when asked to make, record, refresh, or author a tour demo video, feature-spotlight tour, walkthrough video, demo, or screen-capture of the kitsoki browser UI — whether a tour of one feature (golden example: agent-actions), the generic onboarding tour, or a full-product walkthrough. Triggers on phrasings like "make a tour demo video", "record a demo of <feature>", "feature tour video", "walkthrough video".
 ---
 
 # Kitsoki UI demo videos
@@ -10,18 +10,27 @@ a Playwright spec spawns the real `kitsoki web` binary in the `--flow` /
 `--host-cassette` posture (nil harness — intents are submitted explicitly, host
 calls come from a cassette/stub), drives the SPA scene-by-scene at a
 human-watchable pace, and records a MacBook-resolution video + per-scene
-screenshots into `.artifacts/`. Bundled scripts then render shareable
-**MP4 / GIF / contact-sheet** artifacts from the raw `.webm`.
+screenshots into `.artifacts/`. The recording is saved as a shareable **MP4**
+(never `.webm` — it must play inline in VS Code / Keynote / Slack); bundled
+scripts render an optional **GIF / contact-sheet** alongside it.
 
 Why no-LLM: the recording must be **reproducible and free** — same input, same
 frames, no API cost, no flakiness. This is the same posture the engine uses for
 flow tests (see [[feedback_no_llm_tests]] and `docs/web/README.md` →
 "Deterministic, no-LLM"). **Never** record against a live LLM.
 
-> The worked, maintained reference is
-> `tools/runstatus/tests/playwright/multi-story.spec.ts` — it drives the whole
-> product (home → new session → drive/observe → reload → active sessions) and is
-> the template to copy. The single-purpose chat drive lives there too.
+> **Pick the worked reference that matches the ask — copy it, don't start blank:**
+> - **A tour demo video of one feature** (the usual ask — "make a tour demo
+>   video of X") → the **golden example** is
+>   `tools/runstatus/tests/playwright/agent-actions-video.spec.ts` +
+>   `src/tour/agent-actions-manifest.ts`. The *whole* video is tour-narrated: it
+>   opens on the home story library, frames the demo story, drives home → new
+>   session → observer via narrated action steps, then walks the feature. See
+>   **[Feature tour demo video — the golden example](#feature-tour-demo-video--the-golden-example)**.
+> - **The generic onboarding tour** → `tour-video.spec.ts` + `src/tour/manifest.ts`.
+> - **A full-product walkthrough** (home → new session → drive/observe → reload →
+>   active sessions) → `multi-story.spec.ts`. The single-purpose chat drive lives
+>   there too.
 
 ## Prerequisites (once)
 
@@ -113,30 +122,19 @@ remux pattern documented below, **not** a plain copy from the video dir.
      (goto + render-anchor + settle), `pacedClick(page, locator)` (beat before,
      settle after), and the shared `dwell` / `SETTLE_MS` — for every
      surface change, so the camera arrives and rests rather than lurching.
-   - **Tour-driven intro (feature-spotlight specs)** — for a dedicated
-     feature tour, prefer making the WHOLE video tour-narrated rather than
-     silently `cinematicGoto`-ing through the opening. Start the tour on the
-     home story library (`__startTourWithSteps` while on `#/`) and prepend
-     `home`/`interactive` intro steps that explain where the feature lives and
-     frame the demo story, then let `kind: "action"` + `advance: "route-match"`
-     steps perform the navigation (home → `new-session-btn` → `observe-link` →
-     observer) — each one narrated by its own popover. The spec walks these
-     exactly like the observer steps: click the target, then `waitForURL` the
-     route change. Order matters — click `observe-link` while the chat view is
-     STATIC, navigate to the observer, and only THEN fire the `patch_world` /
-     `submit` RPCs (mirrors `tour-video.spec.ts`); submitting before the click
-     re-renders the chat view under the click and the route-match advance is
-     lost. The trace then streams into the observer's live trace ahead of the
-     introspection steps. The single backdrop only blanks the page for
-     anchorless (`center`) steps; targeted steps leave a click-through hole.
+   - **Tour-driven intro (feature tours)** — for a feature tour, make the WHOLE
+     video tour-narrated (including the opening) rather than silently
+     `cinematicGoto`-ing into the observer. This is the golden pattern below —
+     see **[Feature tour demo video](#feature-tour-demo-video--the-golden-example)**.
    - **Hash routing** — URLs are `#/`, `#/s/:id`, `#/s/:id/chat`.
 
 ## Video recording — the correct pattern
 
-Playwright's VP8 webm omits `DURATION` and `CUES` container atoms. Most players
-(VLC, browsers, QuickTime, Keynote) render only the first frame for the full
-clip duration when these are missing. The fix is a cheap ffmpeg `-c copy` remux
-(no re-encode) that rebuilds the container with proper metadata.
+**Always emit MP4, never `.webm`.** Playwright records VP8 `.webm`, which (a)
+omits the `DURATION`/`CUES` container atoms so most players show only the first
+frame, and (b) does **not** play inline in VS Code, Keynote, Slack, or iMessage.
+So the canonical recording artifact is the `.mp4` — the helper transcodes the
+intermediate webm away. Never ship or commit a `.webm` as the deliverable.
 
 Two shared helpers in `_helpers/server.ts` wrap this correctly:
 
@@ -148,17 +146,19 @@ prepareVideoDir(VIDEO_DIR);
 const page = await context.newPage();
 const video = page.video();   // ← must happen before close()
 
-// 3. In finally — save + remux AFTER context.close(), BEFORE browser.close():
+// 3. In finally — save + transcode to MP4 AFTER context.close(), BEFORE browser.close():
 await context.close();        // finalises the recording
-await saveAndRemuxVideo(video, ARTIFACT_DIR, "my-demo");  // save + ffmpeg remux
+await saveVideoAsMp4(video, ARTIFACT_DIR, "my-demo");  // → my-demo.mp4
 await browser.close();
 ```
 
-`saveAndRemuxVideo(video, artifactDir, name)` writes `<name>-raw.webm`, remuxes
-to `<name>.webm`, removes the raw on success. If ffmpeg isn't available or
-fails, it falls back to the raw file with a warning (never silently loses the
-recording). Both helpers are already imported in `tour-video.spec.ts` and
-`multi-story.spec.ts` — copy that pattern for any new recording spec.
+`saveVideoAsMp4(video, artifactDir, name)` saves `<name>-raw.webm`, transcodes
+it to `<name>.mp4` (libx264 / yuv420p / +faststart / 30fps — the same settings
+as `scripts/webm-to-mp4.sh`), and removes the raw webm on success. Only if ffmpeg
+is unavailable or fails does it fall back to a `<name>.webm` with a warning (so a
+recording is never silently lost). The helper is already imported in
+`tour-video.spec.ts`, `agent-actions-video.spec.ts`, `trace-features-video.spec.ts`,
+and `multi-story.spec.ts` — copy that pattern for any new recording spec.
 
 **Why `video.saveAs()` and not `fs.readdirSync(VIDEO_DIR)[0]`?**
 `readdirSync` picks the alphabetically-first file, which is the OLDEST webm in
@@ -177,17 +177,18 @@ page's recording regardless of what else is in the dir.
    ```bash
    cd tools/runstatus && pnpm exec playwright test <name> --project=chromium
    ```
-   Output lands in `.artifacts/<name>/`: `video/*.webm`, a stable
-   `*-demo.webm`, and numbered `NN-<scene>.png` screenshots.
+   Output lands in `.artifacts/<name>/`: the canonical **`<name>-demo.mp4`**
+   (the spec transcodes the raw webm away — never ship the webm) and numbered
+   `NN-<scene>.png` screenshots.
 
-4. **Render shareable artifacts** with the bundled tools (all write to
-   `.artifacts/`, never committed — [[feedback_artifacts_dir]]):
+4. **(Optional) Render GIF + contact sheet.** The MP4 is already the shareable
+   deliverable; only run this if you also want a looping GIF or a storyboard.
+   All write to `.artifacts/`, never committed ([[feedback_artifacts_dir]]):
    ```bash
    S=docs/skills/kitsoki-ui-demo/scripts
-   $S/render.sh .artifacts/<name>/<name>-demo.webm   # mp4 + gif + contact sheet in one go
+   $S/render.sh .artifacts/<name>/<name>-demo.mp4    # gif + contact sheet (mp4 already made)
    # …or individually:
-   $S/webm-to-mp4.sh   .artifacts/<name>/<name>-demo.webm            # H.264 MP4 (Slack/Keynote/web)
-   $S/webm-to-gif.sh   .artifacts/<name>/<name>-demo.webm --width 900 # looping GIF for PRs/docs
+   $S/webm-to-gif.sh   .artifacts/<name>/<name>-demo.mp4 --width 900 # looping GIF for PRs/docs
    $S/contact-sheet.sh .artifacts/<name>/                            # NN-*.png → one contact sheet
    ```
 
@@ -198,18 +199,82 @@ page's recording regardless of what else is in the dir.
 
 ## The tools (`scripts/`)
 
+The recording spec already emits the canonical MP4 (via `saveVideoAsMp4`), so
+these are post-production extras, not part of the critical path.
+
 | Script | Does | Notes |
 |---|---|---|
-| `render.sh <demo.webm>` | One-shot: MP4 + GIF + contact sheet (the sibling `NN-*.png` from the webm's dir) | Convenience wrapper over the three below |
-| `webm-to-mp4.sh <in.webm> [out.mp4] [--fps N] [--width W]` | H.264 + `yuv420p` + `+faststart` — the universally-playable share format | `.webm` is poorly supported in Keynote/Slack/iMessage; ship the MP4 |
-| `webm-to-gif.sh <in.webm> [out.gif] [--fps N] [--width W]` | Two-pass palettegen/paletteuse high-quality looping GIF | For embedding in PRs / markdown; keep `--width ≤ 900` |
+| `render.sh <demo.(mp4\|webm)>` | One-shot: GIF + contact sheet (the sibling `NN-*.png` from the video's dir); transcodes to MP4 first only if handed a legacy webm | Convenience wrapper over the two below |
+| `webm-to-mp4.sh <in.webm> [out.mp4] [--fps N] [--width W]` | H.264 + `yuv420p` + `+faststart` — the universally-playable share format | Only needed to convert a stray/legacy `.webm`; specs already emit MP4 |
+| `webm-to-gif.sh <in.(mp4\|webm)> [out.gif] [--fps N] [--width W]` | Two-pass palettegen/paletteuse high-quality looping GIF | For embedding in PRs / markdown; keep `--width ≤ 900` |
 | `contact-sheet.sh <dir> [out.png] [--cols N] [--tile-width W]` | Tiles the numbered scene screenshots into one image | A storyboard for quick review / PR description |
 
 All require `ffmpeg` on PATH (Playwright's browser install or a system ffmpeg).
 
-## Tour walkthrough recording
+## Feature tour demo video — the golden example
 
-The onboarding tour has a dedicated, maintained spec that records it as a
+When the ask is **"make a tour demo video"** of a specific feature (a drawer, a
+new panel, a capability), copy the **agent-actions** demo — it is the golden,
+maintained reference:
+
+- spec:     `tools/runstatus/tests/playwright/agent-actions-video.spec.ts`
+- manifest: `tools/runstatus/src/tour/agent-actions-manifest.ts`
+- (sibling) `trace-features-video.spec.ts` + `trace-manifest.ts` — same shape,
+  for the trace-introspection feature.
+
+What makes it the template:
+
+- **The whole video is tour-driven.** The manifest's first four steps live on
+  `home`/`interactive` routes: a centered welcome that names the feature and the
+  demo story (the bug-fix pipeline), a spotlight on the `story-card`, then two
+  `kind: "action"` + `advance: "route-match"` steps that click `new-session-btn`
+  then `observe-link`. Navigation is narrated by popovers, never a silent
+  `page.goto`. The remaining steps walk the feature on the observer (route
+  `"any"`).
+- **One manifest drives both the live overlay and the video.** The spec injects
+  the array via `window.__startTourWithSteps(JSON.stringify(STEPS))` and asserts
+  each popover `title` against the manifest, so the recording can't drift from
+  what users actually see.
+- **Submit AFTER you reach the observer.** Capture the session id at the
+  `new-session-btn` step, click `observe-link` while the chat view is STATIC,
+  `waitForURL` the observer, and only THEN fire `patch_world` / `submit` so the
+  trace streams into the observer's live trace. Submitting *before* the click
+  re-renders the chat under the click and the route-match advance is lost
+  (mirrors `tour-video.spec.ts`).
+- **Pre-step hooks open the surfaces a step needs.** Before a step whose target
+  lives inside a drawer/pane, the spec opens that pane (e.g. `openDrawerForCall`,
+  `openTaskDetail`) and `dwell(page, SETTLE_MS)` so the spotlight lands on a
+  composed frame, not a half-rendered flicker.
+- **The single backdrop only blanks the page for anchorless (`center`) steps;**
+  targeted steps leave a click-through hole over the real control.
+
+**Author + record** (the four commands — MP4 is the deliverable):
+
+```bash
+# 1. Rebuild the SPA into the binary (mandatory — go:embed)
+make build && cp ./kitsoki bin/kitsoki
+
+# 2. Validate fast (assertions only, no dwells)
+cd tools/runstatus && WEB_CHAT_PACE=0 pnpm exec playwright test agent-actions-video --project=chromium
+
+# 3. Record at watch-speed → .artifacts/agent-actions/agent-actions-demo.mp4
+cd tools/runstatus && pnpm exec playwright test agent-actions-video --project=chromium
+
+# 4. (optional) GIF + contact sheet from the MP4
+docs/skills/kitsoki-ui-demo/scripts/render.sh .artifacts/agent-actions/agent-actions-demo.mp4
+```
+
+**To make a tour demo video for a NEW feature:** copy `agent-actions-manifest.ts`
+→ `<feature>-manifest.ts` and rewrite the step `title`/`body`/`target` for your
+feature — **keep the four-step home → observer intro** so the whole video stays
+tour-narrated. Copy `agent-actions-video.spec.ts` → `<feature>-video.spec.ts`,
+point it at the new manifest and a fresh `ADDR` port, adjust the pre-step hooks
+to open your feature's surfaces, then run the four commands above with the new
+spec name. Anchor every `target` to a `data-testid` the feature actually ships.
+
+## Onboarding tour recording
+
+The generic onboarding tour has a dedicated, maintained spec that records it as a
 first-class demo mode:
 
 ```
@@ -249,14 +314,13 @@ cd tools/runstatus && WEB_CHAT_PACE=0 pnpm exec playwright test tour-video --pro
 # 2. Record at watch-speed
 cd tools/runstatus && pnpm exec playwright test tour-video --project=chromium
 
-# 3. Render
+# 3. (optional) GIF + contact sheet — the MP4 is already produced by step 2
 S=docs/skills/kitsoki-ui-demo/scripts
-$S/render.sh .artifacts/tour-video/tour-video-demo.webm
+$S/render.sh .artifacts/tour-video/tour-video-demo.mp4
 ```
 
-Output lands in `.artifacts/tour-video/`: raw `video/*.webm`, stable
-`tour-video-demo.webm`, rendered `tour-video-demo.mp4` / `.gif`, contact sheet,
-and numbered `NN-<step-id>.png` screenshots.
+Output lands in `.artifacts/tour-video/`: the canonical `tour-video-demo.mp4`,
+an optional `.gif` + contact sheet, and numbered `NN-<step-id>.png` screenshots.
 
 To QA the recording against the tour scenarios:
 
@@ -296,12 +360,15 @@ live overlay, so only anchor to elements that exist there (e.g. `view-mode-tabs`
 
 ## Pointers
 
-- Template spec: `tools/runstatus/tests/playwright/multi-story.spec.ts`
-- Tour spec: `tools/runstatus/tests/playwright/tour-video.spec.ts`
+- **Golden feature-tour spec + manifest:**
+  `tools/runstatus/tests/playwright/agent-actions-video.spec.ts` +
+  `tools/runstatus/src/tour/agent-actions-manifest.ts`
+- Sibling feature tour: `trace-features-video.spec.ts` + `src/tour/trace-manifest.ts`
+- Onboarding tour spec + manifest: `tour-video.spec.ts` + `src/tour/manifest.ts`
 - Tour robustness test: `tools/runstatus/tests/playwright/tour-onboarding.spec.ts`
-- Tour manifest (shared by live overlay + video spec): `tools/runstatus/src/tour/manifest.ts`
+- Full-product walkthrough spec: `tools/runstatus/tests/playwright/multi-story.spec.ts`
 - Tour QA templates: `docs/skills/kitsoki-ui-qa/templates/tour-{feature,scenarios}.*`
-- Shared helpers (video, server, pacing): `tests/playwright/_helpers/server.ts`
+- Shared helpers (video→MP4, server, pacing): `tests/playwright/_helpers/server.ts`
 - Playwright config + globalSetup: `tools/runstatus/playwright.config.ts`,
   `tools/runstatus/tests/playwright/_helpers/`
 - No-LLM posture + UI surfaces: `docs/web/README.md`

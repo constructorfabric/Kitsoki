@@ -204,7 +204,7 @@ export async function waitForState(
  *
  * Must be called in beforeAll (or at the top of the test) BEFORE the Playwright
  * context is created with `recordVideo: { dir: videoDir }`. Clears any stale
- * .webm files from previous runs so `saveAndRemuxVideo` always picks the right
+ * .webm files from previous runs so `saveVideoAsMp4` always picks the right
  * file and so VIDEO_DIR never silently fills up across CI runs.
  */
 export function prepareVideoDir(videoDir: string): void {
@@ -213,45 +213,60 @@ export function prepareVideoDir(videoDir: string): void {
 }
 
 /**
- * Save and remux the Playwright-recorded video.
+ * Save the Playwright-recorded video as a universally-playable H.264 MP4.
+ *
+ * ALWAYS emit MP4, never `.webm`. Playwright records VP8 `.webm`, which (a)
+ * omits the DURATION/CUES container atoms so most players show only the first
+ * frame, and (b) does not play inline in VS Code, Keynote, Slack, or iMessage.
+ * An H.264 + `yuv420p` + `+faststart` MP4 plays everywhere — including the VS
+ * Code editor preview. So the canonical recording artifact is the `.mp4`; the
+ * intermediate `.webm` is transcoded away.
  *
  * Call this AFTER `context.close()` (which finalises the video) but BEFORE
- * `browser.close()`. The three-step pattern:
+ * `browser.close()`. Steps:
  *
- *   1. `video.saveAs(raw)` — copies the specific page's .webm from VIDEO_DIR to
- *      a known path, avoiding the "alphabetically first stale file" trap.
- *   2. `ffmpeg -c copy` remux — Playwright's VP8 webm omits DURATION and CUES
- *      container atoms; most players (VLC, browsers, QuickTime) render only the
- *      first frame for the whole clip duration. The remux rebuilds the container
- *      with proper metadata at zero re-encode cost.
- *   3. Removes the raw file on success, keeps it as a fallback on ffmpeg failure.
+ *   1. `video.saveAs(raw)` — copies THIS page's `.webm` from VIDEO_DIR to a known
+ *      path, avoiding the "alphabetically first stale file" trap.
+ *   2. ffmpeg transcode → `<name>.mp4` with the same settings as
+ *      `scripts/webm-to-mp4.sh` (libx264 / preset slow / crf 20 / yuv420p /
+ *      +faststart / 30fps / even dims, audio dropped). The transcode also fixes
+ *      the missing-atoms problem inherently.
+ *   3. Removes the raw `.webm` on success. On ffmpeg failure, falls back to the
+ *      `.webm` (renamed in place) so a recording is never silently lost.
  *
- * Returns the final stable path.
+ * Returns the final stable path (`.mp4`, or `.webm` only on ffmpeg failure).
  */
-export async function saveAndRemuxVideo(
+export async function saveVideoAsMp4(
   video: Video | null,
   artifactDir: string,
   name: string,
 ): Promise<string | null> {
   if (!video) return null;
   const raw = path.join(artifactDir, `${name}-raw.webm`);
-  const stable = path.join(artifactDir, `${name}.webm`);
+  const mp4 = path.join(artifactDir, `${name}.mp4`);
   try {
     await video.saveAs(raw);
   } catch (e) {
     console.warn(`[video] saveAs failed: ${e}`);
     return null;
   }
-  const r = spawnSync("ffmpeg", ["-i", raw, "-c", "copy", "-y", stable], {
-    encoding: "utf8",
-  });
+  // Mirror scripts/webm-to-mp4.sh so in-spec and manual conversions match.
+  const vf = "fps=30,scale=trunc(iw/2)*2:trunc(ih/2)*2";
+  const r = spawnSync(
+    "ffmpeg",
+    ["-y", "-loglevel", "error", "-i", raw, "-vf", vf,
+      "-c:v", "libx264", "-preset", "slow", "-crf", "20",
+      "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-an", mp4],
+    { encoding: "utf8" },
+  );
   if (r.status === 0) {
     fs.unlinkSync(raw);
-    console.log(`[video] ${stable}`);
-    return stable;
+    console.log(`[video] ${mp4}`);
+    return mp4;
   }
-  // ffmpeg failed — promote raw as the fallback artifact.
-  fs.renameSync(raw, stable);
-  console.warn(`[video] ffmpeg remux failed; using raw webm\n${r.stderr?.slice(0, 400)}`);
-  return stable;
+  // ffmpeg failed — promote the raw webm as the fallback so we never lose it.
+  const fallback = path.join(artifactDir, `${name}.webm`);
+  fs.renameSync(raw, fallback);
+  console.warn(`[video] ffmpeg mp4 transcode failed; using raw webm\n${r.stderr?.slice(0, 400)}`);
+  return fallback;
 }
