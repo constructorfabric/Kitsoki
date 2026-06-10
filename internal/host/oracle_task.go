@@ -163,6 +163,11 @@ func OracleTaskHandler(ctx context.Context, args map[string]any) (Result, error)
 
 	callID := newUUID()
 	callStart := time.Now()
+	// Install the active call_id so the claude transport tees its RawEvents into
+	// the agent-action-transcript sidecar keyed by THIS call's id — the sidecar
+	// filename pairs by value with the oracle.call.complete event below. (Live
+	// path only; replay writes the recorded transcript via the cassette path.)
+	ctx = WithCallID(ctx, callID)
 
 	// Wave 3-oracle: write OracleCalled to the JSONL sink at dispatch time.
 	// The rendered context prompt is recorded as a reference (inline when

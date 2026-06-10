@@ -105,6 +105,19 @@ func (l *LiveSession) annotationPathLocked() string {
 	return filepath.Join(dir, sid+".annotations.jsonl")
 }
 
+// TranscriptsDir implements the orchestrator's transcript-writer discovery seam
+// (host_dispatch.go): the per-session directory <sink-dir>/transcripts where
+// agent-action sidecars (<call_id>.jsonl + .timings) are written, co-located with
+// the trace JSONL and the annotation sidecar. The orchestrator type-asserts this
+// method (an anonymous interface, no import cycle) to install a file-backed
+// TranscriptWriter here in the web/live posture, and runstatus.session.transcript
+// reads the same sidecars back. See docs/tracing/run-status-ui.md (Agent actions drawer).
+func (l *LiveSession) TranscriptsDir() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return filepath.Join(filepath.Dir(l.sink.Path), "transcripts")
+}
+
 // Events implements [Source]: the cheap per-poll path. It maps the live history
 // to trace events without rendering the diagram, mirroring FromSink's per-event
 // mapping (Kind→Msg, payload→Attrs, call_id merged) via [runstatus.ToTraceEvent].

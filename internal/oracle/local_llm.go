@@ -57,10 +57,34 @@ import (
 	"strings"
 )
 
-// chatMessage is one entry in the OpenAI chat `messages` array.
+// chatMessage is one entry in the OpenAI chat `messages` array (request side)
+// and the `choices[].message` object (response side). ToolCalls is response-only
+// and absent on the request; it is populated when a tool-using model returns
+// function calls. Today local_llm serves schema-shaped output and makes none.
 type chatMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role      string         `json:"role"`
+	Content   string         `json:"content"`
+	ToolCalls []chatToolCall `json:"tool_calls,omitempty"`
+}
+
+// chatToolCall tolerates both tool-call wire shapes the research surfaced: the
+// OpenAI nested form ({id,type:"function",function:{name,arguments}}) and the
+// llama.cpp-flattened form ({name,arguments} with no function wrapper / id).
+// arguments is a JSON-encoded string in both. The extractor prefers the nested
+// Function fields when present, else falls back to the flat Name/Arguments.
+type chatToolCall struct {
+	ID       string            `json:"id,omitempty"`
+	Type     string            `json:"type,omitempty"`
+	Function *chatToolFunction `json:"function,omitempty"`
+	// Flattened llama.cpp fallback (no function wrapper).
+	Name      string `json:"name,omitempty"`
+	Arguments string `json:"arguments,omitempty"`
+}
+
+// chatToolFunction is the OpenAI nested function object inside a tool call.
+type chatToolFunction struct {
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"`
 }
 
 // jsonSchemaSpec is the `json_schema` object inside an OpenAI response_format.
@@ -281,6 +305,7 @@ func (o *LocalLLMOracle) Ask(ctx context.Context, req AskRequest) (AskResponse, 
 			"completion_tokens": cr.Usage.CompletionTokens,
 			"grammar":           grammarApplied,
 		},
+		Transcript: o.buildTranscript(req.PromptText, cr),
 	}, nil
 }
 
@@ -299,6 +324,79 @@ func stripCodeFence(s string) string {
 		}
 	}
 	return s
+}
+
+// buildTranscript synthesizes an "openai-chat"-format Transcript from the single
+// request/response pair this transport makes. The local model serves
+// schema-shaped decide/routing today and makes NO tool calls, so the baseline is
+// a three-event triple — request, assistant content, terminal result with usage
+// — that the "Agent actions" drawer renders uniformly with the claude path.
+//
+// The events deliberately imitate the OpenAI chat-completion wire shape (a
+// `messages`-style user object, an assistant `message` object, a `result`
+// envelope) so the consumer's openai-chat renderer needs no local_llm-specific
+// branch. Should a future tool-using local model populate
+// choices[0].message.tool_calls, each tool call is emitted as its own event,
+// tolerating BOTH the OpenAI nested {id,function:{name,arguments}} and the
+// llama.cpp-flattened {name,arguments} shapes (see the proposal's cross-backend
+// note); today none are present, so only the triple is produced.
+func (o *LocalLLMOracle) buildTranscript(prompt string, cr chatResponse) *Transcript {
+	events := make([]json.RawMessage, 0, 4)
+
+	// 1. Request: the user prompt that was sent.
+	if ev, err := json.Marshal(map[string]any{
+		"type":    "request",
+		"model":   o.model,
+		"message": map[string]any{"role": "user", "content": prompt},
+	}); err == nil {
+		events = append(events, ev)
+	}
+
+	// 2. Assistant response content.
+	msg := cr.Choices[0].Message
+	if ev, err := json.Marshal(map[string]any{
+		"type":    "assistant",
+		"message": map[string]any{"role": "assistant", "content": msg.Content},
+	}); err == nil {
+		events = append(events, ev)
+	}
+
+	// (future) Tool calls, if the model emits any. Tolerate both wire shapes.
+	for _, tc := range msg.ToolCalls {
+		name := tc.Name
+		args := tc.Arguments
+		if tc.Function != nil {
+			name = tc.Function.Name
+			args = tc.Function.Arguments
+		}
+		if ev, err := json.Marshal(map[string]any{
+			"type": "tool_use",
+			"id":   tc.ID,
+			"name": name,
+			// arguments stay a JSON-encoded string on the OpenAI wire; surface
+			// verbatim so the renderer can pretty-print or pass through.
+			"arguments": args,
+		}); err == nil {
+			events = append(events, ev)
+		}
+	}
+
+	// 3. Terminal result carrying usage tokens.
+	if ev, err := json.Marshal(map[string]any{
+		"type":   "result",
+		"result": msg.Content,
+		"usage": map[string]any{
+			"input_tokens":  cr.Usage.PromptTokens,
+			"output_tokens": cr.Usage.CompletionTokens,
+		},
+	}); err == nil {
+		events = append(events, ev)
+	}
+
+	if len(events) == 0 {
+		return nil
+	}
+	return &Transcript{Format: "openai-chat", Events: events}
 }
 
 // translateContextErr maps a transport-level failure to a typed AskError,

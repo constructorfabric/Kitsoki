@@ -87,8 +87,28 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 		// Also inject the prompts directory so large prompts are stored separately
 		// to stay under PIPE_BUF. Extract it from the JSONLSink path.
 		if jl, ok := o.eventSink.(*store.JSONLSink); ok {
-			promptsDir := filepath.Join(filepath.Dir(jl.Path), "oracle-prompts")
+			traceDir := filepath.Dir(jl.Path)
+			promptsDir := filepath.Join(traceDir, "oracle-prompts")
 			ctx = host.WithOraclePromptsDir(ctx, promptsDir)
+			// Install the per-call agent-action-transcript writer alongside the
+			// prompts dir, so the claude tee / out-of-host backends persist their
+			// native execution detail to <trace_dir>/transcripts/<call_id>.jsonl
+			// (created lazily on first write). The same seam serves web + flow +
+			// replay so the web RPC can later read these sidecars. See
+			// docs/tracing/trace-format.md (Agent-action transcript sidecar).
+			transcriptsDir := filepath.Join(traceDir, "transcripts")
+			ctx = host.WithTranscriptWriter(ctx, host.NewFileTranscriptWriter(transcriptsDir))
+		} else if td, ok := o.eventSink.(interface{ TranscriptsDir() string }); ok {
+			// Web/live posture: the sink is a *runstatus/server.LiveSession that
+			// wraps the JSONLSink, so the direct type assertion above misses. Install
+			// the transcript writer via the dir it exposes (the RPC reads these
+			// sidecars). Prompt-offload is intentionally left unchanged here (prompts
+			// stay inline in the web trace) to avoid altering the existing web trace
+			// shape. Discovered through an anonymous interface to avoid an import
+			// cycle (orchestrator must not import runstatus/server).
+			if dir := td.TranscriptsDir(); dir != "" {
+				ctx = host.WithTranscriptWriter(ctx, host.NewFileTranscriptWriter(dir))
+			}
 		}
 	}
 	// B-2: inject the oracle plugin registry so handlers can route through

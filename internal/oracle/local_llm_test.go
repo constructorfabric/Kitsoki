@@ -324,6 +324,68 @@ func TestStripCodeFence(t *testing.T) {
 	}
 }
 
+// TestLocalLLMTranscript verifies the happy-path response populates an
+// "openai-chat" Transcript with the request/assistant/result triple and usage
+// tokens — without a real model (the httptest stub stands in for the wire).
+func TestLocalLLMTranscript(t *testing.T) {
+	t.Parallel()
+
+	h := &localChatHandler{
+		content: `{"verdict":"pass"}`,
+		usage:   chatUsage{PromptTokens: 42, CompletionTokens: 7},
+	}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+
+	o := NewLocalLLM("qwen2.5-1.5b", 0, "", false, srv.URL, nil)
+	defer o.Close()
+
+	resp, err := o.Ask(context.Background(), sampleRequest())
+	if err != nil {
+		t.Fatalf("Ask: %v", err)
+	}
+	if resp.Transcript == nil {
+		t.Fatal("Transcript is nil, want populated")
+	}
+	if resp.Transcript.Format != "openai-chat" {
+		t.Errorf("Transcript.Format = %q, want %q", resp.Transcript.Format, "openai-chat")
+	}
+	// Baseline triple: request + assistant + result (no tool calls today).
+	if len(resp.Transcript.Events) < 2 {
+		t.Fatalf("Transcript.Events = %d, want >= 2", len(resp.Transcript.Events))
+	}
+
+	// Each event must be valid JSON on its own (the verbatim-line contract).
+	types := make([]string, 0, len(resp.Transcript.Events))
+	var resultEvent map[string]any
+	for i, raw := range resp.Transcript.Events {
+		var m map[string]any
+		if err := json.Unmarshal(raw, &m); err != nil {
+			t.Fatalf("event %d not valid JSON: %v (%s)", i, err, raw)
+		}
+		typ, _ := m["type"].(string)
+		types = append(types, typ)
+		if typ == "result" {
+			resultEvent = m
+		}
+	}
+
+	// The terminal result must carry usage tokens.
+	if resultEvent == nil {
+		t.Fatalf("no result event among types %v", types)
+	}
+	usage, ok := resultEvent["usage"].(map[string]any)
+	if !ok {
+		t.Fatalf("result event missing usage: %v", resultEvent)
+	}
+	if usage["input_tokens"] != float64(42) {
+		t.Errorf("usage.input_tokens = %v, want 42", usage["input_tokens"])
+	}
+	if usage["output_tokens"] != float64(7) {
+		t.Errorf("usage.output_tokens = %v, want 7", usage["output_tokens"])
+	}
+}
+
 // TestLocalLLMEndpointModeNoSpawn verifies endpoint mode never touches the
 // managed sidecar: Close succeeds and a connection-refused endpoint yields a
 // transport error (proving we POST directly to the endpoint, not a sidecar).

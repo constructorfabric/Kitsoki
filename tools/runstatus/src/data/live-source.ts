@@ -15,6 +15,7 @@ import type {
   MetaSendResult,
   MetaMessage,
 } from "./source.js";
+import type { TranscriptData, TranscriptEvent } from "./transcript.js";
 
 /** One SSE frame from /rpc/meta-stream. */
 export interface MetaStreamEvent {
@@ -355,6 +356,33 @@ export class LiveSource implements DataSource {
         chat_id: chatId,
       })
       .then((r) => r.messages ?? []);
+  }
+
+  // ── Agent-action transcripts ──────────────────────────────────────────────
+
+  /**
+   * Fetch one oracle call's agent-action transcript via
+   * runstatus.session.transcript. The server reads the <call_id>.jsonl +
+   * .timings sidecars lazily off disk and returns the verbatim events parsed
+   * back to JSON. Maps the Go snake_case `schema_version` to TS `schemaVersion`.
+   */
+  getTranscript(sessionId: string, callId: string): Promise<TranscriptData> {
+    return this.client
+      .post<{
+        format: string;
+        events: TranscriptEvent[];
+        timings: number[];
+        schema_version: number;
+      }>("runstatus.session.transcript", {
+        session_id: sessionId,
+        call_id: callId,
+      })
+      .then((r) => ({
+        format: r.format,
+        events: r.events ?? [],
+        timings: r.timings ?? [],
+        schemaVersion: r.schema_version,
+      }));
   }
 
   // ── Media artifacts ───────────────────────────────────────────────────────

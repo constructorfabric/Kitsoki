@@ -64,7 +64,7 @@
     </template>
 
     <template v-else-if="isOracleComplete">
-      <OracleDetail :event="event" />
+      <OracleDetail :event="event" :session-id="resolvedSessionId" />
     </template>
 
     <template v-else-if="isLlmEvent">
@@ -252,7 +252,13 @@ function isCliNamespace(ns: string): boolean { return CLI_NAMESPACES.has(ns); }
 // Canonical oracle completion: the engine emits oracle.call.complete with the
 // verb in attrs.verb. OracleDetail reads attrs.verb to route to the per-verb
 // sub-renderer (DecideDetail / TaskDetail / …).
-const isOracleComplete = computed(() => props.event.msg === "oracle.call.complete");
+// oracle.call.error ALSO routes to OracleDetail: a failed call still has a verb to
+// render and MAY carry a transcript_ref (the partial agent actions up to the
+// failure), which OracleDetail surfaces as the Agent-actions affordance. OracleDetail
+// guards missing success fields with its error banner + raw-attrs fallback.
+const isOracleComplete = computed(
+  () => props.event.msg === "oracle.call.complete" || props.event.msg === "oracle.call.error"
+);
 
 // Legacy: oracle.* start/other + turn.llm.* get the old prompt/response dump.
 const isLlmEvent = computed(() => !isOracleComplete.value && (props.event.msg.startsWith("oracle.") || props.event.msg.startsWith("turn.llm.")));

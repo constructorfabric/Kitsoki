@@ -105,7 +105,30 @@ remux pattern documented below, **not** a plain copy from the video dir.
      — that picks a stale file from a previous run.
    - **Pacing** — gate every delay on `WEB_CHAT_PACE` (typing delay, a beat
      before each click, a dwell on each settled scene) so the same spec runs
-     fast for CI and slow for the camera.
+     fast for CI and slow for the camera. This applies to the **opening
+     orchestration too**, not just the tour/scene loop: navigation that sits
+     outside the paced loop (home → new session → observer) flashes past in
+     well under a second if you `page.goto` straight through it. Use the shared
+     `_helpers/server.ts` primitives — `cinematicGoto(page, url, {waitForTestId})`
+     (goto + render-anchor + settle), `pacedClick(page, locator)` (beat before,
+     settle after), and the shared `dwell` / `SETTLE_MS` — for every
+     surface change, so the camera arrives and rests rather than lurching.
+   - **Tour-driven intro (feature-spotlight specs)** — for a dedicated
+     feature tour, prefer making the WHOLE video tour-narrated rather than
+     silently `cinematicGoto`-ing through the opening. Start the tour on the
+     home story library (`__startTourWithSteps` while on `#/`) and prepend
+     `home`/`interactive` intro steps that explain where the feature lives and
+     frame the demo story, then let `kind: "action"` + `advance: "route-match"`
+     steps perform the navigation (home → `new-session-btn` → `observe-link` →
+     observer) — each one narrated by its own popover. The spec walks these
+     exactly like the observer steps: click the target, then `waitForURL` the
+     route change. Order matters — click `observe-link` while the chat view is
+     STATIC, navigate to the observer, and only THEN fire the `patch_world` /
+     `submit` RPCs (mirrors `tour-video.spec.ts`); submitting before the click
+     re-renders the chat view under the click and the route-match advance is
+     lost. The trace then streams into the observer's live trace ahead of the
+     introspection steps. The single backdrop only blanks the page for
+     anchorless (`center`) steps; targeted steps leave a click-through hole.
    - **Hash routing** — URLs are `#/`, `#/s/:id`, `#/s/:id/chat`.
 
 ## Video recording — the correct pattern

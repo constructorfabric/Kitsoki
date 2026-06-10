@@ -139,6 +139,9 @@ func OracleConverseHandler(ctx context.Context, args map[string]any) (Result, er
 
 	callID := newUUID()
 	callStart := time.Now()
+	// Install the active call_id so the claude transport tees its stream-json
+	// into the agent-action-transcript sidecar keyed by this call (live path).
+	ctx = WithCallID(ctx, callID)
 
 	bin, err := resolveOracleBin(ctx)
 	if err != nil {
@@ -294,6 +297,9 @@ func runConverseWithChat(ctx context.Context, cs ChatStore, chatID, question, pe
 func doConverseChatTurn(ctx context.Context, cs ChatStore, chatID, question, workingDir, systemPrompt, model, permMode string, tools, disallowedTools []string, inheritDefault bool) (Result, error) {
 	callID := newUUID()
 	callStart := time.Now()
+	// Install the active call_id so the claude transport tees its stream-json
+	// into the agent-action-transcript sidecar keyed by this call (live path).
+	ctx = WithCallID(ctx, callID)
 
 	// Wave 3-oracle: write OracleCalled to the JSONL sink at dispatch time.
 	appendOracleCalledEvent(ctx, callStart, callID, question, OracleCalledPayload{

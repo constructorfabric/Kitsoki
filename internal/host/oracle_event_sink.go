@@ -248,6 +248,15 @@ type OracleReturnedPayload struct {
 	// local-model call's response actually came from claude. Omitted (nil) on
 	// every normal call, so the field is backward compatible.
 	Substitution map[string]any `json:"substitution,omitempty"`
+	// TranscriptRef is the pointer-only reference to this call's agent-action
+	// transcript sidecar (the claude stream-json / openai-chat events captured
+	// for the "Agent actions" drawer). It carries NO inlined detail — just the
+	// format, the relative sidecar path, the event count, and the schema version
+	// (see host.TranscriptRef). Omitted (nil) when the call produced no
+	// transcript, so a run with no transcripts renders exactly as before. The
+	// detail lives in <trace_dir>/transcripts/<call_id>.jsonl (+ .timings),
+	// fetched lazily by the web consumer; see docs/tracing/trace-format.md (Agent-action transcript sidecar).
+	TranscriptRef *TranscriptRef `json:"transcript_ref,omitempty"`
 }
 
 // OracleErrorPayload is the payload written to OracleError events.
@@ -264,6 +273,13 @@ type OracleErrorPayload struct {
 	// trace shows that a substitution was tried before the call failed.
 	// Omitted (nil) on every normal error.
 	Substitution map[string]any `json:"substitution,omitempty"`
+	// TranscriptRef points at the per-call agent-action sidecar, same as on
+	// OracleReturnedPayload. A failed call still produced agent actions (the
+	// partial decide reject→nudge arc, a local-model transcript that was
+	// schema-rejected before fallback), and they are exactly what an operator
+	// reviewing a failure wants. Finalizing here also frees the writer's
+	// in-memory buffer for the call. Omitted (nil) when no transcript was captured.
+	TranscriptRef *TranscriptRef `json:"transcript_ref,omitempty"`
 }
 
 // ── JSONL append helpers ───────────────────────────────────────────────────────
@@ -330,6 +346,18 @@ func appendOracleReturnedEvent(ctx context.Context, ts time.Time, callID string,
 		payload.Meta = oracleUsageMeta(ctx)
 	}
 
+	// Finalize the agent-action transcript sidecar (if a writer + events were
+	// accumulated for this call) and attach the pointer-only ref before the
+	// oracle.call.complete event is emitted. The in-host claude path teed its
+	// RawEvents into the writer during the call (oracle_runner.go); the dispatch
+	// path for out-of-host backends fed AskResponse.Transcript in first. Finalize
+	// returns nil (and the field stays omitted) when nothing was appended, so a
+	// call with no transcript renders exactly as before. A handler that already
+	// set TranscriptRef explicitly wins (none does today).
+	if payload.TranscriptRef == nil {
+		payload.TranscriptRef = finalizeTranscript(ctx, callID)
+	}
+
 	// Store large responses in separate files to keep JSONL lines under PIPE_BUF.
 	if len(payload.Response) > 0 {
 		if responseFile, err := storeResponseIfLarge(ctx, callID, payload.Response); err == nil && responseFile != "" {
@@ -360,9 +388,20 @@ func appendOracleReturnedEvent(ctx context.Context, ts time.Time, callID string,
 func appendOracleErrorEvent(ctx context.Context, ts time.Time, callID string, payload OracleErrorPayload) {
 	sink := EventSinkFromOracleCtx(ctx)
 	if sink == nil {
+		// Still finalize so the writer's per-call buffer is freed even when no
+		// sink is installed (the ref is just discarded).
+		_ = finalizeTranscript(ctx, callID)
 		return
 	}
 	oc := OracleCallCtxFrom(ctx)
+
+	// Flush the agent-action transcript accumulated for this call (the partial
+	// arc up to the failure) and attach the pointer, mirroring
+	// appendOracleReturnedEvent. Nil when nothing was captured. This also frees
+	// the writer's in-memory buffer for callID.
+	if payload.TranscriptRef == nil {
+		payload.TranscriptRef = finalizeTranscript(ctx, callID)
+	}
 
 	raw, err := json.Marshal(payload)
 	if err != nil {

@@ -15,7 +15,7 @@ import { fileURLToPath } from "url";
 import path from "path";
 import fs from "fs";
 import os from "os";
-import { expect, type Page, type Video } from "@playwright/test";
+import { expect, type Page, type Video, type Locator } from "@playwright/test";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -26,6 +26,63 @@ export const STORIES_DIR = path.join(repoRoot, "stories");
 
 /** Global pacing knob: 0 for fast assertion runs, 1 (default) for the camera. */
 export const PACE = Number(process.env.WEB_CHAT_PACE ?? "1");
+
+/**
+ * Default "settle" beat (ms, before PACE-scaling) after a surface change.
+ *
+ * The eye needs roughly a second to register a freshly-rendered view. Tour
+ * steps already dwell on each spotlight, but the OPENING orchestration (home ->
+ * new session -> observer) and any pre-step setup must settle too, or the
+ * camera lurches between surfaces in under a second — the "rushed navigation
+ * outside the tour" defect. Keep this on the same `PACE` knob so fast assertion
+ * runs (WEB_CHAT_PACE=0) collapse it to zero.
+ */
+export const SETTLE_MS = 1400;
+
+/** Pause for `ms` (PACE-scaled). The single pacing primitive every recording
+ * spec shares — previously each spec redefined its own copy, so the opening
+ * navigation kept getting written without one. Import this instead. */
+export function dwell(page: Page, ms: number): Promise<void> {
+  return page.waitForTimeout(Math.round(ms * PACE));
+}
+
+/**
+ * Navigate to `url`, confirm the surface has actually rendered (optional URL
+ * regex and/or testid anchor), then SETTLE so the frame is watchable.
+ *
+ * This is the camera-move primitive: replaces a bare `page.goto` in the
+ * recording specs so non-tour navigation is paced exactly like the tour itself.
+ * The settle is the whole point — a `goto` that immediately `goto`s away (the
+ * old home -> chat -> observer flash) never gives the viewer a frame to read.
+ */
+export async function cinematicGoto(
+  page: Page,
+  url: string,
+  opts: { waitForUrl?: RegExp; waitForTestId?: string; settleMs?: number } = {},
+): Promise<void> {
+  await page.goto(url);
+  if (opts.waitForUrl) await page.waitForURL(opts.waitForUrl, { timeout: 15000 });
+  if (opts.waitForTestId) {
+    await expect(page.getByTestId(opts.waitForTestId).first()).toBeVisible({ timeout: 15000 });
+  }
+  await dwell(page, opts.settleMs ?? SETTLE_MS);
+}
+
+/**
+ * Click `target` with a cinematic beat BEFORE (so the cursor's intent reads) and
+ * a SETTLE after (so the resulting surface is held on screen). Use for the
+ * opening orchestration clicks that sit outside the paced tour loop — e.g. the
+ * "New session" button — which otherwise fire instantly and flash past.
+ */
+export async function pacedClick(
+  page: Page,
+  target: Locator,
+  opts: { beforeMs?: number; afterMs?: number } = {},
+): Promise<void> {
+  await dwell(page, opts.beforeMs ?? 600);
+  await target.click();
+  await dwell(page, opts.afterMs ?? SETTLE_MS);
+}
 
 export interface WebServer {
   base: string;

@@ -119,6 +119,47 @@ When present, the `oracle:` block carries: `verb` (`ask`\|`decide`\|`extract`\|`
       response:      !include 01-repro-report.json
 ```
 
+### Recorded agent-action transcripts
+
+The `oracle:` block may also carry an optional `transcript:` block that records
+the call's native execution stream — the
+[agent-action transcript sidecar](trace-format.md#agent-action-transcript-sidecar)
+the web "Agent actions" drawer renders. On replay it is written to
+`<trace_dir>/transcripts/<call_id>.{jsonl,timings}` **byte-verbatim**; no live
+tool ever runs, and the golden contract is that a replayed cassette produces a
+**byte-identical** sidecar.
+
+```yaml
+    oracle:
+      verb:        decide
+      agent:       bugfix
+      model:       claude-sonnet-4-6
+      duration_ms: 1500
+      response:    '{"decision":"refund","amount":49.0}'
+      transcript:
+        format: claude-stream-json
+        # Each event is one verbatim JSON line; string elements are preserved
+        # byte-for-byte (key order + number literals), so a live-captured-then-
+        # folded transcript round-trips exactly. _kitsoki rows are the host-side
+        # additions (validator reject/accept, the injected nudge) that the raw
+        # -p stream omits.
+        events:
+          - '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_0a","name":"mcp__validator__submit","input":{"decision":"refund","amount":"lots"}}]}}'
+          - '{"_kitsoki":"validator_reject","source":"schema","reason":"amount: expected number, got string \"lots\""}'
+          - '{"_kitsoki":"nudge","outer_iter":1,"text":"… the last submission attempt was rejected: amount: expected number …"}'
+          - '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_0b","name":"mcp__validator__submit","input":{"decision":"refund","amount":49.0}}]}}'
+          - '{"_kitsoki":"validator_accept","outer_iter":1}'
+          - '{"type":"result","subtype":"success","result":"refund","usage":{"input_tokens":1400,"output_tokens":320},"total_cost_usd":0.03}'
+        timings: [0, 60, 80, 520, 720, 1000]   # ms offsets → the waterfall (optional)
+```
+
+`events` accepts either a verbatim JSON **string** per line (preserved
+byte-for-byte) or an authored YAML/JSON **mapping** (marshaled compactly).
+Malformed string events fail fast at `LoadCassette`. In **record mode** the live
+captured transcript is folded back into this block automatically. A worked pair
+lives in `stories/bugfix/flows/demo.cassette.yaml` (the `task` and `decide`
+episodes).
+
 ---
 
 ## Matching

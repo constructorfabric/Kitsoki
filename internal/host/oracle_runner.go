@@ -15,7 +15,14 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
+
+// claudeTranscriptFormat is the Format stamped on the transcript sidecar and
+// TranscriptRef for the in-host claude path. The sidecar holds the claude
+// stream-json events byte-verbatim, one per line, so an off-the-shelf claude
+// jsonl parser can consume it unchanged. See the agent-action-transcripts docs.
+const claudeTranscriptFormat = "claude-stream-json"
 
 // ClaudeRun is the outcome of one `claude -p` invocation.
 type ClaudeRun struct {
@@ -339,6 +346,23 @@ func runClaudeStreamJSON(ctx context.Context, bin string, cliArgs []string, stdi
 	// match what real sessions produce in practice.
 	scanner.Buffer(make([]byte, 0, 64*1024), 8*1024*1024)
 
+	// Transcript tee (agent-action-transcripts): when a TranscriptWriter and a
+	// call_id are both installed in ctx, each raw stream-json event is appended
+	// verbatim to the per-call sidecar with a capture-time offset (ms since the
+	// call started). The bytes are byte-identical to what RawEvents holds. The
+	// wall clock here is recorded and replayed, never re-derived (see the
+	// proposal's Determinism section). A nil writer / empty call_id is a no-op.
+	transcriptW := TranscriptWriterFrom(ctx)
+	transcriptCallID := CallIDFrom(ctx)
+	teeTranscript := transcriptW != nil && transcriptCallID != ""
+	// Offset events from the shared call-start when one is installed (a decide
+	// call's several --resume subprocesses share it, so the waterfall stays
+	// monotonic), else from this invocation's start (the single-session case).
+	callStart := time.Now()
+	if t, ok := CallStartFrom(ctx); ok {
+		callStart = t
+	}
+
 	var (
 		assembledText strings.Builder
 		finalResult   string
@@ -367,6 +391,10 @@ func runClaudeStreamJSON(ctx context.Context, bin string, cliArgs []string, stdi
 		}
 		sawAnyJSON = true
 		rawEvents = append(rawEvents, json.RawMessage(trimmed))
+		if teeTranscript {
+			transcriptW.Append(transcriptCallID, claudeTranscriptFormat,
+				json.RawMessage(trimmed), time.Since(callStart).Milliseconds())
+		}
 		emitStreamEvent(ctx, ev)
 		text, _, _, isResult, resultText, sid := classifyStreamEvent(ev)
 		if text != "" {
@@ -764,6 +792,16 @@ func onelinePreview(s string, n int) string {
 func parseStreamJSONOutput(ctx context.Context, raw string) (reply, sessionID string, rawEvents []json.RawMessage, usage map[string]any, cost float64) {
 	var assembled strings.Builder
 	var finalResult string
+	// Transcript tee (agent-action-transcripts): mirror the live subprocess path
+	// so a stubbed stream-json run (the test seam) also captures the sidecar.
+	// No-op when no writer / call_id is installed.
+	transcriptW := TranscriptWriterFrom(ctx)
+	transcriptCallID := CallIDFrom(ctx)
+	teeTranscript := transcriptW != nil && transcriptCallID != ""
+	callStart := time.Now()
+	if t, ok := CallStartFrom(ctx); ok {
+		callStart = t
+	}
 	scanner := bufio.NewScanner(strings.NewReader(raw))
 	scanner.Buffer(make([]byte, 0, 64*1024), 8*1024*1024)
 	for scanner.Scan() {
@@ -776,6 +814,10 @@ func parseStreamJSONOutput(ctx context.Context, raw string) (reply, sessionID st
 			continue
 		}
 		rawEvents = append(rawEvents, json.RawMessage(line))
+		if teeTranscript {
+			transcriptW.Append(transcriptCallID, claudeTranscriptFormat,
+				json.RawMessage(line), time.Since(callStart).Milliseconds())
+		}
 		emitStreamEvent(ctx, ev)
 		text, _, _, isResult, resultText, sid := classifyStreamEvent(ev)
 		if text != "" {

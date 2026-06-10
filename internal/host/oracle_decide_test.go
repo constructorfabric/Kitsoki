@@ -738,6 +738,72 @@ func TestOracleDecide_CodeBlockFallback(t *testing.T) {
 	}
 }
 
+// TestOracleDecide_ToolBypass_SyntheticTranscript verifies the live decide path
+// mirrors the tool-bypass deviation into the agent-action-transcript sidecar as
+// a clearly-marked _kitsoki banner row (in addition to the trace Meta), followed
+// by a validator_accept boundary — the operator sees WHY the verdict arrived as
+// narration text, not a clean submit(), in the "Agent actions" drawer.
+func TestOracleDecide_ToolBypass_SyntheticTranscript(t *testing.T) {
+	t.Parallel()
+	schemaPath := makeSchemaFile(t)
+
+	codeBlockRunner := func(_ context.Context, _ []string, _, _ string) (host.ClaudeRun, error) {
+		return host.ClaudeRun{Stdout: "Verdict:\n\n```json\n{\"verdict\": \"yes\"}\n```\n"}, nil
+	}
+	transcriptsDir := filepath.Join(t.TempDir(), "transcripts")
+	sink := &memSink{}
+	ctx := host.WithClaudeRunner(oracleCtxForTest(sink), codeBlockRunner)
+	ctx = host.WithTranscriptWriter(ctx, host.NewFileTranscriptWriter(transcriptsDir))
+
+	res, err := host.OracleDecideHandler(ctx, map[string]any{
+		"prompt": "Is this a good idea?",
+		"schema": schemaPath,
+	})
+	if err != nil {
+		t.Fatalf("unexpected Go error: %v", err)
+	}
+	if res.Error != "" {
+		t.Fatalf("expected no error; got %q", res.Error)
+	}
+
+	// Recover the (non-deterministic, live UUID) call_id from the transcript_ref
+	// on the OracleReturned event, then read its sidecar.
+	var ref *host.TranscriptRef
+	for i := range sink.events {
+		if sink.events[i].Kind != store.OracleReturned {
+			continue
+		}
+		var pl host.OracleReturnedPayload
+		if uErr := json.Unmarshal(sink.events[i].Payload, &pl); uErr != nil {
+			t.Fatalf("unmarshal OracleReturned payload: %v", uErr)
+		}
+		ref = pl.TranscriptRef
+	}
+	if ref == nil {
+		t.Fatal("expected a transcript_ref on oracle.call.complete (synthetic rows present)")
+	}
+	callID := strings.TrimSuffix(strings.TrimPrefix(ref.Path, "transcripts/"), ".jsonl")
+	gotBytes, rerr := os.ReadFile(filepath.Join(transcriptsDir, callID+".jsonl"))
+	if rerr != nil {
+		t.Fatalf("read sidecar: %v", rerr)
+	}
+	got := string(gotBytes)
+	if !strings.Contains(got, `"_kitsoki":"tool_bypassed"`) {
+		t.Errorf("expected tool_bypassed banner row in sidecar; got:\n%s", got)
+	}
+	if !strings.Contains(got, `"verdict_recovered_from":"code_block"`) {
+		t.Errorf("expected verdict_recovered_from in banner row; got:\n%s", got)
+	}
+	if !strings.Contains(got, `"_kitsoki":"validator_accept"`) {
+		t.Errorf("expected validator_accept boundary row in sidecar; got:\n%s", got)
+	}
+	bypassIdx := strings.Index(got, `"_kitsoki":"tool_bypassed"`)
+	acceptIdx := strings.Index(got, `"_kitsoki":"validator_accept"`)
+	if bypassIdx > acceptIdx {
+		t.Errorf("tool_bypassed banner must precede validator_accept; bypass=%d accept=%d", bypassIdx, acceptIdx)
+	}
+}
+
 // TestOracleDecide_NoCodeBlock_StillErrors confirms the fallback does not
 // swallow the error when the model exits without any usable JSON at all.
 func TestOracleDecide_NoCodeBlock_StillErrors(t *testing.T) {

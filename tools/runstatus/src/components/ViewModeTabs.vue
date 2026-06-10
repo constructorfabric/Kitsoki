@@ -20,6 +20,12 @@
         data-testid="tab-graph"
         @click="setMode('graph')"
       >Graph</button>
+      <button
+        class="view-mode-tabs__tab"
+        :class="{ 'view-mode-tabs__tab--active': activeMode === 'actions' }"
+        data-testid="tab-actions"
+        @click="setMode('actions')"
+      >Actions</button>
 
       <!-- Clear highlight button shown in trace panel header area -->
       <button
@@ -71,6 +77,11 @@
         />
         <div v-else class="view-mode-tabs__empty">No diagram available.</div>
       </div>
+
+      <!-- Actions: SessionRollup — all agent transcripts across the run -->
+      <div v-show="activeMode === 'actions'" class="view-mode-tabs__pane">
+        <SessionRollup :events="events" :session-id="sessionId" />
+      </div>
     </div>
   </div>
 </template>
@@ -80,9 +91,10 @@ import { ref, onMounted, onUnmounted } from "vue";
 import TraceTimeline from "./TraceTimeline.vue";
 import TraceWaterfall from "./TraceWaterfall.vue";
 import StateDiagram from "./StateDiagram.vue";
+import SessionRollup from "./oracle/SessionRollup.vue";
 import type { TraceEvent, NodeRef } from "../types.js";
 
-type ViewMode = "tree" | "timeline" | "graph";
+type ViewMode = "tree" | "timeline" | "graph" | "actions";
 
 const props = defineProps<{
   events: TraceEvent[];
@@ -105,7 +117,7 @@ const emit = defineEmits<{
 
 function readHashMode(): ViewMode {
   const hash = window.location.hash;
-  const m = hash.match(/#(?:.*#)?(tree|timeline|graph)/);
+  const m = hash.match(/#(?:.*#)?(tree|timeline|graph|actions)/);
   if (m) return m[1] as ViewMode;
   return "tree";
 }
@@ -119,7 +131,7 @@ function setMode(mode: ViewMode): void {
   // We store mode in the URL hash as a query-like suffix: #<route>#<mode>
   const currentHash = window.location.hash;
   // Strip any existing mode suffix
-  const baseHash = currentHash.replace(/#(tree|timeline|graph)$/, "");
+  const baseHash = currentHash.replace(/#(tree|timeline|graph|actions)$/, "");
   window.location.hash = baseHash + "#" + mode;
 }
 
@@ -216,6 +228,7 @@ onUnmounted(() => {
 /* TraceTimeline + TraceWaterfall need full height */
 .view-mode-tabs__pane :deep(.trace-timeline),
 .view-mode-tabs__pane :deep(.trace-waterfall),
+.view-mode-tabs__pane :deep(.rollup),
 .view-mode-tabs__pane :deep(.state-diagram) {
   flex: 1;
   height: 100%;

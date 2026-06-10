@@ -30,12 +30,22 @@ pipeline removes that failure mode structurally, not by hoping the model behaves
 2. **Grounded verdicts.** Every `pass` MUST cite a frame filename and quote what
    is **literally visible**. A claim with no citable frame is `unsupported`
    (never silently `pass`); a frame that contradicts it is `fail`.
-3. **Adversarial re-check.** A second `claude` pass plays skeptic and may **only
-   downgrade** — it re-reads each cited frame and demotes any `pass` whose frame
-   doesn't actually show the claim. (`--no-adversary` to skip.)
+3. **Adversarial re-check (interpretive ÷ deterministic).** A second `claude`
+   pass plays skeptic: it re-reads each `pass` step's cited frame and emits only a
+   small **list of downgrades** (which step, to `fail`/`unsupported`, and what the
+   frame really shows). `qa-review.sh` then **applies them deterministically** — it
+   can only *lower* a status, never raise one (the downgrade-only invariant is
+   enforced in code, not by trusting the model), and recomputes every
+   scenario/`overall`/summary itself. The tiny delta output (vs. re-emitting the
+   whole multi-KB verdict) is what makes this pass robust. Model output is parsed
+   with a brace-matching JSON extractor that tolerates stray prose / ``` fences.
+   The result is recorded as `adversary: {status, downgrades_applied}` on the
+   verdict. (`--no-adversary` to skip.)
 4. **Authoritative gate.** `report.sh` recomputes pass/fail from the per-scenario
    status in `verdict.json` (it does *not* trust the model's own `overall`) and
-   sets the exit code.
+   sets the exit code. Under `--strict` it additionally blocks if the adversarial
+   pass was supposed to run but did not complete (`adversary.status != "ok"`), so
+   a silent adversary flake can never pass a strict gate.
 
 ## Prerequisites
 

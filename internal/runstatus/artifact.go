@@ -42,9 +42,10 @@ type ArtifactOptions struct {
 //
 // snapshotJSON is embedded verbatim (after optional sidecar inlining) — the
 // caller owns its shape; RenderArtifact only manipulates the events[].attrs
-// prompt sidecar fields when opts.SidecarDir is set. The result opens with no
-// server: all CSS/JS are already inlined in index by vite-plugin-singlefile,
-// and the snapshot rides along in the injected tag.
+// prompt sidecar fields and inlines each event's transcript_ref agent-action
+// sidecar into attrs.transcript when opts.SidecarDir is set. The result opens
+// with no server: all CSS/JS are already inlined in index by
+// vite-plugin-singlefile, and the snapshot rides along in the injected tag.
 func RenderArtifact(index, snapshotJSON []byte, opts ArtifactOptions) ([]byte, error) {
 	if len(index) == 0 {
 		return nil, fmt.Errorf("runstatus: empty SPA index (run `make build` to bundle the UI)")
@@ -53,6 +54,7 @@ func RenderArtifact(index, snapshotJSON []byte, opts ArtifactOptions) ([]byte, e
 	snap := snapshotJSON
 	if opts.SidecarDir != "" {
 		snap = inlinePromptSidecars(snap, opts.SidecarDir)
+		snap = inlineTranscriptSidecars(snap, opts.SidecarDir)
 	}
 
 	// The snapshot tag the SPA's bootstrap (main.ts) looks up by id.
@@ -184,6 +186,101 @@ func inlinePromptSidecars(snapshotJSON []byte, baseDir string) []byte {
 				changed = true
 			}
 		}
+	}
+
+	if !changed {
+		return snapshotJSON
+	}
+	out, err := json.Marshal(doc)
+	if err != nil {
+		return snapshotJSON
+	}
+	return out
+}
+
+// inlineTranscriptSidecars walks each event's attrs.transcript_ref pointer and,
+// when present, inlines the referenced agent-action sidecar (the verbatim
+// <call_id>.jsonl events + the parallel .timings offsets) into a new
+// attrs.transcript field shaped like [TranscriptData]:
+//
+//	attrs.transcript = {format, events:[…], timings:[…], schema_version}
+//
+// This makes a static-export HTML self-contained: the "Agent actions" drawer can
+// render the full per-call detail offline, with no server to hit
+// runstatus.session.transcript — exactly as [inlinePromptSidecars] does for
+// prompt text. The transcript_ref pointer is LEFT IN PLACE (it still carries the
+// event count for the affordance badge); the SnapshotSource reads the inlined
+// attrs.transcript instead of fetching. A sidecar that cannot be read is skipped
+// (the SPA degrades to showing only the pointer's count, no drawer body).
+//
+// transcript_ref.path is relative to the trace/snapshot dir (e.g.
+// "transcripts/<call_id>.jsonl"); the .timings companion sits beside it. baseDir
+// is the snapshot's directory, the same root inlinePromptSidecars uses.
+func inlineTranscriptSidecars(snapshotJSON []byte, baseDir string) []byte {
+	var doc map[string]any
+	if err := json.Unmarshal(snapshotJSON, &doc); err != nil {
+		return snapshotJSON
+	}
+	events, ok := doc["events"].([]any)
+	if !ok {
+		return snapshotJSON
+	}
+
+	changed := false
+	for _, e := range events {
+		ev, ok := e.(map[string]any)
+		if !ok {
+			continue
+		}
+		attrs, ok := ev["attrs"].(map[string]any)
+		if !ok {
+			continue
+		}
+		if _, present := attrs["transcript"]; present {
+			continue // already inlined (in-process snapshot)
+		}
+		ref, ok := attrs["transcript_ref"].(map[string]any)
+		if !ok {
+			continue
+		}
+		rel, _ := ref["path"].(string)
+		if rel == "" {
+			continue
+		}
+		format, _ := ref["format"].(string)
+		if format == "" {
+			format = "claude-stream-json"
+		}
+
+		jsonlPath := filepath.Join(baseDir, rel)
+		raw, err := os.ReadFile(jsonlPath)
+		if err != nil {
+			continue
+		}
+		evs := parseTranscriptLines(raw)
+		timings := readTimings(strings.TrimSuffix(jsonlPath, ".jsonl")+".timings", len(evs))
+
+		// Surface events as parsed JSON values (not escaped strings) so the
+		// inlined shape matches the RPC's TranscriptData exactly.
+		evVals := make([]any, 0, len(evs))
+		for _, raw := range evs {
+			var v any
+			if json.Unmarshal(raw, &v) == nil {
+				evVals = append(evVals, v)
+			}
+		}
+		timingVals := make([]any, len(timings))
+		for i, ms := range timings {
+			timingVals[i] = ms
+		}
+
+		attrs["transcript"] = map[string]any{
+			"format":         format,
+			"events":         evVals,
+			"timings":        timingVals,
+			"schema_version": transcriptSchemaVersion,
+		}
+		changed = true
 	}
 
 	if !changed {

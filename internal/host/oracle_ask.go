@@ -275,6 +275,9 @@ func OracleAskHandler(ctx context.Context, args map[string]any) (Result, error) 
 
 	callID := newUUID()
 	callStart := time.Now()
+	// Install the active call_id so the claude transport tees its stream-json
+	// into the agent-action-transcript sidecar keyed by this call (live path).
+	ctx = WithCallID(ctx, callID)
 
 	// Wave 3-oracle: write OracleCalled to the JSONL sink (if wired) at
 	// dispatch time, before the subprocess is started. Note: Prompt and

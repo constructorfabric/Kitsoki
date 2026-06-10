@@ -130,6 +130,53 @@ type AskResponse struct {
 	// MAY populate this to preserve audit fidelity; simple plugins MAY leave it
 	// nil. Kitsoki appends these verbatim to the JSONL trace.
 	SubEvents []store.Event `json:"sub_events,omitempty"`
+
+	// Transcript is the call's native execution detail — the sidecar-bound
+	// sibling of SubEvents. Where SubEvents are folded into the lean story
+	// JSONL, the Transcript is *evidence about* the call (every tool_use input,
+	// tool_result, and assistant reasoning block) that is too heavy and too
+	// non-deterministic to live in the trace, so it is written to a per-call
+	// sidecar and referenced from oracle.call.complete by a single pointer.
+	//
+	// This is the carry-up path for *out-of-host* backends (local_llm,
+	// subprocess, MCP-HTTP): they populate it from their own request/response so
+	// the dispatcher can persist it uniformly. The in-host claude path does not
+	// use this field — its RawEvents are too rich to survive a JSON round-trip,
+	// so it tees them straight into a host.TranscriptWriter pulled from context.
+	//
+	// Optional and additive: a nil Transcript renders exactly as today (no
+	// "Agent actions" affordance), so existing backends and old cassettes are
+	// unaffected.
+	Transcript *Transcript `json:"transcript,omitempty"`
+}
+
+// Transcript is one oracle call's backend-native execution detail, captured
+// verbatim for the "Agent actions" drawer. It is not interpreted by the state
+// machine — kitsoki writes it to a per-call sidecar and references it from the
+// trace by a pointer; the web consumer renders it.
+//
+// The Events are kept byte-verbatim in the backend's own schema so an
+// off-the-shelf parser for that format (e.g. a claude stream-json reader) can
+// consume the sidecar unchanged. Capture-time offsets are deliberately NOT
+// inlined into the events — they live in a parallel timings sidecar (Timings
+// here) so the verbatim stream stays pristine.
+type Transcript struct {
+	// Format names the event schema so the consumer picks the right renderer.
+	// Defined values: "claude-stream-json" (the in-host claude wire stream),
+	// "openai-chat" (local_llm's request/response triple), or a "<plugin>"
+	// identifier a subprocess/MCP-HTTP backend chooses for its own shape.
+	Format string `json:"format"`
+
+	// Events are the backend-native execution events, verbatim, one per line in
+	// the sidecar .jsonl. Each MUST be valid JSON on its own line.
+	Events []json.RawMessage `json:"events"`
+
+	// Timings is the per-event capture-time offset in milliseconds since the
+	// call started, powering the waterfall view. When present its length matches
+	// Events; it MAY be nil for backends that do not stamp per-event timing
+	// (the offsets then default to absent rather than fabricated). It is written
+	// to a parallel timings sidecar, never folded into the verbatim events.
+	Timings []int64 `json:"timings,omitempty"`
 }
 
 // AskError is the typed error returned by Oracle.Ask when the plugin fails

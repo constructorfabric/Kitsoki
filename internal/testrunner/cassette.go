@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -87,6 +88,101 @@ type EpisodeOracle struct {
 	Response       string  `yaml:"response,omitempty"`
 	Error          string  `yaml:"error,omitempty"`
 	CallID         string  `yaml:"call_id,omitempty"` // advisory; recomputed on every load
+
+	// Transcript, when present, is the recorded agent-action transcript for this
+	// oracle call (the claude stream-json / openai-chat events). On replay it is
+	// written to the <call_id>.jsonl (+ .timings) sidecar verbatim via the
+	// TranscriptWriter in ctx and referenced from oracle.call.complete by a
+	// transcript_ref pointer — NO live tool ever runs, and the sidecar is
+	// byte-identical to the recorded events. In record mode (new_episodes) the
+	// live captured transcript is folded in here. Mirrors the
+	// PromptTokens/CostUSD record-and-replay-verbatim flow. Optional and additive:
+	// a code path that does not read transcript: ignores it entirely, so existing
+	// cassettes (and the trace-features-video spec that replays this one) are
+	// unaffected. See docs/tracing/cassettes.md (Recorded agent-action transcripts).
+	Transcript *EpisodeTranscript `yaml:"transcript,omitempty"`
+}
+
+// EpisodeTranscript is one oracle call's recorded agent-action transcript inside
+// a cassette episode. It is the cassette-side mirror of host.TranscriptRef +
+// the sidecar contents: Format names the event schema, Events are the verbatim
+// backend-native events (one per sidecar line), and Timings are the optional
+// per-event capture-time offsets (ms since call start) for the waterfall.
+//
+// Events accepts either form an author finds convenient and both replay to a
+// byte-identical sidecar after canonicalization:
+//   - a list of JSON strings (one verbatim event line each), or
+//   - a list of YAML/JSON mappings (objects), marshaled compactly to one line.
+type EpisodeTranscript struct {
+	Format  string  `yaml:"format"`
+	Events  []any   `yaml:"events"`
+	Timings []int64 `yaml:"timings,omitempty"`
+}
+
+// eventLines converts the authored Events into verbatim JSON byte lines, one per
+// event, suitable for the TranscriptWriter.
+//
+// A string element is an already-serialized event line and is preserved
+// BYTE-VERBATIM (key order, number literals like 49.0, incidental spacing). This
+// is the load-bearing determinism invariant: the live claude tee writes its raw
+// stream-json bytes unchanged (transcript_writer.go Finalize), and foldLiveTranscript
+// stores those exact lines as string elements — so a live-captured-then-folded
+// transcript MUST replay byte-identical to the original sidecar. Re-marshaling
+// here would re-sort keys and reformat numbers and break that contract.
+//
+// A mapping element (a YAML/JSON object authored for convenience, never produced
+// by live capture) is marshaled compactly; no byte-identity contract applies to
+// it because there is no live counterpart. Elements that fail to parse/marshal
+// are skipped (best-effort) — LoadCassette validates string events up front
+// (validateEpisodeTranscripts) so a fat-fingered recorded line fails fast there
+// rather than silently shortening the sidecar.
+func (t *EpisodeTranscript) eventLines() []json.RawMessage {
+	if t == nil {
+		return nil
+	}
+	out := make([]json.RawMessage, 0, len(t.Events))
+	for _, ev := range t.Events {
+		switch e := ev.(type) {
+		case string:
+			if !json.Valid([]byte(e)) {
+				continue
+			}
+			// Preserve the authored bytes verbatim — do NOT re-marshal.
+			line := make(json.RawMessage, len(e))
+			copy(line, e)
+			out = append(out, line)
+		default:
+			b, err := json.Marshal(e)
+			if err != nil {
+				continue
+			}
+			out = append(out, json.RawMessage(b))
+		}
+	}
+	return out
+}
+
+// validateEpisodeTranscripts checks that every string-form event in every
+// episode's recorded transcript is valid JSON, so a malformed recorded line
+// fails at load rather than silently dropping from the replayed sidecar (which
+// would make transcript_ref.events under-count the authored events). Mapping-form
+// events are skipped — they are re-marshaled at replay and cannot be malformed.
+func validateEpisodeTranscripts(cas *Cassette) error {
+	for _, ep := range cas.Episodes {
+		if ep.Oracle == nil || ep.Oracle.Transcript == nil {
+			continue
+		}
+		for i, ev := range ep.Oracle.Transcript.Events {
+			s, ok := ev.(string)
+			if !ok {
+				continue
+			}
+			if !json.Valid([]byte(s)) {
+				return fmt.Errorf("episode %q: transcript event[%d] is not valid JSON: %q", ep.ID, i, s)
+			}
+		}
+	}
+	return nil
 }
 
 // CassetteResponse is the canned response for an episode.
@@ -180,6 +276,13 @@ func LoadCassette(path string) (*Cassette, error) {
 	// each producing a fresh event pair." See docs/architecture/oracle-plugin.md
 	// (cassette oracle, call_id derivation) for the recording format.
 	_ = cas.Episodes // no validation against replay:any + oracle: any more
+
+	// Fail fast on a malformed recorded transcript event. eventLines() skips
+	// unparseable elements at replay time; without this check a fat-fingered
+	// string event would silently shorten the sidecar and desync transcript_ref.
+	if err := validateEpisodeTranscripts(&cas); err != nil {
+		return nil, fmt.Errorf("cassette: %q: %w", abs, err)
+	}
 
 	cas.path = abs
 	return &cas, nil
@@ -601,6 +704,14 @@ func buildCassetteDispatcherFull(
 					detCallID := host.DeriveCallID(cas.AppID, synth.ID)
 					synth.Oracle = oracleBodyToEpisode(body, detCallID)
 					synth.Oracle.Turn = int64(host.OracleCallCtxFrom(ctx).Turn)
+					// Phase 3 (agent-action-transcripts): fold the live captured
+					// transcript+timings into the episode so a re-record carries the
+					// agent's actions, and a subsequent replay reproduces the sidecar
+					// verbatim. Best-effort: the live handler wrote it under its own
+					// (live) call_id; we read that sidecar from ctx's transcripts dir.
+					if et := foldLiveTranscript(ctx, body.CallID); et != nil {
+						synth.Oracle.Transcript = et
+					}
 				}
 			}
 
@@ -700,12 +811,26 @@ func writeCassetteOracleEvents(ctx context.Context, sink store.EventSink, cas *C
 		}
 	} else {
 		responseRaw := json.RawMessage(marshalOracleResponseString(o.Response))
+
+		// Replay the recorded agent-action transcript: write the verbatim events
+		// (+ timings) to the <call_id>.jsonl sidecar via the TranscriptWriter in
+		// ctx and reference it from this oracle.call.complete by a transcript_ref
+		// pointer. No live tool runs; the sidecar is byte-identical to the record.
+		// Nil/empty (no transcript: block) is a no-op, so legacy episodes are
+		// unaffected. Mirrors the live host.Dispatch transcript_ref flow.
+		var transcriptRef *host.TranscriptRef
+		if o.Transcript != nil {
+			transcriptRef = host.WriteReplayTranscript(ctx, callID,
+				o.Transcript.Format, o.Transcript.eventLines(), o.Transcript.Timings)
+		}
+
 		retPayload := host.OracleReturnedPayload{
-			Verb:       o.Verb,
-			Agent:      o.Agent,
-			Model:      o.Model,
-			DurationMS: o.DurationMs,
-			Response:   responseRaw,
+			Verb:          o.Verb,
+			Agent:         o.Agent,
+			Model:         o.Model,
+			DurationMS:    o.DurationMs,
+			Response:      responseRaw,
+			TranscriptRef: transcriptRef,
 		}
 		retRaw, merr := json.Marshal(retPayload)
 		if merr == nil {
@@ -741,6 +866,62 @@ func marshalOracleResponseString(s string) []byte {
 		return nil
 	}
 	return b
+}
+
+// foldLiveTranscript reads the live agent-action transcript sidecar the live
+// oracle handler just wrote (keyed by its live call_id) and returns it as an
+// EpisodeTranscript for folding into a recorded episode. The sidecar lives in
+// the run's transcripts/ dir, the sibling of the oracle-prompts/ dir installed
+// in ctx (see orchestrator host_dispatch). Returns nil when no prompts dir is in
+// ctx, no sidecar exists for liveCallID, or it is empty — record mode then
+// simply omits the transcript: block (best-effort; never aborts a recording).
+//
+// The .timings sidecar ("<idx> <ms>" per line) is parsed back into the per-event
+// offset slice so a subsequent replay reproduces the waterfall verbatim.
+func foldLiveTranscript(ctx context.Context, liveCallID string) *EpisodeTranscript {
+	if liveCallID == "" {
+		return nil
+	}
+	promptsDir := host.OraclePromptsDirFromCtx(ctx)
+	if promptsDir == "" {
+		return nil
+	}
+	transcriptsDir := filepath.Join(filepath.Dir(promptsDir), "transcripts")
+	jsonlPath := filepath.Join(transcriptsDir, liveCallID+".jsonl")
+	raw, err := os.ReadFile(jsonlPath)
+	if err != nil || len(strings.TrimSpace(string(raw))) == 0 {
+		return nil
+	}
+	var events []any
+	for _, line := range strings.Split(strings.TrimRight(string(raw), "\n"), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		// Store as a string element (verbatim JSON line); eventLines re-canonicalizes.
+		events = append(events, line)
+	}
+	if len(events) == 0 {
+		return nil
+	}
+	et := &EpisodeTranscript{Format: "claude-stream-json", Events: events}
+	// Parse the parallel .timings sidecar ("<idx> <ms>" per line), preserving order.
+	if traw, terr := os.ReadFile(filepath.Join(transcriptsDir, liveCallID+".timings")); terr == nil {
+		for _, line := range strings.Split(strings.TrimRight(string(traw), "\n"), "\n") {
+			fields := strings.Fields(line)
+			if len(fields) != 2 {
+				continue
+			}
+			ms, perr := strconv.ParseInt(fields[1], 10, 64)
+			if perr != nil {
+				continue
+			}
+			et.Timings = append(et.Timings, ms)
+		}
+		if len(et.Timings) != len(et.Events) {
+			et.Timings = nil // mismatch — drop rather than misalign the waterfall
+		}
+	}
+	return et
 }
 
 // oracleBodyToEpisode converts a host.OracleCallBody into an EpisodeOracle

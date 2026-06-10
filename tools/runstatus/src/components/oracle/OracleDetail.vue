@@ -66,11 +66,42 @@
     <div v-else class="oracle-detail__fallback">
       <pre class="oracle-detail__pre">{{ prettyJson(event.attrs) }}</pre>
     </div>
+
+    <!-- ── Agent actions: rich sidecar-backed transcript for EVERY verb ──────
+         Shown whenever the event carries a transcript_ref pointer. The old
+         TaskDetail "Transcript" tab is a names-only rollup of attrs.tool_calls;
+         this drawer is the full, byte-verbatim, all-verb view fetched lazily
+         from the <call_id>.jsonl + .timings sidecars. -->
+    <div v-if="transcriptRef" class="oracle-detail__agent">
+      <button
+        class="oracle-detail__agent-affordance"
+        data-testid="agent-actions-affordance"
+        @click="toggleDrawer"
+      >
+        <span class="oracle-detail__agent-icon">▸</span>
+        Agent actions ({{ transcriptEvents }})
+      </button>
+
+      <div v-if="drawerOpen" class="oracle-detail__agent-drawer">
+        <div v-if="loading" class="oracle-detail__agent-status">Loading transcript…</div>
+        <div v-else-if="loadError" class="oracle-detail__agent-status oracle-detail__agent-status--err">
+          {{ loadError }}
+        </div>
+        <AgentActions
+          v-else-if="transcript"
+          :data="transcript"
+          :live="liveTranscript"
+          :rerunning="rerunning"
+          :can-rerun="canRerun"
+          @rerun="rerunLive"
+        />
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import type { TraceEvent } from "../../types.js";
 import { fmtMs, fmtTokens, fmtCost, prettyJson, readOracleUsage } from "./lib.js";
 import DecideDetail from "./DecideDetail.vue";
@@ -78,8 +109,16 @@ import ExtractDetail from "./ExtractDetail.vue";
 import AskDetail from "./AskDetail.vue";
 import TaskDetail from "./TaskDetail.vue";
 import ConverseDetail from "./ConverseDetail.vue";
+import AgentActions from "./AgentActions.vue";
+import { createDataSource } from "../../data/source.js";
+import { LiveSource } from "../../data/live-source.js";
+import type { TranscriptData } from "../../data/transcript.js";
 
-const props = defineProps<{ event: TraceEvent }>();
+const props = defineProps<{
+  event: TraceEvent;
+  /** Optional explicit live session id (falls back to event.session_id). */
+  sessionId?: string;
+}>();
 
 const attrs = computed(() => props.event.attrs);
 
@@ -134,6 +173,91 @@ const verbBadgeClass = computed(() => {
     default:        return "verb--other";
   }
 });
+
+// ── Agent actions drawer ─────────────────────────────────────────────────────
+// The transcript_ref pointer on oracle.call.complete (and oracle.call.error)
+// gates the affordance. transcript_ref.events is the badge count; the actual
+// events are fetched lazily on first open via the DataSource (LiveSource hits
+// the RPC, SnapshotSource resolves the inlined attrs.transcript).
+interface TranscriptRef {
+  format?: string;
+  path?: string;
+  events?: number;
+  schema_version?: number;
+}
+const transcriptRef = computed<TranscriptRef | null>(() => {
+  const r = attrs.value.transcript_ref;
+  return r && typeof r === "object" ? (r as TranscriptRef) : null;
+});
+const transcriptEvents = computed(() => transcriptRef.value?.events ?? 0);
+const callId = computed(() =>
+  typeof attrs.value.call_id === "string" ? attrs.value.call_id : ""
+);
+const resolvedSessionId = computed(
+  () => props.sessionId || props.event.session_id || ""
+);
+
+const drawerOpen = ref(false);
+const loading = ref(false);
+const loadError = ref("");
+const transcript = ref<TranscriptData | null>(null);
+
+async function toggleDrawer(): Promise<void> {
+  drawerOpen.value = !drawerOpen.value;
+  if (drawerOpen.value && !transcript.value && !loading.value) {
+    await loadTranscript();
+  }
+}
+
+async function loadTranscript(): Promise<void> {
+  if (!callId.value) {
+    loadError.value = "No call_id on this event.";
+    return;
+  }
+  loading.value = true;
+  loadError.value = "";
+  try {
+    transcript.value = await createDataSource().getTranscript(
+      resolvedSessionId.value,
+      callId.value
+    );
+  } catch (e) {
+    loadError.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    loading.value = false;
+  }
+}
+
+// ── Cassette-vs-live drift re-run ────────────────────────────────────────────
+// Only meaningful live (a snapshot has no server to re-run against). Re-running
+// fetches a FRESH live transcript for the same call_id; TranscriptDiff then
+// diffs the recorded `data` against it. Under deterministic replay the paths are
+// identical — the honest "no drift" state — but a genuine drift shows up here.
+const liveTranscript = ref<TranscriptData | null>(null);
+const rerunning = ref(false);
+const canRerun = computed(() => {
+  const win = globalThis as typeof globalThis & { __KITSOKI_SNAPSHOT__?: unknown };
+  return win.__KITSOKI_SNAPSHOT__ === undefined && !!resolvedSessionId.value;
+});
+
+async function rerunLive(): Promise<void> {
+  if (!canRerun.value || !callId.value) return;
+  rerunning.value = true;
+  try {
+    // The live re-run reads the current sidecar for this call_id afresh. (A full
+    // re-execution is a separate, opt-in capability; here we surface the diff
+    // seam over whatever live sidecar exists, which under pure replay equals the
+    // recorded one — TranscriptDiff renders that as "no drift".)
+    liveTranscript.value = await new LiveSource("/").getTranscript(
+      resolvedSessionId.value,
+      callId.value
+    );
+  } catch {
+    // Swallow: the diff control simply stays in its no-compare state.
+  } finally {
+    rerunning.value = false;
+  }
+}
 </script>
 
 <style scoped>
@@ -277,5 +401,56 @@ const verbBadgeClass = computed(() => {
   white-space: pre-wrap;
   word-break: break-word;
   margin: 0;
+}
+
+/* Agent actions affordance + drawer */
+.oracle-detail__agent {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  border-top: 1px solid #1e293b;
+  padding-top: 0.4rem;
+}
+
+.oracle-detail__agent-affordance {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: #0a1728;
+  border: 1px solid #334155;
+  color: #93c5fd;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.25rem 0.6rem;
+  border-radius: 4px;
+}
+
+.oracle-detail__agent-affordance:hover {
+  background: #0f1e38;
+  border-color: #3b82f6;
+}
+
+.oracle-detail__agent-icon {
+  font-size: 0.65rem;
+  color: #64748b;
+}
+
+.oracle-detail__agent-drawer {
+  border: 1px solid #1e293b;
+  border-radius: 4px;
+  padding: 0.5rem;
+  background: #060b14;
+}
+
+.oracle-detail__agent-status {
+  color: #64748b;
+  font-size: 0.78rem;
+  padding: 0.3rem 0;
+}
+
+.oracle-detail__agent-status--err {
+  color: #fca5a5;
 }
 </style>

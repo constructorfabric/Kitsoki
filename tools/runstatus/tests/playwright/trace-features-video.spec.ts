@@ -6,8 +6,11 @@
  * records a video + per-scene screenshots to .artifacts/trace-features/.
  *
  * Unlike tour-video.spec.ts (which walks the full 13-step onboarding), this spec
- * navigates DIRECTLY to the observer view and runs ONLY the trace-introspection
- * steps from src/tour/trace-manifest.ts via window.__startTourWithSteps.
+ * runs ONLY the trace-introspection steps from src/tour/trace-manifest.ts via
+ * window.__startTourWithSteps. The tour itself drives the whole video: it opens
+ * on the home story library, then its route-match action steps navigate home →
+ * new session → observer, so even the intro is tour-narrated rather than silent
+ * spec orchestration.
  *
  * Validate fast (no dwells):
  *   WEB_CHAT_PACE=0 pnpm exec playwright test trace-features-video --project=chromium
@@ -21,10 +24,11 @@ import {
   startWebServer,
   repoRoot,
   makeShot,
-  waitForState,
   prepareVideoDir,
   saveAndRemuxVideo,
-  PACE,
+  dwell,
+  cinematicGoto,
+  SETTLE_MS,
   type WebServer,
 } from "./_helpers/server.js";
 import { TRACE_TOUR_STEPS, type TourStep } from "../../src/tour/trace-manifest.js";
@@ -48,10 +52,6 @@ test.beforeAll(async () => {
 
 test.afterAll(() => server?.stop());
 
-function dwell(page: Page, ms: number): Promise<void> {
-  return page.waitForTimeout(Math.round(ms * PACE));
-}
-
 /**
  * Resolve an action step's real target element — first visible match.
  */
@@ -70,57 +70,26 @@ test("trace introspection feature-spotlight video", async () => {
   const video = page.video();
   const shot = makeShot(ARTIFACT_DIR);
 
+  // Carries the session id once the intro's "New session" step creates the run.
+  let sessionId = "";
+
   try {
-    // ── 1. Navigate home and create a session ────────────────────────────────
-    await page.goto(`${server.base}/#/`);
-    await expect(page.getByTestId("home-view")).toBeVisible({ timeout: 15000 });
+    // ── 1. Open the home story library and start the tour ON it ──────────────
+    // The whole video is tour-driven: rather than silently flashing home -> chat
+    // -> observer before the overlay appears, we start the tour on home and let
+    // its route-match action steps perform the navigation, each narrated.
+    await cinematicGoto(page, `${server.base}/#/`, { waitForTestId: "home-view" });
 
-    await page.getByTestId("new-session-btn").first().click();
-    // Wait for navigation to the chat view and capture the session ID.
-    await page.waitForURL(/#\/s\/[0-9a-f-]{36}\/chat$/, { timeout: 15000 });
-    const chatUrl = page.url();
-    const sessionMatch = chatUrl.match(/\/s\/([0-9a-f-]{36})\/chat$/);
-    if (!sessionMatch) throw new Error(`could not extract session id from ${chatUrl}`);
-    const sessionId = sessionMatch[1];
-
-    // ── 2. Patch world + submit to trigger oracle cascade ────────────────────
-    await server.rpc("runstatus.session.patch_world", {
-      session_id: sessionId,
-      patch: {
-        judge_mode: "llm",
-        ticket_id: "TKT-demo",
-        ticket_title: "Demo trace run",
-        workdir: ".worktrees/tkt-demo",
-        workspace_id: "ws-demo",
-        thread: "TKT-demo",
-        base_branch: "main",
-        feature_branch: "fix/tkt-demo",
-        judge_confidence_threshold: 0.8,
-      },
-    });
-    await server.rpc("runstatus.session.submit", {
-      session_id: sessionId,
-      intent: "start",
-      slots: {},
-    });
-    // Let the server process oracle events and push SSE updates.
-    await page.waitForTimeout(3000);
-
-    // ── 3. Navigate directly to the observer view ────────────────────────────
-    await page.goto(`${server.base}/#/s/${sessionId}`);
-    await page.waitForURL(/#\/s\/[0-9a-f-]{36}$/, { timeout: 15000 });
-
-    // ── 4. Start the trace-features tour via the custom-steps hook ───────────
     await page.evaluate((stepsJson: string) => {
       (window as unknown as { __startTourWithSteps?: (s: string) => void })
         .__startTourWithSteps?.(stepsJson);
     }, JSON.stringify(TRACE_TOUR_STEPS));
     await expect(page.getByTestId("tour-overlay")).toBeVisible({ timeout: 8000 });
 
-    // ── 5. Walk the TRACE_TOUR_STEPS ─────────────────────────────────────────
+    // ── 2. Walk the TRACE_TOUR_STEPS (intro + introspection) ─────────────────
     for (const step of TRACE_TOUR_STEPS) {
-      // Mirror the overlay's route-guard. All trace steps are route: "any", so
-      // in practice none are skipped — but keep the guard for correctness.
+      // Mirror the overlay's route-guard. The intro steps are home/interactive;
+      // the introspection steps are route "any" on the observer.
       const currentUrl = page.url();
       const currentRouteKind = currentUrl.includes("/chat")
         ? "interactive"
@@ -141,6 +110,9 @@ test("trace introspection feature-spotlight video", async () => {
           const verdict = page.getByTestId("decide-verdict");
           if (await verdict.isVisible({ timeout: 1500 }).catch(() => false)) break;
         }
+        // Settle so the row-scan flicker resolves into a composed verdict pane
+        // before the spotlight lands on it.
+        await dwell(page, SETTLE_MS);
       }
 
       // Honor DOM-presence preconditions.
@@ -167,9 +139,50 @@ test("trace introspection feature-spotlight video", async () => {
         // Let the spotlight animation move to the next target before we assert on it.
         await dwell(page, 700);
       } else {
+        // Action step: click the real control (the overlay leaves a click-through
+        // hole for it). The intro's navigation steps advance by route-match, so
+        // wait for the URL to actually change before the next iteration asserts.
         const target = await resolveTarget(page, step);
         await target.click();
-        // Longer settle for action steps: tab switches need the view to repaint.
+        await page.waitForTimeout(300);
+        if (step.advance === "route-match" && step.advanceRoute === "interactive") {
+          // "New session" → the freshly-created run's chat view. Capture its id
+          // for the submit we fire once we reach the observer.
+          await page.waitForURL(/#\/s\/[0-9a-f-]{36}\/chat$/, { timeout: 15000 });
+          const m = page.url().match(/\/s\/([0-9a-f-]{36})\/chat$/);
+          if (m) sessionId = m[1];
+        } else if (step.advance === "route-match" && step.advanceRoute === "any") {
+          // "Observe" → the read-only observer. Now that the chat view is no
+          // longer the active surface, patch the world and submit so the
+          // cassette-backed oracle cascade streams its events into the observer's
+          // live trace, ahead of the introspection steps that spotlight them.
+          await page.waitForURL(/#\/s\/[0-9a-f-]{36}$/, { timeout: 15000 });
+          if (sessionId) {
+            await server.rpc("runstatus.session.patch_world", {
+              session_id: sessionId,
+              patch: {
+                judge_mode: "llm",
+                ticket_id: "TKT-demo",
+                ticket_title: "Demo trace run",
+                workdir: ".worktrees/tkt-demo",
+                workspace_id: "ws-demo",
+                thread: "TKT-demo",
+                base_branch: "main",
+                feature_branch: "fix/tkt-demo",
+                judge_confidence_threshold: 0.8,
+              },
+            });
+            await server.rpc("runstatus.session.submit", {
+              session_id: sessionId,
+              intent: "start",
+              slots: {},
+            });
+            // Let the server process oracle events and push SSE updates before
+            // the introspection steps start spotlighting trace rows.
+            await page.waitForTimeout(3000);
+          }
+        }
+        // Longer settle for action steps: tab switches / nav need the view to repaint.
         await dwell(page, 1000);
       }
     }

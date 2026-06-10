@@ -389,6 +389,13 @@ func Dispatch(ctx context.Context, dr OracleDispatchRequest) (OracleDispatchResu
 		// claude path is the guarantee. The current OracleError emit is SKIPPED
 		// on the fallback branch so only ONE closing event is written per call.
 		if origPlugin := localLLMFallbackFrom(ctx); origPlugin != "" && isSchemaInvalid(validErr) {
+			// Preserve the rejected local-model transcript (the evidence of WHY it
+			// was rejected) under this call_id before the claude fallback continues;
+			// a single Finalize on the closing event flushes the whole local→claude
+			// arc into one sidecar instead of discarding the local attempt.
+			if resp.Transcript != nil {
+				appendOutOfHostTranscript(ctx, callID, resp.Transcript.Format, resp.Transcript.Events, resp.Transcript.Timings)
+			}
 			return dispatchFallbackToClaude(ctx, reg, dr, callID, origPlugin)
 		}
 		callEnd := time.Now()
@@ -413,13 +420,24 @@ func Dispatch(ctx context.Context, dr OracleDispatchRequest) (OracleDispatchResu
 		responseDesc["meta"] = resp.Meta
 	}
 
+	// Out-of-host backends carry their native execution detail up via
+	// AskResponse.Transcript (the in-host claude path tees RawEvents directly
+	// instead). Feed it into the per-call sidecar writer and Finalize under the
+	// backend's own format, so both producers converge on one sidecar + one
+	// transcript_ref. Nil/empty is a no-op.
+	var transcriptRef *TranscriptRef
+	if resp.Transcript != nil {
+		transcriptRef = finalizeOutOfHostTranscript(ctx, callID, resp.Transcript.Format, resp.Transcript.Events, resp.Transcript.Timings)
+	}
+
 	appendOracleReturnedEvent(ctx, callEnd, callID, OracleReturnedPayload{
-		Verb:       dr.Verb,
-		Agent:      dr.Agent,
-		Model:      dr.Model,
-		DurationMS: durationMS,
-		Response:   marshalResponse(responseDesc),
-		Meta:       resp.Meta,
+		Verb:          dr.Verb,
+		Agent:         dr.Agent,
+		Model:         dr.Model,
+		DurationMS:    durationMS,
+		Response:      marshalResponse(responseDesc),
+		Meta:          resp.Meta,
+		TranscriptRef: transcriptRef,
 	})
 
 	return OracleDispatchResult{
@@ -506,6 +524,13 @@ func dispatchFallbackToClaude(ctx context.Context, reg *oracle.Registry, dr Orac
 		meta = map[string]any{}
 	}
 	meta["fallback_of"] = origPlugin
+
+	// Append the fallback backend's transcript (if it carried one) under the same
+	// call_id; combined with the preserved local-model transcript, the closing
+	// OracleReturned's Finalize flushes the full arc into one sidecar.
+	if resp2.Transcript != nil {
+		appendOutOfHostTranscript(ctx, callID, resp2.Transcript.Format, resp2.Transcript.Events, resp2.Transcript.Timings)
+	}
 
 	callEnd := time.Now()
 	responseDesc := map[string]any{}

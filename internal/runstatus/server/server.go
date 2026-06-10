@@ -736,6 +736,41 @@ func (s *Server) dispatch(ctx context.Context, method string, params map[string]
 			"note":          "replay dispatch not yet wired (v1 stub)",
 		}, nil
 
+	// ── Agent-action transcript sidecar ────────────────────────────────────────
+	// runstatus.session.transcript reads one oracle call's agent-action sidecar
+	// (the verbatim backend-native event stream the host teed at the wire) LAZILY
+	// from disk — never folded into the snapshot, because a task run can be
+	// megabytes. The sidecar pair is <TranscriptsDir>/<call_id>.jsonl (one JSON
+	// event per line, byte-verbatim) + <call_id>.timings ("<idx> <ms>" per line,
+	// powering the waterfall). See docs/tracing/run-status-ui.md (Agent actions drawer).
+	//
+	// Request params: {session_id, call_id}
+	// Response: {format, events:[…parsed lines…], timings:[…ms by index…], schema_version}
+	//
+	// A call with no sidecar (a verb that produced no transcript, or a static /
+	// in-memory source that exposes no transcripts dir) is NOT an error — it
+	// returns an empty events list, so the SPA simply shows no "Agent actions"
+	// affordance rather than surfacing a 500.
+	case "runstatus.session.transcript":
+		entry, rerr := s.resolve(params)
+		if rerr != nil {
+			return nil, rerr
+		}
+		callID, _ := params["call_id"].(string)
+		if callID == "" {
+			return nil, &rpcError{Code: codeServerError, Message: "session.transcript: missing 'call_id'"}
+		}
+		td, ok := entry.Source.(interface{ TranscriptsDir() string })
+		if !ok {
+			// Source has no on-disk transcripts dir (in-memory/test source).
+			return runstatus.EmptyTranscript(), nil
+		}
+		out, err := runstatus.ReadTranscriptSidecar(td.TranscriptsDir(), callID)
+		if err != nil {
+			return nil, serverErr(err)
+		}
+		return out, nil
+
 	default:
 		return nil, &rpcError{Code: codeMethodMissing, Message: "unknown method: " + method}
 	}

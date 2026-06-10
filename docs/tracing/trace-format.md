@@ -254,6 +254,7 @@ payloads remain inline.
 | `response`   | object | Parsed `Submission` + any verb-specific fields. Omitted when `response_file` is set (large responses). |
 | `response_file` | string | Relative path (from the trace dir) to the response sidecar when the response exceeds ~1KB and a prompts dir is configured; omitted otherwise. |
 | `meta`       | object | Opaque oracle metadata. For the claude-CLI transport: `{ "usage": { "input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens", … }, "cost_usd": <float> }`, captured per invocation from the stream-json `result` event. Omitted when no usage was reported (e.g. a test stub). Plugin transports may carry their own meta (cassette `episode_id` / `match_idx`, …). |
+| `transcript_ref` | object | Pointer-only reference to the per-call agent-action sidecar — `{ format, path, events, schema_version }` — present when the call's native execution stream was captured. No detail is inlined. See [§Agent-action transcript sidecar](#agent-action-transcript-sidecar). |
 
 **`oracle.call.error` payload fields:**
 
@@ -263,9 +264,52 @@ payloads remain inline.
 | `agent`      | string | Agent name (optional).                               |
 | `duration_ms`| int    | Duration before the error.                           |
 | `error`      | string | Human-readable error message; kind is in `AskError.Kind`. |
+| `transcript_ref` | object | Same pointer as on `oracle.call.complete`, present when a partial transcript was captured before the failure (e.g. a `decide` arc that exhausted its retries). |
 
 For the full oracle plugin contract (transports, lifecycle, auth/secrets, and
 sub-events), see [`docs/architecture/oracle-plugin.md`](../architecture/oracle-plugin.md).
+
+### Agent-action transcript sidecar
+
+Every oracle verb whose operator is the claude CLI produces a rich execution
+stream — `tool_use` inputs, `tool_result` outputs, assistant `thinking`, and the
+MCP `validator.submit` of a `decide` — that the host already parses
+(`ClaudeRun.RawEvents`). Rather than bloat the lean, replay-stable trace, that
+stream is written **verbatim** to a per-call **sidecar** and referenced from
+`oracle.call.complete` (and `oracle.call.error`) by a single pointer. The story
+`*.jsonl` gains **only** the `transcript_ref` attr — no new event kinds, no
+inlined detail. A run with no transcripts renders exactly as before.
+
+`transcript_ref` (pointer on the trace event):
+
+```jsonc
+{ "format": "claude-stream-json",
+  "path": "transcripts/2d8e4fbb0a78646d.jsonl",   // relative to the trace dir
+  "events": 42,                                    // the "Agent actions (N)" badge
+  "schema_version": 1 }
+```
+
+Two sidecar files live under `<trace_dir>/transcripts/`, keyed by the
+deterministic `call_id` (see [§5](#5-call_id-derivation)):
+
+| File | Contents |
+|---|---|
+| `<call_id>.jsonl` | Backend-native events, **byte-verbatim**, one per line. For the claude transport these are the stream-json events (`system`/`assistant`/`user`/`result`); `local_llm` emits an `openai-chat` request/response triple. Key order and number literals are preserved, so an off-the-shelf parser consumes the file unchanged. |
+| `<call_id>.timings` | A parallel `"<event-index> <ms-offset>"` per line — capture-time offsets that power the run-status waterfall. Kept **out** of the verbatim `.jsonl` so that stream stays pristine. |
+
+The host injects synthetic, clearly-marked `_kitsoki`-typed lines into the
+**`decide`** sidecar that the raw `-p` stream omits — the validator
+rejection, the host **nudge** it injected, the acceptance, and any
+`tool_bypassed` recovery — so the full submit → reject → nudge → re-submit →
+accept arc is legible. A parser keying on the backend's own `type` values skips
+them. These are additive; claude's own events stay byte-verbatim.
+
+The sidecar is **recorded into the cassette and replayed verbatim** — a replayed
+run produces a byte-identical sidecar and never re-executes a tool (see
+[`cassettes.md` §recorded transcripts](cassettes.md#recorded-agent-action-transcripts)
+and [§10 replay-determinism](#10-replay-determinism-guarantees)). The web drawer
+that renders it is documented in
+[`run-status-ui.md` §Agent actions](run-status-ui.md#agent-actions-drawer).
 
 ### Artifact event kind
 

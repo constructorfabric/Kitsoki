@@ -136,6 +136,45 @@ view — DOM elements by `scrollWidth`, and the Graph view's SVG node labels by
 clipped). The showcase walkthrough is
 `tests/playwright/diagram-showcase.spec.ts`.
 
+## Agent actions drawer
+
+When an oracle event carries a
+[`transcript_ref`](trace-format.md#agent-action-transcript-sidecar), its detail
+pane shows an **"Agent actions (N)"** affordance (N = the captured event count).
+Opening it lazily fetches the per-call sidecar
+(`runstatus.session.transcript {session_id, call_id}` on the live server; the
+inlined `attrs.transcript` on a static export) and renders the call's native
+execution stream as **typed rows** — the same per-tool-call fidelity a dedicated
+agent-observability tool gives you, kept beside the decision trace that produced
+it. Every verb that ran on the claude CLI has one (not just `task`).
+
+The drawer normalizes each backend's native events
+(`tools/runstatus/src/data/transcript.ts`) into one render model and shows:
+
+- **Typed rows** — assistant reasoning/`thinking`; each **Tool**/**MCP** call's
+  full input and output, collapsible (the `Read` file, the `Edit` diff, the
+  `Bash` command + stdout); and the terminal **result** with tokens/cost.
+- **Guardrail rows** — a `decide`'s `mcp__validator__submit` is typed as a
+  **Guardrail** (PASS / REJECTED + the verdict), not a generic tool call, and
+  the full submit → **rejected** (reason) → host **nudge** → re-submit →
+  **accepted** arc — including the host-injected nudge row the raw stream omits —
+  reads as one sequence with iteration boundaries.
+- **Waterfall** — per-step latency bars from the `.timings` sidecar, so the
+  wall-clock bottleneck stands out.
+- **Running cost accrual** — input/output tokens and cost accrued across the
+  whole call, not only the terminal total.
+- **Session rollup** — the **Actions** view mode groups every transcript-bearing
+  call across the run under its turn/room, each expandable into its own drawer.
+- **Cassette-vs-live diff** — because the transcript replays byte-identically
+  from the cassette, a fresh live run can be diffed against the recorded one to
+  flag tool-path drift. Under pure replay there is no live run to compare, and
+  the control says so honestly ("byte-identical to the cassette") rather than
+  fabricating a diff.
+
+Per [the trace must always be correct](../../tools/runstatus/CLAUDE.md), the
+drawer only ever *projects* the recorded sidecar; it never reconstructs or
+edits it.
+
 ## Where the pieces live
 
 - `internal/runstatus/` — the `Snapshot` type and its builders

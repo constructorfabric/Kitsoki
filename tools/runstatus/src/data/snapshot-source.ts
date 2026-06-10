@@ -14,6 +14,7 @@ import type {
   MetaSendResult,
   MetaMessage,
 } from "./source.js";
+import type { TranscriptData, TranscriptEvent } from "./transcript.js";
 
 /**
  * DataSource backed by an embedded Snapshot blob (artifact / offline mode).
@@ -161,6 +162,46 @@ export class SnapshotSource implements DataSource {
 
   metaTranscript(_sessionId: string, _chatId: string): Promise<MetaMessage[]> {
     return this.readOnly("metaTranscript");
+  }
+
+  // ── Agent-action transcripts ──────────────────────────────────────────────
+
+  /**
+   * Resolve one oracle call's agent-action transcript from the INLINED snapshot
+   * data — NOT a readOnly() throw, because a static export must still show the
+   * drawer with no server. artifact.go's inlineTranscriptSidecars folded each
+   * event's sidecar into attrs.transcript = {format, events, timings,
+   * schema_version}; we find the event carrying this call_id and return its
+   * inlined transcript. A call with no inlined transcript resolves to an empty
+   * TranscriptData (no drawer body), matching the live server's no-sidecar case.
+   */
+  getTranscript(_sessionId: string, callId: string): Promise<TranscriptData> {
+    const empty: TranscriptData = {
+      format: "claude-stream-json",
+      events: [],
+      timings: [],
+      schemaVersion: 1,
+    };
+    for (const ev of this.snap.events) {
+      const attrs = ev.attrs as Record<string, unknown> | undefined;
+      if (!attrs || attrs["call_id"] !== callId) continue;
+      const t = attrs["transcript"] as
+        | {
+            format?: string;
+            events?: TranscriptEvent[];
+            timings?: number[];
+            schema_version?: number;
+          }
+        | undefined;
+      if (!t) return Promise.resolve(empty);
+      return Promise.resolve({
+        format: t.format ?? "claude-stream-json",
+        events: t.events ?? [],
+        timings: t.timings ?? [],
+        schemaVersion: t.schema_version ?? 1,
+      });
+    }
+    return Promise.resolve(empty);
   }
 
   // ── Media artifacts ───────────────────────────────────────────────────────

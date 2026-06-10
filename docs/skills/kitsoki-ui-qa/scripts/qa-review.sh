@@ -11,6 +11,14 @@
 #   • an adversarial second pass (a skeptic that may only DOWNGRADE) re-checks
 #     each `pass` against its cited frame (disable with --no-adversary).
 #
+# The adversarial pass follows the kitsoki split (interpretive vs. deterministic):
+# the model emits ONLY a small set of downgrades (which step, to what, and why);
+# this script APPLIES them deterministically — it can only lower a status, never
+# raise one — then recomputes every scenario/overall/summary itself. That keeps
+# the downgrade-only invariant honest in code and keeps the model output tiny, so
+# the pass is robust (no re-emitting the whole multi-KB verdict, the failure mode
+# that used to make it return unparseable text).
+#
 # This is an LLM-driven review tool by design. It is NOT a no-LLM flow test and
 # must never be wired into the automated test suite (CLAUDE.md). The surrounding
 # deterministic pieces (extract-frames.sh, report.sh) are testable without an LLM.
@@ -34,6 +42,7 @@ done
 
 command -v claude >/dev/null 2>&1 || { echo "claude CLI not on PATH" >&2; exit 1; }
 command -v jq     >/dev/null 2>&1 || { echo "jq not on PATH" >&2; exit 1; }
+command -v python3 >/dev/null 2>&1 || { echo "python3 not on PATH" >&2; exit 1; }
 [ -d "$frames" ]      || { echo "no such frames dir: $frames" >&2; exit 1; }
 [ -f "$feature" ]     || { echo "no such feature file: $feature" >&2; exit 1; }
 [ -f "$scenarios" ]   || { echo "no such scenarios file: $scenarios" >&2; exit 1; }
@@ -46,26 +55,71 @@ tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 frame_list="$(cd "$frames" && ls -1 [0-9]*.png 2>/dev/null | sort || ls -1 *.png | sort)"
 [ -n "$frame_list" ] || { echo "no PNG frames in $frames" >&2; exit 1; }
 
-# ---- one read-only claude call; final assistant message must be raw verdict JSON
-call_claude() { # <promptfile> ; echoes parsed+validated JSON, or exits 2
-  local pf="$1" raw result json
-  raw="$(claude -p \
-          --output-format json \
-          --model "$model" \
-          --permission-mode bypassPermissions \
-          --allowedTools "Read" \
-          --add-dir "$frames" \
-          < "$pf")" || { echo "claude invocation failed" >&2; exit 2; }
-  result="$(printf '%s' "$raw" | jq -r '.result // .text // empty')"
-  [ -n "$result" ] || result="$raw"          # tolerate a bare-JSON CLI build
-  json="$(printf '%s\n' "$result" | sed '/^```/d')"   # strip ``` fences if any
-  if ! printf '%s' "$json" | jq -e . >/dev/null 2>&1; then
-    printf '%s' "$result" > "$tmp/bad.txt"
-    echo "model did not return valid JSON; raw saved to $tmp/bad.txt" >&2
-    cp "$tmp/bad.txt" "${out%.json}.raw.txt" 2>/dev/null || true
-    exit 2
-  fi
-  printf '%s' "$json" | jq .
+# extract_json: read arbitrary model text on stdin, print the first BALANCED
+# top-level JSON object found in it. Tolerates surrounding prose, ``` fences
+# anywhere, and a trailing explanation — the failure mode `sed '/^```/d'` could
+# not handle. Exits non-zero if no valid JSON object is present.
+#
+# The extractor is written to a temp FILE and invoked as `python3 file` (reading
+# the pipe via sys.stdin). It must NOT be `python3 - <<'EOF'`: there the heredoc
+# IS python's stdin (the program source), so the piped model text would never
+# reach sys.stdin.read() — the bug that made every extraction "find no JSON".
+cat > "$tmp/extract_json.py" <<'PY'
+import sys, json
+s = sys.stdin.read()
+def first_balanced(text, opener, closer):
+    start = text.find(opener)
+    while start != -1:
+        depth = 0; instr = False; esc = False
+        for i in range(start, len(text)):
+            c = text[i]
+            if instr:
+                if esc: esc = False
+                elif c == '\\': esc = True
+                elif c == '"': instr = False
+            else:
+                if c == '"': instr = True
+                elif c == opener: depth += 1
+                elif c == closer:
+                    depth -= 1
+                    if depth == 0:
+                        cand = text[start:i+1]
+                        try:
+                            json.loads(cand); return cand
+                        except Exception:
+                            break
+        start = text.find(opener, start + 1)
+    return None
+obj = first_balanced(s, '{', '}')
+if obj is None:
+    sys.exit(1)
+sys.stdout.write(obj)
+PY
+extract_json() { python3 "$tmp/extract_json.py"; }
+
+# call_claude_json: run one read-only claude call from a prompt file and print
+# the extracted verdict JSON. Retries once on a transient non-JSON / invocation
+# blip before giving up (exit 2). label is for diagnostics.
+call_claude_json() { # <promptfile> <label>
+  local pf="$1" label="$2" attempt raw result json
+  for attempt in 1 2; do
+    raw="$(claude -p \
+            --output-format json \
+            --model "$model" \
+            --permission-mode bypassPermissions \
+            --allowedTools "Read" \
+            --add-dir "$frames" \
+            < "$pf" 2>/dev/null)" || { echo "  ($label) claude invocation failed (attempt $attempt)" >&2; continue; }
+    result="$(printf '%s' "$raw" | jq -r '.result // .text // empty')"
+    [ -n "$result" ] || result="$raw"          # tolerate a bare-JSON CLI build
+    if json="$(printf '%s' "$result" | extract_json)"; then
+      printf '%s' "$json"
+      return 0
+    fi
+    echo "  ($label) no parseable JSON in model output (attempt $attempt); retrying…" >&2
+    printf '%s' "$result" > "${out%.json}.${label}.raw.txt" 2>/dev/null || true
+  done
+  return 2
 }
 
 # ---------- pass 1: grounded review ----------
@@ -116,28 +170,42 @@ HEAD
 } > "$review_prompt"
 
 echo "▸ grounded review ($model, $(echo "$frame_list" | wc -l | tr -d ' ') frames)…" >&2
-call_claude "$review_prompt" > "$out"
+if ! call_claude_json "$review_prompt" review > "$out"; then
+  echo "grounded review did not produce parseable JSON after retries" >&2
+  exit 2
+fi
 
-# ---------- pass 2: adversarial verification (downgrade-only) ----------
+# ---------- pass 2: adversarial verification (downgrade-only, delta output) ----------
 if [ "$adversary" -eq 1 ]; then
   adv_prompt="$tmp/adversary.txt"
   {
     cat <<'HEAD'
 You are an adversarial verifier. Below is a prior QA verdict (JSON) for a demo
-video, plus the frames it cited. Your ONLY job is to catch over-claims.
+video. Your ONLY job is to catch OVER-CLAIMS in the steps currently marked
+`pass`.
 
-For each step currently marked `pass`: Read its cited frame(s) and confirm the
-quoted observation is ACTUALLY visible there. If the cited frame does not clearly
-show it (wrong frame, the element is absent, the text differs, it was inferred),
-DOWNGRADE the step to `fail` (frame contradicts) or `unsupported` (frame simply
-doesn't show it) and rewrite its observation to state what the frame really shows.
+For each `pass` step: Read its cited frame(s) with the Read tool and confirm the
+quoted observation is ACTUALLY, LITERALLY visible there. If the cited frame does
+not clearly show it — wrong frame, the element is absent, the text differs, or it
+was inferred beyond the pixels — it must be downgraded:
+  • `fail`        — the frame actively contradicts the claim.
+  • `unsupported` — the frame simply doesn't show it.
 
-You may ONLY downgrade. Never upgrade a `fail`/`unsupported` to `pass`. Leave
-non-pass steps untouched. Then recompute each scenario status (worst of steps)
-and `overall` (pass only if all required scenarios pass) and the summary counts.
+Do NOT re-emit the whole verdict. Output ONLY the downgrades you are confident
+about. You may ONLY downgrade a `pass`; never touch `fail`/`unsupported` steps
+and never upgrade anything (the harness enforces this — an upgrade is ignored).
+If every `pass` step holds up, output an empty list.
 
-OUTPUT: print ONLY the full revised verdict as a single raw JSON object of the
-exact same shape as the input (no prose, no ``` fences).
+Reference each step by the scenario `id` and its zero-based `step_index` within
+that scenario's `steps` array.
+
+OUTPUT: print ONLY a single raw JSON object (no prose, no ``` fences):
+{
+  "downgrades": [
+    {"scenario_id":"<id>","step_index":0,"new_status":"fail|unsupported",
+     "observation":"<what the cited frame REALLY shows>"}
+  ]
+}
 HEAD
     echo; echo "## PRIOR VERDICT"; echo; echo '```json'; cat "$out"; echo '```'
     echo; echo "## AVAILABLE FRAMES"
@@ -145,9 +213,64 @@ HEAD
     echo "$frame_list" | sed 's/^/  - /'
   } > "$adv_prompt"
 
-  echo "▸ adversarial verification…" >&2
-  call_claude "$adv_prompt" > "$tmp/verified.json"
-  mv "$tmp/verified.json" "$out"
+  echo "▸ adversarial verification (downgrade-only)…" >&2
+  if call_claude_json "$adv_prompt" adversary > "$tmp/downgrades.json"; then
+    # Apply the downgrades deterministically: lower-only, then recompute every
+    # scenario status (worst of steps), overall (all required pass), and counts.
+    python3 - "$out" "$tmp/downgrades.json" <<'PY'
+import sys, json
+verdict_path, deltas_path = sys.argv[1], sys.argv[2]
+with open(verdict_path) as f: v = json.load(f)
+with open(deltas_path) as f: deltas = (json.load(f) or {}).get("downgrades", []) or []
+RANK = {"fail": 0, "unsupported": 1, "pass": 2}
+NAME = {0: "fail", 1: "unsupported", 2: "pass"}
+by_id = {s.get("id"): s for s in v.get("scenarios", [])}
+applied = []
+for d in deltas:
+    sc = by_id.get(d.get("scenario_id"))
+    if not sc: continue
+    steps = sc.get("steps", []) or []
+    idx = d.get("step_index")
+    if not isinstance(idx, int) or idx < 0 or idx >= len(steps): continue
+    st = steps[idx]
+    cur = RANK.get(st.get("status"), 2)
+    new = min(cur, RANK.get(d.get("new_status"), cur))   # ONLY ever downgrade
+    if new != cur:
+        st["status"] = NAME[new]
+        if d.get("observation"):
+            st["observation_adversary"] = d["observation"]
+        applied.append({"scenario_id": d.get("scenario_id"), "step_index": idx,
+                        "from": NAME[cur], "to": NAME[new], "observation": d.get("observation", "")})
+counts = {"pass": 0, "fail": 0, "unsupported": 0}
+all_required_pass = True
+for sc in v.get("scenarios", []):
+    steps = sc.get("steps", []) or []
+    worst = min((RANK.get(s.get("status"), 2) for s in steps), default=RANK.get(sc.get("status"), 2))
+    sc["status"] = NAME[worst]
+    counts[sc["status"]] += 1
+    if sc.get("required", True) and sc["status"] != "pass":
+        all_required_pass = False
+v["overall"] = "pass" if all_required_pass else "fail"
+v["summary"] = {"scenarios_total": len(v.get("scenarios", [])),
+                "passed": counts["pass"], "failed": counts["fail"], "unsupported": counts["unsupported"]}
+v["adversary"] = {"status": "ok", "downgrades_applied": applied}
+with open(verdict_path, "w") as f: json.dump(v, f, indent=2)
+print(f"  adversary applied {len(applied)} downgrade(s)", file=sys.stderr)
+PY
+  else
+    # The adversary couldn't produce parseable deltas even after a retry. Do NOT
+    # silently pass: record the failure on the verdict and recompute. The gate
+    # (report.sh, --strict) can then treat an un-run adversary as it sees fit;
+    # the grounded review (with cited evidence) still stands as the verdict.
+    echo "  adversary pass did not return parseable JSON after retries — verdict left as the grounded review, flagged adversary.status=error" >&2
+    python3 - "$out" <<'PY'
+import sys, json
+p = sys.argv[1]
+with open(p) as f: v = json.load(f)
+v["adversary"] = {"status": "error", "downgrades_applied": []}
+with open(p, "w") as f: json.dump(v, f, indent=2)
+PY
+  fi
 fi
 
 echo "wrote $out" >&2

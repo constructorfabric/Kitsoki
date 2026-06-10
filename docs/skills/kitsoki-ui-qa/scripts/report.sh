@@ -68,5 +68,19 @@ blockers="$(jq --argjson strict "$strict" '
               else (.status!="pass" and (.required!=false)) end ) ]
   | length' "$verdict")"
 
+# Under --strict, an adversarial pass that was supposed to run but did NOT
+# complete (adversary.status present and != "ok") is itself a blocking failure:
+# the downgrade-only re-check is part of the strict guarantee, so a silent
+# adversary flake must not pass. Absent field (--no-adversary / older verdict)
+# is a no-op.
+adv_block=0
+if [ "$strict" -eq 1 ]; then
+  adv_status="$(jq -r '.adversary.status // "absent"' "$verdict")"
+  if [ "$adv_status" != "ok" ] && [ "$adv_status" != "absent" ]; then
+    adv_block=1
+    echo "strict gate: adversarial verification did not complete (adversary.status=$adv_status)" >&2
+  fi
+fi
+
 echo "wrote $out  (blocking scenarios: $blockers)"
-[ "$blockers" -eq 0 ] || exit 1
+{ [ "$blockers" -eq 0 ] && [ "$adv_block" -eq 0 ]; } || exit 1

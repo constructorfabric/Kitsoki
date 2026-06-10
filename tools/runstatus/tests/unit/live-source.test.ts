@@ -299,6 +299,27 @@ describe("LiveSource", () => {
     expect(body.params.story_path).toBe("/abs/story/app.yaml");
   });
 
+  it("getTranscript calls runstatus.session.transcript and maps schema_version", async () => {
+    fetchMock.mockResolvedValueOnce(
+      rpcOk({
+        format: "claude-stream-json",
+        events: [{ type: "result", result: "ok" }],
+        timings: [0],
+        schema_version: 1,
+      })
+    );
+    const src = new LiveSource("/");
+    const tr = await src.getTranscript("s1", "4e96533378e89461");
+    expect(tr.format).toBe("claude-stream-json");
+    expect(tr.events).toHaveLength(1);
+    expect(tr.schemaVersion).toBe(1);
+    const body = JSON.parse(
+      (fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string
+    ) as { method: string; params: { call_id: string } };
+    expect(body.method).toBe("runstatus.session.transcript");
+    expect(body.params.call_id).toBe("4e96533378e89461");
+  });
+
   it("reloadSession calls runstatus.session.reload and returns prev_state_exists", async () => {
     fetchMock.mockResolvedValueOnce(rpcOk({ ok: true, prev_state_exists: false }));
     const src = new LiveSource("/");

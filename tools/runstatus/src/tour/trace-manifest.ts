@@ -1,10 +1,11 @@
 /**
  * Trace-introspection feature-spotlight tour manifest.
  *
- * A self-contained step array for the dedicated trace-features video demo. This
- * tour starts directly on the observer view (/#/s/<id>) and walks through every
- * trace-introspection capability: view modes, waterfall, category chips,
- * decision-first detail, confidence bar, alternatives, annotation, and replay.
+ * A self-contained step array for the dedicated trace-features video demo. The
+ * tour opens on the home story library, explains the bug-fix pipeline, drives a
+ * fresh run via route-match action steps (home → new session → observer), then
+ * walks every trace-introspection capability: view modes, waterfall, category
+ * chips, decision-first detail, confidence bar, alternatives, annotation, replay.
  *
  * SINGLE SOURCE OF TRUTH: the same array drives both
  *   1. the trace-features overlay (started via window.__startTourWithSteps), and
@@ -17,6 +18,61 @@
 import { type TourStep } from "./manifest.js";
 
 export const TRACE_TOUR_STEPS: readonly TourStep[] = [
+  // ── Intro: the story library → a fresh run (tour-driven navigation) ─────────
+  // These home/interactive steps mean the WHOLE video is tour-driven: the
+  // intro explains where the feature lives and why before we ever reach the
+  // observer, and the navigation itself (home → new session → observer) is
+  // performed by route-match action steps, not silent spec orchestration.
+  {
+    id: "trace-intro-home",
+    route: "home",
+    title: "Start at the story library",
+    body: "Every run begins here. A story is a deterministic graph of rooms that kitsoki runs the same way every time, recording each decision and call as it goes. We'll demonstrate trace introspection on the bug-fix pipeline.",
+    placement: "center",
+    kind: "explain",
+    advance: "next",
+    waitForTarget: "home-view",
+    dwellMs: 5000,
+  },
+  {
+    id: "trace-intro-story",
+    route: "home",
+    target: "story-card",
+    waitForTarget: "story-card",
+    title: "The bug-fix pipeline",
+    body: "This story triages a ticket, lets an agent patch the code, then judges the result against a confidence gate — looping until it passes. It exercises every kind of decision, oracle call, and host call, which makes it the ideal run to introspect.",
+    placement: "right",
+    kind: "explain",
+    advance: "next",
+    dwellMs: 5500,
+  },
+  {
+    id: "trace-intro-start",
+    route: "home",
+    target: "new-session-btn",
+    waitForTarget: "new-session-btn",
+    title: "Spin up a run",
+    body: "Click New session to create a fresh, independently-traced run of the pipeline.",
+    placement: "right",
+    kind: "action",
+    advance: "route-match",
+    advanceRoute: "interactive",
+    dwellMs: 3500,
+  },
+  {
+    id: "trace-intro-observe",
+    route: "interactive",
+    target: "observe-link",
+    waitForTarget: "observe-link",
+    title: "Switch to the observer",
+    body: "The trace tools live in the read-only observer view — built for inspecting a run while it's live or after it's finished. Switch to it to introspect this run.",
+    placement: "bottom",
+    kind: "action",
+    advance: "route-match",
+    advanceRoute: "any",
+    dwellMs: 4000,
+  },
+
   // ── Introduction ──────────────────────────────────────────────────────────
   {
     id: "trace-welcome",

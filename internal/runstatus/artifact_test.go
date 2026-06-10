@@ -84,6 +84,40 @@ func TestRenderArtifact_InlinesSidecars(t *testing.T) {
 	assert.NotContains(t, html, "system_prompt_file")
 }
 
+// TestRenderArtifact_InlinesTranscriptSidecars verifies an event's
+// transcript_ref pointer is resolved against SidecarDir and the verbatim
+// <call_id>.jsonl events + .timings offsets are inlined into attrs.transcript,
+// so a static-export HTML can render the "Agent actions" drawer with no server.
+func TestRenderArtifact_InlinesTranscriptSidecars(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	tdir := filepath.Join(dir, "transcripts")
+	require.NoError(t, os.MkdirAll(tdir, 0o755))
+	const callID = "4e96533378e89461"
+	jsonl := `{"type":"assistant","message":{"content":[{"type":"text","text":"reading"}]}}
+{"type":"result","subtype":"success","result":"done","usage":{"input_tokens":12,"output_tokens":4}}
+`
+	require.NoError(t, os.WriteFile(filepath.Join(tdir, callID+".jsonl"), []byte(jsonl), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(tdir, callID+".timings"), []byte("0 0\n1 250\n"), 0o644))
+
+	snap := []byte(`{"events":[{"attrs":{"call_id":"` + callID + `","verb":"task",` +
+		`"transcript_ref":{"format":"claude-stream-json","path":"transcripts/` + callID + `.jsonl","events":2,"schema_version":1}}}]}`)
+	out, err := runstatus.RenderArtifact([]byte(fakeIndex), snap, runstatus.ArtifactOptions{
+		Name:       "transcript",
+		SidecarDir: dir,
+	})
+	require.NoError(t, err)
+	html := string(out)
+
+	// The inlined transcript carries the verbatim event text and the timings.
+	assert.Contains(t, html, `"transcript"`)
+	assert.Contains(t, html, "reading")
+	assert.Contains(t, html, "250")
+	// The pointer survives (it carries the affordance badge count).
+	assert.Contains(t, html, "transcript_ref")
+}
+
 // TestRenderArtifact_NoSidecarDir leaves the snapshot JSON untouched when no
 // SidecarDir is given (in-process snapshots already carry inline prompts).
 func TestRenderArtifact_NoSidecarDir(t *testing.T) {

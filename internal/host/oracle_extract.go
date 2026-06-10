@@ -230,6 +230,9 @@ func OracleExtractHandler(ctx context.Context, args map[string]any) (Result, err
 
 	callID := newUUID()
 	callStart := time.Now()
+	// Install the active call_id so the claude transport tees its stream-json
+	// into the agent-action-transcript sidecar keyed by this call (live path).
+	ctx = WithCallID(ctx, callID)
 
 	// Wave 3-oracle: write OracleCalled to the JSONL sink at dispatch time.
 	appendOracleCalledEvent(ctx, callStart, callID, ea.Input, OracleCalledPayload{

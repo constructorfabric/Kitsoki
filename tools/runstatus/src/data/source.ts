@@ -5,6 +5,7 @@ import type {
   TraceEvent,
   TurnResult,
 } from "../types.js";
+import type { TranscriptData } from "./transcript.js";
 import { SnapshotSource } from "./snapshot-source.js";
 import { LiveSource } from "./live-source.js";
 
@@ -110,6 +111,18 @@ export interface DataSource {
   ): Promise<MetaSession>;
   /** Read a chat row's transcript (for rehydration). */
   metaTranscript(sessionId: string, chatId: string): Promise<MetaMessage[]>;
+
+  // ── Agent-action transcripts ──────────────────────────────────────────────
+
+  /**
+   * Fetch one oracle call's agent-action transcript (the verbatim
+   * backend-native event stream + capture-time offsets) keyed by its
+   * deterministic call_id. LiveSource hits runstatus.session.transcript (lazy
+   * server-side sidecar read); SnapshotSource resolves the inlined
+   * attrs.transcript that artifact.go folded into the static export. A call with
+   * no transcript_ref resolves to an empty TranscriptData (no drawer body).
+   */
+  getTranscript(sessionId: string, callId: string): Promise<TranscriptData>;
 
   // ── Media artifacts ───────────────────────────────────────────────────────
 

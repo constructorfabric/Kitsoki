@@ -246,6 +246,11 @@ func OracleDecideHandler(ctx context.Context, args map[string]any) (Result, erro
 	// Capture pre-call context for journal recording.
 	callID := newUUID()
 	callStart := time.Now()
+	// Install the active call_id so the claude transport tees its stream-json
+	// into the agent-action-transcript sidecar keyed by this call. The decide
+	// retry loop runs several `claude --resume` sessions under this one call_id;
+	// the accumulating TranscriptWriter folds them into one sidecar (live path).
+	ctx = WithCallID(ctx, callID)
 	systemPrompt := effectiveSystemPrompt(args, agent)
 
 	// Build input descriptor for the journal.
@@ -502,6 +507,35 @@ func runDecideWithValidatorRetryLoop(ctx context.Context, p decideLoopParams) Re
 	var lastInfraErr error
 	var sandboxLastRejection string
 
+	// Agent-action-transcript boundary events (proposal "decide submit → validate
+	// → nudge cycle"). The accumulating tee in runClaudeStreamJSON already folds
+	// every --resume session's verbatim claude events under this one call_id, but
+	// the -p stream-json input prompt is NOT echoed back as an event, so the
+	// host's nudge and the rejection reason inside it are otherwise invisible to
+	// an operator reviewing the run. We interleave clearly-marked synthetic
+	// "_kitsoki" rows at each outer-iteration boundary so the drawer renders the
+	// full submit → reject → nudge → re-submit → accept arc. Offsets are
+	// monotonic ms since the decide call started, matching the live tee's clock.
+	transcriptW := TranscriptWriterFrom(ctx)
+	transcriptCallID := CallIDFrom(ctx)
+	loopStart := time.Now()
+	// Share ONE call-start instant between the verbatim claude tee (each --resume
+	// subprocess via runClaudeStreamJSON) and the synthetic rows below, so the
+	// .timings sidecar is monotonic across all outer iterations instead of each
+	// subprocess resetting its own clock to zero.
+	ctx = WithCallStart(ctx, loopStart)
+	synthOffsetMs := func() int64 { return time.Since(loopStart).Milliseconds() }
+	appendSynth := func(payload any) {
+		if transcriptW == nil || transcriptCallID == "" {
+			return
+		}
+		b, err := json.Marshal(payload)
+		if err != nil {
+			return
+		}
+		transcriptW.AppendSynthetic(transcriptCallID, claudeTranscriptFormat, json.RawMessage(b), synthOffsetMs())
+	}
+
 	for iter := 0; iter < maxOuter; iter++ {
 		var cr ClaudeRun
 		var runErr error
@@ -525,10 +559,26 @@ func runDecideWithValidatorRetryLoop(ctx context.Context, p decideLoopParams) Re
 			// stream to any installed StreamSink, not just the first round-trip.
 			_, _, stateLastErr := kitsokimcp.ReadStateFile(p.ValidatorStatePath)
 			nudgeErr := stateLastErr
+			rejectSource := "schema"
 			if strings.TrimSpace(nudgeErr) == "" && strings.TrimSpace(sandboxLastRejection) != "" {
 				nudgeErr = sandboxLastRejection
+				rejectSource = "semantic"
 			}
 			stdin = renderDecideNudge(nudgeErr)
+			// Synthetic boundary: the rejection that triggered this --resume and
+			// the host nudge it injected (which the raw -p stream never echoes).
+			if strings.TrimSpace(nudgeErr) != "" {
+				appendSynth(map[string]any{
+					"_kitsoki": "validator_reject",
+					"source":   rejectSource,
+					"reason":   nudgeErr,
+				})
+			}
+			appendSynth(map[string]any{
+				"_kitsoki":   "nudge",
+				"outer_iter": iter,
+				"text":       stdin,
+			})
 			iterArgs := append(append([]string{}, p.BaseCLIArgs...), "--resume", sessionID)
 			var streamSID string
 			cr, streamSID, runErr = OracleStreamer{
@@ -563,6 +613,7 @@ func runDecideWithValidatorRetryLoop(ctx context.Context, p decideLoopParams) Re
 		// loop could never detect that submit succeeded.
 		if p.ValidatorStatePath == "" {
 			if data, _ := kitsokimcp.ReadCapturedPayload(p.ValidatorOutputPath); len(data) > 0 {
+				appendSynth(map[string]any{"_kitsoki": "validator_accept", "outer_iter": iter})
 				return buildDecideResult(lastStdout, lastExitCode, lastStderr, p.ValidatorOutputPath, sessionID, "")
 			}
 			// Output file still empty — model didn't call submit.
@@ -582,6 +633,15 @@ func runDecideWithValidatorRetryLoop(ctx context.Context, p decideLoopParams) Re
 				if res.Data != nil {
 					res.Data[decideToolBypassedKey] = true
 				}
+				// Mirror the tool-bypass deviation into the transcript as a banner
+				// row (in addition to the trace Meta emitDecideJournal sets), so the
+				// drawer shows WHY the verdict arrived as narration text, not a clean
+				// submit() tool call. Followed by an accept — the verdict was recovered.
+				appendSynth(map[string]any{
+					"_kitsoki":               "tool_bypassed",
+					"verdict_recovered_from": "code_block",
+				})
+				appendSynth(map[string]any{"_kitsoki": "validator_accept", "outer_iter": iter})
 				return res
 			}
 			// Nothing recoverable — nudge and retry.
@@ -604,6 +664,7 @@ func runDecideWithValidatorRetryLoop(ctx context.Context, p decideLoopParams) Re
 					continue
 				}
 			}
+			appendSynth(map[string]any{"_kitsoki": "validator_accept", "outer_iter": iter})
 			return buildDecideResult(lastStdout, lastExitCode, lastStderr, p.ValidatorOutputPath, sessionID, "")
 		case mcpOutcomeRetriesExhausted:
 			msg := lastErr
