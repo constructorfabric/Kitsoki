@@ -158,6 +158,12 @@ type Server struct {
 	// notifs is the cross-session notification feed buffer (notifications.go).
 	// Always non-nil; a relay is attached per live session via AttachSession.
 	notifs *notifBuffer
+
+	// questions is the per-session forwarded-question feed (operator_questions.go)
+	// and qreg is the pending-answer registry that lets answer_question unblock a
+	// parked oracle turn. Both always non-nil.
+	questions *questionBuffer
+	qreg      *questionRegistry
 }
 
 // subscription tracks one SSE stream slot. sent is the number of events already
@@ -262,6 +268,8 @@ func newServer(provider SessionProvider, cfg serverConfig) *Server {
 		defaultActor: cfg.defaultActor,
 		subs:         make(map[string]*subscription),
 		notifs:       newNotifBuffer(),
+		questions:    newQuestionBuffer(),
+		qreg:         newQuestionRegistry(),
 	}
 }
 
@@ -356,6 +364,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/rpc", s.handleRPC)
 	mux.HandleFunc("/rpc/events", s.handleEvents)
 	mux.HandleFunc("/rpc/notifications", s.handleNotifications)
+	mux.HandleFunc("/rpc/questions", s.handleQuestions)
 	mux.HandleFunc("/artifact/", s.handleArtifact)
 	mux.HandleFunc("/rpc/meta-stream", s.handleMetaStream)
 	mux.HandleFunc("/rpc/turn-stream", s.handleTurnStream)
@@ -617,6 +626,7 @@ func (s *Server) dispatch(ctx context.Context, method string, params map[string]
 			return nil, readOnlyErr(method)
 		}
 		input, _ := params["input"].(string)
+		ctx = s.withOperatorPrompter(ctx, params)
 		out, err := entry.Driver.Turn(ctx, input)
 		if err != nil {
 			return nil, serverErr(err)
@@ -637,6 +647,7 @@ func (s *Server) dispatch(ctx context.Context, method string, params map[string]
 		}
 		slots, _ := params["slots"].(map[string]any)
 		slots = s.injectAuthor(ctx, params, slots)
+		ctx = s.withOperatorPrompter(ctx, params)
 		out, err := entry.Driver.SubmitDirect(ctx, name, slots)
 		if err != nil {
 			return nil, serverErr(err)
@@ -653,6 +664,7 @@ func (s *Server) dispatch(ctx context.Context, method string, params map[string]
 		}
 		slots, _ := params["slots"].(map[string]any)
 		slots = s.injectAuthor(ctx, params, slots)
+		ctx = s.withOperatorPrompter(ctx, params)
 		out, err := entry.Driver.ContinueTurn(ctx, slots)
 		if err != nil {
 			return nil, serverErr(err)
@@ -774,6 +786,30 @@ func (s *Server) dispatch(ctx context.Context, method string, params map[string]
 	case "runstatus.notifications.unsubscribe":
 		id, _ := params["subscription_id"].(string)
 		s.notifs.unsubscribe(id)
+		return map[string]any{"ok": true}, nil
+
+	// ── Operator questions (forwarded agent questions) ──────────────────────
+	// A subscriber opens runstatus.questions.subscribe and streams GET
+	// /rpc/questions; when an oracle agent forwards a question, a runstatus.question
+	// frame arrives and the SPA shows a modal. The operator's choice comes back via
+	// session.answer_question, which unblocks the parked oracle turn.
+	case "runstatus.questions.subscribe":
+		return map[string]any{"subscription_id": s.questions.subscribe()}, nil
+
+	case "runstatus.questions.unsubscribe":
+		id, _ := params["subscription_id"].(string)
+		s.questions.unsubscribe(id)
+		return map[string]any{"ok": true}, nil
+
+	case "runstatus.session.answer_question":
+		qid, _ := params["question_id"].(string)
+		if qid == "" {
+			return nil, &rpcError{Code: codeServerError, Message: "session.answer_question: missing 'question_id'"}
+		}
+		answers, _ := params["answers"].(map[string]any)
+		if !s.qreg.answer(qid, answers) {
+			return nil, &rpcError{Code: codeNotFound, Message: "session.answer_question: unknown or already-answered question_id: " + qid}
+		}
 		return map[string]any{"ok": true}, nil
 
 	// ── Meta mode (overlay chat) ────────────────────────────────────────────
