@@ -817,17 +817,28 @@ func rewriteChildStateTransitionsAtDepth(s *State, alias string, imp *ImportDef,
 				}
 			}
 			tr.Target = rwTarget(origTarget)
-			// Effect-internal on_error targets.
+			// Effect-internal targets: on_error redirects AND the
+			// `target:` an on_complete: effect dispatches when a
+			// background job finishes. Both are state refs in the
+			// child's namespace and must be rewritten exactly like a
+			// transition target — otherwise a folded phase-template
+			// graph (bugfix) lands on bare `phase_N_executing` names
+			// that don't exist under the alias wrapper.
 			for j, eff := range tr.Effects {
 				if eff.OnError != "" {
 					eff.OnError = rwTarget(eff.OnError)
-					tr.Effects[j] = eff
+				}
+				if eff.Target != "" {
+					eff.Target = rwTarget(eff.Target)
 				}
 				for k, sub := range eff.OnComplete {
 					if sub.OnError != "" {
 						sub.OnError = rwTarget(sub.OnError)
-						eff.OnComplete[k] = sub
 					}
+					if sub.Target != "" {
+						sub.Target = rwTarget(sub.Target)
+					}
+					eff.OnComplete[k] = sub
 				}
 				tr.Effects[j] = eff
 			}
@@ -839,17 +850,25 @@ func rewriteChildStateTransitionsAtDepth(s *State, alias string, imp *ImportDef,
 	if s.Timeout != nil {
 		s.Timeout.Target = rwTarget(s.Timeout.Target)
 	}
-	// OnEnter on_error.
+	// OnEnter effect-internal targets: on_error redirects AND the
+	// on_complete: `target:` a finishing background job dispatches.
+	// (Most folded background jobs live in on_enter:, which is where the
+	// bugfix phase template puts its execute → next-phase chains.)
 	for i, eff := range s.OnEnter {
 		if eff.OnError != "" {
 			eff.OnError = rwTarget(eff.OnError)
-			s.OnEnter[i] = eff
+		}
+		if eff.Target != "" {
+			eff.Target = rwTarget(eff.Target)
 		}
 		for j, sub := range eff.OnComplete {
 			if sub.OnError != "" {
 				sub.OnError = rwTarget(sub.OnError)
-				eff.OnComplete[j] = sub
 			}
+			if sub.Target != "" {
+				sub.Target = rwTarget(sub.Target)
+			}
+			eff.OnComplete[j] = sub
 		}
 		s.OnEnter[i] = eff
 	}

@@ -131,6 +131,42 @@ func TestImports_StateRewriting(t *testing.T) {
 	require.Contains(t, working.View.SourceString(), "world.sub__ticket_id", "override.states view is rewritten by the same pass that handles child states")
 }
 
+// TestImports_OnCompleteTargetRewritten confirms that a `target:` carried
+// by an on_complete: effect (the transition a finishing background job
+// dispatches) is rewritten under fold exactly like an ordinary transition
+// target — a bare sibling name becomes a relative `../<name>` ref that
+// resolves under the alias wrapper.
+//
+// Regression: importing the bugfix story (a phase-template graph whose
+// execute → next-phase chains live in on_enter background invokes with
+// on_complete `target: phase_N_executing`) folded the states fine but left
+// those targets bare, so every phase advance landed on a non-existent
+// `phase_N_executing` instead of `bf.phase_N_executing`. The fold's
+// rewriteChildStateTransitions only walked tr.Target and OnError, never
+// Effect.Target.
+func TestImports_OnCompleteTargetRewritten(t *testing.T) {
+	def, err := Load("../../testdata/apps/imports_smoke/parent/app.yaml")
+	require.NoError(t, err)
+
+	processing := def.States["sub"].States["processing"]
+	require.NotNil(t, processing, "child's processing state should fold under the alias")
+	require.NotEmpty(t, processing.OnEnter, "processing should have an on_enter background invoke")
+
+	// The background invoke's on_complete: chain holds [set, target:working].
+	oc := processing.OnEnter[0].OnComplete
+	require.NotEmpty(t, oc, "on_enter background invoke should have an on_complete chain")
+	var targets []string
+	for _, sub := range oc {
+		if sub.Target != "" {
+			targets = append(targets, sub.Target)
+		}
+	}
+	require.Contains(t, targets, "../working",
+		"on_complete target `working` must be rewritten to `../working` under fold; got %v", targets)
+	require.NotContains(t, targets, "working",
+		"bare sibling target must not survive the fold")
+}
+
 // TestImports_ExitMapping confirms @exit:<name> transitions in the child
 // got rewritten to the parent's mapped target and that the world_out
 // projection set effects are attached.

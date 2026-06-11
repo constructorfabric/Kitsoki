@@ -69,3 +69,25 @@ states:
             - set: { pr_url: "{{ slots.url }}" }
       bail:
         - target: "@exit:abandoned"
+
+  # Background-job state. Exercises the on_complete: `target:` rewrite path
+  # under import fold: a finishing background job dispatches a transition to
+  # a bare sibling (`working`), which must be rewritten to `../working` so it
+  # resolves under the alias wrapper. Regression for folded phase-template
+  # graphs (bugfix) that otherwise land on non-existent bare targets.
+  processing:
+    description: "Background work for {{ world.ticket_id }}."
+    view: |
+      Processing {{ world.ticket_id }}.
+    on_enter:
+      - invoke: host.run
+        with: { cmd: "echo working" }
+        background: true
+        on_complete:
+          - set: { fail_reason: "" }
+          - target: working
+    on:
+      start_work:
+        - target: working
+      bail:
+        - target: "@exit:abandoned"

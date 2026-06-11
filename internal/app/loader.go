@@ -493,6 +493,10 @@ func resolveAgentDecls(def *AppDef, file, baseDir string) []error {
 		errs = append(errs, &ValidationError{File: file, Message: msg})
 	}
 
+	// Set of agents referenced by a read-only oracle verb (ask/decide), where
+	// Bash must run under a bash_profile. Drives the bash_profile cross-check.
+	askDecideAgents := collectAskDecideAgents(def)
+
 	for _, name := range sortedKeys(def.Agents) {
 		decl := def.Agents[name]
 		if decl == nil {
@@ -559,25 +563,15 @@ func resolveAgentDecls(def *AppDef, file, baseDir string) []error {
 			decl.Tools = out
 		}
 
-		// bash_profile validation: if Bash is in the tool surface,
-		// bash_profile is required when the agent is used with
-		// host.oracle.ask or host.oracle.decide. The cross-check against
-		// which verbs actually reference this agent is deferred to a TODO
-		// once those handlers exist (Phase 2 / Phase 3). For now we record
-		// the structural fact — presence of Bash without a profile — so
-		// the stub infrastructure is exercisable.
-		//
-		// TODO(oracle-split Phase 2/3): cross-check: if this agent is
-		// referenced by a host.oracle.ask or host.oracle.decide effect and
-		// has Bash in tools but no bash_profile, reject with:
-		//   "agent %q declares Bash but no bash_profile; required for ask/decide use"
-		// The cross-check needs the full effect graph, built after validateDef
-		// runs in the normal validateAgentRef pass.
-		if hasTool(decl.Tools, "host.Bash") && decl.BashProfile == nil {
-			// Warn only — not yet an error since we can't statically know
-			// whether this agent is used with ask/decide at Phase 1.
-			slog.Warn("agent declares Bash without bash_profile; required when agent is used with host.oracle.ask or host.oracle.decide",
-				"agent", name, "file", file)
+		// bash_profile validation: Bash in the tool surface requires a
+		// bash_profile *only* when the agent is actually referenced by a
+		// read-only oracle verb (host.oracle.ask / host.oracle.decide), where
+		// every Bash invocation must pass through ApplyBashProfile. Agents used
+		// solely with host.oracle.task get full, unprofiled Bash by design, so
+		// the bare presence of Bash is not a problem there. Cross-check the
+		// effect graph rather than warning unconditionally.
+		if hasTool(decl.Tools, "host.Bash") && decl.BashProfile == nil && askDecideAgents[name] {
+			addErr(fmt.Sprintf("agent %q declares Bash but no bash_profile; required when the agent is referenced by host.oracle.ask or host.oracle.decide (those verbs run every Bash command through a profile allowlist)", name))
 		}
 
 		// external_side_effect inference: infer from the tool surface when
@@ -620,6 +614,50 @@ func inferExternalSideEffect(tools []string) bool {
 		}
 	}
 	return false
+}
+
+// collectAskDecideAgents walks the full effect graph and returns the set of
+// agent names referenced by a read-only oracle verb (host.oracle.ask or
+// host.oracle.decide) via the effect's `with.agent` argument. Those verbs run
+// every Bash command through a bash_profile allowlist, so a referenced agent
+// that declares Bash without a profile is a load error (see resolveAgentDecls).
+// Effects reached only through host.oracle.task — which grants full Bash by
+// design — are intentionally not collected.
+func collectAskDecideAgents(def *AppDef) map[string]bool {
+	out := map[string]bool{}
+	if def == nil {
+		return out
+	}
+	var walkEffects func(effs []Effect)
+	walkEffects = func(effs []Effect) {
+		for _, e := range effs {
+			if e.Invoke == "host.oracle.ask" || e.Invoke == "host.oracle.decide" {
+				if a, ok := e.With["agent"].(string); ok && a != "" {
+					out[a] = true
+				}
+			}
+			walkEffects(e.OnComplete)
+		}
+	}
+	var walkState func(s *State)
+	walkState = func(s *State) {
+		if s == nil {
+			return
+		}
+		walkEffects(s.OnEnter)
+		for _, transitions := range s.On {
+			for _, t := range transitions {
+				walkEffects(t.Effects)
+			}
+		}
+		for _, child := range s.States {
+			walkState(child)
+		}
+	}
+	for _, s := range def.States {
+		walkState(s)
+	}
+	return out
 }
 
 // normaliseAgentTool maps a YAML-author-friendly tool name into the

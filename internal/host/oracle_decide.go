@@ -398,6 +398,8 @@ func resolveDecidePrompt(ctx context.Context, args map[string]any) (string, stri
 
 	var raw string
 	if promptPath != "" {
+		// prompt_path: is an explicit file reference — a missing file is a
+		// hard error (the author asserted a path).
 		resolved := resolvePromptPathCtx(ctx, promptPath)
 		b, err := readPromptFile(resolved)
 		if err != nil {
@@ -405,7 +407,20 @@ func resolveDecidePrompt(ctx context.Context, args map[string]any) (string, stri
 		}
 		raw = string(b)
 	} else {
+		// prompt: is path-or-inline (mirrors resolveTaskContextPrompt): stories
+		// commonly pass a file path here (e.g. a pre-rendered prompt path bound
+		// from a prior host.run). Treat it as a file first; only when it does
+		// not resolve to a readable prompt file do we fall back to using the
+		// value as literal inline prompt text. Without this, a `prompt:` holding
+		// a path was emitted verbatim (the path string) and the file's
+		// `{{ args.context.* }}`/`{{ args.ticket }}` templates were never read
+		// or rendered — the decide-vs-task background-render asymmetry.
 		raw = promptInline
+		if resolved := resolvePromptPathCtx(ctx, promptInline); resolved != "" {
+			if b, err := readPromptFile(resolved); err == nil {
+				raw = string(b)
+			}
+		}
 	}
 
 	// Render template args. Prefer explicit `args:` map; fall back to full call-args.
