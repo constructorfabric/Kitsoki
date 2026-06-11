@@ -780,6 +780,82 @@ func TestDogfoodSmoke_FullImplementationPipeline(t *testing.T) {
 	step("review → handoff", "core__impl__accept", "core.impl.handoff")
 }
 
+// TestDogfoodSmoke_ImplIdleProvisionsWorktree is the regression guard
+// for the "impl pipeline runs against an empty workdir" bug: until this
+// fix, stories/implementation/rooms/idle.yaml had NO on_enter — it
+// assumed the parent projected workspace_id / workdir / feature_branch
+// in via world_in:. The bugfix entry path (bf.idle) self-provisions a
+// worktree, but the implementation entry paths (dev-story `drive` /
+// `go_implementation` / proposal_done `implement`) never did. A live
+// dogfood run drove a feature ticket into impl and the very first
+// oracle call dispatched `workdir:""` — the model got "confused".
+//
+// The pre-existing TestDogfoodSmoke_FullImplementationPipeline only
+// asserts next_state advanced, so it passed straight through the bug
+// (the rooms tolerate an empty workdir against the CI stub). This test
+// asserts the SIDE EFFECT the skill demands: after entering impl.idle
+// with no pre-seeded workdir, world.workdir is populated AND the
+// worktree dir exists on disk.
+func TestDogfoodSmoke_ImplIdleProvisionsWorktree(t *testing.T) {
+	repoRoot, _ := setupDogfoodRepo(t)
+	ticketID := "2026-05-17T111838Z-integration-smoke-bug-picked-up-by-dogfood"
+	orch, _, sid, _ := newSmokeOrchestratorWithCIStub(t, repoRoot)
+
+	ctx := context.Background()
+	{
+		c, cancel := context.WithTimeout(ctx, 10*time.Second)
+		require.NoError(t, orch.RunInitialOnEnter(c, sid))
+		cancel()
+	}
+
+	// Teleport to main with a FEATURE ticket but deliberately NO
+	// workspace_id / workdir / feature_branch — exactly the shape the
+	// live `drive` path produces (pick_ticket sets ticket_type but never
+	// a workdir). If impl.idle.on_enter fails to provision, workdir
+	// stays "" and the assertions below fail.
+	seed := seedDogfoodWorld(ticketID)
+	seed["core__ticket_type"] = "feature"
+	delete(seed, "core__workspace_id")
+	delete(seed, "core__workdir")
+	delete(seed, "core__feature_branch")
+	{
+		c, cancel := context.WithTimeout(ctx, 10*time.Second)
+		_, err := orch.Teleport(c, sid, inbox.TeleportTarget{
+			State: app.StatePath("core.main"),
+			Slots: seed,
+		})
+		require.NoError(t, err)
+		cancel()
+	}
+
+	// drive a feature → impl.idle, whose on_enter must provision.
+	c, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	out, err := orch.SubmitDirect(c, sid, "core__drive", nil)
+	require.NoError(t, err, "core__drive(feature) from main")
+	require.NotNil(t, out)
+	require.Equal(t, app.StatePath("core.impl.idle"), out.NewState,
+		"drive on a feature ticket must route to impl.idle; got %q", out.NewState)
+
+	journey, err := orch.LoadJourney(sid)
+	require.NoError(t, err)
+	workdir, _ := journey.World.Vars["core__impl__workdir"].(string)
+	require.NotEmpty(t, workdir,
+		"impl.idle.on_enter must derive a workdir; got empty (pipeline would run against repo root)")
+	require.Equal(t, true, journey.World.Vars["core__impl__impl_provision_attempted"],
+		"impl_provision_attempted must be true after the provisioning chain ran")
+
+	// The worktree must exist on disk — proves workspace.create ran with
+	// the derived id, not just that a set: wrote a string.
+	abs := workdir
+	if !filepath.IsAbs(abs) {
+		abs = filepath.Join(repoRoot, workdir)
+	}
+	_, statErr := os.Stat(abs)
+	require.NoError(t, statErr,
+		"impl.idle.on_enter must have created the worktree at %s", abs)
+}
+
 // TestDogfoodSmoke_ImplementingActuallyEditsFiles is the regression
 // guard for the "implementing room is a no-op" bug: until 2026-05-19,
 // implementing.on_enter ran workspace.sync + vcs.commit + a misleading

@@ -129,7 +129,13 @@ host_interfaces:
         input:  { id: string }
         output: { id: string, path: string, branch: string, dirty: bool }
       create:
-        input:  { name: string, ticket_id: string, base: string }
+        # `id` is the workspace identity (pins the on-disk .worktrees/<id>
+        # dir basename); `name` is the branch; `base` is the branch to
+        # root from. Matches host.git_worktree's worktreeCreate, which
+        # reads id/name/base — every caller (bf.idle, impl.idle) passes
+        # `id:` from world.workspace_id. The earlier `ticket_id` label
+        # was stale: no caller passed it and the handler never read it.
+        input:  { id: string, name: string, base: string }
         output: { ok: bool, path: string }
       sync:
         input:  { id: string }
@@ -161,6 +167,13 @@ world:
   workdir:          { type: string, default: "" }
   base_branch:      { type: string, default: "main" }
   feature_branch:   { type: string, default: "" }
+  # Gates idle.on_enter's worktree-provisioning chain so it fires
+  # exactly once per session per ticket — mirrors bugfix's
+  # bf_autostart_attempted. Without provisioning, an entry path that
+  # does NOT pre-seed workdir (dev-story's `drive` / `go_implementation`
+  # / proposal_done `implement`) ran the pipeline against an empty
+  # workdir; only the flow fixtures papered over it via initial_world.
+  impl_provision_attempted: { type: bool, default: false }
 
   # ── Pipeline control ──────────────────────────────────────────────
   judge_mode:                  { type: string, default: "human" }

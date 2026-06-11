@@ -192,7 +192,13 @@ host_interfaces:
         input:  { id: string }
         output: { id: string, path: string, branch: string, dirty: bool }
       create:
-        input:  { name: string, ticket_id: string, base: string }
+        # `id` is the workspace identity (pins the on-disk .worktrees/<id>
+        # dir basename); `name` is the branch; `base` is the branch to
+        # root from. Matches host.git_worktree's worktreeCreate, which
+        # reads id/name/base — bf.idle passes `id:` from world.workspace_id.
+        # The earlier `ticket_id` label was stale: no caller passed it and
+        # the handler never read it.
+        input:  { id: string, name: string, base: string }
         output: { ok: bool, path: string }
       sync:
         input:  { id: string }
