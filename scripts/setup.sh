@@ -16,6 +16,10 @@
 #   - ffmpeg         (make demo-tour)
 #   - gh             (GitHub integration)
 #
+# Also links the project skills (`docs/skills/<name>/SKILL.md`) into
+# `.claude/skills/<name>` so Claude Code discovers them — Claude Code does not
+# auto-discover skills under `docs/` (see CLAUDE.md).
+#
 # Run via `make setup`. Re-run any time; safe to run repeatedly.
 set -euo pipefail
 
@@ -166,6 +170,34 @@ install_optional() {
 	done
 }
 
+# --- project skills --------------------------------------------------------
+# Link docs/skills/<name> → .claude/skills/<name> (relative symlinks) so Claude
+# Code picks them up. Idempotent: refreshes our own symlinks, never clobbers a
+# real file/dir a human may have placed there.
+install_skills() {
+	local root src dst
+	root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+	src="$root/docs/skills"
+	dst="$root/.claude/skills"
+	[ -d "$src" ] || { warn "no docs/skills dir; skipping skill links"; return; }
+	mkdir -p "$dst"
+	local n=0 name link
+	for dir in "$src"/*/; do
+		[ -f "${dir}SKILL.md" ] || continue
+		name="$(basename "$dir")"
+		link="$dst/$name"
+		if [ -L "$link" ]; then
+			rm -f "$link"
+		elif [ -e "$link" ]; then
+			warn "skills: $link exists and is not a symlink — leaving as-is"
+			continue
+		fi
+		ln -s "../../docs/skills/$name" "$link"
+		n=$((n + 1))
+	done
+	log "linked $n project skill(s) into .claude/skills/"
+}
+
 # --- main ------------------------------------------------------------------
 detect_os
 need_sudo
@@ -176,6 +208,7 @@ install_go
 install_node
 install_pnpm
 install_optional
+install_skills
 
 log "setup complete"
 echo
