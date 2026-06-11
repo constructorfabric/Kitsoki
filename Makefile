@@ -14,10 +14,18 @@ SPA_SOURCES   := $(shell find $(RUNSTATUS_DIR)/src $(RUNSTATUS_DIR)/index.html \
 # Every shipped story whose deterministic flow suite `make test` exercises.
 STORY_APPS := $(wildcard stories/*/app.yaml)
 
-.PHONY: all build install uninstall test test-flows starcheck-kitsoki vet fmt tidy clean web web-clean web-dev web-dev-logs e2e-docker \
+.PHONY: all setup build install uninstall test test-flows starcheck-kitsoki vet fmt tidy clean web web-clean web-dev web-dev-logs e2e-docker \
 	fetch-models fetch-llama-server demo-tour demo-tour-fast demo-tour-qa
 
 all: build
+
+# setup installs every build/runtime dependency `make install` needs (Go, Node,
+# pnpm, git, plus optional jq/ffmpeg/gh) on a fresh machine. Covers macOS
+# (Homebrew), RockyLinux/RHEL (dnf) and Debian/Ubuntu (apt). Idempotent — skips
+# anything already present at a sufficient version. Run this once, then
+# `make install`.
+setup:
+	@./scripts/setup.sh
 
 # build / install depend on web so the binary always embeds a current SPA.
 build: web
