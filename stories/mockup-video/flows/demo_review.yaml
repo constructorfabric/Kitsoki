@@ -1,0 +1,107 @@
+# demo_review — deterministic, no-LLM posture for the /review feedback DEMO.
+#
+# Drives the mockup-video story to its `review` room carrying a REAL rendered
+# walkthrough video + chapter sidecar, so the kitsoki-ui-demo review-video spec
+# can record /review against a genuinely-resolvable artifact handle (the live
+# frame-seam proof — no fixture stub for the artifact itself).
+#
+# Posture (mirrors happy_deck.yaml — all interpretive calls stubbed by invoke
+# id, memory: oracle-stub-by-id) EXCEPT the one seam we want REAL:
+#
+#   - intake/brief-gate/authoring oracle calls are STUBBED (no LLM).
+#   - host.slidey.render (render_deck) is STUBBED to return the REAL pre-rendered
+#     mp4 + chapters.json paths under .artifacts/review-video/render — produced
+#     out-of-band by the real slidey producer before the recording (so the demo
+#     does NOT re-run a 7-12min render inside Playwright, but the FILES are real
+#     and the chapters.json carries real per-scene source_refs).
+#   - host.artifacts_dir is *intentionally NOT stubbed*: under `kitsoki web
+#     --flow` the builtins are pre-registered (cmd/kitsoki/runtime.go), so the
+#     REAL artifacts_dir handler runs — it copies the real mp4/chapters into the
+#     artifacts root and journals a KindArtifactEmitted entry, so the bound
+#     video_handle resolves through the JournalArtifactResolver and /review
+#     serves the real bytes + a real ffmpeg still on flag.
+#   - host.run (drain_feedback) is stubbed empty (no web notes on entry).
+#
+# NOTE: the web posture starts each session at the app root (`intake`), not this
+# fixture's initial_state — initial_state/initial_world/turns below only drive
+# `kitsoki test flows`. The recording spec walks intake→review on-camera/curtain
+# via real submitted intents. The artifacts_dir handle is content-addressed
+# (dynamic), so the spec reads the live world for it rather than hardcoding.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: intake
+initial_world:
+  workspace: ".artifacts/review-video/render"
+  medium:    "deck"
+  brief:     {}
+  iterations: { items: [] }
+  refine_budget: 6
+
+host_handlers:
+  host.chat.resolve:
+    data: { ok: true, chat_id: "chat-1", title: "Mockup video brief discovery" }
+
+  host.oracle.converse:
+    by_call:
+      distil_brief:
+        data:
+          ok: true
+          brief:
+            feature: "kitsoki architecture & usage walkthrough"
+            scenarios: ["the moat", "the run loop", "the trace"]
+            medium: "deck"
+            notes: ""
+
+  host.oracle.decide:
+    by_call:
+      brief_check:
+        data:
+          ok: true
+          submitted: { verdict: "ok", reason: "Feature, scenarios, and medium are all concrete." }
+
+  host.oracle.task:
+    by_call:
+      author_source:
+        data:
+          ok: true
+          submitted:
+            kind: "slidey"
+            paths: ["docs/decks/arch-and-usage.json"]
+            spec_path: "docs/decks/arch-and-usage.json"
+            summary: "Authored the architecture-and-usage walkthrough deck (18 scenes)."
+
+  # Stub the render to point at the REAL pre-rendered files on disk (repo-relative
+  # to the server cwd, the repo root).
+  host.slidey.render:
+    by_call:
+      render_deck:
+        data:
+          ok: true
+          path: ".artifacts/review-video/render/walkthrough.mp4"
+          chapters_path: ".artifacts/review-video/render/walkthrough.mp4.chapters.json"
+
+  # No web notes drained on review entry.
+  host.run:
+    by_call:
+      drain_feedback:
+        data: { ok: true, exit_code: 0, stdout_json: { items: [] } }
+
+  # host.artifacts_dir is intentionally NOT stubbed: the real builtin runs and
+  # journals the artifact so /review resolves the handle for real.
+
+turns:
+  # intake: distil the brief → brief-gate, which auto-routes ok → authoring.
+  - intent: { name: ready, slots: {} }
+    expect_state: authoring
+    expect_world:
+      medium: "deck"
+
+  # authoring: accept → rendering → (slidey stub + REAL artifacts_dir emit) →
+  # auto accept → review. video_handle is content-addressed (dynamic), so it is
+  # NOT asserted to a fixed value here.
+  - intent: { name: accept, slots: {} }
+    expect_state: review
+
+expect_terminal: false
+expect_no_errors: true

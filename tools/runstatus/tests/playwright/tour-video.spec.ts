@@ -27,10 +27,16 @@ import {
   waitForState,
   prepareVideoDir,
   saveVideoAsMp4,
+  ChapterRecorder,
+  writeChapters,
   PACE,
   type WebServer,
 } from "./_helpers/server.js";
 import { TOUR_STEPS, type TourStep } from "../../src/tour/manifest.js";
+
+// The tour manifest IS the chapter source: each TourStep becomes a chapter
+// (source_ref kind=tour) whose [start,end] window is the recorded dwell.
+const TOUR_SPEC_PATH = "tools/runstatus/src/tour/manifest.ts";
 
 const ADDR = "127.0.0.1:7745";
 // Use the bugfix story with the happy_llm flow + the demo cassette.
@@ -80,6 +86,10 @@ test("onboarding tour video (no-LLM)", async () => {
   // Capture the Video reference before the context closes — saveAs() works after close().
   const video = page.video();
   const shot = makeShot(ARTIFACT_DIR);
+
+  // Accumulate per-step time windows for the chapter sidecar (slice 1). The
+  // clock starts now so windows line up with the recorded MP4 timeline.
+  const chapters = new ChapterRecorder();
 
   // Track the session ID once the session URL is known (set after home-start action).
   let sessionId = "";
@@ -153,6 +163,10 @@ test("onboarding tour video (no-LLM)", async () => {
       }
       await expect(titleEl).toHaveText(step.title, { timeout: 12000 });
 
+      // This step's spotlight is settled and on-screen — open its chapter
+      // (auto-closes the prior one) so the dwell below becomes its window.
+      chapters.open(step.id, step.title, TOUR_SPEC_PATH);
+
       await dwell(page, step.dwellMs ?? 3000);
       await shot(page, step.id);
 
@@ -215,7 +229,10 @@ test("onboarding tour video (no-LLM)", async () => {
     // reference (avoids picking a stale file). saveAs must happen after context
     // close but before browser close.
     await context.close();
-    await saveVideoAsMp4(video, ARTIFACT_DIR, "tour-video-demo");
+    const mp4 = await saveVideoAsMp4(video, ARTIFACT_DIR, "tour-video-demo");
+    // Emit the producer-agnostic chapter sidecar beside the MP4 (slice 1):
+    // each tour step → one chapter with source_ref kind=tour.
+    writeChapters(mp4, chapters.list());
     await browser.close();
   }
 

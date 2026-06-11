@@ -1,0 +1,82 @@
+# authoring — ONE host.oracle.task authors the source from the brief.
+#
+# tour → static HTML mockup page(s) + a tour manifest ({id,route,target,
+#        title,body,...}, docs/skills/kitsoki-ui-demo/SKILL.md)
+# deck → a slidey JSON deck (docs/decks shape)
+#
+# The task is scoped to world.workspace and the prompt is the v1 write-jail
+# (memory: task-agents-must-not-implement — it authors MOCKUP source only,
+# never shippable code, and only under the workspace). Binds source =
+# {kind, paths, spec_path}. Human checkpoint: accept → rendering ; revise → re-author.
+#
+# `once: true` keyed on its own bind (source): /reload and self/on_error
+# re-entry re-render the stored source without re-running the task. The
+# revise arm clears `source` to re-arm a fresh run.
+
+states:
+
+  authoring:
+    description: "Authoring the mockup source from the brief."
+    relevant_world: [brief, source, medium, authoring_feedback, workspace]
+    view:
+      - heading: "Mockup video studio · authoring"
+      - kv:
+          pairs:
+            Feature: '{{ world.brief.feature|default:"(pending)" }}'
+            Medium:  "{{ world.medium }}"
+            Kind:    '{{ world.source.kind|default:"(pending)" }}'
+            Files:   '{{ world.source.paths|length }}'
+            Spec:    '{{ world.source.spec_path|default:"(n/a)" }}'
+      - heading: "Authored source"
+      - code: '{{ world.source.summary|default:"(pending — task has not returned yet)" }}'
+      - list:
+          items:
+            - label: "accept"
+              hint:  "render this source into a walkthrough video"
+            - label: "revise feedback=…"
+              hint:  "re-author with guidance"
+            - label: "quit"
+              hint:  "abandon the studio"
+            - label: "look"
+              hint:  "re-render"
+    on_enter:
+      - invoke: host.oracle.task
+        id: author_source
+        once: true
+        with:
+          agent: author
+          working_dir: "{{ world.workspace }}"
+          acceptance:
+            schema: schemas/source.json
+          context:
+            prompt: prompts/author_source.md
+            args:
+              workspace: "{{ world.workspace }}"
+              medium:    "{{ world.medium }}"
+              feature:   "{{ world.brief.feature }}"
+              scenarios: "{{ world.brief.scenarios }}"
+              notes:     "{{ world.brief.notes }}"
+              feedback:  "{{ world.authoring_feedback }}"
+        bind:
+          source: submitted
+        on_error: intake
+    on:
+      accept:
+        - target: rendering
+          effects:
+            - set:
+                authoring_feedback: ""
+      revise:
+        - target: authoring
+          effects:
+            - set:
+                authoring_feedback: "{{ slots.feedback }}"
+                # Clear the once: bind so on_enter re-runs the task fresh.
+                source: {}
+      quit:
+        - target: "@exit:abandoned"
+          effects:
+            - set:
+                abandon_reason: "abandoned_at_authoring"
+      look:
+        - target: .

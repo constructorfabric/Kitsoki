@@ -988,6 +988,31 @@ func (s *Server) dispatch(ctx context.Context, method string, params map[string]
 		}
 		return out, nil
 
+	// ── Video feedback mode (/review panel) ────────────────────────────────────
+	// Three read/capture RPCs the slice-2 feedback panel drives, all gated to
+	// recorded video handles (resolved through the session's ArtifactResolver).
+	// See video.go.
+	case "runstatus.video.chapters":
+		entry, rerr := s.resolve(params)
+		if rerr != nil {
+			return nil, rerr
+		}
+		return videoChapters(entry, params)
+
+	case "runstatus.video.frame":
+		entry, rerr := s.resolve(params)
+		if rerr != nil {
+			return nil, rerr
+		}
+		return videoFrame(ctx, entry, params)
+
+	case "runstatus.feedback.add":
+		entry, rerr := s.resolve(params)
+		if rerr != nil {
+			return nil, rerr
+		}
+		return feedbackAdd(entry, params)
+
 	default:
 		// ── Story editor (per-story, no session) ─────────────────────────────
 		// The editor.* family operates on a story selected from the registry

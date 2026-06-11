@@ -1,0 +1,82 @@
+# refining — ONE host.oracle.task edits the source behind each flagged moment.
+#
+# For each feedback note (the drained feedback_batch and/or the inline
+# refine_feedback), the task edits the source the note's source_ref points at
+# — the HTML page for kind: tour, the scene object in the deck for kind:
+# slidey — guided by the note's instruction + captured still. The feedback
+# notes are BINDING directives, framed with a per-note compliance checklist
+# (memory: refine-honours-operator-guidance). The task is workspace-jailed
+# (memory: task-agents-must-not-implement).
+#
+# Then it records this iteration (video_handle + feedback addressed), clears
+# the render binds, bumps the cycle, and routes back to rendering for a fresh
+# render. This is a transition (not on_enter) so the side effects run once
+# per refine pass.
+
+states:
+
+  refining:
+    description: "Refining the source behind flagged moments."
+    relevant_world: [feedback_batch, refine_feedback, refine_result, source, iterations, cycle, video_handle]
+    view:
+      - heading: "Mockup video studio · refining"
+      - kv:
+          pairs:
+            Flags:  '{{ world.feedback_batch.items|length }}'
+            Inline: '{{ world.refine_feedback|default:"(none)" }}'
+            Cycle:  "{{ world.cycle }}"
+            Edited: '{{ world.refine_result.edited|length }}'
+      - prose: "Editing source per the binding feedback directives, then re-rendering."
+    on_enter:
+      - invoke: host.oracle.task
+        id: refine_source
+        once: true
+        with:
+          agent: refiner
+          working_dir: "{{ world.workspace }}"
+          acceptance:
+            schema: schemas/source.json
+          context:
+            prompt: prompts/refine_source.md
+            args:
+              workspace:       "{{ world.workspace }}"
+              medium:          "{{ world.medium }}"
+              source:          "{{ world.source }}"
+              feedback_batch:  "{{ world.feedback_batch }}"
+              refine_feedback: "{{ world.refine_feedback }}"
+        bind:
+          refine_result: submitted
+        on_error: review
+
+      # Record this iteration and re-render. emit_intent fires once the task
+      # has bound (refine_result present).
+      - when: "world.refine_result.edited != nil"
+        emit_intent: rerender
+    on:
+      rerender:
+        - target: rendering
+          effects:
+            # Append the iteration record (the video that was reviewed +
+            # the feedback addressed this pass). expr-lang can't append to a
+            # list, so the record is built in starlark (ui-fix pattern).
+            - invoke: host.starlark.run
+              with:
+                script: scripts/accumulate_iteration.star
+                inputs:
+                  video_handle: "{{ world.video_handle }}"
+                  instruction:  "{{ world.refine_feedback }}"
+              bind:
+                iterations: iterations
+            - set:
+                cycle:      "{{ world.cycle + 1 }}"
+                # Clear render binds so rendering re-runs fresh.
+                video_handle:    ""
+                chapters_handle: ""
+                video_path:      ""
+                chapters_path:   ""
+                # Clear the once: bind + the consumed feedback.
+                refine_result:   {}
+                refine_feedback: ""
+                feedback_batch:  {}
+      look:
+        - target: .

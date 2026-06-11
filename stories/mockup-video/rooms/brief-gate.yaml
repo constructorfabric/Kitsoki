@@ -1,0 +1,57 @@
+# brief-gate — is the distilled brief concrete enough to author from?
+#
+# host.oracle.decide against prompts/brief_ready.md: are the scenarios named
+# and a medium chosen? `clarify` → back to intake (with the gaps surfaced in
+# the intake view); `ok` → authoring. Models stories/dev-story's brief check.
+#
+# on_enter fires the judge, then auto-routes on the verdict via emit_intent —
+# the operator never sits in this room.
+
+states:
+
+  brief-gate:
+    description: "Checking the brief is concrete before authoring."
+    relevant_world: [brief, brief_decision, medium]
+    view:
+      - heading: "Mockup video studio · brief gate"
+      - kv:
+          pairs:
+            Feature:   '{{ world.brief.feature|default:"(pending)" }}'
+            Scenarios: '{{ world.brief.scenarios|length }}'
+            Medium:    '{{ world.brief.medium|default:"(pending)" }}'
+            Verdict:   '{{ world.brief_decision.verdict|default:"(pending)" }}'
+      - prose: '{{ world.brief_decision.reason }}'
+        when: "world.brief_decision.reason"
+      - prose: "Evaluating the brief — this room routes itself."
+    on_enter:
+      - invoke: host.oracle.decide
+        id: brief_check
+        with:
+          agent:  brief_judge
+          prompt: prompts/brief_ready.md
+          schema: schemas/brief.json
+          working_dir: "{{ world.workspace }}"
+          args:
+            feature:   "{{ world.brief.feature }}"
+            scenarios: "{{ world.brief.scenarios }}"
+            medium:    "{{ world.brief.medium }}"
+            notes:     "{{ world.brief.notes }}"
+        bind:
+          brief_decision: submitted
+        on_error: intake
+
+      - when: "world.brief_decision.verdict == 'ok'"
+        emit_intent: ok
+
+      - when: "world.brief_decision.verdict == 'clarify'"
+        emit_intent: clarify
+    on:
+      ok:
+        - target: authoring
+          effects:
+            - set:
+                medium: "{{ world.brief.medium ?? world.medium }}"
+      clarify:
+        - target: intake
+      look:
+        - target: .

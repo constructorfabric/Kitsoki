@@ -1,0 +1,56 @@
+# brief_clarify_then_ok — the brief-gate concreteness loop.
+#
+# Starts in brief-gate. on_enter fires the brief judge; the stubbed verdict is
+# `clarify`, which routes back to intake and surfaces the reason in the intake
+# view. A `ready` from intake re-distils the brief and re-enters the gate. The
+# clarify→intake routing and the gate re-entry are the wiring under test; the
+# ok→authoring advance is covered by happy_deck / happy_tour.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: intake
+initial_world:
+  workspace: ".artifacts/mockup-video/test"
+  medium:    "deck"
+  brief:
+    feature: "the dashboard"
+    scenarios: []
+    medium: "deck"
+    notes: ""
+  iterations: { items: [] }
+  refine_budget: 6
+
+host_handlers:
+  host.chat.resolve:
+    data: { ok: true, chat_id: "chat-1", title: "discovery" }
+
+  host.oracle.converse:
+    by_call:
+      distil_brief:
+        data:
+          ok: true
+          brief:
+            feature: "the dashboard"
+            scenarios: []
+            medium: "deck"
+            notes: ""
+
+  host.oracle.decide:
+    by_call:
+      brief_check:
+        data: { ok: true, submitted: { verdict: "clarify", reason: "No scenarios named; 'the dashboard' is too vague.", questions: ["Which feature?", "Which scenarios?"] } }
+
+turns:
+  # intake: ready distils the brief and enters brief-gate, whose on_enter
+  # fires the judge → clarify → intake, reason surfaced.
+  - intent: { name: ready, slots: {} }
+    expect_state: intake
+    expect_world:
+      brief_decision: { verdict: "clarify", reason: "No scenarios named; 'the dashboard' is too vague.", questions: ["Which feature?", "Which scenarios?"] }
+
+  # intake: ready re-distils and re-enters the gate; verdict still clarify
+  # (brief unchanged) → back to intake. Proves the loop, not a one-shot.
+  - intent: { name: ready, slots: {} }
+    expect_state: intake
+
+expect_no_errors: true

@@ -129,6 +129,19 @@ func SlideyRenderHandler(ctx context.Context, args map[string]any) (Result, erro
 			Data:  data,
 		}, nil
 	}
+
+	// Emit the producer-agnostic chapter sidecar beside a rendered video
+	// (mockup-video-studio epic, Slice 1). Best-effort: a sidecar failure
+	// never fails an otherwise-successful render — chapters are additive
+	// (a video without a sidecar still plays). Only meaningful for video.
+	if kind == "video" {
+		if sidecar, sErr := writeSlideyChapters(specPath, absOutput); sErr == nil {
+			data["chapters_path"] = sidecar
+		} else {
+			data["chapters_error"] = sErr.Error()
+		}
+	}
+
 	return Result{Data: data}, nil
 }
 

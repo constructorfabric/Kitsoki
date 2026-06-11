@@ -1,8 +1,10 @@
 # Epic: Mockup Video Studio
 
-**Status:** Draft v1. No slices implemented yet.
+**Status:** Implemented. All 3 slices shipped; narrative docs landed and the
+focused slice proposals are deleted. Remaining work is a live end-to-end
+demo + adversarial QA (see "Remaining" below).
 **Kind:**   epic
-**Slices:** 3 (0/3 shipped)
+**Slices:** 3 (3/3 shipped)
 
 ## Why
 
@@ -73,9 +75,24 @@ the first producer of them.
 
 | # | Slice | Kind | Scope (one line) | Depends on | Status | File |
 |---|---|---|---|---|---|---|
-| 1 | Video frame seam | runtime | Producer-agnostic chapter sidecar (scene↔timestamp) + deterministic `host.video.frame` still-grab, shared by a host call and a web RPC | `visual-outputs` #1 (shipped); coordinates with #2 | Draft | [`video-frame-seam.md`](video-frame-seam.md) |
-| 2 | Video feedback mode | tui (web) | `/review` panel: player + chapter timeline + flag-scene/range + per-flag PNG + chat → structured feedback notes | 1; `visual-outputs` #3 | Draft | [`video-feedback-mode.md`](video-feedback-mode.md) |
-| 3 | Mockup video authoring | story | `stories/mockup-video/`: brief → author HTML/deck → render → review → refine-loop → gallery (`medium: tour\|deck`) | 1; `visual-outputs` #2; soft-dep 2 | Draft | [`mockup-video-authoring.md`](mockup-video-authoring.md) |
+| 1 | Video frame seam | runtime | Producer-agnostic chapter sidecar (scene↔timestamp) + deterministic `host.video.frame` still-grab, shared by a host call and a web RPC | `visual-outputs` #1 (shipped); coordinates with #2 | Shipped | [`docs/architecture/hosts.md`](../architecture/hosts.md) |
+| 2 | Video feedback mode | tui (web) | `/review` panel: player + chapter timeline + flag-scene/range + per-flag PNG + chat → structured feedback notes | 1; `visual-outputs` #3 | Shipped | [`docs/tui/video-review.md`](../tui/video-review.md) |
+| 3 | Mockup video authoring | story | `stories/mockup-video/`: brief → author HTML/deck → render → review → refine-loop → gallery (`medium: tour\|deck`) | 1; `visual-outputs` #2; soft-dep 2 | Shipped | [`docs/stories/mockup-video.md`](../stories/mockup-video.md) |
+
+## Remaining (post-integration)
+
+All three slices are code-complete, build green, and covered by no-LLM flow /
+unit / Playwright fixtures. Deferred because they need a real LLM and/or a live
+recorder (CLAUDE.md no-auto-LLM rule):
+
+- **Live end-to-end run** — author a real 3-scenario mockup video, flag a scene
+  in `/review`, refine, watch the re-render improve (slice 3 task 4.1).
+- **`record_tour.sh` ↔ concrete recorder** — wired only when
+  `$KITSOKI_UI_DEMO_RECORDER` points at the slice-1 chapters.json-emitting
+  harness; verify live.
+- **Tour demo of `/review` + adversarial QA** (epic tasks 5 / 6).
+- **Optional hardening** — replace `review.spec.ts`'s stubbed RPCs with a true
+  `kitsoki web --flow` live session now that slice 3 emits a video + sidecar.
 
 ## Sequencing
 

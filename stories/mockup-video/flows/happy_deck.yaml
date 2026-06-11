@@ -1,0 +1,92 @@
+# happy_deck — full path, medium=deck: intake → brief-gate(ok) → authoring(accept)
+#                → rendering(deck) → review(accept) → done.
+#
+# All host calls stubbed (Mode-2, intent-only, no LLM). Oracle calls stubbed
+# by per-invoke id (memory: oracle-stub-by-id).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: intake
+initial_world:
+  workspace: ".artifacts/mockup-video/test"
+  medium:    "deck"
+  brief:     {}
+  iterations: { items: [] }
+  refine_budget: 6
+
+host_handlers:
+  host.chat.resolve:
+    data: { ok: true, chat_id: "chat-1", title: "Mockup video brief discovery" }
+
+  host.oracle.converse:
+    by_call:
+      distil_brief:
+        data:
+          ok: true
+          brief:
+            feature: "The /review video feedback panel"
+            scenarios: ["open panel and scrub", "flag a scene", "dispatch a note"]
+            medium: "deck"
+            notes: ""
+
+  host.oracle.decide:
+    by_call:
+      brief_check:
+        data:
+          ok: true
+          submitted: { verdict: "ok", reason: "Feature, scenarios, and medium are all concrete." }
+
+  host.oracle.task:
+    by_call:
+      author_source:
+        data:
+          ok: true
+          submitted:
+            kind: "slidey"
+            paths: [".artifacts/mockup-video/test/deck.json"]
+            spec_path: ".artifacts/mockup-video/test/deck.json"
+            summary: "Authored a 3-scene deck walking the review panel scenarios."
+
+  host.slidey.render:
+    by_call:
+      render_deck:
+        data:
+          ok: true
+          path: ".artifacts/mockup-video/test/walkthrough.mp4"
+          chapters_path: ".artifacts/mockup-video/test/walkthrough.chapters.json"
+
+  host.run:
+    by_call:
+      drain_feedback:
+        data: { ok: true, exit_code: 0, stdout_json: { items: [] } }
+
+  host.artifacts_dir:
+    by_call:
+      emit_video:
+        data: { ok: true, handle: { id: "mockup-video#1", kind: "video", mime: "video/mp4" }, path: ".artifacts/mockup-video/test/walkthrough.mp4", kind: "video", mime: "video/mp4" }
+      emit_chapters:
+        data: { ok: true, handle: { id: "mockup-chapters#1", kind: "data", mime: "application/json" }, path: ".artifacts/mockup-video/test/walkthrough.chapters.json", kind: "data", mime: "application/json" }
+
+turns:
+  # intake: distil the brief → brief-gate, which auto-routes ok → authoring.
+  - intent: { name: ready, slots: {} }
+    expect_state: authoring
+    expect_world:
+      medium: "deck"
+
+  # authoring: task bound source; accept → rendering → (deck render + emits) →
+  # auto accept → review.
+  - intent: { name: accept, slots: {} }
+    expect_state: review
+    expect_world:
+      video_handle: "mockup-video#1"
+      chapters_handle: "mockup-chapters#1"
+
+  # review: accept → done.
+  - intent: { name: accept, slots: {} }
+    expect_state: done
+    expect_world:
+      video_handle: "mockup-video#1"
+
+expect_terminal: false
+expect_no_errors: true

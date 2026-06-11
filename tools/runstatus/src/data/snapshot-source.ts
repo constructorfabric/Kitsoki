@@ -214,4 +214,26 @@ export class SnapshotSource implements DataSource {
   artifactUrl(handle: string): string {
     return `./artifacts/${handle}`;
   }
+
+  // ── Video feedback mode (/review) ──────────────────────────────────────────
+  // A static snapshot is read-only and has no server to grab stills or persist
+  // notes: chapters are unavailable (the sidecar is not bundled) and the
+  // capture/dispatch RPCs reject — the panel degrades to "no chapters" and
+  // disables flagging. The live surface is where /review is used.
+
+  videoChapters(): Promise<import("./source.js").Chapter[]> {
+    return Promise.resolve([]);
+  }
+
+  videoFrame(): Promise<{ handle: string; mime: string; kind: string }> {
+    return Promise.reject(
+      new Error("video.frame is unavailable in snapshot mode")
+    );
+  }
+
+  addFeedback(): Promise<{ ok: boolean }> {
+    return Promise.reject(
+      new Error("feedback.add is unavailable in snapshot mode")
+    );
+  }
 }

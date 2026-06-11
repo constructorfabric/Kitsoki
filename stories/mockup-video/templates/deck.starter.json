@@ -1,0 +1,26 @@
+{
+  "_comment": "Starter slidey deck for a mockup walkthrough. The author task copies this under the workspace and specialises one scene per scenario beat. Give each scene a stable `id` so source_ref.scene_id is meaningful for refine. Deck vocabulary: the slidey-authoring skill.",
+  "meta": {
+    "mode": "pitch",
+    "title": "Feature walkthrough mockup",
+    "resolution": { "width": 1920, "height": 1080 },
+    "narration": { "voice": "en-AU-NatashaNeural", "rate": "+0%" }
+  },
+  "scenes": [
+    {
+      "id": "title",
+      "type": "title",
+      "title": "Feature name",
+      "subtitle": "What this walkthrough shows",
+      "narration": "An introduction to the feature."
+    },
+    {
+      "id": "scenario-1",
+      "type": "narrative",
+      "eyebrow": "Scenario 1",
+      "body": "The first user scenario beat.",
+      "lede": "Describe what the user does and sees in this scenario.",
+      "narration": "Walking through the first scenario."
+    }
+  ]
+}

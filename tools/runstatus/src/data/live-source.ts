@@ -435,7 +435,44 @@ export class LiveSource implements DataSource {
    * the file via http.ServeContent (ETag, Range, Content-Type).
    */
   artifactUrl(handle: string): string {
-    return `/artifact/${handle}`;
+    // Handles are content-addressed (e.g. "mockup-video#6e2b0759") and the '#'
+    // is a URL fragment delimiter — left raw it truncates the path and the
+    // server 404s. Encode the handle so '#' rides as %23 into the path segment.
+    return `/artifact/${encodeURIComponent(handle)}`;
+  }
+
+  // ── Video feedback mode (/review) ──────────────────────────────────────────
+
+  async videoChapters(
+    sessionId: string,
+    video: string
+  ): Promise<import("./source.js").Chapter[]> {
+    const res = await this.client.post<{
+      chapters: import("./source.js").Chapter[];
+    }>("runstatus.video.chapters", { session_id: sessionId, video });
+    return res.chapters ?? [];
+  }
+
+  videoFrame(
+    sessionId: string,
+    video: string,
+    tMs: number
+  ): Promise<{ handle: string; mime: string; kind: string }> {
+    return this.client.post("runstatus.video.frame", {
+      session_id: sessionId,
+      video,
+      t_ms: tMs,
+    });
+  }
+
+  addFeedback(
+    sessionId: string,
+    note: import("./source.js").FeedbackNote
+  ): Promise<{ ok: boolean }> {
+    return this.client.post("runstatus.feedback.add", {
+      session_id: sessionId,
+      ...note,
+    });
   }
 
   // ── Multi-story lifecycle RPCs ───────────────────────────────────────────

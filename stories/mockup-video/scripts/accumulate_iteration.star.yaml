@@ -1,0 +1,6 @@
+inputs:
+  video_handle: { type: string, required: false }
+  instruction:  { type: string, required: false }
+
+outputs:
+  iterations: { type: object }

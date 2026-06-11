@@ -52,6 +52,37 @@ export interface MetaSendResult {
   commit_sha?: string;
 }
 
+// ── Video feedback mode (/review) wire types ───────────────────────────────
+// Mirror internal/video.Chapter / SourceRef and the server's FeedbackNote.
+
+/** Names the producing unit a chapter came from (slidey scene / tour step). */
+export interface SourceRef {
+  kind: string; // "slidey" | "tour"
+  spec_path: string;
+  scene_id?: string;
+  step_id?: string;
+  line?: number;
+}
+
+/** One [start_ms, end_ms) window of a video mapped to its SourceRef. */
+export interface Chapter {
+  index: number;
+  id: string;
+  label: string;
+  start_ms: number;
+  end_ms: number;
+  source_ref: SourceRef;
+}
+
+/** The structured note runstatus.feedback.add persists + dispatches. */
+export interface FeedbackNote {
+  video: string; // video artifact handle
+  source_ref?: SourceRef;
+  time_range?: { start_ms: number; end_ms?: number };
+  frame_handle?: string;
+  instruction: string;
+}
+
 export interface DataSource {
   listSessions(): Promise<SessionHeader[]>;
   getSession(sessionId: string): Promise<SessionHeader>;
@@ -133,6 +164,19 @@ export interface DataSource {
    * filename under the snapshot's sibling `artifacts/` directory).
    */
   artifactUrl(handle: string): string;
+
+  // ── Video feedback mode (/review) ──────────────────────────────────────────
+
+  /** Read a video's chapter sidecar (empty array when none). */
+  videoChapters(sessionId: string, video: string): Promise<Chapter[]>;
+  /** Grab a still at t_ms; returns the recorded still's artifact handle. */
+  videoFrame(
+    sessionId: string,
+    video: string,
+    tMs: number
+  ): Promise<{ handle: string; mime: string; kind: string }>;
+  /** Persist + dispatch one structured feedback note. */
+  addFeedback(sessionId: string, note: FeedbackNote): Promise<{ ok: boolean }>;
 }
 
 /**

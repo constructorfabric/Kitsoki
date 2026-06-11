@@ -160,6 +160,33 @@ recording is never silently lost). The helper is already imported in
 `tour-video.spec.ts`, `agent-actions-video.spec.ts`, `trace-features-video.spec.ts`,
 and `multi-story.spec.ts` — copy that pattern for any new recording spec.
 
+**Emitting a chapter sidecar (optional, for the video-review loop).**
+A recorded tour can also emit a producer-agnostic **chapter sidecar**
+(`<video>.chapters.json`) mapping each step's dwell window back to its
+`TourStep` — the same shape `host.slidey.render` writes for slidey decks (see
+[`hosts.md` → the chapter sidecar](../../architecture/hosts.md#the-chapter-sidecar)).
+This is what lets the `/review` feedback panel flag a moment and resolve it to
+the step that produced it. Use the `ChapterRecorder` + `writeChapters` helpers
+in `_helpers/server.ts`:
+
+```ts
+import { ChapterRecorder, writeChapters } from "./_helpers/server.js";
+
+const chapters = new ChapterRecorder();          // start the clock at record time
+for (const step of TOUR_STEPS) {
+  // … once the step's spotlight is settled and on-screen:
+  chapters.open(step.id, step.title, "tools/runstatus/src/tour/manifest.ts");
+  await dwell(page, step.dwellMs ?? 3000);        // this dwell becomes the window
+}
+// after the MP4 is saved:
+const mp4 = await saveVideoAsMp4(video, ARTIFACT_DIR, "tour-video-demo");
+writeChapters(mp4, chapters.list());              // → <mp4>.chapters.json (kind=tour)
+```
+
+`tour-video.spec.ts` is the worked example. The clock starts when the
+`ChapterRecorder` is constructed, so call it right after the recording context
+is created; each `open()` auto-closes the prior chapter.
+
 **Why `video.saveAs()` and not `fs.readdirSync(VIDEO_DIR)[0]`?**
 `readdirSync` picks the alphabetically-first file, which is the OLDEST webm in
 the dir if the dir was never cleared. `video.saveAs()` gives you the specific

@@ -3,10 +3,12 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"kitsoki/internal/app"
 	"kitsoki/internal/journal"
 	"kitsoki/internal/runstatus"
+	"kitsoki/internal/video"
 )
 
 // SessionProvider is the multi-session seam the [Server] dispatches against.
@@ -93,11 +95,73 @@ type ArtifactResolver interface {
 //
 // Artifacts is the optional artifact-lookup seam for the `GET /artifact/{id}`
 // route. It is nil for read-only surfaces and single-entry adapters.
+// Frames is the optional still-recorder seam for the `runstatus.video.frame`
+// RPC (slice 2 of the mockup-video-studio epic). Given an absolute PNG path
+// freshly produced by [video.Frame], it records the still through the same
+// substrate the rest of the run uses and returns the opaque handle the
+// `/artifact/{id}` route serves. It is nil for read-only surfaces and the
+// single-entry adapter, in which case `video.frame` returns [codeReadOnly].
+//
+// Feedback is the optional feedback-note sink for `runstatus.feedback.add`.
+// It appends one structured note to the session's append-only `feedback.jsonl`
+// (and, in a future fast path, dispatches into a live authoring session). It is
+// nil for surfaces without a writable feedback sidecar.
 type Entry struct {
 	Source    Source
 	Driver    Driver
 	Meta      MetaDriver
 	Artifacts ArtifactResolver
+	Frames    FrameRecorder
+	Feedback  FeedbackSink
+	// FrameRunner is the command runner video.frame injects into [video.Frame]
+	// for this session. Production leaves it nil → video.Frame shells ffmpeg via
+	// its DefaultRunner; a test injects a fixture-copying fake here (per-entry,
+	// so parallel video tests never race a shared global).
+	FrameRunner video.Runner
+}
+
+// FrameRecorder records a still PNG (produced by [video.Frame]) through the
+// run's artifact substrate and returns the opaque handle the `/artifact/{id}`
+// route resolves. The web RPC never invents a path: it hands the recorder the
+// temp PNG that the one ffmpeg extractor wrote, and the recorder owns where it
+// lives and how it is journalled — keeping the single-write-site contract.
+type FrameRecorder interface {
+	// RecordFrame records the PNG at pngPath (an absolute path produced by
+	// video.Frame) as a still artifact and returns its handle. label is a
+	// human caption (e.g. "frame @ 0:14"). The recorder may move/copy the file
+	// under the artifacts root; the caller does not reuse pngPath afterward.
+	RecordFrame(pngPath, label string) (handle string, err error)
+}
+
+// FeedbackSink persists one structured feedback note. The shape mirrors epic
+// shared decision 3: a capture-and-dispatch note, never an edit. The default
+// implementation appends to an append-only `feedback.jsonl`; a live authoring
+// session may later also drain it.
+type FeedbackSink interface {
+	// AddFeedback appends one note and returns nothing on success. It must be
+	// safe for concurrent use (the server calls it from request goroutines).
+	AddFeedback(note FeedbackNote) error
+}
+
+// FeedbackNote is the structured feedback-note shape `runstatus.feedback.add`
+// persists and dispatches. It is the recorded, source-targeted instruction the
+// slice-3 refine step consumes — the web tier captures it, it never edits.
+type FeedbackNote struct {
+	// VideoHandle is the artifact handle of the reviewed video.
+	VideoHandle string `json:"video_handle"`
+	// SourceRef resolves the flagged moment back to its producing unit
+	// (slidey scene / tour step). Mirrors video.SourceRef's JSON shape; carried
+	// opaquely here so the server need not import package video for the note.
+	SourceRef map[string]any `json:"source_ref,omitempty"`
+	// TimeRange is the flagged [start_ms, end_ms] window (end omitted for a
+	// point flag).
+	TimeRange map[string]any `json:"time_range,omitempty"`
+	// FrameHandle is the captured still's artifact handle (from video.frame).
+	FrameHandle string `json:"frame_handle,omitempty"`
+	// Instruction is the operator's free-text note.
+	Instruction string `json:"instruction"`
+	// Ts is the capture time (UTC), set by the server.
+	Ts time.Time `json:"ts"`
 }
 
 // ── JournalArtifactResolver ───────────────────────────────────────────────────

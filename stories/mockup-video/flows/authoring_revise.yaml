@@ -1,0 +1,56 @@
+# authoring_revise — authoring → revise(feedback) → re-author (clears source,
+#                     re-runs the author task) → accept → rendering.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: authoring
+initial_world:
+  workspace: ".artifacts/mockup-video/test"
+  medium:    "deck"
+  brief:
+    feature: "The /review video feedback panel"
+    scenarios: ["open panel", "flag a scene"]
+    medium: "deck"
+    notes: ""
+  iterations: { items: [] }
+  refine_budget: 6
+
+host_handlers:
+  host.oracle.task:
+    by_call:
+      author_source:
+        data: { ok: true, submitted: { kind: "slidey", paths: ["d.json"], spec_path: "d.json", summary: "Authored deck." } }
+
+  host.slidey.render:
+    by_call:
+      render_deck:
+        data: { ok: true, path: "x.mp4", chapters_path: "x.json" }
+
+  host.run:
+    by_call:
+      drain_feedback:
+        data: { ok: true, exit_code: 0, stdout_json: { items: [] } }
+
+  host.artifacts_dir:
+    by_call:
+      emit_video:
+        data: { ok: true, handle: { id: "mockup-video#1", kind: "video", mime: "video/mp4" }, path: "x.mp4", kind: "video", mime: "video/mp4" }
+      emit_chapters:
+        data: { ok: true, handle: { id: "mockup-chapters#1", kind: "data", mime: "application/json" }, path: "x.json", kind: "data", mime: "application/json" }
+
+turns:
+  # authoring on_enter ran the task and bound source. revise clears source +
+  # sets feedback, re-enters authoring (task re-runs, once: re-armed).
+  - intent: { name: revise, slots: { feedback: "use a darker theme" } }
+    expect_state: authoring
+    expect_world:
+      authoring_feedback: "use a darker theme"
+
+  # accept → rendering → emits → auto-advance to review.
+  - intent: { name: accept, slots: {} }
+    expect_state: review
+    expect_world:
+      video_handle: "mockup-video#1"
+      authoring_feedback: ""
+
+expect_no_errors: true

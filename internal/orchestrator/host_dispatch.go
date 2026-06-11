@@ -12,6 +12,7 @@ import (
 	"kitsoki/internal/expr"
 	"kitsoki/internal/host"
 	"kitsoki/internal/inbox"
+	"kitsoki/internal/journal"
 	"kitsoki/internal/machine"
 	"kitsoki/internal/store"
 	"kitsoki/internal/trace"
@@ -57,6 +58,15 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 	}
 	if o.chatStore != nil {
 		ctx = host.WithChatStore(ctx, o.chatStore)
+	}
+	// Inject the journal writer so host.artifacts_dir (and any producer that
+	// media-emits a file) records a KindArtifactEmitted entry the
+	// JournalArtifactResolver — and thus the /artifact/{id} route and the
+	// /review video-feedback surface — can resolve. Without this the media-emit
+	// branch copies the file but journals nothing, so the bound handle never
+	// resolves. nil is safe (the handler skips journaling).
+	if o.journalWriter != nil {
+		ctx = host.WithArtifactJournalWriter(ctx, journal.SessionStamping(o.journalWriter, sid))
 	}
 	// Inject the agents map so host.oracle.* invocations can resolve
 	// `with: { agent: <name> }` references to a host.Agent value. Built
@@ -590,6 +600,14 @@ func (o *Orchestrator) dispatchHostCallsDetailed(ctx context.Context, calls []ma
 	}
 	if o.chatStore != nil {
 		ctx = host.WithChatStore(ctx, o.chatStore)
+	}
+	// Mirror the primary dispatch path: a media-emit during this OneShot dispatch
+	// must journal its artifact too (see the dispatchHostCalls wiring above). The
+	// session id rides on the ctx's OracleCallCtx here (no sid param on this path).
+	if o.journalWriter != nil {
+		if oc := host.OracleCallCtxFrom(ctx); oc.SessionID != "" {
+			ctx = host.WithArtifactJournalWriter(ctx, journal.SessionStamping(o.journalWriter, oc.SessionID))
+		}
 	}
 	ctx = host.WithAgents(ctx, agentsForContext(o.def))
 	ctx = host.WithProviders(ctx, providersForContext(o.def))

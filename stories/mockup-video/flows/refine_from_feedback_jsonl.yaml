@@ -1,0 +1,100 @@
+# refine_from_feedback_jsonl — drained web notes drive the refine pass.
+#
+# The review on_enter drains feedback.jsonl (slice-2 web notes) via
+# drain_feedback.sh into feedback_batch — here two notes, one kind: slidey and
+# one kind: tour. `refine` (no inline feedback) carries the drained batch into
+# refining, whose task edits both source_ref targets. Asserts the batch flowed
+# to the task (both source_refs edited).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: authoring
+initial_world:
+  workspace: ".artifacts/mockup-video/test"
+  medium:    "deck"
+  brief:
+    feature: "The /review video feedback panel"
+    scenarios: ["open panel", "flag a scene"]
+    medium: "deck"
+    notes: ""
+  source: { kind: "slidey", paths: ["d.json"], spec_path: "d.json", summary: "deck" }
+  feedback_batch: {}
+  iterations: { items: [] }
+  cycle: 0
+  refine_budget: 6
+
+host_handlers:
+  host.run:
+    by_call:
+      drain_feedback:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            items:
+              - { source_ref: { kind: "slidey", spec_path: "d.json", scene_id: "scenario-1" }, time_range: [2000, 4000], frame_handle: "frame#1", instruction: "logo too small" }
+              - { source_ref: { kind: "tour", spec_path: "tour.json", step_id: "flag-step" }, time_range: [8000, 9000], frame_handle: "frame#2", instruction: "callout overlaps the button" }
+
+  host.oracle.task:
+    by_call:
+      author_source:
+        data: { ok: true, submitted: { kind: "slidey", paths: ["d.json"], spec_path: "d.json", summary: "deck" } }
+      refine_source:
+        data:
+          ok: true
+          submitted:
+            kind: "slidey"
+            paths: ["d.json"]
+            spec_path: "d.json"
+            summary: "Addressed both notes: enlarged logo (scene scenario-1); moved callout (step flag-step)."
+            edited: ["scene:scenario-1", "step:flag-step"]
+
+  host.starlark.run:
+    data:
+      iterations:
+        items:
+          - video_handle: "mockup-video#1"
+            feedback_addressed: ["scene:scenario-1", "step:flag-step"]
+            instruction: ""
+
+  host.slidey.render:
+    by_call:
+      render_deck:
+        data: { ok: true, path: "x.mp4", chapters_path: "x.json" }
+
+  host.artifacts_dir:
+    by_call:
+      emit_video:
+        data: { ok: true, handle: { id: "mockup-video#1", kind: "video", mime: "video/mp4" }, path: "x.mp4", kind: "video", mime: "video/mp4" }
+      emit_chapters:
+        data: { ok: true, handle: { id: "mockup-chapters#1", kind: "data", mime: "application/json" }, path: "x.json", kind: "data", mime: "application/json" }
+
+turns:
+  # authoring: accept → rendering → emits → auto-advance into review, whose
+  # on_enter drains the two web notes from feedback.jsonl into feedback_batch.
+  - intent: { name: accept, slots: {} }
+    expect_state: review
+    expect_world:
+      video_handle: "mockup-video#1"
+      feedback_batch:
+        items:
+          - { source_ref: { kind: "slidey", spec_path: "d.json", scene_id: "scenario-1" }, time_range: [2000, 4000], frame_handle: "frame#1", instruction: "logo too small" }
+          - { source_ref: { kind: "tour", spec_path: "tour.json", step_id: "flag-step" }, time_range: [8000, 9000], frame_handle: "frame#2", instruction: "callout overlaps the button" }
+
+  # refine (no inline feedback) → refining → task edits both source_refs
+  # → re-render → review.
+  - intent: { name: refine, slots: {} }
+    expect_state: review
+    expect_world:
+      cycle: 1
+      video_handle: "mockup-video#1"
+      iterations:
+        items:
+          - video_handle: "mockup-video#1"
+            feedback_addressed: ["scene:scenario-1", "step:flag-step"]
+            instruction: ""
+    expect_host_calls:
+      - handler: host.oracle.task
+        args: { call: "refine_source" }
+
+expect_no_errors: true

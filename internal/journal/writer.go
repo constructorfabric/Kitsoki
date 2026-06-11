@@ -23,6 +23,34 @@ type Writer interface {
 	Flush() error
 }
 
+// SessionStamping wraps a Writer so any Append whose Entry carries no Session
+// is stamped with sid before being forwarded. Producer-side journal emitters
+// (e.g. host.artifacts_dir, which has no session in scope) construct entries
+// with only Kind+Body; without a session the per-session readers
+// (ReplayTyped(sid) / JournalArtifactResolver) would never see them. Entries
+// that already name a session pass through unchanged.
+func SessionStamping(w Writer, sid app.SessionID) Writer {
+	return &sessionStampingWriter{inner: w, sid: sid}
+}
+
+type sessionStampingWriter struct {
+	inner Writer
+	sid   app.SessionID
+}
+
+func (w *sessionStampingWriter) Append(e Entry) error {
+	if e.Session == "" {
+		e.Session = w.sid
+	}
+	return w.inner.Append(e)
+}
+
+func (w *sessionStampingWriter) AppendCheckpoint(sid app.SessionID, turn app.TurnNumber, seq int, doc DocID, full json.RawMessage) error {
+	return w.inner.AppendCheckpoint(sid, turn, seq, doc, full)
+}
+
+func (w *sessionStampingWriter) Flush() error { return w.inner.Flush() }
+
 // ---- In-memory implementation -----------------------------------------------
 
 // memStore is the shared backing store for memWriter and memReader.

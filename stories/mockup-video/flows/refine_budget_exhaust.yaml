@@ -1,0 +1,54 @@
+# refine_budget_exhaust — refine up to refine_budget cycles, then auto-stop.
+#
+# With refine_budget=1 and cycle already at 1, a further `refine` is blocked at
+# the review checkpoint (cycle >= budget): it stays in review with a "budget
+# exhausted" notice rather than running another refine pass. accept still works.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: review
+initial_world:
+  workspace: ".artifacts/mockup-video/test"
+  medium:    "deck"
+  brief:
+    feature: "The /review video feedback panel"
+    scenarios: ["open panel"]
+    medium: "deck"
+    notes: ""
+  source: { kind: "slidey", paths: ["d.json"], spec_path: "d.json", summary: "deck" }
+  video_handle: "mockup-video#2"
+  chapters_handle: "mockup-chapters#2"
+  feedback_batch: { items: [] }
+  iterations: { items: [ { video_handle: "mockup-video#1", feedback_addressed: ["scene:scenario-1"], instruction: "first pass" } ] }
+  cycle: 1
+  refine_budget: 1
+
+host_handlers:
+  host.run:
+    by_call:
+      drain_feedback:
+        data: { ok: true, exit_code: 0, stdout_json: { items: [] } }
+  host.oracle.task:
+    by_call:
+      refine_source:
+        data: { ok: true, submitted: { kind: "slidey", paths: ["d.json"], spec_path: "d.json", summary: "x", edited: [] } }
+
+turns:
+  # cycle (1) >= refine_budget (1): the refine arm is blocked; stay in review,
+  # no new refine pass, iterations unchanged.
+  - intent: { name: refine, slots: { feedback: "one more tweak" } }
+    expect_state: review
+    expect_world:
+      cycle: 1
+      iterations:
+        items:
+          - video_handle: "mockup-video#1"
+            feedback_addressed: ["scene:scenario-1"]
+            instruction: "first pass"
+    expect_no_host_calls: [host.oracle.task]
+
+  # accept still terminates cleanly.
+  - intent: { name: accept, slots: {} }
+    expect_state: done
+
+expect_no_errors: true

@@ -1,0 +1,148 @@
+# mockup-video — brief → author source → render walkthrough MP4 → review → refine loop → gallery.
+#
+# Rooms: intake → brief-gate → authoring → rendering → review → refining → done
+#
+# Interpretive / deterministic split (memory: kitsoki-moat-is-architecture):
+#   intake     interpretive:  host.oracle.converse distils a scenario brief (a chat, not a form)
+#   brief-gate interpretive:  host.oracle.decide — is the brief concrete enough?
+#   authoring  interpretive:  ONE host.oracle.task authors the source (HTML+tour | slidey deck), workspace-jailed
+#   rendering  DETERMINISTIC: deck → host.slidey.render mp4 ; tour → host.run record_tour.sh — both emit chapters.json (slice 1)
+#   review     deterministic: media(video_handle) inline + drains feedback.jsonl (slice 2) ; checkpoint
+#   refining   interpretive:  ONE host.oracle.task edits each feedback note's source_ref target (binding directives)
+#   done       gallery of the final video + scenarios + feedback addressed per iteration
+
+app:
+  id: mockup-video
+  version: 0.1.0
+  title: "Mockup walkthrough video studio"
+  author: "Kitsoki"
+  license: "CC0"
+
+hosts:
+  - host.oracle.converse
+  - host.oracle.decide
+  - host.oracle.task
+  - host.slidey.render
+  - host.run
+  - host.artifacts_dir
+  - host.chat.resolve
+  - host.starlark.run
+
+agents:
+  interviewer:
+    system_prompt: "You run a discovery conversation to distil a mockup-walkthrough-video brief: the feature being mocked, the user scenarios to walk, and the medium (tour = static HTML walked by Playwright; deck = a slidey JSON deck). Ask one focused question at a time, reflect back what you heard, keep replies short."
+    model: claude-sonnet-4-6
+    tools: [Read, Grep, Glob]
+    external_side_effect: false
+  brief_judge:
+    system_prompt: "You judge whether a distilled scenario brief is concrete enough to author a walkthrough mockup from. Read-only; emit a structured verdict only."
+    model: claude-sonnet-4-6
+    tools: [Read, Grep, Glob]
+    external_side_effect: false
+  author:
+    system_prompt: "You author static UI MOCKUP source (HTML pages + a tour manifest, or a slidey deck) under a scoped workspace. These are mockups, not shippable product code. Only write under the given workspace directory."
+    model: claude-sonnet-4-6
+    tools: [Read, Write, Edit, Glob, Grep]
+    external_side_effect: false
+  refiner:
+    system_prompt: "You edit the mockup source behind flagged video moments, per binding operator feedback directives. Only write under the given workspace directory. Comply with every note; never silently drop a directive."
+    model: claude-sonnet-4-6
+    tools: [Read, Write, Edit, Glob, Grep]
+    external_side_effect: false
+
+world:
+  # ── session / config ───────────────────────────────────────────────────────
+  workspace:       { type: string, default: ".artifacts/mockup-video/session" }
+  medium:          { type: string, default: "tour" }   # tour | deck
+  intake_chat_id:  { type: string, default: "" }
+  intake_message:  { type: string, default: "" }
+  intake_answer:   { type: string, default: "" }
+  intake_turns:    { type: int,    default: 0 }
+
+  # ── pipeline data ───────────────────────────────────────────────────────────
+  brief:           { type: object, default: {} }   # {feature, scenarios:[...], medium, notes}
+  brief_decision:  { type: object, default: {} }   # {verdict, reason, questions}
+  source:          { type: object, default: {} }   # {kind, paths:[...], spec_path}
+  authoring_feedback: { type: string, default: "" }
+
+  # ── render outputs ────────────────────────────────────────────────────────
+  video_handle:    { type: string, default: "" }   # current render
+  chapters_handle: { type: string, default: "" }   # slice-1 sidecar handle
+  video_path:      { type: string, default: "" }
+  chapters_path:   { type: string, default: "" }
+
+  # ── refine loop ─────────────────────────────────────────────────────────
+  feedback_batch:  { type: object, default: {} }   # {items:[{source_ref,time_range,frame_handle,instruction}]}
+  refine_feedback: { type: string, default: "" }   # inline note (no web panel)
+  refine_result:   { type: object, default: {} }   # {edited:[...], summary}
+  iterations:      { type: object, default: { items: [] } }  # {items:[{video_handle, feedback_addressed:[...]}]}
+  cycle:           { type: int,    default: 0 }
+  refine_budget:   { type: int,    default: 6 }
+
+  # ── misc ──────────────────────────────────────────────────────────────────
+  abandon_reason:  { type: string, default: "" }
+  last_error:      { type: string, default: "" }
+
+intents:
+  # ── intake (conversational) ───────────────────────────────────────────────
+  discuss:
+    description: "Talk through the mockup video you want — feature, scenarios, medium."
+    examples: ["I want a video of the new review panel", "walk through three scenarios"]
+    priority: 40
+    slots:
+      message: { type: string, required: true }
+  ready:
+    description: "The brief is clear enough — distil it and move to the concreteness gate."
+    examples: ["ready", "that's it", "looks good, go"]
+    priority: 80
+
+  # ── brief-gate ──────────────────────────────────────────────────────────
+  ok:
+    description: "Synthetic: brief is concrete → author the source."
+    priority: 5
+  clarify:
+    description: "Synthetic: brief needs more detail → back to intake."
+    priority: 5
+
+  # ── authoring / refining checkpoints ──────────────────────────────────────
+  accept:
+    description: "Accept and advance."
+    examples: ["accept", "continue", "lgtm", "looks right"]
+    priority: 85
+  revise:
+    description: "Re-author the source with feedback."
+    examples: ["revise feedback=use a darker theme", "revise"]
+    priority: 70
+    slots:
+      feedback: { type: string, required: false }
+
+  # ── review checkpoint ─────────────────────────────────────────────────────
+  refine:
+    description: "Flag moments and refine the source that produced them."
+    examples: ["refine feedback=logo too small on scene 1", "refine"]
+    priority: 70
+    slots:
+      feedback: { type: string, required: false }
+  rerender:
+    description: "Re-render the current source without editing it."
+    examples: ["rerender", "render again"]
+    priority: 60
+  quit:
+    description: "Abandon the studio."
+    examples: ["quit", "abort", "bail"]
+    priority: 50
+
+  # ── shared ────────────────────────────────────────────────────────────────
+  look:
+    description: "Re-render the current view."
+    examples: ["look", "refresh", "?"]
+    priority: 10
+
+exits:
+  done:        { requires: [video_handle] }
+  abandoned:   {}
+
+root: intake
+
+include:
+  - rooms/*.yaml

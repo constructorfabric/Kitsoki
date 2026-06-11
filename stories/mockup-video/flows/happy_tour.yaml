@@ -1,0 +1,82 @@
+# happy_tour — medium=tour path: render via record_tour.sh (host.run) instead
+#               of slidey. Asserts the tour render ran and a chapter sidecar
+#               handle bound.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: intake
+initial_world:
+  workspace: ".artifacts/mockup-video/test"
+  medium:    "tour"
+  brief:     {}
+  iterations: { items: [] }
+  refine_budget: 6
+
+host_handlers:
+  host.chat.resolve:
+    data: { ok: true, chat_id: "chat-1", title: "discovery" }
+
+  host.oracle.converse:
+    by_call:
+      distil_brief:
+        data:
+          ok: true
+          brief:
+            feature: "The /review video feedback panel"
+            scenarios: ["open panel", "flag a scene", "dispatch a note"]
+            medium: "tour"
+            notes: ""
+
+  host.oracle.decide:
+    by_call:
+      brief_check:
+        data: { ok: true, submitted: { verdict: "ok", reason: "Concrete." } }
+
+  host.oracle.task:
+    by_call:
+      author_source:
+        data:
+          ok: true
+          submitted:
+            kind: "tour"
+            paths: [".artifacts/mockup-video/test/s1.html", ".artifacts/mockup-video/test/s2.html"]
+            spec_path: ".artifacts/mockup-video/test/tour.json"
+            summary: "Authored 2 mockup pages + a tour manifest."
+
+  host.run:
+    by_call:
+      render_tour:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            ok: true
+            path: ".artifacts/mockup-video/test/walkthrough.mp4"
+            chapters_path: ".artifacts/mockup-video/test/walkthrough.chapters.json"
+      drain_feedback:
+        data: { ok: true, exit_code: 0, stdout_json: { items: [] } }
+
+  host.artifacts_dir:
+    by_call:
+      emit_video:
+        data: { ok: true, handle: { id: "mockup-video#1", kind: "video", mime: "video/mp4" }, path: "x.mp4", kind: "video", mime: "video/mp4" }
+      emit_chapters:
+        data: { ok: true, handle: { id: "mockup-chapters#1", kind: "data", mime: "application/json" }, path: "x.json", kind: "data", mime: "application/json" }
+
+turns:
+  - intent: { name: ready, slots: {} }
+    expect_state: authoring
+
+  - intent: { name: accept, slots: {} }
+    expect_state: review
+    expect_world:
+      video_handle: "mockup-video#1"
+      chapters_handle: "mockup-chapters#1"
+    expect_host_calls:
+      - handler: host.run
+        args: { call: "render_tour" }
+
+  - intent: { name: accept, slots: {} }
+    expect_state: done
+
+expect_no_errors: true

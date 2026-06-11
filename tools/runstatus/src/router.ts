@@ -3,6 +3,7 @@ import HomeView from "./views/HomeView.vue";
 import RunView from "./views/RunView.vue";
 import InteractiveView from "./views/InteractiveView.vue";
 import EditorPage from "./views/EditorPage.vue";
+import ReviewPage from "./views/ReviewPage.vue";
 
 const router = createRouter({
   // Hash history: works fine for both live and file:// artifact mode.
@@ -21,6 +22,8 @@ const router = createRouter({
     // Story editor: per-story static inspector. Story + room selected via
     // query params: /editor?story=<id|path>&room=<id>[&session=<id>].
     { path: "/editor", component: EditorPage },
+    // /review/:sessionId?video=<handle> — the video feedback surface.
+    { path: "/review/:sessionId", component: ReviewPage, props: true },
   ],
 });
 

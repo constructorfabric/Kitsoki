@@ -306,6 +306,19 @@ func handleMediaEmit(ctx context.Context, args map[string]any, thread, srcPath s
 		return Result{Error: fmt.Sprintf("host.artifacts_dir: copy %q -> %q: %v", srcPath, absDestPath, err)}, nil
 	}
 
+	// Co-locate a chapter sidecar with a video so it travels with it (epic
+	// decision 1: the producer-agnostic <video>.chapters.json sidecar is a
+	// sibling of the video). runstatus.video.chapters reads the sidecar beside
+	// the RESOLVED artifact path, so without this the chapters never resolve for
+	// a video that was media-emitted to the artifacts root. Best-effort: a video
+	// with no sidecar emits unchanged.
+	if kind == "video" {
+		srcSidecar := srcPath + ".chapters.json"
+		if info, serr := os.Stat(srcSidecar); serr == nil && info.Mode().IsRegular() {
+			_ = copyFile(srcSidecar, absDestPath+".chapters.json")
+		}
+	}
+
 	// Stat the destination to get the final size.
 	destInfo, err := os.Stat(absDestPath)
 	if err != nil {

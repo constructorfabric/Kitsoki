@@ -1,0 +1,121 @@
+# demo_web — deterministic, no-LLM posture for the FULL story-walkthrough DEMO.
+#
+# Drives the mockup-video story end-to-end (intake → authoring → rendering →
+# review → done) carrying a REAL pre-rendered walkthrough video + chapter
+# sidecar, so the kitsoki-ui-demo tour spec (mockup-video-demo.spec.ts) can
+# record the whole produce→review→refine loop against a genuinely-resolvable
+# artifact handle whose <video> actually plays.
+#
+# Posture (mirrors demo_review.yaml — all interpretive calls stubbed by invoke
+# id, memory: oracle-stub-by-id) EXCEPT the artifact seam, which is REAL:
+#
+#   - intake/brief-gate/authoring oracle calls are STUBBED (no LLM).
+#   - host.slidey.render (render_deck) is STUBBED to return the REAL
+#     pre-rendered mp4 + chapters.json under .artifacts/review-video/render —
+#     produced out-of-band before recording (so the demo does NOT re-run a
+#     7-12min render inside Playwright, but the FILES are real).
+#   - host.artifacts_dir is *intentionally NOT stubbed*: under `kitsoki web
+#     --flow` the builtins are pre-registered, so the REAL artifacts_dir handler
+#     runs — it copies the real mp4/chapters into the artifacts root and
+#     journals a KindArtifactEmitted entry, so the bound video_handle resolves
+#     through the JournalArtifactResolver and the review/done <video> serves the
+#     real bytes and plays.
+#   - host.run (drain_feedback) is stubbed empty (no web notes on entry).
+#
+# NOTE: the web posture starts each session at the app root (`intake`). The
+# initial_state/initial_world/turns below drive `kitsoki test flows` (Mode-2);
+# the recording spec walks intake→done on-camera via real submitted intents.
+# The artifacts_dir handle is content-addressed (dynamic), so the spec reads it
+# from the live world rather than hardcoding.
+#
+# WEB-ONLY review→done: this fixture is exercised end-to-end only under
+# `kitsoki web --flow` (where the builtins are pre-registered, the real
+# artifacts_dir runs with an artifacts root + journal writer, and the handle
+# resolves). Under `kitsoki test flows` (Mode-2) the artifacts_dir builtin runs
+# without that web wiring, so it binds no resolvable video_handle and the
+# review→done `accept` gate (which requires a non-empty handle) cannot advance.
+# The Mode-2 `turns` therefore stop at `review` — exactly like demo_review.yaml,
+# the sibling web fixture — keeping `kitsoki test flows` green. The recording
+# spec (tools/runstatus/tests/playwright/mockup-video-demo.spec.ts) drives the
+# review→done accept on-camera, where the handle is real and the <video> plays.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: intake
+initial_world:
+  workspace: ".artifacts/review-video/render"
+  medium:    "deck"
+  brief:     {}
+  iterations: { items: [] }
+  refine_budget: 6
+
+host_handlers:
+  host.chat.resolve:
+    data: { ok: true, chat_id: "chat-1", title: "Mockup video brief discovery" }
+
+  host.oracle.converse:
+    by_call:
+      distil_brief:
+        data:
+          ok: true
+          brief:
+            feature: "kitsoki architecture & usage walkthrough"
+            scenarios: ["the moat", "the run loop", "the trace"]
+            medium: "deck"
+            notes: ""
+
+  host.oracle.decide:
+    by_call:
+      brief_check:
+        data:
+          ok: true
+          submitted: { verdict: "ok", reason: "Feature, scenarios, and medium are all concrete." }
+
+  host.oracle.task:
+    by_call:
+      author_source:
+        data:
+          ok: true
+          submitted:
+            kind: "slidey"
+            paths: ["docs/decks/arch-and-usage.json"]
+            spec_path: "docs/decks/arch-and-usage.json"
+            summary: "Authored the architecture-and-usage walkthrough deck (18 scenes)."
+
+  # Stub the render to point at the REAL pre-rendered files on disk (repo-relative
+  # to the server cwd, the repo root).
+  host.slidey.render:
+    by_call:
+      render_deck:
+        data:
+          ok: true
+          path: ".artifacts/review-video/render/walkthrough.mp4"
+          chapters_path: ".artifacts/review-video/render/walkthrough.mp4.chapters.json"
+
+  # No web notes drained on review entry.
+  host.run:
+    by_call:
+      drain_feedback:
+        data: { ok: true, exit_code: 0, stdout_json: { items: [] } }
+
+  # host.artifacts_dir is intentionally NOT stubbed: the real builtin runs and
+  # journals the artifact so review/done resolve the handle for real.
+
+turns:
+  # intake: distil the brief → brief-gate, which auto-routes ok → authoring.
+  - intent: { name: ready, slots: {} }
+    expect_state: authoring
+    expect_world:
+      medium: "deck"
+
+  # authoring: accept → rendering → (slidey stub + REAL artifacts_dir emit) →
+  # auto accept → review. video_handle is content-addressed (dynamic), so it is
+  # NOT asserted to a fixed value here.
+  #
+  # The Mode-2 turns stop here: review→done is web-only (see header). Under
+  # `kitsoki web --flow` the recording spec drives the review `accept` on-camera.
+  - intent: { name: accept, slots: {} }
+    expect_state: review
+
+expect_terminal: false
+expect_no_errors: true

@@ -172,6 +172,16 @@ export interface ViewElement {
   Mime?: string;
   /** Optional human-readable display caption or alt text. */
   Caption?: string;
+  // The Go engine (internal/app.ViewElement) marshals media fields with a
+  // `Media`-prefix and selects the renderer family by `MediaKind`
+  // (video/image/pdf/html), not a MIME string. The component normalises these
+  // to Handle/Caption/Mime below, so both wire shapes render identically.
+  /** Engine wire field for the artifact handle (pre-interpolated). */
+  MediaHandle?: string;
+  /** Engine wire field for the caption. */
+  MediaCaption?: string;
+  /** Engine wire field for the artifact kind (video/image/pdf/html/slideshow). */
+  MediaKind?: string;
   Items?: ListItem[] | null;
   Pairs?: KVPair[] | null;
   Marker?: string;

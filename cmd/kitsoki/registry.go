@@ -64,12 +64,47 @@ type entry struct {
 	source        *server.LiveSession
 	driver        server.Driver
 	sink          *store.JSONLSink
+	sessionDir    string // directory holding this session's trace + sidecars
 
 	// metaController is the lazily-built meta-mode controller for this
 	// session, cached so the persistent chat store / agent registry / AppDef
 	// binding survives across turns. Reload nils it so the next meta turn
 	// rebuilds against the reloaded AppDef.
 	metaController *metamode.Controller
+
+	// frames / feedback are the lazily-built /review feedback-mode seams,
+	// cached so the still recorder's seq counter and the feedback sidecar path
+	// stay stable across RPCs for this session.
+	frames   *server.JournalFrameRecorder
+	feedback *server.JSONLFeedbackSink
+}
+
+// frameRecorderLocked returns the session's still recorder, building it on first
+// use. Stills land under <sessionDir>/frames; the journal writer makes them
+// resolve through the existing /artifact/{id} route. Caller holds the registry
+// mutex (Get does).
+func (e *entry) frameRecorderLocked() *server.JournalFrameRecorder {
+	if e.frames == nil {
+		e.frames = &server.JournalFrameRecorder{
+			Writer:    e.rt.Journal,
+			SID:       e.sid,
+			FramesDir: filepath.Join(e.sessionDir, "frames"),
+		}
+	}
+	return e.frames
+}
+
+// feedbackSinkLocked returns the session's append-only feedback sink, building
+// it on first use. Notes land in <sessionDir>/<sid>.feedback.jsonl, the file the
+// slice-3 authoring story drains on its next refine turn. Caller holds the
+// registry mutex.
+func (e *entry) feedbackSinkLocked() *server.JSONLFeedbackSink {
+	if e.feedback == nil {
+		e.feedback = &server.JSONLFeedbackSink{
+			Path: filepath.Join(e.sessionDir, string(e.sid)+".feedback.jsonl"),
+		}
+	}
+	return e.feedback
 }
 
 // SessionRegistry implements [server.SessionProvider]. It is safe for concurrent
@@ -230,6 +265,7 @@ func (r *SessionRegistry) NewSession(ctx context.Context, storyPath string) (str
 		loadedContent: rawContent,
 		rt:            rt,
 		sid:           sid,
+		sessionDir:    filepath.Dir(tracePath),
 		source:        live,
 		driver:        server.OrchestratorDriver{Orch: orch, SID: sid, Jobs: rt.JobStore},
 		sink:          sink,
@@ -456,6 +492,8 @@ func (r *SessionRegistry) Get(sessionID string) (server.Entry, bool) {
 		Driver:    e.driver,
 		Meta:      &metaDriver{ctrl: r.metaControllerForLocked(e), chats: e.rt.ChatStore, entry: e},
 		Artifacts: &server.JournalArtifactResolver{Reader: e.rt.JournalRead, SID: e.sid},
+		Frames:    e.frameRecorderLocked(),
+		Feedback:  e.feedbackSinkLocked(),
 	}, true
 }
 

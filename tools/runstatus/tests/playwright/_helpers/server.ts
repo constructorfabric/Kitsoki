@@ -270,3 +270,87 @@ export async function saveVideoAsMp4(
   console.warn(`[video] ffmpeg mp4 transcode failed; using raw webm\n${r.stderr?.slice(0, 400)}`);
   return fallback;
 }
+
+// ── Chapter sidecar (mockup-video-studio epic, Slice 1) ─────────────────────
+//
+// The recorder emits the SAME producer-agnostic chapter sidecar shape that
+// host.slidey.render writes from the Go side (internal/video.Chapter), so the
+// slice-2 feedback panel reads one uniform chapter list regardless of whether
+// a video came from slidey or a tour walkthrough (epic shared decision 1).
+//
+// The schema is intentionally duplicated here in JS rather than shared — the
+// recorder already owns its dwell windows, and a checked-in JSON shape keeps
+// the two producers honest (proposal open question 2). Keep these fields in
+// lockstep with internal/video.Chapter / SourceRef.
+
+/** Names the producing unit a tour chapter came from. kind is always "tour". */
+export interface ChapterSourceRef {
+  kind: "tour";
+  spec_path: string;
+  step_id: string;
+  line?: number;
+}
+
+/** One [start_ms, end_ms) window mapped back to its tour step. */
+export interface Chapter {
+  index: number;
+  id: string;
+  label: string;
+  start_ms: number;
+  end_ms: number;
+  source_ref: ChapterSourceRef;
+}
+
+/**
+ * Accumulates per-step time windows during a tour walkthrough recording.
+ *
+ * Construct it at the moment recording starts (right after the context is
+ * created), then call `open(stepId, ...)` as each step's spotlight settles and
+ * `close()` when the walk moves on. The elapsed wall-clock since construction
+ * is the video timeline, so the windows line up with the recorded MP4.
+ */
+export class ChapterRecorder {
+  private readonly t0 = Date.now();
+  private readonly chapters: Chapter[] = [];
+  private open_: { id: string; label: string; specPath: string; line?: number; startMs: number } | null = null;
+
+  /** Begin a chapter for `stepId`. Closes any currently-open chapter first. */
+  open(stepId: string, label: string, specPath: string, line?: number): void {
+    this.close();
+    this.open_ = { id: stepId, label, specPath, line, startMs: Date.now() - this.t0 };
+  }
+
+  /** Close the current chapter, sealing its end at the current elapsed time. */
+  close(): void {
+    if (!this.open_) return;
+    const o = this.open_;
+    this.chapters.push({
+      index: this.chapters.length,
+      id: o.id,
+      label: o.label,
+      start_ms: o.startMs,
+      end_ms: Date.now() - this.t0,
+      source_ref: { kind: "tour", spec_path: o.specPath, step_id: o.id, ...(o.line ? { line: o.line } : {}) },
+    });
+    this.open_ = null;
+  }
+
+  /** The collected chapters (closes any open one first). */
+  list(): Chapter[] {
+    this.close();
+    return this.chapters;
+  }
+}
+
+/**
+ * Write a chapter sidecar beside a rendered video as `<video>.chapters.json`
+ * (epic cross-cutting Q1 — sibling file), matching internal/video.SidecarPath.
+ * Returns the sidecar path, or null when there is no video / no chapters.
+ */
+export function writeChapters(videoPath: string | null, chapters: Chapter[]): string | null {
+  if (!videoPath || chapters.length === 0) return null;
+  const sidecar = `${videoPath}.chapters.json`;
+  fs.writeFileSync(sidecar, JSON.stringify(chapters, null, 2) + "\n");
+  console.log(`[chapters] ${sidecar} (${chapters.length})`);
+  return sidecar;
+}

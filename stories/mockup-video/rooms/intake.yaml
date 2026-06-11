@@ -1,0 +1,82 @@
+# intake — scenario-brief discovery. A conversation, not a form.
+#
+# A mockup-video brief (the feature being mocked, the user scenarios to walk,
+# tour vs deck) is awkward to type into a single field, so intake is a chat
+# (memory: freeform-capture-is-conversational): the operator talks, the
+# `interviewer` agent sharpens it, and `ready` distils the conversation into
+# world.brief before the concreteness gate.
+#
+# mode: conversational, mirroring stories/prd/rooms/idle.yaml. on_enter ONLY
+# resolves the persistent chat (get-or-create, reload-safe). The discuss
+# self-loop uses `target: .` so on_enter does NOT re-fire and re-create the
+# chat; the converse call lives in the arc's own effects.
+
+states:
+
+  intake:
+    mode: conversational
+    description: "Describe the mockup video you want — talk it through."
+    relevant_world: [workspace, medium, brief, intake_message, intake_answer, intake_turns, brief_decision]
+    view:
+      - heading: "Mockup video studio · intake"
+      - prose: "Describe the feature you want a walkthrough mockup of, and the user scenarios to walk. Tell me whether you want a **tour** (static HTML pages driven through a Playwright walkthrough) or a **deck** (a slidey JSON deck). I'll help sharpen it."
+        when: "world.intake_turns == 0"
+      - prose: "Discovery in progress — keep sharpening the brief with me."
+        when: "world.intake_turns > 0"
+      - kv:
+          pairs:
+            Workspace: "{{ world.workspace }}"
+            Medium:    "{{ world.medium }}"
+            Turns:     "{{ world.intake_turns }}"
+      - prose: '{{ world.intake_answer }}'
+        when: "world.intake_answer"
+      - prose: '{{ world.brief_decision.reason }}'
+        when: "world.brief_decision.verdict == 'clarify'"
+      - prose: "Say **ready** when the brief is clear, or **quit** to abandon."
+    on_enter:
+      - invoke: host.chat.resolve
+        with:
+          app:       "mockup-video"
+          room:      "intake"
+          scope_key: "{{ world.workspace }}"
+          title:     "Mockup video brief discovery"
+        bind:
+          intake_chat_id: "chat_id"
+    on:
+      discuss:
+        - target: .
+          effects:
+            - set:
+                intake_message: "{{ slots.message }}"
+                intake_answer:  ""
+            - increment: { intake_turns: 1 }
+            - invoke: host.oracle.converse
+              with:
+                chat_id:     "{{ world.intake_chat_id }}"
+                agent:       interviewer
+                working_dir: "{{ world.workspace }}"
+                question:    "{{ slots.message }}"
+              bind:
+                intake_answer:  "answer"
+                intake_chat_id: "chat_id"
+
+      ready:
+        - target: brief-gate
+          effects:
+            - invoke: host.oracle.converse
+              id: distil_brief
+              with:
+                chat_id:     "{{ world.intake_chat_id }}"
+                agent:       interviewer
+                working_dir: "{{ world.workspace }}"
+                question:    "The discovery conversation is complete. Output ONLY a JSON object {feature, scenarios:[...], medium, notes} distilling the brief — no preamble."
+              bind:
+                brief: "brief"
+
+      quit:
+        - target: "@exit:abandoned"
+          effects:
+            - set:
+                abandon_reason: "abandoned_at_intake"
+      look:
+        - target: .

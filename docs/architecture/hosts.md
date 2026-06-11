@@ -66,6 +66,7 @@ carrier handler when the op name is dispatched from `with:` args.
 | [`host.ide.*`](#hostide--editor-awareness) | Editor awareness over the live IDE link: diagnostics, selection, open editors, open file/diff. |
 | [`host.slidey.render`](#hostslideyrender) | Validate + render a JSON scene spec to MP4, PDF, or interactive HTML via the slidey pipeline. |
 | [`host.contact_sheet`](#hostcontact_sheet) | Assemble a PNG contact-sheet montage from a directory of PNG frames via ffmpeg. |
+| [`host.video.frame`](#hostvideoframe) | Grab a single still PNG from a video at a timestamp via ffmpeg; deterministic, no LLM. |
 
 Every handler must be present in the app's top-level `hosts:`
 allow-list to be invokable.
@@ -1418,9 +1419,13 @@ Returns:
 | `exit_code` | int | Raw exit code from the slidey process. |
 | `stdout` | string | Combined stdout from the render step. |
 | `stderr` | string | Combined stderr from the render step. |
+| `chapters_path` | string | (video renders only) Path of the emitted chapter sidecar — see [the chapter sidecar](#the-chapter-sidecar). Absent when sidecar emission failed (then `chapters_error` carries why); a failed sidecar never fails an otherwise-successful render. |
 
 The handler runs `--validate` against the spec before the full render. A
 validation failure sets `Result.Error` rather than attempting a broken render.
+For an `mp4` render the handler also emits a [chapter sidecar](#the-chapter-sidecar)
+beside the output (`<output>.chapters.json`) mapping each slidey scene back to
+the moment it produced.
 
 **Example (render then emit):**
 
@@ -1478,6 +1483,79 @@ Frames are sorted and fed to ffmpeg via a concat demuxer list (not shell glob
 expansion), so ordering is deterministic across systems.
 
 Implementation: [`internal/host/visual_producers.go`](../../internal/host/visual_producers.go).
+
+---
+
+## host.video.frame
+
+Grab a single still PNG from a video at an arbitrary timestamp. Deterministic,
+no LLM — shells `ffmpeg -ss <t> -i <video> -frames:v 1 <out.png>` through the
+shared [`internal/video`](../../internal/video) extractor. That extractor is
+the **one** ffmpeg-frame invocation site: this host call and the `/review`
+web RPC (mockup-video-studio slice 2) both call it. When `ffmpeg` is absent,
+`Result.Error` is set (`host.video.frame: ffmpeg not found …`) so `on_error:`
+arcs degrade gracefully.
+
+Like the producers, this handler returns a path; it does **not** record the
+artifact. Hand `path` to [`host.artifacts_dir`](#hostartifacts_dir) (media-emit)
+to register the still and get a stable handle.
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `video` | string \| map | yes | The source video: an absolute path, or a media-handle map carrying a `path` field. |
+| `t_ms` | int | yes | Timestamp in milliseconds from the start of the video. Canonical addressing is by timestamp; scene/step addressing is resolved to `t_ms` by the slice-2 RPC before calling. |
+
+Returns:
+
+| Field | Type | Notes |
+|---|---|---|
+| `ok` | bool | True when the frame was extracted. |
+| `path` | string | Absolute path of the grabbed PNG. |
+| `mime` | string | Always `image/png`. |
+| `kind` | string | Always `image`. |
+
+Implementation: [`internal/host/video_frame.go`](../../internal/host/video_frame.go),
+extractor in [`internal/video/video.go`](../../internal/video/video.go).
+
+### The chapter sidecar
+
+Every kitsoki-produced video may carry a **chapter sidecar** — a
+producer-agnostic file at `<video>.chapters.json` mapping each moment of the
+video back to the unit that produced it, so a flagged moment resolves to an
+editable source (a slidey scene or a tour step). One shape, two producers:
+`host.slidey.render` writes it from its scene list (`source_ref.kind = slidey`),
+and the `kitsoki-ui-demo` tour recorder writes the same shape from its
+`TourStep` dwell windows (`source_ref.kind = tour`). The sidecar is additive —
+a video without one still plays (consumers degrade to "no chapters").
+
+The file is a JSON array of chapters:
+
+```json
+[
+  {
+    "index": 0,
+    "id": "intro",
+    "label": "Intro",
+    "start_ms": 0,
+    "end_ms": 2000,
+    "source_ref": { "kind": "slidey", "spec_path": "deck.json", "scene_id": "intro" }
+  }
+]
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `index` | int | 0-based position in the video. |
+| `id` | string | Stable chapter id (slidey scene id / tour step id). |
+| `label` | string | Human label (scene title / step title). |
+| `start_ms`, `end_ms` | int | The `[start, end)` window in milliseconds. For slidey, derived from each scene's `duration_ms` (or an even split of a top-level `total_ms`); zero-width when the spec carries no timing — the scene→source map is still complete. |
+| `source_ref` | object | `{kind: "slidey"\|"tour", spec_path, scene_id\|step_id, line?}` — names the producing unit. |
+
+Types and read/write helpers live in [`internal/video`](../../internal/video)
+(`Chapter`, `SourceRef`, `SidecarPath`, `WriteChapters`, `ReadChapters`); the
+tour recorder mirrors the JSON shape in
+[`tools/runstatus/tests/playwright/_helpers/server.ts`](../../tools/runstatus/tests/playwright/_helpers/server.ts)
+(`ChapterRecorder`, `writeChapters`).
 
 ---
 

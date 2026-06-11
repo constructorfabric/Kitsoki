@@ -1,8 +1,20 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import { useRoute } from "vue-router";
 import type { ViewElement } from "../types.js";
 import { createDataSource } from "../data/source.js";
 import MarkdownModal from "./MarkdownModal.vue";
+
+// Current route — used only to recover the active sessionId so a rendered video
+// can link to its /review feedback surface (the room view renders inline in
+// /s/:sessionId; the flag-a-moment UI lives at /review/:sessionId).
+// useRoute() is undefined when the component is mounted without a router
+// (e.g. unit tests); the review link is simply absent there.
+const _route = useRoute();
+const _sessionId = computed<string>(() => {
+  const sid = _route?.params?.sessionId;
+  return typeof sid === "string" ? sid : "";
+});
 
 // Resolve artifact URLs through the ambient DataSource (live or snapshot).
 // createDataSource() is cheap: it reads window.__KITSOKI_SNAPSHOT__ once and
@@ -16,6 +28,42 @@ function artifactUrl(handle: string): string {
 const props = defineProps<{ element: ViewElement }>();
 
 const el = computed(() => props.element);
+
+// ── Media normalisation ──────────────────────────────────────────────────────
+// The engine (internal/app.ViewElement) and any future producer may send EITHER
+// the SPA-native {Handle, Mime, Caption} shape OR the engine-native
+// {MediaHandle, MediaCaption, MediaKind} shape. Normalise to one accessor set so
+// the template's MIME-family dispatch works for both. MIME is derived from
+// MediaKind when no explicit Mime is present (the engine selects by kind, not a
+// MIME string), with a video/* default for the common walkthrough case.
+const KIND_MIME: Record<string, string> = {
+  video: "video/mp4",
+  image: "image/png",
+  pdf: "application/pdf",
+  html: "text/html",
+  slideshow: "text/html",
+};
+const mediaHandle = computed<string>(() => el.value.Handle ?? el.value.MediaHandle ?? "");
+const mediaCaption = computed<string>(() => el.value.Caption ?? el.value.MediaCaption ?? "");
+// "Open in review" affordance: when a video renders inside a live session view,
+// link to the /review feedback surface for that handle. Absent off-session
+// (snapshot / artifact mode) where there is no sessionId to scrub against.
+const reviewHref = computed<string | null>(() => {
+  const sid = _sessionId.value;
+  if (!sid || !mediaHandle.value) return null;
+  return `#/review/${encodeURIComponent(sid)}?video=${encodeURIComponent(
+    mediaHandle.value
+  )}`;
+});
+const mediaMime = computed<string>(() => {
+  if (el.value.Mime) return el.value.Mime;
+  const kind = (el.value.MediaKind ?? "").toLowerCase();
+  if (kind && KIND_MIME[kind]) return KIND_MIME[kind];
+  // Fall back on the handle's stem hint (…#hash carries no extension), then the
+  // common case: a rendered walkthrough is an mp4. A wrong guess only changes
+  // which player branch renders; /artifact/{id} sets the real Content-Type.
+  return "video/mp4";
+});
 
 /**
  * Split a block of prose into paragraphs on blank lines. We deliberately do NOT
@@ -150,59 +198,70 @@ const bannerClass = computed(() => {
   <!-- choice elements are rendered as interactive buttons by InputBar; omit here to avoid duplication. -->
 
   <!-- media: dispatch on MIME family; fall back to a labeled download link. -->
-  <div v-else-if="el.Kind === 'media'" class="ve-media">
-    <template v-if="el.Handle">
+  <div v-else-if="el.Kind === 'media'" class="ve-media" data-testid="media-element">
+    <template v-if="mediaHandle">
       <!-- video/* → native player with Range-request support for seeking -->
       <video
-        v-if="(el.Mime ?? '').startsWith('video/')"
+        v-if="mediaMime.startsWith('video/')"
         class="ve-media-video"
+        data-testid="media-video"
         controls
         preload="metadata"
-        :src="artifactUrl(el.Handle)"
+        :src="artifactUrl(mediaHandle)"
       >
         <span class="ve-media-fallback">
           Your browser does not support video playback.
-          <a :href="artifactUrl(el.Handle)">Download</a>
+          <a :href="artifactUrl(mediaHandle)">Download</a>
         </span>
       </video>
 
+      <!-- video → "Open in review": the inline player is read-only; flagging a
+           scene / time-range and dispatching feedback lives on the /review
+           surface. Shown only inside a live session (reviewHref non-null). -->
+      <a
+        v-if="mediaMime.startsWith('video/') && reviewHref"
+        class="ve-media-review-link"
+        data-testid="media-review-link"
+        :href="reviewHref"
+      >Open in review — flag a scene or moment →</a>
+
       <!-- image/* → lazy-loaded image -->
       <img
-        v-else-if="(el.Mime ?? '').startsWith('image/')"
+        v-else-if="mediaMime.startsWith('image/')"
         class="ve-media-image"
         loading="lazy"
-        :src="artifactUrl(el.Handle)"
-        :alt="el.Caption ?? el.Handle"
+        :src="artifactUrl(mediaHandle)"
+        :alt="mediaCaption || mediaHandle"
       />
 
       <!-- application/pdf → inline frame -->
       <iframe
-        v-else-if="el.Mime === 'application/pdf'"
+        v-else-if="mediaMime === 'application/pdf'"
         class="ve-media-iframe"
-        :src="artifactUrl(el.Handle)"
-        :title="el.Caption ?? el.Handle"
+        :src="artifactUrl(mediaHandle)"
+        :title="mediaCaption || mediaHandle"
       />
 
       <!-- text/html → sandboxed frame (no scripts, no same-origin access) -->
       <iframe
-        v-else-if="el.Mime === 'text/html'"
+        v-else-if="mediaMime === 'text/html'"
         class="ve-media-iframe"
         sandbox
-        :src="artifactUrl(el.Handle)"
-        :title="el.Caption ?? el.Handle"
+        :src="artifactUrl(mediaHandle)"
+        :title="mediaCaption || mediaHandle"
       />
 
       <!-- unknown MIME → labeled download link -->
       <a
         v-else
         class="ve-media-link"
-        :href="artifactUrl(el.Handle)"
-        :download="el.Handle"
-      >{{ el.Caption ?? el.Handle }}</a>
+        :href="artifactUrl(mediaHandle)"
+        :download="mediaHandle"
+      >{{ mediaCaption || mediaHandle }}</a>
     </template>
 
     <!-- caption / label rendered below any media element when present -->
-    <p v-if="el.Caption" class="ve-media-caption">{{ el.Caption }}</p>
+    <p v-if="mediaCaption" class="ve-media-caption">{{ mediaCaption }}</p>
   </div>
 </template>
 
@@ -413,6 +472,21 @@ const bannerClass = computed(() => {
   text-decoration: underline;
   font-size: 15px;
   word-break: break-all;
+}
+
+.ve-media-review-link {
+  display: inline-block;
+  margin-top: 0.5em;
+  padding: 0.35em 0.75em;
+  background: #1d4ed8;
+  color: #fff;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+}
+.ve-media-review-link:hover {
+  background: #1a43bd;
 }
 
 .ve-media-fallback {

@@ -1,0 +1,80 @@
+# refine_inline_then_accept — review → refine feedback="logo too small on scene 1"
+#   → refining (task edits scene) → rendering → review → accept → done.
+# Asserts iterations grew to length 1 (one refine pass recorded).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: review
+initial_world:
+  workspace: ".artifacts/mockup-video/test"
+  medium:    "deck"
+  brief:
+    feature: "The /review video feedback panel"
+    scenarios: ["open panel", "flag a scene"]
+    medium: "deck"
+    notes: ""
+  source: { kind: "slidey", paths: ["d.json"], spec_path: "d.json", summary: "deck" }
+  video_handle: "mockup-video#1"
+  chapters_handle: "mockup-chapters#1"
+  feedback_batch: { items: [] }
+  iterations: { items: [] }
+  cycle: 0
+  refine_budget: 6
+
+host_handlers:
+  host.oracle.task:
+    by_call:
+      refine_source:
+        data:
+          ok: true
+          submitted:
+            kind: "slidey"
+            paths: ["d.json"]
+            spec_path: "d.json"
+            summary: "Enlarged the logo on scene 1 per the directive."
+            edited: ["scene:scenario-1"]
+
+  host.starlark.run:
+    data:
+      iterations:
+        items:
+          - video_handle: "mockup-video#1"
+            feedback_addressed: ["scene:scenario-1"]
+            instruction: "logo too small on scene 1"
+
+  host.slidey.render:
+    by_call:
+      render_deck:
+        data: { ok: true, path: "x2.mp4", chapters_path: "x2.json" }
+
+  host.run:
+    by_call:
+      drain_feedback:
+        data: { ok: true, exit_code: 0, stdout_json: { items: [] } }
+
+  host.artifacts_dir:
+    by_call:
+      emit_video:
+        data: { ok: true, handle: { id: "mockup-video#2", kind: "video", mime: "video/mp4" }, path: "x2.mp4", kind: "video", mime: "video/mp4" }
+      emit_chapters:
+        data: { ok: true, handle: { id: "mockup-chapters#2", kind: "data", mime: "application/json" }, path: "x2.json", kind: "data", mime: "application/json" }
+
+turns:
+  # review: refine with an inline note → refining (task edits) → records the
+  # iteration, clears render binds, re-renders → auto accept → review.
+  - intent: { name: refine, slots: { feedback: "logo too small on scene 1" } }
+    expect_state: review
+    expect_world:
+      cycle: 1
+      video_handle: "mockup-video#2"
+      iterations:
+        items:
+          - video_handle: "mockup-video#1"
+            feedback_addressed: ["scene:scenario-1"]
+            instruction: "logo too small on scene 1"
+
+  # accept the improved render → done.
+  - intent: { name: accept, slots: {} }
+    expect_state: done
+
+expect_no_errors: true

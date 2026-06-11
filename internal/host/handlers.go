@@ -288,6 +288,11 @@ func RegisterBuiltins(r *Registry) {
 	r.Register("host.slidey.render", SlideyRenderHandler)
 	r.Register("host.contact_sheet", ContactSheetHandler)
 
+	// Mockup-video-studio epic, Slice 1 — host.video.frame.
+	// Deterministic single-frame still grab over internal/video.Frame (the
+	// one extractor shared with the slice-2 web RPC); no LLM.
+	r.Register("host.video.frame", VideoFrameHandler)
+
 	// Embeddings epic, Slice 2 — host.oracle.search.
 	// The sentinel handler returns a configuration-required error; apps that
 	// want a working embedder call NewOracleSearchHandler and re-register.

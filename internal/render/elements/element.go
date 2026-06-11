@@ -337,8 +337,19 @@ func evalElementSources(el app.ViewElement, env expr.Env, rr ViewRenderer) (app.
 			el.ChoiceItems = filtered
 		}
 	case "media":
-		// Expand pongo2 templates in caption and path so world slot
-		// references (e.g. {{world.artifact_path}}) resolve at render time.
+		// Expand pongo2 templates in handle, caption and path so world slot
+		// references (e.g. {{world.video_handle}}) resolve at render time. The
+		// handle MUST be interpolated: it is the artifact id the browser
+		// resolves to a URL (/artifact/{id}) — left as a literal template the
+		// inline <video>/<img> src points at "{{ world.video_handle }}" and
+		// never loads.
+		if el.MediaHandle != "" {
+			h, err := renderLeaf(rr, el.MediaHandle, env)
+			if err != nil {
+				return el, fmt.Errorf("media handle: %w", err)
+			}
+			el.MediaHandle = strings.TrimSpace(h)
+		}
 		if el.MediaCaption != "" {
 			cap, err := renderLeaf(rr, el.MediaCaption, env)
 			if err != nil {
