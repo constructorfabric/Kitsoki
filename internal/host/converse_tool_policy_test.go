@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"kitsoki/internal/sysprompt"
 )
 
 func boolPtr(b bool) *bool { return &b }
@@ -26,28 +27,29 @@ func TestConverseToolPolicy(t *testing.T) {
 	t.Run("read-only downgrades bypassPermissions and denies mutators", func(t *testing.T) {
 		mode, disallowed := converseToolPolicy("bypassPermissions", readOnly)
 		require.Equal(t, "default", mode, "bypassPermissions must be downgraded so the allowlist binds")
-		require.Equal(t, readOnlyDeniedTools, disallowed)
+		require.Equal(t, withAlwaysDenied(readOnlyDeniedTools), disallowed)
 		require.Contains(t, disallowed, "Write")
 		require.Contains(t, disallowed, "Edit")
 		require.Contains(t, disallowed, "Bash", "Bash is arbitrary exec — must be denied for read-only")
+		require.Contains(t, disallowed, "AskUserQuestion", "AskUserQuestion is always denied — headless auto-resolves it empty")
 	})
 
 	t.Run("read-only enforcing mode still denies mutators", func(t *testing.T) {
 		mode, disallowed := converseToolPolicy("ask", readOnly)
 		require.Equal(t, "default", mode, "ask translates to the enforcing default CLI mode")
-		require.Equal(t, readOnlyDeniedTools, disallowed)
+		require.Equal(t, withAlwaysDenied(readOnlyDeniedTools), disallowed)
 	})
 
-	t.Run("write-capable agent gets only vocabulary translation", func(t *testing.T) {
+	t.Run("write-capable agent still denies AskUserQuestion", func(t *testing.T) {
 		mode, disallowed := converseToolPolicy("bypassPermissions", writeCapable)
 		require.Equal(t, "bypassPermissions", mode)
-		require.Nil(t, disallowed)
+		require.Equal(t, []string{"AskUserQuestion"}, disallowed, "even a write-capable agent must not run the headless-broken AskUserQuestion")
 	})
 
-	t.Run("unset external_side_effect is treated as write-capable", func(t *testing.T) {
+	t.Run("unset external_side_effect is treated as write-capable but still denies AskUserQuestion", func(t *testing.T) {
 		mode, disallowed := converseToolPolicy("bypassPermissions", unset)
 		require.Equal(t, "bypassPermissions", mode)
-		require.Nil(t, disallowed)
+		require.Equal(t, []string{"AskUserQuestion"}, disallowed)
 	})
 
 	// The kitsoki vocabulary "ask"/"denyAll" must never reach the claude CLI —
@@ -61,6 +63,38 @@ func TestConverseToolPolicy(t *testing.T) {
 	t.Run("denyAll translates to default plus the mutator deny-set", func(t *testing.T) {
 		mode, disallowed := converseToolPolicy("denyAll", writeCapable)
 		require.Equal(t, "default", mode)
-		require.Equal(t, readOnlyDeniedTools, disallowed)
+		require.Equal(t, withAlwaysDenied(readOnlyDeniedTools), disallowed)
 	})
+}
+
+// TestAlwaysDeniedTools_HeadlessAskUserQuestion locks in the headless fix:
+// AskUserQuestion must be denied on every oracle subprocess, because a
+// dispatched `claude -p` has no TTY and the CLI auto-resolves the tool with
+// empty answers (upstream anthropics/claude-code#50728), silently feeding the
+// model a blank answer. See alwaysDeniedTools.
+func TestAlwaysDeniedTools_HeadlessAskUserQuestion(t *testing.T) {
+	require.Contains(t, alwaysDeniedTools, "AskUserQuestion")
+
+	t.Run("buildBaseCLIArgs denies it for ask/decide/task", func(t *testing.T) {
+		args := buildBaseCLIArgs(t.Context(), sysprompt.Task, map[string]any{}, Agent{})
+		require.Contains(t, args, "--disallowedTools")
+		idx := indexOf(args, "--disallowedTools")
+		require.Greater(t, len(args), idx+1)
+		require.Contains(t, args[idx+1], "AskUserQuestion")
+	})
+
+	t.Run("withAlwaysDenied merges without duplicating", func(t *testing.T) {
+		got := withAlwaysDenied([]string{"Bash", "AskUserQuestion"})
+		require.Equal(t, []string{"Bash", "AskUserQuestion"}, got, "already-present entry must not be duplicated")
+		require.Equal(t, []string{"AskUserQuestion"}, withAlwaysDenied(nil))
+	})
+}
+
+func indexOf(s []string, v string) int {
+	for i, x := range s {
+		if x == v {
+			return i
+		}
+	}
+	return -1
 }

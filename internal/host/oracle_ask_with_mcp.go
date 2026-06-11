@@ -652,6 +652,9 @@ func oracleAskWithMCPCore(ctx context.Context, rendered, resolvedPrompt string, 
 	if tools := effectiveTools(ctx, args, agent); len(tools) > 0 {
 		cliArgs = appendAllowedToolsFlag(cliArgs, tools)
 	}
+	// Hard-deny AskUserQuestion: headless `-p` auto-resolves it with empty
+	// answers (see alwaysDeniedTools).
+	cliArgs = appendDisallowedToolsFlag(cliArgs, alwaysDeniedTools)
 
 	// Build the merged mcp_servers map: caller-provided entries plus an
 	// auto-attached "validator" entry when `schema:` is set and the caller

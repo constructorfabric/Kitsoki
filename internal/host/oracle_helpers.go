@@ -112,5 +112,9 @@ func buildBaseCLIArgs(ctx context.Context, verb sysprompt.Verb, args map[string]
 	if effort := strings.TrimSpace(effectiveEffort(args, agent)); effort != "" {
 		cliArgs = append(cliArgs, "--effort", effort)
 	}
+	// Hard-deny AskUserQuestion on every ask/decide/task subprocess: headless
+	// `-p` has no TTY, so the CLI auto-resolves it with empty answers and the
+	// model proceeds on a guess (see alwaysDeniedTools).
+	cliArgs = appendDisallowedToolsFlag(cliArgs, alwaysDeniedTools)
 	return cliArgs
 }

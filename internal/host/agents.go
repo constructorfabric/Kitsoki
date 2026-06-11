@@ -337,6 +337,43 @@ func appendDisallowedToolsFlag(cliArgs []string, tools []string) []string {
 // do.
 var readOnlyDeniedTools = []string{"Write", "Edit", "MultiEdit", "NotebookEdit", "Bash"}
 
+// alwaysDeniedTools are tools denied on EVERY oracle subprocess regardless of
+// agent posture or permission mode.
+//
+// AskUserQuestion is the headless landmine: when a dispatched `claude -p` agent
+// calls it, there is no interactive TTY to answer, so the CLI auto-resolves the
+// tool immediately with EMPTY answers (~37ms; upstream
+// anthropics/claude-code#50728). The model "hears" a blank answer and proceeds
+// on a guess — the silent wrong-output failure operators kept hitting. kitsoki's
+// supported channel for "ask the human" is the story's own ask/converse verbs
+// surfaced to the TUI/web operator, never the embedded AskUserQuestion tool, so
+// we hard-deny it everywhere. --disallowedTools is honoured even under
+// bypassPermissions (see appendDisallowedToolsFlag), so this is a reliable
+// backstop that forces the model to decide or to emit a plain-text question we
+// can surface, instead of silently consuming an empty answer.
+var alwaysDeniedTools = []string{"AskUserQuestion"}
+
+// withAlwaysDenied merges alwaysDeniedTools into an agent/posture-specific deny
+// list, de-duplicating so a tool already present (e.g. via readOnlyDeniedTools)
+// is not emitted twice.
+func withAlwaysDenied(disallowed []string) []string {
+	seen := make(map[string]bool, len(disallowed))
+	out := make([]string, 0, len(disallowed)+len(alwaysDeniedTools))
+	for _, t := range disallowed {
+		if !seen[t] {
+			seen[t] = true
+			out = append(out, t)
+		}
+	}
+	for _, t := range alwaysDeniedTools {
+		if !seen[t] {
+			seen[t] = true
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
 // agentIsReadOnly reports whether an agent has explicitly declared
 // external_side_effect: false. Unset (nil) is treated as write-capable so the
 // posture only tightens for agents that opted into read-only.
@@ -386,6 +423,10 @@ func converseToolPolicy(permMode string, agent Agent) (cliMode string, disallowe
 		}
 		disallowed = readOnlyDeniedTools
 	}
+	// AskUserQuestion is denied on every converse turn too — same headless
+	// auto-resolve hazard (see alwaysDeniedTools). Merge so we never emit a
+	// duplicate --disallowedTools entry alongside readOnlyDeniedTools.
+	disallowed = withAlwaysDenied(disallowed)
 	return cliMode, disallowed
 }
 
