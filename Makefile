@@ -1,6 +1,9 @@
 BINARY    := kitsoki
 PKG       := ./cmd/kitsoki
-INSTALLDIR ?= $(HOME)/bin
+# Default install dir: macOS doesn't put ~/bin on PATH (and doesn't create it),
+# so default to ~/.local/bin there — already on PATH for typical setups. Linux
+# keeps the classic ~/bin. Override with `make install INSTALLDIR=...`.
+INSTALLDIR ?= $(if $(filter Darwin,$(shell uname -s)),$(HOME)/.local/bin,$(HOME)/bin)
 
 # Runstatus SPA: built by vite (pnpm) under tools/runstatus, then staged into
 # the Go embed dir so the binary can serve it (status serve) and inline it into
@@ -50,6 +53,12 @@ install: check-deps web
 	@mkdir -p $(INSTALLDIR)
 	GOBIN=$(INSTALLDIR) go install $(PKG)
 	@echo "installed $(BINARY) -> $(INSTALLDIR)/$(BINARY)"
+	@case ":$$PATH:" in \
+		*":$(INSTALLDIR):"*) ;; \
+		*) echo "warning: $(INSTALLDIR) is not on your PATH — '$(BINARY)' won't be found." >&2; \
+		   echo "         add it (e.g. 'export PATH=\"$(INSTALLDIR):\$$PATH\"' in your shell profile)" >&2; \
+		   echo "         or reinstall with 'make install INSTALLDIR=<dir-on-path>'." >&2;; \
+	esac
 
 uninstall:
 	rm -f $(INSTALLDIR)/$(BINARY)
