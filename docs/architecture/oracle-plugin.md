@@ -359,8 +359,9 @@ silently substituted.
 
 In managed mode the sidecar is **zero-touch**: on the first `oracle.local`
 call kitsoki fetches the pinned `llama-server` release archive for the host
-platform and the model's GGUF weights into a cache dir
-(`~/.cache/kitsoki/{bin,models}`, overridable via `KITSOKI_CACHE_DIR`),
+platform and the model's GGUF weights into the user cache dir
+(`~/Library/Caches/kitsoki` on macOS, `~/.cache/kitsoki` on Linux;
+`{bin,models}` subdirs, overridable via `KITSOKI_CACHE_DIR`),
 sha256-verifying each against a baked pin before use, then spawns `llama-server`
 bound to `127.0.0.1` and health-gates on `GET /health` before the first POST.
 The release archive is extracted into one per-release directory (the binary plus
@@ -404,15 +405,20 @@ make fetch-models MODEL=<id>     # fetch a specific model
 `endpoint:` mode bypasses all fetching, spawning, and the make targets: it
 attaches to a server you already run and never owns its lifecycle.
 
-The `linux/amd64` pins (llama.cpp release + default Qwen2.5-1.5B GGUF + the
-libstdc++ shim) are filled and proven; `darwin/arm64` is still a TODO placeholder
-(its archive sha must be verified on Apple Silicon), so managed mode on Apple
-Silicon currently fails loudly — use `endpoint:` mode there meanwhile.
+The `linux/amd64` and `darwin/arm64` pins (llama.cpp release b9444 + default
+Qwen2.5-1.5B GGUF, plus the libstdc++ shim on older-glibc Linux) are filled and
+proven end-to-end, so managed mode works zero-touch on both Linux/amd64 and
+Apple Silicon. The macOS archive's Metal-enabled dylibs resolve via
+`@loader_path`, so the same flat-extraction layout works without any extra
+environment. Other platforms have no pin yet and fail loudly — use `endpoint:`
+mode there.
 
 **Measured throughput** (10-core CPU Rocky/RHEL 9.4 VM, Qwen2.5-1.5B Q4_K_M,
 `--parallel 4`): generation ~6.9 tok/s, prompt ~56 tok/s, weights load ~2-3s; a
 cold managed `decide` (~1.1 GB download + load + decode) ~24-28s, a warm one
-~12-13s. **Calibration note:** llama.cpp grammar constrains JSON *shape*, not
+~12-13s. On Apple Silicon with Metal the same default model serves a warm
+grammar-constrained `decide` in well under a second (~0.7s measured on an M-series
+laptop). **Calibration note:** llama.cpp grammar constrains JSON *shape*, not
 numeric *range*, so a small model may emit e.g. `confidence: 95` for a `0..1`
 field — the decide prompt should state field scales, and any out-of-range output
 is caught by `ValidateSubmission`, which trips the `oracle.claude` fallback.

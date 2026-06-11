@@ -59,10 +59,12 @@ Landed in code:
 
 ```
 - [x] 3.3 DONE. Real download pins filled in internal/oracle/server/fetch.go
-          (linux/amd64 llama.cpp release b9444 + default Qwen2.5-1.5B GGUF +
-          conda-forge libstdcxx-ng shim, all sha256-pinned). darwin/arm64 pin
-          still TODO (verify its archive sha on Apple Silicon; managed mode there
-          fails loudly until then — endpoint: mode and Linux are unaffected).
+          (linux/amd64 AND darwin/arm64 llama.cpp release b9444 + default
+          Qwen2.5-1.5B GGUF + conda-forge libstdcxx-ng shim on older-glibc Linux,
+          all sha256-pinned). darwin/arm64 archive sha verified on Apple Silicon
+          and the managed e2e (TestLocalLLMManagedEndToEnd) passes there; the
+          macOS dylibs resolve via @loader_path so flat extraction works with no
+          extra env. Managed mode now zero-touch on both platforms.
 - [ ] 3.2 Live A/B: point one real story's decide gate (e.g. the pr-refinement
           merge judge) at oracle.local behind a flag and compare against
           oracle.claude. The fetchable model now exists (3.3), so this is
@@ -92,8 +94,10 @@ calibrated, `extract_llm_on_no_match` is honoured as a breadcrumb only.
 10-core CPU Rocky/RHEL 9.4 VM with Qwen2.5-1.5B-Instruct Q4_K_M and
 `--parallel 4`: generation ~6.9 tok/s, prompt ~56 tok/s, weights load ~2-3s. A
 cold managed `decide` (download ~1.1 GB + load + decode) ran ~24-28s end-to-end;
-a warm `decide` (server already up) ~12-13s. macOS/Metal numbers are still
-unmeasured (no Apple Silicon box here) and remain a nice-to-have for 3.2.
+a warm `decide` (server already up) ~12-13s. macOS/Metal MEASURED on an
+M-series laptop via the managed e2e: cold `decide` (download + load + decode)
+~27s, warm `decide` ~0.7s (Metal-accelerated) — substantially faster warm than
+the CPU VM.
 
 ## Non-goals (unchanged)
 

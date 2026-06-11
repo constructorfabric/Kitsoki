@@ -54,15 +54,19 @@ type pin struct {
 // is over the archive as downloaded.
 //
 // Pinned to llama.cpp release b9444 (the build verified end-to-end against
-// Qwen2.5-1.5B on a Linux CPU box). darwin/arm64 is left unset until its archive
-// sha is verified on Apple Silicon; managed mode there fails loudly rather than
-// fetching something unpinned (endpoint: mode and Linux are unaffected).
+// Qwen2.5-1.5B on both a Linux CPU box and Apple Silicon). The darwin/arm64
+// archive ships Metal-enabled dylibs that resolve via @loader_path, so the same
+// flat-extraction layout that LD_LIBRARY_PATH needs on Linux also lets the
+// binary find its libraries on macOS with no extra env (see ldLibraryPathEnv).
 var binPins = map[string]pin{
 	"linux/amd64": {
 		url:    "https://github.com/ggml-org/llama.cpp/releases/download/b9444/llama-b9444-bin-ubuntu-x64.tar.gz",
 		sha256: "5d676e97ca82353256f24ed381be60c71f721b4ab52962483e5fce22ea8b3fd4",
 	},
-	"darwin/arm64": {url: "", sha256: ""}, // TODO(local-model-oracle): verify the macos-arm64 archive sha on Apple Silicon.
+	"darwin/arm64": {
+		url:    "https://github.com/ggml-org/llama.cpp/releases/download/b9444/llama-b9444-bin-macos-arm64.tar.gz",
+		sha256: "36cd51637cf480220eb29b0adf2003b25e4d6e1665920c29634b49355414e8b8",
+	},
 }
 
 // modelPins maps a model id to the GGUF weights to fetch. Default is the small
