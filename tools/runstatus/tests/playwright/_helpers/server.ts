@@ -139,10 +139,22 @@ export async function startWebServer(opts: {
   const args = ["web", "--stories-dir", storiesDir, "--flow", opts.flow, "--addr", opts.addr, "--db", dbPath];
   if (opts.hostCassette) args.push("--host-cassette", opts.hostCassette);
 
+  // Slow-play passthrough (opt-in): when the RECORDING process has
+  // KITSOKI_CASSETTE_SLOWPLAY set, forward it to the spawned server so a
+  // `KITSOKI_CASSETTE_SLOWPLAY=1 pnpm exec playwright test <spec>` run records
+  // the cassette REPLAY streaming its agent-action transcript live (paced by
+  // recorded timings) into the web turn-stream. An UNSET run inherits nothing
+  // here, so the default `playwright test` posture stays instant + deterministic
+  // (CLAUDE.md: tests must not slow down or become non-deterministic by default).
+  const childEnv = { ...process.env };
+  if (process.env.KITSOKI_CASSETTE_SLOWPLAY !== undefined) {
+    childEnv.KITSOKI_CASSETTE_SLOWPLAY = process.env.KITSOKI_CASSETTE_SLOWPLAY;
+  }
+
   const proc: ChildProcess = spawn(
     BIN,
     args,
-    { cwd: repoRoot, stdio: ["ignore", "pipe", "pipe"] },
+    { cwd: repoRoot, stdio: ["ignore", "pipe", "pipe"], env: childEnv },
   );
   proc.stdout?.on("data", (d: Buffer) => (serverLog += d.toString()));
   proc.stderr?.on("data", (d: Buffer) => (serverLog += d.toString()));
