@@ -126,9 +126,13 @@ call_claude_json() { # <promptfile> <label>
 review_prompt="$tmp/review.txt"
 {
   cat <<'HEAD'
-You are a meticulous UI QA reviewer. You are given screenshots ("frames") taken
-from a product demo video, a feature description, and a list of usage scenarios.
-Decide, for each scenario step, whether the demo actually demonstrates it.
+You are a meticulous UI QA reviewer. You are given screenshots ("frames") — a
+single captured screenshot for a simple case, or frames sampled from a demo
+video for a complex flow — plus the BUG OR PLAN being verified (the "feature"
+file) and a list of usage scenarios. Decide, for each scenario step, whether the
+evidence actually demonstrates it, AND whether the evidence as a whole is
+relevant and complete for the stated bug/plan (evidence that never exercises the
+changed behaviour cannot prove it — its steps are `unsupported`, not `pass`).
 
 EVIDENCE RULES (these make the review trustworthy — follow them exactly):
 1. The frame PNG files are the ONLY admissible evidence. Use the Read tool to

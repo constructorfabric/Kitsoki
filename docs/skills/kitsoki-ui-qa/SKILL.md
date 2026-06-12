@@ -1,15 +1,62 @@
 ---
 name: kitsoki-ui-qa
-description: Validate a UI demo video against a feature description and usage scenarios — the inverse of kitsoki-ui-demo. Extracts deterministic frames, has a read-only `claude` vision agent judge each scenario against cited frames, adversarially re-checks every pass, and emits a gated qa-report.md + verdict.json. Use when asked to QA / review / validate / sign off on a demo or walkthrough video, or to gate one in CI.
+description: Validate UI evidence (a screenshot for simple cases, a video for complex flows) against the bug or plan being verified plus usage scenarios — the inverse of kitsoki-ui-demo. Picks the evidence form by complexity, extracts deterministic frames, has a read-only `claude` vision agent judge each scenario against cited frames AND whether the evidence is complete for the stated bug/plan, adversarially re-checks every pass, and emits a gated qa-report.md + verdict.json. Use when asked to QA / review / validate / sign off on a demo, walkthrough, screenshot, or bug-fix proof, or to gate one in CI.
 ---
 
 # Kitsoki UI demo QA
 
-The **inverse** of [[kitsoki-ui-demo]]: that skill *produces* a demo video; this
-one *validates* one. Given a **feature description**, a list of **usage
-scenarios**, and the **video** (or pre-extracted frames), it decides — with
-cited evidence — whether the demo actually demonstrates each scenario, and exits
+The **inverse** of [[kitsoki-ui-demo]]: that skill *produces* visual evidence;
+this one *validates* it. Given **the bug or plan being verified**, a list of
+**usage scenarios**, and the **evidence** (a screenshot for a simple case, a
+video for a complex flow — or pre-extracted frames), it decides — with cited
+evidence — whether the demo actually demonstrates each scenario, and exits
 non-zero if a required one doesn't, so it can gate a release.
+
+## Evidence is judged against the bug/plan — never in a vacuum
+
+This skill **requires the bug or plan** as its `--feature` input (it is the
+spec, not just background prose). The vision review answers two questions, not
+one:
+
+1. Does each scenario step appear, grounded in a cited frame? (the per-step
+   verdict)
+2. **Is the evidence complete and relevant for *this* bug/plan?** Evidence that
+   is well-formed but doesn't actually exercise the changed behaviour — a video
+   of an unrelated flow, a screenshot of the wrong state, a "before" that never
+   shows the "after" the fix promises — is `unsupported`, even if every frame is
+   crisp. A demo can be a perfectly good video and still be the wrong evidence.
+
+So write the `--feature` file as the *actual* bug report or implementation plan
+(what changed, what the user should now see), not a generic feature blurb. The
+reviewer uses it to decide whether the screenshot/video proves the fix, not just
+whether the UI rendered.
+
+## Pick the evidence: screenshot vs video
+
+Choose the *cheapest evidence that actually proves the change*, then QA that:
+
+- **Simple, single-state cases → a Playwright screenshot.** If the bug/plan is
+  fully verifiable from one (or a few) static frames — a badge label, a fixed
+  layout, an element that should/shouldn't render, a color/spacing fix — capture
+  a screenshot and QA it. No video needed; a screenshot is faster, smaller, and
+  deterministic. Add a `page.screenshot({ path })` to a Playwright spec driving
+  the relevant scene (the demo helpers in
+  `tools/runstatus/tests/playwright/_helpers/demo.ts` stage scenes
+  deterministically), or reuse the `NN-<scene>.png` captures the recorder
+  already emits. Drop the PNG(s) into a dir and pass `--frames <dir>`.
+- **Complex flows / multi-state transitions → a video.** If proving the
+  bug/plan needs *motion* — a state badge advancing turn-by-turn, a streaming
+  bubble appearing then resolving, a modal opening on an async event, an
+  ordering/timing behaviour — a screenshot can't show it. Record a video with
+  [[kitsoki-ui-demo]] and QA the video (frames are extracted deterministically).
+  When in doubt about whether one frame can carry the claim, use a video.
+
+**How to create the evidence** (and keep it relevant): see [[kitsoki-ui-demo]]
+for the full recording pipeline (deterministic, no-LLM, MP4 + per-scene
+`NN-<scene>.png`). Whichever form you pick, it **must exercise the feature being
+implemented or the bug being fixed** — drive the specific room/intent/state the
+bug/plan names, not a generic onboarding tour. Evidence that doesn't touch the
+changed behaviour will be flagged `unsupported` by the review above.
 
 > This is an **LLM-driven review tool by design** (it needs vision). It is *not*
 > a no-LLM flow test and must never be wired into the automated test suite
@@ -54,17 +101,31 @@ dev env). No `make build` needed — this consumes an existing video/frames.
 
 ## The loop
 
-1. **Describe what the demo should show.** Copy the templates and edit:
+1. **Give it the bug/plan + what the evidence should show.** Copy the templates
+   and edit — `--feature` is the *actual bug report or implementation plan*, not
+   a generic blurb (see "judged against the bug/plan" above):
    ```bash
    D=docs/skills/kitsoki-ui-qa
-   cp $D/templates/feature.example.md   .context/qa-feature.md
+   cp $D/templates/feature.example.md   .context/qa-feature.md   # ← the bug or plan
    cp $D/templates/scenarios.example.yaml .context/qa-scenarios.yaml
    ```
    Scenarios are **observable claims** ("the state badge advances", "three story
    cards are listed") — not internal behaviour the camera can't see. Mark a
    scenario `required: false` to keep it non-blocking.
 
-2. **Run the QA gate** (one shot: extract → contact sheet → review → report):
+   Then pick the evidence form (see "Pick the evidence" above): a **screenshot**
+   for a simple, single-state case; a **video** for a complex/multi-state flow.
+
+2. **Run the QA gate** (one shot: extract → contact sheet → review → report).
+   For a **screenshot** (or any pre-captured PNG set), pass the frames dir
+   directly — the positional path is only used to name the output dir:
+   ```bash
+   docs/skills/kitsoki-ui-qa/scripts/qa.sh .artifacts/fix-badge/badge.png \
+     --frames   .artifacts/fix-badge \
+     --feature   .context/qa-feature.md \
+     --scenarios .context/qa-scenarios.yaml --strict
+   ```
+   For a **video**:
    ```bash
    docs/skills/kitsoki-ui-qa/scripts/qa.sh \
      .artifacts/multi-story/multi-story.mp4 \
