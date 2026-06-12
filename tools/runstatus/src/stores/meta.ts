@@ -2,6 +2,7 @@ import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import type { MetaModeInfo, MetaMessage } from "../data/source.js";
 import type { LiveSource } from "../data/live-source.js";
+import { appendThought, appendTool, type StreamItem } from "../lib/activity.js";
 import { useRunStore } from "./run.js";
 
 // Meta mode is live-only (the global button hides itself in snapshot/artifact
@@ -38,10 +39,18 @@ export const useMetaStore = defineStore("meta", () => {
   const error = ref<string>("");
   // A transient note shown after a story-edit reload, e.g. the changed files.
   const reloadNote = ref<string>("");
-  // In-progress assistant text while the SSE stream is live. Empty when idle.
+  // In-progress assistant narration while the SSE stream is live. Empty when
+  // idle. Unlike the feed below, this text is DEFERRED: the model's final
+  // reply also arrives as plain narration, so each narration delta is held
+  // here until later activity (a think/tool frame, or a fresh complete
+  // narration) proves it intermediate — then it flushes into the feed as a
+  // thought. Whatever is still held when "done" arrives IS the reply and is
+  // dropped (the done frame carries it authoritatively). This mirrors the
+  // TUI's metaStreamPending deferral (tui.go handleMetaStreamEvent).
   const pendingAssistantText = ref<string>("");
-  // Tool calls observed during the current streaming turn (cleared on done).
-  const pendingTools = ref<{ tool: string; preview: string }[]>([]);
+  // The ordered thinking/tool feed of the in-flight turn (cleared on done) —
+  // the same shape the main chat streams (see stores/run.ts pendingStream).
+  const pendingStream = ref<StreamItem[]>([]);
 
   // Modes available in the current scope (from runstatus.meta.modes).
   const modes = ref<MetaModeInfo[]>([]);
@@ -120,6 +129,21 @@ export const useMetaStore = defineStore("meta", () => {
     open.value = false;
   }
 
+  /**
+   * Flush the deferred narration into the feed as a thought. Called when
+   * later stream activity proves the held narration was intermediate; the
+   * narration still held when the turn ends is the reply and is dropped.
+   */
+  function flushNarration(): void {
+    const held = pendingAssistantText.value;
+    if (held.trim()) {
+      const next = pendingStream.value.slice();
+      appendThought(next, held.trimEnd());
+      pendingStream.value = next;
+    }
+    pendingAssistantText.value = "";
+  }
+
   /** Send one turn; streams the assistant reply via SSE, finalises on done. */
   async function send(source: LiveSource, text: string): Promise<void> {
     const trimmed = text.trim();
@@ -130,7 +154,7 @@ export const useMetaStore = defineStore("meta", () => {
     error.value = "";
     reloadNote.value = "";
     pendingAssistantText.value = "";
-    pendingTools.value = [];
+    pendingStream.value = [];
 
     // Optimistically show the user's turn.
     pushMessage(k, { role: "user", text: trimmed });
@@ -142,21 +166,51 @@ export const useMetaStore = defineStore("meta", () => {
         chatIds.value[k] ?? "",
         trimmed,
         (ev) => {
-          if (ev.type === "delta" && ev.text) {
-            pendingAssistantText.value += ev.text;
+          if (ev.type === "think" && ev.text) {
+            // Extended-thinking prose is never the reply — it goes straight
+            // into the feed. Any held narration is proven intermediate by
+            // this fresh model activity, so flush it first.
+            flushNarration();
+            const next = pendingStream.value.slice();
+            appendThought(next, ev.text);
+            pendingStream.value = next;
+          } else if (ev.type === "delta" && ev.text) {
+            // Narration: ambiguous until the next event — intermediate
+            // thought (flushed by whatever follows) or the final reply
+            // (dropped on done). Chunked senders (the no-LLM stub) split one
+            // narration across many fragment deltas with trailing spaces; a
+            // fragment continues the held text, while a COMPLETE prior
+            // narration (no trailing whitespace) is proven intermediate by
+            // this fresh one and flushes into the feed.
+            const held = pendingAssistantText.value;
+            if (held && !/\s$/.test(held)) {
+              flushNarration();
+              pendingAssistantText.value = ev.text;
+            } else {
+              pendingAssistantText.value = held + ev.text;
+            }
           } else if (ev.type === "tool" && ev.tool) {
-            pendingTools.value = [
-              ...pendingTools.value,
-              { tool: ev.tool, preview: ev.preview ?? "" },
-            ];
+            // A tool round-trip still follows, so any held narration was
+            // unambiguously intermediate.
+            flushNarration();
+            const next = pendingStream.value.slice();
+            appendTool(next, ev.tool, ev.preview ?? "");
+            pendingStream.value = next;
           }
         }
       );
-      const tools = pendingTools.value.slice();
+      // The narration still held is the reply (rendered from res.assistant
+      // below) — dropping it from the feed is the point, or every reply
+      // would duplicate as a trailing thought.
+      const stream = pendingStream.value;
       pendingAssistantText.value = "";
-      pendingTools.value = [];
+      pendingStream.value = [];
       if (res.chat_id) chatIds.value = { ...chatIds.value, [k]: res.chat_id };
-      pushMessage(k, { role: "assistant", text: res.assistant, tools: tools.length ? tools : undefined });
+      pushMessage(k, {
+        role: "assistant",
+        text: res.assistant,
+        stream: stream.length ? stream : undefined,
+      });
 
       if (res.reload_requested) {
         const changed = res.changed_files ?? [];
@@ -174,7 +228,7 @@ export const useMetaStore = defineStore("meta", () => {
       }
     } catch (e) {
       pendingAssistantText.value = "";
-      pendingTools.value = [];
+      pendingStream.value = [];
       error.value = errMsg(e);
     } finally {
       busy.value = false;
@@ -219,7 +273,7 @@ export const useMetaStore = defineStore("meta", () => {
     error,
     reloadNote,
     pendingAssistantText,
-    pendingTools,
+    pendingStream,
     modes,
     // getters
     activeTranscript,

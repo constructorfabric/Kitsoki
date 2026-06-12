@@ -15,25 +15,7 @@
         <!-- The turn's preserved thinking/tool feed, collapsed by default so
              the final view leads but the activity that produced it stays one
              click away (matching the live bubble it replaces). -->
-        <details
-          v-if="entry.stream?.length"
-          class="chat-activity"
-          data-testid="chat-activity"
-        >
-          <summary class="chat-activity__summary" data-testid="chat-activity-summary">{{ activityLabel(entry.stream) }}</summary>
-          <div class="chat-activity__feed" data-testid="chat-activity-feed">
-            <template v-for="(item, j) in entry.stream" :key="j">
-              <div v-if="item.kind === 'tool'" class="chat-activity__tool">
-                <span class="chat-activity__tool-name">{{ item.tool }}</span>
-                <span v-if="item.preview" class="chat-activity__tool-preview">{{ item.preview }}</span>
-              </div>
-              <div v-else class="chat-activity__thought">
-                <span class="chat-activity__brain">🧠</span>
-                <div class="chat-activity__text" v-html="renderView(item.text)"></div>
-              </div>
-            </template>
-          </div>
-        </details>
+        <ActivityDisclosure v-if="entry.stream?.length" :items="entry.stream" />
         <div
           v-if="entry.role === 'agent' && hasElements(entry)"
           class="chat-elements"
@@ -64,7 +46,8 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, onMounted } from "vue";
 import type { View } from "../types.js";
-import type { StreamItem } from "../stores/run.js";
+import type { StreamItem } from "../lib/activity.js";
+import ActivityDisclosure from "./ActivityDisclosure.vue";
 import ViewElement from "./ViewElement.vue";
 import { renderAgentMarkdown } from "../lib/markdown.js";
 
@@ -74,16 +57,6 @@ export interface ChatEntry {
   typedView?: View;
   /** The turn's preserved thinking/tool feed (collapsed activity section). */
   stream?: StreamItem[];
-}
-
-/** Summary line for the collapsed activity feed: "🧠 2 thoughts · 3 tool calls". */
-function activityLabel(stream: StreamItem[]): string {
-  const thoughts = stream.filter((it) => it.kind === "thinking").length;
-  const tools = stream.length - thoughts;
-  const parts: string[] = [];
-  if (thoughts > 0) parts.push(`${thoughts} ${thoughts === 1 ? "thought" : "thoughts"}`);
-  if (tools > 0) parts.push(`${tools} ${tools === 1 ? "tool call" : "tool calls"}`);
-  return `🧠 ${parts.join(" · ")}`;
 }
 
 const props = defineProps<{ transcript: ChatEntry[] }>();
@@ -276,75 +249,7 @@ watch(
   gap: 8px;
 }
 
-/* ---- Collapsed activity feed (the turn's preserved thinking/tool stream) ---- */
-.chat-activity {
-  margin-bottom: 6px;
-}
-
-.chat-activity__summary {
-  cursor: pointer;
-  user-select: none;
-  font-size: 11px;
-  font-family: ui-monospace, monospace;
-  color: #6b7280;
-}
-
-.chat-activity__summary:hover {
-  color: #374151;
-}
-
-.chat-activity__feed {
-  margin-top: 6px;
-  padding: 6px 8px;
-  border: 1px solid #e2e5ea;
-  border-radius: 6px;
-  background: #fcfcfd;
-}
-
-.chat-activity__tool {
-  display: flex;
-  gap: 0.5em;
-  font-size: 12px;
-  font-family: ui-monospace, monospace;
-  color: #4b5563;
-  margin: 2px 0;
-}
-
-.chat-activity__tool-name {
-  flex: 0 0 auto;
-  white-space: nowrap;
-  font-weight: 600;
-  color: #2563eb;
-}
-
-.chat-activity__tool-preview {
-  color: #6b7280;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 60ch;
-}
-
-.chat-activity__thought {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.45em;
-  margin: 4px 0;
-}
-
-.chat-activity__brain {
-  flex: 0 0 auto;
-  font-size: 13px;
-  line-height: 1.55;
-}
-
-.chat-activity__text {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
-    "Liberation Mono", monospace;
-  font-size: 12px;
-  line-height: 1.55;
-  color: #374151;
-}
+/* The collapsed activity feed (the turn's preserved thinking/tool stream)
+   lives in ActivityDisclosure.vue / ActivityFeed.vue — shared with the meta
+   overlay so both chats present the agent's work identically. */
 </style>

@@ -56,26 +56,29 @@
             :data-testid="`meta-row-${msg.role === 'user' ? 'user' : 'agent'}`"
           >
             <span class="meta-row__who">{{ msg.role === "user" ? "you" : "agent" }}</span>
-            <div
-              v-for="(tc, ti) in msg.tools ?? []"
-              :key="ti"
-              class="meta-row__tool"
-            >▸ {{ tc.tool }}{{ tc.preview ? ": " + tc.preview : "" }}</div>
+            <!-- The turn's preserved thinking/tool feed, collapsed above the
+                 reply — the same disclosure the main chat's agent bubble uses
+                 (shared component; only the testid prefix differs). -->
+            <ActivityDisclosure
+              v-if="msg.stream?.length"
+              :items="msg.stream"
+              testid="meta-activity"
+            />
             <span class="meta-row__text" v-html="renderText(msg.text)"></span>
           </div>
-          <!-- Live streaming bubble — visible while the LLM is responding -->
+          <!-- Live streaming bubble — visible while the LLM is responding.
+               The feed renders the agent's 🧠 thoughts and tool calls in
+               arrival order (shared ActivityFeed, same as the main chat's
+               thinking bubble); the deferred narration streams below it. -->
           <div
             v-if="meta.busy"
             class="meta-row meta-row--agent meta-row--streaming"
             data-testid="meta-row-streaming"
           >
             <span class="meta-row__who">🧠 agent</span>
-            <!-- Tool breadcrumbs: one per tool call seen so far this turn -->
-            <div
-              v-for="(tc, i) in meta.pendingTools"
-              :key="i"
-              class="meta-row__tool"
-            >▸ {{ tc.tool }}{{ tc.preview ? ": " + tc.preview : "" }}</div>
+            <div v-if="meta.pendingStream.length" class="meta-row__feed">
+              <ActivityFeed :items="meta.pendingStream" />
+            </div>
             <span class="meta-row__text meta-row__text--streaming" v-html="renderText(meta.pendingAssistantText || '…')"></span>
           </div>
         </div>
@@ -116,6 +119,8 @@
 import { computed, onMounted, onUnmounted, ref, watch, nextTick } from "vue";
 import { LiveSource } from "../../data/live-source.js";
 import { useMetaStore } from "../../stores/meta.js";
+import ActivityDisclosure from "../ActivityDisclosure.vue";
+import ActivityFeed from "../ActivityFeed.vue";
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -157,9 +162,13 @@ const meta = useMetaStore();
 const source = new LiveSource("/");
 const bodyEl = ref<HTMLElement | null>(null);
 
-// Scroll to bottom whenever the transcript grows or the streaming text changes.
+// Scroll to bottom whenever the transcript grows or the streaming feed/text changes.
 watch(
-  [() => meta.activeTranscript.length, () => meta.pendingAssistantText],
+  [
+    () => meta.activeTranscript.length,
+    () => meta.pendingAssistantText,
+    () => meta.pendingStream.length,
+  ],
   async () => {
     await nextTick();
     if (bodyEl.value) {
@@ -359,12 +368,27 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
   font-style: italic;
 }
 
-.meta-row__tool {
-  font-size: 0.72rem;
-  color: #38bdf8;
-  font-family: monospace;
-  padding: 0.15rem 0.65rem;
-  opacity: 0.85;
+/* The shared activity feed/disclosure (ActivityFeed.vue) defaults to the main
+   chat's light "paper" palette; re-tint it for this dark overlay via its
+   --activity-* custom properties — same markup, same layout, dark colors. */
+.meta-row {
+  --activity-tool: #94a3b8;
+  --activity-tool-name: #38bdf8;
+  --activity-muted: #94a3b8;
+  --activity-text: #cbd5e1;
+  --activity-border: #1e3a5f;
+  --activity-bg: #0a1422;
+  --activity-code-bg: #1e3a5f;
+  --activity-summary-hover: #e2e8f0;
+}
+
+/* The live bubble's feed sits in the same bordered panel the collapsed
+   disclosure expands into, so the stream looks identical live and preserved. */
+.meta-row__feed {
+  padding: 6px 8px;
+  border: 1px solid var(--activity-border);
+  border-radius: 6px;
+  background: var(--activity-bg);
 }
 
 :deep(.meta-pre) {

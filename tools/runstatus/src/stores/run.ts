@@ -10,6 +10,7 @@ import type {
 } from "../types.js";
 import type { DataSource } from "../data/source.js";
 import type { LiveSource } from "../data/live-source.js";
+import { appendThought, appendTool, type StreamItem } from "../lib/activity.js";
 import { readOracleUsage } from "../components/oracle/lib.js";
 
 /** One entry of the conversational transcript shown beside the trace. */
@@ -26,17 +27,9 @@ export interface TranscriptEntry {
   stream?: StreamItem[];
 }
 
-/**
- * One item of the live turn-stream feed, in ARRIVAL ORDER. The server emits
- * one "delta" frame per assistant thought and one "tool" frame per tool call,
- * already interleaved the way the model produced them; keeping a single
- * ordered list preserves that — splitting thoughts and tools into separate
- * buckets (the old shape) re-ordered the feed so every tool call rendered
- * above the thinking it followed.
- */
-export type StreamItem =
-  | { kind: "thinking"; text: string }
-  | { kind: "tool"; tool: string; preview: string };
+// StreamItem (the ordered feed shape) moved to lib/activity.ts so the meta
+// store shares it; re-exported here for existing importers.
+export type { StreamItem } from "../lib/activity.js";
 
 export const useRunStore = defineStore("run", () => {
   // ---- state ----
@@ -281,28 +274,20 @@ export const useRunStore = defineStore("run", () => {
     pendingStream.value = [];
     try {
       const result = await live.turnStream(sessionId, method, params, (ev) => {
-        if (ev.type === "delta" && ev.text) {
-          // Delta granularity varies by sender: claude emits one COMPLETE
-          // thought per frame, while chunked senders (the no-LLM stub) emit
-          // word fragments with trailing spaces. Consecutive deltas merge
-          // into one thinking item either way — a fragment (prior text ends
-          // in whitespace) continues inline, a complete thought starts a new
-          // paragraph. A tool frame ends the run, so the next thought gets
-          // its own item below that tool.
-          const last = pendingStream.value[pendingStream.value.length - 1];
-          if (last?.kind === "thinking") {
-            last.text += (/\s$/.test(last.text) ? "" : "\n\n") + ev.text;
-          } else {
-            pendingStream.value = [
-              ...pendingStream.value,
-              { kind: "thinking", text: ev.text },
-            ];
-          }
+        // In the MAIN chat the reply is the room view carried by the final
+        // result, so extended-thinking ("think") and narration ("delta")
+        // frames are the same thing to this feed: intermediate reasoning.
+        // (The meta overlay treats them differently — its reply IS the
+        // narration — see stores/meta.ts.) appendThought merges consecutive
+        // thoughts; reassigning the array keeps the ref reactive.
+        if ((ev.type === "delta" || ev.type === "think") && ev.text) {
+          const next = pendingStream.value.slice();
+          appendThought(next, ev.text);
+          pendingStream.value = next;
         } else if (ev.type === "tool" && ev.tool) {
-          pendingStream.value = [
-            ...pendingStream.value,
-            { kind: "tool", tool: ev.tool, preview: ev.preview ?? "" },
-          ];
+          const next = pendingStream.value.slice();
+          appendTool(next, ev.tool, ev.preview ?? "");
+          pendingStream.value = next;
         }
       });
       // Capture the feed before the finally clears the ref (clearing

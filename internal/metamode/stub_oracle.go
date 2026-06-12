@@ -116,15 +116,20 @@ func (s *StubOracleCaller) Ask(ctx context.Context, in AskInput) (AskOutput, err
 	}, nil
 }
 
-// emitStreamEvents fires a simulated tool-call breadcrumb followed by the reply
-// text split into word-chunks. Flow:
+// emitStreamEvents simulates the event shape a real claude turn produces, so
+// the no-LLM posture exercises every case the live surfaces must render:
+// extended-thinking prose (StreamEvent.Thinking → "think" frames), tool-call
+// breadcrumbs, and the reply streamed as narration deltas. Flow:
 //
-//  1. Emit tool event → browser shows 🧠 + ▸ ToolName + "…"
-//  2. "Thinking" pause (4× streamDelay) so the viewer sees that state clearly
-//  3. Stream reply word-by-word at streamDelay each
+//  1. Emit a thinking event → 🧠 thought appears in the activity feed
+//  2. Emit a tool event → ▸ ToolName breadcrumb below the thought
+//  3. Edit-capable turns add a second thought + the Edit tool call
+//     (a thought BETWEEN tools — the interleave order the feed must keep)
+//  4. "Thinking" pause (4× streamDelay) so the viewer sees that state clearly
+//  5. Stream the reply word-by-word at streamDelay each
 //
-// This gives the web UI's streaming bubble visible, unhurried stages: thinking
-// indicator, then progressive text.
+// This gives the web UI's streaming bubble visible, unhurried stages: the
+// interleaved thinking/tool feed, then progressive reply text.
 func (s *StubOracleCaller) emitStreamEvents(ctx context.Context, sink host.StreamSink, in AskInput, reply string) {
 	pause := func(mult int) {
 		if s.streamDelay > 0 {
@@ -132,19 +137,36 @@ func (s *StubOracleCaller) emitStreamEvents(ctx context.Context, sink host.Strea
 		}
 	}
 
-	// Emit one simulated tool call so the breadcrumb shows up.
-	toolName := "Read"
-	preview := "app.yaml"
-	if editCapable(in.ToolAllowlist) {
-		toolName = "Edit"
-		preview = "rooms/idle.yaml"
-	}
+	// A thought, then the tool call it explains — like a real claude message
+	// carrying a thinking block ahead of a tool_use block.
+	sink.OnStreamEvent(ctx, host.StreamEvent{
+		Type:     "assistant",
+		Thinking: "Let me look at the story definition first.",
+	})
+	pause(2)
 	sink.OnStreamEvent(ctx, host.StreamEvent{
 		Type:    "assistant",
-		Tool:    toolName,
-		Preview: preview,
+		Tool:    "Read",
+		Preview: "app.yaml",
 	})
-	// Hold: browser renders 🧠 + ▸ ToolName + "…" — viewer sees "thinking" state.
+	pause(2)
+
+	if editCapable(in.ToolAllowlist) {
+		// A second thought between tool calls: this is the arrival-order
+		// interleave the feed must preserve (thought ABOVE the tool it
+		// explains, never clumped at the bottom).
+		sink.OnStreamEvent(ctx, host.StreamEvent{
+			Type:     "assistant",
+			Thinking: "I'll apply that change to the story files.",
+		})
+		pause(2)
+		sink.OnStreamEvent(ctx, host.StreamEvent{
+			Type:    "assistant",
+			Tool:    "Edit",
+			Preview: "rooms/idle.yaml",
+		})
+	}
+	// Hold: browser renders the feed + "…" — viewer sees the "thinking" state.
 	pause(4)
 
 	// Stream the reply text in small chunks (split on whitespace + newlines).

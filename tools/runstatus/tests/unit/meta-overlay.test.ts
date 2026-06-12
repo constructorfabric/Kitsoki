@@ -165,7 +165,7 @@ describe("MetaOverlay", () => {
     wrapper.unmount();
   });
 
-  it("streaming bubble renders tool breadcrumbs", async () => {
+  it("streaming bubble renders the live activity feed (thoughts + tools, in order)", async () => {
     const meta = useMetaStore();
     meta.modes = [
       { key: "story.ask", label: "Story Q&A", banner: "", agent: "story-explainer", read_only: true, group: "story" },
@@ -175,20 +175,67 @@ describe("MetaOverlay", () => {
     meta.activeSessionId = "s1";
     meta.busy = true;
     meta.pendingAssistantText = "";
-    meta.pendingTools = [
-      { tool: "Read", preview: "app.yaml" },
-      { tool: "Glob", preview: "rooms/*.yaml" },
+    meta.pendingStream = [
+      { kind: "thinking", text: "Let me look at the story first." },
+      { kind: "tool", tool: "Read", preview: "app.yaml" },
+      { kind: "tool", tool: "Glob", preview: "rooms/*.yaml" },
     ];
 
     const wrapper = mount(MetaOverlay, mountOpts);
     await flushPromises();
 
-    const toolRows = wrapper.findAll(".meta-row__tool");
-    expect(toolRows).toHaveLength(2);
-    expect(toolRows[0].text()).toContain("▸ Read");
-    expect(toolRows[0].text()).toContain("app.yaml");
-    expect(toolRows[1].text()).toContain("▸ Glob");
-    expect(toolRows[1].text()).toContain("rooms/*.yaml");
+    // Same shared ActivityFeed rows as the main chat's thinking bubble.
+    const rows = wrapper.findAll(".chat-activity__thought, .chat-activity__tool");
+    expect(rows).toHaveLength(3);
+    expect(rows[0].classes()).toContain("chat-activity__thought");
+    expect(rows[0].text()).toContain("🧠");
+    expect(rows[0].text()).toContain("Let me look at the story first.");
+    expect(rows[1].text()).toContain("Read");
+    expect(rows[1].text()).toContain("app.yaml");
+    expect(rows[2].text()).toContain("Glob");
+    expect(rows[2].text()).toContain("rooms/*.yaml");
+    wrapper.unmount();
+  });
+
+  it("a finished message's feed renders collapsed and expands to the same rows", async () => {
+    const meta = useMetaStore();
+    meta.modes = [
+      { key: "story.ask", label: "Story Q&A", banner: "", agent: "story-explainer", read_only: true, group: "story" },
+    ];
+    const src = {
+      metaEnter: vi.fn().mockResolvedValue({
+        chat_id: "c1",
+        mode_key: "story.ask",
+        messages: [
+          { role: "user", text: "hi" },
+          {
+            role: "assistant",
+            text: "the reply",
+            stream: [
+              { kind: "thinking", text: "Checking the story." },
+              { kind: "tool", tool: "Read", preview: "app.yaml" },
+            ],
+          },
+        ],
+      }),
+    } as unknown as LiveSource;
+    await meta.openMode(src, "s1", "story.ask");
+
+    const wrapper = mount(MetaOverlay, mountOpts);
+    await flushPromises();
+
+    const activity = wrapper.find("[data-testid='meta-activity']");
+    expect(activity.exists()).toBe(true);
+    expect(wrapper.find("[data-testid='meta-activity-summary']").text()).toBe(
+      "🧠 1 thought · 1 tool call"
+    );
+    // Collapsed by default (no `open` attribute on the <details>).
+    expect(activity.attributes("open")).toBeUndefined();
+    // The feed rows are present in the same shared presentation.
+    const rows = activity.findAll(".chat-activity__thought, .chat-activity__tool");
+    expect(rows).toHaveLength(2);
+    expect(rows[0].text()).toContain("Checking the story.");
+    expect(rows[1].text()).toContain("Read");
     wrapper.unmount();
   });
 

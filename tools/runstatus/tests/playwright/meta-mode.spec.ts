@@ -195,9 +195,10 @@ async function metaSendWithStreamCheck(
     await expect(streamBubble.locator(".meta-row__who")).toContainText("🧠");
     // At least one streaming text element
     await expect(streamBubble.locator(".meta-row__text")).toBeVisible();
-    // Tool breadcrumb — appears after the stub emits its tool event
+    // Tool breadcrumb — appears after the stub emits its tool event. The
+    // bubble renders the shared ActivityFeed (same rows as the main chat).
     if (opts.checkTool !== false) {
-      await expect(streamBubble.locator(".meta-row__tool").first()).toBeVisible({ timeout: 5000 });
+      await expect(streamBubble.locator(".chat-activity__tool").first()).toBeVisible({ timeout: 5000 });
     }
     // Screenshot the streaming state: shows 🧠 + tool breadcrumb + "…" or partial text
     if (opts.streamShot) {

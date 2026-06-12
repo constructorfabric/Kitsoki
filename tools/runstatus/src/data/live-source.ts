@@ -25,10 +25,12 @@ import type {
   ReplayResult as EditorReplayResult,
 } from "./editor.js";
 
-/** One SSE frame from /rpc/meta-stream. */
+/** One SSE frame from /rpc/meta-stream. "think" carries extended-thinking
+ * prose (always intermediate); "delta" carries narration that may turn out
+ * to be the final reply — the client defers it (see stores/meta.ts). */
 export interface MetaStreamEvent {
-  type: "delta" | "tool" | "done" | "error";
-  // delta
+  type: "think" | "delta" | "tool" | "done" | "error";
+  // think / delta
   text?: string;
   // tool
   tool?: string;
@@ -42,10 +44,11 @@ export interface MetaStreamEvent {
   message?: string;
 }
 
-/** One SSE frame from /rpc/turn-stream. */
+/** One SSE frame from /rpc/turn-stream. Same think/delta split as
+ * MetaStreamEvent; the main chat treats both as feed material. */
 export interface TurnStreamEvent {
-  type: "delta" | "tool" | "done" | "error";
-  // delta
+  type: "think" | "delta" | "tool" | "done" | "error";
+  // think / delta
   text?: string;
   // tool
   tool?: string;

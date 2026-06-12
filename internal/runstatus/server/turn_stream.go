@@ -20,10 +20,18 @@ package server
 //	  response: text/event-stream
 //
 //	Events:
-//	  data: {"type":"delta","text":"…"}
+//	  data: {"type":"think","text":"…"}   ← extended-thinking prose (never the reply)
+//	  data: {"type":"delta","text":"…"}   ← assistant narration / reply text
 //	  data: {"type":"tool","tool":"Read","preview":"…"}
 //	  data: {"type":"done","result":{<turnResult>}}
 //	  data: {"type":"error","message":"…"}
+//
+// "think" and "delta" are distinct frame types because they mean different
+// things to a client: thinking is ALWAYS intermediate reasoning, while a
+// narration delta may turn out to be the final reply (the model's answer also
+// arrives as plain assistant text). The meta-stream client relies on that
+// distinction to defer narration the way the TUI does; this endpoint shares
+// the protocol so the two streams stay interchangeable.
 
 import (
 	"encoding/json"
@@ -35,9 +43,9 @@ import (
 
 // turnStreamFrame is one SSE data payload for the /rpc/turn-stream endpoint.
 type turnStreamFrame struct {
-	Type string `json:"type"` // "delta" | "tool" | "done" | "error"
+	Type string `json:"type"` // "think" | "delta" | "tool" | "done" | "error"
 
-	// delta
+	// think / delta
 	Text string `json:"text,omitempty"`
 
 	// tool
@@ -169,11 +177,11 @@ loop:
 				// breadcrumb per tool — emitting one-or-the-other drops the
 				// prose (e.g. a fenced JSON reply) or collapses parallel
 				// tool calls into a single line. Extended-thinking prose
-				// rides a separate field (it must never reach the reply
-				// assembly) but is the same reasoning to a reader — emit it
-				// ahead of the narration it precedes in the message.
+				// gets its own "think" frame type: it is never the reply,
+				// and clients that defer narration (the meta overlay) need
+				// to tell the two apart on the wire.
 				if ev.Thinking != "" {
-					emit(turnStreamFrame{Type: "delta", Text: ev.Thinking})
+					emit(turnStreamFrame{Type: "think", Text: ev.Thinking})
 				}
 				if ev.Text != "" {
 					emit(turnStreamFrame{Type: "delta", Text: ev.Text})

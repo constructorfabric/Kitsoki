@@ -281,6 +281,17 @@ mechanism). The dropdown offers three modes:
   the SPA then calls `session.reload` and **re-hydrates the run store in place**
   (no `window.location.reload`), so the edited story takes effect live. This
   reuses the [Reload](#reload-parity-with-the-tui-reload) path verbatim.
+- **Same activity presentation as the main chat.** While a meta turn streams
+  (`/rpc/meta-stream` SSE), the overlay's bubble renders the agent's 🧠
+  thoughts and tool calls in arrival order, and the finished assistant message
+  keeps that feed collapsed ("🧠 N thoughts · M tool calls", expandable) — the
+  exact components the main chat uses (`ActivityFeed.vue` /
+  `ActivityDisclosure.vue`, re-tinted via `--activity-*` CSS variables). The
+  wire protocol splits `think` frames (extended thinking — always intermediate,
+  rendered immediately) from `delta` frames (narration — deferred, because the
+  final reply also arrives as narration; flushed into the feed when later
+  activity proves it intermediate, dropped on `done`). This mirrors the TUI's
+  `metaStreamPending` deferral.
 
 **Architecture.** The server exposes a separate optional `MetaDriver` seam
 (`internal/runstatus/server/meta.go`) on each `Entry`; the concrete

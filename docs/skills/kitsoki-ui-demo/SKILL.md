@@ -392,8 +392,11 @@ live overlay, so only anchor to elements that exist there (e.g. `view-mode-tabs`
   `tools/runstatus/src/tour/agent-actions-manifest.ts`
 - Sibling feature tour: `trace-features-video.spec.ts` + `src/tour/trace-manifest.ts`
 - Sibling feature tour (cassette slow-play streaming): `chat-stream-video.spec.ts` +
-  `src/tour/chat-stream-manifest.ts` — stays in the MAIN CHAT and films the live
-  turn-stream (set `KITSOKI_CASSETTE_SLOWPLAY`; the spec defaults it to 1.5)
+  `src/tour/chat-stream-manifest.ts` — films the live turn-stream in the MAIN
+  CHAT (set `KITSOKI_CASSETTE_SLOWPLAY`; the spec defaults it to 1.5), then
+  repeats the loop in the META OVERLAY (stub-paced via
+  `KITSOKI_META_STREAM_DELAY_MS`) to prove both chats share one activity
+  presentation
 - Onboarding tour spec + manifest: `tour-video.spec.ts` + `src/tour/manifest.ts`
 - Tour robustness test: `tools/runstatus/tests/playwright/tour-onboarding.spec.ts`
 - Full-product walkthrough spec: `tools/runstatus/tests/playwright/multi-story.spec.ts`

@@ -96,17 +96,19 @@ test("streaming bubble interleaves thinking and tools with 🧠", async () => {
 
     // Structural assertion: feed order inside the bubble is
     // thought, tool, tool, thought, tool — by reading the rendered rows.
-    const rows = bubble.locator(".iv__thinking-thought, .iv__thinking-tool");
+    // (The rows are the shared ActivityFeed component — same classes the
+    // preserved disclosure and the meta overlay render.)
+    const rows = bubble.locator(".chat-activity__thought, .chat-activity__tool");
     await expect(rows).toHaveCount(5);
     const kinds: string[] = [];
     for (let i = 0; i < 5; i++) {
       const cls = (await rows.nth(i).getAttribute("class")) ?? "";
-      kinds.push(cls.includes("iv__thinking-thought") ? "think" : "tool");
+      kinds.push(cls.includes("chat-activity__thought") ? "think" : "tool");
     }
     expect(kinds).toEqual(["think", "tool", "tool", "think", "tool"]);
 
     // The brain glyph marks each thinking row.
-    await expect(bubble.locator(".iv__thinking-brain").first()).toHaveText("🧠");
+    await expect(bubble.locator(".chat-activity__brain").first()).toHaveText("🧠");
 
     // Done frame lands → the live bubble dissolves into the final agent reply,
     // but the activity feed SURVIVES, collapsed inside the agent bubble.

@@ -6,6 +6,7 @@ import type {
   TurnResult,
 } from "../types.js";
 import type { TranscriptData } from "./transcript.js";
+import type { StreamItem } from "../lib/activity.js";
 import { SnapshotSource } from "./snapshot-source.js";
 import { LiveSource } from "./live-source.js";
 
@@ -32,8 +33,13 @@ export interface MetaModeInfo {
 export interface MetaMessage {
   role: string;
   text: string;
-  /** Tool breadcrumbs captured during this turn (assistant messages only). */
-  tools?: { tool: string; preview: string }[];
+  /**
+   * The turn's thinking/tool activity feed in arrival order (assistant
+   * messages only). Client-enriched during a streamed turn — the server's
+   * persisted transcript carries role+text only, so rehydrated messages
+   * arrive without it.
+   */
+  stream?: StreamItem[];
 }
 
 /** Handle returned by enter / new: the chat row + its transcript so far. */

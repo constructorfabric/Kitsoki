@@ -168,7 +168,7 @@ describe("meta store", () => {
     expect(meta.pendingAssistantText).toBe("");
   });
 
-  it("tool events accumulate into pendingTools during streaming", async () => {
+  it("tool events accumulate into the pendingStream feed and survive on the message", async () => {
     const meta = useMetaStore();
     const src = fakeSource({
       metaStream: fakeMetaStream({ assistant: "done" }, [
@@ -178,11 +178,78 @@ describe("meta store", () => {
     });
     await meta.openMode(src, "s1", "story.edit");
     await meta.send(src, "make it darker");
-    // Both were pushed during the call; both cleared on done
-    expect(meta.pendingTools).toEqual([]);
+    // The live feed is cleared on done…
+    expect(meta.pendingStream).toEqual([]);
+    // …but preserved on the finished assistant message (collapsed activity).
+    const last = meta.activeTranscript[meta.activeTranscript.length - 1];
+    expect(last.stream).toEqual([
+      { kind: "tool", tool: "Read", preview: "app.yaml" },
+      { kind: "tool", tool: "Edit", preview: "rooms/idle.yaml" },
+    ]);
   });
 
-  it("pendingTools and pendingAssistantText are cleared on error", async () => {
+  it("think frames render into the feed immediately; the reply narration is dropped", async () => {
+    const meta = useMetaStore();
+    const src = fakeSource({
+      metaStream: fakeMetaStream({ assistant: "the final answer" }, [
+        { type: "think", text: "Let me look at the story first." },
+        { type: "tool", tool: "Read", preview: "app.yaml" },
+        // The reply streams as narration chunks (stub-style fragments)…
+        { type: "delta", text: "the " },
+        { type: "delta", text: "final " },
+        { type: "delta", text: "answer" },
+      ]),
+    });
+    await meta.openMode(src, "s1", "story.ask");
+    await meta.send(src, "hi");
+    const last = meta.activeTranscript[meta.activeTranscript.length - 1];
+    // …and must NOT duplicate into the feed — done carries it as the reply.
+    expect(last.text).toBe("the final answer");
+    expect(last.stream).toEqual([
+      { kind: "thinking", text: "Let me look at the story first." },
+      { kind: "tool", tool: "Read", preview: "app.yaml" },
+    ]);
+  });
+
+  it("narration followed by a tool call is proven intermediate and flushes into the feed", async () => {
+    const meta = useMetaStore();
+    const src = fakeSource({
+      metaStream: fakeMetaStream({ assistant: "reply" }, [
+        // A COMPLETE intermediate narration (claude emits one whole thought
+        // per frame, no trailing whitespace)…
+        { type: "delta", text: "I need to check the rooms." },
+        // …proven intermediate by the tool round-trip that follows.
+        { type: "tool", tool: "Grep", preview: "rooms/" },
+        { type: "delta", text: "reply" },
+      ]),
+    });
+    await meta.openMode(src, "s1", "story.ask");
+    await meta.send(src, "hi");
+    const last = meta.activeTranscript[meta.activeTranscript.length - 1];
+    expect(last.stream).toEqual([
+      { kind: "thinking", text: "I need to check the rooms." },
+      { kind: "tool", tool: "Grep", preview: "rooms/" },
+    ]);
+    expect(last.text).toBe("reply");
+  });
+
+  it("a fresh complete narration flushes the previous one (TUI deferral parity)", async () => {
+    const meta = useMetaStore();
+    const src = fakeSource({
+      metaStream: fakeMetaStream({ assistant: "second thought" }, [
+        { type: "delta", text: "first thought" },
+        { type: "delta", text: "second thought" },
+      ]),
+    });
+    await meta.openMode(src, "s1", "story.ask");
+    await meta.send(src, "hi");
+    const last = meta.activeTranscript[meta.activeTranscript.length - 1];
+    // The first complete narration was intermediate (a fresh one followed);
+    // the second was the reply and stays out of the feed.
+    expect(last.stream).toEqual([{ kind: "thinking", text: "first thought" }]);
+  });
+
+  it("pendingStream and pendingAssistantText are cleared on error", async () => {
     const meta = useMetaStore();
     const src = fakeSource({
       metaStream: vi.fn().mockImplementation(
@@ -196,7 +263,7 @@ describe("meta store", () => {
     await meta.openMode(src, "s1", "story.ask");
     await meta.send(src, "hi");
     expect(meta.pendingAssistantText).toBe("");
-    expect(meta.pendingTools).toEqual([]);
+    expect(meta.pendingStream).toEqual([]);
     expect(meta.error).toContain("network error");
   });
 

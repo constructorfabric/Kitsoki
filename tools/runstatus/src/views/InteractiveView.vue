@@ -52,23 +52,10 @@
             <div class="iv__thinking-bubble">
               <div class="iv__thinking-role">Agent</div>
               <!-- The live feed, in arrival order: thinking prose (🧠, like the
-                   TUI) interleaved with the tool calls it explains. Rendering
-                   from one ordered list is what keeps a thought ABOVE the tools
-                   that follow it — two separate buckets pushed every thought to
-                   the bottom as tool calls accumulated. -->
-              <template v-for="(item, i) in store.pendingStream" :key="i">
-                <div v-if="item.kind === 'tool'" class="iv__thinking-tool">
-                  <span class="iv__thinking-tool-name">{{ item.tool }}</span>
-                  <span v-if="item.preview" class="iv__thinking-tool-preview">{{ item.preview }}</span>
-                </div>
-                <div v-else class="iv__thinking-thought" data-testid="thinking-thought">
-                  <span class="iv__thinking-brain">🧠</span>
-                  <div
-                    class="iv__thinking-text"
-                    v-html="renderAgentMarkdown(item.text)"
-                  ></div>
-                </div>
-              </template>
+                   TUI) interleaved with the tool calls it explains — the same
+                   shared ActivityFeed the preserved disclosure and the meta
+                   overlay render, so the stream looks identical everywhere. -->
+              <ActivityFeed :items="store.pendingStream" />
               <!-- Trailing dots while the turn is in flight: the bubble only
                    exists mid-turn, so "more is coming" is always true here. -->
               <div class="iv__thinking-dots"><span>·</span><span>·</span><span>·</span></div>
@@ -142,7 +129,7 @@ import { createDataSource } from "../data/source.js";
 import type { DataSource } from "../data/source.js";
 import { LiveSource } from "../data/live-source.js";
 import { markAutoNavDone } from "../lib/auto-nav.js";
-import { renderAgentMarkdown } from "../lib/markdown.js";
+import ActivityFeed from "../components/ActivityFeed.vue";
 import ChatTranscript from "../components/ChatTranscript.vue";
 import InputBar from "../components/InputBar.vue";
 import StateDiagram from "../components/StateDiagram.vue";
@@ -567,82 +554,9 @@ function onEventSelect(index: number): void {
   margin-bottom: 4px;
 }
 
-.iv__thinking-tool {
-  display: flex;
-  gap: 0.5em;
-  font-size: 12px;
-  font-family: ui-monospace, monospace;
-  color: #4b5563;
-  margin-bottom: 2px;
-}
-
-.iv__thinking-tool-name {
-  flex: 0 0 auto;
-  white-space: nowrap;
-  font-weight: 600;
-  color: #2563eb;
-}
-
-.iv__thinking-tool-preview {
-  color: #6b7280;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 60ch;
-}
-
-/* One thinking item: brain glyph beside the prose, like the TUI's "🧠 …"
-   lines. Margins give a thought breathing room from the tool rows around it. */
-.iv__thinking-thought {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.45em;
-  margin: 4px 0;
-}
-
-.iv__thinking-brain {
-  flex: 0 0 auto;
-  font-size: 13px;
-  line-height: 1.55;
-}
-
-.iv__thinking-text {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-  font-size: 12.5px;
-  line-height: 1.55;
-}
-/* renderAgentMarkdown output (v-html) — style the formatted bits. A fenced
-   block becomes a code box rather than leaking as literal ```json backticks. */
-.iv__thinking-text :deep(.cv-h) {
-  font-weight: 700;
-}
-.iv__thinking-text :deep(strong) {
-  font-weight: 700;
-}
-.iv__thinking-text :deep(code) {
-  background: #e6e9ef;
-  border-radius: 4px;
-  padding: 0.05em 0.3em;
-}
-.iv__thinking-text :deep(.cv-pre) {
-  background: #1e2430;
-  color: #d6deeb;
-  border: 1px solid #cfd4dd;
-  border-radius: 6px;
-  padding: 0.5rem 0.65rem;
-  margin: 0.35rem 0;
-  overflow-x: auto;
-  white-space: pre;
-  font-size: 12px;
-  line-height: 1.45;
-}
-.iv__thinking-text :deep(.cv-pre code) {
-  background: none;
-  padding: 0;
-  color: inherit;
-}
+/* The live feed rows (🧠 thoughts + tool calls) come from the shared
+   ActivityFeed.vue — the same component the preserved disclosure and the
+   meta overlay render, so the stream looks identical everywhere. */
 
 .iv__thinking-dots {
   display: flex;

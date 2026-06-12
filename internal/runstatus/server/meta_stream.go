@@ -14,13 +14,19 @@ package server
 //	  response: text/event-stream
 //
 //	Events:
-//	  data: {"type":"delta","text":"…"}          ← assistant text chunk
+//	  data: {"type":"think","text":"…"}          ← extended-thinking prose (never the reply)
+//	  data: {"type":"delta","text":"…"}          ← assistant narration / reply text chunk
 //	  data: {"type":"tool","tool":"Read","preview":"…"}  ← tool call
 //	  data: {"type":"done","assistant":"…","chat_id":"…","reload_requested":bool,"changed_files":[…]}
 //	  data: {"type":"error","message":"…"}
 //
-// The client accumulates "delta" texts and replaces the thinking bubble in
-// real time; "done" finalises the assistant message and carries the reload flag.
+// "think" is a distinct frame type because thinking is ALWAYS intermediate
+// reasoning, while a narration "delta" may turn out to be the final reply
+// (the model's answer also arrives as plain assistant text). The client
+// renders "think" into the activity feed immediately and defers narration —
+// flushing it into the feed when later activity proves it intermediate, and
+// dropping it on "done" (which carries the authoritative reply). This mirrors
+// the TUI's metaStreamPending deferral; see tui.go handleMetaStreamEvent.
 
 import (
 	"context"
@@ -33,9 +39,9 @@ import (
 
 // metaStreamFrame is one SSE data payload for the /rpc/meta-stream endpoint.
 type metaStreamFrame struct {
-	Type string `json:"type"` // "delta" | "tool" | "done" | "error"
+	Type string `json:"type"` // "think" | "delta" | "tool" | "done" | "error"
 
-	// delta
+	// think / delta
 	Text string `json:"text,omitempty"`
 
 	// tool
@@ -161,10 +167,11 @@ loop:
 				// the thought first, then one breadcrumb per tool — never
 				// one-or-the-other, or the prose (e.g. a fenced JSON reply)
 				// leaks away or the tools collapse into a single line.
-				// Extended-thinking prose rides its own field (see
-				// StreamEvent.Thinking); emit it ahead of the narration.
+				// Extended-thinking prose gets its own "think" frame so the
+				// client can render it immediately (it is never the reply)
+				// while deferring narration deltas.
 				if ev.Thinking != "" {
-					emit(metaStreamFrame{Type: "delta", Text: ev.Thinking})
+					emit(metaStreamFrame{Type: "think", Text: ev.Thinking})
 				}
 				if ev.Text != "" {
 					emit(metaStreamFrame{Type: "delta", Text: ev.Text})
