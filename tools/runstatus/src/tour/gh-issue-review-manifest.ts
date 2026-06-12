@@ -44,14 +44,14 @@ export const GH_ISSUE_REVIEW_STEPS: readonly ReviewStep[] = [
     id: "ghr-title",
     target: "gh-issue-title",
     title: "Your bug is now a real GitHub issue",
-    body: "The Report-bug modal from act 1 filed issue #128 through host.gh.ticket.create — not an in-repo issues/bugs/*.md file.",
+    body: "The Report-bug modal from act 1 filed issue #3 through host.gh.ticket.create — not an in-repo issues/bugs/*.md file.",
     dwellMs: 5500,
   },
   {
     id: "ghr-labels",
     target: "gh-labels",
     title: "Triaged by labels, automatically",
-    body: "create() mapped the bug-format axes onto labels: severity P1, comp:tui, target:kitsoki.",
+    body: "create() mapped the bug-format axes onto labels: severity P2, comp:web, target:kitsoki.",
     dwellMs: 5000,
   },
   {
