@@ -24,6 +24,22 @@ export const repoRoot = path.resolve(__dirname, "../../../../..");
 export const BIN = path.join(repoRoot, "bin", "kitsoki");
 export const STORIES_DIR = path.join(repoRoot, "stories");
 
+/**
+ * `go run` vs. a built binary. The rule: `go run ./cmd/kitsoki` for LOCAL DEV /
+ * TESTING (these recordings, iterating on a spec) — it always tracks the working
+ * tree, so there's no stale-binary trap and nothing to copy into bin/; a REAL
+ * BINARY for an actual client/CI case (faster, what ships). Resolution:
+ *   - KITSOKI_WEB_GO_RUN=1 / =0 forces go run / binary explicitly;
+ *   - otherwise prefer bin/kitsoki when it exists (built flows / CI stay fast),
+ *     and fall back to go run when it doesn't (local dev just works).
+ * Either way the go:embed'd SPA must be staged first (`make web`); go run reads
+ * internal/runstatus/web/assets/index.html at compile time.
+ */
+export const GO_RUN =
+  process.env.KITSOKI_WEB_GO_RUN !== undefined
+    ? process.env.KITSOKI_WEB_GO_RUN !== "0"
+    : !fs.existsSync(BIN);
+
 /** Global pacing knob: 0 for fast assertion runs, 1 (default) for the camera. */
 export const PACE = Number(process.env.WEB_CHAT_PACE ?? "1");
 
@@ -127,14 +143,14 @@ export async function startWebServer(opts: {
   extraEnv?: Record<string, string>;
 }): Promise<WebServer> {
   const storiesDir = opts.storiesDir ?? STORIES_DIR;
-  const checkPaths = [storiesDir, opts.flow, BIN];
+  const checkPaths = [storiesDir, opts.flow];
+  if (!GO_RUN) checkPaths.push(BIN);
   if (opts.hostCassette) checkPaths.push(opts.hostCassette);
   if (opts.config) checkPaths.push(opts.config);
   for (const p of checkPaths) {
     if (!fs.existsSync(p)) {
-      throw new Error(
-        `missing required path: ${p} (run 'make build && cp ./kitsoki bin/kitsoki' first)`,
-      );
+      const hint = p === BIN ? " (run 'make build && cp ./kitsoki bin/kitsoki', or unset KITSOKI_WEB_GO_RUN to use go run)" : "";
+      throw new Error(`missing required path: ${p}${hint}`);
     }
   }
 
@@ -159,17 +175,24 @@ export async function startWebServer(opts: {
   }
   if (opts.extraEnv) Object.assign(childEnv, opts.extraEnv);
 
+  // go run ./cmd/kitsoki <args>  vs.  bin/kitsoki <args>. In go-run mode the
+  // first request may have to wait on a compile, so allow a longer health
+  // window; the build cache makes it a few seconds in practice.
+  const cmd = GO_RUN ? "go" : BIN;
+  const cmdArgs = GO_RUN ? ["run", "./cmd/kitsoki", ...args] : args;
   const proc: ChildProcess = spawn(
-    BIN,
-    args,
-    { cwd: repoRoot, stdio: ["ignore", "pipe", "pipe"], env: childEnv },
+    cmd,
+    cmdArgs,
+    // detached so go run's compiled child shares a killable process group (a
+    // bare proc.kill() would orphan it). stop() kills the whole group.
+    { cwd: repoRoot, stdio: ["ignore", "pipe", "pipe"], env: childEnv, detached: GO_RUN },
   );
   proc.stdout?.on("data", (d: Buffer) => (serverLog += d.toString()));
   proc.stderr?.on("data", (d: Buffer) => (serverLog += d.toString()));
   proc.on("exit", (code, sig) => (serverLog += `\n[server exited code=${code} sig=${sig}]\n`));
 
   const base = `http://${opts.addr}`;
-  await waitForHealthy(base, 20000, () => serverLog);
+  await waitForHealthy(base, GO_RUN ? 90000 : 20000, () => serverLog);
 
   return {
     base,
@@ -185,7 +208,17 @@ export async function startWebServer(opts: {
     },
     log: () => serverLog,
     stop(): void {
-      proc.kill();
+      // go run mode: kill the whole process group so the compiled child dies
+      // with the `go run` parent (else it lingers holding the port).
+      if (GO_RUN && proc.pid) {
+        try {
+          process.kill(-proc.pid, "SIGKILL");
+        } catch {
+          proc.kill("SIGKILL");
+        }
+      } else {
+        proc.kill();
+      }
       fs.rmSync(tmpDbDir, { recursive: true, force: true });
     },
   };

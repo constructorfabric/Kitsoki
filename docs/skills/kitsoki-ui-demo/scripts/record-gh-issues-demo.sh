@@ -12,15 +12,21 @@
 # stitches them with act title cards into:
 #   .artifacts/gh-issues-demo/gh-issues-cross-site-demo.mp4
 #
-# Usage: record-gh-issues-demo.sh [--no-build] [--fast]
-#   --no-build  skip `make build` (reuse the current bin/kitsoki)
+# Local dev/testing posture: the kitsoki acts run via `go run ./cmd/kitsoki`
+# (KITSOKI_WEB_GO_RUN=1) so the server always tracks the working tree — no binary
+# to build or keep fresh. Only the go:embed'd SPA must be staged (`make web`, no
+# go build). For an actual client/CI capture, build a real binary instead and run
+# with KITSOKI_WEB_GO_RUN=0.
+#
+# Usage: record-gh-issues-demo.sh [--no-stage] [--fast]
+#   --no-stage  skip `make web` (reuse the already-staged SPA assets)
 #   --fast      WEB_CHAT_PACE=0 — validation pass, no watch-speed dwells
 set -euo pipefail
 
-BUILD=1; PACE=1
+STAGE=1; PACE=1
 for a in "$@"; do
   case "$a" in
-    --no-build) BUILD=0 ;;
+    --no-stage) STAGE=0 ;;
     --fast) PACE=0 ;;
     *) echo "unknown flag: $a" >&2; exit 2 ;;
   esac
@@ -32,14 +38,14 @@ SCR="$ROOT/docs/skills/kitsoki-ui-demo/scripts"
 OUT_DIR="$ROOT/.artifacts/gh-issues-demo"
 mkdir -p "$OUT_DIR"
 
-if [ "$BUILD" -eq 1 ]; then
-  echo "── building kitsoki (go:embed SPA must be fresh) ──"
-  ( cd "$ROOT" && make build && cp ./kitsoki bin/kitsoki )
+if [ "$STAGE" -eq 1 ]; then
+  echo "── staging the go:embed SPA (make web — no binary build) ──"
+  ( cd "$ROOT" && make web )
 fi
 
 run_spec() { # <spec-basename>
-  echo "── recording: $1 (PACE=$PACE) ──"
-  ( cd "$RS" && WEB_CHAT_PACE="$PACE" pnpm exec playwright test "$1" --project=chromium )
+  echo "── recording: $1 (PACE=$PACE, go run) ──"
+  ( cd "$RS" && KITSOKI_WEB_GO_RUN=1 WEB_CHAT_PACE="$PACE" pnpm exec playwright test "$1" --project=chromium )
 }
 run_spec report-bug-video
 run_spec gh-issue-review-video
