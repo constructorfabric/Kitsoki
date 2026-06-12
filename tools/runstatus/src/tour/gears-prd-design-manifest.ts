@@ -142,7 +142,7 @@ export const GEARS_PRD_DESIGN_TOUR_STEPS: readonly TourStep[] = [
     target: "chat-transcript",
     waitForTarget: "chat-transcript",
     title: "Refine the design brief",
-    body: "Design has its own clarification loop: the brief is refined conversationally — the operator folds in notes (thread the cpt-IDs, add the component model) and the refiner reworks it — then a quality check gates it before the author drafts. Same iterative shaping the PRD did with questions.",
+    body: "Design has its own clarification loop: the intake scaffolds a brief and a refiner flags the gaps (name the components, thread the cpt-IDs, allocate the NFRs). The operator re-runs the refiner to rework it, then a quality check gates the brief before the author drafts — the same iterative shaping the PRD did with questions.",
     placement: "left",
     kind: "explain",
     advance: "next",

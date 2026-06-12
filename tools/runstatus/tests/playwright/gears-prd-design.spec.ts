@@ -182,9 +182,10 @@ test("external-target PRD → Design — gears-rust", async () => {
         await waitForState(page, "core.design_search", 20000);
         await clickIntent("core__confirm");
         await waitForState(page, "core.design_refine", 20000);
-        // Fold a note into the brief — the design's conversational refine loop
-        // (design_refine renders a composer for `discuss` alongside its buttons).
-        await typeAndSend("Thread the cpt-IDs and add the component model");
+        // Re-run the refiner on the brief — the design's refine loop. The
+        // `refine` choice fires `discuss` (intent-btn-core__discuss); the
+        // refiner reworks the brief and the gaps update, then `ready` checks it.
+        await clickIntent("core__discuss");
         await waitForState(page, "core.design_refine", 12000);
         await scrollChatToLatest();
       }
