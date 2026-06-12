@@ -1,1 +1,1 @@
-These stories are intended as excellent examples of kitsoki stories.  Never paper-over, hack or workaround issues in the runtime - these stories exist to expose those issues through real use cases and force their resolution.
+@AGENTS.md

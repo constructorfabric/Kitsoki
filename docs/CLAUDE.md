@@ -1,1 +1,1 @@
-The perfect documents are as short as possible while being fully detailed, readable and accurate.  High quality diagrams, accurate source examples and references to full example/testdata/stories adds exceptional value.  Every concept should be discussed in detail in one authoritative location, and referenced in other contexts with a link back to the main discussion - avoid repetition because it creates the possibility for error and increases maintenance overhead.
+@AGENTS.md
