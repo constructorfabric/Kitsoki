@@ -3,6 +3,7 @@ package orchestrator_test
 import (
 	"context"
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -52,6 +53,77 @@ func TestOrchestrator_HostDispatchBindsAndRefreshesView(t *testing.T) {
 	require.Equal(t, app.StatePath("probe"), out.NewState)
 	require.True(t, strings.Contains(out.View, "hello world"),
 		"expected refreshed view to include bound value, got: %q", out.View)
+}
+
+// TestOrchestrator_HostDispatchedFlushedLiveBeforeInvoke pins the observability
+// half of the triage-hang fix: HostDispatched must reach the JSONL sink (which
+// the web SSE stream tails) BEFORE the handler returns, so a slow or wedged
+// host call shows up live instead of the whole turn's event batch landing only
+// at turn-end (a frozen screen with nothing to show). It also guards against a
+// double-write — the live flush must remove HostDispatched from the turn-end
+// batch so it appears exactly once.
+func TestOrchestrator_HostDispatchedFlushedLiveBeforeInvoke(t *testing.T) {
+	def, err := app.Load("testdata/hostbind/app.yaml")
+	require.NoError(t, err)
+	m, err := machine.New(def)
+	require.NoError(t, err)
+	s, err := store.OpenMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+	sink, err := store.OpenJSONL(filepath.Join(t.TempDir(), "trace.jsonl"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sink.Close() })
+
+	dispatched := make(chan struct{}) // closed when the handler is entered
+	release := make(chan struct{})    // blocks the handler until the test allows
+	reg := host.NewRegistry()
+	reg.Register("host.probe", func(ctx context.Context, args map[string]any) (host.Result, error) {
+		close(dispatched)
+		<-release
+		return host.Result{Data: map[string]any{"message": "hello world"}}, nil
+	})
+
+	orch := orchestrator.New(def, m, s, noopHarness{},
+		orchestrator.WithHostRegistry(reg),
+		orchestrator.WithEventSink(sink),
+		orchestrator.WithEventSinkAuthority(true),
+	)
+	ctx := context.Background()
+	sid, err := orch.NewSession(ctx)
+	require.NoError(t, err)
+
+	done := make(chan struct{})
+	go func() {
+		_, _ = orch.SubmitDirect(ctx, sid, "ask", map[string]any{})
+		close(done)
+	}()
+
+	// Wait until the handler is blocked mid-Invoke.
+	select {
+	case <-dispatched:
+	case <-time.After(5 * time.Second):
+		t.Fatal("handler never entered")
+	}
+
+	// The turn has NOT returned yet (handler is parked), but HostDispatched
+	// must already be in the sink — that is the live flush.
+	countDispatched := func() int {
+		n := 0
+		for _, ev := range sink.History() {
+			if ev.Kind == store.HostDispatched {
+				n++
+			}
+		}
+		return n
+	}
+	require.Eventually(t, func() bool { return countDispatched() >= 1 }, 2*time.Second, 10*time.Millisecond,
+		"HostDispatched should be flushed to the sink live, before the handler returns")
+
+	close(release)
+	<-done
+
+	require.Equal(t, 1, countDispatched(),
+		"HostDispatched must appear exactly once — the live flush must not also leave it in the turn-end batch")
 }
 
 // TestOrchestrator_HostDispatchDisabledWhenNoRegistry verifies the orchestrator

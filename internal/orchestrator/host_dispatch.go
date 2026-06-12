@@ -198,12 +198,35 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 		// Unlike HostInvoked (which snapshots pre-bind args at machine
 		// time), this fires immediately before the handler is invoked.
 		// Replay treats it as a no-op (see store/replay.go).
-		events = append(events, newOrchestratorEvent(store.HostDispatched, map[string]any{
+		hostDispatchedEv := newOrchestratorEvent(store.HostDispatched, map[string]any{
 			"namespace":          hc.Namespace,
 			"args":               invokeArgs,
 			"rerender_fell_back": fellBack,
 			"background":         hc.Background,
-		}, 0))
+		}, 0)
+		// Flush HostDispatched to the JSONL sink LIVE, before the (possibly
+		// long-blocking) Invoke below — otherwise the whole turn's event batch
+		// is committed only at turn-end, so a slow or wedged host.run leaves the
+		// trace and the web SSE stream empty and the UI frozen with nothing to
+		// show for it (the silent-freeze half of the triage-hang bug). Mirrors
+		// the oracle handlers' live OracleCalled write (see WithOracleEventSink
+		// above). HostDispatched is a replay no-op, so a single live JSONL write
+		// is authoritative; it is deliberately kept OUT of `events` here so
+		// appendEventsAndJournal doesn't write it to the same sink a second time
+		// at turn-end. When there is no eventSink (pure-SQLite / test scaffolds)
+		// fall back to the batch so the event isn't lost.
+		if o.eventSink != nil {
+			if err := o.eventSink.Append(hostDispatchedEv); err != nil {
+				o.logger.WarnContext(ctx, "host.dispatched.flush_error",
+					slog.String("session_id", string(sid)),
+					slog.String("namespace", hc.Namespace),
+					slog.String("phase", "host_dispatched_live_flush"),
+					slog.String("err", err.Error()),
+				)
+			}
+		} else {
+			events = append(events, hostDispatchedEv)
+		}
 
 		// B-7: inject the oracle plugin alias into the context so the handler
 		// can route through host.Dispatch with the correct plugin. When
