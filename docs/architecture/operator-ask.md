@@ -139,13 +139,21 @@ can see them), each carrying `question_id`, `headers`, `duration_ms`, and
 If a dispatched agent seems stuck, a modal never appeared, or the agent
 got blank answers, these three events are the first thing to grep.
 
+## Nested sub-agents inherit the bridge
+
+An agent that spawns its own sub-agents via the `Task` tool **can** forward
+operator questions from inside those sub-agents: the `--mcp-config` (and the
+allowed `mcp__operator__ask` tool) is inherited by `Task`-spawned sub-agents,
+so a sub-agent's call reaches the per-call socket exactly as the top-level
+agent's would. Verified `2026-06-12` with a real `claude -p` run (claude
+2.1.173) against a socket harness mirroring `attachOperatorAsk`: a top-level
+agent instructed to call the tool *only from a spawned sub-agent* produced a
+single socket hit tagged with the sub-agent's question, and the sub-agent
+received the operator's answer back through the tool result. No special
+handling is required for the nested case.
+
 ## Open items (deferred pending LLM budget)
 
-- **Nested sub-agents**: an agent that spawns its own sub-agents via the
-  `Task` tool inherits the socket env, but MCP-config inheritance to
-  sub-agents is unverified — a sub-agent's question may not reach the
-  socket. Until verified, only the top-level agent can be relied on to
-  forward questions.
 - **Live end-to-end test**: the path is covered by stub/cassette tests
   (no real LLM); a gated, real-`claude -p` end-to-end run is deferred and
   must only be done on explicit request (it incurs LLM cost).
