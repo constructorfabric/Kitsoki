@@ -119,7 +119,7 @@ states:
           agent: design_researcher
           prompt_path: prompts/design_references.md
           schema: schemas/references.json
-          working_dir: "."
+          working_dir: "{{ world.workdir == '' ? '.' : world.workdir }}"
           args:
             idea:        "{{ world.design_idea }}"
             workspace:   "{{ world.design_workspace }}"
@@ -172,7 +172,7 @@ states:
           agent: design_researcher
           prompt_path: prompts/design_references.md
           schema: schemas/references.json
-          working_dir: "."
+          working_dir: "{{ world.workdir == '' ? '.' : world.workdir }}"
           args:
             idea:      "{{ world.design_idea }}"
             workspace: "{{ world.design_workspace }}"

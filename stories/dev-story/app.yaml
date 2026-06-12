@@ -362,6 +362,22 @@ world:
   design_draft_cycle:       { type: int, default: 0 }
   design_draft_budget:      { type: int, default: 5 }
 
+  # ── External-target profile (doc shape + placement) ───────────────
+  # Defaults reproduce kitsoki's own behaviour exactly (flat docs/proposals
+  # + docs/prd, slug-named files, a feature ticket on publish). An instance
+  # app (e.g. stories/gears-rust/) overrides these to retarget the PRD →
+  # Design walk at a foreign repo: publish into <workdir>/<durable> under a
+  # FIXED gears-sdlc filename (PRD.md / DESIGN.md), reading the target's own
+  # doc templates, and skipping the kitsoki feature ticket. See the
+  # "doc profile" section of the dev-story README and stories/gears-rust/.
+  repo_root:             { type: string, default: "" }                        # external checkout root (forward-compat; ticket passthrough is the deferred gh-adapter slice)
+  publish_durable_path:  { type: string, default: "docs/prd" }                # prd publish home (projected into the prd import); per-gear: gears/<gear>/docs
+  prd_doc_filename:      { type: string, default: "" }                        # fixed PRD filename for an external target (e.g. "PRD"); "" ⇒ slug-named
+  design_template_dir:   { type: string, default: "docs/proposals/templates" } # where the design author reads its doc templates
+  design_durable_path:   { type: string, default: "docs/proposals" }          # design publish home; per-gear: gears/<gear>/docs
+  design_doc_filename:   { type: string, default: "" }                        # fixed DESIGN filename for an external target (e.g. "DESIGN"); "" ⇒ slug-named
+  design_ticket_dir:     { type: string, default: "issues/features" }         # where the linking feature ticket is minted; "" ⇒ skip (external target)
+
   # ── Ideas reviewer (rooms/ideas.yaml) ─────────────────────────────
   # The backlog reconciler: reads world.ideas_path, the commit history, and the
   # docs, proposes section moves (ideas_review), and rewrites the file
@@ -945,6 +961,12 @@ imports:
       workdir:    "{{ world.workdir }}"
       judge_mode: "{{ world.judge_mode }}"
       judge_confidence_threshold: "{{ world.judge_confidence_threshold }}"
+      # Doc-profile passthrough: an external instance (gears-rust) overrides
+      # these on the hub so the imported prd publishes its PRD into the target
+      # tree under the fixed gears-sdlc name. Defaults keep prd's own
+      # docs/prd/<slug>.md behaviour for kitsoki-dev.
+      publish_durable_path: "{{ world.publish_durable_path }}"
+      prd_doc_filename:     "{{ world.prd_doc_filename }}"
 
     # prd's checkpoint vocabulary (discuss/ready/confirm/accept/refine/
     # clarify/regenerate/quit/look …) collides wholesale with the design

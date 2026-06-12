@@ -184,7 +184,7 @@ states:
           agent: design_brief_judge
           prompt_path: prompts/design_brief_check.md
           schema: schemas/brief-check.json
-          working_dir: "."
+          working_dir: "{{ world.workdir == '' ? '.' : world.workdir }}"
           args:
             brief_path: "{{ world.design_brief_path }}"
         bind:

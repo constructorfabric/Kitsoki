@@ -4,7 +4,8 @@ workspace into the docs/proposals/ queue, then mint a feature ticket that
 links back to it so the proposal can be driven into implementation.
 
 Usage:
-    python3 publish_design.py <workspace> <slug> [change_target] [title] [idea]
+    python3 publish_design.py <workspace> <slug> [change_target] [title] [idea] \
+        [workdir] [durable] [doc_filename] [ticket_dir]
 
   workspace      docs/proposals/.workspace/<slug> — holds 005-proposal.md
                  (the draft) plus the numbered check artifacts 001..004.
@@ -16,6 +17,22 @@ Usage:
   title          human-readable proposal title (from the draft artifact);
                  used as the feature ticket title. Falls back to the slug.
   idea           the one-line idea captured at intake; seeds the ticket body.
+  workdir        operator working tree (world.workdir); the durable home is
+                 <workdir>/<durable>. Defaults to "." (kitsoki repo root).
+  durable        durable home for published designs (world.design_durable_path,
+                 default "docs/proposals").
+  doc_filename   external-target override (world.design_doc_filename, default
+                 ""): when set, the design publishes to
+                 <workdir>/<durable>/<doc_filename>.md (a FIXED name,
+                 overwriting in place) instead of <slug>.md — how a profile
+                 lands a gears-sdlc doc at gears/<gear>/docs/DESIGN.md
+                 (durable=gears/<gear>/docs, doc_filename=DESIGN).
+  ticket_dir     where the linking feature ticket is minted
+                 (world.design_ticket_dir, default "issues/features",
+                 relative to workdir). EMPTY string SKIPS ticket minting — an
+                 external target (gears-rust) tracks work in its own issues,
+                 not a kitsoki feature ticket, so the published design stands
+                 alone (ticket_id/ticket_path return empty).
 
 stdout: a single JSON object so host.run parses it into `stdout_json` and the
 draft room binds several world keys from one call:
@@ -69,14 +86,19 @@ def find_path(base_dir: str, slug: str) -> str:
     raise RuntimeError("too many conflicts for slug: " + slug)
 
 
-def write_feature_ticket(slug: str, title: str, idea: str, design_rel: str) -> tuple:
-    """Mint issues/features/<id>.md linking back to the published proposal.
+def resolve(workdir: str, path: str) -> str:
+    return path if os.path.isabs(path) else os.path.join(workdir, path)
+
+
+def write_feature_ticket(
+    slug: str, title: str, idea: str, design_rel: str, features_dir: str
+) -> tuple:
+    """Mint <features_dir>/<id>.md linking back to the published proposal.
 
     Returns (ticket_id, ticket_rel_path). The id is timestamp-prefixed
     (`F-<ISO>-<slug>`) so it sorts newest-first alongside bug ids, and is
     collision-proofed against the features dir.
     """
-    features_dir = os.path.join(os.getcwd(), "issues", "features")
     os.makedirs(features_dir, exist_ok=True)
 
     now = datetime.now(timezone.utc)
@@ -112,7 +134,7 @@ def write_feature_ticket(slug: str, title: str, idea: str, design_rel: str) -> t
     with open(dest, "w") as f:
         f.write(content)
 
-    return ticket_id, os.path.relpath(dest)
+    return ticket_id, dest
 
 
 def main() -> None:
@@ -128,11 +150,15 @@ def main() -> None:
     change_target = sys.argv[3] if len(sys.argv) > 3 else ""
     title_in = sys.argv[4] if len(sys.argv) > 4 else ""
     idea_in = sys.argv[5] if len(sys.argv) > 5 else ""
+    workdir = sys.argv[6] if len(sys.argv) > 6 else "."
+    durable = sys.argv[7] if len(sys.argv) > 7 else os.path.join("docs", "proposals")
+    doc_filename = sys.argv[8].strip() if len(sys.argv) > 8 else ""
+    ticket_dir = sys.argv[9] if len(sys.argv) > 9 else os.path.join("issues", "features")
 
     if change_target.strip():
         # Amend path: the author edited an existing proposal in place. Nothing
         # to move — the existing file is the published one.
-        design_rel = os.path.relpath(change_target.strip())
+        design_rel = os.path.relpath(change_target.strip(), workdir)
         title = title_in.strip() or slug_in
     else:
         src = os.path.join(workspace, "005-proposal.md")
@@ -143,22 +169,34 @@ def main() -> None:
         with open(src) as f:
             draft = f.read()
 
-        base_dir = os.path.join(os.getcwd(), "docs", "proposals")
+        base_dir = resolve(workdir, durable)
         os.makedirs(base_dir, exist_ok=True)
 
         draft_title = title_from_draft(draft)
         title = title_in.strip() or draft_title or slug_in
-        slug = slugify(draft_title) if draft_title else slugify(slug_in)
-        dest = find_path(base_dir, slug)
+        if doc_filename:
+            # External-target profile: a FIXED doc name (DESIGN.md) at a
+            # per-gear durable path, overwriting in place.
+            dest = os.path.join(base_dir, f"{doc_filename}.md")
+        else:
+            slug = slugify(draft_title) if draft_title else slugify(slug_in)
+            dest = find_path(base_dir, slug)
 
         # Move the draft into the queue; leave the numbered checks in the
         # workspace as the record.
         os.replace(src, dest)
-        design_rel = os.path.relpath(dest)
+        design_rel = os.path.relpath(dest, workdir)
 
     # Mint the feature ticket that links back to the published proposal, so the
-    # draft room can route straight into the implementation pipeline.
-    ticket_id, ticket_rel = write_feature_ticket(slug_in, title, idea_in, design_rel)
+    # draft room can route straight into the implementation pipeline — UNLESS
+    # the profile skips it (external target tracks work in its own issues).
+    if ticket_dir.strip():
+        ticket_id, ticket_abs = write_feature_ticket(
+            slug_in, title, idea_in, design_rel, resolve(workdir, ticket_dir)
+        )
+        ticket_rel = os.path.relpath(ticket_abs, workdir)
+    else:
+        ticket_id, ticket_rel = "", ""
 
     print(
         json.dumps(

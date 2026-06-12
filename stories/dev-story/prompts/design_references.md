@@ -53,7 +53,9 @@ search.
 
 Search the repo's **documentation, rules, and conventions** for the
 material this proposal must build on or stay consistent with. Use
-`Read` / `Grep` / `Glob`. High-signal sources for a kitsoki proposal:
+`Read` / `Grep` / `Glob`. High-signal sources (when authoring against the
+kitsoki repo itself — for an external target, find the equivalents in that
+repo's docs and skip any path below that does not exist):
 
 - `docs/proposals/templates/` and `docs/proposals/README.md` — the
   proposal spine and lifecycle the draft must follow;

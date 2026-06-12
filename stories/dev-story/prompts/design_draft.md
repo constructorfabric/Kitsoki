@@ -19,7 +19,7 @@ yet**.
 
 ---
 
-You are the **author**. Write a kitsoki proposal for this idea, into the
+You are the **author**. Write a design proposal for this idea, into the
 per-session workspace `{{ args.workdir }}`:
 
 > {{ args.idea }}
@@ -74,8 +74,9 @@ confirm the new draft addresses each point.
 
 ## 1. Classify the kind
 
-Read **`docs/proposals/templates/README.md`** (the which-template table)
-and choose the kind that matches the change:
+The template set lives under **`{{ args.template_dir }}`**. Read its
+`README.md` (the which-template table) when present and choose the kind
+that matches the change. For the kitsoki template set the kinds are:
 
 - **story** — a new/reworked operator story (rooms, world, prompts, flows).
 - **runtime** — engine behavior (gates, deciders, effects, host calls,
@@ -84,12 +85,20 @@ and choose the kind that matches the change:
 - **tracing** — trace events, cassette fidelity, run-status surfaces.
 - **epic** — spans several of the above; decompose into focused children.
 
+If `{{ args.template_dir }}` is an **external target's** spec-template set
+(e.g. a gears-sdlc tree with `PRD/ DESIGN/ ADR/ FEATURE/` templates rather
+than kitsoki kinds), you are authoring that target's **DESIGN** document:
+use its `DESIGN/template.md`, mint and thread the IDs it prescribes (e.g.
+`cpt-{system}-design-{slug}`), and follow its placement/heading rules.
+
 Record your choice in `kind`. Tie-break toward the template whose design
 sections you will actually fill.
 
 ## 2. Copy the matching template and fill it
 
-Read **`docs/proposals/templates/<kind>.md`** and fill it:
+Read the matching template under **`{{ args.template_dir }}/`** (the
+`<kind>.md` for the kitsoki set, or `DESIGN/template.md` for an external
+spec-template tree) and fill it:
 
 - The shared spine first — **Why / What changes / Impact** — tight and
   skim-in-two-minutes; the `Why` in the reader's terms.

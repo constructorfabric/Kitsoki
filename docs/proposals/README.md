@@ -95,20 +95,19 @@ thought.
   (ticket adapter + doc-template set + placement rule + commit/CI discipline)
   rather than editing the pipeline; fold `prd` into `dev-story` and chain the
   published PRD into the design pipeline (PRD→Design as one walk).
-  `constructorfabric/gears-rust` is the worked example (gh-issue tickets,
-  `gears-sdlc` PRD/DESIGN/ADR templates + `cpt-` IDs, per-gear placement, DCO
-  + `make check`). **Slice #3 (PRD→Design chain) shipped** — migrated to the
-  [dev-story README](../../stories/dev-story/README.md#prd--design-walk) and
-  its proposal deleted; this also renamed dev-story's "proposal" pipeline to
-  the **design** pipeline. The remaining three slices are **deferred** (GitHub
-  integration comes later):
-  - [`external-project-profile.md`](external-project-profile.md) (runtime, deferred) —
-    parameterize doc templates / placement / id-scheme + wire `repo_root`
-    passthrough so retargeting is config, not code.
+  `constructorfabric/gears-rust` is the worked example (`gears-sdlc`
+  PRD/DESIGN docs under `gears/<gear>/docs/`, the copy-me template).
+  **Slices #1 (profile substrate), #3 (PRD→Design chain), and #4 (gears-rust
+  instance) shipped** — migrated to the
+  [dev-story README](../../stories/dev-story/README.md#doc-profile--targeting-an-external-project)
+  and the [gears-rust README](../../stories/gears-rust/README.md); their child
+  proposals are deleted. (#3 also renamed dev-story's "proposal" pipeline to
+  the **design** pipeline; per-gear placement shipped as a plain
+  `publish_durable_path` + `doc_filename` override, not the `doc_placement`
+  enum the children sketched.) The epic stays open to track the one **deferred**
+  slice (GitHub integration comes later):
   - [`gh-ticket-adapter.md`](gh-ticket-adapter.md) (runtime, deferred) — a `gh`-backed
     glue provider satisfying the `ticket` interface against GitHub issues.
-  - [`gears-rust-instance.md`](gears-rust-instance.md) (story, deferred) — the worked
-    example filling the profile; the copy-me template for any new target.
 - [`oracle-capability-model.md`](oracle-capability-model.md) — **epic.**
   One capability model governing **every** oracle (decide / ask / converse /
   task), unifying three ad-hoc restrictions and an overloaded boolean. Four
@@ -326,6 +325,29 @@ thought.
   one ticket can be co-driven), and gains an opt-in inbound poll→intent bridge
   for Jira/PR replies. All opt-in; loop.py's existing path unchanged. Nothing
   implemented yet.
+- [`line-messenger-channel.md`](line-messenger-channel.md) — **epic.** Make
+  LINE a first-class **customer-interaction channel** with kitsoki as the engine
+  and **web presence**: a merchant authors a story once, provisions a LINE
+  Official Account from the web console, and every customer who messages it gets
+  their own session — the first inbound event *creates* one keyed
+  `line:<channel>:<src>` (the multi-customer model the engine lacks today), and
+  customer free text routes through the existing `internal/semroute`. Builds on
+  the inbound bridge + transport registry + external-key store + operator-ask;
+  the turn loop is unchanged. Nothing implemented yet; decomposed into four slices:
+  - [`line-webhook-ingress.md`](line-webhook-ingress.md) (runtime) — a LINE-signed
+    webhook handler + a **get-or-create session factory** (the one novel engine
+    concept: an external event with no prior session creates one) that drives raw
+    customer text under the writer lock.
+  - [`line-transport.md`](line-transport.md) (runtime) — a `transport.Transport`
+    for the LINE Messaging API (reply-token fast path + push fallback); typed
+    view → text + **room-intents-as-quick-reply-buttons**.
+  - [`line-commerce-stories.md`](line-commerce-stories.md) (story) — two copy-me
+    examples, `stories/line-store/` (browse → cart → checkout) and
+    `stories/line-booking/` (availability → reserve → confirm), composing
+    existing hosts only; channel-agnostic YAML.
+  - [`line-channel-console.md`](line-channel-console.md) (tui) — the merchant's
+    web home: provision a channel (creds + story binding + webhook URL) and
+    watch/assist the live customer sessions it spawns (operator-ask inbox).
 - [`vscode-extension.md`](vscode-extension.md) — **tui.** Embed the shipped
   runstatus web UI (`docs/tui/web-ui.md`) as a native VS Code surface: chat in
   the sidebar, trace/state diagram in the bottom panel, themed to the editor.

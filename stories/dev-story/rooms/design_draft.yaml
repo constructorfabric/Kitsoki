@@ -84,10 +84,11 @@ states:
       # re-renders the stored draft; `refine`/`clarify` clear design_artifact
       # (an unset bind ⇒ once: re-arms) to force a re-draft.
       - invoke: host.oracle.task
+        id: design_author
         once: true
         with:
           agent: design_author
-          working_dir: "."
+          working_dir: "{{ world.workdir == '' ? '.' : world.workdir }}"
           acceptance:
             schema: schemas/design-artifact.json
           context:
@@ -95,6 +96,7 @@ states:
             args:
               idea:            "{{ world.design_idea }}"
               kind:            "{{ world.design_kind }}"
+              template_dir:    "{{ world.design_template_dir }}"
               workdir:         "{{ world.design_workspace }}"
               brief_path:      "{{ world.design_brief_path }}"
               existing_state:  "{{ world.design_existing_state }}"
@@ -129,6 +131,12 @@ states:
                   - "{{ world.design_change_target }}"
                   - "{{ world.design_artifact.title }}"
                   - "{{ world.design_idea }}"
+                  # External-target profile (defaults keep flat docs/proposals
+                  # + a feature ticket; an instance overrides these).
+                  - "{{ world.workdir }}"
+                  - "{{ world.design_durable_path }}"
+                  - "{{ world.design_doc_filename }}"
+                  - "{{ world.design_ticket_dir }}"
               bind:
                 design_file: stdout_json.design_file
                 ticket_id:     stdout_json.ticket_id
@@ -204,6 +212,11 @@ states:
             Ticket: '{{ world.ticket_id }} — {{ world.design_ticket_path }}'
         when: "world.ticket_id != ''"
       - prose: "A **feature ticket** was filed for this design — it links back to the published doc. Choose **implement** to drive it into the implementation pipeline now, or **main** to return to your day (the ticket is waiting in your queue)."
+        when: "world.ticket_id != ''"
+      # External-target profile (design_ticket_dir=\"\"): no kitsoki ticket is
+      # minted — the target tracks work in its own issues — so don't claim one.
+      - prose: "The design is published. No kitsoki feature ticket was filed (this target tracks work in its own issues) — choose **main** to return to your day."
+        when: "world.ticket_id == ''"
       - choice:
           mode: single
           prompt: "Actions"

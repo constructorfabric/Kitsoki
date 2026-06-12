@@ -143,7 +143,7 @@ states:
           agent: design_scout
           prompt_path: prompts/design_existing_state.md
           schema: schemas/existing-state.json
-          working_dir: "."
+          working_dir: "{{ world.workdir == '' ? '.' : world.workdir }}"
           args:
             idea:           "{{ world.design_idea }}"
             existing_paths: "{{ world.design_existing_paths }}"

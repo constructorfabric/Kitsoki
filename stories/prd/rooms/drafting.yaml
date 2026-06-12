@@ -108,6 +108,7 @@ states:
       # own bind) to force a fresh author run. clarify/restart_from re-enter
       # via clarifying, so drafting re-runs naturally when reached again.
       - invoke: host.oracle.task
+        id: prd_author
         once: true
         with:
           agent: author
@@ -208,6 +209,7 @@ states:
                   - "{{ world.workdir }}"
                   - "{{ world.publish_durable_path }}"
                   - "{{ world.prd_change_target }}"
+                  - "{{ world.prd_doc_filename }}"
               bind:
                 prd_file: stdout_json.prd_file
               on_error: drafting

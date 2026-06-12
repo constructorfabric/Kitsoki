@@ -1,12 +1,14 @@
 # Epic: Target an external project with dev-story
 
-**Status:** Draft v2. Slice #3 (prd → design chain) **shipped** and migrated
-to the [dev-story README](../../stories/dev-story/README.md#prd--design-walk);
-its proposal file is deleted. Slices #1/#2/#4 (profile substrate, gh ticket
-adapter, gears-rust instance) are **deferred** — per the maintainer, GitHub
-integration comes later; the near-term focus was the PRD and design phases.
+**Status:** v3. Slices **#1 (profile substrate)**, **#3 (prd → design chain)**,
+and **#4 (gears-rust instance)** have **shipped** and are migrated to narrative
+docs (the [dev-story README](../../stories/dev-story/README.md) and the
+[gears-rust README](../../stories/gears-rust/README.md)); their proposal files
+are deleted. Only **#2 (gh ticket adapter)** remains **deferred** — the PRD →
+Design walk does not pick up a ticket, so it was not needed; GitHub integration
+comes later. This epic stays open to track #2.
 **Kind:**   epic
-**Slices:** 4 (1/4 shipped)
+**Slices:** 4 (3/4 shipped; #2 deferred)
 
 > **Rename note (shipped with #3):** dev-story's in-story "proposal-authoring"
 > pipeline was renamed to the **design pipeline** — rooms `design` /
@@ -17,6 +19,13 @@ integration comes later; the near-term focus was the PRD and design phases.
 > `proposal-authoring` skill/discipline keep their names (the pipeline still
 > emits proposal-shaped design docs into `docs/proposals/`). The
 > doc-shape retargeting (gears-sdlc templates, `cpt-` IDs) remains slice #1/#4.
+
+> **Simplification note (shipped with #1/#4):** per-gear placement is expressed
+> simply as `publish_durable_path: gears/<gear>/docs` (a plain relative dir) plus
+> a `doc_filename` override that publishes a FIXED filename — **not** the
+> `doc_placement` enum + `doc_scope` key the child proposals sketched. The
+> shipped world keys are documented in the
+> [dev-story README doc-profile section](../../stories/dev-story/README.md#doc-profile--targeting-an-external-project).
 
 ## Why
 
@@ -77,10 +86,10 @@ Once every slice ships:
 
 | # | Slice | Kind | Scope (one line) | Depends on | Status | File |
 |---|---|---|---|---|---|---|
-| 1 | Target-project profile | runtime | Parameterize doc templates / placement / id-scheme + `repo_root` passthrough so retargeting is config, not code | — | Draft | [`external-project-profile.md`](external-project-profile.md) |
-| 2 | gh ticket adapter | runtime | A `gh`-backed glue provider satisfying the `ticket` interface against GitHub issues | 1 | Draft | [`gh-ticket-adapter.md`](gh-ticket-adapter.md) |
+| 1 | Target-project profile | runtime | Parameterize doc shape / placement + `repo_root` passthrough so retargeting is config, not code | — | ✅ Shipped | [dev-story README → doc profile](../../stories/dev-story/README.md#doc-profile--targeting-an-external-project) |
+| 2 | gh ticket adapter | runtime | A `gh`-backed glue provider satisfying the `ticket` interface against GitHub issues | 1 | Deferred | [`gh-ticket-adapter.md`](gh-ticket-adapter.md) |
 | 3 | prd into dev-story | story | Import `prd`, add `go_prd` from `main`, chain its `@exit:done` into the **design** intake | — | ✅ Shipped | [dev-story README → PRD → Design walk](../../stories/dev-story/README.md#prd--design-walk) |
-| 4 | gears-rust instance | story | The worked example: fill the profile with gh tickets + `gears-sdlc` docs + DCO/`make check` | 1, 2, 3 | Deferred | [`gears-rust-instance.md`](gears-rust-instance.md) |
+| 4 | gears-rust instance | story | The worked example: fill the profile (gears-sdlc docs under `gears/<gear>/docs/`, the copy-me template) | 1, 3 | ✅ Shipped | [gears-rust README](../../stories/gears-rust/README.md) |
 
 ## Sequencing
 

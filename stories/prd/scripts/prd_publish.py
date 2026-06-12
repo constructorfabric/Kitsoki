@@ -4,7 +4,7 @@ durable docs home on accept, so the deliverable does not end its life in the
 gitignored .artifacts/ scratch tree.
 
 Usage:
-    python3 prd_publish.py <workspace> <slug> <draft_path> [workdir] [durable] [change_target]
+    python3 prd_publish.py <workspace> <slug> <draft_path> [workdir] [durable] [change_target] [doc_filename]
 
   workspace      <workdir>/.artifacts/prd/<slug> — holds the numbered check
                  artifacts (001-brief, 003-references) plus the draft.
@@ -21,6 +21,12 @@ Usage:
   change_target  when set, the author AMENDED this existing PRD in place
                  instead of writing a new draft — nothing to move; the
                  existing path is reused as the published file.
+  doc_filename   external-target override (world.prd_doc_filename, default ""):
+                 when set, the PRD publishes to <workdir>/<durable>/<doc_filename>.md
+                 (a FIXED name, overwriting in place) instead of the slug-derived
+                 <slug>.md. This is how an external profile lands a gears-sdlc
+                 doc at e.g. gears/<gear>/docs/PRD.md (durable=gears/<gear>/docs,
+                 doc_filename=PRD). Empty preserves the default slug behaviour.
 
 stdout: a JSON object so host.run parses it into `stdout_json` and the
 drafting room binds the durable path from one call:
@@ -86,6 +92,7 @@ def main() -> None:
     workdir = sys.argv[4] if len(sys.argv) > 4 else "."
     durable = sys.argv[5] if len(sys.argv) > 5 else "docs/prd"
     change_target = sys.argv[6] if len(sys.argv) > 6 else ""
+    doc_filename = sys.argv[7].strip() if len(sys.argv) > 7 else ""
 
     if change_target.strip():
         # Amend path: the author edited an existing PRD in place. Nothing to
@@ -103,9 +110,15 @@ def main() -> None:
         base_dir = resolve(workdir, durable)
         os.makedirs(base_dir, exist_ok=True)
 
-        draft_title = title_from_draft(draft)
-        slug = slugify(draft_title) if draft_title else slugify(slug_in)
-        dest = find_path(base_dir, slug)
+        if doc_filename:
+            # External-target profile: a FIXED doc name (PRD.md) at a per-gear
+            # durable path, overwriting in place — the gears-sdlc shape carries
+            # its own cpt-IDs, not a kitsoki slug.
+            dest = os.path.join(base_dir, f"{doc_filename}.md")
+        else:
+            draft_title = title_from_draft(draft)
+            slug = slugify(draft_title) if draft_title else slugify(slug_in)
+            dest = find_path(base_dir, slug)
 
         # Copy the draft into the durable home; leave the numbered checks (and
         # the draft itself) in the workspace as the per-PRD record.

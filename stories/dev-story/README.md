@@ -84,6 +84,60 @@ carried `done_artifact` is a synchronous `set:`). The flat world keeps
 dev-story's composition. The walk is exercised by
 [`flows/prd_to_design.yaml`](./flows/prd_to_design.yaml).
 
+## Doc profile — targeting an external project
+
+The PRD → Design walk above publishes into kitsoki's own `docs/` by
+default, but the *document shape* and *placement* are a **profile** an
+instance app can override — no engine or room change needed. An instance
+points the same hub at a foreign repo (different doc shape, fixed
+filenames, per-scope tree) purely by setting world keys. The worked,
+copy-me example is [`stories/gears-rust/`](../gears-rust/), which retargets
+[`constructorfabric/gears-rust`](https://github.com/constructorfabric/gears-rust)
+and lands gears-sdlc-shaped `PRD.md` / `DESIGN.md` under
+`gears/<gear>/docs/`.
+
+The profile is the "External-target profile" world block in
+[`app.yaml`](./app.yaml) (search `External-target profile`). Every key has
+a default that reproduces kitsoki's own behaviour — **overriding them is
+the profile**:
+
+| World key | Default | Effect |
+|---|---|---|
+| `repo_root` | `""` | external checkout root (forward-compat; ticket passthrough is the deferred gh-adapter slice) |
+| `publish_durable_path` | `docs/prd` | PRD publish home (relative to `workdir`); projected into the `prd` import via `world_in`. Per-gear: `gears/<gear>/docs` |
+| `prd_doc_filename` | `""` | fixed PRD filename (e.g. `PRD` → `PRD.md`); `""` ⇒ slug-named (`<slug>.md`) |
+| `design_template_dir` | `docs/proposals/templates` | dir the design author reads its doc templates from |
+| `design_durable_path` | `docs/proposals` | DESIGN publish home (relative to `workdir`). Per-gear: `gears/<gear>/docs` |
+| `design_doc_filename` | `""` | fixed DESIGN filename (e.g. `DESIGN` → `DESIGN.md`); `""` ⇒ slug-named |
+| `design_ticket_dir` | `issues/features` | where the linking feature ticket is minted; `""` ⇒ **skip** minting (an external target tracks work elsewhere, e.g. GitHub issues) |
+
+How the keys reach the glue: the `prd` import's `world_in` projects
+`publish_durable_path` + `prd_doc_filename` into the prd child;
+[`rooms/design_draft.yaml`](./rooms/design_draft.yaml) passes the
+`design_*` keys to `publish_design.py` and threads `design_template_dir`
+into the author prompt (`prompts/design_draft.md` reads
+`{{ args.template_dir }}`).
+
+The placement seam is the two publish scripts, which take optional
+positional args:
+
+- [`stories/prd/scripts/prd_publish.py`](../prd/scripts/prd_publish.py)
+  `… [workdir] [durable] [change_target] [doc_filename]` — `durable` is
+  the publish home relative to `workdir`; a non-empty `doc_filename`
+  overwrites a **fixed** `<durable>/<doc_filename>.md` instead of
+  `<durable>/<slug>.md`.
+- [`stories/dev-story/scripts/publish_design.py`](./scripts/publish_design.py)
+  `… [workdir] [durable] [doc_filename] [ticket_dir]` — same `workdir` /
+  `durable` / `doc_filename` contract, plus `ticket_dir`: a non-empty
+  value mints the kitsoki feature ticket there (`issues/features` by
+  default); an **empty** `ticket_dir` skips ticket minting entirely.
+
+Per-gear placement is expressed simply as `publish_durable_path:
+gears/<gear>/docs` (a plain relative dir) plus the `doc_filename`
+override — there is no placement enum. See
+[`stories/gears-rust/`](../gears-rust/) for the filled profile, its
+scenario, and the two no-LLM flows that assert the resolved paths.
+
 ## Provider neutrality
 
 The legacy `testdata/apps/dev-story/` stub had Jira-flavoured world
