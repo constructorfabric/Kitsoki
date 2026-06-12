@@ -2,6 +2,9 @@ import { createApp } from "vue";
 import { createPinia } from "pinia";
 import App from "./App.vue";
 import router from "./router.js";
+import { installConsoleCapture } from "./data/console-capture.js";
+import { installErrorCapture, vueErrorHandler } from "./data/error-capture.js";
+import { startSessionCapture } from "./data/session-capture.js";
 
 // Bootstrap: parse inlined snapshot JSON (artifact mode).
 // The export-status command injects a <script type="application/json"
@@ -18,7 +21,15 @@ if (snapshotEl) {
   }
 }
 
+// Bug-report capture layer: console/error/session capture run for the whole
+// app lifetime so a bug report can attach recent context. Each install is
+// guarded internally and never throws into the app.
+installConsoleCapture();
+installErrorCapture();
+startSessionCapture();
+
 const app = createApp(App);
+app.config.errorHandler = vueErrorHandler;
 app.use(createPinia());
 app.use(router);
 app.mount("#app");

@@ -106,6 +106,20 @@ The extra `issues/` prefix reserves room for sibling categories
 (`issues/features/`, `issues/incidents/`) without re-shuffling later.
 Only `issues/bugs/` ships today; the parent dir is a stable namespace.
 
+**Artifacts folder.** A ticket that carries binary evidence keeps a
+sibling `bugs/<id>.artifacts/` directory (e.g. `screenshot.png`,
+`har.json`) — *not* a folder-form ticket — so the `issues/bugs/*.md`
+ticket reader is undisturbed. The body links it from a `## Artifacts`
+section. Bugs filed from the web UI's Meta-menu *Report bug* surface
+populate this automatically: the body carries the operator's description
+plus `## Error state` and `## Console (recent)` sections, and the artifacts
+folder additionally holds `rrweb.json` (a masked session replay) and
+`console.json` alongside `screenshot.png` and `har.json` (see
+[`../tui/web-ui.md`](../tui/web-ui.md)). The convention and the glob-safety
+verification are documented in
+[`issues/README.md`](../../issues/README.md) (the authoritative source)
+and the web surface in [`../tui/web-ui.md`](../tui/web-ui.md).
+
 The filename is `<UTC-timestamp>-<slug>.md`. Slug is the title
 lowercased, ASCII-only, hyphenated, truncated to 60 characters. Two
 bugs filed in the same second with the same title produce the same

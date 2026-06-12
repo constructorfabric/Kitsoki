@@ -59,6 +59,7 @@ export interface TurnStreamEvent {
   message?: string;
 }
 import { JsonRpcClient } from "../transport/jsonrpc.js";
+import type { LastRpcError } from "../transport/jsonrpc.js";
 
 /**
  * StoryHeader is one discovered story as the home-screen browser renders it.
@@ -890,6 +891,122 @@ export class LiveSource implements DataSource {
       { question_id: questionId, answers }
     );
   }
+
+  /**
+   * File a bug report. The server attaches a scrubbed HAR of the last /rpc
+   * exchanges (recorded server-side) and, if provided, a screenshot. All params
+   * are optional — the backend defaults title/body. Returns the new issue id and
+   * its repo-relative path under issues/bugs/.
+   */
+  reportBug(params: BugReportParams): Promise<BugReportResult> {
+    return this.client.post<BugReportResult>("runstatus.bug.report", {
+      capture_id: params.capture_id,
+      title: params.title,
+      description: params.description,
+      body: params.body,
+      severity: params.severity,
+      repro_steps: params.repro_steps,
+      trace_ref: params.trace_ref,
+      filed_by: params.filed_by,
+      story_path: params.story_path,
+      target_dir: params.target_dir,
+      screenshot_png_b64: params.screenshot_png_b64,
+      rrweb_events: params.rrweb_events,
+      console_logs: params.console_logs,
+      error_info: params.error_info,
+    });
+  }
+
+  /**
+   * Take a scrubbed preview snapshot to review before filing. Returns the
+   * held capture_id (pass back to reportBug), the scrubbed HAR, and ring-buffer
+   * depth/capacity. The held capture is consumed by the matching reportBug.
+   */
+  bugPreview(): Promise<BugPreviewResult> {
+    return this.client.post<BugPreviewResult>("runstatus.bug.preview", {});
+  }
+
+  /** The last failed RPC (for bug-report error context), or null. */
+  lastRpcError(): LastRpcError | null {
+    return this.client.getLastError();
+  }
+}
+
+/** Request shape for runstatus.bug.report — all fields optional. */
+export interface BugReportParams {
+  /** id from a prior bug.preview; files the EXACT held scrubbed HAR. */
+  capture_id?: string;
+  title?: string;
+  /** operator prose — becomes the bug body (preferred over legacy `body`). */
+  description?: string;
+  body?: string;
+  severity?: string;
+  repro_steps?: string[];
+  trace_ref?: string;
+  filed_by?: string;
+  story_path?: string;
+  target_dir?: string;
+  /** base64 PNG (no data: prefix). */
+  screenshot_png_b64?: string;
+  /** JSON string (or base64-of-JSON) of the rrweb event array. */
+  rrweb_events?: string;
+  /** JSON string: array of {level, ts, text}. */
+  console_logs?: string;
+  /** JSON string: {errors:[...], last_rpc:{method,code,message}}. */
+  error_info?: string;
+}
+
+/** A HAR header entry. */
+export interface HarHeader {
+  name: string;
+  value: string;
+}
+
+/** One HAR request/response exchange. */
+export interface HarEntry {
+  startedDateTime?: string;
+  time?: number;
+  request?: {
+    method?: string;
+    url?: string;
+    headers?: HarHeader[];
+    queryString?: HarHeader[];
+    postData?: { mimeType?: string; text?: string };
+  };
+  response?: {
+    status?: number;
+    headers?: HarHeader[];
+    content?: { size?: number; mimeType?: string; text?: string };
+  };
+}
+
+/** HAR 1.2 document (the scrubbed shape returned by bug.preview). */
+export interface Har {
+  log: {
+    version?: string;
+    creator?: { name?: string; version?: string };
+    entries: HarEntry[];
+  };
+}
+
+/** Result of runstatus.bug.preview — a held, scrubbed capture to review. */
+export interface BugPreviewResult {
+  /** pass back to bug.report to file this exact scrubbed HAR. */
+  capture_id: string;
+  /** scrubbed HAR 1.2 document. */
+  har: Har;
+  /** # of /rpc exchanges retained. */
+  depth: number;
+  /** ring-buffer capacity. */
+  capacity: number;
+}
+
+/** Result of runstatus.bug.report. */
+export interface BugReportResult {
+  /** bare filename without .md, e.g. "2026-06-12T130405Z-foo". */
+  id: string;
+  /** repo-relative path, e.g. "issues/bugs/<id>.md". */
+  path: string;
 }
 
 // Backoff schedule for the notification feed reconnect (ms).

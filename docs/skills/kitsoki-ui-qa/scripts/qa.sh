@@ -24,7 +24,7 @@ video="${1:?usage: qa.sh <video> --feature <f> --scenarios <f> [opts]}"
 shift || true
 
 feature="" scenarios="" frames="" outdir="" model="" max=48
-adv_flag="" strict_flag=""
+adv_flag="" strict_flag="" blank_strict_flag=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --feature)     feature="$2"; shift 2 ;;
@@ -35,6 +35,7 @@ while [ $# -gt 0 ]; do
     --max-frames)  max="$2"; shift 2 ;;
     --no-adversary) adv_flag="--no-adversary"; shift ;;
     --strict)      strict_flag="--strict"; shift ;;
+    --blank-strict) blank_strict_flag="--blank-strict"; shift ;;
     *) echo "unknown arg: $1" >&2; exit 1 ;;
   esac
 done
@@ -67,6 +68,12 @@ if [ -x "$demo_scripts/contact-sheet.sh" ]; then
     || echo "  (contact sheet skipped)"
 fi
 
+# 2b. Deterministic blank/solid-region scan (no LLM). Advisory by default —
+#     surfaces frames with a large solid white/black block for human review;
+#     --blank-strict promotes them to blocking. Never aborts the run itself.
+blank_scan="$outdir/blank-scan.json"
+"$here/blank-scan.sh" "$frames_dir" --out "$blank_scan" || true
+
 # 3. Grounded, adversarially-verified vision review → verdict.json
 verdict="$outdir/verdict.json"
 review_args=( --frames "$frames_dir" --feature "$feature" \
@@ -77,7 +84,8 @@ review_args=( --frames "$frames_dir" --feature "$feature" \
 
 # 4. Gated report — exit code propagates as the QA gate.
 echo
-"$here/report.sh" "$verdict" --out "$outdir/qa-report.md" $strict_flag
+"$here/report.sh" "$verdict" --out "$outdir/qa-report.md" $strict_flag \
+  --blank-scan "$blank_scan" $blank_strict_flag
 rc=$?
 echo
 echo "QA artifacts in $outdir/ : verdict.json, qa-report.md, contact-sheet.png, frames/"

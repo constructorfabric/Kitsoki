@@ -196,7 +196,15 @@ authentication.`,
 			}
 
 			// ── Serve (session-routing) ──────────────────────────────────────
-			srv := server.NewMulti(registry, server.WithDefaultActor(actor))
+			// Web-filed bugs (runstatus.bug.report) land under the same repo the
+			// stories live in: the git toplevel of the first resolved story dir,
+			// falling back to that dir, then $PWD. This mirrors `kitsoki bug
+			// --target story` (which writes under $PWD) while preferring the repo
+			// root so the issues/bugs/ pile is shared across story subdirs.
+			srv := server.NewMulti(registry,
+				server.WithDefaultActor(actor),
+				server.WithBugRoot(resolveWebBugRoot(dirs)),
+			)
 			// Attach the cross-session notification relay sink so each new
 			// session's background-turn fan-out reaches the runstatus.notification
 			// SSE feed. Set before any session.new call.
@@ -246,4 +254,31 @@ authentication.`,
 	cmd.Flags().StringVar(&actor, "actor", "", "operator identity recorded on browser-driven turns as slots.author (default: git config user.name; the X-Kitsoki-Actor header and an explicit actor RPC param override it)")
 
 	return cmd
+}
+
+// resolveWebBugRoot picks the repo root under which web-filed bug reports
+// (runstatus.bug.report) write issues/bugs/. It walks up from the first
+// resolved story dir to the nearest ancestor containing a .git entry; if none
+// is found it returns that story dir, and if there are no story dirs it falls
+// back to the process cwd. Empty means "let the server resolve per request".
+func resolveWebBugRoot(dirs []string) string {
+	if len(dirs) == 0 {
+		if cwd, err := os.Getwd(); err == nil {
+			return cwd
+		}
+		return ""
+	}
+	start := dirs[0]
+	dir := start
+	for {
+		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return start
 }

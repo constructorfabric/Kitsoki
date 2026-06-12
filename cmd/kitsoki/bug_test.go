@@ -553,3 +553,69 @@ func TestBugShowCmd_MissingFile(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), `bug "nope" not found`)
 }
+
+// TestCreateBug exercises the exported, cobra-free creation core that the
+// server RPC reuses: injected clock + TempDir target-dir, then assert the
+// .md lands at issues/bugs/<id>.md with the expected frontmatter. No LLM,
+// no network.
+func TestCreateBug(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, 6, 12, 13, 4, 5, 0, time.UTC)
+
+	id, rel, abs, err := CreateBug(BugCreateRequest{
+		Target:     "story",
+		Title:      "Foyer button does nothing",
+		Body:       "Tapping the foyer button is silent.",
+		ReproSteps: []string{"open app", "tap button"},
+		AppID:      "cloak",
+		StatePath:  "main.foyer",
+		Severity:   "high",
+		FiledBy:    "tester",
+		TargetDir:  dir,
+		Now:        now,
+	})
+	require.NoError(t, err)
+
+	wantID := "2026-06-12T130405Z-foyer-button-does-nothing"
+	require.Equal(t, wantID, id)
+	require.Equal(t, filepath.Join("issues", "bugs", wantID+".md"), rel)
+	require.Equal(t, filepath.Join(dir, "issues", "bugs", wantID+".md"), abs)
+
+	data, readErr := os.ReadFile(abs)
+	require.NoError(t, readErr)
+	content := string(data)
+	require.Contains(t, content, `id: "`+wantID+`"`)
+	require.Contains(t, content, `title: "Foyer button does nothing"`)
+	require.Contains(t, content, `target: "story"`)
+	require.Contains(t, content, "filed_at: "+now.Format(time.RFC3339))
+	require.Contains(t, content, `filed_by: "tester"`)
+	require.Contains(t, content, `app_id: "cloak"`)
+	require.Contains(t, content, `state_path: "main.foyer"`)
+	require.Contains(t, content, `severity: "high"`)
+	require.Contains(t, content, `status: "open"`)
+	require.Contains(t, content, "# Foyer button does nothing")
+	require.Contains(t, content, "1. open app")
+	require.Contains(t, content, "2. tap button")
+}
+
+// TestCreateBugWarnsWrongTargetFlag confirms wrong-target flags are dropped
+// (not failed) and surfaced via the injected Warnf hook.
+func TestCreateBugWarnsWrongTargetFlag(t *testing.T) {
+	dir := t.TempDir()
+	var warnings strings.Builder
+	_, _, abs, err := CreateBug(BugCreateRequest{
+		Target:    "story",
+		Title:     "x",
+		Body:      "y",
+		Component: "tui", // kitsoki-only; should be dropped + warned
+		TargetDir: dir,
+		Now:       time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		Warnf: func(format string, args ...any) {
+			warnings.WriteString(strings.TrimSpace(format))
+		},
+	})
+	require.NoError(t, err)
+	require.Contains(t, warnings.String(), "--component is kitsoki-only")
+	data, _ := os.ReadFile(abs)
+	require.NotContains(t, string(data), "component:")
+}

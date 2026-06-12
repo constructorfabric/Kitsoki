@@ -93,6 +93,21 @@ pipeline removes that failure mode structurally, not by hoping the model behaves
    sets the exit code. Under `--strict` it additionally blocks if the adversarial
    pass was supposed to run but did not complete (`adversary.status != "ok"`), so
    a silent adversary flake can never pass a strict gate.
+5. **Visual-integrity check.** A demo can render a feature's frame as a large
+   blank/uniform box (an all-white screenshot pane, a broken-image glyph, an empty
+   preview) and still "show the right region." The review prompt treats a blank
+   where visual content is expected as `fail` (not `pass`), the adversary
+   specifically re-checks visual `pass` steps against their frame, and any
+   `visual_issues[]` the model reports (proactively, even when no scenario names
+   the region) **block the gate at every effort level** — surfaced in a "Visual
+   issues" table in `qa-report.md`. Backing this is a **deterministic** layer:
+   `blank-scan.sh` (pure ffmpeg + python, no LLM) flags any frame with a large
+   contiguous flat block of a single colour — *any* colour, not just white/black,
+   excluding the page background — or a near-empty frame. It runs on every
+   `qa.sh` invocation; flags are advisory (a flat block can be a legit empty
+   panel) unless `--blank-strict`. Together they stop a silently-broken image
+   from passing QA — the LLM catches context, the scan catches what a model
+   might gloss over.
 
 ## Prerequisites
 
@@ -155,13 +170,17 @@ dev env). No `make build` needed — this consumes an existing video/frames.
 
 | Script | Does | LLM? |
 |---|---|---|
-| `qa.sh <video> --feature F --scenarios S [--frames D] [--out D] [--model M] [--max-frames N] [--no-adversary] [--strict]` | One-shot wrapper; exit code is the gate | via review |
+| `qa.sh <video> --feature F --scenarios S [--frames D] [--out D] [--model M] [--max-frames N] [--no-adversary] [--strict] [--blank-strict]` | One-shot wrapper; exit code is the gate | via review |
 | `extract-frames.sh <video> <out-dir> [--scene TH] [--interval S] [--dedup MS] [--max N] [--width W]` | Deterministic scene-change + periodic-floor frames + `frames.json` | no |
+| `blank-scan.sh <frames-dir\|image> [--out scan.json] [--grid WxH] [--quant N] [--min-coverage F] [--empty-coverage F] [--fail-on-find]` | Deterministic monochrome-region detector → `blank-scan.json` (flags any large flat block of one colour, or a near-empty frame) | no |
 | `qa-review.sh --frames D --feature F --scenarios S --out V [--model M] [--no-adversary]` | Read-only vision agent → evidence-cited `verdict.json` + adversarial re-check | **yes** |
-| `report.sh <verdict.json> [--out report.md] [--strict]` | `verdict.json` → `qa-report.md`; recomputes the gate exit code | no |
+| `report.sh <verdict.json> [--out report.md] [--strict] [--blank-scan scan.json] [--blank-strict]` | `verdict.json` (+ optional scan) → `qa-report.md`; recomputes the gate exit code | no |
 
 Defaults: review model `claude-opus-4-8` (override `--model claude-sonnet-4-6`
 for faster/cheaper); `--max-frames 48`; `--strict` makes every scenario blocking.
+`qa.sh` always runs `blank-scan.sh` over the frames; its flags are **advisory**
+(surfaced in the report, never block) unless you pass `--blank-strict`. The LLM
+`visual_issues` check (context-aware) always blocks regardless.
 
 ## verdict.json shape
 

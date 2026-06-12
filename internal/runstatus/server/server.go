@@ -67,10 +67,12 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -82,9 +84,15 @@ import (
 	"kitsoki/internal/helpdocs"
 	"kitsoki/internal/jobs"
 	"kitsoki/internal/runstatus"
+	"kitsoki/internal/runstatus/harrec"
 	"kitsoki/internal/runstatus/web"
 	"kitsoki/internal/store"
 )
+
+// bugRecorderCapacity is the number of most-recent /rpc request/response pairs
+// the HAR ring buffer retains for a bug report. Sized to comfortably cover the
+// interactions leading up to a "report a bug" click without unbounded growth.
+const bugRecorderCapacity = 256
 
 // defaultPollInterval is how often the SSE stream re-reads the trace for newly
 // appended events. localhost debug tool; 500ms is responsive without busy-spin.
@@ -165,6 +173,26 @@ type Server struct {
 	// parked oracle turn. Both always non-nil.
 	questions *questionBuffer
 	qreg      *questionRegistry
+
+	// recorder is the HAR ring buffer capturing the last N /rpc request/response
+	// pairs. runstatus.bug.report snapshots + scrubs it into the bug's artifacts.
+	// Always non-nil.
+	recorder *harrec.Recorder
+
+	// bugRoot is the repo root under which runstatus.bug.report writes
+	// issues/bugs/<id>.md (+ sibling <id>.artifacts/). Empty => resolved per
+	// request (story_path's repo dir, else cwd). Set via WithBugRoot by
+	// `kitsoki web`.
+	bugRoot string
+
+	// captureStore holds scrubbed HAR snapshots between runstatus.bug.preview
+	// and the confirming runstatus.bug.report so the filed capture is identical
+	// to the one reviewed. Bounded by captureCap + captureTTL, swept on put.
+	// Guarded by captureMu. captureSeq disambiguates ids minted in the same
+	// nanosecond. See bug_capture.go.
+	captureMu    sync.Mutex
+	captureStore map[string]*capSnap
+	captureSeq   uint64
 }
 
 // subscription tracks one SSE stream slot. sent is the number of events already
@@ -191,6 +219,17 @@ type serverConfig struct {
 	poll         time.Duration
 	driver       Driver
 	defaultActor string
+	bugRoot      string
+}
+
+// WithBugRoot sets the repo root under which runstatus.bug.report writes
+// issues/bugs/<id>.md and the sibling <id>.artifacts/ dir. `kitsoki web` wires
+// this to its primary stories repo root so web-filed bugs land in the same
+// repo the CLI `kitsoki bug` command targets. Empty (the default) means the
+// handler resolves a root per request: the story_path's directory when given,
+// else the process cwd.
+func WithBugRoot(dir string) Option {
+	return func(c *serverConfig) { c.bugRoot = strings.TrimSpace(dir) }
 }
 
 // WithPollInterval overrides the SSE trace-poll interval.
@@ -271,6 +310,9 @@ func newServer(provider SessionProvider, cfg serverConfig) *Server {
 		notifs:       newNotifBuffer(),
 		questions:    newQuestionBuffer(),
 		qreg:         newQuestionRegistry(),
+		recorder:     harrec.New(bugRecorderCapacity),
+		bugRoot:      cfg.bugRoot,
+		captureStore: make(map[string]*capSnap),
 	}
 }
 
@@ -427,6 +469,12 @@ const (
 	// codeNotFound is returned when a session-routed RPC carries a session_id
 	// the provider does not know (an expired or never-existing session).
 	codeNotFound = -32002
+
+	// maxRPCBodyBytes caps a single /rpc request body. The largest legitimate
+	// payload is a bug.report with a base64'd rrweb session buffer (~last 30s of
+	// DOM mutations); 32 MiB leaves generous headroom while preventing an
+	// unbounded read.
+	maxRPCBodyBytes = 32 << 20
 )
 
 func (s *Server) handleRPC(w http.ResponseWriter, r *http.Request) {
@@ -434,9 +482,20 @@ func (s *Server) handleRPC(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	// Capture the raw request body before decode so the HAR recorder sees the
+	// exact bytes the client sent; then re-feed them to the JSON decoder. Bound
+	// the read: bug.report carries a base64 rrweb buffer that can run to a few MB,
+	// but nothing legitimate exceeds maxRPCBodyBytes — cap it so a runaway/hostile
+	// payload can't be slurped whole into memory.
+	r.Body = http.MaxBytesReader(w, r.Body, maxRPCBodyBytes)
+	reqBody, _ := io.ReadAll(r.Body)
+	started := time.Now().UTC()
+
 	var req rpcRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeRPC(w, rpcResponse{JSONRPC: "2.0", Error: &rpcError{Code: codeParseError, Message: "parse error: " + err.Error()}})
+	if err := json.Unmarshal(reqBody, &req); err != nil {
+		resp := rpcResponse{JSONRPC: "2.0", Error: &rpcError{Code: codeParseError, Message: "parse error: " + err.Error()}}
+		respBody := writeRPC(w, resp)
+		s.recordRPC(r, reqBody, http.StatusOK, respBody, started)
 		return
 	}
 
@@ -456,12 +515,48 @@ func (s *Server) handleRPC(w http.ResponseWriter, r *http.Request) {
 	} else {
 		resp.Result = result
 	}
-	writeRPC(w, resp)
+	respBody := writeRPC(w, resp)
+	s.recordRPC(r, reqBody, http.StatusOK, respBody, started)
 }
 
-func writeRPC(w http.ResponseWriter, resp rpcResponse) {
+// recordRPC pushes one /rpc request/response pair into the HAR ring buffer.
+// It is best-effort and never affects the response already written.
+func (s *Server) recordRPC(r *http.Request, reqBody []byte, status int, respBody []byte, started time.Time) {
+	if s.recorder == nil {
+		return
+	}
+	durMs := float64(time.Since(started).Microseconds()) / 1000.0
+	url := r.URL.RequestURI()
+	s.recorder.Record(
+		r.Method, url,
+		headerMap(r.Header), reqBody,
+		status, map[string]string{"Content-Type": "application/json"}, respBody,
+		started, durMs,
+	)
+}
+
+// headerMap flattens an http.Header into a single-value map (last value wins),
+// sufficient for the recorder's deterministic header rendering.
+func headerMap(h http.Header) map[string]string {
+	out := make(map[string]string, len(h))
+	for k, vs := range h {
+		if len(vs) > 0 {
+			out[k] = vs[len(vs)-1]
+		}
+	}
+	return out
+}
+
+// writeRPC encodes resp as the /rpc JSON response and returns the exact bytes
+// written, so the caller can hand them to the HAR recorder.
+func writeRPC(w http.ResponseWriter, resp rpcResponse) []byte {
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(resp)
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	_ = enc.Encode(resp)
+	body := buf.Bytes()
+	_, _ = w.Write(body)
+	return body
 }
 
 // dispatch routes a JSON-RPC method to its handler. It returns either a result
@@ -1052,6 +1147,12 @@ func (s *Server) dispatch(ctx context.Context, method string, params map[string]
 			return nil, rerr
 		}
 		return feedbackAdd(entry, params)
+
+	case "runstatus.bug.preview":
+		return s.bugPreview(params)
+
+	case "runstatus.bug.report":
+		return s.bugReport(params)
 
 	default:
 		// ── Story editor (per-story, no session) ─────────────────────────────

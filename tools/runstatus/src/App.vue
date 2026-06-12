@@ -16,6 +16,8 @@
   <!-- Global forwarded-question surface: a hard modal shown when a dispatched
        agent forwards an AskUserQuestion into kitsoki and blocks for the answer. -->
   <OperatorQuestionModal />
+  <!-- Global bug-report review surface: capture → review → file. -->
+  <BugReportModal />
 </template>
 
 <script setup lang="ts">
@@ -30,6 +32,7 @@ import InboxBadge from "./components/InboxBadge.vue";
 import InboxPanel from "./components/InboxPanel.vue";
 import InboxToast from "./components/InboxToast.vue";
 import OperatorQuestionModal from "./components/OperatorQuestionModal.vue";
+import BugReportModal from "./components/BugReportModal.vue";
 import { useTourStore } from "./stores/tour.js";
 import { useInboxStore } from "./stores/inbox.js";
 import { useOperatorQuestionStore } from "./stores/operatorQuestions.js";

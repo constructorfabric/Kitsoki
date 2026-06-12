@@ -14,7 +14,10 @@ searchable + workable from `kitsoki run stories/kitsoki-dev/app.yaml`.
 ```
 issues/
 ├── bugs/                 — open / resolved / wontfix bug reports
-│   └── <ISO-utc>-<slug>.md
+│   ├── <ISO-utc>-<slug>.md
+│   └── <ISO-utc>-<slug>.artifacts/   — optional sibling, evidence for one ticket
+│       ├── screenshot.png
+│       └── har.json
 └── features/             — PRD-track features (cypilot story consumes; Wave 3)
     └── <ISO-utc>-<slug>.md
 ```
@@ -24,6 +27,25 @@ The ISO-utc + slug filename convention buys two things:
 1. **Sortable by filed-at** — `ls issues/bugs/` shows newest-last.
 2. **Stable across renames** — once a bug is filed, its filename
    never changes; the `slug` is descriptive, not canonical.
+
+### Per-ticket artifacts folder
+
+A ticket stays a **flat `bugs/<id>.md`**. When it carries binary
+evidence (a screenshot, a HAR), that evidence lives in a **sibling
+`bugs/<id>.artifacts/` directory**, not a folder-form ticket, and the
+body links it from a `## Artifacts` section. Web-filed bugs (the Meta
+menu's *Report bug*, see [`docs/tui/web-ui.md`](../docs/tui/web-ui.md))
+populate this folder automatically.
+
+The sibling form is deliberate: the dogfood reader
+(`host.local_files.ticket`, `internal/host/localfiles_ticket.go`) globs
+`issues/bugs/*.md` by listing the directory and skipping entries that
+are directories or don't end in `.md`
+(`if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") { continue }`,
+`localfiles_ticket.go:308`). A `<id>.artifacts/` directory is therefore
+**doubly excluded** — it is a dir *and* lacks the `.md` suffix — so it
+never appears as a ticket and discovery needs zero changes. (Verified
+against the reader on 2026-06-12.)
 
 ## Frontmatter schema (see also `docs/stories/bugs.md`)
 

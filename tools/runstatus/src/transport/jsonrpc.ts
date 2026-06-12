@@ -48,13 +48,26 @@ function nextBackoff(attempt: number): number {
   return BACKOFF_MS[Math.min(attempt, BACKOFF_MS.length - 1)] ?? 5000;
 }
 
+/** The last failed RPC, surfaced for bug-report error context. */
+export interface LastRpcError {
+  method: string;
+  code: unknown;
+  message: string;
+}
+
 export class JsonRpcClient {
   private readonly base: string;
   private nextId = 1;
+  private lastError: LastRpcError | null = null;
 
   constructor(base = "/") {
     // Normalise: ensure it ends with "/"
     this.base = base.endsWith("/") ? base : base + "/";
+  }
+
+  /** The most recent failed RPC (HTTP or JSON-RPC error), or null. */
+  getLastError(): LastRpcError | null {
+    return this.lastError;
   }
 
   async post<T = unknown>(
@@ -64,13 +77,25 @@ export class JsonRpcClient {
     const id = this.nextId++;
     const body: JsonRpcRequest = { jsonrpc: "2.0", id, method, params };
 
-    const resp = await fetch(`${this.base}rpc`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    let resp: Response;
+    try {
+      resp = await fetch(`${this.base}rpc`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      this.lastError = { method, code: "fetch", message };
+      throw e;
+    }
 
     if (!resp.ok) {
+      this.lastError = {
+        method,
+        code: resp.status,
+        message: `HTTP ${resp.status}: ${resp.statusText}`,
+      };
       throw new JsonRpcError(
         resp.status,
         `HTTP ${resp.status}: ${resp.statusText}`
@@ -80,6 +105,11 @@ export class JsonRpcClient {
     const frame = (await resp.json()) as JsonRpcResponse<T>;
 
     if (frame.error !== undefined) {
+      this.lastError = {
+        method,
+        code: frame.error.code,
+        message: frame.error.message,
+      };
       throw new JsonRpcError(
         frame.error.code,
         frame.error.message,

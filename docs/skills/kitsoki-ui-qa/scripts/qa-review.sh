@@ -145,6 +145,18 @@ EVIDENCE RULES (these make the review trustworthy — follow them exactly):
    (wrong text, error state, missing element), its status is `fail`.
 4. Never invent UI that you did not see in a frame. When unsure, prefer
    `unsupported` over `pass`.
+5. VISUAL INTEGRITY — a broken or blank render is a FAILURE, not a pass. If a
+   frame shows a large blank/uniform/placeholder region (an all-white or
+   all-black box, an empty pane, a broken-image glyph) WHERE the feature is
+   meant to show visual content — a screenshot, image, replay, preview, thumbnail,
+   chart, map, avatar, or video — then any step that claims that visual is `fail`:
+   cite the frame and describe the empty area (e.g. "the Session replay pane is a
+   solid white rectangle — no UI rendered"). A visual step passes ONLY if the
+   expected content is ACTUALLY rendered in the pixels. (An explicit empty-state
+   message like "No data" is acceptable only if the scenario expects an empty
+   state; a silent blank where content belongs is a render bug — flag it.)
+   Proactively scan EVERY frame for such dead regions even when no scenario step
+   names them, and report each in a top-level "visual_issues" array.
 
 Compute each scenario's status as the worst of its steps (fail < unsupported <
 pass). Copy each scenario's `id`, `title`, and `required` exactly from the YAML
@@ -156,6 +168,9 @@ OUTPUT: print ONLY a single raw JSON object (no prose, no ``` fences) of shape:
   "overall": "pass|fail",
   "summary": {"scenarios_total":0,"passed":0,"failed":0,"unsupported":0},
   "frames_reviewed": ["0001-0ms.png"],
+  "visual_issues": [
+    {"frame":"0003-1200ms.png","region":"<where on screen>","issue":"<blank/broken render observed where content was expected>"}
+  ],
   "scenarios": [
     {"id":"...","title":"...","required":true,"status":"pass|fail|unsupported",
      "steps":[
@@ -194,6 +209,13 @@ not clearly show it — wrong frame, the element is absent, the text differs, or
 was inferred beyond the pixels — it must be downgraded:
   • `fail`        — the frame actively contradicts the claim.
   • `unsupported` — the frame simply doesn't show it.
+
+Pay special attention to steps that claim a VISUAL is shown (a screenshot,
+image, replay, preview, thumbnail, chart, map, avatar, video). If the cited
+frame's supposed-content region is actually a large blank/uniform box (all-white
+or all-black), a placeholder, or a broken-image glyph, the visual is NOT rendered
+— downgrade that step to `fail` and describe the empty region. A passed visual
+step backed by a blank frame is the exact over-claim you exist to catch.
 
 Do NOT re-emit the whole verdict. Output ONLY the downgrades you are confident
 about. You may ONLY downgrade a `pass`; never touch `fail`/`unsupported` steps
