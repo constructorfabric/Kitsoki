@@ -56,21 +56,38 @@ states:
             Upstream:       '{{ world.upstream_paths|default:"(none)" }}'
             "Prior rounds": "{{ world.clarifying_cycle }}"
       - heading: "Questions for you"
+      # Rendered as a `template:` (markdown), NOT `code:`. A code block never
+      # reflows — it preserves the author's layout verbatim, so the old
+      # `wordwrap:115` hard-wrapped every line at a fixed 115 columns and the
+      # block overflowed any narrower viewport (mobile web, a split TUI pane),
+      # forcing a horizontal scrollbar the operator had to drag to read a
+      # question. A template flows through Glamour on the TUI and the markdown
+      # renderer on web, so each question is a self-contained paragraph that
+      # wraps to whatever width it's shown at — no fixed column, no scroll.
+      # Hence no wordwrap filter: wrapping is the surface's job now.
+      #
+      # Each question renders as one paragraph: a bold stable number, the
+      # question, then the rationale italicised on its own soft-wrapped line.
       # Answered questions drop out of this list (they're shown verbatim in
       # "Answered so far" below). The `{% if %}` skips any question whose
       # number is in world.answered_ids — but the displayed number is still
       # forloop.Counter (the question's ORIGINAL 1-based position), so the
       # remaining numbers stay stable with gaps (1, 3, 4…) rather than
-      # renumbering. Stable numbers keep "answer 3" pointing at the same
-      # question across turns and keep the "Qn:" labels below consistent.
+      # renumbering. We deliberately do NOT use a markdown ordered list
+      # (`1.`): renderers renumber those sequentially, which would erase the
+      # stable gaps. The bold `**n.**` is plain inline text, so the numbers
+      # survive. Stable numbers keep "answer 3" pointing at the same question
+      # across turns and keep the "Qn:" labels below consistent.
       # `"|" + forloop.Counter + "|"` builds the delimited needle that the
       # answer arc appends (the trailing/leading `|` make "|1|" a non-match
-      # inside "|12|"). When every question is answered the list renders the
+      # inside "|12|"). The blank line between iterations separates the
+      # paragraphs; when every question is answered the list renders the
       # all-answered hint instead of going blank.
-      - code: |
-          {% for q in world.clarifications.questions %}{% if not ("|" + forloop.Counter + "|" in world.answered_ids) %}{{ forloop.Counter }}. {{ q.question|wordwrap:115 }}
-             why: {{ q.why|default:"(no rationale given)"|wordwrap:110 }}
-          {% endif %}{% empty %}(none — nothing material left to ask; type skip to move on){% endfor %}{% if world.clarifications.questions|length > 0 and world.answered_count >= world.clarifications.questions|length %}(all questions answered — type submit to review the brief){% endif %}
+      - template: |
+          {% for q in world.clarifications.questions %}{% if not ("|" + forloop.Counter + "|" in world.answered_ids) %}**{{ forloop.Counter }}.** {{ q.question }}
+          ↳ *why: {{ q.why|default:"(no rationale given)" }}*
+
+          {% endif %}{% empty %}*(none — nothing material left to ask; type **skip** to move on)*{% endfor %}{% if world.clarifications.questions|length > 0 and world.answered_count >= world.clarifications.questions|length %}*(all questions answered — moving on to review the brief…)*{% endif %}
       - prose: "Just type your answer and press enter — answers are taken in order, top to bottom, one at a time. The answers fill in below."
       - heading: 'Answered so far ({{ world.answered_count }}/{{ world.clarifications.questions|length }})'
       - code: |
@@ -94,7 +111,7 @@ states:
       # widget on entry AND on every `answer` self-transition (target: .),
       # bouncing the operator out of text-input mode after each reply. Same
       # selectorless free-text idiom as rooms/idle.yaml.
-      - prose: "When you've covered enough, say **submit** to review the brief and move on, **skip** to move on with what we have, **regenerate** to re-ask the questions, or **quit** to abandon."
+      - prose: "Answer the questions above — once the last one's answered you'll move to the brief automatically. Or say **submit** to review the brief now, **skip** to move on with what we have, **regenerate** to re-ask the questions, or **quit** to abandon."
     relevant_world: [idea, upstream_paths, workdir, clarifications, clarification_answers, answered_count, answered_ids, clarification_log, clarifying_cycle, clarifying_budget, prd_artifact, refine_feedback, cycle, judge_mode, last_error]
     on_enter:
       # Generate this round's questions. working_dir pins the analyst's
@@ -176,6 +193,14 @@ states:
                 clarification_answers: "{{ world.clarification_answers + result.submitted.answers_block }}"
                 answered_ids:          "{{ world.answered_ids + result.submitted.answered_ids_append }}"
                 answered_count:        "{{ int(world.answered_count + result.submitted.matched_count) }}"
+              # Auto-advance: the moment this reply resolves the LAST open
+              # question, fire the synthetic submit_answers intent so the
+              # operator drops straight into the brief review — no separate
+              # `submit` step. Guarded on len(questions) > 0 so a round with no
+              # questions doesn't trivially auto-submit on a stray reply. The
+              # post-bind world isn't visible here, so we recompute the new
+              # count from the pre-turn snapshot + this turn's matched_count.
+              emit_intent: "{{ len(world.clarifications.questions) > 0 && int(world.answered_count + result.submitted.matched_count) >= len(world.clarifications.questions) ? 'submit_answers' : '' }}"
               on_error: .
 
       # Done answering — advance to the brief review (NOT straight to
