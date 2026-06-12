@@ -49,6 +49,13 @@ func (o *Orchestrator) appendEventsAndJournal(sid app.SessionID, events []store.
 		// JSONL dual-write path: append each event to the JSONL sink.
 		// The SQLite write follows below so all subcommands stay consistent.
 		for _, ev := range events {
+			// A SinkFlushed event was already written to the sink live (before
+			// a blocking host invoke — see dispatchHostCalls). Re-appending it
+			// here would duplicate the JSONL line, so skip the sink write; it
+			// still falls through to the SQLite write below.
+			if ev.SinkFlushed {
+				continue
+			}
 			if err := o.eventSink.Append(ev); err != nil {
 				return err
 			}

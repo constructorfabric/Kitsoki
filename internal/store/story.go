@@ -68,8 +68,15 @@ func CollectEffectiveStory(def *app.AppDef) (*EffectiveStory, error) {
 		return nil, fmt.Errorf("store.CollectEffectiveStory: def has no LoadedManifests (loaded without app.Load?)")
 	}
 	// LoadedManifests[0] is seeded with the root manifest's canonical path
-	// (see app/loader.go); its directory is BaseDir.
+	// (see app/loader.go); its directory is BaseDir. Resolve symlinks so it
+	// shares the same canonical form as captureRoot and the walked file paths
+	// (gatherStoryRoots resolves those) — otherwise the entry relSlash below and
+	// the entry-among-files check fail on macOS, where /var/folders symlinks to
+	// /private/var/folders.
 	rootManifest := def.LoadedManifests[0]
+	if resolved, rerr := filepath.EvalSymlinks(rootManifest); rerr == nil {
+		rootManifest = resolved
+	}
 
 	roots := gatherStoryRoots(def)
 	captureRoot := commonAncestorDir(roots)
@@ -113,6 +120,18 @@ func gatherStoryRoots(def *app.AppDef) []string {
 			return
 		}
 		abs = filepath.Clean(abs)
+		// Canonicalise symlinks so every root shares ONE form. The loader stores
+		// some paths symlink-resolved (LoadedManifests are canonical) and others
+		// raw (BaseDir), and on macOS the temp root /var/folders is itself a
+		// symlink to /private/var/folders. Mixed forms break relSlash —
+		// filepath.Rel can't relativise a /private/var path against a /var
+		// captureRoot — so file keys come out absolute instead of story-relative
+		// (e.g. "private/var/.../views/base.pongo" instead of "views/base.pongo"),
+		// which also changes the content hash. EvalSymlinks is best-effort: a
+		// path that doesn't resolve falls back to the cleaned abs form.
+		if resolved, rerr := filepath.EvalSymlinks(abs); rerr == nil {
+			abs = resolved
+		}
 		if _, dup := seen[abs]; dup {
 			return
 		}

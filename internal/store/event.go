@@ -245,6 +245,17 @@ type Event struct {
 	// For a normal (non-replay:any) episode it is always 0. Present only on
 	// OracleCalled events emitted by the cassette dispatcher alongside EpisodeID.
 	MatchIdx int `json:"match_idx,omitempty"`
+	// SinkFlushed is a transient, in-memory-only marker (never serialized — see
+	// the json:"-" tag). It is set true on an event that was already written to
+	// the live EventSink BEFORE the turn-end batch flush — currently only the
+	// HostDispatched event, which the orchestrator flushes to the JSONL sink
+	// immediately before a (possibly long-blocking) host invoke so the trace /
+	// SSE stream isn't frozen mid-call. The event still travels in the turn's
+	// returned batch (so expect_host_calls assertions and the SQLite write see
+	// it), but appendEventsAndJournal MUST skip re-appending a SinkFlushed event
+	// to the sink, or the JSONL would carry a duplicate line. See
+	// orchestrator.dispatchHostCalls and appendEventsAndJournal.
+	SinkFlushed bool `json:"-"`
 }
 
 // History is an ordered slice of events for a session, as returned by Store.LoadHistory.

@@ -124,6 +124,25 @@ web-dev-logs:
 test:
 	@./scripts/run-tests.sh
 
+# pr / pr-ci gate PR creation on a green test run, then open the PR with `gh`.
+# Push half-finished branches freely; this is the checkpoint that runs only when
+# you choose to open a PR (there's no point opening one CI will fail). Args after
+# the target pass through to `gh pr create` via ARGS, e.g.:
+#   make pr ARGS="--fill"
+#   make pr-ci ARGS="--draft --title 'wip: x'"
+#
+#   pr     LOCAL gate — runs `make test` here, then opens the PR. Fast/offline;
+#          it's the SAME suite CI runs.
+#   pr-ci  CI gate    — pushes the branch, triggers the CI workflow on it, waits
+#          for it to go green (Linux — exactly the PR check), then opens the PR.
+# See scripts/open-pr.sh and docs/architecture/developer-guide.md (§3.3).
+.PHONY: pr pr-ci
+ARGS ?=
+pr:
+	@./scripts/open-pr.sh --local $(ARGS)
+pr-ci:
+	@./scripts/open-pr.sh --ci $(ARGS)
+
 # test-flows replays every story's flow fixtures against a scratch binary built
 # from the working tree (plain `go build` — no SPA embed needed), so it tracks
 # local edits rather than a stale $(INSTALLDIR) copy. Fails if any story fails.

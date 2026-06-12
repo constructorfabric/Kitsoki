@@ -94,10 +94,16 @@ Type free text or pick an action. Sessions persist in
 ### 4. Test
 
 ```sh
+make test                                                  # full suite — what CI runs
+
 ./kitsoki test flows testdata/apps/cloak/app.yaml          # deterministic, no LLM
 ./kitsoki test intents testdata/apps/cloak/app.yaml \      # intent pass-rate (free w/ Claude Code)
     --harness static
 ```
+
+`make test` runs `go test ./...` plus every story's deterministic flow fixtures —
+it's the suite CI runs and the [pre-PR gate](CONTRIBUTING.md) runs. Open PRs with
+`make pr` (local gate) or `make pr-ci` (gate on real CI).
 
 ### 5. Visualise
 
@@ -152,7 +158,8 @@ schema. The dogfood multi-glob covers both kitsoki-self bugs
 | **[`docs/stories/authoring.md`](docs/stories/authoring.md)** | How to write an `app.yaml`. Patterns, scaling-up, pitfalls. |
 | **[`docs/stories/choice-widget.md`](docs/stories/choice-widget.md)** | Author cookbook for `choice:` view elements (single / multi / form picker). |
 | **[`docs/stories/story-style.md`](docs/stories/story-style.md)** | Story style guide — typed view elements, narration voice, choice-widget conventions. |
-| **[`docs/architecture/developer-guide.md`](docs/architecture/developer-guide.md)** | For contributors: build, test, debug, add features. |
+| **[`CONTRIBUTING.md`](CONTRIBUTING.md)** | Start here to contribute: `make test`, the pre-PR gate (`make pr` / `make pr-ci`), CI. |
+| **[`docs/architecture/developer-guide.md`](docs/architecture/developer-guide.md)** | For contributors: build, test (incl. CI + cross-platform gotchas), debug, add features. |
 | **[`docs/tracing/testing.md`](docs/tracing/testing.md)** | Mode 1 (intent pass-rate) and Mode 2 (deterministic flow) tests. |
 | **[`docs/architecture/hosts.md`](docs/architecture/hosts.md)** | Every built-in `host.*` handler with input/output contracts. |
 | **[`docs/architecture/oracle-plugin.md`](docs/architecture/oracle-plugin.md)** | Oracle plugin contract: `oracle_plugins:`, `host.oracle.<verb>` effects, subprocess / MCP-over-HTTP transports, schema validation. |

@@ -19,24 +19,49 @@ import (
 	"kitsoki/internal/host"
 )
 
+// shortSocketDir returns a temp dir whose path is short enough that a unix
+// socket created inside it fits sockaddr_un.sun_path (104 bytes on macOS/BSD,
+// 108 on Linux). t.TempDir() lives under /var/folders/... on macOS — long
+// enough that binding/dialing a socket there fails with "invalid argument" —
+// so fall back to a short base (/tmp) when os.TempDir() is too long. The dir is
+// removed when the test ends.
+func shortSocketDir(t *testing.T) string {
+	t.Helper()
+	base := os.TempDir()
+	if len(base) > 16 { // e.g. macOS /var/folders/...; prefer a short base
+		base = "/tmp"
+	}
+	dir, err := os.MkdirTemp(base, "ks-sock")
+	if err != nil {
+		t.Fatalf("MkdirTemp(%q): %v", base, err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	return dir
+}
+
 // startTestOracleServer starts a runOracleServe in a goroutine and returns
 // the socket path. The server stops when ctx is cancelled. socketPath is
 // returned so callers can dial it.
 func startTestOracleServer(t *testing.T, ctx context.Context) string {
 	t.Helper()
-	sockPath := filepath.Join(t.TempDir(), "oracle-test.sock")
+	sockPath := filepath.Join(shortSocketDir(t), "oracle-test.sock")
 	logOut := &strings.Builder{}
 	ready := make(chan struct{})
 	go func() {
-		// Signal readiness after a short delay (the server starts synchronously
-		// once the listen syscall succeeds, so we need to wait for it).
+		// Probe readiness by actually DIALING the socket, not just os.Stat-ing
+		// the file. The socket file can exist for a window before the accept
+		// loop is serving — under heavy parallel load (the full `make test` run)
+		// that window let callers dial and get "connection refused". A
+		// successful dial proves the server is accepting; close the probe conn
+		// and signal ready.
 		go func() {
-			for i := 0; i < 20; i++ {
-				if _, err := os.Stat(sockPath); err == nil {
+			for i := 0; i < 400; i++ {
+				if c, err := net.Dial("unix", sockPath); err == nil {
+					_ = c.Close()
 					close(ready)
 					return
 				}
-				time.Sleep(10 * time.Millisecond)
+				time.Sleep(5 * time.Millisecond)
 			}
 			close(ready)
 		}()
@@ -44,8 +69,8 @@ func startTestOracleServer(t *testing.T, ctx context.Context) string {
 	}()
 	select {
 	case <-ready:
-	case <-time.After(2 * time.Second):
-		t.Fatal("oracle-serve did not start within 2 seconds")
+	case <-time.After(3 * time.Second):
+		t.Fatal("oracle-serve did not start within 3 seconds")
 	}
 	return sockPath
 }

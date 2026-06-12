@@ -327,14 +327,32 @@ func resolveIncludes(data []byte, baseDir string) ([]byte, error) {
 		// Resolve relative to baseDir, then verify the resolved path stays within baseDir.
 		incPath := filepath.Join(baseDir, rawIncPath)
 
-		// Use filepath.EvalSymlinks on baseDir to canonicalise it (in case baseDir
-		// itself is a symlink); then check the resolved incPath is under that dir.
+		// Canonicalise BOTH paths with EvalSymlinks before the containment check.
+		// baseDir is resolved in case it (or a parent) is a symlink — e.g. on
+		// macOS the temp root /var/folders/... is itself a symlink to
+		// /private/var/folders/... Crucially incPath must be resolved the SAME
+		// way, or canonBase (resolved) and canonInc (unresolved) never share a
+		// prefix and every include is falsely rejected as "outside" on macOS.
+		// Resolving incPath also HARDENS the check: a symlink planted inside the
+		// cassette dir that points outward resolves to its real target here and
+		// is correctly rejected, whereas a plain Clean would let the later
+		// ReadFile follow it and escape.
 		canonBase, evalErr := filepath.EvalSymlinks(baseDir)
 		if evalErr != nil {
 			// baseDir might not exist yet in some edge cases; fall back to clean path.
 			canonBase = filepath.Clean(baseDir)
 		}
-		canonInc := filepath.Clean(incPath)
+		canonInc, incEvalErr := filepath.EvalSymlinks(incPath)
+		if incEvalErr != nil {
+			// incPath itself may not exist yet; resolve its existing parent dir
+			// (which shares baseDir's symlink resolution) and re-join the leaf so
+			// the comparison still uses the same canonical root as canonBase.
+			if parent, perr := filepath.EvalSymlinks(filepath.Dir(incPath)); perr == nil {
+				canonInc = filepath.Join(parent, filepath.Base(incPath))
+			} else {
+				canonInc = filepath.Clean(incPath)
+			}
+		}
 		rel, relErr := filepath.Rel(canonBase, canonInc)
 		if relErr != nil || strings.HasPrefix(rel, "..") {
 			return nil, fmt.Errorf("!include %q: path resolves outside the cassette directory", rawIncPath)

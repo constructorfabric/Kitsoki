@@ -156,14 +156,20 @@ func TestTimeout_SurvivesOrchestratorRestart(t *testing.T) {
 	// transition the session into traveled.
 	clk.Advance(11 * 24 * time.Hour)
 
+	// Poll for BOTH effects of the firing: the synthetic transition lands AND
+	// the pending entry clears. They settle at slightly different points, so
+	// asserting the pending-clear once right after a state-only poll races under
+	// heavy parallel load — the state can be visible a beat before the pending
+	// map is cleared. Folding both into the Eventually removes that window.
 	require.Eventually(t, func() bool {
 		j, lerr := orch2.LoadJourney(sid)
 		if lerr != nil {
 			return false
 		}
-		return j.State == app.StatePath("traveled")
+		return j.State == app.StatePath("traveled") &&
+			len(orch2.TimeoutPendingStates(sid)) == 0
 	}, 2*time.Second, 5*time.Millisecond,
-		"session should have transitioned to traveled after clock advance")
+		"session should transition to traveled and clear its pending timeout after clock advance")
 
 	require.Empty(t, orch2.TimeoutPendingStates(sid),
 		"pending entry should be cleared after the timeout fires")

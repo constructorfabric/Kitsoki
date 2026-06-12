@@ -164,6 +164,13 @@ func TestRealStore_SessionWorkspaceAbsoluteWithRelativeAppFile(t *testing.T) {
 	// occurs because the user runs `hally run stories/bugfix/app.yaml`
 	// from the repo root; mirror that here.
 	repoRoot := t.TempDir()
+	// Canonicalise: on macOS t.TempDir() is a /var/folders symlink to
+	// /private/var/folders, and os.Chdir + os.Getwd below resolves it — so
+	// storyDir (built from the raw repoRoot) must be resolved too or it won't
+	// match the absolute workspace SessionWorkspace derives from the cwd.
+	if resolved, err := filepath.EvalSymlinks(repoRoot); err == nil {
+		repoRoot = resolved
+	}
 	storyDir := filepath.Join(repoRoot, "stories", "bugfix")
 	require.NoError(t, os.MkdirAll(storyDir, 0o755))
 	appAbs := filepath.Join(storyDir, "app.yaml")

@@ -120,8 +120,8 @@ func textSlotForIntent(def app.Intent) string {
 	return ""
 }
 
-// TestProposalRoom_AllowedIntents_DiscussBeforeCaptureExisting asserts that
-// the proposal room's AllowedIntents list, when sorted by priority (as the
+// TestDesignRoom_AllowedIntents_DiscussBeforeCaptureExisting asserts that
+// the design room's AllowedIntents list, when sorted by priority (as the
 // machine and OrchestratorDriver.IntentInfo both do), places "discuss" before
 // "capture_existing". This is the direct regression guard for the priority
 // bug fixed by raising discuss.priority from 40 → 85.
@@ -129,34 +129,38 @@ func textSlotForIntent(def app.Intent) string {
 // If someone changes priorities in app.yaml so that capture_existing ≥
 // discuss, this test will fail BEFORE a user can encounter the silent
 // "ideas go to Reference Docs" regression in the browser.
-func TestProposalRoom_AllowedIntents_DiscussBeforeCaptureExisting(t *testing.T) {
+//
+// NOTE: the dev-story "proposal" pipeline was renamed to "design" (commit
+// 5dc4123); the state and this test were updated to match — the discuss /
+// capture_existing intents and their priority contract carried over unchanged.
+func TestDesignRoom_AllowedIntents_DiscussBeforeCaptureExisting(t *testing.T) {
 	appPath := setupDevStoryRepo(t)
 	orch, sid := newDevStoryOrchestrator(t, appPath)
 
 	ctx := context.Background()
 
-	// Teleport to the proposal state with a minimal world (no seed idea
+	// Teleport to the design state with a minimal world (no seed idea
 	// required — the room has no entry guard).
 	_, err := orch.Teleport(ctx, sid, inbox.TeleportTarget{
-		State: app.StatePath("proposal"),
+		State: app.StatePath("design"),
 		Slots: map[string]any{},
 	})
-	require.NoError(t, err, "teleport to proposal state")
+	require.NoError(t, err, "teleport to design state")
 
 	// CurrentView returns AllowedIntents sorted by priority desc (same
 	// ordering that OrchestratorDriver.IntentInfo uses when building the
 	// browser menu).
 	view, err := orch.CurrentView(ctx, sid)
-	require.NoError(t, err, "CurrentView at proposal state")
-	require.NotEmpty(t, view.AllowedIntents, "proposal state must have allowed intents")
+	require.NoError(t, err, "CurrentView at design state")
+	require.NotEmpty(t, view.AllowedIntents, "design state must have allowed intents")
 
 	discussIdx := slices.Index(view.AllowedIntents, "discuss")
 	captureIdx := slices.Index(view.AllowedIntents, "capture_existing")
 
 	require.GreaterOrEqual(t, discussIdx, 0,
-		"'discuss' must appear in AllowedIntents for proposal state; got: %v", view.AllowedIntents)
+		"'discuss' must appear in AllowedIntents for design state; got: %v", view.AllowedIntents)
 	require.GreaterOrEqual(t, captureIdx, 0,
-		"'capture_existing' must appear in AllowedIntents for proposal state; got: %v", view.AllowedIntents)
+		"'capture_existing' must appear in AllowedIntents for design state; got: %v", view.AllowedIntents)
 	require.Less(t, discussIdx, captureIdx,
 		"'discuss' (priority 85) must sort BEFORE 'capture_existing' (priority 78) in AllowedIntents; "+
 			"got discuss at index %d, capture_existing at index %d (full list: %v) — "+

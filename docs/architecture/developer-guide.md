@@ -62,6 +62,62 @@ The full test suite is fast — under 10 seconds on a modern laptop —
 because almost everything that matters runs against an in-memory
 SQLite or a fake clock.
 
+### 3.1 `make test` — the authoritative suite
+
+`go test ./...` does **not** exercise the shipped stories under `stories/`.
+`make test` does both:
+
+```sh
+make test
+```
+
+It runs `go test ./...` **and** replays every story's deterministic Mode-2 flow
+fixtures (no LLM, no cost — see [`docs/tracing/testing.md`](../tracing/testing.md)),
+collecting *every* failure across both before exiting (it never bails early), and
+writes a full rotated report to `.artifacts/test-reports/`. Dependencies are just
+Go, `bash` and `jq` — no `pnpm`/SPA build is needed to test (a committed
+`internal/runstatus/web/assets/.gitkeep` satisfies the `//go:embed`). **`make test`
+is the suite CI runs and the suite the pre-PR gate runs** — treat green `make test`
+as the bar for any change.
+
+### 3.2 Continuous integration
+
+CI lives in [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) and runs
+on every push to `main` and every PR targeting `main` (plus on-demand via
+`workflow_dispatch`). It is one job: check out, set up Go from `go.mod`, and run
+`make test` on `ubuntu-latest`. Concurrency is capped per-ref with
+`cancel-in-progress`, so a new push supersedes the previous run.
+
+Tests must be **cross-platform and hermetic** — CI is Linux, most contributors
+are on macOS. Two macOS-specific traps to avoid when writing tests:
+
+- **`t.TempDir()` is a symlink on macOS** (`/var/folders/…` → `/private/var/…`).
+  Code that canonicalises paths (`os.Getwd` after `chdir`, `filepath.EvalSymlinks`)
+  returns the resolved form, so an expectation built from the raw `t.TempDir()`
+  won't match. Resolve the temp dir up front: `dir, _ = filepath.EvalSymlinks(dir)`.
+- **Unix-socket paths have a ~104-byte limit on macOS** (`sun_path`). A socket
+  under `t.TempDir()` overflows it (`connect: invalid argument`). Put test sockets
+  under a short base (`/tmp/…`).
+
+### 3.3 Opening a PR — the pre-PR gate
+
+Push half-finished or non-building branches freely. The gate runs **only** when
+you choose to open a PR (there's no point opening one CI will fail):
+
+```sh
+make pr                       # LOCAL gate: runs `make test`, then `gh pr create`
+make pr ARGS="--fill --draft" # extra args pass through to `gh pr create`
+make pr-ci                    # CI gate: push branch, trigger + watch the real CI
+                              # run on Linux, open the PR only if it goes green
+```
+
+Use `make pr` (fast, offline — the same suite CI runs) by default; reach for
+`make pr-ci` when a change is platform-sensitive and you want the authoritative
+Linux result before opening the PR. Both are thin wrappers over
+[`scripts/open-pr.sh`](../../scripts/open-pr.sh) and need the `gh` CLI
+(`gh auth login`). `make pr-ci` relies on the `workflow_dispatch` trigger to run
+CI on your branch on demand without CI firing on every push.
+
 ---
 
 ## 4. Run kitsoki locally

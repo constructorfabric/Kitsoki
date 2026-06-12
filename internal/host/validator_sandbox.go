@@ -97,12 +97,19 @@ func RunValidatorSandboxed(ctx context.Context, opts ValidatorSandboxOptions) (V
 		defer os.RemoveAll(scratchDir)
 	}
 
+	// UnsafeNoSandbox is honoured uniformly on EVERY platform — run the
+	// subprocess directly with no sandbox setup (its documented contract).
+	// Checked before the per-OS switch so macOS/Linux don't fall through to
+	// their sandbox paths (the darwin branch previously ignored the flag and
+	// always invoked sandbox-exec, so an opt-out validator still hit the
+	// sandbox — and failed where sandbox-exec is unavailable).
+	if opts.UnsafeNoSandbox {
+		return runUnsandboxed(ctx, opts, scratchDir)
+	}
+
 	switch runtime.GOOS {
 	case "windows":
-		if !opts.UnsafeNoSandbox {
-			return ValidatorResult{}, fmt.Errorf("validator_sandbox: Windows does not support sandbox isolation in Phase 1; set unsafe_validator_no_sandbox: true on the validator declaration to opt out (decision D2)")
-		}
-		return runUnsandboxed(ctx, opts, scratchDir)
+		return ValidatorResult{}, fmt.Errorf("validator_sandbox: Windows does not support sandbox isolation in Phase 1; set unsafe_validator_no_sandbox: true on the validator declaration to opt out (decision D2)")
 	case "darwin":
 		return runMacOSSandbox(ctx, opts, scratchDir)
 	default:

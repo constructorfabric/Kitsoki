@@ -1088,6 +1088,13 @@ func TestResolveCwd_AbsolutisesRelative(t *testing.T) {
 	// Use a real on-disk tempdir so filepath.Abs against the appFile
 	// produces a stable, prefix-matchable expected value.
 	tmp := t.TempDir()
+	// Canonicalise: on macOS t.TempDir() returns a /var/folders/... path that is
+	// a symlink to /private/var/folders/..., and os.Chdir + os.Getwd below
+	// resolves it. Without this, wantDir (built from the raw tmp) would never
+	// match resolveCwd's output (built from the resolved getwd).
+	if resolved, err := filepath.EvalSymlinks(tmp); err == nil {
+		tmp = resolved
+	}
 	appAbs := filepath.Join(tmp, "stories", "bugfix", "app.yaml")
 	if err := os.MkdirAll(filepath.Dir(appAbs), 0o755); err != nil {
 		t.Fatalf("MkdirAll: %v", err)
