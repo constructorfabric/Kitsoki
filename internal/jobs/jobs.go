@@ -342,7 +342,16 @@ func (s *inMemoryScheduler) Submit(ctx context.Context, spec JobSpec) (JobID, er
 		done: make(chan struct{}),
 	}
 
-	jobCtx, cancel := context.WithCancel(ctx)
+	// Detach from the caller's cancellation: a background job is meant to
+	// outlive the turn that submitted it (the submitting room transitions to a
+	// "…executing" state and the view refreshes when the job finishes). In web
+	// mode the caller's ctx is the per-turn HTTP request context, which is
+	// cancelled the instant the turn handler returns — without WithoutCancel
+	// that would kill the in-flight handler (e.g. an oracle exec) with
+	// "context canceled" ~immediately. We keep WithoutCancel so trace/observability
+	// values still propagate, then wrap in our own WithCancel so the scheduler's
+	// explicit Cancel(id) (stored below) remains the sole way to abort the job.
+	jobCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 
 	s.mu.Lock()
 	s.jobs[id] = rj

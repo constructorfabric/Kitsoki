@@ -102,6 +102,69 @@ func TestCancel(t *testing.T) {
 	}
 }
 
+// TestSubmit_SurvivesCallerContextCancel is the regression for the silent
+// bugfix-pipeline hang: a background oracle.decide job died with
+// "context canceled" ~96ms after starting because its context was a child of
+// the submitting turn's ctx. In web mode that ctx is the per-turn HTTP request
+// context, cancelled the instant the turn handler returns — so the job the room
+// was waiting on never ran, and the UI sat on "running…" forever.
+//
+// A background job MUST outlive the caller's ctx; only the scheduler's own
+// Cancel(id) may abort it.
+func TestSubmit_SurvivesCallerContextCancel(t *testing.T) {
+	fc := clock.NewFake(time.Unix(0, 0))
+	sched := jobs.NewInMemoryScheduler(jobs.WithClock(fc))
+
+	// Caller context modelling the per-turn HTTP request context.
+	callerCtx, cancelCaller := context.WithCancel(context.Background())
+
+	id, err := sched.Submit(callerCtx, jobs.JobSpec{
+		Kind: "host.oracle.decide",
+		Handler: func(ctx context.Context, args map[string]any) (host.Result, error) {
+			select {
+			case <-ctx.Done():
+				return host.Result{}, ctx.Err()
+			case <-fc.After(10 * time.Second):
+				return host.Result{Data: map[string]any{"output": "done"}}, nil
+			}
+		},
+	})
+	if err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+
+	ch, unsub := sched.Subscribe(id)
+	defer unsub()
+
+	// Wait until the handler is parked, then cancel the caller's ctx — exactly
+	// what happens when the submitting turn handler returns.
+	fc.BlockUntil(1)
+	cancelCaller()
+
+	// The job must still be running: no terminal event yet.
+	select {
+	case ev := <-ch:
+		t.Fatalf("job terminated after caller ctx cancel (got %s/%q); it must outlive the caller", ev.Status, ev.Error)
+	case <-time.After(200 * time.Millisecond):
+		// Good: still running.
+	}
+
+	// Explicit Cancel(id) is still the way to abort it.
+	if err := sched.Cancel(context.Background(), id); err != nil {
+		t.Fatalf("cancel: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	select {
+	case ev := <-ch:
+		if ev.Status != jobs.JobCancelled {
+			t.Fatalf("expected cancelled, got %s", ev.Status)
+		}
+	case <-ctx.Done():
+		t.Fatal("timeout waiting for explicit cancellation")
+	}
+}
+
 func TestHeartbeat(t *testing.T) {
 	fc := clock.NewFake(time.Unix(0, 0))
 	sched := jobs.NewInMemoryScheduler(jobs.WithClock(fc))
