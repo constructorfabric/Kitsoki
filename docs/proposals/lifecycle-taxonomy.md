@@ -360,6 +360,15 @@ Notes:
 - `evidence` is how demo videos / QA screenshots become declared, regenerable
   proof attached to a scenario — the seam the `kitsoki-ui-qa` skill judges
   against today, made addressable.
+- **Gherkin.** The `given/when/then` fields are Gherkin's triad carried as
+  *descriptive data*: nothing regex-matches the prose (no step-definition
+  coupling — Gherkin's classic failure mode), because the executable link is
+  the `harness` + `fixture` pointer instead. Real `.feature` files slot in as
+  a harness, not a container: `harness: gherkin` with
+  `fixture: <path>.feature#<scenario-name>`, lint-parsed via the official
+  Gherkin Go parser so a missing scenario is a hard error (Open question 10;
+  the full fit analysis is
+  [prior-art note §3](notes/lifecycle-taxonomy-prior-art.md)).
 
 ## Validation
 
@@ -410,7 +419,7 @@ meaningless); plans cohabit with proposals (same lifecycle, same fate).
 | Tour manifests / Playwright specs (`tools/runstatus/src/tour/`) | Become `produced_by` targets — the regeneration pointers for feature media. No change to them. |
 | dev-story `idea` flow (`stories/dev-story/`) | Future producer of `lifecycle/proposal/v1`; its existing `schemas/design-artifact.json` is the precedent for schema-gated authoring. Not changed in v1. |
 | `docs/features/mvp.md` | Seeded into real Feature objects, then deleted. |
-| Constructor Studio (cypilot upstream) + `internal/host/cypilot_artifacts.go` | Concept donor, not substrate ([prior-art note](notes/lifecycle-taxonomy-prior-art.md) §3–4): adapt its per-ID-kind lint config, top-down coverage errors, and bidirectional status consistency into the catalog lint; do not adopt its markdown+TOML containers. Separately, the provider's `cpt generate/plan/analyze` verbs no longer exist upstream (`cpt`→`cfs` rename) — re-map against a pinned release or retire it, independent of this proposal. |
+| Constructor Studio (cypilot upstream) + `internal/host/cypilot_artifacts.go` | Concept donor, not substrate ([prior-art note](notes/lifecycle-taxonomy-prior-art.md) §4–5): adapt its per-ID-kind lint config, top-down coverage errors, and bidirectional status consistency into the catalog lint; do not adopt its markdown+TOML containers. Separately, the provider's `cpt generate/plan/analyze` verbs no longer exist upstream (`cpt`→`cfs` rename) — re-map against a pinned release or retire it, independent of this proposal. |
 
 ## Tasks
 
@@ -418,8 +427,8 @@ meaningless); plans cohabit with proposals (same lifecycle, same fate).
 ## 0. Design review (this document)
 - [ ] 0.1 Agree the four-object model + durable/transient split
 - [ ] 0.2 Resolve Open questions 1–3 (layout, plan/brief unification, proposal
-          migration) and the research-derived 7–9 (criterion revisions, criterion
-          grammar, ship deltas)
+          migration) and the research-derived 7–10 (criterion revisions, criterion
+          grammar, ship deltas, Gherkin interop)
 - [ ] 0.3 Hand-author the agent-actions worked example end-to-end (all four files)
           against draft schemas; adjust schemas from friction, not theory
 
@@ -487,16 +496,27 @@ determinism tests passing unchanged
    a warn-level lint; the only verified mechanism the proposal otherwise
    lacks (prior-art note §1).*
 8. **Constrained criterion grammar** — should Feature acceptance criteria
-   offer an optional structured shape (given/when/then like the TestSpec
-   scenario, or EARS "WHEN … SHALL …") instead of only free prose? Kiro and
+   offer an optional structured shape instead of only free prose? Kiro and
    OpenSpec both show constrained criteria are what make downstream
    tooling possible (prior-art note §2). *Lean: optional `given/when/then`
-   keys alongside `criterion:`; free prose stays valid.*
+   keys alongside `criterion:`, free prose stays valid — and the shape is the
+   Gherkin triad, not EARS: we already use Gherkin heavily, and a Gherkin
+   criterion projects mechanically into a TestSpec scenario or a `.feature`
+   stub (prior-art note §3).*
 9. **Criterion deltas on ship** — when a Proposal ships, should it carry
    structured ADDED/MODIFIED/REMOVED acceptance-criterion deltas that merge
    into the Feature (OpenSpec's archive mechanic), instead of hand-editing
    the Feature plus the `status` flip? *Lean: defer to v2 — v1 keeps the
    manual flip; revisit when a story automates the ship step.*
+10. **Gherkin interop depth** — `harness: gherkin` with
+    `fixture: <path>.feature#<scenario-name>` and a lint that parses cited
+    `.feature` files (official Gherkin Go parser) to hard-error on missing
+    scenarios — and optionally a `@criterion:<feature-id>/<criterion-id>`
+    tag convention so coverage is computable from the test side too
+    (prior-art note §3). How much lands in v1? *Lean: the harness kind +
+    parsed existence check in v1 (it's the same shipped-fixture lint the
+    other harnesses get, just structural); tag back-references when a real
+    `.feature` corpus exists to lint.*
 
 ## Non-goals
 

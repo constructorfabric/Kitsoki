@@ -9,8 +9,9 @@ integrates as **cypilot** — be adapted instead of building `internal/lifecycle
 **Method:** a multi-agent web research pass over the requirements-as-code field
 (claims kept only after 3-vote adversarial verification; survivors marked *verified*),
 a follow-up primary-source sweep of the agent-era spec-driven tools (cited but
-single-pass), and a ground-truth shallow-clone inspection of
-`constructorfabric/studio` at tag v1.3.1 (HEAD 2026-06-12).
+single-pass), a ground-truth shallow-clone inspection of
+`constructorfabric/studio` at tag v1.3.1 (HEAD 2026-06-12), and a dedicated
+Gherkin fit analysis (§3) since the team uses Gherkin heavily in practice.
 
 ## Verdict in one table
 
@@ -23,6 +24,7 @@ single-pass), and a ground-truth shallow-clone inspection of
 | Acceptance-coverage as a **hard** lint | Melexis, OpenFastTrace (verified) | Most tools ship coverage *reports*; Melexis (threshold gate) and OFT (defect vocabulary) prove gates are viable. The proposal's choice is the stricter, rarer one |
 | Evidence as pointers, pass/fail stays in CI | StrictDoc (verified) | Convention is file-based references to harness output, never embedded results |
 | Durable/transient split | **OpenSpec** (primary-source) | Shipped precedent: durable `specs/` catalog + transient `changes/` archived on ship |
+| TestSpec `given/when/then` scenario fields | **Gherkin** (§3) | The triad *is* Gherkin's grammar, carried as data; harness/fixture pointers deliberately replace Gherkin's step-glue coupling |
 | Media/help/tutorials with `produced_by` | none anywhere | Genuinely novel — no tool surveyed (incl. studio) models evidence/media attachments |
 
 ## 1. Requirements-as-code tools (verified claims)
@@ -96,7 +98,79 @@ build failure; StrictDoc DO-178C forward/backward trace matrices; StrictDoc
   line (OpenSpec on one side, Spec Kit/BMAD on the other) is the proposal's no-LLM
   moat split, observed in the wild.
 
-## 3. Constructor Studio — the cypilot upstream, evaluated
+## 3. Gherkin — how it fits this taxonomy
+
+We use Gherkin heavily in practice, so this gets a dedicated consideration.
+(Note: nothing in the kitsoki tree itself is Gherkin today — no `.feature`
+files; the flow fixtures and Playwright specs are YAML/TypeScript. The triad
+lives in our authoring habits and external projects, which is exactly what the
+fit below assumes.)
+
+**What Gherkin settled, as prior art.** Fifteen-plus years as the de facto
+acceptance-scenario grammar ([reference](https://cucumber.io/docs/gherkin/reference/)):
+a `.feature` file carries a feature narrative plus `Scenario` /
+`Scenario Outline` + `Examples` / `Background` blocks in
+Given/When/Then/And/But steps. Its only cross-reference mechanism is **tags**
+(`@smoke`, `@REQ-123`) — flat, untyped strings, but the standard Cucumber
+traceability pattern is tagging scenarios with requirement ids and joining in
+reports. "Living documentation" tooling (Cucumber Reports, SpecFlow LivingDoc,
+Cukedoctor) renders feature files into browsable catalogs — the closest
+pre-agent-era thing to this proposal's Feature + TestSpec pair. Official
+parsers exist in many languages including Go
+([cucumber/gherkin](https://github.com/cucumber/gherkin); the official Go
+runner is [godog](https://github.com/cucumber/godog)).
+
+**Gherkin's two famous failure modes — and how the TestSpec dodges them:**
+
+1. **Step-glue coupling.** Gherkin prose binds to step-definition regexes, so
+   a wording change breaks tests, and scenarios drift toward stilted
+   test-script phrasing to fit existing steps. The TestSpec's
+   `given/when/then` are *descriptive data* mapped to `harness:` + `fixture:`
+   pointers — no regex matches the prose, so wording can be edited freely.
+   This decoupling is deliberate; an executable-Gherkin TestSpec would
+   reintroduce the coupling.
+2. **Feature-file rot.** When teams treat `.feature` files as a test artifact
+   instead of a shared spec, they stop being read and rot ("BDD is discovery,
+   not test automation" is the Cucumber community's own refrain). The
+   proposal's durable-catalog posture + coverage lint is the structural
+   counter: criteria live on the Feature, scenarios must cite them, and the
+   lint notices when the mapping decays.
+
+**Where Gherkin plugs in concretely:**
+
+- **As a harness kind.** Add `harness: gherkin` alongside flow/unit/playwright,
+  with `fixture:` pointing at a `.feature` file and the scenario cited by name
+  (e.g. `fixture: features/auth.feature#valid-login`). The catalog lint can
+  parse the file with the official Gherkin Go parser and hard-error when the
+  cited scenario doesn't exist — the same shipped-fixture existence check the
+  other harnesses get, but structurally verified instead of path-only.
+- **As tag back-references.** A
+  `@criterion:<feature-id>/<criterion-id>` tag convention inside `.feature`
+  files gives the test side a declared link back to the catalog — the same
+  shape as OFT's `Covers` and studio's `@cpt-*` code markers (§1, §4). The
+  lint then computes coverage from *both* directions and can flag a scenario
+  whose tag names a criterion that no longer exists.
+- **As the criterion grammar** (proposal Open question 8). If Feature
+  acceptance criteria adopt the structured shape, it should be the Gherkin
+  triad — not EARS — because the team is already fluent in it and because a
+  criterion written as given/when/then projects mechanically into a TestSpec
+  scenario or a `.feature` stub. One grammar from criterion to scenario to
+  executable test.
+- **The one construct with no analog:** `Scenario Outline` + `Examples`
+  tables (parameterized scenarios). If TestSpecs ever need parameterization,
+  an `examples:` list of key/value rows on a scenario is the natural borrow —
+  cheap in the schema, familiar to every Gherkin author.
+
+**What not to do: don't make `.feature` files the Feature container.** A
+feature file *looks* like the Feature object (narrative + acceptance
+scenarios fused), but it cannot carry composition (`composed_of`), media,
+help, tutorials, or schema'd fields; tags are its only metadata and they are
+untyped. Using it as the catalog container would tie the durable catalog to
+test execution and inherit the rot problem. Gherkin's right role here is the
+**evidence layer**: TestSpec scenarios may *delegate to* Gherkin, never *be*
+Gherkin.
+
+## 4. Constructor Studio — the cypilot upstream, evaluated
 
 Ground truth from a clone of [constructorfabric/studio](https://github.com/constructorfabric/studio)
 (v1.3.1, Apache-2.0, last commit same-day — very active).
@@ -131,7 +205,7 @@ workflow, positioning directly against OpenSpec.
   enforcement: `[x]` step ⇒ marker must exist, `[ ]` step ⇒ marker must *not* exist.
   Deeper than anything the proposal attempts (and deeper than it needs in v1).
 
-## 4. Recommendations
+## 5. Recommendations
 
 1. **Build `internal/lifecycle` as proposed; do not adopt studio's formats or
    machinery.** Studio is markdown + TOML + Python/agent-prompts; the proposal is
@@ -146,8 +220,10 @@ workflow, positioning directly against OpenSpec.
 3. **Weigh two OpenSpec ideas at design review:** structured deltas in the transient
    object (a Proposal declaring ADDED/MODIFIED/REMOVED acceptance criteria, merged
    into the Feature on ship — richer than a bare `status` flip), and a constrained
-   optional grammar for Feature acceptance criteria (given/when/then or EARS) so
-   criterion → scenario tracing is checkable beyond id citation.
+   optional grammar for Feature acceptance criteria so criterion → scenario tracing
+   is checkable beyond id citation. If adopted, the grammar should be the Gherkin
+   triad, not EARS — see §3 for the argument and for the `harness: gherkin` +
+   tag-back-reference integration.
 4. **Consider OFT-style revision integers on acceptance-criterion ids** so the lint
    can distinguish *outdated* coverage from *missing* coverage — the one verified
    mechanism nothing in the proposal currently replicates.
