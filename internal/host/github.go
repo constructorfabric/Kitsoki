@@ -37,7 +37,7 @@ import (
 // dispatch site — see internal/host/host.go::Get.
 //
 // Required args:
-//   - op (string): one of search, get, comment, transition, list_mine.
+//   - op (string): one of create, search, get, comment, transition, list_mine.
 //
 // Optional args (all ops):
 //   - repo (string): the `owner/repo` slug for the `--repo` flag.  When
@@ -55,6 +55,8 @@ func GitHubTicketHandler(ctx context.Context, args map[string]any) (Result, erro
 		return Result{Error: "host.gh.ticket: gh CLI not available — install github.com/cli/cli and run `gh auth login`"}, nil
 	}
 	switch op {
+	case "create":
+		return ghTicketCreate(ctx, args)
 	case "search":
 		return ghTicketSearch(ctx, args)
 	case "get":
@@ -156,6 +158,12 @@ func ghTicketGet(ctx context.Context, args map[string]any) (Result, error) {
 	data := ghIssueSummary(raw)
 	if body, ok := raw["body"].(string); ok {
 		data["body"] = body
+		// Recover the ```kitsoki body-metadata block create() wrote (trace_ref,
+		// kitsoki_rev, filed_by, legacy_id) so callers see the round-tripped
+		// fields GitHub has no native home for — see github_create.go.
+		if meta := ghParseMetadata(body); meta != nil {
+			data["kitsoki_meta"] = meta
+		}
 	}
 	if comments, ok := raw["comments"].([]any); ok {
 		data["comments"] = comments

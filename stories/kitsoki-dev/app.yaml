@@ -155,6 +155,14 @@ world:
   repo_root:    { type: string, default: "" }
   ticket_globs: { type: string, default: "issues/bugs/*.md,issues/features/*.md,stories/*/issues/bugs/*.md,stories/*/issues/features/*.md" }
 
+  # ticket_repo — the canonical GitHub repo every host.gh.ticket call pins via
+  # its `repo` arg, so the dogfood loop never silently resolves the operator's
+  # `origin` (a personal fork like bsacrobatix/Kitsoki). constructorfabric is
+  # canonical even from a fork; a downstream project overrides this default
+  # rather than editing Go. Consumed once iface.ticket rebinds to
+  # host.gh.ticket (see docs/proposals/github-issues-tracker.md slice #4).
+  ticket_repo:  { type: string, default: "constructorfabric/Kitsoki" }
+
   # Judge polymorphism. Defaults: supervised + 0.8 confidence floor.
   # Flip judge_mode to `llm_then_human` for an unattended run.
   judge_mode:                 { type: string, default: "human" }
