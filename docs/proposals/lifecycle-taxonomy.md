@@ -43,6 +43,16 @@ is pure YAML (`.yaml`), with markdown embedded — inline as block scalars, or
 via `!include` for long-form prose — so every object is fully processable as
 structured data.
 
+Industry prior art and an evaluation of Constructor Studio (the renamed
+cypilot upstream) are in
+[`notes/lifecycle-taxonomy-prior-art.md`](notes/lifecycle-taxonomy-prior-art.md).
+Short version: every load-bearing decision here has direct precedent
+(per-object YAML records — Doorstop; pinned schemas — StrictDoc/Open-Needs;
+hard coverage lint — Melexis/OpenFastTrace; durable/transient split —
+OpenSpec's shipped `specs/` vs `changes/` model), the media/evidence
+descriptors are genuinely novel, and studio is a concept donor but not an
+adoptable substrate. Open questions 7–9 below come from that research.
+
 ## What changes
 
 A small family of versioned domain objects, each a YAML document validated
@@ -83,6 +93,9 @@ The durable/transient split mirrors the existing proposal lifecycle: Features
 and TestSpecs accumulate and stay current (they describe the product);
 Proposals and Plans are working documents that get trimmed and deleted as
 work ships, with their outcome reflected back onto the Feature's `status`.
+(The same split OpenSpec ships as durable `specs/` vs archived `changes/` —
+see the [prior-art note](notes/lifecycle-taxonomy-prior-art.md) §2 and Open
+question 9.)
 
 ## Impact
 
@@ -397,13 +410,16 @@ meaningless); plans cohabit with proposals (same lifecycle, same fate).
 | Tour manifests / Playwright specs (`tools/runstatus/src/tour/`) | Become `produced_by` targets — the regeneration pointers for feature media. No change to them. |
 | dev-story `idea` flow (`stories/dev-story/`) | Future producer of `lifecycle/proposal/v1`; its existing `schemas/design-artifact.json` is the precedent for schema-gated authoring. Not changed in v1. |
 | `docs/features/mvp.md` | Seeded into real Feature objects, then deleted. |
+| Constructor Studio (cypilot upstream) + `internal/host/cypilot_artifacts.go` | Concept donor, not substrate ([prior-art note](notes/lifecycle-taxonomy-prior-art.md) §3–4): adapt its per-ID-kind lint config, top-down coverage errors, and bidirectional status consistency into the catalog lint; do not adopt its markdown+TOML containers. Separately, the provider's `cpt generate/plan/analyze` verbs no longer exist upstream (`cpt`→`cfs` rename) — re-map against a pinned release or retire it, independent of this proposal. |
 
 ## Tasks
 
 ```
 ## 0. Design review (this document)
 - [ ] 0.1 Agree the four-object model + durable/transient split
-- [ ] 0.2 Resolve Open questions 1–3 (layout, plan/brief unification, proposal migration)
+- [ ] 0.2 Resolve Open questions 1–3 (layout, plan/brief unification, proposal
+          migration) and the research-derived 7–9 (criterion revisions, criterion
+          grammar, ship deltas)
 - [ ] 0.3 Hand-author the agent-actions worked example end-to-end (all four files)
           against draft schemas; adjust schemas from friction, not theory
 
@@ -464,6 +480,23 @@ determinism tests passing unchanged
 6. **Tutorial depth** — are tutorials a list-of-steps inline (shown), or do
    they deserve their own object type with `!include`d step bodies once one
    gets long? *Lean: inline until a real tutorial outgrows it.*
+7. **Criterion revisions** — add an OpenFastTrace-style revision integer to
+   acceptance-criterion ids, so the coverage lint can flag a TestSpec scenario
+   as *outdated* (criterion changed since the scenario cited it) rather than
+   only present/absent? *Lean: yes — one optional integer field in the schema,
+   a warn-level lint; the only verified mechanism the proposal otherwise
+   lacks (prior-art note §1).*
+8. **Constrained criterion grammar** — should Feature acceptance criteria
+   offer an optional structured shape (given/when/then like the TestSpec
+   scenario, or EARS "WHEN … SHALL …") instead of only free prose? Kiro and
+   OpenSpec both show constrained criteria are what make downstream
+   tooling possible (prior-art note §2). *Lean: optional `given/when/then`
+   keys alongside `criterion:`; free prose stays valid.*
+9. **Criterion deltas on ship** — when a Proposal ships, should it carry
+   structured ADDED/MODIFIED/REMOVED acceptance-criterion deltas that merge
+   into the Feature (OpenSpec's archive mechanic), instead of hand-editing
+   the Feature plus the `status` flip? *Lean: defer to v2 — v1 keeps the
+   manual flip; revisit when a story automates the ship step.*
 
 ## Non-goals
 
