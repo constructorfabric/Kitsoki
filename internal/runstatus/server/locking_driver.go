@@ -66,6 +66,32 @@ func (d *lockingDriver) ContinueTurn(ctx context.Context, slots map[string]any) 
 	return out, err
 }
 
+// HarnessProfiles / HarnessSelection / SetHarnessSelection forward to the inner
+// driver's HarnessController when it has one. Selection state is in-memory and
+// per-session — not the journey log — so these run unlocked (the writer lock is
+// reserved for turns that mutate session state). A read-only inner driver
+// without the optional interface yields empty profiles and a no-op switch.
+func (d *lockingDriver) HarnessProfiles() []orchestrator.ProfileInfo {
+	if hc, ok := d.Driver.(HarnessController); ok {
+		return hc.HarnessProfiles()
+	}
+	return nil
+}
+
+func (d *lockingDriver) HarnessSelection() orchestrator.ProfileSelection {
+	if hc, ok := d.Driver.(HarnessController); ok {
+		return hc.HarnessSelection()
+	}
+	return orchestrator.ProfileSelection{}
+}
+
+func (d *lockingDriver) SetHarnessSelection(profile, model string) error {
+	if hc, ok := d.Driver.(HarnessController); ok {
+		return hc.SetHarnessSelection(profile, model)
+	}
+	return nil
+}
+
 // Teleport drives a turn (it re-renders the destination room and restores the
 // job's slots), so it mutates session state and must serialise under the same
 // writer lock as the other turn-driving methods. The read-only inbox methods

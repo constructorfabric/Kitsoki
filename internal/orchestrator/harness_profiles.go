@@ -33,9 +33,9 @@ type HarnessProfile struct {
 // operator model override (a pick from the profile's catalog). The zero value
 // means "no selection" — resolution falls through to the flag-derived default.
 type ProfileSelection struct {
-	Profile string
+	Profile string `json:"profile"`
 	// Model, when set, overrides the profile's default model for this session.
-	Model string
+	Model string `json:"model,omitempty"`
 }
 
 // ProfileInfo is the secret-free view of a profile for surfaces (TUI /provider,

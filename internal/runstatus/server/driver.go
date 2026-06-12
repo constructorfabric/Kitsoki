@@ -118,6 +118,34 @@ func (d OrchestratorDriver) PatchWorld(ctx context.Context, patch map[string]any
 	return d.Orch.PatchWorld(ctx, d.SID, patch)
 }
 
+// HarnessController is the OPTIONAL harness-profile surface a Driver may expose:
+// reading the declared profiles + live selection, and switching it. The server
+// type-asserts a Driver to it for the runstatus.session.harness /
+// set_selection RPCs; a Driver that doesn't implement it (read-only / artifact
+// surfaces with no orchestrator) makes those RPCs report "no profiles". Kept
+// off the core Driver interface so those surfaces need not implement it.
+//
+// SetHarnessSelection does NOT mutate the session journey (it sets in-memory,
+// per-session selection consulted on the next dispatch), so unlike Turn it
+// needs no writer lock — lockingDriver forwards it unlocked.
+type HarnessController interface {
+	HarnessProfiles() []orchestrator.ProfileInfo
+	HarnessSelection() orchestrator.ProfileSelection
+	SetHarnessSelection(profile, model string) error
+}
+
+func (d OrchestratorDriver) HarnessProfiles() []orchestrator.ProfileInfo {
+	return d.Orch.Profiles()
+}
+
+func (d OrchestratorDriver) HarnessSelection() orchestrator.ProfileSelection {
+	return d.Orch.Selection()
+}
+
+func (d OrchestratorDriver) SetHarnessSelection(profile, model string) error {
+	return d.Orch.SetSelection(profile, model)
+}
+
 // ListNotifications returns the session's notifications newest-first, or an
 // empty list when no JobStore is wired (nil-safety contract). The 0 limit asks
 // the store for all non-dismissed rows.
@@ -212,16 +240,16 @@ func (d OrchestratorDriver) DefaultIntent(state string) string {
 // normal interpreted outcome of the turn. Only infra failures surface as an
 // rpcError.
 type turnResult struct {
-	Mode           string                  `json:"mode"`
-	State          string                  `json:"state"`
-	View           string                  `json:"view,omitempty"`
-	TypedView      *app.View               `json:"typed_view,omitempty"`
-	AllowedIntents []string                `json:"allowed_intents,omitempty"`
+	Mode           string    `json:"mode"`
+	State          string    `json:"state"`
+	View           string    `json:"view,omitempty"`
+	TypedView      *app.View `json:"typed_view,omitempty"`
+	AllowedIntents []string  `json:"allowed_intents,omitempty"`
 	// Intents is the enriched menu the browser renders: one entry per allowed
 	// intent, in AllowedIntents order, carrying the intent's title and the
 	// single free-text slot (if any) the UI binds its input box to. It is the
 	// structured companion to AllowedIntents (which stays for back-compat).
-	Intents       []intentInfo            `json:"intents,omitempty"`
+	Intents []intentInfo `json:"intents,omitempty"`
 	// DefaultIntent is the resolved name of the current state's free-text sink
 	// (its `default_intent`), or "" when none. The composer defaults its text
 	// box to this intent. See Driver.DefaultIntent.

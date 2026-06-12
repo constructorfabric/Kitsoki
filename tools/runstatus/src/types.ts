@@ -17,6 +17,22 @@ export interface MermaidSnapshot {
   node_map: Record<string, NodeRef>;
 }
 
+/** One operator-selectable harness profile (secret-free: no env). Mirrors the
+ *  server's orchestrator.ProfileInfo. */
+export interface HarnessProfileInfo {
+  name: string;
+  backend?: string;
+  model?: string;
+  models?: string[];
+  active: boolean;
+}
+
+/** The session's harness profiles + live selection, from runstatus.session.harness. */
+export interface HarnessState {
+  profiles: HarnessProfileInfo[];
+  selection: { profile: string; model?: string };
+}
+
 export interface TraceEvent {
   time: string;
   level: string;

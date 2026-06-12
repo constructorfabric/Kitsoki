@@ -7,6 +7,7 @@ import type {
   TurnResult,
   IntentInfo,
   View,
+  HarnessProfileInfo,
 } from "../types.js";
 import type { DataSource } from "../data/source.js";
 import type { LiveSource } from "../data/live-source.js";
@@ -40,6 +41,17 @@ export const useRunStore = defineStore("run", () => {
   const selectedEventIndex = ref<number | null>(null);
   const terminal = ref<boolean>(false);
   const loading = ref<boolean>(false);
+
+  // ---- harness profiles ----
+  // Declared profiles + live selection, loaded from the (optional)
+  // source.getHarness. Empty when the source has no orchestrator (artifact
+  // mode) or no profiles declared — the header picker stays hidden.
+  const harnessProfiles = ref<HarnessProfileInfo[]>([]);
+  const harnessModel = ref<string>("");
+  // The active profile's name, derived from the profiles' active flag.
+  const harnessActiveProfile = computed<string>(
+    () => harnessProfiles.value.find((p) => p.active)?.name ?? ""
+  );
 
   // ---- conversational / write-side state ----
   // transcript is the ordered user↔agent exchange driven by the write RPCs.
@@ -116,6 +128,7 @@ export const useRunStore = defineStore("run", () => {
       currentStatePath.value = session.current_state;
       terminal.value = session.terminal;
       events.value = traceResult.events.slice();
+      await loadHarness(source, sessionId);
     } finally {
       loading.value = false;
     }
@@ -170,6 +183,8 @@ export const useRunStore = defineStore("run", () => {
     terminal.value = false;
     selectedEventIndex.value = null;
     highlightedStatePaths.value = [];
+    harnessProfiles.value = [];
+    harnessModel.value = "";
   }
 
   /**
@@ -414,6 +429,52 @@ export const useRunStore = defineStore("run", () => {
     return intent;
   }
 
+  /**
+   * Load the harness profiles + selection from the source, when it exposes the
+   * optional getHarness. A failure (or an unsupported source) leaves the picker
+   * hidden rather than blocking hydrate.
+   */
+  async function loadHarness(
+    source: DataSource,
+    sessionId: string
+  ): Promise<void> {
+    if (!source.getHarness) {
+      harnessProfiles.value = [];
+      harnessModel.value = "";
+      return;
+    }
+    try {
+      const state = await source.getHarness(sessionId);
+      applyHarnessState(state);
+    } catch {
+      harnessProfiles.value = [];
+      harnessModel.value = "";
+    }
+  }
+
+  function applyHarnessState(state: {
+    profiles: HarnessProfileInfo[];
+    selection: { profile: string; model?: string };
+  }): void {
+    harnessProfiles.value = state.profiles ?? [];
+    harnessModel.value = state.selection?.model ?? "";
+  }
+
+  /**
+   * Switch the active harness profile (and optional model), effective next
+   * turn. Re-applies the echoed state so the picker reflects the new selection.
+   */
+  async function selectProfile(
+    source: DataSource,
+    sessionId: string,
+    profile: string,
+    model?: string
+  ): Promise<void> {
+    if (!source.setSelection) return;
+    const state = await source.setSelection(sessionId, profile, model);
+    applyHarnessState(state);
+  }
+
   return {
     // state
     appDef,
@@ -430,8 +491,12 @@ export const useRunStore = defineStore("run", () => {
     currentView,
     allowedIntents,
     pendingStream,
+    harnessProfiles,
+    harnessModel,
+    harnessActiveProfile,
     // actions
     hydrate,
+    selectProfile,
     rehydrate,
     teardown,
     selectEvent,

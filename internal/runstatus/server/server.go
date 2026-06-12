@@ -83,6 +83,7 @@ import (
 	"kitsoki/internal/app"
 	"kitsoki/internal/helpdocs"
 	"kitsoki/internal/jobs"
+	"kitsoki/internal/orchestrator"
 	"kitsoki/internal/runstatus"
 	"kitsoki/internal/runstatus/harrec"
 	"kitsoki/internal/runstatus/web"
@@ -787,6 +788,41 @@ func (s *Server) dispatch(ctx context.Context, method string, params map[string]
 		}
 		return map[string]any{"ok": true}, nil
 
+	case "runstatus.session.harness":
+		// Read the declared harness profiles + live selection so the web header
+		// picker can render. Empty profiles when the session exposes no
+		// HarnessController (read-only / artifact surfaces, or no profiles
+		// declared). No secrets: ProfileInfo omits env.
+		entry, rerr := s.resolve(params)
+		if rerr != nil {
+			return nil, rerr
+		}
+		return harnessState(entry.Driver), nil
+
+	case "runstatus.session.set_selection":
+		// Switch the session's active profile (and optional model), effective
+		// next turn. Mirrors the TUI /provider /model commands.
+		entry, rerr := s.resolve(params)
+		if rerr != nil {
+			return nil, rerr
+		}
+		if entry.Driver == nil {
+			return nil, readOnlyErr(method)
+		}
+		hc, ok := entry.Driver.(HarnessController)
+		if !ok {
+			return nil, &rpcError{Code: codeServerError, Message: "session.set_selection: no harness profiles for this session"}
+		}
+		profile, _ := params["profile"].(string)
+		if profile == "" {
+			return nil, &rpcError{Code: codeServerError, Message: "session.set_selection: missing 'profile'"}
+		}
+		model, _ := params["model"].(string)
+		if err := hc.SetHarnessSelection(profile, model); err != nil {
+			return nil, serverErr(err)
+		}
+		return harnessState(entry.Driver), nil
+
 	case "runstatus.session.offpath":
 		entry, rerr := s.resolve(params)
 		if rerr != nil {
@@ -1203,6 +1239,23 @@ func (s *Server) resolve(params map[string]any) (Entry, *rpcError) {
 		return Entry{}, &rpcError{Code: codeNotFound, Message: "unknown session_id: " + sid}
 	}
 	return entry, nil
+}
+
+// harnessState renders a Driver's harness profiles + live selection for the
+// runstatus.session.harness / set_selection RPCs. A nil driver or one without
+// the optional HarnessController (read-only / artifact surfaces, no profiles
+// declared) yields empty profiles and a zero selection so the SPA simply hides
+// the picker. ProfileInfo carries no env, so no secret reaches the client.
+func harnessState(d Driver) map[string]any {
+	hc, ok := d.(HarnessController)
+	if !ok {
+		return map[string]any{"profiles": []orchestrator.ProfileInfo{}, "selection": orchestrator.ProfileSelection{}}
+	}
+	profiles := hc.HarnessProfiles()
+	if profiles == nil {
+		profiles = []orchestrator.ProfileInfo{}
+	}
+	return map[string]any{"profiles": profiles, "selection": hc.HarnessSelection()}
 }
 
 // sessionIDParam reads the required session_id param for a lifecycle RPC

@@ -4,6 +4,7 @@ import type {
   MermaidSnapshot,
   TraceEvent,
   TurnResult,
+  HarnessState,
 } from "../types.js";
 import type { TranscriptData } from "./transcript.js";
 import type { StreamItem } from "../lib/activity.js";
@@ -120,6 +121,19 @@ export interface DataSource {
   ): Promise<TurnResult>;
   /** Read-only off-path question against the default oracle. */
   offpath(sessionId: string, input: string): Promise<{ answer: string }>;
+
+  // ── Harness profiles (optional; live session only) ───────────────────────
+  // Sources without an orchestrator (artifact/snapshot) omit these, so the
+  // header picker stays hidden. Mirrors the server's optional HarnessController.
+
+  /** Read the declared harness profiles + live selection (no secrets). */
+  getHarness?(sessionId: string): Promise<HarnessState>;
+  /** Switch the active profile (+ optional model), effective next turn. */
+  setSelection?(
+    sessionId: string,
+    profile: string,
+    model?: string
+  ): Promise<HarnessState>;
 
   // ── Meta mode (overlay chat) ─────────────────────────────────────────────
   // sessionId "" targets the home-screen session-less "self" driver (kitsoki.*

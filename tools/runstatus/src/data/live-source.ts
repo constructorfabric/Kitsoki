@@ -6,6 +6,7 @@ import type {
   TurnResult,
   AnnotationEntry,
   ReplayResult,
+  HarnessState,
 } from "../types.js";
 import type {
   DataSource,
@@ -255,6 +256,24 @@ export class LiveSource implements DataSource {
     return this.client.post<{ answer: string }>("runstatus.session.offpath", {
       session_id: sessionId,
       input,
+    });
+  }
+
+  getHarness(sessionId: string): Promise<HarnessState> {
+    return this.client.post<HarnessState>("runstatus.session.harness", {
+      session_id: sessionId,
+    });
+  }
+
+  setSelection(
+    sessionId: string,
+    profile: string,
+    model?: string
+  ): Promise<HarnessState> {
+    return this.client.post<HarnessState>("runstatus.session.set_selection", {
+      session_id: sessionId,
+      profile,
+      ...(model ? { model } : {}),
     });
   }
 

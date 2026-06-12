@@ -31,6 +31,35 @@
         >
           Σ {{ fmtTokens(store.usageTotals.promptTokens + store.usageTotals.responseTokens) }} tok<template v-if="fmtCost(store.usageTotals.costUsd)"> · {{ fmtCost(store.usageTotals.costUsd) }}</template>
         </span>
+        <span
+          v-if="store.harnessProfiles.length"
+          class="run-view__harness"
+          data-testid="harness-picker"
+        >
+          <select
+            class="run-view__harness-select"
+            data-testid="provider-select"
+            title="Harness profile (backend/provider) — takes effect next turn"
+            :value="store.harnessActiveProfile"
+            @change="onProviderChange"
+          >
+            <option v-for="p in store.harnessProfiles" :key="p.name" :value="p.name">
+              {{ p.name }}
+            </option>
+          </select>
+          <select
+            v-if="activeModels.length"
+            class="run-view__harness-select"
+            data-testid="model-select"
+            title="Model for the active profile — takes effect next turn"
+            :value="activeModel"
+            @change="onModelChange"
+          >
+            <option v-for="m in activeModels" :key="m" :value="m">
+              {{ shortModel(m) }}
+            </option>
+          </select>
+        </span>
         <StoryFreshness
           :session-id="sessionId"
           :on-reloaded="onFreshnessReloaded"
@@ -89,6 +118,40 @@ import type { NodeRef } from "../types.js";
 const props = defineProps<{ sessionId: string }>();
 const store = useRunStore();
 
+// One DataSource for this view, reused by hydrate and the harness picker so a
+// profile switch drives the same live session that was hydrated.
+const source = createDataSource();
+
+// ── Harness picker ───────────────────────────────────────────────────────────
+// Shown only when the session declares harness profiles. The provider dropdown
+// switches the backend/profile; the dependent model dropdown lists the active
+// profile's catalog. Both take effect next turn (substrate semantics).
+const activeProfileObj = computed(() =>
+  store.harnessProfiles.find((p) => p.active)
+);
+const activeModels = computed<string[]>(
+  () => activeProfileObj.value?.models ?? []
+);
+const activeModel = computed<string>(
+  () => store.harnessModel || activeProfileObj.value?.model || ""
+);
+
+async function onProviderChange(e: Event): Promise<void> {
+  const profile = (e.target as HTMLSelectElement).value;
+  await store.selectProfile(source, props.sessionId, profile);
+}
+
+async function onModelChange(e: Event): Promise<void> {
+  const model = (e.target as HTMLSelectElement).value;
+  await store.selectProfile(source, props.sessionId, store.harnessActiveProfile, model);
+}
+
+// hf:Qwen/Qwen2.5-Coder-32B-Instruct → Qwen2.5-Coder-32B-Instruct
+function shortModel(m: string): string {
+  const slash = m.lastIndexOf("/");
+  return slash >= 0 ? m.slice(slash + 1) : m;
+}
+
 // Breadcrumb label: the loaded story's title (falls back to its id, then to a
 // generic label before the app definition has hydrated).
 const storyTitle = computed<string>(
@@ -122,7 +185,7 @@ onMounted(async () => {
   // Viewing a session spends the per-tab auto-nav convenience (see lib/auto-nav)
   // so a tab that opened straight into an observer view can still reach "/".
   markAutoNavDone();
-  await store.hydrate(createDataSource(), props.sessionId);
+  await store.hydrate(source, props.sessionId);
 });
 
 onUnmounted(() => {
@@ -163,6 +226,23 @@ function onEventSelect(index: number): void {
 }
 
 /* ---- Loading ---- */
+.run-view__harness {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.run-view__harness-select {
+  background: #111c33;
+  color: #cbd5e1;
+  border: 1px solid #2b3a55;
+  border-radius: 4px;
+  font-size: 12px;
+  padding: 2px 4px;
+  max-width: 220px;
+}
+.run-view__harness-select:hover {
+  border-color: #3b82f6;
+}
 .run-view__loading {
   display: flex;
   align-items: center;
