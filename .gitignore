@@ -82,7 +82,3 @@ internal/runstatus/web/assets/index.html
 internal/oracle/server/cache/*
 !internal/oracle/server/cache/.gitkeep
 bin/
-
-# Local debug binary built by the kitsoki-web-debug skill
-#   (go build -o .kitsoki-dev ./cmd/kitsoki). Never commit it.
-.kitsoki-dev
