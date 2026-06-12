@@ -225,7 +225,63 @@ everything that doesn't name it.
 
 ---
 
-## 5. Using kitsoki in another repo
+## 5. Choosing the model & provider — harness profiles
+
+A session can switch which LLM **backend/provider** and **model** answer it,
+live, without restarting. You declare named **harness profiles** in
+`.kitsoki.yaml` and pick one from the TUI (`/provider`, `/model`) or the web
+header dropdowns; the switch takes effect on the next turn. Full reference:
+[harness profiles](architecture/harness-profiles.md).
+
+```sh
+cp .kitsoki.yaml.example .kitsoki.yaml      # ships with the five profiles below
+export SYNTHETIC_API_KEY=syn_...            # your shell / profile / .envrc
+kitsoki web --stories-dir stories           # pick the provider in the header
+#   …or in the TUI:  /provider synthetic-claude  ·  /model 1
+```
+
+The key is referenced as `${SYNTHETIC_API_KEY}` in the YAML — never inlined,
+never recorded in a trace. Each oracle call's trace row shows `profile=…` so you
+can see which backend answered.
+
+### Verified providers (and the auth gotchas that matter)
+
+These three were driven end-to-end through kitsoki — each genuinely answered a
+real `host.oracle.ask`:
+
+| Profile | Backend | Result |
+|---|---|---|
+| `claude-native` | claude | Your native Anthropic Claude Code subscription — works out of the box. |
+| `synthetic-claude` | claude + `ANTHROPIC_BASE_URL` | claude-code pointed at **synthetic.new** (GLM-5.1 via `syn:large:text`) — **works**. |
+| `codex-native` | codex | Your codex **ChatGPT** subscription (GPT-5) — works out of the box. |
+
+Two non-obvious things, learned the hard way — read these before you debug a
+"wrong" answer:
+
+- **A model will happily misidentify itself.** Asked "which model are you?",
+  synthetic.new's GLM-5.1 (through claude-code) replied *"I am Claude Sonnet 4."*
+  That is the **model hallucinating**, not a routing bug — the call really went to
+  synthetic (real Anthropic has no `syn:large:text` model, so the request could
+  only have been served by synthetic). **Verify the route by the billed model /
+  the server's `model` field, never by what the model says it is.**
+
+- **`claude` honors `ANTHROPIC_BASE_URL` + `ANTHROPIC_AUTH_TOKEN` even with an
+  active subscription** — so `synthetic-claude` works with just env. **`codex`
+  does not**: when you are logged into a ChatGPT account, codex **ignores**
+  `OPENAI_BASE_URL`/`OPENAI_API_KEY` and rejects a non-OpenAI model
+  (`"the 'syn:large:text' model is not supported when using Codex with a ChatGPT
+  account"`). To run **codex against synthetic.new** you must declare a provider
+  in `~/.codex/config.toml` (a `[model_providers.synthetic]` block with
+  `base_url`/`env_key`) and select it — env alone is not enough. `codex-native`
+  (the subscription) needs none of this.
+
+The example config also ships `synthetic-codex` (the codex-on-synthetic profile,
+which needs the `config.toml` step above) and `llama-local`
+([§4](#4-optional--a-local-llm-via-llamacpp)).
+
+---
+
+## 6. Using kitsoki in another repo
 
 Once `kitsoki` is installed (step 2) it's a single binary on your
 PATH — it isn't tied to this checkout. A *story* is just an `app.yaml`

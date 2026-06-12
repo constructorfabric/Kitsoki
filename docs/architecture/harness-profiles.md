@@ -141,6 +141,18 @@ The three providers the feature targets, end to end:
    set. Verified live: a real `kitsoki turn` routes free text → intent with the
    `claude` backend (no cassette).
 
+   > **Auth-precedence gotchas (verified end-to-end):**
+   > - `claude` honors `ANTHROPIC_BASE_URL` + `ANTHROPIC_AUTH_TOKEN` **even with an
+   >   active subscription**, so `synthetic-claude` works with env alone.
+   > - A model will misidentify itself ("I am Claude Sonnet 4" from GLM-5.1) — that
+   >   is hallucination, not a routing bug. **Confirm the route by the billed model
+   >   / the server's `model` field, never by the model's self-description.**
+   > - `codex` **ignores** `OPENAI_BASE_URL`/`OPENAI_API_KEY` when logged into a
+   >   ChatGPT account (it rejects the non-OpenAI model). To run `synthetic-codex`
+   >   you must declare a `[model_providers.synthetic]` block in
+   >   `~/.codex/config.toml` and select it; `codex-native` (the subscription)
+   >   needs none of this.
+
 3. **Launch with the profiles and pick live:**
 
    ```bash
