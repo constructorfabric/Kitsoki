@@ -26,4 +26,6 @@ principle of least surprise.
 
 when in doubt always save a markdown into .context for review later - much easier to check/review than staying in the conversation and requiring an extra turn.
 
-commit when you're done with your work and commit only your work - this helps to avoid a mess in the repo.  There may be parallel agents working.
+commit when you're done with your work and commit only your work - this helps to avoid a mess in the repo.  There may be parallel agents working.  Keep a minimum number of commits and amend as you go where there's no value in separate commits.  Separate key decisions or aspects in clean commits to enable bisect and reverts to work well and not create a mess.
+
+avoid generating a binary of kitsoki for testing - just use go run unless there's some very specific reason that won't work (I think there's issues related to file embedding... not sure)
