@@ -8,7 +8,7 @@ severity: P1
 component: runtime
 kitsoki_rev: 0c9a0ff
 resolved_at: 2026-06-12T02:25:51Z
-resolved_in_commit: 47359e2
+resolved_in_commit: af995fc
 trace_ref: "~/.kitsoki/sessions/bugfix/94c6daa4-web-0391e58b-f236-4261-a74b-ca107674f5aa.jsonl"
 external: {}
 assignee: ""
