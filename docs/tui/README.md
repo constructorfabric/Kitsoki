@@ -76,6 +76,7 @@ room-switch commands. Notable families:
 | `/inbox` | `commands_inbox.go` | Inline notification list |
 | `/jump` | `commands_jump.go` | Navigate to background-completion events |
 | `/ide [connect\|disconnect\|status]` | `commands_ide.go` | Connect/disconnect the live editor link; ambient selection rides each turn |
+| `/open <path>` | `commands_open.go` | Open an artifact (resolved against the run's cwd) in `$EDITOR` or the OS default — the terminal-agnostic fallback for `.md` links |
 
 > **Reload parity.** `/reload` hot-reloads the running story's `app.yaml` in
 > place (re-validate, swap the `AppDef`, re-fire `on_enter`). The web UI's
@@ -215,6 +216,32 @@ prompts — context the operator didn't type. The `⧉` echo is the mitigation
 (always visible); `/ide disconnect` and the deny list are the escape hatches.
 No auto-connect in v1 — `/ide` is explicit so the operator opts into ambient
 injection knowingly.
+
+## Opening markdown artifacts: OSC 8 links + `/open`
+
+A `kv` value that names a markdown artifact (`/\S+\.md$/` — the same
+`isMarkdownPath` predicate the web uses in `ViewElement.vue`, mirrored in
+`internal/render/elements/links.go`) is the most important thing on screen
+when reviewing a proposal or design brief. The TUI makes it **openable** two
+ways, chosen by terminal capability so neither silently fails:
+
+- **OSC 8 hyperlinks.** The kv renderer wraps a fitting `.md` path in an OSC 8
+  terminal-hyperlink escape (`\x1b]8;;file://<abs>…`, built only in
+  `osc8Link`) plus a lipgloss underline. Supporting terminals (iTerm2, kitty,
+  WezTerm, modern xterm) render it clickable → the OS opens it; older
+  terminals drop the escape and show the plain path. The escape carries zero
+  visible width, so to keep the column math byte-identical to the plain render
+  the **lean v1** linkifies only a single path token that already fits on the
+  line — a path that would wrap stays plain and relies on `/open`.
+- **`/open <path>`** (`commands_open.go`) — the universal, keyboard,
+  terminal-agnostic fallback. It resolves a relative path against the run's
+  working directory (where `.artifacts/…` paths are rooted, matching the
+  `media` element) and opens it via `$EDITOR` when set (the only
+  operator-controllable, preferred-reader path) or the OS default opener
+  (`open` / `xdg-open`).
+
+We do **not** build an in-TUI markdown pager — we hand the file to the
+operator's existing reader and stop.
 
 ## TUI as a transport
 

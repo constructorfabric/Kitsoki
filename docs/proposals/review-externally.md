@@ -1,8 +1,15 @@
 # Epic: Review edits where you actually read them
 
-**Status:** Draft v1. No slices implemented yet.
+**Status:** In progress. **Slice #2 (tui-md-links) shipped** — OSC 8 `.md`
+links + `/open`, migrated to [`docs/tui/README.md`](../tui/README.md) and its
+file deleted. **Slice #1 (diff-open-fallback) Phase A shipped + adopted** —
+`host.diff.open` with IDE verdict capture + difftool fallback, documented in
+[`docs/architecture/hosts.md`](../architecture/hosts.md#hostdiffopen--review-a-change-in-the-best-surface),
+adopted in the bugfix `reviewing` room with four flow fixtures. Epic stays open
+only for slice #1's **Phase B turn-suspend gate** + the live-socket verdict
+capture (ide-integration #1).
 **Kind:**   epic
-**Slices:** 2 (0/2 shipped)
+**Slices:** 2 (1 shipped, 1 in progress)
 
 ## Why
 
@@ -59,8 +66,8 @@ Once both slices ship:
 
 | # | Slice | Kind | Scope (one line) | Depends on | Status | File |
 |---|---|---|---|---|---|---|
-| 1 | diff-open-fallback | runtime | `host.diff.open`: connected-IDE verdict capture + system-difftool fallback + the review-diff room pattern | `ide-integration.md` #1/#2 | Draft | [`diff-open-fallback.md`](diff-open-fallback.md) |
-| 2 | tui-md-links | tui | OSC 8 hyperlinks for `.md` kv values + `/open` command | — | Draft | [`tui-md-links.md`](tui-md-links.md) |
+| 1 | diff-open-fallback | runtime | `host.diff.open`: connected-IDE verdict capture + system-difftool fallback + the review-diff room pattern | `ide-integration.md` #1/#2 | Phase A shipped + adopted; Phase B remains | [`diff-open-fallback.md`](diff-open-fallback.md) |
+| 2 | tui-md-links | tui | OSC 8 hyperlinks for `.md` kv values + `/open` command | — | Shipped → [`docs/tui/README.md`](../tui/README.md) | (deleted) |
 
 ## Sequencing
 

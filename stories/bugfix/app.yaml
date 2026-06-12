@@ -53,6 +53,11 @@ hosts:
   - host.oracle.ask
   - host.oracle.decide
   - host.oracle.task
+  # Review-diff: open the committed fix (feature_branch vs base_branch) in the
+  # operator's editor (with a captured accept/reject verdict) or a view-only
+  # system difftool. The reviewing room's `review_externally` arc drives it; the
+  # verdict routes advance/redo. See docs/architecture/hosts.md#hostdiffopen.
+  - host.diff.open
 
 # Persona table (oracle-split proposal §3.5).
 #
@@ -317,6 +322,12 @@ world:
   ci_state:         { type: string, default: "" }
   ci_log:           { type: string, default: "" }  # last CI run log; scratch
 
+  # ── Review-diff (host.diff.open) — populated by reviewing_external ────────
+  review_verdict:       { type: string, default: "" }   # "accept" | "reject" | "" (no verdict)
+  review_surface:       { type: string, default: "" }   # "ide" | "difftool:<name>" | "none"
+  review_reviewed:      { type: bool,   default: false } # did any surface actually show the diff?
+  review_changed_files: { type: list,   default: [] }    # paths handed to the diff surface
+
   # ── Story-level "done" sink for standalone runs ──────────────────────
   status:           { type: string, default: "open" }
 
@@ -389,6 +400,21 @@ intents:
     description: "Re-render the current view."
     examples: [look, "what now?"]
     priority: 10
+  # ── Review-diff (reviewing room). review_externally is operator-chosen;
+  # review_rejected / review_inconclusive are emitted by reviewing_external
+  # from the host.diff.open verdict (never typed). ─────────────────────────
+  review_externally:
+    description: "Open the fix's diff in the editor / system diff viewer and capture the verdict."
+    examples: [review_externally, "review the diff", "open the diff", "review in editor"]
+    priority: 65
+  review_rejected:
+    description: "The operator rejected the diff at the external review surface — bounce back to implementing."
+    examples: [review_rejected]
+    priority: 1
+  review_inconclusive:
+    description: "The diff surface produced no accept/reject (view-only difftool, or none available) — fall back to the inline review choice."
+    examples: [review_inconclusive]
+    priority: 1
 
 # Intents exposed to importing parent stories. Wave 2 (dev-story hub)
 # `intents.import: [start, proceed, accept, refine, restart_from, quit]`

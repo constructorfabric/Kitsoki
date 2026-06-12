@@ -238,6 +238,13 @@ func HandleSlashCommandForTest(m RootModel, cmd string) (RootModel, tea.Cmd) {
 	return rm, tcmd
 }
 
+// SetOpenArtifactForTest installs a recording opener seam so /open tests
+// observe which absolute path the command resolved and opened without
+// launching a real OS opener / $EDITOR.
+func SetOpenArtifactForTest(m *RootModel, fn func(path string) error) {
+	m.openArtifact = fn
+}
+
 // ChoiceWidgetIsActive reports whether the inline choice widget owns
 // focus. Mirrors the production check at handleTurnOutcome's
 // auto-focus site.

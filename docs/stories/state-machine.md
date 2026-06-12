@@ -398,6 +398,44 @@ Templates inside effects use the same `{{ … }}` syntax as views. Inside
 `stdout`, `exit_code`, `ok` for `host.run`; `answer`, `chat_id`, etc.
 for `host.oracle.converse`.
 
+#### Routing on an async host result (`emit_intent` + the `''` guard)
+
+`emit_intent` on an `on_enter` invoke is the idiom for **"call out, then
+branch on what came back"** — an LLM judge → `accept`, a diff review →
+`accept`/`reject`. The subtlety: an awaited harness call (oracle, IDE, the
+review-diff `host.diff.open`) binds its result **asynchronously** — the
+`emit_intent` expression is evaluated once on the synchronous `on_enter`
+pass (before the bind has settled) and again by the orchestrator's
+post-bind settle pass (`settlePostBindEmits`) once the result lands.
+
+So the expression **must yield `''` (no emit) until the result is present**,
+or the pre-bind pass fires a stale branch and transitions away before the
+real verdict arrives. Gate on a sentinel field that is empty until the call
+returns:
+
+```yaml
+# stories/bugfix/rooms/reviewing.yaml — reviewing_external
+- invoke: host.diff.open
+  with:  { paths: "{{ world.review_changed_files }}", base: "{{ world.base_branch }}" }
+  bind:
+    review_verdict:  verdict     # "accept" | "reject" | "" (view-only/none)
+    review_surface:  surface     # "ide" | "difftool:<name>" | "none" — empty until settled
+  emit_intent: >-
+    {{ world.review_surface == '' ? ''                                   {# pre-bind: no-op #}
+       : (world.review_verdict == 'accept' ? 'accept'
+          : (world.review_verdict == 'reject' ? 'review_rejected' : 'review_inconclusive')) }}
+  on_error: reviewing
+```
+
+This is the same `verdict == 'continue' ? 'advance_brief' : ''` shape the
+dev-story `design_refine` brief judge uses. Keep the routing invoke in its
+own small state (here `reviewing_external`, mirroring `git-ops`'s
+`idle` → `on_main`/`on_branch`) so the emit targets resolve unambiguously
+against that state's `on:` arcs. The captured verdict is the human's
+decision, recorded as a gate decision by the host call; a view-only or
+absent surface emits no verdict and falls through to the room's normal
+choice (see [`host.diff.open`](../architecture/hosts.md#hostdiffopen--review-a-change-in-the-best-surface)).
+
 ### Deterministic logic beyond expr-lang
 
 When a transformation is too fiddly for an expr-lang `with:` arg or a

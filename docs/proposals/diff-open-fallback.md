@@ -1,6 +1,16 @@
 # Runtime: `host.diff.open` — review a diff in the IDE, or the system diff viewer
 
-**Status:** Draft v1. Nothing implemented yet.
+**Status:** **Phase A shipped + adopted.** The `host.diff.open` host call —
+surface resolver (IDE → difftool → none), IDE verdict capture, view-only
+difftool fallback, gate-decision recording — has landed with unit coverage
+(`internal/host/diff_open.go`, `diff_open_test.go`), is documented in
+[`docs/architecture/hosts.md` → `host.diff.open`](../architecture/hosts.md#hostdiffopen--review-a-change-in-the-best-surface),
+and is **adopted in the bugfix `reviewing` room** (`reviewing_external`) with
+four flow fixtures covering every surface. **Only two items remain** (this file
+is trimmed to them): the Phase B turn-suspend gate (responsive surface; today
+the turn blocks during review, like a long `host.run`) and pinning the editor's
+accept/reject **return** wire shape from a live socket (ide-integration #1) —
+until then `parseDiffVerdict` + the stub define the contract.
 **Kind:**   runtime
 **Epic:**   [`review-externally.md`](review-externally.md)
 
@@ -175,25 +185,28 @@ untouched. The cassette/stub for the IDE path mirrors whatever
 ## Tasks
 
 ```
-## 1. Engine
-- [ ] 1.1 host.diff.open handler: surface resolver (ide → difftool → none)
-- [ ] 1.2 IDE path: wrap openDiff, return the captured verdict (Phase A, synchronous)
-- [ ] 1.3 Difftool resolver + blocking exec via the host.run machinery
-- [ ] 1.4 Result shape {verdict, reviewed, surface}; register in handlers.go
-- [ ] 1.5 Gate-decision recording for the IDE verdict (none for view-only)
-- [ ] 1.6 (Phase B) turn-suspend/resume gate, modelled on jobs-clarification
+## 1. Engine — SHIPPED (Phase A)
+- [x] 1.1 host.diff.open handler: surface resolver (ide → difftool → none)
+- [x] 1.2 IDE path: wrap openDiff, return the captured verdict (Phase A, synchronous)
+- [x] 1.3 Difftool resolver + blocking exec via the host.run machinery
+- [x] 1.4 Result shape {verdict, reviewed, surface}; register in handlers.go
+- [x] 1.5 Gate-decision recording for the IDE verdict (none for view-only)
+- [ ] 1.6 (Phase B) turn-suspend/resume gate, modelled on jobs-clarification — REMAINING
 
 ## 2. Verification (no live editor, no real claude, no network)
-- [ ] 2.1 Stub-ws unit: IDE path returns accept and reject verdicts
-- [ ] 2.2 Unit: difftool path shells a fake difftool, returns reviewed+null
-- [ ] 2.3 Unit: no-IDE-no-difftool returns reviewed:false
-- [ ] 2.4 Flow fixture: review-diff room branches on each surface (stub by invoke-id)
-- [ ] 2.5 Depends-on: capture real openDiff verdict wire shape (ide-integration #1)
+- [x] 2.1 Stub-ws unit: IDE path returns accept and reject verdicts
+- [x] 2.2 Unit: difftool path shells a fake difftool, returns reviewed+null
+- [x] 2.3 Unit: no-IDE-no-difftool returns reviewed:false
+- [x] 2.4 Flow fixtures: review-diff room branches on each surface
+        (stories/bugfix/flows/review_diff_{ide_accept,ide_reject,difftool_viewonly,no_surface}.yaml)
+- [ ] 2.5 Depends-on: capture real openDiff verdict wire shape (ide-integration #1) — REMAINING
+        (parseDiffVerdict + the stub pin the contract until then)
 
 ## 3. Adopt + document
-- [ ] 3.1 Adopt the review-diff room in dev-story design_refine (or bugfix)
-- [ ] 3.2 Document host.diff.open in docs/architecture/hosts.md + the room
-        pattern in docs/stories/story-style.md; trim/delete this slice
+- [x] 3.1 Adopt the review-diff room in bugfix (reviewing → reviewing_external)
+- [x] 3.2 Document host.diff.open in docs/architecture/hosts.md
+- [x] 3.2b Document the post-bind-emit room pattern in docs/stories/state-machine.md
+        (authoritative home for emit_intent routing; story-style.md is view-only)
 ```
 
 ## Verification
@@ -238,5 +251,5 @@ No test needs a real editor or `claude`.
 - An in-TUI diff viewer/pager — we push out to external tools.
 - JetBrains diff parity (`ide-integration.md` #4) and IDE auto-connect
   (`ide-integration.md` #5).
-- The `.md` link rendering and `/open` command — that is the
-  [`tui-md-links.md`](tui-md-links.md) slice.
+- The `.md` link rendering and `/open` command — that was the tui-md-links
+  slice, now shipped: [`docs/tui/README.md`](../tui/README.md).

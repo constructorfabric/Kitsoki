@@ -1,0 +1,45 @@
+# review_diff_ide_accept — reviewing → review_externally with a connected-IDE
+# surface that returns verdict=accept. reviewing_external invokes host.diff.open
+# (stubbed), binds the verdict, and emit_intent routes `accept` → validating —
+# proving the captured IDE verdict advances the pipeline exactly like the inline
+# `continue`. (review-externally epic / host.diff.open; see reviewing.yaml.)
+
+test_kind: flow
+app: ../app.yaml
+initial_state: reviewing
+initial_world:
+  ticket_id:       "TKT-880"
+  ticket_title:    "review-diff adoption"
+  thread:          "TKT-880"
+  workspace_id:    "ws-tkt-880"
+  workdir:         ".worktrees/tkt-880"
+  base_branch:     "main"
+  feature_branch:  "fix/tkt-880"
+  bugfix_mode:     "full"
+  judge_mode:      "human"
+
+host_handlers:
+  host.append_to_file: { data: { ok: true } }
+  host.inbox.add:      { data: { ok: true } }
+  host.git_worktree:   { data: { ok: true, log: "" } }
+  host.git:            { data: { ok: true, sha: "abc", diff: "@@ -1 +1 @@", files: ["internal/foo.go"] } }
+  host.local:          { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
+  host.diff.open:      { data: { verdict: "accept", reviewed: true, surface: "ide" } }
+  host.oracle.task:
+    data: { ok: true, submitted: { summary_title: "stub", summary_markdown: "stub", verdict: "continue", intent: "accept", confidence: 0.95 } }
+  host.oracle.ask:
+    data: { ok: true, submitted: { summary_title: "stub", summary_markdown: "stub", verdict: "continue", intent: "accept", confidence: 0.95 } }
+  host.oracle.decide:
+    data: { ok: true, submitted: { summary_title: "stub", summary_markdown: "stub", verdict: "continue", intent: "accept", confidence: 0.95 } }
+
+turns:
+  # review_externally → reviewing_external (on_enter invokes host.diff.open,
+  # binds verdict=accept) → emit_intent accept → validating, all in one turn.
+  - intent: { name: review_externally, slots: {} }
+    expect_state: validating
+    expect_world:
+      review_verdict: "accept"
+      review_surface: "ide"
+
+expect_terminal: false
+expect_no_errors: true

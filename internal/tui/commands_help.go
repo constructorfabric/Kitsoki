@@ -49,6 +49,7 @@ func (HelpCommand) Run(m RootModel, _ []string) (string, RootModel, tea.Cmd) {
 			{"/ide connect [<n>]", "discover + connect; <n> picks among matching lock files"},
 			{"/ide disconnect", "close the editor link; stop ambient selection capture"},
 			{"/ide status", "show connection: editor, workspace, port"},
+			{"/open <path>", "open an artifact in $EDITOR or the OS default handler"},
 			{"/warp <state>", "developer teleport to a state"},
 			{"/reload", "reload app.yaml from disk and re-fire on_enter"},
 			{"/quit, /q", "exit kitsoki"},

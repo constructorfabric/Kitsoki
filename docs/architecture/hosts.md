@@ -64,6 +64,7 @@ carrier handler when the op name is dispatched from `with:` args.
 | [`host.chat.resolve_ref`](#hostchatresolve_ref) | Resolve a chat reference (id, alias, or "current") to a chat row. |
 | [`host.chat.drive`](#hostchatdrive) | Enqueue a turn against a chat; optionally `await` completion. |
 | [`host.ide.*`](#hostide--editor-awareness) | Editor awareness over the live IDE link: diagnostics, selection, open editors, open file/diff. |
+| [`host.diff.open`](#hostdiffopen--review-a-change-in-the-best-surface) | Open a change for review in the best available diff surface — connected IDE (with a captured accept/reject verdict) or a view-only system difftool — and report what the operator decided. |
 | [`host.slidey.render`](#hostslideyrender) | Validate + render a JSON scene spec to MP4, PDF, or interactive HTML via the slidey pipeline. |
 | [`host.contact_sheet`](#hostcontact_sheet) | Assemble a PNG contact-sheet montage from a directory of PNG frames via ffmpeg. |
 | [`host.video.frame`](#hostvideoframe) | Grab a single still PNG from a video at a timestamp via ffmpeg; deterministic, no LLM. |
@@ -1140,11 +1141,75 @@ The architecture-relevant invariants:
   state, recomputed each turn rather than journaled.
 - **open_diff is non-blocking in v1.** It surfaces a diff tab for human
   review and returns `{ok}`; it does not write the file or suspend the turn.
-  Verdict capture (accept/reject) needs a turn-suspend gate the engine lacks
-  today and is a deferred follow-up.
+  The verdict-capturing front door is [`host.diff.open`](#hostdiffopen--review-a-change-in-the-best-surface),
+  which **awaits** the editor's accept/reject (Phase A blocks the turn,
+  consistent with a long `host.run`); the *responsive* turn-suspend gate
+  (Phase B) is still a deferred follow-up.
 
 Source: [`internal/ide/`](../../internal/ide/) (client) and
 [`internal/host/ide_handlers.go`](../../internal/host/ide_handlers.go).
+
+---
+
+## host.diff.open — review a change in the best surface
+
+The front door for **"open this change for review, and tell me what they
+decided."** A story passes a change; `host.diff.open` resolves a **surface**
+by capability and returns a typed `{verdict, reviewed, surface}` — capturing
+the operator's accept/reject *only* when the surface can produce one. It is
+the verdict-capturing complement to the non-blocking
+[`host.ide.open_diff`](#hostide--editor-awareness), which it reuses for the
+IDE path; `host.ide.open_diff` is unchanged.
+
+Surface resolution (first that applies wins):
+
+| Order | Condition | Surface | Verdict | Behavior |
+|---|---|---|---|---|
+| 1 | `world.ide.connected` (an IDE link in ctx) | `ide` | `accept` \| `reject` \| `null` | Drives the editor's `openDiff` and **awaits + captures** the operator's decision; records a gate decision. |
+| 2 | a system difftool resolves | `difftool:<name>` | `null` | Shells a **blocking** subprocess (the `host.run` machinery) — view-only, no accept/reject signal. |
+| 3 | neither | `none` | `null` | `reviewed:false` — the room falls back to inline rendering / `host.ide.open_file`. |
+
+Difftool resolution order: `$KITSOKI_DIFFTOOL` (explicit argv) → `git
+difftool --no-prompt` (honours `git config diff.tool`, when `git` is on
+PATH) → `code --wait -d` (when `code` is on PATH) → `none`.
+
+Two input modes:
+
+- **`{path, new_text}`** — review proposed content not yet on disk (the IDE's
+  native `openDiff` shape).
+- **`{paths: [...], base: "HEAD"}`** — review already-applied working-tree
+  edits against a base (the "we edited this, review it" case).
+
+```
+room ──"review the diff?"──▶ invoke host.diff.open ──┬─ surface=ide      ─▶ verdict ∈ {accept,reject} ─▶ branch on verdict
+                                                     ├─ surface=difftool ─▶ verdict=null, reviewed ────▶ ask accept/refine (normal intent)
+                                                     └─ surface=none     ─▶ reviewed=false ────────────▶ render diff inline / open_file
+```
+
+**The moat.** The interpretive decision (does the operator accept?) is made
+by a *human* at the IDE surface and recorded as a `gate_decided`-shaped event
+(`decider: "human"`, `chosen_intent: <verdict>`, plus `surface`/`verdict`/diff
+identity). Everything else — surface resolution, the difftool subprocess, the
+branch — is deterministic and replayable. The view-only difftool and `none`
+paths emit **no** verdict event: the operator's subsequent `accept`/`refine`
+intent is the recorded decision, exactly as in every story today. Recording a
+fabricated "accept" for a view-only surface would be a lie in the trace, so we
+don't.
+
+**Phase A / Phase B.** This is the synchronous **Phase A**: the turn blocks
+on the editor (or difftool) while the operator reviews — consistent with a
+long `host.run`, but the surface is frozen during review. The responsive
+**Phase B** (park the turn, release the writer lock, resume on the ws
+callback — modelled on the jobs-clarification pause) is a deferred follow-up.
+
+> The editor's `openDiff` accept/reject **return** shape is not yet pinned
+> from a live socket (ide-integration follow-up #1). `parseDiffVerdict`
+> defines the contract the tests' stub is coded to (a structured
+> `{verdict}` / `{accepted}`, else an `ACCEPT`/`REJECT` text token); when one
+> real round-trip captures it, update `parseDiffVerdict` and the stub
+> together.
+
+Source: [`internal/host/diff_open.go`](../../internal/host/diff_open.go).
 
 ---
 

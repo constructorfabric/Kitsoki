@@ -1,0 +1,45 @@
+# review_diff_ide_reject — reviewing → review_externally with a connected-IDE
+# surface that returns verdict=reject. emit_intent routes `review_rejected` →
+# implementing (resetting the implementing cycle) so the operator's IDE reject
+# bounces the fix back for revision. (review-externally epic / host.diff.open.)
+
+test_kind: flow
+app: ../app.yaml
+initial_state: reviewing
+initial_world:
+  ticket_id:       "TKT-881"
+  ticket_title:    "review-diff reject path"
+  thread:          "TKT-881"
+  workspace_id:    "ws-tkt-881"
+  workdir:         ".worktrees/tkt-881"
+  base_branch:     "main"
+  feature_branch:  "fix/tkt-881"
+  bugfix_mode:     "full"
+  judge_mode:      "human"
+  implementing_cycle: 2
+
+host_handlers:
+  host.append_to_file: { data: { ok: true } }
+  host.inbox.add:      { data: { ok: true } }
+  host.git_worktree:   { data: { ok: true, log: "" } }
+  host.git:            { data: { ok: true, sha: "abc", diff: "@@ -1 +1 @@", files: ["internal/foo.go"] } }
+  host.local:          { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
+  host.diff.open:      { data: { verdict: "reject", reviewed: true, surface: "ide" } }
+  host.oracle.task:
+    data: { ok: true, submitted: { summary_title: "stub", summary_markdown: "stub", applied: true, files_changed: ["internal/foo.go"], verdict: "continue", intent: "accept", confidence: 0.95 } }
+  host.oracle.ask:
+    data: { ok: true, submitted: { summary_title: "stub", summary_markdown: "stub", verdict: "continue", intent: "accept", confidence: 0.95 } }
+  host.oracle.decide:
+    data: { ok: true, submitted: { summary_title: "stub", summary_markdown: "stub", verdict: "continue", intent: "accept", confidence: 0.95 } }
+
+turns:
+  # verdict=reject → emit_intent review_rejected → implementing, cycle reset.
+  - intent: { name: review_externally, slots: {} }
+    expect_state: implementing
+    expect_world:
+      review_verdict:     "reject"
+      implementing_cycle: 0
+      restart_from_stage: "implementing"
+
+expect_terminal: false
+expect_no_errors: true

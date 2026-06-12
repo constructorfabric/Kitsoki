@@ -28,6 +28,9 @@ states:
             - label:  "continue"
               hint:   "advance to validating"
               intent: accept
+            - label:  "review the diff"
+              hint:   "open the fix in your editor / diff viewer; an accept/reject there decides"
+              intent: review_externally
             - label:  "restart from reproducing"
               hint:   "bounce back to phase 1 (resets cycle)"
               intent: restart_from
@@ -50,18 +53,26 @@ states:
             - label:  "look"
               hint:   "re-render"
               intent: look
-    relevant_world: [ticket_id, ticket_title, workdir, implement_review_artifact]
+    relevant_world: [ticket_id, ticket_title, workdir, base_branch, implement_review_artifact, review_changed_files]
     on_enter:
       - invoke: iface.vcs.diff
         with:
           workdir: "{{ world.workdir }}"
         bind:
-          ci_log: diff
+          ci_log:               diff
+          review_changed_files: files
         on_error: idle
       - say: "Review pass complete — diff {{ world.implement_review_artifact.status|default:'pending' }}."
     on:
       accept:
         - target: validating
+
+      # Operator chose to review the diff in a real diff surface. Hand off to
+      # reviewing_external, which invokes host.diff.open and routes on the
+      # captured verdict. (Kept as its own state so the invoke→bind→emit_intent
+      # routing is unambiguous — mirrors stories/git-ops/rooms/idle.yaml.)
+      review_externally:
+        - target: reviewing_external
 
       restart_from:
         - when: "slots.stage == 'reproducing'"
@@ -106,5 +117,85 @@ states:
 
       quit:
         - target: "@exit:abandoned"
+      look:
+        - target: .
+
+  # reviewing_external — the "we edited this, want to review the diff?" beat
+  # (review-externally epic / host.diff.open, docs/architecture/hosts.md).
+  #
+  # on_enter invokes host.diff.open over the committed fix (feature_branch vs
+  # base_branch) and BLOCKS (Phase A) while the operator reviews, then routes on
+  # the captured verdict:
+  #   surface=ide      → verdict accept → validating;  reject → implementing
+  #   surface=difftool → verdict null (view-only) → back to reviewing's choice
+  #   surface=none     → reviewed:false → back to reviewing's choice
+  # The verdict is the operator's, recorded as a gate decision by the host call;
+  # the view-only / none paths capture the decision as their next reviewing
+  # intent exactly as the room does today. We never fabricate a verdict.
+  reviewing_external:
+    description: "Open the fix's diff in the best surface; route on the captured verdict."
+    view:
+      - banner:
+          text:     "REVIEWING — EXTERNAL DIFF"
+          subtitle: "opening the diff for review…"
+          color:    "#F43F5E"
+      - prose: >
+          {{ world.ticket_id|default:'(no ticket)' }} · reviewing
+          {{ world.review_changed_files|length }} changed file(s) vs
+          {{ world.base_branch|default:'main' }}.
+      - kv:
+          pairs:
+            Surface: '{{ world.review_surface|default:"(resolving…)" }}'
+            Verdict: '{{ world.review_verdict|default:"(pending)" }}'
+    relevant_world: [ticket_id, ticket_title, workdir, base_branch, review_changed_files, review_surface, review_verdict, review_reviewed]
+    on_enter:
+      # emit_intent rides ON the invoke so it re-fires POST-BIND once the async
+      # host.diff.open result settles (settlePostBindEmits). It is GUARDED on
+      # review_surface: empty until the call returns → the expression yields ''
+      # (no emit) on the pre-bind pass, exactly like design_refine's judge →
+      # emit which returns '' until its verdict binds. Once a surface is set, a
+      # captured verdict accepts/rejects; a view-only/none surface (no verdict)
+      # falls through to review_inconclusive.
+      - invoke: host.diff.open
+        with:
+          paths: "{{ world.review_changed_files }}"
+          base:  "{{ world.base_branch }}"
+          title: "{{ world.ticket_id }} — {{ world.ticket_title }}"
+        bind:
+          review_verdict:  verdict
+          review_surface:  surface
+          review_reviewed: reviewed
+        emit_intent: >-
+          {{ world.review_surface == '' ? ''
+             : (world.review_verdict == 'accept' ? 'accept'
+                : (world.review_verdict == 'reject' ? 'review_rejected' : 'review_inconclusive')) }}
+        on_error: reviewing
+    on:
+      # IDE accept → advance, exactly like the inline `continue`.
+      accept:
+        - target: validating
+
+      # IDE reject → bounce to implementing to revise the fix (resets the
+      # implementing cycle, mirroring restart_from implementing).
+      review_rejected:
+        - target: implementing
+          effects:
+            - set:
+                restart_from_stage: "implementing"
+                refine_feedback:    "External diff review rejected — revise the fix."
+                implementing_cycle: 0
+                cycle:              0
+
+      # View-only difftool or no surface available → return to reviewing; the
+      # operator's continue/restart choice there is the recorded decision.
+      review_inconclusive:
+        - target: reviewing
+          effects:
+            - say: >
+                {% if world.review_reviewed %}Reviewed via {{ world.review_surface }}
+                (view-only — no accept/reject captured).{% else %}No external diff
+                surface available ({{ world.review_surface|default:'none' }}).{% endif %}
+                Choose continue or restart below.
+
       look:
         - target: .

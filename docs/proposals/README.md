@@ -137,29 +137,6 @@ thought.
   (`localfiles_ticket.go`, `cypilot_artifacts.go`, `append_file_transport.go`)
   that today reorder frontmatter and skip validation. Supports markdown as
   block-scalar fields (data-primary docs). Nothing implemented yet; no new deps.
-- [`artifact-driven-stories.md`](artifact-driven-stories.md) — **epic.**
-  Formalize the artifact-driven story pattern the design pipeline already
-  embodies by hand: each phase persists its oracle/host output to a **keyed
-  instance** workspace the moment it's produced, instances are **resumable**
-  (discover + re-join in-progress drafts, step back to an earlier phase and
-  re-run in update mode), and they move through a **draft → shared-draft →
-  published → archived** lifecycle with a story-declared post-publish
-  **disposition** (`archive_as_is`/`condense`/`destroy`) and archive GC that the
-  TUI + web warn on. Builds on (doesn't duplicate) `artifact-format.md`
-  (per-file schema), `lifecycle-taxonomy.md` (domain containers), and
-  `media-artifact-substrate.md` (artifact-of-record). Nothing implemented yet;
-  decomposed into three slices:
-  - [`artifact-instances.md`](artifact-instances.md) (runtime) — the `artifacts:`
-    spec, the keyed get-or-create workspace instance, discover/re-join, and
-    back-step + update-mode re-run; generalizes `design_workspace.py`'s
-    mint-only logic and meta-mode's `(app, room, scope)` resolve.
-  - [`artifact-publish-lifecycle.md`](artifact-publish-lifecycle.md) (runtime) —
-    share-draft vs publish as independent moves, post-publish disposition, and
-    `instance.gc` retention; supersedes `publish_design.py`'s bespoke move logic.
-  - [`artifact-instance-console.md`](artifact-instance-console.md) (tui) — a
-    resume picker on story entry + an instance manager that lists draft/shared/
-    archived instances with size/age warnings and a guarded delete; promotes the
-    stubbed `workspace_manager` room.
 - [`auto-advance-states-proposal.md`](auto-advance-states-proposal.md) —
   auto-fire `done` after `on_enter` chains complete, with `wait: true`
   to opt out. Nothing implemented yet.
@@ -214,13 +191,7 @@ thought.
 - [`oracle-off-ramp.md`](oracle-off-ramp.md) — a per-room
   `oracle_off_ramp:` opt-in: when free text maps to no declared intent,
   hand the turn to an oracle `converse` answer instead of rejecting, with
-  no state/world change. Nothing implemented yet. Depends on
-  `web-text-input-floor.md`.
-- [`web-text-input-floor.md`](web-text-input-floor.md) — (tui, web)
-  always offer a free-text composer in the web UI, even when a `choice:`
-  widget is shown. Closes the biggest gap in the
-  [text-only contract](../architecture/transports.md#7-every-story-must-work-text-only)
-  and unblocks the oracle off-ramp on the web. Nothing implemented yet.
+  no state/world change. Nothing implemented yet.
 - [`stories/prd/`](../../stories/prd/README.md) — a standalone
   PRD-authoring operator story. Shipped; the design proposal was never
   committed, so its reference is the story README.
@@ -356,16 +327,13 @@ thought.
   implemented yet.
 - [`line-messenger-channel.md`](line-messenger-channel.md) — **epic.** Make
   LINE a first-class **customer-interaction channel** with kitsoki as the engine
-  and **web presence**: a merchant authors a story once, points an **existing
-  LINE Official Account** at kitsoki from the web console, and every customer who
-  messages it gets their own session — the first inbound event *creates* one
-  keyed `line:<channel>:<src>` (the multi-customer model the engine lacks today),
-  and customer free text routes through the existing `internal/semroute`. Runs
-  fully automated, fully human, or **hybrid**: the merchant can take over a
-  conversation and chat directly, and is **notified** when an agent requests
-  intervention. Builds on the inbound bridge + transport registry + external-key
-  store + operator-ask; the turn loop is unchanged. Nothing implemented yet;
-  decomposed into five slices:
+  and **web presence**: a merchant authors a story once, provisions a LINE
+  Official Account from the web console, and every customer who messages it gets
+  their own session — the first inbound event *creates* one keyed
+  `line:<channel>:<src>` (the multi-customer model the engine lacks today), and
+  customer free text routes through the existing `internal/semroute`. Builds on
+  the inbound bridge + transport registry + external-key store + operator-ask;
+  the turn loop is unchanged. Nothing implemented yet; decomposed into four slices:
   - [`line-webhook-ingress.md`](line-webhook-ingress.md) (runtime) — a LINE-signed
     webhook handler + a **get-or-create session factory** (the one novel engine
     concept: an external event with no prior session creates one) that drives raw
@@ -377,53 +345,24 @@ thought.
     examples, `stories/line-store/` (browse → cart → checkout) and
     `stories/line-booking/` (availability → reserve → confirm), composing
     existing hosts only; channel-agnostic YAML.
-  - [`line-operator-handoff.md`](line-operator-handoff.md) (runtime) — a
-    `handling_mode` (auto\|human) that **pauses auto-routing** so the bot won't
-    reply over a human, delivers **free-form operator prose** to the customer via
-    the transport, and emits intervention **notification** events.
   - [`line-channel-console.md`](line-channel-console.md) (tui) — the merchant's
-    web home: provision an existing OA (creds + story binding + webhook URL),
-    watch live customer sessions, and run a **hybrid desk** — operator-ask inbox
-    with notifications + a chat composer with take-over / hand-back.
+    web home: provision a channel (creds + story binding + webhook URL) and
+    watch/assist the live customer sessions it spawns (operator-ask inbox).
 - [`vscode-extension.md`](vscode-extension.md) — **tui.** Embed the shipped
   runstatus web UI (`docs/tui/web-ui.md`) as a native VS Code surface: chat in
   the sidebar, trace/state diagram in the bottom panel, themed to the editor.
   The extension bundles the SPA in a webview and spawns `kitsoki web` as a child
   process, relaying the existing JSON-RPC/SSE over `postMessage` — backend
   unchanged, one new `BridgeSource` behind the existing `DataSource` factory.
-  Includes a **full-editor tour-demo** capability: Playwright `_electron` drives
-  the real VS Code window, reuses the existing tour manifests + no-LLM
-  `--flow`/`--host-cassette` posture, and records the whole editor via ffmpeg —
-  a "full-editor" mode of the `kitsoki-ui-demo` pipeline. Distinct from (and
-  complementary to) the inverse `/ide` work (`ide-integration.md`). Desktop-only.
-  Nothing implemented yet.
-- [`review-externally.md`](review-externally.md) — **epic.** Give the TUI two
-  "review where you actually read" affordances: terminal-friendly clickable
-  links to markdown artifacts, and a "we edited *X* — review the diff?" room
-  pattern that opens the change in the connected IDE (with a captured
-  accept/reject verdict) or falls back to the system diff viewer when no IDE
-  is attached — mirroring the web's already-shipped markdown modal. Builds on
-  the `/ide` link (`ide-integration.md`, picking up its deferred #1/#2).
-  Nothing implemented yet; decomposed into two slices:
-  - [`diff-open-fallback.md`](diff-open-fallback.md) (runtime) —
-    `host.diff.open`: open a diff in the connected IDE and capture the
-    verdict, else shell a view-only system difftool
-    (`git difftool` / `$KITSOKI_DIFFTOOL` / `code --wait -d`); plus the
-    review-diff room pattern. Synchronous-await first, turn-suspend gate after.
-  - [`tui-md-links.md`](tui-md-links.md) (tui) — OSC 8 terminal hyperlinks
-    for `.md` paths in `kv` values (mirroring the web's `isMarkdownPath`),
-    with a `/open <path>` slash command as the universal fallback.
-- [`conversation-driven-development.md`](conversation-driven-development.md) —
-  **epic.** Develop conversation-shaped capabilities conversation-first: mock a
-  happy-path **conversation case** in the `features/` catalog (`kind:
-  conversation`, `stage: mocked`) before any code, record it as a tour-narrated
-  demo MP4 over **static mockups** (no engine, no LLM) on the existing
-  `make demo-feature` / `feature-qa` rails, gate the video against the case with
-  the vision QA, and put the watchable product in front of humans at the
-  cheapest possible place to be wrong. Discussion (`/review` flags), research,
-  and session mining expand the corpus as case diffs; an accepted case pre-fills
-  the dev-story design pipeline, and shipping flips its demo binding to
-  `story + flow + hostCassette` with turns unchanged — the mocked demo's QA
-  scenarios become the live regression gate. Methodology + slice sketch for
-  review; four slices (catalog cases / mockup demo binding / expansion loop /
-  build handoff) not yet cut into child proposals.
+  Distinct from (and complementary to) the inverse `/ide` work
+  (`ide-integration.md`). Desktop-only. Nothing implemented yet.
+
+- [`review-externally.md`](review-externally.md) — **epic.** Review kitsoki's
+  edits where you actually read them — the IDE or the system diff viewer, not a
+  cramped terminal pane. **Slice #2 shipped** (OSC 8 `.md` links + `/open`, now
+  in `docs/tui/README.md`); **slice #1 Phase A shipped** (`host.diff.open`:
+  connected-IDE accept/reject verdict capture + view-only system-difftool
+  fallback, in `docs/architecture/hosts.md`), with its Phase B turn-suspend gate
+  and a story adoption still remaining.
+  - [`diff-open-fallback.md`](diff-open-fallback.md) — **runtime** (slice #1).
+  - tui-md-links — **tui** (slice #2): shipped, file deleted.

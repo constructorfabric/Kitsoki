@@ -1,0 +1,44 @@
+# review_diff_no_surface — neither an IDE nor a difftool is available, so
+# host.diff.open returns surface=none, reviewed=false. emit_intent routes
+# `review_inconclusive` → back to reviewing so the room falls back to its inline
+# review choice — the graceful degradation the epic requires (never a no-op,
+# never a fabricated verdict).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: reviewing
+initial_world:
+  ticket_id:       "TKT-883"
+  ticket_title:    "review-diff no-surface path"
+  thread:          "TKT-883"
+  workspace_id:    "ws-tkt-883"
+  workdir:         ".worktrees/tkt-883"
+  base_branch:     "main"
+  feature_branch:  "fix/tkt-883"
+  bugfix_mode:     "full"
+  judge_mode:      "human"
+
+host_handlers:
+  host.append_to_file: { data: { ok: true } }
+  host.inbox.add:      { data: { ok: true } }
+  host.git_worktree:   { data: { ok: true, log: "" } }
+  host.git:            { data: { ok: true, sha: "abc", diff: "@@ -1 +1 @@", files: ["internal/foo.go"] } }
+  host.local:          { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
+  host.diff.open:      { data: { verdict: null, reviewed: false, surface: "none" } }
+  host.oracle.task:
+    data: { ok: true, submitted: { summary_title: "stub", summary_markdown: "stub", verdict: "continue", intent: "accept", confidence: 0.95 } }
+  host.oracle.ask:
+    data: { ok: true, submitted: { summary_title: "stub", summary_markdown: "stub", verdict: "continue", intent: "accept", confidence: 0.95 } }
+  host.oracle.decide:
+    data: { ok: true, submitted: { summary_title: "stub", summary_markdown: "stub", verdict: "continue", intent: "accept", confidence: 0.95 } }
+
+turns:
+  # no surface: reviewed=false → emit_intent review_inconclusive → reviewing.
+  - intent: { name: review_externally, slots: {} }
+    expect_state: reviewing
+    expect_world:
+      review_surface:  "none"
+      review_reviewed: false
+
+expect_terminal: false
+expect_no_errors: true

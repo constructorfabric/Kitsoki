@@ -363,6 +363,14 @@ func RegisterBuiltins(r *Registry) {
 	r.Register("host.ide.open_file", IDEOpenFileHandler)
 	r.Register("host.ide.open_diff", IDEOpenDiffHandler)
 
+	// host.diff.open — the front door for "open this change for review, and
+	// tell me what they decided." Resolves the best diff surface by capability
+	// (connected IDE → system difftool → none) and captures the operator's
+	// accept/reject verdict only when the surface (the IDE) can produce one;
+	// the difftool fallback is view-only. host.ide.open_diff stays unchanged and
+	// is the IDE path this calls into. See diff_open.go / docs/architecture/hosts.md.
+	r.Register("host.diff.open", DiffOpenHandler)
+
 	// Deterministic Starlark glue (host.starlark.run). Registered at the full
 	// name so the registry's longest-prefix fallback resolves it exactly. The
 	// handler is a thin adapter over internal/host/starlark; see starlark_run.go.

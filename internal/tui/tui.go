@@ -413,6 +413,13 @@ type RootModel struct {
 	// setting (default empty — nothing denied). Patterns are matched with
 	// path/filepath.Match against both the absolute path and its base name.
 	ideDeny []string
+
+	// openArtifact opens a resolved artifact path in the OS's default handler
+	// (or $EDITOR). It is the seam the `/open` slash command drives; tests
+	// inject a recording fake so the command's path-resolution and reporting
+	// run without launching a real opener. Nil means "use the default OS
+	// opener" (set in NewRootModel) — the production behavior.
+	openArtifact func(path string) error
 }
 
 const recentBackgroundCap = 8
@@ -655,6 +662,7 @@ func NewRootModel(orch *orchestrator.Orchestrator, sid app.SessionID, appPath, i
 		sessionsPanel:    newSessionsPanelModel(),
 		prompt:           ti,
 		spinner:          sp,
+		openArtifact:     osOpenArtifact,
 	}
 
 	// Set initial state.
@@ -1996,6 +2004,9 @@ func (m RootModel) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 
 	case "/ide":
 		return m.handleIDESlash(parts[1:])
+
+	case "/open":
+		return m.handleOpenSlash(parts[1:])
 
 	case "/inbox":
 		// Single-pane redesign: print the inbox inline as a chat
