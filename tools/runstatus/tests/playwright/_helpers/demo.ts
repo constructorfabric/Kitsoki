@@ -119,6 +119,70 @@ export async function makeCaption(page: Page, defaultHoldMs = 5000): Promise<Bea
   };
 }
 
+/** Move/clear the spotlight box. Pass a selector to frame it, null to hide. */
+export type Spotlight = (selector: string | null) => Promise<void>;
+
+/**
+ * Install a portable spotlight + dimming backdrop and return a `spotlight(sel)`
+ * mover. This is the narration primitive for driving a site OTHER than kitsoki:
+ * the kitsoki tour overlay (window.__startTourWithSteps, [data-testid=tour-*])
+ * only exists inside the kitsoki SPA, so an external page (e.g. a GitHub issue)
+ * is narrated with makeCaption + this, both of which inject plain DOM and work
+ * on ANY page. The backdrop dims the page and the box cuts a bright outlined
+ * hole over the target element's bounding rect; both are pointer-events:none so
+ * they never intercept clicks. Pass null to lift the dim and hide the box.
+ */
+export async function makeSpotlight(page: Page): Promise<Spotlight> {
+  await page.addStyleTag({
+    // Position is set INSTANTLY (only opacity fades) so a screenshot taken right
+    // after a move can never catch the box mid-animation — the per-scene PNGs the
+    // QA gate consumes must be correct at any WEB_CHAT_PACE, not just watch-speed.
+    content:
+      `#demo-spot-back{position:fixed;inset:0;z-index:99990;pointer-events:none;` +
+      `box-shadow:inset 0 0 0 4000px rgba(2,6,23,.62);opacity:0;transition:opacity .35s}` +
+      `#demo-spot-back.show{opacity:1}` +
+      `#demo-spot{position:fixed;z-index:99992;pointer-events:none;border-radius:10px;` +
+      `border:3px solid #fbbf24;box-shadow:0 0 0 4000px rgba(2,6,23,.62),0 0 22px 4px rgba(251,191,36,.6);` +
+      `opacity:0;transition:opacity .3s}` +
+      `#demo-spot.show{opacity:1}`,
+  });
+  await page.evaluate(() => {
+    for (const id of ["demo-spot-back", "demo-spot"]) {
+      const el = document.createElement("div");
+      el.id = id;
+      document.body.appendChild(el);
+    }
+  });
+  return async (selector) => {
+    // Scroll the target into view, measure, and place the box in ONE evaluate so
+    // the rect is always read post-scroll (no spec-side scroll race).
+    await page.evaluate((sel) => {
+      const back = document.getElementById("demo-spot-back");
+      const box = document.getElementById("demo-spot");
+      if (!back || !box) return;
+      if (!sel) {
+        back.classList.remove("show");
+        box.classList.remove("show");
+        return;
+      }
+      const t = document.querySelector(sel);
+      if (!t) return;
+      t.scrollIntoView({ block: "center", inline: "nearest" });
+      const r = t.getBoundingClientRect();
+      const pad = 8;
+      box.style.top = `${r.top - pad}px`;
+      box.style.left = `${r.left - pad}px`;
+      box.style.width = `${r.width + pad * 2}px`;
+      box.style.height = `${r.height + pad * 2}px`;
+      back.classList.add("show");
+      box.classList.add("show");
+    }, selector);
+    // Fixed settle (NOT PACE-scaled) so the opacity fade + scroll always land
+    // before the next screenshot, in both validation and watch-speed runs.
+    await page.waitForTimeout(300);
+  };
+}
+
 /**
  * Wire crash + pageerror to <artifactDir>/ERROR.txt and return a `mark(step)`
  * breadcrumb. Because the harness eats Playwright's stdout, this file (plus the
