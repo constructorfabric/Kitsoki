@@ -425,15 +425,6 @@ thought.
   - [`line-channel-console.md`](line-channel-console.md) (tui) — the merchant's
     web home: provision a channel (creds + story binding + webhook URL) and
     watch/assist the live customer sessions it spawns (operator-ask inbox).
-- [`vscode-extension.md`](vscode-extension.md) — **tui.** Embed the shipped
-  runstatus web UI (`docs/tui/web-ui.md`) as a native VS Code surface: chat in
-  the sidebar, trace/state diagram in the bottom panel, themed to the editor.
-  The extension bundles the SPA in a webview and spawns `kitsoki web` as a child
-  process, relaying the existing JSON-RPC/SSE over `postMessage` — backend
-  unchanged, one new `BridgeSource` behind the existing `DataSource` factory.
-  Distinct from (and complementary to) the inverse `/ide` work
-  (`ide-integration.md`). Desktop-only. Nothing implemented yet.
-
 - [`review-externally.md`](review-externally.md) — **epic.** Review kitsoki's
   edits where you actually read them — the IDE or the system diff viewer, not a
   cramped terminal pane. **Slice #2 shipped** (OSC 8 `.md` links + `/open`, now

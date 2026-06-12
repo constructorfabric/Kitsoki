@@ -7,6 +7,12 @@ front-end under `tools/runstatus/`. This page documents the operator-facing
 *meta* surfaces unique to the browser; the shared session/reload semantics
 live in [`../web/README.md`](../web/README.md).
 
+> The same SPA also ships **inside VS Code** — chat in the sidebar, trace in a
+> bottom panel — as a third head on the orchestrator. The embed relays this app's
+> JSON-RPC/SSE over `postMessage` to a spawned `kitsoki web`; see the
+> [VS Code extension](vscode-extension.md) for the transport seam, theming, and the
+> full-editor demo pipeline.
+
 ## Meta menu → Report bug
 
 The Meta dropdown (bottom-right) carries a **Report bug** item that captures a

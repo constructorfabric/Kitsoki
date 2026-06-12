@@ -19,6 +19,11 @@ screen.*
 > orchestrator with this TUI. That server also hosts the
 > [story editor](story-editor.md) — a per-story static inspector (rooms, world,
 > oracle contracts, cassettes) that needs no session.
+>
+> Live in the editor? The same web UI embeds as a native VS Code surface — chat in
+> the sidebar, trace in a bottom panel, themed to VS Code — via the
+> [VS Code extension](vscode-extension.md). (Distinct from the inverse `/ide` link
+> below, where the terminal dials *out* to an editor.)
 
 ---
 
