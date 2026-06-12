@@ -60,6 +60,17 @@ thought.
 
 ## Current proposals
 
+- [`dynamic-model-and-provider-control.md`](dynamic-model-and-provider-control.md)
+  — **epic.** Live operator control of the model + provider/harness from
+  `/model` and `/provider` (TUI) and a web header picker. Collapses kitsoki's
+  four selection axes (backend / provider / plugin / model) behind one named
+  **harness profile** declared in `.kitsoki.yaml` (e.g. `synthetic-claude`,
+  `synthetic-codex`, `codex-native`, `llama-local`), made mutable per-session
+  with next-turn semantics. Three slices (0/3): runtime substrate
+  ([`harness-profiles.md`](harness-profiles.md)), TUI commands
+  ([`model-provider-commands.md`](model-provider-commands.md)), web control
+  ([`web-harness-control.md`](web-harness-control.md)); acceptance gate is an
+  adversarially-reviewed `kitsoki-ui-demo` tour video QA'd by `kitsoki-ui-qa`.
 - [`agent-action-transcripts.md`](agent-action-transcripts.md) — (tracing)
   surface langfuse-grade per-tool-call detail for every agent in the web UI by
   persisting the claude stream-json we already capture (`ClaudeRun.RawEvents`)
