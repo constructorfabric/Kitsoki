@@ -24,13 +24,15 @@ export interface HarnessProfileInfo {
   backend?: string;
   model?: string;
   models?: string[];
+  effort?: string;
+  efforts?: string[];
   active: boolean;
 }
 
 /** The session's harness profiles + live selection, from runstatus.session.harness. */
 export interface HarnessState {
   profiles: HarnessProfileInfo[];
-  selection: { profile: string; model?: string };
+  selection: { profile: string; model?: string; effort?: string };
 }
 
 export interface TraceEvent {

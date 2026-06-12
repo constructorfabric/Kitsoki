@@ -144,13 +144,14 @@
                   <!-- Harness provenance: which profile/model answered this call.
                        Matches the operator's live picker selection. -->
                   <span
-                    v-if="row.oracle && (row.oracle.profile || row.oracle.model)"
+                    v-if="row.oracle && (row.oracle.profile || row.oracle.model || row.oracle.effort)"
                     class="trace-timeline__harness"
                     data-testid="trace-harness-label"
-                    :title="`harness profile / model for this oracle call`"
+                    :title="`harness profile / model / effort for this oracle call`"
                   >
                     <span v-if="row.oracle.profile" class="trace-timeline__harness-profile">{{ row.oracle.profile }}</span>
                     <span v-if="row.oracle.model" class="trace-timeline__harness-model">{{ row.oracle.model }}</span>
+                    <span v-if="row.oracle.effort" class="trace-timeline__harness-effort">effort:{{ row.oracle.effort }}</span>
                   </span>
                   <span
                     v-if="(row.oracle?.durationMs ?? row.harnessCall?.durationMs) != null"
@@ -396,6 +397,8 @@ interface OracleMerge {
   profile: string;
   /** The model the call ran on (start's attrs.model). "" when unset. */
   model: string;
+  /** The reasoning effort the call ran on (start's attrs.effort). "" when unset. */
+  effort: string;
   /**
    * The single logical oracle call, presented to EventDetail/OracleDetail as
    * one event. The engine records the *prompt* on oracle.call.start and the
@@ -665,7 +668,8 @@ const filteredEvents = computed<AnnotatedEvent[]>(() => {
       // profile = the selected harness profile, model = the resolved model.
       const profile = typeof event.attrs.profile === "string" ? event.attrs.profile : "";
       const model = typeof merged.attrs.model === "string" ? (merged.attrs.model as string) : "";
-      oracle = { verb, complete, durationMs: dur, incomplete: complete === null, merged, profile, model };
+      const effort = typeof merged.attrs.effort === "string" ? (merged.attrs.effort as string) : "";
+      oracle = { verb, complete, durationMs: dur, incomplete: complete === null, merged, profile, model, effort };
     }
 
     out.push({ index: i, event, subsystem, oracle });
@@ -1553,6 +1557,11 @@ watch(
 .trace-timeline__harness-model {
   color: #93c5fd;
   font-size: 0.68rem;
+  font-family: ui-monospace, monospace;
+}
+.trace-timeline__harness-effort {
+  color: #fcd34d;
+  font-size: 0.66rem;
   font-family: ui-monospace, monospace;
 }
 

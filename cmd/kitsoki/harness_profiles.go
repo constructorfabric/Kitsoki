@@ -17,12 +17,15 @@ func harnessProfilesFromConfig(cfg webconfig.WebConfig) (map[string]orchestrator
 	out := make(map[string]orchestrator.HarnessProfile, len(cfg.HarnessProfiles))
 	for name, p := range cfg.HarnessProfiles {
 		out[name] = orchestrator.HarnessProfile{
-			Name:    name,
-			Backend: p.Backend,
-			Model:   p.Model,
-			Models:  p.Models,
-			Env:     p.Env,
-			Plugin:  p.Plugin,
+			Name:           name,
+			Backend:        p.Backend,
+			Model:          p.Model,
+			Models:         p.Models,
+			ModelsEndpoint: p.ModelsEndpoint,
+			Effort:         p.Effort,
+			Efforts:        p.Efforts,
+			Env:            p.Env,
+			Plugin:         p.Plugin,
 		}
 	}
 	return out, cfg.DefaultProfile

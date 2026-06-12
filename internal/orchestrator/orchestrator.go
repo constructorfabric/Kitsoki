@@ -97,6 +97,12 @@ type Orchestrator struct {
 	selection       ProfileSelection
 	selMu           sync.RWMutex
 
+	// modelCache memoises the always-on model ids fetched from a profile's
+	// ModelsEndpoint (keyed by profile name), guarded by its own mutex so a fetch
+	// never blocks the dispatch-hot selMu.
+	modelCache map[string][]string
+	modelMu    sync.Mutex
+
 	// roomEnterSink, when non-nil, receives a pre-rendered banner string
 	// every time a turn transitions into a new room (top-level state).
 	// Fired AFTER the machine collects on_enter side-effects but BEFORE

@@ -34,13 +34,16 @@ default_profile: claude-native          # the profile new sessions start on
 harness_profiles:
   claude-native:                        # your native Anthropic Claude Code subscription
     backend: claude                     # (ambient auth; the default)
+    model: sonnet
+    models: [opus, sonnet, haiku]       # claude's short model names
+    effort: medium
+    efforts: [low, medium, high, xhigh, max]   # claude supports --effort
 
   synthetic-claude:                     # claude-code pointed at synthetic.new
     backend: claude                     # base URL omits /v1 (claude appends /v1/messages)
     model: syn:large:text               # syn: aliases route to the latest model
-    models:                             # catalog the /model command + web dropdown list
-      - syn:large:text                  # GLM-5.1
-      - syn:small:text                  # GLM-4.7-Flash
+    models: [syn:large:text, syn:small:text]   # static fallback
+    models_endpoint: https://api.synthetic.new/openai/v1/models  # the full always-on list
     env:
       ANTHROPIC_BASE_URL: https://api.synthetic.new/anthropic
       ANTHROPIC_AUTH_TOKEN: "${SYNTHETIC_API_KEY}"
@@ -49,11 +52,15 @@ harness_profiles:
     backend: codex                      # OpenAI base URL includes /v1
     model: syn:large:text
     models: [syn:large:text, syn:small:text]
+    models_endpoint: https://api.synthetic.new/openai/v1/models
     env:
       OPENAI_BASE_URL: https://api.synthetic.new/openai/v1
       OPENAI_API_KEY: "${SYNTHETIC_API_KEY}"
 
-  codex-native: { backend: codex }      # codex's own config/auth
+  codex-native:                         # codex's own config/auth
+    backend: codex
+    model: gpt-5-codex
+    models: [gpt-5-codex, gpt-5]
 
   llama-local:                          # a local llama.cpp model (plugin path)
     plugin: builtin.local_llm
@@ -64,7 +71,10 @@ harness_profiles:
 |---|---|
 | `backend` | `claude \| copilot \| codex`; empty ⇒ `claude`. Ignored when `plugin` is set. |
 | `model` | default `--model` for the profile; an explicit per-effect/agent model still wins. |
-| `models` | catalog the `/model` command and web dropdown list. When set, `model` (and any operator model pick) must be a member. |
+| `models` | static catalog the `/model` command and web dropdown list. When set, the model pick must be a member (of the full catalog, incl. fetched — below). |
+| `models_endpoint` | OpenAI/Anthropic `/models` URL (e.g. `https://api.synthetic.new/openai/v1/models`); its always-on model ids are **fetched and merged** into the catalog at selection time (auth from this profile's env), so the full live list is offered — not a hand-maintained subset. A fetch failure falls back to `models`. Cached per profile. |
+| `effort` | default reasoning effort (`low\|medium\|high\|xhigh\|max`), applied where the backend/model supports it (`claude --effort`). |
+| `efforts` | catalog the `/effort` command + web effort dropdown list — declare only on profiles whose backend/model supports effort (codex ignores `--effort` today). Empty ⇒ no effort control. |
 | `env` | env overrides merged onto the forked CLI subprocess. `${VAR}`-expanded at **load time** (an unset var is a hard error, mirroring `providers:`). **Never recorded in traces.** |
 | `plugin` | routes through an oracle plugin (e.g. `builtin.local_llm`) instead of forking a backend CLI. |
 | `default_profile` (top-level) | the profile new sessions start on; must name a declared profile. Omitted ⇒ the flag-derived static default (today's `--oracle`/`--model`). |
@@ -88,11 +98,11 @@ specific.
 
 | Surface | How |
 |---|---|
-| **TUI** | `/provider` lists the profiles (active one marked) and `/provider <name\|n>` switches; `/model` lists the active profile's catalog and `/model <id\|n>` switches the model. See [docs/tui/README.md](../tui/README.md). |
-| **Web** | A provider dropdown + a dependent model dropdown in the session header; switching fires the `runstatus.session.set_selection` RPC. See [docs/web/README.md](../web/README.md). |
+| **TUI** | `/provider` lists the profiles (active one marked) and `/provider <name\|n>` switches; `/model` lists the active profile's catalog and `/model <id\|n>` switches the model; `/effort` does the same for the reasoning effort (where the profile declares `efforts:`). See [docs/tui/README.md](../tui/README.md). |
+| **Web** | A provider dropdown, a dependent model dropdown, and (where the profile declares `efforts:`) an effort dropdown in **both** the Observe and Drive headers; switching fires the `runstatus.session.set_selection` RPC. See [docs/web/README.md](../web/README.md). |
 
 Both drive the same orchestrator API — `Profiles()`, `Selection()`,
-`SetSelection(profile, model)` — exposed to the web via the optional
+`SetSelection(profile, model, effort)` — exposed to the web via the optional
 `HarnessController` driver interface.
 
 ### Resolution & precedence
@@ -117,9 +127,11 @@ concurrent switch can never tear one call.
 ## Trace
 
 Every `oracle.call.start` already stamps the model; a session that selected a
-profile also stamps `profile` (`OracleCalledPayload.Profile`), so a transcript
-line reads `oracle.decide · profile=synthetic-codex · model=hf:Qwen…`. Only the
-profile name, backend, and model are recorded — **never the `env` secrets**.
+profile also stamps `profile` (`OracleCalledPayload.Profile`) and, when set,
+`effort`, so a transcript line reads `oracle.decide · profile=claude-native ·
+model=opus · effort=high`. The web trace renders these as a chip on each oracle
+row, so the trace provenance matches the picker. Only the profile name, backend,
+model, and effort are recorded — **never the `env` secrets**.
 
 ## Real-provider runbook
 

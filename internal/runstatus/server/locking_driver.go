@@ -85,9 +85,9 @@ func (d *lockingDriver) HarnessSelection() orchestrator.ProfileSelection {
 	return orchestrator.ProfileSelection{}
 }
 
-func (d *lockingDriver) SetHarnessSelection(profile, model string) error {
+func (d *lockingDriver) SetHarnessSelection(profile, model, effort string) error {
 	if hc, ok := d.Driver.(HarnessController); ok {
-		return hc.SetHarnessSelection(profile, model)
+		return hc.SetHarnessSelection(profile, model, effort)
 	}
 	return nil
 }

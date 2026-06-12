@@ -49,7 +49,7 @@ func TestResolveSelection_DefaultAndSwitch(t *testing.T) {
 		t.Fatalf("active.Name = %q, want claude-native", active.Name)
 	}
 
-	if err := o.SetSelection("synthetic-codex", ""); err != nil {
+	if err := o.SetSelection("synthetic-codex", "", ""); err != nil {
 		t.Fatalf("SetSelection(synthetic-codex): %v", err)
 	}
 	backend, active = o.resolveSelection("claude")
@@ -66,7 +66,7 @@ func TestResolveSelection_DefaultAndSwitch(t *testing.T) {
 func TestSetSelection_ModelOverrideAndValidation(t *testing.T) {
 	o := newProfileOrch(t, "claude-native")
 
-	if err := o.SetSelection("synthetic-claude", "hf:meta-llama/Llama-3.3-70B-Instruct"); err != nil {
+	if err := o.SetSelection("synthetic-claude", "hf:meta-llama/Llama-3.3-70B-Instruct", ""); err != nil {
 		t.Fatalf("valid model override rejected: %v", err)
 	}
 	_, active := o.resolveSelection("claude")
@@ -74,7 +74,7 @@ func TestSetSelection_ModelOverrideAndValidation(t *testing.T) {
 		t.Fatalf("model override not applied: %q", active.Provider.Model)
 	}
 
-	if err := o.SetSelection("synthetic-claude", "gpt-5"); err == nil {
+	if err := o.SetSelection("synthetic-claude", "gpt-5", ""); err == nil {
 		t.Fatalf("off-catalog model should be rejected")
 	}
 	// The prior valid selection must survive the rejected switch.
@@ -82,8 +82,28 @@ func TestSetSelection_ModelOverrideAndValidation(t *testing.T) {
 		t.Fatalf("rejected switch tore the selection: model=%q", got)
 	}
 
-	if err := o.SetSelection("does-not-exist", ""); err == nil {
+	if err := o.SetSelection("does-not-exist", "", ""); err == nil {
 		t.Fatalf("unknown profile should be rejected")
+	}
+}
+
+// An effort from the profile's catalog flows to the active provider Effort; an
+// off-catalog effort is rejected.
+func TestSetSelection_Effort(t *testing.T) {
+	profiles := map[string]HarnessProfile{
+		"claude-native": {Name: "claude-native", Backend: "claude", Efforts: []string{"low", "medium", "high"}},
+	}
+	o := &Orchestrator{oracleBackendName: "claude"}
+	WithHarnessProfiles(profiles, "claude-native")(o)
+
+	if err := o.SetSelection("claude-native", "", "high"); err != nil {
+		t.Fatalf("valid effort rejected: %v", err)
+	}
+	if _, active := o.resolveSelection("claude"); active.Provider.Effort != "high" {
+		t.Fatalf("effort not applied to active profile: %q", active.Provider.Effort)
+	}
+	if err := o.SetSelection("claude-native", "", "turbo"); err == nil {
+		t.Fatalf("off-catalog effort should be rejected")
 	}
 }
 
@@ -101,7 +121,7 @@ func TestResolveSelection_LegacyNoProfiles(t *testing.T) {
 	if active.Name != "" || len(active.Provider.Env) != 0 {
 		t.Fatalf("legacy path should yield a zero active profile, got %+v", active)
 	}
-	if err := o.SetSelection("anything", ""); err == nil {
+	if err := o.SetSelection("anything", "", ""); err == nil {
 		t.Fatalf("SetSelection should error when no profiles declared")
 	}
 }

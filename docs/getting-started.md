@@ -241,8 +241,14 @@ kitsoki web --stories-dir stories           # pick the provider in the header
 ```
 
 The key is referenced as `${SYNTHETIC_API_KEY}` in the YAML — never inlined,
-never recorded in a trace. Each oracle call's trace row shows `profile=…` so you
-can see which backend answered.
+never recorded in a trace. Each oracle call's trace row shows `profile=… ·
+model=… · effort=…` so you can see exactly which backend/model answered.
+
+Beyond the provider, a profile can offer a **model** picker (e.g. claude's
+`opus`/`sonnet`/`haiku`, or `models_endpoint:` to pull a provider's full
+always-on model list live) and, where the model supports it, an **effort**
+picker (`low`…`max`, applied as claude's `--effort`). See
+[harness profiles](architecture/harness-profiles.md).
 
 ### Verified providers (and the auth gotchas that matter)
 

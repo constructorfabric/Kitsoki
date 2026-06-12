@@ -128,11 +128,12 @@ export interface DataSource {
 
   /** Read the declared harness profiles + live selection (no secrets). */
   getHarness?(sessionId: string): Promise<HarnessState>;
-  /** Switch the active profile (+ optional model), effective next turn. */
+  /** Switch the active profile (+ optional model / effort), effective next turn. */
   setSelection?(
     sessionId: string,
     profile: string,
-    model?: string
+    model?: string,
+    effort?: string
   ): Promise<HarnessState>;
 
   // ── Meta mode (overlay chat) ─────────────────────────────────────────────

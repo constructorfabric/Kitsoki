@@ -268,12 +268,14 @@ export class LiveSource implements DataSource {
   setSelection(
     sessionId: string,
     profile: string,
-    model?: string
+    model?: string,
+    effort?: string
   ): Promise<HarnessState> {
     return this.client.post<HarnessState>("runstatus.session.set_selection", {
       session_id: sessionId,
       profile,
       ...(model ? { model } : {}),
+      ...(effort ? { effort } : {}),
     });
   }
 

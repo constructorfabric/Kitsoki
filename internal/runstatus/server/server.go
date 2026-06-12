@@ -818,7 +818,8 @@ func (s *Server) dispatch(ctx context.Context, method string, params map[string]
 			return nil, &rpcError{Code: codeServerError, Message: "session.set_selection: missing 'profile'"}
 		}
 		model, _ := params["model"].(string)
-		if err := hc.SetHarnessSelection(profile, model); err != nil {
+		effort, _ := params["effort"].(string)
+		if err := hc.SetHarnessSelection(profile, model, effort); err != nil {
 			return nil, serverErr(err)
 		}
 		return harnessState(entry.Driver), nil

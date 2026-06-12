@@ -48,6 +48,7 @@ export const useRunStore = defineStore("run", () => {
   // mode) or no profiles declared — the header picker stays hidden.
   const harnessProfiles = ref<HarnessProfileInfo[]>([]);
   const harnessModel = ref<string>("");
+  const harnessEffort = ref<string>("");
   // The active profile's name, derived from the profiles' active flag.
   const harnessActiveProfile = computed<string>(
     () => harnessProfiles.value.find((p) => p.active)?.name ?? ""
@@ -185,6 +186,7 @@ export const useRunStore = defineStore("run", () => {
     highlightedStatePaths.value = [];
     harnessProfiles.value = [];
     harnessModel.value = "";
+    harnessEffort.value = "";
   }
 
   /**
@@ -441,6 +443,7 @@ export const useRunStore = defineStore("run", () => {
     if (!source.getHarness) {
       harnessProfiles.value = [];
       harnessModel.value = "";
+      harnessEffort.value = "";
       return;
     }
     try {
@@ -449,29 +452,33 @@ export const useRunStore = defineStore("run", () => {
     } catch {
       harnessProfiles.value = [];
       harnessModel.value = "";
+      harnessEffort.value = "";
     }
   }
 
   function applyHarnessState(state: {
     profiles: HarnessProfileInfo[];
-    selection: { profile: string; model?: string };
+    selection: { profile: string; model?: string; effort?: string };
   }): void {
     harnessProfiles.value = state.profiles ?? [];
     harnessModel.value = state.selection?.model ?? "";
+    harnessEffort.value = state.selection?.effort ?? "";
   }
 
   /**
-   * Switch the active harness profile (and optional model), effective next
-   * turn. Re-applies the echoed state so the picker reflects the new selection.
+   * Switch the active harness profile (and optional model / effort), effective
+   * next turn. Re-applies the echoed state so the picker reflects the new
+   * selection.
    */
   async function selectProfile(
     source: DataSource,
     sessionId: string,
     profile: string,
-    model?: string
+    model?: string,
+    effort?: string
   ): Promise<void> {
     if (!source.setSelection) return;
-    const state = await source.setSelection(sessionId, profile, model);
+    const state = await source.setSelection(sessionId, profile, model, effort);
     applyHarnessState(state);
   }
 
@@ -493,6 +500,7 @@ export const useRunStore = defineStore("run", () => {
     pendingStream,
     harnessProfiles,
     harnessModel,
+    harnessEffort,
     harnessActiveProfile,
     // actions
     hydrate,

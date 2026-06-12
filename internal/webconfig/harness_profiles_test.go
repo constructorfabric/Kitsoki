@@ -70,6 +70,14 @@ harness_profiles:
     model: c
     models: [a, b]
 `,
+		"invalid effort rejected": `
+harness_profiles:
+  p: { backend: claude, efforts: [low, turbo] }
+`,
+		"default effort off its catalog rejected": `
+harness_profiles:
+  p: { backend: claude, effort: max, efforts: [low, medium] }
+`,
 	}
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {

@@ -59,6 +59,16 @@
               {{ shortModel(m) }}
             </option>
           </select>
+          <select
+            v-if="activeEfforts.length"
+            class="run-view__harness-select"
+            data-testid="effort-select"
+            title="Reasoning effort — where the model supports it; takes effect next turn"
+            :value="activeEffort"
+            @change="onEffortChange"
+          >
+            <option v-for="e in activeEfforts" :key="e" :value="e">effort: {{ e }}</option>
+          </select>
         </span>
         <StoryFreshness
           :session-id="sessionId"
@@ -135,6 +145,12 @@ const activeModels = computed<string[]>(
 const activeModel = computed<string>(
   () => store.harnessModel || activeProfileObj.value?.model || ""
 );
+const activeEfforts = computed<string[]>(
+  () => activeProfileObj.value?.efforts ?? []
+);
+const activeEffort = computed<string>(
+  () => store.harnessEffort || activeProfileObj.value?.effort || ""
+);
 
 async function onProviderChange(e: Event): Promise<void> {
   const profile = (e.target as HTMLSelectElement).value;
@@ -143,7 +159,12 @@ async function onProviderChange(e: Event): Promise<void> {
 
 async function onModelChange(e: Event): Promise<void> {
   const model = (e.target as HTMLSelectElement).value;
-  await store.selectProfile(source, props.sessionId, store.harnessActiveProfile, model);
+  await store.selectProfile(source, props.sessionId, store.harnessActiveProfile, model, store.harnessEffort);
+}
+
+async function onEffortChange(e: Event): Promise<void> {
+  const effort = (e.target as HTMLSelectElement).value;
+  await store.selectProfile(source, props.sessionId, store.harnessActiveProfile, store.harnessModel, effort);
 }
 
 // hf:Qwen/Qwen2.5-Coder-32B-Instruct → Qwen2.5-Coder-32B-Instruct

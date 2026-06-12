@@ -203,6 +203,9 @@ type OracleCalledPayload struct {
 	// it. Empty for the default no-profile path. Stamped centrally in
 	// appendOracleCalledEvent / appendOracleCalledEventWithEpisode.
 	Profile string `json:"profile,omitempty"`
+	// Effort is the reasoning effort in effect for this call (the active profile's
+	// effort or its operator override), when one was selected. Empty otherwise.
+	Effort string `json:"effort,omitempty"`
 	// Prompt is the inline rendered prompt, present when it is small enough to
 	// embed (≤ the offload threshold). Larger prompts are written to a sidecar
 	// file and referenced via PromptFile instead. Exactly one of Prompt /
@@ -307,8 +310,13 @@ func appendOracleCalledEvent(ctx context.Context, ts time.Time, callID string, p
 		return
 	}
 	oc := OracleCallCtxFrom(ctx)
-	if payload.Profile == "" {
-		payload.Profile = ActiveProfileNameFromCtx(ctx)
+	if ap, ok := ActiveProfileFromContext(ctx); ok {
+		if payload.Profile == "" {
+			payload.Profile = ap.Name
+		}
+		if payload.Effort == "" {
+			payload.Effort = ap.Provider.Effort
+		}
 	}
 
 	// Guarantee a prompt reference: offload large prompts to a sidecar file,

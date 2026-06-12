@@ -626,8 +626,13 @@ func appendOracleCalledEventWithEpisode(ctx context.Context, ts time.Time, callI
 		return
 	}
 	oc := OracleCallCtxFrom(ctx)
-	if payload.Profile == "" {
-		payload.Profile = ActiveProfileNameFromCtx(ctx)
+	if ap, ok := ActiveProfileFromContext(ctx); ok {
+		if payload.Profile == "" {
+			payload.Profile = ap.Name
+		}
+		if payload.Effort == "" {
+			payload.Effort = ap.Provider.Effort
+		}
 	}
 
 	raw, err := json.Marshal(payload)

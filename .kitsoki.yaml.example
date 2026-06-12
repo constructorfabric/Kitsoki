@@ -12,19 +12,25 @@
 default_profile: claude-native
 
 harness_profiles:
-  # Your native Anthropic Claude Code subscription (ambient auth — nothing to set).
+  # Your native Anthropic Claude Code subscription (ambient auth — nothing to
+  # set). claude supports a model selector (short names) and --effort.
   claude-native:
     backend: claude
+    model: sonnet
+    models: [opus, sonnet, haiku]
+    effort: medium
+    efforts: [low, medium, high, xhigh, max]
 
   # claude-code pointed at synthetic.new (Anthropic-compatible endpoint).
   # claude-code appends /v1/messages, so the base URL omits /v1.
-  # The syn: aliases always route to the latest recommended model.
+  # models_endpoint pulls the FULL always-on model list at selection time, so you
+  # get every synthetic model — not just the syn: aliases. `model` seeds the
+  # default; `models` is a static fallback if the endpoint can't be reached.
   synthetic-claude:
     backend: claude
     model: syn:large:text                 # GLM-5.1 (large text)
-    models:
-      - syn:large:text                    # GLM-5.1
-      - syn:small:text                    # GLM-4.7-Flash
+    models: [syn:large:text, syn:small:text]
+    models_endpoint: https://api.synthetic.new/openai/v1/models
     env:
       ANTHROPIC_BASE_URL: https://api.synthetic.new/anthropic
       ANTHROPIC_AUTH_TOKEN: "${SYNTHETIC_API_KEY}"
@@ -37,16 +43,18 @@ harness_profiles:
   synthetic-codex:
     backend: codex
     model: syn:large:text
-    models:
-      - syn:large:text
-      - syn:small:text
+    models: [syn:large:text, syn:small:text]
+    models_endpoint: https://api.synthetic.new/openai/v1/models
     env:
       OPENAI_BASE_URL: https://api.synthetic.new/openai/v1
       OPENAI_API_KEY: "${SYNTHETIC_API_KEY}"
 
-  # codex with its own config/auth (no retarget).
+  # codex with its own config/auth (no retarget). codex has a model selector;
+  # reasoning effort for codex is not wired (it ignores --effort), so no efforts.
   codex-native:
     backend: codex
+    model: gpt-5-codex
+    models: [gpt-5-codex, gpt-5]
 
   # A local llama.cpp model via the builtin plugin (no backend CLI forked).
   llama-local:

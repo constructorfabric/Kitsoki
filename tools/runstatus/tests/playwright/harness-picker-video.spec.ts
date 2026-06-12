@@ -46,10 +46,17 @@ const VIDEO_DIR = path.join(ARTIFACT_DIR, "video");
 
 // The three provider switches, in order, matched to the cassette's three
 // scripted identities. `reply` is the distinguishing word in each answer.
-const STEPS = [
-  { profile: "claude-native", reply: "Claude", caption: "Native Anthropic Claude Code", sub: "Your subscription — the default profile." },
-  { profile: "synthetic-claude", reply: "GLM-5.1", caption: "claude-code on synthetic.new", sub: "Same backend, different endpoint + model (syn:large:text)." },
-  { profile: "codex-native", reply: "Codex", caption: "codex on your subscription", sub: "A different backend CLI entirely." },
+const STEPS: {
+  profile: string;
+  reply: string;
+  caption: string;
+  sub: string;
+  model?: string;
+  effort?: string;
+}[] = [
+  { profile: "claude-native", reply: "Claude", model: "opus", effort: "high", caption: "Native Anthropic Claude Code", sub: "Pick the model (opus) and the reasoning effort (high)." },
+  { profile: "synthetic-claude", reply: "GLM-5.1", model: "syn:small:text", caption: "claude-code on synthetic.new", sub: "Same backend, different endpoint — and its own model catalog." },
+  { profile: "codex-native", reply: "Codex", model: "gpt-5", caption: "codex on your subscription", sub: "A different backend CLI — with its own models." },
 ];
 
 let server: WebServer;
@@ -125,6 +132,19 @@ test("harness picker from the chat pane — switch provider, ask who-are-you", a
       await expect(provider()).toHaveValue(step.profile);
       await dwell(page, SETTLE_MS);
 
+      // Pick a model from this profile's catalog…
+      if (step.model) {
+        await page.getByTestId("model-select").selectOption(step.model);
+        await expect(page.getByTestId("model-select")).toHaveValue(step.model);
+        await dwell(page, SETTLE_MS);
+      }
+      // …and an effort, where the model supports it.
+      if (step.effort) {
+        await page.getByTestId("effort-select").selectOption(step.effort);
+        await expect(page.getByTestId("effort-select")).toHaveValue(step.effort);
+        await dwell(page, SETTLE_MS);
+      }
+
       // Ask "who are you" from the composer.
       await typeInto(page, "composer-input", "who are you");
       await dwell(page, SETTLE_MS);
@@ -139,11 +159,14 @@ test("harness picker from the chat pane — switch provider, ask who-are-you", a
       await dwell(page, SETTLE_MS);
     }
 
-    // Final proof: three oracle calls, three distinct profile stamps in the trace.
+    // Final proof: three oracle calls, three distinct profile stamps in the
+    // trace, and the claude call stamped with its picked model + effort.
     for (const step of STEPS) {
       await expect(harnessLabels().filter({ hasText: step.profile }).first()).toBeVisible();
     }
-    await beat("Three turns, three providers", "Each oracle call in the trace carries the profile + model it ran on.");
+    await expect(harnessLabels().filter({ hasText: "opus" }).first()).toBeVisible();
+    await expect(harnessLabels().filter({ hasText: "high" }).first()).toBeVisible();
+    await beat("Three turns, three providers", "Each oracle call in the trace carries the profile, model + effort it ran on.");
     await shot(page, "04-trace-all");
     await dwell(page, SETTLE_MS);
   } catch (err) {

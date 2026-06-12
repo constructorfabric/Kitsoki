@@ -39,7 +39,8 @@ func (ProviderCommand) Run(m RootModel, args []string) (string, RootModel, tea.C
 	if target == "" {
 		return blockSlashLine(m, fmt.Sprintf("(provider: no such profile %q — run /provider to list them)", args[0])), m, nil
 	}
-	if err := m.orch.SetSelection(target, ""); err != nil {
+	// Switching profile resets model + effort to the new profile's defaults.
+	if err := m.orch.SetSelection(target, "", ""); err != nil {
 		return blockSlashLine(m, fmt.Sprintf("(provider: %v)", err)), m, nil
 	}
 	return blockSlashLine(m, fmt.Sprintf("→ next turn uses provider %q", target)), m, nil
@@ -107,10 +108,57 @@ func (ModelCommand) Run(m RootModel, args []string) (string, RootModel, tea.Cmd)
 	if target == "" {
 		return blockSlashLine(m, fmt.Sprintf("(model: %q is not in profile %q's catalog — run /model to list it)", args[0], active.Name)), m, nil
 	}
-	if err := m.orch.SetSelection(active.Name, target); err != nil {
+	// Preserve the current effort selection when only the model changes.
+	if err := m.orch.SetSelection(active.Name, target, m.orch.Selection().Effort); err != nil {
 		return blockSlashLine(m, fmt.Sprintf("(model: %v)", err)), m, nil
 	}
 	return blockSlashLine(m, fmt.Sprintf("→ next turn uses model %q", target)), m, nil
+}
+
+// EffortCommand implements `/effort` (list the active profile's effort catalog)
+// and `/effort <level|N>` (switch the reasoning effort, effective next turn).
+type EffortCommand struct{}
+
+func (EffortCommand) Name() string { return "/effort" }
+
+func (EffortCommand) Run(m RootModel, args []string) (string, RootModel, tea.Cmd) {
+	profiles := m.orch.Profiles()
+	active := activeProfile(profiles)
+	if active.Name == "" {
+		return blockSlashLine(m, "(no active harness profile — /effort needs a profile)"), m, nil
+	}
+	if len(active.Efforts) == 0 {
+		return blockSlashLine(m, fmt.Sprintf("(profile %q declares no effort catalog — its backend/model uses the default effort)", active.Name)), m, nil
+	}
+	if len(args) == 0 {
+		current := m.orch.Selection().Effort
+		if current == "" {
+			current = active.Effort
+		}
+		return renderEffortBlock(m, active, current), m, nil
+	}
+	target := resolveModelArg(active.Efforts, args[0]) // index|exact-name resolution is identical
+	if target == "" {
+		return blockSlashLine(m, fmt.Sprintf("(effort: %q is not in profile %q's catalog — run /effort to list it)", args[0], active.Name)), m, nil
+	}
+	if err := m.orch.SetSelection(active.Name, m.orch.Selection().Model, target); err != nil {
+		return blockSlashLine(m, fmt.Sprintf("(effort: %v)", err)), m, nil
+	}
+	return blockSlashLine(m, fmt.Sprintf("→ next turn uses effort %q", target)), m, nil
+}
+
+// renderEffortBlock lists the active profile's effort catalog, flagging current.
+func renderEffortBlock(m RootModel, active orchestrator.ProfileInfo, current string) string {
+	r := blocks.New(m.transcript.width, m.currentTheme())
+	rows := make([]blocks.MenuAction, 0, len(active.Efforts))
+	for i, e := range active.Efforts {
+		label := e
+		if e == current {
+			label += "  (active)"
+		}
+		rows = append(rows, blocks.MenuAction{Index: i + 1, Name: e, Label: label, Available: true})
+	}
+	return r.Menu(rows)
 }
 
 // renderModelBlock lists the active profile's catalog; current (the session

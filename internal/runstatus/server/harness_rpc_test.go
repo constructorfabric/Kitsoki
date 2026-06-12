@@ -18,18 +18,19 @@ type harnessDriver struct {
 	setErr      error
 	lastProfile string
 	lastModel   string
+	lastEffort  string
 }
 
 func (d *harnessDriver) HarnessProfiles() []orchestrator.ProfileInfo { return d.profiles }
 func (d *harnessDriver) HarnessSelection() orchestrator.ProfileSelection {
 	return d.sel
 }
-func (d *harnessDriver) SetHarnessSelection(profile, model string) error {
+func (d *harnessDriver) SetHarnessSelection(profile, model, effort string) error {
 	if d.setErr != nil {
 		return d.setErr
 	}
-	d.lastProfile, d.lastModel = profile, model
-	d.sel = orchestrator.ProfileSelection{Profile: profile, Model: model}
+	d.lastProfile, d.lastModel, d.lastEffort = profile, model, effort
+	d.sel = orchestrator.ProfileSelection{Profile: profile, Model: model, Effort: effort}
 	return nil
 }
 
@@ -68,12 +69,12 @@ func TestHarnessRPC_SetSelection(t *testing.T) {
 	}
 	s := newHarnessServer(drv)
 	out, rerr := s.dispatch(context.Background(), "runstatus.session.set_selection",
-		map[string]any{"session_id": "x", "profile": "synthetic-codex", "model": "hf:Qwen"})
+		map[string]any{"session_id": "x", "profile": "synthetic-codex", "model": "hf:Qwen", "effort": "high"})
 	if rerr != nil {
 		t.Fatalf("set_selection error: %+v", rerr)
 	}
-	if drv.lastProfile != "synthetic-codex" || drv.lastModel != "hf:Qwen" {
-		t.Fatalf("driver not driven: profile=%q model=%q", drv.lastProfile, drv.lastModel)
+	if drv.lastProfile != "synthetic-codex" || drv.lastModel != "hf:Qwen" || drv.lastEffort != "high" {
+		t.Fatalf("driver not driven: profile=%q model=%q effort=%q", drv.lastProfile, drv.lastModel, drv.lastEffort)
 	}
 	if sel := out.(map[string]any)["selection"].(orchestrator.ProfileSelection); sel.Profile != "synthetic-codex" {
 		t.Fatalf("echoed selection wrong: %+v", sel)

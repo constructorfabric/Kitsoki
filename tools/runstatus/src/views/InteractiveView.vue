@@ -47,6 +47,16 @@
           >
             <option v-for="m in activeModels" :key="m" :value="m">{{ shortModel(m) }}</option>
           </select>
+          <select
+            v-if="activeEfforts.length"
+            class="iv__harness-select"
+            data-testid="effort-select"
+            title="Reasoning effort — where the model supports it; takes effect next turn"
+            :value="activeEffort"
+            @change="onEffortChange"
+          >
+            <option v-for="e in activeEfforts" :key="e" :value="e">effort: {{ e }}</option>
+          </select>
         </span>
         <StoryFreshness
           :session-id="sessionId"
@@ -183,6 +193,8 @@ const appId = computed(() => store.appDef?.id ?? store.appDef?.name ?? "kitsoki"
 const activeProfileObj = computed(() => store.harnessProfiles.find((p) => p.active));
 const activeModels = computed<string[]>(() => activeProfileObj.value?.models ?? []);
 const activeModel = computed<string>(() => store.harnessModel || activeProfileObj.value?.model || "");
+const activeEfforts = computed<string[]>(() => activeProfileObj.value?.efforts ?? []);
+const activeEffort = computed<string>(() => store.harnessEffort || activeProfileObj.value?.effort || "");
 
 async function onProviderChange(e: Event): Promise<void> {
   if (!source) source = createDataSource();
@@ -190,7 +202,11 @@ async function onProviderChange(e: Event): Promise<void> {
 }
 async function onModelChange(e: Event): Promise<void> {
   if (!source) source = createDataSource();
-  await store.selectProfile(source, props.sessionId, store.harnessActiveProfile, (e.target as HTMLSelectElement).value);
+  await store.selectProfile(source, props.sessionId, store.harnessActiveProfile, (e.target as HTMLSelectElement).value, store.harnessEffort);
+}
+async function onEffortChange(e: Event): Promise<void> {
+  if (!source) source = createDataSource();
+  await store.selectProfile(source, props.sessionId, store.harnessActiveProfile, store.harnessModel, (e.target as HTMLSelectElement).value);
 }
 function shortModel(m: string): string {
   const slash = m.lastIndexOf("/");

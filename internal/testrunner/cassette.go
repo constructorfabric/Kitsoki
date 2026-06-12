@@ -804,14 +804,19 @@ func writeCassetteOracleEvents(ctx context.Context, sink store.EventSink, cas *C
 	// the cassette's static o.Model when present, so the trace matches the picker.
 	model := o.Model
 	profileName := host.ActiveProfileNameFromCtx(ctx)
-	if ap, ok := host.ActiveProfileFromContext(ctx); ok && ap.Provider.Model != "" {
-		model = ap.Provider.Model
+	effort := ""
+	if ap, ok := host.ActiveProfileFromContext(ctx); ok {
+		if ap.Provider.Model != "" {
+			model = ap.Provider.Model
+		}
+		effort = ap.Provider.Effort
 	}
 	calledPayload := host.OracleCalledPayload{
 		Verb:       o.Verb,
 		Agent:      o.Agent,
 		Model:      model,
 		Profile:    profileName,
+		Effort:     effort,
 		Prompt:     inlinePrompt,
 		PromptFile: promptFile,
 		Input:      inputRaw,

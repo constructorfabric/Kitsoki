@@ -131,7 +131,7 @@ func (d OrchestratorDriver) PatchWorld(ctx context.Context, patch map[string]any
 type HarnessController interface {
 	HarnessProfiles() []orchestrator.ProfileInfo
 	HarnessSelection() orchestrator.ProfileSelection
-	SetHarnessSelection(profile, model string) error
+	SetHarnessSelection(profile, model, effort string) error
 }
 
 func (d OrchestratorDriver) HarnessProfiles() []orchestrator.ProfileInfo {
@@ -142,8 +142,8 @@ func (d OrchestratorDriver) HarnessSelection() orchestrator.ProfileSelection {
 	return d.Orch.Selection()
 }
 
-func (d OrchestratorDriver) SetHarnessSelection(profile, model string) error {
-	return d.Orch.SetSelection(profile, model)
+func (d OrchestratorDriver) SetHarnessSelection(profile, model, effort string) error {
+	return d.Orch.SetSelection(profile, model, effort)
 }
 
 // ListNotifications returns the session's notifications newest-first, or an

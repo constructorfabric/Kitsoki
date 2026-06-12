@@ -71,6 +71,19 @@ type HarnessProfile struct {
 	// Models is the catalog the /model command and web dropdown list. Optional;
 	// when set, Model (and any operator model selection) must be a member.
 	Models []string `yaml:"models,omitempty"`
+	// ModelsEndpoint, when set, is an OpenAI/Anthropic-compatible /models URL
+	// (e.g. https://api.synthetic.new/openai/v1/models) whose always-on model ids
+	// are fetched and merged into the catalog at selection time — so a provider's
+	// full live model list is offered, not a hand-maintained subset. Auth comes
+	// from this profile's env (Bearer OPENAI_API_KEY / ANTHROPIC_AUTH_TOKEN).
+	ModelsEndpoint string `yaml:"models_endpoint,omitempty"`
+	// Effort is the default reasoning effort for the profile (low|medium|high|
+	// xhigh|max). Applied where the backend/model supports it (claude --effort).
+	Effort string `yaml:"effort,omitempty"`
+	// Efforts is the effort catalog the /effort command and web dropdown list —
+	// declare it only on profiles whose backend/model supports effort. Empty ⇒
+	// no effort control is offered. Each must be a valid level.
+	Efforts []string `yaml:"efforts,omitempty"`
 	// Env overrides merged onto the forked CLI subprocess (e.g. ANTHROPIC_BASE_URL
 	// + ANTHROPIC_AUTH_TOKEN to retarget claude at synthetic.new). ${VAR}-expanded
 	// at load time. Never recorded in traces.
@@ -81,6 +94,9 @@ type HarnessProfile struct {
 }
 
 var validBackends = map[string]bool{"": true, "claude": true, "copilot": true, "codex": true}
+
+// validEfforts mirrors the engine's --effort levels (internal/app loader).
+var validEfforts = map[string]bool{"low": true, "medium": true, "high": true, "xhigh": true, "max": true}
 
 // Load reads WebConfig from the given path. A missing file is not an error —
 // it returns a zero WebConfig (empty StoryDirs) so the caller can fall back to
@@ -122,6 +138,19 @@ func (cfg *WebConfig) resolveHarnessProfiles() error {
 		}
 		if len(p.Models) > 0 && p.Model != "" && !contains(p.Models, p.Model) {
 			return fmt.Errorf("harness_profiles.%s: model %q is not in its models catalog", name, p.Model)
+		}
+		for _, e := range p.Efforts {
+			if !validEfforts[e] {
+				return fmt.Errorf("harness_profiles.%s: effort %q is invalid (valid: low, medium, high, xhigh, max)", name, e)
+			}
+		}
+		if p.Effort != "" {
+			if !validEfforts[p.Effort] {
+				return fmt.Errorf("harness_profiles.%s: effort %q is invalid (valid: low, medium, high, xhigh, max)", name, p.Effort)
+			}
+			if len(p.Efforts) > 0 && !contains(p.Efforts, p.Effort) {
+				return fmt.Errorf("harness_profiles.%s: effort %q is not in its efforts catalog", name, p.Effort)
+			}
 		}
 		cfg.HarnessProfiles[name] = p
 	}
