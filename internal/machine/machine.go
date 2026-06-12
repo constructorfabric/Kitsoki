@@ -85,7 +85,10 @@ type HostInvocation struct {
 	Bind map[string]string `json:"bind,omitempty"`
 	// OnError is a state path to transition to when the host returns an error.
 	// When non-empty and the host fails, the machine should transition there
-	// rather than erroring out. The $host_error slot will be set.
+	// rather than erroring out. Before the redirect the engine sets the
+	// reserved global world vars last_error (string) and host_error
+	// ({namespace, message, data?, stderr?, exit_code?}); both are exempt from
+	// import folding and readable by the target room without declaration.
 	OnError   string `json:"on_error,omitempty"`
 	EmitEvent string `json:"emit_event,omitempty"`
 	// Background, when true, signals that the orchestrator should submit

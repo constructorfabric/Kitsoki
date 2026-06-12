@@ -844,7 +844,12 @@ type Effect struct {
 	// Bind extracts keys from the host result into world variables: bind: {world_key: result_key}.
 	Bind map[string]string `yaml:"bind,omitempty"`
 	// OnError is a state transition target fired when a host invoke returns an error.
-	// The $host_error slot is populated with {code, message} for guard evaluation.
+	// Before the redirect, the engine sets two reserved global world vars the
+	// target room may read (and list in relevant_world) without declaring:
+	//   - last_error (string): the failing call's error message.
+	//   - host_error (map): {namespace, message, data?, stderr?, exit_code?}.
+	// Both are exempt from import folding — they stay bare at every nesting
+	// depth. See app.ReservedWorldKeys.
 	OnError string `yaml:"on_error,omitempty"`
 	// Emit sends a named event to parallel regions.
 	Emit string `yaml:"emit,omitempty"`

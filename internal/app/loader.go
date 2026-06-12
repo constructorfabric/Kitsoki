@@ -748,8 +748,15 @@ func validateDef(def *AppDef, file string) (*AppDef, []error) {
 	}
 
 	// ── 2. world schema ──────────────────────────────────────────────────────
-	worldKeys := make(map[string]struct{}, len(def.World))
+	worldKeys := make(map[string]struct{}, len(def.World)+len(ReservedWorldKeys))
 	for k := range def.World {
+		worldKeys[k] = struct{}{}
+	}
+	// Reserved engine-owned globals (last_error/host_error) are always valid
+	// targets for world.<key> references and relevant_world lists, whether or
+	// not the story declares them — the runtime writes them on on_error
+	// redirects. See ReservedWorldKeys in imports.go.
+	for k := range ReservedWorldKeys {
 		worldKeys[k] = struct{}{}
 	}
 

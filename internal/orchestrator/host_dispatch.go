@@ -229,6 +229,16 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 			events = append(events, newOrchestratorEvent(store.EffectApplied, map[string]any{
 				"set": map[string]any{"last_error": err.Error()},
 			}, 0))
+			// Structured global host_error so the redirect target room can render
+			// a rich error (namespace + message). Reserved global, never folded.
+			herr := map[string]any{
+				"namespace": hc.Namespace,
+				"message":   err.Error(),
+			}
+			w.Vars["host_error"] = herr
+			events = append(events, newOrchestratorEvent(store.EffectApplied, map[string]any{
+				"set": map[string]any{"host_error": herr},
+			}, 0))
 			events = append(events, newOrchestratorEvent(store.HostReturned, map[string]any{
 				"namespace": hc.Namespace,
 				"error":     err.Error(),
@@ -256,6 +266,27 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 			w.Vars["last_error"] = res.Error
 			events = append(events, newOrchestratorEvent(store.EffectApplied, map[string]any{
 				"set": map[string]any{"last_error": res.Error},
+			}, 0))
+			// Structured global host_error mirrors last_error but carries the
+			// namespace and (when the host result returned a Data payload) the
+			// raw data plus the conventional stderr/exit_code host.run carries.
+			// Reserved global key, never namespaced by import folding.
+			herr := map[string]any{
+				"namespace": hc.Namespace,
+				"message":   res.Error,
+			}
+			if res.Data != nil {
+				herr["data"] = res.Data
+				if v, ok := res.Data["stderr"]; ok {
+					herr["stderr"] = v
+				}
+				if v, ok := res.Data["exit_code"]; ok {
+					herr["exit_code"] = v
+				}
+			}
+			w.Vars["host_error"] = herr
+			events = append(events, newOrchestratorEvent(store.EffectApplied, map[string]any{
+				"set": map[string]any{"host_error": herr},
 			}, 0))
 		}
 

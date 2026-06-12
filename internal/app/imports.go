@@ -41,6 +41,22 @@ import (
 // state-path segment and world-key prefix.
 var importAliasRE = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
+// ReservedWorldKeys are engine-owned global world variables that the runtime
+// writes directly (see internal/orchestrator/host_dispatch.go on an
+// `on_error:` redirect). They are NEVER namespaced by import folding: a story
+// imported under an alias still reads/writes the bare `last_error` /
+// `host_error` keys, matching how the engine writes them. Consequently any
+// room may reference `world.last_error` / `world.host_error` and list them in
+// `relevant_world` without declaring them in its own world block, at every
+// import-nesting depth.
+//
+//   - last_error: string — the failing host call's error message.
+//   - host_error: map — {namespace, message, data?, stderr?, exit_code?}.
+var ReservedWorldKeys = map[string]struct{}{
+	"last_error": {},
+	"host_error": {},
+}
+
 // resolveImports walks def.Imports and folds each imported child into def.
 // Errors are returned aggregated; the caller wraps in errors.Join.
 //
@@ -280,6 +296,13 @@ func foldChild(parent *AppDef, alias string, imp *ImportDef, child *AppDef, file
 	// 1. Build name-set lookups for the rewriter.
 	childWorld := make(map[string]struct{}, len(child.World))
 	for k := range child.World {
+		// Reserved engine globals stay BARE — never prefixed by the rewriter —
+		// so child refs to world.last_error / world.host_error and
+		// relevant_world: [last_error] resolve to the same flat keys the
+		// runtime writes. See ReservedWorldKeys.
+		if _, reserved := ReservedWorldKeys[k]; reserved {
+			continue
+		}
 		childWorld[k] = struct{}{}
 	}
 	childIntent := make(map[string]struct{}, len(child.Intents))
@@ -332,6 +355,9 @@ func foldChild(parent *AppDef, alias string, imp *ImportDef, child *AppDef, file
 	// a non-zero default also count (the key is provably set at runtime).
 	defaultedKeys := make(map[string]struct{}, len(child.World))
 	for k, v := range child.World {
+		if _, reserved := ReservedWorldKeys[k]; reserved {
+			continue
+		}
 		if v.Default != nil && !isZeroDefault(v.Default) {
 			defaultedKeys[k] = struct{}{}
 		}
@@ -393,6 +419,11 @@ func foldChild(parent *AppDef, alias string, imp *ImportDef, child *AppDef, file
 		parent.World = make(map[string]VarDef)
 	}
 	for _, ck := range sortedKeys(child.World) {
+		// Reserved engine globals are flat at every depth: don't synthesise an
+		// alias__last_error schema entry. See ReservedWorldKeys.
+		if _, reserved := ReservedWorldKeys[ck]; reserved {
+			continue
+		}
 		newKey := alias + "__" + ck
 		if _, exists := parent.World[newKey]; exists {
 			errs = append(errs, &ValidationError{File: file, Message: fmt.Sprintf("imports.%s: world key %q collides", alias, newKey)})
