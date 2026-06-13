@@ -28,6 +28,30 @@ export type AdvanceTrigger =
 
 export type Placement = "top" | "bottom" | "left" | "right" | "center";
 
+/**
+ * A single self-driving action a tour step performs against the live UI before
+ * (or as) it advances. This is the declarative capture of what the Playwright
+ * demo `.spec.ts` files do imperatively (typeAndSend / clickIntent /
+ * waitForState / revealTurn / dwell), so the binary `kitsoki tour` renderer —
+ * which cannot read a `.spec.ts` — can drive any demo from data alone.
+ *
+ *   - type-and-send: fill the composer with `text` and click send.
+ *   - click-intent:  click the `intent-btn-<intent>` button.
+ *   - wait-state:    poll the interactive view's current-state until it equals
+ *                    `state` (the deterministic, no-LLM settle point).
+ *   - reveal-turn:   ease the last turn up to the top of the chat, hold, then
+ *                    ease down through the reply — the per-turn reading rhythm.
+ *   - dwell-ms:      hold on the current frame for `ms` (pace-scaled).
+ *
+ * Mirror of internal/tour DriveAction (Go). Keep the two in lockstep.
+ */
+export type DriveAction =
+  | { type: "type-and-send"; text: string }
+  | { type: "click-intent"; intent: string }
+  | { type: "wait-state"; state: string }
+  | { type: "reveal-turn" }
+  | { type: "dwell-ms"; ms: number };
+
 export interface TourStep {
   /** Stable id; also the Playwright screenshot label. */
   id: string;
@@ -70,4 +94,12 @@ export interface TourStep {
 
   /** ms the video spec dwells on this step. The live UI ignores it. */
   dwellMs?: number;
+
+  /**
+   * Optional ordered self-driving actions the `kitsoki tour` renderer executes
+   * for this step (composer fills, intent clicks, state waits, per-turn
+   * reveals, dwells). The live UI tour overlay IGNORES this — it is render-time
+   * driving data only, the data form of the Playwright spec's imperative logic.
+   */
+  drive?: DriveAction[];
 }

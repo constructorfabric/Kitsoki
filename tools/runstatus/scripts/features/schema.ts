@@ -16,6 +16,20 @@ export const PlacementSchema = z.enum(["top", "bottom", "left", "right", "center
 export const AdvanceSchema = z.enum(["next", "click-target", "route-match"]);
 
 /**
+ * Mirrors src/tour/types.ts DriveAction — a single self-driving step action.
+ * The `type` discriminator selects which of the other fields is required; the
+ * cross-field requirement is enforced in FeatureSchema's superRefine (so the
+ * shape stays JSON-Schema-representable). Mirror of internal/tour DriveAction.
+ */
+export const DriveActionSchema = z.strictObject({
+  type: z.enum(["type-and-send", "click-intent", "wait-state", "reveal-turn", "dwell-ms"]),
+  text: z.string().min(1).optional(),
+  intent: z.string().min(1).optional(),
+  state: z.string().min(1).optional(),
+  ms: z.number().int().positive().optional(),
+});
+
+/**
  * Mirrors src/tour/types.ts TourStep — field for field, no renaming.
  * Cross-field step rules live in FeatureSchema's superRefine so this stays
  * JSON-Schema-representable for the generated feature.schema.json.
@@ -33,6 +47,7 @@ export const TourStepSchema = z.strictObject({
   advanceRoute: TourRouteSchema.optional(),
   waitForTarget: z.string().min(1).optional(),
   dwellMs: z.number().int().positive().optional(),
+  drive: z.array(DriveActionSchema).optional(),
 });
 
 export const DemoSchema = z.strictObject({
@@ -121,6 +136,19 @@ export const FeatureSchema = FeatureObjectSchema.superRefine((f, ctx) => {
       }
       if (s.advance === "click-target" && !s.target) {
         ctx.addIssue({ code: "custom", message: `click-target step "${s.id}" needs a target` });
+      }
+      for (const [j, d] of (s.drive ?? []).entries()) {
+        const need = (field: string, ok: boolean) => {
+          if (!ok)
+            ctx.addIssue({
+              code: "custom",
+              message: `step "${s.id}" drive[${j}] type "${d.type}" requires "${field}"`,
+            });
+        };
+        if (d.type === "type-and-send") need("text", !!d.text);
+        if (d.type === "click-intent") need("intent", !!d.intent);
+        if (d.type === "wait-state") need("state", !!d.state);
+        if (d.type === "dwell-ms") need("ms", typeof d.ms === "number");
       }
     }
     if (f.demo?.posterStep && f.tour && !ids.has(f.demo.posterStep)) {

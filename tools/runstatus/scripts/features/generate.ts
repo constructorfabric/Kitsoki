@@ -36,6 +36,7 @@ const specsDir = path.join(runstatusDir, "tests", "playwright");
 const STEP_FIELDS = [
   "id", "route", "target", "targetText", "title", "body",
   "placement", "kind", "advance", "advanceRoute", "waitForTarget", "dwellMs",
+  "drive",
 ] as const;
 
 interface Loaded {
