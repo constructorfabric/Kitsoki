@@ -256,7 +256,7 @@ async function onSendAll() {
 .rp-handle {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
-  color: #6b7280;
+  color: var(--k-fg-muted, #6b7280);
 }
 .rp-error {
   background: #fff8eb;

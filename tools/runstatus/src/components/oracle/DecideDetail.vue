@@ -277,7 +277,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
   flex-direction: column;
   gap: 0.45rem;
   padding-bottom: 0.6rem;
-  border-bottom: 1px solid #1e293b;
+  border-bottom: 1px solid var(--k-border, #1e293b);
 }
 
 .decide-detail__winner-row,
@@ -304,7 +304,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
   font-family: ui-monospace, monospace;
   font-size: 0.7rem;
   font-weight: 700;
-  color: #fbbf24;
+  color: var(--k-warning, #fbbf24);
   background: #451a03;
   border: 1px solid #b45309;
   padding: 0.1rem 0.4rem;
@@ -327,7 +327,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
   padding: 0.15rem 0.4rem;
   border-radius: 3px;
   font-size: 0.72rem;
-  background: #1e293b;
+  background: var(--k-bg-input, #1e293b);
   border: 1px solid transparent;
   display: flex;
   flex-direction: column;
@@ -336,11 +336,11 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
 
 .decide-detail__choice-id {
   font-family: ui-monospace, monospace;
-  color: #94a3b8;
+  color: var(--k-fg-muted, #94a3b8);
 }
 
 .decide-detail__choice-desc {
-  color: #475569;
+  color: var(--k-fg-subtle, #475569);
   font-size: 0.68rem;
   line-height: 1.3;
 }
@@ -380,7 +380,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
 .decide-detail__alt-id {
   font-family: ui-monospace, monospace;
   font-size: 0.72rem;
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   min-width: 5rem;
   flex-shrink: 0;
 }
@@ -391,13 +391,13 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
 
 /* Reason */
 .decide-detail__reason {
-  background: #080f1a;
-  border: 1px solid #1e293b;
+  background: var(--k-bg-inset, #080f1a);
+  border: 1px solid var(--k-border, #1e293b);
   border-radius: 4px;
   padding: 0.4rem 0.6rem;
   font-family: ui-monospace, monospace;
   font-size: 0.72rem;
-  color: #7dd3fc;
+  color: var(--k-fg-code, #7dd3fc);
   white-space: pre-wrap;
   word-break: break-word;
   margin: 0;
@@ -416,7 +416,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
 .decide-detail__evidence-toggle {
   background: none;
   border: 1px solid #334155;
-  color: #60a5fa;
+  color: var(--k-fg-accent, #60a5fa);
   cursor: pointer;
   font-size: 0.72rem;
   padding: 0.2rem 0.5rem;
@@ -428,7 +428,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
   align-self: flex-start;
 }
 .decide-detail__evidence-toggle:hover {
-  background: #1e293b;
+  background: var(--k-bg-hover, #1e293b);
 }
 
 .decide-detail__evidence-arrow {
@@ -463,7 +463,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
 .decide-detail__tab-row {
   display: flex;
   gap: 0;
-  border: 1px solid #1e293b;
+  border: 1px solid var(--k-border, #1e293b);
   border-radius: 4px;
   overflow: hidden;
 }
@@ -471,19 +471,19 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
 .decide-detail__tab {
   background: none;
   border: none;
-  color: #475569;
+  color: var(--k-fg-subtle, #475569);
   cursor: pointer;
   font-size: 0.7rem;
   padding: 0.1rem 0.45rem;
   font-family: ui-monospace, monospace;
   transition: background 0.1s;
 }
-.decide-detail__tab:hover { background: #1e293b; color: #94a3b8; }
-.decide-detail__tab--active { background: #1e293b; color: #e2e8f0; }
+.decide-detail__tab:hover { background: var(--k-bg-hover, #1e293b); color: var(--k-fg-muted, #94a3b8); }
+.decide-detail__tab--active { background: var(--k-bg-hover, #1e293b); color: var(--k-fg, #e2e8f0); }
 
 .decide-detail__response-body {
-  background: #080f1a;
-  border: 1px solid #1e293b;
+  background: var(--k-bg-inset, #080f1a);
+  border: 1px solid var(--k-border, #1e293b);
   border-radius: 4px;
   padding: 0.5rem 0.65rem;
   font-family: ui-monospace, monospace;
@@ -500,18 +500,18 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
 .decide-detail__popout {
   background: none;
   border: none;
-  color: #475569;
+  color: var(--k-fg-subtle, #475569);
   cursor: pointer;
   font-size: 0.85rem;
   padding: 0 0.2rem;
   line-height: 1;
   transition: color 0.1s;
 }
-.decide-detail__popout:hover { color: #94a3b8; }
+.decide-detail__popout:hover { color: var(--k-fg-muted, #94a3b8); }
 
 /* Shared label/pre styles */
 .od-label {
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   font-size: 0.75rem;
   display: block;
   min-width: 5rem;
@@ -524,7 +524,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
   padding: 0;
   font-family: ui-monospace, monospace;
   font-size: 0.72rem;
-  color: #7dd3fc;
+  color: var(--k-fg-code, #7dd3fc);
   white-space: pre-wrap;
   word-break: break-word;
   margin: 0;

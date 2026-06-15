@@ -138,22 +138,22 @@ async function submit(): Promise<void> {
 <style scoped>
 .annotate-button {
   margin-top: 0.75rem;
-  border-top: 1px solid #1e293b;
+  border-top: 1px solid var(--k-border, #1e293b);
   padding-top: 0.6rem;
 }
 
 .annotate-button__trigger {
-  background: #1e3a5f;
-  border: 1px solid #334155;
-  color: #93c5fd;
+  background: var(--k-bg-selection, #1e3a5f);
+  border: 1px solid var(--k-border, #334155);
+  color: var(--k-fg-accent, #93c5fd);
   border-radius: 4px;
   padding: 0.3rem 0.75rem;
   font-size: 0.75rem;
   cursor: pointer;
 }
 .annotate-button__trigger:hover {
-  background: #1d4ed8;
-  border-color: #3b82f6;
+  background: var(--k-button-bg, #1d4ed8);
+  border-color: var(--k-border-focus, #3b82f6);
 }
 
 .annotate-button__form {
@@ -170,14 +170,14 @@ async function submit(): Promise<void> {
 
 .annotate-button__label {
   font-size: 0.7rem;
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
 }
 
 .annotate-button__input,
 .annotate-button__textarea {
-  background: #0f172a;
-  border: 1px solid #334155;
-  color: #e2e8f0;
+  background: var(--k-bg-input, #0f172a);
+  border: 1px solid var(--k-border, #334155);
+  color: var(--k-fg, #e2e8f0);
   border-radius: 4px;
   padding: 0.25rem 0.5rem;
   font-size: 0.75rem;
@@ -198,7 +198,7 @@ async function submit(): Promise<void> {
 .annotate-button__submit {
   background: #16a34a;
   border: 1px solid #15803d;
-  color: #fff;
+  color: var(--k-button-fg, #fff);
   border-radius: 4px;
   padding: 0.25rem 0.75rem;
   font-size: 0.75rem;
@@ -211,8 +211,8 @@ async function submit(): Promise<void> {
 
 .annotate-button__cancel {
   background: transparent;
-  border: 1px solid #334155;
-  color: #94a3b8;
+  border: 1px solid var(--k-border, #334155);
+  color: var(--k-fg-muted, #94a3b8);
   border-radius: 4px;
   padding: 0.25rem 0.75rem;
   font-size: 0.75rem;
@@ -220,13 +220,13 @@ async function submit(): Promise<void> {
 }
 
 .annotate-button__error {
-  color: #f87171;
+  color: var(--k-error, #f87171);
   font-size: 0.72rem;
   margin: 0;
 }
 
 .annotate-button__saved {
-  color: #4ade80;
+  color: var(--k-success, #4ade80);
   font-size: 0.72rem;
   margin: 0;
 }

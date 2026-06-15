@@ -150,7 +150,7 @@ async function toggle(callId: string): Promise<void> {
 }
 
 .rollup__empty {
-  color: #475569;
+  color: var(--k-fg-subtle, #475569);
   font-size: 0.8rem;
   padding: 0.6rem;
 }
@@ -166,8 +166,8 @@ async function toggle(callId: string): Promise<void> {
   align-items: center;
   gap: 0.5rem;
   padding: 0.2rem 0.4rem;
-  background: #0f172a;
-  border-bottom: 1px solid #1e293b;
+  background: var(--k-bg-widget, #0f172a);
+  border-bottom: 1px solid var(--k-border, #1e293b);
   position: sticky;
   top: 0;
   z-index: 1;
@@ -178,23 +178,23 @@ async function toggle(callId: string): Promise<void> {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
 }
 
 .rollup__state {
   font-family: ui-monospace, monospace;
   font-size: 0.66rem;
-  color: #475569;
+  color: var(--k-fg-subtle, #475569);
 }
 
 .rollup__group-count {
   margin-left: auto;
   font-size: 0.66rem;
-  color: #475569;
+  color: var(--k-fg-subtle, #475569);
 }
 
 .rollup__call {
-  border: 1px solid #1e293b;
+  border: 1px solid var(--k-border, #1e293b);
   border-radius: 4px;
   overflow: hidden;
 }
@@ -204,7 +204,7 @@ async function toggle(callId: string): Promise<void> {
   display: flex;
   align-items: center;
   gap: 0.45rem;
-  background: #0a1728;
+  background: var(--k-bg-inset, #0a1728);
   border: none;
   cursor: pointer;
   padding: 0.3rem 0.5rem;
@@ -213,11 +213,11 @@ async function toggle(callId: string): Promise<void> {
 }
 
 .rollup__call-head:hover {
-  background: #0f1e38;
+  background: var(--k-bg-hover, #0f1e38);
 }
 
 .rollup__caret {
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   font-size: 0.65rem;
 }
 
@@ -228,7 +228,7 @@ async function toggle(callId: string): Promise<void> {
   font-weight: 700;
   font-family: ui-monospace, monospace;
   text-transform: uppercase;
-  background: #1e293b;
+  background: var(--k-bg-input, #1e293b);
   color: #94a3b8;
 }
 
@@ -241,18 +241,18 @@ async function toggle(callId: string): Promise<void> {
 .rollup__call-id {
   font-family: ui-monospace, monospace;
   font-size: 0.68rem;
-  color: #7dd3fc;
+  color: var(--k-fg-code, #7dd3fc);
 }
 
 .rollup__events {
   margin-left: auto;
   font-size: 0.66rem;
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
 }
 
 .rollup__err {
   background: #7f1d1d;
-  color: #fca5a5;
+  color: var(--k-error, #fca5a5);
   font-size: 0.6rem;
   padding: 0.05rem 0.25rem;
   border-radius: 2px;
@@ -260,16 +260,16 @@ async function toggle(callId: string): Promise<void> {
 
 .rollup__call-body {
   padding: 0.4rem 0.5rem;
-  background: #060b14;
-  border-top: 1px solid #1e293b;
+  background: var(--k-bg-inset, #060b14);
+  border-top: 1px solid var(--k-border, #1e293b);
 }
 
 .rollup__status {
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   font-size: 0.74rem;
 }
 
 .rollup__status--err {
-  color: #fca5a5;
+  color: var(--k-error, #fca5a5);
 }
 </style>

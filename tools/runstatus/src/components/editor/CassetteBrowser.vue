@@ -96,7 +96,7 @@ watch(
   font-size: 0.85rem;
   padding: 0.3rem 0;
 }
-.cassettes__status--error { color: #f28b82; }
+.cassettes__status--error { color: var(--k-error, #f28b82); }
 .cassettes__rows {
   list-style: none;
   margin: 0;
@@ -112,7 +112,7 @@ watch(
   cursor: pointer;
 }
 .cassettes__row--active {
-  border-color: #6db3f2;
+  border-color: var(--k-fg-accent, #6db3f2);
 }
 .cassettes__row-head {
   display: flex;

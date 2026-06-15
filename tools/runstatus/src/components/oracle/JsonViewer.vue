@@ -63,10 +63,10 @@ export default { name: "JsonViewer" };
 .jv-number  { color: #fb923c; }
 .jv-string  { color: #4ade80; }
 .jv-key     { color: #7dd3fc; }
-.jv-colon   { color: #475569; }
-.jv-brace   { color: #64748b; }
-.jv-comma   { color: #475569; }
-.jv-ellipsis { color: #475569; font-size: 0.7em; margin: 0 0.2em; }
+.jv-colon   { color: var(--k-fg-subtle, #475569); }
+.jv-brace   { color: var(--k-fg-muted, #64748b); }
+.jv-comma   { color: var(--k-fg-subtle, #475569); }
+.jv-ellipsis { color: var(--k-fg-subtle, #475569); font-size: 0.7em; margin: 0 0.2em; }
 
 .jv-container {
   display: inline;
@@ -77,7 +77,7 @@ export default { name: "JsonViewer" };
 .jv-toggle {
   background: none;
   border: none;
-  color: #475569;
+  color: var(--k-fg-subtle, #475569);
   cursor: pointer;
   font-size: 0.65rem;
   padding: 0 0.15rem;
@@ -107,5 +107,5 @@ export default { name: "JsonViewer" };
 }
 .jv-collapsed:hover .jv-ellipsis { color: #94a3b8; }
 
-.jv-unknown { color: #f87171; }
+.jv-unknown { color: var(--k-error, #f87171); }
 </style>

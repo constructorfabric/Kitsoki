@@ -409,7 +409,7 @@ onUnmounted(() => {
 
 .tour__ring {
   position: fixed;
-  border: 2px solid #38bdf8;
+  border: 2px solid var(--k-fg-accent, #38bdf8);
   border-radius: 8px;
   box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.25), 0 0 18px rgba(56, 189, 248, 0.4);
   pointer-events: none; /* let action-step clicks reach the real control */
@@ -426,11 +426,11 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 0.55rem;
-  background: #0d1b2a;
-  border: 1px solid #1e3a5f;
+  background: var(--k-bg-widget, #0d1b2a);
+  border: 1px solid var(--k-border, #1e3a5f);
   border-radius: 999px;
   padding: 0.4rem 0.5rem 0.4rem 0.85rem;
-  color: #94a3b8;
+  color: var(--k-fg-muted, #94a3b8);
   font-size: 0.78rem;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
   pointer-events: auto;
@@ -438,7 +438,7 @@ onUnmounted(() => {
 .tour__prep-spinner {
   display: inline-block;
   animation: tour-spin 1.1s linear infinite;
-  color: #38bdf8;
+  color: var(--k-fg-accent, #38bdf8);
 }
 @keyframes tour-spin {
   to { transform: rotate(360deg); }
@@ -449,11 +449,11 @@ onUnmounted(() => {
   z-index: 1600;
   width: 320px;
   max-width: calc(100vw - 24px);
-  background: #0d1b2a;
-  border: 1px solid #1e3a5f;
+  background: var(--k-bg-widget, #0d1b2a);
+  border: 1px solid var(--k-border, #1e3a5f);
   border-radius: 10px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
-  color: #e2e8f0;
+  color: var(--k-fg, #e2e8f0);
   padding: 0.85rem 1rem 0.7rem;
   pointer-events: auto;
 }
@@ -462,27 +462,27 @@ onUnmounted(() => {
   font-size: 0.62rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   margin-bottom: 0.25rem;
 }
 
 .tour__title {
   margin: 0 0 0.35rem;
   font-size: 0.98rem;
-  color: #f1f5f9;
+  color: var(--k-fg, #f1f5f9);
 }
 
 .tour__body {
   margin: 0;
   font-size: 0.82rem;
   line-height: 1.5;
-  color: #cbd5e1;
+  color: var(--k-fg, #cbd5e1);
 }
 
 .tour__cue {
   margin: 0.55rem 0 0;
   font-size: 0.74rem;
-  color: #7dd3fc;
+  color: var(--k-fg-accent, #7dd3fc);
 }
 
 .tour__footer {
@@ -509,19 +509,19 @@ onUnmounted(() => {
 }
 .tour__btn--ghost {
   background: none;
-  border: 1px solid #1e293b;
-  color: #94a3b8;
+  border: 1px solid var(--k-border, #1e293b);
+  color: var(--k-fg-muted, #94a3b8);
 }
 .tour__btn--ghost:hover:not(:disabled) {
-  background: #15233a;
-  color: #cbd5e1;
+  background: var(--k-bg-hover, #15233a);
+  color: var(--k-fg, #cbd5e1);
 }
 .tour__btn--primary {
-  background: #1d4ed8;
-  border: 1px solid #2563eb;
-  color: #eef2ff;
+  background: var(--k-button-bg, #1d4ed8);
+  border: 1px solid var(--k-border-focus, #2563eb);
+  color: var(--k-button-fg, #eef2ff);
 }
 .tour__btn--primary:hover {
-  background: #2563eb;
+  background: var(--k-button-hover-bg, #2563eb);
 }
 </style>

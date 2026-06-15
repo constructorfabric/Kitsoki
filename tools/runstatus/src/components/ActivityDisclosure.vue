@@ -31,18 +31,18 @@ withDefaults(defineProps<{ items: StreamItem[]; testid?: string }>(), {
   user-select: none;
   font-size: 11px;
   font-family: ui-monospace, monospace;
-  color: var(--activity-muted, #6b7280);
+  color: var(--activity-muted, var(--k-fg-muted, #6b7280));
 }
 
 .chat-activity__summary:hover {
-  color: var(--activity-summary-hover, #374151);
+  color: var(--activity-summary-hover, var(--k-fg-muted, #374151));
 }
 
 .chat-activity__feed {
   margin-top: 6px;
   padding: 6px 8px;
-  border: 1px solid var(--activity-border, #e2e5ea);
+  border: 1px solid var(--activity-border, var(--k-paper-border, #e2e5ea));
   border-radius: 6px;
-  background: var(--activity-bg, #fcfcfd);
+  background: var(--activity-bg, var(--k-paper-bg, #fcfcfd));
 }
 </style>

@@ -275,7 +275,7 @@ const bannerClass = computed(() => {
   font-family:
     -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
     sans-serif;
-  color: #1f2430;
+  color: var(--k-paper-fg, #1f2430);
   line-height: 1.55;
 }
 
@@ -295,16 +295,16 @@ const bannerClass = computed(() => {
 }
 
 .ve-inline-code {
-  background: #f0f1f4;
+  background: var(--k-bg-hover, #f0f1f4);
   border-radius: 4px;
   padding: 0.08em 0.35em;
   font-size: 0.9em;
-  color: #b3306b;
+  color: var(--k-fg-code, #b3306b);
 }
 
 .ve-bold {
   font-weight: 700;
-  color: #11151c;
+  color: var(--k-paper-fg, #11151c);
 }
 
 .ve-heading {
@@ -312,14 +312,14 @@ const bannerClass = computed(() => {
   font-size: 18px;
   font-weight: 600;
   letter-spacing: -0.01em;
-  color: #11151c;
+  color: var(--k-paper-fg, #11151c);
 }
 
 .ve-code {
   margin: 0 0 0.85em;
   padding: 0.9em 1.1em;
-  background: #1b1f27;
-  color: #e6e9ef;
+  background: var(--k-bg-deep, #1b1f27);
+  color: var(--k-fg, #e6e9ef);
   border-radius: 8px;
   overflow-x: auto;
   font-size: 13.5px;
@@ -344,7 +344,7 @@ const bannerClass = computed(() => {
 
 .ve-list-hint {
   margin-left: 0.5em;
-  color: #6b7280;
+  color: var(--k-fg-muted, #6b7280);
   font-size: 0.88em;
 }
 
@@ -358,12 +358,12 @@ const bannerClass = computed(() => {
 
 .ve-kv-key {
   font-weight: 600;
-  color: #4a5160;
+  color: var(--k-fg-muted, #4a5160);
 }
 
 .ve-kv-value {
   margin: 0;
-  color: #1f2430;
+  color: var(--k-paper-fg, #1f2430);
 }
 
 .ve-kv-file-link {
@@ -371,7 +371,7 @@ const bannerClass = computed(() => {
   border: none;
   padding: 0;
   cursor: pointer;
-  color: #1d4ed8;
+  color: var(--k-button-bg, #1d4ed8);
   text-decoration: underline;
   font-size: inherit;
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
@@ -380,7 +380,7 @@ const bannerClass = computed(() => {
   text-align: left;
 }
 .ve-kv-file-link:hover {
-  color: #1e40af;
+  color: var(--k-fg-accent, #1e40af);
 }
 
 .ve-banner {
@@ -410,33 +410,33 @@ const bannerClass = computed(() => {
 }
 
 .banner--neutral {
-  background: #f6f7f9;
-  border-color: #d8dbe2;
-  color: #2b303b;
+  background: var(--k-paper-bg, #f6f7f9);
+  border-color: var(--k-paper-border, #d8dbe2);
+  color: var(--k-paper-fg, #2b303b);
 }
 
 .banner--info {
-  background: #eef4ff;
-  border-color: #c0d4ff;
-  color: #1d4ed8;
+  background: var(--k-paper-bg, #eef4ff);
+  border-color: var(--k-info, #c0d4ff);
+  color: var(--k-info, #1d4ed8);
 }
 
 .banner--success {
-  background: #ecfdf3;
-  border-color: #b6ecc8;
-  color: #1b7a3e;
+  background: var(--k-paper-bg, #ecfdf3);
+  border-color: var(--k-success, #b6ecc8);
+  color: var(--k-success, #1b7a3e);
 }
 
 .banner--warn {
-  background: #fff8eb;
-  border-color: #f5dca0;
-  color: #92590a;
+  background: var(--k-paper-bg, #fff8eb);
+  border-color: var(--k-warning, #f5dca0);
+  color: var(--k-warning, #92590a);
 }
 
 .banner--error {
-  background: #fef2f2;
-  border-color: #f5c2c2;
-  color: #b42318;
+  background: var(--k-paper-bg, #fef2f2);
+  border-color: var(--k-error, #f5c2c2);
+  color: var(--k-error, #b42318);
 }
 
 /* ── Media element ─────────────────────────────────────────────────────── */
@@ -463,12 +463,12 @@ const bannerClass = computed(() => {
   display: block;
   width: 100%;
   height: 480px;
-  border: 1px solid #d8dbe2;
+  border: 1px solid var(--k-paper-border, #d8dbe2);
   border-radius: 6px;
 }
 
 .ve-media-link {
-  color: #1d4ed8;
+  color: var(--k-button-bg, #1d4ed8);
   text-decoration: underline;
   font-size: 15px;
   word-break: break-all;
@@ -478,28 +478,28 @@ const bannerClass = computed(() => {
   display: inline-block;
   margin-top: 0.5em;
   padding: 0.35em 0.75em;
-  background: #1d4ed8;
-  color: #fff;
+  background: var(--k-button-bg, #1d4ed8);
+  color: var(--k-button-fg, #fff);
   border-radius: 6px;
   font-size: 13px;
   font-weight: 500;
   text-decoration: none;
 }
 .ve-media-review-link:hover {
-  background: #1a43bd;
+  background: var(--k-button-hover-bg, #1a43bd);
 }
 
 .ve-media-fallback {
   display: block;
   font-size: 14px;
-  color: #6b7280;
+  color: var(--k-fg-muted, #6b7280);
   margin-top: 0.4em;
 }
 
 .ve-media-caption {
   margin: 0.4em 0 0;
   font-size: 13px;
-  color: #6b7280;
+  color: var(--k-fg-muted, #6b7280);
   font-style: italic;
 }
 </style>

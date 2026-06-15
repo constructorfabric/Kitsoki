@@ -83,10 +83,10 @@ function sign(status: DiffRow["status"]): string {
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
-  border: 1px solid #1e293b;
+  border: 1px solid var(--k-border, #1e293b);
   border-radius: 4px;
   padding: 0.4rem 0.5rem;
-  background: #080f1a;
+  background: var(--k-bg-deep, #080f1a);
 }
 
 .tdiff__control {
@@ -96,16 +96,16 @@ function sign(status: DiffRow["status"]): string {
 }
 
 .tdiff__title {
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 
 .tdiff__btn {
-  background: #1e293b;
+  background: var(--k-bg-input, #1e293b);
   border: 1px solid #334155;
-  color: #60a5fa;
+  color: var(--k-fg-accent, #60a5fa);
   cursor: pointer;
   font-size: 0.7rem;
   padding: 0.15rem 0.5rem;
@@ -128,11 +128,11 @@ function sign(status: DiffRow["status"]): string {
   border-radius: 3px;
 }
 
-.tdiff__status--ok    { background: #052e16; color: #86efac; }
-.tdiff__status--drift { background: #2d0707; color: #fca5a5; }
+.tdiff__status--ok    { background: var(--k-success-bg, #052e16); color: var(--k-success, #86efac); }
+.tdiff__status--drift { background: var(--k-error, #2d0707); color: var(--k-error, #fca5a5); }
 
 .tdiff__identical {
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   font-size: 0.72rem;
   font-style: italic;
 }
@@ -154,8 +154,8 @@ function sign(status: DiffRow["status"]): string {
 }
 
 .tdiff__row--same    { color: #94a3b8; }
-.tdiff__row--added   { color: #86efac; background: #052e16; }
-.tdiff__row--removed { color: #fca5a5; background: #2d0707; }
+.tdiff__row--added   { color: var(--k-success, #86efac); background: var(--k-success-bg, #052e16); }
+.tdiff__row--removed { color: var(--k-error, #fca5a5); background: var(--k-error, #2d0707); }
 
 .tdiff__sign {
   min-width: 0.8rem;

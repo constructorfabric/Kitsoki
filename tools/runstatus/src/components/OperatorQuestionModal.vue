@@ -196,8 +196,8 @@ async function submit(): Promise<void> {
 }
 
 .oq-panel {
-  background: #0d1b2a;
-  border: 1px solid #1e3a5f;
+  background: var(--k-bg-widget, #0d1b2a);
+  border: 1px solid var(--k-border, #1e3a5f);
   border-radius: 10px;
   box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
   display: flex;
@@ -205,7 +205,7 @@ async function submit(): Promise<void> {
   width: min(540px, 92vw);
   max-height: 85vh;
   overflow: hidden;
-  color: #e2e8f0;
+  color: var(--k-fg, #e2e8f0);
 }
 
 .oq-header {
@@ -213,8 +213,8 @@ async function submit(): Promise<void> {
   align-items: center;
   gap: 0.55rem;
   padding: 0.85rem 1.1rem;
-  border-bottom: 1px solid #1e3a5f;
-  background: #0a1521;
+  border-bottom: 1px solid var(--k-border, #1e3a5f);
+  background: var(--k-bg-deep, #0a1521);
   flex-shrink: 0;
 }
 .oq-glyph {
@@ -227,7 +227,7 @@ async function submit(): Promise<void> {
 .oq-more {
   margin-left: auto;
   font-size: 0.72rem;
-  color: #94a3b8;
+  color: var(--k-fg-muted, #94a3b8);
 }
 
 .oq-body {
@@ -247,13 +247,13 @@ async function submit(): Promise<void> {
 .oq-q-text {
   font-size: 0.85rem;
   font-weight: 600;
-  color: #e2e8f0;
+  color: var(--k-fg, #e2e8f0);
   padding: 0;
   margin-bottom: 0.5rem;
 }
 .oq-multi-hint {
   font-weight: 400;
-  color: #94a3b8;
+  color: var(--k-fg-muted, #94a3b8);
   font-size: 0.72rem;
   margin-left: 0.35rem;
 }
@@ -268,8 +268,8 @@ async function submit(): Promise<void> {
   align-items: flex-start;
   gap: 0.55rem;
   text-align: left;
-  background: #11243a;
-  border: 1px solid #1e3a5f;
+  background: var(--k-bg-input, #11243a);
+  border: 1px solid var(--k-border, #1e3a5f);
   border-radius: 7px;
   padding: 0.55rem 0.7rem;
   cursor: pointer;
@@ -277,16 +277,16 @@ async function submit(): Promise<void> {
   font: inherit;
 }
 .oq-option:hover {
-  border-color: #2563eb;
+  border-color: var(--k-border-focus, #2563eb);
 }
 .oq-option--picked {
-  border-color: #2563eb;
-  background: #15314f;
+  border-color: var(--k-border-focus, #2563eb);
+  background: var(--k-bg-selection, #15314f);
 }
 .oq-option__mark {
   font-size: 0.95rem;
   line-height: 1.3;
-  color: #60a5fa;
+  color: var(--k-fg-accent, #60a5fa);
   flex-shrink: 0;
 }
 .oq-option__text {
@@ -300,7 +300,7 @@ async function submit(): Promise<void> {
 }
 .oq-option__desc {
   font-size: 0.72rem;
-  color: #94a3b8;
+  color: var(--k-fg-muted, #94a3b8);
   margin-top: 0.1rem;
 }
 
@@ -309,20 +309,20 @@ async function submit(): Promise<void> {
   align-items: center;
   gap: 0.75rem;
   padding: 0.75rem 1.1rem;
-  border-top: 1px solid #1e3a5f;
-  background: #0a1521;
+  border-top: 1px solid var(--k-border, #1e3a5f);
+  background: var(--k-bg-deep, #0a1521);
   flex-shrink: 0;
 }
 .oq-wait-note {
   font-size: 0.72rem;
-  color: #94a3b8;
+  color: var(--k-fg-muted, #94a3b8);
 }
 .oq-submit {
   margin-left: auto;
-  background: #2563eb;
+  background: var(--k-button-bg, #2563eb);
   border: none;
   border-radius: 6px;
-  color: #fff;
+  color: var(--k-button-fg, #fff);
   font: inherit;
   font-size: 0.8rem;
   font-weight: 600;
@@ -330,7 +330,7 @@ async function submit(): Promise<void> {
   cursor: pointer;
 }
 .oq-submit:hover:not(:disabled) {
-  background: #1d4ed8;
+  background: var(--k-button-hover-bg, #1d4ed8);
 }
 .oq-submit:disabled {
   opacity: 0.5;

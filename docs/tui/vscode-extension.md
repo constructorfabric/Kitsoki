@@ -252,22 +252,41 @@ how the deterministic no-LLM demo posture (below) reaches the editor. Child
 stdout/stderr stream to the `Kitsoki` `OutputChannel`; the child is killed on
 `deactivate()` and via `Kitsoki: Restart Backend`.
 
-## Theming
+## Theming — native, no shim
 
-The webview inherits VS Code's theme automatically through the `--vscode-*` CSS
-custom properties and `vscode-light`/`vscode-dark` body classes. A thin,
-**webview-only** theme shim (`THEME_SHIM` in `webview.ts`) maps the SPA's tokens to
-`var(--vscode-editor-background|foreground|focusBorder)` so a theme switch reflows
-instantly with no extension round-trip. It is injected **only** by the webview, so
-the browser SPA palette is untouched.
+The SPA themes itself **natively** off VS Code's theme. The webview inherits
+VS Code's `--vscode-*` CSS custom properties and `vscode-light`/`vscode-dark`/
+`vscode-high-contrast` body classes (re-applied live on theme switch); the SPA
+consumes them through a single token layer — `tools/runstatus/src/theme.css`,
+imported globally in `main.ts`. Every token is a `var(--vscode-*, <fallback>)`
+chain (prefix `--k-`):
 
-The shim also re-themes the agent room-view "paper" card: the SPA renders it as a
-deliberate **light** card (a sheet of paper on a dark chat desk — its intended web
-look), but against VS Code's dark editor chrome a white card reads as *unthemed*.
-The shim darkens that card (and its kv keys, prose, headings, markdown table,
-inline code) to the editor surface for the embed only — fixing the appearance for
-the editor without altering the web UI. (Per `tools/runstatus/CLAUDE.md`, this is a
-presentation shim, never a trace fix.)
+```css
+--k-bg:       var(--vscode-editor-background, #0f172a);
+--k-fg:       var(--vscode-editor-foreground, #e2e8f0);
+--k-paper-bg: var(--vscode-editorWidget-background, #f7f8fa);  /* the agent card */
+/* …28 tokens: surfaces, fg, borders, semantic, buttons, the paper card… */
+```
+
+- **Inside a webview**: the `--vscode-*` value resolves → the whole UI tracks the
+  active editor theme, light or dark, with **zero extension round-trip** on a theme
+  switch. The agent room-view "paper" card follows the editor surface via
+  `--k-paper-*` (dark under a dark theme, light under a light theme) instead of
+  being a hardcoded light card.
+- **In a plain browser**: `--vscode-*` is absent → the fallback (the original
+  Kitsoki hex) applies, so the web UI is visually unchanged.
+
+This **retired** the old webview-only `THEME_SHIM` (which force-darkened the paper
+card with `!important` overrides) and the SPA's bespoke dark palette (~990
+hardcoded hex were migrated onto the token layer). Map colors by *meaning* (e.g. a
+button's label uses `--k-button-fg`, never the accent link color — that would
+vanish on the button fill under a light theme). The light-theme run of the demo
+gate (below, `KITSOKI_VSCODE_THEME="Default Light Modern"`) is the proof: the entire
+embed — library, report card, hint rail, and the standalone trace/graph surfaces —
+renders light to match a light editor.
+
+> Per `tools/runstatus/CLAUDE.md` this is presentation only — theming never
+> touches the trace.
 
 ### CSP
 

@@ -80,7 +80,7 @@ function truncateResult(result: unknown): string {
 }
 
 .tool-transcript__entry {
-  border: 1px solid #1e293b;
+  border: 1px solid var(--k-border, #1e293b);
   border-radius: 4px;
   overflow: hidden;
 }
@@ -90,18 +90,18 @@ function truncateResult(result: unknown): string {
   align-items: center;
   gap: 0.4rem;
   padding: 0.25rem 0.5rem;
-  background: #0a1728;
+  background: var(--k-bg-inset, #0a1728);
   cursor: pointer;
   font-size: 0.75rem;
   flex-wrap: nowrap;
 }
 
 .tool-transcript__row:hover {
-  background: #0f1e38;
+  background: var(--k-bg-hover, #0f1e38);
 }
 
 .tool-transcript__seq {
-  color: #475569;
+  color: var(--k-fg-subtle, #475569);
   min-width: 1.5rem;
   text-align: right;
   font-family: ui-monospace, monospace;
@@ -124,7 +124,7 @@ function truncateResult(result: unknown): string {
 
 .tool-transcript__args {
   flex: 1;
-  color: #7dd3fc;
+  color: var(--k-fg-code, #7dd3fc);
   font-family: ui-monospace, monospace;
   font-size: 0.7rem;
   overflow: hidden;
@@ -133,21 +133,21 @@ function truncateResult(result: unknown): string {
 }
 
 .tool-transcript__dur {
-  color: #475569;
+  color: var(--k-fg-subtle, #475569);
   font-size: 0.7rem;
   white-space: nowrap;
 }
 
 .tool-transcript__err-flag {
   background: #7f1d1d;
-  color: #fca5a5;
+  color: var(--k-error, #fca5a5);
   font-size: 0.65rem;
   padding: 0.05rem 0.25rem;
   border-radius: 2px;
 }
 
 .tool-transcript__toggle {
-  color: #475569;
+  color: var(--k-fg-subtle, #475569);
   font-size: 0.75rem;
   min-width: 1rem;
   text-align: center;
@@ -155,8 +155,8 @@ function truncateResult(result: unknown): string {
 
 .tool-transcript__detail {
   padding: 0.35rem 0.5rem;
-  background: #080f1a;
-  border-top: 1px solid #1e293b;
+  background: var(--k-bg-inset, #080f1a);
+  border-top: 1px solid var(--k-border, #1e293b);
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
@@ -169,28 +169,28 @@ function truncateResult(result: unknown): string {
 }
 
 .tool-transcript__label {
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   font-size: 0.7rem;
 }
 
 .tool-transcript__label--err {
-  color: #f87171;
+  color: var(--k-error, #f87171);
 }
 
 .tool-transcript__pre {
-  background: #080f1a;
-  border: 1px solid #1e293b;
+  background: var(--k-bg-inset, #080f1a);
+  border: 1px solid var(--k-border, #1e293b);
   border-radius: 3px;
   padding: 0.3rem 0.5rem;
   font-family: ui-monospace, monospace;
   font-size: 0.7rem;
-  color: #7dd3fc;
+  color: var(--k-fg-code, #7dd3fc);
   white-space: pre-wrap;
   word-break: break-word;
   margin: 0;
 }
 
 .tool-transcript__pre--err {
-  color: #fca5a5;
+  color: var(--k-error, #fca5a5);
 }
 </style>

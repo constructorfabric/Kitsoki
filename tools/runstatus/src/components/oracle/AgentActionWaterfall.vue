@@ -108,7 +108,7 @@ const bars = computed<Bar[]>(() => {
 }
 
 .aaw__empty {
-  color: #475569;
+  color: var(--k-fg-subtle, #475569);
   padding: 0.4rem 0;
 }
 
@@ -122,11 +122,11 @@ const bars = computed<Bar[]>(() => {
 }
 
 .aaw__row:hover {
-  background: #1e293b;
+  background: var(--k-bg-hover, #1e293b);
 }
 
 .aaw__row--selected {
-  background: #1e3a5f;
+  background: var(--k-bg-selection, #1e3a5f);
 }
 
 .aaw__label {
@@ -146,7 +146,7 @@ const bars = computed<Bar[]>(() => {
   display: flex;
   align-items: center;
   height: 14px;
-  background: #0a1728;
+  background: var(--k-bg-inset, #0a1728);
   border-radius: 2px;
 }
 
@@ -160,7 +160,7 @@ const bars = computed<Bar[]>(() => {
 }
 
 .aaw__bar--error {
-  outline: 1px solid #ef4444;
+  outline: 1px solid var(--k-error, #ef4444);
 }
 
 .aaw__bar:hover {

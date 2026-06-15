@@ -263,9 +263,9 @@ onUnmounted(() => document.removeEventListener("click", onDocClick));
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  background: #1d4ed8;
-  color: #eef2ff;
-  border: 1px solid #2563eb;
+  background: var(--k-button-bg, #1d4ed8);
+  color: var(--k-button-fg, #eef2ff);
+  border: 1px solid var(--k-border-focus, #2563eb);
   border-radius: 999px;
   padding: 0.32rem 0.7rem;
   font-size: 0.78rem;
@@ -275,7 +275,7 @@ onUnmounted(() => document.removeEventListener("click", onDocClick));
   transition: background 0.12s;
 }
 .meta-launcher__btn:hover {
-  background: #2563eb;
+  background: var(--k-button-hover-bg, #2563eb);
 }
 .meta-launcher__spark {
   font-size: 0.7rem;
@@ -331,8 +331,8 @@ onUnmounted(() => document.removeEventListener("click", onDocClick));
   bottom: 100%;
   margin-bottom: 0.35rem;
   min-width: 16rem;
-  background: #0d1b2a;
-  border: 1px solid #1e293b;
+  background: var(--k-bg-widget, #0d1b2a);
+  border: 1px solid var(--k-border, #1e293b);
   border-radius: 6px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
   overflow: hidden;
@@ -346,8 +346,8 @@ onUnmounted(() => document.removeEventListener("click", onDocClick));
   text-align: left;
   background: none;
   border: none;
-  border-bottom: 1px solid #16202e;
-  color: #e2e8f0;
+  border-bottom: 1px solid var(--k-border-subtle, #16202e);
+  color: var(--k-fg, #e2e8f0);
   padding: 0.5rem 0.7rem;
   cursor: pointer;
 }
@@ -355,10 +355,10 @@ onUnmounted(() => document.removeEventListener("click", onDocClick));
   border-bottom: none;
 }
 .meta-launcher__item:hover:not(.meta-launcher__item--disabled) {
-  background: #15233a;
+  background: var(--k-bg-hover, #15233a);
 }
 .meta-launcher__item--disabled {
-  color: #475569;
+  color: var(--k-fg-subtle, #475569);
   cursor: not-allowed;
 }
 .meta-launcher__item-label {
@@ -367,7 +367,7 @@ onUnmounted(() => document.removeEventListener("click", onDocClick));
 }
 .meta-launcher__item-hint {
   font-size: 0.68rem;
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
 }
 .meta-launcher__item:disabled {
   opacity: 0.5;
@@ -376,7 +376,7 @@ onUnmounted(() => document.removeEventListener("click", onDocClick));
 
 .meta-launcher__divider {
   height: 1px;
-  background: #1e293b;
+  background: var(--k-border, #1e293b);
 }
 
 .meta-launcher__toast {
@@ -388,18 +388,18 @@ onUnmounted(() => document.removeEventListener("click", onDocClick));
   display: flex;
   align-items: center;
   gap: 0.4rem;
-  background: #0d1b2a;
-  border: 1px solid #1e293b;
+  background: var(--k-bg-widget, #0d1b2a);
+  border: 1px solid var(--k-border, #1e293b);
   border-radius: 6px;
   padding: 0.45rem 0.6rem;
   font-size: 0.72rem;
-  color: #e2e8f0;
+  color: var(--k-fg, #e2e8f0);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
 }
 .meta-launcher__toast-link {
   background: none;
   border: none;
-  color: #60a5fa;
+  color: var(--k-fg-accent, #60a5fa);
   cursor: pointer;
   font-size: 0.72rem;
   padding: 0;

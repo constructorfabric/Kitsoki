@@ -109,11 +109,11 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
   max-height: 70vh;
   display: flex;
   flex-direction: column;
-  background: #0d1b2a;
-  border: 1px solid #1e293b;
+  background: var(--k-bg-widget, #0d1b2a);
+  border: 1px solid var(--k-border, #1e293b);
   border-radius: 8px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
-  color: #e2e8f0;
+  color: var(--k-fg, #e2e8f0);
   overflow: hidden;
 }
 
@@ -122,7 +122,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
   align-items: center;
   justify-content: space-between;
   padding: 0.5rem 0.7rem;
-  border-bottom: 1px solid #1e293b;
+  border-bottom: 1px solid var(--k-border, #1e293b);
   flex-shrink: 0;
 }
 .inbox-panel__title {
@@ -133,8 +133,8 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
   gap: 0.4rem;
 }
 .inbox-panel__count {
-  background: #1d4ed8;
-  color: #eef2ff;
+  background: var(--k-button-bg, #1d4ed8);
+  color: var(--k-button-fg, #eef2ff);
   border-radius: 999px;
   font-size: 0.65rem;
   padding: 0.05rem 0.4rem;
@@ -142,12 +142,12 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
 .inbox-panel__close {
   background: none;
   border: none;
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   cursor: pointer;
   font-size: 0.9rem;
 }
 .inbox-panel__close:hover {
-  color: #e2e8f0;
+  color: var(--k-fg, #e2e8f0);
 }
 
 .inbox-panel__body {
@@ -155,7 +155,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
   overflow: auto;
 }
 .inbox-panel__empty {
-  color: #475569;
+  color: var(--k-fg-subtle, #475569);
   font-size: 0.78rem;
   font-style: italic;
   padding: 1rem;
@@ -165,10 +165,10 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
   display: flex;
   gap: 0.55rem;
   padding: 0.6rem 0.7rem;
-  border-bottom: 1px solid #16202e;
+  border-bottom: 1px solid var(--k-border, #16202e);
 }
 .inbox-item--unread {
-  background: #0f2238;
+  background: var(--k-bg-selection, #0f2238);
 }
 .inbox-item__glyph {
   font-size: 0.95rem;
@@ -185,7 +185,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
 }
 .inbox-item__body {
   font-size: 0.74rem;
-  color: #94a3b8;
+  color: var(--k-fg-muted, #94a3b8);
   margin-top: 0.15rem;
   overflow-wrap: anywhere;
 }
@@ -197,12 +197,12 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
   font-size: 0.7rem;
 }
 .inbox-item__time {
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
 }
 .inbox-item__jump {
   background: none;
   border: none;
-  color: #60a5fa;
+  color: var(--k-fg-accent, #60a5fa);
   cursor: pointer;
   font-size: 0.7rem;
   padding: 0;
@@ -213,13 +213,13 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
 .inbox-item__dismiss {
   background: none;
   border: none;
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   cursor: pointer;
   font-size: 0.7rem;
   padding: 0;
   margin-left: auto;
 }
 .inbox-item__dismiss:hover {
-  color: #cbd5e1;
+  color: var(--k-fg, #cbd5e1);
 }
 </style>

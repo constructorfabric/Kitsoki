@@ -101,8 +101,8 @@ function errMsg(e: unknown): string {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: #0a1120;
-  color: #e2e8f0;
+  background: var(--k-bg-deep, #0a1120);
+  color: var(--k-fg, #e2e8f0);
   overflow: hidden;
 }
 .surface__loading,
@@ -111,7 +111,7 @@ function errMsg(e: unknown): string {
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   font-size: 0.95rem;
 }
 .surface__empty-msg {
@@ -122,8 +122,8 @@ function errMsg(e: unknown): string {
   align-items: center;
   gap: 0.6rem;
   padding: 0.5rem 1rem;
-  background: #0f172a;
-  border-bottom: 1px solid #1e293b;
+  background: var(--k-bg-widget, #0f172a);
+  border-bottom: 1px solid var(--k-border, #1e293b);
   flex-shrink: 0;
   font-size: 0.8125rem;
 }
@@ -132,12 +132,12 @@ function errMsg(e: unknown): string {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   font-size: 0.72rem;
-  color: #94a3b8;
+  color: var(--k-fg-muted, #94a3b8);
 }
 .surface__state {
   font-family: ui-monospace, monospace;
   font-size: 0.775rem;
-  color: #7dd3fc;
+  color: var(--k-fg-accent, #7dd3fc);
 }
 .surface__badge {
   display: inline-block;
@@ -147,16 +147,16 @@ function errMsg(e: unknown): string {
   font-weight: 600;
 }
 .surface__badge--live {
-  background: #14532d;
-  color: #86efac;
+  background: var(--k-success-bg, #14532d);
+  color: var(--k-success, #86efac);
 }
 .surface__badge--done {
-  background: #1e293b;
-  color: #64748b;
+  background: var(--k-bg-input, #1e293b);
+  color: var(--k-fg-muted, #64748b);
 }
 .surface__count {
   margin-left: auto;
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   font-size: 0.75rem;
 }
 .surface__body {
@@ -174,6 +174,6 @@ function errMsg(e: unknown): string {
 .surface__error {
   padding: 0.5rem 1.1rem;
   font-size: 0.78rem;
-  color: #fca5a5;
+  color: var(--k-error, #fca5a5);
 }
 </style>

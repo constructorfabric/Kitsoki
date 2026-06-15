@@ -1205,8 +1205,8 @@ watch(
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: #0f172a;
-  border: 1px solid #1e293b;
+  background: var(--k-bg-widget, #0f172a);
+  border: 1px solid var(--k-border, #1e293b);
   border-radius: 6px;
   overflow: hidden;
   font-size: 0.8125rem;
@@ -1218,8 +1218,8 @@ watch(
   flex-wrap: wrap;
   gap: 0.375rem 0.5rem;
   padding: 0.5rem;
-  border-bottom: 1px solid #1e293b;
-  background: #0f172a;
+  border-bottom: 1px solid var(--k-border, #1e293b);
+  background: var(--k-bg-widget, #0f172a);
 }
 
 .trace-timeline__filter-group {
@@ -1230,31 +1230,31 @@ watch(
 }
 
 .trace-timeline__filter-label {
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   font-size: 0.75rem;
   white-space: nowrap;
 }
 
 .trace-timeline__chip {
   padding: 0.1rem 0.4rem;
-  border: 1px solid #334155;
+  border: 1px solid var(--k-border, #334155);
   border-radius: 999px;
-  background: #1e293b;
-  color: #94a3b8;
+  background: var(--k-bg-input, #1e293b);
+  color: var(--k-fg-muted, #94a3b8);
   cursor: pointer;
   font-size: 0.75rem;
   transition: background 0.1s, color 0.1s, border-color 0.1s;
 }
 
 .trace-timeline__chip.active {
-  background: #1d4ed8;
-  border-color: #3b82f6;
-  color: #eff6ff;
+  background: var(--k-bg-selection, #1d4ed8);
+  border-color: var(--k-border-focus, #3b82f6);
+  color: var(--k-fg-accent, #eff6ff);
 }
 
 .trace-timeline__chip--clear {
   background: #7f1d1d;
-  border-color: #ef4444;
+  border-color: var(--k-error, #ef4444);
   color: #fee2e2;
 }
 
@@ -1282,9 +1282,9 @@ watch(
 }
 
 .trace-timeline__select {
-  background: #1e293b;
-  border: 1px solid #334155;
-  color: #e2e8f0;
+  background: var(--k-bg-input, #1e293b);
+  border: 1px solid var(--k-border, #334155);
+  color: var(--k-fg, #e2e8f0);
   font-size: 0.75rem;
   padding: 0.1rem 0.3rem;
   border-radius: 4px;
@@ -1305,8 +1305,8 @@ watch(
   align-items: center;
   gap: 0.4rem;
   padding: 0.3rem 0.6rem;
-  background: #1e293b;
-  border-bottom: 1px solid #0f172a;
+  background: var(--k-bg-input, #1e293b);
+  border-bottom: 1px solid var(--k-bg-widget, #0f172a);
   cursor: pointer;
   user-select: none;
   position: sticky;
@@ -1315,7 +1315,7 @@ watch(
 }
 
 .trace-timeline__phase-header:hover {
-  background: #293548;
+  background: var(--k-bg-hover, #293548);
 }
 
 /* --- Turn header (sub-level within a phase) --- */
@@ -1324,8 +1324,8 @@ watch(
   align-items: center;
   gap: 0.4rem;
   padding: 0.25rem 0.6rem 0.25rem 1.5rem;
-  background: #0d1526;
-  border-bottom: 1px solid #0f172a;
+  background: var(--k-bg-deep, #0d1526);
+  border-bottom: 1px solid var(--k-bg-widget, #0f172a);
   cursor: pointer;
   user-select: none;
   position: sticky;
@@ -1334,22 +1334,22 @@ watch(
 }
 
 .trace-timeline__turn-header:hover {
-  background: #1a2436;
+  background: var(--k-bg-hover, #1a2436);
 }
 
 /* Off-path sub-group header — visually nested under the parent turn */
 .trace-timeline__turn-header--offpath {
-  background: #0a1220;
-  border-left: 2px solid #334155;
+  background: var(--k-bg-deep, #0a1220);
+  border-left: 2px solid var(--k-border, #334155);
   padding-left: 1.4rem;
 }
 
 .trace-timeline__turn-header--offpath:hover {
-  background: #111d30;
+  background: var(--k-bg-hover, #111d30);
 }
 
 .trace-timeline__turn-offpath-indent {
-  color: #475569;
+  color: var(--k-fg-subtle, #475569);
   font-size: 0.75rem;
   margin-right: 0.1rem;
 }
@@ -1357,19 +1357,19 @@ watch(
 .trace-timeline__turn-offpath-label {
   font-family: ui-monospace, monospace;
   font-size: 0.7rem;
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   font-style: italic;
 }
 
 .trace-timeline__turn-caret {
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   font-size: 0.7rem;
 }
 
 .trace-timeline__turn-label {
   font-family: ui-monospace, monospace;
   font-size: 0.7rem;
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   font-weight: 400;
 }
 
@@ -1385,16 +1385,16 @@ watch(
 }
 
 .trace-timeline__intent-kw {
-  background: #1e293b;
-  color: #64748b;
+  background: var(--k-bg-input, #1e293b);
+  color: var(--k-fg-muted, #64748b);
   padding: 0.15rem 0.3rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 
 .trace-timeline__intent-value {
-  background: #1e3a5f;
-  color: #93c5fd;
+  background: var(--k-bg-selection, #1e3a5f);
+  color: var(--k-fg-accent, #93c5fd);
   padding: 0.15rem 0.4rem;
   font-weight: 600;
 }
@@ -1402,40 +1402,40 @@ watch(
 .trace-timeline__turn-phase {
   font-weight: 700;
   font-size: 0.875rem;
-  color: #e2e8f0;
+  color: var(--k-fg, #e2e8f0);
   letter-spacing: 0.01em;
 }
 
 .trace-timeline__turn-count {
   margin-left: auto;
-  color: #475569;
+  color: var(--k-fg-subtle, #475569);
   font-size: 0.7rem;
 }
 
 /* --- Row --- */
 .trace-timeline__row {
-  border-bottom: 1px solid #1a2337;
+  border-bottom: 1px solid var(--k-border, #1a2337);
   cursor: pointer;
 }
 
 .trace-timeline__row:hover .trace-timeline__row-main {
-  background: #162032;
+  background: var(--k-bg-hover, #162032);
 }
 
 .trace-timeline__row.selected .trace-timeline__row-main {
-  background: #1e3a5f;
-  border-left: 2px solid #60a5fa;
+  background: var(--k-bg-selection, #1e3a5f);
+  border-left: 2px solid var(--k-border-focus, #60a5fa);
 }
 
 .trace-timeline__row.highlighted .trace-timeline__row-main {
   background: #2a2010;
-  border-left: 2px solid #fbbf24;
+  border-left: 2px solid var(--k-warning, #fbbf24);
 }
 
 .trace-timeline__row.highlighted.selected .trace-timeline__row-main {
   background: #2a2820;
-  border-left: 2px solid #fbbf24;
-  box-shadow: inset 4px 0 0 #60a5fa;
+  border-left: 2px solid var(--k-warning, #fbbf24);
+  box-shadow: inset 4px 0 0 var(--k-border-focus, #60a5fa);
 }
 
 .trace-timeline__row-main {
@@ -1455,8 +1455,8 @@ watch(
   border-radius: 3px;
   font-size: 0.7rem;
   font-weight: 600;
-  background: #1e293b;
-  color: #94a3b8;
+  background: var(--k-bg-input, #1e293b);
+  color: var(--k-fg-muted, #94a3b8);
 }
 
 .trace-timeline__subsystem-chip[data-subsystem="turn"]    { background: #1e3a5f; color: #93c5fd; }
@@ -1469,7 +1469,7 @@ watch(
 
 .trace-timeline__msg {
   flex: 1;
-  color: #e2e8f0;
+  color: var(--k-fg, #e2e8f0);
   font-family: ui-monospace, monospace;
   font-size: 0.775rem;
   white-space: nowrap;
@@ -1479,8 +1479,8 @@ watch(
 
 .trace-timeline__say-label {
   display: inline-block;
-  background: #14532d;
-  color: #86efac;
+  background: var(--k-success-bg, #14532d);
+  color: var(--k-success, #86efac);
   border: 1px solid #166534;
   border-radius: 3px;
   font-size: 0.65rem;
@@ -1499,8 +1499,8 @@ watch(
 .trace-timeline__effect-count {
   display: inline-flex;
   align-items: center;
-  background: #14532d;
-  color: #86efac;
+  background: var(--k-success-bg, #14532d);
+  color: var(--k-success, #86efac);
   border: 1px solid #166534;
   border-radius: 3px;
   font-size: 0.65rem;
@@ -1510,7 +1510,7 @@ watch(
 }
 
 .trace-timeline__time {
-  color: #475569;
+  color: var(--k-fg-subtle, #475569);
   font-size: 0.7rem;
   font-family: ui-monospace, monospace;
   white-space: nowrap;
@@ -1567,7 +1567,7 @@ watch(
 .trace-timeline__incomplete {
   color: #fecaca;
   background: #7f1d1d;
-  border: 1px solid #ef4444;
+  border: 1px solid var(--k-error, #ef4444);
   border-radius: 3px;
   font-size: 0.7rem;
   font-weight: 600;
@@ -1587,8 +1587,8 @@ watch(
 
 .trace-timeline__expand-btn {
   background: none;
-  border: 1px solid #334155;
-  color: #64748b;
+  border: 1px solid var(--k-border, #334155);
+  color: var(--k-fg-muted, #64748b);
   cursor: pointer;
   padding: 0.05rem 0.3rem;
   border-radius: 3px;
@@ -1597,15 +1597,15 @@ watch(
 }
 
 .trace-timeline__expand-btn:hover {
-  background: #1e293b;
-  color: #e2e8f0;
+  background: var(--k-bg-hover, #1e293b);
+  color: var(--k-fg, #e2e8f0);
 }
 
 /* --- Expanded row body --- */
 .trace-timeline__row-body {
   padding: 0.4rem 0.6rem;
-  background: #080f1a;
-  border-top: 1px solid #1e293b;
+  background: var(--k-bg-deep, #080f1a);
+  border-top: 1px solid var(--k-border, #1e293b);
 }
 
 .trace-timeline__attrs-header {
@@ -1613,14 +1613,14 @@ watch(
   justify-content: space-between;
   align-items: center;
   margin-bottom: 0.3rem;
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   font-size: 0.75rem;
 }
 
 .trace-timeline__copy-btn {
   background: none;
-  border: 1px solid #334155;
-  color: #64748b;
+  border: 1px solid var(--k-border, #334155);
+  color: var(--k-fg-muted, #64748b);
   cursor: pointer;
   padding: 0.05rem 0.3rem;
   border-radius: 3px;
@@ -1629,17 +1629,17 @@ watch(
 }
 
 .trace-timeline__copy-btn:hover {
-  background: #1e293b;
-  color: #e2e8f0;
+  background: var(--k-bg-hover, #1e293b);
+  color: var(--k-fg, #e2e8f0);
 }
 
 .trace-timeline__copy-btn--copied {
   border-color: #166534;
-  color: #86efac;
+  color: var(--k-success, #86efac);
 }
 
 .trace-timeline__attrs-pre {
-  color: #7dd3fc;
+  color: var(--k-fg-code, #7dd3fc);
   font-family: ui-monospace, monospace;
   font-size: 0.75rem;
   white-space: pre-wrap;
@@ -1650,7 +1650,7 @@ watch(
 /* --- Empty state --- */
 .trace-timeline__empty {
   padding: 1rem;
-  color: #475569;
+  color: var(--k-fg-subtle, #475569);
   font-size: 0.875rem;
   text-align: center;
 }
@@ -1658,9 +1658,9 @@ watch(
 /* --- Annotation badges --- */
 .trace-timeline__annotation-badge {
   display: inline-block;
-  background: #1e3a5f;
-  border: 1px solid #3b82f6;
-  color: #93c5fd;
+  background: var(--k-bg-selection, #1e3a5f);
+  border: 1px solid var(--k-border-focus, #3b82f6);
+  color: var(--k-fg-accent, #93c5fd);
   border-radius: 3px;
   padding: 0.05rem 0.35rem;
   font-size: 0.65rem;

@@ -198,8 +198,8 @@ function errMsg(e: unknown): string {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: #0f1115;
-  color: #e2e8f0;
+  background: var(--k-bg-inset, #0f1115);
+  color: var(--k-fg, #e2e8f0);
   overflow: hidden;
 }
 
@@ -211,7 +211,7 @@ function errMsg(e: unknown): string {
   justify-content: center;
   gap: 0.75rem;
   height: 100%;
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   font-size: 0.95rem;
 }
 
@@ -220,8 +220,8 @@ function errMsg(e: unknown): string {
 }
 
 .surface__start {
-  background: #1d4ed8;
-  color: #e2e8f0;
+  background: var(--k-button-bg, #1d4ed8);
+  color: var(--k-button-fg, #e2e8f0);
   border: none;
   border-radius: 0.375rem;
   padding: 0.5rem 1rem;
@@ -230,7 +230,7 @@ function errMsg(e: unknown): string {
   cursor: pointer;
 }
 .surface__start:hover:not(:disabled) {
-  background: #2563eb;
+  background: var(--k-button-hover-bg, #2563eb);
 }
 .surface__start:disabled {
   opacity: 0.5;
@@ -242,19 +242,19 @@ function errMsg(e: unknown): string {
   align-items: center;
   gap: 0.6rem;
   padding: 0.5rem 1rem;
-  background: #0f172a;
-  border-bottom: 1px solid #1e293b;
+  background: var(--k-bg-widget, #0f172a);
+  border-bottom: 1px solid var(--k-border, #1e293b);
   flex-shrink: 0;
   font-size: 0.8125rem;
 }
 .surface__app-id {
   font-weight: 600;
-  color: #e2e8f0;
+  color: var(--k-fg, #e2e8f0);
 }
 .surface__state {
   font-family: ui-monospace, monospace;
   font-size: 0.775rem;
-  color: #7dd3fc;
+  color: var(--k-fg-accent, #7dd3fc);
 }
 .surface__badge {
   display: inline-block;
@@ -264,12 +264,12 @@ function errMsg(e: unknown): string {
   font-weight: 600;
 }
 .surface__badge--live {
-  background: #14532d;
-  color: #86efac;
+  background: var(--k-success-bg, #14532d);
+  color: var(--k-success, #86efac);
 }
 .surface__badge--done {
-  background: #1e293b;
-  color: #64748b;
+  background: var(--k-bg-input, #1e293b);
+  color: var(--k-fg-muted, #64748b);
 }
 
 .surface__chat {
@@ -287,16 +287,16 @@ function errMsg(e: unknown): string {
 .surface__done-note {
   padding: 0.6rem 1.1rem;
   font-size: 0.8rem;
-  color: #64748b;
-  background: #14171d;
-  border-top: 1px solid #2a2f3a;
+  color: var(--k-fg-muted, #64748b);
+  background: var(--k-bg-widget, #14171d);
+  border-top: 1px solid var(--k-border-subtle, #2a2f3a);
   text-align: center;
 }
 
 .surface__error {
   padding: 0.5rem 1.1rem;
   font-size: 0.78rem;
-  color: #fca5a5;
+  color: var(--k-error, #fca5a5);
 }
 
 /* ---- Streaming thinking bubble (mirrors InteractiveView) ---- */
@@ -318,13 +318,13 @@ function errMsg(e: unknown): string {
   font-size: 13px;
   font-weight: 600;
   color: #fff;
-  background: #475569;
+  background: var(--k-fg-subtle, #475569);
   user-select: none;
 }
 .surface__thinking-bubble {
-  background: #f7f8fa;
-  color: #1f2430;
-  border: 1px solid #d8dbe2;
+  background: var(--k-paper-bg, #f7f8fa);
+  color: var(--k-paper-fg, #1f2430);
+  border: 1px solid var(--k-paper-border, #d8dbe2);
   border-radius: 12px;
   border-bottom-left-radius: 4px;
   padding: 10px 14px;
@@ -346,7 +346,7 @@ function errMsg(e: unknown): string {
   display: flex;
   gap: 4px;
   font-size: 20px;
-  color: #94a3b8;
+  color: var(--k-fg-muted, #94a3b8);
 }
 @keyframes surface-dot-pulse {
   0%, 80%, 100% { opacity: 0.2; }

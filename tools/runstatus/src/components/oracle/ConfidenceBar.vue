@@ -58,7 +58,7 @@ function fmtConf(v: number): string {
   position: relative;
   flex: 1;
   height: 6px;
-  background: #1e293b;
+  background: var(--k-bg-input, #1e293b);
   border-radius: 3px;
   overflow: visible;
   min-width: 6rem;
@@ -71,11 +71,11 @@ function fmtConf(v: number): string {
 }
 
 .confidence-bar__fill--pass {
-  background: #22c55e;
+  background: var(--k-success, #22c55e);
 }
 
 .confidence-bar__fill--fail {
-  background: #ef4444;
+  background: var(--k-error, #ef4444);
 }
 
 .confidence-bar__tick {
@@ -83,7 +83,7 @@ function fmtConf(v: number): string {
   top: -2px;
   bottom: -2px;
   width: 2px;
-  background: #94a3b8;
+  background: var(--k-fg-muted, #94a3b8);
   border-radius: 1px;
   transform: translateX(-50%);
 }
@@ -91,12 +91,12 @@ function fmtConf(v: number): string {
 .confidence-bar__label {
   font-family: ui-monospace, monospace;
   font-size: 0.7rem;
-  color: #94a3b8;
+  color: var(--k-fg-muted, #94a3b8);
   white-space: nowrap;
   flex-shrink: 0;
 }
 
 .confidence-bar__thr {
-  color: #64748b;
+  color: var(--k-fg-subtle, #64748b);
 }
 </style>

@@ -27,18 +27,18 @@ const displayed = computed(() => maybeShow(props.text, expanded.value));
 }
 
 .ct-label {
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   font-size: 0.75rem;
 }
 
 .ct-pre {
-  background: #080f1a;
-  border: 1px solid #1e293b;
+  background: var(--k-bg-inset, #080f1a);
+  border: 1px solid var(--k-border, #1e293b);
   border-radius: 4px;
   padding: 0.4rem 0.6rem;
   font-family: ui-monospace, monospace;
   font-size: 0.72rem;
-  color: #7dd3fc;
+  color: var(--k-fg-code, #7dd3fc);
   white-space: pre-wrap;
   word-break: break-word;
   margin: 0;
@@ -49,8 +49,8 @@ const displayed = computed(() => maybeShow(props.text, expanded.value));
 .ct-toggle {
   align-self: flex-start;
   background: none;
-  border: 1px solid #334155;
-  color: #60a5fa;
+  border: 1px solid var(--k-border-subtle, #334155);
+  color: var(--k-fg-accent, #60a5fa);
   cursor: pointer;
   font-size: 0.72rem;
   padding: 0.15rem 0.5rem;
@@ -58,6 +58,6 @@ const displayed = computed(() => maybeShow(props.text, expanded.value));
 }
 
 .ct-toggle:hover {
-  background: #1e293b;
+  background: var(--k-bg-hover, #1e293b);
 }
 </style>

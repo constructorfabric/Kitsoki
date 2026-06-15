@@ -273,7 +273,7 @@ async function rerunLive(): Promise<void> {
   gap: 0.4rem;
   flex-wrap: wrap;
   padding-bottom: 0.35rem;
-  border-bottom: 1px solid #1e293b;
+  border-bottom: 1px solid var(--k-border, #1e293b);
 }
 
 .oracle-detail__verb-badge {
@@ -291,7 +291,7 @@ async function rerunLive(): Promise<void> {
 .verb--ask     { background: #431407; color: #fdba74; border: 1px solid #c2410c; }
 .verb--task    { background: #450a0a; color: #fca5a5; border: 1px solid #991b1b; }
 .verb--converse { background: #083344; color: #67e8f9; border: 1px solid #0891b2; }
-.verb--other   { background: #1e293b; color: #94a3b8; border: 1px solid #334155; }
+.verb--other   { background: var(--k-bg-input, #1e293b); color: var(--k-fg-muted, #94a3b8); border: 1px solid #334155; }
 
 .oracle-detail__usage {
   border-collapse: collapse;
@@ -299,21 +299,21 @@ async function rerunLive(): Promise<void> {
   font-size: 0.72rem;
   align-self: flex-start;
   min-width: 16rem;
-  background: #080f1a;
-  border: 1px solid #1e293b;
+  background: var(--k-bg-inset, #080f1a);
+  border: 1px solid var(--k-border, #1e293b);
   border-radius: 4px;
   overflow: hidden;
 }
 
 .oracle-detail__usage-th {
   text-align: left;
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   font-weight: 600;
   text-transform: uppercase;
   font-size: 0.65rem;
   letter-spacing: 0.03em;
   padding: 0.3rem 0.6rem;
-  border-bottom: 1px solid #1e293b;
+  border-bottom: 1px solid var(--k-border, #1e293b);
 }
 
 .oracle-detail__usage-th--num {
@@ -321,20 +321,20 @@ async function rerunLive(): Promise<void> {
 }
 
 .oracle-detail__usage-label {
-  color: #94a3b8;
+  color: var(--k-fg-muted, #94a3b8);
   padding: 0.18rem 0.6rem;
 }
 
 .oracle-detail__usage-num {
-  color: #cbd5e1;
+  color: var(--k-fg, #cbd5e1);
   text-align: right;
   padding: 0.18rem 0.6rem;
   font-variant-numeric: tabular-nums;
 }
 
 .oracle-detail__usage-total td {
-  border-top: 1px solid #1e293b;
-  color: #e2e8f0;
+  border-top: 1px solid var(--k-border, #1e293b);
+  color: var(--k-fg, #e2e8f0);
   font-weight: 600;
   padding-top: 0.28rem;
 }
@@ -345,13 +345,13 @@ async function rerunLive(): Promise<void> {
 }
 
 .oracle-detail__meta {
-  color: #94a3b8;
+  color: var(--k-fg-muted, #94a3b8);
   font-size: 0.75rem;
   font-family: ui-monospace, monospace;
 }
 
 .oracle-detail__meta--model {
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   font-size: 0.7rem;
 }
 
@@ -360,14 +360,14 @@ async function rerunLive(): Promise<void> {
 }
 
 .oracle-detail__stat {
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   font-size: 0.7rem;
   font-family: ui-monospace, monospace;
   white-space: nowrap;
 }
 
 .oracle-detail__stat--tokens {
-  color: #475569;
+  color: var(--k-fg-subtle, #475569);
 }
 
 .oracle-detail__stat--cost {
@@ -378,7 +378,7 @@ async function rerunLive(): Promise<void> {
   background: #2d0707;
   border: 1px solid #991b1b;
   border-radius: 4px;
-  color: #fca5a5;
+  color: var(--k-error, #fca5a5);
   padding: 0.3rem 0.5rem;
   font-size: 0.75rem;
   font-family: ui-monospace, monospace;
@@ -391,13 +391,13 @@ async function rerunLive(): Promise<void> {
 }
 
 .oracle-detail__pre {
-  background: #080f1a;
-  border: 1px solid #1e293b;
+  background: var(--k-bg-inset, #080f1a);
+  border: 1px solid var(--k-border, #1e293b);
   border-radius: 4px;
   padding: 0.4rem 0.6rem;
   font-family: ui-monospace, monospace;
   font-size: 0.72rem;
-  color: #7dd3fc;
+  color: var(--k-fg-code, #7dd3fc);
   white-space: pre-wrap;
   word-break: break-word;
   margin: 0;
@@ -408,7 +408,7 @@ async function rerunLive(): Promise<void> {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
-  border-top: 1px solid #1e293b;
+  border-top: 1px solid var(--k-border, #1e293b);
   padding-top: 0.4rem;
 }
 
@@ -417,9 +417,9 @@ async function rerunLive(): Promise<void> {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  background: #0a1728;
+  background: var(--k-bg-inset, #0a1728);
   border: 1px solid #334155;
-  color: #93c5fd;
+  color: var(--k-fg-accent, #93c5fd);
   cursor: pointer;
   font-size: 0.75rem;
   font-weight: 600;
@@ -429,28 +429,28 @@ async function rerunLive(): Promise<void> {
 
 .oracle-detail__agent-affordance:hover {
   background: #0f1e38;
-  border-color: #3b82f6;
+  border-color: var(--k-border-focus, #3b82f6);
 }
 
 .oracle-detail__agent-icon {
   font-size: 0.65rem;
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
 }
 
 .oracle-detail__agent-drawer {
-  border: 1px solid #1e293b;
+  border: 1px solid var(--k-border, #1e293b);
   border-radius: 4px;
   padding: 0.5rem;
-  background: #060b14;
+  background: var(--k-bg-inset, #060b14);
 }
 
 .oracle-detail__agent-status {
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   font-size: 0.78rem;
   padding: 0.3rem 0;
 }
 
 .oracle-detail__agent-status--err {
-  color: #fca5a5;
+  color: var(--k-error, #fca5a5);
 }
 </style>

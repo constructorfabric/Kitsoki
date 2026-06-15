@@ -83,7 +83,7 @@ async function replay(): Promise<void> {
 <style scoped>
 .replay-button {
   margin-top: 0.75rem;
-  border-top: 1px solid #1e293b;
+  border-top: 1px solid var(--k-border, #1e293b);
   padding-top: 0.6rem;
   display: flex;
   flex-direction: column;
@@ -91,9 +91,9 @@ async function replay(): Promise<void> {
 }
 
 .replay-button__trigger {
-  background: #1a1a3e;
-  border: 1px solid #4c4cf0;
-  color: #a5b4fc;
+  background: var(--k-button-bg, #1a1a3e);
+  border: 1px solid var(--k-border-focus, #4c4cf0);
+  color: var(--k-button-fg, #a5b4fc);
   border-radius: 4px;
   padding: 0.3rem 0.75rem;
   font-size: 0.75rem;
@@ -101,14 +101,14 @@ async function replay(): Promise<void> {
   align-self: flex-start;
 }
 .replay-button__trigger:hover {
-  background: #2d2db5;
-  border-color: #818cf8;
-  color: #e0e7ff;
+  background: var(--k-button-hover-bg, #2d2db5);
+  border-color: var(--k-border-focus, #818cf8);
+  color: var(--k-button-fg, #e0e7ff);
 }
 
 .replay-button__loading {
   font-size: 0.72rem;
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
 }
 
 .replay-button__result {
@@ -122,7 +122,7 @@ async function replay(): Promise<void> {
   font-family: ui-monospace, monospace;
   font-size: 0.72rem;
   color: #94a3b8;
-  background: #1e293b;
+  background: var(--k-bg-input, #1e293b);
   padding: 0.1rem 0.35rem;
   border-radius: 3px;
 }
@@ -135,27 +135,27 @@ async function replay(): Promise<void> {
 }
 
 .replay-button__badge--ok {
-  background: #14532d;
+  background: var(--k-success-bg, #14532d);
   border: 1px solid #16a34a;
-  color: #4ade80;
+  color: var(--k-success, #4ade80);
 }
 
 .replay-button__badge--err {
   background: #450a0a;
   border: 1px solid #dc2626;
-  color: #f87171;
+  color: var(--k-error, #f87171);
 }
 
 .replay-button__note {
   font-size: 0.7rem;
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   font-style: italic;
 }
 
 .replay-button__reset {
   background: none;
   border: none;
-  color: #475569;
+  color: var(--k-fg-subtle, #475569);
   cursor: pointer;
   font-size: 0.75rem;
   padding: 0.1rem 0.2rem;
@@ -168,7 +168,7 @@ async function replay(): Promise<void> {
 }
 
 .replay-button__error {
-  color: #f87171;
+  color: var(--k-error, #f87171);
   font-size: 0.72rem;
   margin: 0;
 }

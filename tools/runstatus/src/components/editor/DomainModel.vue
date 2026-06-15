@@ -113,7 +113,7 @@ function isRoom(target: string): boolean {
 .domain__head {
   width: 100%;
   text-align: left;
-  background: #1c1f26;
+  background: var(--k-bg-widget, #1c1f26);
   border: none;
   color: inherit;
   cursor: pointer;
@@ -175,7 +175,7 @@ function isRoom(target: string): boolean {
 .domain__dir--readwrite { background: #4a3a2d; }
 .domain__arrow { opacity: 0.6; }
 .domain__target--link {
-  color: #6db3f2;
+  color: var(--k-fg-accent, #6db3f2);
   text-decoration: none;
 }
 .domain__target--link:hover {

@@ -96,8 +96,8 @@ function msgText(msg: ChatMessage): string {
   max-height: 20rem;
   overflow-y: auto;
   padding: 0.3rem;
-  background: #080f1a;
-  border: 1px solid #1e293b;
+  background: var(--k-bg-deep, #080f1a);
+  border: 1px solid var(--k-border, #1e293b);
   border-radius: 4px;
 }
 
@@ -110,13 +110,13 @@ function msgText(msg: ChatMessage): string {
 .converse-detail__bubble--user      { background: #0f1e38; border-left-color: #60a5fa; }
 .converse-detail__bubble--assistant { background: #0a1a14; border-left-color: #34d399; }
 .converse-detail__bubble--system    { background: #1a1020; border-left-color: #a78bfa; }
-.converse-detail__bubble--other     { background: #1e293b; border-left-color: #475569; }
+.converse-detail__bubble--other     { background: var(--k-bg-input, #1e293b); border-left-color: var(--k-fg-subtle, #475569); }
 
 .converse-detail__role {
   font-size: 0.65rem;
   font-weight: 700;
   text-transform: uppercase;
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   display: block;
   margin-bottom: 0.15rem;
 }
@@ -124,7 +124,7 @@ function msgText(msg: ChatMessage): string {
 .converse-detail__text {
   font-family: ui-monospace, monospace;
   font-size: 0.72rem;
-  color: #e2e8f0;
+  color: var(--k-fg, #e2e8f0);
   white-space: pre-wrap;
   word-break: break-word;
   margin: 0;
@@ -137,18 +137,18 @@ function msgText(msg: ChatMessage): string {
 }
 
 .od-label {
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   font-size: 0.75rem;
 }
 
 .od-pre {
-  background: #080f1a;
-  border: 1px solid #1e293b;
+  background: var(--k-bg-deep, #080f1a);
+  border: 1px solid var(--k-border, #1e293b);
   border-radius: 4px;
   padding: 0.4rem 0.6rem;
   font-family: ui-monospace, monospace;
   font-size: 0.72rem;
-  color: #7dd3fc;
+  color: var(--k-fg-code, #7dd3fc);
   white-space: pre-wrap;
   word-break: break-word;
   margin: 0;
@@ -157,6 +157,6 @@ function msgText(msg: ChatMessage): string {
 }
 
 .od-pre--response {
-  color: #e2e8f0;
+  color: var(--k-fg, #e2e8f0);
 }
 </style>

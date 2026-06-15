@@ -238,8 +238,8 @@ function onEventSelect(index: number): void {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: #0a1120;
-  color: #e2e8f0;
+  background: var(--k-bg-deep, #0a1120);
+  color: var(--k-fg, #e2e8f0);
   overflow: hidden;
 }
 
@@ -266,7 +266,7 @@ function onEventSelect(index: number): void {
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   font-size: 1rem;
 }
 
@@ -276,8 +276,8 @@ function onEventSelect(index: number): void {
   align-items: center;
   gap: 0.75rem;
   padding: 0.5rem 1rem;
-  background: #0f172a;
-  border-bottom: 1px solid #1e293b;
+  background: var(--k-bg-widget, #0f172a);
+  border-bottom: 1px solid var(--k-border, #1e293b);
   flex-shrink: 0;
   font-size: 0.8125rem;
 }
@@ -290,7 +290,7 @@ function onEventSelect(index: number): void {
 }
 
 .run-view__back {
-  color: #60a5fa;
+  color: var(--k-fg-accent, #60a5fa);
   text-decoration: none;
 }
 
@@ -299,7 +299,7 @@ function onEventSelect(index: number): void {
 }
 
 .run-view__crumb-sep {
-  color: #475569;
+  color: var(--k-fg-subtle, #475569);
 }
 
 .run-view__crumb-current {
@@ -311,7 +311,7 @@ function onEventSelect(index: number): void {
    to actually drive the live session. Styled as an accent pill so it reads as a
    call-to-action, not just another breadcrumb. */
 .run-view__drive {
-  color: #93c5fd;
+  color: var(--k-fg-accent, #93c5fd);
   background: rgba(59, 130, 246, 0.12);
   border: 1px solid rgba(59, 130, 246, 0.4);
   border-radius: 4px;
@@ -323,7 +323,7 @@ function onEventSelect(index: number): void {
 
 .run-view__drive:hover {
   background: rgba(59, 130, 246, 0.22);
-  border-color: #60a5fa;
+  border-color: var(--k-fg-accent, #60a5fa);
 }
 
 
@@ -331,13 +331,13 @@ function onEventSelect(index: number): void {
   flex-shrink: 0;
   padding: 0.35rem 1rem;
   background: #3a2d0e;
-  border-bottom: 1px solid #fbbf24;
+  border-bottom: 1px solid var(--k-warning, #fbbf24);
   color: #fde68a;
   font-size: 0.775rem;
 }
 
 .run-view__session-id {
-  color: #94a3b8;
+  color: var(--k-fg-muted, #94a3b8);
   font-family: ui-monospace, monospace;
   font-size: 0.775rem;
 }
@@ -351,19 +351,19 @@ function onEventSelect(index: number): void {
 }
 
 .run-view__state-badge--live {
-  background: #14532d;
-  color: #86efac;
+  background: var(--k-success-bg, #14532d);
+  color: var(--k-success, #86efac);
 }
 
 .run-view__state-badge--done {
-  background: #1e293b;
-  color: #64748b;
+  background: var(--k-bg-input, #1e293b);
+  color: var(--k-fg-muted, #64748b);
 }
 
 .run-view__current-state {
   font-family: ui-monospace, monospace;
   font-size: 0.775rem;
-  color: #7dd3fc;
+  color: var(--k-fg-code, #7dd3fc);
 }
 
 .run-view__usage {
@@ -410,7 +410,7 @@ function onEventSelect(index: number): void {
 }
 
 .run-view__empty {
-  color: #475569;
+  color: var(--k-fg-subtle, #475569);
   font-size: 0.875rem;
   padding: 1rem;
 }

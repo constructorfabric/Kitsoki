@@ -87,7 +87,7 @@ function onBackdropClick(e: MouseEvent) {
 }
 
 .mm-panel {
-  background: #fff;
+  background: var(--k-paper-bg, #fff);
   border-radius: 10px;
   box-shadow: 0 8px 40px rgba(0, 0, 0, 0.22);
   display: flex;
@@ -102,8 +102,8 @@ function onBackdropClick(e: MouseEvent) {
   align-items: center;
   gap: 0.75em;
   padding: 0.75em 1.1em;
-  border-bottom: 1px solid #e5e7eb;
-  background: #f6f7f9;
+  border-bottom: 1px solid var(--k-paper-border, #e5e7eb);
+  background: var(--k-bg-widget, #f6f7f9);
   border-radius: 10px 10px 0 0;
   flex-shrink: 0;
 }
@@ -113,7 +113,7 @@ function onBackdropClick(e: MouseEvent) {
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
     "Liberation Mono", monospace;
   font-size: 12px;
-  color: #4a5160;
+  color: var(--k-fg-muted, #4a5160);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -124,15 +124,15 @@ function onBackdropClick(e: MouseEvent) {
   border: none;
   cursor: pointer;
   font-size: 16px;
-  color: #6b7280;
+  color: var(--k-fg-muted, #6b7280);
   padding: 0.2em 0.4em;
   border-radius: 4px;
   line-height: 1;
   flex-shrink: 0;
 }
 .mm-close:hover {
-  background: #e5e7eb;
-  color: #1f2430;
+  background: var(--k-bg-hover, #e5e7eb);
+  color: var(--k-paper-fg, #1f2430);
 }
 
 .mm-body {
@@ -144,7 +144,7 @@ function onBackdropClick(e: MouseEvent) {
 .mm-loading,
 .mm-missing,
 .mm-error {
-  color: #6b7280;
+  color: var(--k-fg-muted, #6b7280);
   font-size: 14px;
 }
 
@@ -153,28 +153,28 @@ function onBackdropClick(e: MouseEvent) {
 }
 
 .mm-error {
-  color: #b42318;
+  color: var(--k-error, #b42318);
 }
 
 /* Rendered markdown styles */
-.mm-md :deep(.md-h1) { font-size: 1.7em; font-weight: 700; margin: 0 0 0.6em; color: #11151c; }
-.mm-md :deep(.md-h2) { font-size: 1.35em; font-weight: 600; margin: 1.2em 0 0.5em; color: #11151c; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.25em; }
-.mm-md :deep(.md-h3) { font-size: 1.1em; font-weight: 600; margin: 1em 0 0.4em; color: #11151c; }
+.mm-md :deep(.md-h1) { font-size: 1.7em; font-weight: 700; margin: 0 0 0.6em; color: var(--k-paper-fg, #11151c); }
+.mm-md :deep(.md-h2) { font-size: 1.35em; font-weight: 600; margin: 1.2em 0 0.5em; color: var(--k-paper-fg, #11151c); border-bottom: 1px solid var(--k-paper-border, #e5e7eb); padding-bottom: 0.25em; }
+.mm-md :deep(.md-h3) { font-size: 1.1em; font-weight: 600; margin: 1em 0 0.4em; color: var(--k-paper-fg, #11151c); }
 .mm-md :deep(.md-h4),
 .mm-md :deep(.md-h5),
-.mm-md :deep(.md-h6) { font-size: 1em; font-weight: 600; margin: 0.8em 0 0.35em; color: #1f2430; }
-.mm-md :deep(.md-p) { margin: 0 0 0.85em; font-size: 15px; line-height: 1.65; color: #1f2430; }
+.mm-md :deep(.md-h6) { font-size: 1em; font-weight: 600; margin: 0.8em 0 0.35em; color: var(--k-paper-fg, #1f2430); }
+.mm-md :deep(.md-p) { margin: 0 0 0.85em; font-size: 15px; line-height: 1.65; color: var(--k-paper-fg, #1f2430); }
 .mm-md :deep(.md-ul),
-.mm-md :deep(.md-ol) { margin: 0 0 0.85em; padding-left: 1.5em; font-size: 15px; line-height: 1.65; color: #1f2430; }
+.mm-md :deep(.md-ol) { margin: 0 0 0.85em; padding-left: 1.5em; font-size: 15px; line-height: 1.65; color: var(--k-paper-fg, #1f2430); }
 .mm-md :deep(.md-ul li),
 .mm-md :deep(.md-ol li) { margin: 0.3em 0; }
-.mm-md :deep(.md-blockquote) { margin: 0 0 0.85em; padding: 0.5em 1em; border-left: 4px solid #d1d5db; background: #f9fafb; color: #4a5160; font-style: italic; }
-.mm-md :deep(.md-hr) { margin: 1.2em 0; border: none; border-top: 1px solid #e5e7eb; }
-.mm-md :deep(.md-pre) { margin: 0 0 0.85em; padding: 0.9em 1.1em; background: #1b1f27; color: #e6e9ef; border-radius: 8px; overflow-x: auto; font-size: 13.5px; line-height: 1.5; }
+.mm-md :deep(.md-blockquote) { margin: 0 0 0.85em; padding: 0.5em 1em; border-left: 4px solid var(--k-paper-border, #d1d5db); background: var(--k-bg-widget, #f9fafb); color: var(--k-fg-muted, #4a5160); font-style: italic; }
+.mm-md :deep(.md-hr) { margin: 1.2em 0; border: none; border-top: 1px solid var(--k-paper-border, #e5e7eb); }
+.mm-md :deep(.md-pre) { margin: 0 0 0.85em; padding: 0.9em 1.1em; background: var(--k-bg-deep, #1b1f27); color: var(--k-fg, #e6e9ef); border-radius: 8px; overflow-x: auto; font-size: 13.5px; line-height: 1.5; }
 .mm-md :deep(.md-pre code) { background: none; padding: 0; color: inherit; font-size: inherit; }
-.mm-md :deep(code) { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; background: #f0f1f4; border-radius: 4px; padding: 0.08em 0.35em; font-size: 0.9em; color: #b3306b; }
+.mm-md :deep(code) { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; background: var(--k-bg-input, #f0f1f4); border-radius: 4px; padding: 0.08em 0.35em; font-size: 0.9em; color: #b3306b; }
 .mm-md :deep(strong) { font-weight: 700; }
 .mm-md :deep(em) { font-style: italic; }
-.mm-md :deep(a) { color: #1d4ed8; text-decoration: underline; }
+.mm-md :deep(a) { color: var(--k-fg-accent, #1d4ed8); text-decoration: underline; }
 .mm-md :deep(a:hover) { color: #1e40af; }
 </style>

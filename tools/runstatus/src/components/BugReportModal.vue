@@ -367,7 +367,7 @@ function onCancel(): void {
   z-index: 1200;
 }
 .br-panel {
-  background: #0d1b2a;
+  background: var(--k-bg-widget, #0d1b2a);
   border: 1px solid #1e3a5f;
   border-radius: 10px;
   box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
@@ -376,7 +376,7 @@ function onCancel(): void {
   width: min(620px, 94vw);
   max-height: 88vh;
   overflow: hidden;
-  color: #e2e8f0;
+  color: var(--k-fg, #e2e8f0);
 }
 .br-header {
   display: flex;
@@ -384,7 +384,7 @@ function onCancel(): void {
   gap: 0.55rem;
   padding: 0.85rem 1.1rem;
   border-bottom: 1px solid #1e3a5f;
-  background: #0a1521;
+  background: var(--k-bg-deep, #0a1521);
 }
 .br-title {
   font-size: 0.9rem;
@@ -393,7 +393,7 @@ function onCancel(): void {
 .br-depth {
   margin-left: auto;
   font-size: 0.72rem;
-  color: #94a3b8;
+  color: var(--k-fg-muted, #94a3b8);
 }
 .br-body {
   overflow-y: auto;
@@ -411,11 +411,11 @@ function onCancel(): void {
   margin: 0;
   font-size: 0.78rem;
   font-weight: 600;
-  color: #cbd5e1;
+  color: var(--k-fg, #cbd5e1);
 }
 .br-replay-host {
   position: relative;
-  background: #06101b;
+  background: var(--k-bg-deep, #06101b);
   border: 1px solid #16202e;
   border-radius: 6px;
   min-height: 260px;
@@ -444,7 +444,7 @@ function onCancel(): void {
 }
 .br-scrub {
   flex: 1;
-  accent-color: #60a5fa;
+  accent-color: var(--k-fg-accent, #60a5fa);
 }
 .br-har {
   list-style: none;
@@ -462,26 +462,26 @@ function onCancel(): void {
   border-bottom: 1px solid #11202f;
 }
 .br-method {
-  color: #60a5fa;
+  color: var(--k-fg-accent, #60a5fa);
   flex-shrink: 0;
   width: 3.2rem;
 }
 .br-url {
-  color: #cbd5e1;
+  color: var(--k-fg, #cbd5e1);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   flex: 1;
 }
 .br-status {
-  color: #94a3b8;
+  color: var(--k-fg-muted, #94a3b8);
   flex-shrink: 0;
 }
 .br-toggle {
   align-self: flex-start;
   background: none;
   border: none;
-  color: #60a5fa;
+  color: var(--k-fg-accent, #60a5fa);
   cursor: pointer;
   font: inherit;
   font-size: 0.72rem;
@@ -491,7 +491,7 @@ function onCancel(): void {
   text-decoration: underline;
 }
 .br-raw {
-  background: #06101b;
+  background: var(--k-bg-deep, #06101b);
   border: 1px solid #16202e;
   border-radius: 6px;
   padding: 0.5rem;
@@ -515,24 +515,24 @@ function onCancel(): void {
   padding: 0.1rem 0;
 }
 .br-level {
-  color: #f59e0b;
+  color: var(--k-warning, #f59e0b);
   flex-shrink: 0;
   width: 3rem;
 }
 .br-text {
-  color: #cbd5e1;
+  color: var(--k-fg, #cbd5e1);
 }
 .br-label {
   font-size: 0.74rem;
-  color: #cbd5e1;
+  color: var(--k-fg, #cbd5e1);
   margin-top: 0.3rem;
 }
 .br-input,
 .br-textarea {
-  background: #11243a;
+  background: var(--k-bg-input, #11243a);
   border: 1px solid #1e3a5f;
   border-radius: 6px;
-  color: #e2e8f0;
+  color: var(--k-fg, #e2e8f0);
   font: inherit;
   font-size: 0.8rem;
   padding: 0.45rem 0.6rem;
@@ -541,7 +541,7 @@ function onCancel(): void {
   resize: vertical;
 }
 .br-muted {
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   font-size: 0.72rem;
   margin: 0;
 }
@@ -552,13 +552,13 @@ function onCancel(): void {
   gap: 0.6rem;
   padding: 0.75rem 1.1rem;
   border-top: 1px solid #1e3a5f;
-  background: #0a1521;
+  background: var(--k-bg-deep, #0a1521);
 }
 .br-cancel {
   background: none;
   border: 1px solid #334155;
   border-radius: 6px;
-  color: #cbd5e1;
+  color: var(--k-fg, #cbd5e1);
   cursor: pointer;
   font: inherit;
   font-size: 0.8rem;
@@ -568,10 +568,10 @@ function onCancel(): void {
   border-color: #475569;
 }
 .br-submit {
-  background: #2563eb;
+  background: var(--k-button-bg, #2563eb);
   border: none;
   border-radius: 6px;
-  color: #fff;
+  color: var(--k-button-fg, #fff);
   font: inherit;
   font-size: 0.8rem;
   font-weight: 600;
@@ -579,7 +579,7 @@ function onCancel(): void {
   cursor: pointer;
 }
 .br-submit:hover:not(:disabled) {
-  background: #1d4ed8;
+  background: var(--k-button-hover-bg, #1d4ed8);
 }
 .br-submit:disabled {
   opacity: 0.5;

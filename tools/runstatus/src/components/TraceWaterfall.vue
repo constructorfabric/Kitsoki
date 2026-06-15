@@ -138,11 +138,11 @@ function barWidth(durationMs: number): number {
   height: 100%;
   min-height: 0;
   font-size: 0.8125rem;
-  color: #e2e8f0;
+  color: var(--k-fg, #e2e8f0);
 }
 
 .trace-waterfall__empty {
-  color: #475569;
+  color: var(--k-fg-subtle, #475569);
   padding: 1rem;
   font-size: 0.875rem;
 }
@@ -157,9 +157,9 @@ function barWidth(durationMs: number): number {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #64748b;
-  background: #0f172a;
-  border-bottom: 1px solid #1e293b;
+  color: var(--k-fg-muted, #64748b);
+  background: var(--k-bg-widget, #0f172a);
+  border-bottom: 1px solid var(--k-border, #1e293b);
   position: sticky;
   top: 0;
   z-index: 1;
@@ -180,11 +180,11 @@ function barWidth(durationMs: number): number {
 }
 
 .trace-waterfall__row:hover {
-  background: #1e293b;
+  background: var(--k-bg-hover, #1e293b);
 }
 
 .trace-waterfall__row--selected {
-  background: #1e3a5f;
+  background: var(--k-bg-selection, #1e3a5f);
 }
 
 .trace-waterfall__label {
@@ -192,7 +192,7 @@ function barWidth(durationMs: number): number {
   width: 200px;
   font-family: ui-monospace, monospace;
   font-size: 0.7rem;
-  color: #94a3b8;
+  color: var(--k-fg-muted, #94a3b8);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

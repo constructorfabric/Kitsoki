@@ -527,8 +527,8 @@ function onEventSelect(index: number): void {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: #0a1120;
-  color: #e2e8f0;
+  background: var(--k-bg-deep, #0a1120);
+  color: var(--k-fg, #e2e8f0);
   overflow: hidden;
 }
 
@@ -537,7 +537,7 @@ function onEventSelect(index: number): void {
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   font-size: 1rem;
 }
 
@@ -547,14 +547,14 @@ function onEventSelect(index: number): void {
   align-items: center;
   gap: 0.75rem;
   padding: 0.55rem 1rem;
-  background: #0f172a;
-  border-bottom: 1px solid #1e293b;
+  background: var(--k-bg-widget, #0f172a);
+  border-bottom: 1px solid var(--k-border, #1e293b);
   flex-shrink: 0;
   font-size: 0.8125rem;
 }
 
 .iv__back {
-  color: #60a5fa;
+  color: var(--k-fg-accent, #60a5fa);
   text-decoration: none;
 }
 .iv__back:hover {
@@ -563,17 +563,17 @@ function onEventSelect(index: number): void {
 
 .iv__app-id {
   font-weight: 600;
-  color: #e2e8f0;
+  color: var(--k-fg, #e2e8f0);
 }
 
 .iv__sep {
-  color: #334155;
+  color: var(--k-fg-subtle, #334155);
 }
 
 .iv__current-state {
   font-family: ui-monospace, monospace;
   font-size: 0.775rem;
-  color: #7dd3fc;
+  color: var(--k-fg-code, #7dd3fc);
 }
 
 .iv__state-badge {
@@ -584,12 +584,12 @@ function onEventSelect(index: number): void {
   font-weight: 600;
 }
 .iv__state-badge--live {
-  background: #14532d;
-  color: #86efac;
+  background: var(--k-success-bg, #14532d);
+  color: var(--k-success, #86efac);
 }
 .iv__state-badge--done {
-  background: #1e293b;
-  color: #64748b;
+  background: var(--k-bg-input, #1e293b);
+  color: var(--k-fg-muted, #64748b);
 }
 
 .iv__usage {
@@ -628,7 +628,7 @@ function onEventSelect(index: number): void {
 }
 .iv__observe-link {
   margin-left: auto;
-  color: #94a3b8;
+  color: var(--k-fg-muted, #94a3b8);
   text-decoration: none;
   font-size: 0.75rem;
 }
@@ -644,7 +644,7 @@ function onEventSelect(index: number): void {
   font-size: 0.8rem;
   background: #1c1107;
   border-bottom: 1px solid #92400e;
-  color: #fcd34d;
+  color: var(--k-warning, #fcd34d);
 }
 
 .iv__main {
@@ -661,8 +661,8 @@ function onEventSelect(index: number): void {
   flex: 1 1 46%;
   min-width: 0;
   min-height: 0;
-  border-right: 1px solid #1e293b;
-  background: #0f1115;
+  border-right: 1px solid var(--k-border, #1e293b);
+  background: var(--k-bg-inset, #0f1115);
 }
 
 .iv__transcript {
@@ -673,16 +673,16 @@ function onEventSelect(index: number): void {
 .iv__done-note {
   padding: 0.6rem 1.1rem;
   font-size: 0.8rem;
-  color: #64748b;
-  background: #14171d;
-  border-top: 1px solid #2a2f3a;
+  color: var(--k-fg-muted, #64748b);
+  background: var(--k-bg-inset, #14171d);
+  border-top: 1px solid var(--k-border-subtle, #2a2f3a);
   text-align: center;
 }
 
 .iv__error {
   padding: 0.5rem 1.1rem;
   font-size: 0.78rem;
-  color: #fca5a5;
+  color: var(--k-error, #fca5a5);
   background: #2a1518;
   border-top: 1px solid #7f1d1d;
 }
@@ -719,7 +719,7 @@ function onEventSelect(index: number): void {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   padding: 0.25rem 0;
   flex-shrink: 0;
   display: flex;
@@ -729,7 +729,7 @@ function onEventSelect(index: number): void {
 
 .iv__clear-highlight {
   background: #3a2d0e;
-  border: 1px solid #fbbf24;
+  border: 1px solid var(--k-warning, #fbbf24);
   color: #fde68a;
   font-size: 0.65rem;
   text-transform: none;
@@ -755,7 +755,7 @@ function onEventSelect(index: number): void {
 }
 
 .iv__empty {
-  color: #475569;
+  color: var(--k-fg-subtle, #475569);
   font-size: 0.875rem;
   padding: 1rem;
 }
@@ -789,8 +789,8 @@ function onEventSelect(index: number): void {
   min-width: 0;
   min-height: 0;
   padding: 0.6rem;
-  background: #0b1220;
-  border-left: 1px solid #1e293b;
+  background: var(--k-bg-deep, #0b1220);
+  border-left: 1px solid var(--k-border, #1e293b);
   transition: flex-basis 0.18s ease;
 }
 /* Maximized: a deterministic 44/56 split (both percentage bases compete on equal
@@ -811,15 +811,15 @@ function onEventSelect(index: number): void {
   text-align: left;
   font: inherit;
   color: #cbd5e1;
-  background: #0f172a;
-  border: 1px solid #1e293b;
+  background: var(--k-bg-widget, #0f172a);
+  border: 1px solid var(--k-border, #1e293b);
   border-radius: 8px;
   padding: 0.7rem 0.8rem;
   cursor: pointer;
 }
 .iv__hint:hover {
-  border-color: #334155;
-  background: #131f38;
+  border-color: var(--k-border-subtle, #334155);
+  background: var(--k-bg-hover, #131f38);
 }
 .iv__hint-head {
   display: flex;
@@ -831,26 +831,26 @@ function onEventSelect(index: number): void {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #94a3b8;
+  color: var(--k-fg-muted, #94a3b8);
 }
 .iv__hint-grow {
   margin-left: auto;
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   font-size: 0.95rem;
 }
 .iv__hint:hover .iv__hint-grow {
-  color: #93c5fd;
+  color: var(--k-fg-accent, #93c5fd);
 }
 .iv__hint-metric {
   font-size: 1.45rem;
   font-weight: 700;
-  color: #e2e8f0;
+  color: var(--k-fg, #e2e8f0);
   line-height: 1.1;
 }
 .iv__hint-metric span {
   font-size: 0.7rem;
   font-weight: 500;
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -859,11 +859,11 @@ function onEventSelect(index: number): void {
   align-items: center;
   gap: 0.35rem;
   font-size: 0.72rem;
-  color: #94a3b8;
+  color: var(--k-fg-muted, #94a3b8);
 }
 .iv__hint-row code {
   font-family: ui-monospace, monospace;
-  color: #7dd3fc;
+  color: var(--k-fg-code, #7dd3fc);
 }
 .iv__hint-dot {
   width: 7px;
@@ -872,11 +872,11 @@ function onEventSelect(index: number): void {
   flex-shrink: 0;
 }
 .iv__hint-dot.is-live {
-  background: #34d399;
+  background: var(--k-success, #34d399);
   box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.15);
 }
 .iv__hint-dot.is-done {
-  background: #475569;
+  background: var(--k-fg-subtle, #475569);
 }
 
 /* Maximized panel */
@@ -899,7 +899,7 @@ function onEventSelect(index: number): void {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
 }
 .iv__expanded-switch,
 .iv__expanded-min {
@@ -908,16 +908,16 @@ function onEventSelect(index: number): void {
   cursor: pointer;
   border-radius: 999px;
   padding: 0.12rem 0.5rem;
-  background: #0f172a;
-  border: 1px solid #1e293b;
-  color: #94a3b8;
+  background: var(--k-bg-widget, #0f172a);
+  border: 1px solid var(--k-border, #1e293b);
+  color: var(--k-fg-muted, #94a3b8);
 }
 .iv__expanded-switch {
   margin-left: auto;
 }
 .iv__expanded-switch:hover,
 .iv__expanded-min:hover {
-  border-color: #334155;
+  border-color: var(--k-border-subtle, #334155);
   color: #cbd5e1;
 }
 .iv__expanded .iv__panel {
@@ -944,14 +944,14 @@ function onEventSelect(index: number): void {
   font-size: 13px;
   font-weight: 600;
   color: #fff;
-  background: #475569;
+  background: var(--k-fg-subtle, #475569);
   user-select: none;
 }
 
 .iv__thinking-bubble {
-  background: #f7f8fa;
-  color: #1f2430;
-  border: 1px solid #d8dbe2;
+  background: var(--k-paper-bg, #f7f8fa);
+  color: var(--k-paper-fg, #1f2430);
+  border: 1px solid var(--k-paper-border, #d8dbe2);
   border-radius: 12px;
   border-bottom-left-radius: 4px;
   padding: 10px 14px;
@@ -979,7 +979,7 @@ function onEventSelect(index: number): void {
   display: flex;
   gap: 4px;
   font-size: 20px;
-  color: #94a3b8;
+  color: var(--k-fg-muted, #94a3b8);
 }
 
 @keyframes iv-dot-pulse {

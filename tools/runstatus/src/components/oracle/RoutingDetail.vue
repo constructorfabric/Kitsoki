@@ -70,7 +70,7 @@ const hasData = computed(
 }
 
 .routing-detail__key {
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   font-size: 0.75rem;
   min-width: 5.5rem;
   flex-shrink: 0;
@@ -90,11 +90,11 @@ const hasData = computed(
 .routing-detail__val {
   font-family: ui-monospace, monospace;
   font-size: 0.75rem;
-  color: #e2e8f0;
+  color: var(--k-fg, #e2e8f0);
 }
 
 .routing-detail__val--yes {
-  color: #4ade80;
+  color: var(--k-success, #4ade80);
   font-weight: 600;
 }
 
@@ -104,7 +104,7 @@ const hasData = computed(
 }
 
 .routing-detail__none {
-  color: #475569;
+  color: var(--k-fg-subtle, #475569);
   font-size: 0.75rem;
   font-style: italic;
 }

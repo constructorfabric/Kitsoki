@@ -65,17 +65,17 @@ function lineBody(line: string): string {
   font-family: ui-monospace, monospace;
   font-size: 0.72rem;
   line-height: 1.45;
-  background: #080f1a;
-  border: 1px solid #1e293b;
+  background: var(--k-bg-deep, #080f1a);
+  border: 1px solid var(--k-border, #1e293b);
   border-radius: 4px;
   overflow-x: auto;
 }
 
 .unified-diff__hunk-header {
   background: #0f1e38;
-  color: #60a5fa;
+  color: var(--k-fg-accent, #60a5fa);
   padding: 0.15rem 0.5rem;
-  border-bottom: 1px solid #1e293b;
+  border-bottom: 1px solid var(--k-border, #1e293b);
   font-style: italic;
 }
 
@@ -97,13 +97,13 @@ function lineBody(line: string): string {
 }
 
 .diff-add {
-  background: #052e16;
-  color: #86efac;
+  background: var(--k-success-bg, #052e16);
+  color: var(--k-success, #86efac);
 }
 
 .diff-del {
-  background: #2d0707;
-  color: #fca5a5;
+  background: var(--k-error, #2d0707);
+  color: var(--k-error, #fca5a5);
 }
 
 .diff-ctx {

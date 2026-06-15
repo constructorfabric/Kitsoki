@@ -1,3 +1,7 @@
+// Global semantic token layer — imported before mounting so BOTH the full SPA
+// and the single-surface SurfaceHost inherit the theme tokens. See theme.css for
+// the var(--vscode-*, fallback) dual-context strategy.
+import "./theme.css";
 import { createApp } from "vue";
 import { createPinia } from "pinia";
 import App from "./App.vue";

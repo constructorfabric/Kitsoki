@@ -173,14 +173,14 @@ function toggleDiff(path: string): void {
 .task-detail__tabs {
   display: flex;
   gap: 0.25rem;
-  border-bottom: 1px solid #1e293b;
+  border-bottom: 1px solid var(--k-border, #1e293b);
   padding-bottom: 0.35rem;
 }
 
 .task-detail__tab {
   background: none;
   border: 1px solid #334155;
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   cursor: pointer;
   padding: 0.2rem 0.6rem;
   border-radius: 3px;
@@ -188,12 +188,12 @@ function toggleDiff(path: string): void {
 }
 
 .task-detail__tab:hover {
-  background: #1e293b;
-  color: #e2e8f0;
+  background: var(--k-bg-hover, #1e293b);
+  color: var(--k-fg, #e2e8f0);
 }
 
 .task-detail__tab--active {
-  background: #1e293b;
+  background: var(--k-bg-hover, #1e293b);
   border-color: #7c2d12;
   color: #fdba74;
 }
@@ -205,24 +205,24 @@ function toggleDiff(path: string): void {
 }
 
 .task-detail__empty {
-  color: #475569;
+  color: var(--k-fg-subtle, #475569);
   font-size: 0.8125rem;
   padding: 0.5rem 0;
 }
 
 .od-label {
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   font-size: 0.75rem;
 }
 
 .od-pre {
-  background: #080f1a;
-  border: 1px solid #1e293b;
+  background: var(--k-bg-inset, #080f1a);
+  border: 1px solid var(--k-border, #1e293b);
   border-radius: 4px;
   padding: 0.4rem 0.6rem;
   font-family: ui-monospace, monospace;
   font-size: 0.72rem;
-  color: #7dd3fc;
+  color: var(--k-fg-code, #7dd3fc);
   white-space: pre-wrap;
   word-break: break-word;
   margin: 0;
@@ -231,14 +231,14 @@ function toggleDiff(path: string): void {
 }
 
 .od-pre--instructions {
-  color: #e2e8f0;
+  color: var(--k-fg, #e2e8f0);
 }
 
 .od-toggle {
   align-self: flex-start;
   background: none;
   border: 1px solid #334155;
-  color: #60a5fa;
+  color: var(--k-fg-accent, #60a5fa);
   cursor: pointer;
   font-size: 0.72rem;
   padding: 0.15rem 0.5rem;
@@ -246,7 +246,7 @@ function toggleDiff(path: string): void {
 }
 
 .od-toggle:hover {
-  background: #1e293b;
+  background: var(--k-bg-hover, #1e293b);
 }
 
 /* Files table */
@@ -257,27 +257,27 @@ function toggleDiff(path: string): void {
 }
 
 .task-detail__files-table th {
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   text-align: left;
   font-weight: 500;
   padding: 0.15rem 0.4rem;
-  border-bottom: 1px solid #1e293b;
+  border-bottom: 1px solid var(--k-border, #1e293b);
 }
 
 .task-detail__files-table td {
   padding: 0.15rem 0.4rem;
-  border-bottom: 1px solid #0f172a;
+  border-bottom: 1px solid var(--k-bg, #0f172a);
   vertical-align: middle;
 }
 
 .task-detail__file-path {
   font-family: ui-monospace, monospace;
-  color: #e2e8f0;
+  color: var(--k-fg, #e2e8f0);
   word-break: break-all;
 }
 
-.task-detail__adds { color: #86efac; font-family: ui-monospace, monospace; }
-.task-detail__dels { color: #fca5a5; font-family: ui-monospace, monospace; }
+.task-detail__adds { color: var(--k-success, #86efac); font-family: ui-monospace, monospace; }
+.task-detail__dels { color: var(--k-error, #fca5a5); font-family: ui-monospace, monospace; }
 
 .task-detail__status-chip {
   padding: 0.05rem 0.3rem;
@@ -285,10 +285,10 @@ function toggleDiff(path: string): void {
   font-size: 0.7rem;
 }
 
-.status--added    { background: #052e16; color: #86efac; }
-.status--modified { background: #2d2400; color: #fde68a; }
-.status--deleted  { background: #2d0707; color: #fca5a5; }
-.status--other    { background: #1e293b; color: #94a3b8; }
+.status--added    { background: var(--k-success-bg, #052e16); color: var(--k-success, #86efac); }
+.status--modified { background: #2d2400; color: var(--k-warning, #fde68a); }
+.status--deleted  { background: #2d0707; color: var(--k-error, #fca5a5); }
+.status--other    { background: var(--k-bg-input, #1e293b); color: var(--k-fg-muted, #94a3b8); }
 
 /* Diffs */
 .task-detail__diffs {
@@ -298,7 +298,7 @@ function toggleDiff(path: string): void {
 }
 
 .task-detail__diff-block {
-  border: 1px solid #1e293b;
+  border: 1px solid var(--k-border, #1e293b);
   border-radius: 4px;
   overflow: hidden;
 }
@@ -308,7 +308,7 @@ function toggleDiff(path: string): void {
   align-items: center;
   gap: 0.5rem;
   padding: 0.25rem 0.5rem;
-  background: #0a1728;
+  background: var(--k-bg-inset, #0a1728);
   cursor: pointer;
   font-size: 0.75rem;
 }
@@ -320,18 +320,18 @@ function toggleDiff(path: string): void {
 .task-detail__diff-path {
   flex: 1;
   font-family: ui-monospace, monospace;
-  color: #e2e8f0;
+  color: var(--k-fg, #e2e8f0);
   word-break: break-all;
 }
 
 .task-detail__diff-stats {
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   font-size: 0.7rem;
   white-space: nowrap;
 }
 
 .task-detail__diff-caret {
-  color: #475569;
+  color: var(--k-fg-subtle, #475569);
   font-size: 0.75rem;
 }
 </style>

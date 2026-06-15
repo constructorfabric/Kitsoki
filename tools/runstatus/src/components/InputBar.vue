@@ -469,8 +469,8 @@ function sendRaw() {
   flex-direction: column;
   gap: 12px;
   padding: 16px 20px;
-  background: #14171d;
-  border-top: 1px solid #2a2f3a;
+  background: var(--k-bg-widget, #14171d);
+  border-top: 1px solid var(--k-border-subtle, #2a2f3a);
 }
 
 .input-bar__choice-prompt {
@@ -478,7 +478,7 @@ function sendRaw() {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
 }
 
 .input-bar__actions {
@@ -489,9 +489,9 @@ function sendRaw() {
 
 .input-bar__action-btn {
   appearance: none;
-  border: 1px solid #4a5568;
-  background: #1f2530;
-  color: #c8cdd8;
+  border: 1px solid var(--k-border, #4a5568);
+  background: var(--k-bg-input, #1f2530);
+  color: var(--k-fg, #c8cdd8);
   font-size: 13px;
   font-weight: 500;
   padding: 8px 16px;
@@ -510,21 +510,23 @@ function sendRaw() {
 }
 
 .input-bar__action-btn--primary {
-  background: #1e3a5f;
-  border-color: #2563eb;
-  color: #93c5fd;
+  background: var(--k-button-bg, #1e3a5f);
+  border-color: var(--k-border-focus, #2563eb);
+  /* button-FG (not fg-accent): the accent link color is blue in a light theme and
+     would vanish on the blue button fill. button-foreground always contrasts. */
+  color: var(--k-button-fg, #93c5fd);
 }
 
 .input-bar__action-btn--primary:hover:not(:disabled) {
-  background: #1d4ed8;
-  border-color: #3b82f6;
-  color: #fff;
+  background: var(--k-button-hover-bg, #1d4ed8);
+  border-color: var(--k-border-focus, #3b82f6);
+  color: var(--k-button-fg, #fff);
 }
 
 .input-bar__action-btn:hover:not(:disabled) {
-  background: #2a3340;
-  border-color: #6b7588;
-  color: #e6e9ef;
+  background: var(--k-bg-hover, #2a3340);
+  border-color: var(--k-border, #6b7588);
+  color: var(--k-fg, #e6e9ef);
 }
 
 .input-bar__btn-label {
@@ -536,7 +538,7 @@ function sendRaw() {
 
 .input-bar__btn-hint {
   font-size: 11px;
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   font-weight: 400;
   white-space: nowrap;
   overflow: hidden;
@@ -545,7 +547,10 @@ function sendRaw() {
 }
 
 .input-bar__action-btn--primary .input-bar__btn-hint {
-  color: #7da8d8;
+  /* sits on the primary (blue) fill — must contrast it; accent-blue would vanish
+     under a light theme. button-fg with reduced opacity reads as a soft sub-label. */
+  color: var(--k-button-fg, #7da8d8);
+  opacity: 0.8;
 }
 
 .input-bar__action-btn:disabled,
@@ -571,7 +576,7 @@ function sendRaw() {
 .input-bar__choice-param-label {
   font-size: 13px;
   font-weight: 600;
-  color: #94a3b8;
+  color: var(--k-fg-muted, #94a3b8);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -594,7 +599,7 @@ function sendRaw() {
 .input-bar__form-label {
   font-size: 13px;
   font-weight: 600;
-  color: #94a3b8;
+  color: var(--k-fg-muted, #94a3b8);
   white-space: nowrap;
   flex: 0 0 14rem;
 }
@@ -602,7 +607,7 @@ function sendRaw() {
 .input-bar__form-unit {
   font-size: 11px;
   font-weight: 400;
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   margin-left: 0.3em;
 }
 
@@ -623,9 +628,9 @@ function sendRaw() {
 }
 
 .input-bar__select {
-  background: #1f2530;
-  color: #e6e9ef;
-  border: 1px solid #3a4250;
+  background: var(--k-bg-input, #1f2530);
+  color: var(--k-fg, #e6e9ef);
+  border: 1px solid var(--k-border, #3a4250);
   border-radius: 8px;
   padding: 0 10px;
   font-size: 13px;
@@ -633,9 +638,9 @@ function sendRaw() {
 
 .input-bar__input {
   flex: 1 1 auto;
-  background: #0f1115;
-  color: #e6e9ef;
-  border: 1px solid #3a4250;
+  background: var(--k-bg-inset, #0f1115);
+  color: var(--k-fg, #e6e9ef);
+  border: 1px solid var(--k-border, #3a4250);
   border-radius: 8px;
   padding: 10px 14px;
   font-size: 14px;
@@ -643,14 +648,14 @@ function sendRaw() {
 }
 
 .input-bar__input:focus {
-  border-color: #2563eb;
+  border-color: var(--k-border-focus, #2563eb);
 }
 
 .input-bar__textarea {
   flex: 1 1 auto;
-  background: #0f1115;
-  color: #e6e9ef;
-  border: 1px solid #3a4250;
+  background: var(--k-bg-inset, #0f1115);
+  color: var(--k-fg, #e6e9ef);
+  border: 1px solid var(--k-border, #3a4250);
   border-radius: 8px;
   padding: 10px 14px;
   font-size: 14px;
@@ -662,7 +667,7 @@ function sendRaw() {
 }
 
 .input-bar__textarea:focus {
-  border-color: #2563eb;
+  border-color: var(--k-border-focus, #2563eb);
 }
 
 .input-bar__composer--semantic {
@@ -675,20 +680,20 @@ function sendRaw() {
 .input-bar__composer--floor {
   align-items: flex-end;
   padding-top: 12px;
-  border-top: 1px dashed #2a2f3a;
+  border-top: 1px dashed var(--k-border-subtle, #2a2f3a);
 }
 
 .input-bar__composer--floor .input-bar__textarea {
   font-size: 13px;
-  background: #0c0e12;
+  background: var(--k-bg-inset, #0c0e12);
   min-height: 2.4rem;
 }
 
 .input-bar__send {
   appearance: none;
   border: none;
-  background: #2563eb;
-  color: #fff;
+  background: var(--k-button-hover-bg, #2563eb);
+  color: var(--k-button-fg, #fff);
   font-size: 14px;
   font-weight: 600;
   padding: 0 20px;
@@ -697,6 +702,6 @@ function sendRaw() {
 }
 
 .input-bar__send:hover:not(:disabled) {
-  background: #1d4ed8;
+  background: var(--k-button-bg, #1d4ed8);
 }
 </style>

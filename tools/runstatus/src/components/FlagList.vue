@@ -82,15 +82,15 @@ const hasUnsent = computed(() => props.flags.some((f) => !f.sent));
   margin: 0;
   font-size: 14px;
   font-weight: 600;
-  color: #4a5160;
+  color: var(--k-fg-muted, #4a5160);
 }
 .fl-send-all {
   font-size: 12px;
   padding: 0.25em 0.7em;
-  border: 1px solid #1d4ed8;
+  border: 1px solid var(--k-button-bg, #1d4ed8);
   border-radius: 6px;
-  background: #fff;
-  color: #1d4ed8;
+  background: var(--k-paper-bg, #fff);
+  color: var(--k-fg-accent, #1d4ed8);
   cursor: pointer;
 }
 .fl-send-all:disabled {
@@ -99,7 +99,7 @@ const hasUnsent = computed(() => props.flags.some((f) => !f.sent));
 }
 .fl-empty {
   font-size: 13px;
-  color: #6b7280;
+  color: var(--k-fg-muted, #6b7280);
   margin: 0;
 }
 .fl-items {
@@ -120,28 +120,28 @@ const hasUnsent = computed(() => props.flags.some((f) => !f.sent));
   font-size: 13px;
 }
 .fl-item:hover {
-  background: #f1f3f7;
+  background: var(--k-bg-hover, #f1f3f7);
 }
 .fl-item--selected {
-  background: #eef4ff;
+  background: var(--k-bg-selection, #eef4ff);
 }
 .fl-dot {
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  border: 2px solid #1d4ed8;
+  border: 2px solid var(--k-button-bg, #1d4ed8);
   flex: none;
 }
 .fl-dot--sent {
-  background: #1d4ed8;
+  background: var(--k-button-bg, #1d4ed8);
 }
 .fl-time {
   font-variant-numeric: tabular-nums;
-  color: #4a5160;
+  color: var(--k-fg-muted, #4a5160);
   flex: none;
 }
 .fl-text {
-  color: #1f2430;
+  color: var(--k-paper-fg, #1f2430);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

@@ -49,18 +49,18 @@ const inbox = useInboxStore();
   justify-content: center;
   width: 2.2rem;
   height: 2.2rem;
-  background: #1e293b;
-  border: 1px solid #334155;
+  background: var(--k-bg-input, #1e293b);
+  border: 1px solid var(--k-border, #334155);
   border-radius: 999px;
   cursor: pointer;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
   transition: background 0.12s, border-color 0.12s;
 }
 .inbox-badge:hover {
-  background: #273449;
+  background: var(--k-bg-hover, #273449);
 }
 .inbox-badge--attention {
-  border-color: #fb923c;
+  border-color: var(--k-warning, #fb923c);
   box-shadow: 0 0 0 2px rgba(251, 146, 60, 0.35);
 }
 .inbox-badge__bell {
@@ -77,14 +77,14 @@ const inbox = useInboxStore();
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: #1d4ed8;
-  color: #eef2ff;
+  background: var(--k-button-bg, #1d4ed8);
+  color: var(--k-button-fg, #eef2ff);
   border-radius: 999px;
   font-size: 0.62rem;
   font-weight: 700;
 }
 .inbox-badge--attention .inbox-badge__count {
-  background: #fb923c;
+  background: var(--k-warning, #fb923c);
   color: #1a1207;
 }
 </style>

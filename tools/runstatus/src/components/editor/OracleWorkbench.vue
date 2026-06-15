@@ -173,7 +173,7 @@ watch(
   opacity: 0.7;
   font-size: 0.85rem;
 }
-.workbench__status--error { color: #f28b82; }
+.workbench__status--error { color: var(--k-error, #f28b82); }
 .workbench__empty {
   opacity: 0.6;
   font-style: italic;

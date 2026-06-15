@@ -94,8 +94,14 @@ const RECORD = PACE >= 1;
 // In assert mode every beat lands in .artifacts/vscode-e2e/ (the gate's scratch
 // dir). In record mode the labeled NN-<beat>.png + the MP4 land in the canonical
 // .artifacts/vscode-tour/ (the kitsoki-ui-qa --frames input).
+// Optional VS Code color theme override (proves the embed themes NATIVELY off the
+// editor theme — set e.g. KITSOKI_VSCODE_THEME="Default Light Modern" to capture a
+// light-themed run). When set, record-mode artifacts land in a theme-suffixed dir
+// so a light run never clobbers the canonical dark tour.
+const THEME = process.env.KITSOKI_VSCODE_THEME?.trim() || '';
+const THEME_SLUG = THEME ? '-' + THEME.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') : '';
 const GATE_DIR = path.join(REPO_ROOT, '.artifacts', 'vscode-e2e');
-const TOUR_DIR = path.join(REPO_ROOT, '.artifacts', 'vscode-tour');
+const TOUR_DIR = path.join(REPO_ROOT, '.artifacts', `vscode-tour${THEME_SLUG}`);
 const ARTIFACT_DIR = RECORD ? TOUR_DIR : GATE_DIR;
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -344,6 +350,9 @@ test('vscode tour e2e — load, render, drive, trace (no-LLM, deterministic)', a
         'workbench.tips.enabled': false,
         'workbench.startupEditor': 'none',
         'editor.fontSize': 13,
+        // Optional theme override — proves the embed themes natively off the editor
+        // theme (the SPA has no theme system of its own; it reads --vscode-* vars).
+        ...(THEME ? { 'workbench.colorTheme': THEME } : {}),
       },
       null,
       2,

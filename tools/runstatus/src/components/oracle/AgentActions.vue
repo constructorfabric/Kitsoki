@@ -137,17 +137,17 @@ function selectRow(i: number): void {
   gap: 0.5rem;
   flex-wrap: wrap;
   padding-bottom: 0.3rem;
-  border-bottom: 1px solid #1e293b;
+  border-bottom: 1px solid var(--k-border, #1e293b);
 }
 
 .agent-actions__count {
-  color: #e2e8f0;
+  color: var(--k-fg, #e2e8f0);
   font-size: 0.78rem;
   font-weight: 600;
 }
 
 .agent-actions__format {
-  color: #475569;
+  color: var(--k-fg-subtle, #475569);
   font-size: 0.68rem;
   font-family: ui-monospace, monospace;
 }
@@ -157,7 +157,7 @@ function selectRow(i: number): void {
 }
 
 .agent-actions__accrual {
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   font-size: 0.68rem;
   font-family: ui-monospace, monospace;
   white-space: nowrap;
@@ -174,8 +174,8 @@ function selectRow(i: number): void {
 
 .agent-actions__mode {
   background: none;
-  border: 1px solid #334155;
-  color: #64748b;
+  border: 1px solid var(--k-border-subtle, #334155);
+  color: var(--k-fg-muted, #64748b);
   cursor: pointer;
   font-size: 0.68rem;
   padding: 0.1rem 0.45rem;
@@ -183,13 +183,13 @@ function selectRow(i: number): void {
 }
 
 .agent-actions__mode:hover {
-  background: #1e293b;
-  color: #e2e8f0;
+  background: var(--k-bg-hover, #1e293b);
+  color: var(--k-fg, #e2e8f0);
 }
 
 .agent-actions__mode--active {
-  background: #1e293b;
-  border-color: #3b82f6;
+  background: var(--k-bg-hover, #1e293b);
+  border-color: var(--k-border-focus, #3b82f6);
   color: #93c5fd;
 }
 
@@ -200,7 +200,7 @@ function selectRow(i: number): void {
 }
 
 .agent-actions__empty {
-  color: #475569;
+  color: var(--k-fg-subtle, #475569);
   font-size: 0.78rem;
   padding: 0.4rem 0;
 }

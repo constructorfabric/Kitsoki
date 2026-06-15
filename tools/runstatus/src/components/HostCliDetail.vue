@@ -292,7 +292,7 @@ function toggleLog(): void {
 <style scoped>
 .hcd {
   font-size: 0.8125rem;
-  color: #e2e8f0;
+  color: var(--k-fg, #e2e8f0);
 }
 
 /* command chip */
@@ -300,7 +300,7 @@ function toggleLog(): void {
   display: flex;
   align-items: baseline;
   gap: 0.4rem;
-  background: #0a0f1a;
+  background: var(--k-bg-deep, #0a0f1a);
   border: 1px solid #334155;
   border-radius: 4px;
   padding: 0.3rem 0.6rem;
@@ -310,12 +310,12 @@ function toggleLog(): void {
 }
 
 .hcd__cmd-prompt {
-  color: #475569;
+  color: var(--k-fg-subtle, #475569);
   flex-shrink: 0;
 }
 
 .hcd__cmd-text {
-  color: #7dd3fc;
+  color: var(--k-fg-code, #7dd3fc);
   word-break: break-all;
   font-family: ui-monospace, monospace;
 }
@@ -333,7 +333,7 @@ function toggleLog(): void {
 }
 
 .hcd__label {
-  color: #94a3b8;
+  color: var(--k-fg-muted, #94a3b8);
   min-width: 5.5rem;
   flex-shrink: 0;
   font-size: 0.75rem;
@@ -346,7 +346,7 @@ function toggleLog(): void {
 }
 
 .hcd__label--error {
-  color: #f87171;
+  color: var(--k-error, #f87171);
 }
 
 /* results cluster */
@@ -367,38 +367,38 @@ function toggleLog(): void {
 }
 
 .hcd__badge--pass {
-  background: #14532d;
-  color: #86efac;
+  background: var(--k-success-bg, #14532d);
+  color: var(--k-success, #86efac);
   border: 1px solid #166534;
 }
 
 .hcd__badge--fail {
   background: #7f1d1d;
-  color: #f87171;
+  color: var(--k-error, #f87171);
   border: 1px solid #991b1b;
 }
 
 .hcd__badge--sha {
   background: #1e3a5f;
-  color: #93c5fd;
+  color: var(--k-fg-accent, #93c5fd);
   border: 1px solid transparent;
 }
 
 .hcd__badge--blue {
   background: #1e3a5f;
-  color: #93c5fd;
+  color: var(--k-fg-accent, #93c5fd);
   border: 1px solid transparent;
 }
 
 .hcd__badge--muted {
-  background: #1e293b;
-  color: #94a3b8;
+  background: var(--k-bg-input, #1e293b);
+  color: var(--k-fg-muted, #94a3b8);
   border: 1px solid #334155;
 }
 
 /* duration value */
 .hcd__duration {
-  color: #fdba74;
+  color: var(--k-warning, #fdba74);
   background: #1a0f08;
   border: 1px solid #7c2d12;
   font-size: 0.7rem;
@@ -418,13 +418,13 @@ function toggleLog(): void {
 
 /* pre */
 .hcd__pre {
-  background: #080f1a;
-  border: 1px solid #1e293b;
+  background: var(--k-bg-deep, #080f1a);
+  border: 1px solid var(--k-border, #1e293b);
   border-radius: 4px;
   padding: 0.4rem 0.6rem;
   font-family: ui-monospace, monospace;
   font-size: 0.75rem;
-  color: #7dd3fc;
+  color: var(--k-fg-code, #7dd3fc);
   white-space: pre-wrap;
   word-break: break-word;
   margin: 0;
@@ -432,7 +432,7 @@ function toggleLog(): void {
 }
 
 .hcd__pre--error {
-  color: #f87171;
+  color: var(--k-error, #f87171);
   border-color: #7f1d1d;
 }
 
@@ -445,7 +445,7 @@ function toggleLog(): void {
 .hcd__toggle-btn {
   background: none;
   border: 1px solid #334155;
-  color: #60a5fa;
+  color: var(--k-fg-accent, #60a5fa);
   cursor: pointer;
   font-size: 0.75rem;
   padding: 0.15rem 0.5rem;
@@ -453,6 +453,6 @@ function toggleLog(): void {
 }
 
 .hcd__toggle-btn:hover {
-  background: #1e293b;
+  background: var(--k-bg-hover, #1e293b);
 }
 </style>

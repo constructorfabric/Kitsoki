@@ -139,7 +139,7 @@ function onFlag() {
 .ct-track {
   position: relative;
   height: 28px;
-  background: #eef0f4;
+  background: var(--k-bg-input, #eef0f4);
   border-radius: 6px;
   cursor: crosshair;
   touch-action: none;
@@ -149,8 +149,8 @@ function onFlag() {
   top: 0;
   bottom: 0;
   background: rgba(29, 78, 216, 0.18);
-  border-left: 2px solid #1d4ed8;
-  border-right: 2px solid #1d4ed8;
+  border-left: 2px solid var(--k-bg-selection, #1d4ed8);
+  border-right: 2px solid var(--k-bg-selection, #1d4ed8);
   pointer-events: none;
 }
 .ct-marker {
@@ -160,9 +160,9 @@ function onFlag() {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  border: 2px solid #1d4ed8;
-  background: #fff;
-  color: #1d4ed8;
+  border: 2px solid var(--k-button-bg, #1d4ed8);
+  background: var(--k-button-fg, #fff);
+  color: var(--k-button-bg, #1d4ed8);
   font-size: 10px;
   font-weight: 700;
   cursor: pointer;
@@ -172,8 +172,8 @@ function onFlag() {
   justify-content: center;
 }
 .ct-marker:hover {
-  background: #1d4ed8;
-  color: #fff;
+  background: var(--k-button-hover-bg, #1d4ed8);
+  color: var(--k-button-fg, #fff);
 }
 .ct-actions {
   display: flex;
@@ -182,10 +182,10 @@ function onFlag() {
 .ct-flag-btn {
   font-size: 13px;
   padding: 0.3em 0.8em;
-  border: 1px solid #1d4ed8;
+  border: 1px solid var(--k-button-bg, #1d4ed8);
   border-radius: 6px;
-  background: #1d4ed8;
-  color: #fff;
+  background: var(--k-button-bg, #1d4ed8);
+  color: var(--k-button-fg, #fff);
   cursor: pointer;
 }
 .ct-flag-btn:disabled {

@@ -72,17 +72,17 @@ onUnmounted(() => {
   gap: 0.55rem;
   max-width: min(28rem, calc(100vw - 2rem));
   text-align: left;
-  background: #0d1b2a;
-  border: 1px solid #1e3a5f;
+  background: var(--k-bg-widget, #0d1b2a);
+  border: 1px solid var(--k-border, #1e3a5f);
   border-radius: 8px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-  color: #e2e8f0;
+  color: var(--k-fg, #e2e8f0);
   padding: 0.6rem 0.8rem;
   cursor: pointer;
   font: inherit;
 }
 .inbox-toast:hover {
-  border-color: #2563eb;
+  border-color: var(--k-border-focus, #2563eb);
 }
 .inbox-toast__glyph {
   font-size: 1.05rem;
@@ -99,7 +99,7 @@ onUnmounted(() => {
 }
 .inbox-toast__body {
   font-size: 0.72rem;
-  color: #94a3b8;
+  color: var(--k-fg-muted, #94a3b8);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -107,7 +107,7 @@ onUnmounted(() => {
 }
 .inbox-toast__cta {
   margin-left: auto;
-  color: #60a5fa;
+  color: var(--k-fg-accent, #60a5fa);
   font-size: 0.72rem;
   font-weight: 600;
   flex-shrink: 0;

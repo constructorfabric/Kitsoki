@@ -195,7 +195,7 @@ function onSendRefine() {
   gap: 0.75em;
 }
 .fd-empty {
-  color: #6b7280;
+  color: var(--k-fg-muted, #6b7280);
   font-size: 14px;
 }
 .fd-head {
@@ -205,20 +205,20 @@ function onSendRefine() {
 }
 .fd-flag-id {
   font-weight: 700;
-  color: #11151c;
+  color: var(--k-paper-fg, #11151c);
 }
 .fd-chapter {
-  color: #4a5160;
+  color: var(--k-fg-muted, #4a5160);
   font-size: 14px;
 }
 .fd-still {
-  border: 1px solid #d8dbe2;
+  border: 1px solid var(--k-paper-border, #d8dbe2);
   border-radius: 8px;
   padding: 0.5em;
-  background: #fafbfc;
+  background: var(--k-paper-bg, #fafbfc);
 }
 .fd-still-pending {
-  color: #6b7280;
+  color: var(--k-fg-muted, #6b7280);
   font-size: 13px;
   margin: 0;
 }
@@ -229,22 +229,22 @@ function onSendRefine() {
   font-size: 13px;
 }
 .fd-source-label {
-  color: #6b7280;
+  color: var(--k-fg-muted, #6b7280);
 }
 .fd-source-ref {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   color: #b3306b;
-  background: #f0f1f4;
+  background: var(--k-bg-input, #f0f1f4);
   padding: 0.1em 0.4em;
   border-radius: 4px;
 }
 .fd-open {
-  color: #1d4ed8;
+  color: var(--k-fg-accent, #1d4ed8);
   text-decoration: none;
   font-weight: 600;
 }
 .fd-chat {
-  border: 1px solid #e2e5ea;
+  border: 1px solid var(--k-paper-border, #e2e5ea);
   border-radius: 8px;
   padding: 0.5em;
   display: flex;
@@ -260,11 +260,11 @@ function onSendRefine() {
 }
 .fd-msg-role {
   font-weight: 600;
-  color: #4a5160;
+  color: var(--k-fg-muted, #4a5160);
   flex: none;
 }
 .fd-msg--assistant .fd-msg-text {
-  color: #1f2430;
+  color: var(--k-paper-fg, #1f2430);
 }
 .fd-chat-input {
   display: flex;
@@ -273,21 +273,21 @@ function onSendRefine() {
 .fd-chat-box {
   flex: 1;
   padding: 0.35em 0.6em;
-  border: 1px solid #d8dbe2;
+  border: 1px solid var(--k-paper-border, #d8dbe2);
   border-radius: 6px;
   font-size: 13px;
 }
 .fd-chat-send {
   padding: 0.35em 0.8em;
-  border: 1px solid #d8dbe2;
+  border: 1px solid var(--k-paper-border, #d8dbe2);
   border-radius: 6px;
-  background: #fff;
+  background: var(--k-paper-bg, #fff);
   cursor: pointer;
 }
 .fd-instruction {
   width: 100%;
   padding: 0.5em 0.6em;
-  border: 1px solid #d8dbe2;
+  border: 1px solid var(--k-paper-border, #d8dbe2);
   border-radius: 6px;
   font-size: 14px;
   font-family: inherit;
@@ -301,10 +301,10 @@ function onSendRefine() {
 }
 .fd-send-refine {
   padding: 0.45em 1em;
-  border: 1px solid #1d4ed8;
+  border: 1px solid var(--k-button-bg, #1d4ed8);
   border-radius: 6px;
-  background: #1d4ed8;
-  color: #fff;
+  background: var(--k-button-bg, #1d4ed8);
+  color: var(--k-button-fg, #fff);
   font-size: 14px;
   cursor: pointer;
 }
@@ -314,7 +314,7 @@ function onSendRefine() {
 }
 .fd-sent-badge {
   font-size: 12px;
-  color: #1b7a3e;
+  color: var(--k-success, #1b7a3e);
   font-weight: 600;
 }
 </style>

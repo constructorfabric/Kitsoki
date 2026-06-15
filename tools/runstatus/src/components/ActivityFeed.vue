@@ -33,7 +33,7 @@ defineProps<{ items: StreamItem[] }>();
   gap: 0.5em;
   font-size: 12px;
   font-family: ui-monospace, monospace;
-  color: var(--activity-tool, #4b5563);
+  color: var(--activity-tool, var(--k-fg-muted, #4b5563));
   margin: 2px 0;
 }
 
@@ -41,11 +41,11 @@ defineProps<{ items: StreamItem[] }>();
   flex: 0 0 auto;
   white-space: nowrap;
   font-weight: 600;
-  color: var(--activity-tool-name, #2563eb);
+  color: var(--activity-tool-name, var(--k-button-hover-bg, #2563eb));
 }
 
 .chat-activity__tool-preview {
-  color: var(--activity-muted, #6b7280);
+  color: var(--activity-muted, var(--k-fg-muted, #6b7280));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -72,7 +72,7 @@ defineProps<{ items: StreamItem[] }>();
     "Liberation Mono", monospace;
   font-size: 12px;
   line-height: 1.55;
-  color: var(--activity-text, #374151);
+  color: var(--activity-text, var(--k-fg-muted, #374151));
 }
 
 /* renderAgentMarkdown output (v-html) — style the formatted bits. A fenced
@@ -84,14 +84,14 @@ defineProps<{ items: StreamItem[] }>();
   font-weight: 700;
 }
 .chat-activity__text :deep(code) {
-  background: var(--activity-code-bg, #e6e9ef);
+  background: var(--activity-code-bg, var(--k-bg-hover, #e6e9ef));
   border-radius: 4px;
   padding: 0.05em 0.3em;
 }
 .chat-activity__text :deep(.cv-pre) {
-  background: #1e2430;
-  color: #d6deeb;
-  border: 1px solid var(--activity-border, #cfd4dd);
+  background: var(--k-bg-deep, #1e2430);
+  color: var(--k-fg, #d6deeb);
+  border: 1px solid var(--activity-border, var(--k-paper-border, #cfd4dd));
   border-radius: 6px;
   padding: 0.5rem 0.65rem;
   margin: 0.35rem 0;

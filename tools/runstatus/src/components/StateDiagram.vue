@@ -870,8 +870,8 @@ function onPhaseClick(phase: Phase): void {
   height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
-  background: #0f172a;
-  border: 1px solid #1e293b;
+  background: var(--k-bg, #0f172a);
+  border: 1px solid var(--k-border, #1e293b);
   border-radius: 6px;
   padding: 0.5rem;
   display: flex;
@@ -897,27 +897,27 @@ function onPhaseClick(phase: Phase): void {
 .state-diagram__tabs {
   display: flex;
   gap: 0.25rem;
-  border-bottom: 1px solid #1e293b;
+  border-bottom: 1px solid var(--k-border, #1e293b);
   padding-bottom: 0.35rem;
   margin-bottom: 0.1rem;
 }
 .state-diagram__tab {
   background: transparent;
   border: 1px solid transparent;
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   font: 600 0.7rem ui-sans-serif, system-ui, sans-serif;
   padding: 0.2rem 0.6rem;
   border-radius: 5px;
   cursor: pointer;
 }
 .state-diagram__tab:hover {
-  color: #cbd5e1;
-  background: #1e293b;
+  color: var(--k-fg, #cbd5e1);
+  background: var(--k-bg-hover, #1e293b);
 }
 .state-diagram__tab--active {
-  color: #93c5fd;
-  background: #0c1a36;
-  border-color: #1e3a5f;
+  color: var(--k-fg-accent, #93c5fd);
+  background: var(--k-bg-selection, #0c1a36);
+  border-color: var(--k-border-focus, #1e3a5f);
 }
 
 /* ---- Metro stepper (vertical interchange line) -------------------------- */
@@ -955,7 +955,7 @@ function onPhaseClick(phase: Phase): void {
   left: 50%;
   transform: translateX(-50%);
   width: 3px;
-  background: #1e293b;
+  background: var(--k-border, #1e293b);
 }
 .state-diagram__ms-step:last-child .state-diagram__ms-rail::before {
   display: none;
@@ -967,42 +967,42 @@ function onPhaseClick(phase: Phase): void {
   height: 0.85rem;
   border-radius: 50%;
   margin-top: 0.2rem;
-  background: #0f172a;
-  border: 3px solid #334155;
+  background: var(--k-bg, #0f172a);
+  border: 3px solid var(--k-fg-subtle, #334155);
   flex-shrink: 0;
 }
 /* traveled (TRACE): bright/solid line + green dots */
 .state-diagram__ms-step--done .state-diagram__ms-dot {
-  background: #22c55e;
-  border-color: #166534;
+  background: var(--k-success, #22c55e);
+  border-color: var(--k-success, #166534);
 }
 .state-diagram__ms-step--done .state-diagram__ms-rail::before {
-  background: #166534;
+  background: var(--k-success, #166534);
 }
 /* current (LIVE): amber, larger, glowing */
 .state-diagram__ms-dot--current {
   width: 1.2rem;
   height: 1.2rem;
   margin-top: 0;
-  background: #3a2d0e;
-  border-color: #f59e0b;
+  background: var(--k-bg-selection, #3a2d0e);
+  border-color: var(--k-warning, #f59e0b);
   box-shadow: 0 0 0 5px rgba(245, 158, 11, 0.15);
 }
 /* road ahead (PROJECTION): dashed/muted — must never read as traveled */
 .state-diagram__ms-step--ahead .state-diagram__ms-rail::before {
   background: transparent;
-  border-left: 2px dashed #334155;
+  border-left: 2px dashed var(--k-fg-subtle, #334155);
   width: 0;
 }
 .state-diagram__ms-dot--ahead {
   background: transparent;
   border-style: dashed;
-  border-color: #475569;
+  border-color: var(--k-fg-subtle, #475569);
 }
 /* Terminus hint: green but still DASHED/hollow — it's projection (not yet
    reached), so it must not read as a traveled (solid) station. */
 .state-diagram__ms-step--terminal .state-diagram__ms-dot--ahead {
-  border-color: #166534;
+  border-color: var(--k-success, #166534);
 }
 .state-diagram__ms-body {
   display: flex;
@@ -1022,27 +1022,27 @@ function onPhaseClick(phase: Phase): void {
   font-family: ui-monospace, monospace;
   font-size: 0.82rem;
   font-weight: 600;
-  color: #cbd5e1;
+  color: var(--k-fg, #cbd5e1);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
 }
 .state-diagram__ms-name--current {
-  color: #fde68a;
+  color: var(--k-warning, #fde68a);
   font-size: 0.9rem;
 }
 .state-diagram__ms-step--ahead .state-diagram__ms-name {
-  color: #64748b;
+  color: var(--k-fg-subtle, #64748b);
 }
 .state-diagram__ms-via {
   font-size: 0.66rem;
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   font-family: ui-monospace, monospace;
 }
 .state-diagram__ms-here {
   font-size: 0.66rem;
-  color: #f59e0b;
+  color: var(--k-warning, #f59e0b);
   letter-spacing: 0.03em;
 }
 .state-diagram__ms-pills {
@@ -1052,7 +1052,7 @@ function onPhaseClick(phase: Phase): void {
   margin-top: 0.35rem;
 }
 .state-diagram__ms-end {
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   font-family: ui-monospace, monospace;
   font-size: 0.74rem;
   padding-left: 1.7rem;
@@ -1069,19 +1069,19 @@ function onPhaseClick(phase: Phase): void {
   flex-shrink: 0;
 }
 .state-diagram__ms-banner--done {
-  background: #0c2a1a;
-  color: #86efac;
-  border: 1px solid #166534;
+  background: var(--k-success-bg, #0c2a1a);
+  color: var(--k-success, #86efac);
+  border: 1px solid var(--k-success, #166534);
 }
 .state-diagram__ms-banner--current {
-  background: #3a2d0e;
-  color: #fde68a;
-  border: 1px solid #b45309;
+  background: var(--k-bg-selection, #3a2d0e);
+  color: var(--k-warning, #fde68a);
+  border: 1px solid var(--k-warning, #b45309);
 }
 .state-diagram__ms-banner--ahead {
   background: transparent;
-  color: #64748b;
-  border: 1px dashed #334155;
+  color: var(--k-fg-subtle, #64748b);
+  border: 1px dashed var(--k-fg-subtle, #334155);
 }
 
 /* ---- Path-view breadcrumb ---------------------------------------------- */
@@ -1096,8 +1096,8 @@ function onPhaseClick(phase: Phase): void {
   flex-direction: column;
   align-items: flex-start;
   padding: 0.2rem 0.5rem;
-  border: 1px solid #334155;
-  background: #0c1a36;
+  border: 1px solid var(--k-border-subtle, #334155);
+  background: var(--k-bg-selection, #0c1a36);
   border-radius: 6px;
   cursor: pointer;
   font: inherit;
@@ -1107,14 +1107,14 @@ function onPhaseClick(phase: Phase): void {
   font-family: ui-monospace, monospace;
   font-size: 0.74rem;
   font-weight: 600;
-  color: #cbd5e1;
+  color: var(--k-fg, #cbd5e1);
 }
 .state-diagram__crumb-via {
   font-size: 0.62rem;
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
 }
 .state-diagram__crumb-arrow {
-  color: #3b82f6;
+  color: var(--k-fg-accent, #3b82f6);
   font-size: 0.85rem;
 }
 
@@ -1136,44 +1136,44 @@ function onPhaseClick(phase: Phase): void {
   cursor: pointer;
 }
 .state-diagram__ego-node-from {
-  fill: #0c1a36;
-  stroke: #334155;
+  fill: var(--k-bg-selection, #0c1a36);
+  stroke: var(--k-border-subtle, #334155);
 }
 .state-diagram__ego-node-to {
-  fill: #0c1a36;
-  stroke: #3b82f6;
+  fill: var(--k-bg-selection, #0c1a36);
+  stroke: var(--k-fg-accent, #3b82f6);
   stroke-width: 1.5;
 }
 .state-diagram__ego-node-ghost {
-  fill: #0a1326;
-  stroke: #334155;
+  fill: var(--k-bg-deep, #0a1326);
+  stroke: var(--k-border-subtle, #334155);
   stroke-dasharray: 4 3;
 }
 .state-diagram__ego-node-cur {
-  fill: #2a1e05;
-  stroke: #f59e0b;
+  fill: var(--k-bg-selection, #2a1e05);
+  stroke: var(--k-warning, #f59e0b);
   stroke-width: 2;
 }
 .state-diagram__ego-nlabel {
   font: 600 11px ui-monospace, monospace;
-  fill: #cbd5e1;
+  fill: var(--k-fg, #cbd5e1);
 }
 .state-diagram__ego-nlabel-cur {
   font: 700 12px ui-monospace, monospace;
-  fill: #fde68a;
+  fill: var(--k-warning, #fde68a);
 }
 .state-diagram__ego-banner {
   font: 700 8px ui-sans-serif, system-ui, sans-serif;
   letter-spacing: 0.1em;
-  fill: #f59e0b;
+  fill: var(--k-warning, #f59e0b);
 }
 .state-diagram__ego-here {
   font: 600 8px ui-sans-serif, system-ui, sans-serif;
-  fill: #fbbf24;
+  fill: var(--k-warning, #fbbf24);
 }
 .state-diagram__ego-elabel {
   font: 11px ui-monospace, monospace;
-  fill: #94a3b8;
+  fill: var(--k-fg-muted, #94a3b8);
 }
 
 .state-diagram__toolbar {
@@ -1186,13 +1186,13 @@ function onPhaseClick(phase: Phase): void {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
 }
 .state-diagram__toggle {
   margin-left: auto;
-  background: #1e293b;
-  border: 1px solid #334155;
-  color: #cbd5e1;
+  background: var(--k-bg-widget, #1e293b);
+  border: 1px solid var(--k-border-subtle, #334155);
+  color: var(--k-fg, #cbd5e1);
   font-size: 0.68rem;
   padding: 0.12rem 0.5rem;
   border-radius: 999px;
@@ -1201,8 +1201,8 @@ function onPhaseClick(phase: Phase): void {
   white-space: nowrap;
 }
 .state-diagram__toggle:hover {
-  background: #2a3b54;
-  color: #f1f5f9;
+  background: var(--k-bg-hover, #2a3b54);
+  color: var(--k-fg, #f1f5f9);
 }
 
 /* ---- Stations (shared) -------------------------------------------------- */
@@ -1241,20 +1241,20 @@ function onPhaseClick(phase: Phase): void {
   align-items: center;
 }
 .state-diagram__station--traveled {
-  background: #0c2a1a;
-  border-color: #166534;
-  color: #86efac;
+  background: var(--k-success-bg, #0c2a1a);
+  border-color: var(--k-success, #166534);
+  color: var(--k-success, #86efac);
   padding: 0.2rem 0.5rem;
 }
 .state-diagram__station--traveled .state-diagram__station-dot {
-  background: #22c55e;
+  background: var(--k-success, #22c55e);
 }
 .state-diagram__station--traveled:hover {
-  background: #103a23;
+  background: var(--k-success-bg, #103a23);
 }
 .state-diagram__journey-start {
   font-size: 0.72rem;
-  color: #475569;
+  color: var(--k-fg-subtle, #475569);
   font-family: ui-monospace, monospace;
 }
 
@@ -1262,8 +1262,8 @@ function onPhaseClick(phase: Phase): void {
 .state-diagram__station--current {
   flex-direction: column;
   align-items: stretch;
-  background: #2a1e05;
-  border: 1px solid #f59e0b;
+  background: var(--k-bg-selection, #2a1e05);
+  border: 1px solid var(--k-warning, #f59e0b);
   box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.35), 0 0 8px rgba(245, 158, 11, 0.25);
   border-radius: 6px;
   padding: 0.4rem 0.5rem 0.5rem;
@@ -1276,17 +1276,17 @@ function onPhaseClick(phase: Phase): void {
   min-width: 0;
 }
 .state-diagram__station-dot--current {
-  background: #fbbf24;
+  background: var(--k-warning, #fbbf24);
   align-self: center;
 }
 .state-diagram__station-room {
   font-weight: 700;
-  color: #fde68a;
+  color: var(--k-warning, #fde68a);
   font-size: 0.85rem;
 }
 .state-diagram__station-phase {
   font-size: 0.68rem;
-  color: #b45309;
+  color: var(--k-warning, #b45309);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1325,23 +1325,23 @@ function onPhaseClick(phase: Phase): void {
 }
 /* forward = solid bright */
 .state-diagram__pill--forward {
-  background: #1e3a5f;
-  border: 1px solid #3b82f6;
-  color: #dbeafe;
+  background: var(--k-bg-selection, #1e3a5f);
+  border: 1px solid var(--k-fg-accent, #3b82f6);
+  color: var(--k-fg, #dbeafe);
 }
 .state-diagram__pill--forward:hover {
-  background: #274b78;
+  background: var(--k-bg-hover, #274b78);
 }
 /* self & exit = outlined / distinct */
 .state-diagram__pill--self {
   background: transparent;
-  border: 1px dashed #64748b;
-  color: #cbd5e1;
+  border: 1px dashed var(--k-fg-muted, #64748b);
+  color: var(--k-fg, #cbd5e1);
 }
 .state-diagram__pill--exit {
   background: transparent;
-  border: 1px solid #7f1d1d;
-  color: #fca5a5;
+  border: 1px solid var(--k-error, #7f1d1d);
+  color: var(--k-error, #fca5a5);
 }
 .state-diagram__pill--dead {
   opacity: 0.5;
@@ -1349,7 +1349,7 @@ function onPhaseClick(phase: Phase): void {
 }
 .state-diagram__pills-empty {
   font-size: 0.7rem;
-  color: #92400e;
+  color: var(--k-warning, #92400e);
   font-style: italic;
 }
 
@@ -1362,48 +1362,48 @@ function onPhaseClick(phase: Phase): void {
 }
 .state-diagram__ahead-cap {
   font-size: 0.65rem;
-  color: #475569;
+  color: var(--k-fg-subtle, #475569);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   width: 100%;
 }
 .state-diagram__station--ahead {
   background: transparent;
-  border: 1px dashed #334155;
-  color: #64748b;
+  border: 1px dashed var(--k-fg-subtle, #334155);
+  color: var(--k-fg-subtle, #64748b);
   padding: 0.18rem 0.5rem;
 }
 .state-diagram__station--ahead .state-diagram__station-dot--ahead {
   background: transparent;
-  border: 1px dashed #475569;
+  border: 1px dashed var(--k-fg-subtle, #475569);
 }
 .state-diagram__station--ahead:hover {
-  border-color: #475569;
-  color: #94a3b8;
+  border-color: var(--k-fg-subtle, #475569);
+  color: var(--k-fg-muted, #94a3b8);
 }
 .state-diagram__branches,
 .state-diagram__journey-end {
   font-size: 0.72rem;
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   font-family: ui-monospace, monospace;
 }
 .state-diagram__branches {
   cursor: pointer;
-  border: 1px dashed #334155;
+  border: 1px dashed var(--k-fg-subtle, #334155);
   border-radius: 5px;
   padding: 0.18rem 0.5rem;
 }
 .state-diagram__branches:hover {
-  color: #94a3b8;
-  border-color: #475569;
+  color: var(--k-fg-muted, #94a3b8);
+  border-color: var(--k-fg-subtle, #475569);
 }
 
 /* ---- +N elsewhere chip -------------------------------------------------- */
 .state-diagram__elsewhere {
   align-self: flex-start;
-  background: #0f172a;
-  border: 1px solid #1e293b;
-  color: #64748b;
+  background: var(--k-bg, #0f172a);
+  border: 1px solid var(--k-border, #1e293b);
+  color: var(--k-fg-muted, #64748b);
   font-size: 0.68rem;
   font-family: ui-monospace, monospace;
   padding: 0.12rem 0.5rem;
@@ -1411,21 +1411,21 @@ function onPhaseClick(phase: Phase): void {
   cursor: pointer;
 }
 .state-diagram__elsewhere:hover {
-  color: #94a3b8;
-  border-color: #334155;
+  color: var(--k-fg-muted, #94a3b8);
+  border-color: var(--k-border-subtle, #334155);
 }
 
 .state-diagram__empty {
-  color: #64748b;
+  color: var(--k-fg-subtle, #64748b);
   font-size: 0.875rem;
   padding: 1rem;
 }
 
 /* ---- Phase card --------------------------------------------------------- */
 .state-diagram__phase {
-  border: 1px solid #1e293b;
+  border: 1px solid var(--k-border, #1e293b);
   border-radius: 6px;
-  background: #0a1326;
+  background: var(--k-bg-deep, #0a1326);
   padding: 0.4rem 0.5rem 0.5rem;
   transition: border-color 0.15s, background 0.15s;
   position: relative;
@@ -1437,8 +1437,8 @@ function onPhaseClick(phase: Phase): void {
   bottom: -0.7rem;
   left: 1rem;
   font-size: 0.7rem;
-  color: #334155;
-  background: #0f172a;
+  color: var(--k-border-subtle, #334155);
+  background: var(--k-bg, #0f172a);
   padding: 0 0.2rem;
   pointer-events: none;
   z-index: 1;
@@ -1450,12 +1450,12 @@ function onPhaseClick(phase: Phase): void {
 }
 
 .state-diagram__phase--current {
-  border-color: #60a5fa;
-  background: #0c1a36;
+  border-color: var(--k-border-focus, #60a5fa);
+  background: var(--k-bg-selection, #0c1a36);
 }
 
 .state-diagram__phase--highlight-target {
-  border-color: #fbbf24;
+  border-color: var(--k-warning, #fbbf24);
   box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.3);
 }
 
@@ -1476,8 +1476,8 @@ function onPhaseClick(phase: Phase): void {
 .state-diagram__phase-index {
   font-size: 0.65rem;
   font-weight: 700;
-  color: #475569;
-  background: #1e293b;
+  color: var(--k-fg-subtle, #475569);
+  background: var(--k-bg-widget, #1e293b);
   border-radius: 3px;
   padding: 0.05rem 0.3rem;
   flex-shrink: 0;
@@ -1486,14 +1486,14 @@ function onPhaseClick(phase: Phase): void {
 
 .state-diagram__phase-name {
   font-weight: 600;
-  color: #e2e8f0;
+  color: var(--k-fg, #e2e8f0);
   font-size: 0.85rem;
   font-family: ui-monospace, monospace;
 }
 
 .state-diagram__phase-desc {
   flex: 1;
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   font-size: 0.7rem;
   white-space: nowrap;
   overflow: hidden;
@@ -1513,10 +1513,10 @@ function onPhaseClick(phase: Phase): void {
   align-items: center;
   gap: 0.35rem;
   padding: 0.3rem 0.55rem;
-  border: 1px solid #334155;
+  border: 1px solid var(--k-border-subtle, #334155);
   border-radius: 4px;
-  background: #1e293b;
-  color: #cbd5e1;
+  background: var(--k-bg-widget, #1e293b);
+  color: var(--k-fg, #cbd5e1);
   cursor: pointer;
   font-size: 0.775rem;
   font-family: ui-monospace, monospace;
@@ -1524,22 +1524,22 @@ function onPhaseClick(phase: Phase): void {
 }
 
 .state-diagram__room:hover {
-  background: #2a3b54;
-  border-color: #475569;
-  color: #f1f5f9;
+  background: var(--k-bg-hover, #2a3b54);
+  border-color: var(--k-fg-subtle, #475569);
+  color: var(--k-fg, #f1f5f9);
 }
 
 .state-diagram__room--current {
-  border-color: #60a5fa;
-  background: #1e3a5f;
-  color: #dbeafe;
+  border-color: var(--k-border-focus, #60a5fa);
+  background: var(--k-bg-selection, #1e3a5f);
+  color: var(--k-fg, #dbeafe);
   box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.5), 0 0 6px rgba(96, 165, 250, 0.4);
 }
 
 .state-diagram__room--highlight {
-  border-color: #fbbf24;
-  background: #3a2d0e;
-  color: #fde68a;
+  border-color: var(--k-warning, #fbbf24);
+  background: var(--k-bg-selection, #3a2d0e);
+  color: var(--k-warning, #fde68a);
 }
 
 .state-diagram__room-label {
@@ -1548,16 +1548,16 @@ function onPhaseClick(phase: Phase): void {
 
 .state-diagram__room-out {
   font-size: 0.65rem;
-  color: #94a3b8;
-  background: #0f172a;
+  color: var(--k-fg-muted, #94a3b8);
+  background: var(--k-bg, #0f172a);
   border-radius: 999px;
   padding: 0.05rem 0.35rem;
   font-family: ui-monospace, monospace;
 }
 
 .state-diagram__room--current .state-diagram__room-out {
-  background: #0a1226;
-  color: #93c5fd;
+  background: var(--k-bg-deep, #0a1226);
+  color: var(--k-fg-accent, #93c5fd);
 }
 
 /* ---- Event lane (inside phase card, below rooms) ------------------------ */
@@ -1569,7 +1569,7 @@ function onPhaseClick(phase: Phase): void {
   gap: 0.25rem;
   padding: 0.3rem 0 0.1rem;
   scrollbar-width: thin;
-  scrollbar-color: #334155 transparent;
+  scrollbar-color: var(--k-border-subtle, #334155) transparent;
 }
 
 .state-diagram__event-box {
@@ -1593,13 +1593,13 @@ function onPhaseClick(phase: Phase): void {
 
 .state-diagram__event-box--oracle  { background: #7c2d12; color: #fdba74; border-color: #9a3412; }
 .state-diagram__event-box--host    { background: #4a1d96; color: #c4b5fd; border-color: #5b21b6; }
-.state-diagram__event-box--machine { background: #14532d; color: #86efac; border-color: #166534; }
+.state-diagram__event-box--machine { background: var(--k-success-bg, #14532d); color: var(--k-success, #86efac); border-color: var(--k-success, #166534); }
 .state-diagram__event-box--world   { background: #134e4a; color: #5eead4; border-color: #0f766e; }
 .state-diagram__event-box--user    { background: #312e81; color: #a5b4fc; border-color: #3730a3; }
-.state-diagram__event-box--other   { background: #1e293b; color: #94a3b8; border-color: #334155; }
+.state-diagram__event-box--other   { background: var(--k-bg-widget, #1e293b); color: var(--k-fg-muted, #94a3b8); border-color: var(--k-border-subtle, #334155); }
 
 .state-diagram__event-box--selected {
-  box-shadow: 0 0 0 2px #60a5fa;
+  box-shadow: 0 0 0 2px var(--k-border-focus, #60a5fa);
 }
 
 .state-diagram__event-box-label {

@@ -227,8 +227,8 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
 }
 
 .meta-overlay {
-  background: #0d1b2a;
-  border: 1px solid #1e293b;
+  background: var(--k-bg-widget, #0d1b2a);
+  border: 1px solid var(--k-border, #1e293b);
   border-radius: 8px;
   width: 86vw;
   height: 84vh;
@@ -236,7 +236,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  color: #e2e8f0;
+  color: var(--k-fg, #e2e8f0);
 }
 
 .meta-overlay__header {
@@ -244,7 +244,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
   align-items: center;
   justify-content: space-between;
   padding: 0.45rem 0.7rem;
-  border-bottom: 1px solid #1e293b;
+  border-bottom: 1px solid var(--k-border, #1e293b);
   flex-shrink: 0;
   gap: 0.5rem;
 }
@@ -259,22 +259,22 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  background: #15233a;
-  border: 1px solid #1e293b;
-  color: #94a3b8;
+  background: var(--k-bg-hover, #15233a);
+  border: 1px solid var(--k-border, #1e293b);
+  color: var(--k-fg-muted, #94a3b8);
   border-radius: 5px;
   padding: 0.28rem 0.6rem;
   font-size: 0.76rem;
   cursor: pointer;
 }
 .meta-overlay__tab--active {
-  background: #1d4ed8;
-  border-color: #2563eb;
-  color: #eef2ff;
+  background: var(--k-button-bg, #1d4ed8);
+  border-color: var(--k-border-focus, #2563eb);
+  color: var(--k-button-fg, #eef2ff);
 }
 .meta-overlay__ro {
   font-size: 0.58rem;
-  background: #0d1b2a;
+  background: var(--k-bg-widget, #0d1b2a);
   border-radius: 3px;
   padding: 0 0.2rem;
   opacity: 0.8;
@@ -287,7 +287,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
 }
 .meta-overlay__action {
   background: none;
-  border: 1px solid #1e293b;
+  border: 1px solid var(--k-border, #1e293b);
   color: #cbd5e1;
   border-radius: 5px;
   padding: 0.25rem 0.55rem;
@@ -295,26 +295,26 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
   cursor: pointer;
 }
 .meta-overlay__action:hover {
-  background: #15233a;
+  background: var(--k-bg-hover, #15233a);
 }
 .meta-overlay__close {
   background: none;
   border: none;
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   cursor: pointer;
   font-size: 0.9rem;
   padding: 0.1rem 0.3rem;
 }
 .meta-overlay__close:hover {
-  color: #e2e8f0;
+  color: var(--k-fg, #e2e8f0);
 }
 
 .meta-overlay__banner {
   padding: 0.4rem 0.8rem;
   background: #112033;
-  border-bottom: 1px solid #1e293b;
+  border-bottom: 1px solid var(--k-border, #1e293b);
   font-size: 0.74rem;
-  color: #93c5fd;
+  color: var(--k-fg-accent, #93c5fd);
   flex-shrink: 0;
 }
 
@@ -327,7 +327,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
   gap: 0.6rem;
 }
 .meta-overlay__empty {
-  color: #475569;
+  color: var(--k-fg-subtle, #475569);
   font-size: 0.8rem;
   font-style: italic;
 }
@@ -346,7 +346,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
   font-size: 0.62rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
 }
 .meta-row__text {
   white-space: pre-wrap;
@@ -354,11 +354,11 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
   line-height: 1.5;
   padding: 0.45rem 0.65rem;
   border-radius: 8px;
-  background: #15233a;
+  background: var(--k-bg-hover, #15233a);
 }
 .meta-row--user .meta-row__text {
-  background: #1d4ed8;
-  color: #eef2ff;
+  background: var(--k-button-bg, #1d4ed8);
+  color: var(--k-button-fg, #eef2ff);
 }
 
 .meta-row--streaming {
@@ -372,14 +372,14 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
    chat's light "paper" palette; re-tint it for this dark overlay via its
    --activity-* custom properties — same markup, same layout, dark colors. */
 .meta-row {
-  --activity-tool: #94a3b8;
-  --activity-tool-name: #38bdf8;
-  --activity-muted: #94a3b8;
-  --activity-text: #cbd5e1;
-  --activity-border: #1e3a5f;
-  --activity-bg: #0a1422;
-  --activity-code-bg: #1e3a5f;
-  --activity-summary-hover: #e2e8f0;
+  --activity-tool: var(--k-fg-muted, #94a3b8);
+  --activity-tool-name: var(--k-fg-accent, #38bdf8);
+  --activity-muted: var(--k-fg-muted, #94a3b8);
+  --activity-text: var(--k-fg, #cbd5e1);
+  --activity-border: var(--k-border, #1e3a5f);
+  --activity-bg: var(--k-bg-inset, #0a1422);
+  --activity-code-bg: var(--k-bg-input, #1e3a5f);
+  --activity-summary-hover: var(--k-fg, #e2e8f0);
 }
 
 /* The live bubble's feed sits in the same bordered panel the collapsed
@@ -392,8 +392,8 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
 }
 
 :deep(.meta-pre) {
-  background: #0a1422;
-  border: 1px solid #1e3a5f;
+  background: var(--k-bg-inset, #0a1422);
+  border: 1px solid var(--k-border, #1e3a5f);
   border-radius: 5px;
   padding: 0.5rem 0.7rem;
   margin: 0.3rem 0;
@@ -404,14 +404,14 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
 }
 :deep(.meta-pre code) {
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  color: #93c5fd;
+  color: var(--k-fg-code, #93c5fd);
 }
 
 .meta-overlay__note {
   padding: 0.4rem 0.8rem;
   background: #0f2a1c;
-  border-top: 1px solid #14532d;
-  color: #86efac;
+  border-top: 1px solid var(--k-success-bg, #14532d);
+  color: var(--k-success, #86efac);
   font-size: 0.74rem;
   flex-shrink: 0;
 }
@@ -419,7 +419,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
   padding: 0.4rem 0.8rem;
   background: #2a0f12;
   border-top: 1px solid #7f1d1d;
-  color: #fca5a5;
+  color: var(--k-error, #fca5a5);
   font-size: 0.74rem;
   flex-shrink: 0;
 }
@@ -428,25 +428,25 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
   display: flex;
   gap: 0.5rem;
   padding: 0.6rem 0.8rem;
-  border-top: 1px solid #1e293b;
+  border-top: 1px solid var(--k-border, #1e293b);
   flex-shrink: 0;
 }
 .meta-overlay__input {
   flex: 1;
   resize: none;
-  background: #0a1422;
-  border: 1px solid #1e293b;
+  background: var(--k-bg-input, #0a1422);
+  border: 1px solid var(--k-border, #1e293b);
   border-radius: 6px;
-  color: #e2e8f0;
+  color: var(--k-fg, #e2e8f0);
   padding: 0.45rem 0.6rem;
   font-size: 0.82rem;
   font-family: inherit;
 }
 .meta-overlay__send {
   align-self: stretch;
-  background: #1d4ed8;
-  border: 1px solid #2563eb;
-  color: #eef2ff;
+  background: var(--k-button-bg, #1d4ed8);
+  border: 1px solid var(--k-border-focus, #2563eb);
+  color: var(--k-button-fg, #eef2ff);
   border-radius: 6px;
   padding: 0 1rem;
   font-size: 0.8rem;

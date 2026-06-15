@@ -163,14 +163,14 @@ onUnmounted(() => {
   align-items: center;
   gap: 0.25rem;
   padding: 0.25rem 0;
-  border-bottom: 1px solid #1e293b;
+  border-bottom: 1px solid var(--k-border, #1e293b);
   flex-shrink: 0;
 }
 
 .view-mode-tabs__tab {
   background: transparent;
   border: 1px solid transparent;
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   border-radius: 4px;
   padding: 0.2rem 0.7rem;
   font-size: 0.75rem;
@@ -183,20 +183,20 @@ onUnmounted(() => {
 }
 
 .view-mode-tabs__tab:hover {
-  color: #94a3b8;
-  background: #1e293b;
+  color: var(--k-fg-muted, #94a3b8);
+  background: var(--k-bg-hover, #1e293b);
 }
 
 .view-mode-tabs__tab--active {
-  color: #60a5fa;
-  border-color: #1d4ed8;
+  color: var(--k-fg-accent, #60a5fa);
+  border-color: var(--k-border-focus, #1d4ed8);
   background: rgba(29, 78, 216, 0.12);
 }
 
 .view-mode-tabs__clear-highlight {
   margin-left: auto;
   background: #3a2d0e;
-  border: 1px solid #fbbf24;
+  border: 1px solid var(--k-warning, #fbbf24);
   color: #fde68a;
   font-size: 0.65rem;
   text-transform: none;
@@ -236,7 +236,7 @@ onUnmounted(() => {
 }
 
 .view-mode-tabs__empty {
-  color: #475569;
+  color: var(--k-fg-subtle, #475569);
   font-size: 0.875rem;
   padding: 1rem;
 }

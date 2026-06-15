@@ -31,9 +31,9 @@ const isSnapshot =
   width: 1.85rem;
   height: 1.85rem;
   border-radius: 999px;
-  background: #0d1b2a;
-  color: #93c5fd;
-  border: 1px solid #1e3a5f;
+  background: var(--k-bg-widget, #0d1b2a);
+  color: var(--k-fg-accent, #93c5fd);
+  border: 1px solid var(--k-border, #1e3a5f);
   font-size: 0.9rem;
   font-weight: 700;
   cursor: pointer;
@@ -41,7 +41,7 @@ const isSnapshot =
   transition: background 0.12s, color 0.12s;
 }
 .tour-help:hover {
-  background: #15233a;
-  color: #bfdbfe;
+  background: var(--k-bg-hover, #15233a);
+  color: var(--k-fg-accent, #bfdbfe);
 }
 </style>

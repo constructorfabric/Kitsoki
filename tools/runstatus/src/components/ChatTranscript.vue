@@ -163,7 +163,7 @@ watch(
   padding: 20px 24px;
   height: 100%;
   box-sizing: border-box;
-  background: #0f1115;
+  background: var(--k-bg-inset, #0f1115);
 }
 
 .chat-row {
@@ -200,11 +200,11 @@ watch(
 }
 
 .chat-avatar--user {
-  background: #2563eb;
+  background: var(--k-button-hover-bg, #2563eb);
 }
 
 .chat-avatar--agent {
-  background: #475569;
+  background: var(--k-fg-subtle, #475569);
 }
 
 .chat-bubble {
@@ -225,8 +225,8 @@ watch(
 }
 
 .chat-bubble--user {
-  background: #2563eb;
-  color: #fff;
+  background: var(--k-button-hover-bg, #2563eb);
+  color: var(--k-button-fg, #fff);
   border-bottom-right-radius: 4px;
 }
 
@@ -236,9 +236,9 @@ watch(
    prose-heavy room views would render dark-on-dark and vanish. The plain-text
    fallback inherits this dark text too, so both render paths stay legible. */
 .chat-bubble--agent {
-  background: #f7f8fa;
-  color: #1f2430;
-  border: 1px solid #d8dbe2;
+  background: var(--k-paper-bg, #f7f8fa);
+  color: var(--k-paper-fg, #1f2430);
+  border: 1px solid var(--k-paper-border, #d8dbe2);
   border-bottom-left-radius: 4px;
 }
 
@@ -361,24 +361,24 @@ watch(
    scoped-style attribute — target them with :deep so the rules apply. */
 .chat-view :deep(.cv-h) {
   font-weight: 700;
-  color: #11151c;
+  color: var(--k-paper-fg, #11151c);
 }
 .chat-view :deep(strong) {
   font-weight: 700;
-  color: #11151c;
+  color: var(--k-paper-fg, #11151c);
 }
 .chat-view :deep(code) {
-  background: #eceef2;
+  background: var(--k-bg-hover, #eceef2);
   border-radius: 4px;
   padding: 0.05em 0.3em;
-  color: #b3306b;
+  color: var(--k-fg-code, #b3306b);
 }
 /* Fenced code block (```json …```): a real code box, not raw backticks. The
    <pre> owns its own whitespace (white-space: pre), so it is exempt from the
    surrounding pre-wrap room-view layout. */
 .chat-view :deep(.cv-pre) {
-  background: #1e2430;
-  border: 1px solid #cfd4dd;
+  background: var(--k-bg-deep, #1e2430);
+  border: 1px solid var(--k-paper-border, #cfd4dd);
   border-radius: 6px;
   padding: 0.55rem 0.7rem;
   margin: 0.4rem 0;
@@ -390,7 +390,7 @@ watch(
 .chat-view :deep(.cv-pre code) {
   background: none;
   padding: 0;
-  color: #d6deeb;
+  color: var(--k-fg, #d6deeb);
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 }
 

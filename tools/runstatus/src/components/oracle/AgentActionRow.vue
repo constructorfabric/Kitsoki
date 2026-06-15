@@ -157,13 +157,13 @@ const costStr = computed(() => fmtCost(props.row.cost));
 
 <style scoped>
 .aar {
-  border: 1px solid #1e293b;
+  border: 1px solid var(--k-border, #1e293b);
   border-radius: 4px;
   overflow: hidden;
 }
 
 .aar--error {
-  border-color: #7f1d1d;
+  border-color: var(--k-error, #7f1d1d);
 }
 
 .aar--host-nudge {
@@ -181,13 +181,13 @@ const costStr = computed(() => fmtCost(props.row.cost));
   align-items: center;
   gap: 0.4rem;
   padding: 0.25rem 0.5rem;
-  background: #0a1728;
+  background: var(--k-bg-widget, #0a1728);
   cursor: pointer;
   font-size: 0.75rem;
 }
 
 .aar__header:hover {
-  background: #0f1e38;
+  background: var(--k-bg-hover, #0f1e38);
 }
 
 .aar__kind-chip {
@@ -206,19 +206,19 @@ const costStr = computed(() => fmtCost(props.row.cost));
   letter-spacing: 0;
 }
 
-.aar__kind-chip--system    { background: #1e293b; color: #94a3b8; }
-.aar__kind-chip--reasoning { background: #0c2a3e; color: #7dd3fc; }
+.aar__kind-chip--system    { background: var(--k-bg-input, #1e293b); color: var(--k-fg-muted, #94a3b8); }
+.aar__kind-chip--reasoning { background: #0c2a3e; color: var(--k-fg-accent, #7dd3fc); }
 .aar__kind-chip--tool      { background: #3a2d08; color: #fde68a; }
 .aar__kind-chip--mcp       { background: #2e1065; color: #d8b4fe; }
 .aar__kind-chip--guardrail { background: #1e1b4b; color: #a5b4fc; }
 .aar__kind-chip--host-nudge { background: #500724; color: #f9a8d4; }
 .aar__kind-chip--banner    { background: #500724; color: #f9a8d4; }
-.aar__kind-chip--result    { background: #042f1c; color: #6ee7b7; }
+.aar__kind-chip--result    { background: var(--k-success-bg, #042f1c); color: var(--k-success, #6ee7b7); }
 
 .aar__title {
   font-family: ui-monospace, monospace;
   font-size: 0.72rem;
-  color: #e2e8f0;
+  color: var(--k-fg, #e2e8f0);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -232,12 +232,12 @@ const costStr = computed(() => fmtCost(props.row.cost));
   border-radius: 2px;
 }
 
-.aar__verdict--pass { background: #052e16; color: #86efac; }
-.aar__verdict--fail { background: #2d0707; color: #fca5a5; }
+.aar__verdict--pass { background: var(--k-success-bg, #052e16); color: var(--k-success, #86efac); }
+.aar__verdict--fail { background: #2d0707; color: var(--k-error, #fca5a5); }
 
 .aar__err-flag {
   background: #7f1d1d;
-  color: #fca5a5;
+  color: var(--k-error, #fca5a5);
   font-size: 0.6rem;
   padding: 0.05rem 0.25rem;
   border-radius: 2px;
@@ -248,7 +248,7 @@ const costStr = computed(() => fmtCost(props.row.cost));
 }
 
 .aar__tokens {
-  color: #475569;
+  color: var(--k-fg-subtle, #475569);
   font-size: 0.65rem;
   font-family: ui-monospace, monospace;
   white-space: nowrap;
@@ -261,13 +261,13 @@ const costStr = computed(() => fmtCost(props.row.cost));
 }
 
 .aar__offset {
-  color: #475569;
+  color: var(--k-fg-subtle, #475569);
   font-size: 0.65rem;
   font-family: ui-monospace, monospace;
 }
 
 .aar__toggle {
-  color: #475569;
+  color: var(--k-fg-subtle, #475569);
   font-size: 0.75rem;
   min-width: 0.8rem;
   text-align: center;
@@ -275,8 +275,8 @@ const costStr = computed(() => fmtCost(props.row.cost));
 
 .aar__body {
   padding: 0.35rem 0.5rem;
-  background: #080f1a;
-  border-top: 1px solid #1e293b;
+  background: var(--k-bg-inset, #080f1a);
+  border-top: 1px solid var(--k-border, #1e293b);
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
@@ -289,22 +289,22 @@ const costStr = computed(() => fmtCost(props.row.cost));
 }
 
 .aar__label {
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   font-size: 0.68rem;
 }
 
 .aar__label--err {
-  color: #f87171;
+  color: var(--k-error, #f87171);
 }
 
 .aar__pre {
-  background: #080f1a;
-  border: 1px solid #1e293b;
+  background: var(--k-bg-inset, #080f1a);
+  border: 1px solid var(--k-border, #1e293b);
   border-radius: 3px;
   padding: 0.3rem 0.5rem;
   font-family: ui-monospace, monospace;
   font-size: 0.7rem;
-  color: #7dd3fc;
+  color: var(--k-fg-code, #7dd3fc);
   white-space: pre-wrap;
   word-break: break-word;
   margin: 0;
@@ -313,6 +313,6 @@ const costStr = computed(() => fmtCost(props.row.cost));
 }
 
 .aar__pre--err {
-  color: #fca5a5;
+  color: var(--k-error, #fca5a5);
 }
 </style>

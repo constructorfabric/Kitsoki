@@ -93,18 +93,18 @@ const slots = computed(() => {
 }
 
 .od-label {
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   font-size: 0.75rem;
 }
 
 .od-pre {
-  background: #080f1a;
-  border: 1px solid #1e293b;
+  background: var(--k-bg-deep, #080f1a);
+  border: 1px solid var(--k-border, #1e293b);
   border-radius: 4px;
   padding: 0.4rem 0.6rem;
   font-family: ui-monospace, monospace;
   font-size: 0.72rem;
-  color: #7dd3fc;
+  color: var(--k-fg-code, #7dd3fc);
   white-space: pre-wrap;
   word-break: break-word;
   margin: 0;
@@ -113,6 +113,6 @@ const slots = computed(() => {
 }
 
 .od-pre--response {
-  color: #e2e8f0;
+  color: var(--k-fg, #e2e8f0);
 }
 </style>

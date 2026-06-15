@@ -13,72 +13,13 @@ import * as crypto from 'node:crypto';
 import { Relay, type InboundEnvelope, type OutboundEnvelope } from './relay';
 import type { Backend } from './backend';
 
-/**
- * Additive, webview-only theme shim. Maps SPA tokens to VS Code theme vars AND
- * re-themes the agent room-view "paper" card to the dark editor chrome.
- *
- * The SPA renders the agent room view (`.chat-bubble--agent` → `ViewElement`) as
- * a deliberate LIGHT "paper" card on the dark chat pane — that is the intended
- * look in the browser (a sheet of paper on a dark desk). Inside VS Code, however,
- * a large white card against the dark editor chrome reads as an unthemed panel
- * and breaks the "native theming" the embed promises. This shim is scoped to the
- * webview only (it is never injected into the browser SPA), so it darkens the
- * paper card for the embed without altering the web UI.
- *
- * The room-view palette (ViewElement.vue / ChatTranscript.vue) is `scoped` with
- * hardcoded light hex values, so these overrides use VS Code theme vars at high
- * specificity (`!important`) to flip the card surface dark and its text light.
- */
-const THEME_SHIM = `
-:root {
-  --kitsoki-bg: var(--vscode-editor-background);
-  --kitsoki-fg: var(--vscode-editor-foreground);
-  --kitsoki-focus: var(--vscode-focusBorder);
-  --kitsoki-border: var(--vscode-panel-border);
-}
-html, body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
-
-/* ── Agent room-view "paper" card → dark editor surface (embed only) ──────── */
-.chat-bubble--agent {
-  background: var(--vscode-editorWidget-background, var(--vscode-editor-background)) !important;
-  color: var(--vscode-editor-foreground) !important;
-  border: 1px solid var(--vscode-panel-border, var(--vscode-widget-border)) !important;
-}
-/* Flip the light room-view text/keys/headings to the editor foreground so they
-   stay legible on the now-dark card. (Scoped classes → high-specificity host.) */
-html body .chat-bubble--agent .ve-prose,
-html body .chat-bubble--agent .ve-heading,
-html body .chat-bubble--agent .ve-list,
-html body .chat-bubble--agent .ve-kv,
-html body .chat-bubble--agent .ve-kv-value,
-html body .chat-bubble--agent .ve-bold,
-html body .chat-bubble--agent .chat-view,
-html body .chat-bubble--agent .chat-view .cv-h,
-html body .chat-bubble--agent .chat-view strong {
-  color: var(--vscode-editor-foreground) !important;
-}
-html body .chat-bubble--agent .ve-kv-key,
-html body .chat-bubble--agent .ve-list-hint,
-html body .chat-bubble--agent .ve-media-fallback {
-  color: var(--vscode-descriptionForeground, var(--vscode-editor-foreground)) !important;
-  opacity: 0.85;
-}
-/* Markdown table (the 5-day forecast) + its cells → dark grid. The v-html nodes
-   carry no scoped attribute, so plain descendant selectors reach them. */
-html body .chat-bubble--agent .chat-view table,
-html body .chat-bubble--agent .chat-view th,
-html body .chat-bubble--agent .chat-view td {
-  background: transparent !important;
-  color: var(--vscode-editor-foreground) !important;
-  border-color: var(--vscode-panel-border, var(--vscode-widget-border)) !important;
-}
-/* Inline code on the dark card. */
-html body .chat-bubble--agent .ve-inline-code,
-html body .chat-bubble--agent .chat-view code {
-  background: var(--vscode-textCodeBlock-background, rgba(255,255,255,0.08)) !important;
-  color: var(--vscode-textPreformat-foreground, var(--vscode-editor-foreground)) !important;
-}
-`;
+// The webview-only THEME_SHIM was retired: the SPA now consumes VS Code theme
+// variables natively. Every component's colors resolve through the `--k-*` token
+// layer (tools/runstatus/src/theme.css), each a `var(--vscode-*, <fallback>)`
+// chain — so inside a webview the editor theme drives the UI directly (and tracks
+// live theme switches with zero extension round-trip), while a plain browser falls
+// back to the original palette. The agent room-view "paper" card now follows the
+// editor surface via `--k-paper-*` instead of being force-darkened here.
 
 /** Which kitsoki surface a webview hosts. Injected as `window.__KITSOKI_SURFACE`
  * so the SPA mounts the right single-surface view (trace / graph). A webview with
@@ -119,14 +60,14 @@ export function renderSpaHtml(
   html = html.replace(/<script(?![^>]*\bnonce=)/g, `<script nonce="${nonce}"`);
 
   const cspMeta = `<meta http-equiv="Content-Security-Policy" content="${csp}">`;
-  const themeTag = `<style>${THEME_SHIM}</style>`;
   // Surface marker — read by the SPA on boot to mount a single decomposed view.
   // Omitted for the chat panel so it boots the full SPA. Uses the SAME nonce as
-  // every other script so script-src lets it run.
+  // every other script so script-src lets it run. (No theme shim: the SPA themes
+  // itself natively off the injected --vscode-* vars via its --k-* token layer.)
   const surfaceTag = surface
     ? `<script nonce="${nonce}">window.__KITSOKI_SURFACE=${JSON.stringify(surface)};</script>`
     : '';
-  const head = `${cspMeta}\n${themeTag}${surfaceTag ? `\n${surfaceTag}` : ''}`;
+  const head = `${cspMeta}${surfaceTag ? `\n${surfaceTag}` : ''}`;
 
   if (/<head[^>]*>/i.test(html)) {
     html = html.replace(/<head[^>]*>/i, (m) => `${m}\n${head}`);

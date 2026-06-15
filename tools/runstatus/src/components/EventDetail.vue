@@ -310,14 +310,14 @@ const isTransitionEvent = computed(() => props.event.msg.startsWith("machine.tra
 }
 
 .event-detail__key {
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   min-width: 5.5rem;
   flex-shrink: 0;
   font-size: 0.75rem;
 }
 
 .event-detail__val {
-  color: #e2e8f0;
+  color: var(--k-fg, #e2e8f0);
   word-break: break-word;
 }
 
@@ -331,13 +331,13 @@ const isTransitionEvent = computed(() => props.event.msg.startsWith("machine.tra
 }
 
 .event-detail__pre {
-  background: #080f1a;
-  border: 1px solid #1e293b;
+  background: var(--k-bg-deep, #080f1a);
+  border: 1px solid var(--k-border, #1e293b);
   border-radius: 4px;
   padding: 0.4rem 0.6rem;
   font-family: ui-monospace, monospace;
   font-size: 0.75rem;
-  color: #7dd3fc;
+  color: var(--k-fg-code, #7dd3fc);
   white-space: pre-wrap;
   word-break: break-word;
   margin: 0;
@@ -346,8 +346,8 @@ const isTransitionEvent = computed(() => props.event.msg.startsWith("machine.tra
 code.event-detail__val {
   font-family: ui-monospace, monospace;
   font-size: 0.75rem;
-  color: #7dd3fc;
-  background: #080f1a;
+  color: var(--k-fg-code, #7dd3fc);
+  background: var(--k-bg-deep, #080f1a);
   padding: 0.05rem 0.25rem;
   border-radius: 3px;
 }
@@ -360,9 +360,9 @@ code.event-detail__val {
 }
 
 .event-detail__copy-btn {
-  background: #1e293b;
-  border: 1px solid #334155;
-  color: #94a3b8;
+  background: var(--k-bg-input, #1e293b);
+  border: 1px solid var(--k-border, #334155);
+  color: var(--k-fg-muted, #94a3b8);
   cursor: pointer;
   padding: 0.1rem 0.4rem;
   border-radius: 3px;
@@ -370,12 +370,12 @@ code.event-detail__val {
 }
 
 .event-detail__copy-btn:hover {
-  background: #334155;
-  color: #e2e8f0;
+  background: var(--k-bg-hover, #334155);
+  color: var(--k-fg, #e2e8f0);
 }
 
 .event-detail__pre--error {
-  color: #f87171;
+  color: var(--k-error, #f87171);
   border-color: #7f1d1d;
 }
 
@@ -383,8 +383,8 @@ code.event-detail__val {
   display: block;
   margin-top: 0.3rem;
   background: none;
-  border: 1px solid #334155;
-  color: #60a5fa;
+  border: 1px solid var(--k-border, #334155);
+  color: var(--k-fg-accent, #60a5fa);
   cursor: pointer;
   font-size: 0.75rem;
   padding: 0.15rem 0.5rem;
@@ -392,7 +392,7 @@ code.event-detail__val {
 }
 
 .event-detail__toggle-btn:hover {
-  background: #1e293b;
+  background: var(--k-bg-hover, #1e293b);
 }
 
 /* Decision detail — intent chips */
@@ -408,25 +408,25 @@ code.event-detail__val {
   font-size: 0.7rem;
   padding: 0.1rem 0.4rem;
   border-radius: 3px;
-  background: #1e293b;
-  border: 1px solid #334155;
-  color: #94a3b8;
+  background: var(--k-bg-input, #1e293b);
+  border: 1px solid var(--k-border, #334155);
+  color: var(--k-fg-muted, #94a3b8);
 }
 
 .event-detail__intent-chip--chosen {
-  background: #1e3a5f;
-  border-color: #3b82f6;
-  color: #93c5fd;
+  background: var(--k-bg-selection, #1e3a5f);
+  border-color: var(--k-border-focus, #3b82f6);
+  color: var(--k-fg-accent, #93c5fd);
   font-weight: 600;
 }
 
 .event-detail__val--chosen {
-  color: #93c5fd;
+  color: var(--k-fg-accent, #93c5fd);
   font-weight: 600;
 }
 
 .event-detail__val--warn {
-  color: #fbbf24;
+  color: var(--k-warning, #fbbf24);
   font-weight: 600;
 }
 
