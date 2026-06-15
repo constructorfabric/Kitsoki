@@ -60,6 +60,19 @@ export const DEV_STORY_PRD_DESIGN_TOUR_STEPS: readonly TourStep[] = [
     drive: [{"type":"wait-state","state":"main"},{"type":"type-and-send","text":"prd"},{"type":"wait-state","state":"prd.idle"},{"type":"reveal-turn"},{"type":"type-and-send","text":"I want a kitsoki tour subcommand to render demo videos from the binary"},{"type":"wait-state","state":"prd.idle"},{"type":"reveal-turn"}],
   },
   {
+    id: "ds-prd-search",
+    route: "interactive",
+    target: "chat-transcript",
+    title: "Scan for prior art first",
+    body: "Before a single question, kitsoki scouts the existing PRDs and proposals for overlap — so a duplicate idea is caught up front, not after a redundant draft is written. Here the scan comes back clean: a net-new capability, no overlapping work. `confirm` carries it into the clarification round.",
+    placement: "right",
+    kind: "explain",
+    advance: "next",
+    waitForTarget: "chat-transcript",
+    dwellMs: 6000,
+    drive: [{"type":"click-intent","intent":"prd__start"},{"type":"wait-state","state":"prd.search"},{"type":"reveal-turn"}],
+  },
+  {
     id: "ds-prd-clarify",
     route: "interactive",
     target: "chat-transcript",
@@ -70,7 +83,7 @@ export const DEV_STORY_PRD_DESIGN_TOUR_STEPS: readonly TourStep[] = [
     advance: "next",
     waitForTarget: "chat-transcript",
     dwellMs: 6500,
-    drive: [{"type":"click-intent","intent":"prd__start"},{"type":"wait-state","state":"prd.search"},{"type":"reveal-turn"},{"type":"click-intent","intent":"prd__confirm"},{"type":"wait-state","state":"prd.clarifying"},{"type":"reveal-turn"},{"type":"type-and-send","text":"kitsoki maintainers; the metric is demos-rendered-without-Playwright"},{"type":"wait-state","state":"prd.clarifying"},{"type":"reveal-turn"},{"type":"type-and-send","text":"submit"},{"type":"wait-state","state":"prd.brief"},{"type":"reveal-turn"},{"type":"click-intent","intent":"prd__clarify"},{"type":"wait-state","state":"prd.clarifying"},{"type":"reveal-turn"},{"type":"type-and-send","text":"Must run headless in CI; ffmpeg + headless Chrome only, no Node"},{"type":"wait-state","state":"prd.clarifying"},{"type":"reveal-turn"}],
+    drive: [{"type":"click-intent","intent":"prd__confirm"},{"type":"wait-state","state":"prd.clarifying"},{"type":"reveal-turn"},{"type":"type-and-send","text":"kitsoki maintainers; the metric is demos-rendered-without-Playwright"},{"type":"wait-state","state":"prd.clarifying"},{"type":"reveal-turn"},{"type":"type-and-send","text":"submit"},{"type":"wait-state","state":"prd.brief"},{"type":"reveal-turn"},{"type":"click-intent","intent":"prd__clarify"},{"type":"wait-state","state":"prd.clarifying"},{"type":"reveal-turn"},{"type":"type-and-send","text":"Must run headless in CI; ffmpeg + headless Chrome only, no Node"},{"type":"wait-state","state":"prd.clarifying"},{"type":"reveal-turn"}],
   },
   {
     id: "ds-prd-draft",
