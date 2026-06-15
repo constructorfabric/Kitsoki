@@ -997,6 +997,18 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 				slog.String("outcome", "clarify"),
 				slog.String("error", err.Error()),
 			)
+			// A ClarifyResponse is the LLM/router saying "I couldn't map this
+			// free text to any allowed intent" — a genuine no-match. For a room
+			// that opted into the oracle off-ramp, intercept it here and hand the
+			// user's ORIGINAL free text to the off-ramp converse turn instead of
+			// returning the soft clarify. For every other (non-opted-in) room the
+			// behavior below is byte-identical to before: maybeOffRamp is scoped
+			// to off-ramp rooms via the State.OracleOffRamp gate, so it returns
+			// (nil, false) in the common case (see offpath.go's isNoMatchCode).
+			if outcome, ok := o.maybeOffRamp(ctx, sid, journey.State, input,
+				codeLLMClarification, 0, allowedNames, turnNum); ok {
+				return outcome, nil
+			}
 			msg := strings.TrimSpace(clarify.Message)
 			if msg == "" {
 				msg = "The router didn't understand. Try rephrasing or pick an action from the menu."
@@ -1004,7 +1016,7 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 			return &TurnOutcome{
 				Mode:         ModeRejected,
 				NewState:     journey.State,
-				ErrorCode:    intent.ErrorCode("LLM_CLARIFICATION"),
+				ErrorCode:    codeLLMClarification,
 				ErrorMessage: msg,
 			}, nil
 		}

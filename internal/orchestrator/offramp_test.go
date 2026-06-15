@@ -89,6 +89,31 @@ func (m offRampNoMatchMachine) Turn(ctx context.Context, cur app.StatePath, w wo
 	return m.Machine.Turn(ctx, cur, w, call)
 }
 
+// offRampClarifyHarness models the dominant free-text no-match: the router/LLM
+// answered but could not map the utterance to any allowed intent, so RunTurn
+// returns a *harness.ClarifyResponse. The priming utterance "look" still routes
+// to the real `look` intent so the first foreground turn materializes the root
+// state; every other utterance clarifies. This drives the clarify branch in
+// orchestrator.go — the entry point the off-ramp now intercepts — without ever
+// reaching machine.Turn (the clarify is returned before the machine runs).
+type offRampClarifyHarness struct{}
+
+func (offRampClarifyHarness) RunTurn(ctx context.Context, in harness.TurnInput) (mcp.CallToolParams, error) {
+	if in.UserText == "look" {
+		return mcp.CallToolParams{
+			Name: "transition",
+			Arguments: map[string]any{
+				"intent":     "look",
+				"confidence": 0.9,
+			},
+		}, nil
+	}
+	return mcp.CallToolParams{}, &harness.ClarifyResponse{
+		Message: "I'm not sure which action you mean. Try rephrasing.",
+	}
+}
+func (offRampClarifyHarness) Close() error { return nil }
+
 // offRampFakeOraclePath resolves the shared fake-oracle.sh stub (the converse
 // stand-in) by absolute path. White-box sibling of offpath_test.go's
 // fakeOraclePath, replicated because that helper lives in the orchestrator_test
@@ -382,6 +407,115 @@ func TestTurn_OffRampWiring_NoMatchInNonOffRampRoom(t *testing.T) {
 	}
 	require.True(t, sawRejectedTurnEnded,
 		"a non-off-ramp room must persist the ordinary TurnEnded(rejected)")
+}
+
+// TestTurn_OffRampWiring_ClarifyInOffRampRoom is the core correctness proof: an
+// unroutable free-text utterance drives the harness to return a
+// *harness.ClarifyResponse, which orchestrator.go's clarify branch must now
+// route into the off-ramp (NOT return as a soft ModeRejected{LLM_CLARIFICATION})
+// because the resting `idea` room opted in. Asserts ModeOffPath with the
+// converse answer in the View, state+world unchanged, an
+// OffPathEntered{reason: off_ramp, error_code: LLM_CLARIFICATION} persisted, and
+// NO TurnEnded(rejected) for the turn. This exercises the REAL entry point the
+// older helper-level tests bypass — the clarify free-text no-match that surfaces
+// before any machine.Turn ve.Code, which was the inert path the rewire fixes.
+func TestTurn_OffRampWiring_ClarifyInOffRampRoom(t *testing.T) {
+	orch, raw, sid := setupOffRampOrchDef(t, offRampApp(), offRampClarifyHarness{}, false)
+	ctx := context.Background()
+
+	// Prime: one successful `look` turn materializes the root `idea` state.
+	_, err := orch.Turn(ctx, sid, "look")
+	require.NoError(t, err)
+	jBefore, err := orch.LoadJourney(sid)
+	require.NoError(t, err)
+	require.Equal(t, app.StatePath("idea"), jBefore.State, "resting in the off-ramp room")
+
+	histBefore, err := raw.LoadHistory(sid)
+	require.NoError(t, err)
+	priorEvents := len(histBefore)
+
+	outcome, err := orch.Turn(ctx, sid, "how do you spell discovery?")
+	require.NoError(t, err)
+	require.NotNil(t, outcome)
+	require.Equal(t, ModeOffPath, outcome.Mode,
+		"an unroutable free-text clarify in an off-ramp room must off-ramp, not soft-reject")
+	require.Contains(t, outcome.View, "ANSWER for q=[how do you spell discovery?]",
+		"the converse answer should be surfaced as the outcome view")
+	require.Equal(t, app.StatePath("idea"), outcome.NewState, "off-ramp must not advance state")
+	require.Equal(t, []string{"look"}, outcome.AllowedIntents, "the room menu must persist")
+
+	// State + world unchanged.
+	jAfter, err := orch.LoadJourney(sid)
+	require.NoError(t, err)
+	require.Equal(t, jBefore.State, jAfter.State, "off-ramp must not mutate state")
+	require.Equal(t, len(jBefore.World.Vars), len(jAfter.World.Vars), "off-ramp must not mutate world")
+
+	// Among the events the clarify turn appended: an OffPathEntered labeled
+	// reason: off_ramp with error_code: LLM_CLARIFICATION, and NO
+	// TurnEnded(rejected) / transition events.
+	hist, err := raw.LoadHistory(sid)
+	require.NoError(t, err)
+	var sawOffRampEntered bool
+	for _, ev := range hist[priorEvents:] {
+		switch ev.Kind {
+		case store.TransitionApplied, store.StateEntered, store.StateExited:
+			t.Fatalf("off-ramp must not emit %s", ev.Kind)
+		case store.TurnEnded:
+			require.NotEqual(t, "rejected", outcomeOf(ev),
+				"off-ramp must not persist a TurnEnded(rejected); the clarify was intercepted")
+		case store.OffPathEntered:
+			if reasonOf(ev) == "off_ramp" {
+				sawOffRampEntered = true
+				require.Equal(t, "LLM_CLARIFICATION", errorCodeOf(ev),
+					"the OffPathEntered must record the triggering clarify code")
+			}
+		}
+	}
+	require.True(t, sawOffRampEntered,
+		"expected an OffPathEntered{reason: off_ramp} from the wired clarify branch")
+}
+
+// TestTurn_OffRampWiring_ClarifyInNonOffRampRoom is the gate proof: the same
+// unroutable clarify driven through Turn() against the non-opted-in `menu` room
+// must remain byte-identical to today — ModeRejected{LLM_CLARIFICATION}, with no
+// off-ramp entry. This shows the rewire is scoped strictly to off-ramp rooms.
+func TestTurn_OffRampWiring_ClarifyInNonOffRampRoom(t *testing.T) {
+	orch, raw, sid := setupOffRampOrchDef(t, offRampAppRootedAt("menu"),
+		offRampClarifyHarness{}, false)
+	ctx := context.Background()
+
+	// Prime: one successful `look` turn materializes the root `menu` state.
+	_, err := orch.Turn(ctx, sid, "look")
+	require.NoError(t, err)
+	jBefore, err := orch.LoadJourney(sid)
+	require.NoError(t, err)
+	require.Equal(t, app.StatePath("menu"), jBefore.State, "resting in the non-off-ramp room")
+
+	outcome, err := orch.Turn(ctx, sid, "how do you spell discovery?")
+	require.NoError(t, err)
+	require.NotNil(t, outcome)
+	require.Equal(t, ModeRejected, outcome.Mode,
+		"a clarify in a non-off-ramp room must soft-reject, unchanged from today")
+	require.Equal(t, intent.ErrorCode("LLM_CLARIFICATION"), outcome.ErrorCode,
+		"the clarify code must be preserved on the non-opted-in path")
+
+	hist, err := raw.LoadHistory(sid)
+	require.NoError(t, err)
+	for _, ev := range hist {
+		if ev.Kind == store.OffPathEntered && reasonOf(ev) == "off_ramp" {
+			t.Fatalf("a non-off-ramp room must not enter the off-ramp")
+		}
+	}
+}
+
+// errorCodeOf extracts the `error_code` string from an event payload.
+func errorCodeOf(ev store.Event) string {
+	var m map[string]any
+	if json.Unmarshal(ev.Payload, &m) != nil {
+		return ""
+	}
+	c, _ := m["error_code"].(string)
+	return c
 }
 
 // outcomeOf extracts the `outcome` string from a TurnEnded event payload.

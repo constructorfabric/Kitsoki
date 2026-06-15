@@ -26,12 +26,38 @@ type recordingFile struct {
 }
 
 // recordingEntry is one (state, input, intent, slots) record in the recording.
+//
+// An entry is one of two kinds:
+//
+//   - Intent entry (the default): `intent.name` is set and the entry maps the
+//     (state, input) pair to that intent call.
+//   - Clarify entry: `clarify: true` is set and `intent` is omitted. The entry
+//     deterministically reproduces the "router couldn't map this utterance"
+//     outcome — RunTurn returns a [*ClarifyResponse] (the same error type the
+//     live harness returns when the LLM answers without calling the tool),
+//     carrying the optional `message:` as free-form text. This lets a no-LLM
+//     replay demo trigger the orchestrator's clarify branch (and, for an
+//     off-ramp room, the oracle off-ramp) without an LLM.
+//
+// Example clarify entry:
+//
+//	- state: "ROOT.lobby"
+//	  input: "tell me a joke about quantum physics"
+//	  clarify: true
+//	  message: "I can route you to a room, but I can't free-associate."
 type recordingEntry struct {
 	State      string          `yaml:"state"`
 	Input      string          `yaml:"input"`
 	Intent     recordingIntent `yaml:"intent"`
 	Confidence float64         `yaml:"confidence"`
 	MajorityOf int             `yaml:"majority_of"`
+	// Clarify marks this entry as a deterministic no-match: RunTurn returns a
+	// *ClarifyResponse instead of an intent. When true, `intent` is ignored
+	// (and must be omitted; see the load-time invariant in NewReplay).
+	Clarify bool `yaml:"clarify"`
+	// Message is the free-form clarification text surfaced when Clarify is true.
+	// Optional; the orchestrator falls back to a generic hint when empty.
+	Message string `yaml:"message"`
 }
 
 // recordingIntent holds the intent name and slot map within a recording entry.
@@ -64,6 +90,14 @@ func (e *ErrRecordingMiss) Error() string {
 //  2. Case-insensitive match on (state, input) — both sides lowercased, trimmed.
 //
 // The first match wins. If no match is found, ErrRecordingMiss is returned.
+//
+// A matched entry yields one of two outcomes:
+//   - Intent entry: RunTurn returns the recorded intent call.
+//   - Clarify entry (`clarify: true`): RunTurn returns a [*ClarifyResponse]
+//     with the entry's `message:`, identical to the live harness's "the LLM
+//     couldn't map this" path. This lets a deterministic, no-LLM replay demo
+//     drive the orchestrator's clarify branch (and an opt-in oracle off-ramp).
+//     See recordingEntry for the on-disk shape.
 type ReplayHarness struct {
 	// exact maps (state, input) → entry using the original casing.
 	exact map[recordingKey]*recordingEntry
@@ -107,8 +141,14 @@ func NewReplay(recordingPath string) (*ReplayHarness, error) {
 		if e.Input == "" {
 			return nil, fmt.Errorf("harness/replay: recording entry %d has empty input", i)
 		}
-		if e.Intent.Name == "" {
-			return nil, fmt.Errorf("harness/replay: recording entry %d has empty intent name", i)
+		if e.Clarify {
+			// A clarify entry yields a *ClarifyResponse, not an intent — the
+			// two kinds are mutually exclusive to keep authoring unambiguous.
+			if e.Intent.Name != "" {
+				return nil, fmt.Errorf("harness/replay: recording entry %d sets clarify:true and intent.name=%q (a clarify entry must omit intent)", i, e.Intent.Name)
+			}
+		} else if e.Intent.Name == "" {
+			return nil, fmt.Errorf("harness/replay: recording entry %d has empty intent name (set intent.name, or clarify:true for a deterministic no-match)", i)
 		}
 
 		exactKey := recordingKey{State: e.State, Input: e.Input}
@@ -145,23 +185,13 @@ func (h *ReplayHarness) RunTurn(ctx context.Context, in TurnInput) (mcp.CallTool
 	// 1. Exact match.
 	exactKey := recordingKey{State: state, Input: in.UserText}
 	if e, ok := h.exact[exactKey]; ok {
-		l.DebugContext(ctx, trace.EvHarnessRecordingHit,
-			slog.String("input", in.UserText),
-			slog.String("intent", e.Intent.Name),
-			slog.Any("slots", e.Intent.Slots),
-		)
-		return entryToParams(e), nil
+		return h.resolve(ctx, l, in.UserText, e)
 	}
 
 	// 2. Case-insensitive + trimmed match.
 	normKey := recordingKey{State: state, Input: normalizeInput(in.UserText)}
 	if e, ok := h.normalized[normKey]; ok {
-		l.DebugContext(ctx, trace.EvHarnessRecordingHit,
-			slog.String("input", in.UserText),
-			slog.String("intent", e.Intent.Name),
-			slog.Any("slots", e.Intent.Slots),
-		)
-		return entryToParams(e), nil
+		return h.resolve(ctx, l, in.UserText, e)
 	}
 
 	l.DebugContext(ctx, trace.EvHarnessRecordingMiss,
@@ -169,6 +199,28 @@ func (h *ReplayHarness) RunTurn(ctx context.Context, in TurnInput) (mcp.CallTool
 		slog.String("state", state),
 	)
 	return mcp.CallToolParams{}, &ErrRecordingMiss{State: state, Input: in.UserText}
+}
+
+// resolve turns a matched recording entry into a RunTurn result: an intent
+// call for an ordinary entry, or a *ClarifyResponse for a clarify entry (the
+// same error type the live harness returns when the LLM can't map an
+// utterance, so the orchestrator's clarify branch — and any opt-in off-ramp —
+// fires identically under replay).
+func (h *ReplayHarness) resolve(ctx context.Context, l *slog.Logger, input string, e *recordingEntry) (mcp.CallToolParams, error) {
+	if e.Clarify {
+		l.DebugContext(ctx, trace.EvHarnessRecordingHit,
+			slog.String("input", input),
+			slog.String("outcome", "clarify"),
+			slog.String("message", e.Message),
+		)
+		return mcp.CallToolParams{}, &ClarifyResponse{Message: e.Message}
+	}
+	l.DebugContext(ctx, trace.EvHarnessRecordingHit,
+		slog.String("input", input),
+		slog.String("intent", e.Intent.Name),
+		slog.Any("slots", e.Intent.Slots),
+	)
+	return entryToParams(e), nil
 }
 
 // WithLogger sets the logger for trace emission.

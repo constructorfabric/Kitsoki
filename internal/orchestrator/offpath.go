@@ -289,15 +289,36 @@ func (o *Orchestrator) markOffRampEntered(ctx context.Context, sid app.SessionID
 	return o.appendOffPathEventsCtx(ctx, sid, []store.Event{ev})
 }
 
-// isNoMatchCode reports whether code is one of the two genuine no-match
-// rejection codes that the oracle off-ramp intercepts: UNKNOWN_INTENT (a name
-// maps to nothing) and INTENT_UNKNOWN (the LLM couldn't map the utterance).
-// Every other rejection code (GUARD_FAILED, MISSING_SLOTS,
+// codeLLMClarification is the synthetic rejection code the orchestrator stamps
+// when the harness returns a *harness.ClarifyResponse — the LLM/router answered
+// but could not map the free text to any allowed intent. It is the dominant
+// free-text no-match entry point into the off-ramp. It is NOT a machine.Turn
+// ve.Code (machine.Turn never emits it); it originates in orchestrator.go's
+// clarify branch, which now consults maybeOffRamp before returning ModeRejected.
+const codeLLMClarification intent.ErrorCode = "LLM_CLARIFICATION"
+
+// isNoMatchCode reports whether code is a genuine "the user said something we
+// could not map to a declared intent" signal — the only class the oracle
+// off-ramp intercepts. There are three such entry points:
+//
+//   - LLM_CLARIFICATION — free-text path. The harness returned a ClarifyResponse
+//     (the LLM couldn't classify the utterance); orchestrator.go's clarify branch
+//     routes the ORIGINAL free text here. This is the dominant case and the whole
+//     reason the off-ramp exists.
+//   - UNKNOWN_INTENT — MCP/explicit-intent path. A caller submitted an intent
+//     name the app declares nowhere (RunIntent / SubmitDirect).
+//   - INTENT_UNKNOWN — semantic-tie / router-verdict path. The router reports it
+//     could not map the utterance to any allowed intent.
+//
+// Every OTHER rejection code (GUARD_FAILED, MISSING_SLOTS,
 // INTENT_NOT_ALLOWED_IN_STATE, INVALID_SLOT_VALUE, AMBIGUOUS_INTENT) is a
-// meaningful, author-surfaced signal and must NOT off-ramp — so the helper is
-// inert for them (the scope guard, see docs/stories/meta-mode.md).
+// meaningful, author-surfaced signal — the user DID name a real action, it just
+// can't run right now — and must NOT off-ramp. The helper is deliberately inert
+// for them (the scope guard, see docs/stories/meta-mode.md).
 func isNoMatchCode(code intent.ErrorCode) bool {
-	return code == intent.ErrUnknownIntent || code == intent.ErrIntentUnknown
+	return code == intent.ErrUnknownIntent ||
+		code == intent.ErrIntentUnknown ||
+		code == codeLLMClarification
 }
 
 // maybeOffRamp is the single interception point for the oracle off-ramp,
