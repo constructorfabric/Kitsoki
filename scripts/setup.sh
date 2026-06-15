@@ -17,7 +17,9 @@
 #   - gh             (GitHub integration)
 #
 # Also links the project skills (`.agents/skills/<name>/SKILL.md`) into
-# `.claude/skills/<name>` so Claude Code discovers the same skills as Codex.
+# `.claude/skills/<name>` and the project subagents (`.agents/agents/<name>.md`)
+# into `.claude/agents/<name>.md` so Claude Code discovers the same skills and
+# agents as Codex.
 #
 # Run via `make setup`. Re-run any time; safe to run repeatedly.
 set -euo pipefail
@@ -197,6 +199,37 @@ install_skills() {
 	log "linked $n project skill(s) into .claude/skills/"
 }
 
+# --- project agents --------------------------------------------------------
+# Link .agents/agents/<name>.md → .claude/agents/<name>.md (relative symlinks)
+# so Claude Code discovers the project's shared subagents. Same idempotent
+# contract as install_skills: refreshes our own symlinks, never clobbers a real
+# file a human may have placed there.
+install_agents() {
+	local root src dst
+	root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+	src="$root/.agents/agents"
+	dst="$root/.claude/agents"
+	[ -d "$src" ] || { warn "no .agents/agents dir; skipping agent links"; return; }
+	mkdir -p "$dst"
+	local n=0 name link
+	for file in "$src"/*.md; do
+		[ -f "$file" ] || continue
+		name="$(basename "$file")"
+		# AGENTS.md / CLAUDE.md are dir-level notes, not agent definitions.
+		case "$name" in AGENTS.md|CLAUDE.md) continue ;; esac
+		link="$dst/$name"
+		if [ -L "$link" ]; then
+			rm -f "$link"
+		elif [ -e "$link" ]; then
+			warn "agents: $link exists and is not a symlink — leaving as-is"
+			continue
+		fi
+		ln -s "../../.agents/agents/$name" "$link"
+		n=$((n + 1))
+	done
+	log "linked $n project agent(s) into .claude/agents/"
+}
+
 # --- main ------------------------------------------------------------------
 main() {
 	detect_os
@@ -209,6 +242,7 @@ main() {
 	install_pnpm
 	install_optional
 	install_skills
+	install_agents
 
 	log "setup complete"
 	echo
