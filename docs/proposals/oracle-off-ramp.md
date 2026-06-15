@@ -3,22 +3,26 @@
 **Status:** Draft v1. Nothing implemented yet.
 **Kind:**   runtime
 **Epic:**   — standalone
-**Depends on:** [`web-text-input-floor.md`](web-text-input-floor.md) — the
-off-ramp fires only on free text the router can't map; the web UI hides
-the free-text composer whenever a `choice:` widget is present, so without
-that fix the off-ramp ships working in the TUI and dead on the web (the
-intake/discovery/menu rooms that most want it are exactly the ones that
-show a widget).
+**Depends on:** *(satisfied)* the web free-text floor. The off-ramp fires
+only on free text the router can't map, and the web UI used to hide the
+free-text composer whenever a `choice:`/form widget was present — which
+would have shipped the off-ramp working in the TUI and dead on the web
+(the intake/discovery/menu rooms that most want it are exactly the ones
+that show a widget). That floor landed in commit `3154ed6` ("feat(web):
+free-text floor on choice/form rooms"), so the composer is now present on
+those rooms. No remaining dependency.
 
 ## Why
 
 A free-text utterance that no routing tier and no LLM can map to a
-declared intent dead-ends today in a rejection: the no-match path returns
-`ModeRejected` with `UNKNOWN_INTENT` / `INTENT_UNKNOWN`
-(`internal/orchestrator/orchestrator.go:1769`, `semantic.go:335`,
-`helpers.go:367`; codes at `internal/intent/intent.go:34,46`), and the
-TUI re-prompts with "I didn't catch that" plus the menu. For a tightly
-scripted room that is exactly right.
+declared intent dead-ends today in a rejection: the no-match code
+(`UNKNOWN_INTENT` / `INTENT_UNKNOWN`, defined at
+`internal/intent/intent.go:34,46`) arrives in `ve.Code` at the shared
+`ModeRejected` sites — the main-turn LLM path
+(`internal/orchestrator/orchestrator.go:1168`), the RunIntent path
+(`internal/orchestrator/helpers.go:367`), and the apply path
+(`orchestrator.go:2116`) — and the TUI re-prompts with "I didn't catch
+that" plus the menu. For a tightly scripted room that is exactly right.
 
 But many rooms want a softer floor. An intake / discovery room, a
 "describe your idea" room (the dev-story `idea` flow), an exploratory
@@ -26,7 +30,7 @@ main menu — when the user says something the graph can't *act* on, the
 useful response is often a free-form answer, not a bounce back to the
 menu. Today the only free-form escape is `off_path:`, and it is
 **explicit-trigger only**: the user has to type the declared trigger
-string (`OffPathDef.Trigger`, `internal/app/types.go:926`). There is no
+string (`OffPathDef.Trigger`, `internal/app/types.go:1035`). There is no
 way for a *no-match* to fall through into it. Authors who want "answer
 anything the menu doesn't cover" are forced to either over-broaden their
 intent vocabulary (defeating the declared-alphabet moat) or accept the
@@ -70,9 +74,10 @@ surfaced, not chat fodder:
 
 ## Impact
 
-- **Code seams:** `internal/app/types.go` (`State` struct, ~`:618`);
-  `internal/orchestrator/orchestrator.go` no-match rejection sites
-  (`:1769`, ~`:1947`) + `semantic.go:335`; reuses
+- **Code seams:** `internal/app/types.go` (`State` struct, `:693`);
+  the shared `ModeRejected` sites that carry the no-match `ve.Code`
+  (`internal/orchestrator/orchestrator.go:1168`, `helpers.go:367`,
+  `orchestrator.go:2116`); reuses
   `internal/orchestrator/offpath.go:48` (`AskOffPath`).
 - **Vocabulary:** one new `State` field, `oracle_off_ramp:` (table below).
 - **Stories affected:** none change behavior; opt-in. Natural first
@@ -88,7 +93,7 @@ surfaced, not chat fodder:
 
 | Kind | Name | Shape | Notes |
 |---|---|---|---|
-| state field | `oracle_off_ramp` | `true` \| `{ agent?, persona?, banner? }` | scalar-or-struct (custom unmarshal, like `View`); struct fields mirror `OffPathDef` (`types.go:925`) |
+| state field | `oracle_off_ramp` | `true` \| `{ agent?, persona?, banner? }` | scalar-or-struct (custom unmarshal, like `View.UnmarshalYAML` at `internal/app/view_element.go:235`); struct fields mirror `OffPathDef` (`types.go:1034`) |
 
 ```yaml
 idea_intake:
@@ -134,7 +139,7 @@ free text ─▶ routing (4 tiers) ─▶ LLM translate
 ## Decision recording
 
 The interpretive call already records `OffPathQuestion` / `OffPathAnswer`
-(`offpath.go:116,158`). The one gap is *why* the turn went free-form — a
+(`offpath.go:126,168`). The one gap is *why* the turn went free-form — a
 typed `/freeform` trigger and an automatic no-match must be
 distinguishable in the trace. Add a `reason` (and `error_code`,
 `confidence`) field to the `OffPathEntered` event so an off-ramp entry is
@@ -154,12 +159,15 @@ slice; lean is the additive field.)
   flag is meaningless there) with a clear error.
 - **Interception point:** centralize a helper
   `maybeOffRamp(state, input, code) (*TurnOutcome, bool)` consulted
-  immediately before each no-match `ModeRejected` is returned (the
-  main-turn LLM path `orchestrator.go:1769`/~`:1947` and the semantic
-  no-match at `semantic.go`). It checks the resting state's flag and the
-  code, and on a hit delegates to `AskOffPath` and returns a `ModeOffPath`
-  outcome. Routing through one helper keeps the three rejection sites from
-  drifting.
+  immediately before each `ModeRejected` is returned at the shared
+  rejection sites that carry `ve.Code` (the main-turn LLM path
+  `orchestrator.go:1168`, the RunIntent path `helpers.go:367`, and the
+  apply path `orchestrator.go:2116`). The helper keys on `code` so it
+  fires only for the two no-match codes and is inert for every other
+  `ve.Code` (guard/slot/ambiguity) flowing through the same sites; on a
+  hit it checks the resting state's flag, delegates to `AskOffPath`, and
+  returns a `ModeOffPath` outcome. Routing through one helper keeps the
+  rejection sites from drifting.
 - **Lock + persistence:** off-ramp runs under the same per-session lock
   off-path already uses; no new concurrency surface.
 
@@ -218,7 +226,7 @@ dev-story run (Task 3.1), not in CI.
 ## Open questions
 
 1. **Confidence floor vs. hard no-match.** Should a *low-confidence* LLM
-   match (below `routing.semantic_mid_bar`, `types.go:326`) also off-ramp,
+   match (below `routing.semantic_mid_bar`, `types.go:361`) also off-ramp,
    or only a hard `UNKNOWN_INTENT` / `INTENT_UNKNOWN`? *Lean: hard no-match
    only for v1; add a confidence floor once dogfood shows real misroutes.*
 2. **Chat-thread scoping.** Reuse the session off-path thread (continuity
