@@ -59,7 +59,7 @@ tour:
       target: chat-transcript
       title: Talk through the PRD
       body: "`prd` opens a discovery conversation, not a form. We're authoring a concrete kitsoki feature — a `kitsoki tour` subcommand — so the talk stays grounded in what it must do: the interviewer takes the pitch and sharpens it into a crisp problem statement before any questions or drafting begin."
-      placement: left
+      placement: right
       kind: explain
       advance: next
       waitForTarget: chat-transcript
@@ -80,7 +80,7 @@ tour:
       target: chat-transcript
       title: Clarify, in rounds
       body: "Discovery isn't one-shot. A structured clarification round asks the questions that most change the PRD — actors, the success metric — and the operator answers in the chat. The brief can loop back for ANOTHER round (here, the CI constraint: headless, ffmpeg + Chrome, no Node), so each round sharpens the spec before drafting. The accumulated Q&A becomes the PRD's grounding."
-      placement: left
+      placement: right
       kind: explain
       advance: next
       waitForTarget: chat-transcript
@@ -109,7 +109,7 @@ tour:
       target: chat-transcript
       title: Review the drafted PRD
       body: With the clarification rounds settled and a prior-art scan done, the author writes the PRD into a per-session workspace and surfaces it right here — title, confidence, and the full draft to review. Accept publishes it.
-      placement: left
+      placement: right
       kind: explain
       advance: next
       waitForTarget: chat-transcript
@@ -129,7 +129,7 @@ tour:
       target: chat-transcript
       title: Published to docs/prd/
       body: "Self-targeting made concrete: the PRD published to kitsoki's OWN docs/prd/tour-subcommand.md — slug-named, in kitsoki's flat docs tree (no external retarget). The landing offers `continue` to carry it into the design phase."
-      placement: left
+      placement: right
       kind: explain
       advance: next
       waitForTarget: chat-transcript
@@ -143,7 +143,7 @@ tour:
       target: chat-transcript
       title: Carry it into design
       body: "`continue` seeds the design intake with a pointer to the PRD we just published — the chat shows the design conversation opening from exactly where the PRD left off, grounded in the doc, not a blank idea."
-      placement: left
+      placement: right
       kind: explain
       advance: next
       waitForTarget: chat-transcript
@@ -157,7 +157,7 @@ tour:
       target: chat-transcript
       title: Refine the design brief
       body: "Design has its own clarification loop: the intake scaffolds a brief and a refiner flags the gaps (outline the components, define the drive-action contract, allocate the NFRs). The operator re-runs the refiner to rework it, then a quality check gates the brief before the author drafts — the same iterative shaping the PRD did with questions."
-      placement: left
+      placement: right
       kind: explain
       advance: next
       waitForTarget: chat-transcript
@@ -177,7 +177,7 @@ tour:
       target: chat-transcript
       title: Design published + feature ticket
       body: "The design author writes kitsoki's own proposal shape and the chat reports it published to docs/proposals/tour-subcommand.md. Behind the scenes a feature ticket is auto-minted at issues/features/F-<timestamp>-tour-subcommand.md, linking back to the design — the implementation pipeline can pick it up immediately. This ticket mint is the one beat the external-target (gears-rust) walk skips."
-      placement: left
+      placement: right
       kind: explain
       advance: next
       waitForTarget: chat-transcript
