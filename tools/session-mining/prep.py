@@ -58,6 +58,46 @@ def grep_match(path, words):
     return any(w in blob for w in words)
 
 
+# Claude Code stamps every user record with `entrypoint`, recording HOW the session
+# was launched. Interactive human sessions are "cli"; sessions dispatched headlessly
+# (a `claude -p` oracle/subagent — UI-QA reviewer, adversarial verifier, etc.) are
+# "sdk-cli" / "sdk". Mining the latter is self-cannibalism (the model eating its own
+# agent output), so we classify on this structural origin signal — NOT on prompt
+# content, which would be brittle and overfit to today's agent wording.
+HUMAN_ENTRYPOINT = "cli"
+
+
+def session_entrypoint(path):
+    """The session's launch origin from its first user record's `entrypoint`:
+    'cli' = interactive human, 'sdk-cli'/'sdk' = dispatched headless agent. None if
+    undeterminable. Falls back to promptSource=='sdk' when entrypoint is absent."""
+    try:
+        fh = open(path, "r", errors="ignore")
+    except OSError:
+        return None
+    with fh:
+        for raw in fh:
+            try:
+                obj = json.loads(raw)
+            except (json.JSONDecodeError, ValueError):
+                continue
+            if obj.get("type") != "user":
+                continue
+            ep = obj.get("entrypoint")
+            if ep:
+                return ep
+            if obj.get("promptSource") == "sdk":
+                return "sdk"
+    return None
+
+
+def is_agent_session(path):
+    """True if the session was dispatched headlessly (an agent/oracle), not authored
+    by a human at the interactive CLI. Structural, content-independent."""
+    ep = session_entrypoint(path)
+    return ep is not None and ep != HUMAN_ENTRYPOINT
+
+
 def distill_one(src, dst, redact):
     """Distill src -> dst via distill.jq, optionally piping through redact.py.
     Returns dst size in bytes, or -1 on failure."""
@@ -105,6 +145,12 @@ def main():
                     help="~/.claude/projects/<slug> — one dir per repo")
     ap.add_argument("--out", default=None,
                     help="output dir (default /tmp/sm-<basename-of-project>)")
+    ap.add_argument("--job", default=None,
+                    help="intent-mining job name. When set (and --out is not), "
+                         "output goes to .artifacts/session-mining/<job>/ at the "
+                         "repo root — the local, gitignored tier the intent-mining "
+                         "mode uses. Does NOT change the /tmp default the other "
+                         "two modes rely on.")
     ap.add_argument("--min-bytes", type=int, default=30000,
                     help="skip raw sessions smaller than this (default 30000)")
     ap.add_argument("--grep", action="append", default=[], metavar="WORD",
@@ -122,6 +168,10 @@ def main():
                          "shareable pattern-mining mode; omit for local idea-mining)")
     ap.add_argument("--min-trace", type=int, default=200,
                     help="drop distilled traces smaller than this (near-empty)")
+    ap.add_argument("--keep-agent-sessions", action="store_true",
+                    help="KEEP dispatched headless agent/oracle transcripts "
+                         "(entrypoint!=cli). They are dropped by default — mining "
+                         "the model's own agent output back in is self-cannibalism.")
     args = ap.parse_args()
 
     proj = os.path.abspath(os.path.expanduser(args.project_dir))
@@ -132,7 +182,14 @@ def main():
         eprint("error: `jq` not on PATH")
         return 2
 
-    out = args.out or os.path.join("/tmp", "sm-" + os.path.basename(proj.rstrip("/")))
+    if args.out:
+        out = args.out
+    elif args.job:
+        # repo root = two levels up from tools/session-mining/
+        repo_root = os.path.abspath(os.path.join(HERE, "..", ".."))
+        out = os.path.join(repo_root, ".artifacts", "session-mining", args.job)
+    else:
+        out = os.path.join("/tmp", "sm-" + os.path.basename(proj.rstrip("/")))
     traces_dir = os.path.join(out, "traces")
     batches_dir = os.path.join(out, "batches")
     if os.path.isdir(out):
@@ -144,6 +201,18 @@ def main():
     sessions = [s for s in sessions if os.path.getsize(s) >= args.min_bytes]
     if args.grep:
         sessions = [s for s in sessions if grep_match(s, args.grep)]
+    # Drop dispatched headless agent/oracle transcripts (entrypoint != cli) by
+    # default — they are the model's own subagent output, not human sessions, and
+    # mining them is self-cannibalism. Structural signal, not prompt-content match.
+    agent_dropped = []
+    if not args.keep_agent_sessions:
+        kept = []
+        for s in sessions:
+            if is_agent_session(s):
+                agent_dropped.append(os.path.basename(s)[:-len(".jsonl")])
+            else:
+                kept.append(s)
+        sessions = kept
     if args.sample == "recency":
         sessions.sort(key=lambda p: -os.path.getmtime(p))
     elif args.sample == "size":
@@ -151,6 +220,9 @@ def main():
     if args.max > 0:
         sessions = sessions[:args.max]
 
+    if agent_dropped:
+        eprint("dropped %d dispatched agent/oracle session(s) (entrypoint!=cli); "
+               "use --keep-agent-sessions to include them" % len(agent_dropped))
     eprint("candidate sessions:", len(sessions),
            "(min-bytes=%d, grep=%s, sample=%s, max=%s)" %
            (args.min_bytes, args.grep or "-", args.sample, args.max or "-"))
@@ -186,10 +258,12 @@ def main():
             "min_bytes": args.min_bytes, "grep": args.grep, "sample": args.sample,
             "max": args.max, "budget": args.budget, "redacted": args.redact,
             "min_trace": args.min_trace,
+            "keep_agent_sessions": args.keep_agent_sessions,
         },
         "traces": len(traces),
         "distill_failed": failed,
         "dropped_empty": dropped,
+        "agent_sessions_dropped": agent_dropped,
         "total_trace_bytes": total_bytes,
         "batches": [{"file": "batches/batch-%02d.txt" % i,
                      "traces": len(p), "bytes": t}

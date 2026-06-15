@@ -1,0 +1,6 @@
+{"type":"user","message":{"content":"the foo package tests are failing, please fix them — specifically TestBar started panicking after the refactor and I need it green before I can merge"}}
+{"type":"assistant","message":{"content":[{"type":"text","text":"Let me run the tests to see the failure."},{"type":"tool_use","name":"Bash","input":{"command":"go test ./foo/... -run TestBar"}}]}
+{"type":"user","message":{"content":[{"type":"tool_result","content":"--- FAIL: TestBar"}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"foo/bar.go"}},{"type":"tool_use","name":"Bash","input":{"command":"go test ./foo/... -run TestBar"}}]}
+{"type":"user","message":{"content":"now write a short doc explaining the bar helper and decide whether to mention the legacy path that the old callers still use"}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"docs/bar.md"}},{"type":"tool_use","name":"Read","input":{"file_path":"foo/legacy.go"}}]}

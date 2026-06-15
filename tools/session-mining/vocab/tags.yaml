@@ -1,0 +1,59 @@
+# Controlled tag vocabulary for INTENT MINING (the third mode).
+#
+# An intent is tagged across a SMALL, STABLE set of dimensions. Granularity comes
+# from COMBINATIONS of tags, not from a ballooning flat list. Every tag must be
+# reusable across many intents — reject singleton, hyper-specific labels.
+#
+# Three dimensions:
+#   action  — WHAT the user wanted done. Reuses vocab/core.yaml ids verbatim, so
+#             intent mining and pattern mining share the same intent-shaped keys.
+#             (The members below are mirrored from core.yaml; that file is the
+#             source of truth for their meaning. Keep them in sync.)
+#   surface — WHAT it touches (the artifact class).
+#   scope   — HOW WIDE the blast radius is. Optional; only add if it carries signal.
+#
+# Bump tags_version on any add/rename/meaning change.
+
+tags_version: "2026-06-15"
+
+dimensions:
+  action:
+    description: What the user asked to be done. Mirrors vocab/core.yaml ids.
+    members:
+      - explore-codebase
+      - build-compile-fix-loop
+      - fix-failing-tests
+      - add-test-coverage
+      - debug-from-error-or-trace
+      - refactor-rename-move
+      - implement-from-spec
+      - review-feedback
+      - verify-by-running
+      - commit-or-pr
+      - rebase-or-resolve-conflicts
+      - branch-or-worktree-setup
+      - write-docs
+      - update-config-or-deps
+      - fan-out-agents-and-reconcile
+      - visual-verification-loop
+
+  surface:
+    description: The artifact class the intent touches.
+    members:
+      - code
+      - test
+      - docs
+      - proposal
+      - config
+      - ui
+      - story
+      - schema
+      - ci
+      - infra
+
+  scope:
+    description: Blast radius of the change. Optional dimension.
+    members:
+      - single-file
+      - cross-module
+      - repo-wide

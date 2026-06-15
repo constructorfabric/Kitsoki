@@ -1,6 +1,9 @@
 # Emit a compact action-trace line per relevant event.
 select(.type=="user" or .type=="assistant")
 | if .type=="user" then
+    # skip harness-injected user turns (slash-command caveats, skill preambles):
+    # they carry isMeta:true and are NOT genuine user requests.
+    if (.isMeta == true) then empty else
     (.message.content) as $c
     | if ($c|type)=="string" then
         if ($c|test("^<")) then empty else "USER: " + ($c|gsub("\\s+";" ")|.[0:600]) end
@@ -9,6 +12,7 @@ select(.type=="user" or .type=="assistant")
         | if (test("^<command")) or (test("system-reminder")) then empty
           else "USER: " + (gsub("\\s+";" ")|.[0:600]) end
       end
+    end
   else
     .message.content[]? as $b
     | if $b.type=="tool_use" then

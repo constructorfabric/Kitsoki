@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kitsoki/session-mining/intents.schema.json",
+  "title": "session-mining intent catalog (REPORT 1)",
+  "description": "Instance-first catalog of user intents mined from a corpus. Each intent links to its per-instance recipe in analysis.json by instance_id.",
+  "type": "object",
+  "required": ["schema_version", "job", "intents", "tags", "total_intents"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "job": { "type": "string" },
+    "generated_from": { "type": "string", "description": "the manifest this catalog was built from" },
+    "tags_version": { "type": "string" },
+    "vocab_version": { "type": "string" },
+    "prompt_version": { "type": "string" },
+    "total_intents": { "type": "integer", "minimum": 0 },
+    "intents": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/intent" }
+    },
+    "tags": {
+      "type": "object",
+      "description": "deterministic rollup: per-dimension tag -> count",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": { "type": "integer", "minimum": 0 }
+      }
+    }
+  },
+  "$defs": {
+    "intent": {
+      "type": "object",
+      "required": ["instance_id", "user_text", "tags", "session", "span", "analysis_ref"],
+      "additionalProperties": false,
+      "properties": {
+        "instance_id": { "type": "string", "pattern": "^.+#[0-9]+$", "description": "<session-id>#<span-index>; stable cross-link key" },
+        "user_text": { "type": "string", "description": "VERBATIM user request, recovered deterministically from the raw jsonl" },
+        "session": { "type": "string" },
+        "span": {
+          "type": "array",
+          "description": "[first-line, last-line] into traces/<session>.txt (1-based, inclusive)",
+          "items": { "type": "integer", "minimum": 1 },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "tags": { "$ref": "#/$defs/tags" },
+        "analysis_ref": { "type": "string", "pattern": "^analysis\\.json#.+$" }
+      }
+    },
+    "tags": {
+      "type": "object",
+      "description": "multi-dimensional tag set; dimensions are controlled by vocab/tags.yaml",
+      "additionalProperties": false,
+      "properties": {
+        "action": { "type": "array", "items": { "type": "string" } },
+        "surface": { "type": "array", "items": { "type": "string" } },
+        "scope": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

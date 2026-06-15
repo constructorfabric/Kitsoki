@@ -6,7 +6,8 @@ report** that aggregates with other people's. The point: discover which recurrin
 procedures are mostly-mechanical-with-a-few-judgment-calls — the sweet spot for
 turning into deterministic scripts with named decision gates.
 
-Tool-agnostic and dependency-light: `jq` + `python3` (stdlib only). No data leaves
+Tool-agnostic and dependency-light: `jq` + `python3` (stdlib only; the optional
+intent-mining schema validator additionally wants `jsonschema`). No data leaves
 your machine except a report you've explicitly scrubbed and gated.
 
 > This kit is standalone. Its kitsoki-specific consumer (turning top patterns into
@@ -15,17 +16,18 @@ your machine except a report you've explicitly scrubbed and gated.
 
 ---
 
-## Two modes
+## Three modes
 
-The kit serves two distinct jobs over the same distilled traces:
+The kit serves three distinct jobs over the same distilled traces:
 
-| | **Pattern mining** (this README) | **Focused idea mining** |
-|---|---|---|
-| Question | "Which recurring workflows are worth scripting?" | "What have I said about **topic X**?" |
-| Output | A redacted, shareable, aggregatable `report.json` + `BRIEF.md` | A local, ranked, themed Markdown brief of ideas/pain/design notes |
-| Redaction | **Mandatory** — a model scores the traces, the report is shared | **None** — stays in `/tmp`, never shared; redaction would strip the content you want |
-| Extractor | `prompts/extractor.md` (vocabulary-scored) | a fan-out workflow (one reader per batch) keyed to your topic |
-| Driver | the Quickstart below | the **`session-idea-mining`** skill (`.agents/skills/session-idea-mining/`) |
+| | **Pattern mining** (this README) | **Focused idea mining** | **Intent mining** |
+|---|---|---|---|
+| Question | "Which recurring workflows are worth scripting?" | "What have I said about **topic X**?" | "What did the user ask for, and what concrete actions would reproduce it?" |
+| Output | A redacted, shareable, aggregatable `report.json` + `BRIEF.md` | A local, ranked, themed Markdown brief of ideas/pain/design notes | Two linked JSON reports: `intents.json` (catalog) + `analysis.json` (per-instance recipes) |
+| Unit | a *workflow type* (aggregated) | a *theme* | an **intent instance** (preserved, never aggregated away) |
+| Redaction | **Mandatory** — a model scores the traces, the report is shared | **None** — stays in `/tmp`, never shared; redaction would strip the content you want | **None by default** — local `.artifacts/`, opt-in `--redact` |
+| Extractor | `prompts/extractor.md` (vocabulary-scored) | a fan-out workflow (one reader per batch) keyed to your topic | `intents.workflow.js` — one **strictly-validated oracle** pass, re-checked deterministically |
+| Driver | the Quickstart below | the **`session-idea-mining`** skill | the **["Intent mining" section](#intent-mining-the-third-mode)** below |
 
 Both modes share `distill.jq` and the new **`prep.py`** (distill + bin-pack into
 byte-balanced batches in one command — replaces the hand-rolled `for f in $(ls -S
@@ -88,6 +90,144 @@ python3 report.py report.json --top 5 > BRIEF.md
 The raw transcripts and the distilled traces are the **private tier** — keep them
 in `/tmp`, never commit, never share. Only the scrubbed, gated `report.json` (and
 the `BRIEF.md` you derive from it) is shareable.
+
+---
+
+## Intent mining (the third mode)
+
+Where pattern mining asks *which workflow types recur*, intent mining is
+**instance-first**: it identifies each individual user request (an **intent**) and
+recovers the concrete **actions + parameters** that would *deterministically*
+reproduce the requested output. Where pure determinism is impossible it reduces
+the LLM to a **strictly-validated oracle** rather than letting it narrate freely.
+It is local by design — outputs land in a gitignored `.artifacts/` job folder.
+
+### The two linked reports
+
+A run emits two reports into `.artifacts/session-mining/<job>/`:
+
+- **`intents.json`** (REPORT 1, the catalog) — one row per intent: a stable
+  `instance_id` (`<session-id>#<span-index>`), the **verbatim `user_text`**, the
+  multi-dimensional `tags`, the `session`, the `span` (line range into the trace),
+  and `analysis_ref` (`analysis.json#<instance_id>`). Plus deterministic
+  `tags` rollups and `total_intents`.
+- **`analysis.json`** (REPORT 2, the recipes) — one row per instance: `tags`, the
+  `determinism` verdict, the grounded `actions` (each with `tool`, genericized
+  `signature`, `parameters`, a `cite` into the trace, and a `grounded` flag),
+  `oracle_gates` (only when not fully deterministic), `measured` trace signals,
+  and `grounding` stats. Plus `clusters` grouping like intents together.
+
+**Cross-link contract.** Every `intents.json` row's `analysis_ref` is
+`analysis.json#<instance_id>` and that `instance_id` exists in `analysis.json`
+(and no analysis instance is an orphan). `verify_link.py <job-dir>` checks it and
+exits non-zero on any violation.
+
+**Schema validation.** `intents.json` and `analysis.json` have JSON Schemas under
+`schema/{intents,analysis}.schema.json`. `validate_reports.py <job-dir>` validates
+both against their schemas *and* re-checks the cross-link contract (which JSON
+Schema alone can't express). This is the one optional dependency: it needs
+`jsonschema` (`pip3 install --user jsonschema`) — the rest of the spine is
+stdlib-only so it runs anywhere. The no-LLM test runs this validation on every run.
+
+### LLM-minimality & the strict-oracle guarantee
+
+The pipeline is six steps; **only step B touches an LLM**, and its output is
+schema-constrained *and* re-validated deterministically in step C:
+
+| # | Step | Engine | Tool |
+|---|---|---|---|
+| A | Distill the corpus into action traces + a manifest | deterministic | `prep.py --job <name>` |
+| B | **Oracle pass** — segment each trace into intent spans; per span draft a recipe (ordered actions + genericized signature + parameters) with a **citation on every action**; assign tags; flag judgment gates | **LLM, strict schema** | `intents.workflow.js` |
+| C | **Ground & validate** every action against the cited trace line; drop spans that ground nothing | deterministic | `ground.py` |
+| D | **Tag & group** — validate tags against the vocab, roll up counts, cluster by tag-set + normalized signature | deterministic | `tag_score.py` |
+| E | **Score determinism** per instance from measured trace signals + grounding completeness + gates | deterministic | `tag_score.py` |
+| F | **Emit** the two linked reports; recover **verbatim user text from the raw `.jsonl`** | deterministic | `emit.py` |
+
+The oracle *proposes* a structured hypothesis; deterministic code *disposes* of it.
+`ground.py` confirms (1) the cited line actually contains that tool call, and (2)
+every emitted parameter value is a substring of the cited tool input — so a
+fabricated action or parameter is rejected, not reported. This is the mechanism
+that makes the "deterministic recipe" claim trustworthy (review §3). The verbatim
+`user_text` is recovered deterministically from the raw transcript, **never** taken
+from the LLM.
+
+The `determinism` verdict (step E) is computed, not guessed:
+- **deterministic** — every action grounded, no judgment gate.
+- **oracle-gated** — reproducible except at N named gates, each carrying a strict
+  `validator`, or where grounding is only partial (the LLM is allowed but boxed).
+- **irreducible-llm** — nothing grounded / no concrete actions; flagged honestly
+  rather than dressed up as a recipe.
+
+### Taxonomy — tag-like, multi-attribute
+
+An intent carries **one or more tags across a few controlled dimensions**, not a
+single category — granularity comes from *combinations*, not a ballooning flat
+list. The dimensions live in `vocab/tags.yaml`:
+
+- `action` — *what* was asked. Reuses `vocab/core.yaml` ids verbatim (so intent
+  mining and pattern mining share the same intent-shaped keys).
+- `surface` — *what it touches*: code, test, docs, proposal, config, ui, story,
+  schema, ci, infra.
+- `scope` — blast radius (single-file / cross-module / repo-wide), optional.
+
+Unknown tags are dropped with a stderr warning in step D — every tag must be in
+the vocab and reusable across many intents.
+
+### Running it
+
+```sh
+cd tools/session-mining
+JOB=intents-$(date +%Y%m%d)
+PROJ=~/.claude/projects/<your-project-dir>
+
+# A. distill into the local .artifacts job folder (no --redact: this mode is local)
+python3 prep.py "$PROJ" --job "$JOB"
+#   -> .artifacts/session-mining/$JOB/{traces/,batches/,manifest.json}
+#   stdout tail gives BATCHES= and BATCHDIR= for the workflow
+
+# B. the one LLM step — run intents.workflow.js (schema-validated oracle), e.g.
+#    Workflow({ scriptPath: "tools/session-mining/intents.workflow.js", args: {
+#      batchDir:   ".artifacts/session-mining/<JOB>/batches",
+#      batchCount: <BATCHES from prep.py>,
+#      outDir:     ".artifacts/session-mining/<JOB>/oracle" } })
+#   -> .artifacts/session-mining/$JOB/oracle/oracle-batch-NN.json
+
+JOBDIR=../../.artifacts/session-mining/$JOB
+
+# C. ground the oracle hypothesis against the traces (rejects fabrications)
+python3 ground.py --oracle "$JOBDIR/oracle" --traces "$JOBDIR/traces" --out "$JOBDIR/grounded.json"
+
+# D+E. validate tags, cluster, score determinism (deterministic)
+python3 tag_score.py --grounded "$JOBDIR/grounded.json" --traces "$JOBDIR/traces" --out "$JOBDIR/scored.json"
+
+# F. emit the two linked reports; verbatim text comes from the RAW jsonl
+python3 emit.py --scored "$JOBDIR/scored.json" --traces "$JOBDIR/traces" \
+    --raw "$PROJ" --out-dir "$JOBDIR" --job "$JOB"
+
+# verify the cross-link contract
+python3 verify_link.py "$JOBDIR"
+
+# validate both reports against their JSON Schemas + the cross-link contract.
+# Needs jsonschema (`pip3 install --user jsonschema`); the spine above is stdlib-only.
+python3 validate_reports.py "$JOBDIR"
+```
+
+### Testing (no LLM, ever)
+
+Steps C–F are standalone python that take the oracle's JSON as a file input, so the
+whole C→F pipeline is unit-testable with **no LLM and no cost** (per AGENTS.md). The
+fixture under `tests/fixtures/intent/` ships a sample distilled trace, a raw jsonl
+snippet, and a sample oracle output (including a deliberately-fabricated action that
+the grounding gate must reject). Run:
+
+```sh
+python3 tools/session-mining/tests/test_intent_pipeline.py
+```
+
+It asserts the grounding gate (the fabricated span is quarantined and dropped), the
+determinism verdicts, the measured trace signals, the verbatim recovery from raw
+jsonl, and the cross-link contract. Step B (`intents.workflow.js`) is exercised only
+at real runtime.
 
 ---
 
@@ -295,16 +435,27 @@ merges mixed `vocab_version`s. The extractor prompt is a versioned artifact
 
 ```
 distill.jq              raw JSONL transcript -> compact action trace
-prep.py                 distill + (optional --redact) + bin-pack into byte-balanced batches; one command, both modes
+prep.py                 distill + (optional --redact) + bin-pack into byte-balanced batches; one command, all modes (--job targets .artifacts/ for intent mining). Drops dispatched headless agent/oracle transcripts (entrypoint!=cli) by default; --keep-agent-sessions to include them
 redact.py               deterministic scrubber; `--report` scrubs a report's free-text, `--scan` is the share-gate
 report.py               render a pattern-mining aggregate into an actionable BRIEF.md (verdict + gates + skeleton + first step)
 focus_brief.py          render a focused idea-mining synthesis JSON into a ranked themed Markdown brief (idea-mining mode)
 prompts/extractor.md    the versioned extractor prompt (the reproducible core)
 vocab/core.yaml         controlled vocabulary (cross-user merge keys)
 vocab/overlay-go.yaml   Go/backend example signatures (copy per ecosystem)
+vocab/tags.yaml         INTENT MINING tag taxonomy (action / surface / scope dimensions)
 schema/report.schema.json     JSON Schema for one contributor's report (aggregate.py input)
 schema/aggregate.schema.json  JSON Schema for a merged report (aggregate.py output; re-aggregatable)
+schema/intents.schema.json    JSON Schema for REPORT 1 (the intents catalog)
+schema/analysis.schema.json   JSON Schema for REPORT 2 (the per-instance recipes)
 aggregate.py            merge + score + promotion gate (stdlib only; associative)
+intents.workflow.js     INTENT MINING step B — the one strictly-validated oracle pass (schema-constrained)
+intent_common.py        shared helpers for the intent-mining spine (trace/vocab/io primitives)
+ground.py               INTENT MINING step C — ground & validate oracle output against the traces
+tag_score.py            INTENT MINING steps D+E — tag/group + determinism scoring (deterministic)
+emit.py                 INTENT MINING step F — emit the two linked reports; verbatim text from raw jsonl
+verify_link.py          check the intents.json <-> analysis.json cross-link contract
+validate_reports.py     validate both reports against their JSON Schemas (needs `jsonschema`)
+tests/                  fixture + no-LLM end-to-end test of the intent-mining C->F pipeline
 examples/report.example.json   a real redacted report (reference run)
 examples/merge/         two reports + their merged output (worked aggregation)
 ```
