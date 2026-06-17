@@ -234,8 +234,13 @@ live, without restarting. You declare named **harness profiles** in
 header dropdowns; the switch takes effect on the next turn. Full reference:
 [harness profiles](architecture/harness-profiles.md).
 
+The checked-in `.kitsoki.yaml` ships only the ambient `claude-native` profile,
+so it works out of the box. Secret-bearing profiles (synthetic, codex, a local
+llama.cpp) live in a gitignored **`.kitsoki.local.yaml`** that's deep-merged on
+top (local wins) — copy the template and set your key:
+
 ```sh
-cp .kitsoki.yaml.example .kitsoki.yaml      # ships with the five profiles below
+cp .kitsoki.local.yaml.example .kitsoki.local.yaml   # synthetic/codex/llama profiles
 export SYNTHETIC_API_KEY=syn_...            # your shell / profile / .envrc
 kitsoki web --stories-dir stories           # pick the provider in the header
 #   …or in the TUI:  /provider synthetic-claude  ·  /model 1

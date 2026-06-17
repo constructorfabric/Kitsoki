@@ -35,6 +35,11 @@ __pycache__/
 # Git worktrees (local checkouts of feature branches)
 .worktrees/
 
+# Per-developer harness-profile overrides, deep-merged on top of the
+# checked-in .kitsoki.yaml (local wins). Holds secret-bearing / machine-specific
+# profiles; start from .kitsoki.local.yaml.example. See webconfig.LocalConfigPath.
+.kitsoki.local.yaml
+
 # Per-repo session traces auto-dropped by `kitsoki run` into the nearest
 # .kitsoki/ folder. The rest of `.kitsoki/` is reserved for local state
 # we may want to keep around; only the auto-traces are guaranteed

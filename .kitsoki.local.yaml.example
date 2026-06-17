@@ -1,26 +1,27 @@
-# Example .kitsoki.yaml with harness profiles.
+# Example .kitsoki.local.yaml — your personal, gitignored override.
 #
-#   cp .kitsoki.yaml.example .kitsoki.yaml
+#   cp .kitsoki.local.yaml.example .kitsoki.local.yaml
 #   export SYNTHETIC_API_KEY=sk-...      # in your shell / profile / .envrc
 #   kitsoki web --stories-dir stories    # then pick the provider in the header
 #   # …or in the TUI:  /provider synthetic-claude  ·  /model 2
 #
-# See docs/architecture/harness-profiles.md for the full reference. The env
-# values use ${VAR} interpolation against the process environment — your key is
-# never written into this file, and is never recorded in any trace.
+# Load deep-merges this file on top of the checked-in `.kitsoki.yaml`, LOCAL
+# WINS. Keys you omit fall through to the shared baseline; keys you set override
+# it. harness_profiles merge BY NAME — a profile here is added if new, or
+# replaces the shared profile of the same name WHOLE (restate every field you
+# want; you never have to restate the OTHER profiles). story_dirs and
+# default_profile, if set here, replace the baseline's.
+#
+# Why these profiles live here and not in the shared file: their env values use
+# ${VAR} interpolation against the process environment, and an unset var is a
+# hard load error — so a teammate without your SYNTHETIC_API_KEY would be unable
+# to load a shared file that declared them. Your key is never written into this
+# file, and is never recorded in any trace.
 
-default_profile: claude-native
+# Point new sessions at one of the profiles below by default (optional).
+# default_profile: synthetic-claude
 
 harness_profiles:
-  # Your native Anthropic Claude Code subscription (ambient auth — nothing to
-  # set). claude supports a model selector (short names) and --effort.
-  claude-native:
-    backend: claude
-    model: sonnet
-    models: [opus, sonnet, haiku]
-    effort: medium
-    efforts: [low, medium, high, xhigh, max]
-
   # claude-code pointed at synthetic.new (Anthropic-compatible endpoint).
   # claude-code appends /v1/messages, so the base URL omits /v1.
   # models_endpoint pulls the FULL always-on model list at selection time, so you

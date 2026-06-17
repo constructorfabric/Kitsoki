@@ -89,6 +89,90 @@ harness_profiles:
 	}
 }
 
+// writeLocalBeside writes a .kitsoki.local.yaml next to an existing base path
+// returned by writeConfig, so Load picks it up as the override.
+func writeLocalBeside(t *testing.T, basePath, body string) {
+	t.Helper()
+	if err := os.WriteFile(LocalConfigPath(basePath), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLocalConfigPath(t *testing.T) {
+	cases := map[string]string{
+		".kitsoki.yaml":      ".kitsoki.local.yaml",
+		"foo/bar.yaml":       "foo/bar.local.yaml",
+		"/abs/.kitsoki.yaml": "/abs/.kitsoki.local.yaml",
+		"noext":              "noext.local",
+	}
+	for in, want := range cases {
+		if got := LocalConfigPath(in); got != want {
+			t.Errorf("LocalConfigPath(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// The local override deep-merges onto the base: it adds new profiles, replaces
+// a profile of the same name whole, and overrides default_profile + story_dirs,
+// while base-only profiles survive untouched.
+func TestLoad_LocalOverride_DeepMerge(t *testing.T) {
+	t.Setenv("SYNTHETIC_API_KEY", "sk-secret")
+	base := writeConfig(t, `
+story_dirs: [./stories]
+default_profile: claude-native
+harness_profiles:
+  claude-native:
+    backend: claude
+    model: sonnet
+    models: [opus, sonnet, haiku]
+`)
+	writeLocalBeside(t, base, `
+story_dirs: [./mine]
+default_profile: synthetic-claude
+harness_profiles:
+  # Replaces the base claude-native whole (model bumped to opus).
+  claude-native:
+    backend: claude
+    model: opus
+    models: [opus, sonnet, haiku]
+  # New, secret-bearing profile only the local file declares.
+  synthetic-claude:
+    backend: claude
+    env:
+      ANTHROPIC_AUTH_TOKEN: "${SYNTHETIC_API_KEY}"
+`)
+	cfg, err := Load(base)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.DefaultProfile != "synthetic-claude" {
+		t.Errorf("default_profile = %q, want synthetic-claude (local wins)", cfg.DefaultProfile)
+	}
+	if len(cfg.StoryDirs) != 1 || cfg.StoryDirs[0] != "./mine" {
+		t.Errorf("story_dirs = %v, want [./mine] (local replaces)", cfg.StoryDirs)
+	}
+	if got := cfg.HarnessProfiles["claude-native"].Model; got != "opus" {
+		t.Errorf("claude-native.model = %q, want opus (local replaced whole)", got)
+	}
+	if got := cfg.HarnessProfiles["synthetic-claude"].Env["ANTHROPIC_AUTH_TOKEN"]; got != "sk-secret" {
+		t.Errorf("local profile ${VAR} not expanded post-merge: %q", got)
+	}
+	// default_profile naming a profile only the LOCAL file declares is legal
+	// because validation runs after the merge.
+}
+
+// A base-only config (no local file beside it) loads exactly as before — the
+// override is purely additive and absent by default.
+func TestLoad_NoLocalFile_BaseUnchanged(t *testing.T) {
+	cfg, err := Load(writeConfig(t, "default_profile: claude-native\nharness_profiles:\n  claude-native: { backend: claude }\n"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.DefaultProfile != "claude-native" || len(cfg.HarnessProfiles) != 1 {
+		t.Fatalf("base-only load changed: %+v", cfg)
+	}
+}
+
 // A config with no harness_profiles block loads to a zero-profiles WebConfig —
 // the legacy path is untouched.
 func TestLoad_NoProfiles_LegacyUntouched(t *testing.T) {

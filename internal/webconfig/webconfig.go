@@ -4,9 +4,13 @@
 // Two concerns live here, deliberately small and dependency-free beyond the
 // app loader:
 //
-//  1. Configuration — WebConfig carries the operator's story_dirs. It loads
-//     from a `.kitsoki.yaml` file (gopkg.in/yaml.v3) in the working directory.
-//     Resolve applies the precedence flags > .kitsoki.yaml > ./stories default.
+//  1. Configuration — WebConfig carries the operator's story_dirs and harness
+//     profiles. It loads from a checked-in `.kitsoki.yaml` (gopkg.in/yaml.v3),
+//     then deep-merges an optional, gitignored `.kitsoki.local.yaml` sitting
+//     beside it (the same dichotomy as Claude Code's settings.json +
+//     settings.local.json): the shared file holds the team baseline; the local
+//     file holds personal, secret-bearing, or machine-specific overrides. Local
+//     wins. Resolve applies flags > merged config > ./stories default.
 //
 //  2. Discovery — DiscoverStories walks the resolved directories, matches files
 //     literally named `app.yaml`, and loads each via app.Load. A malformed
@@ -31,8 +35,16 @@ import (
 	"kitsoki/internal/app"
 )
 
-// DefaultConfigFile is the file name Load looks for in the working directory.
+// DefaultConfigFile is the checked-in, shared config file Load looks for in the
+// working directory.
 const DefaultConfigFile = ".kitsoki.yaml"
+
+// DefaultLocalConfigFile is the gitignored, per-developer override file Load
+// deep-merges on top of DefaultConfigFile. For any base path Load derives the
+// sibling local path by inserting ".local" before the extension (so a --config
+// of foo/bar.yaml pairs with foo/bar.local.yaml); this constant is the name for
+// the conventional .kitsoki.yaml base.
+const DefaultLocalConfigFile = ".kitsoki.local.yaml"
 
 // defaultStoryDir is the resolution fallback when neither flags nor the config
 // file supply a story directory.
@@ -98,27 +110,89 @@ var validBackends = map[string]bool{"": true, "claude": true, "copilot": true, "
 // validEfforts mirrors the engine's --effort levels (internal/app loader).
 var validEfforts = map[string]bool{"low": true, "medium": true, "high": true, "xhigh": true, "max": true}
 
-// Load reads WebConfig from the given path. A missing file is not an error —
-// it returns a zero WebConfig (empty StoryDirs) so the caller can fall back to
-// the default via Resolve. Any other read or parse failure is returned, as is
-// any harness-profile validation failure (unknown backend, ${VAR} unset,
-// default_profile naming an undeclared profile).
+// Load reads WebConfig from the given base path, then deep-merges the sibling
+// local override (see LocalConfigPath) on top of it. A missing base or local
+// file is not an error — each absent file contributes nothing, so an empty repo
+// returns a zero WebConfig and the caller falls back to the default via Resolve.
+//
+// Merge happens before validation, so ${VAR} expansion and the backend / model
+// / effort / default_profile checks all run once against the effective config:
+// a profile the local file overrides is validated in its overridden form, and a
+// default_profile the local file adds may legally name a profile only the local
+// file declares. Any read, parse, or validation failure is returned.
 func Load(path string) (WebConfig, error) {
-	b, err := os.ReadFile(path)
+	base, _, err := parseConfig(path)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return WebConfig{}, nil
-		}
-		return WebConfig{}, fmt.Errorf("read %s: %w", path, err)
+		return WebConfig{}, err
 	}
-	var cfg WebConfig
-	if err := yaml.Unmarshal(b, &cfg); err != nil {
-		return WebConfig{}, fmt.Errorf("parse %s: %w", path, err)
+	local, hadLocal, err := parseConfig(LocalConfigPath(path))
+	if err != nil {
+		return WebConfig{}, err
+	}
+	cfg := base
+	if hadLocal {
+		cfg = mergeConfig(base, local)
 	}
 	if err := cfg.resolveHarnessProfiles(); err != nil {
 		return WebConfig{}, fmt.Errorf("%s: %w", path, err)
 	}
 	return cfg, nil
+}
+
+// LocalConfigPath derives the gitignored override path that pairs with a base
+// config path by inserting ".local" before the extension: .kitsoki.yaml →
+// .kitsoki.local.yaml, foo/bar.yaml → foo/bar.local.yaml. An extensionless path
+// gets a trailing ".local".
+func LocalConfigPath(path string) string {
+	ext := filepath.Ext(path)
+	return strings.TrimSuffix(path, ext) + ".local" + ext
+}
+
+// parseConfig reads and YAML-unmarshals one config file WITHOUT validating or
+// expanding it — validation is deferred to Load so it runs once on the merged
+// result. A missing file yields a zero WebConfig and exists=false; any other
+// read or parse failure is returned.
+func parseConfig(path string) (cfg WebConfig, exists bool, err error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return WebConfig{}, false, nil
+		}
+		return WebConfig{}, false, fmt.Errorf("read %s: %w", path, err)
+	}
+	if err := yaml.Unmarshal(b, &cfg); err != nil {
+		return WebConfig{}, false, fmt.Errorf("parse %s: %w", path, err)
+	}
+	return cfg, true, nil
+}
+
+// mergeConfig deep-merges a local override onto a base config, local-wins:
+//   - story_dirs and default_profile are scalars/lists — a non-empty local value
+//     replaces the base value; an absent local value leaves the base untouched.
+//   - harness_profiles merge BY PROFILE NAME: profiles only in base survive,
+//     profiles in local are added, and a profile present in both is replaced
+//     WHOLE by the local one. (Field-level merging within a profile is
+//     deliberately not done — to retune one field of a shared profile, restate
+//     that profile in the local file; you never have to restate the others.)
+func mergeConfig(base, local WebConfig) WebConfig {
+	out := base
+	if len(local.StoryDirs) > 0 {
+		out.StoryDirs = local.StoryDirs
+	}
+	if local.DefaultProfile != "" {
+		out.DefaultProfile = local.DefaultProfile
+	}
+	if len(local.HarnessProfiles) > 0 {
+		merged := make(map[string]HarnessProfile, len(base.HarnessProfiles)+len(local.HarnessProfiles))
+		for k, v := range base.HarnessProfiles {
+			merged[k] = v
+		}
+		for k, v := range local.HarnessProfiles {
+			merged[k] = v
+		}
+		out.HarnessProfiles = merged
+	}
+	return out
 }
 
 // resolveHarnessProfiles validates every declared profile and expands ${VAR}

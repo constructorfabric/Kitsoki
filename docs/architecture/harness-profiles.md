@@ -25,20 +25,53 @@ collapses these axes behind one operator-facing name so an operator picks a
 
 ## Configuration
 
-Profiles are declared in the machine-global `.kitsoki.yaml` (the same file that
-carries `story_dirs`), loaded on both `kitsoki run` (TUI) and `kitsoki web`:
+Profiles are declared in `.kitsoki.yaml` (and its local override — below; the
+same file that carries `story_dirs`), loaded on both `kitsoki run` (TUI) and
+`kitsoki web`.
+
+### Shared file and local override
+
+Config loads from **two layers** — the same dichotomy as Claude Code's
+`settings.json` + `settings.local.json`:
+
+| File | Tracked? | Holds |
+|---|---|---|
+| `.kitsoki.yaml` | **checked in** | the team baseline — profiles that load for *everyone* with zero setup (ambient `claude-native`, no `${VAR}`). |
+| `.kitsoki.local.yaml` | **gitignored** | your personal, secret-bearing, machine-specific overrides — synthetic/codex/local-llm profiles whose `${VAR}` env would otherwise hard-fail the shared file for a teammate without the key. Copy `.kitsoki.local.yaml.example`. |
+
+`Load` (`internal/webconfig`; `LocalConfigPath` derives the sibling path by
+inserting `.local` before the extension) **deep-merges** the local file on top
+of the shared one, **local wins**, *before* validation — so `${VAR}` expansion
+and the backend/model/effort/`default_profile` checks all run once on the
+effective config:
+
+- `story_dirs`, `default_profile` — a non-empty local value replaces the
+  baseline's; `default_profile` may legally name a profile only the local file
+  declares.
+- `harness_profiles` — merge **by name**: baseline-only profiles survive, local
+  profiles are added, and a profile declared in both is replaced **whole** by
+  the local one (restate every field you want — you never restate the *other*
+  profiles).
+
+A missing local file contributes nothing, so a fresh checkout runs off the
+shared baseline alone.
 
 ```yaml
-# .kitsoki.yaml
+# .kitsoki.yaml  —  checked in; the baseline that must load for everyone.
 default_profile: claude-native          # the profile new sessions start on
 harness_profiles:
   claude-native:                        # your native Anthropic Claude Code subscription
-    backend: claude                     # (ambient auth; the default)
+    backend: claude                     # (ambient auth; the default — no secrets)
     model: sonnet
     models: [opus, sonnet, haiku]       # claude's short model names
     effort: medium
     efforts: [low, medium, high, xhigh, max]   # claude supports --effort
+```
 
+```yaml
+# .kitsoki.local.yaml  —  gitignored; deep-merged on top, local wins.
+# default_profile: synthetic-claude     # (optional) start new sessions here
+harness_profiles:
   synthetic-claude:                     # claude-code pointed at synthetic.new
     backend: claude                     # base URL omits /v1 (claude appends /v1/messages)
     model: syn:large:text               # syn: aliases route to the latest model

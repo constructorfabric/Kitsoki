@@ -60,7 +60,9 @@ loader is `internal/webconfig`.
 ### Resolution order (first non-empty wins)
 
 1. **`--stories-dir <dir>` flags** (repeatable) — ad-hoc override, no config edit.
-2. **`story_dirs` in `.kitsoki.yaml`** in the working directory.
+2. **`story_dirs` in `.kitsoki.yaml`** in the working directory (a sibling,
+   gitignored `.kitsoki.local.yaml` is deep-merged on top, local wins — see
+   [harness profiles](../architecture/harness-profiles.md#shared-file-and-local-override)).
 3. **`./stories`** — the default when neither is given, so the common single-repo
    case needs no configuration.
 
@@ -469,7 +471,7 @@ shareable artifacts).
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--config` | `.kitsoki.yaml` | Path to the web config file (`story_dirs`). |
+| `--config` | `.kitsoki.yaml` | Path to the checked-in web config file (`story_dirs`, profiles). A sibling `*.local.yaml` is deep-merged on top, local wins. |
 | `--stories-dir` | — | Story directory to walk for `app.yaml` (repeatable; overrides `.kitsoki.yaml`). |
 | `--addr` | `127.0.0.1:7777` | HTTP listen address. |
 | `--mode` | `staged` | Execution mode applied to every session: `staged` \| `one-shot`. |
