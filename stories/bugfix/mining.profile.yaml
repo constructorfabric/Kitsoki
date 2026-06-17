@@ -1,0 +1,47 @@
+# mining.profile.yaml — scope config for mining bugfix coverage from real
+# Claude Code transcripts. Co-located so the story self-describes its mine.
+#
+# SCOPE CONFIGURATION, not an auto-classifier. It tells coverage_prep.py
+# (1) which sessions to distill (the grep prefilter), (2) which mined intents are
+# in-scope (the action tags), and (3) which rooms are CANDIDATE owners of each
+# action tag — a STARTING POINT for the human/LLM map in coverage.md, never an
+# assertion. The verdict (CONFORMS / DIVERGES / FIXTURE-GAP / COVERAGE-GAP /
+# OUT-OF-SCOPE) is assigned by reading the room bash + the recovered outcome, not
+# mechanically. See docs/stories/story-coverage-mining.md.
+
+story: bugfix
+
+scope:
+  # prep.py --grep words. RECALL-ONLY prefilter: a substring scan over the whole
+  # raw jsonl, so it over-matches prose. It widens the net; the real scoping is
+  # the human read in the map. These are the domain words a bug-fix session has.
+  grep: [reproduce, "repro", "fix the bug", regression, "root cause", "failing test", "stack trace", traceback, "propose a fix", "minimal fix"]
+  sample: recency          # mine how we fix bugs *now*
+  max: 25
+
+  # post-filter to these action tags (vocab/tags.yaml). The pipeline walks
+  # reproduce → propose → implement → test → review → validate, so these tags
+  # cover the visible rooms; the non_goals boundary below is read from user_text.
+  action_tags: [debug-from-error-or-trace, implement-from-spec, fix-failing-tests, add-test-coverage, verify-by-running, review-feedback, commit-or-pr]
+
+# Candidate rooms per action tag — a starting point for the human map, joined into
+# the coverage.md "candidate room" column by coverage_prep.py. Room ids are the
+# files under stories/bugfix/rooms/.
+owns:
+  debug-from-error-or-trace:  [reproducing]
+  implement-from-spec:        [proposing, implementing]
+  fix-failing-tests:          [testing, implementing]
+  add-test-coverage:          [testing]
+  verify-by-running:          [validating, testing]
+  review-feedback:            [reviewing]
+  commit-or-pr:               [done]
+
+# v1 non-goals. The bugfix story ends at __exit__done and hands a done_artifact
+# to a Wave 2 pr-refinement import — it does NOT itself open/merge PRs, watch CI,
+# or resolve PR comments. A matching intent is OUT-OF-SCOPE, not a gap.
+non_goals: [open-or-merge-pr, ci-watch-or-retry, pr-comment-resolution, feature-implementation-not-bugfix, deploy-or-release]
+
+# Marker substrings coverage_prep.py scans the verbatim user_text for to HINT that
+# an in-scope-by-tag intent is actually an OUT-OF-SCOPE non_goal. A hint that
+# routes the human's attention — never an automatic verdict.
+non_goal_markers: ["merge the pr", "open a pr", "create a pr", "pull request", "watch ci", "ci is red", "resolve comments", "review comments on the pr", "new feature", "implement the feature", "deploy", "release", "cut a release"]

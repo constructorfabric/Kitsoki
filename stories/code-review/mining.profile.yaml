@@ -1,0 +1,48 @@
+# mining.profile.yaml — scope config for mining code-review coverage from real
+# Claude Code transcripts. Co-located so the story self-describes its mine.
+#
+# This is SCOPE CONFIGURATION, not an auto-classifier. It tells coverage_prep.py
+# (1) which sessions to distill (the grep prefilter), (2) which mined intents are
+# in-scope (the action tags), and (3) which rooms are CANDIDATE owners of each
+# action tag — a STARTING POINT for the human/LLM map in coverage.md, never an
+# assertion. The verdict (CONFORMS / DIVERGES / FIXTURE-GAP / COVERAGE-GAP /
+# OUT-OF-SCOPE) is assigned by reading the room bash + the recovered outcome, not
+# mechanically. See docs/stories/story-coverage-mining.md.
+#
+# code-review is the REVIEWING-A-TEAMMATE flavor: review someone else's open PR.
+# Walks idle → list_pending → review_pr → comment → decide → @exit:reviewed.
+
+story: code-review
+
+scope:
+  # prep.py --grep words. RECALL-ONLY prefilter: a substring scan over the whole
+  # raw jsonl, so it over-matches prose ("review these changes", "comment on the
+  # design"). It widens the net; the real scoping is the human read in the map.
+  grep: ["review pr", "review the pr", "pending reviews", "request changes", "approve pr", gh pr review, "leave a comment", "pr comment", "looks good", lgtm]
+  sample: recency          # mine how we review *now*
+  max: 25
+
+  # post-filter to these action tags (vocab/tags.yaml). COARSE: review-feedback
+  # covers reading a diff and posting review comments; commit-or-pr covers PR
+  # surface work (listing, approving). They cannot separate "review a teammate's
+  # PR" from "address feedback on MY PR" — the non_goals boundary below is
+  # enforced by reading user_text, not by tag.
+  action_tags: [review-feedback, commit-or-pr]
+
+# Candidate rooms per action tag — a starting point for the human map, joined into
+# the coverage.md "candidate room" column by coverage_prep.py. Room ids are the
+# files under stories/code-review/rooms/.
+owns:
+  review-feedback:  [review_pr, comment, decide]
+  commit-or-pr:     [list_pending, idle]
+
+# Non-goals (stories/code-review/README.md — this is the reviewer flavor, NOT a
+# self-loop on your own PR; it does not open, push, or merge PRs). A matching
+# intent is OUT-OF-SCOPE, not a gap. Matched against verbatim user_text, since the
+# action tags above are too coarse to separate these from in-scope work.
+non_goals: [open-pr, push-to-remote, merge-pr, address-feedback-on-own-pr, fix-ci, run-tests]
+
+# Marker substrings coverage_prep.py scans the verbatim user_text for to HINT that
+# an in-scope-by-tag intent is actually an OUT-OF-SCOPE non_goal. A hint that
+# routes the human's attention — never an automatic verdict.
+non_goal_markers: ["open a pr", "open the pr", "create a pr", "my pr", "merge the pr", "merge this pr", "git push", "force push", "resolve comments on my", "fix the ci", "re-push", repush]

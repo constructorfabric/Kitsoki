@@ -1,0 +1,55 @@
+# mining.profile.yaml — scope config for mining dev-story coverage from real
+# Claude Code transcripts. Co-located so the story self-describes its mine.
+#
+# This is SCOPE CONFIGURATION, not an auto-classifier. It tells coverage_prep.py
+# (1) which sessions to distill (the grep prefilter), (2) which mined intents are
+# in-scope (the action tags), and (3) which rooms are CANDIDATE owners of each
+# action tag — a STARTING POINT for the human/LLM map in coverage.md, never an
+# assertion. The verdict (CONFORMS / DIVERGES / FIXTURE-GAP / COVERAGE-GAP /
+# OUT-OF-SCOPE) is assigned by reading the room bash + the recovered outcome, not
+# mechanically. See docs/stories/story-coverage-mining.md.
+#
+# dev-story is the broad "engineer's-day" hub: its OWN rooms are the day-level
+# surfaces (oracle Q&A, ideas, the PRD→design pipeline, code_review, deploy,
+# incident, observability, docs). The actual bugfix / PR-refinement commit loops
+# live in IMPORTED sub-stories (bf, pr) and are mined by git-ops — so the per-room
+# git mechanics (commit, branch, rebase, conflict) are non_goals here.
+
+story: dev-story
+
+scope:
+  # prep.py --grep words. RECALL-ONLY prefilter: a substring scan over the whole
+  # raw jsonl, so it over-matches prose ("design the API", "review the docs"). It
+  # widens the net; the real scoping is the human read in the map.
+  grep: ["write a proposal", "design doc", "code review", explore, "where is", "how does", incident, "ideas backlog", standup, "write docs"]
+  sample: recency          # mine how we work *now*
+  max: 25
+
+  # post-filter to these action tags (vocab/tags.yaml). dev-story's own rooms model
+  # codebase inspection (oracle / design_search), spec-driven authoring (the design
+  # + PRD pipeline), doc writing (design publish, docs), PR review (code_review) and
+  # error triage (incident / observability). It does NOT model the git commit loop —
+  # that is the imported bf/pr sub-stories (see non_goals).
+  action_tags: [explore-codebase, implement-from-spec, write-docs, review-feedback, debug-from-error-or-trace, commit-or-pr]
+
+# Candidate rooms per action tag — a starting point for the human map, joined into
+# the coverage.md "candidate room" column by coverage_prep.py. Room ids are the
+# files under stories/dev-story/rooms/.
+owns:
+  explore-codebase:           [oracle, design_search, ticket_search]
+  implement-from-spec:        [design, prd_published, ideas]
+  write-docs:                 [design_draft, design_materialize, design_refine, docs, prd_published]
+  review-feedback:            [code_review]
+  debug-from-error-or-trace:  [incident, observability]
+  commit-or-pr:               [deploy]
+
+# Non-goals: workflows the IMPORTED sub-stories own, not dev-story's day-level rooms.
+# A matching intent is OUT-OF-SCOPE, not a gap. Matched against the verbatim
+# user_text, since the coarse action tags above cannot separate the hub's own work
+# from the imported bf/pr commit loop or raw git mechanics.
+non_goals: [bugfix-reproduce-loop, pr-ci-monitor-merge, git-commit-staging, branch-or-worktree-mechanics, rebase-or-conflict-resolution, run-or-deploy-pipeline]
+
+# Marker substrings coverage_prep.py scans the verbatim user_text for to HINT that
+# an in-scope-by-tag intent is actually an OUT-OF-SCOPE non_goal. A hint that routes
+# the human's attention — never an automatic verdict.
+non_goal_markers: ["git commit", "git rebase", "git merge", worktree, "feature branch", "open a pr", "create a pr", "pull request", "merge the pr", conflict, "git stash", "run the deploy", "kubectl", "git push"]
