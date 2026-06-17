@@ -23,6 +23,10 @@ kitsoki/
 ├── testdata/apps/         runnable example apps (cloak, dev-story, …)
 ├── demo/                  VHS tapes and recorded GIFs
 ├── ideas.md               working notes / backlog
+├── .context/              transient markdown — proposals, summaries,
+│                          plans (gitignored; see §7)
+├── .artifacts/            generated review output — renders, test
+│                          reports, videos (gitignored; see §7)
 └── README.md              top-level entry point
 ```
 
@@ -358,6 +362,14 @@ schema-shaped prompt.
   inside the pure path, that's a bug.
 - **No comments unless the *why* is non-obvious.** A subtle invariant
   earns a comment; restating the code does not.
+- **Scratch goes in `.context/`, generated review artifacts in
+  `.artifacts/`.** Both are gitignored. Transient markdown — proposals,
+  summaries, working notes, plans you want to revisit — belongs in
+  `.context/`. Anything generated for review that shouldn't be committed
+  (render output, test reports under `.artifacts/test-reports/`, recorded
+  videos, the run-status SPA build) belongs in `.artifacts/`, with
+  subfolders as needed. Keeping ephemeral output out of tracked paths
+  avoids polluting the repo — especially with parallel agents at work.
 
 ---
 

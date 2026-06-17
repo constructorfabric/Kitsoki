@@ -203,8 +203,18 @@ kitsoki/
 │                          timeout
 ├── demo/                  VHS tapes and recorded GIFs
 ├── ideas.md               working notes / backlog
+├── .context/              scratch: transient proposals, summaries, plans
+│                          (gitignored)
+├── .artifacts/            generated review output: renders, test reports,
+│                          videos (gitignored)
 └── README.md              you are here
 ```
+
+`.context/` and `.artifacts/` are gitignored scratch spaces — put
+transient markdown (proposals, summaries) in `.context/` and any
+generated artifact for review in `.artifacts/`, so neither clutters the
+tracked tree. See the
+[developer guide](docs/architecture/developer-guide.md#7-coding-conventions).
 
 ## About the name
 
