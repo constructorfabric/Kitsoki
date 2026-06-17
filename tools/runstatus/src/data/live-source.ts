@@ -521,10 +521,19 @@ export class LiveSource implements DataSource {
     });
   }
 
-  offpath(sessionId: string, input: string): Promise<{ answer: string }> {
+  offpath(
+    sessionId: string,
+    input: string,
+    visual?: import("./source.js").VisualBundle
+  ): Promise<{ answer: string }> {
     return this.client.post<{ answer: string }>("runstatus.session.offpath", {
       session_id: sessionId,
       input,
+      // The optional spatial bundle (slice 1 lifts it server-side into
+      // host.WithVisualAmbient). The server's element.bbox is a [x,y,w,h]
+      // array; flatten the resolver's {x,y,width,height} into it here so the
+      // wire shape matches host.VisualAmbient exactly.
+      ...(visual ? { visual: visualParams(visual) } : {}),
     });
   }
 
@@ -754,11 +763,15 @@ export class LiveSource implements DataSource {
    * exposes `GET /artifact/<handle>` which validates path traversal and serves
    * the file via http.ServeContent (ETag, Range, Content-Type).
    */
-  artifactUrl(handle: string): string {
+  artifactUrl(handle: string, maxDim?: number): string {
     // Handles are content-addressed (e.g. "mockup-video#6e2b0759") and the '#'
     // is a URL fragment delimiter — left raw it truncates the path and the
     // server 404s. Encode the handle so '#' rides as %23 into the path segment.
-    return `/artifact/${encodeURIComponent(handle)}`;
+    const base = `/artifact/${encodeURIComponent(handle)}`;
+    // A downscale hint for a heavy frame rendered as a message thumbnail. The
+    // server may honour it; if not, it serves full-res (the file is the same
+    // URL minus the query, so caching is per-variant).
+    return maxDim && maxDim > 0 ? `${base}?max=${maxDim}` : base;
   }
 
   // ── Video feedback mode (/review) ──────────────────────────────────────────
@@ -1257,3 +1270,33 @@ export interface BugReportResult {
 
 // Re-export for components that import AnnotationEntry from this module.
 export type { AnnotationEntry };
+
+/**
+ * visualParams maps a VisualBundle into the exact wire shape the server's
+ * `runstatus.session.offpath` `visual` param expects (mirrors host.VisualAmbient
+ * JSON tags). The only impedance is the bbox: the resolver records it as
+ * {x,y,width,height} (readable in the chip + tests), but host.VisualAmbient's
+ * `element.bbox` is a positional `[x, y, w, h]` array — flatten it here. Fields
+ * the bundle omits are simply absent; the server decodes missing fields to zero
+ * and `WithVisualAmbient` is a no-op when nothing meaningful was attached.
+ */
+function visualParams(
+  v: import("./source.js").VisualBundle
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (v.frame_handle) out.frame_handle = v.frame_handle;
+  if (v.media_handle) out.media_handle = v.media_handle;
+  if (v.route) out.route = v.route;
+  if (typeof v.t_ms === "number") out.t_ms = v.t_ms;
+  if (v.point) out.point = { x: v.point.x, y: v.point.y };
+  if (v.element) {
+    const { selector, role, text, bbox } = v.element;
+    out.element = {
+      selector,
+      role,
+      text,
+      bbox: [bbox.x, bbox.y, bbox.width, bbox.height],
+    };
+  }
+  return out;
+}

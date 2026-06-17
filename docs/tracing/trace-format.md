@@ -418,6 +418,69 @@ The event is written exactly once per `host.artifacts_dir` media-emit call (i.e.
 per file copied under the artifacts root). The `id` is stable across replays because
 it is derived from the filename and append counter, not from a random UUID.
 
+### `input.visual` — the spatial attachment
+
+When an operator **points at a frame** and asks the read-only oracle for
+guidance, the captured screen context — the frame, the click point, and the
+resolved DOM element — rides as a `visual` object inside the existing
+oracle-call **input attrs**. It is *input to* the decision (un-reconstructable
+otherwise: "guidance about *what*?"), so it lives on the call, not in a separate
+event. The full mechanism is
+[`docs/architecture/visual-ambient.md`](../architecture/visual-ambient.md); the
+two capture surfaces are [`docs/tui/spatial-capture.md`](../tui/spatial-capture.md)
+(web) and [`docs/tui/spatial-handoff.md`](../tui/spatial-handoff.md) (terminal).
+
+The frame is recorded the way every produced still already is — as an
+[`artifact`](#artifact-event-kind) via `host.artifacts_dir` — and the bundle
+references it **by handle, never inlined bytes** (`frame_handle`), so a per-call
+still never base64-bloats the trace. The `point` and `element` are inlined (a
+few numbers + strings):
+
+```jsonc
+// inside the existing oracle.converse / oracle.ask input attrs
+"input": {
+  "question": "why is this disabled here?",
+  "visual": {
+    "schema_version": 1,
+    "frame_handle": "art:9f31…",            // artifact handle, not bytes
+    "point": { "x": 1180, "y": 540 },        // click position, frame pixels
+    "element": {                              // DOM node under the point (optional)
+      "selector": "[data-testid=intent-btn-run]",
+      "role": "button", "text": "Run",
+      "bbox": [1140, 520, 96, 40]            // [x, y, w, h], frame pixels
+    },
+    "t_ms": 14300, "media_handle": "art:7c02…",  // video frame (omitted for a still)
+    "route": "/review?video=art:7c02…"           // the UI route the operator was on
+  }
+}
+```
+
+Determinism, compatibility, and the dangling-frame guard:
+
+- **Frame-as-handle, deterministic.** The still is grabbed by the one
+  `internal/video.Frame` extractor (same `(video, t_ms)` ⇒ same bytes) and
+  stored by its stable artifact handle, not bytes. Element resolution is a pure
+  function of the reconstructed DOM + point, so the recorded `element` is stable.
+- **Replay re-feeds, never re-captures.** On cassette replay the recorded
+  `visual` block is fed straight back as the oracle's input; the answer is the
+  **mocked cassette response** — no real model, no vision, no network. The story
+  trace stays byte-identical because nothing here is wall-clock or operator-keyed.
+- **Dangling-frame rejection.** A `visual` block whose `frame_handle` does not
+  resolve to a recorded artifact is **rejected** at record time (an injected
+  `FrameResolver`, wired from the orchestrator's journal reader), so the trace
+  can never carry a reference to a frame that isn't there. When no resolver is
+  wired (flow fixtures without an artifact substrate, headless replay) the check
+  is skipped and the bundle records as-is.
+- **`schema_version`** lets the bundle shape evolve without breaking older
+  traces. A call **without** a visual ambient carries no `visual` key and records
+  exactly as before — pure addition, no cassette regeneration for unrelated
+  stories.
+
+The web message render reads `input.visual` off the call and shows a thumbnail
+(a downscaled still by handle) + the element chip; the trace detail pane shows
+the full bundle. Both are read-only over the trace — the moat's read side
+(guidance is a `converse`/`ask` answer, never a web-tier write path).
+
 ---
 
 ## 5. `call_id` derivation

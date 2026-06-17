@@ -108,6 +108,17 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 	if o.journalWriter != nil {
 		ctx = host.WithArtifactJournalWriter(ctx, journal.SessionStamping(o.journalWriter, sid))
 	}
+	// Inject the frame resolver so an operator-facing agent call (converse/ask)
+	// rejects an `input.visual` block whose frame_handle does not resolve to a
+	// recorded artifact (docs/tracing/trace-format.md: no dangling frame
+	// reference). Backed by the read side of the same artifact substrate
+	// host.artifacts_dir records into. nil is safe (the check is skipped when no
+	// reader is wired — flow fixtures with no substrate).
+	if o.journalReader != nil {
+		ctx = host.WithFrameResolver(ctx, host.FrameResolverFunc(func(handle string) bool {
+			return artifactHandleResolves(o.journalReader, sid, handle)
+		}))
+	}
 	// Inject the agents map so host.agent.* invocations can resolve
 	// `with: { agent: <name> }` references to a host.Agent value. Built
 	// once per dispatch (cheap — translation is tag-equivalent).
@@ -994,4 +1005,32 @@ func worldFloat(v any) float64 {
 		return float64(x)
 	}
 	return 0
+}
+
+// artifactHandleResolves reports whether handle names a recorded artifact in
+// session sid's typed journal. It scans for a journal.KindArtifactEmitted entry
+// whose ID equals handle — the same record host.artifacts_dir writes when a
+// frame still is grabbed, and the same one the runstatus JournalArtifactResolver
+// serves the /artifact/{id} route from. Kept predicate-only (no path/MIME) so
+// the host package's dangling-frame check stays decoupled from artifact serving.
+func artifactHandleResolves(r journal.Reader, sid app.SessionID, handle string) bool {
+	if r == nil || handle == "" {
+		return false
+	}
+	seq, errFn := r.ReplayTyped(sid)
+	for entry := range seq {
+		if entry.Kind != journal.KindArtifactEmitted {
+			continue
+		}
+		var ev journal.ArtifactEvent
+		if err := json.Unmarshal(entry.Body, &ev); err != nil {
+			continue
+		}
+		if ev.ID == handle {
+			_ = errFn()
+			return true
+		}
+	}
+	_ = errFn()
+	return false
 }

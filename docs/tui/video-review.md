@@ -22,6 +22,11 @@ structured note to whoever is producing the video. The operator never sees a
 timestamp-to-scene lookup or an ffmpeg call — they see "flag scene 3, say
 what's wrong, send."
 
+A flag can also carry a **click point + the resolved DOM element** under it: the
+operator points at a pixel in the frame and the read-only oracle answers about
+*what they pointed at*. That is the [spatial capture](spatial-capture.md)
+surface, built on this `/review` player.
+
 ## Layout
 
 ```

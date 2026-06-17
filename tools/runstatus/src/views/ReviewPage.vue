@@ -18,12 +18,14 @@
 import { ref, computed, onMounted, reactive } from "vue";
 import { useRoute } from "vue-router";
 import { createDataSource } from "../data/source.js";
-import type { Chapter } from "../data/source.js";
+import type { Chapter, VisualBundle } from "../data/source.js";
 import type { Flag } from "../lib/flags.js";
+import type { ResolvedElement } from "../lib/resolveElement.js";
 import { dominantChapter } from "../lib/flags.js";
 import ChapterTimeline from "../components/ChapterTimeline.vue";
 import FlagList from "../components/FlagList.vue";
 import FlagDetail from "../components/FlagDetail.vue";
+import SpatialPicker from "../components/SpatialPicker.vue";
 
 const props = defineProps<{ sessionId: string }>();
 
@@ -53,6 +55,15 @@ const selectedFlag = computed(
 // metadata once it loads (chapters may carry zero-width windows — slice-1
 // deviation 2 — in which case ChapterTimeline spaces markers evenly).
 const playerDurationMs = ref(0);
+
+// Spatial picker over the player frame (docs/tui/spatial-capture.md). The
+// frame's natural size feeds the rendered→frame-pixel map; default to a 16:9
+// box until the video reports its intrinsic size. The resolver runs against the
+// LIVE document (one resolver, two roots — the rrweb iframe root is slice 3).
+const frameNatural = ref({ width: 1280, height: 720 });
+const pickerRoot = computed<Document | null>(() =>
+  typeof document !== "undefined" ? document : null
+);
 const totalMs = computed(() => {
   const fromChapters = chapters.value.reduce(
     (m, c) => Math.max(m, c.end_ms),
@@ -84,6 +95,28 @@ function onLoadedMetadata() {
   if (player.value && !Number.isNaN(player.value.duration)) {
     playerDurationMs.value = Math.round(player.value.duration * 1000);
   }
+  if (player.value?.videoWidth && player.value?.videoHeight) {
+    frameNatural.value = {
+      width: player.value.videoWidth,
+      height: player.value.videoHeight,
+    };
+  }
+}
+
+/**
+ * The operator clicked/dragged the frame: stash the point + resolved element on
+ * the selected flag (epic decision 5 — the flag BECOMES the spatial
+ * attachment). The flag's next chat question carries this as the visual bundle.
+ */
+function onPick(bundle: {
+  point: { x: number; y: number };
+  box?: { x: number; y: number; width: number; height: number };
+  element?: ResolvedElement;
+}) {
+  const f = selectedFlag.value;
+  if (!f) return;
+  f.point = bundle.point;
+  f.element = bundle.element;
 }
 
 function onSeek(tMs: number) {
@@ -132,6 +165,24 @@ function onSelectFlag(id: number) {
   selectedId.value = id;
 }
 
+/**
+ * visualFor builds the off-path `visual` bundle for a flag, or undefined when
+ * the flag carries neither a captured still nor a picked point/element (then
+ * the question is a plain off-path turn, unchanged from before). The bundle
+ * rides on session.offpath; slice 1 lifts it into host.WithVisualAmbient.
+ */
+function visualFor(f: Flag): VisualBundle | undefined {
+  if (!f.frame_handle && !f.point && !f.element) return undefined;
+  return {
+    ...(f.frame_handle ? { frame_handle: f.frame_handle } : {}),
+    ...(video.value ? { media_handle: video.value } : {}),
+    ...(f.point ? { point: f.point } : {}),
+    ...(f.element ? { element: f.element } : {}),
+    t_ms: f.start_ms,
+    route: `/review/${props.sessionId}`,
+  };
+}
+
 function onUpdateInstruction(value: string) {
   if (selectedFlag.value) selectedFlag.value.instruction = value;
 }
@@ -142,7 +193,7 @@ async function onSendChat(input: string) {
   chats[f.id].push({ role: "user", text: input });
   chatBusy.value = true;
   try {
-    const { answer } = await ds.offpath(props.sessionId, input);
+    const { answer } = await ds.offpath(props.sessionId, input, visualFor(f));
     chats[f.id].push({ role: "assistant", text: answer });
   } catch (e) {
     chats[f.id].push({
@@ -194,16 +245,27 @@ async function onSendAll() {
     <div class="rp-cols">
       <!-- Left: player + timeline + flags -->
       <section class="rp-left">
-        <video
-          v-if="video"
-          ref="player"
-          class="rp-player"
-          data-testid="rp-player"
-          controls
-          preload="metadata"
-          :src="videoUrl()"
-          @loadedmetadata="onLoadedMetadata"
-        />
+        <div v-if="video" class="rp-frame" data-testid="rp-frame">
+          <video
+            ref="player"
+            class="rp-player"
+            data-testid="rp-player"
+            controls
+            preload="metadata"
+            :src="videoUrl()"
+            @loadedmetadata="onLoadedMetadata"
+          />
+          <!-- Spatial picker: live only once a flag is selected (it stashes the
+               point/element on that flag). pointer-events live so it captures
+               clicks; it drops them momentarily to hit-test the page behind. -->
+          <SpatialPicker
+            v-if="selectedFlag"
+            :natural-width="frameNatural.width"
+            :natural-height="frameNatural.height"
+            :root="pickerRoot"
+            @pick="onPick"
+          />
+        </div>
         <ChapterTimeline
           :chapters="chapters"
           :total-ms="totalMs"
@@ -278,7 +340,11 @@ async function onSendAll() {
   flex-direction: column;
   gap: 0.9em;
 }
+.rp-frame {
+  position: relative;
+}
 .rp-player {
+  display: block;
   width: 100%;
   border-radius: 8px;
   background: #000;

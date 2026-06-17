@@ -425,6 +425,20 @@ persona table pattern — one named agent per role, declared in `agents:` — is
 documented with worked examples in `stories/bugfix/AGENT-BRIEF.md` and
 `stories/bugfix/README.md`.
 
+### Ambient context — editor and screen
+
+The operator-facing read-only verbs (`ask`, `ask_with_mcp`, `converse`) receive
+two kinds of ambient context the operator surface attaches at turn-submit, each
+exposed both as an opt-in `args.*` template key and as an auto-appended prompt
+preamble:
+
+- **Editor** — `IDEAmbient` (`{file, selection, range}`), see
+  [`docs/tui/README.md`](../tui/README.md#ambient-editor-context).
+- **Screen** — `VisualAmbient` (`{frame, point, element}`): a captured frame,
+  a click point, and the DOM element under it, so the oracle can answer about
+  *what the operator pointed at*. See
+  [`docs/architecture/visual-ambient.md`](visual-ambient.md).
+
 ### Hermetic isolation from the operator's Claude Code config
 
 The agent execs the local `claude` CLI, so a story's agents would otherwise

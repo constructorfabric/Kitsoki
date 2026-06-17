@@ -84,6 +84,7 @@ import (
 
 	"kitsoki/internal/app"
 	"kitsoki/internal/helpdocs"
+	"kitsoki/internal/host"
 	"kitsoki/internal/jobs"
 	"kitsoki/internal/orchestrator"
 	"kitsoki/internal/runstatus"
@@ -183,6 +184,12 @@ type Server struct {
 	// graph-only surfaces (no chat) can discover and follow it. Always non-nil; the
 	// registry pushes values through EmitCurrentSession.
 	current *currentBuffer
+
+	// points is the one-time-token registry behind the transient `/point`
+	// spatial-handoff window (point_handoff.go): it mints a token per request,
+	// serves the chrome-less SPA, and resolves the parked turn when the window
+	// POSTs its visual bundle. Always non-nil.
+	points *pointHandoff
 
 	// recorder is the HAR ring buffer capturing the last N /rpc request/response
 	// pairs. runstatus.bug.report snapshots + scrubs it into the bug's artifacts.
@@ -354,6 +361,7 @@ func newServer(provider SessionProvider, cfg serverConfig) *Server {
 		questions:    newQuestionBuffer(),
 		qreg:         newQuestionRegistry(),
 		current:      newCurrentBuffer(),
+		points:       newPointHandoff(),
 		recorder:     harrec.New(bugRecorderCapacity),
 		bugRoot:      cfg.bugRoot,
 		ticketRepo:   cfg.ticketRepo,
@@ -498,6 +506,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/rpc/session-current", s.handleSessionCurrent)
 	mux.HandleFunc("/rpc/questions", s.handleQuestions)
 	mux.HandleFunc("/artifact/", s.handleArtifact)
+	// Transient spatial-handoff window: the chrome-less SPA + its one-time-token
+	// return endpoint (point_handoff.go). The longer "/point/return" pattern is
+	// registered first so it wins over "/point" for the POST path.
+	mux.HandleFunc("/point/return", s.handlePointReturn)
+	mux.HandleFunc("/point", s.handlePoint)
 	mux.HandleFunc("/rpc/meta-stream", s.handleMetaStream)
 	mux.HandleFunc("/rpc/turn-stream", s.handleTurnStream)
 	// Embedded help-docs site (make site-embed). Serves an actionable
@@ -967,6 +980,14 @@ func (s *Server) dispatch(ctx context.Context, method string, params map[string]
 			return nil, readOnlyErr(method)
 		}
 		input, _ := params["input"].(string)
+		// A web/tui surface may attach a visual ambient bundle (the frame the
+		// operator was looking at + the element they pointed at) on the offpath
+		// call. Lift it onto the ctx so the converse handler renders it into the
+		// oracle prompt (see internal/host/visual_ambient.go). A no-op when no
+		// bundle rode the call — the legacy offpath path is byte-identical.
+		if vm, ok := params["visual"].(map[string]any); ok {
+			ctx = host.WithVisualAmbient(ctx, visualAmbientFromParams(vm))
+		}
 		answer, err := entry.Driver.AskOffPath(ctx, input)
 		if err != nil {
 			return nil, serverErr(err)
@@ -1567,6 +1588,68 @@ func traceEventsToStoreEvents(tevs []runstatus.TraceEvent) []store.Event {
 		})
 	}
 	return out
+}
+
+// visualAmbientFromParams decodes the optional `visual` object on a
+// session.offpath RPC into a host.VisualAmbient. The shape mirrors
+// host.VisualAmbient's JSON tags; numbers arrive as JSON float64. Missing or
+// malformed fields decode to their zero value (host.WithVisualAmbient is a
+// no-op when nothing meaningful was attached), so a partial bundle never errors
+// the turn — the surface owns producing a well-formed bundle (slices 2/4).
+func visualAmbientFromParams(m map[string]any) host.VisualAmbient {
+	var v host.VisualAmbient
+	v.FrameHandle, _ = m["frame_handle"].(string)
+	v.MediaHandle, _ = m["media_handle"].(string)
+	v.Route, _ = m["route"].(string)
+	if t, ok := mapNum(m, "t_ms"); ok {
+		v.TMs = t
+	}
+	if pt, ok := m["point"].(map[string]any); ok {
+		v.Point.X, _ = mapNum(pt, "x")
+		v.Point.Y, _ = mapNum(pt, "y")
+	}
+	if el, ok := m["element"].(map[string]any); ok {
+		var e struct {
+			Selector string `json:"selector"`
+			Role     string `json:"role"`
+			Text     string `json:"text"`
+			Bbox     [4]int `json:"bbox"`
+		}
+		e.Selector, _ = el["selector"].(string)
+		e.Role, _ = el["role"].(string)
+		e.Text, _ = el["text"].(string)
+		if bb, ok := el["bbox"].([]any); ok {
+			for i := 0; i < len(bb) && i < 4; i++ {
+				e.Bbox[i] = numOf(bb[i])
+			}
+		}
+		v.Element = &e
+	}
+	return v
+}
+
+// mapNum reads a numeric field (JSON float64) from m as an int.
+func mapNum(m map[string]any, key string) (int, bool) {
+	switch n := m[key].(type) {
+	case float64:
+		return int(n), true
+	case int:
+		return n, true
+	default:
+		return 0, false
+	}
+}
+
+// numOf coerces a single JSON number to an int (zero when not numeric).
+func numOf(v any) int {
+	switch n := v.(type) {
+	case float64:
+		return int(n)
+	case int:
+		return n
+	default:
+		return 0
+	}
 }
 
 // intParam reads a numeric param (arrives as JSON float64) as an int.

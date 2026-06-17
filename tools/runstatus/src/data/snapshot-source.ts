@@ -136,7 +136,11 @@ export class SnapshotSource implements DataSource {
     return this.readOnly("continueTurn");
   }
 
-  offpath(_sessionId: string, _input: string): Promise<{ answer: string }> {
+  offpath(
+    _sessionId: string,
+    _input: string,
+    _visual?: import("./source.js").VisualBundle
+  ): Promise<{ answer: string }> {
     return this.readOnly("offpath");
   }
 
@@ -226,7 +230,9 @@ export class SnapshotSource implements DataSource {
    * HTML artifact is expected to live alongside an `artifacts/` directory
    * containing the media files keyed by handle (filename).
    */
-  artifactUrl(handle: string): string {
+  artifactUrl(handle: string, _maxDim?: number): string {
+    // A static snapshot ships its artifacts verbatim under artifacts/<handle>;
+    // there is no server to downscale, so the maxDim hint is ignored.
     return `./artifacts/${handle}`;
   }
 

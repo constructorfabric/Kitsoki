@@ -356,6 +356,9 @@ func AgentAskWithMCPHandler(ctx context.Context, args map[string]any) (Result, e
 	// no-op when no selection rode the turn. Applied before the chat and core
 	// dispatch paths so both carry it.
 	rendered = appendIDEAmbient(ctx, rendered)
+	// Always-on screen context: append the operator's pointed-at element/frame
+	// beside the editor selection. A no-op when no surface attached a bundle.
+	rendered = appendVisualAmbient(ctx, rendered)
 
 	// Chat-aware path: chat_id provided AND ChatStore available.
 	chatID, _ := args["chat_id"].(string)

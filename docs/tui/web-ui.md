@@ -13,6 +13,11 @@ live in [`../web/README.md`](../web/README.md).
 > [VS Code extension](vscode-extension.md) for the transport seam, theming, and the
 > full-editor demo pipeline.
 
+The browser is also where an operator can **point at a frame** and ask the
+read-only agent about the element under the click — the
+[spatial capture](spatial-capture.md) surface (a terminal operator reaches the
+same picker through the [spatial handoff](spatial-handoff.md) window).
+
 ## Meta menu → Report bug
 
 The Meta dropdown (bottom-right) carries a **Report bug** item that captures a

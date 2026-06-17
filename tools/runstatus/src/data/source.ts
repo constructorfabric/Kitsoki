@@ -8,8 +8,33 @@ import type {
 } from "../types.js";
 import type { TranscriptData } from "./transcript.js";
 import type { StreamItem } from "../lib/activity.js";
+import type { ResolvedElement } from "../lib/resolveElement.js";
 import { SnapshotSource } from "./snapshot-source.js";
 import { LiveSource } from "./live-source.js";
+
+/**
+ * VisualBundle — the spatial-capture ambient attached to an off-path question
+ * (docs/tui/spatial-capture.md). It rides on
+ * `runstatus.session.offpath`'s optional `visual` param, which slice 1 lifts
+ * server-side into host.WithVisualAmbient so the converse oracle answers with
+ * the frame, the pixel, and the element in context. Every field is optional:
+ * the bundle is forward-compatible (a future static-image upload carries only
+ * `frame_handle` + `point`, no `element`).
+ */
+export interface VisualBundle {
+  /** Artifact handle of the captured still the operator pointed at. */
+  frame_handle?: string;
+  /** The originating media artifact handle (the video/image the frame came from). */
+  media_handle?: string;
+  /** The click position within the frame, in frame pixels. */
+  point?: { x: number; y: number };
+  /** The DOM element resolved under the point (lib/resolveElement). */
+  element?: ResolvedElement;
+  /** Frame timestamp within the source video, if any. */
+  t_ms?: number;
+  /** The route the capture happened on (e.g. "/review/<sid>"). */
+  route?: string;
+}
 
 export interface TraceCursor {
   since_turn?: number;
@@ -159,8 +184,17 @@ export interface DataSource {
     sessionId: string,
     slots: Record<string, unknown>
   ): Promise<TurnResult>;
-  /** Read-only off-path question against the default agent. */
-  offpath(sessionId: string, input: string): Promise<{ answer: string }>;
+  /**
+   * Read-only off-path question against the default agent. An optional
+   * `visual` bundle (spatial-capture) attaches the frame + point + resolved
+   * element so the agent answers in screen context; slice 1 lifts it into
+   * host.WithVisualAmbient server-side.
+   */
+  offpath(
+    sessionId: string,
+    input: string,
+    visual?: VisualBundle
+  ): Promise<{ answer: string }>;
 
   /**
    * Rewind one contextual-routing (CRR) decision: reverse the route identified
@@ -239,8 +273,14 @@ export interface DataSource {
    * server-side `/artifact/<handle>` path; in snapshot mode returns a
    * relative sidecar path `./artifacts/<handle>` (the handle is the
    * filename under the snapshot's sibling `artifacts/` directory).
+   *
+   * maxDim, when set, requests a downscaled still no larger than maxDim pixels
+   * on its longest edge — a hint for a heavy frame rendered as a message
+   * thumbnail (docs/tracing/trace-format.md, full-res on
+   * click-to-zoom). Live mode rides it as a `?max=<n>` query hint; a server that
+   * does not (yet) downscale serves the full-res file unchanged.
    */
-  artifactUrl(handle: string): string;
+  artifactUrl(handle: string, maxDim?: number): string;
 
   // ── Video feedback mode (/review) ──────────────────────────────────────────
 

@@ -7,6 +7,7 @@
  * source of truth once dispatched); they are NOT persisted client-side.
  */
 import type { Chapter, SourceRef } from "../data/source.js";
+import type { ResolvedElement } from "./resolveElement.js";
 
 export interface Flag {
   /** Stable local id (monotonic). */
@@ -22,6 +23,16 @@ export interface Flag {
   instruction: string;
   /** Whether this flag has been dispatched to refine. */
   sent: boolean;
+  /**
+   * Spatial attachment (docs/tui/spatial-capture.md; a flag BECOMES a spatial
+   * attachment, no parallel type).
+   * Set when the operator clicked a point on the frame: `point` is the click in
+   * frame pixels, `element` is the DOM element resolved under it. Both absent
+   * for a plain time-only flag; the off-path `visual` bundle carries them when
+   * present.
+   */
+  point?: { x: number; y: number };
+  element?: ResolvedElement;
 }
 
 /**

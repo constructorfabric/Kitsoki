@@ -88,8 +88,38 @@ func osOpenArtifact(path string) error {
 	return exec.Command(bin, path).Start()
 }
 
+// osOpenBrowser opens rawURL in the platform browser (`open` / `xdg-open`),
+// detached. Unlike osOpenArtifact it never consults $EDITOR — a URL belongs in
+// a browser, not a text editor. Used by the spatial-handoff link opener.
+func osOpenBrowser(rawURL string) error {
+	var bin string
+	switch runtime.GOOS {
+	case "darwin":
+		bin = "open"
+	default:
+		bin = "xdg-open"
+	}
+	return exec.Command(bin, rawURL).Start()
+}
+
 // openBlock renders a one-line `/open` chat block via the blocks renderer
 // (SlashOutput) — no hand-rolled ANSI, matching ideBlock.
 func (m RootModel) openBlock(line string) string {
 	return blocks.New(m.transcript.width, m.currentTheme()).SlashOutput("open: " + line)
+}
+
+// osc8Hyperlink wraps label in an OSC 8 terminal hyperlink pointing at url:
+// the operator's terminal renders label as clickable text that opens url in the
+// right app (the same affordance `/open` and the review-externally links use).
+// Terminals without OSC 8 support degrade gracefully — they print label as
+// plain text and silently drop the escape bytes — so it is always safe to emit.
+//
+// The sequence is `ESC ] 8 ; ; <url> ST <label> ESC ] 8 ; ; ST`, where ST is the
+// BEL terminator (the widely-supported form). This is the single shared OSC 8
+// emitter the TUI uses; callers (e.g. the spatial-handoff link) build on it
+// rather than hand-rolling escape strings.
+func osc8Hyperlink(url, label string) string {
+	const esc = "\x1b]8;;"
+	const st = "\x07"
+	return esc + url + st + label + esc + st
 }
