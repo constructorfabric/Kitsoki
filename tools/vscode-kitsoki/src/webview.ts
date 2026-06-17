@@ -25,8 +25,10 @@ import type { Backend } from './backend';
  * so the SPA mounts the right single-surface view (chat / trace / graph). Two ways
  * the chat shows up:
  *   - the editor-area panel (ChatPanel) boots the FULL SPA (NO surface marker) —
- *     home library + the interactive embed layout (chat front/center + a
- *     maximizable trace/graph hint rail). This is the "popped-out" full window.
+ *     the interactive embed layout (chat front/center + a maximizable trace/graph
+ *     hint rail), pinned to the active session so the pop-out CONTINUES the
+ *     conversation; with no active session it opens the home library. This is the
+ *     "popped-out" full window.
  *   - the narrow Surfaces sidebar pane mounts surface='chat' (the single-surface
  *     ChatSurface), the first item beside trace/graph; its title-bar pop-out button
  *     promotes the conversation to the editor panel above.
@@ -35,11 +37,16 @@ export type Surface = 'chat' | 'trace' | 'graph';
 
 /** Read the bundled singlefile SPA and inject a per-render CSP + nonce + theme.
  * `surface` is optional: when omitted the SPA boots its full experience (the chat
- * panel); when set, the SPA mounts that single decomposed surface (trace/graph). */
+ * panel); when set, the SPA mounts that single decomposed surface (trace/graph).
+ * `initialRoute` is optional (full-SPA only): when set, the SPA's hash router is
+ * pointed at that route BEFORE it boots, so the popped-out chat panel opens
+ * directly on the active session's conversation (rather than relying on the home
+ * screen's storage-gated single-session auto-nav, which a webview can degrade). */
 export function renderSpaHtml(
   webview: vscode.Webview,
   extensionUri: vscode.Uri,
   surface?: Surface,
+  initialRoute?: string,
 ): string {
   const indexPath = vscode.Uri.joinPath(extensionUri, 'media', 'spa', 'index.html').fsPath;
   let html = fs.readFileSync(indexPath, 'utf8');
@@ -71,7 +78,14 @@ export function renderSpaHtml(
   const surfaceTag = surface
     ? `<script nonce="${nonce}">window.__KITSOKI_SURFACE=${JSON.stringify(surface)};</script>`
     : '';
-  const head = `${cspMeta}${surfaceTag ? `\n${surfaceTag}` : ''}`;
+  // Initial-route seed (full-SPA pop-out): set the hash BEFORE the bundle's module
+  // script runs so createWebHashHistory starts on the active session's chat. This
+  // classic <script> runs synchronously during head parse, ahead of the deferred
+  // module. Guarded by `!location.hash` so a real navigation is never clobbered.
+  const routeTag = initialRoute
+    ? `<script nonce="${nonce}">if(!location.hash){location.hash=${JSON.stringify('#' + initialRoute)};}</script>`
+    : '';
+  const head = `${cspMeta}${surfaceTag ? `\n${surfaceTag}` : ''}${routeTag ? `\n${routeTag}` : ''}`;
 
   if (/<head[^>]*>/i.test(html)) {
     html = html.replace(/<head[^>]*>/i, (m) => `${m}\n${head}`);
@@ -120,9 +134,23 @@ export function mountSpa(
 
   void backend
     .start()
-    .then((base) => {
+    .then(async (base) => {
       relay.setBase(base);
-      webview.html = renderSpaHtml(webview, extensionUri, surface);
+      // Full-SPA chat panel (no surface marker): pin it to the active session's
+      // conversation so the pop-out CONTINUES the chat deterministically — never
+      // landing on the home library because a webview degraded sessionStorage and
+      // suppressed the home screen's single-session auto-nav. A missing/absent
+      // current session falls back to the library (initialRoute stays undefined).
+      let initialRoute: string | undefined;
+      if (!surface) {
+        try {
+          const cur = await backend.rpc<{ session_id: string | null }>('runstatus.session.current');
+          if (cur?.session_id) initialRoute = `/s/${cur.session_id}/chat`;
+        } catch (err) {
+          out.appendLine(`[webview] session.current probe failed (opening library): ${(err as Error).message}`);
+        }
+      }
+      webview.html = renderSpaHtml(webview, extensionUri, surface, initialRoute);
     })
     .catch((err: Error) => {
       out.appendLine(`[webview] backend start failed: ${err.message}`);
@@ -149,12 +177,14 @@ export const CHAT_PANEL_VIEW_TYPE = 'kitsoki.chat';
 
 /**
  * ChatPanel — the reveal-or-create editor-area WebviewPanel that hosts the chat
- * front-and-center. It mounts the FULL SPA (no surface marker) so it keeps the
- * home library + the interactive embed layout (chat dominant + a maximizable
- * trace/graph hint rail) — the trace/graph dockable views are additive, not a
- * replacement. One panel at a time: reveal() re-focuses the existing one or
- * creates it. The SPA auto-enables its embed layout because the webview exposes
- * acquireVsCodeApi.
+ * front-and-center. It mounts the FULL SPA (no surface marker) and pins it to the
+ * active session's conversation (mountSpa probes runstatus.session.current and
+ * seeds the SPA's initial route), so popping out CONTINUES the chat rather than
+ * landing on the library; with no active session it opens the library. It keeps
+ * the interactive embed layout (chat dominant + a maximizable trace/graph hint
+ * rail) — the trace/graph dockable views are additive, not a replacement. One
+ * panel at a time: reveal() re-focuses the existing one or creates it. The SPA
+ * auto-enables its embed layout because the webview exposes acquireVsCodeApi.
  *
  * adopt() takes an already-created panel (used by the WebviewPanelSerializer to
  * revive after reload/restart/window-move) and mounts the chat surface on it.
