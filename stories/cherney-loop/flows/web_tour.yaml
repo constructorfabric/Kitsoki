@@ -1,10 +1,11 @@
 # The exact path the web tour demo drives (kitsoki web --flow), and a Mode-2
-# proof that it is real and every host call along it is stubbed. Starts at idle,
-# configures a script-gated loop with a small budget, launches, then evaluates
-# until the gate-fail loop hits the iteration ceiling.
+# proof that it is real and every host call along it is stubbed. Lands directly
+# in configuring (the root — no idle/begin ceremony), configures a script-gated
+# loop with a small budget, launches, then evaluates until the gate-fail loop
+# hits the iteration ceiling.
 test_kind: flow
 app: ../app.yaml
-initial_state: idle
+initial_state: configuring
 
 host_handlers:
   host.run:           { data: { ok: false, exit_code: 1, stdout: "FAIL: 1 test still failing" } }
@@ -12,8 +13,6 @@ host_handlers:
   host.artifacts_dir: { data: { ok: true } }
 
 turns:
-  - intent: { name: begin, slots: {} }
-    expect_state: configuring
   - intent:
       name: configure
       slots:

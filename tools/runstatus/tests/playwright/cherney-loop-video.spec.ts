@@ -100,11 +100,6 @@ async function clickIntent(page: Page, intent: string): Promise<void> {
  */
 async function driveForStep(page: Page, stepId: string): Promise<void> {
   switch (stepId) {
-    case "cl-begin":
-      diag("drive begin → configuring");
-      await clickIntent(page, "begin");
-      await expectState(page, "configuring");
-      break;
     case "cl-configure":
       diag("drive configure (goal + gate + budget) via hook");
       await page.evaluate(async () => {

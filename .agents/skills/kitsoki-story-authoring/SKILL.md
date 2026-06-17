@@ -633,6 +633,14 @@ The renderer / runtime traps — invisible until a user hits them:
   by the time the view renders (the orchestrator re-renders after bind);
   a *conditionally* invoked bind still needs `?? "(pending)"` because
   the field is absent on the not-taken branch.
+- **Ceremony steps — a room that costs a turn without deciding, side-
+  effecting, or collecting input.** A pass-through `idle`/`begin`/`continue`
+  landing room, or a checkpoint with a single forward path, makes the operator
+  click to advance the one place they could go. Make the first *real* room the
+  `root:` (delete the landing room), or `emit_intent:` auto-advance a no-choice
+  room from its `on_enter:`. One forward path is not a decision gate. See
+  [`docs/stories/authoring.md`](../../../docs/stories/authoring.md) §3.1 (the
+  authoritative rule).
 
 ## 11. The authoring loop
 

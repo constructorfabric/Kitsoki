@@ -6,6 +6,7 @@ states:
       extends: "base"
       blocks:
         body:
+          - prose: "A Cherney loop iterates an agent toward a goal until a gate proves it met — or a budget stops it. Each iteration is shown and recorded."
           - prose: "Set the goal, the gate that proves it, and the budgets. `launch` runs the first iteration."
           - kv:
               pairs:

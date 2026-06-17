@@ -93,10 +93,6 @@ world:
   turn_cost_usd:     { type: number, default: 0 }
 
 intents:
-  begin:
-    description: "Begin configuring a loop."
-    examples: ["begin", "start", "new loop"]
-    priority: 80
   configure:
     description: "Set the goal, gate, and budgets for the loop."
     examples: ["configure", "set goal", "set budget"]
@@ -150,7 +146,9 @@ exits:
   exhausted: { requires: [terminal_reason] }
   abandoned: { requires: [terminal_reason] }
 
-root: idle
+# The first real room IS the root — no `idle`/`begin` ceremony. Landing the
+# operator straight in `configuring` (where they act) avoids a pass-through turn.
+root: configuring
 
 include:
   - rooms/*.yaml

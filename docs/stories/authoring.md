@@ -96,6 +96,41 @@ The loop most authors settle into:
 The first four steps catch the vast majority of mistakes before the
 LLM ever sees the app.
 
+### 3.1 Avoid ceremony steps
+
+A room costs the operator a turn, so it must earn it. A room exists to do
+exactly one of:
+
+- **Decide** — offer a choice between **two or more** reachable forward paths
+  (a *decision gate*), or
+- **Side-effect** — `invoke:` a host or mutate `world:` in its `on_enter:`, or
+- **Collect** — gather slot input the next step needs.
+
+A room that does none of these is **ceremony** — it makes the operator click
+`begin`/`continue`/`ok`/`next` to advance the one place they could go anyway.
+The two usual shapes, and the fix:
+
+- **Pass-through landing room.** An `idle`/`start`/`welcome` whose only job is a
+  slotless, guardless intent that routes onward. → **Make the first *real* room
+  the `root:`** and delete the landing room. (cherney-loop did this: `root:
+  configuring`, no `idle`+`begin`.)
+- **No-choice checkpoint.** A room with a single forward intent and no
+  alternative. → If its `on_enter:` does real work, **auto-advance** with
+  `emit_intent:` from `on_enter:` (see
+  [`state-machine.md`](state-machine.md) → the `emit_intent` effect) instead of
+  waiting for a click; if it does no work, fold it into the neighbouring room.
+
+The engine already draws this line: a state is a *decision gate* only when it
+has ≥1 forward intent reachable **only** by operator input (not an
+`emit_intent:` auto-advance target) — `isDecisionGate` in
+`internal/machine/machine.go`. One forward path is not a decision; don't spend a
+turn on it.
+
+Genuine multi-choice checkpoints are **not** ceremony — an `accept` / `refine` /
+`abandon` review gate, a router hub with many actions, or a deliberate
+review-before-a-costly-action pause all earn their turn. The standard `look`
+re-render and `quit`/`abort` escape hatches are exempt.
+
 ---
 
 ## 4. Top-level fields (cheat sheet)

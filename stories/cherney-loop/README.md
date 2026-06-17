@@ -9,11 +9,14 @@ shareable.
 ## The loop
 
 ```
-idle → configuring → iterating ⇄ gating
-                         │           ├─ goal met     → @exit:achieved
-                         │           ├─ budget hit   → @exit:exhausted
-   abort ───────────────┴───────────┴─ operator     → @exit:abandoned
+configuring → iterating ⇄ gating
+                  │           ├─ goal met     → @exit:achieved
+                  │           ├─ budget hit   → @exit:exhausted
+   abort ─────────┴───────────┴─ operator     → @exit:abandoned
 ```
+
+`configuring` is the root — the operator lands where they act, with no `idle`/
+`begin` pass-through turn.
 
 - **iterating** — the **maker** (`host.oracle.task`) makes the smallest change
   toward the goal, fed the *previous gate's failure reason* as feedback (the
@@ -45,7 +48,6 @@ Evaluated every turn after a failed gate, in priority order:
 ## Configure
 
 ```
-begin
 configure goal="Make the unit tests pass" gate_command="go test ./..." iteration_budget=8 cost_budget=0.50
 launch
 ```
