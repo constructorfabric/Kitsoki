@@ -1,0 +1,44 @@
+# The exact path the web tour demo drives (kitsoki web --flow), and a Mode-2
+# proof that it is real and every host call along it is stubbed. Starts at idle,
+# configures a script-gated loop with a small budget, launches, then evaluates
+# until the gate-fail loop hits the iteration ceiling.
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.run:           { data: { ok: false, exit_code: 1, stdout: "FAIL: 1 test still failing" } }
+  host.oracle.task:   { data: { submitted: { summary: "made another change toward the goal" } } }
+  host.artifacts_dir: { data: { ok: true } }
+
+turns:
+  - intent: { name: begin, slots: {} }
+    expect_state: configuring
+  - intent:
+      name: configure
+      slots:
+        goal:             "Make the unit tests pass"
+        gate_command:     "go test ./..."
+        gate_mode:        "script"
+        iteration_budget: 4
+    expect_state: configuring
+    expect_world:
+      goal_text:        "Make the unit tests pass"
+      iteration_budget: 4
+  - intent: { name: launch, slots: {} }
+    expect_state: iterating
+    expect_world: { iteration: 1 }
+  - intent: { name: evaluate, slots: {} }
+    expect_state: iterating
+    expect_world: { iteration: 2, last_gate_failure: "FAIL: 1 test still failing" }
+  - intent: { name: evaluate, slots: {} }
+    expect_state: iterating
+    expect_world: { iteration: 3 }
+  - intent: { name: evaluate, slots: {} }
+    expect_state: iterating
+    expect_world: { iteration: 4 }
+  - intent: { name: evaluate, slots: {} }
+    expect_state: __exit__exhausted
+    expect_world: { terminal_reason: "iteration_budget" }
+
+expect_terminal: true

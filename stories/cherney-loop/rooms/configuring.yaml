@@ -37,7 +37,7 @@ states:
                 goal_text:        "{{ slots.goal ?? world.goal_text }}"
                 gate_mode:        "{{ slots.gate_mode ?? world.gate_mode }}"
                 gate_command:     "{{ slots.gate_command ?? world.gate_command }}"
-                iteration_budget: "{{ slots.iteration_budget ?? world.iteration_budget }}"
+                iteration_budget: "{{ int(slots.iteration_budget ?? world.iteration_budget) }}"
                 cost_budget_usd:  "{{ slots.cost_budget ?? world.cost_budget_usd }}"
       launch:
         - when: "world.goal_text == ''"
