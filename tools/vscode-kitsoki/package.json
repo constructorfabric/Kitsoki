@@ -74,6 +74,12 @@
           "when": "view == kitsoki.chat",
           "group": "navigation"
         }
+      ],
+      "commandPalette": [
+        {
+          "command": "kitsoki.popOutChat",
+          "when": "false"
+        }
       ]
     },
     "configuration": {

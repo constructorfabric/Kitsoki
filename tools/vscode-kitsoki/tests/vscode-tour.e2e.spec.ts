@@ -8,18 +8,16 @@
  *                          narration. This is the CI / de-risk gate. Same input
  *                          → same result.
  *   KITSOKI_VSCODE_PACE≥1  → paced/record: the SAME asserted beats plus per-beat
- *                          dwells, recordVideo (one ChapterRecorder clock), an
- *                          in-webview narration tour, and the editor-pane beats
- *                          (open the story's app.yaml, open the Kitsoki Trace
- *                          panel). The recorder only ADDS on top of the EXACT
- *                          path this gate proves — it cannot drift from it.
+ *                          dwells, recordVideo (one ChapterRecorder clock), and the
+ *                          editor-pane beats (open the story's app.yaml, open the
+ *                          Kitsoki Trace panel). The recorder only ADDS on top of
+ *                          the EXACT path this gate proves — it cannot drift from it.
  *
  * Recording pipeline (record mode only):
- *   - Narration: the SAME WEATHER_REPORT_TOUR_STEPS the live web tour uses is
- *     injected into the webview via window.__startTourWithSteps; each popover
- *     `title` is asserted against the manifest (a drift guard). For beats OUTSIDE
- *     the webview a thin EDITOR_BEATS manifest ({id,title,dwellMs}) drives the
- *     chapters.
+ *   - Beats are driven through native VS Code chrome (the Open Chat story picker)
+ *     and the sidebar surfaces, so a thin EDITOR_BEATS manifest ({id,title,dwellMs})
+ *     drives every chapter window — no in-webview narration popovers (the
+ *     single-surface ChatSurface isn't the popover-hosting full SPA).
  *   - One ChapterRecorder clock spans every beat → <mp4>.chapters.json.
  *   - app.close() flushes the webm, then saveVideoAsMp4 transcodes to MP4
  *     (libx264/yuv420p/+faststart) → .artifacts/vscode-tour/vscode-tour.mp4.
@@ -39,15 +37,14 @@
  *     toHaveText/toBeVisible expectations with timeouts.
  *
  * Critical path asserted beat-by-beat (the scenarios kitsoki-ui-qa checks the
- * video against). The embed chat panel shows ONLY the chat; trace + graph are
- * their own dockable windows (surface decomposition):
- *   (a) the Kitsoki editor panel opens (the story library, themed) — clicking the
- *       Activity Bar icon auto-opens the editor-area webview;
- *   (c) a session is started/observed (New session → /chat, current-state=lobby);
- *       the chat panel is chat-only (NO trace/graph hint rail);
- *   (d) a turn is driven and state advances (forecast → current-state=report,
- *       state-badge present; the "Tokyo, Japan" forecast renders) with chat
- *       front/center;
+ * video against). Chat / trace / graph are independent sidebar surfaces that all
+ * follow ONE backend session (surface decomposition):
+ *   (a) "Kitsoki: Open Chat" goes straight to a story PICKER; picking the weather
+ *       story STARTS the session and the narrow sidebar Chat surface immediately
+ *       reflects it (current-state=lobby) — the left surfaces follow the pick;
+ *   (d) a turn is driven in the sidebar Chat and state advances (forecast →
+ *       current-state=report, state-badge present; the "Tokyo, Japan" forecast
+ *       renders);
  *   (h) surface decomposition — "Kitsoki: Open Trace" docks the Trace as its OWN
  *       webview in the "Kitsoki Surfaces" sidebar (a separate document/store from
  *       the chat) that discovers + follows the SAME session via
@@ -77,7 +74,6 @@ import {
   packageExtension,
   type LaunchedVSCode,
 } from './_helpers/launch';
-import { WEATHER_REPORT_TOUR_STEPS } from '../../runstatus/src/tour/generated/weather-report';
 
 const EXT_ROOT = path.resolve(__dirname, '..');
 const REPO_ROOT = path.resolve(EXT_ROOT, '..', '..');
@@ -111,6 +107,11 @@ const dwell = (ms: number) => (RECORD ? sleep(ms * PACE) : Promise.resolve());
  * beats are narrated by WEATHER_REPORT_TOUR_STEPS instead.
  */
 const EDITOR_BEATS = {
+  // "Kitsoki: Open Chat" goes straight to a story PICKER; picking a story starts
+  // the session and the LEFT sidebar surfaces immediately reflect it. These beats
+  // ride the manifest (the picker is native VS Code chrome, not a webview popover).
+  pickerStart: { id: 'a-open-chat-picker', title: 'Open Chat → pick a story → it starts in the sidebar', dwellMs: 4500 },
+  driveTurn: { id: 'd-turn-driven', title: 'Drive a turn — state advances to the report', dwellMs: 4500 },
   // Surface decomposition: Trace and Graph each open as their OWN webview in the
   // "Kitsoki Surfaces" sidebar — a separate document/store from the chat editor
   // panel — and discover-and-follow the SAME backend session via
@@ -216,29 +217,6 @@ function transcodeWebmToMp4(
 }
 
 /**
- * Inject the live web tour's step array into the webview so a narration popover
- * spotlights each webview beat — the SAME manifest users see, asserted by title
- * (drift guard). Best-effort: if the overlay never appears the gate assertions
- * still carry the beat; narration is purely additive. Record-mode only.
- */
-/**
- * Dismiss the in-webview narration overlay (its full-frame backdrop intercepts
- * pointer events, so any SPA interaction or out-of-webview click must clear it
- * first). Best-effort + record-only.
- */
-async function clearOverlay(chatFrame: FrameLocator): Promise<void> {
-  if (!RECORD) return;
-  await chatFrame
-    .locator('body')
-    .evaluate(() => (window as unknown as { __tourSkip?: () => void }).__tourSkip?.())
-    .catch(() => undefined);
-  await chatFrame
-    .locator('[data-testid="tour-overlay"]')
-    .waitFor({ state: 'detached', timeout: 4000 })
-    .catch(() => undefined);
-}
-
-/**
  * Dismiss the narration overlay in WHICHEVER webview still holds it. Once the
  * trace/graph/sidebar-chat surfaces are open there are several `iframe.webview`
  * hosts, so the `.first()`-bound editor frame is no longer reliably the editor
@@ -266,61 +244,6 @@ async function dismissTourEverywhere(win: Page): Promise<void> {
       }
     }
   }
-}
-
-async function startWebviewTour(chatFrame: FrameLocator): Promise<void> {
-  await chatFrame
-    .locator('body')
-    .evaluate((_el, stepsJson) => {
-      (window as unknown as { __startTourWithSteps?: (s: string) => void })
-        .__startTourWithSteps?.(stepsJson);
-    }, JSON.stringify(WEATHER_REPORT_TOUR_STEPS))
-    .catch(() => undefined);
-}
-
-/**
- * Drive the in-webview narration popover to the step with `id`, asserting its
- * title against the manifest (drift guard), then open a chapter + dwell + shot.
- * Best-effort on the popover itself (a skipped/absent step never fails the gate);
- * the chapter window + screenshot are always emitted so the beat is in the video.
- */
-async function narrate(
-  chatFrame: FrameLocator,
-  chapters: ChapterRecorder,
-  shot: (label: string) => Promise<string>,
-  stepId: string,
-  shotLabel: string,
-  dwellMs: number,
-  // When true, dismiss the narration popover JUST BEFORE the labeled screenshot
-  // so the frame shows the content the step describes (the forecast report, the
-  // trace) unobstructed — the popover already had its on-screen dwell in the
-  // video; the QA frame must show the actual content, not the popover over it.
-  clearBeforeShot = false,
-): Promise<void> {
-  if (!RECORD) return;
-  const step = WEATHER_REPORT_TOUR_STEPS.find((s) => s.id === stepId);
-  if (step) {
-    // Advance the overlay (via the in-frame store) to this step, then verify the
-    // popover title matches the manifest — the recording can't drift from what
-    // users see in the live tour.
-    await chatFrame
-      .locator('body')
-      .evaluate((_el, id) => {
-        (window as unknown as { __tourGoTo?: (s: string) => void }).__tourGoTo?.(id);
-      }, stepId)
-      .catch(() => undefined);
-    const title = chatFrame.locator('[data-testid="tour-title"]').first();
-    await expect(title, `narration popover shows the manifest title for ${stepId}`)
-      .toHaveText(step.title, { timeout: 6000 })
-      .catch(() => undefined);
-  }
-  chapters.open(stepId, step?.title ?? shotLabel);
-  await dwell(dwellMs);
-  if (clearBeforeShot) {
-    await clearOverlay(chatFrame);
-    await dwell(900);
-  }
-  await shot(shotLabel);
 }
 
 /**
@@ -510,103 +433,61 @@ test('vscode tour e2e — load, render, drive, trace (no-LLM, deterministic)', a
       return p;
     };
 
-    // ── (a) Reveal the single Kitsoki menu, then open the editor chat panel ────
-    // There is ONE Kitsoki Activity Bar menu now (Chat / Trace / Graph as sidebar
-    // surfaces). Reveal it (the narrow Chat is the first item), then open the rich
-    // editor-area chat panel — the full SPA story library + interactive embed where
-    // the narrated tour beats live. No launcher view: open it via its command.
+    // ── (a) Open Chat → story PICKER → start → the LEFT surfaces reflect it ────
+    // The headline: "Kitsoki: Open Chat" no longer opens a window directly — it goes
+    // STRAIGHT to a story picker. Reveal the single Kitsoki menu (Chat is its first
+    // pane), run Open Chat, pick the weather story; the session STARTS and the narrow
+    // sidebar Chat surface immediately follows it via the current-session seam.
     await win.waitForSelector('.monaco-workbench', { timeout: 60_000 });
     const kitsokiIcon = win.locator('.activitybar [aria-label*="Kitsoki" i]').first();
     await expect(kitsokiIcon, 'the single Kitsoki Activity Bar menu present').toBeVisible({
       timeout: 30_000,
     });
     await kitsokiIcon.click();
-    // Wait for the single Kitsoki sidebar to actually render its Chat pane before
-    // driving the palette — clicking the icon resolves a webview and momentarily
-    // steals focus, so pressing the palette mid-transition is a race. Asserting the
-    // pane header lands first keeps this deterministic (a race is a bug, not a sleep).
+    // Wait for the Chat pane to render before driving the palette — clicking the icon
+    // resolves a webview and momentarily steals focus, so pressing the palette
+    // mid-transition is a race. Asserting the pane header lands first keeps this
+    // deterministic (a race is a bug, not a sleep).
     await expect(
       win.locator('.pane-header').filter({ hasText: /^\s*Chat\b/i }).first(),
       'the one Kitsoki menu opened with the Chat surface as its first pane',
     ).toBeVisible({ timeout: 30_000 });
     await dwell(1000);
-    const chatOpened = await runPaletteCommand(win, ['>Kitsoki: Open Chat']);
-    expect(chatOpened, '"Kitsoki: Open Chat" command available').toBe(true);
-    await dwell(1300);
 
-    // ── (b) The SPA renders INSIDE the webview ───────────────────────────────
-    // (asserted here; the matching narrated beat is the story-library frame).
-    // surfaceFrame (not webviewFrame.first()) — the sidebar Chat surface is also a
-    // webview now, so scan all hosts for the editor panel's home-view.
-    const chatFrame: FrameLocator = await surfaceFrame(win, 'home-view', 45_000);
-    await expect
-      .poll(
-        () =>
-          chatFrame
-            .locator('body')
-            .evaluate(
-              () => typeof (window as unknown as { acquireVsCodeApi?: unknown }).acquireVsCodeApi === 'function',
-            )
-            .catch(() => false),
-        { timeout: 15_000, message: 'webview exposes acquireVsCodeApi (BridgeTransport active)' },
-      )
-      .toBe(true);
+    // Open Chat → its story picker opens (a native QuickPick). Pick weather; the
+    // command calls runstatus.session.new and the session becomes current.
+    const openChat = await runPaletteCommand(win, ['>Kitsoki: Open Chat']);
+    expect(openChat, '"Kitsoki: Open Chat" command available').toBe(true);
+    const picked = await drivePicker(win, 'weather');
+    expect(picked, 'Open Chat story picker offered the weather story').toBe(true);
+    await dwell(1000);
+
+    // ── (b/c) The started session lands in the LEFT sidebar Chat surface ───────
+    // Open Chat opened NO window of its own; instead the story it started shows up
+    // in the narrow sidebar Chat (the single-surface ChatSurface) — proof the left
+    // surfaces reflect the pick immediately (current-session discovery on mount +
+    // the live subscribeCurrentSession seam). This is also the bundle+CSP+relay+
+    // backend round-trip in one assertion: a rendered session means the relay works.
+    const chatFrame: FrameLocator = await surfaceFrame(win, 'surface-chat', 45_000);
     await expect(
-      chatFrame.locator('[data-testid="story-card"]').first(),
-      'home story-card visible inside webview (bundle+CSP+relay+backend round-trip)',
-    ).toBeVisible({ timeout: 30_000 });
-
-    // Record mode: start the in-webview narration tour on the story library and
-    // hold on the welcome + story-card beats (the SAME popovers the web tour
-    // shows, asserted by title). Assert mode just shoots the settled frame.
-    if (RECORD) {
-      await startWebviewTour(chatFrame);
-      await narrate(chatFrame, chapters, shot, 'wr-intro-home', 'a-story-library', 4000);
-      await narrate(chatFrame, chapters, shot, 'wr-intro-story', 'a2-story-card', 4000);
-    } else {
-      await shot('a-view-open');
-      await shot('b-spa-rendered');
-    }
-
-    // ── (c) Start / observe a session ────────────────────────────────────────
-    const weatherCard = chatFrame
-      .locator('[data-testid="story-card"]')
-      .filter({ hasText: /weather/i })
-      .first();
-    await expect(weatherCard, 'weather-report story card present').toBeVisible({ timeout: 15_000 });
-    await weatherCard.locator('[data-testid="new-session-btn"]').click();
-    await expect(
-      chatFrame.locator('[data-testid="current-state"]'),
-      'interactive view shows current-state after New session',
+      chatFrame.locator('[data-testid="surface-chat"]'),
+      'the sidebar Chat surface mounted (its own webview, BridgeTransport relay)',
     ).toBeVisible({ timeout: 30_000 });
     await expect(
       chatFrame.locator('[data-testid="current-state"]'),
-      'fresh session opens in the lobby room',
+      'the picked story started — the sidebar Chat adopted the session',
+    ).toBeVisible({ timeout: 30_000 });
+    await expect(
+      chatFrame.locator('[data-testid="current-state"]'),
+      'a fresh session opens in the lobby room',
     ).toHaveText('lobby', { timeout: 30_000 });
-    await expect(
-      chatFrame.locator('[data-testid="observe-link"]'),
-      'session is observable',
-    ).toBeVisible({ timeout: 10_000 });
-    // The embed chat panel shows ONLY the chat — no trace/graph rail. Trace and
-    // Graph open as their own dockable windows (beats h/i), so the chat never
-    // repeats them.
-    await expect(
-      chatFrame.locator('[data-testid="hint-rail"]'),
-      'embed chat panel has NO trace/graph hint rail (chat-only)',
-    ).toHaveCount(0, { timeout: 10_000 });
-
     if (RECORD) {
-      // Re-arm the narration tour on the interactive view for the lobby beat.
-      await startWebviewTour(chatFrame);
-      await narrate(chatFrame, chapters, shot, 'wr-lobby', 'c-session-started', 4000);
-    } else {
-      await shot('c-session-started');
+      chapters.open(EDITOR_BEATS.pickerStart.id, EDITOR_BEATS.pickerStart.title);
+      await dwell(EDITOR_BEATS.pickerStart.dwellMs);
     }
+    await shot('a-open-chat-picker');
 
-    // ── (d) Drive a turn → state advances ────────────────────────────────────
-    // Clear the lobby narration overlay so its backdrop doesn't swallow the form
-    // submit (record mode); a no-op in assert mode.
-    await clearOverlay(chatFrame);
+    // ── (d) Drive a turn in the sidebar Chat → state advances ─────────────────
     const forecastForm = chatFrame.locator('form[data-intent="forecast"]');
     await expect(forecastForm, 'forecast intent form present in lobby').toBeVisible({
       timeout: 15_000,
@@ -626,14 +507,9 @@ test('vscode tour e2e — load, render, drive, trace (no-LLM, deterministic)', a
       chatFrame.locator('[data-testid="chat-transcript"]').getByText('Tokyo, Japan'),
       'forecast report rendered (cassette replay, no LLM)',
     ).toBeVisible({ timeout: 15_000 });
-
     if (RECORD) {
-      // The chat panel is the full editor-area width (chat-only). Scroll the
-      // resolved place ("Tokyo, Japan") to the top of the chat column so the
-      // report's "paper" card (resolved place, current conditions, 5-day table)
-      // is on-camera and its values aren't clipped, THEN start the narration
-      // popover beside it. The labeled QA frame shows both the narration and the
-      // rendered forecast.
+      // Scroll the resolved place ("Tokyo, Japan") to the top of the chat column so
+      // the report's "paper" card is on-camera and its values aren't clipped.
       await chatFrame
         .locator('[data-testid="chat-transcript"]')
         .getByText('Tokyo, Japan')
@@ -641,11 +517,10 @@ test('vscode tour e2e — load, render, drive, trace (no-LLM, deterministic)', a
         .evaluate((el) => el.scrollIntoView({ block: 'start', behavior: 'instant' as ScrollBehavior }))
         .catch(() => undefined);
       await dwell(400);
-      await startWebviewTour(chatFrame);
-      await narrate(chatFrame, chapters, shot, 'wr-forecast', 'd-turn-driven', 4500);
-    } else {
-      await shot('d-turn-driven');
+      chapters.open(EDITOR_BEATS.driveTurn.id, EDITOR_BEATS.driveTurn.title);
+      await dwell(EDITOR_BEATS.driveTurn.dwellMs);
     }
+    await shot('d-turn-driven');
 
     // intent-btn-* control path: the report room exposes a `back` action button.
     const backBtn = chatFrame.locator('[data-testid="intent-btn-back"]').first();
@@ -858,6 +733,31 @@ async function runPaletteCommand(win: Page, queries: string[]): Promise<boolean>
     await sleep(300);
   }
   return false;
+}
+
+/**
+ * Drive the QuickPick that "Kitsoki: Open Chat" opens (the story picker): type
+ * `query`, confirm a row matched, and Enter to start that story. This is the SAME
+ * `.quick-input-widget` the command palette uses, so it's driven the same way.
+ * Returns false (and dismisses the picker) when nothing matched.
+ */
+async function drivePicker(win: Page, query: string): Promise<boolean> {
+  const input = win.getByRole('combobox', { name: 'input' });
+  await input.waitFor({ timeout: 8000 }).catch(() => undefined);
+  await input.fill(query);
+  await sleep(800);
+  const hasMatch = await win
+    .locator('.quick-input-list .monaco-list-row')
+    .first()
+    .isVisible({ timeout: 2000 })
+    .catch(() => false);
+  if (!hasMatch) {
+    await win.keyboard.press('Escape');
+    return false;
+  }
+  await win.keyboard.press('Enter');
+  await sleep(1200);
+  return true;
 }
 
 /**

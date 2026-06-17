@@ -4,10 +4,16 @@
 // editor-area ChatPanel (the richer full-SPA window). There is no separate
 // launcher view — revealing Kitsoki shows the surfaces; the pop-out lives on the
 // chat panel.
+//
+// `Kitsoki: Open Chat` goes straight to a story PICKER: it lists the backend's
+// discovered stories, starts the chosen one (session.new), then reveals the left
+// surfaces — which immediately reflect the new session via the backend's
+// current-session seam (their subscribeCurrentSession / getCurrentSession on
+// mount). The pop-out button is the only path to the editor-area panel.
 
 import * as vscode from 'vscode';
 import * as fs from 'node:fs';
-import { Backend } from './backend';
+import { Backend, type StoryHeader } from './backend';
 import {
   ChatPanel,
   SurfaceViewProvider,
@@ -49,7 +55,50 @@ export function activate(context: vscode.ExtensionContext): void {
   backend = new Backend(out, cwd);
   context.subscriptions.push({ dispose: () => backend?.dispose() });
 
-  const openChat = () => ChatPanel.reveal(context.extensionUri, backend!, out);
+  // Open Chat -> story picker -> start session -> reveal the left surfaces.
+  // The surfaces don't need to be told which session: starting it makes it the
+  // backend's current session, and each surface adopts that (seed-on-subscribe +
+  // getCurrentSession on mount). So we just start it and focus the sidebar Chat.
+  const openChat = async () => {
+    let stories: StoryHeader[];
+    try {
+      stories = await backend!.rpc<StoryHeader[]>('runstatus.stories.list', {});
+    } catch (e) {
+      void vscode.window.showErrorMessage(`Kitsoki: could not list stories — ${(e as Error).message}`);
+      return;
+    }
+    if (!stories.length) {
+      void vscode.window.showWarningMessage(
+        'Kitsoki: no stories found. Set the kitsoki.storiesDir (or kitsoki.flow) setting and retry.',
+      );
+      return;
+    }
+
+    const picks = stories.map((s) => ({
+      label: s.title || s.app_id || s.path,
+      description: s.active_sessions.length ? `${s.active_sessions.length} active` : '',
+      detail: s.path,
+      story: s,
+    }));
+    const chosen = await vscode.window.showQuickPick(picks, {
+      title: 'Kitsoki: Start a Story',
+      placeHolder: 'Pick a story to start a chat session',
+      matchOnDetail: true,
+    });
+    if (!chosen) return; // user cancelled the picker
+
+    try {
+      await backend!.rpc('runstatus.session.new', { story_path: chosen.story.path });
+    } catch (e) {
+      void vscode.window.showErrorMessage(
+        `Kitsoki: failed to start "${chosen.label}" — ${(e as Error).message}`,
+      );
+      return;
+    }
+
+    // Reveal the left surfaces so they immediately reflect the new session.
+    await vscode.commands.executeCommand('kitsoki.chat.focus');
+  };
 
   // Sidebar surfaces (trace / graph) live as webview views in the Kitsoki
   // container. Each builds its own Relay via mountSpa against the ONE shared
@@ -79,11 +128,13 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('kitsoki.openChat', openChat),
-    // Pop-out button on the narrow sidebar Chat surface: promote the same chat to
-    // the full editor-area panel (the richer embed layout). They share the one
-    // backend session, so the conversation continues uninterrupted; the editor
-    // panel becomes the focused surface.
-    vscode.commands.registerCommand('kitsoki.popOutChat', openChat),
+    // Pop-out button on the narrow sidebar Chat surface: promote the conversation
+    // to the full editor-area panel (the richer embed layout). It shares the one
+    // backend session — including whatever story Open Chat started — so the chat
+    // continues uninterrupted; the editor panel just becomes the focused surface.
+    vscode.commands.registerCommand('kitsoki.popOutChat', () =>
+      ChatPanel.reveal(context.extensionUri, backend!, out),
+    ),
     vscode.commands.registerCommand('kitsoki.openTrace', () =>
       vscode.commands.executeCommand('kitsoki.trace.focus'),
     ),

@@ -16,6 +16,19 @@ export interface BackendConfig {
   storiesDir: string;
 }
 
+/**
+ * A discovered story, as returned by `runstatus.stories.list`. `path` is the
+ * ABSOLUTE app.yaml path — the canonical key passed back to `session.new`.
+ * `title`/`app_id` are display-only; `active_sessions` lists live session ids
+ * already started from this story.
+ */
+export interface StoryHeader {
+  path: string;
+  app_id: string;
+  title: string;
+  active_sessions: string[];
+}
+
 /** Read the extension settings into a BackendConfig. */
 export function readConfig(): BackendConfig {
   const cfg = vscode.workspace.getConfiguration('kitsoki');
@@ -85,6 +98,26 @@ export class Backend {
     this.stop();
     this.starting = undefined;
     return this.start();
+  }
+
+  /**
+   * Issue a JSON-RPC call against the backend's `POST /rpc`, starting it first
+   * if needed. This is the SAME control plane the webview SPA drives through the
+   * relay — the extension host can speak it directly (e.g. to list / start
+   * stories from a command) without routing through a webview. Throws on a
+   * non-2xx response or a JSON-RPC error.
+   */
+  async rpc<T = unknown>(method: string, params: Record<string, unknown> = {}): Promise<T> {
+    const base = await this.start();
+    const res = await fetch(`${base}/rpc`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = (await res.json()) as { result?: T; error?: { message: string } };
+    if (json.error) throw new Error(json.error.message);
+    return json.result as T;
   }
 
   private async doStart(): Promise<string> {
