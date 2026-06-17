@@ -511,6 +511,17 @@ test('vscode tour e2e — load, render, drive, trace (no-LLM, deterministic)', a
       chatFrame.locator('[data-testid="current-state"]'),
       'a fresh session opens in the lobby room',
     ).toHaveText('lobby', { timeout: 30_000 });
+    // The narrow sidebar Chat shares height with Trace + Graph, so its InputBar
+    // collapses to a SINGLE-LINE input plus a disclosure icon (the structured
+    // forecast/climate forms don't fit). Assert that collapse — the feature.
+    await expect(
+      chatFrame.locator('[data-testid="composer-input"]'),
+      'the short Chat pane collapses its input to a single line',
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(
+      chatFrame.locator('[data-testid="input-disclose"]'),
+      'a disclosure icon hints the hidden actions in the collapsed input',
+    ).toBeVisible({ timeout: 15_000 });
     if (RECORD) {
       chapters.open(EDITOR_BEATS.pickerStart.id, EDITOR_BEATS.pickerStart.title);
       await dwell(EDITOR_BEATS.pickerStart.dwellMs);
@@ -518,8 +529,15 @@ test('vscode tour e2e — load, render, drive, trace (no-LLM, deterministic)', a
     await shot('a-open-chat-picker');
 
     // ── (d) Drive a turn in the sidebar Chat → state advances ─────────────────
+    // Reveal the collapsed actions first (click the disclosure), then drive the
+    // forecast through the structured form — the same path the tall editor uses.
+    const disclose = chatFrame.locator('[data-testid="input-disclose"]');
+    if (await disclose.count()) {
+      await disclose.click();
+      await dwell(500);
+    }
     const forecastForm = chatFrame.locator('form[data-intent="forecast"]');
-    await expect(forecastForm, 'forecast intent form present in lobby').toBeVisible({
+    await expect(forecastForm, 'forecast intent form present after revealing actions').toBeVisible({
       timeout: 15_000,
     });
     await forecastForm.locator('input').fill('Tokyo');

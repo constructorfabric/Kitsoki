@@ -1,5 +1,72 @@
 <template>
-  <div class="input-bar" data-testid="input-bar">
+  <div
+    ref="rootEl"
+    class="input-bar"
+    :class="{ 'input-bar--compact': compact, 'input-bar--collapsed': collapsed }"
+    data-testid="input-bar"
+  >
+    <!-- Compact / collapsed: when the chat occupies a short space (e.g. the narrow
+         sidebar surface where Chat shares height with Trace + Graph) the structured
+         widgets won't fit, so collapse to a SINGLE-LINE text input. Free text always
+         routes via session.turn (the semantic router / off-ramp), so this honors the
+         text-only contract for every room. A disclosure icon reveals the hidden
+         actions (and a count) when there are any; making the pane taller un-collapses
+         automatically. -->
+    <form
+      v-if="collapsed"
+      class="input-bar__composer input-bar__composer--compact"
+      data-testid="composer"
+      @submit.prevent="sendRaw"
+    >
+      <input
+        v-model="rawDraft"
+        class="input-bar__input"
+        data-testid="composer-input"
+        placeholder="Type a message…"
+        :disabled="pending"
+        @keydown.enter.exact.prevent="sendRaw"
+      />
+      <button
+        v-if="hasControls"
+        type="button"
+        class="input-bar__disclose"
+        data-testid="input-disclose"
+        :title="`Show ${controlCount} action${controlCount === 1 ? '' : 's'} — or make the panel taller`"
+        @click="expanded = true"
+      >
+        <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M4 10l4-4 4 4" fill="none" stroke="currentColor" stroke-width="1.5"
+            stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        <span v-if="controlCount" class="input-bar__disclose-count">{{ controlCount }}</span>
+      </button>
+      <button
+        class="input-bar__send"
+        type="submit"
+        data-testid="composer-send"
+        :disabled="pending || !rawDraft.trim()"
+      >
+        Send
+      </button>
+    </form>
+
+    <template v-else>
+    <!-- Expanded inside a short space: offer a way back to the single-line input
+         (otherwise the only way to re-collapse is to grow then shrink the pane). -->
+    <div v-if="compact" class="input-bar__compact-bar">
+      <button
+        type="button"
+        class="input-bar__disclose"
+        data-testid="input-collapse"
+        title="Collapse to a single-line input"
+        @click="expanded = false"
+      >
+        <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5"
+            stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </button>
+    </div>
     <!-- Choice items from typed view: labeled buttons with pre-filled slots.
          When present, these replace the legacy no-slot action buttons since
          choice items subsume them (back/look appear as choice items too). -->
@@ -204,11 +271,12 @@
         Send
       </button>
     </form>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import type { IntentInfo, View, ChoiceItem, ChoiceField } from "../types.js";
 
 const props = defineProps<{
@@ -461,6 +529,63 @@ function sendRaw() {
   emit("send", text, "");
   rawDraft.value = "";
 }
+
+// ── Height-responsive collapse ────────────────────────────────────────────────
+//
+// In a short space (the narrow sidebar surface where Chat shares height with
+// Trace + Graph) the stacked buttons/forms don't fit, so we collapse to a single
+// single-line text input plus a disclosure icon. The signal is the height of the
+// input bar's CONTAINING block (`.surface__chat` / the chat column), which is
+// constrained by the surface — NOT the input bar's own content — so toggling the
+// collapse can't change the measured height and there's no feedback loop. A
+// hysteresis band keeps a few px of resize jitter from flapping the state.
+const COMPACT_ENTER = 400; // px — at/below this the chat column is too short for stacked actions
+const COMPACT_EXIT = 460; // grow past this to un-collapse (gap = hysteresis)
+
+const rootEl = ref<HTMLElement | null>(null);
+const compact = ref(false);
+const expanded = ref(false);
+let ro: ResizeObserver | null = null;
+
+function applyHeight(h: number): void {
+  if (h <= COMPACT_ENTER) compact.value = true;
+  else if (h >= COMPACT_EXIT) compact.value = false;
+}
+
+// Re-collapse whenever the space becomes short again: a manual expand lasts only
+// until the next shrink, so shrinking the pane always returns to the single line.
+watch(compact, (c) => {
+  if (c) expanded.value = false;
+});
+
+/** Collapsed = short space and not manually expanded. */
+const collapsed = computed(() => compact.value && !expanded.value);
+
+/** Count of structured controls that the collapsed view hides (drives the badge;
+ *  no controls → no disclosure icon, just the single-line input). */
+const controlCount = computed(
+  () =>
+    buttonChoiceItems.value.length +
+    formChoiceItems.value.length +
+    actionIntents.value.length +
+    (formElement.value ? 1 : 0),
+);
+const hasControls = computed(() => controlCount.value > 0);
+
+onMounted(() => {
+  const host = rootEl.value?.parentElement;
+  if (!host || typeof ResizeObserver === "undefined") return;
+  applyHeight(host.clientHeight);
+  ro = new ResizeObserver((entries) => {
+    for (const e of entries) applyHeight(e.contentRect.height);
+  });
+  ro.observe(host);
+});
+
+onUnmounted(() => {
+  ro?.disconnect();
+  ro = null;
+});
 </script>
 
 <style scoped>
@@ -699,6 +824,61 @@ function sendRaw() {
   padding: 0 20px;
   border-radius: 8px;
   cursor: pointer;
+}
+
+/* ── Compact / collapsed (short space) ──────────────────────────────────────
+   A single row: single-line input + a disclosure icon (reveals the hidden
+   actions, or grow the panel) + Send. Tighter padding so it reads as a slim bar. */
+.input-bar--collapsed {
+  padding: 10px 14px;
+}
+
+.input-bar__composer--compact {
+  align-items: center;
+}
+
+/* The disclosure icon button — indicates structured actions exist (with a count)
+   and reveals them on click; a make-it-taller hint lives in its tooltip. */
+.input-bar__disclose {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  appearance: none;
+  border: 1px solid var(--k-border, #3a4250);
+  background: var(--k-bg-input, #1f2530);
+  color: var(--k-fg-muted, #94a3b8);
+  border-radius: 8px;
+  padding: 0 10px;
+  cursor: pointer;
+  flex: 0 0 auto;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease,
+    border-color 0.12s ease;
+}
+.input-bar__disclose:hover {
+  background: var(--k-bg-hover, #2a3340);
+  color: var(--k-fg, #e6e9ef);
+  border-color: var(--k-border, #6b7588);
+}
+.input-bar__disclose svg {
+  display: block;
+}
+.input-bar__disclose-count {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+/* The collapse affordance shown when expanded inside a short space — a slim,
+   right-aligned chevron-down row above the structured widgets. */
+.input-bar__compact-bar {
+  display: flex;
+  justify-content: flex-end;
+  margin: -4px 0 -2px;
+}
+.input-bar__compact-bar .input-bar__disclose {
+  padding: 2px 8px;
 }
 
 .input-bar__send:hover:not(:disabled) {
