@@ -1,0 +1,9 @@
+{"type":"user","message":{"content":"rebase onto main and resolve the conflict"}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"tu1","name":"Bash","input":{"command":"git rebase main"}}]}}
+{"type":"user","toolUseResult":{"stdout":"","stderr":"CONFLICT (content): Merge conflict in foo.go","interrupted":false},"message":{"content":[{"type":"tool_result","tool_use_id":"tu1","is_error":true,"content":"CONFLICT (content): Merge conflict in foo.go"}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"tu2","name":"Edit","input":{"file_path":"foo.go"}},{"type":"tool_use","id":"tu3","name":"Bash","input":{"command":"git rebase --continue"}}]}}
+{"type":"user","toolUseResult":{"stdout":"","stderr":"","interrupted":false},"message":{"content":[{"type":"tool_result","tool_use_id":"tu2","is_error":false,"content":"ok"}]}}
+{"type":"user","toolUseResult":{"stdout":"Successfully rebased and updated refs/heads/feat.","stderr":"","interrupted":false},"message":{"content":[{"type":"tool_result","tool_use_id":"tu3","is_error":false,"content":"Successfully rebased"}]}}
+{"type":"user","message":{"content":"no that's wrong, abort it"}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"tu4","name":"Bash","input":{"command":"git rebase --abort"}}]}}
+{"type":"user","toolUseResult":{"stdout":"","stderr":"","interrupted":false},"message":{"content":[{"type":"tool_result","tool_use_id":"tu4","is_error":false,"content":""}]}}

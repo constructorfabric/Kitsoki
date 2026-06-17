@@ -1,0 +1,12 @@
+{ "session": "sess-git", "spans": [
+  { "span": [1,4], "tags": {"action":["rebase-or-resolve-conflicts"],"surface":["code"]},
+    "actions": [
+      {"tool":"Bash","signature":"git rebase <branch>","parameters":{"branch":"main"},"cite":{"line":2}},
+      {"tool":"Edit","signature":"edit <file>","parameters":{"file":"foo.go"},"cite":{"line":3}},
+      {"tool":"Bash","signature":"git rebase --continue","parameters":{},"cite":{"line":4}}
+    ] },
+  { "span": [5,6], "tags": {"action":["rebase-or-resolve-conflicts"],"surface":["code"]},
+    "actions": [
+      {"tool":"Bash","signature":"git rebase --abort","parameters":{},"cite":{"line":6}}
+    ] }
+] }

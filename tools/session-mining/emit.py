@@ -21,6 +21,18 @@ The cross-link contract: every intents.json record's analysis_ref is
 "analysis.json#<instance_id>" and that instance_id exists in analysis.json. Run
 verify_link.py to check it.
 
+Optionally (Phase 1, --outcomes), each grounded action carries the real result of
+its command (outcome = {is_error, stdout_head, stderr_head, interrupted}, recovered
+deterministically from raw by outcomes.py and joined by tool ordinal), and each
+instance carries a `satisfaction` flag (did the result satisfy the user's intent?).
+
+Honest limitations of `satisfaction`: corrective detection looks only at the
+IMMEDIATELY-FOLLOWING span (not all subsequent spans) and does NOT verify target
+overlap between the corrective op and the action it supposedly corrects. It is
+therefore a recall-biased *review flag*, surfaced as such — never an automatic
+verdict. Both --outcomes-derived fields are absent unless --outcomes is supplied,
+so the default output is byte-identical to the pre-Phase-1 behaviour.
+
 Stdlib only. Deterministic.
 """
 import argparse
@@ -117,12 +129,77 @@ def verbatim_for_span(span, trace_lines, user_lines, raw_turns):
     return ""
 
 
+# ---- outcome + satisfaction join (Phase 1; only active with --outcomes) ------
+
+def tool_ordinal(trace_lines, cite_line):
+    """Session-wide 0-based index of the tool-call AT cite_line, or None.
+
+    Counts `> Tool: arg` trace lines up to and including cite_line. This is the
+    join key into a session-ordered outcome list (see outcomes.py / the ordinal
+    invariant): the k-th `>` line in the trace == the k-th tool_use in raw.
+    """
+    if not isinstance(cite_line, int) or not (1 <= cite_line < len(trace_lines)):
+        return None
+    if ic.parse_tool_line(trace_lines[cite_line])[0] is None:
+        return None
+    return sum(1 for i in range(1, cite_line + 1)
+               if ic.parse_tool_line(trace_lines[i])[0] is not None) - 1
+
+
+CORRECTIVE_RE = re.compile(
+    r"git\s+(reset|revert|restore)\b"
+    r"|--amend\b|git\s+rebase\s+--abort\b|git\s+merge\s+--abort\b"
+    r"|git\s+checkout\s+--\s|git\s+stash\s+drop\b|git\s+clean\b", re.I)
+
+
+def satisfaction_for(span_idx, spans, trace_lines, user_lines, raw_turns):
+    """Recall-biased review flag: did the result satisfy the user's intent?
+
+    Two tiers, both deterministic:
+      lexical   — the first USER turn AFTER this span's end (the follow-up).
+      structural — a GROUNDED corrective git op in the IMMEDIATELY-FOLLOWING span.
+
+    Limitations (see module docstring): only the immediately-following span is
+    inspected and target overlap is NOT verified — this is a review flag, not a
+    verdict.
+    """
+    end = (spans[span_idx].get("span") or [1, 1])[1]
+    # lexical: first USER turn after this span's end
+    followup = ""
+    for ordn, ln in enumerate(user_lines):
+        if ln > end and ordn < len(raw_turns):
+            followup = raw_turns[ordn][:200]
+            break
+    # structural: grounded corrective git op in the immediately-following span
+    ops = []
+    if span_idx + 1 < len(spans):
+        for a in spans[span_idx + 1].get("actions", []):
+            # NOTE (MINOR-2): reads per-action `grounded` off the scored span.
+            # ground.py sets it and tag_score.py passes span["actions"] through
+            # untouched, so it survives into scored.json. A future tag_score
+            # refactor that REBUILDS action dicts must preserve `grounded` or this
+            # structural tier silently degrades to noise.
+            if not a.get("grounded"):
+                continue
+            text = " ".join([a.get("signature", ""), str(a.get("parameters", {}))])
+            ln = (a.get("cite") or {}).get("line")
+            if isinstance(ln, int) and 1 <= ln < len(trace_lines):
+                text += " " + (trace_lines[ln] or "")
+            if CORRECTIVE_RE.search(text):
+                ops.append(a.get("signature") or text.strip()[:60])
+    return {"followup_text_head": followup, "corrected": bool(ops), "corrective_ops": ops}
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Emit the two linked intent reports (deterministic).")
     ap.add_argument("--scored", required=True, help="tag_score.py output")
     ap.add_argument("--traces", required=True, help="traces/ dir")
     ap.add_argument("--raw", required=True,
                     help="dir of raw <session>.jsonl transcripts (for verbatim recovery)")
+    ap.add_argument("--outcomes", default=None,
+                    help="optional outcomes.json (outcomes.py); attaches per-action "
+                         "outcome + per-instance satisfaction. Omit for byte-identical "
+                         "pre-Phase-1 output.")
     ap.add_argument("--out-dir", required=True, help="job dir; writes intents.json + analysis.json")
     ap.add_argument("--job", default=None, help="job id stamp (default: basename of out-dir)")
     ap.add_argument("--prompt-version", default=None)
@@ -131,6 +208,7 @@ def main(argv=None):
 
     scored = ic.load_json(args.scored)
     records = scored.get("records", [])
+    outc = ic.load_json(args.outcomes) if args.outcomes else None
     job = args.job or os.path.basename(os.path.normpath(args.out_dir))
 
     intents = []
@@ -143,7 +221,8 @@ def main(argv=None):
         user_lines = user_line_indices(trace_lines)
         raw_turns = raw_user_turns(os.path.join(args.raw, sid + ".jsonl"))
 
-        for span in rec.get("spans", []):
+        spans = rec.get("spans", [])
+        for span_idx, span in enumerate(spans):
             instance_id = span.get("instance_id")
             tags = span.get("tags", {})
             user_text = verbatim_for_span(span, trace_lines, user_lines, raw_turns)
@@ -159,13 +238,19 @@ def main(argv=None):
 
             actions = []
             for a in span.get("actions", []):
-                actions.append({
+                action = {
                     "tool": a.get("tool"),
                     "signature": a.get("signature", ""),
                     "parameters": a.get("parameters", {}),
                     "cite": a.get("cite", {}),
                     "grounded": bool(a.get("grounded")),
-                })
+                }
+                if outc:
+                    k = tool_ordinal(trace_lines, (a.get("cite") or {}).get("line"))
+                    sess_out = (outc.get("sessions", {}).get(sid) or {}).get("tool_outcomes") or []
+                    if k is not None and 0 <= k < len(sess_out) and sess_out[k] is not None:
+                        action["outcome"] = sess_out[k]
+                actions.append(action)
             inst = {
                 "instance_id": instance_id,
                 "tags": tags,
@@ -177,6 +262,9 @@ def main(argv=None):
             gates = span.get("oracle_gates")
             if span.get("determinism") != "deterministic" and gates:
                 inst["oracle_gates"] = gates
+            if outc:
+                inst["satisfaction"] = satisfaction_for(
+                    span_idx, spans, trace_lines, user_lines, raw_turns)
             instances.append(inst)
 
     # optional version stamps: include only when set, so reports stay schema-clean

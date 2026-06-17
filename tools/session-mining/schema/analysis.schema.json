@@ -67,7 +67,18 @@
                   "tool_call_index": { "type": "integer", "minimum": 0 }
                 }
               },
-              "grounded": { "type": "boolean", "description": "deterministic verification verdict (ground.py)" }
+              "grounded": { "type": "boolean", "description": "deterministic verification verdict (ground.py)" },
+              "outcome": {
+                "type": "object",
+                "additionalProperties": false,
+                "description": "real result of this command, recovered from raw (Phase 1)",
+                "properties": {
+                  "is_error":    { "type": "boolean" },
+                  "stdout_head": { "type": "string" },
+                  "stderr_head": { "type": "string" },
+                  "interrupted": { "type": "boolean" }
+                }
+              }
             }
           }
         },
@@ -102,6 +113,16 @@
             "actions_cited": { "type": "integer", "minimum": 0 },
             "actions_validated": { "type": "integer", "minimum": 0 },
             "quarantined": { "type": "boolean", "description": "true if no action grounded; recipe untrustworthy" }
+          }
+        },
+        "satisfaction": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "did the result satisfy the user's intent? (follow-up turn; Phase 1)",
+          "properties": {
+            "followup_text_head": { "type": "string" },
+            "corrected":          { "type": "boolean" },
+            "corrective_ops":     { "type": "array", "items": { "type": "string" } }
           }
         }
       }

@@ -141,7 +141,8 @@ schema-constrained *and* re-validated deterministically in step C:
 | C | **Ground & validate** every action against the cited trace line; drop spans that ground nothing | deterministic | `ground.py` |
 | D | **Tag & group** — validate tags against the vocab, roll up counts, cluster by tag-set + normalized signature | deterministic | `tag_score.py` |
 | E | **Score determinism** per instance from measured trace signals + grounding completeness + gates | deterministic | `tag_score.py` |
-| F | **Emit** the two linked reports; recover **verbatim user text from the raw `.jsonl`** | deterministic | `emit.py` |
+| E′ | *(optional)* **Recover per-tool-call outcomes** from the raw `.jsonl` (`is_error`, stdout/stderr heads, interrupted) into a session-ordered intermediate | deterministic | `outcomes.py` |
+| F | **Emit** the two linked reports; recover **verbatim user text from the raw `.jsonl`**; with `--outcomes`, attach each grounded action's real `outcome` + a per-instance `satisfaction` review flag | deterministic | `emit.py` |
 
 The oracle *proposes* a structured hypothesis; deterministic code *disposes* of it.
 `ground.py` confirms (1) the cited line actually contains that tool call, and (2)
@@ -200,9 +201,15 @@ python3 ground.py --oracle "$JOBDIR/oracle" --traces "$JOBDIR/traces" --out "$JO
 # D+E. validate tags, cluster, score determinism (deterministic)
 python3 tag_score.py --grounded "$JOBDIR/grounded.json" --traces "$JOBDIR/traces" --out "$JOBDIR/scored.json"
 
-# F. emit the two linked reports; verbatim text comes from the RAW jsonl
+# E'. (optional) recover per-tool-call outcomes from the raw jsonl. Enables the
+#     outcome-conformance + intent-satisfaction lenses (real result of each action,
+#     and whether a follow-up turn corrected it). Omit to keep the legacy reports.
+python3 outcomes.py --raw "$PROJ" --out "$JOBDIR/outcomes.json"
+
+# F. emit the two linked reports; verbatim text comes from the RAW jsonl.
+#    Pass --outcomes to attach each action's outcome + a per-instance satisfaction flag.
 python3 emit.py --scored "$JOBDIR/scored.json" --traces "$JOBDIR/traces" \
-    --raw "$PROJ" --out-dir "$JOBDIR" --job "$JOB"
+    --raw "$PROJ" --outcomes "$JOBDIR/outcomes.json" --out-dir "$JOBDIR" --job "$JOB"
 
 # verify the cross-link contract
 python3 verify_link.py "$JOBDIR"
@@ -228,6 +235,18 @@ It asserts the grounding gate (the fabricated span is quarantined and dropped), 
 determinism verdicts, the measured trace signals, the verbatim recovery from raw
 jsonl, and the cross-link contract. Step B (`intents.workflow.js`) is exercised only
 at real runtime.
+
+The optional outcome + satisfaction slice (E′ + `emit.py --outcomes`) has its own
+no-LLM test over `tests/fixtures/intent_outcomes/`:
+
+```sh
+python3 tools/session-mining/tests/test_outcomes.py
+```
+
+It asserts outcome recovery (including an id-regime missing-result → `null`, no
+positional cascade), the ordinal-alignment invariant against the emitted report, the
+`satisfaction` review flag, back-compat (no new keys without `--outcomes`), and
+schema conformance.
 
 ---
 
@@ -452,7 +471,8 @@ intents.workflow.js     INTENT MINING step B — the one strictly-validated orac
 intent_common.py        shared helpers for the intent-mining spine (trace/vocab/io primitives)
 ground.py               INTENT MINING step C — ground & validate oracle output against the traces
 tag_score.py            INTENT MINING steps D+E — tag/group + determinism scoring (deterministic)
-emit.py                 INTENT MINING step F — emit the two linked reports; verbatim text from raw jsonl
+outcomes.py             INTENT MINING step E′ (optional) — recover per-tool-call outcomes (is_error/stdout/stderr/interrupted) from raw jsonl into a session-ordered intermediate
+emit.py                 INTENT MINING step F — emit the two linked reports; verbatim text from raw jsonl; --outcomes attaches per-action outcome + per-instance satisfaction
 verify_link.py          check the intents.json <-> analysis.json cross-link contract
 validate_reports.py     validate both reports against their JSON Schemas (needs `jsonschema`)
 tests/                  fixture + no-LLM end-to-end test of the intent-mining C->F pipeline

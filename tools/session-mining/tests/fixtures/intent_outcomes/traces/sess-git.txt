@@ -1,0 +1,6 @@
+USER: rebase onto main and resolve the conflict
+  > Bash: git rebase main
+  > Edit: foo.go
+  > Bash: git rebase --continue
+USER: no that's wrong, abort it
+  > Bash: git rebase --abort
