@@ -118,6 +118,11 @@ const EDITOR_BEATS = {
   // runstatus.session.current. These ride the manifest (no web-tour popover).
   tracePanel: { id: 'h-trace-panel', title: 'Trace in its own panel — same session', dwellMs: 4500 },
   graphPanel: { id: 'i-graph-panel', title: 'State graph in its own panel — same session', dwellMs: 4500 },
+  // The narrow Chat surface is the FIRST item in the "Kitsoki Surfaces" sidebar
+  // (same session as everything else); its title-bar pop-out button promotes it to
+  // the full editor-area chat panel.
+  chatSidebar: { id: 'k-chat-sidebar', title: 'Chat is a narrow Surfaces sidebar item too', dwellMs: 4000 },
+  chatPopOut: { id: 'k2-chat-popout', title: 'Pop out — promote chat to the full editor', dwellMs: 4000 },
   // The finale: app.yaml split beside the Kitsoki editor panel — code + kitsoki in
   // one workspace, side by side (horizontal).
   splitEditor: { id: 'f-split-editor', title: 'Your code and kitsoki, side by side', dwellMs: 4000 },
@@ -234,6 +239,36 @@ async function clearOverlay(chatFrame: FrameLocator): Promise<void> {
     .catch(() => undefined);
 }
 
+/**
+ * Dismiss the narration overlay in WHICHEVER webview still holds it. Once the
+ * trace/graph/sidebar-chat surfaces are open there are several `iframe.webview`
+ * hosts, so the `.first()`-bound editor frame is no longer reliably the editor
+ * panel — scan every host and skip the tour where its overlay actually lives.
+ * Best-effort + record-only (the editor panel's leftover forecast popover must
+ * not bleed into the later sidebar+editor beats).
+ */
+async function dismissTourEverywhere(win: Page): Promise<void> {
+  if (!RECORD) return;
+  const count = await win.locator('iframe.webview').count().catch(() => 0);
+  for (let i = 0; i < count; i++) {
+    for (const inner of ['iframe[title]', 'iframe[name="active-frame"]', 'iframe']) {
+      const fl = win.frameLocator('iframe.webview').nth(i).frameLocator(inner).first();
+      try {
+        if (!(await fl.locator('[data-testid="tour-overlay"]').count())) continue;
+        await fl
+          .locator('body')
+          .evaluate(() => (window as unknown as { __tourSkip?: () => void }).__tourSkip?.());
+        await fl
+          .locator('[data-testid="tour-overlay"]')
+          .waitFor({ state: 'detached', timeout: 3000 })
+          .catch(() => undefined);
+      } catch {
+        /* not this host */
+      }
+    }
+  }
+}
+
 async function startWebviewTour(chatFrame: FrameLocator): Promise<void> {
   await chatFrame
     .locator('body')
@@ -327,6 +362,33 @@ async function clickPaneHeader(win: Page, title: string): Promise<void> {
   await win
     .locator('.pane-header')
     .filter({ hasText: new RegExp(`^\\s*${title}\\b`, 'i') })
+    .first()
+    .click()
+    .catch(() => undefined);
+}
+
+/**
+ * Locate a sidebar view pane by its header title. Used to scope a title-bar
+ * action (e.g. the Chat pane's pop-out button) to the right pane.
+ */
+function paneByTitle(win: Page, title: string) {
+  return win
+    .locator('.pane')
+    .filter({ has: win.locator('.pane-header').filter({ hasText: new RegExp(`^\\s*${title}\\b`, 'i') }) })
+    .first();
+}
+
+/**
+ * Click an inline title-bar action of a sidebar view pane (the `view/title`
+ * navigation-group buttons). They render on hover / when the pane is active, so
+ * hover the header first. `actionLabel` matches the action's aria-label (the
+ * command title). Best-effort — never fails the gate by itself.
+ */
+async function clickViewTitleAction(win: Page, paneTitle: string, actionLabel: string): Promise<void> {
+  const pane = paneByTitle(win, paneTitle);
+  await pane.locator('.pane-header').hover().catch(() => undefined);
+  await pane
+    .locator(`.actions-container a[aria-label*="${actionLabel}" i], .actions-container a[title*="${actionLabel}" i]`)
     .first()
     .click()
     .catch(() => undefined);
@@ -639,12 +701,61 @@ test('vscode tour e2e — load, render, drive, trace (no-LLM, deterministic)', a
     }
     await shot('i-graph-panel');
 
+    // ── (k) Chat as the first Surfaces sidebar item + pop-out to the editor ───
+    // The narrow Chat surface (the single-surface ChatSurface) is the FIRST pane
+    // in the "Kitsoki Surfaces" sidebar, following the SAME session. Collapse Trace
+    // + Graph so it fills the sidebar, prove it rendered the active session, then
+    // click its title-bar pop-out button to promote it to the full editor panel.
+    const chatSurfaceFrame: FrameLocator = await surfaceFrame(win, 'surface-chat', 30_000);
+    // Drop the editor panel's lingering forecast narration popover so this beat's
+    // frame (sidebar Chat + clean editor) isn't muddied by a stale, unrelated
+    // popover (no-op in assert mode). Scans all webview hosts — the editor frame is
+    // no longer .first() now that the sidebar surfaces are open.
+    await dismissTourEverywhere(win);
+    // After beat (i): Trace collapsed, Graph expanded, Chat expanded. Collapse Graph
+    // so the narrow Chat pane (first) owns the sidebar height.
+    await clickPaneHeader(win, 'Graph');
+    await dwell(500);
+    await expect(
+      chatSurfaceFrame.locator('[data-testid="surface-chat"]'),
+      'Chat surface mounts as a sidebar webview (its own document)',
+    ).toBeVisible({ timeout: 30_000 });
+    await expect(
+      chatSurfaceFrame.locator('[data-testid="chat-section"]'),
+      'sidebar Chat followed the active session and shows the conversation',
+    ).toBeVisible({ timeout: 30_000 });
+    if (RECORD) {
+      chapters.open(EDITOR_BEATS.chatSidebar.id, EDITOR_BEATS.chatSidebar.title);
+      await dwell(EDITOR_BEATS.chatSidebar.dwellMs);
+    }
+    await shot('k-chat-sidebar');
+
+    // Pop out: the Chat pane's title-bar button reveals the full editor-area chat
+    // panel (the richer embed layout). Same backend session — the conversation is
+    // uninterrupted; the editor tab takes focus.
+    await clickViewTitleAction(win, 'Chat', 'Open Chat in Editor');
+    await dwell(800);
+    await expect(
+      win.locator('.tab.active').filter({ hasText: /Kitsoki/i }).first(),
+      'pop-out brings the Kitsoki chat editor panel to the foreground',
+    ).toBeVisible({ timeout: 15_000 });
+    // Close the Surfaces side bar so the popped-out chat OWNS the full editor area —
+    // the frame reads "promoted to a full editor window," visibly distinct from the
+    // narrow-sidebar beat (record only; the assertion above already proved focus).
+    if (RECORD) {
+      await runPaletteCommand(win, ['>View: Close Primary Side Bar', '>View: Toggle Primary Side Bar Visibility']);
+      await dwell(700);
+      chapters.open(EDITOR_BEATS.chatPopOut.id, EDITOR_BEATS.chatPopOut.title);
+      await dwell(EDITOR_BEATS.chatPopOut.dwellMs);
+    }
+    await shot('k2-chat-popout');
+
     // ── (j) One backend across every surface ─────────────────────────────────
-    // Chat panel + Trace panel + Graph panel are three webviews, but the host
-    // spawns exactly ONE `kitsoki web` process — they all relay to it. Assert the
-    // extension host log shows a single backend spawn (no per-surface backend).
+    // Chat editor panel + sidebar Chat + Trace + Graph are four webviews, but the
+    // host spawns exactly ONE `kitsoki web` process — they all relay to it. Assert
+    // the extension host log shows a single backend spawn (no per-surface backend).
     const spawnCount = (fs.readFileSync(hostLog, 'utf8').match(/\[backend\] spawn:/g) ?? []).length;
-    expect(spawnCount, 'exactly one backend process serves all three surfaces').toBe(1);
+    expect(spawnCount, 'exactly one backend process serves all four surfaces').toBe(1);
 
     // ── (g) Finale: code + kitsoki side by side (record only) ────────────────
     // Split the story's app.yaml beside the Kitsoki chat panel — code and kitsoki

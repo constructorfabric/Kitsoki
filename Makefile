@@ -34,7 +34,7 @@ BASESTORIES_STAMP := internal/basestories/.embed-stamp
 
 .PHONY: all setup build install uninstall test test-flows starcheck-kitsoki vet fmt tidy clean web web-clean web-dev web-dev-logs embed-stories e2e-docker \
 	fetch-models fetch-llama-server demo-tour demo-tour-fast demo-tour-qa cost-report cost-report-test mining-test \
-	vscode-e2e vscode-e2e-fast
+	vscode-e2e vscode-e2e-fast vscode-qa vscode-theming-sidebyside
 
 all: build
 
@@ -521,6 +521,34 @@ vscode-qa:
 	docs/skills/kitsoki-ui-qa/scripts/blank-scan.sh $(VSCODE_QA_VIDEO) \
 		--out .artifacts/vscode-tour-blank-scan.json \
 		$(if $(filter 1,$(ADVISORY)),,--fail-foreign) >/dev/null
+
+# vscode-theming-sidebyside renders the SAME tour under the dark and light editor
+# themes, then composes them into one dark|light comparison MP4 (proves the embed
+# themes NATIVELY off the editor theme). It records both source videos via the
+# paced e2e recorder (KITSOKI_VSCODE_THEME selects the theme), gates EACH SOURCE on
+# a foreign recorder bar (--fail-foreign — the real letterbox guard), then hstacks
+# them. The composite itself is scanned ADVISORY-only: a two-theme side-by-side is
+# bichromatic BY DESIGN, so blank-scan picks one half as "background" and reads the
+# other theme's flat surfaces as a foreign bar — a structural false positive. The
+# hstack is pure ffmpeg over already-gated sources and cannot introduce a recorder
+# bar, so the source gate is the authoritative letterbox check. Output:
+# .artifacts/vscode-tour-theming-sidebyside.mp4 (2*1400 x 874).
+DARK_TOUR  := .artifacts/vscode-tour-default-dark-modern/vscode-tour.mp4
+LIGHT_TOUR := .artifacts/vscode-tour-default-light-modern/vscode-tour.mp4
+SIDEBYSIDE := .artifacts/vscode-tour-theming-sidebyside.mp4
+.PHONY: vscode-theming-sidebyside
+vscode-theming-sidebyside: web
+	go build -o bin/kitsoki ./cmd/kitsoki   # NOT `cp` — see vscode-e2e-fast.
+	cd $(VSCODE_DIR) && pnpm install --frozen-lockfile --silent && pnpm build
+	cd $(VSCODE_DIR) && KITSOKI_VSCODE_THEME="Default Dark Modern"  KITSOKI_VSCODE_PACE=$${KITSOKI_VSCODE_PACE:-1} pnpm exec playwright test vscode-tour.e2e
+	cd $(VSCODE_DIR) && KITSOKI_VSCODE_THEME="Default Light Modern" KITSOKI_VSCODE_PACE=$${KITSOKI_VSCODE_PACE:-1} pnpm exec playwright test vscode-tour.e2e
+	docs/skills/kitsoki-ui-qa/scripts/blank-scan.sh $(DARK_TOUR)  --fail-foreign --out .artifacts/qa-vscode-dark.json  >/dev/null
+	docs/skills/kitsoki-ui-qa/scripts/blank-scan.sh $(LIGHT_TOUR) --fail-foreign --out .artifacts/qa-vscode-light.json >/dev/null
+	ffmpeg -y -loglevel error -i $(DARK_TOUR) -i $(LIGHT_TOUR) \
+		-filter_complex "[0:v][1:v]hstack=inputs=2:shortest=1,scale=trunc(iw/2)*2:trunc(ih/2)*2" \
+		-c:v libx264 -preset slow -crf 20 -pix_fmt yuv420p -movflags +faststart -an $(SIDEBYSIDE)
+	-docs/skills/kitsoki-ui-qa/scripts/blank-scan.sh $(SIDEBYSIDE) --out .artifacts/qa-vscode-sidebyside.json >/dev/null  # advisory (bichromatic)
+	@echo "[sidebyside] $(SIDEBYSIDE)"
 
 # surface-panels renders each decomposed surface (chat / trace / graph) at the REAL
 # sizes + orientations it occupies in VS Code (editor panel; narrow sidebar; wide

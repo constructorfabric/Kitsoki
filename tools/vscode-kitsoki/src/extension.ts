@@ -68,6 +68,10 @@ export function activate(context: vscode.ExtensionContext): void {
   // backend; the SPA re-hydrates frontend-side on resolve/visibility.
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
+      'kitsoki.chat',
+      new SurfaceViewProvider(context.extensionUri, backend, out, 'chat'),
+    ),
+    vscode.window.registerWebviewViewProvider(
       'kitsoki.trace',
       new SurfaceViewProvider(context.extensionUri, backend, out, 'trace'),
     ),
@@ -101,6 +105,11 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('kitsoki.openChat', openChat),
+    // Pop-out button on the narrow sidebar Chat surface: promote the same chat to
+    // the full editor-area panel (the richer embed layout). They share the one
+    // backend session, so the conversation continues uninterrupted; the editor
+    // panel becomes the focused surface.
+    vscode.commands.registerCommand('kitsoki.popOutChat', openChat),
     vscode.commands.registerCommand('kitsoki.openTrace', () =>
       vscode.commands.executeCommand('kitsoki.trace.focus'),
     ),

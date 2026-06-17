@@ -34,6 +34,11 @@
       ],
       "kitsoki-surfaces": [
         {
+          "id": "kitsoki.chat",
+          "name": "Chat",
+          "type": "webview"
+        },
+        {
           "id": "kitsoki.trace",
           "name": "Trace",
           "type": "webview"
@@ -58,6 +63,12 @@
         "category": "Kitsoki"
       },
       {
+        "command": "kitsoki.popOutChat",
+        "title": "Open Chat in Editor",
+        "category": "Kitsoki",
+        "icon": "$(link-external)"
+      },
+      {
         "command": "kitsoki.openTrace",
         "title": "Kitsoki: Open Trace",
         "category": "Kitsoki"
@@ -73,6 +84,15 @@
         "category": "Kitsoki"
       }
     ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "kitsoki.popOutChat",
+          "when": "view == kitsoki.chat",
+          "group": "navigation"
+        }
+      ]
+    },
     "configuration": {
       "title": "Kitsoki",
       "properties": {

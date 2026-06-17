@@ -22,11 +22,15 @@ import type { Backend } from './backend';
 // editor surface via `--k-paper-*` instead of being force-darkened here.
 
 /** Which kitsoki surface a webview hosts. Injected as `window.__KITSOKI_SURFACE`
- * so the SPA mounts the right single-surface view (trace / graph). A webview with
- * NO surface marker (the chat editor panel) boots the full SPA — home library +
- * the interactive embed layout (chat front/center + a maximizable trace/graph
- * hint rail). So 'chat' exists for browser `?surface=chat` / standalone use, but
- * the extension's chat panel deliberately uses the richer full SPA (undefined). */
+ * so the SPA mounts the right single-surface view (chat / trace / graph). Two ways
+ * the chat shows up:
+ *   - the editor-area panel (ChatPanel) boots the FULL SPA (NO surface marker) —
+ *     home library + the interactive embed layout (chat front/center + a
+ *     maximizable trace/graph hint rail). This is the "popped-out" full window.
+ *   - the narrow Surfaces sidebar pane mounts surface='chat' (the single-surface
+ *     ChatSurface), the first item beside trace/graph; its title-bar pop-out button
+ *     promotes the conversation to the editor panel above.
+ * Both share the one backend session, so the chat is continuous across them. */
 export type Surface = 'chat' | 'trace' | 'graph';
 
 /** Read the bundled singlefile SPA and inject a per-render CSP + nonce + theme.
