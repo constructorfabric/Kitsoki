@@ -163,4 +163,7 @@ tools/session-mining/distill.jq       raw JSONL -> compact action trace (shared 
 ```
 
 See `tools/session-mining/README.md` for the sibling pattern-mining mode (shareable,
-redacted, determinism-ladder) and its safety model.
+redacted, determinism-ladder) and its safety model. For driving a kitsoki **story**'s
+tests + features from real transcripts (intent mining → coverage verdicts), use the
+**`story-coverage-mining`** skill instead — a different shape (scoped, story-driven,
+no-LLM-testable).
