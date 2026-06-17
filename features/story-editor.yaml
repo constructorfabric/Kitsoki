@@ -100,7 +100,7 @@ tour:
       route: any
       target: editor-hook
       title: The hook (on_enter)
-      body: Each on_enter effect renders as a typed card — the host call, its arguments, and the world bindings it produces. The clarifying room fires a decide oracle to surface the gaps in the brief.
+      body: "Each on_enter effect renders as a typed card — the host call, its arguments, and the world bindings it produces. The clarifying room fires a decide oracle to surface the gaps in the brief. This is also the security boundary: every host.* call a room makes is checked against the story's allow-list at load time, and each agent runs with an explicit tool allow-list — so the hooks you read here are the complete, auditable list of what the machine can do, no matter what the model asks for."
       placement: right
       kind: explain
       advance: next
