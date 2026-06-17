@@ -166,6 +166,12 @@ class ChapterRecorder {
     this.close();
     return this.chapters;
   }
+  /** ms elapsed since the clock started (≈ the recording start) — used to trim
+   *  the boot preamble (VS Code starting up before the first beat) off the head
+   *  of the recorded video. */
+  sinceStartMs(): number {
+    return Date.now() - this.t0;
+  }
 }
 
 /**
@@ -175,12 +181,15 @@ class ChapterRecorder {
  * Keynote / Slack; the .webm never ships. Removes the webm on success. Returns
  * the MP4 path (or null if ffmpeg is unavailable / no webm was produced).
  */
-function transcodeWebmToMp4(webm: string, mp4: string): string | null {
+function transcodeWebmToMp4(webm: string, mp4: string, headTrimMs = 0): string | null {
   if (!fs.existsSync(webm)) return null;
   const vf = 'fps=30,scale=trunc(iw/2)*2:trunc(ih/2)*2';
+  // -ss before -i drops the boot preamble (and its recorder grey bar) from the
+  // head; the chapter sidecar is shifted by the same amount to stay in sync.
+  const seek = headTrimMs > 250 ? ['-ss', (headTrimMs / 1000).toFixed(2)] : [];
   const r = spawnSync(
     'ffmpeg',
-    ['-y', '-loglevel', 'error', '-i', webm, '-vf', vf,
+    ['-y', '-loglevel', 'error', ...seek, '-i', webm, '-vf', vf,
       '-c:v', 'libx264', '-preset', 'slow', '-crf', '20',
       '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-an', mp4],
     { encoding: 'utf8' },
@@ -372,6 +381,11 @@ test('vscode tour e2e — load, render, drive, trace (no-LLM, deterministic)', a
   let shotIdx = 0;
   let launched: LaunchedVSCode | undefined;
   const chapters = new ChapterRecorder();
+  // Filled once the workbench is up + sized: the head of the recording that is
+  // pure VS Code boot (and the brief window-resize-to-record-size settle, where
+  // the recorder pads the not-yet-full window with a grey bar). Trimmed off the
+  // MP4 so the demo opens on the first beat, not on a booting editor with a bar.
+  let bootTrimMs = 0;
 
   try {
     launched = await launchVSCode({
@@ -381,6 +395,7 @@ test('vscode tour e2e — load, render, drive, trace (no-LLM, deterministic)', a
       size: { width: 1400, height: 900 },
       ...(RECORD ? { videoDir } : {}),
     });
+    bootTrimMs = chapters.sinceStartMs();
     const { win } = launched;
 
     win.on('console', (m) => {
@@ -651,12 +666,19 @@ test('vscode tour e2e — load, render, drive, trace (no-LLM, deterministic)', a
         const webm = webms[0];
         const mp4 = path.join(TOUR_DIR, 'vscode-tour.mp4');
         if (webm) {
-          const out = transcodeWebmToMp4(webm, mp4);
+          const out = transcodeWebmToMp4(webm, mp4, bootTrimMs);
           if (out) {
-            console.log(`[video] ${out}`);
+            console.log(`[video] ${out} (trimmed ${bootTrimMs}ms boot preamble)`);
             const sidecar = `${out}.chapters.json`;
-            fs.writeFileSync(sidecar, JSON.stringify(chapters.list(), null, 2) + '\n');
-            console.log(`[chapters] ${sidecar} (${chapters.list().length})`);
+            // Shift chapter timings to match the trimmed head so the sidecar
+            // stays aligned with the MP4.
+            const shifted = chapters.list().map((c) => ({
+              ...c,
+              start_ms: Math.max(0, c.start_ms - bootTrimMs),
+              end_ms: Math.max(0, c.end_ms - bootTrimMs),
+            }));
+            fs.writeFileSync(sidecar, JSON.stringify(shifted, null, 2) + '\n');
+            console.log(`[chapters] ${sidecar} (${shifted.length})`);
           } else {
             console.log(`[video] transcode failed; webm left at ${webm}`);
           }

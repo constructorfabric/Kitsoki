@@ -19,16 +19,23 @@
 #     when it covers >= --min-coverage. Contrast is the key: a broken render
 #     (white box, grey placeholder, colour fill) stands OUT from the bg, whereas
 #     a dark panel on a dark theme is low-contrast and ignored;
-#   • EDGE-GUTTER check (contrast-independent): from each edge inward, count the
-#     contiguous band of rows/columns that are ~entirely the background bucket.
-#     A wide band the content never reaches — a one-sided empty strip on an
-#     otherwise-populated frame — is flagged as a gutter. This catches the case
-#     the contrast gate is blind to: an empty margin that MATCHES the theme bg
-#     (e.g. left-packed 80-col content in a wide panel leaving a dead right
-#     third). It only fires when the frame has real content elsewhere, so a
-#     legitimately sparse screen stays quiet;
+#   • EDGE-GUTTER check (contrast-independent, colour-AGNOSTIC): from each edge
+#     inward, count the contiguous band of rows/columns that are each ~entirely
+#     ONE flat bucket AND share that bucket across the band. A wide such band is
+#     flagged whatever its colour. Two failures both look like this and both are
+#     missed by the blob/contrast logic: (a) a dead margin the content never
+#     reaches whose colour MATCHES the theme bg (e.g. left-packed 80-col content
+#     in a wide panel → dead right third); (b) a FOREIGN flat bar composited OVER
+#     the frame — most importantly a VIDEO RECORDER letterbox/pad bar that appears
+#     when the captured window is smaller than the recordVideo size (a solid grey
+#     strip down one edge of the .mp4 — invisible in window screenshots). It only
+#     fires when the frame has real content elsewhere, so a sparse screen is quiet;
 #   • separately, a frame whose single most-common colour covers >=
 #     --empty-coverage is flagged as near-empty (essentially nothing rendered).
+#
+# Scans a frames dir, a single image, OR a VIDEO (.mp4/.webm/.mov) — a video is
+# sampled to frames first, because recorder-pad bars live in the video, not in
+# the window screenshots.
 #
 # Real content breaks into many small differing tiles, so only a genuine solid
 # rectangle clusters into one big blob — white text or a busy UI won't trip it,
@@ -40,7 +47,7 @@
 #                 [--empty-coverage F] [--gutter-min F] [--gutter-uniform F]
 #                 [--fail-on-find]
 # Defaults: --grid 48x27 --quant 24 --contrast 64 --min-coverage 0.10
-#           --empty-coverage 0.985 --gutter-min 0.16 --gutter-uniform 0.94
+#           --empty-coverage 0.985 --gutter-min 0.10 --gutter-uniform 0.94
 # Exit: 0 = scanned OK (no flags, or flags but advisory);
 #       3 = flags found AND --fail-on-find; 2 = usage/tool error.
 #
@@ -56,7 +63,7 @@ src="${1:-}"; shift || true
 [ -n "$src" ] || { echo "usage: blank-scan.sh <frames-dir|image> [opts]" >&2; exit 2; }
 
 out="" grid="48x27" quant=24 contrast=64 min_cov="0.10" empty_cov="0.985" fail_on_find=0
-gutter_min="0.16" gutter_uniform="0.94"
+gutter_min="0.10" gutter_uniform="0.94"
 while [ $# -gt 0 ]; do
   case "$1" in
     --out)            out="$2"; shift 2 ;;
@@ -72,14 +79,31 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# Collect frames (a dir → its PNGs sorted; a single file → just it).
+# Collect frames. A dir → its PNGs sorted; a VIDEO (.mp4/.webm/.mov) → frames
+# sampled out of it (the recorded video is where compositing artifacts like a
+# recorder letterbox bar live — screenshots capture the window directly and miss
+# them); any other single file → just it.
 frames=()
-if [ -d "$src" ]; then
-  while IFS= read -r f; do frames+=("$f"); done < <(find "$src" -maxdepth 1 -type f -name '*.png' | sort)
-else
-  frames+=("$src")
-fi
-[ "${#frames[@]}" -gt 0 ] || { echo "no .png frames under $src" >&2; exit 2; }
+tmp_extracted=""
+case "$src" in
+  *.mp4|*.webm|*.mov|*.MP4|*.WEBM|*.MOV)
+    tmp_extracted="$(mktemp -d)"
+    # ~1 frame every 2s, capped, so a long tour stays cheap but every beat is seen.
+    ffmpeg -loglevel error -i "$src" -vf "fps=1/2" "$tmp_extracted/f%04d.png" \
+      || { echo "ffmpeg failed to extract frames from $src" >&2; exit 2; }
+    while IFS= read -r f; do frames+=("$f"); done < <(find "$tmp_extracted" -type f -name '*.png' | sort)
+    ;;
+  *)
+    if [ -d "$src" ]; then
+      while IFS= read -r f; do frames+=("$f"); done < <(find "$src" -maxdepth 1 -type f -name '*.png' | sort)
+    else
+      frames+=("$src")
+    fi
+    ;;
+esac
+[ "${#frames[@]}" -gt 0 ] || { echo "no frames to scan under $src" >&2; exit 2; }
+cleanup() { [ -n "$tmp_extracted" ] && rm -rf "$tmp_extracted"; }
+trap cleanup EXIT
 
 GW="${grid%x*}"; GH="${grid#*x}"
 
@@ -148,28 +172,49 @@ def largest_blob(bs, bg):
     return best
 
 def edge_gutters(bs, bg):
-    # Contrast-INDEPENDENT edge check: from each edge inward, count the contiguous
-    # band of lines (columns for left/right, rows for top/bottom) that are
-    # ~entirely the background bucket. A wide such band is a dead margin the
-    # content never reaches — the failure the contrast gate is blind to, because
-    # the margin IS the bg colour. Returns the widest gutter per side as a frac of
-    # that axis (0..1).
-    def col_bg_frac(x):
-        return sum(1 for y in range(gh) if bs[y*gw + x] == bg) / gh
-    def row_bg_frac(y):
-        return sum(1 for x in range(gw) if bs[y*gw + x] == bg) / gw
-    def run(idxs, frac):
+    # Contrast-INDEPENDENT, colour-AGNOSTIC edge check. From each edge inward,
+    # count the contiguous band of lines (columns for left/right, rows for
+    # top/bottom) that are each ~entirely ONE flat bucket AND share that bucket
+    # across the whole band. Two failure modes both surface as such a band:
+    #   • a dead margin the content never reaches (the band is the page bg) — the
+    #     case the contrast gate is blind to;
+    #   • a foreign flat bar composited OVER the UI (e.g. a video recorder padding
+    #     the frame with its grey background because the window < the record size)
+    #     — the band is a DISTINCT colour, so a bg-only check misses it.
+    # Returns per side {width: frac-of-axis, color: hex} for the widest band.
+    def line_top(idxs_for_line):
+        # Most-common bucket in a line + its coverage fraction.
+        c = Counter(bs[i] for i in idxs_for_line)
+        bucket, n = c.most_common(1)[0]
+        return bucket, n / len(idxs_for_line)
+    def scan(lines):
+        # lines: ordered list (edge → inward) of index-lists. Walk while each line
+        # is uniform (>= gutter_uniform) and matches the band's bucket.
+        band_bucket = None
         n = 0
-        for i in idxs:
-            if frac(i) >= gutter_uniform: n += 1
-            else: break
-        return n
-    return {
-        "right":  round(run(range(gw-1, -1, -1), col_bg_frac) / gw, 3),
-        "left":   round(run(range(0, gw),        col_bg_frac) / gw, 3),
-        "bottom": round(run(range(gh-1, -1, -1), row_bg_frac) / gh, 3),
-        "top":    round(run(range(0, gh),        row_bg_frac) / gh, 3),
-    }
+        for idxs in lines:
+            bucket, frac = line_top(idxs)
+            if frac < gutter_uniform:
+                break
+            if band_bucket is None:
+                band_bucket = bucket
+            elif dist(bucket, band_bucket) > quant:
+                break
+            n += 1
+        return n, band_bucket
+    cols = [[y*gw + x for y in range(gh)] for x in range(gw)]
+    rows = [[y*gw + x for x in range(gw)] for y in range(gh)]
+    out = {}
+    for side, lines, axis in (
+        ("right",  list(reversed(cols)), gw),
+        ("left",   cols,                 gw),
+        ("bottom", list(reversed(rows)), gh),
+        ("top",    rows,                 gh),
+    ):
+        n, bucket = scan(lines)
+        out[side] = {"width": round(n / axis, 3),
+                     "color": hexof(bucket) if bucket is not None else None}
+    return out
 
 results, flagged = [], []
 for path in frames:
@@ -194,15 +239,23 @@ for path in frames:
         reasons.append(f"a solid {hexof(blob_bucket)} block (high-contrast vs "
                        f"the {hexof(bg_bucket)} background) covers "
                        f"{blob_cov*100:.0f}% of the frame")
-    # Edge gutter: a wide one-sided dead margin, but only on a frame that DOES
-    # have content (not a near-empty page — that is reported separately below).
+    # Edge gutter: a wide flat band hugging one edge — either a dead margin the
+    # content never reaches, or a foreign bar composited over the UI (e.g. a video
+    # recorder padding the frame). Only on a frame that DOES have content (a
+    # near-empty page is reported separately below).
     if bg_cov < empty_cov:
-        worst_side = max(gutters, key=gutters.get)
-        worst = gutters[worst_side]
+        worst_side = max(gutters, key=lambda s: gutters[s]["width"])
+        worst = gutters[worst_side]["width"]
+        gcol = gutters[worst_side]["color"]
         if worst >= gutter_min:
-            reasons.append(f"a flat {hexof(bg_bucket)} {worst_side} gutter spans "
-                           f"{worst*100:.0f}% of the frame — content does not reach "
-                           f"the {worst_side} edge")
+            foreign = gcol is not None and dist(
+                tuple(int(gcol[i:i+2], 16) for i in (1, 3, 5)), bg_bucket) > contrast
+            kind = (f"a foreign flat {gcol} bar (distinct from the {hexof(bg_bucket)} "
+                    f"UI — likely a recorder/letterbox bar composited OVER the frame)"
+                    if foreign else
+                    f"a flat {gcol} {worst_side} gutter the content never reaches")
+            reasons.append(f"{kind} spans {worst*100:.0f}% of the frame at the "
+                           f"{worst_side} edge")
     if bg_cov >= empty_cov:
         reasons.append(f"the frame is {bg_cov*100:.0f}% a single flat colour "
                        f"{hexof(bg_bucket)} — almost nothing rendered")

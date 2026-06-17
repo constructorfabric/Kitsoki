@@ -127,6 +127,27 @@ export async function launchVSCode(opts: LaunchOptions): Promise<LaunchedVSCode>
   });
 
   const win = await acquireWorkbench(app);
+
+  // Match the OS window to the recordVideo size. From a fresh user-data-dir VS
+  // Code restores its OWN default window bounds (narrower than `size`), but the
+  // video is captured at `size` — Playwright pads the shortfall with the
+  // recorder's grey background, i.e. a solid bar down an edge of the .mp4. That
+  // bar is invisible in window screenshots (which capture the window directly)
+  // and shipped unseen until `make vscode-qa` caught it. Force the window to
+  // exactly `size` so the workbench fills the recorded frame edge-to-edge.
+  if (opts.videoDir) {
+    await app
+      .evaluate(({ BrowserWindow }, s) => {
+        const w = BrowserWindow.getAllWindows()[0];
+        if (!w) return;
+        if (w.isMaximized()) w.unmaximize();
+        w.setBounds({ x: 0, y: 0, width: s.width, height: s.height });
+      }, size)
+      .catch(() => undefined);
+    // Let the workbench relayout to the new bounds before beats are captured.
+    await win.waitForTimeout(400);
+  }
+
   return { app, win };
 }
 
