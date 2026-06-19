@@ -339,9 +339,14 @@ intents:
     priority: 50
 
   look:
-    description: "Re-render the current view."
-    examples: ["look", "what branch are we on", "is this committed",
-               "what's uncommitted", "am I on main", "what files are staged", "refresh", "status"]
+    # Status-query phrasings. Avoid examples that reduce to a bare command verb
+    # stem — "is this committed"→{commit} and "what files are staged"→{stage}
+    # collided with the commit/stage intents and produced spurious 0.50 ties on
+    # inputs like "commit the staged fix". Reworded to working-tree-state
+    # phrasings that carry their own stems.
+    examples: ["look", "what branch are we on", "is the working tree clean",
+               "what's uncommitted", "am I on main", "show the working tree state",
+               "refresh", "status"]
     priority: 10
 
 root: idle

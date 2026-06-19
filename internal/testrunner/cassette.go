@@ -872,6 +872,31 @@ func writeCassetteOracleEvents(ctx context.Context, sink store.EventSink, cas *C
 				o.Transcript.Format, o.Transcript.eventLines(), o.Transcript.Timings)
 		}
 
+		// Surface recorded token usage + cost in the canonical opaque-meta shape
+		// the live claude-CLI transport emits (meta.usage.{input,output}_tokens +
+		// meta.cost_usd), so a cassette-replayed oracle.call.complete carries the
+		// same cost signal the runstatus usage meter aggregates as a real trace.
+		// Without this the host-cassette replay path dropped usage entirely and
+		// the meter under-reported the oracle's spend as $0. Mirrors
+		// cassetteOracle.Ask (cassette_oracle.go).
+		var meta map[string]any
+		if o.PromptTokens > 0 || o.ResponseTokens > 0 || o.CostUSD > 0 {
+			meta = map[string]any{}
+			if o.PromptTokens > 0 || o.ResponseTokens > 0 {
+				usage := map[string]any{}
+				if o.PromptTokens > 0 {
+					usage["input_tokens"] = o.PromptTokens
+				}
+				if o.ResponseTokens > 0 {
+					usage["output_tokens"] = o.ResponseTokens
+				}
+				meta["usage"] = usage
+			}
+			if o.CostUSD > 0 {
+				meta["cost_usd"] = o.CostUSD
+			}
+		}
+
 		retPayload := host.OracleReturnedPayload{
 			Verb:          o.Verb,
 			Agent:         o.Agent,
@@ -879,6 +904,7 @@ func writeCassetteOracleEvents(ctx context.Context, sink store.EventSink, cas *C
 			DurationMS:    o.DurationMs,
 			Response:      responseRaw,
 			TranscriptRef: transcriptRef,
+			Meta:          meta,
 		}
 		retRaw, merr := json.Marshal(retPayload)
 		if merr == nil {
