@@ -74,6 +74,7 @@ the failure mode this guards against.
 ## Output
 
 Submit a `prd_artifact` (see `schemas/prd_artifact.json`): `title`,
-`summary_markdown` (the checkpoint view — the PRD body or a faithful
-digest), `file_path` (where you wrote it), `confidence`,
-`needs_clarification`, and `follow_up_questions`.
+`summary_markdown` (the **complete PRD body as markdown** — the drafting
+room mirrors it into the operator's editor and persists it, so include the
+whole document, not a digest), `file_path` (where you wrote it),
+`confidence`, `needs_clarification`, and `follow_up_questions`.

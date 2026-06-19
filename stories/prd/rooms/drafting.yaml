@@ -180,6 +180,33 @@ states:
         emit_intent: "{{ world.llm_verdict.intent }}"
         slots:
           feedback: "{{ world.llm_verdict.reason }}"
+
+      # Persist the drafted PRD to a real file so the operator's editor can show
+      # it (host.ide.open_file below) and so publish reads it. summary_markdown
+      # IS the PRD body (see prompts/draft_prd.md), so writing it yields a
+      # deterministic file even when the author is stubbed (no-LLM flows). The
+      # write lands at the SAME path the author's output_path points at, so the
+      # publish step is unchanged. artifacts_dir returns an ABSOLUTE path — bound
+      # for open_file/open_diff. once: keyed on prd_draft_doc (refine clears it to
+      # re-arm); /reload or look won't rewrite over the operator's hand-edits.
+      - invoke: host.artifacts_dir
+        once: true
+        with:
+          artifacts_root: "{{ world.workdir }}/{{ world.prd_workspace }}"
+          thread:         "004-prd"
+          mode:           "replace"
+          title:          "{{ world.prd_artifact.title }}"
+          body:           "{{ world.prd_artifact.summary_markdown }}"
+        bind:
+          prd_draft_doc: "path"
+        on_error: .
+      # Open the drafted PRD in the operator's editor. Idempotent (not
+      # once-guarded) so a re-entry re-opens the (possibly applied) file.
+      # on_error: . — no editor connection holds here; the PRD is on disk.
+      - invoke: host.ide.open_file
+        with:
+          path: "{{ world.prd_draft_doc }}"
+        on_error: .
     on:
       # accept fires @exit:done. requires: [prd_artifact] is checked
       # statically against this arc's effects — re-pin prd_artifact (it
@@ -227,6 +254,76 @@ states:
             - set:
                 abandon_reason: "drafting_budget_exhausted"
                 status:         "abandoned"
+        # IDE-connected refine: re-draft into a STAGING file, show it as a native
+        # diff against the live PRD with the operator's feedback as an inline
+        # comment, and gate accept/reject IN the editor (host.ide.open_diff blocks
+        # the turn until the verdict). On accept the editor applies the staged text
+        # to the live PRD and we promote the staged artifact; on reject the PRD is
+        # untouched. Disconnected runs (every flow + the web tour) fall through to
+        # the plain arc below — behaviour unchanged.
+        - when: "world.ide.connected"
+          target: drafting
+          effects:
+            - set:
+                refine_feedback:  "{{ slots.feedback ?? world.llm_verdict.reason }}"
+                refine_message:   "{{ slots.feedback ?? world.llm_verdict.reason }}"
+                drafting_cycle:   "{{ world.drafting_cycle + 1 }}"
+                cycle:            "{{ world.cycle + 1 }}"
+                prd_diff_verdict: ""
+            # Re-draft into 004-prd.next.md — do NOT clobber the live 004-prd.md,
+            # so the diff has a real before/after.
+            - invoke: host.oracle.task
+              id: prd_author_refine
+              with:
+                agent: author
+                working_dir: "{{ world.workdir }}"
+                acceptance:
+                  schema: schemas/prd_artifact.json
+                context:
+                  prompt: prompts/draft_prd.md
+                  args:
+                    idea:              "{{ world.idea }}"
+                    upstream_paths:    "{{ world.upstream_paths }}"
+                    clarification_log: "{{ world.clarification_log }}"
+                    references:        "{{ world.references }}"
+                    output_path:       "{{ world.prd_workspace }}/004-prd.next.md"
+                    workspace:         "{{ world.prd_workspace }}"
+                    workdir:           "{{ world.workdir }}"
+                    refine_feedback:   "{{ world.refine_feedback }}"
+                    cycle:             "{{ world.cycle }}"
+              bind:
+                prd_stage_artifact: submitted
+              on_error: drafting
+            # Persist the staged proposal to a real file so the diff has content
+            # even when the author is stubbed (no-LLM recording).
+            - invoke: host.artifacts_dir
+              with:
+                artifacts_root: "{{ world.workdir }}/{{ world.prd_workspace }}"
+                thread:         "004-prd.next"
+                mode:           "replace"
+                title:          "{{ world.prd_stage_artifact.title }}"
+                body:           "{{ world.prd_stage_artifact.summary_markdown }}"
+              bind:
+                prd_stage_doc: "path"
+              on_error: drafting
+            # Show the diff (live PRD vs staged proposal) with the feedback as an
+            # inline comment; BLOCK until the operator decides; bind the verdict.
+            - invoke: host.ide.open_diff
+              with:
+                path:          "{{ world.prd_draft_doc }}"
+                new_text_path: "{{ world.prd_stage_doc }}"
+                title:         "PRD refinement"
+                comment:       "{{ world.refine_message }}"
+              bind:
+                prd_diff_verdict: "verdict"
+              on_error: drafting
+            # Accept → the editor wrote the staged content into the live PRD;
+            # promote the staged artifact so the view + publish track v2. Reject →
+            # leave the PRD as-is (prd_artifact unchanged).
+            - when: "world.prd_diff_verdict == 'accepted'"
+              set:
+                prd_artifact:   "{{ world.prd_stage_artifact }}"
+                refine_message: ""
         - target: drafting
           effects:
             # Capture the refine steer BEFORE clearing llm_verdict (in case it
@@ -238,6 +335,7 @@ states:
             - set:
                 prd_artifact:    {}
                 llm_verdict:     {}
+                prd_draft_doc:   ""
                 drafting_cycle:  "{{ world.drafting_cycle + 1 }}"
                 cycle:           "{{ world.cycle + 1 }}"
 

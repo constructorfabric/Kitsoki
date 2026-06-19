@@ -307,7 +307,8 @@ func IDEOpenFileHandler(ctx context.Context, args map[string]any) (Result, error
 // accept, re-refine on reject). An editor that returns no verdict (older,
 // non-gating) defaults to "accepted" — the v1 proceed-anyway behaviour.
 //
-// Args: path (required), new_text, title (optional), comment (optional inline
+// Args: path (required), new_text OR new_text_path (the proposed content inline
+// or a staged file the editor reads), title (optional), comment (optional inline
 // feedback shown on the diff). Result.Data on success:
 // {"ok":true,"connected":true,"verdict":"accepted"|"rejected"}; not-connected:
 // {"connected":false,"ok":false}.
@@ -323,6 +324,11 @@ func IDEOpenDiffHandler(ctx context.Context, args map[string]any) (Result, error
 	}
 	if nt, ok := args["new_text"].(string); ok {
 		toolArgs["new_text"] = nt
+	}
+	// new_text_path lets the story hand the editor a staged draft FILE instead of
+	// inlining a large doc through the MCP envelope; the editor reads it.
+	if ntp, ok := args["new_text_path"].(string); ok && ntp != "" {
+		toolArgs["new_text_path"] = ntp
 	}
 	if t, ok := args["title"].(string); ok && t != "" {
 		toolArgs["title"] = t

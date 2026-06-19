@@ -92,6 +92,7 @@ hosts:
   - host.oracle.search
   - host.artifacts_dir
   - host.ide.open_file
+  - host.ide.open_diff
   # ── PRD discovery (imported `prd`, stories/prd/) ──────────────────
   # The PRD pipeline is a conversational discovery (host.oracle.converse +
   # a persistent chat via host.chat.resolve) that decide/task-gates into a

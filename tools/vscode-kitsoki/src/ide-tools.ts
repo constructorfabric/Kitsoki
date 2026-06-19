@@ -14,7 +14,20 @@
 // the genuine, hand-drivable behaviour.
 
 import * as vscode from 'vscode';
+import * as path from 'node:path';
 import type { DiffController } from './ide-diff';
+
+/**
+ * Resolve a host.ide.* `path` to an absolute fs path. The kitsoki backend runs
+ * with cwd = the first workspace folder, so a relative path (the author's
+ * output_path, relative to the backend cwd) resolves against that root; an
+ * already-absolute path (e.g. host.artifacts_dir's return) passes through.
+ */
+export function resolveWorkspacePath(p: string): string {
+  if (!p || path.isAbsolute(p)) return p;
+  const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  return root ? path.join(root, p) : p;
+}
 
 /** A line/character position as the IDE MCP encodes it. */
 interface WirePosition {
@@ -87,7 +100,7 @@ export class IdeTools {
    * story's `on_error: .` keeps the room.
    */
   private async openFile(args: Record<string, unknown>): Promise<{ ok: boolean }> {
-    const p = typeof args.path === 'string' ? args.path : '';
+    const p = resolveWorkspacePath(typeof args.path === 'string' ? args.path : '');
     if (!p) return { ok: false };
     try {
       const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(p));

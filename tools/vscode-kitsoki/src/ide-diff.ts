@@ -22,6 +22,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { resolveWorkspacePath } from './ide-tools';
 
 export const DIFF_SCHEME = 'kitsoki-diff';
 export type Verdict = 'accepted' | 'rejected';
@@ -107,14 +108,24 @@ export class DiffController {
 
   /**
    * Open the diff and block until the operator accepts/rejects. Returns the
-   * verdict for the Go handler to surface. args: {path, new_text, title?, comment?}.
+   * verdict for the Go handler to surface. args: {path, new_text | new_text_path,
+   * title?, comment?}. The proposed text is `new_text` inline, or read from
+   * `new_text_path` (the staged draft on disk — avoids piping a large doc
+   * through the MCP envelope).
    */
   async open(args: Record<string, unknown>): Promise<{ ok: boolean; verdict: Verdict }> {
     // Defensively clear any prior pending diff (one at a time).
     if (this.pending) this.resolve('rejected');
 
-    const filePath = typeof args.path === 'string' ? args.path : '';
-    const newText = typeof args.new_text === 'string' ? args.new_text : '';
+    const filePath = resolveWorkspacePath(typeof args.path === 'string' ? args.path : '');
+    let newText = typeof args.new_text === 'string' ? args.new_text : '';
+    if (!newText && typeof args.new_text_path === 'string' && args.new_text_path) {
+      try {
+        newText = fs.readFileSync(resolveWorkspacePath(args.new_text_path), 'utf8');
+      } catch (e) {
+        this.out.appendLine(`[ide] openDiff: could not read new_text_path: ${(e as Error).message}`);
+      }
+    }
     const title = typeof args.title === 'string' && args.title ? args.title : 'Kitsoki — proposed change';
     const comment = typeof args.comment === 'string' ? args.comment : '';
 

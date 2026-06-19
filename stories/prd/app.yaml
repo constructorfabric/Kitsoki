@@ -61,6 +61,7 @@ hosts:
   - host.chat.resolve     # get-or-create the discovery chat; idempotent across on_enter re-fires (e.g. /reload). NOT host.chat.create — see rooms/idle.yaml.
   - host.artifacts_dir    # write the brief + reference-list artifacts into the per-PRD workspace under {{ workdir }}/.artifacts/prd/<slug> — see rooms/brief.yaml, rooms/references.yaml.
   - host.ide.open_file    # open the editable brief in the operator's editor on brief-room entry — see rooms/brief.yaml.
+  - host.ide.open_diff    # show a refine as a native diff with an in-editor accept/reject verdict gate — see rooms/drafting.yaml.
   - host.run              # deterministic glue scripts: mint the per-PRD workspace slug (scripts/prd_slug.py, search room) and publish the accepted PRD to its durable home (scripts/prd_publish.py, drafting room).
   - host.oracle.search    # OPTIONAL semantic pre-seed for the references room: embeds the idea and retrieves close docs chunks to pre-rank the researcher (see rooms/references.yaml). Fails cleanly (on_error stays in references) when no embedding endpoint is configured.
 
