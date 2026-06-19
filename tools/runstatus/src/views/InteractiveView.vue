@@ -276,11 +276,24 @@ onMounted(() => {
   // window.__startTourWithSteps hook the tour video specs rely on. Used to
   // drive semantic-routing rooms (no intent buttons) on-camera deterministically
   // in the no-LLM --flow posture. Inert unless a spec calls it.
+  // `displayLabel` lets a demo render the operator's REAL verbatim utterance as
+  // the user transcript bubble (e.g. the mined "rebase onto main and resolve the
+  // conflicts") while the engine deterministically processes the resolved intent
+  // — exactly the shape a live LLM session leaves behind (utterance + resolved
+  // intent), so the no-LLM video shows real input, not a synthetic intent name.
   (window as unknown as {
-    __kitsokiSubmitIntent?: (name: string, slots?: Record<string, unknown>) => Promise<void>;
-  }).__kitsokiSubmitIntent = async (name: string, slots: Record<string, unknown> = {}) => {
+    __kitsokiSubmitIntent?: (
+      name: string,
+      slots?: Record<string, unknown>,
+      displayLabel?: string,
+    ) => Promise<void>;
+  }).__kitsokiSubmitIntent = async (
+    name: string,
+    slots: Record<string, unknown> = {},
+    displayLabel?: string,
+  ) => {
     if (!source) return;
-    await runTurn(() => store.submitIntent(source!, props.sessionId, name, slots));
+    await runTurn(() => store.submitIntent(source!, props.sessionId, name, slots, displayLabel));
   };
 });
 

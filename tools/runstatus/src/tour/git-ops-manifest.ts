@@ -1,19 +1,24 @@
 /**
- * git-ops story-walkthrough tour manifest (extensive edition).
+ * git-ops story-walkthrough tour manifest (mined-from-real-sessions edition).
  *
- * A self-contained step array for the git-ops demo video. Like the other feature
- * tours, the WHOLE video is tour-driven: it opens on the home story library,
- * frames the git-ops card, drives home → new session → the interactive /chat view
- * via a route-match action step, then narrates ONE long feature-branch → integration
- * session that visits many rooms so the demo shows the story's full scope:
+ * The whole video is tour-driven: it opens on the home story library, frames the
+ * git-ops card, drives home → new session → the interactive /chat view, then
+ * replays FOUR scenarios mined from REAL Claude Code sessions with the
+ * story-coverage-mining loop (tools/session-mining/examples/git-ops/). Every
+ * typed user message in the video is the VERBATIM `user_text` a developer
+ * actually typed in a recorded session — not a synthetic intent name, and not a
+ * mechanical room-by-room tour:
  *
- *   hub → stage (suspicious-file gate) → oracle-authored commit (regenerate) →
- *   undo (reset modes) → rebase (auto-resolved conflict) → merge to main →
- *   pull → create a worktree → list worktrees → cleanup.
+ *   ① "commit the staged fix"                          (sess-commit-happy)
+ *   ② "rebase onto main and resolve the conflicts"     (sess-rebase-conflict)
+ *   ③ "merge the feature branch into main"             (sess-merge-direct)
+ *   ④ "set up a worktree for the new cache feature"    (sess-worktree)
  *
- * The pace is deliberately quick — enough to see each scene; viewers pause to
- * inspect. Drives are PRE-STEP HOOKS in the spec (multi-story pattern); each step
- * just narrates the resulting state.
+ * These four are one developer's natural feature-branch lifecycle (finish the
+ * work → rebase onto main → merge → set up the next feature's worktree), so they
+ * stitch into a single coherent session. The deterministic engine replays the
+ * resolved intent for each; the real utterance rides as the chat bubble via
+ * submitIntent's displayLabel (see InteractiveView's __kitsokiSubmitIntent).
  *
  * SINGLE SOURCE OF TRUTH: the same array drives the live tour overlay
  * (window.__startTourWithSteps) and the video spec (git-ops-video.spec.ts), which
@@ -23,13 +28,19 @@
  * `target` / `waitForTarget` is a UNIVERSAL testid (chat section, state badge,
  * story cards), never a git-ops-specific room element, and no step gates on a
  * story state (the spec's pre-step hooks own state advancement).
+ *
+ * POPOVER PLACEMENT: the chat is what viewers most need to read, so every
+ * in-session step anchors the SPOTLIGHT on `chat-section` (left ~46% column) and
+ * places the popover to its `right` — parked over the dimmed trace/diagram panel
+ * (right ~54%), never covering the chat. (The intro steps are on the home view,
+ * which has no chat; the wrap-up is a centered summary card.)
  */
 
 import { type TourStep } from "./manifest.js";
 
 export type { TourStep };
 
-const D = 3000; // base dwell — quick pace; viewers pause to inspect
+const D = 3500; // base dwell — quick pace; viewers pause to inspect
 
 export const GIT_OPS_TOUR_STEPS: readonly TourStep[] = [
   // ── Intro: the story library → a fresh run ──────────────────────────────────
@@ -37,7 +48,7 @@ export const GIT_OPS_TOUR_STEPS: readonly TourStep[] = [
     id: "gitops-intro-home",
     route: "home",
     title: "Start at the story library",
-    body: "Every run begins in the story library — each card is a deterministic story graph. We'll walk git-ops: a guided, hub-and-spoke git workflow where every command is a real, traced operation.",
+    body: "Every run begins in the story library — each card is a deterministic story graph. We'll walk git-ops: a guided, hub-and-spoke git workflow where every command is a real, traced operation. What follows isn't a scripted tour — it's four real Claude Code sessions, replayed.",
     placement: "center",
     kind: "explain",
     advance: "next",
@@ -50,7 +61,7 @@ export const GIT_OPS_TOUR_STEPS: readonly TourStep[] = [
     target: "story-card",
     waitForTarget: "story-card",
     title: "The git-ops story",
-    body: "On entry it detects your branch and routes to the right hub, offering only the operations legal there. The oracle appears in just two places: authoring a commit message and resolving a conflict.",
+    body: "On entry it detects your branch and routes to the right hub, offering only the operations legal there. We mined how developers actually drive git in recorded sessions (the story-coverage-mining loop) and replay four of those sessions here verbatim.",
     placement: "right",
     kind: "explain",
     advance: "next",
@@ -62,7 +73,7 @@ export const GIT_OPS_TOUR_STEPS: readonly TourStep[] = [
     target: "new-session-btn",
     waitForTarget: "new-session-btn",
     title: "Spin up a session",
-    body: "New session starts a fresh, independently-traced git-ops run on a feature branch.",
+    body: "New session starts a fresh, independently-traced git-ops run on a feature branch (feat/auth, one commit ahead of main) — the hub a real developer's session opened on.",
     placement: "right",
     kind: "action",
     advance: "route-match",
@@ -70,167 +81,71 @@ export const GIT_OPS_TOUR_STEPS: readonly TourStep[] = [
     dwellMs: 2500,
   },
 
-  // ── Feature-branch hub ──────────────────────────────────────────────────────
-  {
-    id: "gitops-hub",
-    route: "interactive",
-    target: "state-badge",
-    waitForTarget: "state-badge",
-    title: "The feature-branch hub",
-    body: "We're on branch_ops — the hub for feat/auth, one commit ahead of main. The state badge always names the room. Legal moves: stage, commit, squash, rebase, merge.",
-    placement: "bottom",
-    kind: "explain",
-    advance: "next",
-    dwellMs: D,
-  },
-
-  // ── Stage + the suspicious-file gate ────────────────────────────────────────
-  {
-    id: "gitops-stage",
-    route: "interactive",
-    target: "chat-section",
-    waitForTarget: "chat-section",
-    title: "Stage — classify the tree",
-    body: "The staging room classifies the working tree: staged, modified, untracked, and a suspicious-file flag — here it caught a .npmrc that looks like a credential.",
-    placement: "left",
-    kind: "explain",
-    advance: "next",
-    dwellMs: D,
-  },
-  {
-    id: "gitops-gate",
-    route: "interactive",
-    target: "chat-section",
-    waitForTarget: "chat-section",
-    title: "A decision gate",
-    body: "add_all won't silently stage a suspicious file. It stops for an explicit confirmation — a deterministic safety gate the story enforces before the dangerous default.",
-    placement: "left",
-    kind: "explain",
-    advance: "next",
-    dwellMs: D,
-  },
-
-  // ── Oracle-authored commit ──────────────────────────────────────────────────
+  // ── ① Real session: commit the staged fix ───────────────────────────────────
   {
     id: "gitops-commit",
     route: "interactive",
     target: "chat-section",
     waitForTarget: "chat-section",
-    title: "An oracle-authored commit",
-    body: "The commit room shows the staged diff stat and a message the oracle drafted — fix(auth): guard nil session on expiry. Review, regenerate, or edit; accept runs the real git commit.",
-    placement: "left",
+    title: "Real session ① — commit the fix",
+    body: "From a recorded session, a developer typed: “commit the staged fix.” The commit room gathers the staged diff and the oracle drafts the message it really landed — fix(auth): handle nil session on expiry. Review, regenerate, or edit; accept runs the real git commit.",
+    placement: "right",
     kind: "explain",
     advance: "next",
     dwellMs: D,
   },
 
-  // ── Undo (the safety room) ──────────────────────────────────────────────────
-  {
-    id: "gitops-undo",
-    route: "interactive",
-    target: "chat-section",
-    waitForTarget: "chat-section",
-    title: "Undo, safely",
-    body: "The undo room shows the last commit and offers --mixed / --soft / --hard resets — the destructive --hard needs an explicit confirmation. We'll keep our commit and head back.",
-    placement: "left",
-    kind: "explain",
-    advance: "next",
-    dwellMs: D,
-  },
-
-  // ── Rebase with an auto-resolved conflict ───────────────────────────────────
+  // ── ② Real session: rebase onto main, resolve the conflicts ─────────────────
   {
     id: "gitops-rebase",
     route: "interactive",
-    target: "state-badge",
-    waitForTarget: "state-badge",
-    title: "Rebase — conflict auto-resolved",
-    body: "Rebasing onto main hit a conflict in internal/auth/session.go. The story routed into the conflict room, the oracle resolved it (the second of its two appearances), ran the build check, and continued — back on the hub, rebased and green.",
-    placement: "bottom",
+    target: "chat-section",
+    waitForTarget: "chat-section",
+    title: "Real session ② — rebase & resolve",
+    body: "The next recording: “rebase onto main and resolve the conflicts.” In the real session the rebase conflicted in TWO source files — internal/auth/session.go and internal/auth/token.go. The story routed into the conflict room, the oracle resolved both, ran the build check, and continued — back on the hub, rebased and green.",
+    placement: "right",
     kind: "explain",
     advance: "next",
-    dwellMs: 3500,
+    dwellMs: 4000,
   },
 
-  // ── Merge into main ─────────────────────────────────────────────────────────
+  // ── ③ Real session: merge the feature branch into main ──────────────────────
   {
     id: "gitops-merge",
     route: "interactive",
-    target: "state-badge",
-    waitForTarget: "state-badge",
-    title: "Merge into main",
-    body: "merge_into_main runs every guard in one script — descendant + stale-rebase check, a dirty-tree stash sandwich, the --no-ff merge, a post-merge build check — and reports merged.",
-    placement: "bottom",
+    target: "chat-section",
+    waitForTarget: "chat-section",
+    title: "Real session ③ — merge into main",
+    body: "Then: “merge the feature branch into main.” merge_into_main runs every guard in one script — descendant + stale-rebase check, a dirty-tree stash sandwich, the --no-ff merge, a post-merge build check — reports merged, and drops us on the integration hub.",
+    placement: "right",
     kind: "explain",
     advance: "next",
     dwellMs: D,
   },
 
-  // ── Integration hub: pull ───────────────────────────────────────────────────
-  {
-    id: "gitops-pull",
-    route: "interactive",
-    target: "state-badge",
-    waitForTarget: "state-badge",
-    title: "On the integration hub — pull",
-    body: "The merge dropped us on main_ops, the integration-branch hub. Pull checks for an upstream tracking ref first — there's none here, so it reports that rather than failing blindly.",
-    placement: "bottom",
-    kind: "explain",
-    advance: "next",
-    dwellMs: D,
-  },
-
-  // ── Worktree create ─────────────────────────────────────────────────────────
+  // ── ④ Real session: set up a worktree for the next feature ──────────────────
   {
     id: "gitops-worktree",
     route: "interactive",
     target: "chat-section",
     waitForTarget: "chat-section",
-    title: "Create a worktree",
-    body: "From the integration hub you can spin up an isolated worktree for the next feature. It's pinned under .worktrees/ — the branch name is derived from a short description (add login → add-login).",
-    placement: "left",
+    title: "Real session ④ — set up a worktree",
+    body: "Last recording: “set up a worktree for the new cache feature.” From the integration hub the story spins up an isolated worktree for the next feature — pinned under .worktrees/ as feat-cache, exactly the command the real session ran.",
+    placement: "right",
     kind: "explain",
     advance: "next",
-    dwellMs: 3500,
-  },
-
-  // ── Worktree list ───────────────────────────────────────────────────────────
-  {
-    id: "gitops-list",
-    route: "interactive",
-    target: "chat-section",
-    waitForTarget: "chat-section",
-    title: "List the worktrees",
-    body: "The worktree room enumerates every checkout — the main worktree plus the new add-login one — and offers prune / remove actions for housekeeping.",
-    placement: "left",
-    kind: "explain",
-    advance: "next",
-    dwellMs: D,
-  },
-
-  // ── Cleanup ─────────────────────────────────────────────────────────────────
-  {
-    id: "gitops-cleanup",
-    route: "interactive",
-    target: "chat-section",
-    waitForTarget: "chat-section",
-    title: "Cleanup after merge",
-    body: "Once a branch is merged, cleanup removes its worktree and the branch in one step — keeping the repo tidy without leaving stale checkouts behind.",
-    placement: "left",
-    kind: "explain",
-    advance: "next",
-    dwellMs: D,
+    dwellMs: 4000,
   },
 
   // ── Wrap-up ─────────────────────────────────────────────────────────────────
   {
     id: "gitops-done",
     route: "interactive",
-    title: "That's the git-ops story",
-    body: "One session walked the full scope — staging with a safety gate, an oracle-authored commit, undo, a rebase with an auto-resolved conflict, a guarded merge, pull, and the worktree lifecycle — hub to hub, every command a real, auditable operation. Hit '?' to replay this tour.",
+    title: "Four real sessions, replayed",
+    body: "Every input here was the verbatim text a developer typed in a real Claude Code session — commit, rebase-with-conflict, merge, and worktree setup — mined with the story-coverage-mining loop and replayed deterministically, no LLM in the loop. Not a synthetic tour: the story handled exactly what people actually asked for. Hit '?' to replay this.",
     placement: "center",
     kind: "explain",
     advance: "next",
-    dwellMs: 3500,
+    dwellMs: 4000,
   },
 ];

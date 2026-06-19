@@ -1,30 +1,35 @@
 /**
  * git-ops-video.spec.ts — the git-ops story walkthrough video, driven against a
  * REAL `kitsoki web` server in the deterministic no-LLM posture
- * (--flow stories/git-ops/flows/demo_tour.yaml --mode one-shot: host responses
- * stubbed, harness nil, intents submitted explicitly — no LLM is ever called).
+ * (--flow stories/git-ops/flows/demo_real_sessions.yaml --mode one-shot: host
+ * responses stubbed, harness nil, intents submitted explicitly — no LLM ever).
  *
  * Like multi-story.spec.ts, the WHOLE video is TOUR-DRIVEN: it runs the
  * GIT_OPS_TOUR_STEPS from src/tour/git-ops-manifest.ts via
  * window.__startTourWithSteps. The tour opens on the home story library, frames
  * the git-ops card, drives home → new session → the interactive /chat view via a
- * route-match action step, then narrates a natural feature-branch session
- * turn-by-turn: stage → commit (oracle-authored message) → rebase → merge to
- * main. The spec asserts each step's `title` against the live popover so the
- * manifest and video cannot silently drift.
+ * route-match action step, then replays FOUR scenarios mined from REAL Claude
+ * Code sessions (tools/session-mining/examples/git-ops/) — each typed message is
+ * the verbatim user_text a developer actually typed:
+ *   ① "commit the staged fix"  ② "rebase onto main and resolve the conflicts"
+ *   ③ "merge the feature branch into main"  ④ "set up a worktree for the new cache feature"
+ * The spec asserts each step's `title` against the live popover so the manifest
+ * and video cannot silently drift.
  *
  * DRIVING: git-ops' root `idle` router renders NO clickable menu — it auto-routes
- * via its on_enter emit_intent. That route now fires at SESSION BOOT
+ * via its on_enter emit_intent. That route fires at SESSION BOOT
  * (RunInitialOnEnter follows the post-bind emit), so a fresh session lands
  * directly on branch_ops with no kick turn — the FIRST user turn the demo shows
- * is a real `stage`, not a mechanical `look`. Every subsequent intent is driven
- * through the SPA's own demo hook `window.__kitsokiSubmitIntent` (added by
- * InteractiveView for exactly this: submit through the view's store path so the
- * chat + InputBar re-render reactively, unlike an out-of-band RPC), since the
- * no-LLM posture has no LLM to interpret free text. `--mode one-shot` runs each
- * turn's full emit cascade (e.g. the rebase conflict auto-resolves in one turn).
- * These drives are PRE-STEP HOOKS (as multi-story advances the PRD pipeline) so
- * each spotlighted state exists before the spotlight lands.
+ * is the real `commit`. Every intent is driven through the SPA's own demo hook
+ * `window.__kitsokiSubmitIntent` (added by InteractiveView: submit through the
+ * view's store path so the chat + InputBar re-render reactively, unlike an
+ * out-of-band RPC). Its 3rd arg is the verbatim utterance, rendered as the chat
+ * bubble via submitIntent's displayLabel — so the no-LLM video shows REAL user
+ * input (the mined user_text), with the engine deterministically processing the
+ * resolved intent (exactly the shape a live LLM session leaves: utterance +
+ * resolved intent). `--mode one-shot` runs each turn's full emit cascade (so the
+ * rebase's multi-file conflict auto-resolves in one turn). These drives are
+ * PRE-STEP HOOKS so each spotlighted state exists before the spotlight lands.
  *
  * Uses a tmp DB (beforeAll/afterAll). ADDR 7753 (distinct from every other spec).
  *
@@ -60,7 +65,7 @@ const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "../../../..");
 const BIN = path.join(repoRoot, "bin", "kitsoki");
 const STORIES_DIR = path.join(repoRoot, "stories");
-const FLOW = path.join(repoRoot, "stories", "git-ops", "flows", "demo_tour.yaml");
+const FLOW = path.join(repoRoot, "stories", "git-ops", "flows", "demo_real_sessions.yaml");
 
 const ADDR = "127.0.0.1:7753";
 const BASE = `http://${ADDR}`;
@@ -172,7 +177,7 @@ async function injectTour(page: Page, steps: readonly TourStep[]): Promise<void>
 }
 
 test.describe("git-ops story walkthrough (live, no-LLM)", () => {
-  test("extensive walkthrough: stage(gate) → commit → undo → rebase → merge → pull → worktree → cleanup", async () => {
+  test("four mined real sessions: commit → rebase+resolve → merge → worktree", async () => {
     test.setTimeout(300000);
 
     const stories = await rpc<Array<{ path: string; app_id: string; title: string }>>(
@@ -199,28 +204,34 @@ test.describe("git-ops story walkthrough (live, no-LLM)", () => {
      *  __kitsokiSubmitIntent demo hook), so the chat + InputBar re-render
      *  reactively. This is the deterministic way to advance git-ops' button-less
      *  router rooms (idle) and every other room in the no-LLM posture, mirroring
-     *  the window.__startTourWithSteps hook the tour itself uses. */
-    async function drive(intent: string, slots: Record<string, unknown> = {}): Promise<void> {
+     *  the window.__startTourWithSteps hook the tour itself uses.
+     *
+     *  `utterance` (optional) is rendered as the user's chat bubble via
+     *  submitIntent's displayLabel — pass the verbatim mined user_text on the
+     *  first turn of each scenario so the video shows REAL natural-language input
+     *  rather than the resolved intent name. Omit it for sub-actions (accept,
+     *  back, describe) the user takes by clicking a room button. */
+    async function drive(
+      intent: string,
+      slots: Record<string, unknown> = {},
+      utterance?: string,
+    ): Promise<void> {
       await page.waitForFunction(
         () => typeof (window as unknown as { __kitsokiSubmitIntent?: unknown }).__kitsokiSubmitIntent === "function",
         { timeout: 15000 },
       );
       await page.evaluate(
-        ([name, s]) =>
+        ([name, s, label]) =>
           (window as unknown as {
-            __kitsokiSubmitIntent: (n: string, sl: Record<string, unknown>) => Promise<void>;
-          }).__kitsokiSubmitIntent(name as string, s as Record<string, unknown>),
-        [intent, slots] as const,
+            __kitsokiSubmitIntent: (
+              n: string,
+              sl: Record<string, unknown>,
+              dl?: string,
+            ) => Promise<void>;
+          }).__kitsokiSubmitIntent(name as string, s as Record<string, unknown>, label as string | undefined),
+        [intent, slots, utterance] as const,
       );
     }
-    /** Patch session world server-side (demo tooling RPC). Used once after the
-     *  merge lands on main_ops to flip on_integration=true — we merged a FEATURE
-     *  branch so it's still false, which would route the integration-hub rooms'
-     *  `back` to branch_ops. The next drive() reads the patched world. */
-    async function patchWorld(patch: Record<string, unknown>): Promise<void> {
-      await rpc("runstatus.session.patch_world", { session_id: sid, patch });
-    }
-
     try {
       // ── 1. Open the home story library and start the tour ON it ──────────────
       mark("navigating home");
@@ -243,88 +254,47 @@ test.describe("git-ops story walkthrough (live, no-LLM)", () => {
           continue;
         }
 
-        // ── Pre-step setup: advance the git-ops session so the state exists ────
-        if (step.id === "gitops-hub") {
-          // No kick turn: the session boots straight to branch_ops. git-ops'
-          // idle router auto-routes via its on_enter emit_intent at session
-          // creation (RunInitialOnEnter follows the post-bind route), exactly
-          // as the room promises ("routed to hub automatically"). So the FIRST
-          // user turn the demo shows is a real `stage`, not a mechanical `look`.
-          await waitForState(page, "branch_ops", 15000);
-          await dwell(page, SETTLE_MS);
-        }
-        if (step.id === "gitops-stage") {
-          await drive("stage"); // → staging (classifies; .npmrc flagged suspicious)
-          await waitForState(page, "staging", 15000);
-          await dwell(page, SETTLE_MS);
-        }
-        if (step.id === "gitops-gate") {
-          await drive("add_all"); // suspicious file → confirm interstitial (stays in staging)
-          await dwell(page, SETTLE_MS);
-        }
+        // ── Pre-step setup: drive each mined scenario so its state exists ─────
+        // The first drive() of each scenario carries the VERBATIM mined user_text
+        // as its 3rd arg → rendered as the chat bubble (submitIntent displayLabel).
+        // Sub-actions (accept, back, describe) are room-button clicks: no label.
         if (step.id === "gitops-commit") {
-          await drive("confirm_add_all"); // confirm the suspicious stage
-          await dwell(page, SETTLE_MS);
-          await drive("back"); // → branch_ops
+          // No kick turn: the session boots straight to branch_ops (idle's
+          // on_enter emit_intent auto-routes at session creation). Scenario ①.
           await waitForState(page, "branch_ops", 15000);
-          await drive("commit"); // → commit room (oracle authors the message)
+          await dwell(page, SETTLE_MS);
+          await drive("commit", {}, "commit the staged fix"); // → commit (oracle authors the real message)
           await waitForState(page, "commit", 15000);
           await dwell(page, SETTLE_MS);
         }
-        if (step.id === "gitops-undo") {
-          await drive("regenerate"); // re-draft the message (stays in commit)
-          await dwell(page, SETTLE_MS);
-          await drive("accept"); // commit → branch_ops
-          await waitForState(page, "branch_ops", 15000);
-          await drive("undo"); // → undo room (reset modes shown; we won't undo)
-          await waitForState(page, "undo", 15000);
-          await dwell(page, SETTLE_MS);
-        }
         if (step.id === "gitops-rebase") {
-          await drive("back"); // undo → branch_ops (keep the commit)
+          await drive("accept"); // commit → branch_ops (lands the commit)
           await waitForState(page, "branch_ops", 15000);
-          await drive("rebase"); // conflict auto-resolved in one turn → branch_ops (rebase_done)
+          await dwell(page, SETTLE_MS);
+          // Scenario ②: multi-file conflict auto-resolved in one turn → branch_ops.
+          await drive("rebase", {}, "rebase onto main and resolve the conflicts");
           await waitForState(page, "branch_ops", 15000);
           await dwell(page, SETTLE_MS);
         }
         if (step.id === "gitops-merge") {
-          await drive("merge_into_main"); // gated on rebase_done → the merge room
+          // Scenario ③: gated on rebase_done → the merge room.
+          await drive("merge_into_main", {}, "merge the feature branch into main");
           await waitForState(page, "merge_into_main", 15000);
           await dwell(page, SETTLE_MS);
         }
-        if (step.id === "gitops-pull") {
+        if (step.id === "gitops-worktree") {
           await drive("back"); // merge → main_ops (integration hub)
           await waitForState(page, "main_ops", 15000);
-          await patchWorld({ on_integration: true }); // we merged a feature branch; flip the hub flag
-          await drive("pull"); // → pull room (no upstream tracking)
-          await waitForState(page, "pull", 15000);
           await dwell(page, SETTLE_MS);
-        }
-        if (step.id === "gitops-worktree") {
-          await drive("back"); // pull → main_ops
-          await waitForState(page, "main_ops", 15000);
-          await drive("worktree_create"); // → worktree_create room
+          // Scenario ④: enter worktree_create, then provide the short description
+          // the room asks for — creates .worktrees/feat-cache.
+          await drive("worktree_create", {}, "set up a worktree for the new cache feature");
           await waitForState(page, "worktree_create", 15000);
-          await drive("describe", { desc: "add login" }); // names the branch add-login, creates it
           await dwell(page, SETTLE_MS);
-        }
-        if (step.id === "gitops-list") {
-          await drive("back"); // worktree_create → main_ops
-          await waitForState(page, "main_ops", 15000);
-          await drive("worktree_list"); // → worktree_list room (lists worktrees)
-          await waitForState(page, "worktree_list", 15000);
-          await dwell(page, SETTLE_MS);
-        }
-        if (step.id === "gitops-cleanup") {
-          await drive("back"); // worktree_list → main_ops
-          await waitForState(page, "main_ops", 15000);
-          await drive("cleanup"); // → cleanup room (remove options)
-          await waitForState(page, "cleanup", 15000);
+          await drive("describe", { desc: "cache feature" }); // → feat-cache worktree created
           await dwell(page, SETTLE_MS);
         }
         if (step.id === "gitops-done") {
-          await drive("remove_all"); // cleanup → main_ops (worktree + branch removed)
-          await waitForState(page, "main_ops", 15000);
           await dwell(page, SETTLE_MS);
         }
 
