@@ -12,7 +12,7 @@
 // overlay.
 //
 // THE EPIC, made legible. The ad-hoc workbench turns a free-form dev session into
-// a project that mines itself into structure. This tour walks its three headline
+// a project that mines itself into structure. This tour walks its four headline
 // surfaces, every target anchored to a data-testid that ships today:
 //
 //   1. THE FREE-FORM LANDING ROOM (replaces `main`). A fresh run lands on the
@@ -34,12 +34,20 @@
 //      (proposals-badge / proposals-badge-count); clicking it opens the proposal
 //      in the same operator-question card (accept / refine / dismiss).
 //
+//   4. THE REFINE FLOW. Instead of accepting a proposal as-is, the operator
+//      picks Refine — which opens the mined draft in story.edit meta-mode.
+//      The operator narrows it in plain words; the agent reworks the draft into
+//      a more precise structure (here: per-file incremental render instead of a
+//      whole-site `make render`). story.edit applies it and live-reloads.
+//
 // Because the runtime miner and the write-mode gate need a real agent to PRODUCE
 // these frames (which we never invoke in a no-LLM demo), the spec seeds them
 // through the deterministic window.__pushOperatorQuestion / __pushProposal seams
 // (registered by OperatorQuestionModal + InteractiveView onMounted) — the same
 // seams the proposals.spec.ts and operator-ask-video.spec.ts regressions use, so
-// the REAL badge + REAL card render with byte-stable content.
+// the REAL badge + REAL card render with byte-stable content. The refine flow is
+// seeded via window.__seedMetaRefine (meta.ts) which opens the meta overlay
+// pre-loaded with the reworked transcript — no LLM, byte-stable frames.
 
 import { type TourStep } from "./types.js";
 
@@ -160,6 +168,65 @@ export const AD_HOC_WORKBENCH_TOUR_STEPS: readonly TourStep[] = [
     advance: "next",
     waitForTarget: "operator-question-modal",
     dwellMs: 7000,
+  },
+
+  // ── 4. THE REFINE FLOW ───────────────────────────────────────────────────────
+  {
+    id: "awb-refine-pick",
+    route: "interactive",
+    target: "oq-submit",
+    title: "Refine — not just accept",
+    body: "Accept would write the proposal as-is. But this pattern is too blunt: `make render` rebuilds the whole site on every doc edit. So we pick Refine — which opens the draft in meta-mode to shape it in plain words before it lands.",
+    placement: "left",
+    kind: "action",
+    advance: "click-target",
+    waitForTarget: "oq-submit",
+    dwellMs: 6000,
+  },
+  {
+    id: "awb-refine-open",
+    route: "any",
+    target: "meta-transcript",
+    waitForTarget: "meta-overlay",
+    title: "The draft, opened for editing",
+    body: "Refine drops you into story.edit meta-mode with the mined draft preloaded — the same edit-and-reload surface meta-mode already uses. Here's the proposed gate: a single `make render` after every docs change.",
+    placement: "left",
+    kind: "explain",
+    advance: "next",
+    dwellMs: 6000,
+  },
+  {
+    id: "awb-refine-ask",
+    route: "any",
+    target: "meta-composer-input",
+    title: "Say what should change",
+    body: "You don't hand-write YAML — you say it: \"Only re-render the docs that changed in this edit, not the whole site.\" The refine instruction becomes the meta-mode turn.",
+    placement: "top",
+    kind: "explain",
+    advance: "next",
+    dwellMs: 5500,
+  },
+  {
+    id: "awb-refine-result",
+    route: "any",
+    target: "meta-row-agent",
+    title: "Beyond the original pattern",
+    body: "The agent reworks the one-liner into a real script: diff the changed docs against the base, skip if none, and render only those files. That's structure the free-form session couldn't have guessed up front — earned from one refine.",
+    placement: "left",
+    kind: "explain",
+    advance: "next",
+    dwellMs: 6500,
+  },
+  {
+    id: "awb-refine-applied",
+    route: "any",
+    target: "meta-reload-note",
+    title: "Applied, and flow-gated",
+    body: "story.edit writes the refined gate and live-reloads — and the accept is gated on the no-LLM flow suite staying green (23/23). The refined structure is live; if it had regressed a fixture, it would revert and hold.",
+    placement: "top",
+    kind: "explain",
+    advance: "next",
+    dwellMs: 5500,
   },
 
   // ── Wrap ────────────────────────────────────────────────────────────────────

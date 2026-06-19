@@ -205,7 +205,7 @@ async function pushProposal(page: Page, proposal: unknown): Promise<void> {
 }
 
 test.describe("ad-hoc workbench feature-spotlight (live, no-LLM --flow)", () => {
-  test("home → free-form landing → write-mode opt-in → proposals badge → proposal card", async () => {
+  test("home → free-form landing → write-mode opt-in → proposals badge → proposal card → refine flow", async () => {
     test.setTimeout(180000);
 
     // Startup discovers the whole catalogue but creates no sessions.
@@ -237,6 +237,10 @@ test.describe("ad-hoc workbench feature-spotlight (live, no-LLM --flow)", () => 
       await injectTour(page, AD_HOC_WORKBENCH_TOUR_STEPS);
 
       // ── 2. Walk AD_HOC_WORKBENCH_TOUR_STEPS ──────────────────────────────────
+      // Session id captured from the URL after awb-intro-start navigates to
+      // /s/<UUID>/chat — used by __seedMetaRefine to seed the correct scope.
+      let sessionId = "";
+
       for (const step of AD_HOC_WORKBENCH_TOUR_STEPS) {
         mark(`step ${step.id}`);
 
@@ -295,6 +299,48 @@ test.describe("ad-hoc workbench feature-spotlight (live, no-LLM --flow)", () => 
           await expect(page.getByTestId("operator-question-modal")).toContainText("make render");
           await dwell(page, SETTLE_MS);
         }
+        if (step.id === "awb-refine-pick") {
+          // The proposal card is still open from awb-proposal-card (the prior step
+          // was explain/next, which only advanced the tour overlay — it did NOT
+          // dismiss the operator-question card). Pre-select the "refine" radio (index 1).
+          await expect(page.getByTestId("operator-question-modal")).toBeVisible({ timeout: 8000 });
+          await page.getByTestId("oq-option-0-1").evaluate((el) => (el as HTMLElement).click());
+          await dwell(page, SETTLE_MS);
+        }
+        if (step.id === "awb-refine-open") {
+          // After awb-refine-pick's click-target (oq-submit) fires, the proposal
+          // card resolves locally and dismisses. Now seed the meta overlay with the
+          // reworked draft so the tour can spotlight it.
+          await page.evaluate((json: string) => {
+            (window as unknown as { __seedMetaRefine?: (p: unknown) => void }).__seedMetaRefine?.(JSON.parse(json));
+          }, JSON.stringify({
+            sessionId: sessionId,
+            transcript: [
+              { role: "assistant", text: "**Mined draft — gate `render_docs`**\n\n```yaml\ngate:\n  id: render_docs\n  when: docs_edited\n  run: make render        # re-render the whole site\n```" },
+              { role: "user", text: "Only re-render the docs that changed in this edit — not the whole site. Diff against the base and render just those files." },
+              { role: "assistant", text: "Reworked — render only the changed docs:\n\n```yaml\ngate:\n  id: render_docs\n  when: docs_edited\n  run: |\n    changed=\"$(git diff --name-only \"$BASE_SHA\"... -- 'docs/**/*.md')\"\n    [ -z \"$changed\" ] && { echo 'no docs changed — skip'; exit 0; }\n    for f in $changed; do\n      make render-one FILE=\"$f\"\n    done\n```\nThis goes beyond the flat `make render` — it computes the changed set and renders each. Applying + reloading." },
+            ],
+            reloadNote: "story.edit applied · render_docs gate updated · flow suite green (23/23)",
+          }));
+          await expect(page.getByTestId("meta-overlay")).toBeVisible({ timeout: 8000 });
+          // Hard gate: the reworked more-complex draft must actually be rendered.
+          await expect(page.getByTestId("meta-transcript")).toContainText("render-one", { timeout: 5000 });
+          await expect(page.getByTestId("meta-transcript")).toContainText("git diff --name-only", { timeout: 5000 });
+          await dwell(page, SETTLE_MS);
+        }
+        if (step.id === "awb-refine-result") {
+          // Scroll to the last agent row so the spotlight targets visible content.
+          const agentRows = page.getByTestId("meta-row-agent");
+          const count = await agentRows.count();
+          if (count > 0) {
+            await agentRows.nth(count - 1).scrollIntoViewIfNeeded();
+          }
+          await dwell(page, SETTLE_MS);
+        }
+        if (step.id === "awb-refine-applied") {
+          await expect(page.getByTestId("meta-reload-note")).toBeVisible({ timeout: 8000 });
+          await dwell(page, SETTLE_MS);
+        }
 
         // Honor DOM-presence preconditions.
         if (step.waitForTarget) {
@@ -333,6 +379,10 @@ test.describe("ad-hoc workbench feature-spotlight (live, no-LLM --flow)", () => 
           await target.evaluate((el) => (el as HTMLElement).click());
           await page.waitForTimeout(300);
           await page.waitForURL(/#\/s\/[0-9a-f-]{36}\/chat$/, { timeout: 15000 });
+          // Capture session id for later __seedMetaRefine call.
+          const chatUrl = page.url();
+          const sidMatch = chatUrl.match(/#\/s\/([0-9a-f-]{36})\/chat$/);
+          if (sidMatch) sessionId = sidMatch[1];
           await dwell(page, 1000);
         } else {
           // click-target steps: dispatch the DOM click directly (the overlay

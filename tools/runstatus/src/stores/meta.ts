@@ -370,6 +370,33 @@ export const useMetaStore = defineStore("meta", () => {
     transcripts.value = { ...transcripts.value, [k]: [...prev, msg] };
   }
 
+  /** Demo-only: seed the overlay as if a story.edit refine turn completed. */
+  function seedForDemo(payload: SeedMetaRefinePayload): void {
+    // Ensure story.edit mode is in the modes list.
+    if (!modes.value.some((m) => m.key === "story.edit")) {
+      modes.value = [
+        {
+          key: "story.edit",
+          label: "Edit story",
+          read_only: false,
+          banner: "Refine the mined draft — say what should change.",
+          agent: "",
+          group: "story",
+        },
+        ...(payload.modes ?? []),
+        ...modes.value,
+      ];
+    }
+    const k = scopeKey(payload.sessionId, "story.edit");
+    transcripts.value = { ...transcripts.value, [k]: payload.transcript };
+    const rt = runtime(k);
+    rt.reloadNote = payload.reloadNote;
+    // Open the overlay on story.edit.
+    activeSessionId.value = payload.sessionId;
+    activeMode.value = "story.edit";
+    open.value = true;
+  }
+
   return {
     // state
     open,
@@ -396,10 +423,32 @@ export const useMetaStore = defineStore("meta", () => {
     close,
     send,
     newChat,
+    seedForDemo,
   };
 });
 
 function errMsg(e: unknown): string {
   if (e instanceof Error) return e.message;
   return String(e);
+}
+
+// ── Demo seam (dev/demo only — mirrors window.__pushProposal in proposals.ts) ──
+// window.__seedMetaRefine(payload) opens the meta overlay pre-loaded as if a
+// story.edit refine turn had completed — without invoking a real LLM. Used by
+// ad-hoc-workbench-video.spec.ts to demo the refine flow deterministically.
+interface SeedMetaRefinePayload {
+  sessionId: string;
+  transcript: MetaMessage[];
+  reloadNote: string;
+  modes?: MetaModeInfo[];
+}
+
+if (typeof window !== "undefined") {
+  (
+    window as unknown as {
+      __seedMetaRefine?: (payload: SeedMetaRefinePayload) => void;
+    }
+  ).__seedMetaRefine = (payload: SeedMetaRefinePayload) => {
+    useMetaStore().seedForDemo(payload);
+  };
 }
