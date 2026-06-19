@@ -65,6 +65,35 @@ type WebConfig struct {
 	// flag-derived static default (today's --oracle/--model path). Must name a
 	// declared profile when set.
 	DefaultProfile string `yaml:"default_profile,omitempty"`
+
+	// Intercept binds the `kitsoki intercept` pre-LLM gate (the Stage-3
+	// UserPromptSubmit hook) to a story room: app.yaml + starting state +
+	// confidence bar. Nil ⇒ no binding (the hook command must then receive
+	// --app/--room on the command line). See docs/architecture/prompt-intercept.md.
+	Intercept *InterceptConfig `yaml:"intercept,omitempty"`
+}
+
+// InterceptConfig is the operator's binding for the pre-LLM intercept gate. It
+// names the story (App) and the room (Room) whose no-LLM routing tiers classify
+// a piped prompt, plus the confidence ConfidenceBar a deterministic/semantic
+// match must clear before the gate executes instead of passing through to the
+// LLM. EscapePrefix is reserved for the Stage-3 hook (a leading token that opts
+// a prompt out of interception); it carries no behavior here.
+type InterceptConfig struct {
+	// Enabled gates the whole binding. When false the resolveIntercept
+	// validation is skipped and the hook command falls back to its flags.
+	Enabled bool `yaml:"enabled"`
+	// App is the path to the story's app.yaml the gate classifies against.
+	App string `yaml:"app"`
+	// Room is the starting state path whose allowed intents are the gate's
+	// alphabet.
+	Room string `yaml:"room"`
+	// ConfidenceBar is the minimum verdict confidence a match must clear to
+	// be executed rather than passed through. Zero defaults to 0.90 at load.
+	ConfidenceBar float64 `yaml:"confidence_bar"`
+	// EscapePrefix is an optional leading token that opts a prompt out of
+	// interception (consumed by the Stage-3 hook, not the gate itself).
+	EscapePrefix string `yaml:"escape_prefix,omitempty"`
 }
 
 // HarnessProfile is one operator-declared harness profile: a named bundle of
@@ -136,6 +165,9 @@ func Load(path string) (WebConfig, error) {
 	if err := cfg.resolveHarnessProfiles(); err != nil {
 		return WebConfig{}, fmt.Errorf("%s: %w", path, err)
 	}
+	if err := cfg.resolveIntercept(); err != nil {
+		return WebConfig{}, fmt.Errorf("%s: %w", path, err)
+	}
 	return cfg, nil
 }
 
@@ -181,6 +213,12 @@ func mergeConfig(base, local WebConfig) WebConfig {
 	}
 	if local.DefaultProfile != "" {
 		out.DefaultProfile = local.DefaultProfile
+	}
+	// The intercept binding is a single coherent block, so the local file
+	// replaces it whole (matching the per-profile "restate, don't field-merge"
+	// rule above) rather than field-merging into the base binding.
+	if local.Intercept != nil {
+		out.Intercept = local.Intercept
 	}
 	if len(local.HarnessProfiles) > 0 {
 		merged := make(map[string]HarnessProfile, len(base.HarnessProfiles)+len(local.HarnessProfiles))
@@ -232,6 +270,31 @@ func (cfg *WebConfig) resolveHarnessProfiles() error {
 		if _, ok := cfg.HarnessProfiles[cfg.DefaultProfile]; !ok {
 			return fmt.Errorf("default_profile %q names no declared harness profile", cfg.DefaultProfile)
 		}
+	}
+	return nil
+}
+
+// resolveIntercept validates the intercept binding and applies the default
+// confidence bar in place. A nil or disabled block is a no-op (the hook
+// command then relies on its --app/--room/--bar flags). An enabled block must
+// name a non-empty App and Room; a zero ConfidenceBar defaults to 0.90, and a
+// bar outside (0, 1] is rejected. Fail-fast at load, mirroring providers:.
+func (cfg *WebConfig) resolveIntercept() error {
+	ic := cfg.Intercept
+	if ic == nil || !ic.Enabled {
+		return nil
+	}
+	if ic.App == "" {
+		return fmt.Errorf("intercept.app is required when intercept.enabled is true")
+	}
+	if ic.Room == "" {
+		return fmt.Errorf("intercept.room is required when intercept.enabled is true")
+	}
+	if ic.ConfidenceBar == 0 {
+		ic.ConfidenceBar = 0.90
+	}
+	if ic.ConfidenceBar <= 0 || ic.ConfidenceBar > 1 {
+		return fmt.Errorf("intercept.confidence_bar %g is invalid (want a value in (0, 1])", ic.ConfidenceBar)
 	}
 	return nil
 }

@@ -116,6 +116,8 @@ See docs/ in the repo for the narrative documentation.`,
 	root.AddCommand(recordCmd())
 	root.AddCommand(inspectCmd())
 	root.AddCommand(turnCmd())
+	root.AddCommand(interceptCmd())
+	root.AddCommand(hookCmd())
 	root.AddCommand(sessionCmd())
 	root.AddCommand(chatCmd())
 	root.AddCommand(mcpValidatorCmd())
@@ -154,6 +156,11 @@ func main() {
 			if code == turnExitInfraError {
 				fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			}
+			os.Exit(code)
+		}
+		// kitsoki intercept pass-through: exit 10 is a normal outcome (the prompt
+		// proceeds to the LLM), NOT a failure — never print an "error:" line.
+		if code, ok := IsInterceptExitError(err); ok {
 			os.Exit(code)
 		}
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)

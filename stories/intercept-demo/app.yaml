@@ -1,0 +1,60 @@
+# intercept-demo — the fixture story for the pre-LLM intercept gate.
+#
+# A tiny, no-LLM dev-command room: three command intents (rebase, run_tests,
+# open_pr) whose declared examples / synonyms are exactly the natural phrasings
+# a user would type to Claude Code ("rebase this onto main", "run the tests",
+# "open a PR"). Routing is enabled, so `kitsoki intercept` classifies such a
+# prompt through the deterministic synonym/example tiers — no model — and, when a
+# match clears the gate, executes the matching room arc directly.
+#
+# Each arc invokes host.run with a representative command. The command is a
+# benign `echo` so a real (non-mocked) execution is harmless and deterministic
+# in CI; in flow tests the host.run handler is stubbed entirely. The point is to
+# prove the EXECUTE path (classify → fire the arc → run the host call → bind →
+# say) runs end-to-end with zero LLM and zero cost.
+
+app:
+  id: intercept-demo
+  version: 0.1.0
+  title: "Pre-LLM Intercept Demo"
+  author: "kitsoki"
+  license: "CC0"
+
+hosts:
+  - host.run
+
+# The router is the subject. With routing enabled, a free-text prompt is matched
+# against each intent's examples/synonyms (the deterministic, offline tiers)
+# before anything reaches a model. The intercept gate executes a confident hit.
+routing:
+  enabled: true
+
+world:
+  last_command: { type: string, default: "(none)" }
+  last_output:  { type: string, default: "" }
+
+intents:
+  rebase:
+    title: "Rebase onto main"
+    description: "Rebase the working branch onto the integration branch."
+    examples: ["rebase this onto main", "rebase onto main", "rebase the branch"]
+    synonyms: ["rebase", "rebase onto integration"]
+  run_tests:
+    title: "Run the tests"
+    description: "Run the test suite."
+    examples: ["run the tests", "run the test suite", "run tests"]
+    synonyms: ["test", "run unit tests"]
+  open_pr:
+    title: "Open a pull request"
+    description: "Open a pull request for the working branch."
+    examples: ["open a PR", "open a pull request", "open the PR"]
+    synonyms: ["pr", "raise a pull request"]
+  look:
+    title: "Look"
+    description: "Re-render the current room."
+    examples: ["look", "where am i"]
+
+root: commands
+
+include:
+  - rooms/*.yaml

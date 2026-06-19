@@ -78,6 +78,118 @@ func TestLoad_ReadsStoryDirs(t *testing.T) {
 	}
 }
 
+func TestLoad_InterceptValidBlock(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, DefaultConfigFile)
+	body := "intercept:\n  enabled: true\n  app: ./stories/cloak/app.yaml\n  room: foyer\n  confidence_bar: 0.85\n  escape_prefix: \"!\"\n"
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if cfg.Intercept == nil {
+		t.Fatal("expected an intercept block")
+	}
+	if !cfg.Intercept.Enabled {
+		t.Error("expected enabled=true")
+	}
+	if cfg.Intercept.App != "./stories/cloak/app.yaml" {
+		t.Errorf("got app %q", cfg.Intercept.App)
+	}
+	if cfg.Intercept.Room != "foyer" {
+		t.Errorf("got room %q", cfg.Intercept.Room)
+	}
+	if cfg.Intercept.ConfidenceBar != 0.85 {
+		t.Errorf("got confidence_bar %g, want 0.85 (an explicit bar must survive)", cfg.Intercept.ConfidenceBar)
+	}
+	if cfg.Intercept.EscapePrefix != "!" {
+		t.Errorf("got escape_prefix %q", cfg.Intercept.EscapePrefix)
+	}
+}
+
+func TestLoad_InterceptEnabledWithoutAppErrors(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, DefaultConfigFile)
+	// enabled + room but no app — must error.
+	if err := os.WriteFile(path, []byte("intercept:\n  enabled: true\n  room: foyer\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil {
+		t.Fatal("expected an error for an enabled intercept block with no app")
+	}
+}
+
+func TestLoad_InterceptDefaultBarApplied(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, DefaultConfigFile)
+	// enabled, app+room, but no confidence_bar — defaults to 0.90.
+	if err := os.WriteFile(path, []byte("intercept:\n  enabled: true\n  app: a.yaml\n  room: start\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if cfg.Intercept.ConfidenceBar != 0.90 {
+		t.Fatalf("got confidence_bar %g, want the 0.90 default", cfg.Intercept.ConfidenceBar)
+	}
+}
+
+func TestLoad_InterceptOutOfRangeBarErrors(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, DefaultConfigFile)
+	// A bar > 1 is out of (0, 1] — must error.
+	if err := os.WriteFile(path, []byte("intercept:\n  enabled: true\n  app: a.yaml\n  room: start\n  confidence_bar: 1.5\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil {
+		t.Fatal("expected an error for a confidence_bar outside (0, 1]")
+	}
+}
+
+func TestLoad_InterceptDisabledSkipsValidation(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, DefaultConfigFile)
+	// disabled + no app/room: validation is skipped, so this loads cleanly.
+	if err := os.WriteFile(path, []byte("intercept:\n  enabled: false\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("disabled intercept must skip validation: %v", err)
+	}
+	if cfg.Intercept == nil || cfg.Intercept.Enabled {
+		t.Fatal("expected a present, disabled intercept block")
+	}
+}
+
+func TestLoad_InterceptLocalOverrideWinsWhole(t *testing.T) {
+	dir := t.TempDir()
+	base := filepath.Join(dir, DefaultConfigFile)
+	local := LocalConfigPath(base)
+	// Base binds room=foyer at bar 0.85; local replaces the WHOLE block.
+	if err := os.WriteFile(base, []byte("intercept:\n  enabled: true\n  app: base.yaml\n  room: foyer\n  confidence_bar: 0.85\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(local, []byte("intercept:\n  enabled: true\n  app: local.yaml\n  room: bar\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(base)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if cfg.Intercept.App != "local.yaml" || cfg.Intercept.Room != "bar" {
+		t.Fatalf("local block must replace the base whole: got app=%q room=%q", cfg.Intercept.App, cfg.Intercept.Room)
+	}
+	// The local block omits confidence_bar, so the 0.90 default applies — the
+	// base's 0.85 must NOT leak through (whole-block replace, not field-merge).
+	if cfg.Intercept.ConfidenceBar != 0.90 {
+		t.Fatalf("got confidence_bar %g, want the 0.90 default (base 0.85 must not leak)", cfg.Intercept.ConfidenceBar)
+	}
+}
+
 func TestResolve_Precedence(t *testing.T) {
 	tests := []struct {
 		name     string
