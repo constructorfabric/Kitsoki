@@ -5,6 +5,7 @@
   "version": "0.1.0",
   "private": true,
   "publisher": "kitsoki",
+  "icon": "media/icon-128.png",
   "engines": {
     "vscode": "^1.96.0"
   },

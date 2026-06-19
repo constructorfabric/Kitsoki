@@ -237,6 +237,10 @@ export class ChatPanel {
     backend: Backend,
     out: vscode.OutputChannel,
   ) {
+    // Brand the editor tab with the Kitsoki mesa-sun mark (the colored
+    // simplified glyph reads well at tab size); both reveal() and the revived
+    // serializer path land here, so the icon survives reloads/window moves.
+    panel.iconPath = vscode.Uri.joinPath(extensionUri, 'media', 'logo.svg');
     // No surface marker → full SPA (home + interactive embed with hint rail).
     this.mount = mountSpa(panel.webview, extensionUri, backend, out);
     panel.onDidDispose(() => {
