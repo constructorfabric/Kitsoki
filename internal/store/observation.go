@@ -46,7 +46,7 @@ const (
 func ObservationKind(kind EventKind) Kind {
 	switch kind {
 	// decision — interpretive choices with available/chosen/confidence
-	case GateDecided, OffPathQuestion, OffPathAnswer:
+	case GateDecided, WriteModeGranted, OffPathQuestion, OffPathAnswer:
 		return KindDecision
 
 	// routing — what advanced the turn and how it was routed

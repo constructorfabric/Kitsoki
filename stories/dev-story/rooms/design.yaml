@@ -75,11 +75,11 @@ states:
                 design_existing_paths: "{{ slots.paths }}"
 
       quit:
-        - target: main
+        - target: landing
           effects:
             - set:
                 last_error:         "design abandoned at intake"
-                prev_state:         "main"
+                prev_state:         "landing"
                 design_seed_idea: ""
       look:
         - target: .

@@ -18,7 +18,7 @@
 
 test_kind: flow
 app: ../app.yaml
-initial_state: core.main
+initial_state: core.landing
 initial_world:
   core__ticket_id:      "2026-05-14T103205Z-tui-view-render-before-bind"
   core__ticket_title:   "TUI view templates render BEFORE on_enter binds"
@@ -105,7 +105,7 @@ host_handlers:
 
 turns:
   # ── Phase A — autonomous walk (llm_then_human + confident) ──────────
-  # core.main → core.bf.idle. bf.idle's auto-start on_enter fires on
+  # core.landing → core.bf.idle. bf.idle's auto-start on_enter fires on
   # this transition (ticket is loaded, no reproduction artifact yet),
   # emit_intents `start`, and reproducing.on_enter cascades the
   # autonomous-emit chain through every room with a judge until it

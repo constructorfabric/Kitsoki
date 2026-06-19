@@ -13,7 +13,7 @@ test_kind: flow
 app: ../app.yaml
 # Enter via go_ideas so the `ideas` on_enter (the reviewer decide) fires — a
 # flow's seeded initial_state does NOT run on_enter.
-initial_state: main
+initial_state: landing
 initial_world:
   judge_mode: "human"
 

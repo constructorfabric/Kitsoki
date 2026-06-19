@@ -8,7 +8,7 @@
 
 test_kind: flow
 app: ../app.yaml
-initial_state: main
+initial_state: landing
 initial_world:
   judge_mode: "human"
   judge_confidence_threshold: 0.8
@@ -117,7 +117,7 @@ turns:
   - intent: { name: rev__approve, slots: {} }
     # @exit:reviewed → parent's imports.rev.exits.reviewed.to: main
     # with status="reviewed".
-    expect_state: main
+    expect_state: landing
     expect_world:
       status: "reviewed"
 

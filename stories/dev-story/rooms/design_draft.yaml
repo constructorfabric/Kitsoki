@@ -154,11 +154,11 @@ states:
       # Same inputs, revise the prose. Budget gate → main.
       refine:
         - when: "world.design_draft_cycle >= world.design_draft_budget"
-          target: main
+          target: landing
           effects:
             - set:
                 last_error: "design abandoned — draft budget exhausted"
-                prev_state: "main"
+                prev_state: "landing"
         - target: design_draft
           effects:
             - set:
@@ -184,11 +184,11 @@ states:
                 design_artifact:        {}
 
       quit:
-        - target: main
+        - target: landing
           effects:
             - set:
                 last_error: "design abandoned at draft"
-                prev_state: "main"
+                prev_state: "landing"
       look:
         - target: .
 
@@ -245,19 +245,19 @@ states:
           effects:
             - set:
                 last_error: ""
-                prev_state: "main"
+                prev_state: "landing"
         - default: true
-          target: main
+          target: landing
           guard_hint: "No ticket was filed — return to main and pick one from your queue."
           effects:
             - set:
                 last_error: "design published but no ticket id — pick the feature from `tickets`"
-                prev_state: "main"
+                prev_state: "landing"
       go_main:
-        - target: main
+        - target: landing
           effects:
             - set:
                 last_error: ""
-                prev_state: "main"
+                prev_state: "landing"
       look:
         - target: .

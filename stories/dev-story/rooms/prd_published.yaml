@@ -41,12 +41,12 @@ states:
         - target: design
           effects:
             - set:
-                prev_state:         "main"
+                prev_state:         "landing"
                 last_error:         ""
                 design_seed_idea: "Author a design from the PRD at {{ world.prd__prd_file }}"
       go_main:
-        - target: main
+        - target: landing
           effects:
-            - set: { prev_state: "main", last_error: "" }
+            - set: { prev_state: "landing", last_error: "" }
       look:
         - target: .

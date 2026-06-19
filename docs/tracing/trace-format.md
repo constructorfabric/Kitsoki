@@ -211,6 +211,8 @@ All kinds use the dotted form the SPA subsystem chip logic already consumes.
 | `scheduler.submitted`        | Background job dispatched.                                  |
 | `scheduler.completed`        | Background job reached a terminal state.                    |
 | `artifact.emitted`           | A host call produced a named media artifact (see §Artifact event). |
+| `mining.proposal_raised`     | A mined recipe was drafted into a staged, validated delta and surfaced as a proposal (see §Mining proposal events). Replay no-op. |
+| `mining.proposal_decided`    | A mining proposal was accepted / refined / rejected — the recorded verdict (see §Mining proposal events). Replay no-op. |
 
 **Forward compatibility:** unknown `kind` values are preserved verbatim on
 round-trip — `BuildJourney` ignores them; the JSONL reader passes them through
@@ -232,6 +234,44 @@ An off-ramp turn emits `oracle.off_path.question` / `oracle.off_path.answer`
 (the converse exchange) but **never** a `turn.end` with a rejected outcome — the
 whole point is that a no-match is answered instead of bounced. See
 [`docs/stories/state-machine.md`](../stories/state-machine.md) §11.
+
+### Mining proposal events
+
+The ambient mining loop ([`docs/architecture/ambient-mining.md`](../architecture/ambient-mining.md))
+records two side-channel events that pin *which mined recipe proposed which
+structure, and whether it stuck* — the mining moat. Both are appended off-path
+(with `parent_turn`, not `state_path`) and are **replay no-ops**: an accept's
+edit reaches the journey via the `story.changed` its reload emits, so these
+events explain the *why* without re-applying any state. They are additive, so
+older traces and cassettes replay unchanged.
+
+**`mining.proposal_raised`** — one per surfaced proposal. The deduped, staged,
+schema-and-load-validated draft.
+
+| Payload key  | Type    | Meaning                                                                          |
+|--------------|---------|---------------------------------------------------------------------------------|
+| `recipe_id`  | string  | The scored recipe the proposal was drafted from.                                |
+| `kind`       | string  | `binding` \| `world` \| `intent` \| `stub-wire` \| `gate` \| `dev-story-enrich`. |
+| `target`     | string  | `root-instance` \| `dev-story`.                                                  |
+| `priority`   | float64 | The recipe score that cleared the surface threshold.                            |
+| `rung`       | int     | `1` (`.kitsoki.yaml` override) \| `2` (materialized project-tree file).          |
+| `draft_path` | string  | The staging dir under `.artifacts/mining/<recipe_id>/` (never the live tree).    |
+
+**`mining.proposal_decided`** — the accept / refine / reject verdict. A
+**rejected** proposal is equally recorded (the negative suppresses re-surfacing);
+the `reverted` flag closes the "we applied this and it broke a fixture" case.
+
+| Payload key   | Type   | Meaning                                                                       |
+|---------------|--------|-------------------------------------------------------------------------------|
+| `recipe_id`   | string | Ties the verdict back to its `mining.proposal_raised`.                         |
+| `verdict`     | string | `accept` \| `refine` \| `reject`.                                              |
+| `by`          | string | `human` \| `llm` (v1 accept is human-only).                                    |
+| `flows_green` | bool   | The no-LLM flow-gate result on an accept (false otherwise).                    |
+| `reverted`    | bool   | True when a green-gate failure rolled the applied edit back byte-for-byte.     |
+
+The chain a reviewer reconstructs: `recipe → mining.proposal_raised →
+mining.proposal_decided →` (on a kept accept) `the captured intent's own gate →
+machine.gate_decided → ladder move`.
 
 ### Oracle event kinds
 

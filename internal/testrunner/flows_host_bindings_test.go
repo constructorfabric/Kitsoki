@@ -52,7 +52,7 @@ func TestRunFlows_HostBindings_ArtifactsDirEndToEnd(t *testing.T) {
 	// host.artifacts_dir so the real handler runs.
 	fixture := `test_kind: flow
 app: ` + repoStoriesDevStoryAppPath(t) + `
-initial_state: main
+initial_state: landing
 initial_world:
   ticket_id:      "E-CAKE-001"
   ticket_title:   "End-to-end artifacts_dir demo"
@@ -129,7 +129,7 @@ turns:
   - intent: { name: cyp__proceed, slots: {} }
     expect_state: cyp.code_awaiting_reply
   - intent: { name: cyp__accept, slots: {} }
-    expect_state: main
+    expect_state: landing
 
 expect_no_errors: true
 

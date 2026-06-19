@@ -115,6 +115,24 @@ agents:
     tools: [Read, Grep, Glob]
     bash_profile: read-only
 
+  # ── Free-form workbench persona (rooms/landing.yaml) ──────────────
+  # A general-purpose, Claude-Code-like engineering agent — the resting
+  # surface of dev-story's landing. It carries the FULL toolbox so it can
+  # do real work, but boots READ-ONLY: bash_profile: read-only +
+  # external_side_effect: false set the read-only floor, and the landing
+  # room's write_mode: read_only gates every mutating tool call (Edit /
+  # Write / side-effecting Bash) behind an operator opt-in
+  # (internal/host/write_mode_gate.go). The static (external_side_effect:
+  # false) and runtime (write_mode: read_only) postures must agree — the
+  # loader rejects a contradiction — so this persona generalizes the
+  # read-only posture dev-story's task personas already carry.
+  landing_agent:
+    system_prompt: "You are a general-purpose engineering agent working in this repository, like Claude Code. Explore freely with read-only tools (Read/Grep/Glob, read-only Bash); when the work needs a change — an edit, a write, a side-effecting command — attempt it and the runtime will surface the proposed change to the operator for a write-mode grant before it lands. If write mode is declined or you are headless, stay read-only and describe precisely what you would change instead."
+    model: claude-sonnet-4-6
+    tools: [Read, Grep, Glob, Edit, Write, Bash]   # full toolbox; gated read-only by the room's write_mode: read_only
+    bash_profile: read-only                         # the read-only floor
+    external_side_effect: false                     # static posture must agree with write_mode: read_only
+
   # ── Design-pipeline personas (rooms/design*.yaml) ──────────────
   # One persona per pipeline step so the trace attributes model + token
   # usage per phase, the same discipline as stories/prd/. All are
@@ -283,9 +301,23 @@ host_interfaces:
 # workdir, feature_branch, base_branch, judge_mode, pr_title, pr_body).
 world:
   # ── Hub navigation ────────────────────────────────────────────────
-  prev_state:          { type: string, default: "main" }
+  prev_state:          { type: string, default: "landing" }
   inbox_unread:        { type: int,    default: 0 }
   last_error:          { type: string, default: "" }
+
+  # ── Free-form workbench (rooms/landing.yaml) ──────────────────────
+  # captured: proposals accepted this session — drives the "free-form
+  #   shrinking" view. Rendered read-only here; INCREMENTED by the
+  #   slice-3 mining apply path (mining-proposal-loop.md), not by this
+  #   story.
+  # landing_request: the operator's current free-form work request,
+  #   captured by the `work` intent; fed to the on_enter landing_agent.
+  # landing_note: the landing_agent's close-out note (schemas/landing-note.json).
+  # landing_started: first-start banner sentinel (on_enter once: guard).
+  captured:            { type: int,    default: 0 }
+  landing_request:     { type: string, default: "" }
+  landing_note:        { type: object, default: {} }
+  landing_started:     { type: bool,   default: false }
 
   # ── Ticket search / pickup ────────────────────────────────────────
   ticket_query:        { type: string, default: "" }
@@ -731,8 +763,25 @@ intents:
     examples: [look, "what now?"]
     priority: 10
 
-# Root state — the engineer's-day landing.
-root: main
+  # ── Free-form workbench (rooms/landing.yaml) ──────────────────────
+  # The landing's primary affordance: the operator describes the work
+  # they want in their own words and the full-tool landing_agent picks
+  # it up (read-only by default; mutating steps hold for a write-mode
+  # grant). `request` is required so the semantic router falls through
+  # to the LLM router and captures the whole utterance whole.
+  work:
+    title: "Describe Work"
+    description: "Describe a piece of work for the free-form workbench agent to pick up — explore code, draft a change, investigate a failure. Read-only until you approve a change."
+    examples: ["fix the login crash", "investigate why the build is slow", "look at how imports resolve and sketch a change", "refactor the loader", "add a test for the off-ramp"]
+    priority: 45
+    slots:
+      request: { type: string, required: true, description: "What you want the workbench agent to do." }
+
+# Root state — the engineer's-day free-form workbench (rooms/landing.yaml).
+# Replaces the former `main` catalog as the landing. `main` is RETAINED as a
+# reachable "show me everything" hub (sibling rooms' go_main arcs still resolve
+# to it) but is no longer the root or any pipeline's return target.
+root: landing
 
 # Imports (proposal §5.1). bf and pr both project from / into the
 # day-level world. The bf → pr chain is one import-exit edge; the
@@ -790,7 +839,7 @@ imports:
           pr_title: "{{ world.bf__done_artifact.summary_title }}"
           pr_body:  "{{ world.bf__done_artifact.summary_markdown }}"
       abandoned:
-        to: main
+        to: landing
         set:
           status: "abandoned"
       # `change_ticket` on bf.idle fires this. Land in ticket_search
@@ -799,7 +848,7 @@ imports:
       pick_ticket:
         to: ticket_search
         set:
-          prev_state: "main"
+          prev_state: "landing"
 
   pr:
     source: ../pr-refinement
@@ -830,19 +879,19 @@ imports:
 
     exits:
       merged:
-        to: main
+        to: landing
         set:
           status:      "merged"
           last_pr_url: "{{ world.pr__pr_url }}"
       abandoned:
-        to: main
+        to: landing
         set:
           status: "abandoned"
       # pushback_resolved is declared by pr-refinement but Wave 2 does
       # not exercise it (Wave 3 may use it for re-review loops). Map to
       # main as a safety landing so the loader is happy.
       pushback_resolved:
-        to: main
+        to: landing
 
   # Wave 3 / Phase 6 — small-task pipeline. Same projection shape as bf.
   # impl's @exit:done routes to main with status="merged" and the
@@ -875,12 +924,12 @@ imports:
 
     exits:
       done:
-        to: main
+        to: landing
         set:
           status:      "merged"
           last_pr_url: "{{ world.impl__last_pr_url }}"
       abandoned:
-        to: main
+        to: landing
         set:
           status: "abandoned"
 
@@ -915,16 +964,16 @@ imports:
 
     exits:
       code_ready:
-        to: main
+        to: landing
         set:
           status: "code_ready"
           last_pr_url: "{{ world.cyp__pr_url }}"
       abandoned:
-        to: main
+        to: landing
         set:
           status: "abandoned"
       validation_failed:
-        to: main
+        to: landing
         set:
           status: "validation_failed"
 
@@ -951,15 +1000,15 @@ imports:
 
     exits:
       reviewed:
-        to: main
+        to: landing
         set:
           status: "reviewed"
       dismissed:
-        to: main
+        to: landing
         set:
           status: "dismissed"
       abandoned:
-        to: main
+        to: landing
         set:
           status: "abandoned"
 
@@ -1006,7 +1055,7 @@ imports:
       done:
         to: prd_published
       abandoned:
-        to: main
+        to: landing
         set:
           status: "abandoned"
 

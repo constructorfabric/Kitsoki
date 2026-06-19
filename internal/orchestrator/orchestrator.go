@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -246,7 +247,58 @@ type Orchestrator struct {
 	// *ide.Link it points at has its own internal locking for the live socket.
 	ideMu   sync.RWMutex
 	ideLink host.IDELink
+
+	// reloader, when non-nil, supplies the freshly-loaded *app.AppDef that
+	// Reload swaps in — overriding the default app.Load(appPath). It exists so a
+	// config-synthesized root (rung 0/1: no app.yaml on disk) can re-synthesize
+	// from .kitsoki.yaml on /reload, while a file-backed (rung 2) root keeps the
+	// historical app.Load(path) behaviour via the closure
+	// `func() { return app.Load(appPath) }`. A rung-1 edit and a rung-2 edit thus
+	// travel the IDENTICAL Reload + RerunOnEnter path. Set via WithReloader; nil
+	// preserves today's path-based reload exactly. See
+	// docs/stories/imports.md "The blank root that grows".
+	reloader func() (*app.AppDef, error)
+
+	// miner, when non-nil and mining is enabled, is the ambient session miner
+	// (docs/proposals/ambient-session-miner.md). NewSession Starts it (which fires
+	// the first-launch history seed iff the slug is unmined); a finished turn /
+	// landed background job pings Notify so the debounced live pass mines the new
+	// transcripts. Held as the narrow SessionMiner interface so the orchestrator
+	// never imports internal/mining (which would invert the dependency — the wire
+	// adapter package is the only orchestrator↔mining edge). nil ⇒ no ambient
+	// mining; off in every flow/test path, so no fixture ever spends LLM.
+	miner SessionMiner
+	// minerRepoPath is the repo path the miner resolves transcripts for (the
+	// working dir / instance root). Empty ⇒ os.Getwd at Start time.
+	minerRepoPath string
 }
+
+// SessionMiner is the narrow lifecycle seam the orchestrator drives the ambient
+// session miner through (*mining.Miner in production, a fake in tests). Start
+// fires the first-launch seed; Notify debounces a live pass over new
+// transcripts. Both are non-blocking and survive the turn (the pass runs on the
+// background-jobs runner). Kept in the orchestrator package so internal/mining
+// stays free of an orchestrator import edge. See WithMiner.
+type SessionMiner interface {
+	Start(ctx context.Context, sid app.SessionID, repoPath string) error
+	Notify(ctx context.Context)
+}
+
+// SetMiner installs the ambient session miner after construction. Used by the
+// runtime where the orchestrator itself is the miner's EventSink (so the miner
+// cannot be built until the orchestrator exists). repoPath is the dir the miner
+// resolves transcripts for; empty ⇒ the process working dir at Start time. Safe
+// to call before the first NewSession; not safe concurrently with one. Pass a
+// nil miner to disable. See WithMiner for the option-time equivalent.
+func (o *Orchestrator) SetMiner(m SessionMiner, repoPath string) {
+	o.miner = m
+	o.minerRepoPath = repoPath
+}
+
+// HasMiner reports whether an ambient session miner is wired. It exists so the
+// flow/test harness can assert the no-LLM invariant: a flow-posture runtime must
+// build NO miner (no fixture ever spends LLM via ambient mining).
+func (o *Orchestrator) HasMiner() bool { return o.miner != nil }
 
 // SetIDELink installs the process IDE connection so host.ide.* handlers resolve
 // the live editor and the `ide.connected` world key reflects its status. Pass
@@ -389,6 +441,31 @@ type Option func(*Orchestrator)
 // WithExecutionMode sets the run's execution mode (one-shot vs staged).
 func WithExecutionMode(mode ExecutionMode) Option {
 	return func(o *Orchestrator) { o.execMode = mode }
+}
+
+// WithReloader injects the closure Reload uses to fetch the fresh app
+// definition, overriding the default app.Load(appPath). A config-synthesized
+// root passes `func() { cfg, _ := webconfig.Load(...); return
+// app.SynthesizeRoot(cfg.Root.RootSpec(), repoRoot) }` so a /reload after a
+// rung-1 `.kitsoki.yaml` edit re-synthesizes the root; a file-backed root may
+// pass `func() { return app.Load(appPath) }` (or leave it unset for the
+// historical path-based behaviour). Nil is the default and is safe — Reload
+// then re-reads appPath exactly as before. See Reload.
+func WithReloader(fn func() (*app.AppDef, error)) Option {
+	return func(o *Orchestrator) { o.reloader = fn }
+}
+
+// WithMiner injects the ambient session miner (*mining.Miner in production)
+// plus the repo path it resolves transcripts for. NewSession Starts it; a
+// finished turn / landed background job pings Notify. nil (the default) disables
+// ambient mining entirely — the path every flow/test fixture takes, so no
+// fixture ever spends LLM. repoPath empty ⇒ the miner resolves against the
+// process working directory at Start time.
+func WithMiner(m SessionMiner, repoPath string) Option {
+	return func(o *Orchestrator) {
+		o.miner = m
+		o.minerRepoPath = repoPath
+	}
 }
 
 // WithPromptOverlay sets a project prompt-overlay directory for this run,
@@ -567,6 +644,24 @@ func (o *Orchestrator) NewSession(ctx context.Context) (app.SessionID, error) {
 	}
 	if o.scheduler != nil {
 		o.startSessionListener(sid)
+	}
+	if o.miner != nil {
+		repoPath := o.minerRepoPath
+		if repoPath == "" {
+			if wd, wdErr := os.Getwd(); wdErr == nil {
+				repoPath = wd
+			}
+		}
+		// Start fires the first-launch history seed (iff the slug is unmined) as a
+		// detached background job — never blocks NewSession. A resolver/infra
+		// failure is logged, not fatal: a session without ambient mining is still
+		// a working session.
+		if startErr := o.miner.Start(ctx, sid, repoPath); startErr != nil {
+			o.logger.Warn("orchestrator: ambient miner start failed",
+				slog.String("session_id", string(sid)),
+				slog.String("err", startErr.Error()),
+			)
+		}
 	}
 	return sid, nil
 }

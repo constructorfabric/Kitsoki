@@ -136,6 +136,7 @@ See docs/ in the repo for the narrative documentation.`,
 	root.AddCommand(statusCmd())
 	root.AddCommand(webCmd())
 	root.AddCommand(tourCmd())
+	root.AddCommand(materializeCmd())
 
 	return root
 }
@@ -221,7 +222,7 @@ Session traces are written automatically to the nearest .kitsoki/sessions/
 folder (walking up from cwd). Use 'kitsoki trace <path>' to pretty-print.
 
 See 'kitsoki docs llm-guide' for the full operator guide.`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Restore terminal modes on any exit path so a panic before
 			// tea.Program.Run installs its own recovery — or a prior crash
@@ -249,27 +250,57 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 				lipgloss.SetColorProfile(termenv.TrueColor)
 			}
 
-			appPath := args[0]
-
-			// Load app definition. loadAppWithEnv publishes
-			// KITSOKI_APP_DIR FIRST so the loader's env-var validator
-			// can resolve `${KITSOKI_APP_DIR}` references in cwd: and
-			// other env-expanded fields. (Setting the env var after
-			// Load returned was the bug-2 ordering issue.)
-			def, err := loadAppWithEnv(appPath)
-			if err != nil {
-				return err
-			}
-
-			// Load machine-global harness profiles from .kitsoki.yaml in the
-			// cwd so /provider /model work in the TUI exactly as on the web. A
-			// missing file is not an error; an invalid profile (bad backend,
-			// unset ${VAR}, dangling default_profile) fails fast here.
+			// Load machine-global config from .kitsoki.yaml in the cwd. This
+			// carries harness profiles (/provider /model parity with the web)
+			// AND the implicit-root `root:` block. A missing file is not an
+			// error; an invalid profile or root block fails fast here.
 			webCfg, err := webconfig.Load(webconfig.DefaultConfigFile)
 			if err != nil {
 				return err
 			}
 			harnessProfiles, defaultProfile := harnessProfilesFromConfig(webCfg)
+
+			// Resolve the app definition. With a path arg, load it from disk
+			// (the historical rung-2 path). With NO arg, synthesize the implicit
+			// project root from .kitsoki.yaml `root:` (rung 0/1) — a dev-story
+			// instance with no file on disk. See docs/stories/imports.md
+			// "The blank root that grows".
+			var (
+				def      *app.AppDef
+				appPath  string
+				reloader func() (*app.AppDef, error)
+			)
+			if len(args) == 1 {
+				appPath = args[0]
+				// loadAppWithEnv publishes KITSOKI_APP_DIR FIRST so the loader's
+				// env-var validator can resolve `${KITSOKI_APP_DIR}` references
+				// in cwd: and other env-expanded fields.
+				def, err = loadAppWithEnv(appPath)
+				if err != nil {
+					return err
+				}
+			} else {
+				repoRoot, rrErr := os.Getwd()
+				if rrErr != nil {
+					return fmt.Errorf("resolve working directory for implicit root: %w", rrErr)
+				}
+				rootSpec := webCfg.Root.RootSpec()
+				def, err = app.SynthesizeRoot(rootSpec, repoRoot)
+				if err != nil {
+					return fmt.Errorf("synthesize implicit root: %w", err)
+				}
+				// A synthesized root has no app.yaml to re-read on /reload, so
+				// inject a reloader that re-reads .kitsoki.yaml and
+				// re-synthesizes — a rung-1 overrides edit takes effect on the
+				// same Reload + RerunOnEnter path a rung-2 file edit travels.
+				reloader = func() (*app.AppDef, error) {
+					cfg, cfgErr := webconfig.Load(webconfig.DefaultConfigFile)
+					if cfgErr != nil {
+						return nil, cfgErr
+					}
+					return app.SynthesizeRoot(cfg.Root.RootSpec(), repoRoot)
+				}
+			}
 
 			// Determine DB path.
 			if dbPath == "" {
@@ -312,6 +343,8 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 				RecordPath:      recordPath,
 				PromptOverlay:   promptOverlay,
 				RoomEnterSink:   roomEnterSink,
+				Reloader:        reloader,
+				Mining:          webCfg.Mining,
 			})
 			if err != nil {
 				return err

@@ -252,11 +252,11 @@ states:
                 design_last_refine_message: ""
 
       quit:
-        - target: main
+        - target: landing
           effects:
             - set:
                 last_error:         "design abandoned at brief"
-                prev_state:         "main"
+                prev_state:         "landing"
                 design_seed_idea: ""
       look:
         - target: .

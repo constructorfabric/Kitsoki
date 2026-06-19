@@ -1,4 +1,4 @@
-# Warp basis: lands at `core.main` with a self-bug already on the
+# Warp basis: lands at `core.landing` with a self-bug already on the
 # operator's radar. Pre-runs the ticket search by seeding ticket_id /
 # ticket_title in world so the next `bugfix` intent picks up the
 # right bug. The local-files provider scans `issues/bugs/` under
@@ -18,7 +18,7 @@
 name:        "kitsoki self-bug — TUI view render before bind"
 description: "Primed to pick up issues/bugs/2026-05-14T103205Z-tui-view-render-before-bind.md and walk the supervised bugfix."
 
-state: core.main
+state: core.landing
 
 world:
   core__ticket_id:      "2026-05-14T103205Z-tui-view-render-before-bind"

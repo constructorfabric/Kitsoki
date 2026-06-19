@@ -14,7 +14,7 @@
 
 test_kind: flow
 app: ../app.yaml
-initial_state: core.main
+initial_state: core.landing
 initial_world:
   core__ticket_id:      "TKT-AUTO"
   core__ticket_title:   "Two-layer autonomous-advance smoke"
@@ -88,7 +88,7 @@ host_handlers:
     data: *oracle_stub
 
 turns:
-  # core.main → core.bf.implementing in one user turn.
+  # core.landing → core.bf.implementing in one user turn.
   #
   # bf.idle's on_enter auto-emits `start` when entered with a ticket
   # loaded and no reproduction artifact yet, dropping into reproducing.

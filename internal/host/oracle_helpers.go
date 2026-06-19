@@ -77,6 +77,19 @@ func containsBashTool(tools []string) bool {
 	return false
 }
 
+// containsBashMCPTool reports whether the (already-rewritten) tool list contains
+// the kitsoki-bash MCP Bash tool — i.e. Bash was requested and rewritten by
+// rewriteToolsForBashMCP. Used by the write_mode: read_only task path to decide
+// whether to attach the read-only bash MCP server.
+func containsBashMCPTool(tools []string) bool {
+	for _, t := range tools {
+		if t == "mcp__kitsoki-bash__Bash" {
+			return true
+		}
+	}
+	return false
+}
+
 // validateBashProfile enforces the Bash gate shared by ask and decide: when
 // Bash is in the effective tool list the agent must declare a bash_profile.
 // Returns (hasBash, errMsg); errMsg is non-empty only when Bash is present

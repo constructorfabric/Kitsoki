@@ -79,6 +79,7 @@ room-switch commands. Notable families:
 | `/jump` | `commands_jump.go` | Navigate to background-completion events |
 | `/ide [connect\|disconnect\|status]` | `commands_ide.go` | Connect/disconnect the live editor link; ambient selection rides each turn |
 | `/open <path>` | `commands_open.go` | Open an artifact (resolved against the run's cwd) in `$EDITOR` or the OS default — the terminal-agnostic fallback for `.md` links |
+| `/mine [status\|pause\|resume\|now\|scope\|queue\|accept\|dismiss]` | `mine_command.go` | The operator intercom to the [ambient miner](../architecture/ambient-mining.md): read its watermark/queue/scope, pause/resume it, force a pass, or accept/dismiss a queued proposal by id |
 
 > **Reload parity.** `/reload` hot-reloads the running story's `app.yaml` in
 > place (re-validate, swap the `AppDef`, re-fire `on_enter`). The web UI's
@@ -121,6 +122,17 @@ an in-flight LLM call.
   agent conversation rendered into the same pane with a distinct theme
   accent; you enter with `/meta …` and return with `/meta done`. See
   [`../stories/meta-mode.md`](../stories/meta-mode.md) for authoring.
+- **Proposals inbox** (`mine_command.go`) — the [ambient miner](../architecture/ambient-mining.md)
+  pushes its "capture this as structure?" proposals and the agent's
+  write-mode opt-ins into one queue. A non-focus-stealing `proposals: N`
+  chip rides the **same footer framework row** as `inbox: N` (rendered
+  through the same `render.Pongo` template path as `ideFooterChip`,
+  hide-when-zero) — it never changes `m.mode` and never interrupts a turn.
+  Each queued item opens in the **same operator-question card**
+  (`operator_question.go`, `ModeOperatorQuestion`) the operator already
+  answers, with one accept/refine/dismiss gesture; `/mine accept|dismiss <id>`
+  is the scriptable CLI alias for that gesture. The badge appears only when
+  the miner is enabled and the queue is non-empty.
 
 ## Editor awareness: `/ide`
 

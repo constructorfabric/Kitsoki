@@ -135,7 +135,7 @@ turns:
   - intent: { name: impl__pr__proceed, slots: {} }
     expect_state: impl.pr.merge_awaiting_reply
   - intent: { name: impl__pr__accept, slots: {} }
-    expect_state: main
+    expect_state: landing
     expect_world:
       status: "merged"
 

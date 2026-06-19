@@ -21,11 +21,13 @@ import (
 	"kitsoki/internal/jobs"
 	"kitsoki/internal/journal"
 	"kitsoki/internal/machine"
+	"kitsoki/internal/mining"
 	"kitsoki/internal/oracle"
 	oracleserver "kitsoki/internal/oracle/server"
 	"kitsoki/internal/orchestrator"
 	"kitsoki/internal/store"
 	"kitsoki/internal/testrunner"
+	"kitsoki/internal/webconfig"
 )
 
 // sessionRuntime bundles the orchestrator and the resources it owns for one
@@ -142,6 +144,23 @@ type runtimeConfig struct {
 	// orchestrator. `kitsoki run` sets this; `kitsoki web` does not.
 	RoomEnterSink orchestrator.RoomEnterSink
 
+	// Reloader, when non-nil, is injected as the orchestrator's reload closure
+	// (WithReloader) so /reload re-fetches the def from this closure instead of
+	// re-reading AppPath. `kitsoki run` with no path arg (a config-synthesized
+	// implicit root) sets this to re-synthesize from .kitsoki.yaml; a
+	// file-backed run leaves it nil and reload re-reads AppPath as before.
+	Reloader func() (*app.AppDef, error)
+
+	// Mining carries the resolved .kitsoki.yaml `mining:` block. When
+	// Mining.Enabled is true (and a real harness backs the one oracle pass), the
+	// runtime builds an ambient session miner and injects it via
+	// orchestrator.SetMiner. Default-zero (no block / enabled:false) ⇒ no miner is
+	// built — the path every flow/test fixture takes, so no fixture spends LLM.
+	Mining webconfig.MiningConfig
+	// MiningRepoPath is the repo path the miner resolves transcripts for. Empty ⇒
+	// the process working dir at Start time.
+	MiningRepoPath string
+
 	// Flow-posture fields.
 	Flow         *testrunner.FlowFixture
 	FlowFilePath string
@@ -177,6 +196,11 @@ type runtimeBase struct {
 	// .kitsoki.yaml and inherited by every session the registry spins up.
 	HarnessProfiles map[string]orchestrator.HarnessProfile
 	DefaultProfile  string
+
+	// Mining is the resolved .kitsoki.yaml `mining:` block, inherited by every
+	// session. Default-zero (no block / enabled:false) ⇒ no miner — every flow
+	// posture leaves it zero, so no flow session ever spends LLM.
+	Mining webconfig.MiningConfig
 
 	// Flow / FlowFilePath select the deterministic flow-driven posture for the
 	// whole server: when Flow != nil every session is built with a nil harness
@@ -223,6 +247,8 @@ func (b runtimeBase) config(storyPath string, def *app.AppDef) runtimeConfig {
 		Flow:            b.Flow,
 		FlowFilePath:    b.FlowFilePath,
 		HostCassette:    b.HostCassette,
+		Mining:          b.Mining,
+		MiningRepoPath:  filepath.Dir(storyPath),
 	}
 }
 
@@ -422,6 +448,9 @@ func buildSessionRuntime(cfg runtimeConfig) (*sessionRuntime, error) {
 	if cfg.RoomEnterSink != nil {
 		runOpts = append(runOpts, orchestrator.WithRoomEnterSink(cfg.RoomEnterSink))
 	}
+	if cfg.Reloader != nil {
+		runOpts = append(runOpts, orchestrator.WithReloader(cfg.Reloader))
+	}
 	if cfg.PromptOverlay != "" {
 		runOpts = append(runOpts, orchestrator.WithPromptOverlay(cfg.PromptOverlay))
 	}
@@ -447,9 +476,63 @@ func buildSessionRuntime(cfg runtimeConfig) (*sessionRuntime, error) {
 	}
 	rt.Orch = orch
 
+	// ── Ambient session miner ────────────────────────────────────────────────
+	// Built only in live posture (a real harness backs the one oracle pass) and
+	// only when mining.enabled. The orchestrator is the miner's EventSink, so the
+	// miner is built AFTER the orchestrator and installed via SetMiner. Flow /
+	// nil-harness postures never build it → no flow fixture ever spends LLM.
+	if cfg.Mining.Enabled && cfg.Flow == nil && rt.Scheduler != nil {
+		cadence, cadErr := cfg.Mining.CadenceOrDefault()
+		if cadErr != nil {
+			return nil, fmt.Errorf("mining.cadence: %w", cadErr)
+		}
+		repoPath := cfg.MiningRepoPath
+		if repoPath == "" {
+			repoPath = filepath.Dir(cfg.AppPath)
+		}
+		toolsDir, tdErr := filepath.Abs(filepath.Join(repoPath, "tools", "session-mining"))
+		if tdErr != nil {
+			toolsDir = filepath.Join(repoPath, "tools", "session-mining")
+		}
+		miner := &mining.Miner{
+			Resolver: mining.TranscriptResolver{},
+			Sched:    rt.Scheduler,
+			Pipeline: &mining.ExecPipelineRunner{ToolsDir: toolsDir},
+			Marks:    mining.NewMapWatermarkStore(cfg.Mining.MinedThrough),
+			Sink:     &mining.SessionSink{Sink: orch},
+			Cfg: mining.Config{
+				Enabled:         true,
+				Cadence:         cadence,
+				FirstPassSample: cfg.Mining.FirstPassSampleOrDefault(),
+			},
+		}
+		// RecipeHandler (the recipes → proposer hand-off) is wired by the
+		// proposal-loop slice's runtime construction (it builds the Mapper/Drafter
+		// personas). Until then the miner advances the watermark and emits
+		// MiningPassRan; the recipes are dropped at the seam, not lost — the next
+		// pass re-emits from the same transcripts only if the watermark did not
+		// advance. The SessionSink's SID is filled per session in NewSession's
+		// Start path via the orchestrator (the sink keys events by the session
+		// the miner was started for).
+		orch.SetMiner(&sessionBoundMiner{m: miner}, repoPath)
+	}
+
 	ok = true
 	return rt, nil
 }
+
+// sessionBoundMiner adapts *mining.Miner to orchestrator.SessionMiner, stamping
+// the session id onto the miner's EventSink binding at Start time.
+type sessionBoundMiner struct{ m *mining.Miner }
+
+func (s *sessionBoundMiner) Start(ctx context.Context, sid app.SessionID, repoPath string) error {
+	if s.m.Sink != nil {
+		s.m.Sink.SID = sid
+	}
+	return s.m.Start(ctx, sid, repoPath)
+}
+
+func (s *sessionBoundMiner) Notify(ctx context.Context) { s.m.Notify(ctx) }
 
 // routingEmbedConfig returns the EmbedConfig from def.App.Routing.Embedding,
 // or nil when no embedding block is declared.

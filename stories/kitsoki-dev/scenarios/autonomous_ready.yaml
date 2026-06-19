@@ -24,7 +24,7 @@
 name:        "kitsoki self-bug — autonomous LLM-then-human walk"
 description: "Same self-bug pickup as pickup_self_bug.yaml, but judge_mode=llm_then_human for unattended runs."
 
-state: core.main
+state: core.landing
 
 world:
   core__ticket_id:      "2026-05-14T103205Z-tui-view-render-before-bind"

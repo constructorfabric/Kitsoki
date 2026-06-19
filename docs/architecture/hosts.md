@@ -671,6 +671,47 @@ skips Mode C spans and prints a summary:
 `external_side_effect: true` on the agent; the loader infers it from the tool
 surface and warns when declaration and inference disagree.
 
+### Write-mode gate
+
+By default a task agent runs under `--permission-mode bypassPermissions` and may
+mutate the working tree from turn one. A dispatching **room** can instead opt the
+agent into a read-only-by-default posture with `write_mode: read_only` on the
+room state (see [state-machine.md](../stories/state-machine.md#write_mode)). The
+agent then boots read-only — exactly as a `bash_profile: read-only` /
+`external_side_effect: false` agent does — and every **mutating** tool call is
+gated:
+
+- the read-only floor is enforced at dispatch: `bypassPermissions` is downgraded
+  to `--permission-mode default` so the `--allowedTools` allowlist binds, and
+  `readOnlyDeniedTools` (`Write`, `Edit`, `MultiEdit`, `NotebookEdit`, `Bash`)
+  ride `--disallowedTools` as the hard backstop. `Bash` is routed through the
+  `kitsoki-bash` MCP wrapper under the read-only profile (the same wrapper
+  `host.oracle.ask`/`decide` use);
+- a Bash command the read-only profile *rejects* is no longer a flat deny — it
+  routes through the **write-mode gate** (`internal/host/write_mode_gate.go`),
+  which classifies the call (`effect ≥ write`), short-circuits an active
+  turn/session grant, else forwards an **action proposal** to the operator via
+  the [operator-ask bridge](operator-ask.md#second-consumer-the-write-mode-gates-action-proposals).
+  With no operator attached the gate **denies** (headless) and the agent stays
+  read-only;
+- the operator's opt-in (or denial) is recorded as a `machine.write_mode_granted`
+  trace event `{state, action, effect, scope, by, granted}` — the agent's
+  side-effect audit trail. Replay treats it as a no-op for world/state (the gated
+  call's own effects are authoritative).
+
+The decision boundary is sharp: classifying *which* step needs a grant is
+**deterministic** (a class check over the tool call); the operator's *grant* is
+the **recorded interpretive decision**; the agent's read-only exploration in
+between adds no decision point. There is **no LLM in this gate** — write mode is
+granted by a human or, headless, denied, never by a model.
+
+`write_mode:` is additive and default-off: a room that omits it dispatches its
+agent with today's exact posture (byte-for-byte), and no existing story or
+cassette is affected. The classification today keys on the
+`readOnlyDeniedTools` set and the read-only `bash_profile` verdict (the static
+signals that exist) and upgrades to the full `pure | read | write | external`
+effect class when the effect-taxonomy slice lands.
+
 ### Built-in sub-oracle MCP tools
 
 Task agents automatically receive three built-in MCP tools scoped to the

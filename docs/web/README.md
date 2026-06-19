@@ -147,6 +147,16 @@ and model it ran on**, so the trace provenance matches what was picked. See
 [Harness Profiles](../architecture/harness-profiles.md) for the full mechanism
 (it is the same selection the TUI's `/provider` / `/model` drive).
 
+The Drive header also carries a **proposals badge** (`ProposalsBadge.vue`, a
+count pill modelled on `InboxBadge.vue`, orange when a write-mode opt-in is
+parked) — the web mirror of the TUI's `proposals: N` chip. Clicking it opens
+the head proposal in the **same** `OperatorQuestionModal.vue` card the operator
+answers for a forwarded agent question, resolving accept/refine/dismiss over the
+shared `runstatus.session.answer_question` RPC. The badge and its FIFO queue
+(`stores/proposals.ts`) are the surface only; the producer is the
+[ambient miner](../architecture/ambient-mining.md), where this is documented
+canonically.
+
 ### Layout (Drive)
 
 ```

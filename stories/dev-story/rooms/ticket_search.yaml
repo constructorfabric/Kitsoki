@@ -260,7 +260,7 @@ states:
       go_back:
         - target: "{{ world.prev_state }}"
       go_main:
-        - target: main
+        - target: landing
       go_inbox:
         - target: inbox
           push_history: false
@@ -339,7 +339,7 @@ states:
       go_back:
         - target: ticket_search
       go_main:
-        - target: main
+        - target: landing
       go_inbox:
         - target: inbox
           push_history: false

@@ -195,8 +195,31 @@ func OracleTaskHandler(ctx context.Context, args map[string]any) (Result, error)
 		"task_trace_id", taskTraceID,
 	)
 
+	// ── Write-mode posture ────────────────────────────────────────────────
+	// A write_mode: read_only room boots the agent read-only: the bypassPermissions
+	// default is downgraded to the read-only converse posture (the allowlist binds
+	// and readOnlyDeniedTools are hard-denied), and Bash is routed through the
+	// kitsoki-bash MCP wrapper under a read-only profile, with a write-mode gate
+	// attached so a mutating command becomes an operator action proposal rather
+	// than a flat deny. Absent / open ⇒ this whole block is skipped and dispatch is
+	// byte-for-byte today's. See docs/proposals/agent-write-mode-opt-in.md.
+	oc := OracleCallCtxFrom(ctx)
+	writeModeReadOnly := IsReadOnlyWriteMode(oc.WriteMode)
+	var writeModeGate *WriteModeGate
+	if writeModeReadOnly {
+		writeModeGate = NewWriteModeGate(true, GrantScope(oc.WriteModeScope), gateAskerFor(ctx))
+		ctx = WithWriteModeGate(ctx, writeModeGate)
+		// Force a read-only Bash profile (overriding any agent profile) so the
+		// read-only floor is uniform regardless of the agent's declaration.
+		agent.BashProfile = &BashProfile{Kind: BashProfileReadOnly}
+	}
+
 	// ── Build CLI args ────────────────────────────────────────────────────
 	baseCLIArgs := buildBaseCLIArgs(ctx, sysprompt.Task, args, agent)
+	if writeModeReadOnly {
+		baseCLIArgs = applyReadOnlyFloorCLIArgs(baseCLIArgs)
+		tools = rewriteToolsForBashMCP(tools)
+	}
 	// When an acceptance schema is set the validator MCP server is attached as
 	// "validator", exposing mcp__validator__submit. Add it to the allowed tools
 	// so the agent can call submit() even when the tool list is otherwise
@@ -210,6 +233,24 @@ func OracleTaskHandler(ctx context.Context, args map[string]any) (Result, error)
 	var opAskCleanup func()
 	baseCLIArgs, tools, opAskCleanup, _ = attachOperatorAsk(ctx, baseCLIArgs, tools)
 	defer opAskCleanup()
+	// Read-only floor: route Bash (if requested) through the kitsoki-bash MCP
+	// wrapper under a read-only profile so the subprocess can only run read-only
+	// commands; a mutating command is denied by the profile (the gate's operator
+	// action proposal runs in-process — see WriteModeGate). The tool list was
+	// already rewritten (Bash → mcp__kitsoki-bash__Bash) above.
+	if writeModeReadOnly && containsBashMCPTool(tools) {
+		bashEntry, bashCfgPath, bErr := BuildBashMCPEntry(agent.BashProfile, workingDir)
+		if bErr != nil {
+			return Result{Error: "host.oracle.task: build read-only bash MCP: " + bErr.Error()}, nil
+		}
+		defer os.Remove(bashCfgPath)
+		bashMCPPath, bashMCPCleanup, mErr := writeMCPConfigTempfile(map[string]any{"kitsoki-bash": bashEntry}, "kitsoki-task-bash-mcp")
+		if mErr != nil {
+			return Result{Error: "host.oracle.task: write read-only bash MCP config: " + mErr.Error()}, nil
+		}
+		defer bashMCPCleanup()
+		baseCLIArgs = append(baseCLIArgs, "--mcp-config", bashMCPPath)
+	}
 	if len(tools) > 0 {
 		baseCLIArgs = appendAllowedToolsFlag(baseCLIArgs, tools)
 	}

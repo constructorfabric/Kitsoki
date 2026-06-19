@@ -16,6 +16,7 @@ package orchestrator
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
@@ -466,6 +467,17 @@ func (o *Orchestrator) MarkOffPathExited(sid app.SessionID, toState app.StatePat
 // counter — see the off-path handling in store.BuildJourney.
 func (o *Orchestrator) appendOffPathEvents(sid app.SessionID, events []store.Event) error {
 	return o.appendOffPathEventsCtx(context.Background(), sid, events)
+}
+
+// AppendMiningEvent records one mining proposal event (MiningProposalRaised /
+// MiningProposalDecided) as a side-channel beside the foreground turn — the
+// same off-path append path GateDecided's siblings use, so the verdict lands in
+// the trace with a fresh turn number and the replay layer folds it as a no-op.
+// It is the exported seam the mining loop's EventSink adapter delegates to so
+// the mining package never imports the orchestrator. payload is the marshaled
+// typed payload (see store.MiningProposal*Payload).
+func (o *Orchestrator) AppendMiningEvent(sid app.SessionID, kind store.EventKind, payload json.RawMessage) error {
+	return o.appendOffPathEvents(sid, []store.Event{{Kind: kind, Payload: payload}})
 }
 
 // appendOffPathEventsCtx is appendOffPathEvents with the active context so the

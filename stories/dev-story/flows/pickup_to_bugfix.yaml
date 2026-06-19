@@ -8,7 +8,7 @@
 
 test_kind: flow
 app: ../app.yaml
-initial_state: main
+initial_state: landing
 initial_world:
   workdir:        ".worktrees/tkt-100"
   workspace_id:   "ws-100"

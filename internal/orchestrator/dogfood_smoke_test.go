@@ -269,7 +269,7 @@ func seedDogfoodWorld(ticketID string) map[string]any {
 //
 // Setup mirrors `verify_autostart.yaml`: a clean temp git repo (no
 // stale `.worktrees/bf-<id>/`), the integration-smoke bug seeded, then
-// `core__go_bugfix` from `core.main`. Expected: workspace.create
+// `core__go_bugfix` from `core.landing`. Expected: workspace.create
 // succeeds against the real repo, the auto-start emit fires, the
 // session lands at `core.bf.reproducing` within seconds.
 //
@@ -287,7 +287,7 @@ func TestDogfoodSmoke_AutoStartThroughBugfix(t *testing.T) {
 
 	ctx := context.Background()
 
-	// 1. Run initial on_enter for core.main (which invokes
+	// 1. Run initial on_enter for core.landing (which invokes
 	//    iface.ticket.list_mine → host.local_files.ticket).
 	{
 		c, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -295,14 +295,14 @@ func TestDogfoodSmoke_AutoStartThroughBugfix(t *testing.T) {
 		cancel()
 	}
 
-	// 2. Teleport to core.main with the ticket+mode seeded.
+	// 2. Teleport to core.landing with the ticket+mode seeded.
 	{
 		c, cancel := context.WithTimeout(ctx, 10*time.Second)
 		_, err := orch.Teleport(c, sid, inbox.TeleportTarget{
-			State: app.StatePath("core.main"),
+			State: app.StatePath("core.landing"),
 			Slots: seedDogfoodWorld(ticketID),
 		})
-		require.NoError(t, err, "Teleport to core.main with seeded ticket must succeed")
+		require.NoError(t, err, "Teleport to core.landing with seeded ticket must succeed")
 		cancel()
 	}
 
@@ -394,7 +394,7 @@ func TestDogfoodSmoke_StaleWorktreeRecoversOrFailsCleanly(t *testing.T) {
 	{
 		c, cancel := context.WithTimeout(ctx, 10*time.Second)
 		_, err := orch.Teleport(c, sid, inbox.TeleportTarget{
-			State: app.StatePath("core.main"),
+			State: app.StatePath("core.landing"),
 			Slots: seedDogfoodWorld(ticketID),
 		})
 		require.NoError(t, err)
@@ -451,12 +451,12 @@ func TestDogfoodSmoke_StaleWorktreeRecoversOrFailsCleanly(t *testing.T) {
 	// transitioned compound state). Any of: bf.idle (the guard kept
 	// it parked), bf.reproducing (the create somehow
 	// succeeded — unlikely with the stale dir but possible if a
-	// future patch makes it idempotent), or core.main (the redirect
+	// future patch makes it idempotent), or core.landing (the redirect
 	// bounced through @exit:abandoned) are acceptable.
 	acceptable := map[app.StatePath]bool{
 		"core.bf.idle":        true,
 		"core.bf.reproducing": true,
-		"core.main":           true,
+		"core.landing":        true,
 	}
 	require.True(t, acceptable[journey.State],
 		"session must settle at a coherent resting place after stale-worktree failure; got %q (acceptable: %v)", journey.State, acceptable)
@@ -496,7 +496,7 @@ func TestDogfoodSmoke_ContinueFromProposingReachesImplementing(t *testing.T) {
 	{
 		c, cancel := context.WithTimeout(ctx, 10*time.Second)
 		_, err := orch.Teleport(c, sid, inbox.TeleportTarget{
-			State: app.StatePath("core.main"),
+			State: app.StatePath("core.landing"),
 			Slots: seedDogfoodWorld(ticketID),
 		})
 		require.NoError(t, err)
@@ -588,7 +588,7 @@ func TestDogfoodSmoke_ProposingAccept_RegisteredWorktreeDirtyTree(t *testing.T) 
 	{
 		c, cancel := context.WithTimeout(ctx, 10*time.Second)
 		_, err := orch.Teleport(c, sid, inbox.TeleportTarget{
-			State: app.StatePath("core.main"),
+			State: app.StatePath("core.landing"),
 			Slots: seedDogfoodWorld(ticketID),
 		})
 		require.NoError(t, err)
@@ -657,7 +657,7 @@ func TestDogfoodSmoke_ProposingAccept_RegisteredWorktreeDirtyTree(t *testing.T) 
 }
 
 // TestDogfoodSmoke_FullBugfixPipeline drives the bugfix pipeline from
-// `core.main` through go_bugfix → reproducing → proposing →
+// `core.landing` through go_bugfix → reproducing → proposing →
 // implementing → testing → reviewing → validating → done in one shot,
 // asserting each phase advances cleanly. This is the regression net
 // for "did we break the happy path?" — any room that fails to advance
@@ -695,7 +695,7 @@ func TestDogfoodSmoke_FullBugfixPipeline(t *testing.T) {
 	{
 		c, cancel := context.WithTimeout(ctx, 10*time.Second)
 		_, err := orch.Teleport(c, sid, inbox.TeleportTarget{
-			State: app.StatePath("core.main"),
+			State: app.StatePath("core.landing"),
 			Slots: seedDogfoodWorld(ticketID),
 		})
 		require.NoError(t, err)
@@ -761,7 +761,7 @@ func TestDogfoodSmoke_FullImplementationPipeline(t *testing.T) {
 	{
 		c, cancel := context.WithTimeout(ctx, 10*time.Second)
 		_, err := orch.Teleport(c, sid, inbox.TeleportTarget{
-			State: app.StatePath("core.main"),
+			State: app.StatePath("core.landing"),
 			Slots: seed,
 		})
 		require.NoError(t, err)
@@ -821,7 +821,7 @@ func TestDogfoodSmoke_ImplIdleProvisionsWorktree(t *testing.T) {
 	{
 		c, cancel := context.WithTimeout(ctx, 10*time.Second)
 		_, err := orch.Teleport(c, sid, inbox.TeleportTarget{
-			State: app.StatePath("core.main"),
+			State: app.StatePath("core.landing"),
 			Slots: seed,
 		})
 		require.NoError(t, err)
@@ -976,7 +976,7 @@ func TestDogfoodSmoke_ImplementingActuallyEditsFiles(t *testing.T) {
 	{
 		c, cancel := context.WithTimeout(ctx, 10*time.Second)
 		_, tErr := orch.Teleport(c, sid, inbox.TeleportTarget{
-			State: app.StatePath("core.main"),
+			State: app.StatePath("core.landing"),
 			Slots: seedDogfoodWorld(ticketID),
 		})
 		require.NoError(t, tErr)
@@ -1212,7 +1212,7 @@ func newSmokeOrchestratorWithRouters(t *testing.T, repoRoot string, artifacts pr
 }
 
 // driveBugfixPipelineTo runs the on-enter chain plus a teleport to
-// core.main, then submits accept intents in sequence to walk the bugfix
+// core.landing, then submits accept intents in sequence to walk the bugfix
 // pipeline. Each step asserts the resulting state matches `want`. Stops
 // once `stopAt` is reached (or after all steps if stopAt == "").
 //
@@ -1229,7 +1229,7 @@ func driveBugfixPipelineTo(t *testing.T, orch *orchestrator.Orchestrator, sid ap
 	{
 		c, cancel := context.WithTimeout(ctx, 10*time.Second)
 		_, err := orch.Teleport(c, sid, inbox.TeleportTarget{
-			State: app.StatePath("core.main"),
+			State: app.StatePath("core.landing"),
 			Slots: seedDogfoodWorld(ticketID),
 		})
 		require.NoError(t, err)

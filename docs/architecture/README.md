@@ -66,6 +66,11 @@ these surfaces.
   that sits between the deterministic match and the LLM: synonyms,
   templates, typed slot parsers, and the turncache, plus
   `kitsoki replay-routing` and `kitsoki inspect --synonym-suggestions`.
+- **[`ambient-mining.md`](ambient-mining.md)** — the propose → apply
+  loop: a scored recipe is deduped against the live inventory, drafted
+  into a staged YAML delta, and on an explicit accept applied via the
+  meta-mode reload path **only when the no-LLM flow suite stays green**,
+  with the surface-and-verdict recorded in the trace.
 
 ## Contributing
 

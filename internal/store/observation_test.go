@@ -34,6 +34,7 @@ func TestObservationKind(t *testing.T) {
 	}{
 		// decision
 		{store.GateDecided, store.KindDecision},
+		{store.WriteModeGranted, store.KindDecision},
 		{store.OffPathQuestion, store.KindDecision},
 		{store.OffPathAnswer, store.KindDecision},
 

@@ -1,4 +1,4 @@
-# dogfood_smoke — boot, land in core.main, verify iface.ticket.list_mine
+# dogfood_smoke — boot, land in core.landing, verify iface.ticket.list_mine
 # resolves through host.gh.ticket and returns the seed bug list.
 #
 # Smallest possible flow proving:
@@ -20,7 +20,7 @@
 
 test_kind: flow
 app: ../app.yaml
-initial_state: core.main
+initial_state: core.landing
 initial_world: {}
 
 host_handlers:
@@ -32,13 +32,13 @@ host_handlers:
         - { id: "2026-05-14T120000Z-glamour-cap-prose-views",     title: "Prose view: blocks don't expand past hand-wrap on wide terminals", status: "open", priority: "P3", assignee: "", url: "issues/bugs/2026-05-14T120000Z-glamour-cap-prose-views.md" }
 
 turns:
-  # Verify we landed at core.main with the look intent. The lift
+  # Verify we landed at core.landing with the look intent. The lift
   # via imports.core.intents.import would surface this as bare `look`
   # at the parent table, but kitsoki-dev keeps the lift list minimal
   # (proposal §9 strict declared-mode encourages prefixed names for
   # navigation). The operator types core__look from inside the import.
   - intent: { name: core__look, slots: {} }
-    expect_state: core.main
+    expect_state: core.landing
 
   # Enter the ticket-search room (via the lifted go_ticket_search
   # intent — dev-story's hub navigation surfaces this at the core
@@ -53,6 +53,6 @@ turns:
 
   # Land back at main.
   - intent: { name: core__go_main, slots: {} }
-    expect_state: core.main
+    expect_state: core.landing
 
 expect_no_errors: true

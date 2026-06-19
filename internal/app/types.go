@@ -714,6 +714,19 @@ type State struct {
 	// even in one-shot; "llm" = always auto-advance (let the emit fire),
 	// even in staged. Validated at load time.
 	Decider string `yaml:"decider,omitempty"`
+	// WriteMode pins this agent-dispatch room's side-effect posture. "" or
+	// "open" = today's static posture (the dispatched agent runs under
+	// bypassPermissions / its converse tool policy verbatim). "read_only" = the
+	// room boots read-only and every mutating tool call (Write/Edit/side-effecting
+	// Bash/effect ≥ write host call) is gated: the runtime intercepts it, forwards
+	// an action proposal to the operator (operator-ask bridge), and blocks until
+	// the operator opts into write mode at a scope (action|turn|session); headless
+	// (no operator) denies the step and the agent stays read-only. Validated at
+	// load time: read_only is only meaningful on a room that dispatches an agent
+	// (host.oracle.task/converse), and contradicts a statically write-capable
+	// agent (external_side_effect: true). See
+	// docs/proposals/agent-write-mode-opt-in.md.
+	WriteMode string `yaml:"write_mode,omitempty"`
 	// Initial is the initial child state for compound states; supports expr interpolation.
 	Initial string `yaml:"initial,omitempty"`
 	// States holds nested child states (compound/parallel).

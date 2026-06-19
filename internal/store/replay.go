@@ -159,6 +159,13 @@ func BuildJourney(def *app.AppDef, initialState app.StatePath, initialWorld worl
 			// them. The story is consumed by StoryAtTurn + app.LoadFromFiles
 			// when reconstructing the machine, not here.
 
+		case MiningProposalRaised, MiningProposalDecided, MiningPassRan:
+			// The mining pass + surface-and-verdict records. They pin which
+			// mined recipe proposed which structure and whether it stuck, and
+			// which pass surfaced it, but carry no world/state effect of their
+			// own — an accept's edit reaches the journey via the StoryChanged its
+			// Reload emits. Folded as no-ops, exactly like GateDecided.
+
 		default:
 			// Forward-compatible: silently ignore unknown event kinds.
 		}

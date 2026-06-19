@@ -231,6 +231,71 @@ Bindings compose across layers — see the `bandits__narrator` example
 above. The grandparent's host_bindings is what the leaf's invoke
 ultimately resolves to.
 
+## The blank root that grows — the implicit project root
+
+`kitsoki-dev` (`stories/kitsoki-dev/app.yaml`) is a paragon: ~20 lines of
+`imports:` + `host_bindings:` + `world:` that import dev-story under one alias,
+rebind its five `host_interfaces:` to local-files/git handlers, and pin a couple
+of world knobs. Most projects' first root is *exactly* "dev-story with a couple
+of overrides" — so the loader can **synthesize that importer from config**
+instead of requiring the file. This is the *implicit project root*, and it grows
+along three rungs:
+
+- **Rung 0 — no `root:` block (or no `.kitsoki.yaml`).** `kitsoki run` with **no
+  path arg** synthesizes an importer of dev-story with no overrides; dev-story's
+  `host_interfaces:` defaults carry every binding. Run `kitsoki` in a bare
+  kitsoki checkout and you land in dev-story's free-form workbench — the
+  `landing` room (`SynthesizeRoot` imports dev-story with `entry: landing`,
+  mirroring kitsoki-dev). See the
+  [free-form workbench](../../stories/dev-story/README.md#the-free-form-workbench-landing).
+- **Rung 1 — a `.kitsoki.yaml` `root:` block.** Overrides fold into the
+  synthesized importer: `bindings:` → `imports.<root>.host_bindings`, `world:` →
+  instance `world:` defaults + `world_in:` projections, `synonyms:` → routing
+  synonyms. Still no file on disk.
+
+  ```yaml
+  # .kitsoki.yaml
+  root:
+    import: dev-story            # v1 blesses only dev-story
+    overrides:
+      bindings:
+        transport: host.append_to_file
+      world:
+        judge_mode: llm_then_human
+  ```
+
+- **Rung 2 — a real `stories/<slug>/app.yaml`.** `kitsoki materialize` writes
+  the synthesized importer to disk (slug = `--name` or the repo dir basename),
+  emitting a normal dev-story instance exactly like `kitsoki-dev` with a
+  provenance header. From then on it is hand-edited like any instance and run by
+  path (`kitsoki run stories/<slug>/app.yaml`).
+
+**One synthesis path, the same fold pipeline.** `app.SynthesizeRoot` builds the
+in-memory importer and runs the **identical** `resolveImports → expandPhases →
+resolveAllInterfaces → validateDef` chain a file-backed `Load` runs (it shares
+`runLoadPipeline`). So a malformed `root:` is caught by the same validators that
+catch a malformed `imports:` block. Fail-fast checks at config load
+(`webconfig.Load`): an unknown `root.import` (v1 supports only dev-story), an
+`overrides.bindings.<iface>` naming none of dev-story's five ifaces
+(`ticket`/`vcs`/`ci`/`workspace`/`transport`), and an `overrides.world.<key>`
+naming no dev-story world key.
+
+`materialize` is a verified round-trip: `SynthesizeRoot(spec)` ≡
+`Load(emit(spec))` (modulo `BaseDir`/`LoadedManifests`/host-list order), so a
+graduated root is guaranteed loadable — materialize re-loads its own output and
+removes the partial if it does not validate.
+
+**Reload.** A synthesized root has no `app.yaml` to re-read, so the orchestrator
+takes an injected reloader closure (`orchestrator.WithReloader`): a file-backed
+(rung-2) root closes over `app.Load(path)`; a config-synthesized (rung-0/1) root
+closes over `webconfig.Load(...) → app.SynthesizeRoot(...)`. A rung-1
+`.kitsoki.yaml` edit and a rung-2 file edit therefore travel the **identical**
+`Reload` + `RerunOnEnter` path, and the live world is preserved across the swap.
+
+The downstream as-a-dependency case (resolving dev-story when it is not the
+in-repo `@kitsoki/dev-story`) is deferred to `kitsoki-as-dependency`; v1 targets
+the in-repo dogfood.
+
 ## `exits:` — the child-side contract
 
 Children declare their named return points:

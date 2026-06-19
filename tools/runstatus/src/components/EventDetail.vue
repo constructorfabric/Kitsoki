@@ -51,6 +51,37 @@
       </div>
     </template>
 
+    <!-- machine.write_mode_granted: the write-mode gate's recorded opt-in / denial -->
+    <template v-else-if="obsKind === 'decision' && event.msg === 'machine.write_mode_granted'">
+      <div v-if="event.attrs.state" class="event-detail__kv">
+        <span class="event-detail__key">Room</span>
+        <code class="event-detail__val">{{ event.attrs.state }}</code>
+      </div>
+      <div v-if="event.attrs.action" class="event-detail__kv">
+        <span class="event-detail__key">Action</span>
+        <code class="event-detail__val">{{ event.attrs.action }}</code>
+      </div>
+      <div v-if="event.attrs.effect" class="event-detail__kv">
+        <span class="event-detail__key">Effect</span>
+        <code class="event-detail__val">{{ event.attrs.effect }}</code>
+      </div>
+      <div class="event-detail__kv">
+        <span class="event-detail__key">Granted</span>
+        <span
+          class="event-detail__val"
+          :class="event.attrs.granted ? 'event-detail__val--chosen' : 'event-detail__val--warn'"
+        >{{ event.attrs.granted ? 'yes' : 'no' }}</span>
+      </div>
+      <div v-if="event.attrs.scope" class="event-detail__kv">
+        <span class="event-detail__key">Scope</span>
+        <code class="event-detail__val">{{ event.attrs.scope }}</code>
+      </div>
+      <div v-if="event.attrs.by" class="event-detail__kv">
+        <span class="event-detail__key">By</span>
+        <code class="event-detail__val">{{ event.attrs.by }}</code>
+      </div>
+    </template>
+
     <!-- turn.start: routing detail — shows how the turn was routed -->
     <template v-else-if="obsKind === 'routing' && event.msg === 'turn.start'">
       <RoutingDetail :event="event" />

@@ -57,6 +57,13 @@ type BashMCPServer struct {
 	profile    *BashProfile
 	workingDir string
 	mcpSrv     *mcpsdk.Server
+	// gate, when non-nil, is the write-mode gate for a write_mode: read_only
+	// room: a Bash command the read-only profile would reject is not denied
+	// outright but routed through the gate (which forwards an action proposal to
+	// the operator and records a WriteModeGranted decision). On a grant the
+	// command executes; on a deny the LLM sees the gate's tool-error. nil keeps
+	// the static bash-profile behavior verbatim (ask/decide, open rooms).
+	gate *WriteModeGate
 }
 
 // NewBashMCPServer constructs a BashMCPServer. profile must not be nil for
@@ -97,6 +104,16 @@ func NewBashMCPServer(profile *BashProfile, workingDir string) *BashMCPServer {
 		InputSchema: inputSchema,
 	}, s.handleBash)
 
+	return s
+}
+
+// WithGate attaches a write-mode gate to the server so a read-only-profile
+// rejection becomes a gated action proposal rather than an outright deny. Returns
+// the receiver for chaining. Used by the in-process write_mode: read_only path
+// (and its tests); the subprocess path keeps gate nil (the read-only floor is
+// enforced by the bash profile + --disallowedTools at dispatch).
+func (s *BashMCPServer) WithGate(gate *WriteModeGate) *BashMCPServer {
+	s.gate = gate
 	return s
 }
 
@@ -193,7 +210,21 @@ func (s *BashMCPServer) handleBash(ctx context.Context, req *mcpsdk.CallToolRequ
 	// Profile enforcement: ApplyBashProfile returns a non-empty string when
 	// the command is denied. Surface that string as a tool error to the LLM.
 	if msg := ApplyBashProfile(s.profile, command); msg != "" {
-		return bashErrorResult("Bash command rejected by profile: " + msg), nil
+		// Write-mode gate: in a write_mode: read_only room a profile rejection is
+		// a MUTATING step, not a hard deny. Route it through the gate, which
+		// short-circuits an active turn/session grant, else forwards an action
+		// proposal to the operator (headless ⇒ deny). On a grant the command
+		// proceeds; on a deny the LLM sees a gate tool-error.
+		if s.gate != nil && s.gate.ReadOnly {
+			tc := ToolCall{Name: "Bash", Command: command}
+			dec := s.gate.Resolve(ctx, tc)
+			if !dec.Granted {
+				return bashErrorResult(describeGateErrorForLLM(describeAction(tc, EffectWrite), dec.By)), nil
+			}
+			// Granted: fall through to execute the command.
+		} else {
+			return bashErrorResult("Bash command rejected by profile: " + msg), nil
+		}
 	}
 
 	// Execute the command.

@@ -12,7 +12,7 @@
 
 test_kind: flow
 app: ../app.yaml
-initial_state: main
+initial_state: landing
 initial_world:
   ticket_id:      "F-2026-05-18-export-csv"
   ticket_title:   "Export notes as CSV"
@@ -199,7 +199,7 @@ turns:
 
   # accept → impl @exit:done → dev-story sets status=merged + last_pr_url.
   - intent: { name: impl__pr__accept, slots: {} }
-    expect_state: main
+    expect_state: landing
     expect_world:
       status:      "merged"
       last_pr_url: "https://example/pr/F-2026-05-18-export-csv"

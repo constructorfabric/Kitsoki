@@ -64,6 +64,7 @@
             <option v-for="e in activeEfforts" :key="e" :value="e">effort: {{ e }}</option>
           </select>
         </span>
+        <ProposalsBadge />
         <StoryFreshness
           :session-id="sessionId"
           :on-reloaded="onFreshnessReloaded"
@@ -176,6 +177,9 @@ import InputBar from "../components/InputBar.vue";
 import StateDiagram from "../components/StateDiagram.vue";
 import TraceTimeline from "../components/TraceTimeline.vue";
 import StoryFreshness from "../components/StoryFreshness.vue";
+import ProposalsBadge from "../components/ProposalsBadge.vue";
+import { useProposalsStore } from "../stores/proposals.js";
+import type { Proposal } from "../stores/proposals.js";
 import { fmtTokens, fmtCost } from "../components/oracle/lib.js";
 import type { NodeRef } from "../types.js";
 
@@ -184,6 +188,7 @@ const store = useRunStore();
 const route = useRoute();
 const router = useRouter();
 const inbox = useInboxStore();
+const proposals = useProposalsStore();
 
 // One DataSource for the lifetime of the view (subscribe + write RPCs).
 let source: DataSource | null = null;
@@ -314,6 +319,21 @@ onMounted(() => {
     if (!source) return;
     await runTurn(() => store.sendText(source!, props.sessionId, text));
   };
+
+  // Bind the proposals store to the live source so an accepted proposal resolves
+  // over answer_question, and expose the deterministic seed seam (mirrors
+  // __pushOperatorQuestion) so a no-LLM spec can populate the proposals badge
+  // without a real miner. Inert unless a spec calls it.
+  if (source instanceof LiveSource) proposals.init(source);
+  (window as unknown as {
+    __pushProposal?: (proposalJson: string) => void;
+  }).__pushProposal = (proposalJson: string) => {
+    try {
+      proposals.push(JSON.parse(proposalJson) as Proposal);
+    } catch {
+      /* malformed JSON — ignore (deterministic test/demo driver only) */
+    }
+  };
 });
 
 // Switching directly between two /s/:sessionId/chat routes reuses this
@@ -328,8 +348,10 @@ watch(
 
 onUnmounted(() => {
   store.teardown();
+  proposals.teardown();
   delete (window as unknown as { __kitsokiSubmitIntent?: unknown }).__kitsokiSubmitIntent;
   delete (window as unknown as { __kitsokiSendText?: unknown }).__kitsokiSendText;
+  delete (window as unknown as { __pushProposal?: unknown }).__pushProposal;
 });
 
 /**

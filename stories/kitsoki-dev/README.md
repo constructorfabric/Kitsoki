@@ -29,7 +29,7 @@ when the session ends.
 $ kitsoki run stories/kitsoki-dev/app.yaml
 ```
 
-Lands at `core.main` — dev-story's engineer's-day landing room. From
+Lands at `core.landing` — dev-story's engineer's-day landing room. From
 there:
 
 ```
@@ -77,9 +77,9 @@ re-engages supervised driving without restart.
 
 | File                              | Lands at  | Primed for                                                                                 |
 |-----------------------------------|-----------|--------------------------------------------------------------------------------------------|
-| `scenarios/pickup_self_bug.yaml`  | `core.main` | the self-bug `2026-05-14T103205Z-tui-view-render-before-bind`, supervised walk           |
-| `scenarios/pickup_story_bug.yaml` | `core.main` | the story-bug under `stories/oregon-trail/issues/bugs/`, supervised walk                 |
-| `scenarios/autonomous_ready.yaml` | `core.main` | same as `pickup_self_bug` but `judge_mode: llm_then_human` for an unattended run         |
+| `scenarios/pickup_self_bug.yaml`  | `core.landing` | the self-bug `2026-05-14T103205Z-tui-view-render-before-bind`, supervised walk           |
+| `scenarios/pickup_story_bug.yaml` | `core.landing` | the story-bug under `stories/oregon-trail/issues/bugs/`, supervised walk                 |
+| `scenarios/autonomous_ready.yaml` | `core.landing` | same as `pickup_self_bug` but `judge_mode: llm_then_human` for an unattended run         |
 
 Add new scenarios by dropping a YAML file in `scenarios/`. The
 flow-fixture shape (`initial_state` + `initial_world`) also works —
@@ -178,7 +178,7 @@ equivalent from the pipeline's perspective.
 $ kitsoki run stories/kitsoki-dev/app.yaml
 ```
 
-You land at `core.main`. The view shows your engineer's day
+You land at `core.landing`. The view shows your engineer's day
 landing. Type `tickets` (or `core__go_ticket_search`) to enter the
 ticket-search room. Then:
 

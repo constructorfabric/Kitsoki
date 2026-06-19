@@ -9,7 +9,7 @@
 
 test_kind: flow
 app: ../app.yaml
-initial_state: main
+initial_state: landing
 initial_world:
   ticket_id:      "TKT-T-100"
   ticket_title:   "Add /healthz endpoint"
@@ -164,7 +164,7 @@ turns:
   # imports.pr.exits.merged.to: "@exit:done" → impl's @exit:done →
   # parent's imports.impl.exits.done.to: main with status="merged".
   - intent: { name: impl__pr__accept, slots: {} }
-    expect_state: main
+    expect_state: landing
     expect_world:
       status: "merged"
 

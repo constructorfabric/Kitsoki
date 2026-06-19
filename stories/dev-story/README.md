@@ -3,8 +3,10 @@
 Wave 2 / Phase 2 of the dev-story / bugfix unify proposal (§5.1). The
 GENERAL-PURPOSE app that imports `stories/bugfix/` and
 `stories/pr-refinement/` and routes between them via day-level rooms
-(main, inbox, ticket_search, workspace_manager, standup, oracle,
-code_review, deploy, observability, incident, docs).
+(landing, inbox, ticket_search, workspace_manager, standup, oracle,
+code_review, deploy, observability, incident, docs). The root is the
+free-form workbench [`landing`](#the-free-form-workbench-landing), which
+replaced the former `main` catalog.
 
 This app does **not** bind providers. Concrete bindings happen at the
 INSTANCE level: `stories/kitsoki-dev/` (Wave 3) for local-file
@@ -32,23 +34,23 @@ dev-story
   │     exits:
   │       done    → pr (with pr_title / pr_body lifted from
   │                     bf__done_artifact.summary_{title,markdown})
-  │       abandoned → main (status: "abandoned")
+  │       abandoned → landing (status: "abandoned")
   │
   ├── imports pr  (../pr-refinement)
   │     entry: open_pr   # skip pr-refinement's standalone-only idle
   │     world_in: ticket_id, workdir, feature_branch, base_branch,
   │               pr_title, pr_body, judge_mode, …
   │     exits:
-  │       merged          → main (status: "merged", last_pr_url=pr__pr_url)
-  │       abandoned       → main (status: "abandoned")
-  │       pushback_resolved → main (Wave 3 reserves; Wave 2 maps to main)
+  │       merged          → landing (status: "merged", last_pr_url=pr__pr_url)
+  │       abandoned       → landing (status: "abandoned")
+  │       pushback_resolved → landing (Wave 3 reserves; Wave 2 maps to landing)
   │
   └── imports prd (../prd)             # the front of the PRD → Design walk
         entry: idle
         world_in: workdir, judge_mode, judge_confidence_threshold
         exits:
           done      → prd_published    # landing room; carries the PRD into design
-          abandoned → main (status: "abandoned")
+          abandoned → landing (status: "abandoned")
 ```
 
 The bf → pr handoff is one import edge. When bf fires `@exit:done` the
@@ -61,7 +63,7 @@ pr's own rooms then reference). The full chain is exercised by
 
 ## PRD → Design walk
 
-`main → prd → (publish) → prd_published → continue → design` is the
+`landing → prd → (publish) → prd_published → continue → design` is the
 discovery-to-design walk. From `main`, `prd` enters the imported
 [`stories/prd/`](../prd/) discovery pipeline (idle → clarifying → brief →
 references → drafting). When the operator accepts, prd publishes the PRD
@@ -166,7 +168,7 @@ dev rebinds to `host.local_files.ticket`. Same YAML, two providers.
 
 | Room | Status | Notes |
 |---|---|---|
-| `main` | Wave 2 | Landing / navigation. Dispatches to bf / pr / day rooms. Declares the [oracle off-ramp](../../docs/stories/state-machine.md#11-off-path-the-global-escape-hatch) (`oracle_off_ramp.agent: oracle_qa`): a free-text question the menu can't route is answered in place instead of bouncing back to the catalog. |
+| `landing` | **root** | The **free-form workbench** — dev-story's root, replacing the former `main` catalog ([freeform-landing](#the-free-form-workbench-landing) below). A full-tool, Claude-Code-like agent (`landing_agent`) is the resting surface: the operator describes work in their own words (the `work` intent → on_enter `host.oracle.task`), read-only by default and gated to a write-mode opt-in (`write_mode: read_only`). Carries `main`'s highest-value navigation forward as quick actions + intents. Declares the [oracle off-ramp](../../docs/stories/state-machine.md#11-off-path-the-global-escape-hatch) (`oracle_off_ramp.agent: oracle_qa`) as its read-only Q&A floor. Every pipeline returns here (`go_main`/`go_back` self-loop). |
 | `ticket_search` | Wave 2 | iface.ticket.search; picks a ticket, then `drive` routes by `ticket_type` (bug → bf, feature → impl, epic → cyp). `pick_ticket` reads the type off the picked row; `go_bugfix` forces bf regardless of type. |
 | `workspace_manager` | Wave 2 | iface.workspace.list. Minimal Wave 2 shape. |
 | `inbox` | Wave 2 | Navigation surface; the runtime's inbox subsystem manages items. |
@@ -176,7 +178,41 @@ dev rebinds to `host.local_files.ticket`. Same YAML, two providers.
 | `prd_published` | — | PRD → Design landing room (see [PRD → Design walk](#prd--design-walk)). |
 | `ideas` | — | Ideas-backlog reviewer (see below). |
 | `code_review` | Wave 3 stub | Reserves the room; imports `stories/code-review/` in Wave 3. |
-| `deploy`, `observability`, `incident`, `docs` | Wave 3 stubs | Routing-back-to-main placeholders. |
+| `deploy`, `observability`, `incident`, `docs` | Wave 3 stubs | Routing-back-to-`landing` placeholders. |
+
+### The free-form workbench (`landing`)
+
+`landing` is dev-story's **root** — the resting *floor* of the engineer's day,
+replacing the former `main` catalog. Where `main` was a menu hub (name a ticket,
+search, pick, then run), `landing` is a full-tool agent that behaves like Claude
+Code: the operator describes what they want in their own words and the
+`landing_agent` (`app.yaml agents:`, full toolbox: `Read, Grep, Glob, Edit,
+Write, Bash`) picks it up. The pipelines (bf / impl / cyp / pr / rev / prd →
+design) are the **grown structure reached from** the floor, carried forward as
+quick-action buttons and intents so nothing `main` offered is lost; every
+pipeline's exit returns here, and `go_main` / `go_back` self-loop the workbench.
+
+**Read-only by default → opt into write.** The room carries
+`write_mode: read_only` and the persona declares `bash_profile: read-only` +
+`external_side_effect: false` (the static and runtime postures the loader
+requires to agree). The agent boots with its full toolbox but every *mutating*
+tool call (`Edit` / `Write` / side-effecting `Bash`) holds for an operator
+write-mode grant before the effect lands, recorded as a
+`machine.write_mode_granted` event; headless (cassettes / flows / no operator)
+the gate denies and the agent stays read-only. The gate is
+[`internal/host/write_mode_gate.go`](../../internal/host/write_mode_gate.go);
+the landing is its first real client (the `agent-write-mode-opt-in` slice).
+
+The agent turn fires on the **`work`** intent (slot `request`), which captures
+the operator's utterance, clears the prior note to re-arm, and self-targets so
+`on_enter` dispatches `host.oracle.task` (`agent: landing_agent`,
+`acceptance.schema: schemas/landing-note.json` — a minimal, permissive
+close-out note: the engine requires *a* schema on `task`, so "free output" is
+expressed as a one-field `summary` with `additionalProperties` open). Free text
+the router can't map to an action is answered in place by the read-only
+**oracle off-ramp** (`oracle_off_ramp.agent: oracle_qa`) — the same floor `main`
+declared. The `world.captured` counter (rendered read-only here) is the
+progressive-determinism read-out, incremented by the mining apply path.
 
 ### Ideas reviewer (`ideas`)
 
@@ -210,25 +246,28 @@ intents in Wave 2:
 | `pr` | `open`, `monitor`, `retry`, `resolve`, `merge_now` |
 
 The parent declares additional navigation / pipeline-launching
-intents at the bare name: `go_main`, `go_back`, `go_inbox`, `go_oracle`,
-`go_ticket_search`, `go_workspace_manager`, `go_standup`,
-`go_code_review`, `go_deploy`, `go_observability`, `go_incident`,
-`go_docs`, `go_bugfix`, `go_pr_refinement`, `search_tickets`,
-`pick_ticket`, `ask_question`, `summarize_day`, `proceed`, `quit`,
-`look`.
+intents at the bare name: `work` (the free-form workbench request —
+slot `request`), `go_main` / `go_back` (now self-loop the `landing`
+floor), `go_inbox`, `go_oracle`, `go_ticket_search`,
+`go_workspace_manager`, `go_standup`, `go_code_review`, `go_deploy`,
+`go_observability`, `go_incident`, `go_docs`, `go_bugfix`,
+`go_pr_refinement`, `search_tickets`, `pick_ticket`, `ask_question`,
+`summarize_day`, `proceed`, `quit`, `look`.
 
 ## Flows
 
 | Flow | Coverage |
 |---|---|
-| `main_smoke.yaml` | Boot, land in main, render view. Smallest possible smoke. |
-| `ticket_search_smoke.yaml` | main → ticket_search → run search → pick → return. |
-| `pickup_to_bugfix.yaml` | Same as above, then dispatch into the bf import (lands in bf.idle with world_in: projections firing). |
-| `bugfix_to_pr.yaml` | The full closed-loop walk: main → bf.idle → walk every bf room to @exit:done → handoff into pr → walk pr to @exit:merged → land back in main with status="merged" and last_pr_url populated. |
-| `design_to_implementation.yaml` | The publish → implement bridge: design_done → `go_implementation` → impl.idle (on_enter self-provisions the worktree — the fixture seeds NO workspace) → walk the impl pipeline to @exit:done → main with status="merged". |
-| `prd_to_design.yaml` | The PRD → Design walk: main → `go_prd` → walk the imported prd pipeline to @exit:done → land in `prd_published` (prd__prd_file lifted) → `continue` → the `design` intake, seeded with a pointer to the published PRD. |
+| `landing_smoke.yaml` | Boot, land in the free-form workbench (`root: landing`), render view, `go_main` self-loops the floor. Smallest possible smoke (replaces `main_smoke`). |
+| `landing_quick_action.yaml` | From `landing` a quick action (`go_ticket_search`) reaches ticket_search → search → pick → `drive` routes into the bugfix pipeline. Proves the re-homed navigation is intact (replaces `ticket_search_smoke`). |
+| `landing_off_ramp.yaml` | The read-only Q&A floor: an unmapped utterance never advances the workbench and never mutates world (the invariant the live off-ramp converse rests on; the converse answer itself is the LLM step, exercised by the web posture + `offramp_test.go`, never CI). |
+| `landing_write_mode_opt_in.yaml` | The `work` intent captures a (mutating) request and re-arms the on_enter `landing_agent` task (stubbed); the workbench stays put as the read-only floor. The gate's decision spine (mutating-step classify, grant scopes, headless deny, recorded event) is unit-tested end-to-end in `internal/host/write_mode_gate_test.go` (a flow stub bypasses the in-subprocess gate, per AGENTS.md). |
+| `pickup_to_bugfix.yaml` | landing → ticket_search → pick → dispatch into the bf import (lands in bf.idle with world_in: projections firing). |
+| `bugfix_to_pr.yaml` | The full closed-loop walk: landing → bf.idle → walk every bf room to @exit:done → handoff into pr → walk pr to @exit:merged → land back in `landing` with status="merged" and last_pr_url populated. |
+| `design_to_implementation.yaml` | The publish → implement bridge: design_done → `go_implementation` → impl.idle (on_enter self-provisions the worktree — the fixture seeds NO workspace) → walk the impl pipeline to @exit:done → `landing` with status="merged". |
+| `prd_to_design.yaml` | The PRD → Design walk: landing → `go_prd` → walk the imported prd pipeline to @exit:done → land in `prd_published` (prd__prd_file lifted) → `continue` → the `design` intake, seeded with a pointer to the published PRD. |
 
-These are a sample; the full suite (30 / 30) passes under `kitsoki test flows stories/dev-story/app.yaml`.
+These are a sample; the full suite (33 / 33) passes under `kitsoki test flows stories/dev-story/app.yaml`.
 
 ## Manual TUI walkthrough
 
@@ -237,7 +276,7 @@ With `judge_mode=human` and the standalone defaults:
 
 ```
 $ kitsoki run stories/dev-story/app.yaml
-> tickets                  # main → ticket_search
+> tickets                  # landing → ticket_search
 > search_tickets open      # → ticket_searching → ticket_search
 > pick_ticket TKT-100      # ticket_id / thread populated
 > go_bugfix                # → bf.idle
@@ -257,7 +296,7 @@ $ kitsoki run stories/dev-story/app.yaml
 > pr__proceed              # → pr.ci_monitoring (CI poll happens in on_enter)
 > pr__proceed              # → pr.merge_executing
 > pr__proceed              # → pr.merge_awaiting_reply
-> pr__accept               # pr @exit:merged → main (status="merged")
+> pr__accept               # pr @exit:merged → landing (status="merged")
 ```
 
 In Wave 3 the kitsoki-dev instance rebinds the providers and the same
@@ -342,7 +381,7 @@ providers to local files):
 
 ```
 $ kitsoki run stories/dev-story/app.yaml
-> prd                       # main → prd.idle (discovery chat opens)
+> prd                       # landing → prd.idle (discovery chat opens)
 > I want a CLI for X         # discovery conversation (prd__discuss)
 > prd__start                # distil idea → prd.search (prior-art gate)
 > prd__confirm              # no overlap → prd.clarifying (questions posed)

@@ -52,9 +52,15 @@ var importAliasRE = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 //
 //   - last_error: string — the failing host call's error message.
 //   - host_error: map — {namespace, message, data?, stderr?, exit_code?}.
+//   - write_mode_scope: string ("" | "turn" | "session") — the active
+//     write-mode grant breadth in a write_mode: read_only room. Set and cleared
+//     ONLY by the engine on a grant / turn / session boundary; a story `set:`-ing
+//     it is rejected at load time (a story must not be able to self-grant write
+//     mode). See WriteModeScopeWorldKey and docs/proposals/agent-write-mode-opt-in.md.
 var ReservedWorldKeys = map[string]struct{}{
-	"last_error": {},
-	"host_error": {},
+	"last_error":           {},
+	"host_error":           {},
+	WriteModeScopeWorldKey: {},
 }
 
 // ImportResolver is an injected hook that resolves an `@kitsoki/<name>`
@@ -81,6 +87,24 @@ var ReservedWorldKeys = map[string]struct{}{
 // the loader keeps today's behaviour and errors on a failed `@kitsoki/<name>`
 // lookup. The loader builds one closure that handles both calls.
 type ImportResolver func(name, importerDir string, override bool) (string, error)
+
+// WriteModeScopeWorldKey is the engine-reserved world variable holding the
+// active write-mode grant breadth ("" | "turn" | "session") in a
+// write_mode: read_only room. It is engine-owned: the write-mode gate reads it
+// to short-circuit a re-ask while a turn/session grant is active, and the engine
+// sets/clears it on grant and at the turn/session boundary. A story may not
+// `set:` it (load-time invariant). See docs/proposals/agent-write-mode-opt-in.md.
+const WriteModeScopeWorldKey = "write_mode_scope"
+
+// WriteMode posture values for State.WriteMode (validated at load time).
+const (
+	// WriteModeOpen (or absent) = today's static posture: a dispatched agent runs
+	// under its declared bypassPermissions / converse tool policy verbatim.
+	WriteModeOpen = "open"
+	// WriteModeReadOnly = the room boots read-only and every mutating tool call is
+	// gated through the operator-ask write-mode opt-in.
+	WriteModeReadOnly = "read_only"
+)
 
 // resolveImports walks def.Imports and folds each imported child into def.
 // Errors are returned aggregated; the caller wraps in errors.Join.

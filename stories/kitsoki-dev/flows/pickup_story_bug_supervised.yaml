@@ -11,7 +11,7 @@
 
 test_kind: flow
 app: ../app.yaml
-initial_state: core.main
+initial_state: core.landing
 initial_world:
   core__ticket_id:      "2026-05-14T120000Z-scenarios-readme-warp-flag-misnamed"
   core__ticket_title:   "scenarios/README.md says --warp but the boot-time flag path resolution is undocumented"
@@ -138,7 +138,7 @@ turns:
     expect_state: core.pr.merge_awaiting_reply
 
   - intent: { name: core__pr__accept, slots: {} }
-    expect_state: core.main
+    expect_state: core.landing
     expect_world:
       core__status:      "merged"
       core__last_pr_url: "https://example/pr/120000"

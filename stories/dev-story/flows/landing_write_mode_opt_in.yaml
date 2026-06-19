@@ -1,0 +1,61 @@
+# landing_write_mode_opt_in — the free-form agent turn on a mutating request
+# (write-mode opt-in acceptance fixture; agent-write-mode-opt-in.md Task 2.2).
+#
+# The landing is the first real client of the read-only → write-mode gate
+# (internal/host/write_mode_gate.go): the room carries write_mode: read_only
+# and dispatches the full-tool landing_agent. When the agent attempts a
+# MUTATING tool call (Edit / Write / side-effecting Bash) the gate holds for
+# an operator grant, records a machine.write_mode_granted event, then lets the
+# call proceed; headless it denies and the agent stays read-only.
+#
+# What THIS fixture asserts (the no-LLM, CI-fast slice): the `work` intent
+# captures the operator's request and re-arms the on_enter landing_agent task;
+# the task dispatches (stubbed — no claude subprocess), binds its close-out
+# note, and the workbench STAYS PUT (state unchanged, read-only floor) ready
+# for the next request. The gate's own decision spine (the mutating-step
+# classification, the grant scopes, the headless deny, the recorded
+# WriteModeGranted event) is exercised end-to-end without an LLM by the unit
+# table in internal/host/write_mode_gate_test.go — a flow fixture stubs the
+# whole host.oracle.task subprocess, so the in-subprocess gate cannot fire here
+# (per AGENTS.md the live agent doing real mutating work is a dogfood-only,
+# gated step, never CI).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world: {}
+
+host_handlers:
+  # The landing_agent task. Stubbed: returns a free-form close-out note
+  # (schemas/landing-note.json). In a live run this is where the agent would
+  # attempt an Edit and the write-mode gate would hold for the opt-in.
+  host.oracle.task:
+    data:
+      ok: true
+      submitted:
+        summary:    "Sketched the fix to the off-ramp guard and noted the two call sites."
+        details:    "Would edit internal/orchestrator/offpath.go and add a test; held read-only pending a write-mode grant."
+        next_steps: ["grant write mode to apply the edit", "drive the change through the bugfix pipeline"]
+
+turns:
+  # The operator describes a mutating piece of work. `work` captures the
+  # request, clears the prior note to re-arm the on_enter agent task, and
+  # self-targets so the landing_agent dispatches on the fresh request.
+  - intent: { name: work, slots: { request: "edit the off-ramp guard so an empty utterance never off-ramps, and add a test" } }
+    expect_state: landing
+    expect_world:
+      landing_request: "edit the off-ramp guard so an empty utterance never off-ramps, and add a test"
+      landing_note:
+        summary:    "Sketched the fix to the off-ramp guard and noted the two call sites."
+        details:    "Would edit internal/orchestrator/offpath.go and add a test; held read-only pending a write-mode grant."
+        next_steps: ["grant write mode to apply the edit", "drive the change through the bugfix pipeline"]
+
+  # The workbench stays put — the read-only floor between requests. `look`
+  # re-renders the stored note without re-dispatching the agent (on_enter
+  # once: keyed off landing_note).
+  - intent: { name: look, slots: {} }
+    expect_state: landing
+    expect_world:
+      landing_request: "edit the off-ramp guard so an empty utterance never off-ramps, and add a test"
+
+expect_no_errors: true

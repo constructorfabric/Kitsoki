@@ -26,8 +26,9 @@ collapses these axes behind one operator-facing name so an operator picks a
 ## Configuration
 
 Profiles are declared in `.kitsoki.yaml` (and its local override — below; the
-same file that carries `story_dirs`), loaded on both `kitsoki run` (TUI) and
-`kitsoki web`.
+same file that carries `story_dirs` and the implicit-root `root:` block — see
+[`imports.md`](../stories/imports.md) "The blank root that grows"), loaded on
+both `kitsoki run` (TUI) and `kitsoki web`.
 
 ### Shared file and local override
 

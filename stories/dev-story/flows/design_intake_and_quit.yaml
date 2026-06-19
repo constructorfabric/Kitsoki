@@ -44,7 +44,7 @@ turns:
 
   # Abandon → back to the hub landing.
   - intent: { name: quit, slots: {} }
-    expect_state: main
+    expect_state: landing
     expect_world:
       last_error: "design abandoned at intake"
 

@@ -16,7 +16,7 @@
 
 test_kind: flow
 app: ../app.yaml
-initial_state: main
+initial_state: landing
 initial_world:
   workdir:    "."
   judge_mode: "human"

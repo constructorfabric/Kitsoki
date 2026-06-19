@@ -31,7 +31,7 @@ host_handlers:
 turns:
   # At budget — refine bails to the hub landing with a last_error.
   - intent: { name: refine, slots: { feedback: "tighten the impact section" } }
-    expect_state: main
+    expect_state: landing
     expect_world:
       last_error: "design abandoned — draft budget exhausted"
 

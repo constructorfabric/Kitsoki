@@ -140,6 +140,21 @@ const (
 	// TUI/runstatus can explain a one-shot auto-advance or a staged stop.
 	GateDecided EventKind = "machine.gate_decided"
 
+	// WriteModeGranted is appended when the write-mode gate resolves a mutating
+	// step in a write_mode: read_only agent room — the operator's recorded opt-in
+	// (or a headless denial). Sibling of GateDecided: the deterministic engine
+	// decides *which* step needs a grant (a class check over the tool call), the
+	// operator makes the *grant* (this recorded interpretive decision). Payload
+	// carries {"state", "action", "effect", "scope", "by", "granted"} where
+	// action is the gated tool call ("Edit ./x.go" | "Bash: git push"), effect is
+	// the mutating class ("write" | "external"), scope is the operator's chosen
+	// breadth ("action" | "turn" | "session"), by is "operator" | "headless_denied",
+	// and granted is true/false. Payload is json.RawMessage; replay treats it as a
+	// no-op for world/state (the gated tool call's own effects are authoritative —
+	// this event records *why* a mutation was permitted). See
+	// docs/architecture/operator-ask.md and the write-mode gate in hosts.md.
+	WriteModeGranted EventKind = "machine.write_mode_granted"
+
 	// OracleCalled is appended at the moment an oracle verb is dispatched.
 	// Payload carries the full prompt, with-args, schema-ref, deadline,
 	// call_id, and verb. Replay treats this as a no-op — state reconstruction
@@ -205,6 +220,53 @@ const (
 	// bytes (added or modified files) and `removed` lists deleted relpaths.
 	// Replay folds it as a no-op.
 	StoryChanged EventKind = "story.changed"
+
+	// MiningProposalRaised is appended once per surfaced mining proposal — the
+	// ambient miner turned a scored recipe into a concrete, staged YAML delta
+	// against the running instance's regenerated inventory. The draft lives at
+	// draft_path (a staging dir under .artifacts/mining/<recipe_id>/, never the
+	// live tree); the operator decides its fate, recorded later as
+	// MiningProposalDecided. Sibling of GateDecided in spirit: the engine does
+	// the deterministic work (dedup, rung choice, staging), the operator makes
+	// the interpretive accept/refine/reject.
+	//
+	// Payload (see MiningProposalRaisedPayload in mining_event.go):
+	// {"recipe_id", "kind", "target", "priority", "rung", "draft_path"} where
+	// kind ∈ binding|world|intent|stub-wire|gate|dev-story-enrich, target ∈
+	// root-instance|dev-story, and rung ∈ 1|2. Replay folds it as a no-op (no
+	// world/state change — the accept's own Reload emits StoryChanged for the
+	// edit itself). See docs/architecture/ambient-mining.md.
+	MiningProposalRaised EventKind = "mining.proposal_raised"
+
+	// MiningProposalDecided is appended when a mining proposal is accepted,
+	// refined, or rejected — the recorded verdict that is the mining moat
+	// datapoint. flows_green is the no-LLM flow-gate result; reverted is true
+	// when a green-gate failure rolled the applied edit back byte-for-byte.
+	// A rejected proposal is equally recorded (the negative suppresses
+	// re-surfacing).
+	//
+	// Payload (see MiningProposalDecidedPayload in mining_event.go):
+	// {"recipe_id", "verdict", "by", "flows_green", "reverted"} where verdict ∈
+	// accept|refine|reject and by ∈ human|llm. Replay folds it as a no-op (the
+	// accept's reload, if any, is authoritative for state via StoryChanged).
+	// See docs/architecture/ambient-mining.md.
+	MiningProposalDecided EventKind = "mining.proposal_decided"
+
+	// MiningPassRan is appended once per COMPLETED ambient-miner pass — the
+	// ambient session miner (docs/proposals/ambient-session-miner.md) ran the
+	// stateless pipeline over a transcript sample and emitted scored recipes.
+	// trigger distinguishes the first-launch history seed (seed) from a debounced
+	// live pass over new transcripts (live); paused records that the miner was
+	// disabled (mining.enabled=false) when the pass would have fired, so the
+	// trace shows the gap. It pins which pass surfaced the recipe a later
+	// MiningProposalRaised was drafted from.
+	//
+	// Payload (see MiningPassRanPayload in mining_event.go): {"trigger", "slug",
+	// "sessions", "recipes", "job_id", "paused"} where trigger ∈ seed|live.
+	// Replay folds it as a no-op (annotation-only, no world/state effect — like
+	// MiningProposalRaised). Additive optional payload, so older cassettes replay
+	// unchanged. See docs/architecture/ambient-mining.md.
+	MiningPassRan EventKind = "mining.pass_ran"
 )
 
 // Event is one row in the append-only event log.

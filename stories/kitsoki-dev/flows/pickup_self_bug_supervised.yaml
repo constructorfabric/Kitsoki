@@ -36,7 +36,7 @@
 
 test_kind: flow
 app: ../app.yaml
-initial_state: core.main
+initial_state: core.landing
 initial_world:
   core__ticket_id:      "2026-05-14T103205Z-tui-view-render-before-bind"
   core__ticket_title:   "TUI view templates render BEFORE on_enter binds"
@@ -147,7 +147,7 @@ host_handlers:
     data: *oracle_stub
 
 turns:
-  # core.main → core.bf.reproducing (dispatch into the bugfix sub-story
+  # core.landing → core.bf.reproducing (dispatch into the bugfix sub-story
   # AND auto-fire `start` via bf.idle's on_enter, which emit_intents
   # `start` when entered with a ticket loaded and no reproduction
   # artifact yet). One turn instead of two — the bf.idle dwell-and-
@@ -201,9 +201,9 @@ turns:
   # accept → @exit:merged. dev-story's imports.pr.exits.merged.to = main
   # projects pr__pr_url into the parent's last_pr_url and sets
   # status="merged". Under kitsoki-dev's wrapper, this lands at
-  # core.main with the projected world.
+  # core.landing with the projected world.
   - intent: { name: core__pr__accept, slots: {} }
-    expect_state: core.main
+    expect_state: core.landing
     expect_world:
       core__status:      "merged"
       core__last_pr_url: "https://example/pr/103205"

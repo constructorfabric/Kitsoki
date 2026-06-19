@@ -29,6 +29,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 
@@ -71,7 +72,21 @@ type WebConfig struct {
 	// confidence bar. Nil ⇒ no binding (the hook command must then receive
 	// --app/--room on the command line). See docs/architecture/prompt-intercept.md.
 	Intercept *InterceptConfig `yaml:"intercept,omitempty"`
+	// Mining configures the always-on ambient session miner
+	// (docs/proposals/ambient-session-miner.md). Absent or Enabled=false ⇒ the
+	// miner never starts and nothing in any flow/test path spends LLM. Validated
+	// in Load via resolveMining (cadence parses, first_pass_sample non-negative).
+	Mining MiningConfig `yaml:"mining,omitempty"`
+
+	// Root declares the implicit project root — the dev-story instance the
+	// loader synthesizes when `kitsoki run` is given no app.yaml path. Absent
+	// (rung 0) ⇒ synthesize a bare dev-story import with no overrides; present
+	// (rung 1) ⇒ fold its overrides into the synthesized importer. Validated
+	// fail-fast in Load via resolveRoot, mirroring harness profiles. See
+	// docs/stories/imports.md "The blank root that grows".
+	Root *RootConfig `yaml:"root,omitempty"`
 }
+
 
 // InterceptConfig is the operator's binding for the pre-LLM intercept gate. It
 // names the story (App) and the room (Room) whose no-LLM routing tiers classify
@@ -94,6 +109,137 @@ type InterceptConfig struct {
 	// EscapePrefix is an optional leading token that opts a prompt out of
 	// interception (consumed by the Stage-3 hook, not the gate itself).
 	EscapePrefix string `yaml:"escape_prefix,omitempty"`
+}
+
+
+// MiningConfig is the `.kitsoki.yaml` `mining:` block — the machine-global
+// configuration for the ambient session miner. It sits beside harness_profiles:
+// / story_dirs and is the kind of extensible key webconfig anticipated (see the
+// package non-goal note). Default off: a zero MiningConfig (no block, or
+// enabled: false) starts no miner. See docs/architecture/ambient-mining.md.
+type MiningConfig struct {
+	// Enabled gates the whole service. Default off until both mining.enabled is
+	// set AND first-run consent is recorded (the banner, mine-command-ux). Flow
+	// fixtures never set it, so ambient mining contributes nothing to any flow
+	// path and never spends LLM in CI.
+	Enabled bool `yaml:"enabled,omitempty"`
+	// Cadence is the debounce window for live-session passes (Go duration string,
+	// e.g. "30s"). Empty ⇒ DefaultMiningCadence. Must parse via time.ParseDuration.
+	Cadence string `yaml:"cadence,omitempty"`
+	// FirstPassSample is the bounded N of recent sessions the history seed mines
+	// (prep.py --sample recency --max N). Zero ⇒ DefaultFirstPassSample. Negative
+	// is a load error.
+	FirstPassSample int `yaml:"first_pass_sample,omitempty"`
+	// PriorityThreshold is passed downstream to the proposer; recipes below it
+	// never surface. Mirrors mining.Proposer.PriorityThreshold.
+	PriorityThreshold float64 `yaml:"priority_threshold,omitempty"`
+	// TranscriptDirs lists extra transcript directories beyond the resolved
+	// ~/.claude/projects/<slug> (the `/mine scope` control surface adds here).
+	TranscriptDirs []string `yaml:"transcript_dirs,omitempty"`
+	// MinedThrough is the per-slug dedup ledger: slug → newest-mined transcript
+	// mtime (unix seconds). A pass advances its slug's entry only on completion;
+	// the seed fires iff the slug's entry is absent. The watermark invariant.
+	MinedThrough map[string]int64 `yaml:"mined_through,omitempty"`
+}
+
+// Mining defaults applied by resolveMining when the block leaves them empty.
+const (
+	// DefaultMiningCadence is the live-pass debounce window when cadence is empty
+	// (tens of seconds so a finished turn's transcript is mined within a turn or
+	// two — the proposal's lean).
+	DefaultMiningCadence = "30s"
+	// DefaultFirstPassSample is the history-seed sample size when first_pass_sample
+	// is zero (the kit's reference run used 12).
+	DefaultFirstPassSample = 12
+)
+
+// CadenceOrDefault parses Cadence, falling back to DefaultMiningCadence when
+// empty. Load has already validated it parses, so the error is unexpected here.
+func (m MiningConfig) CadenceOrDefault() (time.Duration, error) {
+	c := m.Cadence
+	if c == "" {
+		c = DefaultMiningCadence
+	}
+	return time.ParseDuration(c)
+}
+
+// FirstPassSampleOrDefault returns FirstPassSample or DefaultFirstPassSample
+// when unset.
+func (m MiningConfig) FirstPassSampleOrDefault() int {
+	if m.FirstPassSample == 0 {
+		return DefaultFirstPassSample
+	}
+	return m.FirstPassSample
+}
+
+// resolveMining validates the `mining:` block fail-fast at load (never at first
+// pass), mirroring resolveHarnessProfiles / resolveRoot. A disabled or absent
+// block is a no-op. When enabled: cadence (if set) must parse as a Go duration,
+// and first_pass_sample must not be negative. An enabled block with no
+// resolvable transcript dir is NOT a hard error here (the resolver may pick up
+// ~/.claude/projects/<slug> at runtime, and transcript_dirs may name a dir that
+// appears later) — it is surfaced as a runtime no-op pass, per the proposal.
+func (cfg *WebConfig) resolveMining() error {
+	m := cfg.Mining
+	if !m.Enabled {
+		return nil
+	}
+	if m.Cadence != "" {
+		if _, err := time.ParseDuration(m.Cadence); err != nil {
+			return fmt.Errorf("mining.cadence %q is not a valid duration: %w", m.Cadence, err)
+		}
+	}
+	if m.FirstPassSample < 0 {
+		return fmt.Errorf("mining.first_pass_sample %d must not be negative", m.FirstPassSample)
+	}
+	if m.PriorityThreshold < 0 {
+		return fmt.Errorf("mining.priority_threshold %.3f must not be negative", m.PriorityThreshold)
+	}
+	return nil
+}
+
+// RootConfig is the `.kitsoki.yaml` `root:` block — the rung-1 surface for the
+// implicit project root. import names the base story (v1: only "dev-story");
+// overrides folds bindings / world / synonyms into the synthesized importer.
+// A nil *RootConfig (no `root:` block) is rung 0.
+type RootConfig struct {
+	// Import is the base story to specialize. v1 blesses only "dev-story";
+	// empty defaults to dev-story. Any other value is a Load error.
+	Import string `yaml:"import,omitempty"`
+	// Overrides folds project-specific bindings / world / synonyms into the
+	// synthesized dev-story importer. Optional; nil ⇒ a bare dev-story import.
+	Overrides *RootOverrides `yaml:"overrides,omitempty"`
+}
+
+// RootOverrides are the rung-1 fold inputs. Each is optional.
+type RootOverrides struct {
+	// Bindings rebinds dev-story host_interfaces (ticket/vcs/ci/workspace/
+	// transport) onto concrete handlers. Folded into the import's
+	// host_bindings. An unknown iface is a Load error.
+	Bindings map[string]string `yaml:"bindings,omitempty"`
+	// World sets instance-level world defaults projected into dev-story via
+	// world_in:. An unknown dev-story world key is a Load error.
+	World map[string]any `yaml:"world,omitempty"`
+	// Synonyms extends routing synonyms for the synthesized instance, keyed by
+	// intent name → alternate phrasings.
+	Synonyms map[string][]string `yaml:"synonyms,omitempty"`
+}
+
+// RootSpec projects this RootConfig into the neutral app.RootSpec that
+// app.SynthesizeRoot consumes. Returns nil for a nil *RootConfig (rung 0). The
+// conversion is the seam that keeps internal/app free of an import edge back
+// to internal/webconfig (which already imports internal/app).
+func (rc *RootConfig) RootSpec() *app.RootSpec {
+	if rc == nil {
+		return nil
+	}
+	spec := &app.RootSpec{Import: rc.Import}
+	if rc.Overrides != nil {
+		spec.Bindings = rc.Overrides.Bindings
+		spec.World = rc.Overrides.World
+		spec.Synonyms = rc.Overrides.Synonyms
+	}
+	return spec
 }
 
 // HarnessProfile is one operator-declared harness profile: a named bundle of
@@ -168,6 +314,12 @@ func Load(path string) (WebConfig, error) {
 	if err := cfg.resolveIntercept(); err != nil {
 		return WebConfig{}, fmt.Errorf("%s: %w", path, err)
 	}
+	if err := cfg.resolveRoot(path); err != nil {
+		return WebConfig{}, fmt.Errorf("%s: %w", path, err)
+	}
+	if err := cfg.resolveMining(); err != nil {
+		return WebConfig{}, fmt.Errorf("%s: %w", path, err)
+	}
 	return cfg, nil
 }
 
@@ -231,6 +383,60 @@ func mergeConfig(base, local WebConfig) WebConfig {
 		out.HarnessProfiles = merged
 	}
 	return out
+}
+// resolveRoot validates the `root:` block fail-fast at load (never at first
+// turn), mirroring resolveHarnessProfiles. Three checks:
+//
+//   - root.import must be the blessed base story (v1: dev-story);
+//   - every overrides.bindings.<iface> must name a dev-story host_interface
+//     (ticket/vcs/ci/workspace/transport);
+//   - every overrides.world.<key> must name a dev-story world key — resolved by
+//     loading dev-story standalone from the repo root (the directory the config
+//     file lives in is the resolution start). When dev-story cannot be resolved
+//     (a downstream checkout without the in-repo story — the deferred
+//     kitsoki-as-dependency case), world-key validation is skipped rather than
+//     failing the whole load; the import + binding checks still apply.
+//
+// A nil Root (rung 0) is a no-op.
+func (cfg *WebConfig) resolveRoot(configPath string) error {
+	rc := cfg.Root
+	if rc == nil {
+		return nil
+	}
+	importName := rc.Import
+	if importName == "" {
+		importName = app.RootStoryName
+	}
+	if importName != app.RootStoryName {
+		return fmt.Errorf("root.import %q is not a known base story (v1 supports: %s)", importName, app.RootStoryName)
+	}
+	if rc.Overrides == nil {
+		return nil
+	}
+	for iface := range rc.Overrides.Bindings {
+		if _, ok := app.DevStoryIfaces[iface]; !ok {
+			return fmt.Errorf("root.overrides.bindings: %q is not a host_interface declared by %s", iface, app.RootStoryName)
+		}
+	}
+	if len(rc.Overrides.World) > 0 {
+		repoRoot := filepath.Dir(configPath)
+		if abs, err := filepath.Abs(repoRoot); err == nil {
+			repoRoot = abs
+		}
+		keys, err := app.DevStoryWorldKeys(repoRoot)
+		if err != nil {
+			// dev-story is not resolvable here (downstream dependency case);
+			// skip the world-key check rather than failing — the deferred
+			// kitsoki-as-dependency slice owns installed-story resolution.
+			return nil
+		}
+		for key := range rc.Overrides.World {
+			if _, ok := keys[key]; !ok {
+				return fmt.Errorf("root.overrides.world: unknown key %q for base %s", key, app.RootStoryName)
+			}
+		}
+	}
+	return nil
 }
 
 // resolveHarnessProfiles validates every declared profile and expands ${VAR}

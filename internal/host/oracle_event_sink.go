@@ -63,6 +63,17 @@ type OracleCallCtx struct {
 	SessionID app.SessionID
 	Turn      app.TurnNumber
 	StatePath app.StatePath
+	// WriteMode is the dispatching room's write_mode posture (app.WriteModeOpen /
+	// app.WriteModeReadOnly / ""). Populated by the orchestrator from the active
+	// state def; "" / open keeps today's dispatch posture verbatim. read_only
+	// makes task dispatch boot the agent read-only and gate mutating steps.
+	WriteMode string
+	// WriteModeScope is the active write-mode grant breadth seeded from the
+	// engine-reserved write_mode_scope world key (app.WriteModeScopeWorldKey):
+	// "" | "turn" | "session". The gate honours a turn/session grant established
+	// earlier in the same turn/session so it does not re-ask. Only meaningful when
+	// WriteMode == read_only.
+	WriteModeScope string
 }
 
 // oracleCallCtxKey is the context key for an OracleCallCtx.

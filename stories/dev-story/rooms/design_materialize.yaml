@@ -149,11 +149,11 @@ states:
         - target: design_refine
 
       quit:
-        - target: main
+        - target: landing
           effects:
             - set:
                 last_error:         "design abandoned while preparing workspace"
-                prev_state:         "main"
+                prev_state:         "landing"
                 design_seed_idea: ""
       look:
         - target: .

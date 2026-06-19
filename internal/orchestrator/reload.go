@@ -24,11 +24,19 @@ type ReloadResult struct {
 	PrevStateExists bool
 }
 
-// Reload re-reads the app YAML at appPath, rebuilds the machine, and
+// Reload re-reads the app definition, rebuilds the machine, and
 // atomically swaps both into the orchestrator. The host registry's
 // allow-list is re-validated against the new definition; if the new
 // app declares hosts the registry can't satisfy, Reload returns an
 // error and leaves the orchestrator untouched.
+//
+// The fresh definition comes from the injected reloader closure
+// (WithReloader) when one is set — this is how a config-synthesized
+// rung-0/1 root re-synthesizes from .kitsoki.yaml on /reload, since it
+// has no app.yaml on disk to re-read. When no reloader is injected,
+// Reload falls back to app.Load(appPath), the historical file-backed
+// path. appPath is ignored when a reloader is set, so a rung-1 edit and
+// a rung-2 edit travel the identical Reload + RerunOnEnter path.
 //
 // Reload does not rebuild the harness. The harness owns its own copy
 // of the app definition (used to build the system prompt); after a
@@ -40,9 +48,18 @@ type ReloadResult struct {
 // OneShot, or ContinueTurn. The TUI guards this by ensuring its
 // edit-mode and turn-in-flight modes are mutually exclusive.
 func (o *Orchestrator) Reload(appPath string, prevState app.StatePath) (*ReloadResult, error) {
-	def, err := app.Load(appPath)
-	if err != nil {
-		return nil, fmt.Errorf("orchestrator.Reload: load %q: %w", appPath, err)
+	var def *app.AppDef
+	var err error
+	if o.reloader != nil {
+		def, err = o.reloader()
+		if err != nil {
+			return nil, fmt.Errorf("orchestrator.Reload: reloader: %w", err)
+		}
+	} else {
+		def, err = app.Load(appPath)
+		if err != nil {
+			return nil, fmt.Errorf("orchestrator.Reload: load %q: %w", appPath, err)
+		}
 	}
 
 	m, err := machine.New(def)

@@ -120,3 +120,15 @@ func IsSandboxContractViolationExport(vr ValidatorResult) bool {
 func RewriteToolsForBashMCPExport(tools []string) []string {
 	return rewriteToolsForBashMCP(tools)
 }
+
+// ApplyReadOnlyFloorCLIArgsExport exposes applyReadOnlyFloorCLIArgs for tests
+// (the write_mode: read_only dispatch rewrite).
+func ApplyReadOnlyFloorCLIArgsExport(cliArgs []string) []string {
+	return applyReadOnlyFloorCLIArgs(cliArgs)
+}
+
+// ReadOnlyDeniedToolsExport exposes the read-only deny set for the write-mode
+// floor assertion.
+func ReadOnlyDeniedToolsExport() []string {
+	return append([]string(nil), readOnlyDeniedTools...)
+}

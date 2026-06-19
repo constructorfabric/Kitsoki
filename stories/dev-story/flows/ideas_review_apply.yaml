@@ -14,7 +14,7 @@ app: ../app.yaml
 # Start at main and transition in via go_ideas so the `ideas` on_enter (the
 # reviewer decide + the report write) actually fires — a flow's seeded
 # initial_state does NOT run on_enter.
-initial_state: main
+initial_state: landing
 initial_world:
   judge_mode: "human"
 

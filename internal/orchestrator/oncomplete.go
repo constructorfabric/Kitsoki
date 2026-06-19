@@ -103,6 +103,18 @@ func (o *Orchestrator) handleJobTerminal(ctx context.Context, sid app.SessionID,
 		return fmt.Errorf("handleJobTerminal: job %q not found (no scheduler Get + no jobStore)", ev.JobID)
 	}
 
+	// A "mine" job is the ambient miner's own pipeline pass. The miner owns its
+	// terminal handling (it subscribes to its own job, advances the watermark,
+	// emits MiningPassRan, and hands recipes to the proposer via the injected
+	// RecipeHandler), so the session listener must NOT also commit a synthetic
+	// background-completion turn for it — that would be trace noise and, worse, a
+	// Notify feedback loop (a mine completion pinging Notify would schedule the
+	// next mine). Release the lock and return; the recipes are already routed.
+	if j.Kind == "mine" {
+		unlock()
+		return nil
+	}
+
 	// Recover on_complete effects from the job payload. They were stored as a
 	// JSON-encoded []app.Effect under the "__on_complete" key.
 	var onComplete []app.Effect
@@ -401,6 +413,14 @@ func (o *Orchestrator) handleJobTerminal(ctx context.Context, sid app.SessionID,
 	// the structured-log line above from happening.
 	if outcomeForObservers != nil {
 		o.notifyBackgroundTurn(sid, outcomeForObservers)
+	}
+	// A landed background job (e.g. a dispatched host.oracle.task) wrote new
+	// Claude Code transcripts — exactly the live-mining target. Ping the miner so
+	// its debounced live pass picks them up. context.WithoutCancel keeps the
+	// listener ctx's trace values without tying the debounce to the listener's
+	// teardown. No-op when no miner is wired (every flow/test path).
+	if o.miner != nil {
+		o.miner.Notify(context.WithoutCancel(ctx))
 	}
 	return nil
 }

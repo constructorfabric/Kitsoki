@@ -21,7 +21,7 @@
 
 test_kind: flow
 app: ../app.yaml
-initial_state: main
+initial_state: landing
 initial_world:
   ticket_id:      "E-2026-05-18-notes-platform"
   ticket_title:   "Notes-as-a-Platform: tags, sharing, search"
@@ -162,7 +162,7 @@ turns:
   - intent: { name: cyp__proceed, slots: {} }
     expect_state: cyp.code_awaiting_reply
   - intent: { name: cyp__accept, slots: {} }
-    expect_state: main
+    expect_state: landing
     expect_world:
       status: "code_ready"
 

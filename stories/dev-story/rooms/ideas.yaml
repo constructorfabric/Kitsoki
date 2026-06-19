@@ -162,10 +162,10 @@ states:
                 ideas_review_feedback: "{{ slots.feedback ?? '' }}"
 
       quit:
-        - target: main
+        - target: landing
           effects:
             - set:
                 last_error: "ideas review closed"
-                prev_state: "main"
+                prev_state: "landing"
       look:
         - target: .

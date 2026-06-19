@@ -142,6 +142,34 @@ Order matters inside an intent's transition list:
 3. If neither matches, the machine emits `GUARD_FAILED` (an in-band
    error envelope; the harness can surface a hint to the user).
 
+#### `write_mode` — read-only-by-default agent rooms
+
+A room that dispatches an agent (`host.oracle.task`, a `mode: conversational`
+room, or one with an `oracle_off_ramp`) may declare a side-effect posture:
+
+```yaml
+states:
+  workbench:
+    write_mode: read_only   # | open  (default: open / absent = today's posture)
+    on:
+      do: [{ target: workbench, effects: [{ invoke: host.oracle.task, with: { agent: builder, acceptance: { schema: schemas/out.json } } }] }]
+```
+
+- `open` (or absent): the dispatched agent runs under its declared posture
+  verbatim — today's behavior. **Default-off.**
+- `read_only`: the agent boots read-only and every **mutating** tool call
+  (`Edit`/`Write`, a Bash command the read-only profile rejects, an
+  `effect ≥ write` host call) is gated through an operator opt-in at a scope
+  (`action | turn | session`); headless (no operator) denies the step. The grant
+  is recorded as a `machine.write_mode_granted` trace event. See the
+  [write-mode gate](../architecture/hosts.md#write-mode-gate).
+
+Load-time invariants (fail-fast): `write_mode` must be `open`/`read_only`;
+`read_only` is rejected on a non-agent room (it would silently do nothing) and on
+a room whose agent declares `external_side_effect: true` (the static and runtime
+postures must agree); and a story may not `set:` the engine-reserved
+`write_mode_scope` world key (it cannot self-grant write mode).
+
 ### Compound state
 
 ```yaml

@@ -125,6 +125,23 @@ func LoadWithResolver(path string, ifaceOverrides map[string]string, resolver Im
 	if len(mergeErrs) > 0 {
 		return nil, errors.Join(mergeErrs...)
 	}
+	return runLoadPipeline(merged, path, baseDir, ifaceOverrides, resolver)
+}
+
+// runLoadPipeline takes a parsed (or in-memory synthesized) AppDef and runs the
+// full import-fold → phase-expand → interface-resolve → validate chain,
+// returning the finished AppDef or the joined error set. It is the shared body
+// of LoadWithOverrides (file-backed) and SynthesizeRoot (config-synthesized) —
+// the implicit-project-root slice synthesizes a one-import AppDef and runs the
+// IDENTICAL pipeline so a malformed synthesized root is caught by the same
+// validators that catch a malformed imports: block. See
+// docs/stories/imports.md "The blank root that grows".
+//
+// path/baseDir play their usual roles: baseDir roots @kitsoki/<name> + relative
+// import resolution and is stashed on AppDef.BaseDir; path is the canonical key
+// seeded into LoadedManifests and used in error messages. A synthesized root
+// passes a synthetic path (no file on disk) with the repo root as baseDir.
+func runLoadPipeline(merged *AppDef, path, baseDir string, ifaceOverrides map[string]string, resolver ImportResolver) (*AppDef, error) {
 	// Stash the loader's base directory so downstream consumers
 	// (notably internal/render.AppRenderer, which roots its template
 	// loader at <BaseDir>/views/) don't have to recompute it from
@@ -833,6 +850,14 @@ func validateDef(def *AppDef, file string) (*AppDef, []error) {
 	// normalized pointers. See docs/stories/meta-mode.md.
 	normalizeAndValidateOffRamps(file, def, &errs)
 
+	// write_mode: posture (agent-write-mode-opt-in proposal). Validates the
+	// field value, that read_only is only on an agent-dispatch room, the
+	// static-write contradiction, and that no story `set:`s the engine-reserved
+	// write_mode_scope world key. Walks the full state tree once with def in
+	// scope (it needs AgentDef.ExternalSideEffect, which validateStates does not
+	// carry).
+	validateWriteMode(file, def, &errs)
+
 	// ── 7a'. static expression compile-check ──────────────────────────────────
 	// Compile (never evaluate) every effect value and guard expression so a
 	// malformed expr-lang expression — e.g. a pongo-only `|default:` filter
@@ -1463,6 +1488,160 @@ func validateBackgroundEffectAware(file, location, originStatePath string, eff E
 		// Recursively reject nested on_complete with background and validate target rules.
 		validateBackgroundEffectAware(file, loc, originStatePath, child, true /* this child IS inside on_complete */, allowedHosts, declaredAgents, allStatePaths, stateOnKeys, errs)
 	}
+}
+
+// validateWriteMode enforces the write_mode: room-posture invariants
+// (agent-write-mode-opt-in proposal). It walks the full state tree (def in
+// scope so it can read AgentDef.ExternalSideEffect, which validateStates does
+// not carry) and on every state:
+//
+//   - rejects a write_mode value other than "", "open", or "read_only";
+//   - for write_mode: read_only, requires the room to actually dispatch an agent
+//     (mode: conversational, an oracle_off_ramp, or a host.oracle.task /
+//     host.oracle.converse effect) — declaring it on a non-agent room is rejected
+//     because it would silently do nothing (principle of least surprise);
+//   - for write_mode: read_only, rejects a contradiction with a statically
+//     write-capable agent (an effect's agent declaring external_side_effect: true):
+//     the static and runtime postures must agree at the read-only floor;
+//   - on every state, rejects any effect that `set:`s the engine-reserved
+//     write_mode_scope world key (a story must not be able to self-grant write mode).
+func validateWriteMode(file string, def *AppDef, errs *[]error) {
+	addErr := func(msg string) {
+		*errs = append(*errs, &ValidationError{File: file, Message: msg})
+	}
+	var walk func(prefix string, states map[string]*State)
+	walk = func(prefix string, states map[string]*State) {
+		for _, name := range sortedKeys(states) {
+			s := states[name]
+			if s == nil {
+				continue
+			}
+			statePath := joinPath(prefix, name)
+
+			// The reserved-key `set:` guard applies to EVERY state regardless of
+			// its own write_mode (any room could try to forge a grant).
+			for _, eff := range s.OnEnter {
+				checkReservedScopeSet(file, fmt.Sprintf("state %q on_enter", statePath), eff, errs)
+			}
+			for _, intentName := range sortedKeys(s.On) {
+				for _, tr := range s.On[intentName] {
+					for _, eff := range tr.Effects {
+						checkReservedScopeSet(file, fmt.Sprintf("state %q intent %q", statePath, intentName), eff, errs)
+					}
+				}
+			}
+
+			switch s.WriteMode {
+			case "", WriteModeOpen, WriteModeReadOnly:
+			default:
+				addErr(fmt.Sprintf("state %q: write_mode %q is invalid (want \"\", %q, or %q)",
+					statePath, s.WriteMode, WriteModeOpen, WriteModeReadOnly))
+			}
+
+			if s.WriteMode == WriteModeReadOnly {
+				if !roomDispatchesAgent(s) {
+					addErr(fmt.Sprintf("state %q: write_mode: read_only is only meaningful on a room that dispatches an agent "+
+						"(mode: conversational, an oracle_off_ramp, or a host.oracle.task / host.oracle.converse effect); "+
+						"it would silently do nothing here", statePath))
+				}
+				for _, agentName := range roomDispatchedAgents(s) {
+					ad, ok := def.Agents[agentName]
+					if !ok || ad.ExternalSideEffect == nil {
+						continue
+					}
+					if *ad.ExternalSideEffect {
+						addErr(fmt.Sprintf("state %q: write_mode: read_only contradicts agent %q which declares external_side_effect: true "+
+							"(statically write-capable); the static and runtime postures must agree — drop write_mode: read_only or set the agent read-only",
+							statePath, agentName))
+					}
+				}
+			}
+
+			if len(s.States) > 0 {
+				walk(statePath, s.States)
+			}
+		}
+	}
+	walk("", def.States)
+}
+
+// checkReservedScopeSet rejects an effect that `set:`s the engine-reserved
+// write_mode_scope world key. The runtime owns that key (the write-mode gate sets
+// and clears it on grant / turn / session boundary); a story `set:`-ing it would
+// be a self-granted write mode, defeating the gate. location prefixes the error.
+func checkReservedScopeSet(file, location string, eff Effect, errs *[]error) {
+	if eff.Set == nil {
+		return
+	}
+	if _, ok := eff.Set[WriteModeScopeWorldKey]; ok {
+		*errs = append(*errs, &ValidationError{
+			File: file,
+			Message: fmt.Sprintf("%s: set: %q is engine-reserved — a story may not self-grant write mode by writing the scope key; "+
+				"it is set only by the write-mode gate on an operator grant", location, WriteModeScopeWorldKey),
+		})
+	}
+}
+
+// roomDispatchesAgent reports whether a state runs a dispatched agent — the
+// precondition for write_mode: read_only to be meaningful. True when the state
+// is a conversational room, declares an oracle off-ramp, or has any on_enter /
+// transition effect invoking host.oracle.task or host.oracle.converse.
+func roomDispatchesAgent(s *State) bool {
+	if s.Mode == "conversational" || s.OracleOffRamp != nil {
+		return true
+	}
+	dispatch := func(eff Effect) bool {
+		return eff.Invoke == "host.oracle.task" || eff.Invoke == "host.oracle.converse"
+	}
+	for _, eff := range s.OnEnter {
+		if dispatch(eff) {
+			return true
+		}
+	}
+	for _, trs := range s.On {
+		for _, tr := range trs {
+			for _, eff := range tr.Effects {
+				if dispatch(eff) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// roomDispatchedAgents returns the set of statically-named agents this room
+// dispatches via host.oracle.task / host.oracle.converse effects (the with.agent
+// arg, when a literal string). Templated agent names are skipped — they cannot
+// be resolved at load time. Used by the write_mode static-contradiction check.
+func roomDispatchedAgents(s *State) []string {
+	seen := map[string]struct{}{}
+	var out []string
+	collect := func(eff Effect) {
+		if eff.Invoke != "host.oracle.task" && eff.Invoke != "host.oracle.converse" {
+			return
+		}
+		name, _ := eff.With["agent"].(string)
+		if name == "" || strings.Contains(name, "{{") {
+			return
+		}
+		if _, dup := seen[name]; dup {
+			return
+		}
+		seen[name] = struct{}{}
+		out = append(out, name)
+	}
+	for _, eff := range s.OnEnter {
+		collect(eff)
+	}
+	for _, trs := range s.On {
+		for _, tr := range trs {
+			for _, eff := range tr.Effects {
+				collect(eff)
+			}
+		}
+	}
+	return out
 }
 
 // validateAgentRef checks that, when a host.oracle.* effect declares

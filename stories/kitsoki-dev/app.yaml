@@ -12,7 +12,7 @@
 # # Two-command quickstart
 #
 #   $ kitsoki run stories/kitsoki-dev/app.yaml
-#   # Lands in core.main. Type `tickets` to search; `pick TKT` to pick;
+#   # Lands in core.landing. Type `tickets` to search; `pick TKT` to pick;
 #   # `bugfix` to enter the pipeline.
 #
 # Autonomous variant (set judge_mode at boot via a warp scenario):
@@ -113,7 +113,7 @@ hosts:
 imports:
   core:
     source: ../dev-story
-    entry: main
+    entry: landing
 
     # § 9 strict mode — every host the chain may use must be declared
     # in the parent's `hosts:` block above. The loader cross-checks at

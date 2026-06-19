@@ -14,7 +14,7 @@
 
 test_kind: flow
 app: ../app.yaml
-initial_state: main
+initial_state: landing
 initial_world:
   ticket_id:                  "TKT-100"
   ticket_title:               "Auto-advance across import boundary"

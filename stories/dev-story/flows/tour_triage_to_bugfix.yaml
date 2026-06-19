@@ -30,7 +30,7 @@
 
 test_kind: flow
 app: ../app.yaml
-initial_state: main
+initial_state: landing
 initial_world:
   # No ticket_id yet — triage picks one. The pipeline carry-fields are
   # pre-seeded so go_bugfix's world_in projection has everything it needs.

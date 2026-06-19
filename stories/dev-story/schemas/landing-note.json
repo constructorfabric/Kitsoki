@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "landing_note",
+  "description": "The free-form landing agent's close-out note. The landing is exploratory work, not a structured artifact: the only required field is a one-line `summary` of what the agent did or found this turn. Everything else the agent learned lives in its trace + any files it touched (under a write-mode grant). This minimal, permissive schema satisfies the engine's host.oracle.task acceptance contract (loader M6b requires a schema) while keeping the output as close to 'free' as the runtime allows — additionalProperties is open so the agent may attach anything.",
+  "type": "object",
+  "required": ["summary"],
+  "properties": {
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "description": "One line: what the agent did or found this turn."
+    },
+    "details": {
+      "type": "string",
+      "description": "Optional longer markdown narrative of the exploration / change."
+    },
+    "next_steps": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Optional suggested follow-ups (e.g. a pipeline to drive, a file to review)."
+    }
+  },
+  "additionalProperties": true
+}

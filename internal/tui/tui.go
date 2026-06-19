@@ -238,6 +238,18 @@ type RootModel struct {
 	// the status-line badge without re-querying the database on every View().
 	lastNotifications []jobs.Notification
 
+	// minerService is the ambient miner's control seam (ad-hoc-workbench slice
+	// 4). When non-nil, /mine drives pause/resume/scope/now/decide through it
+	// and reads its live state. nil (the default until the runtime sibling
+	// lands) leaves the surface read-only against mineStateValue and turns
+	// every control verb into a "miner not wired" hint. See mine_command.go.
+	minerService MinerService
+
+	// mineStateValue is the last-pushed MineState snapshot — the proposal
+	// queue + miner status the footer badge and /mine status read when no
+	// service is wired (or as the post-decision echo cache when one is).
+	mineStateValue MineState
+
 	// lastCtrlC is the time the most recent Ctrl+C was pressed, used to
 	// detect a double-tap quit. Zero means no recent press (or the window
 	// has expired).
@@ -1029,6 +1041,9 @@ func (m RootModel) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case operatorQuestionMsg:
 		return m.handleOperatorQuestion(msg)
+
+	case minePassDoneMsg:
+		return m.handleMinePassDone(msg)
 
 	case offPathReplyMsg:
 		return m.handleOffPathReply(msg)
@@ -1970,6 +1985,13 @@ func (m RootModel) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 
 	case "/effort":
 		body, next, cmd := EffortCommand{}.Run(m, parts[1:])
+		if body != "" {
+			next.transcript.AppendBlock(body)
+		}
+		return next, cmd
+
+	case "/mine":
+		body, next, cmd := MineCommand{}.Run(m, parts[1:])
 		if body != "" {
 			next.transcript.AppendBlock(body)
 		}
@@ -4600,6 +4622,9 @@ func footerFrameworkLine(m RootModel) string {
 		parts = append(parts, queueDepthLabel(n))
 	}
 	if badge := m.inboxBadge(); badge != "" {
+		parts = append(parts, badge)
+	}
+	if badge := m.proposalsBadge(); badge != "" {
 		parts = append(parts, badge)
 	}
 	if chip := ideFooterChip(m); chip != "" {

@@ -13,10 +13,10 @@
 # one keystroke per merged room, until @exit:done hands off to
 # pr-refinement.
 #
-# Why not land at core.main and rely on auto-start through bf.idle's
+# Why not land at core.landing and rely on auto-start through bf.idle's
 # on_enter? Because Teleport (the engine warp seam) DOESN'T fire
 # on_enter — it just sets state + merges world. So warping to
-# core.main and typing `bugfix` works, but adds a navigation hop
+# core.landing and typing `bugfix` works, but adds a navigation hop
 # and a real oracle call before the merged-room advance under test
 # kicks in. Skipping straight to reproducing with the artifact
 # pre-bound is more direct for verification.

@@ -212,6 +212,7 @@ authentication.`,
 				FlowFilePath:    flowFilePath,
 				HostCassette:    liveCassette,
 				DefaultActor:    actor,
+				Mining:          cfg.Mining,
 			}
 
 			// ── Registry + initial story catalogue ──────────────────────────

@@ -26,6 +26,7 @@ export function observationKind(msg: string): ObservationKind {
   switch (msg) {
     // decision — interpretive choices with available/chosen/confidence
     case "machine.gate_decided":
+    case "machine.write_mode_granted":
     case "oracle.off_path.question":
     case "oracle.off_path.answer":
       return "decision";

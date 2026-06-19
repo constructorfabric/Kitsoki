@@ -41,7 +41,7 @@
 
 test_kind: flow
 app: ../app.yaml
-initial_state: main
+initial_state: landing
 initial_world:
   ticket_id:      "B-2026-05-18-list-broken"
   ticket_title:   "Note list disappears after creating a second note"
@@ -224,7 +224,7 @@ turns:
   - intent: { name: pr__proceed, slots: {} }
     expect_state: pr.merge_executing
   - intent: { name: pr__proceed, slots: {} }
-    expect_state: main
+    expect_state: landing
     expect_world:
       status:      "merged"
       last_pr_url: "https://example/pr/B-2026-05-18-list-broken"

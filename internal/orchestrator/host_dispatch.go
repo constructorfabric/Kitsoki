@@ -7,6 +7,7 @@ import (
 	"maps"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"kitsoki/internal/app"
 	"kitsoki/internal/expr"
@@ -37,6 +38,44 @@ import (
 //
 // When o.hosts is nil (deterministic flow tests), returns no events and the
 // original world unchanged.
+// writeModePosture resolves the write_mode posture for a dispatching state path
+// and the active grant scope from the world (agent-write-mode-opt-in). It returns
+// the room's write_mode (the leaf state's, falling back to its top-level room
+// state — write_mode is a room-level field) and the active scope read from the
+// engine-reserved write_mode_scope world key. Both empty when no read_only room
+// is in effect, so the dispatch posture stays byte-for-byte today's. nil-safe.
+func (o *Orchestrator) writeModePosture(state app.StatePath, w world.World) (writeMode, scope string) {
+	if o == nil || o.def == nil {
+		return "", ""
+	}
+	wm := ""
+	if s := lookupStateByPath(o.def, state); s != nil && s.WriteMode != "" {
+		wm = s.WriteMode
+	} else {
+		// write_mode is authored on the room (top-level) state; a dispatch from a
+		// nested leaf inherits the room's posture.
+		p := string(state)
+		if idx := strings.Index(p, "#"); idx >= 0 {
+			p = p[:idx]
+		}
+		if idx := strings.Index(p, "."); idx >= 0 {
+			p = p[:idx]
+		}
+		if room := lookupStateByPath(o.def, app.StatePath(p)); room != nil {
+			wm = room.WriteMode
+		}
+	}
+	if wm != app.WriteModeReadOnly {
+		return wm, "" // open / absent: no active scope to carry
+	}
+	if w.Vars != nil {
+		if sc, ok := w.Vars[app.WriteModeScopeWorldKey].(string); ok {
+			scope = sc
+		}
+	}
+	return wm, scope
+}
+
 func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID, calls []machine.HostInvocation, w world.World, state app.StatePath) ([]store.Event, world.World, string, app.StatePath, error) {
 	if o.hosts == nil || len(calls) == 0 {
 		return nil, w, "", "", nil
@@ -147,10 +186,17 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 	// is preserved from any existing ctx (zero only when no entry point set it,
 	// e.g. RunInitialOnEnter, which stamps turn=0 deliberately).
 	existing := host.OracleCallCtxFrom(ctx)
+	// Write-mode posture (agent-write-mode-opt-in): carry the dispatching room's
+	// write_mode and the active grant scope (the engine-reserved write_mode_scope
+	// world key) so host.oracle.task can boot the agent read-only and gate
+	// mutating steps. Absent / open leaves both empty → today's dispatch posture.
+	writeMode, writeModeScope := o.writeModePosture(state, w)
 	ctx = host.WithOracleCallCtx(ctx, host.OracleCallCtx{
-		SessionID: sid,
-		Turn:      existing.Turn,
-		StatePath: state,
+		SessionID:      sid,
+		Turn:           existing.Turn,
+		StatePath:      state,
+		WriteMode:      writeMode,
+		WriteModeScope: writeModeScope,
 	})
 
 	var events []store.Event

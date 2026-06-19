@@ -1,0 +1,43 @@
+# landing_off_ramp — the read-only Q&A floor: an unmapped utterance never
+# advances the workbench and never mutates world.
+#
+# The landing declares oracle_off_ramp: { agent: oracle_qa }. In a LIVE run
+# (web / TUI / dogfood), free text the router maps to no declared intent is
+# answered IN PLACE by a read-only converse turn (ModeOffPath) — the room
+# stays put, the quick actions are still there next turn. That converse
+# answer is the genuinely-LLM step and is exercised by the deterministic web
+# posture + internal/orchestrator/offramp_test.go, NOT by a flow fixture:
+# the orchestrator flow path submits STRUCTURED intents and never produces
+# the free-text no-match (UNKNOWN_INTENT / LLM_CLARIFICATION) the off-ramp
+# intercepts (same reason stories/off-ramp-demo/flows/menu.yaml documents).
+#
+# What a flow fixture CAN pin — and what this one asserts — is the floor's
+# machine-level guarantee underneath the off-ramp: an utterance that maps to
+# no action in the workbench is REJECTED without advancing the state and
+# WITHOUT mutating world. That is the invariant the read-only floor rests on;
+# the live off-ramp simply adds a voiced answer on top of it.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world: {}
+
+host_handlers: {}
+
+turns:
+  # An off-menu utterance the workbench can't route to an action. The machine
+  # rejects it (no matching arc) — crucially WITHOUT advancing the state or
+  # touching world. In a live surface this same no-match is what the off-ramp
+  # catches and answers in place.
+  - intent: { name: __unmapped_free_text__, slots: {} }
+    expect_error:
+      code: INTENT_NOT_ALLOWED_IN_STATE
+    expect_state: landing
+    expect_world_unchanged: true
+
+  # The workbench is still here, unchanged, ready for the next request.
+  - intent: { name: look, slots: {} }
+    expect_state: landing
+    expect_world_unchanged: true
+
+expect_no_errors: false

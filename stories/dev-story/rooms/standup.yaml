@@ -33,7 +33,7 @@ states:
       go_back:
         - target: "{{ world.prev_state }}"
       go_main:
-        - target: main
+        - target: landing
       look:
         - target: .
 
@@ -65,6 +65,6 @@ states:
       go_back:
         - target: standup
       go_main:
-        - target: main
+        - target: landing
       look:
         - target: .

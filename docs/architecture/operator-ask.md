@@ -152,6 +152,36 @@ single socket hit tagged with the sub-agent's question, and the sub-agent
 received the operator's answer back through the tool result. No special
 handling is required for the nested case.
 
+## Second consumer: the write-mode gate's action proposals
+
+The bridge is surface-agnostic, so a second caller reuses it without new wire:
+the **write-mode gate** for `write_mode: read_only` agent rooms (see
+[hosts.md](hosts.md#write-mode-gate) and
+[state-machine.md](../stories/state-machine.md#write_mode)). When the dispatched
+agent attempts a mutating step (an `Edit`/`Write`, a Bash command the read-only
+profile rejects, or an `effect ≥ write` host call), the gate forwards an **action
+proposal** through the same `OperatorPrompter.Ask` seam — a single question
+("The agent wants to *edit X* / *run Y*. Allow this *write* action?") whose
+options are the grant scopes plus deny:
+
+| Option | Meaning |
+|---|---|
+| `turn` (surfaced default) | allow edits for the rest of this turn |
+| `action` | allow just this one call |
+| `session` | allow edits for the rest of the session |
+| `deny` | keep the agent read-only |
+
+The interactivity gate is identical to forwarded questions: with no operator
+attached the gate takes the headless path and **denies** the mutating step (the
+agent gets a tool-error and stays read-only), mirroring the
+no-replacement-tool posture above. An `effect: external` action (a push, a PR)
+omits `turn`/`session` — it always re-asks per action, so "stop asking me about
+edits" never silently authorizes an irreversible call. The operator's verdict is
+recorded as a `machine.write_mode_granted` trace event (the gate's audit trail);
+unlike a forwarded question, the write-mode grant is a *recorded interpretive
+decision*, not just a passthrough. See `internal/host/write_mode_gate.go`
+(`operatorAskGrant`, `writeModeActionProposal`).
+
 ## Open items (deferred pending LLM budget)
 
 - **Live end-to-end test**: the path is covered by stub/cassette tests
