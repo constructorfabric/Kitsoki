@@ -423,6 +423,15 @@ From the app author's perspective there is no visible difference.
 Transport tests continue to pass unchanged; the seam is below the
 `Turn()` surface.
 
+A fourth consumer of these same no-LLM tiers is the **pre-LLM intercept
+gate** ([`prompt-intercept.md`](prompt-intercept.md)):
+`Orchestrator.Classify` runs the deterministic / synonym / embedding
+tiers with **zero effects** so an external caller (`kitsoki intercept`,
+the Claude Code `UserPromptSubmit` hook) can cheaply ask "is this a known
+command?" before the model runs, then execute only when a conservative
+gate reads the verdict's confidence band (§1) as a confident, fully-slotted
+match — everything else passes straight through to the LLM.
+
 ## 6. Embedding routing tier
 
 An optional embedding tier sits between the lexical template tier (§1.3) and
@@ -481,6 +490,8 @@ reference.
   `synonyms:`.
 - [`hosts.md`](hosts.md#hostoracleextract) — `host.oracle.extract`
   reference (oracle-split Phase 5 handler).
+- [`prompt-intercept.md`](prompt-intercept.md) — the pre-LLM intercept
+  gate, another consumer of these no-LLM tiers via `Orchestrator.Classify`.
 - `internal/slotparse/` godoc — every typed parser's exact contract.
 - `internal/semroute/` godoc — the matcher, template compiler, and
   Aho-Corasick wiring.
