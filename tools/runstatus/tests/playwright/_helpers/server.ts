@@ -347,6 +347,13 @@ export function prepareVideoDir(videoDir: string): void {
  *   3. Removes the raw `.webm` on success. On ffmpeg failure, falls back to the
  *      `.webm` (renamed in place) so a recording is never silently lost.
  *
+ * FAST RUNS DON'T CLOBBER THE REAL VIDEO: when WEB_CHAT_PACE=0 (PACE===0) every
+ * dwell collapses to zero, so the recording is a useless ~5s blur meant only for
+ * assertion runs. Saving it to `<name>.mp4` would overwrite the watch-speed cut a
+ * human is meant to see — and the overwrite is silent, so you think you shipped a
+ * demo when you shipped a blur. Fast runs therefore write to `<name>.fast.mp4`
+ * instead; only a real-pace run (the default) produces `<name>.mp4`.
+ *
  * Returns the final stable path (`.mp4`, or `.webm` only on ffmpeg failure).
  */
 export async function saveVideoAsMp4(
@@ -355,8 +362,17 @@ export async function saveVideoAsMp4(
   name: string,
 ): Promise<string | null> {
   if (!video) return null;
-  const raw = path.join(artifactDir, `${name}-raw.webm`);
-  const mp4 = path.join(artifactDir, `${name}.mp4`);
+  // Fast assertion runs get a distinct filename so they never overwrite the
+  // human-watchable, real-pace cut at `<name>.mp4`. See the doc-comment above.
+  const outName = PACE === 0 ? `${name}.fast` : name;
+  if (PACE === 0) {
+    console.warn(
+      `[video] WEB_CHAT_PACE=0 (fast run): saving collapsed-timing video to ${outName}.mp4 — ` +
+        `this is NOT the watch-speed cut. Re-run without WEB_CHAT_PACE=0 to produce ${name}.mp4.`,
+    );
+  }
+  const raw = path.join(artifactDir, `${outName}-raw.webm`);
+  const mp4 = path.join(artifactDir, `${outName}.mp4`);
   try {
     await video.saveAs(raw);
   } catch (e) {
@@ -378,7 +394,7 @@ export async function saveVideoAsMp4(
     return mp4;
   }
   // ffmpeg failed — promote the raw webm as the fallback so we never lose it.
-  const fallback = path.join(artifactDir, `${name}.webm`);
+  const fallback = path.join(artifactDir, `${outName}.webm`);
   fs.renameSync(raw, fallback);
   console.warn(`[video] ffmpeg mp4 transcode failed; using raw webm\n${r.stderr?.slice(0, 400)}`);
   return fallback;
