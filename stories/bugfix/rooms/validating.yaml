@@ -99,6 +99,10 @@ states:
       - invoke: iface.ci.build
         with:
           workdir: "{{ world.workdir }}"
+          # build_cmd lets a non-Go instance (e.g. gears-rust) override the
+          # host.local default `go build ./...`. Empty ⇒ default (Go). See
+          # bugfix/app.yaml world.build_cmd + internal/host/local_ci.go.
+          build_cmd: "{{ world.build_cmd }}"
         bind:
           ci_log: log
         on_error: idle

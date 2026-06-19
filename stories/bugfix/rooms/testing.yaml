@@ -97,6 +97,10 @@ states:
       - invoke: iface.ci.run_tests
         with:
           workdir: "{{ world.workdir }}"
+          # test_cmd lets a non-Go instance (e.g. gears-rust) override the
+          # host.local default `go test ./...`. Empty ⇒ default (Go). See
+          # bugfix/app.yaml world.test_cmd + internal/host/local_ci.go.
+          test_cmd: "{{ world.test_cmd }}"
         bind:
           ci_log: log
         on_error: idle

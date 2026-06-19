@@ -249,6 +249,17 @@ world:
   # ── Pipeline control ──────────────────────────────────────────────────
   bugfix_mode:      { type: string, default: "full" }            # full | quick
 
+  # ── CI command profile (provider-neutral retargeting) ───────────────────
+  # The ci interface defaults to host.local, whose run_tests/build default to
+  # `go test ./...` / `go build ./...`. An instance targeting a non-Go repo
+  # (e.g. the gears-rust Rust workspace) sets these so the testing / validating
+  # rooms forward them to host.local's `test_cmd` / `build_cmd` args. Empty
+  # (the default) preserves the Go behaviour — host.local's splitOverride
+  # treats "" as "use the built-in default", so Go stories are unaffected.
+  # See internal/host/local_ci.go (splitOverride) + docs/architecture/hosts.md.
+  test_cmd:         { type: string, default: "" }   # e.g. "cargo test -p cf-gears-toolkit config"
+  build_cmd:        { type: string, default: "" }   # e.g. "cargo build -p cf-gears-toolkit"
+
   # bf_autostart_attempted gates bf.idle's on_enter setup+autostart
   # chain so it fires exactly once per session per ticket. Without
   # this, an on_error bounce back to idle would re-fire the chain
