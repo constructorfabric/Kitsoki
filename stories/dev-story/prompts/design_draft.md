@@ -132,6 +132,8 @@ first if needed.
 ## Output
 
 Submit a `design_artifact` (see `schemas/design-artifact.json`):
-`title`, `kind`, `summary_markdown` (the checkpoint view — the proposal
-body or a faithful digest), `file_path` (where you wrote it),
-`confidence`, `needs_clarification`, and `follow_up_questions`.
+`title`, `kind`, `summary_markdown` (the **complete proposal body as
+markdown** — the design_draft room mirrors it into the operator's editor
+and persists it, so include the whole document, not a digest), `file_path`
+(where you wrote it), `confidence`, `needs_clarification`, and
+`follow_up_questions`.

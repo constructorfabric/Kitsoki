@@ -384,6 +384,12 @@ world:
 
   # draft (004-proposal.md) + publish
   design_artifact:       { type: object, default: {} }   # task result: { title, summary_markdown, file_path, kind, confidence, needs_clarification, follow_up_questions }
+  # IDE editor-mirror state (rooms/design_draft.yaml) — declared so a machine-time
+  # template resolves to nil gracefully before the binding host call runs.
+  design_draft_doc:      { type: string, default: "" }   # absolute path of the proposal file (host.ide.open_file)
+  design_stage_doc:      { type: string, default: "" }   # absolute path of the staged refine proposal (open_diff new_text_path)
+  design_stage_artifact: { type: object, default: {} }   # refine re-draft, promoted to design_artifact on accept
+  design_diff_verdict:   { type: string, default: "" }   # accepted|rejected from the in-editor diff gate
   design_file:           { type: string, default: "" }   # final published path docs/proposals/<slug>.md
   design_ticket_path:    { type: string, default: "" }   # feature ticket minted at publish, links back to design_file
 

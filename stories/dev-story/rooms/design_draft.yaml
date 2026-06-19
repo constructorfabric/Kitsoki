@@ -109,6 +109,26 @@ states:
           design_artifact: submitted
           design_kind:     "submitted.kind"
         on_error: design_refine
+
+      # Persist the proposal to a real file so the operator's editor can show it
+      # (host.ide.open_file) — mirrors prd/drafting. summary_markdown IS the
+      # proposal body, so the file is deterministic even when the author is
+      # stubbed. artifacts_dir returns an ABSOLUTE path — bound for open_file/diff.
+      - invoke: host.artifacts_dir
+        once: true
+        with:
+          artifacts_root: "{{ world.design_workspace }}"
+          thread:         "004-proposal"
+          mode:           "replace"
+          title:          "{{ world.design_artifact.title }}"
+          body:           "{{ world.design_artifact.summary_markdown }}"
+        bind:
+          design_draft_doc: "path"
+        on_error: .
+      - invoke: host.ide.open_file
+        with:
+          path: "{{ world.design_draft_doc }}"
+        on_error: .
     on:
       # Accept: publish the proposal (move it from workspace to docs/proposals/)
       # AND mint a feature ticket that links back to it. publish_design.py
@@ -159,6 +179,64 @@ states:
             - set:
                 last_error: "design abandoned — draft budget exhausted"
                 prev_state: "landing"
+        # IDE-connected refine: stage into 004-proposal-next.md, show a native diff
+        # with the feedback as a comment, gate accept/reject in the editor (mirrors
+        # prd/drafting). Disconnected runs fall through to the plain arc below.
+        - when: "world.ide.connected"
+          target: design_draft
+          effects:
+            - set:
+                design_refine_feedback: "{{ slots.feedback ?? '' }}"
+                design_draft_cycle:     "{{ world.design_draft_cycle + 1 }}"
+                design_cycle:           "{{ world.design_cycle + 1 }}"
+                design_diff_verdict:    ""
+            - invoke: host.oracle.task
+              id: design_author_refine
+              with:
+                agent: design_author
+                working_dir: "{{ world.workdir == '' ? '.' : world.workdir }}"
+                acceptance:
+                  schema: schemas/design-artifact.json
+                context:
+                  prompt: prompts/design_draft.md
+                  args:
+                    idea:            "{{ world.design_idea }}"
+                    kind:            "{{ world.design_kind }}"
+                    template_dir:    "{{ world.design_template_dir }}"
+                    workdir:         "{{ world.design_workspace }}"
+                    brief_path:      "{{ world.design_brief_path }}"
+                    existing_state:  "{{ world.design_existing_state }}"
+                    change_target:   "{{ world.design_change_target }}"
+                    references:      "{{ world.design_references }}"
+                    output_path:     "{{ world.design_workspace }}/004-proposal-next.md"
+                    refine_feedback: "{{ slots.feedback ?? '' }}"
+                    cycle:           "{{ world.design_cycle }}"
+              bind:
+                design_stage_artifact: submitted
+              on_error: design_draft
+            - invoke: host.artifacts_dir
+              with:
+                artifacts_root: "{{ world.design_workspace }}"
+                thread:         "004-proposal-next"
+                mode:           "replace"
+                title:          "{{ world.design_stage_artifact.title }}"
+                body:           "{{ world.design_stage_artifact.summary_markdown }}"
+              bind:
+                design_stage_doc: "path"
+              on_error: design_draft
+            - invoke: host.ide.open_diff
+              with:
+                path:          "{{ world.design_draft_doc }}"
+                new_text_path: "{{ world.design_stage_doc }}"
+                title:         "Design refinement"
+                comment:       "{{ slots.feedback ?? '' }}"
+              bind:
+                design_diff_verdict: "verdict"
+              on_error: design_draft
+            - when: "world.design_diff_verdict == 'accepted'"
+              set:
+                design_artifact: "{{ world.design_stage_artifact }}"
+                design_kind:     "{{ world.design_stage_artifact.kind }}"
         - target: design_draft
           effects:
             - set:
