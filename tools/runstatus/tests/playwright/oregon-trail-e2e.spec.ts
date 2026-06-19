@@ -163,7 +163,8 @@ test("Oregon Trail — full intro wizard + trail + win (no-LLM)", async () => {
 
     // ── Scene 6: Name the party ─────────────────────────────────────────────
     await page.waitForTimeout(DWELL);
-    const csvInput = page.locator("input[placeholder*='Adam']").first();
+    // The param composer is a wrapping <textarea> now (not a single-line input).
+    const csvInput = page.locator("textarea[placeholder*='Adam']").first();
     if ((await csvInput.count()) > 0) {
       await csvInput.fill("Alice,Bob,Carol,Dan,Eve");
       await csvInput.press("Enter");
@@ -194,7 +195,8 @@ test("Oregon Trail — full intro wizard + trail + win (no-LLM)", async () => {
     // ── Scene 9: Set a budget ($800) ───────────────────────────────────────
     await page.waitForTimeout(DWELL);
     // The "Set a budget" item has a param form with placeholder "e.g. 200"
-    const budgetInput = page.locator("input[placeholder*='200']").first();
+    // (a wrapping <textarea> now, not a single-line input).
+    const budgetInput = page.locator("textarea[placeholder*='200']").first();
     await expect(budgetInput).toBeVisible({ timeout: 5000 });
     await page.waitForTimeout(BEFORE_ACT);
     await budgetInput.fill("800");

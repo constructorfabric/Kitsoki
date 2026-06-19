@@ -579,7 +579,8 @@ test('vscode tour e2e — load, render, drive, trace (no-LLM, deterministic)', a
 
     // ── (d) Drive a turn in the popped-out editor chat → state advances ───────
     // Same structured forecast path as the sidebar, driven HERE in the full window.
-    await forecastForm.locator('input').fill('Tokyo');
+    // The param composer is a wrapping <textarea> now (not a single-line input).
+    await forecastForm.locator('textarea').fill('Tokyo');
     await dwell(700);
     await forecastForm.locator('button[type="submit"]').click();
     await expect(

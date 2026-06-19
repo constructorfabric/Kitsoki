@@ -100,12 +100,22 @@
           @submit.prevent="fireChoiceParam(item, paramDrafts[item.Intent + '|' + JSON.stringify(item.Slots)] ?? '')"
         >
           <span class="input-bar__choice-param-label">{{ item.Label }}</span>
-          <input
+          <!-- A wrapping, auto-growing textarea (NOT a single-line <input>): a
+               long refine instruction typed into a single-line input scrolls its
+               START off the left edge, so the operator's message "populates out
+               of view" as they type — unreadable in a conversation and on camera.
+               This wraps + grows so the full message is always visible. Enter
+               still submits (Shift+Enter for a newline). -->
+          <textarea
             v-model="paramDrafts[item.Intent + '|' + JSON.stringify(item.Slots)]"
-            class="input-bar__input"
-            type="text"
+            v-autogrow
+            class="input-bar__input input-bar__param-input"
+            rows="1"
             :placeholder="item.Param!.Placeholder || item.Label"
             :disabled="pending"
+            @keydown.enter.exact.prevent="
+              fireChoiceParam(item, paramDrafts[item.Intent + '|' + JSON.stringify(item.Slots)] ?? '')
+            "
           />
           <button
             class="input-bar__send"
@@ -161,6 +171,7 @@
       >
         <textarea
           v-model="rawDraft"
+          v-autogrow
           class="input-bar__textarea"
           data-testid="composer-input"
           placeholder="Type anything — the router handles the rest…"
@@ -216,6 +227,7 @@
     >
       <textarea
         v-model="rawDraft"
+        v-autogrow
         class="input-bar__textarea"
         data-testid="text-floor-input"
         placeholder="…or type a message instead"
@@ -254,6 +266,7 @@
 
       <textarea
         v-model="draft"
+        v-autogrow
         class="input-bar__textarea"
         data-testid="composer-input"
         :placeholder="placeholder"
@@ -279,6 +292,29 @@
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import type { IntentInfo, View, ChoiceItem, ChoiceField } from "../types.js";
 import { humanizeIntent } from "../lib/intent.js";
+
+// ── v-autogrow ────────────────────────────────────────────────────────────────
+// Grow a composer textarea to fit its content so the operator's full message
+// stays visible as they type. A fixed-size field scrolls the START of a long
+// message out of view — horizontally for a single-line <input>, vertically past
+// its rows for a <textarea> — which is unreadable in a conversation and on
+// camera (Kitsoki demos CONSTANTLY show typing). CSS `min-height` floors the
+// resting size and `max-height` caps the growth (then it scrolls), so this only
+// ever resizes WITHIN those bounds — the resting look of every composer is
+// unchanged. `updated` re-fits after v-model resets to "" on send.
+function autoGrowEl(el: HTMLTextAreaElement): void {
+  el.style.height = "auto";
+  el.style.height = `${el.scrollHeight}px`;
+}
+const vAutogrow = {
+  mounted(el: HTMLTextAreaElement) {
+    autoGrowEl(el);
+    el.addEventListener("input", () => autoGrowEl(el));
+  },
+  updated(el: HTMLTextAreaElement) {
+    autoGrowEl(el);
+  },
+};
 
 const props = defineProps<{
   intents: IntentInfo[];
@@ -791,11 +827,32 @@ onUnmounted(() => {
   outline: none;
   resize: vertical;
   min-height: 2.8rem;
+  /* cap growth (v-autogrow) then scroll, so a very long message can't eat the
+     whole pane; min-height above keeps the resting 2-row look unchanged. */
+  max-height: 11rem;
+  /* border-box so v-autogrow's height = scrollHeight is exact (scrollHeight
+     includes padding); without it the field would creep taller on each keypress. */
+  box-sizing: border-box;
   line-height: 1.5;
 }
 
 .input-bar__textarea:focus {
   border-color: var(--k-border-focus, #2563eb);
+}
+
+/* The param composer (refine / regenerate / any slot-form) is a wrapping,
+   auto-growing textarea — never a single-line input whose long message scrolls
+   its start out of view. min-height matches the single-line input it replaced so
+   the inline [label · field · Send] row looks unchanged at rest; it grows with
+   the message (capped, then scrolls) so the full text stays on screen. */
+.input-bar__param-input {
+  font-family: inherit;
+  line-height: 1.4;
+  resize: none;
+  overflow-y: auto;
+  min-height: 2.6rem;
+  max-height: 7.5rem;
+  box-sizing: border-box;
 }
 
 .input-bar__composer--semantic {

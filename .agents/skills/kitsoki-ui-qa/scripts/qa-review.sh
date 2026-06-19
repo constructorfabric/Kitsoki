@@ -187,7 +187,15 @@ EVIDENCE RULES (these make the review trustworthy — follow them exactly):
    the frames as a TIMELINE, verify:
    (a) every operator INPUT the demo sends appears somewhere as legible text (a
        chat message/bubble you can actually read) — an input that is never visible
-       in any frame (it flashed by too fast, or was sent off-camera) is a failure;
+       in any frame (it flashed by too fast, or was sent off-camera) is a failure.
+       This includes WHILE TYPING: the composer must show the operator's FULL
+       message as it is entered. The classic bug is a single-line input that
+       horizontally scrolls, so a long message's START scrolls off the left edge
+       and is never readable in full (e.g. the field shows "…require tenant
+       isolation" with the leading "add a non-goals section and " gone). If any
+       frame shows the text being typed but its beginning has scrolled out of the
+       input (you cannot read the whole message the operator is composing), that
+       is a failure — the composer should wrap/grow to keep the full text visible;
    (b) enough of each agent RESPONSE is visible to understand what happened — a
        long response MAY be truncated, but a reply clipped to nothing (or never
        shown at all) is a failure;

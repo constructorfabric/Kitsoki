@@ -127,6 +127,18 @@ export function packageExtension(extensionRoot: string, extensionsDir: string): 
   if (!fs.existsSync(entry)) {
     throw new Error(`extension not built: ${entry} missing — run 'pnpm build' first`);
   }
+  // Re-stage the SPA from the freshly-built runstatus bundle. The webview loads
+  // `media/spa/index.html`, which is a SECOND staging of the SPA (the binary's
+  // go:embed is a separate copy used only by the browser). `make build` updates
+  // the embed + dist but NOT media/spa — that is `pnpm build`'s `stageSpa`. So a
+  // source fix could land in dist yet the recording would still serve the stale
+  // media/spa (the trap that made a fixed composer still render the old <input>).
+  // Copy dist → media/spa here so packaging ALWAYS uses the latest built SPA.
+  const builtSpa = path.resolve(extensionRoot, '..', 'runstatus', 'dist', 'index.html');
+  if (fs.existsSync(builtSpa) && fs.statSync(builtSpa).size >= 10_000) {
+    fs.mkdirSync(path.dirname(spa), { recursive: true });
+    fs.copyFileSync(builtSpa, spa);
+  }
   if (!fs.existsSync(spa) || fs.statSync(spa).size < 10_000) {
     throw new Error(
       `embedded SPA missing/placeholder: ${spa} — run 'make build' (or build tools/runstatus) then 'pnpm build'`,

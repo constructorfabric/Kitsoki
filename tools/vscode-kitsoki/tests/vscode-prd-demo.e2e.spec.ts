@@ -174,7 +174,10 @@ test('vscode prd demo — brief/PRD in the editor, refine shows a verdict-gated 
     const submitRefine = async (feedback: string) => {
       const form = chat.locator('form[data-intent="core__prd__refine"]').first();
       await expect(form).toBeVisible({ timeout: 20_000 });
-      const input = form.locator('input').first();
+      // The param composer is now a wrapping, auto-growing <textarea> (so a long
+      // refine instruction stays fully visible instead of scrolling its start out
+      // of view) — target the textarea, not the old single-line <input>.
+      const input = form.locator('textarea').first();
       await input.click();
       await input.pressSequentially(feedback, { delay: RECORD ? 38 : 0 });
       await dwell(900);

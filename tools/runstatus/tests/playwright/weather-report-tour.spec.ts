@@ -78,7 +78,8 @@ const dwell = (page: Page, ms: number) => dwellHelper(page, ms);
 async function submitParam(page: Page, intent: string, value: string): Promise<void> {
   const form = page.locator(`form[data-intent="${intent}"]`);
   await expect(form).toBeVisible({ timeout: 8000 });
-  await form.locator("input").fill(value);
+  // The param composer is a wrapping <textarea> now (not a single-line input).
+  await form.locator("textarea").fill(value);
   await dwell(page, 700);
   await form.locator('button[type="submit"]').click();
 }

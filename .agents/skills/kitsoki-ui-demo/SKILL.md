@@ -187,6 +187,18 @@ conversation. `kitsoki-ui-qa` now **fails** a demo that breaks any of these
     wording, the recording almost certainly ran against a **stale embed/binary** —
     `make build` and re-record before debugging anything else. (See the
     `web-embed-staging` memory.)
+  - **VS Code demos have a SECOND SPA staging — `make build` is NOT enough.** The
+    extension's webview loads `tools/vscode-kitsoki/media/spa/index.html`, a
+    SEPARATE copy from the binary's go:embed. `make build` does not touch it; it is
+    staged only by the extension build (`node esbuild.mjs` `stageSpa`, i.e.
+    `pnpm -C tools/vscode-kitsoki build`). So an SPA fix can land in `dist`/the
+    binary yet the recording still serves the **stale media/spa** (a composer fixed
+    from `<input>` to `<textarea>` still rendered the old input). Tell by the Vue
+    scope hash: `grep -o 'data-v-[0-9a-f]*' …/dist/index.html` vs
+    `…/media/spa/index.html` — different hashes ⇒ stale. The full VS Code rebuild is
+    `make build` **then** `pnpm -C tools/vscode-kitsoki build`. (`packageExtension`
+    in `tests/_helpers/launch.ts` now re-stages dist → media/spa at package time so
+    the recording can't pick up a stale copy.)
 
 ## Video recording — the correct pattern
 

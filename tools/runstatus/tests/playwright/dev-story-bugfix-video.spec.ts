@@ -195,13 +195,14 @@ async function driveParamForm(
   diag(`driveParamForm ${intent}="${value}" → ${expectStateName}`);
   let form = page.locator(`form.input-bar__choice-param-form[data-intent="${intent}"]`);
   if (placeholderMatch) {
-    form = form.filter({ has: page.locator(`input[placeholder*="${placeholderMatch}" i]`) });
+    // The param composer is a wrapping <textarea> now (not a single-line input).
+    form = form.filter({ has: page.locator(`textarea[placeholder*="${placeholderMatch}" i]`) });
   }
   const f = form.first();
   await expect(f).toBeVisible({ timeout: 15000 });
-  const input = f.locator("input").first();
+  const input = f.locator("textarea").first();
   await input.evaluate((el, v) => {
-    const t = el as HTMLInputElement;
+    const t = el as HTMLTextAreaElement;
     t.value = v;
     t.dispatchEvent(new Event("input", { bubbles: true }));
   }, value);
