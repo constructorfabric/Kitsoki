@@ -1,32 +1,48 @@
 states:
   configuring:
     description: "Configure the loop"
-    relevant_world: [goal_text, gate_mode, gate_command, iteration_budget, cost_budget_usd]
+    relevant_world: [goal_text, goal_artifact, gate_mode, gate_command, iteration_budget, cost_budget_usd]
     view:
       extends: "base"
       blocks:
         body:
-          - prose: "A Cherny loop iterates an agent toward a goal until a gate proves it met — or a budget stops it. Each iteration is shown and recorded."
-          - prose: "Set the goal, the gate that proves it, and the budgets. `launch` runs the first iteration."
+          - banner:
+              text:     "CONFIGURE"
+              subtitle: "Goal · gate · budget — then verify the gate fails first"
+              color:    "#6366F1"
+          - prose: "A Cherny loop iterates an agent toward a goal until a gate proves it met — or a budget stops it. `launch` first proves the gate is **RED** (it fails today), so you never burn budget on a gate that can't tell you anything."
+          - heading: "Goal"
+          - prose: '{{ world.goal_text|default:"_(not yet chosen — `configure goal=…`)_" }}'
           - kv:
               pairs:
-                Goal:          '{{ world.goal_text|default:"(not yet chosen)" }}'
-                Artifact:      '{{ world.goal_artifact|default:"(none)" }}'
-                Gate mode:     "{{ world.gate_mode }}"
-                Gate command:  '{{ world.gate_command|default:"(none — required for script mode)" }}'
+                Artifact under test: '{{ world.goal_artifact|default:"(none — the maker works from the repo)" }}'
+          - heading: "The gate"
+          # The gate is the whole point — render the actual command/checker the
+          # operator can read and inspect, not a one-line kv value.
+          - prose: '**script** — the gate is this command; it passes iff it exits 0:'
+            when:  "world.gate_mode == 'script'"
+          - code: '{{ world.gate_command|default:"# (none yet — configure gate_command=…)" }}'
+            when:  "world.gate_mode == 'script'"
+          - prose: '**oracle** — an adversarial reviewer judges the artifact against the goal (for goals no test can encode).'
+            when:  "world.gate_mode == 'oracle'"
+          - heading: "Budgets"
+          - kv:
+              pairs:
                 Iteration cap: "{{ world.iteration_budget }}"
                 Cost cap:      '{% if world.cost_budget_usd > 0 %}${{ world.cost_budget_usd }}{% else %}(disabled){% endif %}'
         choices:
           - heading: "Actions"
           - list:
               items:
-                - label: "configure goal=… gate_command=… iteration_budget=… cost_budget=…"
+                - label: "configure goal=… artifact=… gate_command=… iteration_budget=… cost_budget=…"
                   hint:  "set any subset"
                 - label: "launch"
-                  hint:  "run the first iteration"
-                  when:  "world.goal_text != ''"
+                  hint:  "verify the gate is RED, then iterate"
+                  when:  "world.goal_text != '' && (world.gate_mode != 'script' || world.gate_command != '')"
                 - label: "✗ launch — set a goal first"
                   when:  "world.goal_text == ''"
+                - label: "✗ launch — script mode needs a gate_command"
+                  when:  "world.goal_text != '' && world.gate_mode == 'script' && world.gate_command == ''"
                 - label: "abort"
                   hint:  "abandon the loop"
                 - label: "look"
@@ -36,6 +52,7 @@ states:
           effects:
             - set:
                 goal_text:        "{{ slots.goal ?? world.goal_text }}"
+                goal_artifact:    "{{ slots.artifact ?? world.goal_artifact }}"
                 gate_mode:        "{{ slots.gate_mode ?? world.gate_mode }}"
                 gate_command:     "{{ slots.gate_command ?? world.gate_command }}"
                 iteration_budget: "{{ int(slots.iteration_budget ?? world.iteration_budget) }}"
@@ -45,7 +62,12 @@ states:
           target: .
           effects:
             - say: "Set a goal first: `configure goal=…`."
-        - target: iterating
+        - when: "world.gate_mode == 'script' && world.gate_command == ''"
+          target: .
+          effects:
+            - say: "Script mode needs a gate: `configure gate_command=…`."
+        # Don't go straight to iterating — prove the gate is RED first.
+        - target: baseline
       abort:
         - target: "@exit:abandoned"
           effects:

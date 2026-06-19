@@ -1,0 +1,125 @@
+states:
+  # baseline — prove the gate FAILS before spending a cent on the maker loop.
+  #
+  # Red-before-green discipline: a gate that already passes on the unchanged
+  # artifact can't tell you the loop achieved anything (the goal is already met,
+  # or — more often — the gate is too weak to encode the goal). So we run the
+  # configured checker ONCE here, on-camera, and branch:
+  #   gate FAILS (RED)  → the gate works and there's real work to do → `proceed`.
+  #   gate PASSES (green) → the gate proves nothing yet → `reconfigure` / `accept`.
+  #
+  # The maker (host.oracle.task) is NEVER called in this room — the baseline is
+  # the cheap check that gates the expensive loop.
+  baseline:
+    description: "Baseline — proving the gate fails first"
+    relevant_world: [gate_mode, gate_command, gate_ok, gate_exit_code, gate_stdout, gate_reason, goal_text, goal_artifact]
+    on_enter:
+      # Reset last turn's verdict, then run the checker on the UNCHANGED artifact.
+      - set: { gate_ok: "", gate_exit_code: 0, gate_stdout: "", gate_reason: "" }
+      - invoke: host.run
+        id: "gate-0"   # the baseline run, addressable distinctly from the loop gates
+        when: "world.gate_mode == 'script'"
+        with:
+          cmd: "{{ world.gate_command }}"
+          fail_on_error: false
+        bind:
+          gate_ok:        ok
+          gate_exit_code: exit_code
+          gate_stdout:    stdout
+      - invoke: host.oracle.decide
+        when: "world.gate_mode == 'oracle'"
+        with:
+          prompt: prompts/gate_review.md
+          schema: schemas/gate_verdict.json
+          agent: gate_reviewer
+          args:
+            goal:          "{{ world.goal_text }}"
+            goal_artifact: "{{ world.goal_artifact }}"
+        bind:
+          gate_ok:     submitted.pass
+          gate_reason: submitted.reason
+      - set: { baseline_checked: true }
+    view:
+      extends: "base"
+      blocks:
+        body:
+          # RED — the gate fails as it should. Safe to spend budget.
+          - banner:
+              text:     "GATE VERIFIED · RED"
+              subtitle: "The gate fails on the unchanged artifact — there is real work to do"
+              color:    "#F59E0B"
+            when: "world.gate_ok == false"
+          - prose: "✗ The gate **fails today** — exactly what we want before iterating. The loop now has a goal it can actually prove it reached."
+            when:  "world.gate_ok == false"
+          # GREEN — the gate passes before any change. It proves nothing.
+          - banner:
+              text:     "GATE UNPROVEN"
+              subtitle: "The gate already passes — it can't prove the loop achieved anything"
+              color:    "#EF4444"
+            when: "world.gate_ok == true"
+          - prose: "⚠ The gate **passes on the unchanged artifact**. Either the goal is already met, or the gate is too weak to encode it. Don't spend budget on a gate that can't fail — strengthen it (`reconfigure`), or `accept` that the goal is genuinely already met."
+            when:  "world.gate_ok == true"
+          - heading: "What ran"
+          - code: '{{ world.gate_command|default:"(oracle reviewer — no shell command)" }}'
+            when: "world.gate_mode == 'script'"
+          - kv:
+              pairs:
+                Gate:      "{{ world.gate_mode }}"
+                Exit code: "{{ world.gate_exit_code }}"
+            when: "world.gate_mode == 'script'"
+          - heading: "Gate output"
+          - code: '{{ world.gate_stdout|default:"(no output)" }}'
+            when: "world.gate_mode == 'script'"
+          - code: '{{ world.gate_reason|default:"(no rationale)" }}'
+            when: "world.gate_mode == 'oracle'"
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "proceed"
+                  hint:  "baseline is RED — run the first maker iteration"
+                  when:  "world.gate_ok == false"
+                - label: "accept"
+                  hint:  "the goal is genuinely already met"
+                  when:  "world.gate_ok == true"
+                - label: "reconfigure"
+                  hint:  "edit the goal, gate, or budgets"
+                - label: "abort"
+                  hint:  "abandon the loop"
+                - label: "look"
+    on:
+      proceed:
+        - when: "world.gate_ok == false"
+          target: iterating
+          # Hand the baseline failure to the first maker turn — the loop starts
+          # already pointed at the gap, not blind.
+          effects:
+            - set:
+                last_gate_failure: "{{ world.gate_stdout }}{{ world.gate_reason }}"
+        - default: true
+          target: .
+          guard_hint: "The gate passes — there is nothing to iterate toward."
+          effects:
+            - say: "The gate already passes. `reconfigure` to strengthen it, or `accept`."
+      accept:
+        - when: "world.gate_ok == true"
+          target: "@exit:achieved"
+          effects:
+            - set: { goal_achieved: true, terminal_reason: "already_met" }
+        - default: true
+          target: .
+          effects:
+            - say: "The gate is RED — `proceed` to iterate, don't accept."
+      reconfigure:
+        - target: configuring
+      abort:
+        - target: "@exit:abandoned"
+          effects:
+            - set: { terminal_reason: "aborted" }
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "Use `proceed`, `reconfigure`, `accept`, or `abort`."

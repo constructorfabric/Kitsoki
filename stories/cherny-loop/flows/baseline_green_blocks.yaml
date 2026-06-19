@@ -1,0 +1,31 @@
+# Baseline gate is GREEN → the gate proves nothing, so the loop refuses to spend.
+# `launch` runs the gate once and it PASSES on the unchanged artifact (host.run
+# exit 0). The maker (host.oracle.task) is never called — there is no host
+# handler for it, proving the loop spends nothing. The operator `accept`s that
+# the goal is already met → @exit:achieved (terminal_reason already_met).
+test_kind: flow
+app: ../app.yaml
+initial_state: configuring
+
+host_handlers:
+  host.run: { data: { ok: true, exit_code: 0, stdout: "ok  kitsoki  0.4s" } }
+
+turns:
+  - intent:
+      name: configure
+      slots:
+        goal:         "Make the unit tests pass"
+        gate_command: "go test ./..."
+        gate_mode:    "script"
+    expect_state: configuring
+  - intent: { name: launch, slots: {} }
+    expect_state: baseline
+    expect_world:
+      baseline_checked: true
+  - intent: { name: accept, slots: {} }
+    expect_state: __exit__achieved
+    expect_world:
+      goal_achieved:   true
+      terminal_reason: "already_met"
+
+expect_terminal: true

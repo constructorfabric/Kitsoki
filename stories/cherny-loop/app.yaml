@@ -7,6 +7,13 @@
 # persisted as a numbered artifact so the run is trackable, restartable, and
 # shareable.
 #
+# Red-before-green: `launch` does NOT run the maker. It first enters `baseline`,
+# which runs the gate ONCE on the unchanged artifact to prove it can fail. Only a
+# RED baseline (gate fails) lets the operator `proceed` into the maker loop — a
+# GREEN baseline means the gate proves nothing (goal already met, or gate too
+# weak), so no budget is spent. This is why the gate command is rendered verbatim
+# (a `code` block) in `configuring` and `baseline`: the script is the contract.
+#
 # Two interchangeable gate modes (world.gate_mode):
 #   script  — host.run a command; gate passes iff exit_code == 0 (the strongest
 #             maker/checker split: the checker is code, it cannot be talked into
@@ -71,6 +78,7 @@ world:
   # Loop state.
   iteration:         { type: int,    default: 0 }
   goal_achieved:     { type: bool,   default: false }
+  baseline_checked:  { type: bool,   default: false }   # the gate has been proven RED before any spend
   last_gate_failure: { type: string, default: "" }    # fed to the next maker turn
   maker_summary:     { type: string, default: "" }    # the maker's one-line report
   terminal_reason:   { type: string, default: "" }    # achieved | iteration_budget | cost_budget | aborted
@@ -99,14 +107,27 @@ intents:
     priority: 75
     slots:
       goal:             { type: string, required: false }
+      artifact:         { type: string, required: false }
       gate_mode:        { type: string, required: false }
       gate_command:     { type: string, required: false }
       iteration_budget: { type: int,    required: false }
       cost_budget:      { type: number, required: false }
   launch:
-    description: "Launch the loop — run the first maker iteration."
-    examples: ["launch", "go", "run the loop"]
+    description: "Verify the gate fails first, then start the loop."
+    examples: ["launch", "go", "run the loop", "verify the gate"]
     priority: 85
+  proceed:
+    description: "Baseline is RED — start the maker loop."
+    examples: ["proceed", "iterate", "start the loop"]
+    priority: 80
+  reconfigure:
+    description: "Step back to configuration."
+    examples: ["reconfigure", "back", "edit the gate"]
+    priority: 60
+  accept:
+    description: "Accept that the goal is already met."
+    examples: ["accept", "already done", "mark met"]
+    priority: 60
   evaluate:
     description: "Run the gate on the current iteration."
     examples: ["evaluate", "check", "run the gate", "test it"]
@@ -132,6 +153,14 @@ intents:
     priority: 1
     slots:
       feedback: { type: string, required: false }
+  baseline_red:
+    description: "(internal) baseline gate failed — RED proven, safe to spend."
+    examples: ["baseline_red"]
+    priority: 1
+  baseline_green:
+    description: "(internal) baseline gate passed — the gate proves nothing yet."
+    examples: ["baseline_green"]
+    priority: 1
   abort:
     description: "Abandon the loop."
     examples: ["abort", "stop", "give up"]

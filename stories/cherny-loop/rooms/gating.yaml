@@ -13,6 +13,7 @@ states:
     on_enter:
       # Script gate — deterministic, free, incorruptible. Passes iff exit 0.
       - invoke: host.run
+        id: "gate-{{ world.iteration }}"   # addressable per iteration (by_call / cassette)
         when: "world.gate_mode == 'script'"
         with:
           cmd: "{{ world.gate_command }}"

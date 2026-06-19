@@ -101,13 +101,14 @@ async function clickIntent(page: Page, intent: string): Promise<void> {
 async function driveForStep(page: Page, stepId: string): Promise<void> {
   switch (stepId) {
     case "cl-configure":
-      diag("drive configure (goal + gate + budget) via hook");
+      diag("drive configure (goal + artifact + gate + budget) via hook");
       await page.evaluate(async () => {
         await (window as unknown as {
           __kitsokiSubmitIntent?: (n: string, s?: Record<string, unknown>) => Promise<void>;
         }).__kitsokiSubmitIntent?.("configure", {
-          goal: "Make the unit tests pass",
-          gate_command: "go test ./...",
+          goal: "Get `go test ./internal/ratelimit` green",
+          artifact: "internal/ratelimit/limiter.go",
+          gate_command: "go test ./internal/ratelimit/",
           gate_mode: "script",
           iteration_budget: 4,
         });
@@ -116,8 +117,13 @@ async function driveForStep(page: Page, stepId: string): Promise<void> {
       await dwell(page, 600);
       break;
     case "cl-launch":
-      diag("drive launch → iterating (iteration 1)");
+      diag("drive launch → baseline (gate proven RED, no maker spend)");
       await clickIntent(page, "launch");
+      await expectState(page, "baseline");
+      break;
+    case "cl-baseline":
+      diag("drive proceed → iterating (iteration 1)");
+      await clickIntent(page, "proceed");
       await expectState(page, "iterating");
       await expectIter(page, 1);
       break;

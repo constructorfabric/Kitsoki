@@ -9,15 +9,23 @@ shareable.
 ## The loop
 
 ```
-configuring → iterating ⇄ gating
-                  │           ├─ goal met     → @exit:achieved
-                  │           ├─ budget hit   → @exit:exhausted
-   abort ─────────┴───────────┴─ operator     → @exit:abandoned
+configuring → baseline ─ RED ──→ iterating ⇄ gating
+     ▲            │                  │           ├─ goal met   → @exit:achieved
+     └─ reconfig ─┤ GREEN            │           ├─ budget hit → @exit:exhausted
+                  └─ accept ─────────┴───────────┴─ operator   → @exit:abandoned
+                     (already met → @exit:achieved)
 ```
 
 `configuring` is the root — the operator lands where they act, with no `idle`/
 `begin` pass-through turn.
 
+- **baseline** — before any maker spend, `launch` runs the gate **once on the
+  unchanged artifact** to prove it can fail. A **RED** baseline (gate fails) means
+  there is real work to do → `proceed`. A **GREEN** baseline (gate passes) means
+  the gate proves nothing — the goal is already met, or the gate is too weak →
+  `reconfigure` or `accept`. This is the red-before-green discipline: never spend
+  budget on a gate that can't fail. The RED proof becomes the first maker
+  feedback.
 - **iterating** — the **maker** (`host.oracle.task`) makes the smallest change
   toward the goal, fed the *previous gate's failure reason* as feedback (the
   ralph-style reset: anchors + one failure reason, not a growing transcript).
@@ -48,8 +56,9 @@ Evaluated every turn after a failed gate, in priority order:
 ## Configure
 
 ```
-configure goal="Make the unit tests pass" gate_command="go test ./..." iteration_budget=8 cost_budget=0.50
-launch
+configure goal="Make the unit tests pass" artifact="internal/parse/parse.go" gate_command="go test ./..." iteration_budget=8 cost_budget=0.50
+launch     # runs the gate once — proves it's RED before spending anything
+proceed    # baseline confirmed RED → run the first maker iteration
 ```
 
 Then `evaluate` each iteration until the loop exits.

@@ -20,8 +20,12 @@
  * `title` against the live popover so the two cannot drift.
  *
  * Targets are testids the home + InteractiveView ship: home-view, story-card,
- * new-session-btn, current-state, intent-btn-begin, intent-btn-launch,
+ * new-session-btn, current-state, intent-btn-launch, intent-btn-proceed,
  * intent-btn-evaluate.
+ *
+ * The loop now proves the gate is RED before any maker spend: launch enters the
+ * `baseline` room (runs the gate once on the unchanged artifact), and `proceed`
+ * starts the maker loop only once that baseline is confirmed failing.
  */
 
 import { type TourStep } from "./manifest.js";
@@ -84,31 +88,43 @@ export const CHERNY_LOOP_TOUR_STEPS: readonly TourStep[] = [
     target: "current-state",
     waitForTarget: "current-state",
     title: "Set goal, gate, and budget",
-    body: "A new run lands straight in configuration — no idle/begin step. We set a goal (make the unit tests pass), a script gate (a command that passes only on exit 0 — the checker is code, it can't be talked into passing), and a small iteration budget of 4.",
+    body: "A new run lands straight in configuration — no idle/begin step. Our goal: get a flaky token-bucket rate limiter's tests green. The artifact under test is `internal/ratelimit/limiter.go`, and the gate is a script shown verbatim — `go test ./internal/ratelimit/`. The checker is code you can read, and it passes only on exit 0, so it can't be talked into passing. Budget: 4 iterations.",
     placement: "bottom",
     kind: "explain",
     advance: "next",
-    dwellMs: 6000,
+    dwellMs: 6500,
   },
   {
     id: "cl-launch",
     route: "any",
     target: "intent-btn-launch",
     waitForTarget: "intent-btn-launch",
-    title: "Launch — iteration 1",
-    body: "Launch runs the first maker iteration: the agent makes a change toward the goal. The status bar tracks iteration 1 of 4 and the running cost.",
+    title: "Launch — but prove the gate fails first",
+    body: "Launch does NOT spend on the maker yet. It first runs the gate ONCE on the unchanged artifact — the red-before-green discipline. Why pay an agent to chase a gate that can't even fail? We prove it's RED first.",
     placement: "bottom",
     kind: "explain",
     advance: "next",
-    dwellMs: 5000,
+    dwellMs: 6000,
+  },
+  {
+    id: "cl-baseline",
+    route: "any",
+    target: "current-state",
+    waitForTarget: "current-state",
+    title: "RED confirmed — the gate fails today",
+    body: "The baseline ran the exact command and it failed (exit 1): `TestAllow_Burst` — a burst of 5 is rejected at request #4. The real go-test output is shown verbatim. The gate works and there's a concrete bug to fix, so it's safe to spend budget. That RED failure becomes the first feedback handed to the maker. Proceed.",
+    placement: "bottom",
+    kind: "explain",
+    advance: "next",
+    dwellMs: 6500,
   },
   {
     id: "cl-evaluate-1",
     route: "any",
     target: "intent-btn-evaluate",
     waitForTarget: "intent-btn-evaluate",
-    title: "Gate it — and feed the failure back",
-    body: "Evaluate runs the gate. It fails, so the loop captures the gate's reason and hands it to the next maker iteration as feedback — this is what makes the loop converge instead of blindly retrying. Watch the iteration counter advance to 2.",
+    title: "Iteration 1 → 2: a different, deeper failure",
+    body: "Iteration 1's maker sized the bucket to the burst, acting on the baseline burst failure. Evaluate gates it: the burst test passes now, but a NEW failure surfaces — `TestAllow_Refill`: tokens never refill. The loop captures that reason and hands it to iteration 2. It's converging on real, distinct bugs — not blindly retrying the same one.",
     placement: "bottom",
     kind: "explain",
     advance: "next",
@@ -119,8 +135,8 @@ export const CHERNY_LOOP_TOUR_STEPS: readonly TourStep[] = [
     route: "any",
     target: "intent-btn-evaluate",
     waitForTarget: "intent-btn-evaluate",
-    title: "Iteration 3",
-    body: "Each evaluate gates the current attempt and, on failure, runs the next iteration with the latest feedback. Iteration 3.",
+    title: "Iteration 2 → 3: from refill to a data race",
+    body: "Iteration 2 added time-based refill — so the refill test passes, but now `TestAllow_Concurrent` exposes a data race: 12 of 100 goroutines double-spend a token. Each evaluate gates the current fix and feeds the next failure forward. Iteration 3 will take a lock to close the race.",
     placement: "bottom",
     kind: "explain",
     advance: "next",
@@ -131,8 +147,8 @@ export const CHERNY_LOOP_TOUR_STEPS: readonly TourStep[] = [
     route: "any",
     target: "intent-btn-evaluate",
     waitForTarget: "intent-btn-evaluate",
-    title: "Iteration 4 — the last allowed",
-    body: "Iteration 4. The budget is 4, so this is the final attempt the loop will make before the ceiling stops it.",
+    title: "Iteration 3 → 4: the lock caused a deadlock",
+    body: "Iteration 3's mutex killed the race — but it held the lock across a sleep, so the concurrency test now times out (a deadlock). Iteration 4 moves the sleep outside the lock. The budget is 4, so this is the final attempt before the ceiling stops the loop.",
     placement: "bottom",
     kind: "explain",
     advance: "next",
@@ -145,8 +161,8 @@ export const CHERNY_LOOP_TOUR_STEPS: readonly TourStep[] = [
     // so the overlay survives the button vanishing.
     id: "cl-budget",
     route: "any",
-    title: "Budget hit — the loop stops itself",
-    body: "Iteration 4 fails the gate and the iteration ceiling is reached, so the loop terminates as exhausted rather than running forever. Goal-met OR budget-hit — always one or the other.",
+    title: "Budget hit — one assertion short",
+    body: "Iteration 4 got it down to a single off-by-one under contention — but that's iteration 4 of 4, so the ceiling stops the loop as exhausted rather than letting it run forever. This is exactly why budgets exist: real, visible progress, stopped one assertion short. Bump the budget (or keep going) to finish. Goal-met OR budget-hit — always one or the other.",
     placement: "center",
     kind: "explain",
     advance: "next",

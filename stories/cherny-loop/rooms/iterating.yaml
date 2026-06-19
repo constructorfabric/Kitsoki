@@ -9,6 +9,7 @@ states:
     on_enter:
       - increment: { iteration: 1 }
       - invoke: host.oracle.task
+        id: "maker-{{ world.iteration }}"   # addressable per iteration (by_call / cassette)
         with:
           agent: maker
           acceptance:
@@ -34,14 +35,22 @@ states:
       extends: "base"
       blocks:
         body:
+          - banner:
+              text:     "ITERATING"
+              subtitle: "Maker makes the smallest change — then `evaluate` gates it"
+              color:    "#8B5CF6"
           - kv:
               pairs:
                 Goal:      "{{ world.goal_text }}"
+                Artifact:  '{{ world.goal_artifact|default:"(repo)" }}'
                 Iteration: "{{ world.iteration }} of {{ world.iteration_budget }}"
-          - heading: "Maker"
-          - prose: '{{ world.maker_summary|default:"(pending — maker has not returned)" }}'
-          - heading: "Feedback carried in"
-          - prose: '{{ world.last_gate_failure|default:"(none — first iteration)" }}'
+          - heading: "Maker · this iteration"
+          - prose: '{{ world.maker_summary|default:"_(pending — maker has not returned)_" }}'
+          - heading: "Feedback the maker acted on"
+          # The gate's actual failure output, fed forward — this is what makes
+          # the loop converge instead of blindly retrying. Iteration 1 carries
+          # the baseline RED proof.
+          - code: '{{ world.last_gate_failure|default:"(none — first iteration off the baseline)" }}'
         choices:
           - heading: "Actions"
           - list:
