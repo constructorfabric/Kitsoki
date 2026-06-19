@@ -3,7 +3,7 @@
 **Status:** v3. Slices **#1 (profile substrate)**, **#3 (prd → design chain)**,
 and **#4 (gears-rust instance)** have **shipped** and are migrated to narrative
 docs (the [dev-story README](../../stories/dev-story/README.md) and the
-[gears-rust README](../../stories/gears-rust/README.md)); their proposal files
+[gears-rust README](https://github.com/constructorfabric/gears-rust/blob/docs/kitsoki-integration/stories/gears-rust/README.md)); their proposal files
 are deleted. Only **#2 (gh ticket adapter)** remains **deferred** — the PRD →
 Design walk does not pick up a ticket, so it was not needed; GitHub integration
 comes later. This epic stays open to track #2.

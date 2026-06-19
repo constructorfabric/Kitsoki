@@ -8,7 +8,7 @@ proven (`notes/project-profile.schema.json`, validated in §Verification).
 ## Why
 
 Today a project adopts kitsoki by **hand-authoring an instance**: someone copies
-`stories/kitsoki-dev/app.yaml` (or `stories/gears-rust/app.yaml`), rebinds
+`stories/kitsoki-dev/app.yaml` (or the gears team's external instance, which imports `@kitsoki/dev-story` from the gears repo), rebinds
 dev-story's five `host_interfaces:` to concrete providers, fills the
 External-target profile world keys, and figures out — from nothing — which dev
 server to run, which tests exist, what conventions to use, and what's safe to

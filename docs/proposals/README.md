@@ -130,7 +130,7 @@ thought.
   **Slices #1 (profile substrate), #3 (PRD→Design chain), and #4 (gears-rust
   instance) shipped** — migrated to the
   [dev-story README](../../stories/dev-story/README.md#doc-profile--targeting-an-external-project)
-  and the [gears-rust README](../../stories/gears-rust/README.md); their child
+  and the [gears-rust README](https://github.com/constructorfabric/gears-rust/blob/docs/kitsoki-integration/stories/gears-rust/README.md); their child
   proposals are deleted. (#3 also renamed dev-story's "proposal" pipeline to
   the **design** pipeline; per-gear placement shipped as a plain
   `publish_durable_path` + `doc_filename` override, not the `doc_placement`
