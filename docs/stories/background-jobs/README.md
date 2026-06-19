@@ -12,7 +12,7 @@ click-to-teleport — see the
 ## Quick start
 
 The runnable example lives at
-[`testdata/apps/background_jobs/app.yaml`](../../testdata/apps/background_jobs/app.yaml).
+[`testdata/apps/background_jobs/app.yaml`](../../../testdata/apps/background_jobs/app.yaml).
 Key excerpt:
 
 ```yaml
@@ -97,5 +97,5 @@ sequenceDiagram
 ## See also
 
 - [`embedded/app-schema.md` §Background jobs](../../embedded/app-schema.md#background-jobs) — inline summary and field table.
-- [`internal/jobs/doc.go`](../../internal/jobs/doc.go) — package-level architecture overview.
-- [`testdata/apps/background_jobs/flows/happy_path.yaml`](../../testdata/apps/background_jobs/flows/happy_path.yaml) — the canonical flow fixture.
+- [`internal/jobs/doc.go`](../../../internal/jobs/doc.go) — package-level architecture overview.
+- [`testdata/apps/background_jobs/flows/happy_path.yaml`](../../../testdata/apps/background_jobs/flows/happy_path.yaml) — the canonical flow fixture.

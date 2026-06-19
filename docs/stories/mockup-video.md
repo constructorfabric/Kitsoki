@@ -113,7 +113,7 @@ kitsoki test flows stories/mockup-video/app.yaml
 ## See also
 
 - [`stories/mockup-video/`](../../stories/mockup-video/) — the story.
-- [`kitsoki-ui-demo`](../skills/kitsoki-ui-demo/SKILL.md) — the tour recorder this story drives.
-- [`slidey-authoring`](../skills/slidey-authoring/SKILL.md) — the deck renderer.
+- [`kitsoki-ui-demo`](../../.agents/skills/kitsoki-ui-demo/SKILL.md) — the tour recorder this story drives.
+- `slidey` — the external deck renderer used by the visual-output pipeline.
 - [`ui-fix`](ui-fix.md), `bugfix` — the produce/review/refine cousins.
 - `docs/proposals/mockup-video-studio.md` — the epic (slices 1–3).

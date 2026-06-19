@@ -362,7 +362,7 @@ and records to `.artifacts/tour-video/`. A companion guard,
 `tests/playwright/tour-onboarding.spec.ts`, simulates a real first-time user and
 asserts the tour auto-starts, is dismissible, never blocks the UI, and does not
 auto-start on a deep-linked session. See the
-[`kitsoki-ui-demo`](../skills/kitsoki-ui-demo/SKILL.md) recipe for rendering
+[`kitsoki-ui-demo`](../../.agents/skills/kitsoki-ui-demo/SKILL.md) recipe for rendering
 shareable MP4/GIF/contact-sheet artifacts.
 
 ---
@@ -458,7 +458,7 @@ then clears the param (a refresh doesn't re-teleport). The link is shareable.
 `kitsoki web` against the demo story `stories/inbox-demo/` (manifest
 `src/tour/web-inbox-manifest.ts`) and walks the full badge → toast → teleport
 path; run it to see the surface end to end (the
-[`kitsoki-ui-demo`](../skills/kitsoki-ui-demo/SKILL.md) recipe renders the
+[`kitsoki-ui-demo`](../../.agents/skills/kitsoki-ui-demo/SKILL.md) recipe renders the
 shareable artifacts).
 
 ---
@@ -715,7 +715,7 @@ A third spec, `tools/runstatus/tests/playwright/tour-video.spec.ts`, drives the
 walking the shared step manifest and asserting each step's title against the live
 popover. All three specs share the live-server harness
 (`tests/playwright/_helpers/server.ts`) and follow the reusable
-[`kitsoki-ui-demo`](../skills/kitsoki-ui-demo/SKILL.md) recipe for rendering
+[`kitsoki-ui-demo`](../../.agents/skills/kitsoki-ui-demo/SKILL.md) recipe for rendering
 shareable MP4/GIF/contact-sheet artifacts.
 
 **Binary-native rendering.** [`kitsoki tour`](tour.md) records the same kind of

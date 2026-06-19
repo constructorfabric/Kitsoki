@@ -34,6 +34,7 @@ these surfaces.
 
 - **[`hosts.md`](hosts.md)** — every built-in `host.*` handler with its
   input/output contract. The effect surface authors invoke from YAML.
+  Use [`hosts/`](hosts/README.md) as the shorter family index.
 - **[`oracle-plugin.md`](oracle-plugin.md)** — the Oracle plugin
   contract: declaring external oracles under `oracle_plugins:`, the
   `invoke: host.oracle.<verb>` + `oracle:` effect shape, the

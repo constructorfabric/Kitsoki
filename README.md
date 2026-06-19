@@ -23,6 +23,8 @@ auditable.
 For the full thesis — control inversion, narrow LLM domains,
 progressive determinism, the spectrum from CLI wizards to free agent
 workflows — see [`docs/architecture/concept.md`](docs/architecture/concept.md).
+For a reader-specific path through the docs, start at
+[`docs/start-here.md`](docs/start-here.md).
 
 **Free-text in, deterministic transitions out.**
 
@@ -148,36 +150,22 @@ schema. The dogfood multi-glob covers both kitsoki-self bugs
 (`issues/bugs/*.md`) and per-story bugs
 (`stories/*/issues/bugs/*.md`) in one pipeline.
 
-## Documentation
+## Where to go next
 
 **Site:** [bsacrobatix.github.io/Kitsoki](https://bsacrobatix.github.io/Kitsoki/) —
 promo landing + help docs with recorded feature demos, generated from the
 [feature catalog](features/CLAUDE.md) (also served offline at `/help/` by
 `kitsoki web` after `make site-embed`; pipeline: [`docs/site/README.md`](docs/site/README.md)).
 
-| Doc | What |
+| You want to… | Start here |
 |---|---|
-| **[`docs/architecture/concept.md`](docs/architecture/concept.md)** | The thesis: control inversion, narrow LLM domains, progressive determinism, the spectrum of stories. **Start here.** |
-| **[`docs/architecture/overview.md`](docs/architecture/overview.md)** | Layers, packages, data flow, persistence model, conversation surfaces. |
-| **[`docs/stories/state-machine.md`](docs/stories/state-machine.md)** | Rooms, phases, states, intents, slots, world, guards, the turn loop. The directed cyclic graph in detail. |
-| **[`docs/stories/authoring.md`](docs/stories/authoring.md)** | How to write an `app.yaml`. Patterns, scaling-up, pitfalls. |
-| **[`docs/stories/choice-widget.md`](docs/stories/choice-widget.md)** | Author cookbook for `choice:` view elements (single / multi / form picker). |
-| **[`docs/stories/story-style.md`](docs/stories/story-style.md)** | Story style guide — typed view elements, narration voice, choice-widget conventions. |
-| **[`CONTRIBUTING.md`](CONTRIBUTING.md)** | Start here to contribute: `make test`, the pre-PR gate (`make pr` / `make pr-ci`), CI. |
-| **[`docs/architecture/developer-guide.md`](docs/architecture/developer-guide.md)** | For contributors: build, test (incl. CI + cross-platform gotchas), debug, add features. |
-| **[`docs/tracing/testing.md`](docs/tracing/testing.md)** | Mode 1 (intent pass-rate) and Mode 2 (deterministic flow) tests. |
-| **[`docs/architecture/hosts.md`](docs/architecture/hosts.md)** | Every built-in `host.*` handler with input/output contracts. |
-| **[`docs/architecture/oracle-plugin.md`](docs/architecture/oracle-plugin.md)** | Oracle plugin contract: `oracle_plugins:`, `host.oracle.<verb>` effects, subprocess / MCP-over-HTTP transports, schema validation. |
-| **[`docs/architecture/oracle-cli.md`](docs/architecture/oracle-cli.md)** | The five-verb `host.oracle.*` surface. |
-| **[`docs/tracing/trace-format.md`](docs/tracing/trace-format.md)** | The JSONL trace schema — event vocabulary, `EventSink` contract, `call_id` derivation. The trace is the session's authoritative state. |
-| **[`docs/tracing/cassettes.md`](docs/tracing/cassettes.md)** | Host cassette file-format reference: episode matching, `!include`, record mode, CI safety. |
-| **[`docs/architecture/transports.md`](docs/architecture/transports.md)** | TUI / Jira / Bitbucket transports; sessions keyed by external thread. |
-| **[`docs/stories/background-jobs/`](docs/stories/background-jobs/README.md)** | Long-running handlers, notifications, clarifications. |
-| **[`docs/embedded/llm-guide.md`](docs/embedded/llm-guide.md)** | Operator manual aimed at an LLM driving kitsoki. Also `kitsoki docs llm-guide`. |
-| **[`docs/embedded/app-schema.md`](docs/embedded/app-schema.md)** | Authoritative `app.yaml` schema reference. Also `kitsoki docs app-schema`. |
-| **[`docs/embedded/apply-proposal.md`](docs/embedded/apply-proposal.md)** | LLM guide for implementing a prose proposal against `app.yaml`. |
-| **[`docs/embedded/render-format.md`](docs/embedded/render-format.md)** | Shape of the Markdown produced by `kitsoki render`. |
-| **[`docs/architecture/prior-art.md`](docs/architecture/prior-art.md)** | Comparative grounding: what kitsoki borrows from interactive fiction, statecharts, dialogue managers, and LLM orchestration. |
+| Pick the right docs path | [`docs/start-here.md`](docs/start-here.md) |
+| Understand the architecture | [`docs/architecture/concept.md`](docs/architecture/concept.md), then [`docs/architecture/overview.md`](docs/architecture/overview.md) |
+| Write a story | [`docs/stories/architecture.md`](docs/stories/architecture.md), then [`docs/recipes/`](docs/recipes/README.md) |
+| Look up story fields | `kitsoki docs app-schema` or [`docs/embedded/app-schema.md`](docs/embedded/app-schema.md) |
+| Debug or test a story | [`docs/tracing/README.md`](docs/tracing/README.md) and [`docs/tracing/testing.md`](docs/tracing/testing.md) |
+| Look up host handlers | [`docs/architecture/hosts/`](docs/architecture/hosts/README.md) and [`docs/architecture/hosts.md`](docs/architecture/hosts.md) |
+| Contribute code | [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`docs/architecture/developer-guide.md`](docs/architecture/developer-guide.md) |
 
 ## Project layout
 
@@ -216,47 +204,14 @@ generated artifact for review in `.artifacts/`, so neither clutters the
 tracked tree. See the
 [developer guide](docs/architecture/developer-guide.md#7-coding-conventions).
 
-## About the name
+## Name and mark
 
 **Kitsoki** (*kit-soh-kee*) is a Hopi word for a contemporary
-settlement — a collection of houses, ceremonial chambers, and public
-plazas arranged into one living whole. The metaphor fits a
-conversational workflow engine that hosts many surfaces (TUI, daemon, Jira,
-Bitbucket) as connected rooms under one architecture.
-
-The **Mesa Sun** mark — a desert sun rising over a terraced cliff-dwelling —
-carries the same metaphor in geometry; see
-[`docs/branding/logo.md`](docs/branding/logo.md) for the mark, palette, and
-usage (it appears in the README header, the web UI favicon, and the TUI
-startup banner).
-
-Greek mythology is exhausted as a source of software names. Every
-other tool is *Hermes*, *Hydra*, *Apollo*, *Athena*, *Pythia*, or some
-flavor of *Oracle*. The Hopi word is a small reminder that other
-civilizations were doing serious intellectual work too — and that the
-Western canon is not the only well to draw from.
-
-The Chacoan ancestors of today's Pueblo peoples were practicing
-astronomy at a level modern archaeologists still find striking:
-
-- Great houses at Chaco Canyon are oriented to the cardinal directions
-  and to the 18.6-year lunar standstill cycle — an astronomical
-  pattern subtle enough that detecting it requires sustained
-  observation across more than a human generation.
-- The Sun Dagger on Fajada Butte uses three rock slabs to cast
-  light-and-shadow markers onto a spiral petroglyph at the solstices
-  and equinoxes.
-- The Great North Road runs almost exactly due north from Chaco
-  for about sixty kilometers across broken terrain — a deliberate
-  engineering project that required sustained surveying.
-
-This is pre-Columbian scientific work, encoded into the built
-landscape. The name is a small acknowledgment.
-
-Sources for the term and the architectural vocabulary it sits in:
-
-- Whiteley, Peter. *[Chacoan Kinship](https://www.amnh.org/content/download/67776/1174292/file/chacoan-kinship.pdf)*. American Museum of Natural History.
-- Kuwanwisiwma, Leigh J., T. J. Ferguson, and Chip Colwell, eds. (2018). *[Footprints of Hopi History: Hopihiniwtiput Kukveni'at](https://uapress.arizona.edu/book/footprints-of-hopi-history)*. University of Arizona Press.
+settlement. The metaphor fits a conversational workflow engine that hosts many
+surfaces as connected rooms under one architecture. The **Mesa Sun** mark carries
+the same architecture-and-light theme in geometry. See
+[`docs/branding/logo.md`](docs/branding/logo.md) for the full naming note,
+sources, logo, palette, and usage.
 
 ## Status
 
@@ -289,4 +244,4 @@ Recent frontier work:
 
 ## License
 
-TBD.
+See [`LICENSE`](LICENSE).

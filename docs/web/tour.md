@@ -109,4 +109,4 @@ declarative **`drive:`** action list (`type-and-send`, `click-intent`,
 of a hand-written `.spec.ts`. The manifest lives in the feature catalog
 (`features/<id>.yaml`); the authoring workflow, the manifest schema, and the
 quality bar for a shareable artifact are owned by the
-[`kitsoki-ui-demo`](../skills/kitsoki-ui-demo/SKILL.md) skill.
+[`kitsoki-ui-demo`](../../.agents/skills/kitsoki-ui-demo/SKILL.md) skill.

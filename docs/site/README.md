@@ -73,5 +73,5 @@ Targets: `make site` (build, base `/Kitsoki/`), `make site-dev` (HMR),
 `make feature-qa FEATURE=<id>` records the demo then judges it against the
 catalog-generated scenarios + feature spec
 (`.artifacts/features/qa/<id>.{scenarios.yaml,feature.md}`) via the
-[kitsoki-ui-qa](../skills/kitsoki-ui-qa/SKILL.md) pipeline. `make demo-tour-qa`
+[kitsoki-ui-qa](../../.agents/skills/kitsoki-ui-qa/SKILL.md) pipeline. `make demo-tour-qa`
 is the onboarding-tour instance of the same flow.

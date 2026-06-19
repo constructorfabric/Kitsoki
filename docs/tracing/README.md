@@ -58,8 +58,8 @@ Two views:
 The digest is the fastest way to answer *"what actually happened to my
 turn?"* — especially the class of bug where a turn **runs cleanly but
 does the wrong thing** (context never reached the prompt, free text
-mis-routed). For diagnosing those, see
-[`../skills/kitsoki-debugging/SKILL.md`](../skills/kitsoki-debugging/SKILL.md).
+mis-routed). For diagnosing those, see the
+[`kitsoki-debugging` skill](../../.agents/skills/kitsoki-debugging/SKILL.md).
 
 ```sh
 kitsoki trace --turns --app kitsoki-dev     # the per-turn story of the latest run

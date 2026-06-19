@@ -68,7 +68,8 @@ way, see [`../architecture/concept.md`](../architecture/concept.md).)
 ## See also
 
 - **[`../recipes/`](../recipes/README.md)** — copy-paste starting
-  points for the patterns above.
+  points for the patterns above. Start here if you already know the
+  pattern you want.
 - **[`../tracing/testing.md`](../tracing/testing.md)** — how to lock
   your story's behaviour with deterministic flow tests.
 - **[`story-coverage-mining.md`](story-coverage-mining.md)** — drive a
@@ -77,4 +78,5 @@ way, see [`../architecture/concept.md`](../architecture/concept.md).)
 - **The `host.*` reference** lives under architecture:
   [`../architecture/hosts.md`](../architecture/hosts.md).
 - **The authoritative schema**: `kitsoki docs app-schema` (source at
-  [`../embedded/app-schema.md`](../embedded/app-schema.md)).
+  [`../embedded/app-schema.md`](../embedded/app-schema.md)). Use it as
+  field reference after the conceptual docs, not as the first read.

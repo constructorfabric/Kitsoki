@@ -253,6 +253,6 @@ fake clock.
 - [`README.md`](README.md) — entry point and glossary.
 - [`authoring.md`](authoring.md) — YAML reference.
 - [`troubleshooting.md`](troubleshooting.md) — common pitfalls.
-- [`testdata/apps/background_jobs/flows/happy_path.yaml`](../../testdata/apps/background_jobs/flows/happy_path.yaml) — canonical example.
-- [`internal/testrunner/flows.go`](../../internal/testrunner/flows.go) — full flow runner implementation.
-- [`internal/clock/clock.go`](../../internal/clock/clock.go) — `Clock`, `Fake`, `BlockUntil`.
+- [`testdata/apps/background_jobs/flows/happy_path.yaml`](../../../testdata/apps/background_jobs/flows/happy_path.yaml) — canonical example.
+- [`internal/testrunner/flows.go`](../../../internal/testrunner/flows.go) — full flow runner implementation.
+- [`internal/clock/clock.go`](../../../internal/clock/clock.go) — `Clock`, `Fake`, `BlockUntil`.

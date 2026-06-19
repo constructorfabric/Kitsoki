@@ -1,5 +1,35 @@
 # Kitsoki logo — the Mesa Sun
 
+## Name
+
+**Kitsoki** (*kit-soh-kee*) is a Hopi word for a contemporary settlement — a
+collection of houses, ceremonial chambers, and public plazas arranged into one
+living whole. The metaphor fits a conversational workflow engine that hosts many
+surfaces (TUI, daemon, Jira, Bitbucket) as connected rooms under one
+architecture.
+
+The Chacoan ancestors of today's Pueblo peoples practiced astronomy at a level
+modern archaeologists still find striking:
+
+- Great houses at Chaco Canyon are oriented to the cardinal directions and to
+  the 18.6-year lunar standstill cycle.
+- The Sun Dagger on Fajada Butte uses three rock slabs to cast light-and-shadow
+  markers onto a spiral petroglyph at the solstices and equinoxes.
+- The Great North Road runs almost exactly due north from Chaco for about sixty
+  kilometers across broken terrain.
+
+The name is a small acknowledgment of serious pre-Columbian scientific and
+architectural work encoded into the built landscape.
+
+Sources for the term and the architectural vocabulary it sits in:
+
+- Whiteley, Peter. *[Chacoan Kinship](https://www.amnh.org/content/download/67776/1174292/file/chacoan-kinship.pdf)*. American Museum of Natural History.
+- Kuwanwisiwma, Leigh J., T. J. Ferguson, and Chip Colwell, eds. (2018).
+  *[Footprints of Hopi History: Hopihiniwtiput Kukveni'at](https://uapress.arizona.edu/book/footprints-of-hopi-history)*.
+  University of Arizona Press.
+
+## Mark
+
 The Kitsoki mark is the **Mesa Sun**: a desert sun rising over a stepped, terraced
 dwelling. It draws on the architecture of Hopi / Ancestral Puebloan cliff-dwelling
 settlements — flat-topped mesas, terraced pueblos, and a single doorway — rendered as

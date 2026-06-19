@@ -9,6 +9,7 @@ This document is the user-facing reference for every built-in. The
 authoritative source is `internal/host/`. To extend the registry with
 your own handler, see
 [`developer-guide.md` §5.2](developer-guide.md#52-adding-a-new-built-in-host-handler).
+For a shorter family index, see [`hosts/`](hosts/README.md).
 
 For the effect-level shape (`invoke:`, `with:`, `bind:`, `on_error:`,
 `background:`, `on_complete:`) see `kitsoki docs app-schema`.
@@ -877,8 +878,8 @@ Implementation: [`internal/host/artifacts_dir_transport.go`](../../internal/host
 
 Shells out to a `workspace-manager` CLI and parses the JSON output
 into a typed `Workspace` (id, root path, repos, issue, PRs). Fields
-are validated against
-[`internal/workspace/schema.json`](../../internal/workspace/schema.json).
+are validated by the provisional
+[`internal/workspace.Workspace`](../../internal/workspace/workspace.go) type.
 
 | Field | Type | Required | Notes |
 |---|---|---|---|

@@ -3,12 +3,14 @@
 Welcome. This is the navigation hub for the documentation tree.
 
 For the elevator pitch and quickstart, see the top-level
-[`../README.md`](../README.md). If you are new to the project, read
-[`architecture/concept.md`](architecture/concept.md) first — it is the
-thesis the rest of the docs build on.
+[`../README.md`](../README.md). If you are new to the project, start
+with [`start-here.md`](start-here.md); it routes evaluators, local users,
+story authors, contributors, debuggers, and UI contributors to the shortest
+useful path.
 
-The tree is organised into four reference sections plus a recipes
-area. Each section has its own `README.md` index.
+The tree is organised into four reference sections plus a recipes area. Each
+section has its own `README.md` index. The proposal tree is design history and
+work in progress, not the product manual.
 
 ---
 
@@ -21,6 +23,9 @@ determinism, the package map and turn loop, persistence, and the
 external-world boundaries (hosts, oracle plugins, transports, the
 routing stack). Also the contributor guide. *Audience: architects and
 people changing the kitsoki codebase.*
+
+Start with [`architecture/concept.md`](architecture/concept.md) for the thesis,
+then [`architecture/overview.md`](architecture/overview.md) for the system map.
 
 ### 📖 [`stories/`](stories/README.md) — the authoring model
 
@@ -51,6 +56,9 @@ intent, gate a destructive effect, branch on a host call, collect a
 form, write a flow test, run a background job. Each links back to the
 reference docs. *Audience: authors who know what they want to do and
 want the shortest correct path.*
+
+This is usually the best second stop for story authors after
+[`stories/architecture.md`](stories/architecture.md).
 
 ---
 

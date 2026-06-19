@@ -126,7 +126,7 @@ registry entry are always torn down on return.
 ## Observability
 
 Three greppable slog events land in the session trace (and the
-agent-action transcript, so [`kitsoki-debugging`](../skills/kitsoki-debugging/SKILL.md)
+agent-action transcript, so [`kitsoki-debugging`](../../.agents/skills/kitsoki-debugging/SKILL.md)
 can see them), each carrying `question_id`, `headers`, `duration_ms`, and
 `outcome`:
 

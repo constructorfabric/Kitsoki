@@ -282,10 +282,10 @@ stateDiagram-v2
     end note
 ```
 
-Full source: [`testdata/apps/background_jobs/app.yaml`](../../testdata/apps/background_jobs/app.yaml)
+Full source: [`testdata/apps/background_jobs/app.yaml`](../../../testdata/apps/background_jobs/app.yaml)
 
 The corresponding flow test is at
-[`testdata/apps/background_jobs/flows/happy_path.yaml`](../../testdata/apps/background_jobs/flows/happy_path.yaml).
+[`testdata/apps/background_jobs/flows/happy_path.yaml`](../../../testdata/apps/background_jobs/flows/happy_path.yaml).
 
 ## Chat-aware background turns
 

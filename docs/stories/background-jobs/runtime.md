@@ -173,6 +173,6 @@ Neither interface names the `jobs` package. No import of `jobs` from `host`.
 - [`README.md`](README.md) — entry point and lifecycle diagram.
 - [`authoring.md`](authoring.md) — YAML reference.
 - [`testing.md`](testing.md) — how to test with the fake clock and flow fixtures.
-- [`internal/jobs/doc.go`](../../internal/jobs/doc.go) — package-level overview.
-- [`internal/orchestrator/effects.go`](../../internal/orchestrator/effects.go) — `dispatchBackground`.
-- [`internal/orchestrator/oncomplete.go`](../../internal/orchestrator/oncomplete.go) — `handleJobTerminal`.
+- [`internal/jobs/doc.go`](../../../internal/jobs/doc.go) — package-level overview.
+- [`internal/orchestrator/effects.go`](../../../internal/orchestrator/effects.go) — `dispatchBackground`.
+- [`internal/orchestrator/oncomplete.go`](../../../internal/orchestrator/oncomplete.go) — `handleJobTerminal`.
