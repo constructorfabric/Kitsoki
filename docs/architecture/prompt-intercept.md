@@ -253,12 +253,52 @@ the ephemerality gap. We will **not** trade the bypass for persistence: emitting
 the model, defeating the whole point. Until verified, the in-moment report + the
 durable trace is the contract.
 
-## 6. See also
+## 6. Worked example — git-ops command hub
+
+The runnable, real-git example is the [`intercept`
+room](../../stories/git-ops/rooms/intercept.yaml) in
+[`stories/git-ops/`](../../stories/git-ops): a branch-agnostic hub that groups
+every common git command (`rebase`, `stage`, `commit`, `squash`,
+`merge_into_main`, `undo`, `pull`, worktree ops) in **one** room, each arc
+delegating to git-ops's existing command rooms (no duplicated git logic). It
+exists because the gate is **stateless** and binds to one room: a user types
+"rebase this onto main" without first navigating a hub. The room's `on_enter`
+refresh serves the interactive path; the one-shot gate skips it and relies on
+git-ops's world defaults (`integration_branch=main`, `working_dir=.`) plus each
+command's own `git rev-parse` self-derivation.
+
+The flagship [`stories/dev-story/`](../../stories/dev-story) surfaces the same
+room by importing git-ops (`imports.gitops`, entry `intercept`), so the gate can
+bind through either story — git-ops directly (`room: intercept`) or dev-story
+(`room: gitops.intercept`, the folded path):
+
+```yaml
+intercept:
+  enabled: true
+  app: stories/dev-story/app.yaml   # or stories/git-ops/app.yaml
+  room: gitops.intercept            # or `intercept` for git-ops directly
+  confidence_bar: 0.90
+  escape_prefix: "//"
+```
+
+Then "rebase this onto main" runs the real `git rebase` in one shot, no LLM. The
+single-git-command intents (`rebase`, `pull`, `undo`) complete in the one-shot;
+the multi-turn ones (`stage`, `commit`, `squash`, `merge_into_main`) route into
+git-ops's real flow — and `commit`/`squash` reach `host.oracle.decide` to author
+the message, so **those are not a pure no-LLM bypass** (the oracle still runs);
+the gate's no-LLM promise holds for the single-command subset. De-risked no-LLM by
+[`flows/intercept_hub.yaml`](../../stories/git-ops/flows/intercept_hub.yaml)
+(mocked `host.run`) and
+[`TestClassify_GitOpsInterceptRoom`](../../internal/orchestrator/classify_intercept_room_test.go)
+(matching quality, zero execution).
+
+## 7. See also
 
 - [`semantic-routing.md`](semantic-routing.md) — the no-LLM tiers the gate reads;
   §1 for the confidence bands, §3 for the synonym-growth loop the
   `intercept.passed` event feeds.
 - [`operator-ask.md`](operator-ask.md) — the inverse allow/deny finding the gate
   posture mirrors.
-- [`stories/intercept-demo/`](../../stories/intercept-demo) — the runnable
-  fixture story.
+- [`stories/git-ops/rooms/intercept.yaml`](../../stories/git-ops/rooms/intercept.yaml)
+  — the real-git command hub (§6); [`stories/intercept-demo/`](../../stories/intercept-demo)
+  — the minimal echo-stub fixture story.

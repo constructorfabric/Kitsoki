@@ -433,6 +433,11 @@ intents:
     description: "Open the inbox."
     examples: [inbox, "check inbox"]
     priority: 20
+  go_gitops:
+    title: "Git commands"
+    description: "Open the git command hub — rebase, commit, merge, worktrees."
+    examples: [git, "git ops", "git commands", "version control"]
+    priority: 20
   go_oracle:
     title: "Ask Oracle"
     description: "Open the Oracle room for Q&A."
@@ -735,6 +740,16 @@ root: main
 # @exit:done, the runtime transitions straight into the pr
 # compound's entry state.
 imports:
+  # git-ops command hub. Entered at its `intercept` room — the branch-agnostic
+  # grouping of every common git command — so dev-story surfaces the same room
+  # the pre-LLM intercept gate binds to (docs/architecture/prompt-intercept.md).
+  # No intents.import: the commands stay inside the compound (handled there once
+  # entered); no world_in: git-ops's own world defaults (integration_branch=main,
+  # working_dir=.) seed it. The gate reaches it as room `gitops.intercept`.
+  gitops:
+    source: ../git-ops
+    entry: intercept
+
   bf:
     source: ../bugfix
     entry: idle

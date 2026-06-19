@@ -129,6 +129,10 @@ states:
         - target: oracle
           effects:
             - set: { prev_state: "main" }
+      go_gitops:
+        - target: gitops
+          effects:
+            - set: { prev_state: "main" }
       go_standup:
         - target: standup
           effects:

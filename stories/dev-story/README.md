@@ -391,6 +391,10 @@ Flow fixtures that exercise those imports carry `host.oracle.decide:` and
   — the imported sub-stories.
 - [`stories/oregon-trail/`](../oregon-trail/) — three-layer composition
   demo (the pattern this hub mirrors).
+- [`docs/architecture/prompt-intercept.md`](../../docs/architecture/prompt-intercept.md)
+  — the pre-LLM intercept gate. This hub imports `stories/git-ops/`
+  (`imports.gitops`, entry `intercept`; reach the hub from `main` via `git`) to
+  surface its command hub for no-LLM interception (`room: gitops.intercept`).
 - [`testdata/apps/dev-story/`](../../testdata/apps/dev-story/) — the
   legacy Jira-flavoured stub. Retained for now to keep existing
   loader / metamode / flow tests passing; retired in Wave 3 once no
