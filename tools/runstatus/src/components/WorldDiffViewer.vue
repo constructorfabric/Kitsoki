@@ -1,5 +1,5 @@
 <template>
-  <div class="wdv">
+  <div class="wdv" data-testid="world-diff-viewer">
     <div class="wdv__tabs">
       <button class="wdv__tab" :class="{ active: tab === 'before' }" @click="tab = 'before'">Before</button>
       <button class="wdv__tab" :class="{ active: tab === 'diff' }" @click="tab = 'diff'">

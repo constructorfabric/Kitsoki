@@ -109,6 +109,26 @@ tour:
       kind: action
       advance: click-target
       dwellMs: 3000
+    - id: trace-routing
+      route: any
+      target: routing-detail
+      title: The turn the model never saw
+      body: "Expand a turn's start event and read its routing detail. The 'Direct' row says yes — this turn was matched to its intent deterministically and advanced without ever calling an LLM. Across a typical run roughly four turns in five resolve this way, with zero oracle calls. The model is a callee at named decision points, not the dispatcher for every step — the line a structured-output wrapper can't draw, because there the model is always in the loop."
+      placement: right
+      kind: explain
+      advance: next
+      waitForTarget: routing-detail
+      dwellMs: 6000
+    - id: trace-world-diff
+      route: any
+      target: world-diff-viewer
+      title: How the turn mutated the world
+      body: "Expand a world.update row and the change is laid out key by key — added, removed, or changed, with the before and after side by side. This is the state delta the runtime actually applied, not a sentence an agent wrote about what it did: kitsoki owns the world, so every mutation is structured, diffable data you can audit — never prose you have to trust."
+      placement: right
+      kind: explain
+      advance: next
+      waitForTarget: world-diff-viewer
+      dwellMs: 5500
     - id: trace-category-chips
       route: any
       target: category-filter-chips

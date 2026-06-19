@@ -10,6 +10,7 @@
           :key="sys"
           class="trace-timeline__chip"
           :class="{ active: selectedSubsystems.has(sys) }"
+          :data-testid="`subsystem-chip-${sys}`"
           @click="toggleSubsystem(sys)"
         >{{ sys }}</button>
       </div>

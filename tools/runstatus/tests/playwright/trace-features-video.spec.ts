@@ -111,6 +111,47 @@ test("trace introspection feature-spotlight video", async () => {
         continue;
       }
 
+      // Before trace-routing: turn.start rows are hidden by default (the "turn"
+      // subsystem chip is off — turn boundaries are conveyed by group headers).
+      // Enable it, then expand ONLY the turn.start row (located by its msg text)
+      // so RoutingDetail (routing-detail) renders with its Direct/routed_by
+      // provenance — and no stale, off-topic pane is left expanded above it.
+      if (step.id === "trace-routing") {
+        await page.getByTestId("subsystem-chip-turn").evaluate((el) => (el as HTMLElement).click()).catch(() => {});
+        await dwell(page, SETTLE_MS);
+        // Only turn.start events from an explicit-intent submit (SubmitDirect)
+        // carry routing provenance (direct:true / routed_by); the turn-0 bootstrap
+        // start has none and renders an empty "provenance not recorded" detail.
+        // Scan turn.start rows, expanding each, and keep the first whose detail
+        // actually shows the "Direct" row — collapse the misses so only the
+        // provenance-bearing one stays open under the spotlight.
+        const startRows = page.getByTestId("trace-event-row").filter({ hasText: "turn.start" });
+        const n = await startRows.count();
+        for (let i = 0; i < n; i++) {
+          const row = startRows.nth(i);
+          await row.scrollIntoViewIfNeeded().catch(() => {});
+          await row.evaluate((el) => (el as HTMLElement).click());
+          const hasProvenance = await page
+            .getByTestId("routing-detail")
+            .filter({ hasText: "Direct" })
+            .isVisible({ timeout: 800 })
+            .catch(() => false);
+          if (hasProvenance) break;
+          await row.evaluate((el) => (el as HTMLElement).click()); // collapse, try next
+        }
+        await dwell(page, SETTLE_MS);
+      }
+
+      // Before trace-world-diff: expand ONLY the world.update (effect-group) row
+      // so the WorldDiffViewer (world-diff-viewer) renders its key-by-key
+      // before/after — again located by msg text, not by scanning every row.
+      if (step.id === "trace-world-diff") {
+        const wuRow = page.getByTestId("trace-event-row").filter({ hasText: "world.update" }).first();
+        await wuRow.scrollIntoViewIfNeeded().catch(() => {});
+        await wuRow.evaluate((el) => (el as HTMLElement).click());
+        await dwell(page, SETTLE_MS);
+      }
+
       // Before trace-decision-detail: click rows until the decide-verdict pane
       // opens. Must run before waitForTarget so the element is present.
       if (step.id === "trace-decision-detail") {
