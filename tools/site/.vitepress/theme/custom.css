@@ -57,6 +57,42 @@
   background: var(--vp-c-brand-soft);
   color: var(--vp-c-brand-1);
 }
+/* Grouped rail (stitched master tour): one block per section. */
+.kv__chapters--grouped {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.85rem;
+}
+.kv__group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.kv__group-head {
+  align-self: flex-start;
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.25;
+  padding: 0.2rem 0;
+  border: 0;
+  background: none;
+  color: var(--vp-c-text-1);
+  text-align: left;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+.kv__group-head:hover,
+.kv__group-head--active {
+  color: var(--vp-c-brand-1);
+  border-bottom-color: var(--vp-c-brand-1);
+}
+.kv__group-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding-left: 0.75rem;
+  border-left: 2px solid var(--vp-c-divider);
+}
 
 /* ── TourStepCards ──────────────────────────────────────────────────────── */
 .ksteps {

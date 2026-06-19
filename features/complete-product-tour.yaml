@@ -1,0 +1,90 @@
+id: complete-product-tour
+kind: product-tour
+title: The complete product tour
+tagline: One continuous walkthrough — eight independently-releasable sections.
+summary: >-
+  A ~10-minute walkthrough that takes a first-time evaluator from the thesis,
+  through a real run, into the audit surfaces that PROVE (not assert)
+  determinism, into live self-authoring, and out across breadth — closing on the
+  punchline that the film itself is a passing deterministic test. Stitched from
+  eight chaptered sections; the master and each section are generated from this
+  one catalog, so they can never diverge.
+narrative: >-
+  Every beat exists to defeat one dismissal — "this is just structured output
+  with ceremony." The throughline is control inversion, proven: the runtime is a
+  YAML state machine, the LLM is a callee at named traceable decision points, and
+  everything on screen is the consequence of that one choice — shown, never
+  asserted. The whole cut is no-LLM and byte-deterministic (flow + cassette per
+  section), so the promo can never drift from the product — which is itself the
+  closing argument.
+promo:
+  order: 5
+# Stitched, not recorded: the video is composed by `make render-tour` from the
+# section clips below, so this demo has no `spec`. record-demos skips it.
+demo:
+  artifactDir: complete-product-tour
+  videoBase: complete-product-tour
+  profiles: [desktop]
+# Narrative order (thesis → run → inside → actions → author → control → harness →
+# breadth). Chapter ranges are the initial cut — tighten on first viewing.
+sections:
+  - id: pt-thesis
+    title: The claim, and the first proof
+    body: >-
+      Most tools record what their model did once. kitsoki proves what the model
+      was never allowed to do — starting with a turn the model was never even
+      consulted on.
+    clips:
+      - { source: trace-features, chapters: [trace-routing, trace-routing] }
+  - id: pt-run
+    title: Watch it run — and watch who's in charge
+    body: >-
+      Spin up a real run. The agent works inside one room; the runtime, not the
+      model, decides what happens next.
+    clips:
+      - { source: agent-actions, chapters: [aa-intro-home, aa-welcome] }
+  - id: pt-inside
+    title: Look inside — determinism made inspectable
+    body: >-
+      Open the observer the run keeps pointing at: three views over one trace,
+      decision-first detail, and how a turn mutated the world.
+    clips:
+      - { source: trace-features, chapters: [trace-view-modes, trace-decision-detail] }
+  - id: pt-actions
+    title: What the model did — and what it wasn't allowed to do
+    body: >-
+      Every oracle call's full I/O, byte-identical — and centre-frame, the host
+      rejecting the model's submission and nudging it back into the schema.
+    clips:
+      - { source: agent-actions, chapters: [aa-decide-guardrail, aa-rollup] }
+  - id: pt-author
+    title: Author your own — edit a running machine
+    body: >-
+      A room fully unpacked in the editor, then a live machine that pauses, edits
+      its own YAML, hot-reloads changed behaviour, and records the edit in the
+      trace.
+    clips:
+      - { source: story-editor }
+      - { source: meta-mode, chapters: [meta-story-edit, meta-persistence] }
+  - id: pt-control
+    title: Runs on its own — but never silently defaults
+    body: >-
+      A forwarded question that can never be silently dropped: it blocks, it's
+      answered, and on no answer the agent gets a clean error — every step on the
+      trace.
+    clips:
+      - { source: operator-ask }
+  - id: pt-harness
+    title: Every backend, on the record
+    body: >-
+      Switch provider, model, and effort live — and every heterogeneous call is
+      stamped on the audit record, so a mixed run stays auditable after the fact.
+    clips:
+      - { source: harness-picker }
+  - id: pt-breadth
+    title: One engine, many domains — and it's all a test
+    body: >-
+      Runs survive a reload and roll up across stories — and everything you just
+      watched is a passing deterministic test: flows + cassettes, no live LLM.
+    clips:
+      - { source: multi-story, chapters: [ms-reload, ms-story-badge] }

@@ -231,8 +231,8 @@ function buildDemoIndex(d: NonNullable<Feature["demo"]>) {
   // only if a demo ever omits desktop.
   const primary = variants.desktop ?? variantFor(profiles[0]);
   return {
-    spec: path.join("tools/runstatus", d.spec),
-    specName: specName(d.spec),
+    spec: d.spec ? path.join("tools/runstatus", d.spec) : null,
+    specName: d.spec ? specName(d.spec) : null,
     artifactDir: dir,
     video: primary.video,
     chapters: primary.chapters,
@@ -262,6 +262,7 @@ function renderIndex(catalog: Loaded[]): string {
       docs: f.docs ?? [],
       related: f.related ?? [],
       demo,
+      sections: f.sections ?? null,
       tour: f.tour ?? null,
       qa: f.qa
         ? { scenariosFile: `.artifacts/features/qa/${f.id}.scenarios.yaml`, scenarios: f.qa.scenarios }
@@ -367,6 +368,7 @@ function modePrintDemo(catalog: Loaded[], id: string): void {
   if (!l) fail([`no feature "${id}" in the catalog`]);
   const d = l.feature.demo;
   if (!d) fail([`feature "${id}" has no demo binding`]);
+  if (!d.spec) fail([`feature "${id}" is stitched, not recorded — use: make render-tour`]);
   const dir = path.join(".artifacts", d.artifactDir);
   process.stdout.write(`${specName(d.spec)}\t${dir}\t${path.join(dir, `${d.videoBase}.mp4`)}\n`);
 }

@@ -51,8 +51,10 @@ export const TourStepSchema = z.strictObject({
 });
 
 export const DemoSchema = z.strictObject({
-  /** Playwright spec path, relative to tools/runstatus. */
-  spec: z.string().min(1),
+  /** Playwright spec path, relative to tools/runstatus. Optional ONLY for a
+   *  product-tour, whose video is stitched from its sections, not recorded by a
+   *  spec (enforced in FeatureSchema's superRefine). */
+  spec: z.string().min(1).optional(),
   /** Subdirectory of .artifacts/ the spec records into. */
   artifactDir: z.string().min(1),
   /** Base name passed to saveVideoAsMp4 → <artifactDir>/<videoBase>.mp4. */
@@ -87,6 +89,26 @@ export const QaScenarioSchema = z.strictObject({
   steps: z.array(z.string().min(1)).min(1),
 });
 
+/** One source clip in a product-tour section: a cataloged feature's recording,
+ *  optionally trimmed to a [startChapterId, endChapterId] window of its chapter
+ *  sidecar (inclusive; omit = whole video). Chapter ids are validated against
+ *  the recorded sidecar at STITCH time — the sidecar is a build artifact, not a
+ *  catalog fact, so a catalog-time check would be a lie. */
+export const SectionClipSchema = z.strictObject({
+  source: z.string().min(1),
+  chapters: z.tuple([z.string().min(1), z.string().min(1)]).optional(),
+});
+
+/** A product-tour section: one narrative beat (its own title card) stitched from
+ *  one or more source clips. Most sections have a single clip; pt-author spans
+ *  story-editor + meta-mode. The id is the chapter-rail group key (pt-<name>). */
+export const SectionSchema = z.strictObject({
+  id: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+  title: z.string().min(1),
+  body: z.string().min(1),
+  clips: z.array(SectionClipSchema).min(1),
+});
+
 /**
  * Refinement-free shape (JSON-Schema-representable). FeatureSchema layers the
  * cross-field rules on top; feature.schema.json is generated from this one.
@@ -117,6 +139,13 @@ export const FeatureObjectSchema = z.strictObject({
     /** Other feature ids (validated to resolve). */
     related: z.array(z.string().min(1)).optional(),
     demo: DemoSchema.optional(),
+    /**
+     * Master product-tour composition: ordered sections, each stitched from its
+     * source clips into one chaptered film. Valid ONLY for kind: product-tour
+     * (enforced in superRefine); each clip.source must resolve to a cataloged
+     * feature with a demo (enforced in validateCatalog).
+     */
+    sections: z.array(SectionSchema).min(1).optional(),
     tour: z
       .strictObject({
         /** Generated const name, e.g. AGENT_ACTIONS_TOUR_STEPS. */
@@ -130,6 +159,22 @@ export const FeatureObjectSchema = z.strictObject({
 export const FeatureSchema = FeatureObjectSchema.superRefine((f, ctx) => {
     if (f.tour && !f.demo) {
       ctx.addIssue({ code: "custom", message: `feature "${f.id}" has a tour but no demo binding` });
+    }
+    // sections are a product-tour-only composition (most product-tours are still
+    // single recordings — only a STITCHED one carries sections). A demo without
+    // a recording spec is legal ONLY when its video is stitched from sections.
+    if (f.sections && f.kind !== "product-tour") {
+      ctx.addIssue({ code: "custom", message: `feature "${f.id}" declares sections but kind is not product-tour` });
+    }
+    if (f.demo && !f.demo.spec && !f.sections) {
+      ctx.addIssue({ code: "custom", message: `feature "${f.id}" demo needs a spec (only a sectioned product-tour stitches without one)` });
+    }
+    const secIds = new Set<string>();
+    for (const s of f.sections ?? []) {
+      if (secIds.has(s.id)) {
+        ctx.addIssue({ code: "custom", message: `feature "${f.id}" repeats section id "${s.id}"` });
+      }
+      secIds.add(s.id);
     }
     const ids = new Set<string>();
     for (const s of f.tour?.steps ?? []) {
@@ -184,6 +229,7 @@ export function validateCatalog(
   const problems: string[] = [];
   const byId = new Map<string, string>();
   const byExport = new Map<string, string>();
+  const featById = new Map<string, Feature>();
 
   for (const { file, feature: f } of features) {
     const stem = path.basename(file).replace(/\.ya?ml$/, "");
@@ -194,6 +240,7 @@ export function validateCatalog(
       problems.push(`${file}: duplicate feature id "${f.id}" (also in ${byId.get(f.id)})`);
     }
     byId.set(f.id, file);
+    featById.set(f.id, f);
     if (f.tour) {
       if (byExport.has(f.tour.export)) {
         problems.push(
@@ -208,11 +255,21 @@ export function validateCatalog(
     for (const rel of f.related ?? []) {
       if (!byId.has(rel)) problems.push(`${file}: related id "${rel}" does not resolve`);
     }
+    for (const s of f.sections ?? []) {
+      for (const c of s.clips) {
+        const src = featById.get(c.source);
+        if (!src) {
+          problems.push(`${file}: section "${s.id}" clip source "${c.source}" does not resolve to a feature`);
+        } else if (!src.demo) {
+          problems.push(`${file}: section "${s.id}" clip source "${c.source}" has no demo to stitch`);
+        }
+      }
+    }
     if (opts.skipPaths) continue;
     const mustExist: Array<[string, string]> = [];
     for (const d of f.docs ?? []) mustExist.push(["docs", d]);
     if (f.demo) {
-      mustExist.push(["demo.spec", path.join("tools/runstatus", f.demo.spec)]);
+      if (f.demo.spec) mustExist.push(["demo.spec", path.join("tools/runstatus", f.demo.spec)]);
       if (!f.demo.external) {
         if (f.demo.story) mustExist.push(["demo.story", f.demo.story]);
         if (f.demo.flow) mustExist.push(["demo.flow", f.demo.flow]);

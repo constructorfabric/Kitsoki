@@ -84,7 +84,7 @@ while IFS=$'\t' read -r id profile specName artifactDir video yaml spec flow cas
 	fi
 done < <(jq -r '
 	.features[]
-	| select(.demo != null and .demo.external == false)
+	| select(.demo != null and .demo.external == false and .demo.spec != null)
 	| . as $f
 	| ($f.demo.profiles // ["desktop"])[] as $p
 	| [ $f.id, $p, $f.demo.specName, $f.demo.artifactDir,

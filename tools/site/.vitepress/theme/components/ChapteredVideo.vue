@@ -27,6 +27,17 @@ interface Chapter {
   label: string;
   start_ms: number;
   end_ms: number;
+  /** Set on a stitched master sidecar: the section this chapter belongs to. */
+  group?: string;
+  group_label?: string;
+  /** The section's title card — rendered as the group header, not a button. */
+  intro?: boolean;
+}
+
+interface ChapterGroup {
+  key: string;
+  label: string;
+  chapters: Chapter[];
 }
 
 const props = defineProps<{
@@ -45,6 +56,22 @@ const watchOnlineUrl = computed(() =>
 const videoEl = ref<HTMLVideoElement | null>(null);
 const chapters = ref<Chapter[]>([]);
 const activeIdx = ref(-1);
+
+/** Consecutive section groups for a stitched master's rail (its chapters carry a
+ *  `group`); null for a plain per-feature sidecar, which renders flat. */
+const groups = computed<ChapterGroup[] | null>(() => {
+  const cs = chapters.value;
+  if (!cs.some((c) => c.group)) return null;
+  const out: ChapterGroup[] = [];
+  for (const c of cs) {
+    const key = c.group ?? "";
+    const last = out[out.length - 1];
+    if (last && last.key === key) last.chapters.push(c);
+    else out.push({ key, label: c.group_label ?? c.label, chapters: [c] });
+  }
+  return out;
+});
+const activeGroup = computed(() => chapters.value[activeIdx.value]?.group ?? null);
 
 onMounted(async () => {
   if (!showVideo.value || !props.media.chaptersUrl) return;
@@ -111,7 +138,32 @@ defineExpose({ seekToStep, hasChapters: () => chapters.value.length > 0 });
       </p>
     </div>
 
-    <nav v-if="showVideo && chapters.length" class="kv__chapters" aria-label="Video chapters">
+    <nav v-if="showVideo && groups" class="kv__chapters kv__chapters--grouped" aria-label="Video chapters">
+      <div v-for="g in groups" :key="g.key" class="kv__group">
+        <button
+          class="kv__group-head"
+          :class="{ 'kv__group-head--active': activeGroup === g.key }"
+          type="button"
+          @click="seek(g.chapters[0])"
+        >
+          {{ g.label }}
+        </button>
+        <div class="kv__group-body">
+          <button
+            v-for="c in g.chapters.filter((ch) => !ch.intro)"
+            :key="c.id"
+            class="kv__chapter"
+            :class="{ 'kv__chapter--active': chapters[activeIdx]?.id === c.id }"
+            type="button"
+            @click="seek(c)"
+          >
+            {{ c.label }}
+          </button>
+        </div>
+      </div>
+    </nav>
+
+    <nav v-else-if="showVideo && chapters.length" class="kv__chapters" aria-label="Video chapters">
       <button
         v-for="c in chapters"
         :key="c.id"

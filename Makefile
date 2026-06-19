@@ -374,7 +374,7 @@ site-full: demos site
 # To grow it: add a render-<kind> target below and list it in `make render-help`
 # (next up: `render-tour` — stitch the per-section videos into one master with
 # .agents/skills/kitsoki-ui-demo/scripts/concat-videos.sh).
-.PHONY: render render-help render-videos render-video render-docs render-all
+.PHONY: render render-help render-videos render-video render-docs render-tour render-all
 FORCE ?=
 
 render: render-videos
@@ -387,8 +387,9 @@ render-help:
 	@echo "  make render                     record every demo video (incremental)"
 	@echo "  make render FORCE=1             re-record every demo video"
 	@echo "  make render-video FEATURE=<id>  one feature: video + GIF + contact sheet"
+	@echo "  make render-tour                stitch the per-section videos into the master tour"
 	@echo "  make render-docs                build the promo site + help docs"
-	@echo "  make render-all                 videos + docs"
+	@echo "  make render-all                 videos + tour + docs"
 
 # render-videos delegates to the incremental demos pipeline (FORCE=1 -> force).
 render-videos:
@@ -398,14 +399,23 @@ render-videos:
 render-video:
 	@$(MAKE) demo-feature FEATURE=$(FEATURE)
 
+# render-tour stitches the per-section recordings into the complete-product-tour
+# master (one video + a merged 8-group chapter rail). Depends on `demos` so each
+# section source is recorded/fresh first (incremental — unchanged demos skip);
+# the stitch itself is pure no-LLM post-processing (scripts/features/stitch-tour.mjs).
+render-tour: demos
+	@cd $(RUNSTATUS_DIR) && pnpm exec tsx scripts/features/stitch-tour.mjs complete-product-tour
+
 # render-docs builds the VitePress promo site + help docs from whatever demos
 # have been recorded (a missing video degrades to a poster, never a failure).
 render-docs:
 	@$(MAKE) site
 
-# render-all is the everything path: refresh the videos, then build the site.
+# render-all is the everything path: refresh the videos, stitch the master tour,
+# then build the site.
 render-all:
-	@$(MAKE) demos site
+	@$(MAKE) render-tour
+	@$(MAKE) site
 
 # ── Promo site + help docs (tools/site, VitePress) ──────────────────────────
 # One source tree, two variants: the GitHub Pages site (full videos, base
