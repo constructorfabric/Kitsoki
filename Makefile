@@ -341,6 +341,20 @@ feature-qa: demo-feature features-index
 		--feature .artifacts/features/qa/$(FEATURE).feature.md \
 		--scenarios .artifacts/features/qa/$(FEATURE).scenarios.yaml
 
+# tour-qa renders the stitched master then runs the gated vision-QA against it.
+# The master is stitched (no recording spec), so it can't go through feature-qa;
+# this drives qa.sh on the master video + its generated scenarios instead.
+# GATED: drives the real `claude` CLI — never run automatically (CLAUDE.md).
+.PHONY: tour-qa
+TOUR ?= complete-product-tour
+tour-qa: render-tour features-index
+	@set -e; \
+	dir=.artifacts/$(TOUR); \
+	.agents/skills/kitsoki-ui-qa/scripts/qa.sh "$$dir/$(TOUR).mp4" \
+		--frames "$$dir" \
+		--feature .artifacts/features/qa/$(TOUR).feature.md \
+		--scenarios .artifacts/features/qa/$(TOUR).scenarios.yaml
+
 # demos records every recordable feature demo at watch-speed, incrementally:
 # per-demo content stamps (feature YAML + spec + story inputs + binary) skip
 # anything unchanged. demos-force re-records everything. See

@@ -88,3 +88,37 @@ sections:
       watched is a passing deterministic test: flows + cassettes, no live LLM.
     clips:
       - { source: multi-story, chapters: [ms-reload, ms-story-badge] }
+# Gated vision-QA (real claude, on-demand only — `make tour-qa`; never auto-run).
+# Each step is an OBSERVABLE claim judged frame-by-frame against the master video.
+qa:
+  scenarios:
+    - id: thesis-zero-llm
+      title: A turn routes with the model never called
+      required: true
+      steps:
+        - A trace timeline with event rows is visible.
+        - A turn is shown with no oracle.call rows — routed deterministically, the model never consulted.
+    - id: actions-host-rejects
+      title: The host rejects the model mid-call
+      required: true
+      steps:
+        - The agent-actions view shows an oracle call's submission and execution.
+        - An injected host rejection / nudge is visible, correcting the model back into the schema.
+    - id: author-live-edit
+      title: A running machine edits itself and reloads
+      required: true
+      steps:
+        - Meta mode accepts a free-text story edit on a live run.
+        - After the edit the view reloads and the change is reflected (reload note or changed behaviour).
+    - id: harness-provenance
+      title: Every backend call is stamped on the trace
+      required: true
+      steps:
+        - The provider/model is switched live in the header.
+        - A trace oracle row is stamped with the selected profile (and model/effort).
+    - id: eight-sections
+      title: The master reads as eight chaptered sections
+      required: false
+      steps:
+        - Eight distinct section title cards appear across the film.
+        - The chapter rail groups chapters by section.

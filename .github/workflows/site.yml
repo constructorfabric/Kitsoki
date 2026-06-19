@@ -99,6 +99,13 @@ jobs:
       - name: Record demos
         run: ./scripts/record-demos.sh ${{ inputs.rerecord && '--force' || '' }}
 
+      # Stitch the per-section recordings into the complete-product-tour master
+      # (pure no-LLM post-processing). Runs after recording so every section
+      # source exists; before the site build so the master + its 8-group rail
+      # deploy instead of degrading to a poster.
+      - name: Stitch master product tour
+        run: cd tools/runstatus && pnpm exec tsx scripts/features/stitch-tour.mjs complete-product-tour
+
       - name: Upload recording diagnostics
         if: failure()
         uses: actions/upload-artifact@v4

@@ -104,7 +104,7 @@ function resolveClip(sourceId) {
   const chaptersPath = path.join(repoRoot, v.chapters);
   if (!fs.existsSync(video)) die(`source "${sourceId}" video missing: ${v.video} (record with: make demos)`);
   if (!fs.existsSync(chaptersPath)) die(`source "${sourceId}" chapters missing: ${v.chapters}`);
-  return { src, video, chapters: JSON.parse(fs.readFileSync(chaptersPath, "utf8")) };
+  return { src, video, chaptersPath, chapters: JSON.parse(fs.readFileSync(chaptersPath, "utf8")) };
 }
 
 /**
@@ -154,6 +154,29 @@ function prepareClip(clip, segIdx) {
   return { file: trimmed, durMs, chapters: rebased, sourceId: clip.source };
 }
 
+// Incremental: skip the re-stitch when the master + sidecar are already newer
+// than every input (the index, this script, and each section's source video +
+// sidecar). This also validates that every source exists up front. The stitch
+// is cheap, so the check stays conservative — KITSOKI_STITCH_FORCE=1 rebuilds.
+const sidecarPath = `${outVideo}.chapters.json`;
+const inputs = [INDEX, fileURLToPath(import.meta.url)];
+for (const section of master.sections) {
+  for (const clip of section.clips) {
+    const r = resolveClip(clip.source);
+    inputs.push(r.video, r.chaptersPath);
+  }
+}
+const newestInput = Math.max(...inputs.map((f) => fs.statSync(f).mtimeMs));
+if (
+  !process.env.KITSOKI_STITCH_FORCE &&
+  fs.existsSync(outVideo) &&
+  fs.existsSync(sidecarPath) &&
+  fs.statSync(outVideo).mtimeMs >= newestInput
+) {
+  console.log(`stitch-tour: ${path.relative(repoRoot, outVideo)} is fresh — skipping (KITSOKI_STITCH_FORCE=1 to force)`);
+  process.exit(0);
+}
+
 // Build segments (card + clips per section) and the merged chapter list.
 const segments = [];
 const merged = [];
@@ -200,8 +223,7 @@ for (const section of master.sections) {
 // Compose, then re-index the merged sidecar and write it beside the video.
 run("bash", [CONCAT, outVideo, ...segments, "--size", "1600x900", "--fps", "30"], "concat-videos");
 merged.forEach((c, i) => (c.index = i));
-const sidecar = `${outVideo}.chapters.json`;
-fs.writeFileSync(sidecar, JSON.stringify(merged, null, 2) + "\n");
+fs.writeFileSync(sidecarPath, JSON.stringify(merged, null, 2) + "\n");
 
 // A poster so the site has a frame even though the master was never "recorded".
 if (posterCard) {
@@ -210,4 +232,4 @@ if (posterCard) {
 
 const totalSec = (offsetMs / 1000).toFixed(1);
 console.log(`stitch-tour: ${path.relative(repoRoot, outVideo)}`);
-console.log(`stitch-tour: ${path.relative(repoRoot, sidecar)} (${merged.length} chapters, ${master.sections.length} sections, ~${totalSec}s)`);
+console.log(`stitch-tour: ${path.relative(repoRoot, sidecarPath)} (${merged.length} chapters, ${master.sections.length} sections, ~${totalSec}s)`);
