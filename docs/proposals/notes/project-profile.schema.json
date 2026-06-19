@@ -1,0 +1,412 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kitsoki.dev/schemas/project-profile/v1.json",
+  "title": "Project profile (project-profile/v1)",
+  "description": "The schema-validated YAML report kitsoki's dev-story init phase emits: how to instantiate dev-story for THIS project. The declarative source the generated stories/<id>-dev/ instance compiles from. See docs/proposals/project-init.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "title", "repo", "stack", "kitsoki", "setup_plan"],
+  "properties": {
+    "schema": { "const": "project-profile/v1" },
+    "id": {
+      "type": "string",
+      "description": "Kebab-case project id; seeds the generated instance dir stories/<id>-dev/.",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "title": { "type": "string", "minLength": 1 },
+    "summary": {
+      "type": "string",
+      "description": "One-paragraph human summary (markdown).",
+      "contentMediaType": "text/markdown"
+    },
+    "generated": {
+      "type": "object",
+      "description": "Provenance. Stamped by the deterministic apply script (scripts cannot read the clock).",
+      "additionalProperties": false,
+      "properties": {
+        "at": { "type": "string", "format": "date-time" },
+        "by": { "type": "string", "description": "kitsoki version / oracle agent that synthesized it." },
+        "mining_job": { "type": "string", "description": "session-mining job id this profile was fine-tuned from (links the `mining` block)." }
+      }
+    },
+
+    "repo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root", "vcs"],
+      "properties": {
+        "root": { "type": "string", "description": "Absolute or repo-relative checkout root. '.' for the current repo." },
+        "vcs": { "enum": ["git", "hg", "svn", "none"] },
+        "default_branch": { "type": "string" },
+        "remote": { "type": "string", "description": "owner/repo or remote URL." },
+        "monorepo": { "type": "boolean", "default": false }
+      }
+    },
+
+    "stack": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "enum": ["frontend", "backend", "fullstack", "service", "cli", "library", "monorepo", "other"] },
+        "languages": { "type": "array", "items": { "type": "string" } },
+        "frameworks": { "type": "array", "items": { "type": "string" } },
+        "package_managers": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+
+    "dev_server": {
+      "type": "object",
+      "description": "How to bring the project up locally and know it is ready. Omit for non-server projects (cli/library).",
+      "additionalProperties": false,
+      "required": ["components"],
+      "properties": {
+        "components": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "role", "command", "ready"],
+            "properties": {
+              "name": { "type": "string" },
+              "role": { "enum": ["frontend", "backend", "worker", "db", "proxy", "other"] },
+              "command": { "type": "string" },
+              "cwd": { "type": "string" },
+              "url": { "type": "string" },
+              "ready": {
+                "type": "object",
+                "description": "Deterministic readiness probe — the boot→probe→teardown verification init_verify runs (one-shot; not a persistent server).",
+                "additionalProperties": false,
+                "required": ["probe", "target"],
+                "properties": {
+                  "probe": { "enum": ["http", "tcp", "log", "command"] },
+                  "target": { "type": "string", "description": "URL (http), host:port (tcp), regex (log), or shell command (command)." },
+                  "expect": { "type": "string", "description": "Optional expected substring/status (e.g. '200', 'ready in')." },
+                  "timeout_ms": { "type": "integer", "minimum": 0, "default": 30000 },
+                  "interval_ms": { "type": "integer", "minimum": 0, "default": 500 }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "environments": {
+      "type": "array",
+      "description": "local / dev / staging / prod (and custom). Where each runs and how it is configured/deployed.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "kind"],
+        "properties": {
+          "name": { "type": "string" },
+          "kind": { "enum": ["local", "dev", "test", "preview", "staging", "prod", "other"] },
+          "url": { "type": "string" },
+          "config_ref": { "type": "string", "description": "Path/ref to the env's config (.env, k8s manifest, terraform dir, …)." },
+          "deploy": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "command": { "type": "string" },
+              "gated": { "type": "boolean", "default": true, "description": "Whether deploying here requires explicit operator confirmation (external/destructive)." }
+            }
+          },
+          "notes": { "type": "string", "contentMediaType": "text/markdown" }
+        }
+      }
+    },
+
+    "commands": {
+      "type": "object",
+      "description": "The canonical command for each common dev verb. The integration seam: init reuses these rather than inventing its own.",
+      "additionalProperties": false,
+      "properties": {
+        "install": { "type": "string" },
+        "build": { "type": "string" },
+        "dev": { "type": "string" },
+        "test": { "type": "string" },
+        "unit": { "type": "string" },
+        "e2e": { "type": "string" },
+        "lint": { "type": "string" },
+        "typecheck": { "type": "string" },
+        "format": { "type": "string" }
+      }
+    },
+
+    "testing": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "frameworks": { "type": "array", "items": { "type": "string" } },
+        "mechanisms": {
+          "type": "array",
+          "description": "Existing test mechanisms init integrates with rather than replaces.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "command"],
+            "properties": {
+              "kind": { "enum": ["unit", "integration", "e2e", "flow", "lint", "typecheck", "smoke"] },
+              "runner": { "type": "string" },
+              "command": { "type": "string" },
+              "config_ref": { "type": "string" }
+            }
+          }
+        },
+        "ci": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "provider": { "type": "string", "description": "github-actions, gitlab-ci, …" },
+            "config_ref": { "type": "string" }
+          }
+        }
+      }
+    },
+
+    "golden_path": {
+      "type": "object",
+      "description": "The simplest end-to-end scenario init proves works (UI projects: a clickthrough; api/cli: a smoke).",
+      "additionalProperties": false,
+      "required": ["applicable", "kind"],
+      "properties": {
+        "applicable": { "type": "boolean" },
+        "kind": { "enum": ["ui", "api", "cli", "none"] },
+        "name": { "type": "string" },
+        "description": { "type": "string", "contentMediaType": "text/markdown" },
+        "steps": { "type": "array", "items": { "type": "string" } },
+        "verify": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["harness"],
+          "properties": {
+            "harness": { "enum": ["playwright", "cypress", "curl", "command", "kitsoki-flow"] },
+            "command": { "type": "string" },
+            "spec": { "type": "string", "description": "Path to a spec/flow fixture that drives the golden path deterministically." },
+            "url": { "type": "string" }
+          }
+        },
+        "evidence": { "type": "array", "items": { "$ref": "#/$defs/media" } }
+      }
+    },
+
+    "conventions": {
+      "type": "object",
+      "description": "Working-dir conventions. `source` records whether init recommends kitsoki's (.context/.artifacts/.worktrees), keeps the project's own, or a hybrid.",
+      "additionalProperties": false,
+      "required": ["source"],
+      "properties": {
+        "source": { "enum": ["kitsoki", "project", "hybrid"] },
+        "dirs": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "context": { "$ref": "#/$defs/conventionDir" },
+            "artifacts": { "$ref": "#/$defs/conventionDir" },
+            "worktrees": { "$ref": "#/$defs/conventionDir" }
+          }
+        },
+        "gitignore": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["manage"],
+          "properties": {
+            "manage": { "type": "boolean", "description": "Whether init appends a managed block to .gitignore on confirm." },
+            "additions": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "rules_files": {
+          "type": "array",
+          "description": "Discovered agent-rule files (AGENTS.md, CLAUDE.md, .cursorrules, .windsurfrules).",
+          "items": { "type": "string" }
+        }
+      }
+    },
+
+    "rules": {
+      "type": "array",
+      "description": "Project rules the dev-story instance should honor — discovered from rules files, mined from sessions, or stated by the operator.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "scope", "source"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+          "scope": { "enum": ["global", "repo", "frontend", "backend", "docs", "tests", "infra"] },
+          "text": { "type": "string", "contentMediaType": "text/markdown" },
+          "ref": { "type": "string", "description": "Path#anchor to the authoritative statement, when the rule lives in a file." },
+          "source": { "enum": ["discovered", "operator", "mined"] }
+        }
+      }
+    },
+
+    "kitsoki": {
+      "type": "object",
+      "description": "How to instantiate dev-story for this project — the generalized, discovered form of stories/kitsoki-dev/ and stories/gears-rust/.",
+      "additionalProperties": false,
+      "required": ["story", "instance"],
+      "properties": {
+        "story": { "type": "string", "default": "dev-story", "description": "The hub story the instance imports (dev-story today)." },
+        "instance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "path", "bindings"],
+          "properties": {
+            "id": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+            "path": { "type": "string", "description": "Where the generated instance app.yaml is written, e.g. stories/<id>-dev/app.yaml." },
+            "bindings": {
+              "type": "object",
+              "description": "Concrete host bindings for dev-story's five host_interfaces (ticket/vcs/ci/workspace/transport). Each value is a host id, e.g. host.git, host.local_files.ticket.",
+              "additionalProperties": false,
+              "required": ["ticket", "vcs", "ci", "workspace", "transport"],
+              "properties": {
+                "ticket": { "type": "string" },
+                "vcs": { "type": "string" },
+                "ci": { "type": "string" },
+                "workspace": { "type": "string" },
+                "transport": { "type": "string" }
+              }
+            }
+          }
+        },
+        "external_profile": {
+          "type": "object",
+          "description": "dev-story's External-target profile world keys, when retargeting a foreign repo (see stories/gears-rust/). Omit for an in-repo instance.",
+          "additionalProperties": false,
+          "properties": {
+            "publish_durable_path": { "type": "string" },
+            "prd_doc_filename": { "type": "string" },
+            "design_template_dir": { "type": "string" },
+            "design_durable_path": { "type": "string" },
+            "design_doc_filename": { "type": "string" },
+            "design_ticket_dir": { "type": "string" },
+            "ticket_repo": { "type": "string" }
+          }
+        },
+        "harness_profile": { "type": "string", "description": "Named .kitsoki.yaml harness profile this instance defaults to." },
+        "judge_mode": { "enum": ["human", "llm", "llm_then_human"], "default": "human" },
+        "autonomy": { "enum": ["supervised", "autonomous"], "default": "supervised" }
+      }
+    },
+
+    "mining": {
+      "type": "object",
+      "description": "The session-mining evidence the profile was fine-tuned from (recency sample over the project's transcripts). Distinct from stories/dev-story-mining/, which enriches dev-story's own gates; here it tunes THIS project's profile.",
+      "additionalProperties": false,
+      "properties": {
+        "job": { "type": "string" },
+        "sample": { "enum": ["recency", "all", "tagged"] },
+        "intent_count": { "type": "integer", "minimum": 0 },
+        "themes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["theme", "count"],
+            "properties": {
+              "theme": { "type": "string" },
+              "count": { "type": "integer", "minimum": 0 },
+              "status": { "enum": ["already-modeled", "enrich", "gap"] },
+              "recommendation": { "type": "string", "contentMediaType": "text/markdown" }
+            }
+          }
+        }
+      }
+    },
+
+    "setup_plan": {
+      "type": "object",
+      "description": "The propose-then-confirm action list. Nothing here is executed until the operator confirms at init_review.",
+      "additionalProperties": false,
+      "required": ["writes", "verifications"],
+      "properties": {
+        "writes": {
+          "type": "array",
+          "description": "Files init will create/merge on confirm (the generated instance, .kitsoki.yaml additions, this profile, …).",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "action", "summary"],
+            "properties": {
+              "path": { "type": "string" },
+              "action": { "enum": ["create", "merge", "modify"] },
+              "summary": { "type": "string" }
+            }
+          }
+        },
+        "dirs_create": { "type": "array", "items": { "type": "string" } },
+        "gitignore_additions": { "type": "array", "items": { "type": "string" } },
+        "verifications": {
+          "type": "array",
+          "description": "The readiness checks init_verify runs on confirm. `required` gates failures into init_done's report; `advisory` is best-effort.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "kind", "command", "gate"],
+            "properties": {
+              "id": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+              "kind": { "enum": ["dev-server", "readiness", "build", "tests", "lint", "typecheck", "golden-path"] },
+              "command": { "type": "string" },
+              "gate": { "enum": ["required", "advisory"] }
+            }
+          }
+        }
+      }
+    },
+
+    "readiness": {
+      "type": "object",
+      "description": "Verification results, filled by init_verify. A dry-run report leaves status: not-run.",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "enum": ["not-run", "pass", "fail", "partial"] },
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "kind", "ok"],
+            "properties": {
+              "id": { "type": "string" },
+              "kind": { "enum": ["dev-server", "readiness", "build", "tests", "lint", "typecheck", "golden-path"] },
+              "ok": { "type": "boolean" },
+              "detail": { "type": "string" },
+              "evidence": { "type": "array", "items": { "$ref": "#/$defs/media" } }
+            }
+          }
+        }
+      }
+    }
+  },
+
+  "$defs": {
+    "conventionDir": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "use"],
+      "properties": {
+        "path": { "type": "string" },
+        "use": {
+          "enum": ["kitsoki", "existing", "custom", "none"],
+          "description": "kitsoki = adopt kitsoki's default dir; existing = the project already has one here; custom = operator-chosen path; none = decline this convention."
+        }
+      }
+    },
+    "media": {
+      "type": "object",
+      "description": "Regenerable media descriptor, identical to lifecycle-taxonomy's (docs/proposals/lifecycle-taxonomy.md).",
+      "additionalProperties": false,
+      "required": ["kind", "path"],
+      "properties": {
+        "kind": { "enum": ["video", "screenshot", "gif", "contact-sheet"] },
+        "path": { "type": "string" },
+        "caption": { "type": "string", "contentMediaType": "text/markdown" },
+        "alt": { "type": "string" },
+        "produced_by": { "type": "string", "description": "Deterministic producer (Playwright spec, flow fixture) so the evidence is regenerable." }
+      }
+    }
+  }
+}

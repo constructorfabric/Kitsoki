@@ -358,6 +358,22 @@ thought.
     `stories/mockup-video/`: brief → author HTML+tour *or* slidey deck
     (`medium: tour | deck`) → render (chapter sidecar) → review → refine-loop
     on each flag → gallery.
+- [`project-init.md`](project-init.md) — **story.** A new **init phase** woven
+  into the dev-story hub (`go_init` from `main`, runnable standalone on a fresh
+  repo): ask the few preferences it can't infer, deterministically **discover**
+  the repo's shape, **mine the project's own transcripts** (the
+  [`tools/session-mining/`](../../tools/session-mining/) kit — distinct from
+  `dev-story-mining`, which tunes dev-story's *own* gates) to fine-tune the
+  loop, then emit a single **schema-validated report** (`project-profile/v1`,
+  drafted + proven in `notes/project-profile.schema.json`) of *what it intends to
+  set up* — dev server + readiness, frontend/backend, local/dev/staging/prod
+  environments, rules, conventions (recommend kitsoki's
+  `.context`/`.artifacts`/`.worktrees` or keep the project's own + manage
+  `.gitignore`), and the existing testing it integrates with. **Propose-then-
+  confirm:** on confirm it compiles the profile to a generated dev-story instance
+  (`stories/<id>-dev/`, generalizing the `kitsoki-dev`/`gears-rust` binding),
+  adopts conventions, and verifies the loop (boot → readiness → tests →
+  golden-path UI). Composes existing hosts only. Nothing implemented yet.
 - [`work-decomposition.md`](work-decomposition.md) — **story.** A new
   `stories/decompose/` sub-story imported into dev-story: hand it an accepted
   proposal (or epic + children) and an interactive discovery conversation
