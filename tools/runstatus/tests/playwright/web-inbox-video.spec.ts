@@ -46,6 +46,7 @@ import {
   SETTLE_MS,
   type WebServer,
 } from "./_helpers/server.js";
+import { cameraContext } from "./_helpers/camera.js";
 import { WEB_INBOX_TOUR_STEPS, type TourStep } from "../../src/tour/generated/web-inbox.js";
 
 // 7791 — distinct from agent-actions (7748), tour-onboarding (7747), and
@@ -90,11 +91,9 @@ async function resolveTarget(page: Page, step: TourStep): Promise<Locator> {
 test("web async-inbox feature-spotlight video", async () => {
   test.setTimeout(300000);
   const browser: Browser = await chromium.launch({ headless: true });
-  const context: BrowserContext = await browser.newContext({
-    viewport: { width: 1440, height: 900 },
-    deviceScaleFactor: 2,
-    recordVideo: { dir: VIDEO_DIR, size: { width: 1440, height: 900 } },
-  });
+  const context: BrowserContext = await browser.newContext(
+    cameraContext({ recordVideoDir: VIDEO_DIR }),
+  );
   const page: Page = await context.newPage();
   const video = page.video();
   // Accumulate per-step time windows for the chapter sidecar. The clock starts

@@ -46,7 +46,8 @@ import {
   ChapterRecorder,
   writeChapters,
 } from "./_helpers/server.js";
-import { DEMO_VIEWPORT, captureDiagnostics } from "./_helpers/demo.js";
+import { cameraContext } from "./_helpers/camera.js";
+import { captureDiagnostics } from "./_helpers/demo.js";
 import { MULTI_STORY_TOUR_STEPS, type TourStep } from "../../src/tour/generated/multi-story.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -174,10 +175,9 @@ test.describe("multi-story full-product walkthrough (live, no-LLM)", () => {
     const storyPath = prd!.path;
 
     const browser: Browser = await chromium.launch({ headless: true });
-    const context: BrowserContext = await browser.newContext({
-      viewport: { ...DEMO_VIEWPORT }, // 1600x900 @1x — matches every other demo
-      recordVideo: { dir: VIDEO_DIR, size: { ...DEMO_VIEWPORT } },
-    });
+    const context: BrowserContext = await browser.newContext(
+      cameraContext({ recordVideoDir: VIDEO_DIR }),
+    );
     const page = await context.newPage();
     const video = page.video(); // capture BEFORE context.close()
     const shot = makeShot(ARTIFACT_DIR);

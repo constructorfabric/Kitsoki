@@ -41,6 +41,7 @@ import {
   SETTLE_MS,
   type WebServer,
 } from "./_helpers/server.js";
+import { cameraContext } from "./_helpers/camera.js";
 import { DIAGRAM_SHOWCASE_TOUR_STEPS, type TourStep } from "../../src/tour/generated/diagram-showcase.js";
 
 // The feature-catalog source of truth for this spec's tour steps: each step
@@ -117,10 +118,9 @@ const TAB_FOR_STEP: Record<string, string> = {
 test("state-diagram four-view showcase (dev-story, no-LLM)", async () => {
   test.setTimeout(300000);
   const browser: Browser = await chromium.launch({ headless: true });
-  const context: BrowserContext = await browser.newContext({
-    viewport: { width: 1600, height: 900 },
-    recordVideo: { dir: VIDEO_DIR, size: { width: 1600, height: 900 } },
-  });
+  const context: BrowserContext = await browser.newContext(
+    cameraContext({ recordVideoDir: VIDEO_DIR }),
+  );
   const page: Page = await context.newPage();
   const video = page.video(); // capture BEFORE context.close()
   const shot = makeShot(ARTIFACT_DIR);

@@ -12,8 +12,9 @@
     "playwright": "playwright test",
     "playwright:install": "playwright install --with-deps chromium",
     "features:gen": "tsx scripts/features/generate.ts",
-    "features:check": "tsx scripts/features/generate.ts --check",
-    "features:index": "tsx scripts/features/generate.ts --index"
+    "features:check": "tsx scripts/features/generate.ts --check && tsx scripts/features/lint-demos.ts",
+    "features:index": "tsx scripts/features/generate.ts --index",
+    "demos:lint": "tsx scripts/features/lint-demos.ts"
   },
   "dependencies": {
     "pinia": "^2.3.1",

@@ -61,6 +61,7 @@ import {
   SETTLE_MS,
   type WebServer,
 } from "./_helpers/server.js";
+import { cameraContext } from "./_helpers/camera.js";
 import { CHAT_STREAM_TOUR_STEPS, type TourStep } from "../../src/tour/generated/chat-stream.js";
 
 // The feature-catalog source of truth for this tour: each step becomes a chapter
@@ -254,10 +255,9 @@ async function captureMetaStreaming(
 test("live chat streaming feature-spotlight video", async () => {
   test.setTimeout(300000);
   const browser: Browser = await chromium.launch({ headless: true });
-  const context: BrowserContext = await browser.newContext({
-    viewport: { width: 1600, height: 900 },
-    recordVideo: { dir: VIDEO_DIR, size: { width: 1600, height: 900 } },
-  });
+  const context: BrowserContext = await browser.newContext(
+    cameraContext({ recordVideoDir: VIDEO_DIR }),
+  );
   const page: Page = await context.newPage();
   const video = page.video();
   const shot = makeShot(ARTIFACT_DIR);

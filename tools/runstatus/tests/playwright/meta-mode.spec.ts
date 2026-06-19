@@ -35,7 +35,9 @@ import { fileURLToPath } from "url";
 import path from "path";
 import fs from "fs";
 import os from "os";
-import { spawn, spawnSync, type ChildProcess } from "child_process";
+import { spawn, type ChildProcess } from "child_process";
+import { saveVideoAsMp4, ChapterRecorder, writeChapters } from "./_helpers/server.js";
+import { cameraContext } from "./_helpers/camera.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -51,6 +53,7 @@ const RPC = `${BASE}/rpc`;
 
 const ARTIFACT_DIR = path.join(repoRoot, ".artifacts", "meta-mode");
 const VIDEO_DIR = path.join(ARTIFACT_DIR, "video");
+const CHAPTER_SOURCE = "features/meta-mode.yaml";
 
 // ── server lifecycle ────────────────────────────────────────────────────────
 
@@ -221,12 +224,13 @@ test.describe("meta mode (live, no-LLM)", () => {
     test.setTimeout(PACE === 0 ? 60000 : 240000);
 
     const browser: Browser = await chromium.launch();
-    const context: BrowserContext = await browser.newContext({
-      viewport: { width: 1440, height: 900 },
-      deviceScaleFactor: 2,
-      recordVideo: { dir: VIDEO_DIR, size: { width: 1440, height: 900 } },
-    });
+    const context: BrowserContext = await browser.newContext(
+      cameraContext({ recordVideoDir: VIDEO_DIR }),
+    );
     const page = await context.newPage();
+    const video = page.video();
+    const chapters = new ChapterRecorder();
+    chapters.open("meta-home", "Meta mode with no session", CHAPTER_SOURCE);
     page.on("pageerror", (e) => console.log("PAGEERROR:", e.message));
     page.on("console", (m) => {
       if (m.type() === "error") console.log("CONSOLE.ERR:", m.text());
@@ -263,6 +267,7 @@ test.describe("meta mode (live, no-LLM)", () => {
       await expect(page.getByTestId("meta-overlay")).toHaveCount(0);
 
       // ── Scene 2: start a PRD session → chat surface ────────────────────────
+      chapters.open("meta-drive", "Start a PRD session", CHAPTER_SOURCE);
       const card = page
         .getByTestId("story-card")
         .filter({ has: page.getByTestId("story-title").filter({ hasText: "PRD authoring" }) });
@@ -285,6 +290,7 @@ test.describe("meta mode (live, no-LLM)", () => {
       await expect(page.getByTestId("meta-overlay")).toBeVisible();
       await page.waitForTimeout(BEFORE_ACT);
 
+      chapters.open("meta-story-qa", "Story Q&A — streaming reply", CHAPTER_SOURCE);
       await metaSendWithStreamCheck(page, "What state am I in, and what should I do next?", {
         streamShot: "story-qa-round1-brain-streaming",
       });
@@ -297,6 +303,7 @@ test.describe("meta mode (live, no-LLM)", () => {
       await page.waitForTimeout(DWELL);
 
       // ── Scene 4: Story Q&A round 2 — multi-round in the same chat ──────────
+      chapters.open("meta-story-qa-2", "Story Q&A — second round", CHAPTER_SOURCE);
       await metaSendWithStreamCheck(page, "What options do I have from this state?", {
         streamShot: "story-qa-round2-brain-streaming",
       });
@@ -309,6 +316,7 @@ test.describe("meta mode (live, no-LLM)", () => {
       await page.waitForTimeout(DWELL * 2);
 
       // ── Scene 5: Story edit → in-place content reload ──────────────────────
+      chapters.open("meta-story-edit", "Story edit → live reload", CHAPTER_SOURCE);
       await page.getByTestId("meta-tab-story-edit").click();
       await page.waitForTimeout(BEFORE_ACT);
 
@@ -330,6 +338,7 @@ test.describe("meta mode (live, no-LLM)", () => {
       await page.getByTestId("meta-close").click();
       await expect(page.getByTestId("meta-overlay")).toHaveCount(0);
       // Hop to the read-only observer.
+      chapters.open("meta-persistence", "Conversation persists", CHAPTER_SOURCE);
       await page.getByTestId("observe-link").click();
       await page.waitForURL(/#\/s\/[0-9a-f-]{36}$/, { timeout: 15000 });
       await expect(page.getByTestId("breadcrumb")).toBeVisible();
@@ -343,39 +352,23 @@ test.describe("meta mode (live, no-LLM)", () => {
       await page.waitForTimeout(DWELL);
 
       // ── Scene 7: new chat resets the conversation ──────────────────────────
+      chapters.open("meta-new-chat", "New chat resets", CHAPTER_SOURCE);
       await page.getByTestId("meta-new").click();
       await expect(page.getByTestId("meta-transcript").locator(".meta-row")).toHaveCount(0, { timeout: 10000 });
       await shot(page, "new-chat");
       await page.waitForTimeout(FINAL_DWELL);
     } finally {
+      chapters.close();
       await page.close();
       await context.close(); // flush the video
+      // One shared encoder for every section's MP4 (identical libx264 settings),
+      // plus the chapter sidecar beside it — so meta-mode stitches into the
+      // master tour exactly like the tour-popover sections do.
+      const mp4 = await saveVideoAsMp4(video, ARTIFACT_DIR, "meta-mode-demo");
+      writeChapters(mp4, chapters.list());
       await browser.close();
+      console.log("[meta-mode] screenshots:\n" + screenshotPaths.join("\n"));
+      if (mp4) console.log("[meta-mode] video: " + mp4);
     }
-
-    const webms = fs
-      .readdirSync(VIDEO_DIR)
-      .filter((f) => f.endsWith(".webm"))
-      .map((f) => ({ f, t: fs.statSync(path.join(VIDEO_DIR, f)).mtimeMs }))
-      .sort((a, b) => b.t - a.t);
-    expect(webms.length, "expected a recorded video webm").toBeGreaterThan(0);
-    const latestWebm = path.join(VIDEO_DIR, webms[0].f);
-    const mp4Path = path.join(ARTIFACT_DIR, "meta-mode-demo.mp4");
-
-    // Convert webm → mp4 via ffmpeg (H.264/AAC, fast preset, browser-compatible).
-    const ffResult = spawnSync(
-      "ffmpeg",
-      ["-y", "-i", latestWebm, "-c:v", "libx264", "-preset", "fast", "-crf", "20",
-       "-c:a", "aac", "-movflags", "+faststart", mp4Path],
-      { encoding: "utf8" },
-    );
-    if (ffResult.status !== 0) {
-      console.warn("[meta-mode] ffmpeg failed, falling back to webm copy:\n" + ffResult.stderr);
-      fs.copyFileSync(latestWebm, path.join(ARTIFACT_DIR, "meta-mode-demo.webm"));
-    }
-
-    console.log("[meta-mode] screenshots:\n" + screenshotPaths.join("\n"));
-    const videoOut = ffResult.status === 0 ? mp4Path : path.join(ARTIFACT_DIR, "meta-mode-demo.webm");
-    console.log("[meta-mode] video: " + videoOut);
   });
 });

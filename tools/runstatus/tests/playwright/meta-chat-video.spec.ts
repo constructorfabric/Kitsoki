@@ -57,6 +57,7 @@ import {
   MC_FIRST_CHOREO_STEP,
   type TourStep,
 } from "../../src/tour/meta-chat-manifest.js";
+import { cameraContext } from "./_helpers/camera.js";
 
 const CHAPTER_SOURCE = "tools/runstatus/src/tour/meta-chat-manifest.ts";
 
@@ -182,10 +183,9 @@ async function narrate(
 test("meta-chat persistence + launcher status feature-spotlight video", async () => {
   test.setTimeout(300000);
   const browser: Browser = await chromium.launch({ headless: true });
-  const context: BrowserContext = await browser.newContext({
-    viewport: { width: 1600, height: 900 },
-    recordVideo: { dir: VIDEO_DIR, size: { width: 1600, height: 900 } },
-  });
+  const context: BrowserContext = await browser.newContext(
+    cameraContext({ recordVideoDir: VIDEO_DIR }),
+  );
   const page: Page = await context.newPage();
   const video = page.video();
   const shot = makeShot(ARTIFACT_DIR);

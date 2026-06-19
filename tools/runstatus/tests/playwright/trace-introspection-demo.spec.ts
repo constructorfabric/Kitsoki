@@ -38,6 +38,7 @@ import fs from "fs";
 import { fileURLToPath } from "url";
 import { buildArtifact } from "./_helpers/artifact.js";
 import { saveVideoAsMp4, ChapterRecorder, writeChapters } from "./_helpers/server.js";
+import { cameraContext } from "./_helpers/camera.js";
 import { captureDiagnostics } from "./_helpers/demo.js";
 import { execSync } from "child_process";
 import { TRACE_INTROSPECTION_TOUR_STEPS, type TourStep } from "../../src/tour/generated/trace-introspection.js";
@@ -134,10 +135,9 @@ test("trace-introspection tour walkthrough (bugfix snapshot, no-LLM)", async () 
   }
 
   const browser: Browser = await chromium.launch({ headless: true, slowMo: 100 });
-  const context: BrowserContext = await browser.newContext({
-    viewport: { width: 1600, height: 900 },
-    recordVideo: { dir: VIDEO_DIR, size: { width: 1600, height: 900 } },
-  });
+  const context: BrowserContext = await browser.newContext(
+    cameraContext({ recordVideoDir: VIDEO_DIR }),
+  );
   const page: Page = await context.newPage();
   const video = page.video(); // capture BEFORE context.close()
   // Accumulate per-step time windows for the chapter sidecar. The clock starts

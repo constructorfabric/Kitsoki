@@ -45,6 +45,7 @@ import {
   writeChapters,
   type WebServer,
 } from "./_helpers/server.js";
+import { cameraContext } from "./_helpers/camera.js";
 import { MOCKUP_VIDEO_TOUR_STEPS, type TourStep } from "../../src/tour/generated/mockup-video.js";
 
 // 7755 — distinct from review-video (7754) / agent-actions (7748) so parallel
@@ -98,10 +99,9 @@ async function resolveTarget(page: Page, step: TourStep): Promise<Locator> {
 test("mockup video studio full-walkthrough feature-spotlight video", async () => {
   test.setTimeout(300000);
   const browser: Browser = await chromium.launch({ headless: true });
-  const context: BrowserContext = await browser.newContext({
-    viewport: { width: 1600, height: 900 },
-    recordVideo: { dir: VIDEO_DIR, size: { width: 1600, height: 900 } },
-  });
+  const context: BrowserContext = await browser.newContext(
+    cameraContext({ recordVideoDir: VIDEO_DIR }),
+  );
   const page: Page = await context.newPage();
   const video = page.video();
   const shot = makeShot(ARTIFACT_DIR);

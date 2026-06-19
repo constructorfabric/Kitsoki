@@ -47,6 +47,7 @@ import {
   cinematicGoto,
   type WebServer,
 } from "./_helpers/server.js";
+import { cameraContext } from "./_helpers/camera.js";
 import { DEVSTORY_TRIAGE_TOUR_STEPS } from "../../src/tour/generated/devstory-triage.js";
 
 // The feature-catalog source of truth for this spec's tour steps: each step
@@ -182,14 +183,9 @@ async function driveForStep(page: Page, stepId: string): Promise<void> {
 test("devstory triage → bugfix handoff feature-tour video", async () => {
   test.setTimeout(300000);
   const browser: Browser = await chromium.launch({ headless: true });
-  const context: BrowserContext = await browser.newContext({
-    viewport: { width: 1600, height: 900 },
-    // Retina scale so the terminal-style room text (the candidate table and the
-    // triage card) is crisp and legible in the captured frames, not just the
-    // popovers — the QA gate reads literal text out of the PNGs.
-    deviceScaleFactor: 2,
-    recordVideo: { dir: VIDEO_DIR, size: { width: 1600, height: 900 } },
-  });
+  const context: BrowserContext = await browser.newContext(
+    cameraContext({ recordVideoDir: VIDEO_DIR }),
+  );
   const page: Page = await context.newPage();
   const video = page.video();
   const shot = makeShot(ARTIFACT_DIR);

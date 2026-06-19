@@ -66,6 +66,7 @@ const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, "../..");
 
 import { repoRoot, makeShot } from "./_helpers/server.js";
+import { cameraContext } from "./_helpers/camera.js";
 
 // ── Artifact dirs ────────────────────────────────────────────────────────────
 
@@ -425,10 +426,9 @@ test("media-artifact — video and image elements render with /artifact/ src", a
   test.setTimeout(120_000);
 
   const browser: Browser = await chromium.launch({ headless: true });
-  const context: BrowserContext = await browser.newContext({
-    viewport: { width: 1440, height: 900 },
-    recordVideo: { dir: VIDEO_DIR, size: { width: 1440, height: 900 } },
-  });
+  const context: BrowserContext = await browser.newContext(
+    cameraContext({ recordVideoDir: VIDEO_DIR }),
+  );
   const page: Page = await context.newPage();
   const BASE = mockServer.base;
 

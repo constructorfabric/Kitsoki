@@ -43,6 +43,7 @@ import {
   SETTLE_MS,
   type WebServer,
 } from "./_helpers/server.js";
+import { cameraContext } from "./_helpers/camera.js";
 import { captureDiagnostics } from "./_helpers/demo.js";
 import { WEATHER_REPORT_TOUR_STEPS, type TourStep } from "../../src/tour/generated/weather-report.js";
 
@@ -91,10 +92,9 @@ async function resolveTarget(page: Page, step: TourStep): Promise<Locator> {
 test("weather-report tour video (no-LLM, real host.starlark.run replay)", async () => {
   test.setTimeout(300000);
   const browser: Browser = await chromium.launch({ headless: true });
-  const context: BrowserContext = await browser.newContext({
-    viewport: { width: 1600, height: 900 },
-    recordVideo: { dir: VIDEO_DIR, size: { width: 1600, height: 900 } },
-  });
+  const context: BrowserContext = await browser.newContext(
+    cameraContext({ recordVideoDir: VIDEO_DIR }),
+  );
   const page: Page = await context.newPage();
   const video = page.video();
   // Accumulate per-step time windows for the chapter sidecar. The clock starts

@@ -47,6 +47,7 @@ import {
   SETTLE_MS,
   type WebServer,
 } from "./_helpers/server.js";
+import { cameraContext } from "./_helpers/camera.js";
 import { DEV_STORY_BUGFIX_TOUR_STEPS, type TourStep } from "../../src/tour/generated/dev-story-bugfix.js";
 
 // The feature-catalog source of truth for this spec's tour steps: each step
@@ -272,10 +273,9 @@ async function driveForStep(page: Page, stepId: string, sessionId: string): Prom
 test("dev-story triage → autonomous bugfix feature-tour video", async () => {
   test.setTimeout(300000);
   const browser: Browser = await chromium.launch({ headless: true });
-  const context: BrowserContext = await browser.newContext({
-    viewport: { width: 1600, height: 900 },
-    recordVideo: { dir: VIDEO_DIR, size: { width: 1600, height: 900 } },
-  });
+  const context: BrowserContext = await browser.newContext(
+    cameraContext({ recordVideoDir: VIDEO_DIR }),
+  );
   const page: Page = await context.newPage();
   const video = page.video();
   const shot = makeShot(ARTIFACT_DIR);

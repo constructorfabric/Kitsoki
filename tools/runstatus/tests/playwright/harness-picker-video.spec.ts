@@ -29,12 +29,15 @@ import {
   makeShot,
   prepareVideoDir,
   saveVideoAsMp4,
+  ChapterRecorder,
+  writeChapters,
   cinematicGoto,
   dwell,
   SETTLE_MS,
   type WebServer,
 } from "./_helpers/server.js";
 import { makeCaption, captureDiagnostics } from "./_helpers/demo.js";
+import { cameraContext } from "./_helpers/camera.js";
 
 const ADDR = "127.0.0.1:7752";
 const STORY_DIR = path.join(repoRoot, "testdata", "apps", "oracle_probe");
@@ -43,6 +46,7 @@ const CASSETTE = path.join(STORY_DIR, "flows", "who_are_you.cassette.yaml");
 const CONFIG = path.join(repoRoot, "tools", "runstatus", "tests", "playwright", "fixtures", "harness.kitsoki.yaml");
 const ARTIFACT_DIR = path.join(repoRoot, ".artifacts", "harness-picker");
 const VIDEO_DIR = path.join(ARTIFACT_DIR, "video");
+const CHAPTER_SOURCE = "features/harness-picker.yaml";
 
 // The three provider switches, in order, matched to the cassette's three
 // scripted identities. `reply` is the distinguishing word in each answer.
@@ -89,15 +93,14 @@ async function typeInto(page: Page, testid: string, value: string): Promise<void
 test("harness picker from the chat pane — switch provider, ask who-are-you", async () => {
   test.setTimeout(300000);
   const browser: Browser = await chromium.launch({ headless: true });
-  const context: BrowserContext = await browser.newContext({
-    viewport: { width: 1600, height: 900 },
-    deviceScaleFactor: 2,
-    recordVideo: { dir: VIDEO_DIR, size: { width: 1600, height: 900 } },
-  });
+  const context: BrowserContext = await browser.newContext(
+    cameraContext({ recordVideoDir: VIDEO_DIR }),
+  );
   const page: Page = await context.newPage();
   const video = page.video();
   const shot = makeShot(ARTIFACT_DIR);
   const diag = captureDiagnostics(page, ARTIFACT_DIR);
+  const chapters = new ChapterRecorder();
 
   const provider = () => page.getByTestId("provider-select");
   const harnessLabels = () => page.getByTestId("trace-harness-label");
@@ -110,6 +113,7 @@ test("harness picker from the chat pane — switch provider, ask who-are-you", a
 
     diag.mark("open-chat");
     await cinematicGoto(page, `${server.base}/#/s/${sid}/chat`, { waitForTestId: "composer-input" });
+    chapters.open("hp-intro", "Pick the harness, live", CHAPTER_SOURCE);
     const beat = await makeCaption(page, 3800);
     await page.addStyleTag({
       content:
@@ -125,6 +129,7 @@ test("harness picker from the chat pane — switch provider, ask who-are-you", a
 
     for (let i = 0; i < STEPS.length; i++) {
       const step = STEPS[i];
+      chapters.open(`hp-${step.profile}`, step.caption, CHAPTER_SOURCE);
       diag.mark(`switch-${step.profile}`);
       await beat(step.caption, step.sub);
       await dwell(page, SETTLE_MS);
@@ -168,6 +173,7 @@ test("harness picker from the chat pane — switch provider, ask who-are-you", a
     await expect(harnessLabels().filter({ hasText: "high" }).first()).toBeVisible();
     // synthetic ran a specific model, not just a syn: alias.
     await expect(harnessLabels().filter({ hasText: "hf:zai-org/GLM-5.1" }).first()).toBeVisible();
+    chapters.open("hp-recap", "Three turns, three providers", CHAPTER_SOURCE);
     await beat("Three turns, three providers", "Each oracle call in the trace carries the profile, model + effort it ran on.");
     await shot(page, "04-trace-all");
     await dwell(page, SETTLE_MS);
@@ -175,8 +181,10 @@ test("harness picker from the chat pane — switch provider, ask who-are-you", a
     diag.onThrow(err);
     throw err;
   } finally {
+    chapters.close();
     await context.close();
-    await saveVideoAsMp4(video, ARTIFACT_DIR, "harness-picker-demo");
+    const mp4 = await saveVideoAsMp4(video, ARTIFACT_DIR, "harness-picker-demo");
+    writeChapters(mp4, chapters.list());
     await browser.close();
   }
 });

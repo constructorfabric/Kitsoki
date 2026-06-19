@@ -33,6 +33,7 @@ import {
   PACE,
   type WebServer,
 } from "./_helpers/server.js";
+import { cameraContext } from "./_helpers/camera.js";
 import { TOUR_STEPS, type TourStep } from "../../src/tour/manifest.js";
 
 // The tour manifest IS the chapter source: each TourStep becomes a chapter
@@ -79,10 +80,9 @@ test("onboarding tour video (no-LLM)", async () => {
   // The tour never auto-starts under automation (navigator.webdriver) so it
   // can't sabotage the other live UI specs; here we opt in explicitly below
   // via window.__startTour.
-  const context: BrowserContext = await browser.newContext({
-    viewport: { width: 1600, height: 900 },
-    recordVideo: { dir: VIDEO_DIR, size: { width: 1600, height: 900 } },
-  });
+  const context: BrowserContext = await browser.newContext(
+    cameraContext({ recordVideoDir: VIDEO_DIR }),
+  );
   const page: Page = await context.newPage();
   // Capture the Video reference before the context closes — saveAs() works after close().
   const video = page.video();

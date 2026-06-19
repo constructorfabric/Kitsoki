@@ -38,6 +38,7 @@ import {
   dwell,
   SETTLE_MS,
 } from "./_helpers/server.js";
+import { cameraContext } from "./_helpers/camera.js";
 import { installCurtain, liftCurtain, makeCaption, makeSpotlight } from "./_helpers/demo.js";
 import { GH_ISSUE_REVIEW_STEPS } from "../../src/tour/gh-issue-review-manifest.js";
 
@@ -65,11 +66,9 @@ test.beforeAll(() => {
 test("gh-issue-review cross-site act video", async () => {
   test.setTimeout(300000);
   const browser: Browser = await chromium.launch({ headless: true });
-  const context: BrowserContext = await browser.newContext({
-    viewport: { width: 1600, height: 900 },
-    deviceScaleFactor: 2,
-    recordVideo: { dir: VIDEO_DIR, size: { width: 1600, height: 900 } },
-  });
+  const context: BrowserContext = await browser.newContext(
+    cameraContext({ recordVideoDir: VIDEO_DIR }),
+  );
   const page: Page = await context.newPage();
   const video = page.video();
   const shot = makeShot(ARTIFACT_DIR);

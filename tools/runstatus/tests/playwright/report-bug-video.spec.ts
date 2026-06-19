@@ -54,6 +54,7 @@ import {
   SETTLE_MS,
   type WebServer,
 } from "./_helpers/server.js";
+import { cameraContext } from "./_helpers/camera.js";
 import { REPORT_BUG_TOUR_STEPS, type TourStep } from "../../src/tour/report-bug-manifest.js";
 
 // 7750 — distinct from agent-actions (7748), tour-onboarding (7747) and
@@ -142,10 +143,9 @@ async function pacedType(page: Page, locator: Locator, text: string): Promise<vo
 test("report-bug feature-spotlight video", async () => {
   test.setTimeout(300000);
   const browser: Browser = await chromium.launch({ headless: true });
-  const context: BrowserContext = await browser.newContext({
-    viewport: { width: 1600, height: 900 },
-    recordVideo: { dir: VIDEO_DIR, size: { width: 1600, height: 900 } },
-  });
+  const context: BrowserContext = await browser.newContext(
+    cameraContext({ recordVideoDir: VIDEO_DIR }),
+  );
   const page: Page = await context.newPage();
   const video = page.video();
   const shot = makeShot(ARTIFACT_DIR);

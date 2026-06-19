@@ -46,7 +46,8 @@ import {
   ChapterRecorder,
   writeChapters,
 } from "./_helpers/server.js";
-import { DEMO_VIEWPORT, captureDiagnostics } from "./_helpers/demo.js";
+import { cameraContext } from "./_helpers/camera.js";
+import { captureDiagnostics } from "./_helpers/demo.js";
 import { OFF_RAMP_TOUR_STEPS, type TourStep } from "../../src/tour/off-ramp-manifest.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -200,10 +201,9 @@ test.describe("oracle off-ramp feature-spotlight (live, no-LLM replay+cassette)"
     expect(offRamp, "off-ramp-demo story is in the catalogue").toBeTruthy();
 
     const browser: Browser = await chromium.launch({ headless: true });
-    const context: BrowserContext = await browser.newContext({
-      viewport: { ...DEMO_VIEWPORT }, // 1600x900 — matches every other demo
-      recordVideo: { dir: VIDEO_DIR, size: { ...DEMO_VIEWPORT } },
-    });
+    const context: BrowserContext = await browser.newContext(
+      cameraContext({ recordVideoDir: VIDEO_DIR }),
+    );
     const page = await context.newPage();
     const video = page.video(); // capture BEFORE context.close()
     const shot = makeShot(ARTIFACT_DIR);

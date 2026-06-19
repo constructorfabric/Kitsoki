@@ -50,6 +50,7 @@ import {
   writeChapters,
   type WebServer,
 } from "./_helpers/server.js";
+import { cameraContext } from "./_helpers/camera.js";
 import { installCurtain, liftCurtain, captureDiagnostics } from "./_helpers/demo.js";
 import { REVIEW_TOUR_STEPS, type TourStep } from "../../src/tour/generated/review.js";
 
@@ -83,10 +84,9 @@ test.afterAll(() => server?.stop());
 test("mockup-video /review feedback-mode feature-spotlight (no-LLM, REAL render, tour-driven)", async () => {
   test.setTimeout(300000);
   const browser: Browser = await chromium.launch({ headless: true });
-  const context: BrowserContext = await browser.newContext({
-    viewport: { width: 1600, height: 900 },
-    recordVideo: { dir: VIDEO_DIR, size: { width: 1600, height: 900 } },
-  });
+  const context: BrowserContext = await browser.newContext(
+    cameraContext({ recordVideoDir: VIDEO_DIR }),
+  );
   const page: Page = await context.newPage();
   const video = page.video(); // capture BEFORE context.close()
   const shot = makeShot(ARTIFACT_DIR);

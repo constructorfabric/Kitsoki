@@ -27,6 +27,7 @@ import {
   waitForState,
   type WebServer,
 } from "./_helpers/server.js";
+import { cameraContext } from "./_helpers/camera.js";
 
 const FLOW = path.join(repoRoot, "stories", "oregon-trail", "flows", "winning_deterministic.yaml");
 const ADDR = "127.0.0.1:7743";
@@ -104,10 +105,9 @@ async function advanceLeg(sessionId: string, expectedPrefix: string): Promise<vo
 test("Oregon Trail — full intro wizard + trail + win (no-LLM)", async () => {
   test.setTimeout(300000);
   const browser: Browser = await chromium.launch({ headless: true });
-  const context: BrowserContext = await browser.newContext({
-    viewport: { width: 1600, height: 900 },
-    recordVideo: { dir: VIDEO_DIR, size: { width: 1600, height: 900 } },
-  });
+  const context: BrowserContext = await browser.newContext(
+    cameraContext({ recordVideoDir: VIDEO_DIR }),
+  );
   const page: Page = await context.newPage();
   const BASE = server.base;
 
