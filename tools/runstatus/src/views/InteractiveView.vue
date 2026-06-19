@@ -16,12 +16,18 @@
         >
           {{ store.terminal ? 'done' : 'live' }}
         </span>
+        <!-- Running oracle spend for this session. Always shown (not gated on
+             `present`) so the operator can see the live cost ticking — which in a
+             deterministic run is exactly the point: every state transition, guard,
+             and git host call is free, so this reads $0.0000 until (and unless) an
+             oracle touchpoint fires. The :class flags the zero state for emphasis. -->
         <span
-          v-if="store.usageTotals.present"
           class="iv__usage"
-          :title="`${store.usageTotals.calls} oracle calls · in ${fmtTokens(store.usageTotals.promptTokens)} / out ${fmtTokens(store.usageTotals.responseTokens)} tokens`"
+          :class="{ 'iv__usage--zero': !store.usageTotals.present }"
+          data-testid="usage-meter"
+          :title="`${store.usageTotals.calls} oracle call(s) · in ${fmtTokens(store.usageTotals.promptTokens)} / out ${fmtTokens(store.usageTotals.responseTokens)} tokens — deterministic transitions and git calls are free`"
         >
-          Σ {{ fmtTokens(store.usageTotals.promptTokens + store.usageTotals.responseTokens) }} tok<template v-if="fmtCost(store.usageTotals.costUsd)"> · {{ fmtCost(store.usageTotals.costUsd) }}</template>
+          Σ {{ fmtTokens(store.usageTotals.promptTokens + store.usageTotals.responseTokens) }} tok · {{ fmtCost(store.usageTotals.costUsd) }}
         </span>
         <span
           v-if="store.harnessProfiles.length"
@@ -443,6 +449,12 @@ function onEventSelect(index: number): void {
   border-radius: 4px;
   padding: 0.1rem 0.45rem;
   white-space: nowrap;
+}
+/* No spend yet — the deterministic-run steady state. Brighter green so the
+   "this is free" signal reads at a glance while the operator drives. */
+.iv__usage--zero {
+  color: #bef264;
+  border-color: #4d7c0f;
 }
 
 .iv__harness {

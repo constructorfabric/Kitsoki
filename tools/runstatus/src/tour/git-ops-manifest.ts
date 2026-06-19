@@ -137,6 +137,20 @@ export const GIT_OPS_TOUR_STEPS: readonly TourStep[] = [
     dwellMs: 4000,
   },
 
+  // ── Cost emphasis: the deterministic engine is free ─────────────────────────
+  {
+    id: "gitops-cost",
+    route: "interactive",
+    target: "usage-meter",
+    waitForTarget: "usage-meter",
+    title: "Four scenarios, still $0.0000",
+    body: "Watch the spend meter in the top bar: it never moved. Branch detection, staging, the rebase routing, every merge guard, the worktree lifecycle — all of it is deterministic state transitions and real git commands, so it costs nothing. The oracle is the ONLY surface that can spend tokens, and the story confines it to two moments (a commit message, a conflict). Everything else scales for free.",
+    placement: "right",
+    kind: "explain",
+    advance: "next",
+    dwellMs: 4500,
+  },
+
   // ── Wrap-up ─────────────────────────────────────────────────────────────────
   {
     id: "gitops-done",
