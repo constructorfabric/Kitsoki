@@ -7,6 +7,8 @@ features/<id>.yaml ──codegen──► tools/runstatus/src/tour/generated/<id
    │                               ├─► live tour overlay (web UI)
    │                               └─► Playwright *-video.spec.ts ──► .artifacts/<dir>/
    │                                     demo MP4 + NN-<step>.png + .chapters.json
+   │                                       └─► stitch-tour.mjs (product-tour sections)
+   │                                             ──► complete-product-tour.mp4 + merged rail
    ├──codegen──► features-index.json + qa/<id>.{scenarios.yaml,feature.md}
    └──────────► tools/site (VitePress)
                    ├─► GitHub Pages  (base /Kitsoki/, full videos)
@@ -21,7 +23,10 @@ recording binding, optional gated ui-qa scenarios, doc links. Authoring guide:
 [`features/CLAUDE.md`](../../features/CLAUDE.md). The committed manifests under
 `tools/runstatus/src/tour/generated/` are code-generated — `make features`
 regenerates, `make features-check` (inside `make build` and `make test`) fails
-on stale output, schema violations, or spec↔feature drift. The chain
+on stale output, schema violations, or spec↔feature drift. Chained into it,
+`pnpm demos:lint` (`scripts/features/lint-demos.ts`) fails any demo spec that
+bypasses the camera helper, omits its chapter sidecar, or drives a live model —
+the no-LLM invariant, in CI. The chain
 YAML → generated TS → live popover is closed end-to-end by the existing video
 specs' title assertions.
 
@@ -34,6 +39,41 @@ binary) in `.artifacts/<dir>/.stamp`; `make demos-force` ignores them. One
 demo: `make demo-feature FEATURE=<id>`. Videos are **never committed**.
 Each spec also emits a `<video>.mp4.chapters.json` sidecar (one chapter per
 tour step) the site uses for its clickable chapter rail.
+
+Every recording context comes from one device-profile registry
+(`tests/playwright/_helpers/camera.ts`): `cameraContext()` sources the viewport,
+scale, and `recordVideo.size`, so every section shares the 1600×900 canvas the
+stitch composes on (drift there silently letterboxes the master). `demo.profiles`
+(default `[desktop]`) is the device-matrix dimension — `desktop` is the only
+enabled profile until a demo's UI is responsive; `mobile`/`tablet` are a
+per-demo opt-in, recorded under `KITSOKI_DEMO_PROFILE` with a `--<profile>`
+filename suffix (desktop stays `<base>.mp4`, so its whole pipeline is unchanged).
+Ports come from `demoAddr(basePort)`: `basePort + KITSOKI_DEMO_PORT_BASE`
+(a concurrent session/worktree sets the env to claim a free range) plus the
+profile's offset — so concurrent sessions and parallel profile passes never
+collide on a port. (The matrix is threaded through record + index today; the
+site-side variant serving — per-profile `stage-media` outputs + `ChapteredVideo`
+runtime switching on viewport — lands when the first demo actually goes
+responsive, so nothing ships a shrunken-desktop "mobile" cut in the meantime.)
+
+## The master product tour (`make render-tour`)
+
+`features/complete-product-tour.yaml` (`kind: product-tour`) is **stitched, not
+recorded**: it declares ordered `sections`, each with `clips` referencing a
+demo-bound feature (optionally trimmed to a `[startChapterId, endChapterId]`
+window of that feature's sidecar). Because its video is composed, the master's
+`demo` has no `spec` (`demo.spec` is optional only for a sectioned product-tour;
+record-demos skips it). `scripts/features/stitch-tour.mjs` resolves each clip's
+per-profile MP4 + sidecar, ffmpeg-trims to the window, renders a title card per
+section, composes via the shared `concat-videos.sh`, and **merges** the
+per-section sidecars into one master rail — section-prefixed ids, a
+`group`/`group_label` per section, cumulative offsets (each card included,
+probed for exact duration), and a preserved `source_ref` for deep-linking.
+`ChapteredVideo.vue` renders that into one collapsible block per section (the
+8-group rail); a plain per-feature sidecar still renders flat. `make render-tour`
+records any stale sources then stitches; the stitch is incremental (skips when
+the master is newer than every input — `KITSOKI_STITCH_FORCE=1` rebuilds) and
+pure no-LLM post-processing.
 
 ## The site (`tools/site`, VitePress)
 
@@ -58,7 +98,7 @@ Targets: `make site` (build, base `/Kitsoki/`), `make site-dev` (HMR),
 
 - **GitHub Pages**: `.github/workflows/site.yml` builds the binary, records
   stale demos (two-level cache: `actions/cache` over `.artifacts` + the
-  per-demo stamps), builds, deploys. Docs-only pushes deploy in minutes with 0
+  per-demo stamps), stitches the master product tour, builds, deploys. Docs-only pushes deploy in minutes with 0
   recordings; a cold run records ~14 demos (30–50 min). Manual dispatch has a
   `rerecord` input. One-time setup: repo Settings → Pages → Source: GitHub
   Actions.
@@ -74,4 +114,6 @@ Targets: `make site` (build, base `/Kitsoki/`), `make site-dev` (HMR),
 catalog-generated scenarios + feature spec
 (`.artifacts/features/qa/<id>.{scenarios.yaml,feature.md}`) via the
 [kitsoki-ui-qa](../../.agents/skills/kitsoki-ui-qa/SKILL.md) pipeline. `make demo-tour-qa`
-is the onboarding-tour instance of the same flow.
+is the onboarding-tour instance of the same flow. For the stitched master (which
+has no recording spec), `make tour-qa` renders it via `render-tour` then judges
+the master video against its generated scenarios the same way.
