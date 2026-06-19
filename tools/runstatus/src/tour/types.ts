@@ -102,4 +102,13 @@ export interface TourStep {
    * driving data only, the data form of the Playwright spec's imperative logic.
    */
   drive?: DriveAction[];
+
+  /**
+   * When false, the step renders NO dimming backdrop — just the popover — so the
+   * UI underneath stays fully visible (e.g. watching a live conversation/loop).
+   * Defaults to true (the dimmed spotlight). For an anchorless (`target`-less)
+   * step, combine with `placement` to park the popover off to the side
+   * (e.g. "right") instead of centered over the content.
+   */
+  dim?: boolean;
 }

@@ -21,13 +21,15 @@
              target step whose anchor hasn't been measured yet renders NO
              backdrop, so it never blocks the real control's click. -->
         <template v-if="hole">
-          <div class="tour__backdrop" :style="strips.top"></div>
-          <div class="tour__backdrop" :style="strips.bottom"></div>
-          <div class="tour__backdrop" :style="strips.left"></div>
-          <div class="tour__backdrop" :style="strips.right"></div>
+          <template v-if="dimEnabled">
+            <div class="tour__backdrop" :style="strips.top"></div>
+            <div class="tour__backdrop" :style="strips.bottom"></div>
+            <div class="tour__backdrop" :style="strips.left"></div>
+            <div class="tour__backdrop" :style="strips.right"></div>
+          </template>
           <div class="tour__ring" :style="ringStyle"></div>
         </template>
-        <div v-else-if="isAnchorless" class="tour__backdrop tour__backdrop--full"></div>
+        <div v-else-if="isAnchorless && dimEnabled" class="tour__backdrop tour__backdrop--full"></div>
 
         <!-- Popover -->
         <div
@@ -163,8 +165,16 @@ function positionPopover(): void {
   let top: number;
   let left: number;
   if (!a) {
+    // Anchorless: centered by default, but honor placement so a no-dim narration
+    // popover can sit off to the side (e.g. "right") instead of over the content.
+    const m = 16;
+    const placement = tour.currentStep?.placement ?? "center";
     top = (window.innerHeight - ph) / 2;
     left = (window.innerWidth - pw) / 2;
+    if (placement === "right") left = window.innerWidth - pw - m;
+    else if (placement === "left") left = m;
+    else if (placement === "top") top = m;
+    else if (placement === "bottom") top = window.innerHeight - ph - m;
   } else {
     const placement = tour.currentStep?.placement ?? "bottom";
     switch (placement) {
@@ -218,6 +228,10 @@ const hole = computed<Rect | null>(() => {
 
 /** A step that deliberately has no anchor (welcome / done) gets a full backdrop. */
 const isAnchorless = computed<boolean>(() => !!tour.currentStep && !tour.currentStep.target);
+
+/** Whether to render the dimming backdrop. A step can opt out (dim: false) to
+ *  keep the UI underneath fully visible — e.g. watching a live conversation. */
+const dimEnabled = computed<boolean>(() => tour.currentStep?.dim !== false);
 
 const ringStyle = computed<Record<string, string>>(() => {
   const h = hole.value;

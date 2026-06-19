@@ -2,22 +2,22 @@
  * "Cherny loop" feature-tour video demo.
  *
  * Drives the cherny-loop tour against a real `kitsoki web` server in the
- * deterministic no-LLM posture (--flow web_tour.yaml; the flow's host_handlers
- * stub the maker / script gate / artifact write, so NO host cassette is needed)
- * and records a video + per-scene screenshots to .artifacts/cherny-loop/.
+ * deterministic no-LLM posture (--flow web_tour.yaml --mode one-shot; the flow's
+ * host_handlers stub the maker / script gate / artifact write per iteration) and
+ * records a video + per-scene screenshots to .artifacts/cherny-loop/.
  *
  * Like the golden agent-actions / dev-story-bugfix specs, this runs ONLY the
  * CHERNY_LOOP_TOUR_STEPS via window.__startTourWithSteps. The tour drives the
  * whole video: it opens on the home story library and a route-match action step
- * navigates home → new session → the drive view, then the explain beats narrate
- * the loop while the spec drives the matching intents between beats.
+ * navigates home → new session → the drive view, then the operator types a
+ * free-text goal and presses launch ONCE — the loop runs itself to completion.
  *
  * Driving mechanics:
- *   - Slotless intents (begin, launch, evaluate) are driven on-camera by
- *     clicking intent-btn-<name>; the resulting current-state / iteration
- *     counter is the hard signal the turn landed.
- *   - The slotted `configure` intent is driven via the __kitsokiSubmitIntent
- *     page hook (goal + gate + budget in one shot).
+ *   - The free-text first message is typed into the composer (set_goal sink) and
+ *     sent — the goal in plain words.
+ *   - `launch` is clicked once; one-shot mode runs the WHOLE autonomous loop in
+ *     that turn, so the hard signal is the terminal state (__exit__exhausted),
+ *     not a per-iteration counter.
  *
  * Validate fast (no dwells):
  *   WEB_CHAT_PACE=0 pnpm exec playwright test cherny-loop-video --project=chromium
@@ -44,12 +44,13 @@ import {
 } from "./_helpers/server.js";
 import { CHERNY_LOOP_TOUR_STEPS } from "../../src/tour/cherny-loop-manifest.js";
 
-const CHAPTER_SOURCE = "stories/cherny-loop/flows/web_tour.yaml";
+const CHAPTER_SOURCE = "stories/cherny-loop/recording.yaml";
 
 // 7771 — distinct from every other spec's port so parallel runs never race.
 const ADDR = "127.0.0.1:7771";
 const STORY_DIR = path.join(repoRoot, "stories", "cherny-loop");
-const FLOW = path.join(STORY_DIR, "flows", "web_tour.yaml");
+const RECORDING = path.join(STORY_DIR, "recording.yaml");
+const CASSETTE = path.join(STORY_DIR, "flows", "cassettes", "web_tour.cassette.yaml");
 const ARTIFACT_DIR = path.join(repoRoot, ".artifacts", "cherny-loop");
 const VIDEO_DIR = path.join(ARTIFACT_DIR, "video");
 const ERROR_TXT = path.join(ARTIFACT_DIR, "ERROR.txt");
@@ -69,7 +70,19 @@ test.beforeAll(async () => {
   prepareVideoDir(VIDEO_DIR);
   fs.mkdirSync(ARTIFACT_DIR, { recursive: true });
   fs.writeFileSync(ERROR_TXT, "");
-  server = await startWebServer({ addr: ADDR, flow: FLOW, storiesDir: STORY_DIR });
+  // Replay harness + host cassette + one-shot: the operator's free-text message
+  // is routed to `configure` by the hand-authored recording (no LLM); host.* calls
+  // come from the cassette (deterministic, distinct per iteration); one-shot lets
+  // the synthetic emit chain auto-advance through the baseline gate so `launch`
+  // runs the whole loop autonomously. (Replay + cassette coexist — runtime.go.)
+  server = await startWebServer({
+    addr: ADDR,
+    storiesDir: STORY_DIR,
+    harness: "replay",
+    recording: RECORDING,
+    hostCassette: CASSETTE,
+    mode: "one-shot",
+  });
 });
 
 test.afterAll(() => server?.stop());
@@ -77,11 +90,6 @@ test.afterAll(() => server?.stop());
 /** Assert the drive view's current-state reaches `state`. */
 async function expectState(page: Page, state: string): Promise<void> {
   await expect(page.getByTestId("current-state")).toHaveText(state, { timeout: 15000 });
-}
-
-/** Assert the loop's status bar shows iteration `n` of 4. */
-async function expectIter(page: Page, n: number): Promise<void> {
-  await expect(page.getByText(new RegExp(`iter ${n}/4`)).first()).toBeVisible({ timeout: 15000 });
 }
 
 /** Click a slotless intent button (DOM-level so the overlay backdrop never intercepts). */
@@ -93,6 +101,25 @@ async function clickIntent(page: Page, intent: string): Promise<void> {
   await dwell(page, 600);
 }
 
+/** Type a free-text message into the semantic composer and send it — the demo's
+ *  "first message", routed via session.turn (→ the replay recording). Sets the
+ *  value via the native setter so Vue's v-model fires, then clicks send
+ *  (DOM-level, overlay-safe). */
+async function sendText(page: Page, text: string): Promise<void> {
+  // The free-text "floor" beneath the action widget — routes via session.turn.
+  const input = page.getByTestId("text-floor-input").first();
+  await expect(input).toBeVisible({ timeout: 15000 });
+  await input.evaluate((el, value) => {
+    const node = el as HTMLInputElement | HTMLTextAreaElement;
+    const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(node), "value")?.set;
+    setter?.call(node, value);
+    node.dispatchEvent(new Event("input", { bubbles: true }));
+  }, text);
+  await dwell(page, 700);
+  await page.getByTestId("text-floor-send").first().evaluate((el) => (el as HTMLElement).click());
+  await dwell(page, 700);
+}
+
 /**
  * Drive the turn associated with a manifest step (AFTER its narration
  * screenshot). Each drive asserts a hard signal — the room transition or the
@@ -100,54 +127,26 @@ async function clickIntent(page: Page, intent: string): Promise<void> {
  */
 async function driveForStep(page: Page, stepId: string): Promise<void> {
   switch (stepId) {
-    case "cl-configure":
-      diag("drive configure (goal + artifact + gate + budget) via hook");
-      await page.evaluate(async () => {
-        await (window as unknown as {
-          __kitsokiSubmitIntent?: (n: string, s?: Record<string, unknown>) => Promise<void>;
-        }).__kitsokiSubmitIntent?.("configure", {
-          goal: "Get `go test ./internal/ratelimit` green",
-          artifact: "internal/ratelimit/limiter.go",
-          gate_command: "go test ./internal/ratelimit/",
-          gate_mode: "script",
-          iteration_budget: 4,
-        });
-      });
+    case "cl-goal":
+      // The free-text first message — routed to `configure` by the replay
+      // recording (no LLM). Submitted via the semantic composer (session.turn).
+      diag("drive free-text goal via composer (replay-routed → configure)");
+      await sendText(page, "the rate limiter tests are flaky — get `go test ./internal/ratelimit` green");
       await expectState(page, "configuring");
-      await dwell(page, 600);
+      // Rest on the just-sent first message before the next beat narrates it.
+      await dwell(page, 2800);
       break;
     case "cl-launch":
-      diag("drive launch → baseline (gate proven RED, no maker spend)");
+      // One launch runs the WHOLE loop autonomously (one-shot mode) to the
+      // iteration ceiling — no per-iteration prodding. The terminal state is
+      // the hard signal the autonomous run completed.
+      diag("drive launch → autonomous run → __exit__exhausted");
       await clickIntent(page, "launch");
-      await expectState(page, "baseline");
-      break;
-    case "cl-baseline":
-      diag("drive proceed → iterating (iteration 1)");
-      await clickIntent(page, "proceed");
-      await expectState(page, "iterating");
-      await expectIter(page, 1);
-      break;
-    case "cl-evaluate-1":
-      diag("drive evaluate → iteration 2");
-      await clickIntent(page, "evaluate");
-      await expectIter(page, 2);
-      break;
-    case "cl-evaluate-2":
-      diag("drive evaluate → iteration 3");
-      await clickIntent(page, "evaluate");
-      await expectIter(page, 3);
-      break;
-    case "cl-evaluate-3":
-      diag("drive evaluate → iteration 4");
-      await clickIntent(page, "evaluate");
-      await expectIter(page, 4);
-      break;
-    case "cl-budget":
-      diag("drive evaluate → __exit__exhausted (budget)");
-      await clickIntent(page, "evaluate");
       await expectState(page, "__exit__exhausted");
+      await dwell(page, 800);
       break;
     default:
+      // cl-converge / cl-budget / cl-done narrate the already-terminal run.
       break;
   }
 }

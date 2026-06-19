@@ -132,18 +132,31 @@ async function waitForHealthy(
 /** Spawn `kitsoki web` with a story flow fixture and wait until it's healthy. */
 export async function startWebServer(opts: {
   addr: string;
-  flow: string;
+  /** Nil-harness flow fixture (explicit intents). Omit when using `harness`. */
+  flow?: string;
   storiesDir?: string;
-  /** Optional host cassette path for oracle event recording in the trace. */
+  /** Optional host cassette path. Combinable with `flow` (nil-harness) OR with
+   *  `harness: "replay"` (free-text routed by the recording, host calls from the
+   *  cassette — the deterministic no-LLM free-text posture). */
   hostCassette?: string;
   /** Optional .kitsoki.yaml path (--config), e.g. to declare harness_profiles. */
   config?: string;
+  /** Harness for free-text routing, e.g. "replay" (with `recording`). */
+  harness?: string;
+  /** Recording YAML for --harness replay (deterministic, hand-authorable). */
+  recording?: string;
+  /** Execution mode: "one-shot" (auto-advance synthetic emit chains through
+   *  decision gates — needed for an autonomous in-story loop) or "staged"
+   *  (default). */
+  mode?: string;
   /** Optional extra env merged into the spawned server (e.g. a dummy
    *  SYNTHETIC_API_KEY so a harness_profiles fixture's ${VAR} resolves). */
   extraEnv?: Record<string, string>;
 }): Promise<WebServer> {
   const storiesDir = opts.storiesDir ?? STORIES_DIR;
-  const checkPaths = [storiesDir, opts.flow];
+  const checkPaths = [storiesDir];
+  if (opts.flow) checkPaths.push(opts.flow);
+  if (opts.recording) checkPaths.push(opts.recording);
   if (!GO_RUN) checkPaths.push(BIN);
   if (opts.hostCassette) checkPaths.push(opts.hostCassette);
   if (opts.config) checkPaths.push(opts.config);
@@ -158,7 +171,11 @@ export async function startWebServer(opts: {
   const dbPath = path.join(tmpDbDir, "s.db");
   let serverLog = "";
 
-  const args = ["web", "--stories-dir", storiesDir, "--flow", opts.flow, "--addr", opts.addr, "--db", dbPath];
+  const args = ["web", "--stories-dir", storiesDir, "--addr", opts.addr, "--db", dbPath];
+  if (opts.flow) args.push("--flow", opts.flow);
+  if (opts.harness) args.push("--harness", opts.harness);
+  if (opts.recording) args.push("--recording", opts.recording);
+  if (opts.mode) args.push("--mode", opts.mode);
   if (opts.hostCassette) args.push("--host-cassette", opts.hostCassette);
   if (opts.config) args.push("--config", opts.config);
 

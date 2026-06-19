@@ -63,18 +63,20 @@ host_handlers:
   host.artifacts_dir: { data: { ok: true } }
 
 turns:
+  # configure sets the goal + script gate + budget (the web demo routes a free-text
+  # message to this same intent via the replay recording; here we submit it
+  # explicitly as the Mode-2 proof).
   - intent:
       name: configure
       slots:
         goal:             "Get `go test ./internal/ratelimit` green"
-        artifact:         "internal/ratelimit/limiter.go"
-        gate_command:     "go test ./internal/ratelimit/"
+        gate_command:     "go test ./internal/ratelimit"
         gate_mode:        "script"
         iteration_budget: 3
     expect_state: configuring
     expect_world:
       goal_text:        "Get `go test ./internal/ratelimit` green"
-      goal_artifact:    "internal/ratelimit/limiter.go"
+      gate_command:     "go test ./internal/ratelimit"
       iteration_budget: 3
   # launch runs the WHOLE loop autonomously in one turn: baseline RED →
   # auto-proceed → iterate 1..3 → stop at the iteration ceiling.

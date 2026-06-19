@@ -1,51 +1,58 @@
 states:
   configuring:
     description: "Configure the loop"
+    # Free-text-first: a FLAT view (no extends) with a `choice` action widget, so
+    # the web InputBar renders the action buttons AND a free-text "floor" that
+    # routes a typed message via the semantic router — a real harness live, the
+    # replay recording in the no-LLM demo — to `configure`. The operator's "first
+    # message" is the goal in their own words. (Flat, not extends/base: a `choice`
+    # element isn't allowed inside an extends/blocks view, and the base status
+    # line — iter/budget/cost — is noise before the loop has launched anyway.)
     relevant_world: [goal_text, goal_artifact, gate_mode, gate_command, iteration_budget, cost_budget_usd]
     view:
-      extends: "base"
-      blocks:
-        body:
-          - banner:
-              text:     "CONFIGURE"
-              subtitle: "Goal · gate · budget — then verify the gate fails first"
-              color:    "#6366F1"
-          - prose: "A Cherny loop iterates an agent toward a goal until a gate proves it met — or a budget stops it. `launch` first proves the gate is **RED** (it fails today), so you never burn budget on a gate that can't tell you anything."
-          - heading: "Goal"
-          - prose: '{{ world.goal_text|default:"_(not yet chosen — `configure goal=…`)_" }}'
-          - kv:
-              pairs:
-                Artifact under test: '{{ world.goal_artifact|default:"(none — the maker works from the repo)" }}'
-          - heading: "The gate"
-          # The gate is the whole point — render the actual command/checker the
-          # operator can read and inspect, not a one-line kv value.
-          - prose: '**script** — the gate is this command; it passes iff it exits 0:'
-            when:  "world.gate_mode == 'script'"
-          - code: '{{ world.gate_command|default:"# (none yet — configure gate_command=…)" }}'
-            when:  "world.gate_mode == 'script'"
-          - prose: '**oracle** — an adversarial reviewer judges the artifact against the goal (for goals no test can encode).'
-            when:  "world.gate_mode == 'oracle'"
-          - heading: "Budgets"
-          - kv:
-              pairs:
-                Iteration cap: "{{ world.iteration_budget }}"
-                Cost cap:      '{% if world.cost_budget_usd > 0 %}${{ world.cost_budget_usd }}{% else %}(disabled){% endif %}'
-        choices:
-          - heading: "Actions"
-          - list:
-              items:
-                - label: "configure goal=… artifact=… gate_command=… iteration_budget=… cost_budget=…"
-                  hint:  "set any subset"
-                - label: "launch"
-                  hint:  "verify the gate is RED, then run the loop to completion"
-                  when:  "world.goal_text != '' && (world.gate_mode != 'script' || world.gate_command != '')"
-                - label: "✗ launch — set a goal first"
-                  when:  "world.goal_text == ''"
-                - label: "✗ launch — script mode needs a gate_command"
-                  when:  "world.goal_text != '' && world.gate_mode == 'script' && world.gate_command == ''"
-                - label: "abort"
-                  hint:  "abandon the loop"
-                - label: "look"
+      - banner:
+          text:     "CONFIGURE"
+          subtitle: "Say what you want — then launch"
+          color:    "#6366F1"
+      - prose: "A Cherny loop iterates an agent toward a goal until a gate proves it met — or a budget stops it. **Say what you want in your own words** — e.g. \"get `go test ./internal/ratelimit` green\" — and I'll script-gate the loop on that command. `launch` then proves the gate is **RED** (it fails today) before spending anything."
+      - heading: "Goal"
+      - prose: '{{ world.goal_text|default:"_(not yet chosen — say what you want, or `configure goal=…`)_" }}'
+      - kv:
+          pairs:
+            Artifact under test: '{{ world.goal_artifact|default:"(none — the maker works from the repo)" }}'
+      - heading: "The gate"
+      # The gate is the whole point — render the actual command/checker the
+      # operator can read and inspect, not a one-line kv value.
+      - prose: '**script** — the gate is this command; it passes iff it exits 0:'
+        when:  "world.gate_mode == 'script'"
+      - code: '{{ world.gate_command|default:"# (none yet)" }}'
+        when:  "world.gate_mode == 'script'"
+      - prose: '**oracle** — an adversarial reviewer judges the artifact against the goal (for goals no test can encode).'
+        when:  "world.gate_mode == 'oracle'"
+      - heading: "Budgets"
+      - kv:
+          pairs:
+            Iteration cap: "{{ world.iteration_budget }}"
+            Cost cap:      '{% if world.cost_budget_usd > 0 %}${{ world.cost_budget_usd }}{% else %}(disabled){% endif %}'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "launch"
+              hint:   "verify the gate is RED, then run the loop to completion"
+              intent: launch
+              when:   "world.goal_text != '' && (world.gate_mode != 'script' || world.gate_command != '')"
+            - label:  "✗ launch — say what you want first"
+              intent: look
+              when:   "world.goal_text == ''"
+            - label:  "✗ launch — script mode needs a gate command"
+              intent: look
+              when:   "world.goal_text != '' && world.gate_mode == 'script' && world.gate_command == ''"
+            - label:  "abort"
+              hint:   "abandon the loop"
+              intent: abort
+            - label:  "look"
+              intent: look
     on:
       configure:
         - target: .
