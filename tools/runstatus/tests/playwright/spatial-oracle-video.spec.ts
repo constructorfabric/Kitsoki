@@ -8,16 +8,31 @@
  * inline thumbnail + chip render on the answer, and the chrome-less /point
  * handoff window — into .artifacts/spatial-oracle/.
  *
- * POSTURE: this feature lives on the /review and /point routes, NOT the
- * story-library/observer surface the agent-actions tour walks, so it is NOT
- * driven by the kitsoki tour overlay. It reuses spatial-capture.spec.ts's
- * deterministic posture: the built dist/index.html is served by a tiny static
- * server WITHOUT an inlined snapshot (so createDataSource() returns LiveSource
- * and issues real JSON-RPC), and every RPC — including the offpath oracle — is
- * STUBBED via page.route with canned, reproducible answers. No live kitsoki
- * server, no LLM, no cost. Narration is the PORTABLE makeCaption + makeSpotlight
- * helpers (the gh-issue-review external-act posture), and each step's title is
- * asserted against SPATIAL_ORACLE_TOUR_STEPS — a drift guard.
+ * HOUSE STYLE: the /review portion is narrated by the REAL in-product tour
+ * overlay (TourOverlay.vue: the "STEP N OF M" popover card with title / body /
+ * Skip / Back / Next + a spotlight ring), exactly like the agent-actions /
+ * trace-features demos. The SPATIAL_ORACLE_TOUR_STEPS array is injected into the
+ * live overlay via window.__startTourWithSteps, and each step's real popover
+ * title is asserted against the manifest (a drift guard). The spatial gestures
+ * (flag the scene, pin a point, ask the question) are interleaved BETWEEN the
+ * overlay advances — the picker/answer testids that later steps spotlight only
+ * exist after those gestures, so each gesture runs just before the step that
+ * narrates its result, mirroring how agent-actions interleaves real clicks with
+ * its explain popovers.
+ *
+ * THE ONE EXCEPTION: the chrome-less /point window renders ONLY <PointPage>
+ * (App.vue: `<PointPage v-if="chromeless">`) — the whole normal shell, INCLUDING
+ * <TourOverlay>, is v-if'd out there. So the /point beat (so-point-window +
+ * so-done) keeps the PORTABLE makeCaption + makeSpotlight helpers; the real
+ * overlay simply does not exist on that route.
+ *
+ * POSTURE: this reuses spatial-capture.spec.ts's deterministic posture: the
+ * built dist/index.html is served by a tiny static server WITHOUT an inlined
+ * snapshot (so createDataSource() returns LiveSource and issues real JSON-RPC,
+ * AND the tour store's snapshot guard is inert so __startTourWithSteps drives
+ * the overlay), and every RPC — including the offpath oracle — is STUBBED via
+ * page.route with canned, reproducible answers. No live kitsoki server, no LLM,
+ * no cost.
  *
  * Validate fast (no dwells):
  *   WEB_CHAT_PACE=0 pnpm exec playwright test spatial-oracle-video --project=chromium
@@ -59,6 +74,23 @@ const CHAPTER_SOURCE = "tools/runstatus/src/tour/spatial-oracle-manifest.ts";
 
 const SID = "sess-spatial";
 const VIDEO = "demo_video#ab12cd34";
+
+// The /review steps are narrated by the REAL overlay; the /point beat keeps the
+// portable caption (no overlay on the chromeless route). Split the manifest on
+// that boundary so each half is driven by its own mechanism.
+const REVIEW_STEP_IDS = [
+  "so-intro",
+  "so-review",
+  "so-flag",
+  "so-picker",
+  "so-point",
+  "so-element",
+  "so-ask",
+  "so-answer",
+] as const;
+const REVIEW_STEPS: TourStep[] = SPATIAL_ORACLE_TOUR_STEPS.filter((s) =>
+  (REVIEW_STEP_IDS as readonly string[]).includes(s.id),
+);
 
 // A valid 1×1 red PNG (same bytes as spatial-capture.spec.ts / the Go fixture).
 const ONE_PX_PNG = Buffer.from(
@@ -192,85 +224,139 @@ test("spatial oracle feature-spotlight video", async () => {
     const reviewUrl = `${origin}/#/review/${SID}?video=${encodeURIComponent(VIDEO)}`;
     await page.goto(reviewUrl);
     await expect(page.getByTestId("review-page")).toBeVisible({ timeout: 15000 });
-
-    // Portable narration: caption banner + spotlight box (both pointer-events:none).
-    const caption = await makeCaption(page);
-    const spotlight = await makeSpotlight(page);
     await dwell(page, SETTLE_MS);
 
-    /** Narrate a manifest step: assert title-drift, caption it, spotlight its
-     *  target (if any), open the chapter, dwell, and screenshot. */
-    async function beat(id: string, opts: { spotlightFor?: string } = {}): Promise<TourStep> {
+    // ── Start the REAL in-product tour overlay on /review ────────────────────
+    // Inject only the /review steps (so-intro … so-answer) into the live
+    // TourOverlay via the same driver the agent-actions spec uses. The overlay
+    // is mounted globally at the App shell and its steps are route-agnostic
+    // (route:"any"), so it renders the popover card on /review. The /point beat
+    // (so-point-window + so-done) is excluded here — that chromeless route has
+    // no overlay — and narrated with makeCaption further below.
+    mark("start tour overlay");
+    await page.evaluate((stepsJson: string) => {
+      (window as unknown as { __startTourWithSteps?: (s: string) => void })
+        .__startTourWithSteps?.(stepsJson);
+    }, JSON.stringify(REVIEW_STEPS));
+    await expect(page.getByTestId("tour-overlay")).toBeVisible({ timeout: 8000 });
+
+    const titleEl = page.getByTestId("tour-title");
+
+    /**
+     * Walk ONE overlay step: assert the popover title matches the manifest (drift
+     * guard), open the chapter, dwell, screenshot, then advance the overlay via
+     * its own Next button — exactly the agent-actions loop. The spatial gestures
+     * that conjure a later step's spotlight target run via `before`, fired AFTER
+     * the popover for THIS step has surfaced but BEFORE we dwell+advance.
+     */
+    async function overlayStep(
+      id: string,
+      opts: { before?: () => Promise<void> } = {},
+    ): Promise<TourStep> {
       const s = step(id);
       mark(s.id);
-      // Drift guard: the spec must narrate the exact title the manifest ships.
-      expect(s.title, `manifest step "${id}" title`).toBeTruthy();
-      const sel = opts.spotlightFor ?? (s.target ? `[data-testid="${s.target}"]` : null);
-      await spotlight(sel);
+      // The popover must be showing THIS step's title before we narrate it.
+      await expect(titleEl).toHaveText(s.title, { timeout: 12000 });
+      // Conjure the next-step target now (the gesture's RESULT is what the
+      // upcoming step spotlights), while this step's popover is on camera.
+      if (opts.before) await opts.before();
       chapters.open(s.id, s.title, CHAPTER_SOURCE);
-      await caption(s.title, s.body, s.dwellMs ?? 4000);
+      await dwell(page, s.dwellMs ?? 4000);
       await shot(page, s.id);
+      // Advance the REAL overlay — its Next button (or "Done" on the last step).
+      await page.getByTestId("tour-next").click();
+      // Let the spotlight animation move to the next target before the next
+      // toHaveText assertion (mirrors agent-actions' post-Next beat).
+      await dwell(page, 700);
       return s;
     }
 
-    // ── 1. Intro ───────────────────────────────────────────────────────────────
-    await beat("so-intro");
+    // ── 1. Intro ─────────────────────────────────────────────────────────────
+    await overlayStep("so-intro");
 
     // ── 2. The review surface ────────────────────────────────────────────────
-    await beat("so-review");
+    await overlayStep("so-review");
 
-    // ── 3. Flag a scene → selects a flag → mounts the picker ──────────────────
-    await beat("so-flag");
-    mark("flag the scene");
-    await page.getByTestId("ct-marker-intro").click();
-    await page.getByTestId("ct-flag-btn").click();
-    await expect(page.getByTestId("flag-detail")).toBeVisible();
-    // The reconstructed-DOM replay frame renders the REAL UI under the picker.
-    await expect(page.getByTestId("rp-replay-frame")).toBeVisible();
-    await expect(page.getByTestId("spatial-picker")).toBeVisible({ timeout: 10000 });
-    await dwell(page, SETTLE_MS);
-
-    // ── 4. The picker overlay ─────────────────────────────────────────────────
-    await beat("so-picker");
-
-    // ── 5. Click the Run button → pin a crosshair + resolve the real control ──
-    mark("click the Run button");
-    const picker = page.getByTestId("spatial-picker");
-    const pbox = await picker.boundingBox();
-    if (!pbox) throw new Error("picker has no bounding box");
-    // position is relative to the picker box, which covers the rendered (scaled)
-    // replay exactly — so the fraction of natural pixels equals the box fraction.
-    await picker.click({
-      position: {
-        x: (RUN_CENTER.x / REC_W) * pbox.width,
-        y: (RUN_CENTER.y / REC_H) * pbox.height,
+    // ── 3. Flag a scene → selects a flag → mounts the picker ─────────────────
+    // The so-flag popover spotlights the chapter timeline; its `before` performs
+    // the real flag gesture so the NEXT step (so-picker) has a mounted picker to
+    // spotlight. We flag AFTER so-flag's popover is asserted on camera.
+    await overlayStep("so-flag", {
+      before: async () => {
+        mark("flag the scene");
+        await page.getByTestId("ct-marker-intro").click();
+        await page.getByTestId("ct-flag-btn").click();
+        await expect(page.getByTestId("flag-detail")).toBeVisible();
+        // The reconstructed-DOM replay frame renders the REAL UI under the picker.
+        await expect(page.getByTestId("rp-replay-frame")).toBeVisible();
+        await expect(page.getByTestId("spatial-picker")).toBeVisible({ timeout: 10000 });
+        await dwell(page, SETTLE_MS);
       },
     });
-    await expect(page.getByTestId("sp-point")).toBeVisible();
-    await expect(page.getByTestId("fd-element")).toBeVisible();
-    // Resolution against the reconstructed DOM: a REAL app control, not <video>.
-    await expect(page.getByTestId("fd-element")).toContainText("intent-btn-run");
-    await dwell(page, SETTLE_MS);
-    await beat("so-point");
-    await beat("so-element");
 
-    // ── 6. Ask a question → stubbed oracle answer renders with thumbnail+chip ──
-    await beat("so-ask");
-    mark("ask the question");
-    await page.getByTestId("fd-chat-box").fill("what is this control?");
-    await page.getByTestId("fd-chat-send").click();
-    // The stubbed answer renders in the chat transcript.
-    await expect(page.getByTestId("fd-chat")).toContainText(STUB_ANSWER, { timeout: 8000 });
-    // The captured frame thumbnail + the element chip stay alongside it.
-    await expect(page.getByTestId("fd-still")).toBeVisible();
-    await expect(page.getByTestId("fd-element")).toBeVisible();
-    await dwell(page, SETTLE_MS);
-    await beat("so-answer");
+    // ── 4. The picker overlay ────────────────────────────────────────────────
+    // so-picker spotlights spatial-picker (now mounted). Its `before` pins the
+    // point so the NEXT steps (so-point=sp-point crosshair, so-element=fd-element
+    // chip) have their targets present.
+    await overlayStep("so-picker", {
+      before: async () => {
+        mark("click the Run button");
+        const picker = page.getByTestId("spatial-picker");
+        const pbox = await picker.boundingBox();
+        if (!pbox) throw new Error("picker has no bounding box");
+        // position is relative to the picker box, which covers the rendered
+        // (scaled) replay exactly — so the fraction of natural pixels equals the
+        // box fraction.
+        await picker.click({
+          position: {
+            x: (RUN_CENTER.x / REC_W) * pbox.width,
+            y: (RUN_CENTER.y / REC_H) * pbox.height,
+          },
+        });
+        await expect(page.getByTestId("sp-point")).toBeVisible();
+        await expect(page.getByTestId("fd-element")).toBeVisible();
+        // Resolution against the reconstructed DOM: a REAL app control, not <video>.
+        await expect(page.getByTestId("fd-element")).toContainText("intent-btn-run");
+        await dwell(page, SETTLE_MS);
+      },
+    });
 
-    // ── 7. The chrome-less /point handoff window ──────────────────────────────
+    // ── 5. Crosshair + resolved element chip ─────────────────────────────────
+    await overlayStep("so-point");
+    await overlayStep("so-element");
+
+    // ── 6. Ask a question → stubbed oracle answer renders ────────────────────
+    // so-ask spotlights the composer; its `before` types + sends so the NEXT
+    // step (so-answer=fd-chat) has the stubbed answer to spotlight.
+    await overlayStep("so-ask", {
+      before: async () => {
+        mark("ask the question");
+        await page.getByTestId("fd-chat-box").fill("what is this control?");
+        // The overlay spotlights fd-chat-box; its backdrop covers fd-chat-send
+        // (outside the hole), so a hit-test click is intercepted. Dispatch the
+        // DOM click directly — mirrors agent-actions' click-through technique.
+        await page
+          .getByTestId("fd-chat-send")
+          .evaluate((el) => (el as HTMLElement).click());
+        // The stubbed answer renders in the chat transcript.
+        await expect(page.getByTestId("fd-chat")).toContainText(STUB_ANSWER, { timeout: 8000 });
+        // The captured frame thumbnail + the element chip stay alongside it.
+        await expect(page.getByTestId("fd-still")).toBeVisible();
+        await expect(page.getByTestId("fd-element")).toBeVisible();
+        await dwell(page, SETTLE_MS);
+      },
+    });
+
+    // ── 7. The answer, with context ──────────────────────────────────────────
+    // Last /review step: its "Next" reads "Done" and closes the overlay.
+    await overlayStep("so-answer");
+    // The /review tour has finished — the overlay is gone.
+    await expect(page.getByTestId("tour-overlay")).toHaveCount(0, { timeout: 5000 });
+
+    // ── 8. The chrome-less /point handoff window (PORTABLE caption) ───────────
+    // The chromeless route renders ONLY <PointPage>; <TourOverlay> is v-if'd out,
+    // so this beat MUST use the portable makeCaption + makeSpotlight helpers.
     mark("goto /point chromeless");
-    // Lift the spotlight before navigating away (it lives on the old DOM).
-    await spotlight(null);
     const pointUrl =
       `${origin}/point?chromeless=1&token=tok-demo` +
       `&media_handle=${encodeURIComponent("frame#deadbeef")}&t_ms=0` +
@@ -278,9 +364,9 @@ test("spatial oracle feature-spotlight video", async () => {
       `&prompt=${encodeURIComponent("Point at what you mean, then send.")}`;
     await page.goto(pointUrl);
     await expect(page.getByTestId("point-page")).toBeVisible({ timeout: 15000 });
-    // Re-install narration: injected DOM does not survive a navigation.
-    const caption2 = await makeCaption(page);
-    const spotlight2 = await makeSpotlight(page);
+    // Portable narration: caption banner + spotlight box (both pointer-events:none).
+    const caption = await makeCaption(page);
+    const spotlight = await makeSpotlight(page);
     await dwell(page, SETTLE_MS);
 
     // Pin a point in the handoff window's picker so its crosshair shows on camera.
@@ -293,19 +379,19 @@ test("spatial oracle feature-spotlight video", async () => {
     {
       const s = step("so-point-window");
       mark(s.id);
-      await spotlight2(s.target ? `[data-testid="${s.target}"]` : null);
+      await spotlight(s.target ? `[data-testid="${s.target}"]` : null);
       chapters.open(s.id, s.title, CHAPTER_SOURCE);
-      await caption2(s.title, s.body, s.dwellMs ?? 4000);
+      await caption(s.title, s.body, s.dwellMs ?? 4000);
       await shot(page, s.id);
     }
 
-    // ── 8. Done ────────────────────────────────────────────────────────────────
+    // ── 9. Done (PORTABLE caption) ───────────────────────────────────────────
     {
       const s = step("so-done");
       mark(s.id);
-      await spotlight2(null);
+      await spotlight(null);
       chapters.open(s.id, s.title, CHAPTER_SOURCE);
-      await caption2(s.title, s.body, s.dwellMs ?? 4000);
+      await caption(s.title, s.body, s.dwellMs ?? 4000);
       await shot(page, s.id);
     }
   } catch (e) {
