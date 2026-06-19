@@ -38,6 +38,12 @@ flow tests (see [[feedback_no_llm_tests]] and `docs/web/README.md` →
 > - **A full-product walkthrough** (home → new session → drive/observe → reload →
 >   active sessions) → `multi-story.spec.ts`. The single-purpose chat drive lives
 >   there too.
+>
+> **Two production modes** (both no-LLM): the **live screen-record** mode above
+> (screen-record a live `kitsoki web` drive — the default, and the ONLY option
+> for `<canvas>`/`<video>`/WebGL surfaces) and the **rrweb capture → replay-render**
+> mode (capture the DOM stream once, re-render server-free + offline, frame-exact)
+> — see **[rrweb capture → replay-render](#rrweb-capture--replay-render-deterministic-server-free-mode)**.
 
 ## Prerequisites (once)
 
@@ -433,6 +439,110 @@ This demo is the **proof that conversation-driven-development methodology** (the
 epic at `docs/proposals/conversation-driven-development.md`) works for kitsoki
 itself — and it runs no-LLM, deterministic, and verifiable.
 
+## rrweb capture → replay-render (deterministic, server-free mode)
+
+The default mode above screen-records a **live** `kitsoki web` drive — the camera
+rolls against a running server, so timing varies run-to-run. The **rrweb mode**
+splits production into two deterministic halves so the video becomes a pure
+function of `(captured events, holds, viewport, DSF)`:
+
+1. **Capture (one live drive).** Drive the existing live tour ONCE with
+   `installCapture(page)` attached, recording the session's **full** rrweb
+   DOM-mutation stream, then `dumpCapture(page)` + `writeEvents(events, path,
+   viewport)` to persist `<tour>.rrweb.json` **and** its `<tour>.rrweb.capture.json`
+   viewport sidecar.
+2. **Render (server-free, re-runnable).** Replay that stream through an rrweb
+   `Replayer` while Playwright screen-records — no server, no story runtime, no
+   live-timing variance. Re-render frame-exact forever from the JSON + the pinned
+   local rrweb bundle, offline.
+
+**The determinism win.** rrweb is the **local pinned bundle**
+(`node_modules/rrweb/dist/rrweb.umd.min.cjs`, injected via `page.addScriptTag({
+path })` — **never a CDN**), so the render depends only on the committed JSON +
+that pinned bundle: offline, reproducible, re-renderable without ever rebuilding
+or rerunning the server. Capture once live (the slow part); iterate the render
+fast and free.
+
+**⚠️ Canvas/video boundary — this mode does NOT cover every surface.** Capture
+runs `recordCanvas:false` and is validated only on **SVG + HTML/CSS** surfaces
+(the agent-actions drawer, the StateDiagram). Any tour with a `<canvas>`,
+`<video>`, or WebGL surface will **not** reconstruct under this config and MUST
+stay on the **live screen-record path** (the `*-video.spec.ts` specs — the
+fallback). Do not move a canvas/video/WebGL tour onto rrweb mode.
+
+**⚠️ Capture == render viewport/DSF invariant.** The render forces
+`transform:none` on the rrweb player wrapper to defeat rrweb's fit-scale — that
+is clip-safe **only** when the render viewport/DSF equals the capture's;
+otherwise it silently clips to the top-left. `writeEvents(...viewport)` records
+the capture viewport/DSF in the sidecar and the render helpers
+(`assertViewportMatchesCapture`) **throw loudly** on any mismatch rather than
+ship a clipped video. (Guard test: `rrweb-replay-viewport-assert.spec.ts`.)
+
+### Worked reference specs
+
+| Spec | Role |
+|---|---|
+| `tests/playwright/agent-actions-rrweb-capture.spec.ts` | **capture** — the simple all-DOM tour (forks the golden `agent-actions-video.spec.ts`; same live drive + baseline, plus the rrweb hooks). 1600×900, DSF 1. |
+| `tests/playwright/diagram-showcase-rrweb-capture.spec.ts` | **capture** — the complex view-dwell tour (SVG StateDiagram). 1600×900, DSF 1. |
+| `tests/playwright/rrweb-replay-render.spec.ts` | **render** — replays a captured stream (`RRWEB_TARGET=agent-actions\|diagram-showcase`, `RRWEB_HOLDS=1` for the held render). |
+| `tests/playwright/rrweb-replay-smoke.spec.ts` | fast end-to-end smoke of the whole round-trip. |
+| `tests/playwright/_helpers/rrweb-replay.ts` | the harness: `installCapture` / `dumpCapture` / `writeEvents` / `renderReplayWithHolds` / `renderReplayToMp4` (+ `assertViewportMatchesCapture`). |
+
+These point at the rrweb path the same way the live-record sections point at
+`agent-actions-video.spec.ts`.
+
+### Chapter-keyed holds — render each view for its real dwell
+
+A straight-through replay (`renderReplayToMp4`) reproduces the DOM-mutation
+**timeline**, but during a multi-second dwell the reconstructed DOM is static, so
+the recorder drops frames and a view that held ~7s live collapses to ~1s in the
+extracted frames. The fix (`renderReplayWithHolds`) drives the Replayer **chapter
+by chapter**: `pause(seekMs)` to freeze each step's settled view, then **hold**
+it on-screen for `holdMs` wall-clock before advancing. Pass a `chapters` array of
+`{ id, seekMs, holdMs }`, **keyed off a `holds-chapters.json`** whose `holdMs` is
+the tour manifest's per-step `dwellMs` (the dwell is the source of truth for how
+long each view must hold) and whose `seekMs` is the capture timeline's settled
+instant for that step. Use `renderReplayWithHolds` for any tour that lingers on a
+view (the diagram-showcase class); `renderReplayToMp4` is fine only for short,
+mutation-dense tours.
+
+### Run it
+
+```bash
+make build && cp ./kitsoki bin/kitsoki   # rebuild (go:embed) — capture drives a live server
+
+# 1. CAPTURE (one live drive) → .artifacts/rrweb-eval/<tour>/<tour>.rrweb.json (+ .capture.json sidecar)
+cd tools/runstatus && pnpm exec playwright test agent-actions-rrweb-capture --project=chromium
+#   diagram-showcase capture is LONG (~minutes) — run in the background and poll.
+
+# 2. RENDER (server-free; re-run as often as you like — no rebuild, offline)
+cd tools/runstatus && RRWEB_TARGET=agent-actions \
+  pnpm exec playwright test rrweb-replay-render --project=chromium
+#   view-dwell tours: add RRWEB_HOLDS=1 (needs <tour>/holds-chapters.json beside the events)
+cd tools/runstatus && RRWEB_TARGET=diagram-showcase RRWEB_HOLDS=1 \
+  pnpm exec playwright test rrweb-replay-render --project=chromium
+```
+
+### QA the replay video at ≥2fps
+
+When handing a replay-rendered video to `kitsoki-ui-qa`, **sample at ≥2fps**
+(`renderReplayWithHolds` extracts at fps=2 by default) — held views make a
+slightly higher sample rate cheap and guarantee the QA sampler lands inside every
+legible window rather than on a transition frame. Note one benign false positive
+for the diagram tour: the dark diagram-canvas background trips the blank-scan
+"large monochromatic region" advisory on a few frames — that is the background,
+not a blank, and the scenarios pass on those frames; don't read it as a
+regression.
+
+### Known minor follow-up (not a blocker)
+
+**G6** — the agent-actions `aa-rollup` tour step is an *explain* step with no
+expand action, so neither the rrweb render NOR the live baseline ever shows a
+rollup row expanding into a drawer. This is a pre-existing **tour-coverage gap
+shared with the live baseline**, not an rrweb defect. Fix in the tour (give
+`aa-rollup` an expand action) or set the scenario step `required:false` — a minor
+follow-up, not a blocker for adopting rrweb mode.
+
 ## Onboarding tour recording
 
 The generic onboarding tour has a dedicated, maintained spec that records it as a
@@ -645,6 +755,12 @@ make mcp-qa           # vision QA gate (GATED: local claude CLI)
 - **Cross-site / multi-act demo:** `gh-issue-review-video.spec.ts` +
   `src/tour/gh-issue-review-manifest.ts` + `fixtures/gh-issue-review.html`;
   composited by `scripts/record-gh-issues-demo.sh` + `scripts/concat-videos.sh`
+- **rrweb capture → replay-render (deterministic, server-free):**
+  `tests/playwright/_helpers/rrweb-replay.ts` + `agent-actions-rrweb-capture.spec.ts`
+  (simple) / `diagram-showcase-rrweb-capture.spec.ts` (complex view-dwell) /
+  `rrweb-replay-render.spec.ts` (render) / `rrweb-replay-smoke.spec.ts` (smoke) /
+  `rrweb-replay-viewport-assert.spec.ts` (viewport-match guard). Canvas/video
+  surfaces stay on the live `*-video.spec.ts` path.
 - Sibling feature tour: `trace-features-video.spec.ts` + `src/tour/trace-manifest.ts`
 - Sibling feature tour (cassette slow-play streaming): `chat-stream-video.spec.ts` +
   `src/tour/chat-stream-manifest.ts` — films the live turn-stream in the MAIN
