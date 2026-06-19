@@ -19,7 +19,7 @@ import { test, expect, type FrameLocator, type Page } from '@playwright/test';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import { launchVSCode, packageExtension, type LaunchedVSCode } from './_helpers/launch';
+import { launchVSCode, packageExtension, saveRecordingAsMp4, type LaunchedVSCode } from './_helpers/launch';
 
 const EXT_ROOT = path.resolve(__dirname, '..');
 const REPO_ROOT = path.resolve(EXT_ROOT, '..', '..');
@@ -158,18 +158,22 @@ test('vscode prd demo — brief/PRD in the editor, refine shows a verdict-gated 
       chat.locator('[data-testid="chat-transcript"]').getByText(/ties to the work/i).first(),
       'the discovery reply rendered before distilling the idea',
     ).toBeVisible({ timeout: 30_000 });
-    await dwell(600);
+    await dwell(2500);
     await clickIntent('core__prd__start'); // → search
     await wait('core.prd.search');
+    await dwell(1800);
     await clickIntent('core__prd__confirm'); // → clarifying
     await wait('core.prd.clarifying');
+    await dwell(2000);
     await typeAndSend('platform engineers; the metric is notes-saved-per-session'); // answer
-    await dwell(500);
+    await dwell(2000);
     await typeAndSend('submit'); // → brief (the brief opens + grows in the editor)
     await wait('core.prd.brief');
+    await dwell(3500); // linger on the brief opening in the editor
     await shot('b-brief');
     await clickIntent('core__prd__confirm'); // → references
     await wait('core.prd.references');
+    await dwell(1800);
     await clickIntent('core__prd__confirm'); // → drafting (the PRD is authored + opened)
     await wait('core.prd.drafting');
 
@@ -178,6 +182,7 @@ test('vscode prd demo — brief/PRD in the editor, refine shows a verdict-gated 
       win.locator('.tab').filter({ hasText: /004-prd\.md/i }).first(),
       'the PRD draft opened as a real editor tab',
     ).toBeVisible({ timeout: 30_000 });
+    await dwell(5000); // linger on the full PRD in the editor (the headline beat)
     await shot('c-draft-in-editor');
 
     // ── Refine → a NATIVE DIFF with the feedback as an inline comment ────────
@@ -186,11 +191,12 @@ test('vscode prd demo — brief/PRD in the editor, refine shows a verdict-gated 
       win.locator('.monaco-diff-editor').first(),
       'refine opens a native side-by-side diff',
     ).toBeVisible({ timeout: 30_000 });
-    await shot('d-refine-diff');
     await expect(
       win.locator('.review-comment, .comment-body, .monaco-editor .comment-thread').filter({ hasText: /tenant isolation/i }).first(),
       'the refine feedback shows as an inline comment',
     ).toBeVisible({ timeout: 15_000 });
+    await dwell(5500); // linger on the diff + the green Non-Goals/tenant-isolation additions + the comment
+    await shot('d-refine-diff');
 
     // ── Accept the change IN the diff (native editor title action / codelens) ─
     await win
@@ -201,6 +207,7 @@ test('vscode prd demo — brief/PRD in the editor, refine shows a verdict-gated 
       win.locator('.monaco-diff-editor').first(),
       'accepting closes the diff editor',
     ).toBeHidden({ timeout: 30_000 });
+    await dwell(3500); // linger on the applied PRD
     await shot('e-accepted');
 
     // Back in the chat, the drafting view reflects v2 (Non-Goals).
@@ -208,9 +215,22 @@ test('vscode prd demo — brief/PRD in the editor, refine shows a verdict-gated 
       chat.locator('[data-testid="chat-transcript"]').getByText(/Non-Goals/i).first(),
       'the accepted refine promoted v2 into the chat view',
     ).toBeVisible({ timeout: 20_000 });
+    await dwell(4000);
     await shot('f-v2-in-chat');
   } finally {
     if (launched) await launched.app.close().catch(() => undefined);
+    // Transcode through the shared guard: the canonical vscode-prd-demo.mp4 is
+    // written ONLY for a real (paced) recording of sufficient length; a fast run
+    // or a too-short paced run gets a discriminated name and never the canonical.
+    if (RECORD) {
+      saveRecordingAsMp4({
+        videoDir: path.join(ARTIFACT_DIR, 'video'),
+        artifactDir: ARTIFACT_DIR,
+        name: 'vscode-prd-demo',
+        record: RECORD,
+        crop: launched?.viewport,
+      });
+    }
   }
 });
 

@@ -12,12 +12,91 @@
 
 import { _electron, type ElectronApplication, type Page, type FrameLocator } from 'playwright';
 import { downloadAndUnzipVSCode } from '@vscode/test-electron';
+import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 
 /** Pinned VS Code version proven by the PoC. */
 export const VSCODE_VERSION = '1.96.4';
+
+/**
+ * A real user-facing demo should be substantial. A RECORD-mode video shorter
+ * than this many seconds is treated as a fast run-through and down-named (never
+ * the canonical `<name>.mp4`). Override with KITSOKI_MIN_DEMO_SECONDS.
+ */
+export const MIN_DEMO_SECONDS = Number(process.env.KITSOKI_MIN_DEMO_SECONDS ?? '25');
+
+/** Probe a video's duration (seconds) via ffprobe, or null if unavailable. */
+function videoDurationSeconds(file: string): number | null {
+  const r = spawnSync(
+    'ffprobe',
+    ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1', file],
+    { encoding: 'utf8' },
+  );
+  if (r.status !== 0) return null;
+  const s = parseFloat((r.stdout ?? '').trim());
+  return Number.isFinite(s) ? s : null;
+}
+
+/**
+ * Transcode the Playwright-recorded `.webm` in `videoDir` to a universally-playable
+ * H.264 MP4 — with the SAME guard the web recorder uses (see
+ * tools/runstatus/tests/playwright/_helpers/server.ts):
+ *
+ *  - The canonical user-facing filename (`<name>.mp4`) is reserved for a REAL
+ *    recording. A fast/assert run (`record: false`) names its throwaway
+ *    `<name>.fast.mp4` so it can NEVER masquerade as (or clobber) the demo.
+ *  - A record-mode video that came out suspiciously short (< MIN_DEMO_SECONDS) is
+ *    down-named `<name>.SHORT-<n>s.mp4` and the canonical name is left ABSENT.
+ *
+ * `crop` (the recorded content viewport) drops any recorder grey-pad bar. Returns
+ * the final path, or null when no webm was recorded.
+ */
+export function saveRecordingAsMp4(opts: {
+  videoDir: string;
+  artifactDir: string;
+  name: string;
+  record: boolean;
+  crop?: { w: number; h: number };
+}): string | null {
+  const { videoDir, artifactDir, name, record, crop } = opts;
+  const webm = fs.existsSync(videoDir)
+    ? fs.readdirSync(videoDir).filter((f) => f.endsWith('.webm')).map((f) => path.join(videoDir, f)).sort().pop()
+    : undefined;
+  if (!webm) return null;
+  fs.mkdirSync(artifactDir, { recursive: true });
+  const stem = record ? name : `${name}.fast`;
+  const mp4 = path.join(artifactDir, `${stem}.mp4`);
+  const vf =
+    (crop ? `crop=${crop.w}:${crop.h}:0:0,` : '') + 'fps=30,scale=trunc(iw/2)*2:trunc(ih/2)*2';
+  const r = spawnSync(
+    'ffmpeg',
+    ['-y', '-loglevel', 'error', '-i', webm, '-vf', vf,
+      '-c:v', 'libx264', '-preset', 'slow', '-crf', '20',
+      '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-an', mp4],
+    { encoding: 'utf8' },
+  );
+  if (r.status !== 0) {
+    console.warn(`[video] ffmpeg transcode failed:\n${r.stderr?.slice(0, 400)}`);
+    return null;
+  }
+  if (record) {
+    const secs = videoDurationSeconds(mp4);
+    if (secs != null && secs < MIN_DEMO_SECONDS) {
+      const short = path.join(artifactDir, `${name}.SHORT-${Math.round(secs)}s.mp4`);
+      fs.renameSync(mp4, short);
+      console.warn(
+        `[video] ⚠ ${path.basename(short)} is only ${secs.toFixed(0)}s (< ${MIN_DEMO_SECONDS}s) — ` +
+        `looks like a fast run-through, NOT a user-facing demo. Increase per-beat dwell ` +
+        `(and/or KITSOKI_VSCODE_PACE) and re-record. The canonical ${name}.mp4 was NOT written.`,
+      );
+      return short;
+    }
+  }
+  console.log(`[video] ${mp4}`);
+  return mp4;
+}
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 

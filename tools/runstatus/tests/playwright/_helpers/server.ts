@@ -384,10 +384,14 @@ export async function saveVideoAsMp4(
   // sit side by side; desktop's suffix is empty, so its artifact is unchanged.
   const suffix = profileSuffix();
   const base = `${name}${suffix}`;
-  // Fast assertion runs get a distinct filename so they never overwrite the
-  // human-watchable, real-pace cut at `<base>.mp4`. See the doc-comment above.
-  const outName = PACE === 0 ? `${base}.fast` : base;
-  if (PACE === 0) {
+  // The CANONICAL user-facing filename (`<base>.mp4`) is reserved for a REAL
+  // recording. A fast/assert run (WEB_CHAT_PACE=0) records a throwaway used only
+  // to validate beats — it must NEVER take the canonical name, or a quick
+  // run-through would masquerade as (or clobber) the real demo. Bake the pace
+  // into the filename so the two can never collide.
+  const gate = PACE === 0;
+  const outName = gate ? `${base}.fast` : base;
+  if (gate) {
     console.warn(
       `[video] WEB_CHAT_PACE=0 (fast run): saving collapsed-timing video to ${outName}.mp4 — ` +
         `this is NOT the watch-speed cut. Re-run without WEB_CHAT_PACE=0 to produce ${base}.mp4.`,
@@ -410,16 +414,53 @@ export async function saveVideoAsMp4(
       "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-an", mp4],
     { encoding: "utf8" },
   );
-  if (r.status === 0) {
-    fs.unlinkSync(raw);
-    console.log(`[video] ${mp4}`);
-    return mp4;
+  if (r.status !== 0) {
+    // ffmpeg failed — promote the raw webm as the fallback so we never lose it.
+    const fallback = path.join(artifactDir, `${outName}.webm`);
+    fs.renameSync(raw, fallback);
+    console.warn(`[video] ffmpeg mp4 transcode failed; using raw webm\n${r.stderr?.slice(0, 400)}`);
+    return fallback;
   }
-  // ffmpeg failed — promote the raw webm as the fallback so we never lose it.
-  const fallback = path.join(artifactDir, `${outName}.webm`);
-  fs.renameSync(raw, fallback);
-  console.warn(`[video] ffmpeg mp4 transcode failed; using raw webm\n${r.stderr?.slice(0, 400)}`);
-  return fallback;
+  fs.unlinkSync(raw);
+  // A RECORD-mode video that came out suspiciously short is an under-dwelled
+  // run-through, not a demo — down-name it (with its length) so it can't be
+  // mistaken for the polished artifact, and the canonical <base>.mp4 stays
+  // ABSENT until a proper recording is made. Tunable via KITSOKI_MIN_DEMO_SECONDS.
+  if (!gate) {
+    const secs = videoDurationSeconds(mp4);
+    if (secs != null && secs < MIN_DEMO_SECONDS) {
+      const short = path.join(artifactDir, `${base}.SHORT-${Math.round(secs)}s.mp4`);
+      fs.renameSync(mp4, short);
+      console.warn(
+        `[video] ⚠ ${path.basename(short)} is only ${secs.toFixed(0)}s ` +
+        `(< ${MIN_DEMO_SECONDS}s) — looks like a fast run-through, NOT a user-facing ` +
+        `demo. Increase per-beat dwell (and/or WEB_CHAT_PACE) and re-record. ` +
+        `The canonical ${base}.mp4 was NOT written.`,
+      );
+      return short;
+    }
+  }
+  console.log(`[video] ${mp4}`);
+  return mp4;
+}
+
+/**
+ * A real user-facing demo should be substantial. A RECORD-mode video shorter
+ * than this many seconds is treated as a fast run-through and down-named (never
+ * the canonical `<name>.mp4`). Override with KITSOKI_MIN_DEMO_SECONDS.
+ */
+export const MIN_DEMO_SECONDS = Number(process.env.KITSOKI_MIN_DEMO_SECONDS ?? "25");
+
+/** Probe a video's duration (seconds) via ffprobe, or null if unavailable. */
+export function videoDurationSeconds(file: string): number | null {
+  const r = spawnSync(
+    "ffprobe",
+    ["-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", file],
+    { encoding: "utf8" },
+  );
+  if (r.status !== 0) return null;
+  const s = parseFloat((r.stdout ?? "").trim());
+  return Number.isFinite(s) ? s : null;
 }
 
 // ── Chapter sidecar (mockup-video-studio epic, Slice 1) ─────────────────────

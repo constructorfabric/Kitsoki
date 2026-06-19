@@ -167,6 +167,19 @@ recording is never silently lost). The helper is already imported in
 `tour-video.spec.ts`, `agent-actions-video.spec.ts`, `trace-features-video.spec.ts`,
 and `multi-story.spec.ts` — copy that pattern for any new recording spec.
 
+**A fast run-through can never become the demo (tooling guard).** The canonical
+`<name>.mp4` is reserved for a REAL recording. `saveVideoAsMp4` bakes the run kind
+into the filename so a fast/assert run and a user-facing video can never collide
+or clobber each other:
+- `WEB_CHAT_PACE=0` (the CI gate) → `<name>.fast.mp4`, never the canonical name.
+- A paced recording shorter than `KITSOKI_MIN_DEMO_SECONDS` (default 25s) is
+  treated as an under-dwelled run-through → down-named `<name>.SHORT-<n>s.mp4`
+  with a loud warning, and the canonical `<name>.mp4` is left ABSENT. Increase
+  per-beat dwell (and/or the pace) and re-record to earn the canonical name.
+
+The VS Code recorder has the same guard via `saveRecordingAsMp4` in
+`tools/vscode-kitsoki/tests/_helpers/launch.ts` (keyed on `record` + the same min).
+
 **Emitting a chapter sidecar (optional, for the video-review loop).**
 A recorded tour can also emit a producer-agnostic **chapter sidecar**
 (`<video>.chapters.json`) mapping each step's dwell window back to its
