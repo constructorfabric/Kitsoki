@@ -37,6 +37,13 @@ import (
 	"kitsoki/internal/tui"
 )
 
+// registerExtraHostCaps is a test-only injection seam: when non-nil it is called
+// with the freshly-built host registry for each driving runtime so a no-LLM test
+// can register an extra host capability (the operator-ask probe) that forwards to
+// the in-context OperatorPrompter. Production leaves it nil — a studio runtime
+// uses only host.RegisterBuiltins.
+var registerExtraHostCaps func(reg *host.Registry)
+
 // noRouteHarness is a placeholder harness for a runtime that never routes free
 // text — the spec-render path (render.tui/png/web on a {story_path, state}
 // spec), which only teleports + re-renders. The oracle registry constructor
@@ -74,6 +81,12 @@ type sessionRuntime struct {
 	// outcome.error / mode="error" alongside the frame — a replay miss is a
 	// turn-level failure the agent should see, not a transport error.
 	lastTurnErr error
+
+	// inFlight is the suspend broker for an operator-ask-parked turn (the
+	// session.answer fallback). Non-nil only while a suspendable drive is parked
+	// awaiting the operator; cleared when the turn goroutine completes. Single
+	// in-flight suspendable turn per handle (the handle is single-writer).
+	inFlight *suspendBroker
 
 	closers []func()
 }
@@ -169,6 +182,13 @@ func newSessionRuntime(ctx context.Context, storyPath, tracePath string, h harne
 
 	hostReg := host.NewRegistry()
 	host.RegisterBuiltins(hostReg)
+	// Test-only injection seam: a flow/cassette test registers an extra host
+	// capability (e.g. one that forwards to the in-context OperatorPrompter) so a
+	// no-LLM drive can exercise the operator-ask branch end-to-end without
+	// dispatching a real claude -p sub-agent. Nil in production.
+	if registerExtraHostCaps != nil {
+		registerExtraHostCaps(hostReg)
+	}
 	if err := hostReg.ValidateAllowList(def.Hosts); err != nil {
 		rt.Close()
 		return nil, &openError{Code: ErrBadRequest, Msg: fmt.Sprintf("session: validate hosts: %v", err)}
@@ -248,6 +268,83 @@ func (rt *sessionRuntime) drive(ctx context.Context, input string, cols, rows in
 	rt.lastTurnErr = err
 	rt.model = rt.model.ApplyTurnOutcome(out, input, err)
 	return out, tui.ComposeFrame(&rt.model, cols, rows)
+}
+
+// driveElicit routes free text through the turn loop with an operator prompter
+// installed that forwards forwarded sub-agent questions to the driving MCP
+// client via MCP elicitation (the primary transport). The turn blocks
+// synchronously — the elicitation is a nested server→client request mid-turn —
+// so this is exactly drive() plus the WithOperatorPrompter / WithKitsokiSessionID
+// context seam. sid is the studio session id used to tag the operator-ask trace
+// events (operator.question.asked carries it).
+func (rt *sessionRuntime) driveElicit(ctx context.Context, input string, cols, rows int, prompter host.OperatorPrompter) (*orchestrator.TurnOutcome, tui.Frame) {
+	ctx = host.WithOperatorPrompter(ctx, prompter)
+	ctx = host.WithKitsokiSessionID(ctx, string(rt.sid))
+	return rt.drive(ctx, input, cols, rows)
+}
+
+// driveSuspendable runs a drive turn on a background goroutine with a suspend
+// broker installed as the operator prompter (the session.answer fallback). It
+// returns as soon as EITHER the turn completes (no operator-ask fired) or the
+// turn parks on an operator-ask. On a park, rt.inFlight holds the live broker so
+// a later resumeSuspendable (session.answer) can deliver the answer.
+//
+// turnDone reports whether the turn already finished; when false, pq is the
+// parked question and the turn goroutine stays alive inside the prompter's Ask.
+// The background ctx is the host-supplied ctx wrapped with the operator-ask
+// timeout (inside the bridge), so a never-answered park falls through to the
+// headless tool-error path on its own.
+func (rt *sessionRuntime) driveSuspendable(ctx context.Context, input string, cols, rows int) (res turnResult, pq *pendingQuestion, turnDone bool, err error) {
+	if rt.inFlight != nil {
+		return turnResult{}, nil, false, fmt.Errorf("a turn is already awaiting the operator; answer it with session.answer before driving again")
+	}
+	broker := newSuspendBroker()
+	rt.inFlight = broker
+	prompter := newStudioOperatorPrompter(&suspendTransport{broker: broker})
+
+	// The turn goroutine owns rt.model mutation; it runs to completion (possibly
+	// across several park/answer cycles) before finish() unblocks a waiter, so no
+	// handler touches rt.model while the goroutine is live.
+	turnCtx := host.WithOperatorPrompter(context.WithoutCancel(ctx), prompter)
+	turnCtx = host.WithKitsokiSessionID(turnCtx, string(rt.sid))
+	go func() {
+		out, frame := rt.drive(turnCtx, input, cols, rows)
+		broker.finish(turnResult{outcome: out, frame: frame, err: rt.lastTurnErr})
+	}()
+
+	r, q, werr := broker.waitNext(ctx)
+	if werr != nil {
+		// The drive ctx was cancelled before a result/question. The turn goroutine
+		// still owns turnCtx (uncancelled) and will fall through on its own timeout.
+		return turnResult{}, nil, false, werr
+	}
+	if q != nil {
+		return turnResult{}, q, false, nil
+	}
+	rt.inFlight = nil
+	return r, nil, true, nil
+}
+
+// resumeSuspendable delivers the operator's answer to a parked question and
+// blocks until the turn completes or parks on the NEXT operator-ask. It is the
+// runtime half of session.answer: deliver → waitNext → {outcome | awaiting}.
+func (rt *sessionRuntime) resumeSuspendable(ctx context.Context, questionID string, answers map[string]any) (res turnResult, pq *pendingQuestion, turnDone bool, ok bool, err error) {
+	broker := rt.inFlight
+	if broker == nil {
+		return turnResult{}, nil, false, false, nil
+	}
+	if !broker.answer(questionID, answers) {
+		return turnResult{}, nil, false, false, nil
+	}
+	r, q, werr := broker.waitNext(ctx)
+	if werr != nil {
+		return turnResult{}, nil, false, true, werr
+	}
+	if q != nil {
+		return turnResult{}, q, false, true, nil
+	}
+	rt.inFlight = nil
+	return r, nil, true, true, nil
 }
 
 // submit applies a chosen intent + slots with no routing (SubmitDirect — the

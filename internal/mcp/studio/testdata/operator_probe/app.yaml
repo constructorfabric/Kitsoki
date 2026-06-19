@@ -1,0 +1,48 @@
+# operator_probe — a minimal no-LLM fixture for the studio operator-ask surface
+# (slice 8). One room whose `ask` intent invokes a TEST host capability
+# (host.operator_probe.ask) that forwards a multiple-choice question to the
+# in-context host.OperatorPrompter and binds the operator's chosen label into
+# world.answer. The story then branches its view on that answer.
+#
+# The probe host is registered ONLY by the studio operator-ask test (via the
+# registerExtraHostCaps seam); it never exists in production. This lets a replay-
+# driven drive exercise the operator-ask round-trip end to end with zero LLM and
+# zero real claude -p sub-agent — the prompter/transport is the unit under test.
+app:
+  id: operator-probe
+  version: 0.1.0
+  title: "Operator Probe"
+
+hosts:
+  - host.operator_probe.ask
+
+world:
+  answer: { type: string, default: "" }
+
+intents:
+  ask:
+    title: "Ask the operator"
+    description: "Forward a question to the operator and record their answer."
+    examples: ["ask the operator", "ask", "decide"]
+    slots:
+      prompt: { type: string, required: true }
+
+root: probe
+
+states:
+  probe:
+    mode: conversational
+    default_intent: ask
+    description: "Ask the operator which backend to use; record the answer."
+    view:
+      - prose: >
+          {{ world.answer|default:"No answer yet — drive 'ask the operator' to
+          forward a question." }}
+    on:
+      ask:
+        - target: .
+          effects:
+            - invoke: host.operator_probe.ask
+              id: forward
+              bind:
+                answer: answer

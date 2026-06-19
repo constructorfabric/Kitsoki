@@ -192,6 +192,33 @@ func wireToOperatorQuestions(in []kitsokimcp.OperatorAskQuestion) []OperatorQues
 	return out
 }
 
+// OperatorAskListenerForTest is the exported handle a cross-package test uses to
+// drive the real operator-ask listener (StartOperatorAskListenerForTest). It
+// proves a new OperatorPrompter implementation lands the same
+// operator.question.asked/answered trace events as the TUI/web surfaces, because
+// it routes through the identical listener — no in-package duplication of the
+// wire/trace logic.
+type OperatorAskListenerForTest struct{ l *operatorAskListener }
+
+// StartOperatorAskListenerForTest binds the real per-call operator-ask listener
+// over prompter and returns an exported handle. Intended only for tests in other
+// packages (the studio prompter's trace test); production wiring uses the
+// unexported startOperatorAskListener through attachOperatorAsk.
+func StartOperatorAskListenerForTest(ctx context.Context, prompter OperatorPrompter, sessionID string, timeout time.Duration) (*OperatorAskListenerForTest, error) {
+	l, err := startOperatorAskListener(ctx, prompter, sessionID, timeout)
+	if err != nil {
+		return nil, err
+	}
+	return &OperatorAskListenerForTest{l: l}, nil
+}
+
+// SockPath is the unix socket the listener is bound to (dial it as the grandchild
+// mcp-operator-ask server does).
+func (h *OperatorAskListenerForTest) SockPath() string { return h.l.sockPath }
+
+// Close stops the listener and removes the socket file.
+func (h *OperatorAskListenerForTest) Close() { h.l.close() }
+
 // attachOperatorAsk wires the operator-ask tool into an oracle subprocess WHEN a
 // live operator surface is attached. It returns the (possibly extended) CLI args
 // and tool list plus a cleanup func the caller MUST defer (always non-nil).

@@ -33,6 +33,7 @@ import (
 
 	"kitsoki/internal/app"
 	"kitsoki/internal/inbox"
+	kitsokimcp "kitsoki/internal/mcp"
 	"kitsoki/internal/orchestrator"
 	"kitsoki/internal/store"
 	"kitsoki/internal/tui"
@@ -76,6 +77,11 @@ func (srv *Server) registerSessionTools() {
 		Name:        "session.continue",
 		Description: "Supply missing slots for a pending clarification. {handle, slots, cols?, rows?}. Returns {outcome, frame}.",
 	}, srv.handleSessionContinue)
+
+	mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
+		Name:        "session.answer",
+		Description: "Answer a parked operator-ask (the suspend/resume fallback for clients without MCP elicitation). {handle, question_id, answers} where answers is keyed by each question's text → a chosen option label (string) or labels ([]string). Resumes the turn; returns {outcome, frame} or another awaiting_operator.",
+	}, srv.handleSessionAnswer)
 
 	mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
 		Name:        "session.inspect",
@@ -210,10 +216,35 @@ type FrameMetaItem struct {
 }
 
 // TurnResponse is the {outcome, frame} pair every drive/submit/continue returns.
+// When a driven turn parks on an operator-ask under the session.answer fallback,
+// AwaitingOperator is set INSTEAD of a settled outcome+frame: the client must
+// call session.answer {handle, question_id, answers} to resume the turn.
 type TurnResponse struct {
 	OK      bool        `json:"ok"`
 	Outcome TurnResult  `json:"outcome"`
 	Frame   FrameResult `json:"frame"`
+	// AwaitingOperator is non-nil when the turn paused on an operator-ask (the
+	// fallback path). Outcome/Frame are zero in that case — the turn has not
+	// settled yet.
+	AwaitingOperator *AwaitingOperator `json:"awaiting_operator,omitempty"`
+}
+
+// AwaitingOperator is the suspend/resume status carried on a session.drive /
+// session.answer result when the turn paused on an operator-ask. The client
+// answers question_id (with answers keyed by each question's text) via
+// session.answer to resume the parked turn.
+type AwaitingOperator struct {
+	QuestionID string                           `json:"question_id"`
+	Questions  []kitsokimcp.OperatorAskQuestion `json:"questions"`
+}
+
+// SessionAnswerArgs is the input to session.answer (the fallback resume).
+type SessionAnswerArgs struct {
+	Handle     string         `json:"handle"`
+	QuestionID string         `json:"question_id"`
+	Answers    map[string]any `json:"answers"`
+	Cols       int            `json:"cols,omitempty"`
+	Rows       int            `json:"rows,omitempty"`
 }
 
 // ── session.new / attach ─────────────────────────────────────────────────────
@@ -305,8 +336,74 @@ func (srv *Server) handleSessionDrive(
 		return rerr, nil, nil
 	}
 	cols, rows := geometry(args.Cols, args.Rows)
-	out, frame := rt.drive(ctx, args.Input, cols, rows)
-	return nil, turnResponse(out, frame, rt.lastTurnErr), nil
+
+	// Make the driving MCP client the OPERATOR: install a host.OperatorPrompter
+	// so a dispatched sub-agent's mcp__operator__ask is auto-attached and
+	// forwarded to this client (rather than the headless "proceed on your own"
+	// path). Elicitation when the client advertises it (one blocking drive call);
+	// otherwise the session.answer suspend/resume fallback.
+	if ss := serverSessionOf(req); clientSupportsElicitation(ss) {
+		prompter := newStudioOperatorPrompter(&elicitTransport{ss: ss})
+		out, frame := rt.driveElicit(ctx, args.Input, cols, rows, prompter)
+		return nil, turnResponse(out, frame, rt.lastTurnErr), nil
+	}
+
+	res, pq, turnDone, err := rt.driveSuspendable(ctx, args.Input, cols, rows)
+	if err != nil {
+		return buildToolError(ErrBadRequest, fmt.Sprintf("session.drive: %v", err)), nil, nil
+	}
+	if !turnDone {
+		return nil, awaitingResponse(pq), nil
+	}
+	return nil, turnResponse(res.outcome, res.frame, res.err), nil
+}
+
+// serverSessionOf extracts the studio's ServerSession (the connection to the
+// driving client) from a tool-call request, or nil for an in-process test
+// without one. The elicit transport sends server→client elicitation over it.
+func serverSessionOf(req *mcpsdk.CallToolRequest) *mcpsdk.ServerSession {
+	if req == nil {
+		return nil
+	}
+	return req.Session
+}
+
+// handleSessionAnswer is the fallback resume: it delivers the operator's answer
+// to a parked operator-ask and blocks until the turn completes or parks on the
+// next question, returning {outcome, frame} or another awaiting_operator.
+func (srv *Server) handleSessionAnswer(
+	ctx context.Context,
+	req *mcpsdk.CallToolRequest,
+	args SessionAnswerArgs,
+) (*mcpsdk.CallToolResult, any, error) {
+	if args.QuestionID == "" {
+		return buildToolError(ErrBadRequest, "session.answer: question_id is required"), nil, nil
+	}
+	if len(args.Answers) == 0 {
+		return buildToolError(ErrBadRequest, "session.answer: answers is required"), nil, nil
+	}
+	rt, rerr := srv.resolveRuntime(args.Handle)
+	if rerr != nil {
+		return rerr, nil, nil
+	}
+	res, pq, turnDone, ok, err := rt.resumeSuspendable(ctx, args.QuestionID, args.Answers)
+	if err != nil {
+		return buildToolError(ErrBadRequest, fmt.Sprintf("session.answer: %v", err)), nil, nil
+	}
+	if !ok {
+		return buildToolError(ErrBadRequest, fmt.Sprintf("session.answer: no turn awaiting question_id %q on this handle", args.QuestionID)), nil, nil
+	}
+	if !turnDone {
+		return nil, awaitingResponse(pq), nil
+	}
+	return nil, turnResponse(res.outcome, res.frame, res.err), nil
+}
+
+// awaitingResponse projects a parked question into the awaiting_operator wire
+// shape (the turn has not settled; the client must session.answer to resume).
+func awaitingResponse(pq *pendingQuestion) TurnResponse {
+	ao := awaitingOperator(pq)
+	return TurnResponse{OK: true, AwaitingOperator: &ao}
 }
 
 func (srv *Server) handleSessionSubmit(
