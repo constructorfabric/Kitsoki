@@ -113,6 +113,13 @@ function main(): void {
     }
     const src = fs.readFileSync(specPath, "utf8");
     const rel = path.relative(repoRoot, specPath);
+    // A deliberately-skipped stub (test.skip(true, …) / describe.skip) records
+    // nothing yet — it exists only to satisfy the spec↔feature bijection.
+    // Exempt it from the recording invariants; removing the skip re-engages them.
+    if (/test\.skip\(\s*true\b/.test(src) || /\.describe\.skip\b/.test(src)) {
+      skipped++;
+      continue;
+    }
     for (const c of CHECKS) {
       if (!c.ok(src)) problems.push(`${rel} [${d.id}]: ${c.label} — ${c.hint}`);
     }
@@ -126,7 +133,7 @@ function main(): void {
   }
   console.log(
     `demos:lint: OK — ${checked} demo spec(s) pass camera/chapters/no-LLM` +
-      (skipped ? ` (${skipped} external skipped)` : ""),
+      (skipped ? ` (${skipped} skipped: external/stub)` : ""),
   );
 }
 
