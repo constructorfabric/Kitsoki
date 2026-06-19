@@ -224,6 +224,49 @@ python3 tools/session-mining/tests/test_cost_estimate.py
 
 ---
 
+## Toward per-story cost tracking
+
+This case study is a hand-built template. The goal is to make it
+**automatic and per-story**: every story should publish, alongside its
+behaviour, the cost savings it delivers versus doing the same work in a
+raw agentic loop — with session mining supplying the denominator. The
+pieces are mostly in place; the work is wiring them together. Full plan in
+[`docs/proposals/per-story-cost-tracking.md`](../proposals/per-story-cost-tracking.md);
+the short version:
+
+1. **A real baseline per story, from mining.** Each story already has a
+   `mining.profile.yaml` and a mined session corpus. Run `cost_extract.py`
+   over that corpus (prep.py already writes `costs.json`) to get the real
+   "raw agentic cost" denominator — reprocessing tax and cold-resume
+   re-warm broken out — instead of one curated example.
+
+2. **Measure the deterministic side live, not from hand-authored
+   cassettes.** The git-ops story's oracle costs ($0.0121, $0.0834) were
+   authored by hand. Kitsoki runs already emit `oracle.call.complete`
+   events with real `cost_usd`/usage; capture those into a per-story ledger
+   so the numerator is measured, and record real oracle cassettes so the
+   demo's spend is genuine too. **This is the biggest honesty gap today.**
+
+3. **Match per intent, not just per session.** The mining intent taxonomy
+   already classifies operations; align mined operations to the story's
+   intents so savings are computed per intent (commit vs rebase vs merge),
+   apples-to-apples, not session-aggregate.
+
+4. **Report a distribution, not an anecdote.** Across the mined corpus,
+   emit median / p90 raw cost per operation so each story's savings carry
+   error bars rather than resting on one "$4.22" example.
+
+5. **One report across all stories.** A `make cost-report` that, per story,
+   pairs the mined baseline with the measured story cost and emits a
+   savings table — the reusable form of this document. Surface the model
+   mix too: real sessions run on Opus while the narrow oracle tasks need
+   only Sonnet, which is itself a savings lever worth naming.
+
+The throughline: **session mining is the cost denominator for the whole
+project.** It already supplies coverage and intents; cost savings is the
+same corpus read through `cost_extract.py`. Every new story that ships a
+`mining.profile.yaml` should get a cost-savings number for free.
+
 ## See also
 
 - [Token usage comparison](../competitive-analysis/token-usage/) — the
