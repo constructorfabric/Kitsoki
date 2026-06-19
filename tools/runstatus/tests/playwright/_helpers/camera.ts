@@ -72,6 +72,16 @@ export function activeProfile(): CameraProfile {
 }
 
 /**
+ * The artifact-filename suffix for a profile. Empty for `desktop` so the
+ * back-compat primary stays `<base>.mp4` and the entire existing desktop
+ * pipeline (record → stage → site) is untouched; `--<id>` for any other profile
+ * so its variant sits beside the desktop file without clobbering it.
+ */
+export function profileSuffix(p: CameraProfile = activeProfile()): string {
+  return p.id === "desktop" ? "" : `--${p.id}`;
+}
+
+/**
  * The `browser.newContext(...)` options for a recording spec, sourced from the
  * active profile. Pass `recordVideoDir` for a spec that records video (the dir
  * is spec-owned; the size is the profile's, so every section's MP4 shares a

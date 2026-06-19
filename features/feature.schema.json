@@ -94,6 +94,18 @@
         },
         "external": {
           "type": "boolean"
+        },
+        "profiles": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "desktop",
+              "tablet",
+              "mobile"
+            ]
+          }
         }
       },
       "required": [

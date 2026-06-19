@@ -203,24 +203,54 @@ function specName(spec: string): string {
   return path.basename(spec).replace(/\.spec\.ts$/, "");
 }
 
+/** Empty for desktop (the back-compat primary keeps `<base>.mp4`); `--<id>`
+ *  otherwise. Keep in lockstep with profileSuffix() in
+ *  tests/playwright/_helpers/camera.ts. */
+function profileSuffix(profile: string): string {
+  return profile === "desktop" ? "" : `--${profile}`;
+}
+
+/**
+ * The index demo entry. The video/chapters PATHS are derived here (never
+ * authored in YAML) so the catalog owns the contract. Each declared profile gets
+ * a `variants` entry at its suffixed path; `video`/`chapters` stay the desktop
+ * primary for every existing consumer (stage-media, the site data join).
+ */
+function buildDemoIndex(d: NonNullable<Feature["demo"]>) {
+  const dir = path.join(".artifacts", d.artifactDir);
+  const profiles = d.profiles ?? ["desktop"];
+  const variantFor = (p: string) => {
+    const s = profileSuffix(p);
+    return {
+      video: path.join(dir, `${d.videoBase}${s}.mp4`),
+      chapters: path.join(dir, `${d.videoBase}${s}.mp4.chapters.json`),
+    };
+  };
+  const variants = Object.fromEntries(profiles.map((p) => [p, variantFor(p)]));
+  // Desktop is the back-compat primary; fall back to the first declared profile
+  // only if a demo ever omits desktop.
+  const primary = variants.desktop ?? variantFor(profiles[0]);
+  return {
+    spec: path.join("tools/runstatus", d.spec),
+    specName: specName(d.spec),
+    artifactDir: dir,
+    video: primary.video,
+    chapters: primary.chapters,
+    profiles,
+    variants,
+    posterStep: d.posterStep ?? null,
+    screenshotPattern: "NN-<stepId>.png",
+    story: d.story ?? null,
+    flow: d.flow ?? null,
+    hostCassette: d.hostCassette ?? null,
+    external: d.external ?? false,
+  };
+}
+
 function renderIndex(catalog: Loaded[]): string {
   const features = catalog.map((l) => {
     const f = l.feature;
-    const demo = f.demo
-      ? {
-          spec: path.join("tools/runstatus", f.demo.spec),
-          specName: specName(f.demo.spec),
-          artifactDir: path.join(".artifacts", f.demo.artifactDir),
-          video: path.join(".artifacts", f.demo.artifactDir, `${f.demo.videoBase}.mp4`),
-          chapters: path.join(".artifacts", f.demo.artifactDir, `${f.demo.videoBase}.mp4.chapters.json`),
-          posterStep: f.demo.posterStep ?? null,
-          screenshotPattern: "NN-<stepId>.png",
-          story: f.demo.story ?? null,
-          flow: f.demo.flow ?? null,
-          hostCassette: f.demo.hostCassette ?? null,
-          external: f.demo.external ?? false,
-        }
-      : null;
+    const demo = f.demo ? buildDemoIndex(f.demo) : null;
     return {
       id: f.id,
       kind: f.kind,

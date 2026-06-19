@@ -47,26 +47,32 @@ recorded=0
 skipped=0
 declare -a FAILED
 
-while IFS=$'\t' read -r id specName artifactDir video yaml spec flow cassette story; do
-	# Stamp inputs: catalog entry, spec, story inputs, binary.
+while IFS=$'\t' read -r id profile specName artifactDir video yaml spec flow cassette story; do
+	# Stamp inputs: catalog entry, spec, story inputs, binary. The profile picks
+	# the camera env (KITSOKI_DEMO_PROFILE) + a per-profile stamp file so each
+	# variant re-records independently; desktop keeps the original .stamp name and
+	# empty video suffix, so it is byte-for-byte a no-op vs. the pre-matrix path.
 	story_app=""
 	[ -n "$story" ] && story_app="$story/app.yaml"
 	s=$(stamp "$yaml" "$spec" "$flow" "$cassette" "$story_app" "$BIN")
-	stamp_file="$artifactDir/.stamp"
+	stamp_suffix=""
+	[ "$profile" != "desktop" ] && stamp_suffix="--$profile"
+	stamp_file="$artifactDir/.stamp$stamp_suffix"
+	label="$id${stamp_suffix:+ [$profile]}"
 
 	if [ "$FORCE" -eq 0 ] && [ -f "$video" ] && [ -f "$stamp_file" ] && [ "$(cat "$stamp_file")" = "$s" ]; then
 		skipped=$((skipped + 1))
 		continue
 	fi
 
-	echo "record-demos: recording $id ($specName)…"
+	echo "record-demos: recording $label ($specName)…"
 	ok=0
 	for attempt in 1 2; do
-		if (cd "$RUNSTATUS_DIR" && WEB_CHAT_PACE=1 pnpm exec playwright test "$specName" --project=chromium); then
+		if (cd "$RUNSTATUS_DIR" && KITSOKI_DEMO_PROFILE="$profile" WEB_CHAT_PACE=1 pnpm exec playwright test "$specName" --project=chromium); then
 			ok=1
 			break
 		fi
-		echo "record-demos: $id attempt $attempt failed$([ "$attempt" = 1 ] && echo ' — retrying')" >&2
+		echo "record-demos: $label attempt $attempt failed$([ "$attempt" = 1 ] && echo ' — retrying')" >&2
 	done
 
 	if [ "$ok" -eq 1 ] && [ -f "$video" ]; then
@@ -74,14 +80,17 @@ while IFS=$'\t' read -r id specName artifactDir video yaml spec flow cassette st
 		printf '%s' "$s" >"$stamp_file"
 		recorded=$((recorded + 1))
 	else
-		FAILED+=("$id")
+		FAILED+=("$label")
 	fi
 done < <(jq -r '
 	.features[]
 	| select(.demo != null and .demo.external == false)
-	| [ .id, .demo.specName, .demo.artifactDir, .demo.video,
-	    "features/\(.id).yaml", .demo.spec,
-	    (.demo.flow // ""), (.demo.hostCassette // ""), (.demo.story // "") ]
+	| . as $f
+	| ($f.demo.profiles // ["desktop"])[] as $p
+	| [ $f.id, $p, $f.demo.specName, $f.demo.artifactDir,
+	    $f.demo.variants[$p].video,
+	    "features/\($f.id).yaml", $f.demo.spec,
+	    ($f.demo.flow // ""), ($f.demo.hostCassette // ""), ($f.demo.story // "") ]
 	| @tsv' "$INDEX")
 
 echo "record-demos: $recorded recorded, $skipped fresh (skipped), ${#FAILED[@]} failed"

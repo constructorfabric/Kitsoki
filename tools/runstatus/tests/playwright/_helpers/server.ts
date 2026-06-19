@@ -16,6 +16,7 @@ import path from "path";
 import fs from "fs";
 import os from "os";
 import { expect, type Page, type Video, type Locator } from "@playwright/test";
+import { profileSuffix } from "./camera.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -362,13 +363,17 @@ export async function saveVideoAsMp4(
   name: string,
 ): Promise<string | null> {
   if (!video) return null;
+  // The active camera profile suffixes the base filename so multi-profile passes
+  // sit side by side; desktop's suffix is empty, so its artifact is unchanged.
+  const suffix = profileSuffix();
+  const base = `${name}${suffix}`;
   // Fast assertion runs get a distinct filename so they never overwrite the
-  // human-watchable, real-pace cut at `<name>.mp4`. See the doc-comment above.
-  const outName = PACE === 0 ? `${name}.fast` : name;
+  // human-watchable, real-pace cut at `<base>.mp4`. See the doc-comment above.
+  const outName = PACE === 0 ? `${base}.fast` : base;
   if (PACE === 0) {
     console.warn(
       `[video] WEB_CHAT_PACE=0 (fast run): saving collapsed-timing video to ${outName}.mp4 — ` +
-        `this is NOT the watch-speed cut. Re-run without WEB_CHAT_PACE=0 to produce ${name}.mp4.`,
+        `this is NOT the watch-speed cut. Re-run without WEB_CHAT_PACE=0 to produce ${base}.mp4.`,
     );
   }
   const raw = path.join(artifactDir, `${outName}-raw.webm`);

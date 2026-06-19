@@ -68,6 +68,15 @@ export const DemoSchema = z.strictObject({
    * checkout) — path validation is skipped and record-demos excludes it.
    */
   external: z.boolean().optional(),
+  /**
+   * Device profiles this demo records under (the camera registry ids). Defaults
+   * to ["desktop"] — the canonical and ONLY enabled profile until a demo's UI is
+   * responsive (mobile/tablet are a deliberate per-demo opt-in once breakpoints
+   * land; recording a non-responsive demo at a narrow profile just yields a
+   * shrunken desktop). Keep these ids in lockstep with PROFILES in
+   * tests/playwright/_helpers/camera.ts.
+   */
+  profiles: z.array(z.enum(["desktop", "tablet", "mobile"])).nonempty().optional(),
 });
 
 export const QaScenarioSchema = z.strictObject({
