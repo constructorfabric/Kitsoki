@@ -217,7 +217,7 @@ func runClaudeHook(ctx context.Context, stdin io.Reader, configFlag string) (rep
 	}
 	switch res.Exit {
 	case 0, turnExitTerminal: // transitioned or terminal: a real outcome to show
-		return composeInterceptReport(res.Intent, res.OneShot), true
+		return composeInterceptReport(res.Intent, ic.EscapePrefix, res.OneShot), true
 	default: // rejected (1), defensive-clarify (10), anything else: pass through
 		return "", false
 	}
@@ -227,19 +227,28 @@ func runClaudeHook(ctx context.Context, stdin io.Reader, configFlag string) (rep
 // prompt with. The first line is always the marked attribution so the user
 // knows kitsoki — not the agent's model — answered; bullets summarise each
 // host.* side-effect; the outcome line is the first non-empty line of the
-// rendered view (fallback "done."), tagged with the trace note.
+// rendered view (fallback "done."), tagged with the trace note. When an
+// escape_prefix is configured, a final line tells the user how to bypass kitsoki
+// and reach the agent next time (the block reason is the user's only window into
+// the intercept, so the escape has to be discoverable from it).
 //
 //	⌁ kitsoki handled this (no LLM) — <intent>
 //	  • <namespace> <short summary>
 //	  • …
 //	<first non-empty view line>   ·   ⟲ recorded in the kitsoki trace
-func composeInterceptReport(intent string, res *orchestrator.OneShotResult) string {
+//	↳ prefix "<escape>" to skip kitsoki and send the prompt to the agent
+func composeInterceptReport(intent, escapePrefix string, res *orchestrator.OneShotResult) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "⌁ kitsoki handled this (no LLM) — %s\n", intent)
 	for _, hc := range res.HostCalls {
 		fmt.Fprintf(&b, "  • %s\n", summarizeHostCall(hc))
 	}
 	fmt.Fprintf(&b, "%s   ·   ⟲ recorded in the kitsoki trace", firstNonEmptyLine(res.View, "done."))
+	// When an escape is configured, surface it: a blocked prompt is the user's
+	// only window into the intercept, so the bypass must be visible right here.
+	if escapePrefix != "" {
+		fmt.Fprintf(&b, "\n↳ prefix %q to skip kitsoki and send the prompt to the agent", escapePrefix)
+	}
 	return b.String()
 }
 

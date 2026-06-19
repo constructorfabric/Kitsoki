@@ -68,7 +68,7 @@ func writeHookFixture(t *testing.T, appName string) (dir string) {
 	t.Helper()
 	dir = t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "app.yaml"), []byte(hookTestApp), 0o644))
-	cfg := "intercept:\n  enabled: true\n  app: " + appName + "\n  room: start\n"
+	cfg := "intercept:\n  enabled: true\n  app: " + appName + "\n  room: start\n  escape_prefix: \"//\"\n"
 	require.NoError(t, os.WriteFile(filepath.Join(dir, webconfig.DefaultConfigFile), []byte(cfg), 0o644))
 	return dir
 }
@@ -104,6 +104,7 @@ func TestHookRun_SynonymBlocks(t *testing.T) {
 	require.Contains(t, dec.Reason, "⌁ kitsoki handled this (no LLM)", "report must carry the marked attribution prefix")
 	require.Contains(t, dec.Reason, "go_north", "report must name the intercepted intent")
 	require.Contains(t, dec.Reason, "⟲ recorded in the kitsoki trace", "report must carry the trace note")
+	require.Contains(t, dec.Reason, `prefix "//"`, "report must hint the configured escape prefix so the user can bypass next time")
 }
 
 // TestHookRun_UnrelatedPassesThrough — an unrelated prompt matches no no-LLM

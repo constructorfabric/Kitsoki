@@ -141,7 +141,12 @@ one bullet per `host.*` side-effect, then the outcome line:
 ⌁ kitsoki handled this (no LLM) — rebase
   • host.run command=git rebase origin/main
 Rebased onto origin/main, no conflicts.   ·   ⟲ recorded in the kitsoki trace
+↳ prefix "//" to skip kitsoki and send the prompt to the agent
 ```
+
+The escape line is appended only when an `escape_prefix` is configured (it names
+the actual prefix), so the bypass is discoverable from the one surface the user
+sees — the blocked prompt's reason.
 
 **Fail-open is the cardinal rule** ([`hook.go`](../../cmd/kitsoki/hook.go) doc
 comment): a misconfigured, slow, erroring, or *panicking* interceptor must never
