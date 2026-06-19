@@ -72,6 +72,10 @@ export class Backend {
   constructor(
     private readonly out: vscode.OutputChannel,
     private readonly cwd: string | undefined,
+    // Resolves to the extension's IDE-MCP server port (or undefined when none).
+    // Passed to the spawned backend as CLAUDE_CODE_SSE_PORT so its host.ide.*
+    // verbs connect back to THIS VS Code window. Optional: omit for no IDE link.
+    private readonly idePortReady?: () => Promise<number | undefined>,
   ) {}
 
   /** The backend base URL once started, e.g. "http://127.0.0.1:54231". */
@@ -129,10 +133,21 @@ export class Backend {
     if (cfg.hostCassette) args.push('--host-cassette', cfg.hostCassette);
     if (cfg.storiesDir) args.push('--stories-dir', cfg.storiesDir);
 
+    // When the extension's IDE-MCP server is up, seed CLAUDE_CODE_SSE_PORT so the
+    // backend's IDE link discovers our lock and dials this window outright (the
+    // integrated-terminal fast path). Absent it, the backend runs with no link
+    // and host.ide.* return connected:false — the graceful no-IDE posture.
+    const env: NodeJS.ProcessEnv = { ...process.env };
+    const idePort = this.idePortReady ? await this.idePortReady() : undefined;
+    if (idePort) {
+      env.CLAUDE_CODE_SSE_PORT = String(idePort);
+      this.out.appendLine(`[backend] IDE link enabled (CLAUDE_CODE_SSE_PORT=${idePort})`);
+    }
+
     this.out.appendLine(`[backend] spawn: ${bin} ${args.join(' ')}`);
     const child = spawn(bin, args, {
       cwd: this.cwd,
-      env: process.env,
+      env,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     this.child = child;

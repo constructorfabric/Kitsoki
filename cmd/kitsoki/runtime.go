@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"time"
 
 	goyaml "github.com/goccy/go-yaml"
 
@@ -18,6 +19,7 @@ import (
 	"kitsoki/internal/harness"
 	"kitsoki/internal/host"
 	starlarkhost "kitsoki/internal/host/starlark"
+	"kitsoki/internal/ide"
 	"kitsoki/internal/jobs"
 	"kitsoki/internal/journal"
 	"kitsoki/internal/machine"
@@ -161,6 +163,12 @@ type runtimeConfig struct {
 	// the process working dir at Start time.
 	MiningRepoPath string
 
+	// ConnectIDEFromEnv enables auto-connecting an IDE link from
+	// CLAUDE_CODE_SSE_PORT during construction. `kitsoki web` sets this (the
+	// embedding VS Code extension advertises its MCP server that way); the TUI
+	// `run` path leaves it false and manages its link explicitly via /ide.
+	ConnectIDEFromEnv bool
+
 	// Flow-posture fields.
 	Flow         *testrunner.FlowFixture
 	FlowFilePath string
@@ -224,6 +232,11 @@ type runtimeBase struct {
 	// the registry fails a session start fast if a story enforces an author
 	// ACL guard but no identity is configured.
 	DefaultActor string
+
+	// ConnectIDEFromEnv is threaded into each session's runtimeConfig so the
+	// web posture auto-connects an IDE link from CLAUDE_CODE_SSE_PORT (the
+	// embedding VS Code extension). The TUI run path leaves it false.
+	ConnectIDEFromEnv bool
 }
 
 // config materialises a per-session runtimeConfig for the story at storyPath
@@ -233,22 +246,23 @@ type runtimeBase struct {
 // carries a fixture — the same construction web.go performs today.
 func (b runtimeBase) config(storyPath string, def *app.AppDef) runtimeConfig {
 	return runtimeConfig{
-		AppPath:         storyPath,
-		Def:             def,
-		DBPath:          b.DBPath,
-		ExecMode:        b.ExecMode,
-		HarnessType:     b.HarnessType,
-		ClaudeModel:     b.ClaudeModel,
-		RecordingPath:   b.RecordingPath,
-		RecordPath:      b.RecordPath,
-		OracleBackend:   b.OracleBackend,
-		HarnessProfiles: b.HarnessProfiles,
-		DefaultProfile:  b.DefaultProfile,
-		Flow:            b.Flow,
-		FlowFilePath:    b.FlowFilePath,
-		HostCassette:    b.HostCassette,
-		Mining:          b.Mining,
-		MiningRepoPath:  filepath.Dir(storyPath),
+		AppPath:           storyPath,
+		Def:               def,
+		DBPath:            b.DBPath,
+		ExecMode:          b.ExecMode,
+		HarnessType:       b.HarnessType,
+		ClaudeModel:       b.ClaudeModel,
+		RecordingPath:     b.RecordingPath,
+		RecordPath:        b.RecordPath,
+		OracleBackend:     b.OracleBackend,
+		HarnessProfiles:   b.HarnessProfiles,
+		DefaultProfile:    b.DefaultProfile,
+		Flow:              b.Flow,
+		FlowFilePath:      b.FlowFilePath,
+		HostCassette:      b.HostCassette,
+		Mining:            b.Mining,
+		MiningRepoPath:    filepath.Dir(storyPath),
+		ConnectIDEFromEnv: b.ConnectIDEFromEnv,
 	}
 }
 
@@ -517,6 +531,26 @@ func buildSessionRuntime(cfg runtimeConfig) (*sessionRuntime, error) {
 		orch.SetMiner(&sessionBoundMiner{m: miner}, repoPath)
 	}
 
+	// IDE link (web posture only): when the embedding VS Code extension advertises
+	// its MCP server via CLAUDE_CODE_SSE_PORT, connect so host.ide.* verbs drive
+	// that window — opening the brief/PRD and showing refine diffs. SetIDELink
+	// also engages the inner-oracle env scrub (a live author can't hijack the
+	// link). Best-effort: a missing/declined editor leaves the link nil (the
+	// connected:false path), never failing construction.
+	if cfg.ConnectIDEFromEnv && os.Getenv("CLAUDE_CODE_SSE_PORT") != "" {
+		cwd, _ := os.Getwd()
+		link := ide.NewLink(cwd, nil)
+		cctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		info, lerr := link.Connect(cctx)
+		cancel()
+		if lerr != nil {
+			logger.Warn("ide link: connect skipped", "err", lerr)
+		} else {
+			orch.SetIDELink(link)
+			rt.closers = append(rt.closers, func() { _ = link.Close() })
+			logger.Info("ide link: connected", "ide", info.IDEName, "port", info.Port)
+		}
+	}
 	ok = true
 	return rt, nil
 }

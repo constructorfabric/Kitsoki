@@ -111,7 +111,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "node esbuild.mjs",
-    "test": "node --test --import tsx tests/relay.unit.test.ts tests/bridge-relay.integration.test.ts",
+    "test": "node --test --import tsx tests/relay.unit.test.ts tests/bridge-relay.integration.test.ts tests/ide-server.unit.test.ts",
     "playwright": "playwright test",
     "e2e": "KITSOKI_VSCODE_PACE=0 playwright test vscode-tour.e2e"
   },
@@ -119,10 +119,12 @@
     "@playwright/test": "^1.52.0",
     "@types/node": "^22.15.21",
     "@types/vscode": "^1.96.0",
+    "@types/ws": "^8.18.1",
     "@vscode/test-electron": "^3.0.0",
     "esbuild": "^0.24.0",
     "playwright": "^1.52.0",
     "tsx": "^4.19.4",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "ws": "^8.21.0"
   }
 }

@@ -17,6 +17,9 @@ importers:
       '@types/vscode':
         specifier: ^1.96.0
         version: 1.120.0
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.1
       '@vscode/test-electron':
         specifier: ^3.0.0
         version: 3.0.0
@@ -32,6 +35,9 @@ importers:
       typescript:
         specifier: ^5.8.3
         version: 5.9.3
+      ws:
+        specifier: ^8.21.0
+        version: 8.21.0
 
 packages:
 
@@ -352,6 +358,9 @@ packages:
   '@types/vscode@1.120.0':
     resolution: {integrity: sha512-feaT4Rst+FkTch5zz/ZbNCxoIvo55YU80Be2kiL7OJcod4+CUYf2lUBPdIJzozNnSEMq1VRTGrWEcCGFB3fBmA==}
 
+  '@types/ws@8.18.1':
+    resolution: {integrity: sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==}
+
   '@vscode/test-electron@3.0.0':
     resolution: {integrity: sha512-TY5mC7aAjxSLDXsyjhrG8cJHgc/HLdiE5lvtW7hABYQrY24Qwozzr5UoO3HiuAM4Hzz4b7K/eZlwrCILj94CcA==}
     engines: {node: '>=22'}
@@ -538,6 +547,18 @@ packages:
   util-deprecate@1.0.2:
     resolution: {integrity: sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw==}
 
+  ws@8.21.0:
+    resolution: {integrity: sha512-Vsp28b7DRcimFQvrqu2Wek3z1iYxDCWqHYB8Qsnk/S4RfaCQzPGPyBNuVjJV3cd6UiKtUtp6sNM77gWvzcCH+g==}
+    engines: {node: '>=10.0.0'}
+    peerDependencies:
+      bufferutil: ^4.0.1
+      utf-8-validate: '>=5.0.2'
+    peerDependenciesMeta:
+      bufferutil:
+        optional: true
+      utf-8-validate:
+        optional: true
+
 snapshots:
 
   '@esbuild/aix-ppc64@0.24.2':
@@ -702,6 +723,10 @@ snapshots:
       undici-types: 6.21.0
 
   '@types/vscode@1.120.0': {}
+
+  '@types/ws@8.18.1':
+    dependencies:
+      '@types/node': 22.19.21
 
   '@vscode/test-electron@3.0.0':
     dependencies:
@@ -922,3 +947,5 @@ snapshots:
   undici-types@6.21.0: {}
 
   util-deprecate@1.0.2: {}
+
+  ws@8.21.0: {}

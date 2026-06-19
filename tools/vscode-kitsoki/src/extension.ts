@@ -14,6 +14,8 @@
 import * as vscode from 'vscode';
 import * as fs from 'node:fs';
 import { Backend, type StoryHeader } from './backend';
+import { IdeServer } from './ide-server';
+import { IdeTools } from './ide-tools';
 import {
   ChatPanel,
   SurfaceViewProvider,
@@ -22,6 +24,7 @@ import {
 } from './webview';
 
 let backend: Backend | undefined;
+let ideServer: IdeServer | undefined;
 
 /**
  * Tee an OutputChannel's lines to a file when `logPath` is set (the e2e gate
@@ -52,7 +55,17 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(out);
 
   const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-  backend = new Backend(out, cwd);
+
+  // Stand up the IDE-MCP server FIRST so its port is ready before the backend
+  // spawns: the backend reads CLAUDE_CODE_SSE_PORT to dial back into this window
+  // for host.ide.* (open the brief/PRD, show refine diffs). Tools are injected
+  // (IdeTools) so the server is pure transport.
+  ideServer = new IdeServer(out, new IdeTools(out), {
+    workspaceFolders: (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath),
+  });
+  context.subscriptions.push({ dispose: () => ideServer?.dispose() });
+
+  backend = new Backend(out, cwd, () => ideServer!.ready);
   context.subscriptions.push({ dispose: () => backend?.dispose() });
 
   // Open Chat -> story picker -> start session -> reveal the left surfaces.
@@ -156,4 +169,6 @@ export function activate(context: vscode.ExtensionContext): void {
 export function deactivate(): void {
   backend?.dispose();
   backend = undefined;
+  ideServer?.dispose();
+  ideServer = undefined;
 }

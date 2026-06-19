@@ -41,7 +41,11 @@ const options = {
   format: 'cjs',
   platform: 'node',
   target: 'node22',
-  external: ['vscode'],
+  // `vscode` is provided by the host. `ws` is bundled, but its OPTIONAL native
+  // speedups (bufferutil / utf-8-validate) are require()'d in a try/catch — keep
+  // them external so esbuild doesn't fail on the missing optional deps; ws falls
+  // back to its pure-JS path at runtime.
+  external: ['vscode', 'bufferutil', 'utf-8-validate'],
   sourcemap: true,
   logLevel: 'info',
 };
