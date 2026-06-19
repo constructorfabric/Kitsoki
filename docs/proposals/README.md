@@ -60,6 +60,22 @@ thought.
 
 ## Current proposals
 
+- [`pre-llm-intercept.md`](pre-llm-intercept.md) — **epic.** Expose kitsoki's
+  no-LLM semantic-routing stack as a **pre-LLM gate** in front of a coding agent:
+  intercept the user's input, check it against a bound room, and when it is a
+  recognized command ("rebase this onto main") handle it deterministically in the
+  kitsoki story while the agent's main LLM is **never invoked** for that turn —
+  everything unrecognized passes through untouched. Honest about the ceiling: only
+  Claude Code has a pre-model hook (block + result-as-reason); Codex/Copilot have
+  none and get a degraded path. Nothing implemented yet; two slices (0/2):
+  - [`intercept-engine.md`](intercept-engine.md) (runtime) — `kitsoki intercept`:
+    split *classify* (a no-LLM, zero-side-effect `Orchestrator.Classify` pass) from
+    *execute*, gate conservatively on the `semroute.Verdict`, and emit structured
+    JSON + exit codes the hook branches on.
+  - [`agent-intercept-hooks.md`](agent-intercept-hooks.md) (tooling) — the Claude
+    Code `UserPromptSubmit` shim (block + marked, fail-open) + `kitsoki hook
+    install` + the `.kitsoki.yaml intercept:` binding + the honest Claude / Codex /
+    Copilot capability matrix.
 - [`stories-as-trainable-models.md`](stories-as-trainable-models.md) — **epic.**
   Reframe a kitsoki story as a quasi-deterministic, **trainable** model of a
   domain: forward pass = running a session, training set = the event log, but the
