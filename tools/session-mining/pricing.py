@@ -48,6 +48,21 @@ FALLBACK_PRICE = PRICING["claude-sonnet-4"]
 PRICED_AT = "claude-sonnet-4 (fallback — no published rate)"
 
 
+# Claude Code caches the prompt prefix with a 1-HOUR TTL (transcripts record
+# every write as ephemeral_1h). Within the hour, reprocessing the prefix to take
+# the next action is billed at cache_read (~0.1x input). Step away past the TTL
+# and the cache is gone: the same prefix re-bills WITHOUT the discount — at full
+# input rate on re-read, and the first cold turn re-WRITES at up to 2x input.
+# So "come back after a break and do one small thing" pays a cold premium on the
+# whole conversation. cold_premium() returns that multiple over the warm rate.
+def cold_premium(model: str) -> tuple[float, float]:
+    """(conservative, first-turn) cold-resume cost multiple over a warm cache-read.
+    conservative = full-input/cache-read (you simply lose the cache discount);
+    first-turn = cache-write-1h/cache-read (the cold turn must re-write the prefix)."""
+    p, _ = price_for(model)
+    return p.input / p.cache_read, p.cache_write_1h / p.cache_read
+
+
 def price_for(model: str) -> tuple[Price, bool]:
     """Return (price, is_exact). is_exact=False means we used the fallback tier
     for an unrecognised model and the caller should disclose it."""

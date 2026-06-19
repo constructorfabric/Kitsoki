@@ -227,6 +227,26 @@ def main() -> None:
               f"{sc.tokens():,} tok · models {sorted(sc.models())}")
         print(f"  reprocessing tax: {share:.0f}% of input tokens were cache reads "
               f"of prior context ({reproc:,} tok re-read to take the next action)")
+        # Cold-resume premium (PER-TURN — consecutive turns within the hour stay
+        # warm, so this is not a session-wide multiplier). Take the single action
+        # that re-read the most prior context: resume it cold, past the 1h TTL, and
+        # that prefix re-bills without the cache discount — ~10x for the same
+        # action. Kitsoki: $0 either way, because no conversation is fed to a model.
+        model = next(iter(sc.models()), "")
+        # Use a SMALL action (<=3 calls) so cache_read ~ one re-read of the prefix
+        # at that depth — the honest "come back and do one small thing" case, not a
+        # giant multi-call turn whose cache_read sums many re-reads.
+        small = [t for t in sc.turns if t.calls <= 3 and t.cache_read]
+        worst = max(small or sc.turns, key=lambda t: t.cache_read, default=None)
+        if worst and worst.cache_read and model:
+            cons, first = pricing.cold_premium(model)
+            p, _ = pricing.price_for(model)
+            warm = worst.cache_read * p.cache_read / 1e6
+            print(f"  cold-resume premium (one small action, after a break): "
+                  f"re-reading the {worst.cache_read:,}-tok prefix cost "
+                  f"{fmt_usd(warm)} warm; cold (past the 1h TTL) it re-bills at "
+                  f"~{cons:.0f}x ({fmt_usd(warm * cons)}), first cold turn ~{first:.0f}x "
+                  f"({fmt_usd(warm * first)})  | {worst.user_text[:36]}")
         if args.by_turn:
             # The story is the CLIMB: each turn re-reads the whole conversation so
             # far, so the cost of taking the next action rises as the session

@@ -75,6 +75,31 @@ the git-ops story's entire four-operation run. But the floor understates
 reality. Developers don't commit in a vacuum; they commit on turn 20 of a
 working session, and pay the turn-20 reprocessing price to do it.
 
+### And it's worse cold: coming back after a break
+
+The climb above assumes the cache is **warm** — those 1.1M tokens for
+"what branch?" were billed at the cache-read rate (~0.1× input). Claude
+Code's prompt cache has a **1-hour TTL** (transcripts record every write
+as `ephemeral_1h`). Step away longer than that — lunch, a meeting, the
+next morning — and the cache is gone. The same prefix now re-bills
+*without the discount*: at full input rate on re-read (**~10×** the warm
+cost), and the first cold turn re-*writes* the prefix at up to **~20×**.
+
+So the same trivial "what branch?", resumed cold:
+
+| | re-read 1.1M-tok prefix | for one one-word question |
+|---|---|---|
+| warm (within the hour) | cache-read rate | **$1.68** |
+| cold (past the 1h TTL) | full input rate, ~10× | **~$16.76** |
+| cold, first turn back | cache-*write* 1h, ~20× | **~$33.51** |
+
+You walked away, came back, asked one word — and paid up to $33 before the
+model did anything, purely to re-warm the conversation. In the git-ops
+story this is a deterministic branch-detection host call: **$0**, warm or
+cold, because there is no conversation cache to expire — nothing is fed
+back through a model. The cold-resume penalty isn't a tail risk; it's the
+normal cost of returning to any long-running session.
+
 ---
 
 ## 2. Why the deterministic story has no tax
@@ -116,9 +141,10 @@ turns the dominant cost term to zero.
 
 | | the work | cost |
 |---|---|---|
-| git-ops **story** | 4 operations, any session length | **$0.0955**, flat |
+| git-ops **story** | 4 operations, any session length, warm or cold | **$0.0955**, flat |
 | Claude Code, **isolated floor** | one `commit this`, fresh session | ~$0.12 |
 | Claude Code, **realistic** | git ops entangled in a working session | $1–$20+ **per turn**, climbing |
+| Claude Code, **cold resume** | one small action after a >1h break | ~10–20× the warm turn (e.g. $1.68 → $17–34) |
 | Claude Code, **a full session** | the demo-building session itself | **$546.13** |
 
 The story did the four operations once for less than a single isolated
@@ -175,6 +201,13 @@ python3 tools/session-mining/tests/test_cost_estimate.py
   attributes all its cost to that turn — but that's faithful: you *did*
   pay to reprocess the whole conversation for that turn regardless of how
   many sub-tasks it contained.
+* **The warm numbers are measured; the cold premium is a rate
+  counterfactual.** The reprocessed token counts are recorded (exact); the
+  ~10–20× cold multiple is the published rate ratio (full-input or
+  cache-write-1h ÷ cache-read), applied to a *small* (≤3-call) action so it
+  reflects one prefix re-read, not a multi-call turn's summed reads. It is
+  not a session-wide multiplier — consecutive turns within the hour stay
+  warm.
 * **Everything uncertain pushes the raw number up.** Real sessions have
   retries, larger diffs, and longer system prompts; the deterministic
   story's $0.0955 is the committed measured value. The honest claim is the
