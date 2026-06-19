@@ -62,6 +62,29 @@
           v-html="renderView(entry.text)"
         ></div>
         <div v-else class="chat-text">{{ entry.text }}</div>
+        <!-- Inline routing chip: how this free-text turn was resolved to an
+             intent (tier + match reason + confidence). Surfaces the semantic-
+             routing layer in the web chat the way the TUI does. -->
+        <div
+          v-if="entry.role === 'user' && entry.routing"
+          class="chat-routing"
+          data-testid="routing-chip"
+          :title="routingTitle(entry.routing!)"
+        >
+          <span class="chat-routing__arrow">→</span>
+          <span class="chat-routing__intent" v-if="entry.routing!.intent"
+            >{{ entry.routing!.intent }}</span
+          >
+          <span class="chat-routing__tier" :class="`chat-routing__tier--${entry.routing!.routedBy}`"
+            >{{ entry.routing!.routedBy }}</span
+          >
+          <span class="chat-routing__reason" v-if="entry.routing!.matchType"
+            >{{ entry.routing!.matchType }}</span
+          >
+          <span class="chat-routing__conf" v-if="entry.routing!.confidence"
+            >{{ entry.routing!.confidence.toFixed(2) }}</span
+          >
+        </div>
       </div>
     </div>
   </div>
@@ -71,6 +94,7 @@
 import { ref, watch, nextTick, onMounted } from "vue";
 import type { View } from "../types.js";
 import type { StreamItem } from "../lib/activity.js";
+import type { RoutingInfo } from "../stores/run.js";
 import ActivityDisclosure from "./ActivityDisclosure.vue";
 import ViewElement from "./ViewElement.vue";
 import { renderAgentMarkdown } from "../lib/markdown.js";
@@ -83,6 +107,17 @@ export interface ChatEntry {
   stream?: StreamItem[];
   /** True when this agent bubble is an off-ramp ("offpath") converse answer. */
   isOffRamp?: boolean;
+  /** Routing provenance for a free-text user turn (renders the routing chip). */
+  routing?: RoutingInfo;
+}
+
+/** Tooltip: the full routing story in one line. */
+function routingTitle(r: RoutingInfo): string {
+  const bits = [`routed to "${r.intent ?? "?"}" via the ${r.routedBy} tier`];
+  if (r.matchType) bits.push(`(${r.matchType})`);
+  if (r.confidence) bits.push(`confidence ${r.confidence.toFixed(2)}`);
+  if (r.routedBy !== "llm") bits.push("— deterministic, no LLM, $0");
+  return bits.join(" ");
 }
 
 const props = defineProps<{ transcript: ChatEntry[] }>();
@@ -255,6 +290,59 @@ watch(
 
 .chat-text {
   white-space: pre-wrap;
+}
+
+/* Inline routing chip under a user bubble: a compact pill row reading
+   "→ intent · tier · reason · conf". Sits below the user text, right-aligned
+   with the user column, in a muted monospace so it reads as provenance, not
+   chat. */
+.chat-routing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin-top: 7px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10.5px;
+  line-height: 1.2;
+}
+.chat-routing__arrow {
+  color: rgba(255, 255, 255, 0.65);
+}
+.chat-routing__intent {
+  font-weight: 700;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+.chat-routing__tier {
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-weight: 600;
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: #0f1115;
+  background: #cbd5e1;
+}
+/* The deterministic tiers are free; tint them green. The LLM tier is the only
+   paid surface; tint it amber so the cost story reads at a glance. */
+.chat-routing__tier--semantic,
+.chat-routing__tier--deterministic,
+.chat-routing__tier--turncache {
+  background: #bef264;
+}
+.chat-routing__tier--llm {
+  background: #fcd34d;
+}
+.chat-routing__reason {
+  color: rgba(255, 255, 255, 0.82);
+}
+.chat-routing__conf {
+  color: rgba(255, 255, 255, 0.6);
+  margin-left: auto;
 }
 
 /* The agent room view: preserve the engine's layout verbatim. Monospace +

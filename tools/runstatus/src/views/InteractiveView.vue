@@ -86,7 +86,7 @@
       <div class="iv__main">
         <!-- LEFT: conversation -->
         <section class="iv__chat" aria-label="Conversation" data-testid="chat-section">
-          <ChatTranscript class="iv__transcript" :transcript="store.transcript" />
+          <ChatTranscript class="iv__transcript" :transcript="store.chatEntries" />
           <!-- Streaming thinking bubble: visible while a turn is in flight -->
           <div v-if="pending" class="iv__thinking" data-testid="thinking-bubble">
             <div class="iv__thinking-avatar">A</div>
@@ -301,6 +301,19 @@ onMounted(() => {
     if (!source) return;
     await runTurn(() => store.submitIntent(source!, props.sessionId, name, slots, displayLabel));
   };
+
+  // __kitsokiSendText drives a FREE-TEXT turn through the store's sendText
+  // (session.turn → the real routing tiers), so a demo types the operator's
+  // verbatim utterance and the engine ROUTES it (semantic tier, no LLM) rather
+  // than receiving a pre-resolved intent. This is what makes the routing chip
+  // light up on-camera: the turn carries genuine routed_by/match_type
+  // provenance. Mirrors __kitsokiSubmitIntent; inert unless a spec calls it.
+  (window as unknown as {
+    __kitsokiSendText?: (text: string) => Promise<void>;
+  }).__kitsokiSendText = async (text: string) => {
+    if (!source) return;
+    await runTurn(() => store.sendText(source!, props.sessionId, text));
+  };
 });
 
 // Switching directly between two /s/:sessionId/chat routes reuses this
@@ -316,6 +329,7 @@ watch(
 onUnmounted(() => {
   store.teardown();
   delete (window as unknown as { __kitsokiSubmitIntent?: unknown }).__kitsokiSubmitIntent;
+  delete (window as unknown as { __kitsokiSendText?: unknown }).__kitsokiSendText;
 });
 
 /**

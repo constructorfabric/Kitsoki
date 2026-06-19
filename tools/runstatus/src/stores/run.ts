@@ -14,6 +14,26 @@ import type { LiveSource } from "../data/live-source.js";
 import { appendThought, appendTool, type StreamItem } from "../lib/activity.js";
 import { readOracleUsage } from "../components/oracle/lib.js";
 
+/**
+ * How a free-text user turn was resolved to an intent — the provenance the
+ * routing tiers stamp on the turn.start event (routed_by / match_type /
+ * confidence; see internal/orchestrator RouteProvenance) plus the resolved
+ * intent from the turn's first machine.transition. Surfaced as the inline
+ * routing chip under the user bubble so the web chat shows the semantic-routing
+ * layer the TUI already does (ideas.md "the web ui doesn't show the semantic
+ * routing layer aspect from the TUI").
+ */
+export interface RoutingInfo {
+  /** Resolving tier: "semantic" | "deterministic" | "turncache" | "llm" | … */
+  routedBy: string;
+  /** Tier-specific reason, e.g. "leading-verb:commit", "example:back". */
+  matchType?: string;
+  /** Routing confidence band (0.90 synonym, etc.); omitted when not applicable. */
+  confidence?: number;
+  /** The intent the turn resolved to (turn's first transition). */
+  intent?: string;
+}
+
 /** One entry of the conversational transcript shown beside the trace. */
 export interface TranscriptEntry {
   role: "user" | "agent";
@@ -33,6 +53,14 @@ export interface TranscriptEntry {
    * ("off path") — the menu still persists because state is unchanged.
    */
   isOffRamp?: boolean;
+  /**
+   * The turn number this user message produced (set after the turn resolves).
+   * Used to recover routing provenance from the event log reactively, so the
+   * chip fills in even when events arrive a tick later over SSE.
+   */
+  turn?: number;
+  /** Routing provenance, resolved reactively from events (see chatEntries). */
+  routing?: RoutingInfo;
 }
 
 // StreamItem (the ordered feed shape) moved to lib/activity.ts so the meta
@@ -100,6 +128,43 @@ export const useRunStore = defineStore("run", () => {
     }
     return { promptTokens, responseTokens, costUsd, calls, present };
   });
+
+  // readTurnRouting recovers the routing provenance for a turn from the event
+  // log: routed_by / match_type / confidence off the turn.start event, and the
+  // resolved intent off the turn's FIRST machine.transition (the hub→room arc;
+  // later transitions are internal auto-routing). Returns undefined until the
+  // turn.start has landed (so the chip simply doesn't render yet).
+  function readTurnRouting(turn: number): RoutingInfo | undefined {
+    let info: RoutingInfo | undefined;
+    let intent: string | undefined;
+    for (const e of events.value) {
+      if (e.turn !== turn) continue;
+      if (e.msg === "turn.start" && typeof e.attrs.routed_by === "string") {
+        info = {
+          routedBy: e.attrs.routed_by,
+          matchType: typeof e.attrs.match_type === "string" ? e.attrs.match_type : undefined,
+          confidence: typeof e.attrs.confidence === "number" ? e.attrs.confidence : undefined,
+        };
+      }
+      if (!intent && e.msg === "machine.transition" && typeof e.attrs.intent === "string") {
+        intent = e.attrs.intent;
+      }
+    }
+    if (!info) return undefined;
+    if (intent) info.intent = intent;
+    return info;
+  }
+
+  // chatEntries is the transcript enriched with each user turn's routing
+  // provenance, resolved reactively from the event log. Recomputes as events
+  // stream in over SSE, so the routing chip fills in a tick after the bubble.
+  const chatEntries = computed<TranscriptEntry[]>(() =>
+    transcript.value.map((e) => {
+      if (e.role !== "user" || e.turn == null) return e;
+      const routing = readTurnRouting(e.turn);
+      return routing ? { ...e, routing } : e;
+    })
+  );
 
   // ---- internal ----
   let _unsubscribe: (() => void) | null = null;
@@ -370,7 +435,8 @@ export const useRunStore = defineStore("run", () => {
     text: string,
     _intentName?: string
   ): Promise<TurnResult> {
-    transcript.value.push({ role: "user", text });
+    const userEntry: TranscriptEntry = { role: "user", text };
+    transcript.value.push(userEntry);
     let result: TurnResult;
     let capturedStream = "";
     let capturedItems: StreamItem[] | undefined;
@@ -384,6 +450,10 @@ export const useRunStore = defineStore("run", () => {
     } else {
       result = await source.sendTurn(sessionId, text);
     }
+    // Tag the user entry with its turn number so the routing chip can recover
+    // provenance from the event log (chatEntries) once the turn.start +
+    // transition events land — reactively, surviving the SSE settle lag.
+    if (typeof result.turn_number === "number") userEntry.turn = result.turn_number;
     applyTurnResult(result, capturedStream, capturedItems);
     return result;
   }
@@ -505,6 +575,7 @@ export const useRunStore = defineStore("run", () => {
     highlightTick,
     usageTotals,
     transcript,
+    chatEntries,
     currentView,
     allowedIntents,
     pendingStream,

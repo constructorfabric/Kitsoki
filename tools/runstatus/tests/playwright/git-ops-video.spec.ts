@@ -1,8 +1,13 @@
 /**
  * git-ops-video.spec.ts — the git-ops story walkthrough video, driven against a
  * REAL `kitsoki web` server in the deterministic no-LLM posture
- * (--flow stories/git-ops/flows/demo_real_sessions.yaml --mode one-shot: host
- * responses stubbed, harness nil, intents submitted explicitly — no LLM ever).
+ * (--flow stories/git-ops/flows/demo_real_sessions.yaml --host-cassette
+ * cassettes/demo_oracle.cassette.yaml --mode one-shot). git (host.run) is stubbed
+ * FREE by the flow; the two genuine oracle calls (commit message, conflict
+ * resolution) replay through the host cassette with real token usage + cost. The
+ * four mined utterances are typed as FREE TEXT and ROUTED live by the semantic
+ * tier (no LLM) — the inline routing chip under each bubble shows how each
+ * resolved, and the spend meter ticks up only on the two oracle turns (~$0.10).
  *
  * Like multi-story.spec.ts, the WHOLE video is TOUR-DRIVEN: it runs the
  * GIT_OPS_TOUR_STEPS from src/tour/git-ops-manifest.ts via
@@ -20,16 +25,15 @@
  * via its on_enter emit_intent. That route fires at SESSION BOOT
  * (RunInitialOnEnter follows the post-bind emit), so a fresh session lands
  * directly on branch_ops with no kick turn — the FIRST user turn the demo shows
- * is the real `commit`. Every intent is driven through the SPA's own demo hook
- * `window.__kitsokiSubmitIntent` (added by InteractiveView: submit through the
- * view's store path so the chat + InputBar re-render reactively, unlike an
- * out-of-band RPC). Its 3rd arg is the verbatim utterance, rendered as the chat
- * bubble via submitIntent's displayLabel — so the no-LLM video shows REAL user
- * input (the mined user_text), with the engine deterministically processing the
- * resolved intent (exactly the shape a live LLM session leaves: utterance +
- * resolved intent). `--mode one-shot` runs each turn's full emit cascade (so the
- * rebase's multi-file conflict auto-resolves in one turn). These drives are
- * PRE-STEP HOOKS so each spotlighted state exists before the spotlight lands.
+ * is the real `commit`. Natural-language turns are driven through the SPA's own
+ * demo hook `window.__kitsokiSendText` (added by InteractiveView: session.turn →
+ * the REAL routing tiers, so the engine genuinely routes the typed words and
+ * stamps routed_by/match_type provenance the chip renders). The ONE exception is
+ * the worktree DESCRIBE step — a slot-form value the Phase-2 semantic tier cannot
+ * extract — submitted via __kitsokiSubmitIntent (driveIntent). `--mode one-shot`
+ * runs each turn's full emit cascade (so the rebase's multi-file conflict
+ * auto-resolves in one turn). These drives are PRE-STEP HOOKS so each spotlighted
+ * state exists before the spotlight lands.
  *
  * Uses a tmp DB (beforeAll/afterAll). ADDR 7753 (distinct from every other spec).
  *
@@ -130,8 +134,16 @@ test.beforeAll(async () => {
     BIN,
     // one-shot: run each turn's full emit cascade so the root `idle` router
     // advances to branch_ops on a single `look` (staged mode holds its templated
-    // auto-route emit). Host calls are stubbed by --flow; no LLM.
-    ["web", "--stories-dir", STORIES_DIR, "--flow", FLOW, "--mode", "one-shot", "--addr", ADDR, "--db", dbPath],
+    // auto-route emit). git (host.run) is stubbed FREE by --flow; the oracle
+    // calls (commit message, conflict resolution) are backed by the host cassette
+    // so they replay through the REAL oracle dispatch — emitting oracle.call.complete
+    // with genuine token usage + cost (the deterministic engine stays $0; only the
+    // oracle spends). Path is resolved relative to the flow file. No LLM.
+    [
+      "web", "--stories-dir", STORIES_DIR, "--flow", FLOW,
+      "--host-cassette", "cassettes/demo_oracle.cassette.yaml",
+      "--mode", "one-shot", "--addr", ADDR, "--db", dbPath,
+    ],
     { cwd: repoRoot, stdio: ["ignore", "pipe", "pipe"] },
   );
   server.stdout?.on("data", (d) => (serverLog += d.toString()));
@@ -200,36 +212,44 @@ test.describe("git-ops story walkthrough (live, no-LLM)", () => {
 
     let sid = "";
 
-    /** Drive a git intent through the SPA's OWN store path (InteractiveView's
-     *  __kitsokiSubmitIntent demo hook), so the chat + InputBar re-render
-     *  reactively. This is the deterministic way to advance git-ops' button-less
-     *  router rooms (idle) and every other room in the no-LLM posture, mirroring
-     *  the window.__startTourWithSteps hook the tour itself uses.
-     *
-     *  `utterance` (optional) is rendered as the user's chat bubble via
-     *  submitIntent's displayLabel — pass the verbatim mined user_text on the
-     *  first turn of each scenario so the video shows REAL natural-language input
-     *  rather than the resolved intent name. Omit it for sub-actions (accept,
-     *  back, describe) the user takes by clicking a room button. */
-    async function drive(
-      intent: string,
-      slots: Record<string, unknown> = {},
-      utterance?: string,
-    ): Promise<void> {
+    /** Drive a FREE-TEXT turn through the SPA's store path (InteractiveView's
+     *  __kitsokiSendText hook → session.turn → the REAL routing tiers). The
+     *  verbatim utterance is typed as the user; the engine ROUTES it via the
+     *  semantic tier (no LLM) and stamps genuine routed_by/match_type provenance,
+     *  which the inline routing chip renders under the bubble. This is how the
+     *  four mined utterances (and the accept/back follow-ups) drive on-camera —
+     *  real natural-language input, real deterministic routing, no synthetic
+     *  intent names. */
+    async function driveText(utterance: string): Promise<void> {
+      await page.waitForFunction(
+        () => typeof (window as unknown as { __kitsokiSendText?: unknown }).__kitsokiSendText === "function",
+        { timeout: 15000 },
+      );
+      await page.evaluate(
+        (text) =>
+          (window as unknown as {
+            __kitsokiSendText: (t: string) => Promise<void>;
+          }).__kitsokiSendText(text as string),
+        utterance,
+      );
+    }
+
+    /** Drive an explicit intent + slots (InteractiveView's __kitsokiSubmitIntent
+     *  hook → session.submit). Used ONLY for the worktree DESCRIBE step, a
+     *  slot-form action: the description is a typed value the Phase-2 semantic
+     *  tier cannot extract, so it is submitted as a form, not routed from prose.
+     *  Every natural-language turn uses driveText instead. */
+    async function driveIntent(intent: string, slots: Record<string, unknown> = {}): Promise<void> {
       await page.waitForFunction(
         () => typeof (window as unknown as { __kitsokiSubmitIntent?: unknown }).__kitsokiSubmitIntent === "function",
         { timeout: 15000 },
       );
       await page.evaluate(
-        ([name, s, label]) =>
+        ([name, s]) =>
           (window as unknown as {
-            __kitsokiSubmitIntent: (
-              n: string,
-              sl: Record<string, unknown>,
-              dl?: string,
-            ) => Promise<void>;
-          }).__kitsokiSubmitIntent(name as string, s as Record<string, unknown>, label as string | undefined),
-        [intent, slots, utterance] as const,
+            __kitsokiSubmitIntent: (n: string, sl: Record<string, unknown>) => Promise<void>;
+          }).__kitsokiSubmitIntent(name as string, s as Record<string, unknown>),
+        [intent, slots] as const,
       );
     }
     try {
@@ -255,43 +275,45 @@ test.describe("git-ops story walkthrough (live, no-LLM)", () => {
         }
 
         // ── Pre-step setup: drive each mined scenario so its state exists ─────
-        // The first drive() of each scenario carries the VERBATIM mined user_text
-        // as its 3rd arg → rendered as the chat bubble (submitIntent displayLabel).
-        // Sub-actions (accept, back, describe) are room-button clicks: no label.
+        // Every natural-language turn is the VERBATIM mined user_text, typed as
+        // free text and ROUTED by the semantic tier (driveText). The chip under
+        // each bubble shows how it resolved. Only the worktree DESCRIBE step is a
+        // slot-form submit (driveIntent) — a typed value, not prose to route.
         if (step.id === "gitops-commit") {
           // No kick turn: the session boots straight to branch_ops (idle's
           // on_enter emit_intent auto-routes at session creation). Scenario ①.
           await waitForState(page, "branch_ops", 15000);
           await dwell(page, SETTLE_MS);
-          await drive("commit", {}, "commit the staged fix"); // → commit (oracle authors the real message)
+          await driveText("commit the staged fix"); // routes → commit; oracle authors the message
           await waitForState(page, "commit", 15000);
+          await expect(page.getByTestId("routing-chip").last()).toBeVisible({ timeout: 15000 });
           await dwell(page, SETTLE_MS);
         }
         if (step.id === "gitops-rebase") {
-          await drive("accept"); // commit → branch_ops (lands the commit)
+          await driveText("accept"); // commit → branch_ops (lands the commit)
           await waitForState(page, "branch_ops", 15000);
           await dwell(page, SETTLE_MS);
           // Scenario ②: multi-file conflict auto-resolved in one turn → branch_ops.
-          await drive("rebase", {}, "rebase onto main and resolve the conflicts");
+          await driveText("rebase onto main and resolve the conflicts");
           await waitForState(page, "branch_ops", 15000);
           await dwell(page, SETTLE_MS);
         }
         if (step.id === "gitops-merge") {
           // Scenario ③: gated on rebase_done → the merge room.
-          await drive("merge_into_main", {}, "merge the feature branch into main");
+          await driveText("merge the feature branch into main");
           await waitForState(page, "merge_into_main", 15000);
           await dwell(page, SETTLE_MS);
         }
         if (step.id === "gitops-worktree") {
-          await drive("back"); // merge → main_ops (integration hub)
+          await driveText("back"); // merge → main_ops (integration hub)
           await waitForState(page, "main_ops", 15000);
           await dwell(page, SETTLE_MS);
-          // Scenario ④: enter worktree_create, then provide the short description
-          // the room asks for — creates .worktrees/feat-cache.
-          await drive("worktree_create", {}, "set up a worktree for the new cache feature");
+          // Scenario ④: route into worktree_create, then provide the short
+          // description the room asks for — creates .worktrees/feat-cache.
+          await driveText("set up a worktree for the new cache feature");
           await waitForState(page, "worktree_create", 15000);
           await dwell(page, SETTLE_MS);
-          await drive("describe", { desc: "cache feature" }); // → feat-cache worktree created
+          await driveIntent("describe", { desc: "cache feature" }); // → feat-cache worktree created
           await dwell(page, SETTLE_MS);
         }
         if (step.id === "gitops-done") {
