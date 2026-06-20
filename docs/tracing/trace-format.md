@@ -90,9 +90,13 @@ tier and ended the session, with the trace showing only `direct: true`).
 | Payload key  | Type    | When present | Meaning                                                            |
 |--------------|---------|--------------|--------------------------------------------------------------------|
 | `direct`     | bool    | direct submits | The intent was submitted without the LLM router (menu pick, CLI `--intent`, or a routing tier). |
-| `routed_by`  | string  | tier-routed  | The resolving tier: `deterministic`, `semantic`, `turncache`, `disambiguation`. Absent for genuinely caller-chosen submits (menu pick / `--intent`) where there is no routing to explain. |
-| `match_type` | string  | optional     | Tier-specific reason: `display`/`example` (deterministic) or `synonym:<text>`/`example:<text>` (semantic). |
-| `confidence` | float   | optional     | Routing confidence band (e.g. `0.90` for a semantic synonym hit). Omitted when not applicable. |
+| `routed_by`  | string  | every free-text turn | The resolving tier: `deterministic`, `semantic`, `turncache`, `default`, `fallback`, `disambiguation`, or `llm`. **Every free-text turn carries this** — including the main-turn interpreter, which stamps `llm` (with `match_type: "main-turn"`) so a turn that fell through every cheaper tier is never an unattributable row. Absent only for genuinely caller-chosen submits (menu pick / `--intent`) where there is no routing to explain. |
+| `match_type` | string  | optional     | Tier-specific reason: `display`/`example` (deterministic), `synonym:<text>`/`example:<text>` (semantic), `free_text` (default/fallback), or `main-turn` (the paid interpreter). |
+| `confidence` | float   | optional     | Routing confidence band (e.g. `0.90` for a semantic synonym hit; the interpreter's self-report for `llm`). Omitted when not applicable. |
+
+`llm` is the only **paid** tier — every other value is a deterministic, $0
+route. This is the fact the web routing chip keys its free/paid tint on (see
+`tools/runstatus/src/components/ChatTranscript.vue`).
 
 These are written by `RouteProvenance.stampOn` in
 `internal/orchestrator/orchestrator.go`; see `RouteProvenance` for the
