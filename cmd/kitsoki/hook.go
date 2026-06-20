@@ -210,9 +210,21 @@ func runClaudeHook(ctx context.Context, stdin io.Reader, configFlag string) (rep
 		return "", false
 	}
 
-	// Only a clean confident match that actually executed blocks. A pass-through
-	// (Exit 10) or a rejected execute (Exit 1) lets the prompt reach the model.
-	if !res.Matched || res.OneShot == nil {
+	if !res.Matched {
+		return "", false
+	}
+
+	// Multi-turn binding: don't OneShot — drive a persisted session to rest
+	// SYNCHRONOUSLY (the hook blocks) under kitsoki's OWN budget, decoupled from
+	// the 5s classify cap. The classify above ran fast under runCtx; the drive
+	// gets a fresh, generous context of its own. Any setup failure fails open.
+	if res.MultiTurn {
+		return runClaudeHookDrive(ctx, appPath, in, ic, res)
+	}
+
+	// Stateless fast path: only a clean confident match that actually executed
+	// blocks. Pass-through (Exit 10) or rejected (Exit 1) reaches the model.
+	if res.OneShot == nil {
 		return "", false
 	}
 	switch res.Exit {
@@ -221,6 +233,40 @@ func runClaudeHook(ctx context.Context, stdin io.Reader, configFlag string) (rep
 	default: // rejected (1), defensive-clarify (10), anything else: pass through
 		return "", false
 	}
+}
+
+// runClaudeHookDrive handles the multi-turn intercept path: it loads the bound
+// app, drives the matched command to rest on a persisted session under
+// interceptDriveBudget (NOT the 5s classify cap), and returns the composed
+// drive report to block the prompt with. Fail-open governs every setup error.
+// The drive blocks for as long as the resolution takes — the installed Claude
+// hook `timeout` (interceptHookTimeoutSeconds) must exceed it.
+func runClaudeHookDrive(ctx context.Context, appPath string, in hookPromptInput, ic *webconfig.InterceptConfig, res interceptResult) (string, bool) {
+	def, err := loadAppWithEnv(appPath)
+	if err != nil {
+		return "", false // fail open
+	}
+
+	driveCtx, cancel := context.WithTimeout(ctx, interceptDriveBudget)
+	defer cancel()
+
+	out, err := driveInterceptToRest(driveCtx, driveConfig{
+		AppPath:    appPath,
+		Def:        def,
+		DBPath:     defaultDBPath(),
+		Input:      in.Prompt,
+		Intent:     res.Intent,
+		Slots:      res.Slots,
+		WorkingDir: in.Cwd, // run git in the prompt's repo
+	})
+	if err != nil {
+		// Drive infrastructure failure (couldn't build the runtime / boot): fail
+		// open. DriveToRest already safe-aborts every NON-infra failure internally
+		// and returns a normal outcome, so a clean tree is still guaranteed.
+		return "", false
+	}
+
+	return composeDriveReport(res.Intent, ic.EscapePrefix, out), true
 }
 
 // composeInterceptReport renders the marked report a clean intercept blocks the
@@ -470,13 +516,26 @@ func writeSettings(path string, settings map[string]any) error {
 	return nil
 }
 
+// interceptHookTimeoutSeconds is the Claude `timeout` (seconds) written onto the
+// installed UserPromptSubmit entry. Claude defaults a UserPromptSubmit hook to a
+// 30s timeout and KILLS the process past it — which would strand a tree mid-
+// rebase during a multi-turn conflict drive. So the installer raises it well
+// past kitsoki's own interceptDriveBudget (15m), leaving headroom for kitsoki to
+// reach safe-abort first. See docs/architecture/prompt-intercept.md §"Multi-turn
+// commands" and the stderr spike.
+const interceptHookTimeoutSeconds = 1200 // 20m > interceptDriveBudget (15m)
+
 // mergeClaudeHook returns a deep-ish copy of settings with the kitsoki
-// UserPromptSubmit hook merged in, plus changed=false when the identical entry
-// was already present (idempotent). The Claude hooks shape is:
+// UserPromptSubmit hook merged in, plus changed=false when the entry was already
+// present WITH the right timeout (idempotent). The Claude hooks shape is:
 //
 //	"hooks": { "UserPromptSubmit": [ { "hooks": [ { "type":"command",
-//	          "command":"kitsoki hook run --agent claude" } ] } ] }
+//	          "command":"kitsoki hook run --agent claude",
+//	          "timeout": 1200 } ] } ] }
 //
+// The `timeout` is load-bearing (see interceptHookTimeoutSeconds): a pre-existing
+// entry missing it — or carrying a too-short one — is reconciled in place to the
+// required value (changed=true), so re-running install upgrades an older install.
 // Unrelated keys (other hook events, other top-level settings) are preserved.
 func mergeClaudeHook(settings map[string]any) (updated map[string]any, changed bool) {
 	updated = cloneJSONMap(settings)
@@ -487,8 +546,15 @@ func mergeClaudeHook(settings map[string]any) (updated map[string]any, changed b
 	}
 	events, _ := hooks["UserPromptSubmit"].([]any)
 
-	if claudeHookPresent(events) {
-		return updated, false
+	// Reconcile an existing entry's timeout in place if the command is present.
+	if h := findClaudeHookEntry(events); h != nil {
+		if hookTimeoutSeconds(h["timeout"]) == interceptHookTimeoutSeconds {
+			return updated, false // fully present, correct timeout: idempotent
+		}
+		h["timeout"] = interceptHookTimeoutSeconds
+		hooks["UserPromptSubmit"] = events
+		updated["hooks"] = hooks
+		return updated, true
 	}
 
 	entry := map[string]any{
@@ -496,6 +562,7 @@ func mergeClaudeHook(settings map[string]any) (updated map[string]any, changed b
 			map[string]any{
 				"type":    "command",
 				"command": hookCommandString,
+				"timeout": interceptHookTimeoutSeconds,
 			},
 		},
 	}
@@ -505,9 +572,27 @@ func mergeClaudeHook(settings map[string]any) (updated map[string]any, changed b
 	return updated, true
 }
 
-// claudeHookPresent reports whether the UserPromptSubmit event list already
-// carries an inner command hook running hookCommandString — the idempotence key.
-func claudeHookPresent(events []any) bool {
+// hookTimeoutSeconds coerces a settings `timeout` value to an int regardless of
+// whether it arrived as a JSON number (float64, from a re-read settings file) or
+// an int (from an in-memory merge). A missing/odd value reads as 0.
+func hookTimeoutSeconds(v any) int {
+	switch t := v.(type) {
+	case float64:
+		return int(t)
+	case int:
+		return t
+	case int64:
+		return int(t)
+	default:
+		return 0
+	}
+}
+
+// findClaudeHookEntry returns the inner command-hook map running
+// hookCommandString in the UserPromptSubmit event list, or nil. The returned map
+// is a live reference into events (a clone of the caller's settings), so callers
+// may mutate it in place to reconcile fields like `timeout`.
+func findClaudeHookEntry(events []any) map[string]any {
 	for _, ev := range events {
 		evMap, ok := ev.(map[string]any)
 		if !ok {
@@ -523,11 +608,17 @@ func claudeHookPresent(events []any) bool {
 				continue
 			}
 			if cmd, _ := hMap["command"].(string); cmd == hookCommandString {
-				return true
+				return hMap
 			}
 		}
 	}
-	return false
+	return nil
+}
+
+// claudeHookPresent reports whether the UserPromptSubmit event list already
+// carries an inner command hook running hookCommandString.
+func claudeHookPresent(events []any) bool {
+	return findClaudeHookEntry(events) != nil
 }
 
 // printSettingsDiff prints a terse unified-ish before/after of the settings JSON
