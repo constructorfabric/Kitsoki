@@ -98,6 +98,10 @@ hosts:
   - host.oracle.search
   - host.artifacts_dir
   - host.ide.open_file
+  # Design draft (dev-story design_draft) + PRD drafting (prd/drafting) mirror
+  # the editable artifact into the IDE and present the verdict-gated refine as a
+  # diff. Required under `hosts: declared`.
+  - host.ide.open_diff
   # PRD discovery pipeline (dev-story imports stories/prd/): a
   # conversational discovery (converse + a persistent chat) feeding the
   # PRD → Design walk. Required under `hosts: declared`.
