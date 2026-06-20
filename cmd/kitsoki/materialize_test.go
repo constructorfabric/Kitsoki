@@ -63,7 +63,10 @@ func TestMaterializeRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("emit: %v", err)
 	}
-	outDir, err := os.MkdirTemp(filepath.Join(root, "stories"), "mat-rt-")
+	// Write under the repo root but OUTSIDE stories/ so findRepoRoot still
+	// resolves @kitsoki/dev-story while cross-package stories/ walkers (which
+	// copy stories/ in parallel) never race on this transient dir.
+	outDir, err := os.MkdirTemp(root, "mat-rt-")
 	if err != nil {
 		t.Fatalf("mkdtemp under repo: %v", err)
 	}
@@ -105,20 +108,21 @@ func TestMaterializeEmitHasProvenanceHeaderAndDevStorySource(t *testing.T) {
 // loadable file, and a second run against the same slug refuses to overwrite.
 func TestMaterializeCmd_RoundTripAndRefuseOverwrite(t *testing.T) {
 	root := testRepoRoot(t)
-	// stories/<slug> is materialize's write root; use a unique slug under the
-	// repo so @kitsoki/dev-story resolves and the test cleans up after itself.
-	storiesDir, err := os.MkdirTemp(filepath.Join(root, "stories"), "mat-cmd-")
+	// Materialize's write root is a temp dir UNDER the repo root (not real
+	// stories/): @kitsoki/dev-story still resolves via findRepoRoot, while the
+	// transient stories/<slug> it writes can't race parallel stories/ walkers.
+	matRoot, err := os.MkdirTemp(root, "mat-cmd-")
 	if err != nil {
 		t.Fatalf("mkdtemp: %v", err)
 	}
-	defer os.RemoveAll(storiesDir)
-	slug := filepath.Base(storiesDir)
+	defer os.RemoveAll(matRoot)
+	slug := "proj"
 
 	// Empty config dir → rung 0 (no .kitsoki.yaml). Point --config at a
 	// nonexistent path so Load returns the zero WebConfig.
 	cfgPath := filepath.Join(t.TempDir(), ".kitsoki.yaml")
 
-	outPath, err := runMaterialize(root, cfgPath, slug)
+	outPath, err := runMaterialize(matRoot, cfgPath, slug)
 	if err != nil {
 		t.Fatalf("first materialize: %v", err)
 	}
@@ -131,7 +135,7 @@ func TestMaterializeCmd_RoundTripAndRefuseOverwrite(t *testing.T) {
 	}
 
 	// Second run refuses to overwrite.
-	if _, err := runMaterialize(root, cfgPath, slug); err == nil {
+	if _, err := runMaterialize(matRoot, cfgPath, slug); err == nil {
 		t.Fatal("expected refuse-overwrite error on second materialize")
 	} else if !strings.Contains(err.Error(), "already") {
 		t.Fatalf("expected an 'already materialized' error, got: %v", err)
@@ -142,12 +146,12 @@ func TestMaterializeCmd_RoundTripAndRefuseOverwrite(t *testing.T) {
 // when synthesis fails (a bad root: block): no partial is left behind.
 func TestMaterializeCmd_AbortOnInvalidRoot(t *testing.T) {
 	root := testRepoRoot(t)
-	storiesDir, err := os.MkdirTemp(filepath.Join(root, "stories"), "mat-abort-")
+	matRoot, err := os.MkdirTemp(root, "mat-abort-")
 	if err != nil {
 		t.Fatalf("mkdtemp: %v", err)
 	}
-	defer os.RemoveAll(storiesDir)
-	slug := filepath.Base(storiesDir)
+	defer os.RemoveAll(matRoot)
+	slug := "proj"
 
 	// A .kitsoki.yaml whose root.import is not the blessed base story fails
 	// webconfig.Load — materialize aborts before touching the filesystem.
@@ -157,11 +161,11 @@ func TestMaterializeCmd_AbortOnInvalidRoot(t *testing.T) {
 		t.Fatalf("write bad config: %v", err)
 	}
 
-	if _, err := runMaterialize(root, cfgPath, slug); err == nil {
+	if _, err := runMaterialize(matRoot, cfgPath, slug); err == nil {
 		t.Fatal("expected materialize to fail on invalid root.import")
 	}
 	// No app.yaml should have been written under the slug.
-	if _, statErr := os.Stat(filepath.Join(root, "stories", slug, "app.yaml")); statErr == nil {
+	if _, statErr := os.Stat(filepath.Join(matRoot, "stories", slug, "app.yaml")); statErr == nil {
 		t.Fatal("materialize left a partial app.yaml after an invalid root")
 	}
 }

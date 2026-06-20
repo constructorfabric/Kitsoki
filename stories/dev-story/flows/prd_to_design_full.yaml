@@ -20,7 +20,7 @@
 # host-stub source the dev-story-prd-design tour video drives the UI against.
 #
 # Structural diff vs. the gears variant:
-#   * initial_state: main           (NOT core.main — dev-story is the ROOT app,
+#   * initial_state: landing           (NOT core.main — dev-story is the ROOT app,
 #                                     gears imports it as the `core` compound).
 #   * intents/states: BARE prd__ / design half names (no `core__` prefix) — a
 #                     flow that starts in the dev-story root needs no instance →
@@ -36,7 +36,7 @@
 
 test_kind: flow
 app: ../app.yaml
-initial_state: main
+initial_state: landing
 initial_world:
   judge_mode: "human"
   workdir:    "."
@@ -224,6 +224,6 @@ turns:
       ticket_id:          "F-2026-06-12T120000Z-tour-subcommand"
       ticket_type:        "feature"
   - intent: { name: go_main, slots: {} }
-    expect_state: main
+    expect_state: landing
 
 expect_no_errors: true
