@@ -15,6 +15,11 @@ states:
   ticket_search:
     description: "Browse tickets — pick one, then `continue` into the bugfix pipeline."
     relevant_world: [ticket_query, ticket_results, ticket_id, ticket_title]
+    # Ticket search is still part of the free-form workbench. If the
+    # operator types prose that is not a ticket command, capture it as a
+    # workbench request instead of letting the LLM router guess a navigation
+    # intent such as go_main.
+    default_intent: work
     # Proactive fetch on entry — the operator should land here and SEE
     # the queue, not be prompted to type a search query first. The
     # empty `ticket_query` default returns the full list; the optional
@@ -264,11 +269,19 @@ states:
       go_inbox:
         - target: inbox
           push_history: false
+      work:
+        - target: landing
+          effects:
+            - set:
+                landing_request: "{{ slots.request }}"
+                landing_note:    {}
+                last_error:      ""
       look:
         - target: .
 
   ticket_searching:
     description: "Running ticket search."
+    default_intent: work
     # Flattened view (see above).
     view:
       - kv:
@@ -343,5 +356,12 @@ states:
       go_inbox:
         - target: inbox
           push_history: false
+      work:
+        - target: landing
+          effects:
+            - set:
+                landing_request: "{{ slots.request }}"
+                landing_note:    {}
+                last_error:      ""
       look:
         - target: .
