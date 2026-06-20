@@ -819,7 +819,9 @@ type State struct {
 	// — and a settle that rests AT a flagged room signals the sub-flow could not
 	// complete (escalation), triggering the room's safe-abort. See
 	// docs/architecture/prompt-intercept.md §"Multi-turn commands". Validated at
-	// load time: the value must be "rest". Only meaningful on top-level rooms.
+	// load time: the value must be "rest". Works on a top-level room or a room
+	// nested under an import alias (e.g. gitops.conflict when git-ops is imported)
+	// — the gate's reachability walk descends into nested states.
 	InterceptDrive string `yaml:"intercept_drive,omitempty"`
 }
 

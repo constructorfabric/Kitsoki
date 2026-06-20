@@ -53,9 +53,13 @@ states:
 	require.Contains(t, err.Error(), "the only valid value is \"rest\"")
 }
 
-// intercept_drive on a NESTED state is rejected: the gate binds to and drives
-// whole rooms, so a nested-leaf flag would never fire.
-func TestInterceptDrive_RejectedOnNestedState(t *testing.T) {
+// intercept_drive on a NESTED state loads cleanly: import-folding legitimately
+// nests a source story's top-level flagged room under an alias (git-ops's
+// `conflict` → `gitops.conflict` when dev-story imports it), and the gate's
+// reachability walk descends into nested states, so a nested flagged room stays
+// functional. Regression guard: an earlier invariant wrongly rejected this and
+// broke every story that imports git-ops.
+func TestInterceptDrive_AllowedOnNestedState(t *testing.T) {
 	yaml := `app:
   id: id-nested
   version: 0.1.0
@@ -71,11 +75,11 @@ states:
       inner:
         intercept_drive: rest
         on:
-          go: [{ target: inner }]
+          go: [{ target: . }]
 `
-	_, err := LoadBytes([]byte(yaml))
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "only meaningful on a top-level room")
+	def, err := LoadBytes([]byte(yaml))
+	require.NoError(t, err)
+	require.Equal(t, InterceptDriveRest, def.States["outer"].States["inner"].InterceptDrive)
 }
 
 // The real git-ops conflict room carries intercept_drive: rest — the flag the

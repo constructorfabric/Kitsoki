@@ -1576,38 +1576,35 @@ func validateWriteMode(file string, def *AppDef, errs *[]error) {
 const InterceptDriveRest = "rest"
 
 // validateInterceptDrive enforces the intercept_drive flag's contract: the only
-// valid value is "rest", and the flag is only meaningful on a top-level room
-// (the gate binds to and drives whole rooms, not nested leaves). An invalid
-// value or a nested-state placement is a load error so a typo can't silently
-// disable the multi-turn drive at runtime.
+// valid value is "rest". An invalid value is a load error so a typo can't
+// silently disable the multi-turn drive at runtime. The flag is NOT restricted
+// to top-level rooms: import-folding legitimately nests a source story's
+// top-level room under an alias (e.g. git-ops's `conflict` becomes
+// `gitops.conflict` when dev-story imports it), and the gate's reachability
+// walk (Orchestrator.HasInterceptDriveRoom / isInterceptDriveRoom) descends into
+// nested states, so a flagged room remains fully functional after folding.
 func validateInterceptDrive(file string, def *AppDef, errs *[]error) {
 	addErr := func(msg string) {
 		*errs = append(*errs, &ValidationError{File: file, Message: msg})
 	}
-	var walk func(prefix string, states map[string]*State, topLevel bool)
-	walk = func(prefix string, states map[string]*State, topLevel bool) {
+	var walk func(prefix string, states map[string]*State)
+	walk = func(prefix string, states map[string]*State) {
 		for _, name := range sortedKeys(states) {
 			s := states[name]
 			if s == nil {
 				continue
 			}
 			statePath := joinPath(prefix, name)
-			if s.InterceptDrive != "" {
-				if s.InterceptDrive != InterceptDriveRest {
-					addErr(fmt.Sprintf("state %q: intercept_drive %q is invalid (the only valid value is %q)",
-						statePath, s.InterceptDrive, InterceptDriveRest))
-				}
-				if !topLevel {
-					addErr(fmt.Sprintf("state %q: intercept_drive is only meaningful on a top-level room, not a nested state",
-						statePath))
-				}
+			if s.InterceptDrive != "" && s.InterceptDrive != InterceptDriveRest {
+				addErr(fmt.Sprintf("state %q: intercept_drive %q is invalid (the only valid value is %q)",
+					statePath, s.InterceptDrive, InterceptDriveRest))
 			}
 			if len(s.States) > 0 {
-				walk(statePath, s.States, false)
+				walk(statePath, s.States)
 			}
 		}
 	}
-	walk("", def.States, true)
+	walk("", def.States)
 }
 
 // checkReservedScopeSet rejects an effect that `set:`s the engine-reserved

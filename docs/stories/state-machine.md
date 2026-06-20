@@ -188,9 +188,10 @@ bound app declares any such room, the gate escalates a matched command from the
 stateless one-shot to a budgeted, abortable, persisted **synchronous
 drive-to-rest** — and a settle that rests *at* a flagged room signals the sub-flow
 could not complete (escalation), triggering the room's safe-abort. The flag is
-inert outside the intercept path. Load-time invariants (fail-fast): the value must
-be `rest`, and it is only meaningful on a top-level room (the gate drives whole
-rooms, not nested leaves).
+inert outside the intercept path, and works on a top-level room or one nested
+under an import alias (git-ops's `conflict` becomes `gitops.conflict` when
+dev-story imports it; the gate's reachability walk descends into nested states).
+Load-time invariant (fail-fast): the value must be `rest`.
 
 ### Compound state
 
