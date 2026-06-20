@@ -149,10 +149,18 @@ states:
                   - |
                     set -e
                     export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
+                    # Stage the oracle's resolution before continuing: the
+                    # conflict_resolver is fenced to [Read, Edit] (no git), so
+                    # the story must `git add` the now-marker-free files — a
+                    # rebase --continue with unmerged paths in the index fails.
+                    git add -A 2>&1
+                    # GIT_EDITOR=true keeps --continue non-interactive without a
+                    # commit message editor. (`--no-edit` is NOT a valid rebase
+                    # --continue option and errors out with a usage banner.)
                     # || EXIT=$? OUTSIDE the $(): a `|| true` inside would mask
                     # a failed --continue as ok, falsely reporting resolution.
                     EXIT=0
-                    OUTPUT=$(git rebase --continue --no-edit 2>&1) || EXIT=$?
+                    OUTPUT=$(GIT_EDITOR=true git rebase --continue 2>&1) || EXIT=$?
                     NEW_CONFLICT=false
                     if echo "$OUTPUT" | grep -qi "CONFLICT\|conflict markers"; then
                       NEW_CONFLICT=true
