@@ -18,7 +18,7 @@ func TestDispatchDrive_HappyPath(t *testing.T) {
 	t.Parallel()
 	cs := newFakeChatStore()
 	cs.addChat(host.ChatRecord{ID: "chat-1", Status: "active"})
-	ctx := host.WithClaudeRunner(host.WithChatStore(context.Background(), cs), stubOracleRunner())
+	ctx := host.WithClaudeRunner(host.WithChatStore(context.Background(), cs), stubAgentRunner())
 
 	d, err := cs.Enqueue(ctx, host.EnqueueDriveOptions{
 		ChatID:    "chat-1",
@@ -76,8 +76,8 @@ func TestDispatchDrive_HappyPath(t *testing.T) {
 // transitioned to failed (not done) and the error message is captured.
 func TestDispatchDrive_ClaudeNonZeroExitMarksFailed(t *testing.T) {
 	t.Parallel()
-	// The fake-oracle stub always succeeds; use the one-shot stub which
-	// honours a "FAIL" trigger in the prompt. doOracleChatTurn pipes the
+	// The fake-agent stub always succeeds; use the one-shot stub which
+	// honours a "FAIL" trigger in the prompt. doAgentChatTurn pipes the
 	// user question on stdin, so a payload containing FAIL will exit
 	// non-zero.
 	cs := newFakeChatStore()
@@ -204,7 +204,7 @@ func TestDispatchDriveWithTimeout_BusyThenFree(t *testing.T) {
 	clk := clock.NewFake(time.Unix(0, 0))
 	ctx := host.WithClaudeRunner(
 		host.WithClock(host.WithChatStore(context.Background(), cs), clk),
-		stubOracleRunner(),
+		stubAgentRunner(),
 	)
 
 	d, err := cs.Enqueue(ctx, host.EnqueueDriveOptions{

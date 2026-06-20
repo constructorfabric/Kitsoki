@@ -15,12 +15,12 @@ import (
 	"kitsoki/internal/store"
 )
 
-// realStoreOracle is a tiny stub OracleCaller: every Ask returns a
+// realStoreAgent is a tiny stub AgentCaller: every Ask returns a
 // canned reply and a stable claude_session_id so we can drive Send
 // without spawning a real claude binary.
-type realStoreOracle struct{ reply string }
+type realStoreAgent struct{ reply string }
 
-func (o *realStoreOracle) Ask(_ context.Context, _ metamode.AskInput) (metamode.AskOutput, error) {
+func (o *realStoreAgent) Ask(_ context.Context, _ metamode.AskInput) (metamode.AskOutput, error) {
 	return metamode.AskOutput{Reply: o.reply, NewClaudeSessionID: "stub-cs-id"}, nil
 }
 
@@ -51,7 +51,7 @@ func TestRealStore_NewChatWithoutPriorSend(t *testing.T) {
 		Chats:  adapter,
 		Agents: reg,
 		AppDef: appDef,
-		Oracle: &realStoreOracle{reply: "stub"},
+		Agent:  &realStoreAgent{reply: "stub"},
 	}
 	ctx := context.Background()
 
@@ -95,7 +95,7 @@ func TestRealStore_NewChatAfterSend(t *testing.T) {
 		Chats:  adapter,
 		Agents: reg,
 		AppDef: appDef,
-		Oracle: &realStoreOracle{reply: "hi back"},
+		Agent:  &realStoreAgent{reply: "hi back"},
 	}
 
 	ctx := context.Background()
@@ -155,7 +155,7 @@ func TestRealStore_SessionWorkspaceAbsoluteWithRelativeAppFile(t *testing.T) {
 		Chats:  adapter,
 		Agents: reg,
 		AppDef: appDef,
-		Oracle: &realStoreOracle{reply: "stub"},
+		Agent:  &realStoreAgent{reply: "stub"},
 	}
 	ctx := context.Background()
 

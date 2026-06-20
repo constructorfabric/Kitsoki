@@ -87,7 +87,7 @@ host_handlers:
 
   # confidence: 0.95 is well above the threshold (0.8) so emit_intent
   # auto-fires at every judge gate.
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted:
@@ -115,7 +115,7 @@ host_handlers:
         intent:           "accept"
         reason:           "Stub LLM verdict: pass."
 
-  host.oracle.ask:
+  host.agent.ask:
     data:
       ok: true
       submitted:
@@ -143,7 +143,7 @@ host_handlers:
         intent:           "accept"
         reason:           "Stub LLM verdict: pass."
 
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:

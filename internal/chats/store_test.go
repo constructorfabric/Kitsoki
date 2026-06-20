@@ -39,7 +39,7 @@ func TestStore_CreateAndGet(t *testing.T) {
 	cs, _ := openTestStore(t)
 	ctx := context.Background()
 
-	c, err := cs.Create(ctx, "app1", "oracle", "", "My Chat")
+	c, err := cs.Create(ctx, "app1", "agent", "", "My Chat")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -80,22 +80,22 @@ func TestStore_List(t *testing.T) {
 	ctx := context.Background()
 
 	fake.Advance(time.Second)
-	c1, err := cs.Create(ctx, "app1", "oracle", "", "Chat 1")
+	c1, err := cs.Create(ctx, "app1", "agent", "", "Chat 1")
 	if err != nil {
 		t.Fatalf("Create c1: %v", err)
 	}
 	fake.Advance(time.Second)
-	c2, err := cs.Create(ctx, "app1", "oracle", "", "Chat 2")
+	c2, err := cs.Create(ctx, "app1", "agent", "", "Chat 2")
 	if err != nil {
 		t.Fatalf("Create c2: %v", err)
 	}
 	// Different app — should not appear.
-	_, err = cs.Create(ctx, "app2", "oracle", "", "Other")
+	_, err = cs.Create(ctx, "app2", "agent", "", "Other")
 	if err != nil {
 		t.Fatalf("Create other: %v", err)
 	}
 
-	chatsApp1, err := cs.List(ctx, "app1", "oracle", "")
+	chatsApp1, err := cs.List(ctx, "app1", "agent", "")
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
@@ -116,7 +116,7 @@ func TestStore_Resolve_GetOrCreate(t *testing.T) {
 	ctx := context.Background()
 
 	// First call: creates a new chat.
-	c1, created1, err := cs.Resolve(ctx, "app1", "oracle", "proj", "Initial Title")
+	c1, created1, err := cs.Resolve(ctx, "app1", "agent", "proj", "Initial Title")
 	if err != nil {
 		t.Fatalf("Resolve (create): %v", err)
 	}
@@ -125,7 +125,7 @@ func TestStore_Resolve_GetOrCreate(t *testing.T) {
 	}
 
 	// Second call: returns the same chat.
-	c2, created2, err := cs.Resolve(ctx, "app1", "oracle", "proj", "Different Title")
+	c2, created2, err := cs.Resolve(ctx, "app1", "agent", "proj", "Different Title")
 	if err != nil {
 		t.Fatalf("Resolve (get): %v", err)
 	}
@@ -170,7 +170,7 @@ func TestStore_Resolve_ForkDoesNotBlock(t *testing.T) {
 	ctx := context.Background()
 
 	// Create a chat, then fork it.
-	original, err := cs.Create(ctx, "app1", "oracle", "sk", "Chat")
+	original, err := cs.Create(ctx, "app1", "agent", "sk", "Chat")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -180,7 +180,7 @@ func TestStore_Resolve_ForkDoesNotBlock(t *testing.T) {
 	}
 
 	// Resolve should still return the original non-fork chat.
-	resolved, created, err := cs.Resolve(ctx, "app1", "oracle", "sk", "New")
+	resolved, created, err := cs.Resolve(ctx, "app1", "agent", "sk", "New")
 	if err != nil {
 		t.Fatalf("Resolve after fork: %v", err)
 	}
@@ -196,7 +196,7 @@ func TestStore_AppendMessageAndTranscript(t *testing.T) {
 	cs, _ := openTestStore(t)
 	ctx := context.Background()
 
-	c, err := cs.Create(ctx, "app1", "oracle", "", "Chat")
+	c, err := cs.Create(ctx, "app1", "agent", "", "Chat")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -239,7 +239,7 @@ func TestStore_Transcript_SinceSeq(t *testing.T) {
 	cs, _ := openTestStore(t)
 	ctx := context.Background()
 
-	c, err := cs.Create(ctx, "app1", "oracle", "", "Chat")
+	c, err := cs.Create(ctx, "app1", "agent", "", "Chat")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -265,7 +265,7 @@ func TestStore_LatestSeq(t *testing.T) {
 	cs, _ := openTestStore(t)
 	ctx := context.Background()
 
-	c, err := cs.Create(ctx, "app1", "oracle", "", "Chat")
+	c, err := cs.Create(ctx, "app1", "agent", "", "Chat")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -298,7 +298,7 @@ func TestStore_SetClaudeSessionID(t *testing.T) {
 	cs, _ := openTestStore(t)
 	ctx := context.Background()
 
-	c, err := cs.Create(ctx, "app1", "oracle", "", "Chat")
+	c, err := cs.Create(ctx, "app1", "agent", "", "Chat")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -323,7 +323,7 @@ func TestStore_Archive(t *testing.T) {
 	cs, _ := openTestStore(t)
 	ctx := context.Background()
 
-	c, err := cs.Create(ctx, "app1", "oracle", "", "Chat")
+	c, err := cs.Create(ctx, "app1", "agent", "", "Chat")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -345,7 +345,7 @@ func TestStore_Fork(t *testing.T) {
 	cs, _ := openTestStore(t)
 	ctx := context.Background()
 
-	parent, err := cs.Create(ctx, "app1", "oracle", "sk", "Parent Chat")
+	parent, err := cs.Create(ctx, "app1", "agent", "sk", "Parent Chat")
 	if err != nil {
 		t.Fatalf("Create parent: %v", err)
 	}
@@ -409,7 +409,7 @@ func TestStore_RestartPersistence(t *testing.T) {
 			t.Fatalf("NewStore: %v", err)
 		}
 		ctx := context.Background()
-		c, err := cs.Create(ctx, "app1", "oracle", "scope-a", "Persistent Chat")
+		c, err := cs.Create(ctx, "app1", "agent", "scope-a", "Persistent Chat")
 		if err != nil {
 			t.Fatalf("Create: %v", err)
 		}
@@ -530,7 +530,7 @@ func TestStore_SchemaMigration_OnExistingDB(t *testing.T) {
 
 	// Smoke-test: insert and read back.
 	ctx := context.Background()
-	c, err := cs.Create(ctx, "app1", "oracle", "", "Migration Smoke")
+	c, err := cs.Create(ctx, "app1", "agent", "", "Migration Smoke")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -561,7 +561,7 @@ func TestStore_Fork_DefaultTitle(t *testing.T) {
 	cs, _ := openTestStore(t)
 	ctx := context.Background()
 
-	parent, err := cs.Create(ctx, "app1", "oracle", "", "Parent")
+	parent, err := cs.Create(ctx, "app1", "agent", "", "Parent")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -584,7 +584,7 @@ func TestStore_Fork_ClearsActiveClaudeSessionID(t *testing.T) {
 	cs, _ := openTestStore(t)
 	ctx := context.Background()
 
-	parent, err := cs.Create(ctx, "app1", "oracle", "", "Parent")
+	parent, err := cs.Create(ctx, "app1", "agent", "", "Parent")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -615,7 +615,7 @@ func TestStore_Rename_HappyPath(t *testing.T) {
 	cs, _ := openTestStore(t)
 	ctx := context.Background()
 
-	c, err := cs.Create(ctx, "app1", "oracle", "", "Original Title")
+	c, err := cs.Create(ctx, "app1", "agent", "", "Original Title")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -650,7 +650,7 @@ func TestStore_Rename_EmptyTitle(t *testing.T) {
 	cs, _ := openTestStore(t)
 	ctx := context.Background()
 
-	c, err := cs.Create(ctx, "app1", "oracle", "", "Original Title")
+	c, err := cs.Create(ctx, "app1", "agent", "", "Original Title")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -671,7 +671,7 @@ func TestStore_Create_ValidatesArgs(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("empty app", func(t *testing.T) {
-		_, err := cs.Create(ctx, "", "oracle", "", "title")
+		_, err := cs.Create(ctx, "", "agent", "", "title")
 		if err == nil {
 			t.Fatal("expected error for empty app")
 		}
@@ -680,7 +680,7 @@ func TestStore_Create_ValidatesArgs(t *testing.T) {
 		}
 	})
 	t.Run("whitespace app", func(t *testing.T) {
-		_, err := cs.Create(ctx, "   ", "oracle", "", "title")
+		_, err := cs.Create(ctx, "   ", "agent", "", "title")
 		if err == nil {
 			t.Fatal("expected error for whitespace app")
 		}
@@ -702,7 +702,7 @@ func TestStore_Resolve_ReturnsCreatedTrue_OnNew(t *testing.T) {
 	cs, _ := openTestStore(t)
 	ctx := context.Background()
 
-	c, created, err := cs.Resolve(ctx, "app1", "oracle", "scope", "Title")
+	c, created, err := cs.Resolve(ctx, "app1", "agent", "scope", "Title")
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
@@ -728,12 +728,12 @@ func TestStore_Resolve_ReturnsCreatedFalse_OnExisting(t *testing.T) {
 	cs, _ := openTestStore(t)
 	ctx := context.Background()
 
-	first, err := cs.Create(ctx, "app1", "oracle", "scope", "Original")
+	first, err := cs.Create(ctx, "app1", "agent", "scope", "Original")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
-	c, created, err := cs.Resolve(ctx, "app1", "oracle", "scope", "Different Title")
+	c, created, err := cs.Resolve(ctx, "app1", "agent", "scope", "Different Title")
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
@@ -875,7 +875,7 @@ func TestStore_SchemaVersion_MigratesV1ToCurrent(t *testing.T) {
 		INSERT INTO chats (id, app_id, room, scope_key, title, status,
 		    claude_session_id, parent_chat_id, session_id,
 		    created_at, updated_at, last_active_at)
-		VALUES ('LEGACY01', 'app1', 'oracle', '', 'pre-migration', 'active',
+		VALUES ('LEGACY01', 'app1', 'agent', '', 'pre-migration', 'active',
 		    '', NULL, NULL, 1, 1, 1);
 		PRAGMA user_version = 1;`
 	if _, err := db.Exec(v1DDL); err != nil {
@@ -942,7 +942,7 @@ func TestStore_AppendMessage_ConcurrentSeqUniqueness(t *testing.T) {
 	cs, _ := openTestStore(t)
 	ctx := context.Background()
 
-	chat, err := cs.Create(ctx, "app1", "oracle", "", "concurrent-seq")
+	chat, err := cs.Create(ctx, "app1", "agent", "", "concurrent-seq")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}

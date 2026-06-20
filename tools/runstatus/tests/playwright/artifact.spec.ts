@@ -130,7 +130,7 @@ test.describe("in-progress fixture", () => {
     expect(totalBefore).toBeGreaterThan(0);
 
     // Click every subsystem chip except "machine" — deselect all except machine.
-    // The chips are: turn, harness, machine, host, oracle, other.
+    // The chips are: turn, harness, machine, host, agent, other.
     // Clicking a chip when it's active deselects it.
     // All chips start active; click all except "machine" to deselect them.
     const chips = page.locator(".trace-timeline__chip:not(.trace-timeline__chip--clear)");
@@ -170,16 +170,16 @@ test.describe("completed fixture", () => {
     await expect(page.locator(".run-view__state-badge--done")).toContainText("done");
   });
 
-  test("clicking an oracle event opens drawer showing prompt or response", async ({ page }) => {
+  test("clicking an agent event opens drawer showing prompt or response", async ({ page }) => {
     await loadArtifact(page, COMPLETED_SNAPSHOT);
     await page.waitForSelector(".trace-timeline__row", { timeout: 8000 });
 
-    // Find an oracle.* row (oracle subsystem chip colored orange in timeline).
-    const oracleRow = page.locator(".trace-timeline__row", {
-      has: page.locator('.trace-timeline__subsystem-chip[data-subsystem="oracle"]'),
+    // Find an agent.* row (agent subsystem chip colored orange in timeline).
+    const agentRow = page.locator(".trace-timeline__row", {
+      has: page.locator('.trace-timeline__subsystem-chip[data-subsystem="agent"]'),
     }).first();
 
-    await oracleRow.click();
+    await agentRow.click();
 
     // Drawer opens.
     const drawer = page.locator(".detail-drawer");
@@ -243,28 +243,28 @@ test.describe("edge-cases fixture", () => {
     await expect(offPathRow).toBeVisible({ timeout: 3000 });
   });
 
-  test("oracle event with long response shows 'Show full' toggle", async ({ page }) => {
+  test("agent event with long response shows 'Show full' toggle", async ({ page }) => {
     await loadArtifact(page, EDGE_CASES_SNAPSHOT);
     await page.waitForSelector(".trace-timeline__row", { timeout: 8000 });
 
-    // The oracle.ask.complete at turn 6 (off-path conversation) has both
+    // The agent.ask.complete at turn 6 (off-path conversation) has both
     // prompt and response > 500 chars. Find it by locating Turn 6's group.
     // The timeline renders turns descending, so we must navigate to Turn 6.
-    // Strategy: find all oracle.ask.complete rows, iterate until we click one
+    // Strategy: find all agent.ask.complete rows, iterate until we click one
     // that shows a "Show full" button in the drawer.
-    const oracleCompleteRows = page.locator(".trace-timeline__row", {
-      has: page.locator(".trace-timeline__msg").filter({ hasText: "oracle.ask.complete" }),
+    const agentCompleteRows = page.locator(".trace-timeline__row", {
+      has: page.locator(".trace-timeline__msg").filter({ hasText: "agent.ask.complete" }),
     });
-    const count = await oracleCompleteRows.count();
+    const count = await agentCompleteRows.count();
     expect(count).toBeGreaterThan(0);
 
     let found = false;
     for (let i = 0; i < count; i++) {
-      await oracleCompleteRows.nth(i).click();
+      await agentCompleteRows.nth(i).click();
       const drawer = page.locator(".detail-drawer");
       await expect(drawer).toBeVisible({ timeout: 2000 });
 
-      // Oracle events now render through OracleDetail → CollapsibleText whose
+      // Agent events now render through AgentDetail → CollapsibleText whose
       // toggle is .ct-toggle (not .detail-drawer__toggle-btn).
       const showFullBtns = drawer.locator(".ct-toggle").filter({ hasText: "Show full" });
       const isVisible = await showFullBtns.first().isVisible();
@@ -280,7 +280,7 @@ test.describe("edge-cases fixture", () => {
       await drawer.locator(".detail-drawer__close").click();
     }
 
-    expect(found, "Expected to find an oracle event with a 'Show full' toggle").toBe(true);
+    expect(found, "Expected to find an agent event with a 'Show full' toggle").toBe(true);
   });
 });
 

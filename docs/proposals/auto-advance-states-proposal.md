@@ -68,7 +68,7 @@ states:
       - invoke: host.run
         with: { cmd: "python3 -m bugfix context --phase phase_minus_1 ..." }
         bind: { phase_minus_1_context: stdout_json }
-      - invoke: host.oracle.ask_with_mcp
+      - invoke: host.agent.ask_with_mcp
         with: { ... }
         bind: { phase_minus_1_artifact: submitted.summary_markdown }
     on:
@@ -133,9 +133,9 @@ guards evaluate against the world at fire time. Auto-fire fires `done`
 at the same point an external driver would have, so the guards see the
 same world snapshot. No behaviour change.
 
-### Interaction with `host.oracle.ask_with_mcp` retries
+### Interaction with `host.agent.ask_with_mcp` retries
 
-The oracle's validator retries up to N times. Auto-fire doesn't run
+The agent's validator retries up to N times. Auto-fire doesn't run
 until the call returns (success after retries, or final failure that
 routed via `on_error`). No race.
 

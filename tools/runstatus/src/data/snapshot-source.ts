@@ -35,7 +35,7 @@ export class SnapshotSource implements DataSource {
         "SnapshotSource: no snapshot provided and window.__KITSOKI_SNAPSHOT__ is undefined"
       );
     }
-    // The Go trace is canonical: oracle events are stamped with their real
+    // The Go trace is canonical: agent events are stamped with their real
     // foreground turn upstream, so the snapshot equals the on-disk trace and
     // needs no load-time mutation.
     this.snap = raw as Snapshot;
@@ -182,7 +182,7 @@ export class SnapshotSource implements DataSource {
   // ── Agent-action transcripts ──────────────────────────────────────────────
 
   /**
-   * Resolve one oracle call's agent-action transcript from the INLINED snapshot
+   * Resolve one agent call's agent-action transcript from the INLINED snapshot
    * data — NOT a readOnly() throw, because a static export must still show the
    * drawer with no server. artifact.go's inlineTranscriptSidecars folded each
    * event's sidecar into attrs.transcript = {format, events, timings,

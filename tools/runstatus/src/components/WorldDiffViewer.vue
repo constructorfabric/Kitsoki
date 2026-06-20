@@ -75,7 +75,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from "vue";
-import JsonViewer from "./oracle/JsonViewer.vue";
+import JsonViewer from "./agent/JsonViewer.vue";
 
 const props = defineProps<{
   before: Record<string, unknown>;

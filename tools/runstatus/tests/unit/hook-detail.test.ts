@@ -7,7 +7,7 @@ describe("HookDetail", () => {
     const w = mount(HookDetail, {
       props: {
         onEnter: [
-          { kind: "invoke", invoke: "host.oracle.decide", id: "pick", bind: ["choice"] },
+          { kind: "invoke", invoke: "host.agent.decide", id: "pick", bind: ["choice"] },
           { kind: "set", sets: ["greeted"], when: "world.first" },
         ],
       },
@@ -15,7 +15,7 @@ describe("HookDetail", () => {
     const cards = w.findAll('[data-testid="editor-hook-effect"]');
     expect(cards.length).toBe(2);
     expect(cards[0].text()).toContain("invoke");
-    expect(cards[0].text()).toContain("host.oracle.decide");
+    expect(cards[0].text()).toContain("host.agent.decide");
     expect(cards[0].text()).toContain("choice");
     expect(cards[1].text()).toContain("set");
     expect(cards[1].text()).toContain("greeted");

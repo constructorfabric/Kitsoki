@@ -5,16 +5,16 @@ scripts during automated bugfix and code-review pipelines. Each script
 is invoked by `host.run` from within a kitsoki state machine; it exits
 0 on accept, non-zero on reject, and writes structured JSON to stdout.
 
-**All Claude calls go through `kitsoki oracle`.** Validator scripts must
-not shell out to `claude -p` directly. Every oracle invocation issued
+**All Claude calls go through `kitsoki agent`.** Validator scripts must
+not shell out to `claude -p` directly. Every agent invocation issued
 from a loopy script is recorded as a labeled decision under the parent
-kitsoki session, enforces schema compliance at the oracle layer (no
+kitsoki session, enforces schema compliance at the agent layer (no
 brittle regex scraping in the script), and lets the daemon amortise
 model overhead when many validators run in parallel.
 
 ---
 
-## Calling oracle from a validator subprocess
+## Calling agent from a validator subprocess
 
 ### CLI path (no daemon)
 
@@ -23,10 +23,10 @@ Suitable for single validators or low-frequency calls.
 ```python
 import json, subprocess, os
 
-def oracle_decide(prompt: str, schema: str, args: dict) -> dict:
+def agent_decide(prompt: str, schema: str, args: dict) -> dict:
     result = subprocess.run(
         [
-            "kitsoki", "oracle", "decide",
+            "kitsoki", "agent", "decide",
             "--prompt", prompt,
             "--schema", schema,
             "--args-json", json.dumps(args),
@@ -39,7 +39,7 @@ def oracle_decide(prompt: str, schema: str, args: dict) -> dict:
     data = json.loads(result.stdout)
     return data["data"]["submitted"]
 
-verdict = oracle_decide(
+verdict = agent_decide(
     prompt="stories/bugfix/prompts/judge_validating.md",
     schema="stories/bugfix/schemas/judge_verdict.json",
     args={
@@ -53,21 +53,21 @@ print(verdict["verdict"], verdict["confidence"])
 
 ### Socket path (daemon running)
 
-Use this when the same oracle instance will be called many times in a
+Use this when the same agent instance will be called many times in a
 loop (e.g. bulk CI triage). The daemon is started once; all callers
 re-use the same connection.
 
 ```sh
 # Start daemon before the pipeline begins:
-kitsoki oracle-serve --socket /tmp/kitsoki-oracle.sock &
-export KITSOKI_ORACLE_SOCK=/tmp/kitsoki-oracle.sock
+kitsoki agent-serve --socket /tmp/kitsoki-agent.sock &
+export KITSOKI_AGENT_SOCK=/tmp/kitsoki-agent.sock
 ```
 
 ```python
 import json, os, socket
 
-def oracle_rpc(method: str, params: dict) -> dict:
-    sock_path = os.environ["KITSOKI_ORACLE_SOCK"]
+def agent_rpc(method: str, params: dict) -> dict:
+    sock_path = os.environ["KITSOKI_AGENT_SOCK"]
     req = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
         s.connect(sock_path)
@@ -85,7 +85,7 @@ def oracle_rpc(method: str, params: dict) -> dict:
         raise RuntimeError(f"RPC {resp['error']['code']}: {resp['error']['message']}")
     return resp.get("result", {})
 
-result = oracle_rpc("oracle.decide", {
+result = agent_rpc("agent.decide", {
     "prompt":    "stories/bugfix/prompts/judge_validating.md",
     "schema":    "stories/bugfix/schemas/judge_verdict.json",
     "args_json": json.dumps({"ticket_id": "PROJ-123", "artifact_title": "...", "artifact_body": "..."}),
@@ -93,7 +93,7 @@ result = oracle_rpc("oracle.decide", {
 verdict = result["data"]["submitted"]
 ```
 
-When `KITSOKI_ORACLE_SOCK` is set, `kitsoki oracle <verb>` also
+When `KITSOKI_AGENT_SOCK` is set, `kitsoki agent <verb>` also
 auto-delegates to the socket, so the same script works in both modes
 without code changes.
 
@@ -102,7 +102,7 @@ without code changes.
 All five methods follow the same envelope:
 
 ```
-Request:  {"jsonrpc":"2.0","id":<n>,"method":"oracle.<verb>","params":{...}}
+Request:  {"jsonrpc":"2.0","id":<n>,"method":"agent.<verb>","params":{...}}
 Response: {"jsonrpc":"2.0","id":<n>,"result":{...}}
        or {"jsonrpc":"2.0","id":<n>,"error":{"code":-32000,"message":"..."}}
 ```
@@ -111,11 +111,11 @@ Per-verb required params:
 
 | Method | Required params | Common optional params |
 |---|---|---|
-| `oracle.extract` | `schema`, `input` | `resolvers_yaml`, `agent`, `parent_session_id` |
-| `oracle.decide` | `schema` | `prompt`, `agent`, `args_json`, `validator_cmd`, `parent_session_id` |
-| `oracle.ask` | `prompt` | `agent`, `schema`, `args_json`, `working_dir`, `parent_session_id` |
-| `oracle.task` | `agent`, `working_dir`, `acceptance_schema` | `acceptance_cmd`, `context_prompt`, `parent_session_id` |
-| `oracle.converse` | `message` | `chat_id`, `agent`, `permission_mode`, `background`, `parent_session_id` |
+| `agent.extract` | `schema`, `input` | `resolvers_yaml`, `agent`, `parent_session_id` |
+| `agent.decide` | `schema` | `prompt`, `agent`, `args_json`, `validator_cmd`, `parent_session_id` |
+| `agent.ask` | `prompt` | `agent`, `schema`, `args_json`, `working_dir`, `parent_session_id` |
+| `agent.task` | `agent`, `working_dir`, `acceptance_schema` | `acceptance_cmd`, `context_prompt`, `parent_session_id` |
+| `agent.converse` | `message` | `chat_id`, `agent`, `permission_mode`, `background`, `parent_session_id` |
 
 `parent_session_id` threads the call into the parent kitsoki session.
 When `KITSOKI_SESSION_ID` is set in the environment, the CLI picks it
@@ -130,7 +130,7 @@ anti-pattern: `claude -p` with inline regex scraping and a schema copy
 that drifts from the canonical `stories/bugfix/schemas/judge_verdict.json`.
 
 `stories/bugfix/scripts/judge_verdict_after.py` shows the rewrite:
-`kitsoki oracle decide` (CLI or socket path), canonical schema, trace
+`kitsoki agent decide` (CLI or socket path), canonical schema, trace
 linked via `KITSOKI_SESSION_ID`. This is the pattern all new validator
 scripts must follow.
 
@@ -138,9 +138,9 @@ Key differences:
 
 | Old pattern | New pattern |
 |---|---|
-| `subprocess.run(["claude", "-p", prompt])` | `subprocess.run(["kitsoki", "oracle", "decide", ...])` or RPC |
+| `subprocess.run(["claude", "-p", prompt])` | `subprocess.run(["kitsoki", "agent", "decide", ...])` or RPC |
 | Schema reimplemented inline; drifts | `--schema path/to/schema.json` — single source of truth |
-| Regex-scrapes first `{...}` block | Structured JSON guaranteed by oracle's submit enforcement |
+| Regex-scrapes first `{...}` block | Structured JSON guaranteed by agent's submit enforcement |
 | No session linkage; opaque in trace | `KITSOKI_SESSION_ID` inherited; decision recorded in trace |
 
 ---
@@ -149,11 +149,11 @@ Key differences:
 
 The state machine sets `KITSOKI_SESSION_ID` in the environment before
 launching any `host.run` subprocess. Validator scripts inherit it
-automatically. Every oracle call issued from within the subprocess is
+automatically. Every agent call issued from within the subprocess is
 recorded under the parent session so the full decision tree is visible
 in `kitsoki session show`.
 
-Scripts that intentionally bypass the oracle (e.g. pure shell checks
+Scripts that intentionally bypass the agent (e.g. pure shell checks
 with no LLM involvement, or demo scripts that simulate operator typing)
 must add the sentinel comment one line above the bypassing call:
 
@@ -166,14 +166,14 @@ Use this sparingly. Every unannotated `claude -p` call in `stories/` or
 
 ---
 
-## Available oracle verbs
+## Available agent verbs
 
 | Verb | Use in validators |
 |---|---|
-| `oracle.extract` | Pull typed fields from unstructured output. |
-| `oracle.decide` | Structured verdict with schema enforcement. Most judges use this. |
-| `oracle.ask` | Read-only inspection; returns prose + optional JSON. |
-| `oracle.task` | Agentic mutation with acceptance loop (rarely needed in validators). |
-| `oracle.converse` | Free-form session; not typical in automated scripts. |
+| `agent.extract` | Pull typed fields from unstructured output. |
+| `agent.decide` | Structured verdict with schema enforcement. Most judges use this. |
+| `agent.ask` | Read-only inspection; returns prose + optional JSON. |
+| `agent.task` | Agentic mutation with acceptance loop (rarely needed in validators). |
+| `agent.converse` | Free-form session; not typical in automated scripts. |
 
-Full CLI reference: [`docs/architecture/oracle-cli.md`](../../docs/architecture/oracle-cli.md).
+Full CLI reference: [`docs/architecture/agent-cli.md`](../../docs/architecture/agent-cli.md).

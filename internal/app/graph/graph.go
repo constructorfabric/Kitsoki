@@ -4,7 +4,7 @@
 // Everything here is a PURE function over an app.App: no I/O, no LLM, no
 // orchestrator. The editor RPC layer (internal/runstatus/server/editor.go)
 // selects an app.App per story from the registry catalogue and calls these
-// helpers to answer list-rooms / room-detail / oracle-contracts requests.
+// helpers to answer list-rooms / room-detail / agent-contracts requests.
 //
 // A "room" is a top-level state (app.StatePath.TopLevel). The graph walks
 // State.On[intent][].Target transitions from the initial state, descending
@@ -29,9 +29,9 @@ type RoomSummary struct {
 	// initial state. The initial room is 0. Unreachable rooms report a sentinel
 	// (+Inf encoded as a very large number) and sort last by name.
 	Distance float64 `json:"distance"`
-	// HasOracle is true when the room (or any nested child) carries a
-	// host.oracle.* invoke in its on_enter or any intent-arc effect.
-	HasOracle bool `json:"has_oracle"`
+	// HasAgent is true when the room (or any nested child) carries a
+	// host.agent.* invoke in its on_enter or any intent-arc effect.
+	HasAgent bool `json:"has_agent"`
 }
 
 // unreachableDistance is the JSON-safe sentinel for "unreachable" — +Inf is
@@ -54,10 +54,10 @@ func RoomList(a app.App) []RoomSummary {
 			d = unreachableDistance
 		}
 		out = append(out, RoomSummary{
-			ID:        id,
-			Label:     roomLabel(id, st),
-			Distance:  d,
-			HasOracle: roomHasOracle(st),
+			ID:       id,
+			Label:    roomLabel(id, st),
+			Distance: d,
+			HasAgent: roomHasAgent(st),
 		})
 	}
 
@@ -223,9 +223,9 @@ func roomLabel(id string, st *app.State) string {
 	return id
 }
 
-// roomHasOracle reports whether a room (including nested children) carries any
-// host.oracle.* invoke in on_enter or any intent-arc effect.
-func roomHasOracle(st *app.State) bool {
+// roomHasAgent reports whether a room (including nested children) carries any
+// host.agent.* invoke in on_enter or any intent-arc effect.
+func roomHasAgent(st *app.State) bool {
 	if st == nil {
 		return false
 	}
@@ -235,13 +235,13 @@ func roomHasOracle(st *app.State) bool {
 		if s == nil || found {
 			return
 		}
-		if anyOracleEffect(s.OnEnter) {
+		if anyAgentEffect(s.OnEnter) {
 			found = true
 			return
 		}
 		for _, transitions := range s.On {
 			for _, tr := range transitions {
-				if anyOracleEffect(tr.Effects) {
+				if anyAgentEffect(tr.Effects) {
 					found = true
 					return
 				}
@@ -255,21 +255,21 @@ func roomHasOracle(st *app.State) bool {
 	return found
 }
 
-// anyOracleEffect reports whether any effect in the list (or its nested
-// on_complete / effects sub-lists) invokes a host.oracle.* handler.
-func anyOracleEffect(effects []app.Effect) bool {
+// anyAgentEffect reports whether any effect in the list (or its nested
+// on_complete / effects sub-lists) invokes a host.agent.* handler.
+func anyAgentEffect(effects []app.Effect) bool {
 	for _, e := range effects {
-		if isOracleInvoke(e.Invoke) {
+		if isAgentInvoke(e.Invoke) {
 			return true
 		}
-		if anyOracleEffect(e.OnComplete) || anyOracleEffect(e.Effects) {
+		if anyAgentEffect(e.OnComplete) || anyAgentEffect(e.Effects) {
 			return true
 		}
 	}
 	return false
 }
 
-// isOracleInvoke reports whether an invoke handler name is a host.oracle.* call.
-func isOracleInvoke(invoke string) bool {
-	return strings.HasPrefix(invoke, "host.oracle.")
+// isAgentInvoke reports whether an invoke handler name is a host.agent.* call.
+func isAgentInvoke(invoke string) bool {
+	return strings.HasPrefix(invoke, "host.agent.")
 }

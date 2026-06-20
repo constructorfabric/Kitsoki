@@ -14,7 +14,7 @@
 //
 //	WithLock(chat_id):
 //	    ClaimDrive(drive_id)            pending → dispatching
-//	    doOracleChatTurn(chat_id, …)    runs claude, appends messages
+//	    doAgentChatTurn(chat_id, …)    runs claude, appends messages
 //	    MarkDriveDone(drive_id, seq)    dispatching → done
 //	    (or MarkDriveFailed on error)
 //
@@ -108,7 +108,7 @@ func DispatchDriveWithTimeout(ctx context.Context, cs ChatStore, driveID, workin
 // Go error in that case (matches the established host pattern).
 //
 // workingDir is the cwd passed to the claude subprocess. Empty string
-// means the directory of the resolved prompt (whatever doOracleChatTurn
+// means the directory of the resolved prompt (whatever doAgentChatTurn
 // chooses).
 func DispatchDrive(ctx context.Context, cs ChatStore, driveID, workingDir string) (*DispatchResult, error) {
 	if cs == nil {
@@ -138,8 +138,8 @@ func DispatchDrive(ctx context.Context, cs ChatStore, driveID, workingDir string
 			return claimErr
 		}
 
-		// Run the turn through the same code path host.oracle.converse uses
-		// for chat-aware turns. doOracleChatTurn assumes it is being
+		// Run the turn through the same code path host.agent.converse uses
+		// for chat-aware turns. doAgentChatTurn assumes it is being
 		// called inside WithLock — which we are.
 		//
 		// systemPrompt/model are left empty: a drive's payload is
@@ -188,7 +188,7 @@ func DispatchDrive(ctx context.Context, cs ChatStore, driveID, workingDir string
 
 		// Success path. The Result.Data carries answer + transcript_seq.
 		if turn.Data == nil {
-			return fmt.Errorf("host.DispatchDrive: doOracleChatTurn succeeded but returned nil Data")
+			return fmt.Errorf("host.DispatchDrive: doAgentChatTurn succeeded but returned nil Data")
 		}
 		answer, _ := turn.Data["answer"].(string)
 		seq, _ := turn.Data["transcript_seq"].(int)

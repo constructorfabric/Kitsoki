@@ -286,7 +286,7 @@ func TestSemantic_RefineIntents_FeedbackRequired(t *testing.T) {
 // `core__bf__refine` with EMPTY slots. The downstream refine arc
 // then set `world.refine_feedback` to "" via
 // `{{ slots.feedback ?? world.llm_verdict.reason }}`, the next
-// oracle's prompt's `{% if args.refine_feedback %}` rendered false,
+// agent's prompt's `{% if args.refine_feedback %}` rendered false,
 // and the operator's directive never reached the LLM.
 //
 // The fix is encoded in stories/{bugfix,cypilot,pr-refinement}/app.yaml:

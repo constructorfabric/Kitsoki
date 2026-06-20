@@ -8,7 +8,7 @@
 #      sha, last 20 commit subjects, and a `git diff --stat HEAD~20..HEAD`
 #      summary. The handler's stdout_json parser binds these into world.
 #
-#   2. host.oracle.decide: hand the metadata to an Opus agent with
+#   2. host.agent.decide: hand the metadata to an Opus agent with
 #      read-only tools (Read/Grep/Glob/Bash[read-only]). Schema-pinned
 #      verdict with `decision` ∈ {needs_update, up_to_date}.
 #
@@ -31,7 +31,7 @@ states:
       - heading: "Recent log"
       - code: '{{ world.recent_log|default:"(pending)" }}'
       # Action menu is unconditional (skill §6). The state usually
-      # transits in one turn via emit_intent:done, but if the oracle
+      # transits in one turn via emit_intent:done, but if the agent
       # is slow the user still needs an escape.
       - choice:
           mode: single
@@ -59,7 +59,7 @@ states:
               mode="{{ world.review_mode }}"
               if [ "$mode" = "baseline" ]; then
                 # Baseline mode: ignore commit range. Enumerate doc roots
-                # and code surfaces so the oracle has a structural picture
+                # and code surfaces so the agent has a structural picture
                 # to audit, then leave recent/diff empty as a signal that
                 # this is the full-repo path, not a delta.
                 recent=""
@@ -116,7 +116,7 @@ states:
         on_error: review_failed
 
       # 2. Ask Opus.
-      - invoke: host.oracle.decide
+      - invoke: host.agent.decide
         with:
           prompt: prompts/decide.md
           schema: schemas/docs_review_verdict.json
@@ -177,7 +177,7 @@ states:
       #      `reviewing` with the host calls queued.
       #    - Post-bind, the orchestrator's settlePostBindEmits re-walks
       #      these `emit_intent:` entries against the post-bind world.
-      #      `verdict_decision` is set iff oracle.decide successfully
+      #      `verdict_decision` is set iff agent.decide successfully
       #      submitted a schema-conforming verdict. The matching emit
       #      fires.
       #
@@ -189,7 +189,7 @@ states:
       - emit_intent: no_submit
         when: "world.commit_sha != '' && world.verdict_decision == ''"
     on:
-      # Defensive guard: oracle.decide can technically return ok with an
+      # Defensive guard: agent.decide can technically return ok with an
       # empty `submitted` (e.g. validator misconfiguration). Bounce to
       # review_failed in that case rather than rendering a fake-good
       # verdict in `reviewed`. The `decision` field is required by the

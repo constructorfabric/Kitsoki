@@ -1,6 +1,6 @@
 // offramp_outcome_test.go — rendering test for the SYNCHRONOUS ModeOffPath
-// outcome produced by the oracle off-ramp (an unroutable free-text utterance
-// in a room declaring `oracle_off_ramp:`). Distinct from the typed `/freeform`
+// outcome produced by the agent off-ramp (an unroutable free-text utterance
+// in a room declaring `agent_off_ramp:`). Distinct from the typed `/freeform`
 // flow (offpath_test.go), this asserts handleTurnOutcome consumes a
 // ModeOffPath *outcome* returned by a normal Turn: it renders the converse
 // answer as an off-path-themed agent bubble, keeps the user in the SAME room

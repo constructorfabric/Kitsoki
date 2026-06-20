@@ -4,8 +4,8 @@
 #
 # Three interpretive/deterministic splits:
 #   idle       deterministic: host.starlark.run deduplicates verdict.json
-#   review     interpretive:  host.oracle.decide clusters findings into groups
-#   fixing     interpretive:  host.oracle.task applies one group's minimal fix
+#   review     interpretive:  host.agent.decide clusters findings into groups
+#   fixing     interpretive:  host.agent.task applies one group's minimal fix
 #   verifying  deterministic: host.run re-audits; host.starlark.run computes delta
 #   showcase   deterministic: host.contact_sheet (or host.slidey.render) + host.artifacts_dir
 #   done       gallery of before/after artifacts
@@ -20,8 +20,8 @@ app:
 hosts:
   - host.run
   - host.starlark.run
-  - host.oracle.decide
-  - host.oracle.task
+  - host.agent.decide
+  - host.agent.task
   - host.contact_sheet
   - host.slidey.render
   - host.artifacts_dir
@@ -36,11 +36,11 @@ world:
   media_format:    { type: string,  default: "slideshow" }  # slideshow | video
 
   # ── Pipeline data ────────────────────────────────────────────────────────
-  # deduped findings from idle; passed to oracle.decide in review
+  # deduped findings from idle; passed to agent.decide in review
   verdict_raw:     { type: object,  default: {} }  # full parsed verdict.json
   findings:        { type: object,  default: {} }  # { items:[...], total_before, total_after }
 
-  # ranked pattern groups from review oracle; cursor walks them
+  # ranked pattern groups from review agent; cursor walks them
   groups:          { type: object,  default: {} }  # { items:[{id,title,pattern,root_cause,...}] }
   cursor:          { type: int,     default: 0 }
   current:         { type: object,  default: {} }  # groups.items[cursor]
@@ -119,7 +119,7 @@ intents:
     slots:
       level: { type: string, required: true, description: "error | warn | info" }
   re_review:
-    description: "Re-run the pattern-identification oracle with guidance."
+    description: "Re-run the pattern-identification agent with guidance."
     examples: ["re_review", "redo the review", "re_review feedback=split the a11y group"]
     priority: 60
     slots:

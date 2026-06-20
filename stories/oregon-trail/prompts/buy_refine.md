@@ -16,5 +16,5 @@ World context (unchanged from the original draft):
 - Local price multiplier: {{ world.local_price_pct }}%.
 
 (Phase H will flesh out this prompt with period vocabulary and a JSON
-schema enforced by host.oracle.decide. For now it is a stub so
+schema enforced by host.agent.decide. For now it is a stub so
 the proposals.yaml `refine:` reference doesn't dangle.)

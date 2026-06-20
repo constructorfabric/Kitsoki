@@ -29,10 +29,10 @@ func linearDef() *app.AppDef {
 		},
 		Root: "idle",
 		States: map[string]*app.State{
-			"idle": {Description: "Start", On: mk("a")},
-			"a":    {On: mk("b"), OnEnter: []app.Effect{{Invoke: "host.oracle.decide", With: map[string]any{"schema": "schemas/x.json"}, Bind: map[string]string{"idea": "submitted"}}}},
-			"b":    {On: mk("c")},
-			"c":    {On: mk("@exit:done")},
+			"idle":   {Description: "Start", On: mk("a")},
+			"a":      {On: mk("b"), OnEnter: []app.Effect{{Invoke: "host.agent.decide", With: map[string]any{"schema": "schemas/x.json"}, Bind: map[string]string{"idea": "submitted"}}}},
+			"b":      {On: mk("c")},
+			"c":      {On: mk("@exit:done")},
 			"orphan": {On: mk("idle")},
 		},
 	}
@@ -70,11 +70,11 @@ func TestRoomList_BFSOrder(t *testing.T) {
 	if byID["orphan"].Distance < 1e8 {
 		t.Errorf("orphan distance = %v, want unreachable sentinel", byID["orphan"].Distance)
 	}
-	if !byID["a"].HasOracle {
-		t.Errorf("room a should report has_oracle (host.oracle.decide on_enter)")
+	if !byID["a"].HasAgent {
+		t.Errorf("room a should report has_agent (host.agent.decide on_enter)")
 	}
-	if byID["b"].HasOracle {
-		t.Errorf("room b should not report has_oracle")
+	if byID["b"].HasAgent {
+		t.Errorf("room b should not report has_agent")
 	}
 }
 
@@ -103,17 +103,17 @@ func TestDetail_WorldKeyDirection(t *testing.T) {
 	}
 }
 
-func TestOracleContracts_CassetteKeyDerivation(t *testing.T) {
+func TestAgentContracts_CassetteKeyDerivation(t *testing.T) {
 	a := buildApp(linearDef())
-	contracts := graph.OracleContracts(a, "a")
+	contracts := graph.AgentContracts(a, "a")
 	if len(contracts) != 1 {
 		t.Fatalf("contracts = %d, want 1", len(contracts))
 	}
 	c := contracts[0]
-	if c.Kind != "host.oracle.decide" {
+	if c.Kind != "host.agent.decide" {
 		t.Errorf("kind = %q", c.Kind)
 	}
-	if c.CassetteKey.Handler != "host.oracle.decide" {
+	if c.CassetteKey.Handler != "host.agent.decide" {
 		t.Errorf("key.handler = %q", c.CassetteKey.Handler)
 	}
 	if c.CassetteKey.Phase != "a" {
@@ -210,19 +210,19 @@ func TestRoomList_PRD(t *testing.T) {
 		}
 	}
 
-	// clarifying runs host.oracle.decide on_enter — must report has_oracle and
-	// produce an oracle contract.
+	// clarifying runs host.agent.decide on_enter — must report has_agent and
+	// produce an agent contract.
 	for _, r := range rooms {
-		if r.ID == "clarifying" && !r.HasOracle {
-			t.Errorf("clarifying should report has_oracle")
+		if r.ID == "clarifying" && !r.HasAgent {
+			t.Errorf("clarifying should report has_agent")
 		}
 	}
-	contracts := graph.OracleContracts(a, "clarifying")
+	contracts := graph.AgentContracts(a, "clarifying")
 	if len(contracts) == 0 {
-		t.Fatal("clarifying has no oracle contracts")
+		t.Fatal("clarifying has no agent contracts")
 	}
-	if contracts[0].Kind != "host.oracle.decide" {
-		t.Errorf("clarifying oracle kind = %q, want host.oracle.decide", contracts[0].Kind)
+	if contracts[0].Kind != "host.agent.decide" {
+		t.Errorf("clarifying agent kind = %q, want host.agent.decide", contracts[0].Kind)
 	}
 	if contracts[0].CassetteKey.SchemaName != "clarifications.json" {
 		t.Errorf("clarifying schema_name = %q, want clarifications.json", contracts[0].CassetteKey.SchemaName)

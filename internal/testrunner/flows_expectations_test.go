@@ -120,7 +120,7 @@ app:
   author: a
   license: CC0
 hosts:
-  - host.oracle.decide
+  - host.agent.decide
 world:
   analyst_out: { type: string, default: "" }
   judge_out:   { type: string, default: "" }
@@ -137,13 +137,13 @@ states:
   loaded:
     on_enter:
       # Two decide calls, identical args, addressable only by id.
-      - invoke: host.oracle.decide
+      - invoke: host.agent.decide
         id: analyst
         with:
           prompt: "same prompt"
         bind:
           analyst_out: verdict
-      - invoke: host.oracle.decide
+      - invoke: host.agent.decide
         id: judge
         with:
           prompt: "same prompt"
@@ -158,7 +158,7 @@ test_kind: flow
 app: ` + filepath.Join(dir, "app.yaml") + `
 initial_state: idle
 host_handlers:
-  host.oracle.decide:
+  host.agent.decide:
     by_call:
       analyst:
         data: { verdict: "from-analyst" }

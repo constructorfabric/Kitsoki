@@ -46,7 +46,7 @@ states:
               hint:  "classify and stage working-tree changes"
               intent: stage
             - label: "commit"
-              hint:  "oracle-authored commit message"
+              hint:  "agent-authored commit message"
               intent: commit
             - label: "undo"
               hint:  "undo the last commit"

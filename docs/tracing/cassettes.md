@@ -30,9 +30,9 @@ phase_from: ""                # optional Go regex override (see §Matching)
 # ── episode list ─────────────────────────────────────────────────────────────
 episodes:
 
-  - id: phase_1_repro_oracle        # unique ID; used in error messages
+  - id: phase_1_repro_agent        # unique ID; used in error messages
     match:
-      handler:     host.oracle.ask_with_mcp   # synthetic field (required)
+      handler:     host.agent.ask_with_mcp   # synthetic field (required)
       phase:       phase_1                    # synthetic field
       schema_name: 01-repro-report.schema.json # synthetic field
     response:
@@ -96,20 +96,20 @@ episodes:
 | `response.infra_error` | string | Returned as a Go `error` (infrastructure-level failure). Mutually exclusive with `response.error`. |
 | `delay` | string | Virtual-time duration (e.g. `200ms`, `2s`). Consumed by the fake clock's `Sleep`; requires the orchestrator path. |
 | `replay` | string | `any` allows the episode to be replayed on every matching call. Default: episode plays once and is marked played. |
-| `oracle` | map | Optional. Present when the episode was recorded against a `host.oracle.*` handler. Captures the oracle-call metadata so replay emits the same `oracle.call.start`/`oracle.call.complete` trace events a real session would (see [`trace-format.md`](trace-format.md)). Omitted for non-oracle episodes. |
+| `agent` | map | Optional. Present when the episode was recorded against a `host.agent.*` handler. Captures the agent-call metadata so replay emits the same `agent.call.start`/`agent.call.complete` trace events a real session would (see [`trace-format.md`](trace-format.md)). Omitted for non-agent episodes. |
 
-When present, the `oracle:` block carries: `verb` (`ask`\|`decide`\|`extract`\|`task`\|`converse`), `agent`, `model`, `duration_ms`, `prompt_tokens`, `response_tokens`, `cost_usd`, `system_prompt`, `prompt`, `input`, `response`, `error`, and `call_id` (advisory — recomputed on load). Long prompts and responses are best kept in `!include` sidecar files:
+When present, the `agent:` block carries: `verb` (`ask`\|`decide`\|`extract`\|`task`\|`converse`), `agent`, `model`, `duration_ms`, `prompt_tokens`, `response_tokens`, `cost_usd`, `system_prompt`, `prompt`, `input`, `response`, `error`, and `call_id` (advisory — recomputed on load). Long prompts and responses are best kept in `!include` sidecar files:
 
 ```yaml
-  - id: phase_1_repro_oracle
+  - id: phase_1_repro_agent
     match:
-      handler:     host.oracle.ask_with_mcp
+      handler:     host.agent.ask_with_mcp
       phase:       phase_1
       schema_name: 01-repro-report.schema.json
     response:
       data:
         submitted: !include 01-repro-report.json
-    oracle:
+    agent:
       verb:          ask
       agent:         reproducer
       model:         claude-opus-4-8
@@ -121,7 +121,7 @@ When present, the `oracle:` block carries: `verb` (`ask`\|`decide`\|`extract`\|`
 
 ### Recorded agent-action transcripts
 
-The `oracle:` block may also carry an optional `transcript:` block that records
+The `agent:` block may also carry an optional `transcript:` block that records
 the call's native execution stream — the
 [agent-action transcript sidecar](trace-format.md#agent-action-transcript-sidecar)
 the web "Agent actions" drawer renders. On replay it is written to
@@ -130,7 +130,7 @@ tool ever runs, and the golden contract is that a replayed cassette produces a
 **byte-identical** sidecar.
 
 ```yaml
-    oracle:
+    agent:
       verb:        decide
       agent:       bugfix
       model:       claude-sonnet-4-6
@@ -172,7 +172,7 @@ returns the first unplayed episode whose `match:` map fully matches the call.
 For a key `k` in an episode's `match:` map:
 
 1. **`handler`** — matched against the dispatched handler name (e.g.
-   `host.oracle.ask_with_mcp`). This is a synthetic field; it is not in the
+   `host.agent.ask_with_mcp`). This is a synthetic field; it is not in the
    call's `args` map.
 2. **`phase`** — matched against the first dot-separated segment of the
    orchestrator's current `StatePath`. For example, `phase_3.dispatching`
@@ -181,15 +181,15 @@ For a key `k` in an episode's `match:` map:
    Useful when phase rooms nest non-trivially (e.g. `foo.bar.deciding` where
    you want `foo`).
 3. **`schema_name`** — matched against `filepath.Base(args["schema"])`. Authors
-   who dispatch two oracle calls in the same phase with different schemas use
+   who dispatch two agent calls in the same phase with different schemas use
    this to distinguish them without splitting phases.
 4. **`call`** — the author-assigned call-site id (`id:` on the invoke effect),
    threaded into args under the reserved `call` key. This is the most direct
    way to address two calls that share a handler name *and* a schema — give
    each invoke an `id:` and match with `call: <id>`. Preferred over picking a
-   different oracle verb to force distinct handler names. Distinct from the
+   different agent verb to force distinct handler names. Distinct from the
    deterministic 16-hex `call_id` correlator recorded under each episode's
-   `oracle:` block. (Resolved via the general arg branch below; called out
+   `agent:` block. (Resolved via the general arg branch below; called out
    here because it is the canonical addressing key.)
 5. **Any other key** — looked up directly in the call's `args` map (the `with:`
    values the effect threaded through).

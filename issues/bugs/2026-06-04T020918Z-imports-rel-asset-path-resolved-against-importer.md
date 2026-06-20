@@ -20,11 +20,11 @@ proposal discovery + brief room, defined in `dev-story/rooms/proposal.yaml`
 and reached via the `core` import). The brief stayed stuck at **0/5 checks**
 across multiple turns even though the conversation flowed normally.
 
-Root cause: the `brief_distill` `host.oracle.task` that writes the brief every
+Root cause: the `brief_distill` `host.agent.task` that writes the brief every
 turn references a relative asset path:
 
 ```yaml
-- invoke: host.oracle.task
+- invoke: host.agent.task
   id: brief_distill
   with:
     acceptance:
@@ -39,7 +39,7 @@ resolves that relative path against the **importing app's** directory rather
 than the story that **defines** the room:
 
 ```
-host.oracle.task: build validator MCP config:
+host.agent.task: build validator MCP config:
   schema ".../stories/kitsoki-dev/schemas/brief-distill.json" not found:
   stat .../stories/kitsoki-dev/schemas/brief-distill.json: no such file or directory
 ```
@@ -47,7 +47,7 @@ host.oracle.task: build validator MCP config:
 `stories/kitsoki-dev/schemas/` does not exist — the schemas live under
 `stories/dev-story/schemas/`. So `brief_distill` throws every turn,
 `on_error: proposal` swallows it back into the same room, and the brief is
-never written. The interviewer (`host.oracle.converse`) keeps working because
+never written. The interviewer (`host.agent.converse`) keeps working because
 it doesn't reference a relative asset file, which is why the room *feels* fine
 while silently doing nothing useful.
 
@@ -117,7 +117,7 @@ defining story.**
 
 - `internal/orchestrator/` (import fold + host-dispatch) — carry the
   defining-story base dir through to host-call asset resolution.
-- `internal/host/oracle_converse.go` / oracle task + ask handlers — resolve
+- `internal/host/agent_converse.go` / agent task + ask handlers — resolve
   `schema:` / `prompt:` against the defining-story base.
 - Import rewriter / loader — optionally validate imported asset paths at fold
   time and fail loudly.

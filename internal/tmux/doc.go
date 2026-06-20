@@ -24,7 +24,7 @@
 //     user's own tmux sessions on the default socket.
 //
 //  2. Inject the binary path through [TmuxBinEnv] so tests substitute a
-//     fake-tmux script the same way oracle tests substitute a fake
+//     fake-tmux script the same way agent tests substitute a fake
 //     claude. This is what keeps the test suite hermetic on machines
 //     without a real tmux.
 //

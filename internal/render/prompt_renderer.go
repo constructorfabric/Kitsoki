@@ -251,7 +251,7 @@ func (r *AppRenderer) SpecProvenance(name string) (defaulted, overridden []strin
 
 // OverlayDir returns the project overlay directory this prompt renderer
 // searches first, or "" when none is configured (or this is not a prompt
-// renderer). Recorded in the oracle trace as the provenance of an extended
+// renderer). Recorded in the agent trace as the provenance of an extended
 // prompt.
 func (r *AppRenderer) OverlayDir() string {
 	if r.prompts == nil {
@@ -280,7 +280,7 @@ func (r *AppRenderer) ResolvePromptName(name string) (path string, ok bool) {
 // TemplateSet WITHOUT executing it, so a missing file, an unresolved
 // {% extends %} / {% include %} target, an unknown @import alias, a
 // self-reference, or a pongo2 syntax error surfaces as a located error at
-// load time rather than at first oracle dispatch. Returns nil on a non-prompt
+// load time rather than at first agent dispatch. Returns nil on a non-prompt
 // renderer (the legacy path validates nothing). name is the prompt reference
 // as it appears on the effect (bare, @-namespaced, or absolute).
 func (r *AppRenderer) ValidatePrompt(name string) error {

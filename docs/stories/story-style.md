@@ -208,7 +208,7 @@ Why blanks happen:
    happen silently.)
 
 The implementing-room regression of 2026-05-19 — user typed
-`continue` on a fix-proposal, the oracle ran for 50 seconds and
+`continue` on a fix-proposal, the agent ran for 50 seconds and
 returned a valid artifact, the room transitioned successfully — but
 the view template hit a pongo2 error and the orchestrator silently
 zeroed it. The user described it as "dumped into nothingness."
@@ -473,7 +473,7 @@ not yet adopted.**
 
 1. **Awaiting an external result** (LLM, host invoke, background job).
    Today bugfix's `proposing_executing` shows
-   `Summary: (pending)` plus a freeform "(artifact pending — oracle
+   `Summary: (pending)` plus a freeform "(artifact pending — agent
    has not returned yet)" paragraph. Other stories say nothing.
    *Proposed:* a `kv:` entry with value `(pending — <what's running>)`,
    or a future `pending: true` flag on `prose:`/`kv:` that the
@@ -600,9 +600,9 @@ through the inner exit.
 
 | Seam | What happens | Lives in |
 |---|---|---|
-| Operator | `cr.Stdout` and `cr.Answer` are wrapped before being stored as `Result.Data["stdout"]` / `["answer"]`. Structured payloads (`Result.Data["submitted"]` from the MCP validator, `Result.Data["stdout_json"]` from `output_format=json`) get every string leaf wrapped recursively via `WrapTree` — bugfix-style flows bind individual fields (`world.x.summary_markdown`) and need them tagged too. | `internal/host/oracle_ask.go`, `oracle.go`, `oracle_ask_with_mcp.go` |
+| Operator | `cr.Stdout` and `cr.Answer` are wrapped before being stored as `Result.Data["stdout"]` / `["answer"]`. Structured payloads (`Result.Data["submitted"]` from the MCP validator, `Result.Data["stdout_json"]` from `output_format=json`) get every string leaf wrapped recursively via `WrapTree` — bugfix-style flows bind individual fields (`world.x.summary_markdown`) and need them tagged too. | `internal/host/agent_ask.go`, `agent.go`, `agent_ask_with_mcp.go` |
 | Render | Pongo substitutes the wrapped value into the view template. Sentinels are zero-width Unicode runes (`U+2063 U+2061 U+2061 U+2063` open, `U+2063 U+2062 U+2062 U+2063` close), so pongo's HTML auto-escape leaves them alone. | `internal/render/pongo.go` |
-| Outbound prompt | Sentinels are stripped immediately after the prompt template is rendered, before the prompt crosses back into claude. Bound LLM values keep their tags for the display path; claude doesn't see them. | `internal/host/oracle_ask.go`, `oracle_ask_with_mcp.go` |
+| Outbound prompt | Sentinels are stripped immediately after the prompt template is rendered, before the prompt crosses back into claude. Bound LLM values keep their tags for the display path; claude doesn't see them. | `internal/host/agent_ask.go`, `agent_ask_with_mcp.go` |
 | Hardwrap | The transcript pre-wraps each entry to the viewport width before queueing. Sentinels add zero visible width, so width-based wrapping cannot bisect one. | `internal/tui/transcript.go queue()` |
 | Paint | `FlushPending` runs the joined buffer through `sourcecolor.Colorize` immediately before `tea.Println`. Sentinels become ANSI bg switches with stack-aware nesting and block padding. | `internal/tui/transcript.go FlushPending()` |
 

@@ -20,7 +20,7 @@ func TestParseDetailLevel(t *testing.T) {
 		{"states", viz.DetailStates, false},
 		{"steps", viz.DetailSteps, false},
 		{"full", viz.DetailFull, false},
-		{"ROOMS", viz.DetailRooms, false},  // case-insensitive
+		{"ROOMS", viz.DetailRooms, false}, // case-insensitive
 		{"STATES", viz.DetailStates, false},
 		{"", viz.DetailStates, true},
 		{"invalid", viz.DetailStates, true},
@@ -65,7 +65,7 @@ func minimalApp() *app.AppDef {
 						Bind:   map[string]string{"result": "output"},
 					},
 					{
-						Invoke: "host.oracle.ask",
+						Invoke: "host.agent.ask",
 						With:   map[string]any{"prompt": "prompts/analyze.md"},
 						Bind:   map[string]string{"analysis": "text"},
 					},
@@ -143,7 +143,7 @@ func TestFlowchartMinimalStepsDetail(t *testing.T) {
 
 	// Shell step (host.run) should have shell class.
 	require.Contains(t, s, ":::shell")
-	// Oracle step (host.oracle.ask) should have llm class.
+	// Agent step (host.agent.ask) should have llm class.
 	require.Contains(t, s, ":::llm")
 
 	// Step label must include "step 0 —".
@@ -271,7 +271,7 @@ func TestFlowchartEscaping(t *testing.T) {
 				Description: "handles <input> & \"quotes\"",
 				OnEnter: []app.Effect{
 					{
-						Invoke: "host.oracle.ask",
+						Invoke: "host.agent.ask",
 						With:   map[string]any{"prompt": "prompts/test.md"},
 					},
 				},
@@ -337,7 +337,7 @@ func TestFlowchartBackgroundStep(t *testing.T) {
 			"working": {
 				OnEnter: []app.Effect{
 					{
-						Invoke:     "host.oracle.ask",
+						Invoke:     "host.agent.ask",
 						Background: true,
 						With:       map[string]any{"prompt": "prompts/bg.md"},
 					},

@@ -274,7 +274,7 @@ scheme so traces land next to the story sources.
 
 **Diagnostic events to look for:**
 
-- `oracle.ask.start` / `oracle.tool_call` — what the LLM was given and what
+- `agent.ask.start` / `agent.tool_call` — what the LLM was given and what
   came back.
 - `machine.guard_rejected` — every `when:` evaluation that failed.
 - `harness.called` / `harness.returned` — host call boundaries with args and
@@ -330,8 +330,8 @@ kitsoki mcp-validator --schema schema.json
 
 A standalone stdio MCP server that validates a JSON payload against a
 JSON Schema and returns a structured error envelope. The same code
-powers the typed-JSON submit side-channel that oracle handlers
-(`host.oracle.decide`, `host.oracle.task`, `host.oracle.ask` with
+powers the typed-JSON submit side-channel that agent handlers
+(`host.agent.decide`, `host.agent.task`, `host.agent.ask` with
 `schema:`) attach to Claude. Run it directly when debugging a
 schema-shaped prompt.
 

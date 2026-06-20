@@ -38,7 +38,7 @@ the diagnostics the UI should have shown:
 turn 5  world.update  last_error="Context Extraction job ended with status: failed"
         machine.say   "Context Extraction job ended with status `failed`. Type `quit` to abort."
         scheduler.completed status=failed
-                       error="host.oracle.decide: claude exec failed: context canceled"
+                       error="host.agent.decide: claude exec failed: context canceled"
         turn.end      outcome=background_completion
 ```
 

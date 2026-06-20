@@ -4,7 +4,7 @@ package orchestrator_test
 // Verdict + gate_decided.
 //
 // Verifies:
-//   - When the fake oracle returns alternatives in the submitted verdict, the
+//   - When the fake agent returns alternatives in the submitted verdict, the
 //     gate_decided event carries them in the "alternatives" attr.
 //   - Legacy responses without alternatives produce a gate_decided event with
 //     no "alternatives" key.
@@ -24,7 +24,7 @@ import (
 )
 
 func TestDecisionAlternatives_WithAlternatives(t *testing.T) {
-	// The fake oracle returns a verdict with two runner-up alternatives.
+	// The fake agent returns a verdict with two runner-up alternatives.
 	verdict := map[string]any{
 		"intent":     "path_b",
 		"confidence": 0.9,

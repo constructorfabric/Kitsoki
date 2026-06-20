@@ -65,7 +65,7 @@ host_handlers:
       body:  "Implement the accepted proposal."
       url:   "docs/proposals/per-session-working-folder.md"
       tickets: "F-2026-06-11T120000Z-per-session-working-folder: Per-session working folder"
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted: &impl_artifact
@@ -83,11 +83,11 @@ host_handlers:
         verdict:    "pass"
         intent:     "accept"
         reason:     "Stub."
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted: *impl_artifact
-  host.oracle.ask:
+  host.agent.ask:
     data:
       ok: true
       submitted: *impl_artifact

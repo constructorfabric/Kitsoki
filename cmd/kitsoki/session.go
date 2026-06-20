@@ -892,7 +892,7 @@ another process holds it, this command exits 75 (EX_TEMPFAIL).`,
 			}
 
 			// Build the job store + scheduler so on_enter effects with
-			// `background: true` (host.oracle.ask_with_mcp in phase_12_6,
+			// `background: true` (host.agent.ask_with_mcp in phase_12_6,
 			// phase_minus_1, …) actually dispatch asynchronously and their
 			// on_complete: chains fire.  Without this wiring the
 			// orchestrator's WithScheduler doc explicitly states that
@@ -1083,7 +1083,7 @@ another process holds it, this command exits 75 (EX_TEMPFAIL).`,
 					}
 					// Still in an _executing room: a second bg job may
 					// be in flight (e.g. phase_13_executing's
-					// host.oracle.ask_with_mcp).  Loop to drain it.
+					// host.agent.ask_with_mcp).  Loop to drain it.
 				}
 				// Refresh the outcome view from persisted state so the
 				// JSON return reflects the post-drain settlement (loop.py

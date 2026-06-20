@@ -3,7 +3,7 @@
 // see docs/architecture/prompt-intercept.md §"Multi-turn commands").
 //
 // The stateless OneShot fast path settles a single self-contained command in
-// one round. A command whose real execution is a multi-turn, oracle-in-the-loop
+// one round. A command whose real execution is a multi-turn, agent-in-the-loop
 // loop — the canonical case is "rebase, and resolve any conflicts" — cannot be
 // driven that way: it enters a room flagged intercept_drive: rest and would
 // strand the working tree mid-rebase if abandoned after one round.

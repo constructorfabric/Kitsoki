@@ -51,7 +51,7 @@ Add a store-event-tee → shared, lock-free trace reader the web Source can poll
   web Source; the writer keeps the exclusive append lock), OR a store-events
   → `runstatus.TraceEvent` poller (`internal/runstatus/fromhistory.go` already
   has `FromHistory`, but the SQLite store drops `state_path` / `call_id` /
-  `parent_turn`, so oracle-call pairing and diagram annotation degrade);
+  `parent_turn`, so agent-call pairing and diagram annotation degrade);
 - the web Source for an attached session polls that medium each SSE tick instead
   of the in-process sink.
 

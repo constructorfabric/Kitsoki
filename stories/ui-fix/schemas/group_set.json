@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "GroupSet",
-  "description": "Ranked pattern groups identified by the review oracle.",
+  "description": "Ranked pattern groups identified by the review agent.",
   "type": "object",
   "required": ["items"],
   "additionalProperties": false,

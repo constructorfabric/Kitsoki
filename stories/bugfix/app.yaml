@@ -50,16 +50,16 @@ app:
 # they are not wrapped by an iface.
 hosts:
   - host.inbox.add
-  - host.oracle.ask
-  - host.oracle.decide
-  - host.oracle.task
+  - host.agent.ask
+  - host.agent.decide
+  - host.agent.task
   # Review-diff: open the committed fix (feature_branch vs base_branch) in the
   # operator's editor (with a captured accept/reject verdict) or a view-only
   # system difftool. The reviewing room's `review_externally` arc drives it; the
   # verdict routes advance/redo. See docs/architecture/hosts.md#hostdiffopen.
   - host.diff.open
 
-# Persona table (oracle-split proposal §3.5).
+# Persona table (agent-split proposal §3.5).
 #
 # Each persona declares the model, tool surface, and blast-radius
 # classification for one class of LLM work. The verb at every call site
@@ -319,7 +319,7 @@ world:
   # ── Per-room artifacts (objects; each holds {summary_title, summary_markdown, …}) ─
   reproduction_artifact:     { type: object, default: {} }
   propose_fix_artifact:      { type: object, default: {} }
-  implement_artifact:        { type: object, default: {} }  # implementing oracle output (files_changed, applied, blockers)
+  implement_artifact:        { type: object, default: {} }  # implementing agent output (files_changed, applied, blockers)
   implement_review_artifact: { type: object, default: {} }  # testing-room artifact (yes, the name predates the implement_artifact split)
   validate_artifact:         { type: object, default: {} }
   done_artifact:             { type: object, default: {} }

@@ -8,15 +8,15 @@ import (
 	"kitsoki/internal/store"
 )
 
-// makeOracleCalledEvent builds a minimal oracle.call.start store.Event for
+// makeAgentCalledEvent builds a minimal agent.call.start store.Event for
 // testing. payload is marshalled to JSON and set as the event Payload; callID
 // is set on both the Event.CallID field and inside payload["call_id"] so the
 // extractor can match by either path.
-func makeOracleCalledEvent(callID string, payload map[string]any) store.Event {
+func makeAgentCalledEvent(callID string, payload map[string]any) store.Event {
 	payload["call_id"] = callID
 	raw, _ := json.Marshal(payload)
 	return store.Event{
-		Kind:    store.OracleCalled,
+		Kind:    store.AgentCalled,
 		CallID:  callID,
 		Payload: json.RawMessage(raw),
 	}
@@ -26,10 +26,10 @@ func TestExtractReplayableCall(t *testing.T) {
 	t.Parallel()
 	const wantCallID = "abc123"
 	events := []store.Event{
-		makeOracleCalledEvent(wantCallID, map[string]any{
+		makeAgentCalledEvent(wantCallID, map[string]any{
 			"verb":   "decide",
 			"prompt": "Should we proceed?",
-			"agent":  "oracle.claude",
+			"agent":  "agent.claude",
 			"model":  "claude-3-5-sonnet-20241022",
 		}),
 	}
@@ -47,8 +47,8 @@ func TestExtractReplayableCall(t *testing.T) {
 	if rc.Prompt != "Should we proceed?" {
 		t.Errorf("Prompt = %q; want %q", rc.Prompt, "Should we proceed?")
 	}
-	if rc.Agent != "oracle.claude" {
-		t.Errorf("Agent = %q; want %q", rc.Agent, "oracle.claude")
+	if rc.Agent != "agent.claude" {
+		t.Errorf("Agent = %q; want %q", rc.Agent, "agent.claude")
 	}
 	if rc.Model != "claude-3-5-sonnet-20241022" {
 		t.Errorf("Model = %q; want %q", rc.Model, "claude-3-5-sonnet-20241022")
@@ -59,7 +59,7 @@ func TestExtractReplayableCall_promptFile(t *testing.T) {
 	t.Parallel()
 	const wantCallID = "def456"
 	events := []store.Event{
-		makeOracleCalledEvent(wantCallID, map[string]any{
+		makeAgentCalledEvent(wantCallID, map[string]any{
 			"verb":        "ask",
 			"prompt_file": "/tmp/kitsoki/prompts/abc.txt",
 		}),
@@ -79,7 +79,7 @@ func TestExtractReplayableCall_promptFile(t *testing.T) {
 func TestExtractReplayableCall_unsupported_task(t *testing.T) {
 	t.Parallel()
 	events := []store.Event{
-		makeOracleCalledEvent("task1", map[string]any{
+		makeAgentCalledEvent("task1", map[string]any{
 			"verb":   "task",
 			"prompt": "do something with side effects",
 		}),
@@ -93,7 +93,7 @@ func TestExtractReplayableCall_unsupported_task(t *testing.T) {
 func TestExtractReplayableCall_unsupported_converse(t *testing.T) {
 	t.Parallel()
 	events := []store.Event{
-		makeOracleCalledEvent("conv1", map[string]any{
+		makeAgentCalledEvent("conv1", map[string]any{
 			"verb":   "converse",
 			"prompt": "let's chat",
 		}),
@@ -107,7 +107,7 @@ func TestExtractReplayableCall_unsupported_converse(t *testing.T) {
 func TestExtractReplayableCall_missing_prompt(t *testing.T) {
 	t.Parallel()
 	events := []store.Event{
-		makeOracleCalledEvent("noprompt", map[string]any{
+		makeAgentCalledEvent("noprompt", map[string]any{
 			"verb": "decide",
 			// no prompt, no prompt_file
 		}),
@@ -120,7 +120,7 @@ func TestExtractReplayableCall_missing_prompt(t *testing.T) {
 
 func TestExtractReplayableCall_missing_event(t *testing.T) {
 	t.Parallel()
-	// Empty events slice — no oracle.call.start present.
+	// Empty events slice — no agent.call.start present.
 	_, err := ExtractReplayableCall(nil, "ghost")
 	if !errors.Is(err, ErrNotReplayable) {
 		t.Errorf("expected ErrNotReplayable for empty events, got %v", err)
@@ -130,7 +130,7 @@ func TestExtractReplayableCall_missing_event(t *testing.T) {
 func TestExtractReplayableCall_wrong_callid(t *testing.T) {
 	t.Parallel()
 	events := []store.Event{
-		makeOracleCalledEvent("abc", map[string]any{
+		makeAgentCalledEvent("abc", map[string]any{
 			"verb":   "decide",
 			"prompt": "are you sure?",
 		}),

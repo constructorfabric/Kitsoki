@@ -132,7 +132,7 @@ fi
 # Suite 4: session-mining no-LLM invariants (stdlib python, committed fixtures)
 # ---------------------------------------------------------------------------
 # The intent pipeline, outcome capture, git-ops coverage, and the real-cost
-# stack are all pure-python and run against frozen oracle JSON — NEVER a live
+# stack are all pure-python and run against frozen agent JSON — NEVER a live
 # LLM (AGENTS.md). `go test ./...` doesn't touch them, so they'd rot unguarded.
 # Gated on python3 like the feature catalog is gated on pnpm.
 section "session-mining (python)"

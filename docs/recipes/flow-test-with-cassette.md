@@ -25,7 +25,7 @@ turns:
 expect_no_errors: true
 ```
 
-When a turn drives a host or oracle call that you want to be
+When a turn drives a host or agent call that you want to be
 deterministic, attach a **host cassette** instead of real handlers.
 `host_cassette:` and `host_handlers:` are mutually exclusive.
 
@@ -47,9 +47,9 @@ turns:
 kind: host_cassette
 app_id: bugfix
 episodes:
-  - id: phase_2_oracle
+  - id: phase_2_agent
     match:
-      handler: host.oracle.decide
+      handler: host.agent.decide
       phase: proposing
     response:
       data:

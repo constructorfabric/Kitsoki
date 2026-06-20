@@ -45,7 +45,7 @@ states:
             Summary: '{{ world.validate_artifact.summary_title|default:"(pending)" }}'
             Outcome: '{{ world.validate_artifact.outcome|default:"(pending)" }}'
       - heading: "Artifact"
-      - code: '{{ world.validate_artifact.summary_markdown|default:"(pending — oracle has not returned yet)" }}'
+      - code: '{{ world.validate_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
       - choice:
           mode: single
           prompt: "Actions"
@@ -93,7 +93,7 @@ states:
       # literal go-package-path arg appended to `go build ./...`. Pre-fix,
       # passing `target: "default"` here produced
       # `package default is not in std (.../toolchain@...)` on every run
-      # and the oracle then mistook this synthesised error for evidence
+      # and the agent then mistook this synthesised error for evidence
       # the fix wasn't applied. See dogfood_smoke_test.go::
       # TestValidatingBuild_NoSpuriousTargetArg for the lock-in.
       - invoke: iface.ci.build
@@ -107,19 +107,19 @@ states:
           ci_log: log
         on_error: idle
 
-      # `working_dir` pins the oracle subprocess (and its MCP filesystem
-      # tools) to the bugfix worktree. Without it the oracle reads from
+      # `working_dir` pins the agent subprocess (and its MCP filesystem
+      # tools) to the bugfix worktree. Without it the agent reads from
       # kitsoki's cwd (the main worktree) and confidently reports "fix
       # not applied" when grepping for changes that landed on the
       # feature branch. See implementing.yaml for the same pattern.
       # `once: true` for reload-safety: keyed off its own bind
       # (validate_artifact), so /reload (or self/on_error re-entry)
-      # re-renders the stored outcome without re-running the oracle.
+      # re-renders the stored outcome without re-running the agent.
       # NOTE: iface.ci.build above is intentionally NOT once: — ci_log is
       # shared scratch, not a phase artifact. The refine + infra_error
       # self-loop + restart_from arms below clear validate_artifact to
       # re-arm a fresh run.
-      - invoke: host.oracle.task
+      - invoke: host.agent.task
         once: true
         with:
           agent: validator
@@ -141,7 +141,7 @@ states:
         on_error: idle
 
       - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
-        invoke: host.oracle.decide
+        invoke: host.agent.decide
         with:
           agent: judge
           prompt: prompts/judge_validating.md
@@ -185,7 +185,7 @@ states:
                 implementing_cycle: "{{ world.implementing_cycle + 1 }}"
                 cycle:              "{{ world.cycle + 1 }}"
                 # Re-enter implementing for a fresh re-apply: clear its
-                # once: bind so the implementer oracle runs again.
+                # once: bind so the implementer agent runs again.
                 implement_artifact: {}
 
         # fail — proposal needs a re-draft.
@@ -205,7 +205,7 @@ states:
                 proposing_cycle:      "{{ world.proposing_cycle + 1 }}"
                 cycle:                "{{ world.cycle + 1 }}"
                 # Re-enter proposing for a fresh re-draft: clear its
-                # once: bind so the proposer oracle runs again.
+                # once: bind so the proposer agent runs again.
                 propose_fix_artifact: {}
 
         # infra_error — environment problem; retry validation.
@@ -255,7 +255,7 @@ states:
                 refine_feedback:   "{{ slots.feedback ?? world.llm_verdict.reason }}"
                 validating_cycle:  "{{ world.validating_cycle + 1 }}"
                 cycle:             "{{ world.cycle + 1 }}"
-                # Clear the once: bind so on_enter re-runs the oracle.
+                # Clear the once: bind so on_enter re-runs the agent.
                 validate_artifact: {}
 
       restart_from:

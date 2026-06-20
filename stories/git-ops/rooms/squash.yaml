@@ -2,16 +2,16 @@
 #
 # Single-script on_enter: checks descendant + gets diff stat.
 # If not a descendant → route="re_rebase_needed".
-# If ok → route="look" (stay in squash for oracle).
+# If ok → route="look" (stay in squash for agent).
 # emit_intent: "{{ world.route }}" fires post-bind.
 #
-# Oracle.decide runs always (once: true keyed on commit_message):
+# Agent.decide runs always (once: true keyed on commit_message):
 # skipped when commit_message is already set; runs when empty.
 
 states:
 
   squash:
-    description: "Squash all branch commits into one. Oracle authors the message. Requires rebase first."
+    description: "Squash all branch commits into one. Agent authors the message. Requires rebase first."
     relevant_world: [staged_diff_stat, commit_message, current_branch, integration_branch,
                      squash_mode, descendant_ok]
     view:
@@ -29,7 +29,7 @@ states:
         when: "world.last_op_outcome != 're_rebase_needed'"
       - heading: "Proposed squash commit message"
         when: "world.last_op_outcome != 're_rebase_needed'"
-      - template: '{{ world.commit_message|default:"(pending — oracle is authoring)" }}'
+      - template: '{{ world.commit_message|default:"(pending — agent is authoring)" }}'
         when: "world.last_op_outcome != 're_rebase_needed'"
       - prose: "Operation failed: {{ world.last_op_output }}"
         when: "world.last_op_ok == false && world.last_op_outcome != 're_rebase_needed'"
@@ -46,11 +46,11 @@ states:
               intent: rebase
               when:  "world.last_op_outcome == 're_rebase_needed'"
             - label: "edit_message message=…"
-              hint:  "replace the oracle message"
+              hint:  "replace the agent message"
               intent: edit_message
               when:  "world.commit_message != '' && world.descendant_ok == true"
             - label: "regenerate"
-              hint:  "ask oracle for a new squash message"
+              hint:  "ask agent for a new squash message"
               intent: regenerate
               when:  "world.descendant_ok == true"
             - label: "back"
@@ -91,9 +91,9 @@ states:
       # DispatchPostBindEmits fires "re_rebase_needed" when route="re_rebase_needed" post-bind.
       - when: "world.route == 're_rebase_needed'"
         emit_intent: re_rebase_needed
-      # Oracle runs when commit_message is unset. once: true skips if already set.
+      # Agent runs when commit_message is unset. once: true skips if already set.
       # Args re-rendered by orchestrator against post-bind world (staged_diff_stat set).
-      - invoke: host.oracle.decide
+      - invoke: host.agent.decide
         once: true
         id: squash_message
         with:

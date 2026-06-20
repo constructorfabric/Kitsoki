@@ -1,6 +1,6 @@
 # references — curate the doc reference list, then confirm.
 #
-# on_enter runs the `researcher` (host.oracle.decide) which reads the idea
+# on_enter runs the `researcher` (host.agent.decide) which reads the idea
 # and the clarification transcript and searches the working dir's
 # DOCUMENTATION — not source code; this is a PRD — for prior art,
 # constraints, and standards the PRD must honour, returning
@@ -11,10 +11,10 @@
 # brief room). The bound world.references is handed to the author in
 # drafting so the PRD is written against the cited sections.
 #
-# Two on_enter host calls, both share host.oracle.decide with clarifying's
+# Two on_enter host calls, both share host.agent.decide with clarifying's
 # analyst — in flow fixtures the two decide invocations are disambiguated
 # by the per-invoke stub id (the by-id host-stub mechanism); do NOT reach
-# for a different oracle verb to give the stub a distinct name.
+# for a different agent verb to give the stub a distinct name.
 #
 # Two re-run actions, both self-transitions that re-fire on_enter
 # (budget-capped by references_budget): `refine` revises the CURRENT list
@@ -29,7 +29,7 @@ states:
   # references checkpoint.
   #
   # Embeds the idea (+ the clarification transcript) and retrieves the closest
-  # doc chunks (host.oracle.search) so the researcher spends its LLM budget on
+  # doc chunks (host.agent.search) so the researcher spends its LLM budget on
   # JUDGMENT (which hits matter, what sections, why) rather than scanning the
   # tree from scratch. Mirrors the golden proposal pipeline's stage split
   # (dev-story design_materialize.yaml: a search step that feeds a separate
@@ -55,7 +55,7 @@ states:
       # `once: true` keyed off its bind so /reload re-renders the stored hits.
       # The refine/regenerate arcs clear reference_hits before re-entering, so
       # the search re-runs for the next pass.
-      - invoke: host.oracle.search
+      - invoke: host.agent.search
         once: true
         id: reference_search
         with:
@@ -68,7 +68,7 @@ states:
             max:  1200
             mode: heading
         bind:
-          # host.oracle.search returns { hits: [...], top }; bind the hits
+          # host.agent.search returns { hits: [...], top }; bind the hits
           # array directly so world.reference_hits IS the ranked list (empty
           # when nothing matched). prompts/references.md iterates it.
           reference_hits: hits
@@ -198,7 +198,7 @@ states:
     on_enter:
       # Curate the reference list. working_dir pins the researcher's
       # Read/Grep/Glob to the operator's tree; its tool calls land as
-      # oracle.tool_call trace events. refine_feedback carries the
+      # agent.tool_call trace events. refine_feedback carries the
       # operator's instruction; revise distinguishes a `refine` (revise the
       # current list in place — current_references is the starting point)
       # from a fresh `regenerate` search (current_references is reference
@@ -209,7 +209,7 @@ states:
       # run. On `refine` the current list is snapshotted into references_prev
       # FIRST (so clearing references to re-arm once: doesn't lose it), and
       # current_references reads from that snapshot — see the `refine` arc.
-      - invoke: host.oracle.decide
+      - invoke: host.agent.decide
         once: true
         id: references_research
         with:

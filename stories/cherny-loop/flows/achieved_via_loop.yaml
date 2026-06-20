@@ -11,7 +11,7 @@ host_handlers:
     by_call:
       gate-0: { data: { ok: false, exit_code: 1, stdout: "--- FAIL: TestAllow_Burst" } }
       gate-1: { data: { ok: true,  exit_code: 0, stdout: "ok  kitsoki/internal/ratelimit  0.012s" } }
-  host.oracle.task:
+  host.agent.task:
     by_call:
       maker-1: { data: { submitted: { summary: "Initialize the bucket with tokens=burst" } } }
   host.artifacts_dir: { data: { ok: true } }

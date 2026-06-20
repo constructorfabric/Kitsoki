@@ -5,7 +5,7 @@
 # "how does story coverage mining actually work?".
 #
 # The one LLM step (B, intents.workflow.js) is represented here by the committed
-# oracle.json — so the C->F chain + coverage_prep run end-to-end, repeatably.
+# agent.json — so the C->F chain + coverage_prep run end-to-end, repeatably.
 #
 #   ./run.sh           run into a scratch dir, print the reports + worksheet
 #   ./run.sh --keep D  write the artifacts into D and keep them
@@ -44,8 +44,8 @@ else
   echo "  (jq not found — skipping fidelity regeneration)"
 fi
 
-say "C. ground — validate the oracle hypothesis against the traces"
-python3 "$TOOL/ground.py" --oracle "$HERE/oracle.json" --traces "$HERE/traces" --out "$OUT/grounded.json"
+say "C. ground — validate the agent hypothesis against the traces"
+python3 "$TOOL/ground.py" --agent "$HERE/agent.json" --traces "$HERE/traces" --out "$OUT/grounded.json"
 
 say "D+E. tag_score — validate tags, cluster, score determinism"
 python3 "$TOOL/tag_score.py" --grounded "$OUT/grounded.json" --traces "$HERE/traces" --out "$OUT/scored.json"

@@ -7,7 +7,7 @@ Do these steps in order:
 1. story.read the barista story to see its rooms and intents.
 2. story.validate it (it should be valid).
 3. story.graph it to show the room graph.
-4. story.test it to run its flows (they should pass — no LLM, a cassette/flow oracle).
+4. story.test it to run its flows (they should pass — no LLM, a cassette/flow agent).
 5. Open a session with session.new: pass story_path = the path above AND cassette = tools/mcp-demo/capture-ws/barista/recording.yaml (the harness defaults to "replay", which is no-LLM). Report the starting state and allowed intents.
 6. Drive the session with DIRECT intents via session.submit (these are plain transitions, no slots): submit intent "start_order" (goes to the order room), then submit intent "pick_flat_white" (goes to the confirm room and sets world drink = "flat white").
 7. Call render.tui on the session to show the current kitsoki TUI screen for the confirm room.

@@ -34,7 +34,7 @@ func ExampleNewAdapter() {
 	var a host.ChatStore = chathost.NewAdapter(cs)
 	ctx := context.Background()
 
-	rec, err := a.Create(ctx, "my-app", "oracle", "", "Test Chat")
+	rec, err := a.Create(ctx, "my-app", "agent", "", "Test Chat")
 	if err != nil {
 		panic(err)
 	}
@@ -72,7 +72,7 @@ func ExampleNewAdapter_sentinelTranslation() {
 	a := chathost.NewAdapter(cs)
 	ctx := context.Background()
 
-	c, err := a.Create(ctx, "my-app", "oracle", "", "x")
+	c, err := a.Create(ctx, "my-app", "agent", "", "x")
 	if err != nil {
 		panic(err)
 	}

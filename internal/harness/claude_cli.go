@@ -44,7 +44,7 @@ const validatorToolName = "mcp__" + validatorServerName + "__submit"
 // forks claude: the harness no longer execs claude itself.
 //
 // Production wires host.RunClaudeOneShotForHarness so intent routing shares the
-// oracle's invocation engine — stream/usage capture, the ClaudeRunner test
+// agent's invocation engine — stream/usage capture, the ClaudeRunner test
 // seam, IDE-link scrub, and env handling all apply uniformly. Tests inject the
 // same adapter (to exercise the real path) or a stub.
 //
@@ -98,7 +98,7 @@ func (c ClaudeCLIConfig) validatorTool() string {
 // The validator writes the schema-validated payload to a side-channel file via
 // atomic rename, so we never have to parse fences out of free-form output or
 // beg the model for "raw JSON". Semantic slot formats (e.g. `format: jql`) are
-// enforced by that validator, the same way the Oracle host call enforces them.
+// enforced by that validator, the same way the Agent host call enforces them.
 //
 // Invocation detail: the complete prompt is piped via stdin to avoid argv size
 // limits; the per-turn JSON Schema, the --mcp-config document, and the capture
@@ -273,7 +273,7 @@ func (h *ClaudeCLIHarness) RunTurn(ctx context.Context, in TurnInput) (mcp.CallT
 	// Claude Code's own default system prompt — see buildClaudeArgs). Only the
 	// per-turn context and the user utterance ride on stdin as the user message.
 	//
-	// Routing composes through the same layered builder as every oracle verb
+	// Routing composes through the same layered builder as every agent verb
 	// (internal/sysprompt): the kitsoki grounding (Layer 1) and any project
 	// context (Layer 2) are prepended to the routing prefix + output contract
 	// (Layer 3), so the router is grounded identically to the rest of the system.
@@ -449,7 +449,7 @@ func (h *ClaudeCLIHarness) resolveKitsokiBin() (string, error) {
 
 // projectLayer resolves the app's Layer-2 project grounding for the router
 // (sysprompt Layer 2). It reads app.context (inline) or app.context_path (a file
-// relative to KITSOKI_APP_DIR) as raw text. Unlike the oracle path
+// relative to KITSOKI_APP_DIR) as raw text. Unlike the agent path
 // (internal/host/sysprompt.go), routing does not render the project context
 // through the overlay/@shared template machinery or honour the
 // prompts/_project.md convention — the harness has no prompt renderer wired —

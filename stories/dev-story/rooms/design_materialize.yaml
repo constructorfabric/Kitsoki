@@ -88,7 +88,7 @@ states:
       #     (the sentinel returns an error) on_error silently skips to step 3b
       #     with design_reference_hits left empty. once: keyed off
       #     design_reference_hits.
-      - invoke: host.oracle.search
+      - invoke: host.agent.search
         once: true
         id: reference_search
         with:
@@ -112,7 +112,7 @@ states:
       #     judgment (which hits matter, what sections, why) rather than
       #     scanning the entire repo. Falls back cleanly when hits are empty.
       #     once: keyed off design_references.
-      - invoke: host.oracle.decide
+      - invoke: host.agent.decide
         once: true
         id: references_research
         with:
@@ -158,14 +158,14 @@ states:
       look:
         - target: .
 
-  # Reached when host.oracle.search is unconfigured (sentinel returns error).
+  # Reached when host.agent.search is unconfigured (sentinel returns error).
   # Runs the researcher without semantic hits and advances to design_refine.
   design_materialize_researcher:
     description: "Curating references (no semantic search)."
     view:
       - prose: "Curating references…"
     on_enter:
-      - invoke: host.oracle.decide
+      - invoke: host.agent.decide
         once: true
         id: references_research_no_embed
         with:

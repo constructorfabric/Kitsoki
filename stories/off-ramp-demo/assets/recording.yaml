@@ -5,8 +5,8 @@
 # (the menu is browse/status/about — none of them answer this). `clarify: true`
 # makes the replay harness return a *ClarifyResponse (a deterministic no-match)
 # instead of an intent, which drives the orchestrator's clarify branch — and,
-# because the `desk` room declares `oracle_off_ramp:`, fires the off-ramp:
-# the question is handed to host.oracle.converse (stubbed by
+# because the `desk` room declares `agent_off_ramp:`, fires the off-ramp:
+# the question is handed to host.agent.converse (stubbed by
 # assets/converse-cassette.yaml) and the answer comes back as a ModeOffPath
 # turn. The room stays put; the menu is unchanged next turn.
 #

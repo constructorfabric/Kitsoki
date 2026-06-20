@@ -1,4 +1,4 @@
-# Simulates the "silent failure" mode that bit us live: oracle.decide
+# Simulates the "silent failure" mode that bit us live: agent.decide
 # returns ok=true with submitted == {} (an empty map). This bypasses
 # on_error: review_failed, so without the defensive `when:` guard on
 # reviewing.done the story walks to `reviewed` and renders a verdict
@@ -33,9 +33,9 @@ episodes:
   # The bug: ok=true, but the agent never submitted anything coherent.
   # Empty map fails schema validation in real runs, but a misbehaving
   # cassette / corrupt validator pipeline can still surface this shape.
-  - id: oracle_empty_submit
+  - id: agent_empty_submit
     match:
-      handler: host.oracle.decide
+      handler: host.agent.decide
     response:
       data:
         ok: true

@@ -78,12 +78,12 @@ func (o *Orchestrator) dispatchBackground(
 				}
 				cleanArgs[k] = v
 			}
-			// Install a fresh per-job usage box so a background oracle call's
-			// token usage reaches its OracleReturned.Meta, mirroring the
+			// Install a fresh per-job usage box so a background agent call's
+			// token usage reaches its AgentReturned.Meta, mirroring the
 			// foreground host-dispatch path (host_dispatch.go). jobCtx already
-			// carries the EventSink + OracleCallCtx inherited from the
+			// carries the EventSink + AgentCallCtx inherited from the
 			// dispatch-time context, so the trace write picks the box up.
-			return hosts.Invoke(host.WithOracleUsageBox(jobCtx), namespace, cleanArgs)
+			return hosts.Invoke(host.WithAgentUsageBox(jobCtx), namespace, cleanArgs)
 		},
 	}
 

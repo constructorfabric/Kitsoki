@@ -84,7 +84,7 @@ Rules of thumb:
 
 When NOT to reach for `choice:`:
 
-- Open-ended chat or composition rooms (Oracle Room, free-form
+- Open-ended chat or composition rooms (Agent Room, free-form
   message bodies) — the user is meant to *write* prose, not pick.
 - Background-job execution states where the user has no decision to
   make while a job runs.

@@ -84,7 +84,7 @@ secondary disambiguator.
 | **Result** | **PASS.** |
 
 Already the pattern in
-[`internal/host/oracle_ask_with_mcp.go`](../../../internal/host/oracle_ask_with_mcp.go:546)
+[`internal/host/agent_ask_with_mcp.go`](../../../internal/host/agent_ask_with_mcp.go:546)
 (headless retry loop). Behavioural confirmation: after the first
 `-p --session-id <uuid>` call created the JSONL, four subsequent
 `-p --resume <uuid>` calls succeeded across multiple turns, with
@@ -93,7 +93,7 @@ on any resume.
 
 Inversion check: an attempt to re-use `--session-id` against an
 existing id yields `"Session ID … is already in use"` (noted in
-the existing code comment at `oracle_ask_with_mcp.go:549`).
+the existing code comment at `agent_ask_with_mcp.go:549`).
 
 **Conclusion.** Schema is already correct: `chats.claude_session_id`
 is the persistent identifier; spawn paths choose the flag based
@@ -170,7 +170,7 @@ Notes:
   permissive (a separate, documented default). When `default` is
   passed explicitly, tool use is gated and refused because there
   is no human to prompt. Today's
-  [`oracle_ask_with_mcp.go:569`](../../../internal/host/oracle_ask_with_mcp.go:569)
+  [`agent_ask_with_mcp.go:569`](../../../internal/host/agent_ask_with_mcp.go:569)
   passes `bypassPermissions` explicitly — clear and correct.
 - The JSONL contains a `{"type":"permission-mode","permissionMode":"<value>"}`
   log entry per invocation. This is a record, not a state file:

@@ -9,7 +9,7 @@ package orchestrator_test
 //
 // This is the deterministic, free (no-LLM) validation the conflict-capable
 // intercept proposal calls for: a real `git init` conflict repo + the real
-// host.run registry + the conflict_resolver oracle STUBBED to actually edit the
+// host.run registry + the conflict_resolver agent STUBBED to actually edit the
 // conflicted file (the ImplementingActuallyEditsFiles technique), so
 // `git rebase --continue` really succeeds and the session really lands
 // branch_ops — proving the existing settlePostBindEmits machinery drives the
@@ -37,7 +37,7 @@ import (
 	"kitsoki/internal/store"
 )
 
-// resolvingConflictResolver is the host.oracle.task stub that genuinely
+// resolvingConflictResolver is the host.agent.task stub that genuinely
 // resolves the file.txt conflict setupConflictRepo creates. It edits the
 // working tree only (no git) — exactly the conflict_resolver agent's fence —
 // writing a clean, marker-free file that keeps both sides' lines, then reports
@@ -90,8 +90,8 @@ func TestGitOps_RebaseConflict_ResolvesAndLandsBranchOps(t *testing.T) {
 
 	reg := host.NewRegistry()
 	reg.Register("host.run", host.RunHandler)
-	reg.Register("host.oracle.task", resolvingConflictResolver(repoRoot))
-	reg.Register("host.oracle.decide", resolvingConflictResolver(repoRoot))
+	reg.Register("host.agent.task", resolvingConflictResolver(repoRoot))
+	reg.Register("host.agent.decide", resolvingConflictResolver(repoRoot))
 
 	orch := orchestrator.New(def, m, s, noopHarness{}, orchestrator.WithHostRegistry(reg))
 

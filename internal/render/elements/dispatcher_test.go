@@ -35,7 +35,7 @@ func TestRenderAll_MixedComposition(t *testing.T) {
 			{Kind: "prose", Source: "Welcome to dev-story. What would you like to do today?"},
 			{Kind: "list", Items: []app.ListItem{
 				{Label: "Start a new task", Hint: "jira search"},
-				{Label: "Consult the Oracle", Hint: "general Q&A"},
+				{Label: "Consult the Agent", Hint: "general Q&A"},
 			}},
 			{Kind: "kv", Pairs: goyaml.MapSlice{
 				{Key: "Inbox", Value: "3 unread"},
@@ -52,7 +52,7 @@ func TestRenderAll_MixedComposition(t *testing.T) {
 		"Welcome to dev-story",
 		"Start a new task",
 		"jira search",
-		"Consult the Oracle",
+		"Consult the Agent",
 		"general Q&A",
 		"Inbox:",
 		"3 unread",
@@ -205,16 +205,16 @@ func (fakeExtendsRenderer) RenderExtended(_ string, blocks map[string]string, _ 
 // the 2026-05-20 narrow-hint-column bug. The narrow case has TWO
 // failure modes the list renderer must defend against:
 //
-//   1. Extends-form views falling back to the orchestrator's fixed
-//      blockRenderWidth=80 — fixed by RenderAll's extends branch
-//      pre-rendering at the dispatcher's actual viewport width.
+//  1. Extends-form views falling back to the orchestrator's fixed
+//     blockRenderWidth=80 — fixed by RenderAll's extends branch
+//     pre-rendering at the dispatcher's actual viewport width.
 //
-//   2. A single outlier label setting maxLabel for the whole list
-//      and squeezing every other row's hint column. The list
-//      renderer's max_label cap (minHintWidth floor) now keeps a
-//      49-char mega-label from forcing every other row's hint
-//      column below 40 chars; the outlier row overflows alone
-//      instead.
+//  2. A single outlier label setting maxLabel for the whole list
+//     and squeezing every other row's hint column. The list
+//     renderer's max_label cap (minHintWidth floor) now keeps a
+//     49-char mega-label from forcing every other row's hint
+//     column below 40 chars; the outlier row overflows alone
+//     instead.
 //
 // Post-fix the short-label row's hint must land on one line at any
 // reasonable viewport width — narrow OR wide — because the cap

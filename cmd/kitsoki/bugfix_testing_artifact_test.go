@@ -4,12 +4,12 @@
 // The existing flow fixtures (happy_human, happy_quick_fix, etc.) all stub
 // the transport iface (host.append_to_file), so they never exercise the chain:
 //
-//   host.oracle.task returns ok with Data["submitted"] = full testing artifact
+//   host.agent.task returns ok with Data["submitted"] = full testing artifact
 //     → orchestrator binds `implement_review_artifact: submitted` into world
 //     → on accept: iface.transport.post body: "{{ world.implement_review_artifact.summary_markdown }}"
 //     → host.artifacts_dir pretty-prints the map to a file on disk
 //
-// This test stubs host.local (ci) and host.oracle.task inline (returning a
+// This test stubs host.local (ci) and host.agent.task inline (returning a
 // fully-shaped testing artifact with a recognizable sentinel string), rebinds
 // the transport iface to the real host.artifacts_dir handler, then asserts
 // the file on disk contains the sentinel AND does NOT contain the two known
@@ -46,7 +46,7 @@ func TestBugfix_TestingArtifactRoundTrip(t *testing.T) {
 		t.Fatalf("RunFlows: %v", err)
 	}
 	if report.Failed > 0 {
-			for _, fr := range report.Results {
+		for _, fr := range report.Results {
 			if fr.Passed {
 				continue
 			}

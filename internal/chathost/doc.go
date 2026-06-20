@@ -49,10 +49,10 @@
 //	s, _   := chats.NewStore(db)          // concrete store over SQLite
 //	a      := chathost.NewAdapter(s)      // a is a host.ChatStore
 //
-//	rec, _ := a.Create(ctx, "my-app", "oracle", "", "Test Chat")
+//	rec, _ := a.Create(ctx, "my-app", "agent", "", "Test Chat")
 //	got, _ := a.Get(ctx, rec.ID)
 //
-//	in:  Create(app="my-app", room="oracle", scope="", title="Test Chat")
+//	in:  Create(app="my-app", room="agent", scope="", title="Test Chat")
 //	out: *host.ChatRecord{ ID:"chat_…", Title:"Test Chat", Status:"active", … }
 //	in:  Get(chatID=rec.ID)
 //	out: *host.ChatRecord{ ID:"chat_…" (same id), Title:"Test Chat", … }

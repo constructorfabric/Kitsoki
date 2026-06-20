@@ -11,11 +11,11 @@ edits (`.context/langfuse-trace-viewer-comparison.md`, idea #6). We can do
 strictly more, because of two things Langfuse lacks: our trace is
 **deterministic** and it **carries the effective story**
 (`session.story` embeds the story base64 + hash, replayable byte-identical —
-`internal/store/event.go:193`). That means a recorded oracle call is fully
+`internal/store/event.go:193`). That means a recorded agent call is fully
 reconstructable: its resolved prompt, agent, schema, and world context are
-all in the trace. So we can take a single `oracle.call` and **re-dispatch it
+all in the trace. So we can take a single `agent.call` and **re-dispatch it
 against a different operator** — Claude vs. the local-model sidecar
-(`local-model-oracle.md`) vs. a human — or against an edited prompt, and
+(`local-model-agent.md`) vs. a human — or against an edited prompt, and
 **diff the verdict**. That is the natural, demonstrable UI for the
 pluggable-operator half of the moat (`feedback_kitsoki_moat_is_architecture`):
 "this decider, swapped, would have chosen differently."
@@ -27,7 +27,7 @@ whole story.
 
 One sentence: **add a `kitsoki replay-call` capability (CLI + a
 `runstatus.call.replay` RPC) that, given a recorded `call_id` from a trace,
-reconstructs that single oracle call from the embedded story + recorded
+reconstructs that single agent call from the embedded story + recorded
 inputs and re-dispatches it against a chosen operator (and optionally an
 edited prompt), returning the new verdict for side-by-side diff — with zero
 effect on the original run, world, or machine.**
@@ -40,21 +40,21 @@ machine or writes the story trace.
 
 - **Code seams:**
   - A new isolated single-call dispatch entry point reusing the existing
-    oracle dispatch (`internal/host/oracle_dispatch.go:Dispatch` ~`:314`)
+    agent dispatch (`internal/host/agent_dispatch.go:Dispatch` ~`:314`)
     without the surrounding machine loop — feed it the recorded resolved
     prompt + agent/schema, get back a `Verdict`/response.
   - Prompt/agent/schema reconstruction from the trace: the
-    `oracle.call.start` prompt ref (inline or `prompt_file`) + `attrs.verb` +
+    `agent.call.start` prompt ref (inline or `prompt_file`) + `attrs.verb` +
     `attrs.agent`/`model` give the inputs; the embedded `session.story`
     supplies the schema/agent definitions.
   - `cmd/kitsoki/replay_call.go` (CLI) + a `runstatus.call.replay` JSON-RPC
     method on the runstatus server.
 - **Vocabulary:** no new story-author vocabulary. A new *operator-facing*
   command + RPC; the `--operator claude|local|human` choice routes to an
-  existing oracle backend.
+  existing agent backend.
 - **Stories affected:** none — replay never touches a running story.
 - **Backward compat:** any trace that carries `session.story` +
-  `oracle.call.*` with a prompt ref (the canonical shape since
+  `agent.call.*` with a prompt ref (the canonical shape since
   `runstatus-trace-fidelity.md`) is replayable; older traces missing the
   embedded story or prompt ref are not (graceful "not replayable" message).
 - **Docs on ship:** `docs/architecture/` (pluggable-operator replay),
@@ -71,10 +71,10 @@ machine or writes the story trace.
 
 ```
 recorded trace ──▶ reconstruct ONE call (prompt + agent + schema + world ctx)
-                        │   from oracle.call.start ref + embedded session.story
+                        │   from agent.call.start ref + embedded session.story
                         ▼
                    isolated dispatch  ──operator=claude|local|human──▶ new Verdict
-                        │   (reuses oracle_dispatch.Dispatch; NO machine loop,
+                        │   (reuses agent_dispatch.Dispatch; NO machine loop,
                         │    NO world write, NO trace append to the original run)
                         ▼
                    diff(original Verdict, new Verdict) ──▶ side-by-side
@@ -102,7 +102,7 @@ ephemeral in v1; optionally persist as an annotation once #5 lands.*
 ## Engine seams & invariants
 
 - **Where it hooks:** a new thin caller around the existing
-  `oracle_dispatch.Dispatch` path, bypassing the machine. The hard invariant:
+  `agent_dispatch.Dispatch` path, bypassing the machine. The hard invariant:
   the original session's trace sink is **never** passed to the replay
   dispatch — it writes to a throwaway sink (or none).
 - **Reconstruction completeness invariant:** a call is replayable only if the
@@ -114,7 +114,7 @@ ephemeral in v1; optionally persist as an annotation once #5 lands.*
   recorded model, must reproduce the recorded verdict for a cassette-backed
   call (the operator backend is itself replayed from its cassette). This is
   the test that proves reconstruction is faithful.
-- **Sandbox for `task` verbs.** A `task` oracle can run tools with side
+- **Sandbox for `task` verbs.** A `task` agent can run tools with side
   effects; replaying one must honor the same workspace sandbox the live path
   uses (`task-fs-sandbox.md`). *Lean: v1 restricts replay to
   side-effect-free verbs (`decide`/`ask`/`extract`); `task`/`converse`
@@ -125,11 +125,11 @@ ephemeral in v1; optionally persist as an annotation once #5 lands.*
 - **Default off / explicit invocation.** Replay is an operator action, never
   automatic. No story changes, no behavior change to any run.
 - **Trace requirements.** Canonical traces (post-`runstatus-trace-fidelity.md`)
-  carry `session.story` + `oracle.call.*` with a guaranteed prompt ref, so
+  carry `session.story` + `agent.call.*` with a guaranteed prompt ref, so
   they're replayable. Older/partial traces degrade gracefully to "not
   replayable."
 - **No-cost guarantee for tests.** Replay against the `claude` operator execs
-  the local `claude` CLI (`project_oracle_uses_claude_cli`), and tests must
+  the local `claude` CLI (`project_agent_uses_claude_cli`), and tests must
   not (`feedback_no_llm_tests`): the determinism test replays against a
   **cassette-backed** operator, never a live LLM.
 
@@ -137,8 +137,8 @@ ephemeral in v1; optionally persist as an annotation once #5 lands.*
 
 ```
 ## 1. Engine
-- [ ] 1.1 Reconstruct a single call from a trace (session.story + oracle.call.start ref → prompt+agent+schema+world)
-- [ ] 1.2 Isolated single-call dispatch reusing oracle_dispatch.Dispatch; throwaway sink; NO machine/world/trace write to the original
+- [ ] 1.1 Reconstruct a single call from a trace (session.story + agent.call.start ref → prompt+agent+schema+world)
+- [ ] 1.2 Isolated single-call dispatch reusing agent_dispatch.Dispatch; throwaway sink; NO machine/world/trace write to the original
 - [ ] 1.3 Operator routing (claude | local | human); refuse non-replayable traces with a clear message
 - [ ] 1.4 Restrict v1 to side-effect-free verbs (decide/ask/extract); gate task/converse behind task-fs-sandbox
 
@@ -187,5 +187,5 @@ in CI.
   because those verbs can have side effects.
 - **Auto-comparing operators across a dataset.** Systematically replaying
   many calls against two backends to score them is the
-  `oracle-contract-eval.md` Layer-2 territory; this slice provides the
+  `agent-contract-eval.md` Layer-2 territory; this slice provides the
   single-call primitive it could build on, not the batch eval.

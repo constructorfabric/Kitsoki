@@ -4,12 +4,12 @@
 # first-class and runnable as a kitsoki story. Five phase rooms walk the
 # operator (or an LLM judge, in autonomous mode) through the loop:
 #
-#   mine    → run intent-mining over recent transcripts            (host.oracle.task: miner)
-#   map     → cross-reference the brief's gates vs dev-story's      (host.oracle.task: mapper)
+#   mine    → run intent-mining over recent transcripts            (host.agent.task: miner)
+#   map     → cross-reference the brief's gates vs dev-story's      (host.agent.task: mapper)
 #             existing gate inventory; classify ALREADY / ENRICH / GAP
-#   decide  → rank ENRICH/GAP items, select what to ticket          (host.oracle.ask: ranker + judge gate)
-#   author  → author the gate + a flow fixture; verify flows green  (host.oracle.task: author)
-#   record  → check whether recorded decisions let a gate climb a   (host.oracle.ask: recorder)
+#   decide  → rank ENRICH/GAP items, select what to ticket          (host.agent.ask: ranker + judge gate)
+#   author  → author the gate + a flow fixture; verify flows green  (host.agent.task: author)
+#   record  → check whether recorded decisions let a gate climb a   (host.agent.ask: recorder)
 #             determinism rung (L2→L3→L4)
 #
 # Each room produces a schema-validated artifact in its on_enter (idempotent
@@ -37,22 +37,22 @@ app:
 # Host allow-list.
 hosts:
   - host.run            # mining pipeline, gate-inventory scan, `kitsoki test flows`
-  - host.oracle.task    # agentic producers (miner, mapper, author)
-  - host.oracle.ask     # read-only producers (ranker, recorder)
-  - host.oracle.decide  # the checkpoint judge
+  - host.agent.task    # agentic producers (miner, mapper, author)
+  - host.agent.ask     # read-only producers (ranker, recorder)
+  - host.agent.decide  # the checkpoint judge
 
 # Personas — one class of LLM work each. The verb at every call site matches
 # the persona's declared surface (ask = read-only, task = agentic, decide =
 # typed verdict). Mirrors stories/bugfix's persona table.
 agents:
   miner:
-    system_prompt: "You run the session-mining intent pipeline (tools/session-mining). Distill recent transcripts, run the strict-oracle pass, ground and emit the two linked reports, then summarise the resulting brief: job id, intent count, determinism split. You do not invent numbers — read them from the emitted reports."
+    system_prompt: "You run the session-mining intent pipeline (tools/session-mining). Distill recent transcripts, run the strict-agent pass, ground and emit the two linked reports, then summarise the resulting brief: job id, intent count, determinism split. You do not invent numbers — read them from the emitted reports."
     model: claude-sonnet-4-6
     tools: [Read, Grep, Glob, Bash]
     bash_profile: read-only
     external_side_effect: false
   mapper:
-    system_prompt: "You cross-reference mined decision gates against an existing kitsoki story's gate inventory. Regenerate the inventory by grepping host.oracle.decide / host.oracle.task across the target rooms, cluster the brief's in-scope gates into decision themes, and classify each ALREADY-MODELED / ENRICH / GAP with the home room file path and the brief's validator."
+    system_prompt: "You cross-reference mined decision gates against an existing kitsoki story's gate inventory. Regenerate the inventory by grepping host.agent.decide / host.agent.task across the target rooms, cluster the brief's in-scope gates into decision themes, and classify each ALREADY-MODELED / ENRICH / GAP with the home room file path and the brief's validator."
     model: claude-sonnet-4-6
     tools: [Read, Grep, Glob, Bash]
     bash_profile: read-only
@@ -115,7 +115,7 @@ world:
   record_budget:  { type: int, default: 3 }
 
   # ── Per-room artifacts ─────────────────────────────────────────────────
-  mine_artifact:   { type: object, default: {} }   # { brief_path, intent_count, deterministic, oracle_gated, irreducible, summary_markdown }
+  mine_artifact:   { type: object, default: {} }   # { brief_path, intent_count, deterministic, agent_gated, irreducible, summary_markdown }
   map_artifact:    { type: object, default: {} }   # { themes:[{theme,intents,home_room,status,decider,validator}], summary_markdown }
   decide_artifact: { type: object, default: {} }   # { selected:[{theme,room,gate}], rationale, summary_markdown }
   author_artifact: { type: object, default: {} }   # { files_changed, flows_green, summary_markdown }

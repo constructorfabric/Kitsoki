@@ -1,7 +1,7 @@
 # review_failed — landing state when any host call in
 # reviewing.on_enter errors. Most common cause: the Opus agent
 # abandoned the conversation without calling submit() after
-# `host.oracle.decide`'s internal nudge loop (5 validator retries ×
+# `host.agent.decide`'s internal nudge loop (5 validator retries ×
 # 3 outer --resume iterations) was exhausted. Surfaces the diagnostic
 # instead of silent-bouncing to idle.
 
@@ -10,7 +10,7 @@ states:
   review_failed:
     description: "A host call inside reviewing.on_enter returned an error."
     view:
-      - prose: "Review run failed. Most likely cause: the oracle agent gave up without calling submit(). The handler nudges the agent up to 3 times via --resume before bailing — see internal/host/oracle_decide.go for the loop. Re-run after fixing the underlying cause (e.g. shallow git history, mis-shaped schema, oracle binary missing)."
+      - prose: "Review run failed. Most likely cause: the agent agent gave up without calling submit(). The handler nudges the agent up to 3 times via --resume before bailing — see internal/host/agent_decide.go for the loop. Re-run after fixing the underlying cause (e.g. shallow git history, mis-shaped schema, agent binary missing)."
       - kv:
           pairs:
             "Commit":   '{{ world.commit_sha|default:"(not captured)" }}'

@@ -280,7 +280,7 @@
             {
               "id": "gate",
               "label": "gate \u00b7 checker",
-              "sub": "script (exit 0) or oracle",
+              "sub": "script (exit 0) or agent",
               "lines": [
                 "pass = goal actually met"
               ],
@@ -1033,9 +1033,9 @@
           ]
         }
       ],
-      "caption": "The last gate is different: review is an oracle \u2014 an adversarial judgment, not a script. It can approve the work, or send it back.",
+      "caption": "The last gate is different: review is an agent \u2014 an adversarial judgment, not a script. It can approve the work, or send it back.",
       "hold": 165,
-      "narration": "The final gate is an oracle. Unlike the deterministic gates, review is an adversarial judgment \u2014 it can approve the work, or, when the issue isn't really fixed, send it back to an earlier phase.",
+      "narration": "The final gate is an agent. Unlike the deterministic gates, review is an adversarial judgment \u2014 it can approve the work, or, when the issue isn't really fixed, send it back to an earlier phase.",
       "skipTitle": true,
       "instant": true
     },
@@ -1127,16 +1127,16 @@
             {
               "from": "review",
               "to": "merge",
-              "gate": "oracle \u00b7 approve?",
-              "oracle": true,
+              "gate": "agent \u00b7 approve?",
+              "agent": true,
               "highlighted": true
             }
           ]
         }
       ],
-      "caption": "Three deterministic gates (orange) are scripts \u2014 exact, free, incorruptible. The last gate is an oracle (violet): an adversarial review for what no test can encode. Pass, and it merges.",
+      "caption": "Three deterministic gates (orange) are scripts \u2014 exact, free, incorruptible. The last gate is an agent (violet): an adversarial review for what no test can encode. Pass, and it merges.",
       "hold": 210,
-      "narration": "Most of these gates are deterministic \u2014 scripts that pass or fail exactly, for free. But the final gate is an oracle: an adversarial review, for the quality no test can encode. When it approves, the work merges to main.",
+      "narration": "Most of these gates are deterministic \u2014 scripts that pass or fail exactly, for free. But the final gate is an agent: an adversarial review, for the quality no test can encode. When it approves, the work merges to main.",
       "skipTitle": true,
       "instant": true
     },

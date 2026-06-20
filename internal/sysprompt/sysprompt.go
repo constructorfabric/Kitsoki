@@ -11,18 +11,18 @@ import (
 // system-prompt sections (cwd / git / env / memory) are kept or excluded.
 //
 // The values are stable, lowercase strings so they read cleanly in the trace
-// (the OracleCalled breadcrumb records the verb alongside the layer manifest).
+// (the AgentCalled breadcrumb records the verb alongside the layer manifest).
 type Verb string
 
 const (
 	Route         Verb = "route"          // intent routing (the harness)
-	Ask           Verb = "ask"            // host.oracle.ask
-	Decide        Verb = "decide"         // host.oracle.decide
-	Task          Verb = "task"           // host.oracle.task (agentic, repo-aware)
-	Converse      Verb = "converse"       // host.oracle.converse
-	Extract       Verb = "extract"        // host.oracle.extract
-	AskWithMCP    Verb = "ask_with_mcp"   // host.oracle.ask_with_mcp
-	AskStructured Verb = "ask_structured" // host.oracle.ask_structured
+	Ask           Verb = "ask"            // host.agent.ask
+	Decide        Verb = "decide"         // host.agent.decide
+	Task          Verb = "task"           // host.agent.task (agentic, repo-aware)
+	Converse      Verb = "converse"       // host.agent.converse
+	Extract       Verb = "extract"        // host.agent.extract
+	AskWithMCP    Verb = "ask_with_mcp"   // host.agent.ask_with_mcp
+	AskStructured Verb = "ask_structured" // host.agent.ask_structured
 )
 
 //go:embed templates/kitsoki.md

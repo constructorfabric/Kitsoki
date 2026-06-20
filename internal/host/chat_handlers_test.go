@@ -407,7 +407,7 @@ func TestChatResolveHandler_NoStore(t *testing.T) {
 	t.Parallel()
 	res, err := host.ChatResolveHandler(context.Background(), map[string]any{
 		"app":  "my-app",
-		"room": "oracle",
+		"room": "agent",
 	})
 	if err != nil {
 		t.Fatalf("unexpected Go error: %v", err)
@@ -421,7 +421,7 @@ func TestChatResolveHandler_MissingApp(t *testing.T) {
 	t.Parallel()
 	cs := newFakeChatStore()
 	ctx := host.WithChatStore(context.Background(), cs)
-	res, err := host.ChatResolveHandler(ctx, map[string]any{"room": "oracle"})
+	res, err := host.ChatResolveHandler(ctx, map[string]any{"room": "agent"})
 	if err != nil {
 		t.Fatalf("unexpected Go error: %v", err)
 	}
@@ -436,7 +436,7 @@ func TestChatResolveHandler_NewChat(t *testing.T) {
 	ctx := host.WithChatStore(context.Background(), cs)
 	res, err := host.ChatResolveHandler(ctx, map[string]any{
 		"app":  "dev-story",
-		"room": "oracle",
+		"room": "agent",
 	})
 	if err != nil {
 		t.Fatalf("unexpected Go error: %v", err)
@@ -461,7 +461,7 @@ func TestChatResolveHandler_ExistingChat(t *testing.T) {
 
 	res, err := host.ChatResolveHandler(ctx, map[string]any{
 		"app":  "dev-story",
-		"room": "oracle",
+		"room": "agent",
 	})
 	if err != nil {
 		t.Fatalf("unexpected Go error: %v", err)
@@ -483,7 +483,7 @@ func TestChatListHandler_NoStore(t *testing.T) {
 	t.Parallel()
 	res, err := host.ChatListHandler(context.Background(), map[string]any{
 		"app":  "my-app",
-		"room": "oracle",
+		"room": "agent",
 	})
 	if err != nil {
 		t.Fatalf("unexpected Go error: %v", err)
@@ -499,7 +499,7 @@ func TestChatListHandler_EmptyList(t *testing.T) {
 	ctx := host.WithChatStore(context.Background(), cs)
 	res, err := host.ChatListHandler(ctx, map[string]any{
 		"app":  "dev-story",
-		"room": "oracle",
+		"room": "agent",
 	})
 	if err != nil {
 		t.Fatalf("unexpected Go error: %v", err)
@@ -531,7 +531,7 @@ func TestChatListHandler_OneChat(t *testing.T) {
 	ctx := host.WithChatStore(context.Background(), cs)
 	res, err := host.ChatListHandler(ctx, map[string]any{
 		"app":  "dev-story",
-		"room": "oracle",
+		"room": "agent",
 	})
 	if err != nil {
 		t.Fatalf("unexpected Go error: %v", err)
@@ -561,7 +561,7 @@ func TestChatListHandler_ManyChats(t *testing.T) {
 	ctx := host.WithChatStore(context.Background(), cs)
 	res, err := host.ChatListHandler(ctx, map[string]any{
 		"app":  "dev-story",
-		"room": "oracle",
+		"room": "agent",
 	})
 	if err != nil {
 		t.Fatalf("unexpected Go error: %v", err)
@@ -790,7 +790,7 @@ func TestChatCreateHandler_NoStore(t *testing.T) {
 	t.Parallel()
 	res, err := host.ChatCreateHandler(context.Background(), map[string]any{
 		"app":  "my-app",
-		"room": "oracle",
+		"room": "agent",
 	})
 	if err != nil {
 		t.Fatalf("unexpected Go error: %v", err)
@@ -806,7 +806,7 @@ func TestChatCreateHandler_MissingArgs(t *testing.T) {
 	ctx := host.WithChatStore(context.Background(), cs)
 
 	// Missing app
-	res, err := host.ChatCreateHandler(ctx, map[string]any{"room": "oracle"})
+	res, err := host.ChatCreateHandler(ctx, map[string]any{"room": "agent"})
 	if err != nil {
 		t.Fatalf("unexpected Go error: %v", err)
 	}
@@ -831,7 +831,7 @@ func TestChatCreateHandler_HappyPath(t *testing.T) {
 
 	res, err := host.ChatCreateHandler(ctx, map[string]any{
 		"app":   "dev-story",
-		"room":  "oracle",
+		"room":  "agent",
 		"title": "My new chat",
 	})
 	if err != nil {
@@ -855,7 +855,7 @@ func TestChatCreateHandler_EmptyTitleDefaultsToUntitled(t *testing.T) {
 
 	res, err := host.ChatCreateHandler(ctx, map[string]any{
 		"app":  "dev-story",
-		"room": "oracle",
+		"room": "agent",
 	})
 	if err != nil {
 		t.Fatalf("unexpected Go error: %v", err)
@@ -876,7 +876,7 @@ func TestChatCreateHandler_TitleTruncation(t *testing.T) {
 	long := strings.Repeat("a", 100)
 	res, err := host.ChatCreateHandler(ctx, map[string]any{
 		"app":   "dev-story",
-		"room":  "oracle",
+		"room":  "agent",
 		"title": long,
 	})
 	if err != nil {
@@ -1022,10 +1022,10 @@ func TestChatSuggestTitleHandler_NoMessages(t *testing.T) {
 }
 
 func TestChatSuggestTitleHandler_HappyPath(t *testing.T) {
-	// We still need claude to be resolvable for the resolveOracleBin probe
+	// We still need claude to be resolvable for the resolveAgentBin probe
 	// inside AskStructured's default path, but the askStructuredFunc seam
 	// short-circuits the actual subprocess.
-	t.Setenv(host.OracleBinEnv, "/bin/true")
+	t.Setenv(host.AgentBinEnv, "/bin/true")
 	restore := host.SetAskStructuredForTest(func(_ context.Context, _ host.AskStructuredOptions) (json.RawMessage, error) {
 		return json.RawMessage(`{"title":"ZTA proxy walkthrough"}`), nil
 	})
@@ -1063,7 +1063,7 @@ func TestChatSuggestTitleHandler_HappyPath(t *testing.T) {
 // validator-captured title contains an ANSI escape, sanitizeChatTitle
 // strips it before Rename so the persisted record is TUI-safe.
 func TestChatSuggestTitleHandler_StripsControlChars(t *testing.T) {
-	t.Setenv(host.OracleBinEnv, "/bin/true")
+	t.Setenv(host.AgentBinEnv, "/bin/true")
 	// JSON \u001b decodes to ESC (0x1b); the validator schema accepts
 	// it, so the host-side sanitiser must strip it before Rename.
 	restore := host.SetAskStructuredForTest(func(_ context.Context, _ host.AskStructuredOptions) (json.RawMessage, error) {
@@ -1106,7 +1106,7 @@ func TestChatSuggestTitleHandler_StripsControlChars(t *testing.T) {
 // AskStructured signals no payload (ErrNoValidatedPayload), the handler
 // surfaces the canonical "claude returned empty title" error.
 func TestChatSuggestTitleHandler_EmptyOrWhitespace(t *testing.T) {
-	t.Setenv(host.OracleBinEnv, "/bin/true")
+	t.Setenv(host.AgentBinEnv, "/bin/true")
 	restore := host.SetAskStructuredForTest(func(_ context.Context, _ host.AskStructuredOptions) (json.RawMessage, error) {
 		return nil, host.ErrNoValidatedPayload
 	})
@@ -1140,7 +1140,7 @@ func TestChatSuggestTitleHandler_EmptyOrWhitespace(t *testing.T) {
 // choice value outside [1, len(chats)] is treated as no-pick rather than
 // returning a bogus chat.
 func TestRunChatPicker_OutOfRangeChoice(t *testing.T) {
-	t.Setenv(host.OracleBinEnv, "/bin/true")
+	t.Setenv(host.AgentBinEnv, "/bin/true")
 	restore := host.SetAskStructuredForTest(func(_ context.Context, _ host.AskStructuredOptions) (json.RawMessage, error) {
 		// Both passes return choice=99 (out of range for 2 chats).
 		return json.RawMessage(`{"choice":99,"reasoning":"too high"}`), nil
@@ -1167,7 +1167,7 @@ func TestRunChatPicker_OutOfRangeChoice(t *testing.T) {
 // validator payload with an out-of-range choice (99 against a 2-chat list)
 // is gracefully rejected with the standard "no chat matches" error.
 func TestChatResolveRefHandler_DeepRejectsOutOfRange(t *testing.T) {
-	t.Setenv(host.OracleBinEnv, "/bin/true")
+	t.Setenv(host.AgentBinEnv, "/bin/true")
 	restore := host.SetAskStructuredForTest(func(_ context.Context, _ host.AskStructuredOptions) (json.RawMessage, error) {
 		return json.RawMessage(`{"choice":99,"reasoning":"found it"}`), nil
 	})
@@ -1372,7 +1372,7 @@ func TestChatResolveRefHandler_EmptyList(t *testing.T) {
 // resolvable so llmPickChat's binary-availability probe succeeds.
 func resolveRefLLMSetup(t *testing.T) {
 	t.Helper()
-	t.Setenv(host.OracleBinEnv, "/bin/true")
+	t.Setenv(host.AgentBinEnv, "/bin/true")
 	restore := host.SetAskStructuredForTest(func(_ context.Context, opts host.AskStructuredOptions) (json.RawMessage, error) {
 		isDeep := strings.Contains(opts.Prompt, "by reading the transcripts")
 		switch {
@@ -1475,10 +1475,10 @@ func TestChatResolveRefHandler_SkipLLM(t *testing.T) {
 }
 
 func TestChatResolveRefHandler_LLMUnavailable(t *testing.T) {
-	// No KITSOKI_ORACLE_CLAUDE_BIN, no claude on PATH (or whatever PATH yields)
+	// No KITSOKI_AGENT_CLAUDE_BIN, no claude on PATH (or whatever PATH yields)
 	// → llmPickChat returns (nil, "", "", nil) and we surface a no-match error.
 	// t.Setenv with empty value clears + restores cleanly via Cleanup.
-	t.Setenv(host.OracleBinEnv, "")
+	t.Setenv(host.AgentBinEnv, "")
 	t.Setenv("PATH", "/nonexistent")
 
 	cs := newFakeChatStore()
@@ -1543,7 +1543,7 @@ func TestBuildDeepPickPrompt_EmptyRole(t *testing.T) {
 // always answers null, then assert the captured prompt has the ref wrapped
 // in <user_query> tags and the embedded `</user_query>` has been HTML-escaped.
 func TestChatResolveRefHandler_PromptInjection_Deterministic(t *testing.T) {
-	t.Setenv(host.OracleBinEnv, "/bin/true")
+	t.Setenv(host.AgentBinEnv, "/bin/true")
 	var captured string
 	restore := host.SetAskStructuredForTest(func(_ context.Context, opts host.AskStructuredOptions) (json.RawMessage, error) {
 		captured = opts.Prompt
@@ -1608,7 +1608,7 @@ func TestChatResolveHandler_RealStore_NewVsExisting(t *testing.T) {
 
 	res1, err := host.ChatResolveHandler(ctx, map[string]any{
 		"app":  "dev-story",
-		"room": "oracle",
+		"room": "agent",
 	})
 	if err != nil {
 		t.Fatalf("first Resolve: %v", err)
@@ -1627,7 +1627,7 @@ func TestChatResolveHandler_RealStore_NewVsExisting(t *testing.T) {
 	// Second call with same args: existing chat.
 	res2, err := host.ChatResolveHandler(ctx, map[string]any{
 		"app":  "dev-story",
-		"room": "oracle",
+		"room": "agent",
 	})
 	if err != nil {
 		t.Fatalf("second Resolve: %v", err)
@@ -1643,7 +1643,7 @@ func TestChatResolveHandler_RealStore_NewVsExisting(t *testing.T) {
 	// actually filtering by scope_key, not just app+room).
 	res3, err := host.ChatResolveHandler(ctx, map[string]any{
 		"app":       "dev-story",
-		"room":      "oracle",
+		"room":      "agent",
 		"scope_key": "PROJ-1",
 	})
 	if err != nil {

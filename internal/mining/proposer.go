@@ -7,8 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"kitsoki/internal/agent"
 	"kitsoki/internal/app"
-	"kitsoki/internal/oracle"
 	"kitsoki/internal/store"
 )
 
@@ -42,7 +42,7 @@ func RungFor(kind DeltaKind, needsRoom bool) int {
 // StageRoot and appends a MiningProposalRaised record via the injected sink.
 type Proposer struct {
 	// PriorityThreshold gates which recipes are acted on (recipes below it are
-	// skipped before any oracle pass). Mirrors mining.priority_threshold.
+	// skipped before any agent pass). Mirrors mining.priority_threshold.
 	PriorityThreshold float64
 	// Mapper is the dedup seam (dev-story-mining mapper persona in production).
 	Mapper Mapper
@@ -124,7 +124,7 @@ func (p *Proposer) Propose(ctx context.Context, recipe Recipe, inventory []Inven
 
 	// Validate the author_artifact against the schema BEFORE surfacing.
 	if len(p.AuthorSchema) > 0 {
-		if verr := oracle.ValidateSubmission(p.AuthorSchema, draft.Artifact); verr != nil {
+		if verr := agent.ValidateSubmission(p.AuthorSchema, draft.Artifact); verr != nil {
 			return nil, fmt.Errorf("mining: author_artifact failed schema for recipe %q: %w", recipe.ID, verr)
 		}
 	}

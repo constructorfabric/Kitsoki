@@ -3,8 +3,8 @@ package server
 // turn_stream.go — the POST /rpc/turn-stream SSE handler.
 //
 // The normal turn RPCs (session.turn / session.submit / session.continue /
-// session.offpath) block until the LLM finishes — 30–120s for a typical oracle
-// call. This endpoint streams oracle events in real time as text/event-stream
+// session.offpath) block until the LLM finishes — 30–120s for a typical agent
+// call. This endpoint streams agent events in real time as text/event-stream
 // so the browser sees live progress instead of a frozen UI.
 //
 // Protocol:

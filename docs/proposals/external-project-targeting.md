@@ -165,5 +165,5 @@ mechanics are in [`kitsoki-as-dependency.md`](kitsoki-as-dependency.md) slice 3.
   not supersede them.
 - A generic ticket abstraction beyond GitHub issues (Jira/Linear/etc.) —
   only the `gh` adapter is in scope; the interface seam leaves room for more.
-- Real-LLM tests — every slice is exercised with mock oracles / flows
+- Real-LLM tests — every slice is exercised with mock agents / flows
   (CLAUDE.md).

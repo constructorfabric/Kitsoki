@@ -42,7 +42,7 @@ states:
             Summary: '{{ world.implement_review_artifact.summary_title|default:"(pending)" }}'
             Status:  '{{ world.implement_review_artifact.status|default:"(pending)" }}'
       - heading: "Artifact"
-      - code: '{{ world.implement_review_artifact.summary_markdown|default:"(pending — oracle has not returned yet)" }}'
+      - code: '{{ world.implement_review_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
       - choice:
           mode: single
           prompt: "Actions"
@@ -106,18 +106,18 @@ states:
         on_error: idle
 
       # Produce the structured testing artifact from the run output.
-      # `working_dir` pins the oracle (and its MCP filesystem tools) to
-      # the bugfix worktree — without it, any grep/read the oracle runs
+      # `working_dir` pins the agent (and its MCP filesystem tools) to
+      # the bugfix worktree — without it, any grep/read the agent runs
       # to verify the fix lands on the wrong tree (kitsoki's cwd = main,
       # where the fix never lives).
       # `once: true` for reload-safety: keyed off its own bind
       # (implement_review_artifact), so /reload (or self/on_error
       # re-entry) re-renders the stored review without re-running the
-      # oracle. NOTE: iface.ci.run_tests above is intentionally NOT
+      # agent. NOTE: iface.ci.run_tests above is intentionally NOT
       # once: — ci_log is shared scratch, not a phase artifact. The
       # refine + restart_from arms below clear implement_review_artifact
       # to re-arm a fresh run.
-      - invoke: host.oracle.task
+      - invoke: host.agent.task
         once: true
         with:
           agent: test_author
@@ -139,7 +139,7 @@ states:
         on_error: idle
 
       - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
-        invoke: host.oracle.decide
+        invoke: host.agent.decide
         with:
           agent: judge
           prompt: prompts/judge_testing.md
@@ -186,7 +186,7 @@ states:
                 implementing_cycle: "{{ world.implementing_cycle + 1 }}"
                 cycle:              "{{ world.cycle + 1 }}"
                 # Re-enter implementing for a fresh re-apply: clear its
-                # once: bind so the implementer oracle runs again.
+                # once: bind so the implementer agent runs again.
                 implement_artifact: {}
 
         # passed (or legacy/missing status) — post and advance. The
@@ -231,7 +231,7 @@ states:
                 refine_feedback:           "{{ slots.feedback ?? world.llm_verdict.reason }}"
                 testing_cycle:             "{{ world.testing_cycle + 1 }}"
                 cycle:                     "{{ world.cycle + 1 }}"
-                # Clear the once: bind so on_enter re-runs the oracle.
+                # Clear the once: bind so on_enter re-runs the agent.
                 implement_review_artifact: {}
 
       restart_from:

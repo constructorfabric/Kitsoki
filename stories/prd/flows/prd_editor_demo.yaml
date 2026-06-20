@@ -23,11 +23,11 @@ host_handlers:
   # NOTE: host.ide.* and host.artifacts_dir are intentionally NOT stubbed.
   host.chat.resolve:
     data: { ok: true, chat_id: "chat-1", title: "PRD idea discovery", is_new: true }
-  host.oracle.converse:
+  host.agent.converse:
     data: { ok: true, answer: "A notes service so every note ties to the work it belongs to.", chat_id: "chat-1", claude_session_id: "sess-1" }
-  host.oracle.search:
+  host.agent.search:
     data: { hits: [] }
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:
@@ -54,7 +54,7 @@ host_handlers:
           ok: true
           exit_code: 0
           stdout_json: { prd_file: "docs/prd/notes-service.md" }
-  host.oracle.task:
+  host.agent.task:
     by_call:
       # First draft (drafting on_enter, id: prd_author) — the full PRD body.
       prd_author:

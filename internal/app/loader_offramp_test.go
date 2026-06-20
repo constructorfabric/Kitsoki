@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestOffRamp_BareScalar asserts the bare `oracle_off_ramp: true` form loads
+// TestOffRamp_BareScalar asserts the bare `agent_off_ramp: true` form loads
 // onto an enabled, voiceless OffRampDef (the off-path voice is adopted at
 // runtime).
 func TestOffRamp_BareScalar(t *testing.T) {
@@ -21,17 +21,17 @@ root: idea
 states:
   idea:
     view: "Tell me about the idea you want to explore."
-    oracle_off_ramp: true
+    agent_off_ramp: true
     on:
       look: [{ target: idea }]
 `
 	def, err := LoadBytes([]byte(yaml))
 	require.NoError(t, err)
 	st := def.States["idea"]
-	require.NotNil(t, st.OracleOffRamp, "bare true should yield an enabled off-ramp")
-	require.True(t, st.OracleOffRamp.Enabled())
-	require.Equal(t, "", st.OracleOffRamp.Agent)
-	require.Equal(t, "", st.OracleOffRamp.Persona)
+	require.NotNil(t, st.AgentOffRamp, "bare true should yield an enabled off-ramp")
+	require.True(t, st.AgentOffRamp.Enabled())
+	require.Equal(t, "", st.AgentOffRamp.Agent)
+	require.Equal(t, "", st.AgentOffRamp.Persona)
 }
 
 // TestOffRamp_StructForm asserts the {agent, persona, banner} mapping form
@@ -47,7 +47,7 @@ root: discovery
 states:
   discovery:
     view: "..."
-    oracle_off_ramp:
+    agent_off_ramp:
       agent: discovery-guide
       banner: "(thinking it through)"
     on:
@@ -59,14 +59,14 @@ agents:
 	def, err := LoadBytes([]byte(yaml))
 	require.NoError(t, err)
 	st := def.States["discovery"]
-	require.NotNil(t, st.OracleOffRamp)
-	require.True(t, st.OracleOffRamp.Enabled())
-	require.Equal(t, "discovery-guide", st.OracleOffRamp.Agent)
-	require.Equal(t, "(thinking it through)", st.OracleOffRamp.Banner)
+	require.NotNil(t, st.AgentOffRamp)
+	require.True(t, st.AgentOffRamp.Enabled())
+	require.Equal(t, "discovery-guide", st.AgentOffRamp.Agent)
+	require.Equal(t, "(thinking it through)", st.AgentOffRamp.Banner)
 }
 
 // TestOffRamp_FalseScalarNormalizesToNil asserts that an explicit
-// `oracle_off_ramp: false` is normalized to a nil pointer so the runtime sees
+// `agent_off_ramp: false` is normalized to a nil pointer so the runtime sees
 // no off-ramp (byte-identical to omitting the key).
 func TestOffRamp_FalseScalarNormalizesToNil(t *testing.T) {
 	yaml := `app:
@@ -79,13 +79,13 @@ root: idea
 states:
   idea:
     view: "..."
-    oracle_off_ramp: false
+    agent_off_ramp: false
     on:
       look: [{ target: idea }]
 `
 	def, err := LoadBytes([]byte(yaml))
 	require.NoError(t, err)
-	require.Nil(t, def.States["idea"].OracleOffRamp,
+	require.Nil(t, def.States["idea"].AgentOffRamp,
 		"explicit false must normalize to a nil pointer")
 }
 
@@ -106,7 +106,7 @@ states:
 `
 	def, err := LoadBytes([]byte(yaml))
 	require.NoError(t, err)
-	require.Nil(t, def.States["idea"].OracleOffRamp)
+	require.Nil(t, def.States["idea"].AgentOffRamp)
 }
 
 // TestOffRamp_RejectedOnTerminalState asserts the load-time invariant: an
@@ -127,7 +127,7 @@ states:
   done:
     view: "the end"
     terminal: true
-    oracle_off_ramp: true
+    agent_off_ramp: true
 `
 	_, err := LoadBytes([]byte(yaml))
 	require.Error(t, err)
@@ -149,7 +149,7 @@ states:
   chat:
     view: "let's talk"
     mode: conversational
-    oracle_off_ramp: true
+    agent_off_ramp: true
     on:
       look: [{ target: chat }]
 `
@@ -173,7 +173,7 @@ root: idea
 states:
   idea:
     view: "..."
-    oracle_off_ramp:
+    agent_off_ramp:
       agent: nonexistent-guide
     on:
       look: [{ target: idea }]
@@ -181,7 +181,7 @@ states:
 	_, err := LoadBytes([]byte(yaml))
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "nonexistent-guide")
-	require.Contains(t, err.Error(), "oracle_off_ramp.agent")
+	require.Contains(t, err.Error(), "agent_off_ramp.agent")
 }
 
 // TestOffRamp_UnknownKeyRejected asserts the struct form is strict: an
@@ -198,7 +198,7 @@ root: idea
 states:
   idea:
     view: "..."
-    oracle_off_ramp:
+    agent_off_ramp:
       trigger: help
     on:
       look: [{ target: idea }]
@@ -206,7 +206,7 @@ states:
 	_, err := LoadBytes([]byte(yaml))
 	require.Error(t, err)
 	require.True(t,
-		strings.Contains(err.Error(), "oracle_off_ramp") ||
+		strings.Contains(err.Error(), "agent_off_ramp") ||
 			strings.Contains(err.Error(), "trigger"),
 		"a stray off-path-only key on the off-ramp must fail the load, got: %v", err)
 }

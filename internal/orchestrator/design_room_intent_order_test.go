@@ -17,7 +17,7 @@ package orchestrator_test
 //     Any rename or type change here breaks the InputBar's text binding
 //     without a compile error.
 //
-// No LLM calls are made: the oracle is stubbed; AllowedIntents + LookupIntent
+// No LLM calls are made: the agent is stubbed; AllowedIntents + LookupIntent
 // are pure machine queries against the loaded YAML.
 
 import (
@@ -63,7 +63,7 @@ func setupDevStoryRepo(t *testing.T) string {
 
 // newDevStoryOrchestrator loads the dev-story app and returns a minimal
 // orchestrator suitable for query-only tests (AllowedIntents, LookupIntent).
-// The oracle is stubbed so no LLM costs are incurred.
+// The agent is stubbed so no LLM costs are incurred.
 func newDevStoryOrchestrator(t *testing.T, appPath string) (*orchestrator.Orchestrator, app.SessionID) {
 	t.Helper()
 
@@ -77,20 +77,20 @@ func newDevStoryOrchestrator(t *testing.T, appPath string) (*orchestrator.Orches
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close() })
 
-	// Stub every oracle verb — none are called in these tests, but the
+	// Stub every agent verb — none are called in these tests, but the
 	// registry panics on an unknown host if one is dispatched unexpectedly.
 	reg := host.NewRegistry()
-	oracleStub := func(_ context.Context, _ map[string]any) (host.Result, error) {
+	agentStub := func(_ context.Context, _ map[string]any) (host.Result, error) {
 		return host.Result{Data: map[string]any{"ok": true}}, nil
 	}
-	reg.Register("host.oracle.ask_with_mcp", oracleStub)
-	reg.Register("host.oracle.task", oracleStub)
-	reg.Register("host.oracle.ask", oracleStub)
-	reg.Register("host.oracle.decide", oracleStub)
-	reg.Register("host.run", oracleStub)
-	reg.Register("host.inbox.add", oracleStub)
-	reg.Register("host.artifacts_dir", oracleStub)
-	reg.Register("host.ide.open_file", oracleStub)
+	reg.Register("host.agent.ask_with_mcp", agentStub)
+	reg.Register("host.agent.task", agentStub)
+	reg.Register("host.agent.ask", agentStub)
+	reg.Register("host.agent.decide", agentStub)
+	reg.Register("host.run", agentStub)
+	reg.Register("host.inbox.add", agentStub)
+	reg.Register("host.artifacts_dir", agentStub)
+	reg.Register("host.ide.open_file", agentStub)
 
 	orch := orchestrator.New(def, m, s, noopHarness{}, orchestrator.WithHostRegistry(reg))
 

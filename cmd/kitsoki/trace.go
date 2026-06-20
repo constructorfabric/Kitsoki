@@ -152,8 +152,8 @@ func prettyEventLine(rec eventRecord, extra map[string]any) string {
 			" " + formatKV(extra, rec.StatePath)
 		sb.WriteString(line)
 
-	case strings.HasPrefix(msg, "oracle.ask"), strings.HasPrefix(msg, "oracle.call"), strings.HasPrefix(msg, "oracle.off_path"):
-		sb.WriteString("  " + styleFor("ORACLE", colorHarness) +
+	case strings.HasPrefix(msg, "agent.ask"), strings.HasPrefix(msg, "agent.call"), strings.HasPrefix(msg, "agent.off_path"):
+		sb.WriteString("  " + styleFor("AGENT", colorHarness) +
 			" " + msg +
 			" " + formatKV(extra, ""))
 
@@ -278,7 +278,7 @@ type digestTurn struct {
 
 // digestTurns groups a trace by turn and prints a compact per-turn narrative:
 // the operator input, which routing tier resolved it (and why), the host calls
-// fired, the PROMPT each oracle verb dispatched (the source of truth for what
+// fired, the PROMPT each agent verb dispatched (the source of truth for what
 // the model saw — truncated), any editor context captured, on_error redirects,
 // errors, and the outcome. This is the "what actually happened to my turn" view
 // you otherwise reconstruct by hand with grep+jq.
@@ -333,7 +333,7 @@ func digestTurns(r io.Reader, w io.Writer, focusTurn int) error {
 			if ns := str(p["namespace"]); ns != "" {
 				d.hostCalls = appendUniq(d.hostCalls, ns)
 			}
-		case rec.Kind == "oracle.call.start":
+		case rec.Kind == "agent.call.start":
 			// Store the full prompt; truncation is a render-time concern so
 			// --turn focus can show it whole.
 			d.prompts = append(d.prompts, str(p["verb"])+": "+str(p["prompt"]))
@@ -490,7 +490,7 @@ VIEWS:
   (default)   the raw event stream, one line per store.Event, colour-coded.
   --turns     a compact per-TURN digest: operator input, which routing tier
               resolved it (and WHY — routed_by/match_type), the host calls
-              fired, the PROMPT each oracle verb dispatched (the source of
+              fired, the PROMPT each agent verb dispatched (the source of
               truth for what the model actually saw), editor context
               (ide.context_captured), on_error redirects, errors, and the
               outcome. Use this first when a turn RAN but did the wrong thing
@@ -502,7 +502,7 @@ EXAMPLES:
   kitsoki trace --turns 7ca57b33               # a specific session by id prefix
   kitsoki trace --turn 3 --app kitsoki-dev     # turn 3 with the full dispatched prompt
   kitsoki trace                                # raw stream of the newest session
-  jq 'select(.kind=="oracle.call.start").payload.prompt' <file>   # ad-hoc`,
+  jq 'select(.kind=="agent.call.start").payload.prompt' <file>   # ad-hoc`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			arg := ""
@@ -570,7 +570,7 @@ func traceToFlowCmd() *cobra.Command {
 Each machine.transition in the trace becomes one flow turn (intent name +
 resolved slots, verbatim, in order). Each recorded host.* call becomes one
 host-cassette episode, in trace order, matched on handler — so per-call-varying
-oracle/host responses (e.g. five distinct host.oracle.converse replies) replay
+agent/host responses (e.g. five distinct host.agent.converse replies) replay
 in sequence.
 
 No expect_state / expect_world is emitted on the turns: a trace recorded against

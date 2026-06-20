@@ -46,7 +46,7 @@ states:
           items:
             - { label: "rebase",          hint: "rebase onto {{ world.integration_branch }}",                  intent: rebase }
             - { label: "stage",           hint: "classify and stage working-tree changes",                    intent: stage }
-            - { label: "commit",          hint: "oracle-authored commit message",                             intent: commit }
+            - { label: "commit",          hint: "agent-authored commit message",                             intent: commit }
             - { label: "squash",          hint: "squash branch commits into one",                             intent: squash }
             - label: "merge_into_main"
               hint:  "merge this branch into {{ world.integration_branch }} (rebase first)"

@@ -10,7 +10,7 @@ import (
 )
 
 // minimalStory is the smallest manifest app.Load accepts: app id/version, a
-// root, and one state. No agents/host/oracle references so the load is pure.
+// root, and one state. No agents/host/agent references so the load is pure.
 const minimalStory = `app:
   id: %s
   version: 0.1.0

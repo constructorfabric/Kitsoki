@@ -26,14 +26,14 @@ host_handlers:
   host.artifacts_dir:
     data: { ok: true, path: ".artifacts/prd_brief.md", message_id: "prd_brief#1" }
   # references on_enter runs the optional semantic pre-seed; empty hits = no embeddings.
-  host.oracle.search:
+  host.agent.search:
     data: { hits: [] }
-  host.oracle.decide:
+  host.agent.decide:
     # The researcher decide fails → references' on_error: brief steps back.
     # by_call keys the failure on the invoke id (references_research).
     by_call:
       references_research:
-        error: "host.oracle.decide: researcher session abandoned without successful submit"
+        error: "host.agent.decide: researcher session abandoned without successful submit"
 
 turns:
   # brief.confirm → references; the on_enter researcher decide fails →
@@ -42,7 +42,7 @@ turns:
   - intent: { name: confirm, slots: {} }
     expect_state: brief
     expect_world:
-      last_error: "host.oracle.decide: researcher session abandoned without successful submit"
+      last_error: "host.agent.decide: researcher session abandoned without successful submit"
 
   # The operator bails from brief — the abandon trail records WHERE.
   - intent: { name: quit, slots: {} }

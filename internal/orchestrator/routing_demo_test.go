@@ -6,7 +6,7 @@
 //
 // The harness is a sentinel (`look`, a harmless no-op valid in every room): if
 // the router ever MISSES and falls through to the main-turn LLM, the turn lands
-// on `look` and the tier assertions fail. The fake oracle.local returns a
+// on `look` and the tier assertions fail. The fake agent.local returns a
 // verdict the deterministic tier would NOT produce, so a local-tier pass proves
 // the model decided rather than a synonym.
 package orchestrator_test
@@ -17,9 +17,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"kitsoki/internal/agent"
 	"kitsoki/internal/app"
 	"kitsoki/internal/machine"
-	"kitsoki/internal/oracle"
 	"kitsoki/internal/orchestrator"
 	"kitsoki/internal/store"
 )
@@ -36,14 +36,14 @@ func TestRoutingDemo_AllTiers(t *testing.T) {
 
 	// Fake local model: always answers read_email. The deterministic tier could
 	// never produce that for an umbrella query, so routing to read_email proves
-	// the local tier (oracle.local) decided.
-	reg := oracle.NewRegistry()
-	reg.Register("oracle.local", &stubRoutingOracle{submission: `{"intent":"read_email","confidence":0.95}`})
+	// the local tier (agent.local) decided.
+	reg := agent.NewRegistry()
+	reg.Register("agent.local", &stubRoutingAgent{submission: `{"intent":"read_email","confidence":0.95}`})
 
 	// Sentinel harness: a router miss falls through to `look` (no-op), which
 	// changes neither last_action nor the room — so any missed tier fails below.
 	h := &staticHarness{intentName: "look"}
-	orch := orchestrator.New(def, m, s, h, orchestrator.WithOracleRegistry(reg))
+	orch := orchestrator.New(def, m, s, h, orchestrator.WithAgentRegistry(reg))
 
 	ctx := context.Background()
 	sid, err := orch.NewSession(ctx)
@@ -84,12 +84,12 @@ func TestRoutingDemo_AllTiers(t *testing.T) {
 	route("back")
 	require.Equal(t, app.StatePath("hub"), state())
 
-	// ── TIER 4: a paraphrase misses deterministic → oracle.local decides ──
+	// ── TIER 4: a paraphrase misses deterministic → agent.local decides ──
 	route("local model")
 	require.Equal(t, app.StatePath("local_model"), state())
 	route("should I bring an umbrella today")
 	require.Equal(t, "read_email (via local model)", world()["last_action"],
-		"a paraphrase must be routed by oracle.local (which we stubbed to read_email), not by a synonym")
+		"a paraphrase must be routed by agent.local (which we stubbed to read_email), not by a synonym")
 
 	route("back")
 	require.Equal(t, app.StatePath("hub"), state())

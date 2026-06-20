@@ -22,12 +22,12 @@ testdata/apps/cloak/
 │   └── losing.yaml
 ├── intents/
 │   └── go_intents.yaml  Mode 1 intent-recognition fixtures (optional)
-└── prompts/             optional — Markdown prompt templates for host.oracle.ask
+└── prompts/             optional — Markdown prompt templates for host.agent.ask
     └── shell_repair.md
 ```
 
 Kitsoki reads only the YAMLs. Markdown prompts under `prompts/` are
-referenced by `host.oracle.ask` via relative path. Anything else is
+referenced by `host.agent.ask` via relative path. Anything else is
 your test/documentation infrastructure.
 
 ---
@@ -226,7 +226,7 @@ states:
 
 ### 5.4 LLM-backed effect
 
-`host.oracle.ask` runs `claude -p` against a prompt template file with
+`host.agent.ask` runs `claude -p` against a prompt template file with
 templated `{{ args.X }}` placeholders; bind `stdout` back into world.
 Full contract and the `ask_with_mcp` / `talk` variants in
 [`hosts.md`](../architecture/hosts.md). End-to-end worked example (shell-repair) in
@@ -473,9 +473,9 @@ its rows. Calibrate the synonym library with
 
 ---
 
-## 6.2 host.oracle.extract — tiered resolver for effects
+## 6.2 host.agent.extract — tiered resolver for effects
 
-`host.oracle.extract` solves a different problem than transport-level
+`host.agent.extract` solves a different problem than transport-level
 routing: it resolves *any* free-text field inside an effect into a
 typed payload. Use it when a state transition needs to extract a
 structured value from something the user typed, from a file, or from
@@ -483,7 +483,7 @@ a background tool output.
 
 ```yaml
 effects:
-  - invoke: host.oracle.extract
+  - invoke: host.agent.extract
     with:
       input: "{{ world.user_input }}"
       schema: ./schemas/direction.json
@@ -551,7 +551,7 @@ tier. Add it to your synonyms file to shrink the LLM dependency.
 | `kitsoki run --warp <path>` | Boot the TUI directly into a primed mid-game state from a YAML "warp basis". See [`imports.md`](imports.md#operator-tooling-warp-and---warp). |
 | In-TUI `/warp` | Slash command equivalent. `/warp <state> world.X=Y` for inline; `/warp file:<path>` to load a basis. |
 | `kitsoki docs apply-proposal` | LLM-facing guide for "implement this prose proposal against `app.yaml`". |
-| `kitsoki extract suggest-synonym <session-id> <call-id>` | Propose a synonym entry from a recorded LLM-tier `host.oracle.extract` call. |
+| `kitsoki extract suggest-synonym <session-id> <call-id>` | Propose a synonym entry from a recorded LLM-tier `host.agent.extract` call. |
 | In-TUI `Edit mode` | Hot-reload editing — see [`developer-guide.md` §8](../architecture/developer-guide.md#8-hot-reload-edit-mode). |
 
 `kitsoki render` is one-way: the Markdown never feeds back into the
@@ -585,7 +585,7 @@ engine. Re-run after every change to keep `APP.md` in sync.
 ## 9. Choosing tool profiles for agents
 
 When an agent declares `Bash` in its `tools:` list and is used with
-`host.oracle.ask` or `host.oracle.decide`, you must also supply a
+`host.agent.ask` or `host.agent.decide`, you must also supply a
 `bash_profile:`. Pick the profile that gives the LLM exactly the
 capability it needs — no more.
 
@@ -634,7 +634,7 @@ agents:
       sandboxed_write: ""   # empty → system TempDir; or supply a base path
 ```
 
-For `host.oracle.task` and `host.oracle.converse`, `bash_profile` is
+For `host.agent.task` and `host.agent.converse`, `bash_profile` is
 not consulted — those verbs allow unrestricted Bash by design; the
 blast-radius contract comes from the explicit `agent:` declaration and
 the `external_side_effect:` field.

@@ -18,7 +18,7 @@ proposal surface that renders the result or the rung-ladder targets it writes to
 
 ```
  scored recipe (priority ≥ threshold)        instance inventory (regenerated:
-   from the ambient miner                       grep host.oracle.* + intents:)
+   from the ambient miner                       grep host.agent.* + intents:)
             │                                          │
             └──────────────┬───────────────────────────┘
                            ▼
@@ -69,12 +69,12 @@ engine-side and replayable.
 `Proposer.Propose(recipe, inventory, sink)` runs, in order:
 
 1. **Threshold gate** — recipes below `PriorityThreshold` short-circuit before
-   any oracle pass (the mapper is never called).
+   any agent pass (the mapper is never called).
 2. **Dedup** — the injected `Mapper` classifies the recipe against the
    **regenerated** inventory (`ALREADY-MODELED` is dropped; `ENRICH` / `GAP`
    proceed). The dedup invariant is the mapper's "regenerate the inventory,
    never from a cache" rule made load-bearing: the inventory is grepped from the
-   live tree (`host.oracle.*` call sites + the `intents:` block) every pass.
+   live tree (`host.agent.*` call sites + the `intents:` block) every pass.
 3. **Rung choice** — `RungFor(kind, needsRoom)` picks the lightest rung the kind
    fits (see [Rung ladder](#rung-ladder)).
 4. **Draft** — the injected `Drafter` (the dev-story-mining `author` persona in
@@ -168,13 +168,13 @@ wrapper, a config block), never a new analyzer.
         │                          │     └─ no  → skip seed
         │                          │
  a landed background job ──▶ Miner.Notify(ctx) ──▶ debounce(cadence)
- (dispatched host.oracle.task)                          │
+ (dispatched host.agent.task)                          │
                                                         ▼  LIVE pass over NEW transcripts
                                                            (prep.py --keep-agent-sessions)
         ┌───────────────────────────────────────────────┴──────────────┐
         │  one Scheduler.Submit per pass  (Kind:"mine", detached ctx)    │
         │  PipelineRunner: prep.py → intents.workflow.js (THE ONE        │
-        │  ORACLE PASS, cassette-backed) → ground/tag_score/emit         │
+        │  AGENT PASS, cassette-backed) → ground/tag_score/emit         │
         └───────────────────────────────────────────────┬──────────────┘
                                                          │ COMPLETED pass only:
                                                          ▼  advance mined_through[slug]
@@ -199,14 +199,14 @@ Three deterministic, no-LLM pieces, each a DI seam:
 - **The `PipelineRunner` seam (`pipeline.go`)** — wraps the stateless steps.
   `ExecPipelineRunner` shells `prep.py → intents.workflow.js → ground/tag_score/
   emit` and parses `analysis.json` into recipes; the single interpretive step
-  (`intents.workflow.js`) is isolated behind `OracleCmd` so a dogfood run swaps
+  (`intents.workflow.js`) is isolated behind `AgentCmd` so a dogfood run swaps
   the real `node` call for a cassette without touching the deterministic tail.
   Tests inject a fake runner — **no test path ever spends LLM**.
 
 **Seed vs live is a `cli`-vs-`sdk` distinction, not just a cadence change.** The
 free-form agent's own turns land as Claude Code transcripts stamped
 `entrypoint=sdk`, which `prep.py` drops by default as self-cannibalism. The
-**live** pass passes `--keep-agent-sessions` (those dispatched `host.oracle.task`
+**live** pass passes `--keep-agent-sessions` (those dispatched `host.agent.task`
 turns *are* what work happened); the **seed** keeps the default (the human's
 interactive backlog is genuine `entrypoint=cli` work).
 
@@ -221,7 +221,7 @@ re-triggers `Notify` (a feedback loop). `/mine pause` flips `SetEnabled(false)`,
 which stops any pending debounce.
 
 **Off until opted in.** No miner is built unless `mining.enabled` is set **and** a
-real harness backs the one oracle pass (`cfg.Flow == nil`). Every flow/test
+real harness backs the one agent pass (`cfg.Flow == nil`). Every flow/test
 fixture leaves `mining:` unset, so the flow gate above never spends LLM — asserted
 by `TestMiningGatedOutOfFlowPosture` (`cmd/kitsoki`).
 
@@ -303,7 +303,7 @@ Two seams are deliberately left for the slices that own them:
   watermark did not advance).
 - **The deterministic C→F argv + cassette.** `ExecPipelineRunner` shells `prep.py`
   and parses `analysis.json`; the exact `intents.workflow.js → ground → tag_score →
-  emit` argv and the recording for the one oracle pass are settled by the
+  emit` argv and the recording for the one agent pass are settled by the
   dogfood-only end-to-end run (real LLM, gated, never in CI), which also settles
   the `cadence` / `first_pass_sample` defaults.
 

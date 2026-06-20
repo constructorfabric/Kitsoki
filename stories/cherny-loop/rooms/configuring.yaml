@@ -27,8 +27,8 @@ states:
         when:  "world.gate_mode == 'script'"
       - code: '{{ world.gate_command|default:"# (none yet)" }}'
         when:  "world.gate_mode == 'script'"
-      - prose: '**oracle** — an adversarial reviewer judges the artifact against the goal (for goals no test can encode).'
-        when:  "world.gate_mode == 'oracle'"
+      - prose: '**agent** — an adversarial reviewer judges the artifact against the goal (for goals no test can encode).'
+        when:  "world.gate_mode == 'agent'"
       - heading: "Budgets"
       - kv:
           pairs:

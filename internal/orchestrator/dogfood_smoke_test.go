@@ -13,7 +13,7 @@ package orchestrator_test
 // Shape:
 //   - real on-disk `git init` repo under t.TempDir() with one commit
 //     on `main`, so `git worktree add` has a base to root at.
-//   - real host.RegisterBuiltins; only host.oracle.ask_with_mcp is
+//   - real host.RegisterBuiltins; only host.agent.ask_with_mcp is
 //     stubbed (canned artifact payload — no real LLM call).
 //   - hard `context.WithTimeout(ctx, …)` per turn so a regression
 //     FAILS in seconds rather than hanging CI.
@@ -134,7 +134,7 @@ func copyTree(src, dst string) error {
 	})
 }
 
-// dogfoodArtifact is the canned schema-shaped payload the oracle stub
+// dogfoodArtifact is the canned schema-shaped payload the agent stub
 // returns. It covers every bf room's bind path (reproduction_artifact,
 // propose_fix_artifact, implement_review_artifact, validate_artifact,
 // done_artifact, and the llm_verdict shape — though judge_mode=human
@@ -168,14 +168,14 @@ var dogfoodArtifact = map[string]any{
 }
 
 // newSmokeOrchestrator builds an orchestrator pinned to the temp-repo
-// kitsoki-dev app with the real host registry (oracle stubbed out).
+// kitsoki-dev app with the real host registry (agent stubbed out).
 // Returns the orchestrator, the underlying store (for direct history
-// reads), an open session id, and the count pointer the oracle stub
+// reads), an open session id, and the count pointer the agent stub
 // increments per call (handy for sanity asserts).
 //
-// The oracle stub is registered FIRST and the rest of the builtins are
-// registered piecemeal via registerBuiltinsExceptOracle. host.Registry
-// panics on duplicate Register, so to override the prod oracle handler
+// The agent stub is registered FIRST and the rest of the builtins are
+// registered piecemeal via registerBuiltinsExceptAgent. host.Registry
+// panics on duplicate Register, so to override the prod agent handler
 // we have to skip its line in RegisterBuiltins. The set is small and
 // the dogfood smoke doesn't need every builtin — just the handlers the
 // kitsoki-dev `hosts:` allow-list (kitsoki-dev/app.yaml:64-73) declares.
@@ -193,9 +193,9 @@ func newSmokeOrchestrator(t *testing.T, repoRoot string) (*orchestrator.Orchestr
 	t.Cleanup(func() { _ = s.Close() })
 
 	reg := host.NewRegistry()
-	oracleCalls := 0
+	agentCalls := 0
 	stub := func(ctx context.Context, args map[string]any) (host.Result, error) {
-		oracleCalls++
+		agentCalls++
 		stdoutJSON, _ := json.Marshal(dogfoodArtifact)
 		return host.Result{Data: map[string]any{
 			"submitted": dogfoodArtifact,
@@ -203,14 +203,14 @@ func newSmokeOrchestrator(t *testing.T, repoRoot string) (*orchestrator.Orchestr
 			"ok":        true,
 		}}, nil
 	}
-	reg.Register("host.oracle.ask_with_mcp", stub)
-	// oracle-split Phase 8 verbs used by bugfix/pr-refinement/dev-story.
-	reg.Register("host.oracle.task", stub)
-	reg.Register("host.oracle.ask", stub)
-	reg.Register("host.oracle.decide", stub)
+	reg.Register("host.agent.ask_with_mcp", stub)
+	// agent-split Phase 8 verbs used by bugfix/pr-refinement/dev-story.
+	reg.Register("host.agent.task", stub)
+	reg.Register("host.agent.ask", stub)
+	reg.Register("host.agent.decide", stub)
 
 	// Register the prod handlers kitsoki-dev declares in its hosts
-	// allow-list, MINUS the oracle verbs (already stubbed above).
+	// allow-list, MINUS the agent verbs (already stubbed above).
 	reg.Register("host.local_files.ticket", host.LocalFilesTicketHandler)
 	reg.Register("host.git", host.GitVCSHandler)
 	reg.Register("host.local", host.LocalCIHandler)
@@ -223,7 +223,7 @@ func newSmokeOrchestrator(t *testing.T, repoRoot string) (*orchestrator.Orchestr
 	sid, err := orch.NewSession(context.Background())
 	require.NoError(t, err)
 
-	return orch, s, sid, &oracleCalls
+	return orch, s, sid, &agentCalls
 }
 
 // seedDogfoodWorld returns the slot bag mirroring
@@ -283,7 +283,7 @@ func seedDogfoodWorld(ticketID string) map[string]any {
 // is enough to prove the auto-start + auto-accept chain doesn't loop.
 func TestDogfoodSmoke_AutoStartThroughBugfix(t *testing.T) {
 	repoRoot, ticketID := setupDogfoodRepo(t)
-	orch, _, sid, oracleCalls := newSmokeOrchestrator(t, repoRoot)
+	orch, _, sid, agentCalls := newSmokeOrchestrator(t, repoRoot)
 
 	ctx := context.Background()
 
@@ -338,9 +338,9 @@ func TestDogfoodSmoke_AutoStartThroughBugfix(t *testing.T) {
 	require.Equal(t, true, journey.World.Vars["core__bf__bf_autostart_attempted"],
 		"bf_autostart_attempted must be set true after the auto-start chain ran")
 
-	// Oracle was called once for reproducing.on_enter.
-	require.GreaterOrEqual(t, *oracleCalls, 1,
-		"oracle stub should have been invoked at least once for reproducing.on_enter")
+	// Agent was called once for reproducing.on_enter.
+	require.GreaterOrEqual(t, *agentCalls, 1,
+		"agent stub should have been invoked at least once for reproducing.on_enter")
 
 	// 4. Drive one proceed → auto-accept fires through
 	//    reproducing, lands at proposing.
@@ -358,7 +358,7 @@ func TestDogfoodSmoke_AutoStartThroughBugfix(t *testing.T) {
 
 func TestDogfoodSmoke_TicketSearchFreeTextRoutesToWorkbench(t *testing.T) {
 	repoRoot, _ := setupDogfoodRepo(t)
-	orch, s, sid, oracleCalls := newSmokeOrchestrator(t, repoRoot)
+	orch, s, sid, agentCalls := newSmokeOrchestrator(t, repoRoot)
 
 	ctx := context.Background()
 	c, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -372,24 +372,43 @@ func TestDogfoodSmoke_TicketSearchFreeTextRoutesToWorkbench(t *testing.T) {
 	// host.gh.ticket.* call resolves repo via ambient gh (the bug).
 	require.NoError(t, orch.RunInitialOnEnter(c, sid))
 
-	_, err := orch.SubmitDirect(c, sid, "core__go_ticket_search", nil)
+	// The operator boots into the free-form workbench landing.
+	boot, err := orch.LoadJourney(sid)
+	require.NoError(t, err)
+	require.Equal(t, app.StatePath("core.landing"), boot.State,
+		"kitsoki-dev boots into the workbench landing")
+
+	// 1. Open ticket search from the landing (the menu/quick-action route).
+	_, err = orch.SubmitDirect(c, sid, "core__go_ticket_search", nil)
 	require.NoError(t, err)
 
 	history, err := s.LoadHistory(sid)
 	require.NoError(t, err)
 	requireDogfoodHostArg(t, history, "host.gh.ticket.search", "repo", "constructorfabric/Kitsoki")
 
-	const msg = "we have a bunch of markdown issues in the repo - file them on bsacrobatix/kitsoki on github and we'll be able to use them here"
+	// 2. In the strict ticket-search menu the operator does NOT pick a row —
+	//    they describe a piece of ad-hoc work in their own words (the exact
+	//    prose that exposed the routing hole live: prose that matches no menu
+	//    command). It must be caught by the app-level free-form fallback and
+	//    routed into the workbench — deterministically, NOT via the paid
+	//    main-turn interpreter (the smoke harness is a noop; a main-turn route
+	//    would fail to resolve, so reaching the workbench at all proves the
+	//    fallback fired).
+	const msg = "we have a bunch of local tickets that need to be migrated to github - they're markdown files in the issues folder"
 	out, err := orch.Turn(c, sid, msg)
 	require.NoError(t, err)
-	require.Equal(t, app.StatePath("core.landing"), out.NewState)
-	require.Equal(t, 1, *oracleCalls,
+	require.Equal(t, app.StatePath("core.landing"), out.NewState,
+		"unmatched prose in ticket_search must land back in the workbench")
+	require.Equal(t, 1, *agentCalls,
 		"workbench on_enter should process the captured request exactly once")
 
 	journey, err := orch.LoadJourney(sid)
 	require.NoError(t, err)
-	require.Equal(t, msg, journey.World.Vars["core__landing_request"])
+	require.Equal(t, msg, journey.World.Vars["core__landing_request"],
+		"the operator's verbatim request must reach the workbench agent")
 
+	// 3. The trace must attribute the route: fallback (deterministic, $0) — the
+	//    guarantee that this turn is never an unattributable {intent:""} row.
 	history, err = s.LoadHistory(sid)
 	require.NoError(t, err)
 	requireDogfoodRoutedBy(t, history, "fallback")
@@ -739,7 +758,7 @@ func TestDogfoodSmoke_ProposingAccept_RegisteredWorktreeDirtyTree(t *testing.T) 
 // here means the user types `continue` and watches the TUI silently
 // bounce.
 //
-// Both the oracle and local CI are stubbed: real-LLM tests cost money
+// Both the agent and local CI are stubbed: real-LLM tests cost money
 // and `go test ./...` against the temp repo would just exercise our
 // own tests recursively. The git_worktree + git + append_to_file
 // handlers run for real so the workspace-side seams get exercised.
@@ -863,7 +882,7 @@ func TestDogfoodSmoke_FullImplementationPipeline(t *testing.T) {
 // worktree, but the implementation entry paths (dev-story `drive` /
 // `go_implementation` / design_done `implement`) never did. A live
 // dogfood run drove a feature ticket into impl and the very first
-// oracle call dispatched `workdir:""` — the model got "confused".
+// agent call dispatched `workdir:""` — the model got "confused".
 //
 // The pre-existing TestDogfoodSmoke_FullImplementationPipeline only
 // asserts next_state advanced, so it passed straight through the bug
@@ -936,12 +955,12 @@ func TestDogfoodSmoke_ImplIdleProvisionsWorktree(t *testing.T) {
 // implementing.on_enter ran workspace.sync + vcs.commit + a misleading
 // `say "Fix applied"` and advanced, but nothing actually edited the
 // code. Earlier happy-path smoke tests didn't notice because the
-// oracle was stubbed and they only checked `next_state`. This test
-// stubs the implementing oracle to ACTUALLY write a file in the
+// agent was stubbed and they only checked `next_state`. This test
+// stubs the implementing agent to ACTUALLY write a file in the
 // worktree, then asserts post-pipeline:
 //
 //  1. The file shows up in `git diff HEAD~ HEAD` on the feature
-//     branch — proves the commit step picked up the oracle's edits.
+//     branch — proves the commit step picked up the agent's edits.
 //  2. `world.implement_artifact.files_changed` lists the file —
 //     proves the artifact binding flowed.
 //
@@ -963,16 +982,16 @@ func TestDogfoodSmoke_ImplementingActuallyEditsFiles(t *testing.T) {
 
 	reg := host.NewRegistry()
 
-	// Per-prompt-path oracle dispatch: the implementing prompt's stub
+	// Per-prompt-path agent dispatch: the implementing prompt's stub
 	// edits a marker file in the worktree; every other prompt returns
 	// the generic canned artifact.
 	//
 	// Registered for both ask_with_mcp (stories/implementation —
 	// out of Phase 8 scope) and task (bugfix rooms post Phase 8).
-	markerFile := "STUB_EDITED_BY_IMPLEMENTING_ORACLE.txt"
-	implementingOracleStub := func(ctx context.Context, args map[string]any) (host.Result, error) {
+	markerFile := "STUB_EDITED_BY_IMPLEMENTING_AGENT.txt"
+	implementingAgentStub := func(ctx context.Context, args map[string]any) (host.Result, error) {
 		// Read prompt from either flat ask_with_mcp shape (args["prompt"]) or
-		// the new task shape (args["context"]["prompt"]) — see oracle-split C2.
+		// the new task shape (args["context"]["prompt"]) — see agent-split C2.
 		promptArg, _ := args["prompt"].(string)
 		if promptArg == "" {
 			if ctxBlock, ok := args["context"].(map[string]any); ok {
@@ -986,12 +1005,12 @@ func TestDogfoodSmoke_ImplementingActuallyEditsFiles(t *testing.T) {
 		if strings.Contains(promptArg, "implementing_executing") {
 			wd, _ := args["working_dir"].(string)
 			markerPath := filepath.Join(repoRoot, wd, markerFile)
-			if writeErr := os.WriteFile(markerPath, []byte("written by stub oracle\n"), 0o644); writeErr != nil {
+			if writeErr := os.WriteFile(markerPath, []byte("written by stub agent\n"), 0o644); writeErr != nil {
 				return host.Result{Error: fmt.Sprintf("stub write: %v", writeErr)}, nil
 			}
 			artifact := map[string]any{
 				"summary_title":    "Stub implementing — wrote marker file",
-				"summary_markdown": "Wrote " + markerFile + " in the worktree to prove the oracle ran and the commit step picked it up.\n\nFull text: written by stub oracle.\n",
+				"summary_markdown": "Wrote " + markerFile + " in the worktree to prove the agent ran and the commit step picked it up.\n\nFull text: written by stub agent.\n",
 				"files_changed":    []string{markerFile},
 				"applied":          true,
 			}
@@ -1010,11 +1029,11 @@ func TestDogfoodSmoke_ImplementingActuallyEditsFiles(t *testing.T) {
 			"ok":        true,
 		}}, nil
 	}
-	reg.Register("host.oracle.ask_with_mcp", implementingOracleStub)
-	// oracle-split Phase 8: bugfix uses task/ask/decide instead of ask_with_mcp.
-	reg.Register("host.oracle.task", implementingOracleStub)
-	reg.Register("host.oracle.ask", implementingOracleStub)
-	reg.Register("host.oracle.decide", implementingOracleStub)
+	reg.Register("host.agent.ask_with_mcp", implementingAgentStub)
+	// agent-split Phase 8: bugfix uses task/ask/decide instead of ask_with_mcp.
+	reg.Register("host.agent.task", implementingAgentStub)
+	reg.Register("host.agent.ask", implementingAgentStub)
+	reg.Register("host.agent.decide", implementingAgentStub)
 	reg.Register("host.local", func(ctx context.Context, args map[string]any) (host.Result, error) {
 		return host.Result{Data: map[string]any{
 			"ok": true, "passed": 1, "failed": 0, "log": "PASS (stub)",
@@ -1068,7 +1087,7 @@ func TestDogfoodSmoke_ImplementingActuallyEditsFiles(t *testing.T) {
 	showOut, showErr := showCmd.CombinedOutput()
 	require.NoError(t, showErr, "git show: %s", string(showOut))
 	require.Contains(t, string(showOut), markerFile,
-		"HEAD commit must include the marker file written by the oracle stub; got: %s", string(showOut))
+		"HEAD commit must include the marker file written by the agent stub; got: %s", string(showOut))
 
 	// 2. world.implement_artifact must reflect what the stub returned.
 	journey, err := orch.LoadJourney(sid)
@@ -1101,9 +1120,9 @@ func newSmokeOrchestratorWithCIStub(t *testing.T, repoRoot string) (*orchestrato
 	t.Cleanup(func() { _ = s.Close() })
 
 	reg := host.NewRegistry()
-	oracleCalls := 0
-	oracleStub2 := func(ctx context.Context, args map[string]any) (host.Result, error) {
-		oracleCalls++
+	agentCalls := 0
+	agentStub2 := func(ctx context.Context, args map[string]any) (host.Result, error) {
+		agentCalls++
 		stdoutJSON, _ := json.Marshal(dogfoodArtifact)
 		return host.Result{Data: map[string]any{
 			"submitted": dogfoodArtifact,
@@ -1111,11 +1130,11 @@ func newSmokeOrchestratorWithCIStub(t *testing.T, repoRoot string) (*orchestrato
 			"ok":        true,
 		}}, nil
 	}
-	reg.Register("host.oracle.ask_with_mcp", oracleStub2)
-	// oracle-split Phase 8 verbs used by bugfix rooms.
-	reg.Register("host.oracle.task", oracleStub2)
-	reg.Register("host.oracle.ask", oracleStub2)
-	reg.Register("host.oracle.decide", oracleStub2)
+	reg.Register("host.agent.ask_with_mcp", agentStub2)
+	// agent-split Phase 8 verbs used by bugfix rooms.
+	reg.Register("host.agent.task", agentStub2)
+	reg.Register("host.agent.ask", agentStub2)
+	reg.Register("host.agent.decide", agentStub2)
 	reg.Register("host.local", func(ctx context.Context, args map[string]any) (host.Result, error) {
 		op, _ := args["op"].(string)
 		switch op {
@@ -1142,7 +1161,7 @@ func newSmokeOrchestratorWithCIStub(t *testing.T, repoRoot string) (*orchestrato
 	orch := orchestrator.New(def, m, s, noopHarness{}, orchestrator.WithHostRegistry(reg))
 	sid, err := orch.NewSession(context.Background())
 	require.NoError(t, err)
-	return orch, s, sid, &oracleCalls
+	return orch, s, sid, &agentCalls
 }
 
 // =============================================================================
@@ -1156,14 +1175,14 @@ func newSmokeOrchestratorWithCIStub(t *testing.T, repoRoot string) (*orchestrato
 // success close-out and the session terminated at done with the actual
 // fix never applied.
 //
-// Each test below stubs the oracle per-prompt so a specific gate room
+// Each test below stubs the agent per-prompt so a specific gate room
 // produces a non-pass artifact while every other room produces the
 // canonical pass artifact. The smoke test then asserts:
 //   - the room routes to implementing (not advancing forward),
 //   - no transport.post (iface.transport.post → host.append_to_file)
 //     fired on the failure arm,
 //   - the corresponding cycle counter was bumped,
-//   - every oracle invocation received working_dir == world.workdir,
+//   - every agent invocation received working_dir == world.workdir,
 //   - and iface.ci.build was not handed a spurious target arg.
 // =============================================================================
 
@@ -1172,17 +1191,17 @@ func newSmokeOrchestratorWithCIStub(t *testing.T, repoRoot string) (*orchestrato
 // `dogfoodArtifact` so unconfigured prompts get the happy-path shape.
 type promptArtifact map[string]map[string]any
 
-// oracleRouter returns a host.oracle.ask_with_mcp stub that:
+// agentRouter returns a host.agent.ask_with_mcp stub that:
 //   - picks the artifact for the matching prompt fragment, falling back
 //     to dogfoodArtifact for prompts not in the map,
 //   - records every (prompt, working_dir) pair into *seen for the
 //     working-dir assertion below.
-type oracleSeen struct {
+type agentSeen struct {
 	prompt     string
 	workingDir string
 }
 
-func oracleRouter(artifacts promptArtifact, seen *[]oracleSeen) host.Handler {
+func agentRouter(artifacts promptArtifact, seen *[]agentSeen) host.Handler {
 	return func(ctx context.Context, args map[string]any) (host.Result, error) {
 		promptArg, _ := args["prompt"].(string)
 		if promptArg == "" {
@@ -1194,7 +1213,7 @@ func oracleRouter(artifacts promptArtifact, seen *[]oracleSeen) host.Handler {
 			promptArg, _ = args["prompt_path"].(string)
 		}
 		workingDir, _ := args["working_dir"].(string)
-		*seen = append(*seen, oracleSeen{prompt: promptArg, workingDir: workingDir})
+		*seen = append(*seen, agentSeen{prompt: promptArg, workingDir: workingDir})
 
 		payload := dogfoodArtifact
 		for fragment, override := range artifacts {
@@ -1247,9 +1266,9 @@ func hostLocalCapture(seen *[]hostLocalSeen) host.Handler {
 }
 
 // newSmokeOrchestratorWithRouters builds an orchestrator pinned to the
-// flexible oracle + ci stubs. Returns the orchestrator, store, session
-// id, and the (oracleSeen, hostLocalSeen) capture slices.
-func newSmokeOrchestratorWithRouters(t *testing.T, repoRoot string, artifacts promptArtifact) (*orchestrator.Orchestrator, store.Store, app.SessionID, *[]oracleSeen, *[]hostLocalSeen) {
+// flexible agent + ci stubs. Returns the orchestrator, store, session
+// id, and the (agentSeen, hostLocalSeen) capture slices.
+func newSmokeOrchestratorWithRouters(t *testing.T, repoRoot string, artifacts promptArtifact) (*orchestrator.Orchestrator, store.Store, app.SessionID, *[]agentSeen, *[]hostLocalSeen) {
 	t.Helper()
 	appPath := filepath.Join(repoRoot, "stories", "kitsoki-dev", "app.yaml")
 	def, err := app.Load(appPath)
@@ -1262,17 +1281,17 @@ func newSmokeOrchestratorWithRouters(t *testing.T, repoRoot string, artifacts pr
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close() })
 
-	oracleSeenSlice := []oracleSeen{}
+	agentSeenSlice := []agentSeen{}
 	hostLocalSeenSlice := []hostLocalSeen{}
 
 	reg := host.NewRegistry()
-	oracleRouterFn := oracleRouter(artifacts, &oracleSeenSlice)
-	reg.Register("host.oracle.ask_with_mcp", oracleRouterFn)
-	// oracle-split Phase 8 verbs used by bugfix rooms. All route through
+	agentRouterFn := agentRouter(artifacts, &agentSeenSlice)
+	reg.Register("host.agent.ask_with_mcp", agentRouterFn)
+	// agent-split Phase 8 verbs used by bugfix rooms. All route through
 	// the same prompt-dispatch logic so per-phase artifact overrides apply.
-	reg.Register("host.oracle.task", oracleRouterFn)
-	reg.Register("host.oracle.ask", oracleRouterFn)
-	reg.Register("host.oracle.decide", oracleRouterFn)
+	reg.Register("host.agent.task", agentRouterFn)
+	reg.Register("host.agent.ask", agentRouterFn)
+	reg.Register("host.agent.decide", agentRouterFn)
 	reg.Register("host.local", hostLocalCapture(&hostLocalSeenSlice))
 	reg.Register("host.local_files.ticket", host.LocalFilesTicketHandler)
 	reg.Register("host.git", host.GitVCSHandler)
@@ -1283,7 +1302,7 @@ func newSmokeOrchestratorWithRouters(t *testing.T, repoRoot string, artifacts pr
 	orch := orchestrator.New(def, m, s, noopHarness{}, orchestrator.WithHostRegistry(reg))
 	sid, err := orch.NewSession(context.Background())
 	require.NoError(t, err)
-	return orch, s, sid, &oracleSeenSlice, &hostLocalSeenSlice
+	return orch, s, sid, &agentSeenSlice, &hostLocalSeenSlice
 }
 
 // driveBugfixPipelineTo runs the on-enter chain plus a teleport to
@@ -1366,14 +1385,14 @@ func countTransportPosts(t *testing.T, s store.Store, sid app.SessionID) int {
 
 // TestDogfoodSmoke_ValidatingFailShortRoutesToImplementing locks in
 // rooms/validating.yaml's outcome-aware accept arc: when the validation
-// oracle returns outcome=fail_short, `core__bf__accept` MUST route to
+// agent returns outcome=fail_short, `core__bf__accept` MUST route to
 // implementing (not advance to done), MUST NOT fire transport.post,
 // and MUST bump implementing_cycle. See rooms/validating.yaml header
 // for the dogfood-trace context that motivated this fix.
 func TestDogfoodSmoke_ValidatingFailShortRoutesToImplementing(t *testing.T) {
 	repoRoot, ticketID := setupDogfoodRepo(t)
 
-	// Override the validating oracle ONLY — every other room sees the
+	// Override the validating agent ONLY — every other room sees the
 	// canonical pass artifact. The failure path lives inside one room.
 	failShort := map[string]any{}
 	for k, v := range dogfoodArtifact {
@@ -1434,7 +1453,7 @@ func worldInt64(vars map[string]any, key string) int64 {
 }
 
 // TestDogfoodSmoke_TestingFailedRoutesToImplementing locks in
-// rooms/testing.yaml's status-aware accept arc: when the testing oracle
+// rooms/testing.yaml's status-aware accept arc: when the testing agent
 // returns status=failed, accept MUST route to implementing (not advance
 // to reviewing or done), MUST NOT fire transport.post, and MUST bump
 // implementing_cycle.
@@ -1475,22 +1494,22 @@ func TestDogfoodSmoke_TestingFailedRoutesToImplementing(t *testing.T) {
 		"implementing_cycle must increment when testing-failed re-routes")
 }
 
-// TestDogfoodSmoke_OracleAlwaysReceivesWorkingDir locks in the second
-// half of the dogfood fix: every bugfix-room oracle invocation must pass
-// `working_dir` = the bugfix worktree. Without it the oracle's MCP
+// TestDogfoodSmoke_AgentAlwaysReceivesWorkingDir locks in the second
+// half of the dogfood fix: every bugfix-room agent invocation must pass
+// `working_dir` = the bugfix worktree. Without it the agent's MCP
 // filesystem tools default to kitsoki's cwd (the main worktree) and
-// any grep/read the oracle runs lands on the wrong tree.
+// any grep/read the agent runs lands on the wrong tree.
 //
-// Drives the full pass path (so every room's oracle fires at least
+// Drives the full pass path (so every room's agent fires at least
 // once), then asserts each phase-executing prompt was invoked with
 // working_dir set and pointing to .worktrees/bf-<ticket>.
-func TestDogfoodSmoke_OracleAlwaysReceivesWorkingDir(t *testing.T) {
+func TestDogfoodSmoke_AgentAlwaysReceivesWorkingDir(t *testing.T) {
 	repoRoot, ticketID := setupDogfoodRepo(t)
-	orch, _, sid, oracleCalls, _ := newSmokeOrchestratorWithRouters(t, repoRoot, promptArtifact{})
+	orch, _, sid, agentCalls, _ := newSmokeOrchestratorWithRouters(t, repoRoot, promptArtifact{})
 
 	driveBugfixPipelineTo(t, orch, sid, ticketID, "core.bf.validating")
-	// One more accept to land at done — exercises validating's oracle on
-	// the pass arm and done's oracle on entry.
+	// One more accept to land at done — exercises validating's agent on
+	// the pass arm and done's agent on entry.
 	c, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	out, err := orch.SubmitDirect(c, sid, "core__bf__accept", nil)
 	cancel()
@@ -1499,7 +1518,7 @@ func TestDogfoodSmoke_OracleAlwaysReceivesWorkingDir(t *testing.T) {
 
 	expected := filepath.Join(".worktrees", "bf-"+ticketID)
 
-	// For each phase-executing prompt, find the matching oracle call and
+	// For each phase-executing prompt, find the matching agent call and
 	// assert working_dir was set and points at the bugfix worktree.
 	phasePrompts := []string{
 		"reproducing_executing",
@@ -1511,20 +1530,20 @@ func TestDogfoodSmoke_OracleAlwaysReceivesWorkingDir(t *testing.T) {
 	}
 	for _, phase := range phasePrompts {
 		found := false
-		for _, call := range *oracleCalls {
+		for _, call := range *agentCalls {
 			if !strings.Contains(call.prompt, phase) {
 				continue
 			}
 			found = true
 			require.NotEmpty(t, call.workingDir,
-				"%s oracle invocation must set working_dir; got empty (prompt=%q)",
+				"%s agent invocation must set working_dir; got empty (prompt=%q)",
 				phase, call.prompt)
 			require.True(t, strings.HasSuffix(call.workingDir, expected) || call.workingDir == expected,
-				"%s oracle working_dir must point at the bugfix worktree (want suffix %q); got %q",
+				"%s agent working_dir must point at the bugfix worktree (want suffix %q); got %q",
 				phase, expected, call.workingDir)
 			break
 		}
-		require.True(t, found, "expected at least one oracle call for prompt %s", phase)
+		require.True(t, found, "expected at least one agent call for prompt %s", phase)
 	}
 }
 
@@ -1533,7 +1552,7 @@ func TestDogfoodSmoke_OracleAlwaysReceivesWorkingDir(t *testing.T) {
 // `target: "default"` to iface.ci.build. Pre-fix, ciBuild appended
 // the literal string "default" to `go build ./...`, synthesising a
 // `package default is not in std` error on every full-pipeline run.
-// The oracle then mistook that synthesised error for evidence the fix
+// The agent then mistook that synthesised error for evidence the fix
 // wasn't applied. Now: no target arg at all.
 func TestDogfoodSmoke_ValidatingBuildSkipsSpuriousTargetArg(t *testing.T) {
 	repoRoot, ticketID := setupDogfoodRepo(t)

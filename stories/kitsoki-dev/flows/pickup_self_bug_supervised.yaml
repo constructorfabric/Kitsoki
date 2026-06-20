@@ -92,13 +92,13 @@ host_handlers:
       tickets:
         - { id: "2026-05-14T103205Z-tui-view-render-before-bind", title: "TUI view templates render BEFORE on_enter binds", status: "open", priority: "P2", assignee: "" }
 
-  # Oracle calls — single stub serves every merged room's on_enter
+  # Agent calls — single stub serves every merged room's on_enter
   # artifact bind AND every judge prompt. The bf rooms each bind the
   # whole `submitted:` blob into their own world key; judge prompts
   # are NOT invoked in judge_mode=human (the `when:` clause skips
   # them) so the verdict fields are inert here.
-  host.oracle.decide:
-    data: &oracle_stub
+  host.agent.decide:
+    data: &agent_stub
       ok: true
       stdout: ""
       submitted:
@@ -139,12 +139,12 @@ host_handlers:
         reason:     "Stub artifact passes the schema; accept advances."
         confidence_pct: 90
 
-  # host.oracle.task — bf reproducing/implementing/testing/validating
+  # host.agent.task — bf reproducing/implementing/testing/validating
   # rooms generate their artifact via the `task` verb (judge steps use
   # `decide`). Same stub payload as decide (shared anchor); the artifact
   # schema's additionalProperties tolerates the judge fields.
-  host.oracle.task:
-    data: *oracle_stub
+  host.agent.task:
+    data: *agent_stub
 
 turns:
   # core.landing → core.bf.reproducing (dispatch into the bugfix sub-story

@@ -149,7 +149,7 @@
                       <span class="trace-timeline__say-text">{{ row.narration }}</span>
                     </template>
                     <template v-else>{{
-                      row.oracle ? `oracle.${row.oracle.verb}`
+                      row.agent ? `agent.${row.agent.verb}`
                       : row.harnessCall ? row.harnessCall.namespace
                       : row.event.msg
                     }}</template>
@@ -157,29 +157,29 @@
                   <!-- Harness provenance: which profile/model answered this call.
                        Matches the operator's live picker selection. -->
                   <span
-                    v-if="row.oracle && (row.oracle.profile || row.oracle.model || row.oracle.effort)"
+                    v-if="row.agent && (row.agent.profile || row.agent.model || row.agent.effort)"
                     class="trace-timeline__harness"
                     data-testid="trace-harness-label"
-                    :title="`harness profile / model / effort for this oracle call`"
+                    :title="`harness profile / model / effort for this agent call`"
                   >
-                    <span v-if="row.oracle.profile" class="trace-timeline__harness-profile">{{ row.oracle.profile }}</span>
-                    <span v-if="row.oracle.model" class="trace-timeline__harness-model">{{ row.oracle.model }}</span>
-                    <span v-if="row.oracle.effort" class="trace-timeline__harness-effort">effort:{{ row.oracle.effort }}</span>
+                    <span v-if="row.agent.profile" class="trace-timeline__harness-profile">{{ row.agent.profile }}</span>
+                    <span v-if="row.agent.model" class="trace-timeline__harness-model">{{ row.agent.model }}</span>
+                    <span v-if="row.agent.effort" class="trace-timeline__harness-effort">effort:{{ row.agent.effort }}</span>
                   </span>
                   <span
-                    v-if="(row.oracle?.durationMs ?? row.harnessCall?.durationMs) != null"
+                    v-if="(row.agent?.durationMs ?? row.harnessCall?.durationMs) != null"
                     class="trace-timeline__duration"
-                  >{{ fmtMs((row.oracle?.durationMs ?? row.harnessCall!.durationMs)!) }}</span>
+                  >{{ fmtMs((row.agent?.durationMs ?? row.harnessCall!.durationMs)!) }}</span>
                   <span
-                    v-else-if="row.oracle?.incomplete || row.harnessCall?.incomplete"
+                    v-else-if="row.agent?.incomplete || row.harnessCall?.incomplete"
                     class="trace-timeline__incomplete"
                     title="Call did not complete or its completion was not recorded"
                   >incomplete</span>
                   <span
-                    v-if="row.oracle && oracleCostStr(row.oracle.merged)"
+                    v-if="row.agent && agentCostStr(row.agent.merged)"
                     class="trace-timeline__cost"
-                    title="Estimated cost for this oracle call (meta.cost_usd)"
-                  >{{ oracleCostStr(row.oracle.merged) }}</span>
+                    title="Estimated cost for this agent call (meta.cost_usd)"
+                  >{{ agentCostStr(row.agent.merged) }}</span>
                   <!-- Annotation badge: shown when at least one annotation targets this event's call_id. -->
                   <template v-if="rowAnnotations(row.event).length > 0">
                     <span
@@ -213,16 +213,16 @@
                     <WorldDiffViewer :before="row.effectGroup.before" :after="row.effectGroup.after" />
                   </template>
                   <template v-else>
-                    <div v-if="row.oracle?.incomplete" class="trace-timeline__incomplete-banner">
-                      Oracle call started but no completion event was recorded.
+                    <div v-if="row.agent?.incomplete" class="trace-timeline__incomplete-banner">
+                      Agent call started but no completion event was recorded.
                     </div>
                     <div v-if="row.harnessCall?.incomplete" class="trace-timeline__incomplete-banner">
                       Host call dispatched but no returned event was recorded.
                     </div>
                     <EventDetail
-                      :event="row.oracle?.merged ?? row.event"
+                      :event="row.agent?.merged ?? row.event"
                       :harnessCall="row.harnessCall"
-                      :sessionId="props.sessionId || (row.oracle?.merged ?? row.event).session_id"
+                      :sessionId="props.sessionId || (row.agent?.merged ?? row.event).session_id"
                     />
                   </template>
                 </div>
@@ -249,15 +249,15 @@ import type { TraceEvent, AnnotationEntry } from "../types.js";
 import EventDetail from "./EventDetail.vue";
 import WorldDiffViewer from "./WorldDiffViewer.vue";
 import { parseDiagram } from "../diagram/parse.js";
-import { fmtMs, fmtCost, readOracleUsage } from "./oracle/lib.js";
+import { fmtMs, fmtCost, readAgentUsage } from "./agent/lib.js";
 import { observationKind, COLOR_MAP } from "../lib/observation.js";
 import type { ObservationKind } from "../lib/observation.js";
 
-// Cost string for a merged oracle row, shown inline next to the duration in the
+// Cost string for a merged agent row, shown inline next to the duration in the
 // collapsed timeline row. Reads the canonical attrs.meta.cost_usd (with the
 // legacy flat fallback). Returns "" when no cost was recorded, so the span hides.
-function oracleCostStr(merged: TraceEvent): string {
-  return fmtCost(readOracleUsage(merged.attrs).costUsd);
+function agentCostStr(merged: TraceEvent): string {
+  return fmtCost(readAgentUsage(merged.attrs).costUsd);
 }
 
 // ---- props & emits ----------------------------------------------------------
@@ -304,15 +304,15 @@ function rowAnnotations(event: TraceEvent): AnnotationEntry[] {
 
 // ---- constants --------------------------------------------------------------
 
-const ALL_SUBSYSTEMS = ["turn", "machine", "world", "host", "oracle", "harness", "other"] as const;
+const ALL_SUBSYSTEMS = ["turn", "machine", "world", "host", "agent", "harness", "other"] as const;
 type Subsystem = (typeof ALL_SUBSYSTEMS)[number];
 
-// Canonical oracle events: the verb lives in attrs.verb, not the msg.  The
-// engine only ever emits oracle.call.start / oracle.call.complete; the per-verb
-// msg shape (oracle.decide.start, …) was a fiction the consumer used to assume.
-const ORACLE_START_MSG = "oracle.call.start";
-const ORACLE_COMPLETE_MSG = "oracle.call.complete";
-function oracleVerb(e: TraceEvent): string {
+// Canonical agent events: the verb lives in attrs.verb, not the msg.  The
+// engine only ever emits agent.call.start / agent.call.complete; the per-verb
+// msg shape (agent.decide.start, …) was a fiction the consumer used to assume.
+const AGENT_START_MSG = "agent.call.start";
+const AGENT_COMPLETE_MSG = "agent.call.complete";
+function agentVerb(e: TraceEvent): string {
   return typeof e.attrs.verb === "string" ? e.attrs.verb : "";
 }
 
@@ -341,7 +341,7 @@ const copiedRows = reactive(new Set<number>());
 // Category filter — derived from ObservationKind. All categories selected by default.
 // selectedCategories starts as all-selected; we track a Set of active categories.
 const selectedCategories = reactive(new Set<ObservationKind>([
-  "decision", "oracle-call", "host-call", "narration", "world-mutation", "routing", "lifecycle",
+  "decision", "agent-call", "host-call", "narration", "world-mutation", "routing", "lifecycle",
 ]));
 
 // ---- virtualisation state ---------------------------------------------------
@@ -360,7 +360,7 @@ function subsystemFromMsg(msg: string): Subsystem {
     case "machine": return "machine";
     case "world":   return "world";
     case "host":    return "host";
-    case "oracle":  return "oracle";
+    case "agent":  return "agent";
     default:        return "other";
   }
 }
@@ -378,7 +378,7 @@ function formatTime(iso: string): string {
 
 // All observation categories present in the current event list, in canonical order.
 const CATEGORY_ORDER: ObservationKind[] = [
-  "decision", "oracle-call", "host-call", "narration", "world-mutation", "routing", "lifecycle",
+  "decision", "agent-call", "host-call", "narration", "world-mutation", "routing", "lifecycle",
 ];
 const allCategories = computed<ObservationKind[]>(() => {
   const present = new Set<ObservationKind>();
@@ -407,12 +407,12 @@ const hasActiveFilters = computed(() => {
 });
 
 // Filtered + annotated events (preserving original index).
-interface OracleMerge {
+interface AgentMerge {
   verb: string;
   complete: TraceEvent | null;
   durationMs: number | null;
   incomplete: boolean;
-  /** The harness profile name selected for this call (from oracle.call.start);
+  /** The harness profile name selected for this call (from agent.call.start);
    *  "" when the session declared no profiles. Surfaced as a row chip so the
    *  trace shows which backend/provider answered. */
   profile: string;
@@ -421,11 +421,11 @@ interface OracleMerge {
   /** The reasoning effort the call ran on (start's attrs.effort). "" when unset. */
   effort: string;
   /**
-   * The single logical oracle call, presented to EventDetail/OracleDetail as
-   * one event. The engine records the *prompt* on oracle.call.start and the
-   * *response* on oracle.call.complete; this merge stitches them back together
+   * The single logical agent call, presented to EventDetail/AgentDetail as
+   * one event. The engine records the *prompt* on agent.call.start and the
+   * *response* on agent.call.complete; this merge stitches them back together
    * so the detail pane shows both. Shaped as the complete event (msg =
-   * oracle.call.complete) with the start's prompt/agent/model attrs folded in;
+   * agent.call.complete) with the start's prompt/agent/model attrs folded in;
    * complete attrs win on conflict. Faithful to the trace — it surfaces what
    * the two paired events together recorded, inventing nothing.
    */
@@ -455,7 +455,7 @@ interface AnnotatedEvent {
   index: number;
   event: TraceEvent;
   subsystem: Subsystem;
-  oracle?: OracleMerge;
+  agent?: AgentMerge;
   harnessCall?: HarnessCallData;
   /** Present on the lead row of a grouped machine.effect[set] batch. */
   effectGroup?: EffectGroupData;
@@ -500,24 +500,24 @@ const worldStateByTurn = computed<Map<number, TurnWorldState>>(() => {
   return result;
 });
 
-// Pair oracle.<verb>.start events with their matching .complete via call_id.
+// Pair agent.<verb>.start events with their matching .complete via call_id.
 // The merged row sits at the start timestamp and shows elapsed time; the
 // .complete row is suppressed.  A start with no complete is rendered with an
 // "incomplete" badge.
-const oracleStartCallIds = computed<Set<string>>(() => {
+const agentStartCallIds = computed<Set<string>>(() => {
   const s = new Set<string>();
   for (const e of props.events) {
-    if (e.msg !== ORACLE_START_MSG) continue;
+    if (e.msg !== AGENT_START_MSG) continue;
     const cid = e.attrs.call_id;
     if (typeof cid === "string") s.add(cid);
   }
   return s;
 });
 
-const oracleCompleteByCallId = computed<Map<string, TraceEvent>>(() => {
+const agentCompleteByCallId = computed<Map<string, TraceEvent>>(() => {
   const m = new Map<string, TraceEvent>();
   for (const e of props.events) {
-    if (e.msg !== ORACLE_COMPLETE_MSG) continue;
+    if (e.msg !== AGENT_COMPLETE_MSG) continue;
     const cid = e.attrs.call_id;
     if (typeof cid === "string") m.set(cid, e);
   }
@@ -526,7 +526,7 @@ const oracleCompleteByCallId = computed<Map<string, TraceEvent>>(() => {
 
 // Merge harness.called/dispatched/returned triplets into single host-call rows.
 // Groups by (turn, namespace); nth called pairs with nth dispatched + nth returned.
-// host.oracle.* namespaces are excluded — covered by oracle.*.start/complete rows.
+// host.agent.* namespaces are excluded — covered by agent.*.start/complete rows.
 const harnessCallData = computed<{
   mergeByCalledIndex: Map<number, HarnessCallData>;
   suppressedIndices: Set<number>;
@@ -539,7 +539,7 @@ const harnessCallData = computed<{
     const e = props.events[i]!;
     if (!e.msg.startsWith("harness.")) continue;
     const ns = typeof e.attrs.namespace === "string" ? e.attrs.namespace : "";
-    if (ns.startsWith("host.oracle.")) continue;
+    if (ns.startsWith("host.agent.")) continue;
     const key = `${e.turn}:${ns}`;
     if (!byKey.has(key)) byKey.set(key, { calledIdx: [], dispatchedEvt: [], returnedEvt: [] });
     const b = byKey.get(key)!;
@@ -581,8 +581,8 @@ const harnessCallData = computed<{
 });
 
 const filteredEvents = computed<AnnotatedEvent[]>(() => {
-  const startCids = oracleStartCallIds.value;
-  const completeMap = oracleCompleteByCallId.value;
+  const startCids = agentStartCallIds.value;
+  const completeMap = agentCompleteByCallId.value;
   const worldStates = worldStateByTurn.value;
   const harnessData = harnessCallData.value;
   const out: AnnotatedEvent[] = [];
@@ -615,8 +615,8 @@ const filteredEvents = computed<AnnotatedEvent[]>(() => {
     // would be silently dropped. Merged host-call rows respect the "host" chip.
     if (event.msg.startsWith("harness.")) {
       const ns = event.attrs.namespace;
-      // Oracle wrapper calls are already covered by oracle.*.start rows.
-      if (typeof ns === "string" && ns.startsWith("host.oracle.")) continue;
+      // Agent wrapper calls are already covered by agent.*.start rows.
+      if (typeof ns === "string" && ns.startsWith("host.agent.")) continue;
       // dispatched/returned rows are absorbed into their paired called row.
       if (harnessData.suppressedIndices.has(i)) continue;
       // Apply normal level/state filters; gate on "host" chip.
@@ -635,16 +635,16 @@ const filteredEvents = computed<AnnotatedEvent[]>(() => {
 
     // machine.transition / machine.state_exited / machine.state_entered are all
     // absorbed by the turn group structure: from/to are the adjacent turn headers,
-    // intent is shown in the user badge (human turns) or oracle.decide (LLM turns).
+    // intent is shown in the user badge (human turns) or agent.decide (LLM turns).
     if (
       event.msg === "machine.transition" ||
       event.msg === "machine.state_exited" ||
       event.msg === "machine.state_entered"
     ) continue;
 
-    // Suppress oracle.call.complete rows whose paired start exists; the start
+    // Suppress agent.call.complete rows whose paired start exists; the start
     // row carries the merged duration.
-    if (event.msg === ORACLE_COMPLETE_MSG) {
+    if (event.msg === AGENT_COMPLETE_MSG) {
       const cid = event.attrs.call_id;
       if (typeof cid === "string" && startCids.has(cid)) continue;
     }
@@ -669,31 +669,31 @@ const filteredEvents = computed<AnnotatedEvent[]>(() => {
       continue;
     }
 
-    let oracle: OracleMerge | undefined;
-    if (event.msg === ORACLE_START_MSG) {
+    let agent: AgentMerge | undefined;
+    if (event.msg === AGENT_START_MSG) {
       // Verb comes from attrs.verb; fall back to the complete event's verb.
       const cid = typeof event.attrs.call_id === "string" ? event.attrs.call_id : null;
       const complete = cid ? completeMap.get(cid) ?? null : null;
-      const verb = oracleVerb(event) || (complete ? oracleVerb(complete) : "");
+      const verb = agentVerb(event) || (complete ? agentVerb(complete) : "");
       const dur = complete && typeof complete.attrs.duration_ms === "number"
         ? (complete.attrs.duration_ms as number)
         : null;
       // Stitch the paired events into one logical call for the detail pane.
-      // Base on the complete event (so msg === oracle.call.complete routes to
-      // OracleDetail) and fold in the start's prompt/agent/model attrs, which
+      // Base on the complete event (so msg === agent.call.complete routes to
+      // AgentDetail) and fold in the start's prompt/agent/model attrs, which
       // the complete event does not carry. Complete attrs win on conflict.
       const merged: TraceEvent = complete
         ? { ...complete, attrs: { ...event.attrs, ...complete.attrs } }
         : event;
-      // Harness provenance is recorded on the START event (OracleCalledPayload):
+      // Harness provenance is recorded on the START event (AgentCalledPayload):
       // profile = the selected harness profile, model = the resolved model.
       const profile = typeof event.attrs.profile === "string" ? event.attrs.profile : "";
       const model = typeof merged.attrs.model === "string" ? (merged.attrs.model as string) : "";
       const effort = typeof merged.attrs.effort === "string" ? (merged.attrs.effort as string) : "";
-      oracle = { verb, complete, durationMs: dur, incomplete: complete === null, merged, profile, model, effort };
+      agent = { verb, complete, durationMs: dur, incomplete: complete === null, merged, profile, model, effort };
     }
 
-    out.push({ index: i, event, subsystem, oracle });
+    out.push({ index: i, event, subsystem, agent });
   }
   return out;
 });
@@ -923,7 +923,7 @@ const groupedPhases = computed<PhaseSection[]>(() => {
   const sections: PhaseSection[] = [];
   for (const group of groupedTurns.value) {
     const phase = phaseForStatePath(group.statePath);
-    const key = phase ?? " —";
+    const key = phase ?? "—";
     let section = byPhase.get(key);
     if (!section) {
       section = {
@@ -1100,9 +1100,9 @@ async function copyRow(row: AnnotatedEvent): Promise<void> {
       state_path: row.event.state_path,
       time: row.event.time,
     };
-  } else if (row.oracle) {
-    const e = row.oracle.complete ?? row.event;
-    payload = { type: "oracle", verb: row.oracle.verb, durationMs: row.oracle.durationMs, ...e };
+  } else if (row.agent) {
+    const e = row.agent.complete ?? row.event;
+    payload = { type: "agent", verb: row.agent.verb, durationMs: row.agent.durationMs, ...e };
   } else if (row.narration != null) {
     payload = {
       type: "machine.say",
@@ -1523,7 +1523,7 @@ watch(
 .trace-timeline__subsystem-chip[data-subsystem="machine"] { background: #14532d; color: #86efac; }
 .trace-timeline__subsystem-chip[data-subsystem="world"]   { background: #134e4a; color: #5eead4; }
 .trace-timeline__subsystem-chip[data-subsystem="host"]    { background: #4a1d96; color: #c4b5fd; }
-.trace-timeline__subsystem-chip[data-subsystem="oracle"]  { background: #7c2d12; color: #fdba74; }
+.trace-timeline__subsystem-chip[data-subsystem="agent"]  { background: #7c2d12; color: #fdba74; }
 .trace-timeline__subsystem-chip[data-subsystem="harness"] { background: #1e3a5f; color: #7dd3fc; }
 
 .trace-timeline__msg {

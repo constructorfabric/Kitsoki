@@ -18,7 +18,7 @@ states:
           pairs:
             PR: "{{ world.pr_id }} — {{ world.pr_title }}"
       - heading: "Draft"
-      - code: '{{ world.draft_comment|default:"(pending — oracle has not returned yet)" }}'
+      - code: '{{ world.draft_comment|default:"(pending — agent has not returned yet)" }}'
       - choice:
           mode: single
           prompt: "Actions"
@@ -48,7 +48,7 @@ states:
       # reload-safety: keyed off its own bind (draft_comment), so /reload
       # (and the refine self-loop) skips the redraft and re-renders the stored
       # draft. The `refine` arc below clears draft_comment to re-arm it.
-      - invoke: host.oracle.ask
+      - invoke: host.agent.ask
         once: true
         with:
           prompt: prompts/comment_executing.md

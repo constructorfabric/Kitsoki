@@ -4,7 +4,7 @@
  *   tsx scripts/features/stitch-tour.mjs <feature-id>   (KITSOKI_DEMO_PROFILE)
  *
  * The per-section recordings (their MP4 + .chapters.json) already exist — this
- * is pure post-processing, no oracle/LLM anything. For each section in the
+ * is pure post-processing, no agent/LLM anything. For each section in the
  * catalog it:
  *   1. resolves each clip's source video + chapter sidecar for the active
  *      profile (falling back to desktop, logged);

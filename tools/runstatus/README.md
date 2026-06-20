@@ -1,7 +1,7 @@
 # runstatus — kitsoki web UI
 
 Vue 3 SPA served by `kitsoki web`. Displays the live trace of a running kitsoki
-session: the state timeline, oracle calls, world diffs, host invocations, and
+session: the state timeline, agent calls, world diffs, host invocations, and
 the rendered room view (typed view elements).
 
 ## Architecture

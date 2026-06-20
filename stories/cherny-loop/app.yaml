@@ -28,7 +28,7 @@
 #   script  — host.run a command; gate passes iff exit_code == 0 (the strongest
 #             maker/checker split: the checker is code, it cannot be talked into
 #             passing, and it costs nothing).  DEFAULT.
-#   oracle  — host.oracle.decide adversarially reviews the goal artifact; gate
+#   agent  — host.agent.decide adversarially reviews the goal artifact; gate
 #             passes iff the verdict's `pass` is true.  For goals no test can
 #             encode (prose quality, design soundness).
 #
@@ -36,12 +36,12 @@
 # every turn after a failed gate:
 #   1. goal met        → @exit:achieved        (always wins)
 #   2. cost ceiling     → @exit:exhausted       world.session_cost_usd is the
-#                         reserved, engine-maintained $ spend (foldOracleCost);
+#                         reserved, engine-maintained $ spend (foldAgentCost);
 #                         active only when cost_budget_usd > 0
 #   3. iteration ceiling → @exit:exhausted
 #
 # Feedback into the loop: a failed gate's reason (script stderr/stdout tail, or
-# the oracle's rationale) is captured into world.last_gate_failure and handed to
+# the agent's rationale) is captured into world.last_gate_failure and handed to
 # the NEXT maker turn, so the loop converges instead of blindly retrying.
 
 app:
@@ -52,13 +52,13 @@ app:
   license: "CC0"
 
 # Bare host calls (no iface wrapping):
-#   host.oracle.task     — the maker: edits toward the goal each iteration
+#   host.agent.task     — the maker: edits toward the goal each iteration
 #   host.run             — the script gate (deterministic checker)
-#   host.oracle.decide   — the oracle gate (adversarial checker)
+#   host.agent.decide   — the agent gate (adversarial checker)
 #   host.artifacts_dir   — persist each iteration's record (the run trail)
 hosts:
-  - host.oracle.task
-  - host.oracle.decide
+  - host.agent.task
+  - host.agent.decide
   - host.run
   - host.artifacts_dir
 
@@ -79,7 +79,7 @@ world:
   # Configuration (set in `configuring`, or seeded via a warp/flow).
   goal_text:         { type: string, default: "" }    # the purpose, in words
   goal_artifact:     { type: string, default: "" }    # path the maker produces/edits
-  gate_mode:         { type: string, default: "script" }   # script | oracle
+  gate_mode:         { type: string, default: "script" }   # script | agent
   gate_command:      { type: string, default: "" }    # script-mode shell command
   anchor_files:      { type: string, default: "" }    # fixed context handed to the maker each turn (ralph reset)
   iteration_budget:  { type: int,    default: 8 }
@@ -101,11 +101,11 @@ world:
   gate_ok:           { type: string, default: "" }
   gate_exit_code:    { type: int,    default: 0 }
   gate_stdout:       { type: string, default: "" }    # script gate output
-  gate_reason:       { type: string, default: "" }    # oracle gate rationale
+  gate_reason:       { type: string, default: "" }    # agent gate rationale
 
   # Cost: session_cost_usd is the reserved engine-maintained spend var (also
   # declared here so it has a default and is seedable in flow fixtures); the
-  # runtime overwrites it from real oracle spend each turn (foldOracleCost,
+  # runtime overwrites it from real agent spend each turn (foldAgentCost,
   # docs/stories/state-machine.md §6). turn_cost_usd is shown for display.
   session_cost_usd:  { type: number, default: 0 }
   turn_cost_usd:     { type: number, default: 0 }

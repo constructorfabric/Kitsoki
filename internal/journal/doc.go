@@ -33,7 +33,7 @@
 //   - Typed entries — semantic events whose payloads cannot be reconstructed
 //     from a patch sequence: host invocations, clarification schemas, timeout
 //     arms, inbox-item lifecycle, off-path question/answer pairs, rendered
-//     views, oracle/task traces. Kind values: [KindHostInvoked] and siblings.
+//     views, agent/task traces. Kind values: [KindHostInvoked] and siblings.
 //     Resume reads these verbatim; it never tries to derive them.
 //
 // To rebuild a document, [Reader.LoadDocument] finds the latest checkpoint for

@@ -6,7 +6,7 @@
 // on_enter chain's host calls dispatch. We turn that callback into a
 // roomEnteredMsg posted via tea.Program.Send so the live TUI can
 // paint the room's banner above the tool-call breadcrumbs that are
-// about to stream in (oracle, Bash, Read, etc.).
+// about to stream in (agent, Bash, Read, etc.).
 //
 // Lifecycle pattern mirrors MetaStreamSink: construct with
 // NewRoomEnterSink BEFORE tea.NewProgram, then Attach(prog) after

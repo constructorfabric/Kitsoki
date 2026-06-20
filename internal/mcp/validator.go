@@ -6,7 +6,7 @@
 // `isError: true` with a human-readable error list so the calling LLM can
 // self-correct and call again — all within the same `claude -p` conversation.
 //
-// Used by `host.oracle.ask_with_mcp` (auto-attached when the effect declares
+// Used by `host.agent.ask_with_mcp` (auto-attached when the effect declares
 // a `schema:` arg) and exposed standalone via `kitsoki mcp-validator`.
 //
 // Design notes vs. an external phase-keyed validator MCP:
@@ -65,7 +65,7 @@ type ValidatorServer struct {
 	// outputPath, when non-empty, receives the validated JSON every time
 	// `submit` is called with a payload that passes schema validation.
 	// The file is overwritten (last-call-wins). This is the side channel
-	// host.oracle.ask_with_mcp uses to recover the canonical, validated
+	// host.agent.ask_with_mcp uses to recover the canonical, validated
 	// payload after `claude -p` exits — independent of whatever the model
 	// chooses to write as its final response.
 	outputPath string
@@ -121,7 +121,7 @@ type ValidatorConfig struct {
 	ToolDescription string
 	// OutputPath, when non-empty, instructs the validator to write the
 	// validated JSON to that path on each successful submit. Used by
-	// host.oracle.ask_with_mcp to capture the canonical payload from the
+	// host.agent.ask_with_mcp to capture the canonical payload from the
 	// tool call rather than from the LLM's final stdout text.
 	OutputPath string
 
@@ -144,7 +144,7 @@ type ValidatorConfig struct {
 	// (attempts/successfulSubmits/lastError) survive a process restart.
 	// At startup the validator reads JSON state from this file (if it
 	// exists) to seed its counters; after every submit it rewrites the
-	// file atomically. host.oracle.ask_with_mcp uses this to keep one
+	// file atomically. host.agent.ask_with_mcp uses this to keep one
 	// logical "validator session" across multiple `claude --resume`
 	// re-engagements (each re-engagement spawns a fresh kitsoki
 	// mcp-validator subprocess but they all share the same state file).
@@ -253,7 +253,7 @@ func NewValidatorServer(cfg ValidatorConfig) (*ValidatorServer, error) {
 }
 
 // Outcome reports the validator's session-level disposition. The
-// orchestrator (host.oracle.ask_with_mcp, sub-task B) reads this after
+// orchestrator (host.agent.ask_with_mcp, sub-task B) reads this after
 // the MCP session ends to decide whether to (a) accept the captured
 // payload, (b) re-engage the same `claude --continue` conversation with
 // a "you forgot to call submit_result" nudge, or (c) fire on_error.

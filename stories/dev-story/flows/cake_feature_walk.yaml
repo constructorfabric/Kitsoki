@@ -71,8 +71,8 @@ host_handlers:
       transition:
         data: { ok: true }
 
-  # Phase 9: implementation rooms now use host.oracle.decide.
-  host.oracle.decide:
+  # Phase 9: implementation rooms now use host.agent.decide.
+  host.agent.decide:
     data:
       ok: true
       submitted:
@@ -97,7 +97,7 @@ host_handlers:
         intent:           "accept"
         reason:           "Stub artifact passes."
 
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted:
@@ -122,7 +122,7 @@ host_handlers:
         intent:           "accept"
         reason:           "Stub artifact passes."
 
-  host.oracle.ask:
+  host.agent.ask:
     data:
       ok: true
       submitted:

@@ -16,7 +16,7 @@ import (
 // and the testrunner builds a client from it so the REAL script runs with its
 // network served from — or recorded to — disk.
 //
-// The format is intentionally distinct from the host_cassette used for oracle
+// The format is intentionally distinct from the host_cassette used for agent
 // replay: a host_cassette episode replaces a whole handler with a canned
 // Result, whereas here we want the handler to run for real and only its HTTP to
 // be canned. The model is deliberately close to Python's VCR.py — record modes,

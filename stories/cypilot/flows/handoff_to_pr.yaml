@@ -51,7 +51,7 @@ host_handlers:
         tests_failed:     0
   host.local:
     data: { ok: true, log: "PASS: 8 tests", passed: 8, failed: 0 }
-  host.oracle.decide:
+  host.agent.decide:
     # Unused in human mode.
     data: { ok: true, submitted: { verdict: "uncertain", intent: "uncertain", reason: "n/a", confidence: 0.0 } }
 

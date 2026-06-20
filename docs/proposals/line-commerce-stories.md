@@ -32,7 +32,7 @@ hosts only.**
   (~4 rooms), prompts, one schema each, flow fixtures, READMEs.
 - **Engine/host changes:** none — composes existing mechanisms (intake choice,
   `host.starlark.run` for catalog/availability lookups via HTTP cassette,
-  `host.oracle.decide` only where genuine interpretation is needed). The channel
+  `host.agent.decide` only where genuine interpretation is needed). The channel
   delivery is the epic's slices 1–2; **this slice adds no engine surface.**
 - **Docs on ship:** `docs/stories/line-store.md`, `docs/stories/line-booking.md`,
   the `stories/*/README.md` entries.
@@ -45,7 +45,7 @@ hosts only.**
 | Look up catalog / availability | `host.starlark.run` + HTTP cassette (deterministic) | `starlark` skill; cassette discipline per `jira_transport_test.go` |
 | Add to cart / pick a slot | typed intent with slots (item id, date, party size) | intent slot validation, `internal/intent` |
 | Confirm / decline checkpoint | `accept` / `change` / `cancel` + cycle budget | `stories/bugfix/rooms/proposing.yaml` checkpoint intent set |
-| Interpret a fuzzy request ("something cheap and spicy") | `host.oracle.decide` over the catalog, schema-bounded | `decide` verb, narrowest-fit (CLAUDE.md oracle vocabulary) |
+| Interpret a fuzzy request ("something cheap and spicy") | `host.agent.decide` over the catalog, schema-bounded | `decide` verb, narrowest-fit (CLAUDE.md agent vocabulary) |
 | Hand off to a human | `mcp__operator__ask` → merchant console | `docs/architecture/operator-ask.md`; epic Shared decision 4 |
 
 ## Story graph

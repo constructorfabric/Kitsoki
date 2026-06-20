@@ -1,21 +1,21 @@
-# Runtime: confine a write/external oracle's filesystem writes (OS sandbox)
+# Runtime: confine a write/external agent's filesystem writes (OS sandbox)
 
 **Status:** Draft v1. Nothing implemented yet.
 **Kind:**   runtime
-**Epic:**   [oracle-capability-model.md](oracle-capability-model.md) (slice 3 — the OS enforcement layer)
+**Epic:**   [agent-capability-model.md](agent-capability-model.md) (slice 3 — the OS enforcement layer)
 
 ## Why
 
-An oracle whose toolbox resolves to the `write` or `external` class — chiefly
-`host.oracle.task`, but any write-capable `converse` too — can write anywhere
-its tools reach. `working_dir` is not a jail (`internal/host/oracle_task.go:284`
+An agent whose toolbox resolves to the `write` or `external` class — chiefly
+`host.agent.task`, but any write-capable `converse` too — can write anywhere
+its tools reach. `working_dir` is not a jail (`internal/host/agent_task.go:284`
 just sets the subprocess CWD). Real incident: `design_author`, asked for a
 *proposal document*, implemented the idea instead — wrote `cmd/kitsoki/web.go` +
 `internal/runstatus/server/live.go` + a `/actions→/intents` rename alongside
 `docs/proposals/web-ui.md`.
 
 This slice is the **kernel layer of the [capability
-model](oracle-capability-model.md)**: [slice 1](effect-taxonomy.md) names the
+model](agent-capability-model.md)**: [slice 1](effect-taxonomy.md) names the
 `write`/`external` class, [slice 2](toolbox-and-enforcement.md) enforces a tool
 allowlist on it — but the allowlist only governs *named tools*. Three weaker
 fixes were considered and rejected as *the* boundary:
@@ -37,7 +37,7 @@ the repo all failed with `EROFS` while the scratch write succeeded.
 
 ## What changes
 
-A `write`/`external`-class oracle declared with **`sandbox:`** (in practice a
+A `write`/`external`-class agent declared with **`sandbox:`** (in practice a
 `task`, the first adopter) runs its claude-cli subprocess inside an OS sandbox:
 the repo is **read-only**, a single per-task **workspace is read-write**, and
 everything else is unavailable. The agent
@@ -50,7 +50,7 @@ is the workspace, and the engine decides what leaves the box.*
 
 ## Impact
 
-- **Code seams:** `internal/host/oracle_task.go` (the claude-cli spawn at
+- **Code seams:** `internal/host/agent_task.go` (the claude-cli spawn at
   ~:284 — wrap argv in the sandbox launcher); a new
   `internal/host/tasksandbox/` with a **pluggable backend** (bwrap → landlock
   → degraded) and the mount/ruleset assembly; `internal/app/types.go` (a
@@ -76,12 +76,12 @@ is the workspace, and the engine decides what leaves the box.*
 | config | `sandbox` | on a `task` invoke `with:` (templated): `{ workspace: <path>, repo_ro: true, allow_net: true, persist: <allowlist globs>, override_decider: <agent?> }` | Presence → run the subprocess confined; `workspace` is the sole RW path. |
 | event | `TaskSandboxStart` | `{ backend, workspace, repo_ro }` | Which backend confined the task (bwrap/landlock/degraded). |
 | event | `TaskPersist` | `{ paths }` | The workspace files the engine copied into the repo. |
-| event | `TaskPersistOverride` | `{ path, rationale, verdict, confidence }` | An out-of-allowlist persist gated by `oracle.decide` (recorded — the moat). |
+| event | `TaskPersistOverride` | `{ path, rationale, verdict, confidence }` | An out-of-allowlist persist gated by `agent.decide` (recorded — the moat). |
 
 ## The model
 
 ```
-host.oracle.task (sandbox:)  ─spawn─▶  bwrap/landlock:
+host.agent.task (sandbox:)  ─spawn─▶  bwrap/landlock:
                                           repo            → READ-ONLY
                                           workspace       → READ-WRITE   (the only door)
                                           ~/.claude,/tmp  → READ-WRITE   (claude-cli needs them)
@@ -94,14 +94,14 @@ host.oracle.task (sandbox:)  ─spawn─▶  bwrap/landlock:
                               task ends ─▶ engine VALIDATES workspace diff vs `persist:` allowlist
                                           ─▶ in-allowlist  → copy into repo (TaskPersist)
                                           ─▶ out-of-allowlist → reject; agent/operator may supply an
-                                             override_rationale → oracle.decide(override_decider)
+                                             override_rationale → agent.decide(override_decider)
                                              → allow (TaskPersistOverride, recorded) | deny
 ```
 
 Everything INTERPRETIVE (what the agent writes in the box) is unconstrained
 and cheap; everything that crosses the DETERMINISTIC boundary (what gets
 persisted into the repo) is allowlisted, and any exception is a recorded
-`oracle.decide` — the moat, applied to agent output.
+`agent.decide` — the moat, applied to agent output.
 
 ## Decision recording
 
@@ -114,7 +114,7 @@ and whether the judge agreed).
 
 ## Engine seams & invariants
 
-- Wrap the claude-cli argv (`oracle_task.go` spawn) in the backend launcher.
+- Wrap the claude-cli argv (`agent_task.go` spawn) in the backend launcher.
   bwrap: `--ro-bind <repo> <repo> --bind <workspace> <workspace> --bind
   ~/.claude ~/.claude --tmpfs /tmp --ro-bind <claude-rt> … --proc /proc --dev
   /dev --chdir <repo>` (+ net unless `allow_net:false`). The workspace dir must
@@ -146,7 +146,7 @@ through **0.1**.
 ```
 ## Phase 0 — De-risk spike (throwaway code; gates the schema)
 - [ ] 0.1 (M, CRITICAL PATH) Enumerate claude-cli's minimal confined bind set.
-        Wrap one real `host.oracle.task` (or a bare `claude -p`) in bwrap and
+        Wrap one real `host.agent.task` (or a bare `claude -p`) in bwrap and
         iteratively add binds until a real task completes confined: reads the
         repo, writes only the workspace, reaches the model.
         WHY: the single biggest unknown — claude-cli needs ~/.claude (creds/
@@ -182,18 +182,18 @@ through **0.1**.
 - [ ] 2.3 (S) Schema docs: `docs/embedded/app-schema.md` invoke table row +
         types.go comment.
 
-## Phase 3 — oracle_task wiring (confinement only)  (deps: 1.x, 2.x)
-- [ ] 3.1 (M) In `oracle_task.go` spawn (~:284): when `sandbox:` set, build the
+## Phase 3 — agent_task wiring (confinement only)  (deps: 1.x, 2.x)
+- [ ] 3.1 (M) In `agent_task.go` spawn (~:284): when `sandbox:` set, build the
         Spec (templated workspace/extra_rw from args), `Confine`, and wrap the
         claude-cli argv — composing with the existing `--mcp-config` validator
         and `--allowedTools` flags.
 - [ ] 3.2 (S) Emit `TaskSandboxStart{backend, workspace, repo_ro}` (store event
         + trace); WARN + degrade when no backend (never silently unconfined).
 - [ ] 3.3 (S) Replay/cassette: sandbox is a NO-OP in replay mode
-        (`oracle_task_replay.go`) — confinement only on live runs; assert it.
+        (`agent_task_replay.go`) — confinement only on live runs; assert it.
 - [ ] 3.4 (M) Hermetic integration test (no real LLM): a FAKE `claude` binary
         (a script) that attempts to write `cmd/kitsoki/web.go` → denied; a
-        workspace write → ok. Drives the real `oracle_task` confinement path.
+        workspace write → ok. Drives the real `agent_task` confinement path.
 
 ## Phase 4 — adopt design_author  (deps: Phase 3)  ← THE FIX SHIPS HERE
 - [ ] 4.1 (S) Add `sandbox:` to the `design_draft` task invoke
@@ -214,7 +214,7 @@ through **0.1**.
         and publish handles the move; this is for tasks whose output lands in
         tracked paths.)
 - [ ] 5.2 (M) Reject-with-override: an out-of-allowlist persist is rejected;
-        a supplied `override_rationale` is judged by `oracle.decide(override_
+        a supplied `override_rationale` is judged by `agent.decide(override_
         decider)` (default-deny, capped); `TaskPersistOverride{rationale,
         verdict, confidence}` recorded.
 - [ ] 5.3 (M) Adopt for a worktree-mutating writer (bugfix implementer / impl
@@ -224,7 +224,7 @@ through **0.1**.
 ## Phase 6 — backends, docs, lifecycle  (deps: Phase 4)
 - [ ] 6.1 (M) Additional backends behind the interface: Landlock (kernels with
         the LSM enabled — lighter, in-process) and macOS `sandbox-exec`.
-- [ ] 6.2 (S) Docs: `docs/architecture/hosts.md` (oracle.task sandbox), the
+- [ ] 6.2 (S) Docs: `docs/architecture/hosts.md` (agent.task sandbox), the
         `kitsoki-story-authoring` skill (§5 + a sandbox note), state-machine.md.
 - [ ] 6.3 (S) Migrate the durable mechanism description into docs/; trim this
         proposal to any remaining deferred slice (Phase 5) or delete it.
@@ -278,10 +278,10 @@ persists.
 ## Non-goals
 
 - A general OS sandbox for all of kitsoki — this scopes only the
-  `write`/`external`-class oracle subprocesses that opt in via `sandbox:`.
+  `write`/`external`-class agent subprocesses that opt in via `sandbox:`.
 - Network / secret isolation beyond an `allow_net` on/off (a task that needs
   the model API keeps net).
-- Confining `pure`/`read`-class oracles — slice 2's tool allowlist already
+- Confining `pure`/`read`-class agents — slice 2's tool allowlist already
   denies them every mutator, so they need no kernel jail. (Most `decide`/`ask`
   agents are `read`; a write-capable `converse` would adopt `sandbox:` here.)
 - The classification (slice 1) and the tool-layer allowlist (slice 2) — this

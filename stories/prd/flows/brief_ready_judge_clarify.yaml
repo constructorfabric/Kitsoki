@@ -23,9 +23,9 @@ host_handlers:
   host.ide.open_file:
     data: { ok: true, connected: true }
   # references on_enter runs the optional semantic pre-seed; empty hits = no embeddings.
-  host.oracle.search:
+  host.agent.search:
     data: { hits: [] }
-  host.oracle.decide:
+  host.agent.decide:
     by_call:
       brief_check:
         data:
@@ -48,7 +48,7 @@ turns:
         reason:    "The What-changes is vague and success criteria are missing."
         questions: ["What does the developer do differently?", "How do we measure success?"]
     expect_host_calls:
-      - handler: host.oracle.decide
+      - handler: host.agent.decide
         args: { call: "brief_check" }
     expect_no_host_calls: [host.artifacts_dir]
 

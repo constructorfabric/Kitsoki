@@ -90,7 +90,7 @@ func ToTraceEvent(ev store.Event) TraceEvent {
 // supplies it since History rows don't carry it.
 //
 // Every store.Event maps 1:1 to a TraceEvent; no synthesis or back-fill is
-// performed. Oracle events (OracleCalled, OracleReturned, OracleError) are
+// performed. Agent events (AgentCalled, AgentReturned, AgentError) are
 // already written inline into the history by the orchestrator and appear in
 // Events verbatim.
 //

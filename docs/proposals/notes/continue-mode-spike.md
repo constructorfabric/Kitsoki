@@ -193,7 +193,7 @@ intended shape.
 ## R4 — Chat-append concurrency vs FSM event writes
 
 **References:**
-- `internal/host/oracle.go:160-181` (`runOracleTalkWithChat` acquires
+- `internal/host/agent.go:160-181` (`runAgentTalkWithChat` acquires
   the chat-level lock via `cs.WithLock`).
 - `internal/chats/lock.go:47-61` (`Store.WithLock` writes to
   `chat_locks` table — a per-chat row, not session-scoped).
@@ -212,10 +212,10 @@ intended shape.
 1. A foreground turn flows: `Turn()` → acquires
    `o.sessionLock(sid)` (in-process mutex) → `loadJourney` →
    `harness.RunTurn` → `machine.Turn` → `dispatchHostCalls` (this
-   is where a host like `host.oracle.ask_with_mcp` runs) →
+   is where a host like `host.agent.ask_with_mcp` runs) →
    `AppendEvents` (its own SQL tx) → release lock.
 
-2. The chat append inside `host.oracle.ask_with_mcp` happens via
+2. The chat append inside `host.agent.ask_with_mcp` happens via
    `cs.AppendMessage(...)` which opens its **own** SQL tx, *not*
    the orchestrator's tx — they're sequential within the goroutine,
    not atomic together.

@@ -32,8 +32,8 @@ pipeline with a checkpoint loop, structurally a cousin of `stories/bugfix/`
   memory: *freeform-capture-is-conversational*) distils the **brief**:
   the feature/proposal being mocked, the **user scenarios** to walk, and the
   `medium` (`tour` = HTML + walkthrough, `deck` = slidey). A judge gate
-  (`host.oracle.decide`) confirms the brief is concrete before proceeding.
-- **`authoring`** — **one** `host.oracle.task`, scoped to a workspace dir,
+  (`host.agent.decide`) confirms the brief is concrete before proceeding.
+- **`authoring`** — **one** `host.agent.task`, scoped to a workspace dir,
   authors the source from the brief: `tour` → static HTML mockup page(s) +
   a tour manifest (`{id, route, target, title, body, …}`,
   `.agents/skills/kitsoki-ui-demo/SKILL.md`); `deck` → a slidey JSON deck
@@ -49,7 +49,7 @@ pipeline with a checkpoint loop, structurally a cousin of `stories/bugfix/`
   notes (`feedback.jsonl` from slice 2) **and** accepts inline `refine
   feedback="…"`. Checkpoint: `accept` → `done`; `refine` → `refining`;
   `rerender` → `rendering`; `quit` → `@exit:abandoned`.
-- **`refining`** — **one** `host.oracle.task` per feedback batch: for each
+- **`refining`** — **one** `host.agent.task` per feedback batch: for each
   note it edits the source the note's `source_ref` points at (the HTML page
   for `kind: tour`, the scene object in the deck for `kind: slidey`), guided
   by the note's `instruction` + captured still, then routes back to
@@ -63,7 +63,7 @@ pipeline with a checkpoint loop, structurally a cousin of `stories/bugfix/`
 - **Net-new:** `stories/mockup-video/` — ~6 rooms, 2–3 prompts, 2 schemas,
   ~8 flow fixtures, an HTML mockup template + a starter slidey spec, README.
 - **Engine/host changes:** none — composes existing + epic hosts:
-  `host.oracle.converse`/`decide` (intake + brief gate), `host.oracle.task`
+  `host.agent.converse`/`decide` (intake + brief gate), `host.agent.task`
   (author + refine, scoped writes), `host.slidey.render` + `host.run` (render;
   `visual-outputs` #2 + `kitsoki-ui-demo` recorder), the slice-1 chapter
   sidecar, `host.artifacts_dir` media-emit
@@ -91,7 +91,7 @@ datapoint (memory: *kitsoki-moat-is-architecture*):
 - **Brief distillation** (`intake`) and **brief-concrete gate** are the
   interpretive *scoping* — `converse` + a recorded `decide`.
 - **Source authoring** (`authoring`) and **refine** (`refining`) are the
-  interpretive *execution* — `host.oracle.task`, scoped tool grant; the diff
+  interpretive *execution* — `host.agent.task`, scoped tool grant; the diff
   and reasoning recorded. The fixer never grades its own homework.
 - **Rendering** is **deterministic** — slidey/Playwright produce the same
   bytes from the same source; recorded as host calls + an `artifact`
@@ -104,9 +104,9 @@ datapoint (memory: *kitsoki-moat-is-architecture*):
 
 ```
 intake ──(converse: distil brief {feature, scenarios[], medium})──▶ brief-gate
-   brief-gate: oracle.decide "concrete enough?"  ── clarify ──▶ intake (self)
+   brief-gate: agent.decide "concrete enough?"  ── clarify ──▶ intake (self)
                                                   └─ ok ──────▶ authoring
-   authoring: ONE oracle.task authors source (scoped to workspace)
+   authoring: ONE agent.task authors source (scoped to workspace)
               tour → HTML pages + tour manifest ; deck → slidey deck
               checkpoint: accept ──▶ rendering ; revise(feedback) ──▶ authoring
                                    │
@@ -128,7 +128,7 @@ intake ──(converse: distil brief {feature, scenarios[], medium})──▶ br
                                    │ refine
                                    ▼
                               refining
-        on_enter: ONE oracle.task edits each note's source_ref target
+        on_enter: ONE agent.task edits each note's source_ref target
                   per its instruction + still (binding directives)
                   ──▶ rendering
                                    │  (accept)
@@ -164,13 +164,13 @@ world:
 - **`intake`** — `mode: conversational`; `converse` gathers the brief
   (feature, scenarios, `medium`). Pattern: `stories/prd/` discovery +
   memory *freeform-capture-is-conversational*. `done` intent → `brief-gate`.
-- **`brief-gate`** — `host.oracle.decide` against `prompts/brief_ready.md`:
+- **`brief-gate`** — `host.agent.decide` against `prompts/brief_ready.md`:
   is the brief concrete (scenarios named, medium chosen)? `clarify` →
   `intake`; `ok` → `authoring`. (Models `stories/dev-story/` brief check.)
-- **`authoring`** — `set: workspace`, then **one** `host.oracle.task`
+- **`authoring`** — `set: workspace`, then **one** `host.agent.task`
   (`prompts/author_source.md`) scoped to `workspace` (Read+Write+Bash in the
   workspace only; memory: *task-agents-must-not-implement* — prompt is the v1
-  write-jail, engine allowlist is `oracle-capability-model`). Emits
+  write-jail, engine allowlist is `agent-capability-model`). Emits
   `source.json` `{kind, paths, spec_path}`. Checkpoint `accept`/`revise`.
   `once: true`.
 - **`rendering`** — branch on `medium`: `deck` → `host.slidey.render
@@ -186,7 +186,7 @@ world:
   (`requires: video_handle`) → `done`; `refine feedback=…` (optional slot —
   inline *or* uses the drained batch) → `refining`; `rerender` → `rendering`;
   `quit` → `@exit:abandoned`.
-- **`refining`** — `when: cycle < refine_budget`; **one** `host.oracle.task`
+- **`refining`** — `when: cycle < refine_budget`; **one** `host.agent.task`
   (`prompts/refine_source.md`) scoped to `workspace`, handed the
   `feedback_batch` (and/or `refine_feedback`) as **binding directives** with a
   per-note compliance checklist (memory: *refine-honours-operator-guidance*),
@@ -228,10 +228,10 @@ stories/mockup-video/
 ## Flow fixtures
 
 All Mode-2, intent-only, no LLM (CLAUDE.md; memory: *no-llm-tests*). Stub
-`host.oracle.converse`/`decide`/`task` via flow `host_handlers`; stub
+`host.agent.converse`/`decide`/`task` via flow `host_handlers`; stub
 `host.slidey.render`/`host.run` (render → fixture mp4 + canned
-`chapters.json`) and `host.artifacts_dir` (canned handle). Stub oracle calls
-**by per-invoke id** (memory: *oracle-stub-by-id*).
+`chapters.json`) and `host.artifacts_dir` (canned handle). Stub agent calls
+**by per-invoke id** (memory: *agent-stub-by-id*).
 
 - **`happy_deck`** — full path, `medium=deck`; asserts `video_handle` bound,
   `done` shows the `media` element.
@@ -310,5 +310,5 @@ All Mode-2, intent-only, no LLM (CLAUDE.md; memory: *no-llm-tests*). Stub
   scenes), not shippable components.
 - **Engine-level write sandboxing for the tasks** — the `workspace`
   write-jail in the prompt is the v1 guardrail; the durable allowlist is the
-  `oracle-capability-model.md` epic.
+  `agent-capability-model.md` epic.
 ```

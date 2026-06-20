@@ -94,10 +94,10 @@ func TestResolveProjectLayer_Sources(t *testing.T) {
 	assert.Empty(t, none, "no inline/path/convention → empty project layer")
 }
 
-// TestComposeOracleSystemPrompt_GroundedWithoutPersona: even with no persona
+// TestComposeAgentSystemPrompt_GroundedWithoutPersona: even with no persona
 // the composed prompt carries the kitsoki layer — grounding is unconditional.
-func TestComposeOracleSystemPrompt_GroundedWithoutPersona(t *testing.T) {
-	composed := composeOracleSystemPrompt(context.Background(), sysprompt.Ask, "")
+func TestComposeAgentSystemPrompt_GroundedWithoutPersona(t *testing.T) {
+	composed := composeAgentSystemPrompt(context.Background(), sysprompt.Ask, "")
 	assert.Contains(t, composed.SystemPrompt, "operating inside **kitsoki**")
 	assert.Contains(t, sysprompt.LayerNames(composed.Layers), "kitsoki")
 }

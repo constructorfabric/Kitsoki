@@ -7,7 +7,7 @@
 The two JSON reports (intents.json + analysis.json) are the machine deliverable;
 this is the human view. It summarizes the corpus, the determinism split, the
 grounding rate, the tag distribution, and the recurring clusters, then lists every
-intent with its verbatim ask, determinism verdict, recipe, and oracle gates.
+intent with its verbatim ask, determinism verdict, recipe, and agent gates.
 
 Deterministic, stdlib only. Reads only the emitted reports (not the traces).
 """
@@ -17,7 +17,7 @@ import os
 import sys
 from collections import Counter
 
-DET_ICON = {"deterministic": "🟢", "oracle-gated": "🟡", "irreducible-llm": "🔴"}
+DET_ICON = {"deterministic": "🟢", "agent-gated": "🟡", "irreducible-llm": "🔴"}
 
 
 def _load(p):
@@ -50,8 +50,8 @@ def render(intents, analysis):
     w("|---|--:|---|")
     w("| 🟢 deterministic | %d | pure tool sequence, all params grounded, no judgment fork |"
       % det.get("deterministic", 0))
-    w("| 🟡 oracle-gated | %d | reproducible except at named gates, each with a strict validator |"
-      % det.get("oracle-gated", 0))
+    w("| 🟡 agent-gated | %d | reproducible except at named gates, each with a strict validator |"
+      % det.get("agent-gated", 0))
     w("| 🔴 irreducible-llm | %d | output genuinely needs open-ended generation |"
       % det.get("irreducible-llm", 0))
 
@@ -72,7 +72,7 @@ def render(intents, analysis):
 
     w("\n## Intents\n")
     # group by determinism for readability: gated/irreducible first (the actionable ones)
-    order = {"oracle-gated": 0, "irreducible-llm": 1, "deterministic": 2}
+    order = {"agent-gated": 0, "irreducible-llm": 1, "deterministic": 2}
     rows_sorted = sorted(
         rows, key=lambda r: (order.get(inst.get(r["instance_id"], {}).get("determinism"), 9),
                              r["instance_id"]))
@@ -94,7 +94,7 @@ def render(intents, analysis):
             if len(acts) > 8:
                 sig += "  →  …(%d more)" % (len(acts) - 8)
             w("- **recipe:** %s" % sig)
-        for g in an.get("oracle_gates", []) or []:
+        for g in an.get("agent_gates", []) or []:
             w("- **gate:** %s — _validator:_ %s" % (g.get("decision"), g.get("validator")))
     return "\n".join(out) + "\n"
 

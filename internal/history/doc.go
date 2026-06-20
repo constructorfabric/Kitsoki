@@ -2,7 +2,7 @@
 // back-navigation. It sits beside the orchestrator's turn loop: the
 // machine pushes a [Stack] entry whenever the user enters a room, and
 // pops one whenever a `back` intent fires. Three features consume it —
-// `back`-intent transitions, inbox-teleport returns, and oracle-room
+// `back`-intent transitions, inbox-teleport returns, and agent-room
 // exits — so the stack is the single source of truth for "where the
 // user came from."
 //
@@ -37,7 +37,7 @@
 //   - Teleport transitions push the inbox PREDECESSOR, not the inbox
 //     room itself, so a back from a teleport target returns to where the
 //     user was before the notification, not to the inbox. Transitions
-//     flagged push_history: false are stackless (used for oracle and
+//     flagged push_history: false are stackless (used for agent and
 //     inbox rooms, which must not appear as back targets).
 //
 // # Worked example

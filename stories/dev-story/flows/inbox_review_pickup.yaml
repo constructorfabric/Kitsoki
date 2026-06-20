@@ -30,9 +30,9 @@ host_handlers:
       comments: ""
   host.local_files.ticket:
     data: { ok: true }
-  # Phase 9: code-review rooms now use host.oracle.decide (review/judge)
-  # and host.oracle.ask (comment draft).
-  host.oracle.decide:
+  # Phase 9: code-review rooms now use host.agent.decide (review/judge)
+  # and host.agent.ask (comment draft).
+  host.agent.decide:
     data:
       ok: true
       submitted:
@@ -47,12 +47,12 @@ host_handlers:
         verdict:    "pass"
         intent:     "accept"
         reason:     "Stub."
-  host.oracle.ask:
+  host.agent.ask:
     data:
       ok: true
       stdout: "LGTM."
 
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       stdout: "LGTM."

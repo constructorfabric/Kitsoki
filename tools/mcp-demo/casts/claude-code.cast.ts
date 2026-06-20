@@ -106,7 +106,7 @@ export const cast: Termcast = {
       id: "test",
       label: "Test — story.test",
       caption: "Testing the flows — story.test (deterministic, no LLM)",
-      sub: "mock oracle via cassette — zero model cost",
+      sub: "mock agent via cassette — zero model cost",
       holdMs: 4600,
       chunks: [
         {
@@ -114,10 +114,10 @@ export const cast: Termcast = {
           data: tool("story_test", [
             `${a.green("✓")} flows/order-flat-white.yaml ${a.gray("— 4 turns")}`,
             `${a.green("✓")} flows/order-then-cancel.yaml ${a.gray("— 3 turns")}`,
-            `${a.green("2 passed")} ${a.gray("· 0 failed · oracle: cassette (no LLM)")}`,
+            `${a.green("2 passed")} ${a.gray("· 0 failed · agent: cassette (no LLM)")}`,
           ]),
         },
-        { kind: "out", data: say("Both recorded flows pass against the cassette oracle — no API calls, fully reproducible.") },
+        { kind: "out", data: say("Both recorded flows pass against the cassette agent — no API calls, fully reproducible.") },
       ],
     },
     {
@@ -191,7 +191,7 @@ export const cast: Termcast = {
           data: tool("session_inspect", [
             `state ${a.cyan("confirm")} ${a.gray("· allowed: [order_another, done]")}`,
             `world { drink: ${a.yellow("flat_white")} }`,
-            `last_turns: order_coffee → confirm ${a.gray("(2 turns, 0 oracle calls live)")}`,
+            `last_turns: order_coffee → confirm ${a.gray("(2 turns, 0 agent calls live)")}`,
           ]),
         },
         {

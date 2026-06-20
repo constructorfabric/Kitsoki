@@ -50,8 +50,8 @@ host_handlers:
       ok: true
       tickets:
         - { id: "2026-05-14T120000Z-scenarios-readme-warp-flag-misnamed", title: "scenarios/README.md says --warp …", status: "open", priority: "P3", assignee: "" }
-  host.oracle.decide:
-    data: &oracle_stub
+  host.agent.decide:
+    data: &agent_stub
       ok: true
       submitted:
         summary_title:    "Oregon Trail scenarios README — clarify --warp path resolution"
@@ -87,12 +87,12 @@ host_handlers:
         reason:     "Stub artifact passes the schema; accept advances."
         confidence_pct: 95
 
-  # host.oracle.task — bf reproducing/implementing/testing/validating
+  # host.agent.task — bf reproducing/implementing/testing/validating
   # rooms generate their artifact via the `task` verb (judge steps use
   # `decide`). Same stub payload as decide (shared anchor); the artifact
   # schema's additionalProperties tolerates the judge fields.
-  host.oracle.task:
-    data: *oracle_stub
+  host.agent.task:
+    data: *agent_stub
 
 turns:
   # bf.idle's auto-start on_enter fires on this transition (ticket is

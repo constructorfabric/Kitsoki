@@ -127,18 +127,18 @@ type TurnNumber int64
 
 // ---- App-definition types (loaded from YAML) --------------------------------
 
-// OraclePluginDecl declares one oracle plugin entry under the top-level
-// `oracle_plugins:` YAML key (a map of oracle alias → declaration). This is
+// AgentPluginDecl declares one agent plugin entry under the top-level
+// `agent_plugins:` YAML key (a map of agent alias → declaration). This is
 // distinct from the `hosts:` field, which is the flat string host allow-list.
 //
 // Supported plugin values (B-3):
 //   - "builtin.claude_cli" — the default; wraps the existing claude-CLI harness.
-//   - "builtin.inprocess"  — opt-in in-process oracle (used by tests / stubs).
+//   - "builtin.inprocess"  — opt-in in-process agent (used by tests / stubs).
 //   - "subprocess"         — JSON-RPC 2.0 over stdio; requires command:.
 //   - "mcp_http"           — MCP-over-HTTP; requires endpoint:.
 //   - "builtin.local_llm"  — local llama.cpp sidecar (OpenAI HTTP); requires
 //     either model: (managed sidecar) or endpoint: (bring-your-own-server).
-type OraclePluginDecl struct {
+type AgentPluginDecl struct {
 	// Plugin is the transport identifier (e.g. "builtin.claude_cli", "mcp_http").
 	Plugin string `yaml:"plugin"`
 	// Command is the subprocess binary path. Required for subprocess transport.
@@ -206,21 +206,21 @@ type AppDef struct {
 	OffPath *OffPathDef       `yaml:"off_path,omitempty"`
 	// Hosts is the allow-list of host handler names this app may invoke.
 	Hosts []string `yaml:"hosts,omitempty"`
-	// OraclePlugins declares oracle plugin configurations under the top-level
-	// `oracle_plugins:` YAML key (B-2 additive syntax). Keys are oracle alias
-	// names (e.g. "oracle.claude", "oracle.autofix_fixer"); values are plugin
+	// AgentPlugins declares agent plugin configurations under the top-level
+	// `agent_plugins:` YAML key (B-2 additive syntax). Keys are agent alias
+	// names (e.g. "agent.claude", "agent.autofix_fixer"); values are plugin
 	// declarations. When absent or nil, the loader injects a default
-	// "oracle.claude" entry with plugin "builtin.claude_cli".
+	// "agent.claude" entry with plugin "builtin.claude_cli".
 	//
 	// Note: an earlier design named this block `hosts:` but that key conflicts
 	// with the existing AppDef.Hosts []string allow-list field. The YAML key
-	// `oracle_plugins:` is the stable authoring surface.
-	OraclePlugins map[string]*OraclePluginDecl `yaml:"oracle_plugins,omitempty"`
+	// `agent_plugins:` is the stable authoring surface.
+	AgentPlugins map[string]*AgentPluginDecl `yaml:"agent_plugins,omitempty"`
 	// Providers declares named LLM backend profiles under the top-level
 	// `providers:` YAML key. A provider bundles a default model and a set of
 	// environment-variable overrides applied to the `claude` subprocess for any
-	// oracle invocation that selects it (via an agent's `provider:` field or an
-	// effect's `with: { provider: <name> }` arg). This lets some oracle calls run
+	// agent invocation that selects it (via an agent's `provider:` field or an
+	// effect's `with: { provider: <name> }` arg). This lets some agent calls run
 	// against the ambient Anthropic auth while others point claude at an
 	// alternate backend (e.g. an internal LiteLLM proxy) by overriding
 	// ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN / NODE_EXTRA_CA_CERTS. Selecting
@@ -239,7 +239,7 @@ type AppDef struct {
 
 	// Agents declares named Claude agents — first-class personas / system
 	// prompts (and optionally model overrides) reusable across any
-	// host.oracle.{ask,talk,ask_with_mcp} call via the `agent: <name>` arg
+	// host.agent.{ask,talk,ask_with_mcp} call via the `agent: <name>` arg
 	// in the effect's `with:` block. Generalises OffPathDef.Persona into a
 	// per-call primitive so different rooms / intents can speak in
 	// different voices through the same engine path.
@@ -259,7 +259,7 @@ type AppDef struct {
 	Decider *DeciderSpec `yaml:"decider,omitempty"`
 	// Agents declares named per-context agents (see docs/stories/meta-mode.md).
 	// Generalises OffPathDef.Persona / OffPathDef.Agent into a top-level
-	// primitive any host.oracle.* call site can reference by name. Bound
+	// primitive any host.agent.* call site can reference by name. Bound
 	// at startup via agents.BuildRegistry(def.AgentSpecs()) + host.SetAgentRegistry.
 	Agents map[string]*AgentDecl `yaml:"agents,omitempty"`
 
@@ -380,19 +380,19 @@ type RoutingConfig struct {
 	// originating LLM verdict had confidence < 0.7. Default off.
 	ConfidenceDecay bool `yaml:"confidence_decay,omitempty"`
 	// ExtractLLMOnNoMatch, when true, lets the deterministic semantic
-	// router (TrySemantic) invoke the host.oracle.extract LLM tier on a
+	// router (TrySemantic) invoke the host.agent.extract LLM tier on a
 	// no_match before falling through to the main-turn LLM. The point is
-	// to back that LLM tier with a cheap local model (oracle: oracle.local)
+	// to back that LLM tier with a cheap local model (agent: agent.local)
 	// so routing stays offline and schema-bounded. Default off — the
 	// deterministic tiers always run first, and this is strictly opt-in
 	// because the extract LLM call adds a model round-trip on every
 	// otherwise-unrouted turn. See docs/architecture/semantic-routing.md
-	// and docs/architecture/oracle-plugin.md "Local model backend".
+	// and docs/architecture/agent-plugin.md "Local model backend".
 	ExtractLLMOnNoMatch bool `yaml:"extract_llm_on_no_match,omitempty"`
-	// ExtractLLMOracle is the oracle_plugins alias the no_match LLM routing
+	// ExtractLLMAgent is the agent_plugins alias the no_match LLM routing
 	// tier dispatches to (see ExtractLLMOnNoMatch). Empty defaults to
-	// "oracle.local" — the convention for the local-model backend.
-	ExtractLLMOracle string `yaml:"extract_llm_oracle,omitempty"`
+	// "agent.local" — the convention for the local-model backend.
+	ExtractLLMAgent string `yaml:"extract_llm_agent,omitempty"`
 	// FreeFormFallback, when set, names a canonical work-intake state+intent
 	// that should receive otherwise-unmatched prose from strict/menu rooms.
 	// The loader copies that intent's transition onto states that do not
@@ -401,8 +401,8 @@ type RoutingConfig struct {
 	// navigation intent.
 	FreeFormFallback *FreeFormFallbackConfig `yaml:"free_form_fallback,omitempty"`
 	// Embedding configures the shared embedding sidecar used by both
-	// host.oracle.search and the embedding routing tier. When nil or when
-	// both Endpoint and Model are empty, host.oracle.search remains the
+	// host.agent.search and the embedding routing tier. When nil or when
+	// both Endpoint and Model are empty, host.agent.search remains the
 	// no-op sentinel and the embedding routing tier is disabled.
 	Embedding *EmbedConfig `yaml:"embedding,omitempty"`
 }
@@ -418,7 +418,7 @@ type FreeFormFallbackConfig struct {
 }
 
 // EmbedConfig is the app.routing.embedding config block. It is shared by the
-// host.oracle.search handler and the embedding routing tier.
+// host.agent.search handler and the embedding routing tier.
 type EmbedConfig struct {
 	// Endpoint is the base URL of a running llama-server started with
 	// --embeddings --pooling mean (e.g. "http://localhost:8082"). When set
@@ -430,7 +430,7 @@ type EmbedConfig struct {
 	// cache key.
 	Model string `yaml:"model,omitempty"`
 	// CacheDir is the directory for the gob corpus cache produced by
-	// host.oracle.search. Defaults to ".kitsoki-embed-cache" relative to
+	// host.agent.search. Defaults to ".kitsoki-embed-cache" relative to
 	// the working directory.
 	CacheDir string `yaml:"cache_dir,omitempty"`
 	// ConfidentBar is the top-1 cosine threshold for the routing tier
@@ -667,7 +667,7 @@ type AppMeta struct {
 	License string `yaml:"license,omitempty"`
 
 	// Context / ContextPath author the project's Layer-2 system-prompt
-	// grounding: the app's domain, purpose, and voice, shared by every oracle
+	// grounding: the app's domain, purpose, and voice, shared by every agent
 	// call and the router. At most one may be set (loader-enforced). Context is
 	// an inline template string; ContextPath points at a prompt file resolved
 	// through the same overlay/@shared search path as any other prompt, so it
@@ -691,14 +691,14 @@ type WorldSchema map[string]VarDef
 // State is a node in the directed graph. It may be atomic, compound, or parallel.
 // DeciderSpec is the app-level configuration for the engine-driven LLM
 // decider. The engine invokes `agent` via
-// host.oracle.decide at any decision gate that owes an autonomous decision,
+// host.agent.decide at any decision gate that owes an autonomous decision,
 // passing the gate's candidate intents; the agent submits {intent, confidence,
 // reason} validated against `schema`.
 type DeciderSpec struct {
 	// Agent is the judge agent name (must be declared in agents:). Required.
 	Agent string `yaml:"agent"`
 	// Schema is the path to the decision schema (intent/confidence/reason).
-	// Required — host.oracle.decide rejects an empty schema.
+	// Required — host.agent.decide rejects an empty schema.
 	Schema string `yaml:"schema"`
 	// Prompt is an optional decision-prompt template path; when empty the
 	// engine synthesises a prompt from the gate's candidate intents.
@@ -711,7 +711,7 @@ type State struct {
 	// Type is "atomic" (default), "compound", or "parallel".
 	Type string `yaml:"type,omitempty"`
 	// Mode declares a special harness mode for this state.
-	// "conversational" enables the Oracle Room free-form harness.
+	// "conversational" enables the Agent Room free-form harness.
 	Mode string `yaml:"mode,omitempty"`
 	// Description is shown in the location indicator.
 	Description string `yaml:"description,omitempty"`
@@ -740,7 +740,7 @@ type State struct {
 	// the operator opts into write mode at a scope (action|turn|session); headless
 	// (no operator) denies the step and the agent stays read-only. Validated at
 	// load time: read_only is only meaningful on a room that dispatches an agent
-	// (host.oracle.task/converse), and contradicts a statically write-capable
+	// (host.agent.task/converse), and contradicts a statically write-capable
 	// agent (external_side_effect: true). See
 	// docs/proposals/agent-write-mode-opt-in.md.
 	WriteMode string `yaml:"write_mode,omitempty"`
@@ -780,16 +780,16 @@ type State struct {
 	// Timeout declares an automatic transition after a duration.
 	Timeout *TimeoutDef `yaml:"timeout,omitempty"`
 
-	// OracleOffRamp opts this room into the oracle off-ramp: a free-text
-	// utterance that routes to no declared intent here is handed to an oracle
+	// AgentOffRamp opts this room into the agent off-ramp: a free-text
+	// utterance that routes to no declared intent here is handed to an agent
 	// converse turn instead of bounced back as a rejection, without advancing
 	// the state machine or mutating world. Accepts the bare scalar
-	// `oracle_off_ramp: true` or the {agent, persona, banner} struct form (see
+	// `agent_off_ramp: true` or the {agent, persona, banner} struct form (see
 	// OffRampDef). Nil — the default — means no off-ramp; rejections behave
 	// exactly as before. The loader nils this pointer for an explicit
-	// `oracle_off_ramp: false`, so the runtime treats `!= nil` as "fires."
+	// `agent_off_ramp: false`, so the runtime treats `!= nil` as "fires."
 	// Rejected at load time on terminal: true or mode: conversational states.
-	OracleOffRamp *OffRampDef `yaml:"oracle_off_ramp,omitempty"`
+	AgentOffRamp *OffRampDef `yaml:"agent_off_ramp,omitempty"`
 
 	// IntentAliases records the bare → renamed mapping produced by the
 	// imports rewriter. When this state lives inside one or more import
@@ -827,7 +827,7 @@ type State struct {
 	Theme string `yaml:"theme,omitempty"`
 
 	// InterceptDrive marks a room whose entry begins a MULTI-TURN sub-flow
-	// (an oracle-in-the-loop loop such as conflict resolution) that the
+	// (an agent-in-the-loop loop such as conflict resolution) that the
 	// pre-LLM intercept gate must DRIVE TO REST rather than snapshot after a
 	// single stateless one-shot. The only valid value is "rest". When any room
 	// reachable through an intercept binding carries this flag, the gate
@@ -862,7 +862,7 @@ type Transition struct {
 	Emit []string `yaml:"emit,omitempty"`
 	// PushHistory controls whether the outgoing state is pushed onto the history stack.
 	// Default true (push on every normal transition). Set false for utility transitions
-	// like entering the Oracle Room or Inbox (stackless transitions).
+	// like entering the Agent Room or Inbox (stackless transitions).
 	PushHistory *bool `yaml:"push_history,omitempty"`
 }
 
@@ -888,7 +888,7 @@ type Effect struct {
 	// Id is an optional, author-assigned address for this invoke's call site.
 	// It is threaded into the dispatched args under the reserved `call` key so
 	// a single fixture can stub or match two calls that share a handler name —
-	// e.g. two `host.oracle.decide` call sites in one room. Flow stubs select on
+	// e.g. two `host.agent.decide` call sites in one room. Flow stubs select on
 	// it via `by_call:`; cassettes via `match: { call: <id> }`. Distinct from the
 	// deterministic 16-hex `call_id` correlation hash (see host.DeriveCallID):
 	// this is a stable human label the author controls, independent of verb,
@@ -919,7 +919,7 @@ type Effect struct {
 	// The bind target IS the cache, so clearing it (e.g. a re-run intent's
 	// `set: {key: ""}` / `{}`) re-arms the call. This generalizes the
 	// hand-rolled `when: "<result_key> == ''"` reload guard so an on_enter
-	// host call (oracle.decide/task/converse, artifacts_dir write) does not
+	// host call (agent.decide/task/converse, artifacts_dir write) does not
 	// re-fire on /reload, self-transitions, or on_error re-entry.
 	//
 	// "Set" means: nil, empty string "", empty map {}, and empty slice []
@@ -983,13 +983,13 @@ type Effect struct {
 	// no nested on_complete:).
 	Effects []Effect `yaml:"effects,omitempty"`
 
-	// OraclePlugin names the oracle alias declared in `oracle_plugins:` that
-	// should handle this effect's oracle call (e.g. "oracle.autofix_fixer").
-	// Empty resolves to "oracle.claude" (the default). This field is populated
-	// when a room declares `oracle: oracle.<name>` on an effect (see
-	// docs/architecture/oracle-plugin.md). When absent, the dispatcher
+	// AgentPlugin names the agent alias declared in `agent_plugins:` that
+	// should handle this effect's agent call (e.g. "agent.autofix_fixer").
+	// Empty resolves to "agent.claude" (the default). This field is populated
+	// when a room declares `agent: agent.<name>` on an effect (see
+	// docs/architecture/agent-plugin.md). When absent, the dispatcher
 	// resolves the default plugin.
-	OraclePlugin string `yaml:"oracle,omitempty"`
+	AgentPlugin string `yaml:"agent,omitempty"`
 }
 
 // ProposalKind declares a named proposal kind.
@@ -1092,34 +1092,34 @@ type OffPathDef struct {
 	Banner  string `yaml:"banner,omitempty"`
 	Return  string `yaml:"return,omitempty"`
 	// Persona is an optional inline system-prompt-style instruction
-	// prepended to every off-path oracle call. Lets apps style the
-	// off-path "oracle" voice without declaring a top-level agent
+	// prepended to every off-path agent call. Lets apps style the
+	// off-path "agent" voice without declaring a top-level agent
 	// (e.g., a frontier wise-man for Oregon Trail). Empty falls back
 	// to the engine default. When both Persona and Agent are set,
 	// Persona wins — apps can override a named agent inline for
 	// off-path only.
 	Persona string `yaml:"persona,omitempty"`
 	// Agent, when non-empty, names an entry in AppDef.Agents whose
-	// SystemPrompt is applied to every off-path oracle call. Resolved
+	// SystemPrompt is applied to every off-path agent call. Resolved
 	// at runtime via the process-wide agent registry installed at
 	// startup by host.SetAgentRegistry. Mutually composable with
 	// Persona (above) — Persona wins when both are set.
 	Agent string `yaml:"agent,omitempty"`
 }
 
-// OffRampDef configures a state's oracle off-ramp: the no-match door into the
+// OffRampDef configures a state's agent off-ramp: the no-match door into the
 // same free-form converse mechanism off_path: reaches through its typed-trigger
 // door (see docs/stories/meta-mode.md). When a free-text utterance routes to no
 // declared intent in a room that declares the off-ramp, the orchestrator hands
-// the original text to an oracle converse turn (via Orchestrator.AskOffPath)
+// the original text to an agent converse turn (via Orchestrator.AskOffPath)
 // instead of bouncing it back as a rejection — without advancing the state
 // machine or mutating world.
 //
 // The field is opt-in per room and accepts two author forms, decoded by
 // UnmarshalYAML (modeled on View.UnmarshalYAML):
 //
-//	oracle_off_ramp: true                  # bare scalar — use the off-path voice
-//	oracle_off_ramp: { agent: discovery-guide, banner: "(thinking)" }  # struct
+//	agent_off_ramp: true                  # bare scalar — use the off-path voice
+//	agent_off_ramp: { agent: discovery-guide, banner: "(thinking)" }  # struct
 //
 // The struct fields mirror the subset of OffPathDef that styles the off-path
 // voice (Agent / Persona / Banner); Trigger and Return are off-path-only and
@@ -1140,38 +1140,38 @@ type OffRampDef struct {
 	Banner string `yaml:"banner,omitempty"`
 
 	// enabled distinguishes an active off-ramp from an explicit
-	// `oracle_off_ramp: false`. Because goccy allocates the pointer and calls
+	// `agent_off_ramp: false`. Because goccy allocates the pointer and calls
 	// UnmarshalYAML even for the `false` scalar, a nil check alone can't tell
 	// "off-ramp on, bare form" (a zero struct) from "off-ramp off" (also a
 	// zero struct). UnmarshalYAML sets this true for `true` and the struct
 	// form, false for `false`; the loader's normalizeOffRamp post-pass then
 	// nils the State pointer whenever enabled is false, so every downstream
-	// reader can treat `State.OracleOffRamp != nil` as "the off-ramp fires."
+	// reader can treat `State.AgentOffRamp != nil` as "the off-ramp fires."
 	enabled bool `yaml:"-"`
 }
 
 // Enabled reports whether this off-ramp def represents an active off-ramp
 // (the author wrote `true` or the struct form) rather than an explicit
-// `oracle_off_ramp: false`. The loader nils the State pointer for the
+// `agent_off_ramp: false`. The loader nils the State pointer for the
 // disabled case, so runtime callers normally just nil-check the pointer; this
 // accessor exists for the loader's own normalization pass and for tests.
 func (d *OffRampDef) Enabled() bool { return d != nil && d.enabled }
 
-// UnmarshalYAML decodes the oracle_off_ramp: field from one of two author
+// UnmarshalYAML decodes the agent_off_ramp: field from one of two author
 // forms — the bare boolean scalar or the {agent, persona, banner} mapping —
 // modeled on View.UnmarshalYAML's scalar-or-struct probe. goccy/go-yaml hands
 // us the raw bytes of the YAML subtree; we try the scalar first and fall
 // through to the struct form.
 //
 // Decoding contract:
-//   - `oracle_off_ramp: true`  → a zero-value *OffRampDef (off-path voice).
-//   - `oracle_off_ramp: false` → the field is treated as absent; the caller's
+//   - `agent_off_ramp: true`  → a zero-value *OffRampDef (off-path voice).
+//   - `agent_off_ramp: false` → the field is treated as absent; the caller's
 //     pointer stays nil. (The decoder runs only when the key is present, so a
 //     `false` is the author explicitly opting out — same as omitting the key.)
 //   - mapping form               → the named agent/persona/banner.
 //
 // A scalar that is neither a boolean nor the empty mapping is an error so a
-// typo (`oracle_off_ramp: yes please`) fails the load instead of silently
+// typo (`agent_off_ramp: yes please`) fails the load instead of silently
 // disabling the off-ramp.
 func (d *OffRampDef) UnmarshalYAML(data []byte) error {
 	if len(data) == 0 {
@@ -1196,7 +1196,7 @@ func (d *OffRampDef) UnmarshalYAML(data []byte) error {
 	}
 	var f offRampForm
 	if err := goyaml.UnmarshalWithOptions(data, &f, goyaml.Strict()); err != nil {
-		return fmt.Errorf("oracle_off_ramp: must be `true` or an {agent, persona, banner} mapping: %w", err)
+		return fmt.Errorf("agent_off_ramp: must be `true` or an {agent, persona, banner} mapping: %w", err)
 	}
 	*d = OffRampDef{Agent: f.Agent, Persona: f.Persona, Banner: f.Banner, enabled: true}
 	return nil
@@ -1221,7 +1221,7 @@ type AgentDecl struct {
 	Tools []string `yaml:"tools,omitempty"`
 	Cwd   string   `yaml:"cwd,omitempty"`
 
-	// Effort, when non-empty, is forwarded to `claude --effort` for every oracle
+	// Effort, when non-empty, is forwarded to `claude --effort` for every agent
 	// invocation that resolves to this agent (ask, decide, task, ask_structured,
 	// converse). Valid values: low, medium, high, xhigh, max. An effect's
 	// `with: { effort: <level> }` arg overrides this per call. Empty leaves the
@@ -1229,7 +1229,7 @@ type AgentDecl struct {
 	Effort string `yaml:"effort,omitempty"`
 
 	// Provider names an entry in AppDef.Providers whose env overrides (and, when
-	// this agent sets no model:, default model) apply to every oracle invocation
+	// this agent sets no model:, default model) apply to every agent invocation
 	// that resolves to this agent. An effect's `with: { provider: <name> }` arg
 	// overrides this per call. Empty means the ambient environment (today's
 	// behavior).
@@ -1246,8 +1246,8 @@ type AgentDecl struct {
 
 	// BashProfile restricts Bash tool usage when the agent's tool surface
 	// includes "Bash". Required when Bash is in Tools and the agent is
-	// referenced by a host.oracle.ask or host.oracle.decide effect (enforced
-	// by the loader). Ignored for host.oracle.task and host.oracle.converse.
+	// referenced by a host.agent.ask or host.agent.decide effect (enforced
+	// by the loader). Ignored for host.agent.task and host.agent.converse.
 	BashProfile *BashProfileDecl `yaml:"bash_profile,omitempty"`
 
 	// ExternalSideEffect, when non-nil, declares whether the agent may

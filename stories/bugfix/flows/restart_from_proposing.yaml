@@ -23,7 +23,7 @@ host_handlers:
     data: { ok: true, sha: "abc", diff: "" }
   host.local:
     data: { ok: true, log: "PASS", passed: 1, failed: 0 }
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted:
@@ -42,7 +42,7 @@ host_handlers:
         lessons:
           - { category: "stub", description: "restart_from regression test.", severity: "low" }
 
-  host.oracle.ask:
+  host.agent.ask:
     data:
       ok: true
       submitted:
@@ -61,7 +61,7 @@ host_handlers:
         lessons:
           - { category: "stub", description: "restart_from regression test.", severity: "low" }
 
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:

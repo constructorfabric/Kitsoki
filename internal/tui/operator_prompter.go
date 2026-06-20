@@ -1,13 +1,13 @@
 // operator_prompter.go — the TUI surface's host.OperatorPrompter.
 //
-// When a dispatched `claude -p` oracle agent forwards an AskUserQuestion into
+// When a dispatched `claude -p` agent agent forwards an AskUserQuestion into
 // kitsoki (see internal/host/operator_ask_bridge.go), the host layer pulls the
 // in-context OperatorPrompter and calls Ask, which BLOCKS the turn goroutine
 // until the operator answers. On the web surface that prompter surfaces the
 // question over SSE and blocks on a channel (internal/runstatus/server/
 // operator_questions.go); the TUI equivalent is TUIOperatorPrompter:
 //
-//	Ask(questions)                       [oracle subprocess reader goroutine,
+//	Ask(questions)                       [agent subprocess reader goroutine,
 //	  ├─ prog.Send(operatorQuestionMsg)   off the bubbletea Update loop]
 //	  │     → RootModel.Update opens the inline question widget
 //	  └─ block on answerCh until the operator commits (or ctx is cancelled)
@@ -19,7 +19,7 @@
 // reference; an Ask with no bound program degrades to "no operator" so the
 // agent is told to proceed on its own (matching the headless posture).
 //
-// Concurrency contract: Ask is called on the oracle subprocess's listener
+// Concurrency contract: Ask is called on the agent subprocess's listener
 // goroutine, NOT the bubbletea Update loop. It blocks — that is the whole point
 // (the agent waits for a human) — but it never blocks Update: the question is
 // handed off via prog.Send and the answer comes back over a buffered channel.

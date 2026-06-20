@@ -8,7 +8,7 @@
 // uses (buildTourServer), then hands it to internal/webshot.Shot, which serves
 // it on an ephemeral localhost port and shells the maintained
 // tools/runstatus/web-shot.ts to capture the PNG. Fully no-LLM by construction:
-// the served handler is flow/cassette-driven, so no oracle is ever hit.
+// the served handler is flow/cassette-driven, so no agent is ever hit.
 //
 //	kitsoki web-shot <story> --flow <f> [--state … --world @w.json] -o out.png
 //

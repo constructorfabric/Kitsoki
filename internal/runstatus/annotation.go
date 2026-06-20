@@ -15,7 +15,7 @@ import (
 // trace is never mutated by the UI. Each append adds one JSON line.
 //
 // Either TargetCallID or TargetTurn (or both) identifies what is being
-// annotated. TargetCallID references a specific oracle call (matched by
+// annotated. TargetCallID references a specific agent call (matched by
 // TraceEvent.attrs.call_id); TargetTurn references all events in a turn.
 // Score is a 0–1 float; Label is a short tag; Comment is free-form prose.
 // Annotator is the operator identity (display name or email).
@@ -24,7 +24,7 @@ type Annotation struct {
 	Ts time.Time `json:"ts"`
 	// SessionID links this annotation back to its session.
 	SessionID string `json:"session_id"`
-	// TargetCallID is the call_id of the oracle call being annotated (if set).
+	// TargetCallID is the call_id of the agent call being annotated (if set).
 	TargetCallID string `json:"target_call_id,omitempty"`
 	// TargetTurn is the turn number being annotated (if set; 0 means unset).
 	TargetTurn int `json:"target_turn,omitempty"`

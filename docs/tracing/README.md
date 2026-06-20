@@ -25,7 +25,7 @@ and contributors alike.*
 ```
 
 - **[`trace-format.md`](trace-format.md)** — the JSONL schema: the
-  event vocabulary (`oracle.call.start` / `.complete` / `.error`,
+  event vocabulary (`agent.call.start` / `.complete` / `.error`,
   patches, checkpoints), the `EventSink` contract, how `call_id` is
   derived, and the replay determinism guarantees. Read this to
   understand what "the trace is the state" actually means.
@@ -49,7 +49,7 @@ Two views:
 - **Default** — one colour-coded line per `store.Event`.
 - **`--turns`** — a compact per-**turn** digest: the operator input,
   which routing tier resolved it and **why** (`routed_by` /
-  `match_type`), the host calls fired, the **prompt each oracle verb
+  `match_type`), the host calls fired, the **prompt each agent verb
   dispatched** (the source of truth for what the model actually saw),
   editor context (`ide.context_captured`), `on_error` redirects,
   errors, and the outcome. `--turn <n>` focuses one turn and prints its
@@ -77,7 +77,7 @@ kitsoki trace --turn 3 --app kitsoki-dev    # turn 3, full dispatched prompt
     view, and inbox. No tokens, fast, the workhorse for locking
     behaviour. This is the test you write for almost every bug.
 - **[`cassettes.md`](cassettes.md)** — host cassettes: VCR-style
-  recorded host/oracle call sequences with episode matching,
+  recorded host/agent call sequences with episode matching,
   `!include`, record mode, and CI safety. Use them when a flow test
   needs a multi-call host/LLM sequence to be deterministic.
 

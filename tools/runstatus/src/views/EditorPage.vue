@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * EditorPage — the story-editor shell (docs/proposals/story-editor-shell.md +
- * oracle-workbench.md, adapted to the real backend).
+ * agent-workbench.md, adapted to the real backend).
  *
  * It is a PER-STORY surface (no session required): a story is selected via the
  * `?story=<id|path>` query param and a room via `?room=<id>`. The story param
@@ -14,7 +14,7 @@
  *           an active session; the editor has none, so when no `?session=`
  *           query param is present we show a placeholder rather than crash.
  *   RIGHT — BFS-ordered room list (sidebar) + the selected room's detail pane
- *           (hook, domain model, typed view, oracle workbench). A reload button
+ *           (hook, domain model, typed view, agent workbench). A reload button
  *           re-fetches the room list.
  */
 import { computed, onMounted, ref, watch } from "vue";
@@ -25,7 +25,7 @@ import type { StoryHeader } from "../data/live-source.js";
 import type { RoomSummary, RoomDetail } from "../data/editor.js";
 import HookDetail from "../components/editor/HookDetail.vue";
 import DomainModel from "../components/editor/DomainModel.vue";
-import OracleWorkbench from "../components/editor/OracleWorkbench.vue";
+import AgentWorkbench from "../components/editor/AgentWorkbench.vue";
 import StoryViewer from "../components/editor/StoryViewer.vue";
 
 const route = useRoute();
@@ -195,7 +195,7 @@ watch(selectedRoomId, () => loadDetail());
               @click="selectRoom(r.id)"
             >
               <span class="editor__room-label">{{ r.label }}</span>
-              <span v-if="r.has_oracle" class="editor__room-oracle" title="Has oracle call">✦</span>
+              <span v-if="r.has_agent" class="editor__room-agent" title="Has agent call">✦</span>
             </li>
           </ul>
         </nav>
@@ -235,7 +235,7 @@ watch(selectedRoomId, () => loadDetail());
               :world-snapshot="replayWorld"
             />
 
-            <OracleWorkbench
+            <AgentWorkbench
               :source="source"
               :story-path="storyPath"
               :room-id="detail.id"
@@ -327,7 +327,7 @@ watch(selectedRoomId, () => loadDetail());
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.editor__room-oracle { margin-left: auto; color: var(--k-fg-accent, #b39ddb); }
+.editor__room-agent { margin-left: auto; color: var(--k-fg-accent, #b39ddb); }
 .editor__detail {
   overflow: auto;
   padding: 0.9rem;

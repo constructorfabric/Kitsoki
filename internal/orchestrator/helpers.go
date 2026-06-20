@@ -341,7 +341,7 @@ func (o *Orchestrator) RunIntentWithInput(ctx context.Context, sid app.SessionID
 			}, nil
 		}
 
-		// Oracle off-ramp: on a genuine no-match in an off-ramp room, route the
+		// Agent off-ramp: on a genuine no-match in an off-ramp room, route the
 		// original free text to converse instead of rejecting (Task 1.3/1.4).
 		// On this direct-intent path the genuine utterance is displayInput (the
 		// synthetic "[intent] <name>" marker is not free text), so pass that;
@@ -386,11 +386,11 @@ func (o *Orchestrator) RunIntentWithInput(ctx context.Context, sid app.SessionID
 	}
 
 	// Success path: dispatch host calls, persist events.
-	// Stamp the foreground turn on ctx so oracle.call.* events fired by the
+	// Stamp the foreground turn on ctx so agent.call.* events fired by the
 	// on_enter chain and the post-bind emit recursion carry the real turn (not
 	// turn=0). dispatchHostCalls rewrites the
 	// StatePath per call to the destination phase.
-	ctx = host.WithOracleCallCtx(ctx, host.OracleCallCtx{
+	ctx = host.WithAgentCallCtx(ctx, host.AgentCallCtx{
 		SessionID: sid,
 		Turn:      turnNum,
 		StatePath: result.NewState,

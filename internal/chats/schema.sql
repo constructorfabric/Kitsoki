@@ -4,7 +4,7 @@
 CREATE TABLE IF NOT EXISTS chats (
     id                  TEXT    NOT NULL PRIMARY KEY,   -- ULID
     app_id              TEXT    NOT NULL,               -- the app the room belongs to
-    room                TEXT    NOT NULL,               -- state path: "oracle", "bugfix.phase_3"
+    room                TEXT    NOT NULL,               -- state path: "agent", "bugfix.phase_3"
     scope_key           TEXT    NOT NULL DEFAULT '',    -- free-form disambiguator (e.g. "PROJ-123")
     title               TEXT    NOT NULL,
     status              TEXT    NOT NULL,               -- active|paused|completed|archived

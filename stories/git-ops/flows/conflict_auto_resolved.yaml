@@ -1,5 +1,5 @@
 # conflict_auto_resolved — rebase fails → conflict auto-resolves → branch_ops (rebase_done=true).
-# All happens in one turn since oracle.task stub is synchronous.
+# All happens in one turn since agent.task stub is synchronous.
 
 test_kind: flow
 app: ../app.yaml
@@ -58,7 +58,7 @@ host_handlers:
           ok:        true
           exit_code: 0
           stdout:    "build ok"
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted:
@@ -69,7 +69,7 @@ host_handlers:
         reason:             null
 
 turns:
-  # Rebase → conflict → oracle auto-resolves → rebase --continue → branch_ops (one turn)
+  # Rebase → conflict → agent auto-resolves → rebase --continue → branch_ops (one turn)
   - intent: { name: rebase, slots: {} }
     expect_state: branch_ops
     expect_world:

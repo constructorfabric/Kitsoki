@@ -70,7 +70,7 @@ def grep_match(path, words):
 
 # Claude Code stamps every user record with `entrypoint`, recording HOW the session
 # was launched. Interactive human sessions are "cli"; sessions dispatched headlessly
-# (a `claude -p` oracle/subagent — UI-QA reviewer, adversarial verifier, etc.) are
+# (a `claude -p` agent/subagent — UI-QA reviewer, adversarial verifier, etc.) are
 # "sdk-cli" / "sdk". Mining the latter is self-cannibalism (the model eating its own
 # agent output), so we classify on this structural origin signal — NOT on prompt
 # content, which would be brittle and overfit to today's agent wording.
@@ -102,7 +102,7 @@ def session_entrypoint(path):
 
 
 def is_agent_session(path):
-    """True if the session was dispatched headlessly (an agent/oracle), not authored
+    """True if the session was dispatched headlessly (an agent/agent), not authored
     by a human at the interactive CLI. Structural, content-independent."""
     ep = session_entrypoint(path)
     return ep is not None and ep != HUMAN_ENTRYPOINT
@@ -179,7 +179,7 @@ def main():
     ap.add_argument("--min-trace", type=int, default=200,
                     help="drop distilled traces smaller than this (near-empty)")
     ap.add_argument("--keep-agent-sessions", action="store_true",
-                    help="KEEP dispatched headless agent/oracle transcripts "
+                    help="KEEP dispatched headless agent/agent transcripts "
                          "(entrypoint!=cli). They are dropped by default — mining "
                          "the model's own agent output back in is self-cannibalism.")
     args = ap.parse_args()
@@ -211,7 +211,7 @@ def main():
     sessions = [s for s in sessions if os.path.getsize(s) >= args.min_bytes]
     if args.grep:
         sessions = [s for s in sessions if grep_match(s, args.grep)]
-    # Drop dispatched headless agent/oracle transcripts (entrypoint != cli) by
+    # Drop dispatched headless agent/agent transcripts (entrypoint != cli) by
     # default — they are the model's own subagent output, not human sessions, and
     # mining them is self-cannibalism. Structural signal, not prompt-content match.
     agent_dropped = []
@@ -231,7 +231,7 @@ def main():
         sessions = sessions[:args.max]
 
     if agent_dropped:
-        eprint("dropped %d dispatched agent/oracle session(s) (entrypoint!=cli); "
+        eprint("dropped %d dispatched agent/agent session(s) (entrypoint!=cli); "
                "use --keep-agent-sessions to include them" % len(agent_dropped))
     eprint("candidate sessions:", len(sessions),
            "(min-bytes=%d, grep=%s, sample=%s, max=%s)" %

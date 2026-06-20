@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """End-to-end test of the intent-mining deterministic spine (steps C->F), with NO
-LLM. The oracle output (step B) is supplied as a fixture file, exactly as required
-by AGENTS.md ("automated tests must mock the oracle via fixtures/cassettes").
+LLM. The agent output (step B) is supplied as a fixture file, exactly as required
+by AGENTS.md ("automated tests must mock the agent via fixtures/cassettes").
 
 Run:  python3 tools/session-mining/tests/test_intent_pipeline.py
 (exits 0 on success, non-zero with a diagnostic on failure)
@@ -47,7 +47,7 @@ def run():
         raw = os.path.join(FIX, "raw")
 
         # --- C: ground ---
-        ground.main(["--oracle", os.path.join(FIX, "oracle.json"),
+        ground.main(["--agent", os.path.join(FIX, "agent.json"),
                      "--traces", traces, "--out", grounded])
         g = _load(grounded)
         # the fabricated span (3rd, cite ok but param bogus) must be quarantined+dropped
@@ -76,8 +76,8 @@ def run():
         check(m["tool_calls"] == 3, "span0 tool_calls = %s" % m["tool_calls"])
         check(m["edit_rerun_cycles"] == 1, "span0 edit_rerun_cycles = %s" % m["edit_rerun_cycles"])
         check(m["retries"] == 1, "span0 retries = %s (expected 1 repeated go test)" % m["retries"])
-        # span 1: has an oracle gate -> oracle-gated
-        check(by_id["sess-fix#1"]["determinism"] == "oracle-gated",
+        # span 1: has an agent gate -> agent-gated
+        check(by_id["sess-fix#1"]["determinism"] == "agent-gated",
               "span1 determinism = %s" % by_id["sess-fix#1"]["determinism"])
         # tag rollup
         check(sc["tags"]["action"].get("fix-failing-tests") == 1, "fix-failing-tests count wrong")
@@ -97,10 +97,10 @@ def run():
         check("old callers still use" in it1["user_text"],
               "verbatim recovery for span1 failed; got: %r" % it1["user_text"][:80])
         check(it0["analysis_ref"] == "analysis.json#sess-fix#0", "cross-link ref wrong")
-        # oracle_gates only present on the non-deterministic instance
+        # agent_gates only present on the non-deterministic instance
         a_by_id = {i["instance_id"]: i for i in analysis["instances"]}
-        check("oracle_gates" not in a_by_id["sess-fix#0"], "deterministic instance must not carry gates")
-        check("oracle_gates" in a_by_id["sess-fix#1"], "oracle-gated instance must carry gates")
+        check("agent_gates" not in a_by_id["sess-fix#0"], "deterministic instance must not carry gates")
+        check("agent_gates" in a_by_id["sess-fix#1"], "agent-gated instance must carry gates")
 
         # --- cross-link contract ---
         rc = verify_link.main([work])

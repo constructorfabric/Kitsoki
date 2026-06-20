@@ -52,7 +52,7 @@ const (
 type RoutingTierMissMsg struct {
 	Tier RoutingTier
 	// Reason carries tier detail — for a TierLLM miss it is the backend that
-	// missed (e.g. "oracle.local"), so the pipeline marks the local-LLM layer
+	// missed (e.g. "agent.local"), so the pipeline marks the local-LLM layer
 	// rather than the main-LLM one.
 	Reason string
 }

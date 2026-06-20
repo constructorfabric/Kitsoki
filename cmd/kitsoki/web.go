@@ -46,7 +46,7 @@ func webCmd() *cobra.Command {
 		addr          string
 		harnessType   string
 		claudeModel   string
-		oracleBackend string
+		agentBackend  string
 		recordingPath string
 		recordPath    string
 		dbPath        string
@@ -117,8 +117,8 @@ authentication.`,
 			// (--harness replay/recording) instead of the nil-harness flow
 			// posture. When the operator asks for a real interpreter harness AND
 			// a host cassette, free-text routing must stay live (replay drives
-			// it) while specific host.* calls — the oracle off-ramp's
-			// host.oracle.converse — are stubbed by the cassette. A flow fixture
+			// it) while specific host.* calls — the agent off-ramp's
+			// host.agent.converse — are stubbed by the cassette. A flow fixture
 			// would force a nil harness and reject every free-text turn, so we do
 			// NOT build one in that case; the cassette rides runtimeBase.HostCassette.
 			liveHarness := harnessType == "replay" || harnessType == "recording" || harnessType == "live" || harnessType == "claude"
@@ -203,7 +203,7 @@ authentication.`,
 				ExecMode:          execMode,
 				HarnessType:       harnessType,
 				ClaudeModel:       claudeModel,
-				OracleBackend:     resolveOracleBackend(oracleBackend),
+				AgentBackend:      resolveAgentBackend(agentBackend),
 				HarnessProfiles:   harnessProfiles,
 				DefaultProfile:    defaultProfile,
 				RecordingPath:     recordingPath,
@@ -245,7 +245,7 @@ authentication.`,
 				// ReadHeaderTimeout guards against Slowloris. Keep short.
 				ReadHeaderTimeout: 10 * time.Second,
 				// IdleTimeout recycles keep-alive connections that go quiet.
-				// No WriteTimeout: LLM oracle calls (turn/submit/continue) can
+				// No WriteTimeout: LLM agent calls (turn/submit/continue) can
 				// block for 30-120s; a WriteTimeout would kill those responses
 				// mid-flight. SSE streams (/rpc/events) also require no write
 				// deadline — they hold the connection open indefinitely.
@@ -274,7 +274,7 @@ authentication.`,
 	cmd.Flags().StringVar(&addr, "addr", "127.0.0.1:7777", "HTTP listen address")
 	cmd.Flags().StringVar(&harnessType, "harness", "", "harness: claude | live | replay | recording (default: auto-select; ignored with --flow)")
 	cmd.Flags().StringVar(&claudeModel, "claude-model", "", "claude model when --harness=claude (e.g. opus, sonnet)")
-	cmd.Flags().StringVar(&oracleBackend, "oracle", "", "coding-agent CLI backend for host.oracle.* calls: claude|copilot (default: claude, or $KITSOKI_ORACLE)")
+	cmd.Flags().StringVar(&agentBackend, "agent", "", "coding-agent CLI backend for host.agent.* calls: claude|copilot (default: claude, or $KITSOKI_AGENT)")
 	cmd.Flags().StringVar(&recordingPath, "recording", "", "path to recording YAML (for --harness replay)")
 	cmd.Flags().StringVar(&recordPath, "record", "", "path to output JSONL recording (for --harness recording)")
 	cmd.Flags().StringVar(&dbPath, "db", "", "SQLite session store path (default: nearest .kitsoki/sessions.db)")

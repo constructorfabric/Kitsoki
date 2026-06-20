@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# fake-oneshot-mcp.sh — emulates `claude -p` for host.oracle.ask_with_mcp tests.
+# fake-oneshot-mcp.sh — emulates `claude -p` for host.agent.ask_with_mcp tests.
 #
 # Inspects argv for --mcp-config and --output-format. Echoes back a JSON object
 # containing both the stdin text and the path of any --mcp-config file it
@@ -57,7 +57,7 @@ fi
 # If the prompt contains the sentinel "SIMULATE_SUBMIT={...}" the fake
 # binary writes that JSON to the validator's --output path, simulating
 # what claude would do when it calls the validator's submit() tool.
-# This exercises host.oracle.ask_with_mcp's read-back of Result.Data["submitted"]
+# This exercises host.agent.ask_with_mcp's read-back of Result.Data["submitted"]
 # without needing a real MCP roundtrip.
 sentinel="$(printf '%s' "$stdin" | grep -o 'SIMULATE_SUBMIT=.*' || true)"
 if [ -n "$sentinel" ] && [ -n "$mcp_body" ]; then

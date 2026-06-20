@@ -3,7 +3,7 @@
 This is the **front door** to how a kitsoki story is built and how it
 runs. It walks the whole shape end-to-end — **rooms**, **phases**,
 **intents**, **turns**, **room hooks**, **views**, and how the
-**oracle** plugs into **intent routing** and the **oracle rooms** like
+**agent** plugs into **intent routing** and the **agent rooms** like
 `/meta` — and points at the deeper reference for each piece.
 
 A story is a **deterministic directed cyclic graph** with a scoped,
@@ -20,8 +20,8 @@ Where this doc summarises, the deep dives are authoritative:
 | Rooms, states, phases, effects, guards, world | [`state-machine.md`](state-machine.md) |
 | System design, the turn loop, the LLM boundary | [`../architecture/overview.md`](../architecture/overview.md) |
 | The four-tier intent router | [`../architecture/semantic-routing.md`](../architecture/semantic-routing.md) |
-| Oracle verbs and `host.*` | [`../architecture/hosts.md`](../architecture/hosts.md), [`../architecture/oracle-plugin.md`](../architecture/oracle-plugin.md) |
-| Oracle rooms (`/meta`, named agents) | [`meta-mode.md`](meta-mode.md) |
+| Agent verbs and `host.*` | [`../architecture/hosts.md`](../architecture/hosts.md), [`../architecture/agent-plugin.md`](../architecture/agent-plugin.md) |
+| Agent rooms (`/meta`, named agents) | [`meta-mode.md`](meta-mode.md) |
 | The authoritative YAML schema | `kitsoki docs app-schema` ([`../embedded/app-schema.md`](../embedded/app-schema.md)) |
 
 ---
@@ -36,7 +36,7 @@ flowchart LR
         App["State Machine<br/>(options defined by room)"]
     end
     World["World<br/>(typed, persisted)"]
-    Hosts["Hosts + Oracle<br/>(host.* / LLM calls)"]
+    Hosts["Hosts + Agent<br/>(host.* / LLM calls)"]
     Ext["Environment<br/>(shell · files · LLM · Jira · …)"]
 
     User -- "free text" --> Router
@@ -61,7 +61,7 @@ Everything downstream of that translation is pure and replayable.
 The one controlled crack in that purity is the side-channel on the
 right: the story's declared `invoke:` effects are the *only* path to the
 **environment** — the shell, files, an LLM, an external tracker. They
-run through **hosts and the oracle**, return a *typed* result that
+run through **hosts and the agent**, return a *typed* result that
 `bind:`s back into the world, and record their inputs and outputs so the
 turn replays exactly. The author chooses where those calls happen; the
 machine never reaches outside on its own.
@@ -235,16 +235,16 @@ flowchart TD
     end
 
     host[["host.* handler<br/>shell · files · jira · …"]]:::ext
-    oracle[["oracle.* — an LLM agent<br/>decide · ask · task · converse"]]:::llm
+    agent[["agent.* — an LLM agent<br/>decide · ask · task · converse"]]:::llm
 
     oe_eff -- "invoke: call out" --> host
-    oe_eff -- "invoke:" --> oracle
+    oe_eff -- "invoke:" --> agent
     host   -- "typed result" --> oe_bind
-    oracle -- "typed result" --> oe_bind
+    agent -- "typed result" --> oe_bind
     on_eff -- "invoke:" --> host
-    on_eff -- "invoke:" --> oracle
+    on_eff -- "invoke:" --> agent
     host   -- "typed result" --> on_bind
-    oracle -- "typed result" --> on_bind
+    agent -- "typed result" --> on_bind
 
     enter --> OE
     tgt -->|". — stay, skip on_enter"| view
@@ -259,7 +259,7 @@ view renders from that world, the user's input is routed to exactly one
 `target:` chooses the next node — `.` to re-render in place (skipping
 `on_enter`), this room to re-enter (re-running `on_enter`), or another
 room to hand off. The only steps that leave the box are the `invoke:`
-round-trips to a host or the oracle; their results re-enter only through
+round-trips to a host or the agent; their results re-enter only through
 `bind:`.
 
 All four foreground hooks on one room:
@@ -349,7 +349,7 @@ the same list).
 `on_error:`, `background:`, `on_complete:`, and `id:` (a call-site
 address that flow fixtures stub by). Args and results are **typed** per
 host (`stdout`/`exit_code` for `host.run`; `answer`/`chat_id` for
-`host.oracle.converse`). Full table:
+`host.agent.converse`). Full table:
 [`state-machine.md` §5](state-machine.md#5-effects); the host catalogue
 is [`../architecture/hosts.md`](../architecture/hosts.md).
 
@@ -359,7 +359,7 @@ A chain reads top-to-bottom, each verb seeing the prior verbs' writes:
 effects:
   - set: { greeting: "Hello, {{ slots.name }}" }   # assign a world var
   - say: "{{ world.greeting }}"                     # narrate a line
-  - invoke: host.oracle.decide                      # call a host…
+  - invoke: host.agent.decide                      # call a host…
     with:
       question: "Does this patch fix the bug?"
       options: [accept, refine, reject]
@@ -369,8 +369,8 @@ effects:
 
 **How a host result lands in the world.** A handler returns a *typed
 result* — a small map of named fields (`host.run` → `stdout` /
-`exit_code`; `host.oracle.decide` → `choice` (plus `confidence`,
-`reason`); `host.oracle.converse` → `answer` / `chat_id`). A bare
+`exit_code`; `host.agent.decide` → `choice` (plus `confidence`,
+`reason`); `host.agent.converse` → `answer` / `chat_id`). A bare
 `invoke:` runs the call for its side effects and throws the result away;
 the **only** way a field reaches the world is to name it in `bind:`.
 Each entry is `world_var: source`, where `source` is either:
@@ -404,7 +404,7 @@ result's `choice` field into `world.verdict`, which the following
 > *subsequent* `invoke:`'s `with:` (re-rendered by `rerenderHostArgs`),
 > and the *next* room's `on_enter:` after an `emit_intent` lands there.
 > `on_complete:` runs post-bind too — but **only for `background: true`**
-> invocations. So deriving a *single* world value from an `oracle.decide`
+> invocations. So deriving a *single* world value from an `agent.decide`
 > result is fine (a template `bind:`, above), but a *chain* of dependent
 > `set:` / `increment:` / `when:` effects keyed off that result has no
 > natural home for a synchronous call: today you route-only via
@@ -519,7 +519,7 @@ review:
 - **One advancing intent → auto-advance.** The engine fires it with no
   decider; the single-intent convention is just the degenerate gate.
 - **Many advancing intents → a *decider* picks one.** `decider:` pins it
-  per room — `"llm"` runs an `oracle.decide` judge that chooses among the
+  per room — `"llm"` runs an `agent.decide` judge that chooses among the
   *enumerated* gate intents and records a `GateDecided` event; `"human"`
   rests for an operator; `""` (the default) follows the run's execution
   mode (`one-shot` resolves every gate by LLM, `staged` stops at a
@@ -579,7 +579,7 @@ The ordered phases, grounded in the code:
 
 Asynchronous off-ramps run through the *same* lock: background-job
 completion, mid-flight clarification, off-path entry/exit, teleport
-(inbox / oracle banner jumps), and hot-reload (`RerunOnEnter`). Full
+(inbox / agent banner jumps), and hot-reload (`RerunOnEnter`). Full
 diagram and the off-ramp list: [`state-machine.md` §8](state-machine.md#8-the-turn-loop-state-machine-of-the-orchestrator)
 and [`../architecture/overview.md` §3](../architecture/overview.md#3-the-journey-of-one-turn).
 
@@ -590,10 +590,10 @@ possible ([`../tracing/testing.md`](../tracing/testing.md)).
 
 ---
 
-## 8. Intent routing and the oracle
+## 8. Intent routing and the agent
 
-"How does the oracle work with intent routing" is really one question:
-**routing *is* the oracle's `extract` verb running in front of a fallback
+"How does the agent work with intent routing" is really one question:
+**routing *is* the agent's `extract` verb running in front of a fallback
 LLM call.** Every foreground turn descends a four-tier stack and stops at
 the first tier that resolves (`internal/semroute/`, dispatched via
 `host.RunExtractForRouting`):
@@ -613,35 +613,35 @@ the synonym library over time with `kitsoki replay-routing` and
 `kitsoki inspect --synonym-suggestions`. Full reference:
 [`../architecture/semantic-routing.md`](../architecture/semantic-routing.md).
 
-### The oracle verb surface
+### The agent verb surface
 
-The "oracle" is kitsoki's name for an LLM call, full stop. Most of the
+The "agent" is kitsoki's name for an LLM call, full stop. Most of the
 verbs are side-effect free — they read and return a verdict without
 touching the world or the outside world; only `task` and `converse`
 mutate. There are **five verbs**, ordered by blast radius, each a
-`host.oracle.*` handler (`internal/host/oracle_*.go`):
+`host.agent.*` handler (`internal/host/agent_*.go`):
 
 | Verb | File | Shape | Mutates? |
 |---|---|---|---|
-| `extract` | `oracle_extract.go` | free text → structured `(intent, slots)`; **this is the routing LLM tier** | no |
-| `decide` | `oracle_decide.go` | bounded choice → one option (the generic gate/judge decider) | no |
-| `ask` | `oracle_ask.go` | one-shot Q&A, read-only tool surface | no |
-| `task` | `oracle_task.go` | multi-turn agentic session with a declared tool surface; records replay artifacts | yes (sandboxed / file-diff) |
-| `converse` | `oracle_converse.go` | persistent multi-turn chat thread | yes |
+| `extract` | `agent_extract.go` | free text → structured `(intent, slots)`; **this is the routing LLM tier** | no |
+| `decide` | `agent_decide.go` | bounded choice → one option (the generic gate/judge decider) | no |
+| `ask` | `agent_ask.go` | one-shot Q&A, read-only tool surface | no |
+| `task` | `agent_task.go` | multi-turn agentic session with a declared tool surface; records replay artifacts | yes (sandboxed / file-diff) |
+| `converse` | `agent_converse.go` | persistent multi-turn chat thread | yes |
 
-All five route through `oracle_dispatch.go`, stream by default into a
+All five route through `agent_dispatch.go`, stream by default into a
 `StreamSink` when one is installed (live TUI progress), and can be backed
-by any declared `oracle_plugins:` entry — including the offline
+by any declared `agent_plugins:` entry — including the offline
 `builtin.local_llm` backend, which is the natural choice for the routing
 tier so routing keeps working air-gapped. Verb selection guide and the
-plugin contract: [`../architecture/hosts.md`](../architecture/hosts.md#oracle-verb-summary)
-and [`../architecture/oracle-plugin.md`](../architecture/oracle-plugin.md).
+plugin contract: [`../architecture/hosts.md`](../architecture/hosts.md#agent-verb-summary)
+and [`../architecture/agent-plugin.md`](../architecture/agent-plugin.md).
 
 A story author reaches the single-shot verbs from an effect:
 
 ```yaml
 on_enter:
-  - invoke: host.oracle.decide
+  - invoke: host.agent.decide
     with:
       question: "Does this patch fix the bug?"
       options: [accept, refine, reject]
@@ -654,11 +654,11 @@ with a default / LLM / human decider rather than bespoke YAML.
 
 ---
 
-## 9. Oracle rooms (`/meta` and off-path)
+## 9. Agent rooms (`/meta` and off-path)
 
 Most of a story is on-path: the deterministic graph. Two mechanisms let
 the user step *off* the graph into a free-form LLM conversation — these
-are the "oracle rooms".
+are the "agent rooms".
 
 ### Off-path — the simple escape hatch
 
@@ -675,25 +675,25 @@ flows through the harness and store — every event is replayable — but the
 inner graph is intentionally undeclared. It is the *only* place free-form
 chat is allowed on-path. ([`state-machine.md` §11](state-machine.md#11-off-path-the-global-escape-hatch).)
 
-### The oracle off-ramp — a no-match door into the same chat
+### The agent off-ramp — a no-match door into the same chat
 
 Off-path is reached through a **typed-trigger door**: the user must type
-the declared trigger string. The **oracle off-ramp** adds a second,
+the declared trigger string. The **agent off-ramp** adds a second,
 *automatic* door scoped to a single room. A room that declares
-`oracle_off_ramp:` says, in effect, "if the user says something I can't
+`agent_off_ramp:` says, in effect, "if the user says something I can't
 map to any of my intents, don't bounce them — answer." When free-text
 routing and the LLM resolve to **no declared intent** in such a room, the
-orchestrator hands the original free text to an oracle `converse` turn
+orchestrator hands the original free text to an agent `converse` turn
 instead of returning the usual "I didn't catch that" rejection (§6), and
 the room stays put — no transition, no world write. It is automatic,
 room-scoped off-path entry, triggered by a no-match rather than a typed
 trigger, and it shares off-path's `converse` mechanism and agent/persona
-precedence (`oracle_off_ramp.agent:` > `off_path.agent:` > app default).
+precedence (`agent_off_ramp.agent:` > `off_path.agent:` > app default).
 
 ```yaml
 main:                       # a normal menu/discovery room
-  oracle_off_ramp:
-    agent: oracle_qa        # the off-ramp voice (struct form)
+  agent_off_ramp:
+    agent: agent_qa        # the off-ramp voice (struct form)
   on:
     go_tickets: [{ target: ticket_search }]
     # …
@@ -770,7 +770,7 @@ Kitsoki injects six builtin meta modes every app gets for free
 | Mode | Agent | Surface |
 |---|---|---|
 | `story.edit` (default for bare `/meta story`) | `story-author` | full Claude toolset, edits the running story |
-| `story.ask` | `story-explainer` | read-only (`Read`/`Glob`/`Grep`), backed by `host.oracle.ask` |
+| `story.ask` | `story-explainer` | read-only (`Read`/`Glob`/`Grep`), backed by `host.agent.ask` |
 | `story.bug` | `story-bug-reporter` | files a story bug via `kitsoki bug create` |
 | `kitsoki.edit` | `kitsoki-engineer` | edits the kitsoki repo (`${KITSOKI_REPO}`) |
 | `kitsoki.ask` | `kitsoki-explainer` | read-only Q&A about kitsoki source |
@@ -778,17 +778,17 @@ Kitsoki injects six builtin meta modes every app gets for free
 
 Bare verbs (`/meta ask`, `/meta bug`) resolve to the **story** group;
 the whole `kitsoki.*` group is omitted when `${KITSOKI_REPO}` is unset.
-The mapping that ties meta back to the oracle verbs: read-only metas use
-`host.oracle.ask` (loader enforces the read-only tool surface);
-free-form metas use `host.oracle.converse` with a `permission_mode:`
-gate. There is also per-call agent selection — any `host.oracle.*` effect
+The mapping that ties meta back to the agent verbs: read-only metas use
+`host.agent.ask` (loader enforces the read-only tool surface);
+free-form metas use `host.agent.converse` with a `permission_mode:`
+gate. There is also per-call agent selection — any `host.agent.*` effect
 can name an `agent:` for a single LLM call (precedence: per-call
 `agent:` > `meta_modes[mode].agent` > `off_path.agent` > app default).
 Full reference, slash-command table, persistence, and current
 limitations: [`meta-mode.md`](meta-mode.md).
 
 > **The convergence direction.** Off-path and meta-mode are being unified
-> into one mechanism — off-path becomes `/meta default-oracle` with a
+> into one mechanism — off-path becomes `/meta default-agent` with a
 > tool-restricted read-only agent. Today off-path still uses the legacy
 > prompt-driven dispatch and does not yet honour `off_path.agent:`; reach
 > for a `meta_modes:` entry for any "named, persistent sidebar" need.
@@ -882,7 +882,7 @@ compared in §12. Progression with zero input is built from
      yes, the single-intent convention you remembered is real; it is the
      degenerate case of gate resolution, not the general mechanism;
    - a multi-way gate with no firing default → resolved by a
-     **decider**: `default` (deterministic), `llm` (an `oracle.decide`
+     **decider**: `default` (deterministic), `llm` (an `agent.decide`
      judge that picks among the *enumerated* gate intents and records a
      `GateDecided` event), or `human`. Which decider runs depends on the
      run's **execution mode**: `one-shot` advances autonomously through
@@ -977,13 +977,13 @@ LangGraph, n8n, Prefect), here is the rough Rosetta Stone:
 | Loop / retry policy | **Cyclic transition** + **`cycle_budgets:`** | budget synthesises increment + guard + fail-out |
 | Async / long-running task | **`background: true` invoke** + **`on_complete:`** | completion fires a synthetic turn |
 | Human approval / manual gate | **`wait` gate / `checkpoint_intents:` / `human` decider** | a multi-way gate in `staged` mode rests for a person |
-| Decision node / router | **Gate resolved by a decider** | `default` (deterministic) / `llm` (`oracle.decide`) / `human` |
+| Decision node / router | **Gate resolved by a decider** | `default` (deterministic) / `llm` (`agent.decide`) / `human` |
 | Signal / event / webhook | **`emit:` event, inbox notification, or external intent** | external surfaces feed intents through the same path |
 | Scheduler / engine | **Orchestrator** (`internal/orchestrator`) | the only writer; runs the turn loop under a per-session lock |
 | Run / execution instance | **Session** | one row + an append-only event log |
 | Run history / audit trail | **Event log / journal** | replayable byte-for-byte; non-determinism confined to LLM + host calls |
 | Idempotency key | **Idempotent `on_enter` / get-or-create host verbs** | `on_enter` re-fires; see §3 |
-| Step that calls an LLM | **`host.oracle.*` effect** | `extract`/`decide`/`ask` read-only; `task`/`converse` mutate |
+| Step that calls an LLM | **`host.agent.*` effect** | `extract`/`decide`/`ask` read-only; `task`/`converse` mutate |
 
 ### 12.2 vs. Claude Code with a lead agent and subagents
 
@@ -1001,15 +1001,15 @@ A story inverts every one of those:
 |---|---|---|
 | Who decides the next step | the lead model, at runtime | the **graph** — transition + guard + decider |
 | The plan | emergent, in the model's head | **author-declared YAML**, fixed and reviewable |
-| A subagent | the lead model spawns one when it decides to | a `host.oracle.task` call the **graph** invokes at a declared point |
+| A subagent | the lead model spawns one when it decides to | a `host.agent.task` call the **graph** invokes at a declared point |
 | Choosing among options | the model picks any action its tools allow | a decider picks among **enumerated intents**, recorded as `GateDecided` |
 | Blast radius | the granted tool set, applied wholesale | per-call declared `tools:` / `bash_profile:` / sandbox, enforced |
-| Replay | one long non-deterministic transcript | graph walk; non-determinism confined to recorded oracle calls |
+| Replay | one long non-deterministic transcript | graph walk; non-determinism confined to recorded agent calls |
 
-The mapping is tight: a **subagent ≈ a `host.oracle.task` invocation**
+The mapping is tight: a **subagent ≈ a `host.agent.task` invocation**
 (a bounded, tool-scoped LLM sub-session with recorded replay artifacts,
 §13 of the overview), and **"the lead agent picks which subagent" ≈ a
-multi-way gate resolved by `oracle.decide`**. The difference is *who
+multi-way gate resolved by `agent.decide`**. The difference is *who
 holds the orchestration*: in Claude Code the model holds it; in a story
 the graph holds it and calls the model only at declared points, for
 decisions scoped to a declared alphabet.
@@ -1019,8 +1019,8 @@ open-ended and you genuinely cannot enumerate the steps ahead of time.
 Reach for a story when the *same* workflow must run reliably, be
 audited, resume across surfaces, and never exceed its declared
 authority — paying the cost of declaring the graph up front. The
-oracle rooms (§9) are the seam between the two worlds: inside `/meta`
-or `host.oracle.task` you get the open-ended agent; the story around it
+agent rooms (§9) are the seam between the two worlds: inside `/meta`
+or `host.agent.task` you get the open-ended agent; the story around it
 keeps that agent on a declared leash.
 
 ### 12.3 A worked example: the design pipeline
@@ -1042,13 +1042,13 @@ flowchart TD
     subgraph P1["room: proposal — discovery + brief (loops every turn)"]
       direction TB
       idea(["operator: free-text idea"]):::human
-      namer["design_namer<br/>oracle.decide"]:::llm
+      namer["design_namer<br/>agent.decide"]:::llm
       uniq["design_workspace.py<br/>slug collision-proof"]:::det
-      interv["proposal_interviewer<br/>oracle.converse · ONE persistent thread"]:::llm
-      writer["proposal_brief_writer<br/>oracle.task · fresh session/turn"]:::llm
+      interv["proposal_interviewer<br/>agent.converse · ONE persistent thread"]:::llm
+      writer["proposal_brief_writer<br/>agent.task · fresh session/turn"]:::llm
       brief[/"001-brief.md"/]:::art
       ready(["operator: say 'ready'"]):::human
-      judge{"design_brief_judge<br/>oracle.decide"}:::llm
+      judge{"design_brief_judge<br/>agent.decide"}:::llm
       idea --> namer --> uniq --> interv --> writer --> brief
       interv -. loops .-> writer
       brief --> ready --> judge
@@ -1057,7 +1057,7 @@ flowchart TD
 
     subgraph P2["room: proposal_existing_state"]
       direction TB
-      scout["design_scout<br/>oracle.decide"]:::llm
+      scout["design_scout<br/>agent.decide"]:::llm
       es[/"002-existing-state.md"/]:::art
       g1{"overlap?"}:::human
       scout --> es --> g1
@@ -1066,7 +1066,7 @@ flowchart TD
 
     subgraph P3["room: proposal_idea_completeness"]
       direction TB
-      comp["proposal_completeness_judge<br/>oracle.decide"]:::llm
+      comp["proposal_completeness_judge<br/>agent.decide"]:::llm
       ic[/"003-idea-completeness.md"/]:::art
       g2{"complete?"}:::human
       comp --> ic --> g2
@@ -1075,7 +1075,7 @@ flowchart TD
 
     subgraph P4["room: proposal_references"]
       direction TB
-      res["design_researcher<br/>oracle.decide"]:::llm
+      res["design_researcher<br/>agent.decide"]:::llm
       refs[/"004-references.json"/]:::art
       g3{"confirm?"}:::human
       res --> refs --> g3
@@ -1084,7 +1084,7 @@ flowchart TD
 
     subgraph P5["room: design_draft"]
       direction TB
-      author["design_author<br/>oracle.task · agentic write"]:::llm
+      author["design_author<br/>agent.task · agentic write"]:::llm
       draft[/"005-proposal.md"/]:::art
       g4{"accept?"}:::human
       author --> draft --> g4
@@ -1113,7 +1113,7 @@ Read it as the §12.2 inversion in practice:
   **graph**, not a lead model, decides which runs when.
 - **Each is its own conversation.** All but one are *one-shot* —
   `decide`/`task` open a fresh session per call and return (the verb
-  surface, §8). The exception is `proposal_interviewer` (`oracle.converse`),
+  surface, §8). The exception is `proposal_interviewer` (`agent.converse`),
   which holds a single persistent chat thread across the whole discovery
   loop via a `chat_id` resolved in `on_enter`. The two agents in the
   *same* discovery room (interviewer + brief-writer) are deliberately
@@ -1149,7 +1149,7 @@ each recorded, each resumable across surfaces.
 | Guard / template evaluator (AST whitelist) | `internal/expr/` |
 | Orchestrator turn loop (only writer to the store) | `internal/orchestrator/` |
 | Intent router (4 tiers) | `internal/semroute/`, `internal/slotparse/` |
-| Oracle verbs + `host.*` registry | `internal/host/` (`oracle_*.go`) |
+| Agent verbs + `host.*` registry | `internal/host/` (`agent_*.go`) |
 | Meta-mode controller + agents | `internal/metamode/`, `internal/agents/` |
 | Background jobs, inbox, chats | `internal/jobs/`, `internal/inbox/`, `internal/chats/` |
 | Persistence (append-only events) | `internal/store/` |

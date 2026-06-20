@@ -97,7 +97,7 @@
         {
           "auto_layout": true,
           "nodes": [
-            { "id": "enter",      "label": "on_enter",         "sub": "effects fire in order",      "lines": ["invoke oracle · bind artifact", "emit_intent if confident"], "style": "secondary" },
+            { "id": "enter",      "label": "on_enter",         "sub": "effects fire in order",      "lines": ["invoke agent · bind artifact", "emit_intent if confident"], "style": "secondary" },
             { "id": "view",       "label": "view rendered",    "sub": "banner · prose · kv · choice" },
             { "id": "wait",       "label": "waiting for turn", "sub": "operator or LLM judge" },
             { "id": "route",      "label": "route intent",     "sub": "synonym → slot → cache → LLM" },
@@ -197,7 +197,7 @@
           "nodes": [
             { "id": "effects", "label": "effects",     "sub": "run in declaration order",                                                    "style": "primary" },
             { "id": "set",     "label": "set",         "sub": "world mutation",    "lines": ["set: { key: value }"] },
-            { "id": "invoke",  "label": "invoke",      "sub": "host call",         "lines": ["invoke: host.oracle.task", "bind: artifact → world"], "style": "secondary" },
+            { "id": "invoke",  "label": "invoke",      "sub": "host call",         "lines": ["invoke: host.agent.task", "bind: artifact → world"], "style": "secondary" },
             { "id": "emit",    "label": "emit_intent", "sub": "synthetic turn",    "lines": ["emit_intent: accept"] },
             { "id": "guard",   "label": "when:",       "sub": "guard expression" },
             { "id": "onerr",   "label": "on_error:",   "sub": "error target state" }
@@ -246,7 +246,7 @@
             { "id": "scope",   "label": "scoped world",      "sub": "deterministic assembly",  "lines": ["only declared fields in context", "no quadratic turn accumulation"] },
             { "id": "model",   "label": "model per step",    "sub": "explicit in story YAML",  "lines": ["local / free tier for routing", "expensive only where justified"] },
             { "id": "scripts", "label": "scripts over reasoning", "sub": "deterministic execution", "lines": ["no tool-call speculation loops", "no unneeded data retrieval"] },
-            { "id": "search",  "label": "semantic search",   "sub": "vector lookup first",     "lines": ["~0 cost vs LLM call", "oracle only on miss"] },
+            { "id": "search",  "label": "semantic search",   "sub": "vector lookup first",     "lines": ["~0 cost vs LLM call", "agent only on miss"] },
             { "id": "cache",   "label": "turn cache",        "sub": "same phrase = free",      "lines": ["~80 µs SQLite hit", "LLM called once per novel phrase"] }
           ],
           "edges": [
@@ -288,7 +288,7 @@
           ]
         }
       ],
-      "caption": "A compute-room chain: on_enter binds a structured artifact into world, a gate advances the pipeline. The same graph runs with a human decider, an LLM judge (oracle.decide), or fully autonomous — by setting execution mode, not rewriting the graph.",
+      "caption": "A compute-room chain: on_enter binds a structured artifact into world, a gate advances the pipeline. The same graph runs with a human decider, an LLM judge (agent.decide), or fully autonomous — by setting execution mode, not rewriting the graph.",
       "hold": 240,
       "narration": "A compute-room chain: on_enter produces an artifact, a gate advances. Same graph, different execution mode — human, LLM judge, or autonomous."
     },
@@ -301,7 +301,7 @@
           "label": "human mode",
           "auto_layout": true,
           "nodes": [
-            { "id": "enter",  "label": "on_enter",             "sub": "oracle.task → artifact" },
+            { "id": "enter",  "label": "on_enter",             "sub": "agent.task → artifact" },
             { "id": "view",   "label": "view rendered",        "sub": "operator reads artifact" },
             { "id": "intent", "label": "accept / refine / quit","sub": "operator types" }
           ],
@@ -314,7 +314,7 @@
           "label": "llm_then_human mode",
           "auto_layout": true,
           "nodes": [
-            { "id": "enter",     "label": "on_enter",      "sub": "oracle.task + oracle.decide","lines": ["→ artifact + verdict"] },
+            { "id": "enter",     "label": "on_enter",      "sub": "agent.task + agent.decide","lines": ["→ artifact + verdict"] },
             { "id": "confident", "label": "emit_intent",   "sub": "verdict ≥ threshold",        "lines": ["→ auto-advance"], "style": "primary" },
             { "id": "uncertain", "label": "view rendered", "sub": "verdict uncertain → human" }
           ],
@@ -324,7 +324,7 @@
           ]
         }
       ],
-      "caption": "The gate decider generalises next(). The same graph runs with a human decider, an oracle.decide judge, or deterministically — the graph never forks, only the decider swaps. A single when: guard on emit_intent covers all three modes.",
+      "caption": "The gate decider generalises next(). The same graph runs with a human decider, an agent.decide judge, or deterministically — the graph never forks, only the decider swaps. A single when: guard on emit_intent covers all three modes.",
       "hold": 210,
       "narration": "The gate decider generalises next. Same graph, three modes — human, LLM judge, or deterministic."
     },
@@ -338,7 +338,7 @@
           "nodes": [
             { "id": "idle",       "label": "idle",        "sub": "conversational chat",      "lines": ["discovery — one question at a time"] },
             { "id": "clarifying", "label": "clarifying",  "sub": "decide · analyst",         "lines": ["→ clarification_log"] },
-            { "id": "brief",      "label": "brief",       "sub": "deterministic — no oracle","lines": ["→ prd_brief.md"] },
+            { "id": "brief",      "label": "brief",       "sub": "deterministic — no agent","lines": ["→ prd_brief.md"] },
             { "id": "references", "label": "references",  "sub": "decide · researcher",      "lines": ["→ reference list"] },
             { "id": "drafting",   "label": "drafting",    "sub": "task · author · write",    "lines": ["→ prd.md"], "style": "primary" },
             { "id": "done",       "label": "exit: done" }
@@ -353,7 +353,7 @@
           ]
         }
       ],
-      "caption": "The PRD story contrasts with bugfix: idle is a live chat room, brief is deterministic (no oracle), and clarify from drafting closes a multi-round clarification loop.",
+      "caption": "The PRD story contrasts with bugfix: idle is a live chat room, brief is deterministic (no agent), and clarify from drafting closes a multi-round clarification loop.",
       "hold": 240,
       "narration": "PRD story: idle is a live chat. Brief is deterministic. Clarify from drafting closes a multi-round loop."
     },
@@ -404,12 +404,12 @@
           "auto_layout": true,
           "nodes": [
             { "id": "state",  "label": "reproducing",    "sub": "description · relevant_world",                                                                  "style": "secondary" },
-            { "id": "oracle", "label": "on_enter",       "sub": "invoke: oracle.task", "lines": ["agent: reproducer", "bind: artifact → world", "on_error: idle"], "style": "primary" },
+            { "id": "agent", "label": "on_enter",       "sub": "invoke: agent.task", "lines": ["agent: reproducer", "bind: artifact → world", "on_error: idle"], "style": "primary" },
             { "id": "judge",  "label": "optional judge", "sub": "when: judge_mode != human" }
           ],
           "edges": [
-            { "from": "state",  "to": "oracle" },
-            { "from": "oracle", "to": "judge" }
+            { "from": "state",  "to": "agent" },
+            { "from": "agent", "to": "judge" }
           ]
         }
       ],

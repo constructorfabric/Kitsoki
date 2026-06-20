@@ -347,7 +347,7 @@ func (s *inMemoryScheduler) Submit(ctx context.Context, spec JobSpec) (JobID, er
 	// "…executing" state and the view refreshes when the job finishes). In web
 	// mode the caller's ctx is the per-turn HTTP request context, which is
 	// cancelled the instant the turn handler returns — without WithoutCancel
-	// that would kill the in-flight handler (e.g. an oracle exec) with
+	// that would kill the in-flight handler (e.g. an agent exec) with
 	// "context canceled" ~immediately. We keep WithoutCancel so trace/observability
 	// values still propagate, then wrap in our own WithCancel so the scheduler's
 	// explicit Cancel(id) (stored below) remains the sole way to abort the job.

@@ -54,6 +54,6 @@
 // var), the 1008 close on a bad token, and the tool names are all verified
 // against the Claude Code VS Code extension. The link's role as a
 // connection-oriented, inbound-capable transport — discovery, auth, lifecycle,
-// and the oracle env-isolation it forces — is documented in docs/architecture/transports.md
+// and the agent env-isolation it forces — is documented in docs/architecture/transports.md
 // ("The IDE link"); the host.ide.* verbs it backs are in docs/architecture/hosts.md.
 package ide

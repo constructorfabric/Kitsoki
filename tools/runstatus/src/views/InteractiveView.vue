@@ -16,16 +16,16 @@
         >
           {{ store.terminal ? 'done' : 'live' }}
         </span>
-        <!-- Running oracle spend for this session. Always shown (not gated on
+        <!-- Running agent spend for this session. Always shown (not gated on
              `present`) so the operator can see the live cost ticking — which in a
              deterministic run is exactly the point: every state transition, guard,
              and git host call is free, so this reads $0.0000 until (and unless) an
-             oracle touchpoint fires. The :class flags the zero state for emphasis. -->
+             agent touchpoint fires. The :class flags the zero state for emphasis. -->
         <span
           class="iv__usage"
           :class="{ 'iv__usage--zero': !store.usageTotals.present }"
           data-testid="usage-meter"
-          :title="`${store.usageTotals.calls} oracle call(s) · in ${fmtTokens(store.usageTotals.promptTokens)} / out ${fmtTokens(store.usageTotals.responseTokens)} tokens — deterministic transitions and git calls are free`"
+          :title="`${store.usageTotals.calls} agent call(s) · in ${fmtTokens(store.usageTotals.promptTokens)} / out ${fmtTokens(store.usageTotals.responseTokens)} tokens — deterministic transitions and git calls are free`"
         >
           Σ {{ fmtTokens(store.usageTotals.promptTokens + store.usageTotals.responseTokens) }} tok · {{ fmtCost(store.usageTotals.costUsd) }}
         </span>
@@ -187,7 +187,7 @@ import StoryFreshness from "../components/StoryFreshness.vue";
 import ProposalsBadge from "../components/ProposalsBadge.vue";
 import { useProposalsStore } from "../stores/proposals.js";
 import type { Proposal } from "../stores/proposals.js";
-import { fmtTokens, fmtCost } from "../components/oracle/lib.js";
+import { fmtTokens, fmtCost } from "../components/agent/lib.js";
 import { isEmbedded } from "../lib/embed.js";
 import type { NodeRef } from "../types.js";
 

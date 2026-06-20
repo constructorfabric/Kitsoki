@@ -26,7 +26,7 @@ const (
 	// turn.input row — the real event is now in the history.
 	UserInputReceived EventKind = "turn.input"
 	// LLMToolCall is appended when the LLM produces a tool call result.
-	LLMToolCall EventKind = "oracle.tool_call"
+	LLMToolCall EventKind = "agent.tool_call"
 	// ValidationFailed is appended when Machine.Validate rejects a tool call.
 	ValidationFailed EventKind = "machine.validation_failed"
 	// TransitionApplied is appended after a successful transition fires.
@@ -64,10 +64,10 @@ const (
 	// OffPathQuestion is appended when the user asks a free-form question
 	// in off-path mode. Replay treats it as a no-op: off-path turns do not
 	// mutate world or state.
-	OffPathQuestion EventKind = "oracle.off_path.question"
-	// OffPathAnswer is appended when the oracle returns a reply to an
+	OffPathQuestion EventKind = "agent.off_path.question"
+	// OffPathAnswer is appended when the agent returns a reply to an
 	// off-path question. Replay treats it as a no-op.
-	OffPathAnswer EventKind = "oracle.off_path.answer"
+	OffPathAnswer EventKind = "agent.off_path.answer"
 	// TurnEnded is appended at the end of every user turn. Payload carries
 	// {"outcome", "to"} and, on a successful transition, "view": the rendered
 	// operator-facing room view (the deterministic narration the operator saw
@@ -155,22 +155,22 @@ const (
 	// docs/architecture/operator-ask.md and the write-mode gate in hosts.md.
 	WriteModeGranted EventKind = "machine.write_mode_granted"
 
-	// OracleCalled is appended at the moment an oracle verb is dispatched.
+	// AgentCalled is appended at the moment an agent verb is dispatched.
 	// Payload carries the full prompt, with-args, schema-ref, deadline,
 	// call_id, and verb. Replay treats this as a no-op — state reconstruction
 	// uses EffectApplied events for the submission bind. Exists for audit and
 	// the runstatus SPA which pairs by call_id.
-	OracleCalled EventKind = "oracle.call.start"
+	AgentCalled EventKind = "agent.call.start"
 
-	// OracleReturned is appended when the oracle verb response lands.
+	// AgentReturned is appended when the agent verb response lands.
 	// Payload carries the full submission body, meta (tokens/cost/model —
 	// opaque), duration_ms, the matching call_id, and verb. Replay no-op.
-	OracleReturned EventKind = "oracle.call.complete"
+	AgentReturned EventKind = "agent.call.complete"
 
-	// OracleError is appended instead of OracleReturned when the oracle verb
+	// AgentError is appended instead of AgentReturned when the agent verb
 	// returns an error. Payload carries the error string, call_id, verb.
 	// Replay no-op.
-	OracleError EventKind = "oracle.call.error"
+	AgentError EventKind = "agent.call.error"
 
 	// IDEContextCaptured records one host.ide.get_* pull whose result feeds a
 	// decision. Payload carries {verb, request, response_digest, port,
@@ -292,20 +292,20 @@ type Event struct {
 	// JSONL because TurnNumber is int64 and omitempty omits the zero value.
 	// Valid turn numbers start at 1, so zero unambiguously means "no parent".
 	ParentTurn app.TurnNumber `json:"parent_turn,omitempty"`
-	// CallID is the deterministic oracle call identifier for OracleCalled,
-	// OracleReturned, and OracleError events. Empty for all other event kinds.
+	// CallID is the deterministic agent call identifier for AgentCalled,
+	// AgentReturned, and AgentError events. Empty for all other event kinds.
 	// Derived via DeriveCallID in internal/host/callid.go. The runstatus SPA
-	// pairs OracleCalled with OracleReturned by this field.
+	// pairs AgentCalled with AgentReturned by this field.
 	CallID string `json:"call_id,omitempty"`
-	// EpisodeID is the cassette episode identifier for cassette-backed oracle
-	// calls. Present only on OracleCalled events emitted by the cassette
+	// EpisodeID is the cassette episode identifier for cassette-backed agent
+	// calls. Present only on AgentCalled events emitted by the cassette
 	// dispatcher. Together with MatchIdx it allows post-resume reconstruction
 	// of the per-episode match counter so resume generates collision-free
 	// call_ids.
 	EpisodeID string `json:"episode_id,omitempty"`
 	// MatchIdx is the 0-based match counter for replay:any cassette episodes.
 	// For a normal (non-replay:any) episode it is always 0. Present only on
-	// OracleCalled events emitted by the cassette dispatcher alongside EpisodeID.
+	// AgentCalled events emitted by the cassette dispatcher alongside EpisodeID.
 	MatchIdx int `json:"match_idx,omitempty"`
 	// SinkFlushed is a transient, in-memory-only marker (never serialized — see
 	// the json:"-" tag). It is set true on an event that was already written to

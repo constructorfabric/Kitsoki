@@ -432,7 +432,7 @@ describe("useRunStore — write-side actions", () => {
   });
 
   // ---- off-ramp ("offpath") turn ----
-  // An unroutable free-text utterance fires the oracle off-ramp: a voiced
+  // An unroutable free-text utterance fires the agent off-ramp: a voiced
   // converse answer that does NOT advance state. The result is mode "offpath"
   // carrying the converse answer as `view`, the UN-advanced state, and the
   // room's SAME menu echoed unchanged. The store must (a) mark the agent bubble

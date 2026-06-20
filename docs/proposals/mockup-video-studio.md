@@ -131,7 +131,7 @@ once #2 lands.
    `/review` panel never edits a spec or calls a code-writing LLM itself — it
    produces a structured, recorded **feedback note**
    `{video_handle, source_ref, time_range, frame_handle, instruction}` and
-   *dispatches* it. The interpretive edit (`host.oracle.task` over the flagged
+   *dispatches* it. The interpretive edit (`host.agent.task` over the flagged
    HTML/scene) is a **recorded story decision** in slice 3, not a web
    side-effect. This keeps the moat's interpretive/deterministic split intact
    (memory: *kitsoki-moat-is-architecture*) and stops the web tier from

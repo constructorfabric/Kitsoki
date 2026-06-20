@@ -1,6 +1,6 @@
-# Epic: Vector embeddings — shared index substrate, `oracle.search`, and the routing tier
+# Epic: Vector embeddings — shared index substrate, `agent.search`, and the routing tier
 
-**Status:** v1 — all 3 slices shipped. See [docs/architecture/embeddings.md](../architecture/embeddings.md) (substrate + oracle.search) and [docs/architecture/semantic-routing.md](../architecture/semantic-routing.md) (routing tier).
+**Status:** v1 — all 3 slices shipped. See [docs/architecture/embeddings.md](../architecture/embeddings.md) (substrate + agent.search) and [docs/architecture/semantic-routing.md](../architecture/semantic-routing.md) (routing tier).
 **Kind:**   epic
 **Slices:** 3 (3/3 shipped)
 
@@ -16,14 +16,14 @@ expensive, non-deterministic main-turn LLM.
 
 The blocker that deferred embeddings — *"ONNX/gomlx add cgo"*
 ([`semantic-routing-proposal.md` §A](semantic-routing-proposal.md)) — died
-when [`local-model-oracle.md`](local-model-oracle.md) shipped a managed
-llama.cpp `llama-server` sidecar (`internal/oracle/server/`) with zero-touch
+when [`local-model-agent.md`](local-model-agent.md) shipped a managed
+llama.cpp `llama-server` sidecar (`internal/agent/server/`) with zero-touch
 fetch+cache+verify. That server speaks `/v1/embeddings` the same way it speaks
 `/v1/chat/completions`. So a vector substrate is now **a second model load on
 infra we already run and acquire deterministically — no new dependency.**
 
 Once we have that substrate, two consumers fall out of it: a story-facing
-semantic-search verb (`oracle.search`) and the paraphrase routing tier the
+semantic-search verb (`agent.search`) and the paraphrase routing tier the
 [deep-research note](../../.context/semantic-embeddings-research.md) settled.
 This epic builds the substrate once and lights up both.
 
@@ -34,7 +34,7 @@ When every slice has shipped:
 - A new pure-Go `internal/embed` package owns a brute-force cosine `Index` and
   an `Embedder` seam; an embedding `Sidecar` serves `/v1/embeddings`. This is
   the shared substrate — both consumers below call it, neither owns it.
-- A new **`host.oracle.search`** host verb lets a room semantically search a
+- A new **`host.agent.search`** host verb lets a room semantically search a
   set of files on disk: embed the corpus once (chunked, gob-cached), embed the
   query, bind the top-`k` ranked chunks to world. Retrieval becomes a
   first-class, recorded story primitive.
@@ -50,7 +50,7 @@ nothing and its cassettes are byte-identical to today.
 deterministic ─miss─▶ lex synonym ─miss─▶ lex template ─miss─▶ [EMBED tier] ─miss─▶ LLM
    (1.00)              (0.90)              (0.80/0.65)          (slice 3)          (main turn)
 
-room ──host.oracle.search(query, corpus=files)──▶ [internal/embed] ──▶ top-k chunks → world   (slice 2)
+room ──host.agent.search(query, corpus=files)──▶ [internal/embed] ──▶ top-k chunks → world   (slice 2)
 ```
 
 ## Impact
@@ -58,12 +58,12 @@ room ──host.oracle.search(query, corpus=files)──▶ [internal/embed] ─
 - **Spans:** runtime (×3) — a substrate slice plus two consumer slices. No
   story/tui/tracing novelty beyond the breadcrumb each consumer records.
 - **Net surface:** new `internal/embed/`; a second `Sidecar` mode in
-  `internal/oracle/server/`; one new host verb (`internal/host/`); one new
+  `internal/agent/server/`; one new host verb (`internal/host/`); one new
   tier in `internal/orchestrator/semantic.go`. No new effects, world-key
   conventions, or cgo.
-- **Docs on ship:** [`docs/architecture/oracle-plugin.md`](../architecture/oracle-plugin.md)
+- **Docs on ship:** [`docs/architecture/agent-plugin.md`](../architecture/agent-plugin.md)
   §9 (the embedding sidecar mode), a new `docs/architecture/embeddings.md`
-  (the substrate + `oracle.search`), [`docs/architecture/semantic-routing.md`](../architecture/semantic-routing.md)
+  (the substrate + `agent.search`), [`docs/architecture/semantic-routing.md`](../architecture/semantic-routing.md)
   (the routing tier), and `internal/embed/doc.go`.
 
 ## Slices
@@ -71,13 +71,13 @@ room ──host.oracle.search(query, corpus=files)──▶ [internal/embed] ─
 | # | Slice | Kind | Scope (one line) | Depends on | Status | Docs |
 |---|---|---|---|---|---|---|
 | 1 | embed-substrate | runtime | `internal/embed` cosine `Index` + `Embedder` seam + the `/v1/embeddings` sidecar | — | Shipped | [embeddings.md](../architecture/embeddings.md) |
-| 2 | oracle-search | runtime | `host.oracle.search` — semantic search over files on disk, ranked chunks → world | 1 | Shipped | [embeddings.md §host.oracle.search](../architecture/embeddings.md#hostoraclesearch) |
+| 2 | agent-search | runtime | `host.agent.search` — semantic search over files on disk, ranked chunks → world | 1 | Shipped | [embeddings.md §host.agent.search](../architecture/embeddings.md#hostagentsearch) |
 | 3 | embedding-routing-tier | runtime | the embed tier in `TrySemantic`; `ConfidenceEmbedding` band; Oregon Trail calibration | 1 | Shipped | [semantic-routing.md §6](../architecture/semantic-routing.md#6-embedding-routing-tier) |
 
 ## Sequencing
 
 ```
-#1 embed-substrate (runtime) ──┬──▶ #2 oracle-search (runtime)
+#1 embed-substrate (runtime) ──┬──▶ #2 agent-search (runtime)
                                └──▶ #3 embedding-routing-tier (runtime)
 ```
 
@@ -89,14 +89,14 @@ consumer ships and calibrates on its own.
 
 These span the slices, so no child re-litigates them.
 
-1. **The substrate is NOT an `oracle.Oracle`.** The plugin contract
-   (`internal/oracle/oracle.go:38`, `Ask(ctx, req) AskResponse`) is for
+1. **The substrate is NOT an `agent.Agent`.** The plugin contract
+   (`internal/agent/agent.go:38`, `Ask(ctx, req) AskResponse`) is for
    *generative* completions — one prompt, one schema-shaped reply. Retrieval
    doesn't fit it. Slice 1 introduces a distinct `embed.Embedder`
    (`Embed(ctx, texts, role) ([][]float32, error)`) + `embed.Index`; both
    consumers call those directly, not through the generative registry.
-2. **`oracle.search` keeps the `oracle.` namespace by intent, not by
-   transport.** The verb is author-facing under `host.oracle.*` because it is
+2. **`agent.search` keeps the `agent.` namespace by intent, not by
+   transport.** The verb is author-facing under `host.agent.*` because it is
    an *interpretive, recorded* decision (which chunks are relevant — the moat),
    but its dispatch goes to the `internal/embed` substrate, not to
    `TryDispatchVerb`/`plug.Ask`. The routing tier (slice 3) is internal — no
@@ -105,8 +105,8 @@ These span the slices, so no child re-litigates them.
    `--embeddings --pooling mean`, separate port + GGUF from the chat sidecar
    (`--embeddings` restricts a server to embedding use — it is a *second*
    server, not a flag on the chat one). Reuses `EnsureRunning`'s lazy-spawn +
-   `/health` gate + SIGTERM teardown (`internal/oracle/server/sidecar.go:170`).
-   `endpoint:` mode never fetches or spawns, mirroring `local-model-oracle`'s
+   `/health` gate + SIGTERM teardown (`internal/agent/server/sidecar.go:170`).
+   `endpoint:` mode never fetches or spawns, mirroring `local-model-agent`'s
    `model:`-or-`endpoint:` invariant.
 4. **Shared determinism anchor.** Both consumers persist a gob-encoded index
    keyed by `(model, dim, pooling, content-hash of the corpus)`, rebuilt only
@@ -129,7 +129,7 @@ These span the slices, so no child re-litigates them.
    pin both, default nomic@256, let each consumer's calibration confirm.*
    Routing on *very short* texts may favor a different model than the RAG-over-
    docs case — the two consumers MAY end up defaulting differently.
-2. **One index store or two.** Do `oracle.search` and the routing tier share a
+2. **One index store or two.** Do `agent.search` and the routing tier share a
    single on-disk cache layout/keying, or keep separate caches? *Lean: one
    `embed.Store` in slice 1 keyed by corpus hash; both consumers are just
    different corpora through the same store.*
@@ -139,7 +139,7 @@ These span the slices, so no child re-litigates them.
 - **An ANN library.** Brute force is exact and correct under ~100k vectors
   (research §3); `coder/hnsw` is a noted pure-Go escape hatch we will not reach
   for at kitsoki's scale.
-- **cgo / in-binary inference.** Same stance as `local-model-oracle.md` — the
+- **cgo / in-binary inference.** Same stance as `local-model-agent.md` — the
   sidecar is the simpler seam than embedded engines.
 - **A reranker / cross-encoder stage.** Top-`k` by cosine is the ceiling for
   v1; a second-stage reranker is a later proposal if recall proves insufficient.

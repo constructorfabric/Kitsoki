@@ -130,7 +130,7 @@ func init() {
 //
 // It resolves nothing and reads no file: it is a pure function of (content,
 // label), which is exactly what makes it work on the inline render.Pongo path
-// and the AppRenderer path alike, under any oracle backend.
+// and the AppRenderer path alike, under any agent backend.
 func filterReference(in *pongo2.Value, param *pongo2.Value) (*pongo2.Value, *pongo2.Error) {
 	if in == nil || in.IsNil() {
 		return in, nil

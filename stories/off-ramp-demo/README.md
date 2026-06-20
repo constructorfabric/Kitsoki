@@ -1,14 +1,14 @@
 # off-ramp-demo — the no-match door, showcased
 
-The smallest complete demo of the **oracle off-ramp**: a discovery menu that
+The smallest complete demo of the **agent off-ramp**: a discovery menu that
 answers off-menu questions *in place* instead of bouncing them back to the
 menu.
 
 ## What the off-ramp is
 
-In a room that opts in with `oracle_off_ramp:`, a free-text utterance the
+In a room that opts in with `agent_off_ramp:`, a free-text utterance the
 router can't map to any declared intent is handed to a voiced
-`host.oracle.converse` turn — and the free-form answer comes back as a
+`host.agent.converse` turn — and the free-form answer comes back as a
 `ModeOffPath` outcome **without advancing the state machine or mutating
 world**. The room stays put; the same menu is there next turn. The *decision*
 to off-ramp is deterministic (a room flag × a no-match code); the converse
@@ -26,7 +26,7 @@ with:
 
 - a real menu of three declared intents — **browse**, **status**, **about** —
   that visibly transition (plus `quit` / `look`), and
-- the implicit free-text composer, with `oracle_off_ramp:` in the **struct
+- the implicit free-text composer, with `agent_off_ramp:` in the **struct
   form**: a friendly-guide `persona:` and a `banner: "(off the menu — just
   answering)"` so the off-ramp voice is distinct.
 
@@ -62,7 +62,7 @@ the `desk` room.
   entry: in `desk`, the off-menu input maps to a **no-match** (the replay
   harness returns a `*ClarifyResponse`), which fires the off-ramp.
 - [`assets/converse-cassette.yaml`](assets/converse-cassette.yaml) — one
-  `host.oracle.converse` episode returning a fixed, on-theme answer (read from
+  `host.agent.converse` episode returning a fixed, on-theme answer (read from
   `Result.Data.answer`), so the rendered frames are byte-stable.
 - Menu picks are **explicit intents** (`runstatus.session.submit`) — they need
   no recording entry and no harness.

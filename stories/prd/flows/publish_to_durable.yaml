@@ -25,7 +25,7 @@ initial_world:
   prd_workspace:        ".artifacts/prd/example-cli"
 
 host_handlers:
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted:

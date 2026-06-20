@@ -1,7 +1,7 @@
-// Package tui — bridge between host.StreamSink (meta-mode oracle
+// Package tui — bridge between host.StreamSink (meta-mode agent
 // stream-json events) and the Bubble Tea message loop.
 //
-// Background: internal/host/oracle_runner.go runs `claude -p
+// Background: internal/host/agent_runner.go runs `claude -p
 // --output-format stream-json --verbose` and emits one structured
 // event per JSONL line claude prints (system.init, assistant.text,
 // assistant.tool_use, user.tool_result, system.api_retry, result).
@@ -23,7 +23,7 @@
 // (slog still fires; the sink just stops dispatching) — typically the
 // caller defers it alongside p.Run().
 //
-// Concurrency contract: OnStreamEvent is called on the oracle
+// Concurrency contract: OnStreamEvent is called on the agent
 // subprocess's stdout-reader goroutine. We MUST NOT block — a stalled
 // sink would back-pressure claude's stdout pipe and stall the entire
 // LLM call. We forward via a fresh goroutine + tea.Program.Send
@@ -45,7 +45,7 @@ import (
 )
 
 // MetaStreamMsg is one tea.Msg carrying a host.StreamEvent. Delivered
-// from the oracle subprocess goroutine via tea.Program.Send so the
+// from the agent subprocess goroutine via tea.Program.Send so the
 // existing RootModel.Update switch can pattern-match on it like every
 // other in-flight message.
 type MetaStreamMsg struct {
@@ -99,7 +99,7 @@ func (s *MetaStreamSink) Detach() {
 // OnStreamEvent implements host.StreamSink. Non-blocking by spawning
 // a fresh goroutine for the Send call — tea.Program.Send writes
 // through a buffered channel which either accepts the msg immediately
-// or drops it on Quit. Either way the oracle subprocess reader
+// or drops it on Quit. Either way the agent subprocess reader
 // goroutine is never stalled.
 func (s *MetaStreamSink) OnStreamEvent(_ context.Context, ev host.StreamEvent) {
 	if s == nil {

@@ -1,6 +1,6 @@
 # Baseline gate is GREEN → the gate proves nothing, so the loop refuses to spend.
 # `launch` runs the gate once and it PASSES on the unchanged artifact (host.run
-# exit 0). The maker (host.oracle.task) is never called — there is no host
+# exit 0). The maker (host.agent.task) is never called — there is no host
 # handler for it, proving the loop spends nothing. The operator `accept`s that
 # the goal is already met → @exit:achieved (terminal_reason already_met).
 test_kind: flow

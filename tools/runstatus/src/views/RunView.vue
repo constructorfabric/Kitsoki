@@ -27,7 +27,7 @@
         <span
           v-if="store.usageTotals.present"
           class="run-view__usage"
-          :title="`${store.usageTotals.calls} oracle calls · in ${fmtTokens(store.usageTotals.promptTokens)} / out ${fmtTokens(store.usageTotals.responseTokens)} tokens`"
+          :title="`${store.usageTotals.calls} agent calls · in ${fmtTokens(store.usageTotals.promptTokens)} / out ${fmtTokens(store.usageTotals.responseTokens)} tokens`"
         >
           Σ {{ fmtTokens(store.usageTotals.promptTokens + store.usageTotals.responseTokens) }} tok<template v-if="fmtCost(store.usageTotals.costUsd)"> · {{ fmtCost(store.usageTotals.costUsd) }}</template>
         </span>
@@ -119,7 +119,7 @@ import { createDataSource } from "../data/source.js";
 import { markAutoNavDone } from "../lib/auto-nav.js";
 import StoryFreshness from "../components/StoryFreshness.vue";
 import ViewModeTabs from "../components/ViewModeTabs.vue";
-import { fmtTokens, fmtCost } from "../components/oracle/lib.js";
+import { fmtTokens, fmtCost } from "../components/agent/lib.js";
 import type { NodeRef } from "../types.js";
 
 const props = defineProps<{ sessionId: string }>();

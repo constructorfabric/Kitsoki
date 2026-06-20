@@ -1,10 +1,10 @@
 # artifact_round_trip — exercises the FULL bind-to-disk path that
-# none of the other fixtures cover. Stubs host.run + host.oracle.decide
+# none of the other fixtures cover. Stubs host.run + host.agent.decide
 # inline (via host_handlers), but DOES NOT stub host.artifacts_dir so
 # the real handler runs and writes a file to KITSOKI_ARTIFACTS_ROOT.
 #
 # Catches the silent-failure class where:
-#   - oracle.decide returns ok with Data["submitted"] = full verdict
+#   - agent.decide returns ok with Data["submitted"] = full verdict
 #   - bind: verdict: submitted is supposed to copy that map into world
 #   - body: "{{ world.verdict }}" templates the map
 #   - bodyArg in artifacts_dir pretty-prints to JSON
@@ -44,7 +44,7 @@ host_handlers:
         recent_log: "abc1234 sub"
         recent_changes: ""
         working_tree_diff: ""
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       exit_code: 0
@@ -68,11 +68,11 @@ host_handlers:
         recommended_actions:
           - "document --bar in §2"
   # The needs_update verdict auto-routes through `fixing`, which calls
-  # host.oracle.task and a second host.artifacts_dir write. Stub the
+  # host.agent.task and a second host.artifacts_dir write. Stub the
   # task call inline; the artifacts_dir write goes through the real
   # handler (same temp $KITSOKI_ARTIFACTS_ROOT). The fix artifact path
   # is asserted by the wrapping Go test.
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       exit_code: 0

@@ -50,11 +50,11 @@ states:
       # approve / request_changes flag to iface.vcs.pr_comment).
       # `once: true` for reload-safety: keyed off its own bind
       # (decision_artifact), so /reload re-renders the stored decision instead
-      # of re-running the oracle. The only arc that re-enters this room for a
+      # of re-running the agent. The only arc that re-enters this room for a
       # fresh decide is decide_awaiting_reply's `refine` (→ comment_executing →
       # proceed → decide_executing); that arc clears decision_artifact to
       # re-arm this once:.
-      - invoke: host.oracle.decide
+      - invoke: host.agent.decide
         once: true
         with:
           prompt: prompts/judge_decide.md
@@ -98,7 +98,7 @@ states:
             Confidence: '{{ world.llm_verdict.confidence|default:"(n/a)" }}'
             Reason:     '{{ world.llm_verdict.reason|default:"(none)" }}'
       - heading: "Artifact"
-      - code: '{{ world.decision_artifact.summary_markdown|default:"(pending — oracle has not returned yet)" }}'
+      - code: '{{ world.decision_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
       - choice:
           mode: single
           prompt: "Actions"
@@ -139,7 +139,7 @@ states:
           state:   decide_awaiting_reply
           body:    "{{ world.decision_artifact.summary_markdown }}"
       - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
-        invoke: host.oracle.decide
+        invoke: host.agent.decide
         with:
           prompt: prompts/judge_decide.md
           schema: schemas/judge_verdict.json
@@ -229,7 +229,7 @@ states:
                 # clear EVERY downstream once: bind it will flow through:
                 # comment_executing keys off draft_comment, decide_executing
                 # off decision_artifact. Leaving either set would make that
-                # room skip its oracle call and re-render stale output.
+                # room skip its agent call and re-render stale output.
                 draft_comment:     ""
                 decision_artifact: {}
       quit:

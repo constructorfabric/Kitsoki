@@ -21,7 +21,7 @@ func TestObservationKind(t *testing.T) {
 	validKinds := map[store.Kind]bool{
 		store.KindDecision:      true,
 		store.KindRouting:       true,
-		store.KindOracleCall:    true,
+		store.KindAgentCall:     true,
 		store.KindHostCall:      true,
 		store.KindNarration:     true,
 		store.KindWorldMutation: true,
@@ -42,11 +42,11 @@ func TestObservationKind(t *testing.T) {
 		{store.TurnStarted, store.KindRouting},
 		{store.IntentAccepted, store.KindRouting},
 
-		// oracle-call
-		{store.OracleCalled, store.KindOracleCall},
-		{store.OracleReturned, store.KindOracleCall},
-		{store.OracleError, store.KindOracleCall},
-		{store.LLMToolCall, store.KindOracleCall},
+		// agent-call
+		{store.AgentCalled, store.KindAgentCall},
+		{store.AgentReturned, store.KindAgentCall},
+		{store.AgentError, store.KindAgentCall},
+		{store.LLMToolCall, store.KindAgentCall},
 
 		// host-call
 		{store.HostInvoked, store.KindHostCall},

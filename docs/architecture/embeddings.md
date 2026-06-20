@@ -1,10 +1,10 @@
 # Embeddings
 
 Kitsoki's vector substrate lives in `internal/embed/`. It is consumed by two
-features: the `host.oracle.search` host verb (semantic retrieval over files)
+features: the `host.agent.search` host verb (semantic retrieval over files)
 and the embedding routing tier (paraphrase recall between the lexical tiers and
 the LLM). Both consumers call the substrate directly; neither goes through the
-generative oracle registry.
+generative agent registry.
 
 ## The `internal/embed` package
 
@@ -25,7 +25,7 @@ model-specific task prefix — callers never write prefixes themselves.
 **Prefix discipline.** nomic-embed-text-v1.5 uses asymmetric prefixes:
 documents get `search_document: `, queries get `search_query: `.
 bge-small-en-v1.5 prefixes only the query side (`search_query: `).
-`LocalEmbedder` (`internal/oracle/local_llm_embed.go`) applies these from the
+`LocalEmbedder` (`internal/agent/local_llm_embed.go`) applies these from the
 `modelPrefixes` map keyed by model id and role. An unknown model gets no prefix
 (safe default). Callers pass `Document` at index time and `Query` at lookup
 time; they never write a prefix.
@@ -68,7 +68,7 @@ Corpora are gob-encoded and written atomically (temp file + rename) keyed by
 model, truncation, or input text forces a cache miss and a fresh embed. Both
 consumers key through the same `Store` with different corpus hashes.
 
-### Ingestion (oracle.search)
+### Ingestion (agent.search)
 
 `Ingest` (`internal/embed/ingest.go`) resolves corpus globs under
 `workingDir`, reads each file (skipping binary files and files > 1 MiB), and
@@ -94,16 +94,16 @@ In **endpoint mode** (`endpoint:` set in config) the embedder attaches to an
 already-running server and never fetches or spawns. In **managed mode**
 (`model:` set) the sidecar is fetched, verified (sha256), and spawned lazily
 on the first call, reusing the same `EnsureRunning` / `/health` gate /
-SIGTERM teardown from `internal/oracle/server/sidecar.go`. The model pin for
+SIGTERM teardown from `internal/agent/server/sidecar.go`. The model pin for
 the embedding GGUF must be filled in `fetch.go` — it is currently a
 placeholder; endpoint mode works today on any host.
 
-## `host.oracle.search`
+## `host.agent.search`
 
 A room calls:
 
 ```yaml
-- invoke: host.oracle.search
+- invoke: host.agent.search
   with:
     query:     "{{ world.user_question }}"
     corpus:    "docs/runbooks/**/*.md"   # glob, relative to working_dir
@@ -118,7 +118,7 @@ A room calls:
 by `score`). `top` is the first hit, or nil when the result is empty. An empty
 glob or all hits below `min_score` binds an empty list — not an error.
 
-The handler (`internal/host/oracle_search.go`):
+The handler (`internal/host/agent_search.go`):
 1. Ingests the corpus via `embed.Ingest`.
 2. Checks `embed.Store` for a cached index keyed by `(model, dim, pooling,
    corpus hash)`.
@@ -182,8 +182,8 @@ given the same corpus, model, and llama.cpp pin reproduces the ranking exactly.
 ## See also
 
 - `internal/embed/` — substrate package (godoc covers all exported types)
-- `internal/oracle/local_llm_embed.go` — `LocalEmbedder` + prefix table
+- `internal/agent/local_llm_embed.go` — `LocalEmbedder` + prefix table
 - `internal/orchestrator/embed_tier.go` — `EmbedTier`, `EmbedTierConfig`
-- `internal/host/oracle_search.go` — the host verb handler
+- `internal/host/agent_search.go` — the host verb handler
 - [`semantic-routing.md`](semantic-routing.md) §"Embedding routing tier" — the routing tier in context
-- [`oracle-plugin.md`](oracle-plugin.md) §9 — embedding sidecar mode
+- [`agent-plugin.md`](agent-plugin.md) §9 — embedding sidecar mode

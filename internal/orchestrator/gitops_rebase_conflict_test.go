@@ -96,7 +96,7 @@ func setupConflictRepo(t *testing.T) string {
 	return repoRoot
 }
 
-// escalatingConflictResolver is the host.oracle.task stub for the conflict
+// escalatingConflictResolver is the host.agent.task stub for the conflict
 // room. It returns resolved:false so the conflict room SETTLES at `conflict`
 // (the escalation view) rather than emitting rebase_continue and driving the
 // rebase forward against a tree the stub never actually edited. No LLM, free.
@@ -139,11 +139,11 @@ func TestGitOps_RebaseConflict_RoutesToConflictRoom(t *testing.T) {
 
 	reg := host.NewRegistry()
 	reg.Register("host.run", host.RunHandler)
-	reg.Register("host.oracle.task", escalatingConflictResolver)
+	reg.Register("host.agent.task", escalatingConflictResolver)
 	// decide isn't on the rebase→conflict path, but git-ops declares it; stub
 	// it defensively so an unexpected call surfaces as a clean verdict, not a
 	// missing-handler error.
-	reg.Register("host.oracle.decide", escalatingConflictResolver)
+	reg.Register("host.agent.decide", escalatingConflictResolver)
 
 	orch := orchestrator.New(def, m, s, noopHarness{}, orchestrator.WithHostRegistry(reg))
 

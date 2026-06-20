@@ -20,7 +20,7 @@
  * ROUTED live by the deterministic semantic tier (no LLM) — the spec drives via
  * InteractiveView's __kitsokiSendText hook (session.turn), and the inline routing
  * chip under each bubble shows the tier + match + confidence. The two genuine
- * oracle calls (commit message, conflict resolution) replay through a host cassette
+ * agent calls (commit message, conflict resolution) replay through a host cassette
  * so they carry real token usage + cost; the spend meter shows ~$0.10 total, moved
  * only on those two turns.
  *
@@ -92,7 +92,7 @@ export const GIT_OPS_TOUR_STEPS: readonly TourStep[] = [
     target: "chat-section",
     waitForTarget: "chat-section",
     title: "Real session ① — commit the fix",
-    body: "From a recorded session, a developer typed: “commit the staged fix” — as FREE TEXT, not a button. The semantic router resolved it to the commit intent deterministically (no LLM). The commit room then gathers the staged diff and the oracle drafts the message it really landed — fix(auth): handle nil session on expiry. Review, regenerate, or edit; accept runs the real git commit.",
+    body: "From a recorded session, a developer typed: “commit the staged fix” — as FREE TEXT, not a button. The semantic router resolved it to the commit intent deterministically (no LLM). The commit room then gathers the staged diff and the agent drafts the message it really landed — fix(auth): handle nil session on expiry. Review, regenerate, or edit; accept runs the real git commit.",
     placement: "right",
     kind: "explain",
     advance: "next",
@@ -120,7 +120,7 @@ export const GIT_OPS_TOUR_STEPS: readonly TourStep[] = [
     target: "chat-section",
     waitForTarget: "chat-section",
     title: "Real session ② — rebase & resolve",
-    body: "The next recording: “rebase onto main and resolve the conflicts” — again free text, routed deterministically to rebase (its chip shows leading-verb:rebas). In the real session the rebase conflicted in TWO source files — internal/auth/session.go and internal/auth/token.go. The story routed into the conflict room and the oracle resolved both, ran the build check, and continued — back on the hub, rebased and green. Reading two files and editing both is the demo's biggest oracle call — watch the spend meter jump on this turn.",
+    body: "The next recording: “rebase onto main and resolve the conflicts” — again free text, routed deterministically to rebase (its chip shows leading-verb:rebas). In the real session the rebase conflicted in TWO source files — internal/auth/session.go and internal/auth/token.go. The story routed into the conflict room and the agent resolved both, ran the build check, and continued — back on the hub, rebased and green. Reading two files and editing both is the demo's biggest agent call — watch the spend meter jump on this turn.",
     placement: "right",
     kind: "explain",
     advance: "next",
@@ -155,14 +155,14 @@ export const GIT_OPS_TOUR_STEPS: readonly TourStep[] = [
     dwellMs: 4000,
   },
 
-  // ── Cost emphasis: spend tracks ONLY the genuine oracle work ────────────────
+  // ── Cost emphasis: spend tracks ONLY the genuine agent work ────────────────
   {
     id: "gitops-cost",
     route: "interactive",
     target: "usage-meter",
     waitForTarget: "usage-meter",
     title: "It only spent where the LLM earned it",
-    body: "The spend meter reads about $0.10 — and it moved exactly TWICE across four scenarios: drafting the commit message (~$0.012) and resolving the two-file conflict (~$0.083). Everything else — routing every typed utterance, branch detection, staging, each merge guard, the whole worktree lifecycle — is deterministic transitions and real git commands, and cost nothing. The oracle is the only surface that can spend, and the story confines it to the two moments only a model can do. The deterministic engine scales for free; you pay for judgment, not plumbing.",
+    body: "The spend meter reads about $0.10 — and it moved exactly TWICE across four scenarios: drafting the commit message (~$0.012) and resolving the two-file conflict (~$0.083). Everything else — routing every typed utterance, branch detection, staging, each merge guard, the whole worktree lifecycle — is deterministic transitions and real git commands, and cost nothing. The agent is the only surface that can spend, and the story confines it to the two moments only a model can do. The deterministic engine scales for free; you pay for judgment, not plumbing.",
     placement: "right",
     kind: "explain",
     advance: "next",
@@ -174,7 +174,7 @@ export const GIT_OPS_TOUR_STEPS: readonly TourStep[] = [
     id: "gitops-done",
     route: "interactive",
     title: "Four real sessions, replayed",
-    body: "Every input here was the verbatim text a developer typed in a real Claude Code session — commit, rebase-with-conflict, merge, and worktree setup — mined with the story-coverage-mining loop. Each was ROUTED live by the deterministic semantic tier (the chips show how), and only the two genuine oracle calls spent tokens. Routing replay + traced spend means the whole run is auditable: you can see how every word resolved and exactly where the ~$0.10 went. Not a synthetic tour — the story handled exactly what people actually asked for. Hit '?' to replay this.",
+    body: "Every input here was the verbatim text a developer typed in a real Claude Code session — commit, rebase-with-conflict, merge, and worktree setup — mined with the story-coverage-mining loop. Each was ROUTED live by the deterministic semantic tier (the chips show how), and only the two genuine agent calls spent tokens. Routing replay + traced spend means the whole run is auditable: you can see how every word resolved and exactly where the ~$0.10 went. Not a synthetic tour — the story handled exactly what people actually asked for. Hit '?' to replay this.",
     placement: "center",
     kind: "explain",
     advance: "next",

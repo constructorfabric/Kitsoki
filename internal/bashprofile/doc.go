@@ -1,5 +1,5 @@
 // Package bashprofile defines the three Bash restriction profiles used by
-// host.oracle.ask and host.oracle.decide: it sits between internal/app (the
+// host.agent.ask and host.agent.decide: it sits between internal/app (the
 // YAML loader that parses a `bash_profile:` block into a [Kind]) and
 // internal/host (the runtime that enforces the chosen profile when an agent
 // invokes the Bash tool).

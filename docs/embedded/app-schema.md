@@ -71,7 +71,7 @@ Fields:
 states:
   foyer:
     type:            atomic | compound | parallel    # default: atomic
-    mode:            <string>                        # e.g. "conversational" → Oracle Room
+    mode:            <string>                        # e.g. "conversational" → Agent Room
     description:     <string>                        # shown in location indicator
     view:            |-                              # Go template over {{ world.* }}
       You are in the foyer. Counter = {{ world.counter }}.
@@ -88,7 +88,7 @@ states:
     relevant_world:  [ <world-key>, ... ]            # pinned in TUI location indicator
     relevant_slots:  [ <slot-name>, ... ]
     timeout:         <TimeoutDef>                    # optional auto-transition
-    oracle_off_ramp: <OffRampDef>                    # optional no-match door (see below)
+    agent_off_ramp: <OffRampDef>                    # optional no-match door (see below)
 ```
 
 Rules:
@@ -843,11 +843,11 @@ off_path:
   return:   main              # state to re-enter after exiting off-path
 ```
 
-## `OffRampDef` (`oracle_off_ramp:`)
+## `OffRampDef` (`agent_off_ramp:`)
 
 Per-state **no-match door**. When a free-text utterance routes to no declared
-intent in a room that sets `oracle_off_ramp`, the orchestrator hands the
-original text to an oracle converse turn (the same voice `off_path:` reaches)
+intent in a room that sets `agent_off_ramp`, the orchestrator hands the
+original text to an agent converse turn (the same voice `off_path:` reaches)
 instead of bouncing it back as a rejection — **without advancing the state
 machine or mutating world**. The menu still renders; the resting state is
 unchanged. The TurnResult `mode` is `offpath`. Contrast with `off_path:`: that
@@ -859,8 +859,8 @@ Opt-in per room; two author forms (the struct mirrors the subset of
 have no analogue here):
 
 ```yaml
-oracle_off_ramp: true                                          # bare scalar — use the off-path voice
-oracle_off_ramp: { agent: discovery-guide, banner: "(thinking)" }  # struct form
+agent_off_ramp: true                                          # bare scalar — use the off-path voice
+agent_off_ramp: { agent: discovery-guide, banner: "(thinking)" }  # struct form
 ```
 
 | Field     | Required | Notes                                                                                       |
@@ -869,14 +869,14 @@ oracle_off_ramp: { agent: discovery-guide, banner: "(thinking)" }  # struct form
 | `persona` | no       | Inline system-prompt-style instruction for the off-ramp voice. When both `persona` and `agent` are set, `persona` wins. |
 | `banner`  | no       | One-line label shown when the off-ramp engages.                                             |
 
-Load-time invariants (a violating `oracle_off_ramp` fails the load):
+Load-time invariants (a violating `agent_off_ramp` fails the load):
 
 - **Rejected on `terminal: true`** — a terminal state has no resting menu to return to.
-- **Rejected on `mode: conversational`** — an Oracle Room already routes all free text; an off-ramp would be redundant.
+- **Rejected on `mode: conversational`** — an Agent Room already routes all free text; an off-ramp would be redundant.
 - A named `agent:` must exist in the top-level `agents:` map.
 - The struct is strict — off-path-only keys (e.g. `trigger:`, `return:`) are rejected.
 
-A nil/absent `oracle_off_ramp` (or `oracle_off_ramp: false`) means no off-ramp —
+A nil/absent `agent_off_ramp` (or `agent_off_ramp: false`) means no off-ramp —
 the default — and rejections behave exactly as before. See
 [`docs/stories/architecture.md`](../stories/architecture.md) §9 and
 [`docs/stories/state-machine.md`](../stories/state-machine.md) §11 for the full
@@ -1090,5 +1090,5 @@ states:
 ## Bigger examples in-tree
 
 - `testdata/apps/cloak/app.yaml`     — classic IF game; guards, enums, default branches
-- `testdata/apps/dev-story/app.yaml` — multi-room dev workflow; hosts, proposals, Oracle Room, background jobs
+- `testdata/apps/dev-story/app.yaml` — multi-room dev workflow; hosts, proposals, Agent Room, background jobs
 - `testdata/apps/proposal_smoke/app.yaml` — minimal proposal-pattern example

@@ -1,7 +1,7 @@
 # references_no_embeddings_fallback — the semantic pre-seed fails cleanly
 # when embeddings are unconfigured.
 #
-# host.oracle.search is stubbed to ERROR (the sentinel an unconfigured
+# host.agent.search is stubbed to ERROR (the sentinel an unconfigured
 # embedding endpoint returns). Its on_error: references is a SELF-redirect:
 # the runtime stays in references WITHOUT re-firing on_enter, so the
 # researcher step below still runs with reference_hits left empty — the
@@ -27,9 +27,9 @@ host_handlers:
     data: { ok: true, connected: true }
   # Embeddings unconfigured → the search call errors. references_seed's
   # on_error: references advances to the checkpoint ANYWAY with empty hits.
-  host.oracle.search:
+  host.agent.search:
     error: "embeddings not configured: app.routing.embedding.endpoint is empty"
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:
@@ -37,7 +37,7 @@ host_handlers:
           - { path: "docs/auth.md", sections: "Tokens", rationale: "token model the PRD must honour" }
   host.artifacts_dir:
     data: { ok: true, path: ".artifacts/prd/a-cli-for-x/003-references.md", message_id: "003#1" }
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted:
@@ -63,7 +63,7 @@ turns:
         items:
           - { path: "docs/auth.md", sections: "Tokens", rationale: "token model the PRD must honour" }
     expect_host_calls:
-      - handler: host.oracle.search
+      - handler: host.agent.search
 
   # And the checkpoint flows on to drafting normally.
   - intent: { name: confirm, slots: {} }

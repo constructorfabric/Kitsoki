@@ -137,8 +137,8 @@ func ResolveFilterRooms(a *app.AppDef, f FlowchartFilter) ([]string, error) {
 	}
 
 	// Build room-level adjacency graph from cross-room transitions.
-	adj := map[string][]string{}     // forward: room → []room
-	radj := map[string][]string{}    // reverse: room → []room
+	adj := map[string][]string{}  // forward: room → []room
+	radj := map[string][]string{} // reverse: room → []room
 	adjSeen := map[[2]string]bool{}
 
 	walkAllStates(a.States, "", func(path string, s *app.State) {
@@ -698,7 +698,7 @@ func buildStepLabel(idx int, e app.Effect) string {
 	invokeName := e.Invoke
 	// Strip package prefix for brevity — use last segment after dot.
 	if dot := strings.LastIndex(invokeName, "."); dot >= 0 {
-		// Keep the last two segments for readability (e.g. "host.oracle" → "host.oracle").
+		// Keep the last two segments for readability (e.g. "host.agent" → "host.agent").
 		invokeName = e.Invoke
 	}
 
@@ -755,7 +755,7 @@ func buildStepLabel(idx int, e app.Effect) string {
 func stepClass(e app.Effect) string {
 	invoke := strings.ToLower(e.Invoke)
 	switch {
-	case strings.Contains(invoke, "oracle") || strings.Contains(invoke, ".llm"):
+	case strings.Contains(invoke, "agent") || strings.Contains(invoke, ".llm"):
 		return "llm"
 	case strings.Contains(invoke, ".run") || strings.Contains(invoke, "shell") || strings.Contains(invoke, "exec"):
 		return "shell"

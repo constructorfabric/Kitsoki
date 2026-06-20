@@ -13,7 +13,7 @@
 # caps chain depth at 8 (two hops per iteration). Larger budgets need the
 # background-job runner — a real constraint the story exposes.
 #
-# Per-call stubbing: maker (host.oracle.task) and gate (host.run) carry a
+# Per-call stubbing: maker (host.agent.task) and gate (host.run) carry a
 # templated `id:` (maker-N / gate-N; gate-0 is the baseline) threaded into
 # args.call, so `by_call:` returns a distinct response per iteration.
 test_kind: flow
@@ -55,7 +55,7 @@ host_handlers:
             --- FAIL: TestAllow_Concurrent (1.20s)
                 limiter_test.go:68: timeout: Allow held the lock across time.Sleep (deadlock)
             FAIL	kitsoki/internal/ratelimit	1.231s
-  host.oracle.task:
+  host.agent.task:
     by_call:
       maker-1: { data: { submitted: { summary: "Initialize the bucket with tokens=burst so a cold limiter allows a full burst" } } }
       maker-2: { data: { submitted: { summary: "Refill tokens by elapsed×rate on each Allow, capped at the burst size" } } }

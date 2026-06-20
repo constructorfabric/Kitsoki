@@ -1,4 +1,4 @@
-# refining — ONE host.oracle.task edits the source behind each flagged moment.
+# refining — ONE host.agent.task edits the source behind each flagged moment.
 #
 # For each feedback note (the drained feedback_batch and/or the inline
 # refine_feedback), the task edits the source the note's source_ref points at
@@ -28,7 +28,7 @@ states:
             Edited: '{{ world.refine_result.edited|length }}'
       - prose: "Editing source per the binding feedback directives, then re-rendering."
     on_enter:
-      - invoke: host.oracle.task
+      - invoke: host.agent.task
         id: refine_source
         once: true
         with:

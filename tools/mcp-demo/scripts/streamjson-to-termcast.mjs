@@ -22,7 +22,7 @@ const CAP = {
   story_read: ["read", "Reading the story over MCP — story.read", "the agent inspects the story source"],
   story_validate: ["validate", "Checking it — story.validate", "load-time invariants, deterministically"],
   story_graph: ["graph", "The room graph — story.graph", "rooms, transitions, intents"],
-  story_test: ["test", "Testing the flows — story.test", "no LLM — a flow/cassette oracle"],
+  story_test: ["test", "Testing the flows — story.test", "no LLM — a flow/cassette agent"],
   session_new: ["new", "Opening a session — session.new", "harness: replay (no LLM)"],
   session_submit: ["drive", "Driving the session — session.submit", "a direct intent advances the machine"],
   session_drive: ["drive", "Driving the session — session.drive", "free text routes through the one seam"],

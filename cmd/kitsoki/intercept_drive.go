@@ -30,7 +30,7 @@ import (
 )
 
 // interceptDriveBudget is kitsoki's wall-clock cap for a synchronous multi-turn
-// intercept drive. It is deliberately generous — an oracle reading and editing
+// intercept drive. It is deliberately generous — an agent reading and editing
 // conflicted files is minutes, not the 5s fast-path cap — and MUST sit under the
 // Claude hook `timeout` the installer writes (interceptHookTimeoutSeconds) so
 // kitsoki always reaches safe-abort before Claude kills the hook.
@@ -55,7 +55,7 @@ type driveConfig struct {
 	WorkingDir string
 }
 
-// driveInterceptToRest builds a real, oracle-capable session runtime against the
+// driveInterceptToRest builds a real, agent-capable session runtime against the
 // on-disk store and drives the matched command to rest. It returns the
 // structured DriveOutcome; a non-nil error is an infrastructure failure (the
 // caller fails open, letting the prompt reach the model untouched).
@@ -68,7 +68,7 @@ func driveInterceptToRest(ctx context.Context, dc driveConfig) (orchestrator.Dri
 		// drives the conflict sub-flow to completion without stopping for an
 		// operator (there is no live operator on a blocking hook).
 		ExecMode: orchestrator.ExecOneShot,
-		// A real claude harness so host.oracle.task reaches the model to resolve
+		// A real claude harness so host.agent.task reaches the model to resolve
 		// conflicts — the acknowledged, recorded LLM use of this path (the gate's
 		// no-LLM promise holds only for the single-command subset).
 		HarnessType: "claude",
@@ -125,7 +125,7 @@ func driveOutcomeFallback(out orchestrator.DriveOutcome) string {
 	case "resolved":
 		return "Completed."
 	case "escalation":
-		return "The oracle could not resolve the conflict — the rebase was aborted; the tree is clean."
+		return "The agent could not resolve the conflict — the rebase was aborted; the tree is clean."
 	case "budget":
 		return "Timed out — the operation was aborted; the tree is clean."
 	case "error", "panic":

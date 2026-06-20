@@ -48,7 +48,7 @@
 import { computed } from "vue";
 import type { TraceEvent } from "../types.js";
 import { observationKind, COLOR_MAP } from "../lib/observation.js";
-import { fmtMs } from "./oracle/lib.js";
+import { fmtMs } from "./agent/lib.js";
 
 const props = defineProps<{
   events: TraceEvent[];
@@ -74,7 +74,7 @@ interface TurnGroup {
 function getDurationMs(event: TraceEvent): number | null {
   const a = event.attrs;
   if (!a) return null;
-  // oracle.call.complete: duration_ms on complete attrs
+  // agent.call.complete: duration_ms on complete attrs
   if (typeof a.duration_ms === "number") return a.duration_ms;
   // harness calls: compute from dispatched→returned timestamps if present
   if (typeof a.dispatched_at === "string" && typeof a.returned_at === "string") {

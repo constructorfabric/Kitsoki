@@ -13,7 +13,7 @@ import (
 // story and loads+parses it through the prompt renderer, so a malformed prompt
 // extension — a missing file, an unresolved {% extends %} / {% include %}, an
 // unknown @import alias, a self-reference, or a syntax error — fails fast at
-// load with a located message instead of surfacing only when that oracle
+// load with a located message instead of surfacing only when that agent
 // effect first fires. Templated refs (those containing {{ / {%, resolved per
 // turn) and non-prompt effects are skipped. Returns one error per bad ref,
 // sorted; nil/empty when the story has no on-disk prompt renderer (LoadBytes /
@@ -77,9 +77,9 @@ func collectPromptRefs(states map[string]*app.State, out map[string]bool) {
 
 func collectPromptRefsInEffects(effs []app.Effect, out map[string]bool) {
 	for i := range effs {
-		// Top-level prompt refs (host.oracle.ask / ask_with_mcp / decide).
+		// Top-level prompt refs (host.agent.ask / ask_with_mcp / decide).
 		collectPromptRefsFromMap(effs[i].With, out)
-		// host.oracle.task nests the prompt under with.context.prompt.
+		// host.agent.task nests the prompt under with.context.prompt.
 		if ctx, ok := effs[i].With["context"].(map[string]any); ok {
 			collectPromptRefsFromMap(ctx, out)
 		}

@@ -1,6 +1,6 @@
 # route_commit_bare — utterance "commit" → routes to commit room.
 # Tests bare imperative synonym routing.
-# commit_message pre-seeded so oracle is not called.
+# commit_message pre-seeded so agent is not called.
 
 test_kind: flow
 app: ../app.yaml

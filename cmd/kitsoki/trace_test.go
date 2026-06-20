@@ -27,12 +27,12 @@ const cannedTrace = `{"kind":"session.header","schema_version":1,"written_at":"2
 `
 
 // digestTrace exercises the --turns digest: routing provenance, the dispatched
-// oracle prompt, an ide.context_captured datapoint, and the outcome.
+// agent prompt, an ide.context_captured datapoint, and the outcome.
 const digestTrace = `{"turn":0,"kind":"session.story","payload":{"app_id":"x"}}
 {"turn":1,"kind":"turn.start","state_path":"core.proposal","payload":{"input":"use this doc","routed_by":"default","match_type":"free_text"}}
 {"turn":1,"kind":"ide.context_captured","state_path":"core.proposal","payload":{"connected":true,"source":"selection","file":"/repo/a.go","injected":true}}
-{"turn":1,"kind":"harness.called","state_path":"core.proposal","payload":{"namespace":"host.oracle.converse"}}
-{"turn":1,"kind":"oracle.call.start","state_path":"core.proposal","payload":{"verb":"converse","prompt":"use this doc\n\n## Active editor selection (via /ide)"}}
+{"turn":1,"kind":"harness.called","state_path":"core.proposal","payload":{"namespace":"host.agent.converse"}}
+{"turn":1,"kind":"agent.call.start","state_path":"core.proposal","payload":{"verb":"converse","prompt":"use this doc\n\n## Active editor selection (via /ide)"}}
 {"turn":1,"kind":"turn.end","state_path":"core.proposal","payload":{"outcome":"transitioned","to":"core.proposal"}}
 `
 
@@ -46,7 +46,7 @@ func TestDigestTurns(t *testing.T) {
 	assert.Contains(t, out, "route=default (free_text)")
 	assert.Contains(t, out, "source=selection")
 	assert.Contains(t, out, "injected=true")
-	assert.Contains(t, out, "host.oracle.converse")
+	assert.Contains(t, out, "host.agent.converse")
 	assert.Contains(t, out, "## Active editor selection (via /ide)")
 	assert.Contains(t, out, "transitioned → core.proposal")
 }
@@ -68,7 +68,7 @@ func TestDigestTurns_FocusShowsFullPrompt(t *testing.T) {
 	long := "do the thing\\n\\n## Active editor selection (via /ide)\\n\\n" + strings.Repeat("x", 400)
 	tr := `{"turn":1,"kind":"turn.start","payload":{"input":"a"}}
 {"turn":2,"kind":"turn.start","state_path":"chat","payload":{"input":"do the thing","routed_by":"default"}}
-{"turn":2,"kind":"oracle.call.start","payload":{"verb":"converse","prompt":"` + long + `"}}
+{"turn":2,"kind":"agent.call.start","payload":{"verb":"converse","prompt":"` + long + `"}}
 `
 	var buf bytes.Buffer
 	require.NoError(t, digestTurns(strings.NewReader(tr), &buf, 2))

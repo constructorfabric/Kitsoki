@@ -2,7 +2,7 @@
 #
 # Hermetic and LLM-free: every room's on_enter producer is `once: true`
 # keyed off its artifact bind, so seeding those artifacts in initial_world
-# makes the oracle calls short-circuit on entry. The only live host call is
+# makes the agent calls short-circuit on entry. The only live host call is
 # iface.transport.post, bound here to host.stdout (a no-op channel). We
 # assert the phase transitions and the status side-effects.
 
@@ -16,12 +16,12 @@ initial_world:
   judge_mode:    "human"
   judge_confidence_threshold: 0.8
   selected_theme: "Pre-existing failure vs regression"
-  # Seed each phase artifact so `once:` skips the producer oracle call.
+  # Seed each phase artifact so `once:` skips the producer agent call.
   mine_artifact:
     brief_path:   ".artifacts/session-mining/intents-20260615/BRIEF.md"
     intent_count: 154
     deterministic: 84
-    oracle_gated:  66
+    agent_gated:  66
     irreducible:   4
     summary_markdown: "154 intents · 144 clusters · 98% grounded. Top recurring shapes: explore-codebase, verify-by-running, write-docs, implement-from-spec."
   map_artifact:

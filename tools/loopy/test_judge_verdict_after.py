@@ -1,7 +1,7 @@
 """test_judge_verdict_after.py — trace-continuity tests for judge_verdict_after.py.
 
-Verifies that judge_verdict_after.py routes every oracle call through
-kitsoki oracle (socket or CLI path) rather than shelling out to claude -p,
+Verifies that judge_verdict_after.py routes every agent call through
+kitsoki agent (socket or CLI path) rather than shelling out to claude -p,
 and that KITSOKI_SESSION_ID is threaded into the call so decisions are
 linked to the parent trace.
 
@@ -42,9 +42,9 @@ _PROMPT = str(
 )
 
 
-# ── stub oracle server ─────────────────────────────────────────────────────────
+# ── stub agent server ─────────────────────────────────────────────────────────
 
-class _StubOracleServer:
+class _StubAgentServer:
     """Minimal JSON-RPC server that records incoming requests and returns a
     canned verdict. Runs in a background thread; stopped via close()."""
 
@@ -92,7 +92,7 @@ class _StubOracleServer:
 
 @pytest.fixture()
 def tmp_sock(tmp_path):
-    return str(tmp_path / "oracle-test.sock")
+    return str(tmp_path / "agent-test.sock")
 
 
 @pytest.fixture()
@@ -112,14 +112,14 @@ def valid_verdict_response():
 # ── socket path tests ──────────────────────────────────────────────────────────
 
 class TestJudgeVerdictAfterSocketPath:
-    """judge_verdict_after.py uses the unix socket when KITSOKI_ORACLE_SOCK is set."""
+    """judge_verdict_after.py uses the unix socket when KITSOKI_AGENT_SOCK is set."""
 
-    def test_routes_to_oracle_decide(self, tmp_sock, valid_verdict_response):
-        """The script sends oracle.decide over the socket, not claude -p."""
-        server = _StubOracleServer(tmp_sock, valid_verdict_response)
+    def test_routes_to_agent_decide(self, tmp_sock, valid_verdict_response):
+        """The script sends agent.decide over the socket, not claude -p."""
+        server = _StubAgentServer(tmp_sock, valid_verdict_response)
         try:
             env = os.environ.copy()
-            env["KITSOKI_ORACLE_SOCK"] = tmp_sock
+            env["KITSOKI_AGENT_SOCK"] = tmp_sock
             env["KITSOKI_SESSION_ID"] = "test-session-abc"
 
             result = subprocess.run(
@@ -135,14 +135,14 @@ class TestJudgeVerdictAfterSocketPath:
         assert result.returncode == 0, f"script failed: {result.stderr}"
         assert len(server.received) == 1, "expected exactly one RPC call"
         req = server.received[0]
-        assert req["method"] == "oracle.decide", f"wrong method: {req['method']}"
+        assert req["method"] == "agent.decide", f"wrong method: {req['method']}"
 
     def test_passes_schema_and_prompt(self, tmp_sock, valid_verdict_response):
-        """The oracle.decide call references the canonical schema and prompt paths."""
-        server = _StubOracleServer(tmp_sock, valid_verdict_response)
+        """The agent.decide call references the canonical schema and prompt paths."""
+        server = _StubAgentServer(tmp_sock, valid_verdict_response)
         try:
             env = os.environ.copy()
-            env["KITSOKI_ORACLE_SOCK"] = tmp_sock
+            env["KITSOKI_AGENT_SOCK"] = tmp_sock
             env.pop("KITSOKI_SESSION_ID", None)
 
             subprocess.run(
@@ -164,10 +164,10 @@ class TestJudgeVerdictAfterSocketPath:
 
     def test_args_json_carries_ticket_fields(self, tmp_sock, valid_verdict_response):
         """ticket_id, artifact_title, artifact_body are forwarded in args_json."""
-        server = _StubOracleServer(tmp_sock, valid_verdict_response)
+        server = _StubAgentServer(tmp_sock, valid_verdict_response)
         try:
             env = os.environ.copy()
-            env["KITSOKI_ORACLE_SOCK"] = tmp_sock
+            env["KITSOKI_AGENT_SOCK"] = tmp_sock
 
             subprocess.run(
                 [sys.executable, _SCRIPT, "PROJ-789", "My title", "My body"],
@@ -188,10 +188,10 @@ class TestJudgeVerdictAfterSocketPath:
 
     def test_returns_verdict_json_on_stdout(self, tmp_sock, valid_verdict_response):
         """Script prints the submitted verdict as JSON to stdout."""
-        server = _StubOracleServer(tmp_sock, valid_verdict_response)
+        server = _StubAgentServer(tmp_sock, valid_verdict_response)
         try:
             env = os.environ.copy()
-            env["KITSOKI_ORACLE_SOCK"] = tmp_sock
+            env["KITSOKI_AGENT_SOCK"] = tmp_sock
 
             result = subprocess.run(
                 [sys.executable, _SCRIPT, "PROJ-1", "t", "b"],
@@ -210,8 +210,8 @@ class TestJudgeVerdictAfterSocketPath:
         assert out["confidence"] == pytest.approx(0.95)
 
     def test_no_direct_claude_invocation(self, tmp_sock, valid_verdict_response):
-        """When KITSOKI_ORACLE_SOCK is set, the script must not fork 'claude'."""
-        server = _StubOracleServer(tmp_sock, valid_verdict_response)
+        """When KITSOKI_AGENT_SOCK is set, the script must not fork 'claude'."""
+        server = _StubAgentServer(tmp_sock, valid_verdict_response)
         # Install a sentinel that fails if 'claude' is called.
         with tempfile.TemporaryDirectory() as tmpdir:
             fake_claude = pathlib.Path(tmpdir) / "claude"
@@ -221,7 +221,7 @@ class TestJudgeVerdictAfterSocketPath:
             fake_claude.chmod(0o755)
             try:
                 env = os.environ.copy()
-                env["KITSOKI_ORACLE_SOCK"] = tmp_sock
+                env["KITSOKI_AGENT_SOCK"] = tmp_sock
                 env["PATH"] = tmpdir + ":" + env.get("PATH", "")
 
                 result = subprocess.run(
@@ -241,14 +241,14 @@ class TestJudgeVerdictAfterSocketPath:
 # ── session ID inheritance tests ───────────────────────────────────────────────
 
 class TestSessionIDInheritance:
-    """KITSOKI_SESSION_ID set by the state machine must reach the oracle call."""
+    """KITSOKI_SESSION_ID set by the state machine must reach the agent call."""
 
     def test_session_id_in_environment(self, tmp_sock, valid_verdict_response):
         """Script runs without error when KITSOKI_SESSION_ID is set."""
-        server = _StubOracleServer(tmp_sock, valid_verdict_response)
+        server = _StubAgentServer(tmp_sock, valid_verdict_response)
         try:
             env = os.environ.copy()
-            env["KITSOKI_ORACLE_SOCK"] = tmp_sock
+            env["KITSOKI_AGENT_SOCK"] = tmp_sock
             env["KITSOKI_SESSION_ID"] = "session-xyz-999"
 
             result = subprocess.run(
@@ -265,10 +265,10 @@ class TestSessionIDInheritance:
 
     def test_script_works_without_session_id(self, tmp_sock, valid_verdict_response):
         """Script works when no parent session is available (standalone use)."""
-        server = _StubOracleServer(tmp_sock, valid_verdict_response)
+        server = _StubAgentServer(tmp_sock, valid_verdict_response)
         try:
             env = os.environ.copy()
-            env["KITSOKI_ORACLE_SOCK"] = tmp_sock
+            env["KITSOKI_AGENT_SOCK"] = tmp_sock
             env.pop("KITSOKI_SESSION_ID", None)
 
             result = subprocess.run(
@@ -345,7 +345,7 @@ class TestUsageAndErrors:
         srv = _ErrorServer(tmp_sock)
         try:
             env = os.environ.copy()
-            env["KITSOKI_ORACLE_SOCK"] = tmp_sock
+            env["KITSOKI_AGENT_SOCK"] = tmp_sock
 
             result = subprocess.run(
                 [sys.executable, _SCRIPT, "PROJ-1", "t", "b"],

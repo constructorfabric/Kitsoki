@@ -1,7 +1,7 @@
 // Package host — operator-ask host-side bridge (phase 3).
 //
 // This is the host half of the operator-question forwarding wire. When a live
-// operator surface is attached (OperatorInteractive), oracle dispatch:
+// operator surface is attached (OperatorInteractive), agent dispatch:
 //
 //  1. starts a per-call unix-socket listener (startOperatorAskListener) that
 //     bridges the wire protocol to the in-context OperatorPrompter, and
@@ -219,7 +219,7 @@ func (h *OperatorAskListenerForTest) SockPath() string { return h.l.sockPath }
 // Close stops the listener and removes the socket file.
 func (h *OperatorAskListenerForTest) Close() { h.l.close() }
 
-// attachOperatorAsk wires the operator-ask tool into an oracle subprocess WHEN a
+// attachOperatorAsk wires the operator-ask tool into an agent subprocess WHEN a
 // live operator surface is attached. It returns the (possibly extended) CLI args
 // and tool list plus a cleanup func the caller MUST defer (always non-nil).
 //
@@ -227,7 +227,7 @@ func (h *OperatorAskListenerForTest) Close() { h.l.close() }
 // unchanged and cleanup is a no-op, so dispatch keeps the tool-denied posture.
 //
 // A failure to bind the socket / write the MCP config is logged and treated as
-// "no operator" rather than failing the whole oracle call — the agent then
+// "no operator" rather than failing the whole agent call — the agent then
 // proceeds without the tool, which is strictly better than aborting the turn.
 func attachOperatorAsk(ctx context.Context, cliArgs, tools []string) (outArgs, outTools []string, cleanup func(), err error) {
 	noop := func() {}

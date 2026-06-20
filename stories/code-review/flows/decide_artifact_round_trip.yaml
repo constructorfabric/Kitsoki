@@ -1,11 +1,11 @@
 # decide_artifact_round_trip — exercises the full bind-to-disk path that
-# none of the other code-review fixtures cover. Stubs host.oracle.ask,
-# host.oracle.decide, and other host calls inline (via host_handlers),
+# none of the other code-review fixtures cover. Stubs host.agent.ask,
+# host.agent.decide, and other host calls inline (via host_handlers),
 # rebinds iface.transport to host.artifacts_dir so the real handler runs
 # and writes a file to KITSOKI_ARTIFACTS_ROOT.
 #
 # Catches the silent-failure class where:
-#   - decide_executing.on_enter calls oracle.decide → returns submitted
+#   - decide_executing.on_enter calls agent.decide → returns submitted
 #   - bind: decision_artifact: submitted copies the map into world
 #   - decide_awaiting_reply.on_enter templates
 #     `body: "{{ world.decision_artifact.summary_markdown }}"` into
@@ -18,7 +18,7 @@
 # Note: initial_state teleports the session to comment_executing WITHOUT
 # running its on_enter. Firing `proceed` causes the orchestrator to
 # ENTER decide_executing naturally, which DOES run decide_executing.on_enter
-# (the oracle.decide call + bind: decision_artifact: submitted).
+# (the agent.decide call + bind: decision_artifact: submitted).
 #
 # Driven by cmd/kitsoki/code_review_decide_artifact_test.go.
 
@@ -43,15 +43,15 @@ host_bindings:
   transport: host.artifacts_dir
   host.artifacts_dir: host.artifacts_dir
 
-# Stub oracle and other hosts; host.artifacts_dir is intentionally absent
+# Stub agent and other hosts; host.artifacts_dir is intentionally absent
 # so the real handler writes to $KITSOKI_ARTIFACTS_ROOT.
 host_handlers:
-  host.oracle.ask:
+  host.agent.ask:
     data:
       ok: true
       exit_code: 0
       stdout: "LGTM. One nit on decimal precision."
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       exit_code: 0
@@ -72,7 +72,7 @@ host_handlers:
 
 turns:
   # From comment_executing, `proceed` enters decide_executing and runs
-  # its on_enter (host.oracle.decide → binds decision_artifact).
+  # its on_enter (host.agent.decide → binds decision_artifact).
   - intent: { name: proceed, slots: {} }
     expect_state: decide_executing
 

@@ -18,7 +18,7 @@ screen.*
 > session surfaces beside a live trace and state diagram. It shares the
 > orchestrator with this TUI. That server also hosts the
 > [story editor](story-editor.md) — a per-story static inspector (rooms, world,
-> oracle contracts, cassettes) that needs no session.
+> agent contracts, cassettes) that needs no session.
 >
 > Live in the editor? The same web UI embeds as a native VS Code surface — chat in
 > the sidebar, trace in a bottom panel, themed to VS Code — via the
@@ -105,7 +105,7 @@ orchestrator/host layer calls:
 - `routing_observer.go` — the semantic-routing tier events
   (deterministic / synonym / LLM / ambiguous) rendered as a live-
   updating routing-status block, with a ring buffer feeding `/trace`.
-- `meta_stream_observer.go` — streams the Claude oracle subprocess's
+- `meta_stream_observer.go` — streams the Claude agent subprocess's
   stdout so you see an agent's tool calls and text as they happen, not
   just the final result.
 - `room_enter_observer.go` — room-entry callbacks, so the banner can
@@ -155,7 +155,7 @@ surface on top, in `commands_ide.go`.
 |---|---|
 | `/ide` | Connect if off, else show status (convenience alias). |
 | `/ide connect [n]` | Discover + connect. When several lock files match cwd it prints a picker; re-run `/ide connect <n>` to choose. Reports IDE name + workspace. |
-| `/ide disconnect` | Close the link. This also stops the oracle env-scrub (the scrub is gated on a connected link) and flips the footer chip off. |
+| `/ide disconnect` | Close the link. This also stops the agent env-scrub (the scrub is gated on a connected link) and flips the footer chip off. |
 | `/ide status` | One block: connected?, IDE name, workspace, port. |
 
 The command is dispatched inline in `handleSlashCommand` like `/help`; the
@@ -168,7 +168,7 @@ orchestrator via `SetIDELink` so per-turn `host.ide.*` dispatch and the
 `⧉ ide: <name> ✓` chip through the footer pongo2 template (not a hand-rolled
 string) — so the operator always sees that the editor is listening.
 
-**Ambient editor context.** Before each oracle-bearing turn, if connected, the
+**Ambient editor context.** Before each agent-bearing turn, if connected, the
 TUI reads the operator's live editor context and threads it onto the turn ctx
 (`host.WithIDEAmbient`; see `internal/host/ide_ambient.go`), then appends exactly
 one settled transcript line as the operator's source of truth for what rode the
@@ -211,8 +211,8 @@ tracker so re-selecting the same range later counts as new.
 
 The selection then reaches the model **two ways**:
 
-- **Always-on (no opt-in).** The operator-facing oracle verbs — `host.oracle.ask`,
-  `host.oracle.ask_with_mcp`, and `host.oracle.converse` — automatically append a
+- **Always-on (no opt-in).** The operator-facing agent verbs — `host.agent.ask`,
+  `host.agent.ask_with_mcp`, and `host.agent.converse` — automatically append a
   standardized `## Active editor selection (via /ide)` block to the rendered
   prompt, so a selection feeds requests like "do this idea" in *every* story
   without each prompt opting in. It is a no-op when nothing is selected (the

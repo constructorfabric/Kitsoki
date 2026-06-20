@@ -26,7 +26,7 @@ The kit serves three distinct jobs over the same distilled traces:
 | Output | A redacted, shareable, aggregatable `report.json` + `BRIEF.md` | A local, ranked, themed Markdown brief of ideas/pain/design notes | Two linked JSON reports: `intents.json` (catalog) + `analysis.json` (per-instance recipes) |
 | Unit | a *workflow type* (aggregated) | a *theme* | an **intent instance** (preserved, never aggregated away) |
 | Redaction | **Mandatory** — a model scores the traces, the report is shared | **None** — stays in `/tmp`, never shared; redaction would strip the content you want | **None by default** — local `.artifacts/`, opt-in `--redact` |
-| Extractor | `prompts/extractor.md` (vocabulary-scored) | a fan-out workflow (one reader per batch) keyed to your topic | `intents.workflow.js` — one **strictly-validated oracle** pass, re-checked deterministically |
+| Extractor | `prompts/extractor.md` (vocabulary-scored) | a fan-out workflow (one reader per batch) keyed to your topic | `intents.workflow.js` — one **strictly-validated agent** pass, re-checked deterministically |
 | Driver | the Quickstart below | the **`session-idea-mining`** skill | the **["Intent mining" section](#intent-mining-the-third-mode)** below |
 
 Both modes share `distill.jq` and the new **`prep.py`** (distill + bin-pack into
@@ -99,7 +99,7 @@ Where pattern mining asks *which workflow types recur*, intent mining is
 **instance-first**: it identifies each individual user request (an **intent**) and
 recovers the concrete **actions + parameters** that would *deterministically*
 reproduce the requested output. Where pure determinism is impossible it reduces
-the LLM to a **strictly-validated oracle** rather than letting it narrate freely.
+the LLM to a **strictly-validated agent** rather than letting it narrate freely.
 It is local by design — outputs land in a gitignored `.artifacts/` job folder.
 
 ### The two linked reports
@@ -114,7 +114,7 @@ A run emits two reports into `.artifacts/session-mining/<job>/`:
 - **`analysis.json`** (REPORT 2, the recipes) — one row per instance: `tags`, the
   `determinism` verdict, the grounded `actions` (each with `tool`, genericized
   `signature`, `parameters`, a `cite` into the trace, and a `grounded` flag),
-  `oracle_gates` (only when not fully deterministic), `measured` trace signals,
+  `agent_gates` (only when not fully deterministic), `measured` trace signals,
   and `grounding` stats. Plus `clusters` grouping like intents together.
 
 **Cross-link contract.** Every `intents.json` row's `analysis_ref` is
@@ -129,7 +129,7 @@ Schema alone can't express). This is the one optional dependency: it needs
 `jsonschema` (`pip3 install --user jsonschema`) — the rest of the spine is
 stdlib-only so it runs anywhere. The no-LLM test runs this validation on every run.
 
-### LLM-minimality & the strict-oracle guarantee
+### LLM-minimality & the strict-agent guarantee
 
 The pipeline is six steps; **only step B touches an LLM**, and its output is
 schema-constrained *and* re-validated deterministically in step C:
@@ -137,14 +137,14 @@ schema-constrained *and* re-validated deterministically in step C:
 | # | Step | Engine | Tool |
 |---|---|---|---|
 | A | Distill the corpus into action traces + a manifest | deterministic | `prep.py --job <name>` |
-| B | **Oracle pass** — segment each trace into intent spans; per span draft a recipe (ordered actions + genericized signature + parameters) with a **citation on every action**; assign tags; flag judgment gates | **LLM, strict schema** | `intents.workflow.js` |
+| B | **Agent pass** — segment each trace into intent spans; per span draft a recipe (ordered actions + genericized signature + parameters) with a **citation on every action**; assign tags; flag judgment gates | **LLM, strict schema** | `intents.workflow.js` |
 | C | **Ground & validate** every action against the cited trace line; drop spans that ground nothing | deterministic | `ground.py` |
 | D | **Tag & group** — validate tags against the vocab, roll up counts, cluster by tag-set + normalized signature | deterministic | `tag_score.py` |
 | E | **Score determinism** per instance from measured trace signals + grounding completeness + gates | deterministic | `tag_score.py` |
 | E′ | *(optional)* **Recover per-tool-call outcomes** from the raw `.jsonl` (`is_error`, stdout/stderr heads, interrupted) into a session-ordered intermediate | deterministic | `outcomes.py` |
 | F | **Emit** the two linked reports; recover **verbatim user text from the raw `.jsonl`**; with `--outcomes`, attach each grounded action's real `outcome` + a per-instance `satisfaction` review flag | deterministic | `emit.py` |
 
-The oracle *proposes* a structured hypothesis; deterministic code *disposes* of it.
+The agent *proposes* a structured hypothesis; deterministic code *disposes* of it.
 `ground.py` confirms (1) the cited line actually contains that tool call, and (2)
 every emitted parameter value is a **substring** of the cited tool input — so an
 action or parameter the trace doesn't support is rejected, not reported. The
@@ -157,7 +157,7 @@ from the LLM.
 
 The `determinism` verdict (step E) is computed, not guessed:
 - **deterministic** — every action grounded, no judgment gate.
-- **oracle-gated** — reproducible except at N named gates, each carrying a strict
+- **agent-gated** — reproducible except at N named gates, each carrying a strict
   `validator`, or where grounding is only partial (the LLM is allowed but boxed).
 - **irreducible-llm** — nothing grounded / no concrete actions; flagged honestly
   rather than dressed up as a recipe.
@@ -189,17 +189,17 @@ python3 prep.py "$PROJ" --job "$JOB"
 #   -> .artifacts/session-mining/$JOB/{traces/,batches/,manifest.json}
 #   stdout tail gives BATCHES= and BATCHDIR= for the workflow
 
-# B. the one LLM step — run intents.workflow.js (schema-validated oracle), e.g.
+# B. the one LLM step — run intents.workflow.js (schema-validated agent), e.g.
 #    Workflow({ scriptPath: "tools/session-mining/intents.workflow.js", args: {
 #      batchDir:   ".artifacts/session-mining/<JOB>/batches",
 #      batchCount: <BATCHES from prep.py>,
-#      outDir:     ".artifacts/session-mining/<JOB>/oracle" } })
-#   -> .artifacts/session-mining/$JOB/oracle/oracle-batch-NN.json
+#      outDir:     ".artifacts/session-mining/<JOB>/agent" } })
+#   -> .artifacts/session-mining/$JOB/agent/agent-batch-NN.json
 
 JOBDIR=../../.artifacts/session-mining/$JOB
 
-# C. ground the oracle hypothesis against the traces (rejects fabrications)
-python3 ground.py --oracle "$JOBDIR/oracle" --traces "$JOBDIR/traces" --out "$JOBDIR/grounded.json"
+# C. ground the agent hypothesis against the traces (rejects fabrications)
+python3 ground.py --agent "$JOBDIR/agent" --traces "$JOBDIR/traces" --out "$JOBDIR/grounded.json"
 
 # D+E. validate tags, cluster, score determinism (deterministic)
 python3 tag_score.py --grounded "$JOBDIR/grounded.json" --traces "$JOBDIR/traces" --out "$JOBDIR/scored.json"
@@ -224,10 +224,10 @@ python3 validate_reports.py "$JOBDIR"
 
 ### Testing (no LLM, ever)
 
-Steps C–F are standalone python that take the oracle's JSON as a file input, so the
+Steps C–F are standalone python that take the agent's JSON as a file input, so the
 whole C→F pipeline is unit-testable with **no LLM and no cost** (per AGENTS.md). The
 fixture under `tests/fixtures/intent/` ships a sample distilled trace, a raw jsonl
-snippet, and a sample oracle output (including a deliberately-fabricated action that
+snippet, and a sample agent output (including a deliberately-fabricated action that
 the grounding gate must reject). Run:
 
 ```sh
@@ -263,7 +263,7 @@ the worked flagship (committed corpus + `run.sh` demo + filled worksheet) is
 
 **Downstream consumer — cost tracking.** The same per-story
 `mining.profile.yaml` also drives **cost savings**. `cost_report.py`
-(`make cost-report`) pairs each story's deterministic cost (oracle `cost_usd`
+(`make cost-report`) pairs each story's deterministic cost (agent `cost_usd`
 summed from its host cassette; routed/host steps are $0) against the real
 raw-agentic cost of the same operations in mined sessions — a per-intent
 median/p90 distribution, the reprocessing tax, and cold-resume re-warm — read
@@ -480,7 +480,7 @@ merges mixed `vocab_version`s. The extractor prompt is a versioned artifact
 
 ```
 distill.jq              raw JSONL transcript -> compact action trace
-prep.py                 distill + (optional --redact) + bin-pack into byte-balanced batches; one command, all modes (--job targets .artifacts/ for intent mining). Drops dispatched headless agent/oracle transcripts (entrypoint!=cli) by default; --keep-agent-sessions to include them
+prep.py                 distill + (optional --redact) + bin-pack into byte-balanced batches; one command, all modes (--job targets .artifacts/ for intent mining). Drops dispatched headless agent/agent transcripts (entrypoint!=cli) by default; --keep-agent-sessions to include them
 redact.py               deterministic scrubber; `--report` scrubs a report's free-text, `--scan` is the share-gate
 report.py               render a pattern-mining aggregate into an actionable BRIEF.md (verdict + gates + skeleton + first step)
 focus_brief.py          render a focused idea-mining synthesis JSON into a ranked themed Markdown brief (idea-mining mode)
@@ -493,9 +493,9 @@ schema/aggregate.schema.json  JSON Schema for a merged report (aggregate.py outp
 schema/intents.schema.json    JSON Schema for REPORT 1 (the intents catalog)
 schema/analysis.schema.json   JSON Schema for REPORT 2 (the per-instance recipes)
 aggregate.py            merge + score + promotion gate (stdlib only; associative)
-intents.workflow.js     INTENT MINING step B — the one strictly-validated oracle pass (schema-constrained)
+intents.workflow.js     INTENT MINING step B — the one strictly-validated agent pass (schema-constrained)
 intent_common.py        shared helpers for the intent-mining spine (trace/vocab/io primitives)
-ground.py               INTENT MINING step C — ground & validate oracle output against the traces
+ground.py               INTENT MINING step C — ground & validate agent output against the traces
 tag_score.py            INTENT MINING steps D+E — tag/group + determinism scoring (deterministic)
 outcomes.py             INTENT MINING step E′ (optional) — recover per-tool-call outcomes (is_error/stdout/stderr/interrupted) from raw jsonl into a session-ordered intermediate
 emit.py                 INTENT MINING step F — emit the two linked reports; verbatim text from raw jsonl; --outcomes attaches per-action outcome + per-instance satisfaction

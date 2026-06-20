@@ -218,7 +218,7 @@ describe("ChatTranscript", () => {
           {
             role: "user",
             text: "do the thing",
-            routing: { routedBy: "llm", matchType: "oracle.local", intent: "git.commit" },
+            routing: { routedBy: "llm", matchType: "agent.local", intent: "git.commit" },
           },
         ],
       },

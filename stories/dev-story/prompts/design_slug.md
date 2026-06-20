@@ -9,7 +9,7 @@ The idea:
 
 ## What makes a good slug
 
-- **2–5 words**, kebab-case, lowercase (`local-model-oracle`,
+- **2–5 words**, kebab-case, lowercase (`local-model-agent`,
   `per-session-workdir`, `jsonl-trace-export`).
 - Captures the **essence** — the thing being proposed — not the whole
   sentence. A raw sentence makes a terrible slug.

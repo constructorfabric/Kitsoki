@@ -8,7 +8,7 @@ match_on:
 
 episodes:
 
-  # ── Non-oracle stubs (replay:any — called multiple times per run) ────────────
+  # ── Non-agent stubs (replay:any — called multiple times per run) ────────────
 
   - id: append_to_file_any
     match:
@@ -46,11 +46,11 @@ episodes:
     replay: any
 
 # appended by KITSOKI_CASSETTE_RECORD
-  - id: recorded_host.oracle.task_idle
+  - id: recorded_host.agent.task_idle
     match:
-      handler: host.oracle.task
+      handler: host.agent.task
       phase: idle
-    oracle:
+    agent:
       verb: task
       agent: reproducer
       model: claude-sonnet-4-6
@@ -61,9 +61,9 @@ episodes:
       call_id: 4f933c38df706535
 
 # appended by KITSOKI_CASSETTE_RECORD
-  - id: recorded_host.oracle.decide_reproducing
+  - id: recorded_host.agent.decide_reproducing
     match:
-      handler: host.oracle.decide
+      handler: host.agent.decide
       phase: reproducing
     response:
       data:
@@ -75,7 +75,7 @@ episodes:
           reasoning: "The reproduction test `tkt001_esc_repro_test.go` directly confirms three observable symptoms of the bug: mode unchanged, transcript unchanged, and `inFlightCancel` not called. The guard at `tui.go:1252` is the unique decision point. The fix combines the Ctrl+C cancel pattern with the ESC→menu pattern."
           summary_title: "TKT-001: ESC silently discarded during ModeAwaitingLLM — routeKey guard too narrow"
           summary_markdown: "## Bug\n\nWhen a user presses **ESC while an LLM turn is in flight** (`ModeAwaitingLLM`, spinner active), the keypress is silently discarded. No system menu opens, no transcript hint is shown, and the in-flight turn is not cancelled. The TUI appears completely frozen.\n\n## Root Cause\n\n`routeKey()` in `internal/tui/tui.go:1251` gates the ESC→menu transition on `ModeOnPath | ModeOffPath` only. When `m.mode == ModeAwaitingLLM` the guard is not entered, the key falls through to the `charmbracelet/bubbles/textarea` widget, which silently drops it.\n\n## Fix\n\nAdd a `ModeAwaitingLLM` branch inside the existing ESC block at `tui.go:1252` that calls `m.inFlightCancel()`, transitions to `ModeMenu`, and calls `m.menuSystem.Open()`.\n\n## Files\n\n- `internal/tui/tui.go` — the only change site (lines 1247-1257)\n\n## Confidence: 0.95"
-    oracle:
+    agent:
       verb: decide
       agent: proposer
       model: claude-sonnet-4-6
@@ -86,11 +86,11 @@ episodes:
       call_id: 8bf4401a34847271
 
 # appended by KITSOKI_CASSETTE_RECORD
-  - id: recorded_host.oracle.task_proposing
+  - id: recorded_host.agent.task_proposing
     match:
-      handler: host.oracle.task
+      handler: host.agent.task
       phase: proposing
-    oracle:
+    agent:
       verb: task
       agent: implementer
       model: claude-sonnet-4-6
@@ -101,11 +101,11 @@ episodes:
       call_id: 371b27cd15312244
 
 # appended by KITSOKI_CASSETTE_RECORD
-  - id: recorded_host.oracle.task_implementing
+  - id: recorded_host.agent.task_implementing
     match:
-      handler: host.oracle.task
+      handler: host.agent.task
       phase: implementing
-    oracle:
+    agent:
       verb: task
       agent: test_author
       model: claude-sonnet-4-6
@@ -116,11 +116,11 @@ episodes:
       call_id: b5c8f4783037e788
 
 # appended by KITSOKI_CASSETTE_RECORD
-  - id: recorded_host.oracle.task_testing
+  - id: recorded_host.agent.task_testing
     match:
-      handler: host.oracle.task
+      handler: host.agent.task
       phase: testing
-    oracle:
+    agent:
       verb: task
       agent: implementer
       model: claude-sonnet-4-6
@@ -131,9 +131,9 @@ episodes:
       call_id: 74001e886831f54f
 
 # appended by KITSOKI_CASSETTE_RECORD
-  - id: recorded_host.oracle.task_reviewing
+  - id: recorded_host.agent.task_reviewing
     match:
-      handler: host.oracle.task
+      handler: host.agent.task
       phase: reviewing
     response:
       data:
@@ -143,7 +143,7 @@ episodes:
           outcome: "pass"
           evidence:
             build: "PASS: 216 tests"
-    oracle:
+    agent:
       verb: task
       agent: validator
       model: claude-sonnet-4-6
@@ -154,9 +154,9 @@ episodes:
       call_id: validator_cassette_entry_001
 
 # appended by KITSOKI_CASSETTE_RECORD
-  - id: recorded_host.oracle.decide_validating
+  - id: recorded_host.agent.decide_validating
     match:
-      handler: host.oracle.decide
+      handler: host.agent.decide
       phase: validating
     response:
       data:
@@ -179,7 +179,7 @@ episodes:
           metrics:
             cycles: 0
             checkpoint_comments: 0
-    oracle:
+    agent:
       verb: decide
       agent: proposer
       model: claude-sonnet-4-6
@@ -190,11 +190,11 @@ episodes:
       call_id: done_cassette_entry_001
 
 # appended by KITSOKI_CASSETTE_RECORD
-  - id: recorded_host.oracle.task_implementing
+  - id: recorded_host.agent.task_implementing
     match:
-      handler: host.oracle.task
+      handler: host.agent.task
       phase: implementing
-    oracle:
+    agent:
       verb: task
       agent: test_author
       model: claude-sonnet-4-6

@@ -39,7 +39,7 @@ host_handlers:
           ok:        true
           exit_code: 0
           stdout:    "build ok"
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted:
@@ -51,7 +51,7 @@ host_handlers:
 
 turns:
   # guide clears state, re-enters conflict (second round)
-  # on_enter: gather new files ("bar.go"), oracle resolves → rebase_continue → branch_ops
+  # on_enter: gather new files ("bar.go"), agent resolves → rebase_continue → branch_ops
   - intent: { name: guide, slots: { intent: "take ours" } }
     expect_state: branch_ops
     expect_world:

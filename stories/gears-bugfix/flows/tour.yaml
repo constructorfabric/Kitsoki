@@ -1,5 +1,5 @@
 # Deterministic (no-LLM) replay of the real gh-4115 gears bug-fix, happy-path walk,
-# through the gears-bugfix instance. Oracle artifacts, fix diff, and the 316/0
+# through the gears-bugfix instance. Agent artifacts, fix diff, and the 316/0
 # cargo log are replayed verbatim from the recorded real run via the cassette.
 test_kind: flow
 app: ../app.yaml

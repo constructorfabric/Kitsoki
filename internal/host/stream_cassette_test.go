@@ -5,7 +5,7 @@ package host_test
 // A "stream cassette" is a recorded claude stream-json transcript (one
 // JSON event per line — exactly what `claude -p --output-format
 // stream-json` prints) stored under testdata/stream_cassettes. Unlike a
-// host_cassette (which replays the *final* oracle response and bypasses
+// host_cassette (which replays the *final* agent response and bypasses
 // the stream parser entirely), a stream cassette is fed through the REAL
 // runClaudeStreamJSON parser via an injected ClaudeRunner stub, so the
 // whole stream-json → emitStreamEvent → StreamSink path runs.
@@ -16,7 +16,7 @@ package host_test
 // completeness contract that surfaced the truncation bug — narration
 // must reach a consumer in full, never clipped to a one-line preview.
 //
-// Recording a real transcript: run an oracle call with
+// Recording a real transcript: run an agent call with
 // `--output-format stream-json --verbose`, capture stdout to a .jsonl
 // under testdata/stream_cassettes, scrub any secrets, and add a case to
 // the table below.
@@ -89,11 +89,11 @@ func expectedAssistantTexts(t *testing.T, transcript string) []string {
 // TestStreamCassette_NarrationCompleteness replays a recorded transcript
 // through the real parser and asserts every assistant thought reaches the
 // StreamSink in full, in order — the file-based analogue of the inline
-// TestOracleStream_ThinkingNotTruncated.
+// TestAgentStream_ThinkingNotTruncated.
 func TestStreamCassette_NarrationCompleteness(t *testing.T) {
 	t.Parallel()
 
-	path := filepath.Join("testdata", "stream_cassettes", "oracle_thinking.jsonl")
+	path := filepath.Join("testdata", "stream_cassettes", "agent_thinking.jsonl")
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read stream cassette: %v", err)
@@ -124,11 +124,11 @@ func TestStreamCassette_NarrationCompleteness(t *testing.T) {
 		t.Fatalf("write prompt: %v", err)
 	}
 
-	ctx := host.WithStreamSink(oracleCtxForTest(sink), stream)
+	ctx := host.WithStreamSink(agentCtxForTest(sink), stream)
 	ctx = host.WithClaudeRunner(ctx, streamCassetteRunner(transcript))
 
-	if _, err := host.OracleAskHandler(ctx, map[string]any{"prompt_path": promptPath}); err != nil {
-		t.Fatalf("OracleAskHandler: %v", err)
+	if _, err := host.AgentAskHandler(ctx, map[string]any{"prompt_path": promptPath}); err != nil {
+		t.Fatalf("AgentAskHandler: %v", err)
 	}
 
 	// Collect the narration the sink actually saw, in order.
@@ -169,6 +169,6 @@ func TestStreamCassette_NarrationCompleteness(t *testing.T) {
 	}
 }
 
-// compile-time: captureStreamSink (defined in oracle_stream_test.go) must
+// compile-time: captureStreamSink (defined in agent_stream_test.go) must
 // satisfy host.StreamSink.
 var _ host.StreamSink = (*captureStreamSink)(nil)

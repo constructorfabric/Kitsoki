@@ -1,4 +1,4 @@
-# docs-review — single-shot oracle.decide story that asks an Opus
+# docs-review — single-shot agent.decide story that asks an Opus
 # read-only agent whether the repo's docs are still in sync with
 # recent code changes. The verdict is written to .artifacts/ keyed by
 # commit sha.
@@ -8,7 +8,7 @@
 # reviewing.on_enter chains three host calls:
 #   1. host.run — capture the current HEAD sha + recent git log/diffstat
 #      into a single JSON envelope (stdout_json).
-#   2. host.oracle.decide — opus agent reads the repo + docs and emits
+#   2. host.agent.decide — opus agent reads the repo + docs and emits
 #      a typed verdict (needs_update / up_to_date plus rationale).
 #   3. host.artifacts_dir — write the verdict JSON to
 #      .artifacts/docs-review-<sha>.md.
@@ -27,11 +27,11 @@ app:
 
 hosts:
   - host.run
-  - host.oracle.decide
-  - host.oracle.task
+  - host.agent.decide
+  - host.agent.task
   - host.artifacts_dir
 
-# Single opus agent — read-only by construction (oracle.decide rejects
+# Single opus agent — read-only by construction (agent.decide rejects
 # Edit/Write/NotebookEdit at call time and load time). Bash is gated to
 # the built-in read-only allowlist (grep/find/cat/ls/git/jq/rg/…).
 agents:
@@ -94,7 +94,7 @@ world:
   cwd:               { type: string, default: "" }
   repo_root:         { type: string, default: "" }
 
-  # Captured by the host.run preflight before oracle.decide runs.
+  # Captured by the host.run preflight before agent.decide runs.
   commit_sha:        { type: string, default: "" }
   commit_count:      { type: string, default: "" }
   recent_log:        { type: string, default: "" }
@@ -105,7 +105,7 @@ world:
   doc_inventory:     { type: string, default: "" }
   code_inventory:    { type: string, default: "" }
 
-  # Oracle output.
+  # Agent output.
   verdict:          { type: object, default: {} }
   # Scalar sentinel bound alongside `verdict` so the reviewing.done
   # guard can cheaply detect a successful submit (decision is required
@@ -148,11 +148,11 @@ intents:
     examples: ["done"]
     priority: 85
   no_submit:
-    description: "Internal: emitted by reviewing.on_enter when oracle.decide returned ok but no schema-conforming submit landed (e.g. empty submitted, missing decision)."
+    description: "Internal: emitted by reviewing.on_enter when agent.decide returned ok but no schema-conforming submit landed (e.g. empty submitted, missing decision)."
     examples: ["no_submit"]
     priority: 85
   fix_docs:
-    description: "Internal: emitted by reviewed.on_enter when decision == needs_update, routing into the docs-writer oracle."
+    description: "Internal: emitted by reviewed.on_enter when decision == needs_update, routing into the docs-writer agent."
     examples: ["fix_docs"]
     priority: 85
   fix_done:

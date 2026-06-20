@@ -36,7 +36,7 @@ class Price:
 PRICING: dict[str, Price] = {
     # Opus 4.x — the Claude Code default for heavy coding sessions.
     "claude-opus-4": Price(15.0, 75.0, 18.75, 30.0, 1.50),
-    # Sonnet 4.x — the demo's oracle model and a common Claude Code tier.
+    # Sonnet 4.x — the demo's agent model and a common Claude Code tier.
     "claude-sonnet-4": Price(3.0, 15.0, 3.75, 6.0, 0.30),
     # Haiku 4.5 — cheap tier.
     "claude-haiku-4": Price(1.0, 5.0, 1.25, 2.0, 0.10),

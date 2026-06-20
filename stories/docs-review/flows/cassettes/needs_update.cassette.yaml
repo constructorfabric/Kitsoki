@@ -26,10 +26,10 @@ episodes:
           working_tree_diff: ""
     replay: any
 
-  # 2. host.oracle.decide — opus verdict.
-  - id: oracle_decide
+  # 2. host.agent.decide — opus verdict.
+  - id: agent_decide
     match:
-      handler: host.oracle.decide
+      handler: host.agent.decide
     response:
       data:
         ok: true
@@ -69,11 +69,11 @@ episodes:
         message_id: "docs-review-deadbeefcafefeed#0"
     replay: any
 
-  # 4. host.oracle.task — docs_writer applies the fix. Triggered when
+  # 4. host.agent.task — docs_writer applies the fix. Triggered when
   #    reviewed.on_enter emits fix_docs (decision == needs_update).
   - id: docs_writer_task
     match:
-      handler: host.oracle.task
+      handler: host.agent.task
     response:
       data:
         ok: true

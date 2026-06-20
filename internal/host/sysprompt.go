@@ -1,6 +1,6 @@
-// Package host — system-prompt composition seam for the oracle verb handlers.
+// Package host — system-prompt composition seam for the agent verb handlers.
 //
-// Every oracle verb (ask, decide, task, converse, extract, ask_with_mcp,
+// Every agent verb (ask, decide, task, converse, extract, ask_with_mcp,
 // ask_structured) builds its `claude` system prompt through one path here, so
 // the layered kitsoki → project → task grounding (see internal/sysprompt) is
 // applied uniformly and the older "--append-system-prompt onto Claude Code's
@@ -37,7 +37,7 @@ type ProjectContext struct {
 	Path   string // app.context_path — prompt reference (overlay/@shared-resolved)
 }
 
-// WithProjectContext injects the app's Layer-2 config into ctx so the oracle
+// WithProjectContext injects the app's Layer-2 config into ctx so the agent
 // handlers can compose it into the system prompt. Mirrors WithPromptRenderer /
 // WithAgents — the orchestrator sets it per host-call dispatch. Passing an empty
 // ProjectContext is safe (handlers then fall back to the prompts/_project.md
@@ -64,11 +64,11 @@ const projectConventionRef = "prompts/_project.md"
 // recompiling. Empty result → the embedded default is used.
 const kitsokiOverlayRef = "sysprompt/kitsoki.md"
 
-// composeOracleSystemPrompt builds the layered system prompt for a verb and the
+// composeAgentSystemPrompt builds the layered system prompt for a verb and the
 // resolved Layer-3 persona, pulling Layer 2 (project) from ctx and Layer 1
 // (kitsoki) from the engine default (or a @shared overlay if the project ships
 // one). Pure assembly is delegated to sysprompt.Compose.
-func composeOracleSystemPrompt(ctx context.Context, verb sysprompt.Verb, persona string) sysprompt.Composed {
+func composeAgentSystemPrompt(ctx context.Context, verb sysprompt.Verb, persona string) sysprompt.Composed {
 	return sysprompt.Compose(sysprompt.Spec{
 		Verb:    verb,
 		Kitsoki: resolveKitsokiOverride(ctx),
@@ -83,7 +83,7 @@ func composeOracleSystemPrompt(ctx context.Context, verb sysprompt.Verb, persona
 // composed and passed via --system-prompt, which REPLACES Claude Code's default;
 // --exclude-dynamic-system-prompt-sections is added for every verb except task
 // (whose agentic repo work wants cwd/git/env). Because Layer 1 is always
-// present, the composed prompt is never empty — every oracle call is grounded.
+// present, the composed prompt is never empty — every agent call is grounded.
 //
 // Escape hatch (inheritDefault true, from agent.inherit_claude_default): the
 // persona is appended via --append-system-prompt onto Claude Code's default, the
@@ -98,7 +98,7 @@ func appendComposedSystemPrompt(ctx context.Context, cliArgs []string, verb sysp
 		}
 		return cliArgs, sysprompt.Composed{}
 	}
-	composed := composeOracleSystemPrompt(ctx, verb, persona)
+	composed := composeAgentSystemPrompt(ctx, verb, persona)
 	if strings.TrimSpace(composed.SystemPrompt) != "" {
 		cliArgs = append(cliArgs, "--system-prompt", composed.SystemPrompt)
 		if composed.ExcludeDynamic {

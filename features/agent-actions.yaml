@@ -2,8 +2,8 @@
 id: agent-actions
 kind: feature
 title: Agent action transcripts
-tagline: Every oracle call's full tool-use stream — captured once, replayed byte-identically.
-summary: "Every oracle call — task, decide, ask, converse — runs a rich native execution stream of tool calls, reasoning, and MCP submissions. kitsoki captures that stream byte-verbatim to a per-call sidecar and renders it in the observer: typed rows with full tool I/O, a latency waterfall, running token/cost accrual, the decide guardrail arc, an honest cassette-vs-live diff, and a run-wide rollup."
+tagline: Every agent call's full tool-use stream — captured once, replayed byte-identically.
+summary: "Every agent call — task, decide, ask, converse — runs a rich native execution stream of tool calls, reasoning, and MCP submissions. kitsoki captures that stream byte-verbatim to a per-call sidecar and renders it in the observer: typed rows with full tool I/O, a latency waterfall, running token/cost accrual, the decide guardrail arc, an honest cassette-vs-live diff, and a run-wide rollup."
 promo:
   order: 20
   highlight: true
@@ -67,7 +67,7 @@ tour:
     - id: aa-welcome
       route: any
       title: Agent action transcripts
-      body: "Every oracle call — task, decide, ask, converse — runs a rich native execution stream: tool calls, reasoning, MCP submissions. kitsoki captures that stream byte-verbatim to a per-call sidecar, renders it here, and replays it deterministically from the cassette. We lead with the one move a coding agent can't make, then walk the full per-call stream."
+      body: "Every agent call — task, decide, ask, converse — runs a rich native execution stream: tool calls, reasoning, MCP submissions. kitsoki captures that stream byte-verbatim to a per-call sidecar, renders it here, and replays it deterministically from the cassette. We lead with the one move a coding agent can't make, then walk the full per-call stream."
       placement: center
       kind: explain
       advance: next
@@ -176,7 +176,7 @@ tour:
       route: any
       target: agent-actions-rollup
       title: Every call, one place
-      body: Each row is one oracle call — its verb, call_id, and action count — and expands into its own full drawer. The whole run's agent activity in a single grouped view, the unit an operator actually reasons about.
+      body: Each row is one agent call — its verb, call_id, and action count — and expands into its own full drawer. The whole run's agent activity in a single grouped view, the unit an operator actually reasons about.
       placement: top
       kind: explain
       advance: next
@@ -203,7 +203,7 @@ qa:
       title: The per-call drawer shows typed rows with full tool I/O
       required: true
       steps:
-        - An 'Agent actions (N)' affordance is visible on an oracle call's detail pane
+        - An 'Agent actions (N)' affordance is visible on an agent call's detail pane
         - A drawer lists typed rows for tool calls and assistant reasoning
         - At least one expanded row shows real tool input and output text
     - id: waterfall-and-accrual
@@ -222,5 +222,5 @@ qa:
       title: The run-wide Actions rollup lists every transcript-bearing call
       required: true
       steps:
-        - An Actions view groups oracle calls by turn and room
+        - An Actions view groups agent calls by turn and room
         - A rollup row expands into a full drawer

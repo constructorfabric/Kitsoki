@@ -23,7 +23,7 @@ host_handlers:
   host.git_worktree:   { data: { ok: true, log: "" } }
   host.git:            { data: { ok: true, sha: "abc", diff: "" } }
   host.local:          { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted:
@@ -32,7 +32,7 @@ host_handlers:
         bug_verified:     true
         involved_components: [{ name: "x" }]
 
-  host.oracle.ask:
+  host.agent.ask:
     data:
       ok: true
       submitted:
@@ -41,7 +41,7 @@ host_handlers:
         bug_verified:     true
         involved_components: [{ name: "x" }]
 
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:

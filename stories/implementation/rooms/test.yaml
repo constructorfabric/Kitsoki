@@ -22,7 +22,7 @@ states:
             Summary:    '{{ world.test_artifact.summary_title|default:"(pending)" }}'
             "CI state": '{{ world.ci_state|default:"(pending)" }}'
       - heading: "Artifact"
-      - code: '{{ world.test_artifact.summary_markdown|default:"(pending — oracle has not returned yet)" }}'
+      - code: '{{ world.test_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
       - choice:
           mode: single
           prompt: "Actions"
@@ -50,7 +50,7 @@ states:
       # once: skip the regenerate when test_artifact is already bound
       # (reload / self-re-entry safe). Every arc that re-enters
       # test_executing for a FRESH run clears the bind below.
-      - invoke: host.oracle.decide
+      - invoke: host.agent.decide
         once: true
         with:
           prompt: prompts/judge_test.md
@@ -95,7 +95,7 @@ states:
             Confidence: '{{ world.llm_verdict.confidence|default:"(n/a)" }}'
             Reason:     '{{ world.llm_verdict.reason|default:"(none)" }}'
       - heading: "Artifact"
-      - code: '{{ world.test_artifact.summary_markdown|default:"(pending — oracle has not returned yet)" }}'
+      - code: '{{ world.test_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
       - choice:
           mode: single
           prompt: "Actions"
@@ -133,7 +133,7 @@ states:
           state:   test_awaiting_reply
           body:    "{{ world.test_artifact.summary_markdown }}"
       - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
-        invoke: host.oracle.decide
+        invoke: host.agent.decide
         with:
           prompt: prompts/judge_test.md
           schema: schemas/judge_verdict.json

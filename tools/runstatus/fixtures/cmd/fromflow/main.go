@@ -57,10 +57,10 @@ func main() {
 	)
 
 	// Put the run's JSONL trace next to the output snapshot so the sibling
-	// oracle-prompts/ directory (large oracle prompts/responses spilled to
+	// agent-prompts/ directory (large agent prompts/responses spilled to
 	// side-files to stay under PIPE_BUF) ends up where the runstatus SPA
 	// fetches them: relative to the snapshot. The .jsonl itself is an
-	// intermediate we remove after building the snapshot; oracle-prompts/ stays.
+	// intermediate we remove after building the snapshot; agent-prompts/ stays.
 	outDir := filepath.Dir(outPath)
 	tracePath := filepath.Join(outDir, "."+strings.TrimSuffix(filepath.Base(outPath), ".json")+".trace.jsonl")
 
@@ -69,7 +69,7 @@ func main() {
 		OnRigClose: func(_ string, _ store.Store, sid app.SessionID, sink *store.JSONLSink) error {
 			// Read from the authoritative JSONL trace, not st.LoadHistory: the
 			// SQLite events table is lossy (no state_path / call_id / parent_turn
-			// columns) and drops cassette oracle events, whereas the JSONL sink
+			// columns) and drops cassette agent events, whereas the JSONL sink
 			// records the full faithful trace the production runstatus UI shows.
 			if sink == nil {
 				captureErr = fmt.Errorf("flow rig did not expose a JSONL event sink")
@@ -110,7 +110,7 @@ func main() {
 	}
 
 	// Remove the intermediate JSONL trace; the snapshot embeds the events and
-	// the sibling oracle-prompts/ directory carries the spilled prompt/response
+	// the sibling agent-prompts/ directory carries the spilled prompt/response
 	// side-files the SPA fetches.
 	_ = os.Remove(tracePath)
 

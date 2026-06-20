@@ -90,8 +90,8 @@ host_handlers:
   host.local:
     data: { ok: true, state: "success", log: "PASS", passed: 4, failed: 0 }
 
-  # ── Oracle judge stubs: a confident PASS verdict at every checkpoint ─────
-  host.oracle.task: &judge
+  # ── Agent judge stubs: a confident PASS verdict at every checkpoint ─────
+  host.agent.task: &judge
     data:
       ok: true
       submitted:
@@ -118,8 +118,8 @@ host_handlers:
         verdict:          "pass"
         intent:           "accept"
         reason:           "Stub LLM verdict: pass."
-  host.oracle.ask: *judge
-  host.oracle.decide: *judge
+  host.agent.ask: *judge
+  host.agent.decide: *judge
 
 turns:
   # ── Triage: open the queue, pick AA-13268 directly (no search detour) ─────

@@ -4,7 +4,7 @@ Proposals consist of a few key phases:
 
 - Get basic idea or existing docs
     - brief.md
-    - gate sanity checks brief.md using oracle.decide to continue or clarify, and if clarify, returns clarifying questions (brief-decision.json)
+    - gate sanity checks brief.md using agent.decide to continue or clarify, and if clarify, returns clarifying questions (brief-decision.json)
 - Check for existing proposals or features that overlap
     - existing-state.md
     - Clarify where the proposal fits in relation to existing roadmap, proposals, features

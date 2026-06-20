@@ -8,18 +8,18 @@ generator: "hand-authored (demo tape)"
 min_confidence: 1.00
 
 entries:
-  # ── Oracle detour (first turn — then back to main) ──────────────────────
-  # The Oracle Room is now persistent-chat shape:
-  #   main → oracle (list view, on_enter loads chat list)
-  #   oracle: ask_question → oracle_asking (auto-creates chat + runs turn)
-  #   oracle_asking → go_back → oracle
+  # ── Agent detour (first turn — then back to main) ──────────────────────
+  # The Agent Room is now persistent-chat shape:
+  #   main → agent (list view, on_enter loads chat list)
+  #   agent: ask_question → agent_asking (auto-creates chat + runs turn)
+  #   agent_asking → go_back → agent
   - state: main
-    input: "consult the oracle"
-    intent: { name: go_oracle, slots: {} }
+    input: "consult the agent"
+    intent: { name: go_agent, slots: {} }
     confidence: 1.00
     majority_of: 1
 
-  - state: oracle
+  - state: agent
     input: "how does the auth token refresh work"
     intent:
       name: ask_question
@@ -27,7 +27,7 @@ entries:
     confidence: 1.00
     majority_of: 1
 
-  - state: oracle_asking
+  - state: agent_asking
     input: "go back"
     intent: { name: go_back, slots: {} }
     confidence: 1.00

@@ -15,7 +15,7 @@ it back later, but the workspace plumbing is hand-rolled and **one-shot**:
   lookup of a workspace that *already existed before this run*.
 - Each artifact is written by `host.artifacts_dir` with a `thread:` prefix
   (`001-brief`, `002-existing-state`, … `005-proposal.md`) into that workspace —
-  the "persist the processed representation as soon as the oracle produces it"
+  the "persist the processed representation as soon as the agent produces it"
   discipline, done by convention per room.
 - `design_search.yaml` detects an *overlapping published proposal* and lets the
   operator `change_existing`, binding `design_change_target`; `publish_design.py`
@@ -81,7 +81,7 @@ enter story
          └─ none / decline ─────────────────▶ resolve(new key) ──▶ phase 1
 
 each phase P:
-  oracle/host produces output
+  agent/host produces output
      └▶ host.artifacts_dir {thread: items[P].name, workdir: instance.workspace}   (persist ASAP — already how design rooms write)
      └▶ artifact-of-record on disk; world.instance unchanged except phase pointer
 
@@ -92,7 +92,7 @@ back-step to phase N (update mode):
 
 Interpretive vs deterministic: **resolve/list/persist/back-step are
 deterministic** — pure file + key operations, fully replayable. The only
-interpretive steps are the phases' own oracle decisions, which are unchanged and
+interpretive steps are the phases' own agent decisions, which are unchanged and
 already recorded. This slice adds no new LLM call site and must not.
 
 ## Decision recording
@@ -157,7 +157,7 @@ resolve/list/back-step host calls directly. The re-join and update-mode paths ar
 intent-only **flow fixtures** seeded with an on-disk workspace fixture (artifacts
 already present), asserting the resume gate routes to the saved phase and that a
 back-step marks the right phases stale. The migrated design rooms are then
-exercised by their existing cassette-backed fixtures unchanged (the oracle phases
+exercised by their existing cassette-backed fixtures unchanged (the agent phases
 are mocked, per CLAUDE.md — no real LLM).
 
 ## Open questions

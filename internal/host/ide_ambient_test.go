@@ -15,7 +15,7 @@ import (
 
 // ide_ambient_test.go — the "always injected when /ide is connected" behavior:
 // when an editor selection rode the turn (host.WithIDEAmbient on the ctx), the
-// operator-facing oracle verbs (ask, ask_with_mcp, converse) append the
+// operator-facing agent verbs (ask, ask_with_mcp, converse) append the
 // standardized selection block to the prompt without the story prompt having to
 // reference args.ide. The decision verbs (decide/extract) and the task
 // delegation verb must NOT, so routing/extraction and sub-agent context stay
@@ -28,7 +28,7 @@ const ambientSelection = "func answer() int {\n\treturn 42\n}"
 // ambientCtxOn returns a ctx carrying a non-empty editor selection.
 func ambientCtxOn(parent context.Context) context.Context {
 	return host.WithIDEAmbient(parent, host.IDEAmbient{
-		File:      "/home/cloud-user/code/kitsoki/internal/host/oracle_ask.go",
+		File:      "/home/cloud-user/code/kitsoki/internal/host/agent_ask.go",
 		Selection: ambientSelection,
 		Lines:     3,
 		Range:     "10:0-12:1",
@@ -77,13 +77,13 @@ func TestIDEAmbientPreamble(t *testing.T) {
 		t.Parallel()
 		got := host.IDEAmbientPreamble(ambientCtxOn(context.Background()))
 		assert.Contains(t, got, ambientHeader)
-		assert.Contains(t, got, "internal/host/oracle_ask.go")
+		assert.Contains(t, got, "internal/host/agent_ask.go")
 		assert.Contains(t, got, "10:0-12:1")
 		assert.Contains(t, got, ambientSelection)
 	})
 }
 
-func TestOracleAsk_InjectsIDESelection(t *testing.T) {
+func TestAgentAsk_InjectsIDESelection(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	p := filepath.Join(dir, "p.md")
@@ -92,7 +92,7 @@ func TestOracleAsk_InjectsIDESelection(t *testing.T) {
 	t.Run("with selection", func(t *testing.T) {
 		var stdin string
 		ctx := host.WithClaudeRunner(ambientCtxOn(context.Background()), captureStdinRunner(&stdin))
-		res, err := host.OracleAskHandler(ctx, map[string]any{"prompt_path": p})
+		res, err := host.AgentAskHandler(ctx, map[string]any{"prompt_path": p})
 		require.NoError(t, err)
 		require.Empty(t, res.Error)
 		assert.Contains(t, stdin, "INSTRUCTIONS", "the original prompt must survive")
@@ -103,7 +103,7 @@ func TestOracleAsk_InjectsIDESelection(t *testing.T) {
 	t.Run("without selection is byte-identical", func(t *testing.T) {
 		var stdin string
 		ctx := host.WithClaudeRunner(context.Background(), captureStdinRunner(&stdin))
-		res, err := host.OracleAskHandler(ctx, map[string]any{"prompt_path": p})
+		res, err := host.AgentAskHandler(ctx, map[string]any{"prompt_path": p})
 		require.NoError(t, err)
 		require.Empty(t, res.Error)
 		assert.Equal(t, "INSTRUCTIONS", stdin,
@@ -111,13 +111,13 @@ func TestOracleAsk_InjectsIDESelection(t *testing.T) {
 	})
 }
 
-func TestOracleConverse_InjectsIDESelection(t *testing.T) {
+func TestAgentConverse_InjectsIDESelection(t *testing.T) {
 	t.Parallel()
 
 	t.Run("with selection", func(t *testing.T) {
 		var stdin string
 		ctx := host.WithClaudeRunner(ambientCtxOn(context.Background()), captureStdinRunner(&stdin))
-		res, err := host.OracleConverseHandler(ctx, map[string]any{"question": "do this idea"})
+		res, err := host.AgentConverseHandler(ctx, map[string]any{"question": "do this idea"})
 		require.NoError(t, err)
 		require.Empty(t, res.Error)
 		// converse passes the question via stdin in the stub path; the block
@@ -130,18 +130,18 @@ func TestOracleConverse_InjectsIDESelection(t *testing.T) {
 	t.Run("without selection is unchanged", func(t *testing.T) {
 		var stdin string
 		ctx := host.WithClaudeRunner(context.Background(), captureStdinRunner(&stdin))
-		res, err := host.OracleConverseHandler(ctx, map[string]any{"question": "do this idea"})
+		res, err := host.AgentConverseHandler(ctx, map[string]any{"question": "do this idea"})
 		require.NoError(t, err)
 		require.Empty(t, res.Error)
 		assert.NotContains(t, stdin, ambientHeader)
 	})
 }
 
-func TestOracleAskWithMCP_InjectsIDESelection(t *testing.T) {
+func TestAgentAskWithMCP_InjectsIDESelection(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fake-oneshot-mcp.sh requires bash")
 	}
-	t.Setenv(host.OracleBinEnv, fakeOneShotMCPBin(t))
+	t.Setenv(host.AgentBinEnv, fakeOneShotMCPBin(t))
 
 	dir := t.TempDir()
 	p := filepath.Join(dir, "p.md")
@@ -149,7 +149,7 @@ func TestOracleAskWithMCP_InjectsIDESelection(t *testing.T) {
 
 	// The fake bin echoes the prompt it received back as stdout, so the echoed
 	// output is the rendered prompt the handler dispatched.
-	res, err := host.OracleAskWithMCPHandler(ambientCtxOn(context.Background()),
+	res, err := host.AgentAskWithMCPHandler(ambientCtxOn(context.Background()),
 		map[string]any{"prompt_path": p})
 	require.NoError(t, err)
 	require.Empty(t, res.Error, "unexpected Result.Error: %s", res.Error)
@@ -159,18 +159,18 @@ func TestOracleAskWithMCP_InjectsIDESelection(t *testing.T) {
 	assert.Contains(t, out, ambientSelection)
 }
 
-// TestOracleDecide_DoesNotInjectIDESelection is the exclusion guarantee: a
+// TestAgentDecide_DoesNotInjectIDESelection is the exclusion guarantee: a
 // routing/gate decision must not be biased by whatever the operator happens to
 // have selected in the editor. Even with a selection on the ctx, the decide
 // prompt must be free of the ambient block.
-func TestOracleDecide_DoesNotInjectIDESelection(t *testing.T) {
+func TestAgentDecide_DoesNotInjectIDESelection(t *testing.T) {
 	t.Parallel()
 	schemaPath := makeSchemaFile(t)
 	promptPath := makePromptFile(t, "Should we proceed?")
 
 	var stdin string
 	ctx := host.WithClaudeRunner(ambientCtxOn(context.Background()), captureStdinRunner(&stdin))
-	res, err := host.OracleDecideHandler(ctx, map[string]any{
+	res, err := host.AgentDecideHandler(ctx, map[string]any{
 		"prompt_path": promptPath,
 		"schema":      schemaPath,
 	})

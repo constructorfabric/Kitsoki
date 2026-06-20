@@ -27,7 +27,7 @@ host_handlers:
     data: { ok: true, sha: "abc123", diff: "" }
   host.local:
     data: { ok: true, log: "PASS", passed: 1, failed: 0 }
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted:
@@ -46,7 +46,7 @@ host_handlers:
         lessons:
           - { category: "trivial", description: "Quick-fix smoke test.", severity: "low" }
 
-  host.oracle.ask:
+  host.agent.ask:
     data:
       ok: true
       submitted:
@@ -65,7 +65,7 @@ host_handlers:
         lessons:
           - { category: "trivial", description: "Quick-fix smoke test.", severity: "low" }
 
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:

@@ -1,5 +1,5 @@
 # Curated from the real gh-4115 gears bug-fix live run. Clean happy-path,
-# one oracle artifact per phase (replayed verbatim); diff + 316/0 test log real.
+# one agent artifact per phase (replayed verbatim); diff + 316/0 test log real.
 kind: host_cassette
 app_id: gears-bugfix
 app_version: '1'
@@ -74,9 +74,9 @@ episodes:
     data:
       ok: true
   replay: any
-- id: reproduce_host_oracle_task_1
+- id: reproduce_host_agent_task_1
   match:
-    handler: host.oracle.task
+    handler: host.agent.task
   response:
     data:
       files_changed:
@@ -196,9 +196,9 @@ episodes:
           '
         summary_title: 'gh-4115 CONFIRMED: Dashed-gear config not overridable via APP__ env vars in Kubernetes'
       task_trace_id: cf07e13b-7076-4ee0-8192-62bea54f7b19
-- id: implement_host_oracle_task_7
+- id: implement_host_agent_task_7
   match:
-    handler: host.oracle.task
+    handler: host.agent.task
   response:
     data:
       files_changed:
@@ -261,9 +261,9 @@ episodes:
           The stale bug-confirmation comment describing the broken behaviour was also removed.'
         summary_title: 'gh-4115: Merge underscore-keyed env-var gear overrides into dash-keyed YAML base entries'
       task_trace_id: 2d6e73ee-6fea-41f0-ab98-399f8b9a148b
-- id: test_host_oracle_task_15
+- id: test_host_agent_task_15
   match:
-    handler: host.oracle.task
+    handler: host.agent.task
   response:
     data:
       files_changed: null
@@ -347,9 +347,9 @@ episodes:
           passed: 64.0
           skipped: 0.0
       task_trace_id: 0af02c09-7dac-4133-8ef8-e5c0ad3c4032
-- id: validate_host_oracle_task_31
+- id: validate_host_agent_task_31
   match:
-    handler: host.oracle.task
+    handler: host.agent.task
   response:
     data:
       files_changed: null
@@ -423,9 +423,9 @@ episodes:
           The fix is complete, correct, and parallel-safe. Both regression tests are green, no regressions surfaced in the full suite.'
         summary_title: gh-4115 fix validated — 316/316 tests pass, both regression tests green
       task_trace_id: 9ca7ad8e-447f-4097-996a-54c475eec453
-- id: propose_host_oracle_decide_3
+- id: propose_host_agent_decide_3
   match:
-    handler: host.oracle.decide
+    handler: host.agent.decide
   response:
     data:
       claude_session_id: 34947afe-c2d5-4d4a-807d-510f6cb8c967
@@ -510,9 +510,9 @@ episodes:
 
           0.90 — Cause is unambiguous (confirmed by two deterministic unit tests). The post-extraction merge approach reuses an existing pattern already present in `oop.rs`. Only known edge case: a project that intentionally registers two distinct gears `static-authz-plugin` AND `static_authz_plugin` would have them incorrectly merged; this scenario is not present in the codebase and conflicts with naming conventions.'
         summary_title: 'Fix gh-4115: Normalize underscore→dash for Kubernetes env-var overrides of dashed gear names'
-- id: done_host_oracle_decide_33
+- id: done_host_agent_decide_33
   match:
-    handler: host.oracle.decide
+    handler: host.agent.decide
   response:
     data:
       claude_session_id: b81feed0-7a77-4ae4-a155-60d5dfb0f7c2

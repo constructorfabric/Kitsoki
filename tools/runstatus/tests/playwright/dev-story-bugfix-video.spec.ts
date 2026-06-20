@@ -61,7 +61,7 @@ const ADDR = demoAddr(7760);
 const STORY_DIR = path.join(repoRoot, "stories", "dev-story");
 const FLOW = path.join(STORY_DIR, "flows", "tour_triage_to_bugfix.yaml");
 // No host cassette: the flow's host_handlers stub every host.* call along the
-// path (triage search + transition, git/fs/inbox, the oracle judge verdicts).
+// path (triage search + transition, git/fs/inbox, the agent judge verdicts).
 const ARTIFACT_DIR = path.join(repoRoot, ".artifacts", "dev-story-bugfix");
 const VIDEO_DIR = path.join(ARTIFACT_DIR, "video");
 const ERROR_TXT = path.join(ARTIFACT_DIR, "ERROR.txt");

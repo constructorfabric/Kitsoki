@@ -31,9 +31,9 @@ host_handlers:
   # Re-entering clarifying re-fires the analyst; brief's on_enter may fire
   # defensively on initial entry.
   # references on_enter runs the optional semantic pre-seed; empty hits = no embeddings.
-  host.oracle.search:
+  host.agent.search:
     data: { hits: [] }
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:

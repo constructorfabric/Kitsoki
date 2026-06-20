@@ -3,7 +3,7 @@ id: meta-mode
 kind: feature
 title: Meta-mode — the machine edits its own story
 tagline: Ask the running FSM about its own graph, then have it rewrite and hot-reload its YAML — live.
-summary: "Meta-mode is the off-path oracle attached to every surface. Ask kitsoki how it works (cross-app, no session needed); ask a running story to explain its own rooms and transitions (read-only); or hand the story-author mode an instruction and watch it edit the story's YAML, commit, and hot-reload the live session in place — the edit recorded as a story.changed trace event. An FSM rewriting its own definition while it runs has no analog in a general coding agent."
+summary: "Meta-mode is the off-path agent attached to every surface. Ask kitsoki how it works (cross-app, no session needed); ask a running story to explain its own rooms and transitions (read-only); or hand the story-author mode an instruction and watch it edit the story's YAML, commit, and hot-reload the live session in place — the edit recorded as a story.changed trace event. An FSM rewriting its own definition while it runs has no analog in a general coding agent."
 promo:
   order: 15
   highlight: true

@@ -163,7 +163,7 @@ No LLM. The promote/publish/dispose/gc host calls are exercised by
 workspace — assert the doc lands at the profile path, that each disposition leaves
 the expected files, that `destroy` is refused pre-publish, and that `instance.gc`
 selects exactly the retention-breaching instances. The migrated design publish
-room is covered by the existing publish fixture (oracle phases mocked).
+room is covered by the existing publish fixture (agent phases mocked).
 
 ## Open questions
 

@@ -4,7 +4,7 @@
 # Seeds directly into references (skips on_enter for the upstream rooms) and
 # transitions IN via a regenerate self-loop so the references on_enter fires
 # and the search → researcher pipeline runs. Asserts:
-#   - host.oracle.search is called (the pre-seed) and its hits land in
+#   - host.agent.search is called (the pre-seed) and its hits land in
 #     world.reference_hits,
 #   - the researcher decide receives those hits as search_hits.
 # Intent-only, no LLM: both the search and the researcher are stubbed.
@@ -28,12 +28,12 @@ host_handlers:
   host.ide.open_file:
     data: { ok: true, connected: true }
   # The semantic pre-seed returns two ranked chunks (embeddings configured).
-  host.oracle.search:
+  host.agent.search:
     data:
       hits:
         - { path: "docs/auth.md",  score: 0.71, chunk_id: "auth#3", text: "Tokens are minted per session and expire after 1h." }
         - { path: "docs/quota.md", score: 0.55, chunk_id: "quota#1", text: "Each tenant gets a soft and a hard quota." }
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:
@@ -53,7 +53,7 @@ turns:
   - intent: { name: confirm, slots: {} }
     expect_state: references
     expect_world:
-      # The semantic hits landed (proves host.oracle.search ran and bound).
+      # The semantic hits landed (proves host.agent.search ran and bound).
       reference_hits:
         - { path: "docs/auth.md",  score: 0.71, chunk_id: "auth#3", text: "Tokens are minted per session and expire after 1h." }
         - { path: "docs/quota.md", score: 0.55, chunk_id: "quota#1", text: "Each tenant gets a soft and a hard quota." }
@@ -63,6 +63,6 @@ turns:
         items:
           - { path: "docs/auth.md", sections: "Tokens", rationale: "token model the PRD must honour" }
     expect_host_calls:
-      - handler: host.oracle.search
+      - handler: host.agent.search
 
 expect_no_errors: true

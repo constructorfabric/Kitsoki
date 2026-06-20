@@ -1,4 +1,4 @@
-# happy_up_to_date — oracle says docs are in sync; verdict landed
+# happy_up_to_date — agent says docs are in sync; verdict landed
 # under a different sha. Walks idle → reviewing → reviewed → quit.
 
 test_kind: flow

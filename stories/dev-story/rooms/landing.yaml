@@ -4,7 +4,7 @@
 # like Claude Code (broad toolbox, drives real work) rather than a static
 # catalog. The operator describes what they want in their own words; a
 # question the agent need not act on is answered in place by the
-# read-only oracle off-ramp; the highest-value `main` navigation survives
+# read-only agent off-ramp; the highest-value `main` navigation survives
 # as quick-action buttons and as intents, so every pipeline is one
 # utterance / one click away.
 #
@@ -36,19 +36,19 @@ states:
 
     # Read-only → write-mode opt-in. Completes agent-write-mode-opt-in.md
     # Task 3.1 by opting the landing into the already-landed gate. Valid on
-    # this room because it dispatches an agent (the on_enter host.oracle.task
-    # below) AND declares the oracle off-ramp — both satisfy the loader's
+    # this room because it dispatches an agent (the on_enter host.agent.task
+    # below) AND declares the agent off-ramp — both satisfy the loader's
     # roomDispatchesAgent precondition.
     write_mode: read_only
 
-    # Oracle off-ramp (docs/stories/state-machine.md §11), lifted verbatim
+    # Agent off-ramp (docs/stories/state-machine.md §11), lifted verbatim
     # from main.yaml. Free text the router maps to no intent and the agent
     # need not ACT on is answered in place by a read-only converse turn:
     # the room stays put, the quick actions are still there next turn. We
-    # voice it with the same oracle_qa persona the dedicated `oracle` room
+    # voice it with the same agent_qa persona the dedicated `agent` room
     # uses, so an answered question reads the same either way.
-    oracle_off_ramp:
-      agent: oracle_qa
+    agent_off_ramp:
+      agent: agent_qa
 
     view:
       - prose: "{{ world.last_error }}"
@@ -147,7 +147,7 @@ states:
       - when: "world.landing_started == false"
         set: { landing_started: true }
 
-      # 2. The agent turn — the resting surface. host.oracle.task with the
+      # 2. The agent turn — the resting surface. host.agent.task with the
       #    full-tool landing_agent; working_dir is world.workdir (empty ⇒ the
       #    subprocess inherits the repo root, the dogfood default), the same
       #    shape stories/bugfix/rooms/reproducing.yaml uses.
@@ -159,7 +159,7 @@ states:
       #    A mutating tool call the agent attempts holds for the write-mode
       #    opt-in (write_mode: read_only above) before the effect lands.
       - when: "world.landing_request != ''"
-        invoke: host.oracle.task
+        invoke: host.agent.task
         once: true
         with:
           agent: landing_agent
@@ -203,8 +203,8 @@ states:
           push_history: false
           effects:
             - set: { prev_state: "landing" }
-      go_oracle:
-        - target: oracle
+      go_agent:
+        - target: agent
           effects:
             - set: { prev_state: "landing" }
       go_standup:

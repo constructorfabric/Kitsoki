@@ -45,11 +45,11 @@ host_handlers:
     data: { ok: true, state: "success", log: "PASS", passed: 4, failed: 0 }
   host.local_files.ticket:
     data: { ok: true, tickets: "" }
-  # Single oracle stub serves every executing room AND every judge
+  # Single agent stub serves every executing room AND every judge
   # checkpoint (the artifact-schema and judge-schema fields coexist on
   # the same envelope; additionalProperties: true tolerates the unused
   # fields per schema).
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted:
@@ -80,7 +80,7 @@ host_handlers:
         intent:     "accept"
         reason:     "Stub artifact passes the schema; accept advances."
 
-  host.oracle.ask:
+  host.agent.ask:
     data:
       ok: true
       submitted:
@@ -111,7 +111,7 @@ host_handlers:
         intent:     "accept"
         reason:     "Stub artifact passes the schema; accept advances."
 
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:

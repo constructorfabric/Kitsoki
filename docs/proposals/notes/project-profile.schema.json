@@ -25,7 +25,7 @@
       "additionalProperties": false,
       "properties": {
         "at": { "type": "string", "format": "date-time" },
-        "by": { "type": "string", "description": "kitsoki version / oracle agent that synthesized it." },
+        "by": { "type": "string", "description": "kitsoki version / agent agent that synthesized it." },
         "mining_job": { "type": "string", "description": "session-mining job id this profile was fine-tuned from (links the `mining` block)." }
       }
     },

@@ -6,7 +6,7 @@ puts a price tag on the difference — using **real telemetry from real
 Claude Code sessions**, not a model.
 
 The git-ops story runs four operations — commit, rebase-with-conflict,
-merge, worktree setup — for a committed **$0.0955** (two oracle calls;
+merge, worktree setup — for a committed **$0.0955** (two agent calls;
 everything else deterministic and free). The question is what the same
 work costs in a raw agentic loop. The answer turns on one mechanism, and
 it is the whole case study:
@@ -114,12 +114,12 @@ you return to a long-running session to do one discrete thing.
 
 The git-ops story's spend is committed ground truth, read straight from
 the demo's host cassette
-[`demo_oracle.cassette.yaml`](../../stories/git-ops/flows/cassettes/demo_oracle.cassette.yaml):
+[`demo_agent.cassette.yaml`](../../stories/git-ops/flows/cassettes/demo_agent.cassette.yaml):
 
 | paid surface | cost |
 |---|---|
-| `host.oracle.decide` — draft the commit message | $0.0121 |
-| `host.oracle.task` — resolve the two-file conflict | $0.0834 |
+| `host.agent.decide` — draft the commit message | $0.0121 |
+| `host.agent.task` — resolve the two-file conflict | $0.0834 |
 | everything else — routing, branch detection, every git command, the whole worktree lifecycle | **$0.0000** |
 | **total (4 operations)** | **$0.0955** |
 
@@ -130,7 +130,7 @@ Two structural reasons this carries no reprocessing tax:
    the worktree lifecycle — these are state-machine transitions and real
    `git`. There is no conversation to re-read because there is no model in
    the loop for them.
-2. **The two oracle calls get *focused* context, not the transcript.**
+2. **The two agent calls get *focused* context, not the transcript.**
    When a model *is* needed — authoring a commit message, resolving a
    conflict — it receives the specific artifact (the staged diff; the two
    conflicted files), not the accumulated session. So even the paid
@@ -158,7 +158,7 @@ turns the dominant cost term to zero.
 The story did the four operations once for less than a single isolated
 commit costs in a raw loop — and the gap only widens the longer the
 session, because the tax compounds. The deterministic engine scales for
-free; you pay for judgement (the two oracle calls), not for replaying the
+free; you pay for judgement (the two agent calls), not for replaying the
 conversation.
 
 ---
@@ -234,12 +234,12 @@ pairs two figures and reports the gap:
 
 - **numerator — the deterministic story cost.** Read straight from the
   story's host cassette(s): every routed/host step is $0 by construction,
-  so the oracle `cost_usd` *is* the story's cost. Programmatic, not
+  so the agent `cost_usd` *is* the story's cost. Programmatic, not
   transcribed by hand (this section used to copy git-ops's $0.0121/$0.0834
   into prose; the tool now sums them from the cassette).
 - **denominator — the raw agentic cost.** The same operations in real
   Claude Code sessions, scoped by the story's `mining.profile.yaml` grep
-  (the same prefilter mining uses; dispatched agent/oracle sessions
+  (the same prefilter mining uses; dispatched agent/agent sessions
   dropped), found per user-turn by `cost_extract.py`, and reported as a
   **distribution** (median / p90 per intent), with the reprocessing tax and
   cold-resume re-warm those turns paid — not one curated example.
@@ -254,8 +254,8 @@ For git-ops today that yields the story's **$0.0955** against a real
 median of **~$17 per equivalent operation** across dozens of mined
 sessions (≈175×), and surfaces the **model-mix lever** the deterministic
 boundary unlocks: the raw operations ran on Opus, while the story's two
-oracle calls need only Sonnet (~5× cheaper per token). Stories without a
-recorded oracle cassette yet show a real raw baseline and a *"not yet
+agent calls need only Sonnet (~5× cheaper per token). Stories without a
+recorded agent cassette yet show a real raw baseline and a *"not yet
 measured"* numerator — which is the honest state until they record one.
 
 The throughline: **session mining is the cost denominator for the whole
@@ -264,9 +264,9 @@ would this have cost as an agent loop?" — so every new story gets a
 cost-savings number for free.
 
 **What's still hand-authored (the remaining honesty gap).** git-ops's two
-oracle costs live in a `record_mode: none` cassette — *authored*, not
+agent costs live in a `record_mode: none` cassette — *authored*, not
 recorded. `cost_report.py` flags them (⚠ authored), but closing the gap
-means recording real oracle cassettes (LLM spend, gated) so the numerator
+means recording real agent cassettes (LLM spend, gated) so the numerator
 is measured end-to-end. That, plus a couple of methodology refinements, is
 tracked in
 [`docs/proposals/per-story-cost-tracking.md`](../proposals/per-story-cost-tracking.md).

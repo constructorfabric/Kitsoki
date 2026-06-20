@@ -27,7 +27,7 @@ func testProfiles() map[string]HarnessProfile {
 
 func newProfileOrch(t *testing.T, def string) *Orchestrator {
 	t.Helper()
-	o := &Orchestrator{oracleBackendName: "claude"}
+	o := &Orchestrator{agentBackendName: "claude"}
 	WithHarnessProfiles(testProfiles(), def)(o)
 	return o
 }
@@ -93,7 +93,7 @@ func TestSetSelection_Effort(t *testing.T) {
 	profiles := map[string]HarnessProfile{
 		"claude-native": {Name: "claude-native", Backend: "claude", Efforts: []string{"low", "medium", "high"}},
 	}
-	o := &Orchestrator{oracleBackendName: "claude"}
+	o := &Orchestrator{agentBackendName: "claude"}
 	WithHarnessProfiles(profiles, "claude-native")(o)
 
 	if err := o.SetSelection("claude-native", "", "high"); err != nil {
@@ -110,7 +110,7 @@ func TestSetSelection_Effort(t *testing.T) {
 // With no profiles declared, every path falls through to the static backend and a
 // no-op active profile — today's behavior, byte-for-byte.
 func TestResolveSelection_LegacyNoProfiles(t *testing.T) {
-	o := &Orchestrator{oracleBackendName: "copilot"}
+	o := &Orchestrator{agentBackendName: "copilot"}
 	if o.Profiles() != nil {
 		t.Fatalf("Profiles() should be nil with no profiles declared")
 	}

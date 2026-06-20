@@ -7,8 +7,8 @@
     {
       "type": "title",
       "title": "The Architecture of a Kitsoki Story",
-      "subtitle": "Rooms · Phases · Intents · Oracle",
-      "narration": "Rooms, phases, intents, oracle."
+      "subtitle": "Rooms · Phases · Intents · Agent",
+      "narration": "Rooms, phases, intents, agent."
     },
     {
       "type": "narrative",
@@ -30,7 +30,7 @@
           { "id": "router",  "label": "Router",         "sub": "4-tier stack",    "style": "primary" },
           { "id": "machine", "label": "State Machine",  "sub": "rooms + intents", "style": "primary" },
           { "id": "world",   "label": "World",          "sub": "typed, persisted" },
-          { "id": "hosts",   "label": "Hosts + Oracle", "sub": "host.* · LLM" },
+          { "id": "hosts",   "label": "Hosts + Agent", "sub": "host.* · LLM" },
           { "id": "env",     "label": "Environment",    "sub": "shell · files · APIs" }
         ],
         "edges": [
@@ -154,7 +154,7 @@
     {
       "type": "table",
       "variant": "data",
-      "title": "Oracle Verb Surface — host.oracle.*",
+      "title": "Agent Verb Surface — host.agent.*",
       "columns": ["Verb", "Shape", "Mutates?"],
       "rows": [
         { "cells": ["extract",  "free text → intent + slots",           "no"] },
@@ -163,7 +163,7 @@
         { "cells": ["task",     "multi-turn agentic, declared tools",   "sandboxed"] },
         { "cells": ["converse", "persistent multi-turn chat thread",    "yes"] }
       ],
-      "caption": "All five route through oracle_dispatch.go. extract/decide/ask read-only; task/converse mutate.",
+      "caption": "All five route through agent_dispatch.go. extract/decide/ask read-only; task/converse mutate.",
       "narration": "Five verbs ordered by blast radius. Extract and decide are read-only. Task is sandboxed agentic. Converse is persistent."
     },
     {
@@ -173,7 +173,7 @@
       "columns": 3,
       "cards": [
         { "label": "story.edit",    "sub": "default /meta story", "lines": ["full Claude toolset",  "edits the running story"], "style": "primary" },
-        { "label": "story.ask",     "sub": "read-only Q&A",        "lines": ["Read / Glob / Grep",  "oracle.ask backend"] },
+        { "label": "story.ask",     "sub": "read-only Q&A",        "lines": ["Read / Glob / Grep",  "agent.ask backend"] },
         { "label": "story.bug",     "sub": "file a story bug",     "lines": ["kitsoki bug create"] },
         { "label": "kitsoki.edit",  "sub": "edits kitsoki repo",   "lines": ["needs $KITSOKI_REPO"] },
         { "label": "kitsoki.ask",   "sub": "read-only Q&A",        "lines": ["about kitsoki source"] },
@@ -189,7 +189,7 @@
       "question": "What resolves a room's advancing intents?",
       "answer": [
         "One advancing intent → auto-advance. The engine fires it; no decider needed.",
-        "Multi-way gate → a decider picks: default (deterministic), llm (oracle.decide), or human.",
+        "Multi-way gate → a decider picks: default (deterministic), llm (agent.decide), or human.",
         "emit_intent: dispatches a synthetic intent this same turn — depth-capped at 8.",
         "one-shot mode resolves every gate autonomously; staged mode stops at a multi-way gate for a human."
       ],
@@ -259,7 +259,7 @@
           "Per-call declared tools:"
         ]
       },
-      "caption": "oracle.task ≈ a subagent call. oracle.decide ≈ the lead picks which subagent. The graph holds the orchestration.",
+      "caption": "agent.task ≈ a subagent call. agent.decide ≈ the lead picks which subagent. The graph holds the orchestration.",
       "narration": "The agent decides at runtime. The story decides at author-time. The model is called at declared points."
     },
     {

@@ -3,7 +3,7 @@ package orchestrator_test
 // Tests for the engine-driven LLM decider.
 // A one-shot run rests at `choose` — a decision gate with two operator-only
 // forward intents and NO firing default emit. The engine invokes the
-// configured judge (stubbed here as host.oracle.decide) and either fires the
+// configured judge (stubbed here as host.agent.decide) and either fires the
 // chosen intent or bails to human.
 
 import (
@@ -24,7 +24,7 @@ app:
   id: decider-gate
   version: 0.1.0
 hosts:
-  - host.oracle.decide
+  - host.agent.decide
 intents:
   start: {}
   path_a:
@@ -62,7 +62,7 @@ func newDeciderOrchestrator(t *testing.T, verdict map[string]any, opts ...orches
 
 	reg := host.NewRegistry()
 	// Stub the judge: return whatever verdict the test wants as `submitted`.
-	reg.Register("host.oracle.decide", func(ctx context.Context, args map[string]any) (host.Result, error) {
+	reg.Register("host.agent.decide", func(ctx context.Context, args map[string]any) (host.Result, error) {
 		return host.Result{Data: map[string]any{"submitted": verdict}}, nil
 	})
 

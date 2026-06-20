@@ -158,7 +158,7 @@ states:
           state:  prd_awaiting_reply
           body:   "{{ world.prd_artifact.summary_markdown ?? world.validate_report }}"
       - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
-        invoke: host.oracle.decide
+        invoke: host.agent.decide
         with:
           agent: judge
           prompt: prompts/judge_prd.md

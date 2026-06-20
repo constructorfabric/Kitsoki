@@ -296,7 +296,7 @@ off_path:
 # Named, persistent sidebar conversations against declared agents.
 # /meta opens "improve the story" — a multi-turn authoring conversation
 # with the story-author agent. Coexists with off_path: off-path is the
-# free-form oracle sidebar; meta is the authoring conversation.
+# free-form agent sidebar; meta is the authoring conversation.
 meta_modes:
   story:
     trigger: meta

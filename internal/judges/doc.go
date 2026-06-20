@@ -1,6 +1,6 @@
 // Package judges is the typed contract-encoder for LLM-judge verdicts in
 // the dev-story / bugfix pipeline. It sits between the host's
-// `oracle.ask_with_mcp` call (which produces a schema-validated JSON
+// `agent.ask_with_mcp` call (which produces a schema-validated JSON
 // verdict) and the story runtime's intent gate: the runtime hands the
 // raw payload to [Parse], then asks the resulting [Verdict] whether it
 // [Verdict.ShouldAutoFire]. The package owns the single canonical place
@@ -64,12 +64,12 @@
 //
 // # Non-goals
 //
-//   - No host handler registration. Wiring `oracle.ask_with_mcp` into the
+//   - No host handler registration. Wiring `agent.ask_with_mcp` into the
 //     host call table is the orchestrator/host layer's job; this package
 //     is import-only and never touches the host registry, so it stays
 //     usable from tests and tooling without standing up a host.
 //   - No LLM invocation. The judge call itself — including MCP-side
-//     schema enforcement — is performed by `oracle.ask_with_mcp`. This
+//     schema enforcement — is performed by `agent.ask_with_mcp`. This
 //     package only interprets the result, so the expensive, non-
 //     deterministic step stays out of the typed layer and out of tests.
 //   - No custom field transforms or coercion. Parse returns the verdict

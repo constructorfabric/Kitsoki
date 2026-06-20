@@ -25,7 +25,7 @@ import (
 
 // streamingMetaDriver is a MetaDriver whose Send emits a scripted StreamEvent
 // sequence through the ctx StreamSink (the handler installs one) before
-// returning the reply — the same shape a real oracle turn produces.
+// returning the reply — the same shape a real agent turn produces.
 type streamingMetaDriver struct {
 	fakeMetaDriver
 	events []host.StreamEvent

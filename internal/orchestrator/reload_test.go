@@ -228,7 +228,7 @@ func TestRerunOnEnter_OnceSkipsCachedInvoke(t *testing.T) {
 	_, err = orch.RerunOnEnter(ctx, sid)
 	require.NoError(t, err)
 	require.Equal(t, int64(0), calls.Load(),
-		"RerunOnEnter on a once: room must fire zero oracle/host calls")
+		"RerunOnEnter on a once: room must fire zero agent/host calls")
 
 	w := orch.CurrentWorld(sid)
 	require.Equal(t, "continue", w.Vars["result"].(map[string]any)["verdict"],

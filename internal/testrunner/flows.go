@@ -194,12 +194,12 @@ type HostStub struct {
 	// stay at the top level.
 	ByOp map[string]HostStubEnvelope `yaml:"by_op,omitempty"`
 	// ByCall lets one stub serve multiple call sites that share a handler name
-	// (the common case: two `host.oracle.decide` invokes in one room) with
+	// (the common case: two `host.agent.decide` invokes in one room) with
 	// distinct envelopes per call. Keys are the author-assigned `id:` on the
 	// invoke effect, threaded into args under the reserved `call` key. Values
 	// are the per-call envelope (Data + Error + InfraError). Resolution order:
 	// ByCall is tried before ByOp; when neither matches, the stub falls through
-	// to the top-level envelope. This is what makes oracle calls addressable
+	// to the top-level envelope. This is what makes agent calls addressable
 	// without distorting the story (picking a different verb) or splitting the
 	// phase. Delay and RequestClarification stay at the top level.
 	ByCall map[string]HostStubEnvelope `yaml:"by_call,omitempty"`
@@ -297,7 +297,7 @@ type FlowTurn struct {
 // the standard subsequence check.
 type ExpectHostCall struct {
 	// Handler is the dispatched handler name (e.g. "iface.vcs.branch"
-	// or "host.oracle.ask_with_mcp"). Required.
+	// or "host.agent.ask_with_mcp"). Required.
 	Handler string `yaml:"handler"`
 	// Args is an optional partial-match against the dispatched effect's
 	// args payload. Missing keys are tolerated; mismatched keys fail.
@@ -422,12 +422,12 @@ type FlowOptions struct {
 	// sink is the authoritative JSONL trace for the run. Exporters should read
 	// from it (runstatus.FromSink) rather than from st.LoadHistory: the SQLite
 	// events table is lossy (no state_path / call_id / parent_turn columns) and
-	// omits cassette oracle events, whereas the JSONL sink is faithful.
+	// omits cassette agent events, whereas the JSONL sink is faithful.
 	OnRigClose func(filePath string, st store.Store, sid app.SessionID, sink *store.JSONLSink) error
 
 	// TracePath, when non-empty, fixes the path of the run's authoritative JSONL
-	// event sink (and, by extension, the sibling oracle-prompts/ directory where
-	// large oracle prompts are stored). Fixture exporters set this to a path in
+	// event sink (and, by extension, the sibling agent-prompts/ directory where
+	// large agent prompts are stored). Fixture exporters set this to a path in
 	// the output directory so the prompt/response side-files end up next to the
 	// generated snapshot, where the runstatus SPA fetches them. When empty (the
 	// default), the rig uses a temp file that cleanup removes.
@@ -461,18 +461,18 @@ type orchRig struct {
 
 	// journalWriter is the in-memory journal writer wired by buildOrchestratorRig
 	// when a host_cassette is configured. It is exposed here so the cassette
-	// dispatcher can write KindOracleCall entries on replay (Phase 2) and so
+	// dispatcher can write KindAgentCall entries on replay (Phase 2) and so
 	// downstream callers (e.g. fromflow) can pass the journal to runstatus.FromHistory.
 	journalWriter journal.Writer
 
-	// deferredOracleSink is the deferred sink used by cassette dispatchers to write
-	// oracle events. It's created before session creation and updated after NewSession
+	// deferredAgentSink is the deferred sink used by cassette dispatchers to write
+	// agent events. It's created before session creation and updated after NewSession
 	// when the real sink is available.
-	deferredOracleSink *store.DeferredSink
+	deferredAgentSink *store.DeferredSink
 
 	// eventSink is the authoritative JSONL trace for this flow run. The
 	// orchestrator dual-writes every turn event here (in addition to SQLite),
-	// and cassette oracle events are routed here too. It is the faithful trace
+	// and cassette agent events are routed here too. It is the faithful trace
 	// — unlike the SQLite events table, JSONL records state_path / call_id /
 	// parent_turn — so fixture exporters (fromflow) read from it rather than
 	// from store.LoadHistory. Backed by a temp file removed by cleanup.
@@ -581,7 +581,7 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 		}
 
 		// Create an in-memory journal writer backed by the same SQLite DB so
-		// cassette replay can write KindOracleCall entries (Phase 2) and record
+		// cassette replay can write KindAgentCall entries (Phase 2) and record
 		// mode can read them back (Phase 3).
 		jw, jwErr := journal.NewSQLiteWriter(st.DB())
 		if jwErr != nil {
@@ -591,13 +591,13 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 		rig.journalWriter = jw
 
 		// Build a journal lookup function for Phase 3 (record mode): given the
-		// oracle context and verb, read back the most recently written
-		// KindOracleCall entry for that session and verb. The oracle handlers do
+		// agent context and verb, read back the most recently written
+		// KindAgentCall entry for that session and verb. The agent handlers do
 		// not return call_id in result.Data, so we identify the entry by
 		// session ID + verb + max rowid (latest write).
-		journalLookup := func(ctx context.Context, verb string) (*host.OracleCallBody, bool) {
-			oc := host.OracleCallCtxFrom(ctx)
-			return lookupOracleCallByVerb(st.DB(), oc.SessionID, verb)
+		journalLookup := func(ctx context.Context, verb string) (*host.AgentCallBody, bool) {
+			oc := host.AgentCallCtxFrom(ctx)
+			return lookupAgentCallByVerb(st.DB(), oc.SessionID, verb)
 		}
 
 		// stateOf reads the shared currentStatePath pointer updated by the turn loop.
@@ -613,10 +613,10 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 			}
 		}
 
-		// Create a deferred oracle event sink for cassette dispatchers.
+		// Create a deferred agent event sink for cassette dispatchers.
 		// The real sink will be set after session creation when the session ID is known.
-		deferredOracleSink := store.NewDeferredSink()
-		rig.deferredOracleSink = deferredOracleSink
+		deferredAgentSink := store.NewDeferredSink()
+		rig.deferredAgentSink = deferredAgentSink
 
 		// Collect unique handler names from the cassette's episodes.
 		seen := map[string]bool{}
@@ -639,24 +639,24 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 			if len(fixture.HostBindings) > 0 {
 				fallback, _ = reg.Get(handlerName)
 			}
-			casDispatcher := BuildCassetteDispatcherWithJournalAndSink(cas, handlerName, stateOf, fallback, recordSink, clk, jw, journalLookup, deferredOracleSink)
+			casDispatcher := BuildCassetteDispatcherWithJournalAndSink(cas, handlerName, stateOf, fallback, recordSink, clk, jw, journalLookup, deferredAgentSink)
 			reg.Replace(handlerName, casDispatcher)
 		}
 
 		// When host_bindings: is set (builtins registered) and a record sink is
-		// active, also install cassette dispatchers for every host.oracle.*
+		// active, also install cassette dispatchers for every host.agent.*
 		// builtin handler that isn't already wrapped by an episode above.
-		// This lets the cassette record oracle calls even when the cassette file
-		// has no oracle episodes yet — the first recording pass adds them.
+		// This lets the cassette record agent calls even when the cassette file
+		// has no agent episodes yet — the first recording pass adds them.
 		if len(fixture.HostBindings) > 0 && recordSink != nil {
-			oracleBuiltins := []string{
-				"host.oracle.ask",
-				"host.oracle.decide",
-				"host.oracle.extract",
-				"host.oracle.task",
-				"host.oracle.converse",
+			agentBuiltins := []string{
+				"host.agent.ask",
+				"host.agent.decide",
+				"host.agent.extract",
+				"host.agent.task",
+				"host.agent.converse",
 			}
-			for _, handlerName := range oracleBuiltins {
+			for _, handlerName := range agentBuiltins {
 				if seen[handlerName] {
 					continue // already wrapped via an episode above
 				}
@@ -664,7 +664,7 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 				if !hasFallback {
 					continue // not a builtin in this rig — skip
 				}
-				casDispatcher := BuildCassetteDispatcherWithJournalAndSink(cas, handlerName, stateOf, fallback, recordSink, clk, jw, journalLookup, deferredOracleSink)
+				casDispatcher := BuildCassetteDispatcherWithJournalAndSink(cas, handlerName, stateOf, fallback, recordSink, clk, jw, journalLookup, deferredAgentSink)
 				reg.Replace(handlerName, casDispatcher)
 				seen[handlerName] = true
 			}
@@ -711,7 +711,7 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 			return nil, fmt.Errorf("buildOrchestratorRig: %w", vErr)
 		}
 		// KITSOKI_CASSETTE_STRICT forbids recording (CI guard), mirroring the
-		// oracle host_cassette strict check.
+		// agent host_cassette strict check.
 		if CassetteStrictRecording() && mode != "" && mode != starlarkhost.RecordModeNone {
 			_ = st.Close()
 			return nil, fmt.Errorf("buildOrchestratorRig: KITSOKI_CASSETTE_STRICT=1 but starlark http record_mode is %q", mode)
@@ -751,7 +751,7 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 	//
 	// When tracePath is empty the trace is a temp file that cleanup removes;
 	// when the caller supplies one (fixture export), the file and its sibling
-	// oracle-prompts/ directory are caller-owned and left in place by cleanup.
+	// agent-prompts/ directory are caller-owned and left in place by cleanup.
 	traceOwned := tracePath == ""
 	if traceOwned {
 		traceFile, traceErr := os.CreateTemp("", "kitsoki-flow-*.jsonl")
@@ -787,8 +787,8 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 		// SQLite for loadJourney; see WithEventSink doc).
 		orchestrator.WithEventSink(eventSink),
 	}
-	// Wire the journal writer into the orchestrator so oracle handlers
-	// can write KindOracleCall entries during record-mode live calls.
+	// Wire the journal writer into the orchestrator so agent handlers
+	// can write KindAgentCall entries during record-mode live calls.
 	if rig.journalWriter != nil {
 		orchOpts = append(orchOpts, orchestrator.WithJournalWriter(rig.journalWriter))
 	}
@@ -820,11 +820,11 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 	// Update the deferred sink used by cassette dispatchers with a real sink.
 	// Cassette dispatchers were created before NewSession (before we had the session ID),
 	// so they captured a deferred sink that is now updated with the real sink.
-	// Oracle events from cassette replay are written to the JSONL trace (the
+	// Agent events from cassette replay are written to the JSONL trace (the
 	// authoritative trace) so they carry state_path / call_id and survive — the
 	// StoreSinkAdapter.Append path only buffered them and never flushed.
-	if rig.deferredOracleSink != nil {
-		rig.deferredOracleSink.SetSink(eventSink)
+	if rig.deferredAgentSink != nil {
+		rig.deferredAgentSink.SetSink(eventSink)
 	}
 
 	rig.orch = orch
@@ -843,19 +843,19 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 	return &rig, nil
 }
 
-// lookupOracleCallByVerb queries the journal for the most recently written
-// KindOracleCall entry for the given session and verb and returns the parsed
+// lookupAgentCallByVerb queries the journal for the most recently written
+// KindAgentCall entry for the given session and verb and returns the parsed
 // body. Returns (nil, false) on any error or when no entry is found. Used by
-// the cassette dispatcher in record mode — oracle handlers do not return
+// the cassette dispatcher in record mode — agent handlers do not return
 // call_id in result.Data so we identify the entry by session + verb + rowid
 // ordering (latest write wins).
-func lookupOracleCallByVerb(db *sql.DB, sessionID app.SessionID, verb string) (*host.OracleCallBody, bool) {
+func lookupAgentCallByVerb(db *sql.DB, sessionID app.SessionID, verb string) (*host.AgentCallBody, bool) {
 	if db == nil || verb == "" {
 		return nil, false
 	}
 	row := db.QueryRow(
 		`SELECT body_json FROM journal
-		 WHERE kind = 'oracle.call'
+		 WHERE kind = 'agent.call'
 		   AND session_id = ?
 		   AND json_extract(body_json, '$.verb') = ?
 		 ORDER BY rowid DESC LIMIT 1`,
@@ -865,7 +865,7 @@ func lookupOracleCallByVerb(db *sql.DB, sessionID app.SessionID, verb string) (*
 	if err := row.Scan(&bodyStr); err != nil {
 		return nil, false
 	}
-	var body host.OracleCallBody
+	var body host.AgentCallBody
 	if err := json.Unmarshal([]byte(bodyStr), &body); err != nil {
 		return nil, false
 	}

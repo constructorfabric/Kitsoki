@@ -15,7 +15,7 @@ import (
 //
 //  1. The LLM operator wraps its string output with sourcecolor.Wrap
 //     before storing it on Result.Data — done in
-//     internal/host/oracle_ask.go and friends.
+//     internal/host/agent_ask.go and friends.
 //  2. The orchestrator binds that string to a world var.
 //  3. A view template substitutes the world var via pongo.
 //  4. The TUI transcript runs the rendered view through Colorize at

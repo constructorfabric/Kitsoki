@@ -3,7 +3,7 @@
 Wave 2 / Phase 2 of the dev-story / bugfix unify proposal (§5.1). The
 GENERAL-PURPOSE app that imports `stories/bugfix/` and
 `stories/pr-refinement/` and routes between them via day-level rooms
-(landing, inbox, ticket_search, workspace_manager, standup, oracle,
+(landing, inbox, ticket_search, workspace_manager, standup, agent,
 code_review, deploy, observability, incident, docs). The root is the
 free-form workbench [`landing`](#the-free-form-workbench-landing), which
 replaced the former `main` catalog.
@@ -168,11 +168,11 @@ dev rebinds to `host.local_files.ticket`. Same YAML, two providers.
 
 | Room | Status | Notes |
 |---|---|---|
-| `landing` | **root** | The **free-form workbench** — dev-story's root, replacing the former `main` catalog ([freeform-landing](#the-free-form-workbench-landing) below). A full-tool, Claude-Code-like agent (`landing_agent`) is the resting surface: the operator describes work in their own words (the `work` intent → on_enter `host.oracle.task`), read-only by default and gated to a write-mode opt-in (`write_mode: read_only`). Carries `main`'s highest-value navigation forward as quick actions + intents. Declares the [oracle off-ramp](../../docs/stories/state-machine.md#11-off-path-the-global-escape-hatch) (`oracle_off_ramp.agent: oracle_qa`) as its read-only Q&A floor. Every pipeline returns here (`go_main`/`go_back` self-loop). |
+| `landing` | **root** | The **free-form workbench** — dev-story's root, replacing the former `main` catalog ([freeform-landing](#the-free-form-workbench-landing) below). A full-tool, Claude-Code-like agent (`landing_agent`) is the resting surface: the operator describes work in their own words (the `work` intent → on_enter `host.agent.task`), read-only by default and gated to a write-mode opt-in (`write_mode: read_only`). Carries `main`'s highest-value navigation forward as quick actions + intents. Declares the [agent off-ramp](../../docs/stories/state-machine.md#11-off-path-the-global-escape-hatch) (`agent_off_ramp.agent: agent_qa`) as its read-only Q&A floor. Every pipeline returns here (`go_main`/`go_back` self-loop). |
 | `ticket_search` | Wave 2 | iface.ticket.search; picks a ticket, then `drive` routes by `ticket_type` (bug → bf, feature → impl, epic → cyp). `pick_ticket` reads the type off the picked row; `go_bugfix` forces bf regardless of type. |
 | `workspace_manager` | Wave 2 | iface.workspace.list. Minimal Wave 2 shape. |
 | `inbox` | Wave 2 | Navigation surface; the runtime's inbox subsystem manages items. |
-| `oracle` | Wave 2 | One-shot ask_question via `host.oracle.ask` (agent: `oracle_qa`). |
+| `agent` | Wave 2 | One-shot ask_question via `host.agent.ask` (agent: `agent_qa`). |
 | `standup` | Wave 2 | Aggregates iface.ticket.list_mine. |
 | `design*` | — | **Design pipeline** (formerly the "proposal" pipeline): discovery+brief (one room: the first message mints the workspace + scaffolds an editable brief, then every turn converses + distils it; `ready` runs the quality judge and a passing brief auto-advances) → existing-state → completeness → references → draft → publish (to `docs/proposals/<slug>.md`). **Publish also files a feature ticket** (`issues/features/`) linking back to the design doc, and `design_done`'s `implement` action (the `go_implementation` intent) drives that ticket straight into the impl pipeline (`flows/design_to_implementation.yaml`) — no detour through `ticket_search`. The design pipeline does not create a worktree; `impl.idle.on_enter` self-provisions it on entry (mirroring `bf.idle`), so the impl run gets a real `feature/<ticket>` branch regardless of entry path. Reached ad-hoc via `idea`, or as the back half of the [PRD → Design walk](#prd--design-walk). |
 | `prd_published` | — | PRD → Design landing room (see [PRD → Design walk](#prd--design-walk)). |
@@ -205,12 +205,12 @@ the landing is its first real client (the `agent-write-mode-opt-in` slice).
 
 The agent turn fires on the **`work`** intent (slot `request`), which captures
 the operator's utterance, clears the prior note to re-arm, and self-targets so
-`on_enter` dispatches `host.oracle.task` (`agent: landing_agent`,
+`on_enter` dispatches `host.agent.task` (`agent: landing_agent`,
 `acceptance.schema: schemas/landing-note.json` — a minimal, permissive
 close-out note: the engine requires *a* schema on `task`, so "free output" is
 expressed as a one-field `summary` with `additionalProperties` open). Free text
 the router can't map to an action is answered in place by the read-only
-**oracle off-ramp** (`oracle_off_ramp.agent: oracle_qa`) — the same floor `main`
+**agent off-ramp** (`agent_off_ramp.agent: agent_qa`) — the same floor `main`
 declared. The `world.captured` counter (rendered read-only here) is the
 progressive-determinism read-out, incremented by the mining apply path.
 
@@ -248,7 +248,7 @@ intents in Wave 2:
 The parent declares additional navigation / pipeline-launching
 intents at the bare name: `work` (the free-form workbench request —
 slot `request`), `go_main` / `go_back` (now self-loop the `landing`
-floor), `go_inbox`, `go_oracle`, `go_ticket_search`,
+floor), `go_inbox`, `go_agent`, `go_ticket_search`,
 `go_workspace_manager`, `go_standup`, `go_code_review`, `go_deploy`,
 `go_observability`, `go_incident`, `go_docs`, `go_bugfix`,
 `go_pr_refinement`, `search_tickets`, `pick_ticket`, `ask_question`,
@@ -409,26 +409,26 @@ $ kitsoki run stories/dev-story/app.yaml
 designing. The deterministic, no-LLM version of this exact walk is
 [`flows/prd_to_design.yaml`](./flows/prd_to_design.yaml).
 
-## Oracle-split persona table (Phase 8)
+## Agent-split persona table (Phase 8)
 
-The dev-story hub's own oracle room makes prose Q&A calls. The
-`oracle_qa` agent is declared in `app.yaml agents:` and carries
+The dev-story hub's own agent room makes prose Q&A calls. The
+`agent_qa` agent is declared in `app.yaml agents:` and carries
 `bash_profile: read-only` (no mutations).
 
 | Persona | Verb | Room |
 |---|---|---|
-| `oracle_qa` | `ask` | `oracle_asking` — one-shot prose Q&A answer |
+| `agent_qa` | `ask` | `agent_asking` — one-shot prose Q&A answer |
 
-`ask` is the oracle-split verb for read-only, prose-output inspection.
+`ask` is the agent-split verb for read-only, prose-output inspection.
 It is distinct from `decide` (which requires a JSON schema and emits a
-structured verdict) and `task` (which may write files). The oracle
+structured verdict) and `task` (which may write files). The agent
 persona has `tools: [Read, Grep, Glob]` — codebase inspection without
 side effects.
 
 Note: imported sub-stories (`stories/implementation/`,
-`stories/code-review/`) were migrated to the new oracle verbs in Phase 9.
-Flow fixtures that exercise those imports carry `host.oracle.decide:` and
-`host.oracle.ask:` stubs alongside the Phase 8 stubs.
+`stories/code-review/`) were migrated to the new agent verbs in Phase 9.
+Flow fixtures that exercise those imports carry `host.agent.decide:` and
+`host.agent.ask:` stubs alongside the Phase 8 stubs.
 
 ## See also
 

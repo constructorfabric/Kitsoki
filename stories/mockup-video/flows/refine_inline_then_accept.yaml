@@ -22,7 +22,7 @@ initial_world:
   refine_budget: 6
 
 host_handlers:
-  host.oracle.task:
+  host.agent.task:
     by_call:
       refine_source:
         data:

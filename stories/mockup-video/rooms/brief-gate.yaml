@@ -1,6 +1,6 @@
 # brief-gate — is the distilled brief concrete enough to author from?
 #
-# host.oracle.decide against prompts/brief_ready.md: are the scenarios named
+# host.agent.decide against prompts/brief_ready.md: are the scenarios named
 # and a medium chosen? `clarify` → back to intake (with the gaps surfaced in
 # the intake view); `ok` → authoring. Models stories/dev-story's brief check.
 #
@@ -24,7 +24,7 @@ states:
         when: "world.brief_decision.reason"
       - prose: "Evaluating the brief — this room routes itself."
     on_enter:
-      - invoke: host.oracle.decide
+      - invoke: host.agent.decide
         id: brief_check
         with:
           agent:  brief_judge

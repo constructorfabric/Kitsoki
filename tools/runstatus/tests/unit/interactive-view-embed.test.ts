@@ -2,11 +2,9 @@
  * Component test for InteractiveView.vue's EMBED layout (the VS Code webview).
  *
  * When isEmbedded() is true the interactive view drops its browser two-column
- * layout for a chat-dominant one with a hint rail: collapsed Trace + Graph cards
- * that maximize the full TraceTimeline / StateDiagram in place. This guards that
- * seam without a real webview (the full path is covered deterministically by
- * tools/vscode-kitsoki/tests/vscode-tour.e2e.spec.ts). The DataSource is mocked
- * (no live server, no LLM) and heavy children are stubbed.
+ * layout and renders the chat alone; Trace and Graph live in their own dockable
+ * VS Code surfaces. This guards that seam without a real webview. The
+ * DataSource is mocked (no live server, no LLM) and heavy children are stubbed.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -69,38 +67,15 @@ describe("InteractiveView — embed (VS Code) layout", () => {
     setEmbeddedOverride(null);
   });
 
-  it("renders the hint rail with collapsed Trace + Graph cards, not the full panels", async () => {
+  it("renders chat-only embedded layout, not the browser trace panels", async () => {
     const wrapper = mount(InteractiveView, mountOpts);
     await flushPromises();
 
-    expect(wrapper.find('[data-testid="hint-rail"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="hint-trace"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="hint-graph"]').exists()).toBe(true);
-    // Collapsed: the heavy panels are NOT mounted until maximized.
-    expect(wrapper.find('[data-testid="trace-timeline"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="trace-diagram"]').exists()).toBe(false);
-
-    wrapper.unmount();
-  });
-
-  it("maximizes Trace, switches to Graph, and minimizes back to the rail", async () => {
-    const wrapper = mount(InteractiveView, mountOpts);
-    await flushPromises();
-
-    // Maximize Trace → the full timeline mounts, the rail cards are gone.
-    await wrapper.find('[data-testid="hint-trace"]').trigger("click");
-    expect(wrapper.find('[data-testid="trace-timeline"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="chat-section"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="hint-rail"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="hint-trace"]').exists()).toBe(false);
-
-    // Switch to Graph in place → the diagram mounts, the timeline is gone.
-    await wrapper.find('[data-testid="switch-graph"]').trigger("click");
-    expect(wrapper.find('[data-testid="trace-diagram"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="hint-graph"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="trace-timeline"]').exists()).toBe(false);
-
-    // Minimize → back to the collapsed rail.
-    await wrapper.find('[data-testid="expanded-minimize"]').trigger("click");
-    expect(wrapper.find('[data-testid="hint-rail"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="hint-trace"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="trace-diagram"]').exists()).toBe(false);
 
     wrapper.unmount();

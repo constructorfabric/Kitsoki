@@ -1,8 +1,8 @@
-# fixing — one oracle.task instance applies the fix for groups[cursor].
+# fixing — one agent.task instance applies the fix for groups[cursor].
 #
 # on_enter:
 #   1. Set current = groups[cursor] (starlark; once: true keyed on current)
-#   2. host.oracle.task applies the minimal fix (once: true keyed on fix_result)
+#   2. host.agent.task applies the minimal fix (once: true keyed on fix_result)
 #
 # Checkpoint: accept → verifying; refine (with feedback) → re-run within budget;
 # skip → record in skipped, advance cursor; quit → @exit:abandoned.
@@ -62,7 +62,7 @@ states:
 
       # Step 2: apply the fix. once: true keyed on fix_result.
       # refine clears fix_result to re-arm.
-      - invoke: host.oracle.task
+      - invoke: host.agent.task
         once: true
         with:
           working_dir: "{{ world.src_root }}"

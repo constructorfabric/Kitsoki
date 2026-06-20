@@ -35,21 +35,21 @@ these surfaces.
 - **[`hosts.md`](hosts.md)** — every built-in `host.*` handler with its
   input/output contract. The effect surface authors invoke from YAML.
   Use [`hosts/`](hosts/README.md) as the shorter family index.
-- **[`oracle-plugin.md`](oracle-plugin.md)** — the Oracle plugin
-  contract: declaring external oracles under `oracle_plugins:`, the
-  `invoke: host.oracle.<verb>` + `oracle:` effect shape, the
+- **[`agent-plugin.md`](agent-plugin.md)** — the Agent plugin
+  contract: declaring external agents under `agent_plugins:`, the
+  `invoke: host.agent.<verb>` + `agent:` effect shape, the
   subprocess / MCP-over-HTTP transports, schema validation, and
   sub-events.
-- **[`oracle-providers.md`](oracle-providers.md)** — the `providers:`
+- **[`agent-providers.md`](agent-providers.md)** — the `providers:`
   block: retargeting the `claude` subprocess at an alternate
   Anthropic-compatible backend (model + env overrides) per invocation,
   selected by an agent's `provider:` or an effect's `with: { provider }`.
-- **[`oracle-backends.md`](oracle-backends.md)** — the `--oracle
+- **[`agent-backends.md`](agent-backends.md)** — the `--agent
   claude|copilot` switch: which coding-agent CLI kitsoki forks behind
-  every oracle verb + routing, the claude→copilot flag translation, and
+  every agent verb + routing, the claude→copilot flag translation, and
   the interface-compliance conformance suite.
-- **[`oracle-cli.md`](oracle-cli.md)** — the `host.oracle.*` verb
-  surface as a standalone CLI (`kitsoki oracle …`, `oracle-serve`) for
+- **[`agent-cli.md`](agent-cli.md)** — the `host.agent.*` verb
+  surface as a standalone CLI (`kitsoki agent …`, `agent-serve`) for
   validators and CI outside a running state machine.
 - **[`mcp-studio.md`](mcp-studio.md)** — the `kitsoki mcp` studio server
   an external coding agent attaches to: the handle model and the

@@ -23,7 +23,7 @@ var osStat = os.Stat
 
 // Controller orchestrates Enter / Send / Exit for meta-mode chats. It
 // holds the pluggable seams (chat store, agent registry, app
-// definition, oracle, clock) and contains no transport-specific code
+// definition, agent, clock) and contains no transport-specific code
 // itself. Tests inject fakes; production wiring uses the adapters in
 // adapter.go.
 type Controller struct {
@@ -34,9 +34,9 @@ type Controller struct {
 	Agents agents.Registry
 	// AppDef supplies the loaded meta_modes: declarations.
 	AppDef *app.AppDef
-	// Oracle issues a single LLM turn. Implementation owns the
+	// Agent issues a single LLM turn. Implementation owns the
 	// claude shellout (or, in tests, a fake).
-	Oracle OracleCaller
+	Agent AgentCaller
 	// Clock is the time source for Snapshot.EnteredAt (and any future
 	// timestamps). Defaults to time.Now when zero.
 	Clock func() time.Time
@@ -78,19 +78,19 @@ type ChatStore interface {
 // ErrChatBusy is returned (wrapped) by Controller.Send when the chat
 // lock is held by another driver. Callers (the TUI metaSendCmd path)
 // should use errors.Is to detect it and render a busy-chat message
-// rather than the generic "oracle ask: …" wrapper.
+// rather than the generic "agent ask: …" wrapper.
 var ErrChatBusy = errors.New("metamode: chat busy")
 
-// OracleCaller is the controller-facing LLM seam. The Ask method
+// AgentCaller is the controller-facing LLM seam. The Ask method
 // represents one turn against an agent: system prompt + user message
 // in, reply + new claude session id out.
 //
 // The adapter in adapter.go implements this against
-// host.OracleAskWithMCPHandler. See adapter.go's package comment for
+// host.AgentAskWithMCPHandler. See adapter.go's package comment for
 // the constraints the real handler imposes (no native SystemPrompt
 // arg, no native tool-allowlist arg on the non-chat path) — the
 // adapter does the translation so the controller stays typed.
-type OracleCaller interface {
+type AgentCaller interface {
 	Ask(ctx context.Context, in AskInput) (AskOutput, error)
 }
 
@@ -458,21 +458,21 @@ func truncatePreview(s string, max int) string {
 }
 
 // Send issues one turn on the session: appends the user message,
-// dispatches to the oracle, persists the new claude session id, then
+// dispatches to the agent, persists the new claude session id, then
 // appends the assistant reply.
 //
 // turn carries the per-turn ambient context (state path, app file,
 // rendered view, world snapshot). The controller prepends a [context]
 // block built from those fields to the user message before handing it
-// to the oracle. When turn is the zero value, the preamble is empty
+// to the agent. When turn is the zero value, the preamble is empty
 // and Send behaves like the old (turn-less) signature did.
 //
 // Ordering rationale: SetClaudeSessionID runs BEFORE the assistant
 // append so a write failure on the session id can't strand an answered
 // turn with no resume path. AppendMessage("user") happens FIRST so a
-// later oracle failure still leaves the user's question visible in the
+// later agent failure still leaves the user's question visible in the
 // transcript. The same ordering pattern is used by
-// host.runOracleAskWithMCPWithChat (see oracle_ask_with_mcp.go) so
+// host.runAgentAskWithMCPWithChat (see agent_ask_with_mcp.go) so
 // transcripts stay consistent with the orchestrator-driven path.
 //
 // ReloadRequested is set on the returned SendResult whenever the turn
@@ -489,8 +489,8 @@ func (c *Controller) Send(ctx context.Context, s *Session, userText string, turn
 	if s.Chat == nil {
 		return SendResult{}, fmt.Errorf("metamode.Send: session has no chat handle")
 	}
-	if c.Oracle == nil {
-		return SendResult{}, fmt.Errorf("metamode.Send: nil oracle caller")
+	if c.Agent == nil {
+		return SendResult{}, fmt.Errorf("metamode.Send: nil agent caller")
 	}
 
 	mode := ""
@@ -508,12 +508,12 @@ func (c *Controller) Send(ctx context.Context, s *Session, userText string, turn
 	chatID := s.Chat.ID()
 
 	// Acquire the per-chat singleton lock. Held across the user
-	// append, oracle dispatch, and assistant append — every other
+	// append, agent dispatch, and assistant append — every other
 	// driver (kitsoki chat continue, the drive dispatcher,
 	// kitsoki chat attach) acquires the same lock, so meta turns
 	// can't interleave with them against the same row. On contention
 	// we surface ErrChatBusy so the TUI renders a friendly message
-	// rather than a generic oracle-error wrapper.
+	// rather than a generic agent-error wrapper.
 	var (
 		result   SendResult
 		innerErr error
@@ -542,7 +542,7 @@ func (c *Controller) Send(ctx context.Context, s *Session, userText string, turn
 // callback in Send can hold it cleanly. ctx here is the locked
 // context — short-lived helpers (heartbeats) that ride on the lock
 // would attach to it, but meta-mode does not need a heartbeat goroutine
-// since oracle.Ask is a one-shot call.
+// since agent.Ask is a one-shot call.
 func (c *Controller) sendLocked(ctx context.Context, s *Session, userText string, turn TurnContext, chatID, mode string) (SendResult, error) {
 	if err := s.Chat.AppendMessage("user", userText); err != nil {
 		slog.ErrorContext(ctx, "metamode.send.append_user_failed",
@@ -586,22 +586,22 @@ func (c *Controller) sendLocked(ctx context.Context, s *Session, userText string
 	}
 	preStat = statAppFile(turn.AppFile)
 
-	slog.DebugContext(ctx, "metamode.oracle.ask",
+	slog.DebugContext(ctx, "metamode.agent.ask",
 		"chat_id", chatID,
 		"cwd", in.Cwd,
 		"tools", in.ToolAllowlist,
 		"claude_session_id", in.ClaudeSessionID,
 	)
-	out, err := c.Oracle.Ask(ctx, in)
+	out, err := c.Agent.Ask(ctx, in)
 	if err != nil {
-		slog.ErrorContext(ctx, "metamode.oracle.error",
+		slog.ErrorContext(ctx, "metamode.agent.error",
 			"chat_id", chatID,
 			"mode", mode,
 			"err", err.Error(),
 		)
-		return SendResult{Err: err}, fmt.Errorf("metamode.Send: oracle ask: %w", err)
+		return SendResult{Err: err}, fmt.Errorf("metamode.Send: agent ask: %w", err)
 	}
-	slog.DebugContext(ctx, "metamode.oracle.reply",
+	slog.DebugContext(ctx, "metamode.agent.reply",
 		"chat_id", chatID,
 		"reply_chars", len(out.Reply),
 		"new_claude_session_id", out.NewClaudeSessionID,
@@ -759,7 +759,7 @@ func snapshotKeyToAbsPath(k, treeRoot string) string {
 }
 
 // appFileStat captures the mtime + size of one file so direct edits
-// between two oracle calls can be detected. Zero value means "no file"
+// between two agent calls can be detected. Zero value means "no file"
 // (path empty or stat failed).
 type appFileStat struct {
 	exists bool
@@ -1181,7 +1181,7 @@ func metaScopeKey(modeName, statePath string) string {
 // view the user is staring at, and the resolved world variables. The
 // preamble below glues those fields together into a single text block
 // the controller prepends to the user message before dispatching to
-// the oracle. The agent (story-author.md) is taught to read this
+// the agent. The agent (story-author.md) is taught to read this
 // preamble and use it to pin propose calls to the right file.
 //
 // Format choices:

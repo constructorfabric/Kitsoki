@@ -450,18 +450,18 @@ var whenCache sync.Map // map[string]*expr.Program
 // compiled (or fetched from cache) and evaluated to ANY value, then
 // coerced to bool via JavaScript/Python-style truthy rules:
 //
-//   bool      → as-is
-//   nil       → false
-//   string    → len > 0
-//   slice/array/map → len > 0
-//   number    → != 0
-//   anything else → true (any non-nil value is truthy)
+//	bool      → as-is
+//	nil       → false
+//	string    → len > 0
+//	slice/array/map → len > 0
+//	number    → != 0
+//	anything else → true (any non-nil value is truthy)
 //
 // Strict-bool semantics (the legacy `expr.CompileBool` + `EvalBool`
 // path) were too brittle for `when:` guards: an author writing
 // `when: "world.implement_artifact.blockers"` expected
 // "render this section IF there are blockers" and got a runtime
-// panic when claude's oracle returned `blockers: []` — expr-lang
+// panic when claude's agent returned `blockers: []` — expr-lang
 // rejected `bool([]interface{})` with "invalid operation". The
 // orchestrator's post-bind render path then silently dropped the
 // view to "" because the render error bubbled up the host-dispatch

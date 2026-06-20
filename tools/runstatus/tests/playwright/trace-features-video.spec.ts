@@ -28,7 +28,7 @@ import {
   saveVideoAsMp4,
   dwell,
   cinematicGoto,
-  waitForOracleComplete,
+  waitForAgentComplete,
   ChapterRecorder,
   writeChapters,
   SETTLE_MS,
@@ -44,7 +44,7 @@ const CHAPTER_SOURCE = "features/trace-features.yaml";
 
 const ADDR = demoAddr(7746);
 // Use the bugfix story with the happy_llm flow + the demo cassette so the
-// trace has real oracle.call.complete events for the waterfall, decide-verdict,
+// trace has real agent.call.complete events for the waterfall, decide-verdict,
 // confidence-bar, annotation, and replay steps.
 const STORY_DIR = path.join(repoRoot, "stories", "bugfix");
 const FLOW = path.join(STORY_DIR, "flows", "happy_llm.yaml");
@@ -211,7 +211,7 @@ test("trace introspection feature-spotlight video", async () => {
         } else if (step.advance === "route-match" && step.advanceRoute === "any") {
           // "Observe" → the read-only observer. Now that the chat view is no
           // longer the active surface, patch the world and submit so the
-          // cassette-backed oracle cascade streams its events into the observer's
+          // cassette-backed agent cascade streams its events into the observer's
           // live trace, ahead of the introspection steps that spotlight them.
           await page.waitForURL(/#\/s\/[0-9a-f-]{36}$/, { timeout: 15000 });
           if (sessionId) {
@@ -234,10 +234,10 @@ test("trace introspection feature-spotlight video", async () => {
               intent: "start",
               slots: {},
             });
-            // Poll the trace to a deadline (not a flat sleep) so the oracle
+            // Poll the trace to a deadline (not a flat sleep) so the agent
             // events have actually landed before the introspection steps start
             // spotlighting trace rows — SSE timing is wall-clock-variable.
-            await waitForOracleComplete(server, sessionId, 2, 40000);
+            await waitForAgentComplete(server, sessionId, 2, 40000);
           }
         }
         // Longer settle for action steps: tab switches / nav need the view to repaint.

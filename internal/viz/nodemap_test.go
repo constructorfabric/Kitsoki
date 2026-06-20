@@ -181,7 +181,7 @@ var storyCases = []storyCase{
 		fullKinds:     []string{"effect", "world"},
 	},
 	{
-		// bugfix: pipeline story with oracle invocations and world bind.
+		// bugfix: pipeline story with agent invocations and world bind.
 		name:          "bugfix",
 		appKey:        "bugfix",
 		expectedKinds: []string{"state"},
@@ -321,7 +321,7 @@ func TestFlowchartWithMapMinimal(t *testing.T) {
 			"working": {
 				OnEnter: []app.Effect{
 					{
-						Invoke: "host.oracle.ask",
+						Invoke: "host.agent.ask",
 						With:   map[string]any{"prompt": "prompts/p.md"},
 						Bind:   map[string]string{"analysis": "text"},
 					},

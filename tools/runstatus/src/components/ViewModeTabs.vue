@@ -91,7 +91,7 @@ import { ref, onMounted, onUnmounted } from "vue";
 import TraceTimeline from "./TraceTimeline.vue";
 import TraceWaterfall from "./TraceWaterfall.vue";
 import StateDiagram from "./StateDiagram.vue";
-import SessionRollup from "./oracle/SessionRollup.vue";
+import SessionRollup from "./agent/SessionRollup.vue";
 import type { TraceEvent, NodeRef } from "../types.js";
 
 type ViewMode = "tree" | "timeline" | "graph" | "actions";

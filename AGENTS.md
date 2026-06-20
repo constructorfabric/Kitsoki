@@ -16,13 +16,13 @@ When we do an implementation based on a proposal, the goal is to complete the pr
 
 use the `.context` folder for transient markdown files like proposals, summaries, etc... and use the `.artifacts` folder (with subfolders as necessary) for any generated artifact for review that shouldn't be committed.  following these guidelines will help to avoid bot pollution and cruft in the repo.
 
-Automated testing should never use a real LLM or incur costs - mock oracles via cassettes should be used in all cases.  Tests which require real LLM must be gated and only done when specifically requested and required - never automatically or without checking first.
+Automated testing should never use a real LLM or incur costs - mock agents via cassettes should be used in all cases.  Tests which require real LLM must be gated and only done when specifically requested and required - never automatically or without checking first.
 
 use dependency injection patterns wherever relevant.
 
 principle of least surprise.
 
-`AskUserQuestion` is hard-denied in every dispatched `claude -p` oracle (it auto-resolves with empty answers when headless — a silent landmine). When a live operator surface is attached, agent questions are instead forwarded into kitsoki via the operator-ask bridge (the `mcp__operator__ask` tool) and surfaced on web + TUI; when no operator is attached (cassettes/flows/headless) no replacement tool is added and the agent proceeds on its own. See `docs/architecture/operator-ask.md`.
+`AskUserQuestion` is hard-denied in every dispatched `claude -p` agent (it auto-resolves with empty answers when headless — a silent landmine). When a live operator surface is attached, agent questions are instead forwarded into kitsoki via the operator-ask bridge (the `mcp__operator__ask` tool) and surfaced on web + TUI; when no operator is attached (cassettes/flows/headless) no replacement tool is added and the agent proceeds on its own. See `docs/architecture/operator-ask.md`.
 
 when in doubt always save a markdown into .context for review later - much easier to check/review than staying in the conversation and requiring an extra turn.
 

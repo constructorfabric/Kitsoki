@@ -1,4 +1,4 @@
-// Package host — read-tool snapshot cap for host.oracle.ask / decide / extract.
+// Package host — read-tool snapshot cap for host.agent.ask / decide / extract.
 //
 // Every read-tool call's output is captured in the journal so the LLM span is
 // replayable from recording. Outputs over ReadSnapshotCap bytes are stored as a
@@ -52,7 +52,7 @@ type ReadSnapshot struct {
 // the per-app threshold (pass ReadSnapshotCap for the default). If cap <= 0, no
 // cap is applied and the full output is always stored.
 //
-// Signature reused by oracle_decide.go and oracle_extract.go (Phase 2 / 5).
+// Signature reused by agent_decide.go and agent_extract.go (Phase 2 / 5).
 //
 //	snap := CaptureReadSnapshot(toolOutput, ReadSnapshotCap)
 //	journal.Record(snap)

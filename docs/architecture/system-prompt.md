@@ -1,7 +1,7 @@
 # The layered system prompt
 
 Every `claude` invocation kitsoki makes — the intent-routing harness and all
-`host.oracle.*` verbs — builds its system prompt the same way: three layers
+`host.agent.*` verbs — builds its system prompt the same way: three layers
 composed by [`internal/sysprompt`](../../internal/sysprompt/doc.go), ordered
 most-stable → least-stable, passed to claude via `--system-prompt` (which
 **replaces** Claude Code's default coding-agent prompt).
@@ -26,9 +26,9 @@ most-stable → least-stable, passed to claude via `--system-prompt` (which
 ## Why layered, and why this order
 
 Two problems motivated it. The router had a healthy but bespoke prompt; every
-other oracle verb passed the agent's `system_prompt` via
+other agent verb passed the agent's `system_prompt` via
 `--append-system-prompt`, so it stacked **on top of Claude Code's full default
-coding-agent prompt** — an oracle judge inherited a large, wrong base prompt and
+coding-agent prompt** — an agent judge inherited a large, wrong base prompt and
 its author's persona was a footnote. And **neither** path told the model what
 kitsoki is or what the project is about.
 
@@ -79,11 +79,11 @@ app:
 ```
 
 When neither is set, the optional `prompts/_project.md` **convention** supplies
-Layer 2 if that file exists. On the oracle path the project context is rendered
+Layer 2 if that file exists. On the agent path the project context is rendered
 through the same [prompt renderer](../stories/prompts.md) used for every prompt,
 so it can `{% include "@shared/…" %}` shared fragments and an overlay/import can
 supply it. (The router resolves the inline/file forms only — it has no prompt
-renderer wired — so the convention and `@shared` forms are oracle-path.)
+renderer wired — so the convention and `@shared` forms are agent-path.)
 
 Worked examples: [`stories/oregon-trail/app.yaml`](../../stories/oregon-trail/app.yaml)
 and [`stories/dev-story/app.yaml`](../../stories/dev-story/app.yaml).
@@ -99,16 +99,16 @@ Layer 3 (the agent persona) is unchanged: keep authoring
   embedded Layer 1, per-verb contracts, `Compose` (ordering + join), and the
   `ExcludeDynamic` policy. No I/O — exhaustively table-tested.
 - `internal/host/sysprompt.go` — resolves Layer 2 (through the ctx prompt
-  renderer) and Layer 3 (the agent persona) for every oracle verb, then calls
+  renderer) and Layer 3 (the agent persona) for every agent verb, then calls
   `Compose`. The single funnel `appendComposedSystemPrompt` emits the
   `--system-prompt` (+ exclude) flags or the legacy `--append` flag.
 - `internal/harness/claude_cli.go` — the router composes through the same
   `sysprompt.Compose` with `Verb: Route`.
 
 All claude invocations fork through one runner
-(`host.RunClaudeOneShotForHarness`; see [oracle-cli](oracle-cli.md)), so the
+(`host.RunClaudeOneShotForHarness`; see [agent-cli](agent-cli.md)), so the
 composed prompt is applied identically everywhere.
 
 A `sysprompt.composed` debug trace record (verb, layer manifest, byte count,
-exclude_dynamic) is emitted per oracle call so a timeline shows which layers were
+exclude_dynamic) is emitted per agent call so a timeline shows which layers were
 present without re-deriving them.

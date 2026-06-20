@@ -5,7 +5,7 @@ package orchestrator_test
 // enters a room flagged intercept_drive: rest (conflict-capable intercept).
 //
 // Both tests drive the REAL git-ops story against a REAL rebase conflict with
-// the conflict_resolver oracle stubbed (no LLM, free):
+// the conflict_resolver agent stubbed (no LLM, free):
 //
 //   - ResolvesAndReports: a resolving stub drives the whole conflict loop to
 //     branch_ops; DriveToRest reports Resolved with a multi-hop Rounds count and
@@ -32,7 +32,7 @@ import (
 	"kitsoki/internal/store"
 )
 
-// cwdResolvingConflictResolver is a host.oracle.task stub that resolves the
+// cwdResolvingConflictResolver is a host.agent.task stub that resolves the
 // file.txt conflict relative to the process cwd (git-ops working_dir="." +
 // t.Chdir into the repo). It edits the working tree only — the resolver's fence
 // — leaving the story to stage and continue.
@@ -59,9 +59,9 @@ func cwdResolvingConflictResolver(ctx context.Context, args map[string]any) (hos
 }
 
 // newGitOpsOrchForDrive builds a git-ops orchestrator wired with the real
-// host.run plus the given oracle stub, chdir'd into a fresh conflict repo.
+// host.run plus the given agent stub, chdir'd into a fresh conflict repo.
 // Returns the orchestrator and the repo root.
-func newGitOpsOrchForDrive(t *testing.T, oracleStub host.Handler) (*orchestrator.Orchestrator, string) {
+func newGitOpsOrchForDrive(t *testing.T, agentStub host.Handler) (*orchestrator.Orchestrator, string) {
 	t.Helper()
 	cwd, err := os.Getwd()
 	require.NoError(t, err)
@@ -77,8 +77,8 @@ func newGitOpsOrchForDrive(t *testing.T, oracleStub host.Handler) (*orchestrator
 
 	reg := host.NewRegistry()
 	reg.Register("host.run", host.RunHandler)
-	reg.Register("host.oracle.task", oracleStub)
-	reg.Register("host.oracle.decide", oracleStub)
+	reg.Register("host.agent.task", agentStub)
+	reg.Register("host.agent.decide", agentStub)
 
 	orch := orchestrator.New(def, m, s, noopHarness{}, orchestrator.WithHostRegistry(reg))
 

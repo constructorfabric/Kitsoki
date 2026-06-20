@@ -40,7 +40,7 @@ Adjust what you look for accordingly.
 
 {% if args.search_hits %}## Semantic search hits (pre-ranked by embedding similarity)
 
-These chunks were retrieved automatically by `host.oracle.search` and ranked
+These chunks were retrieved automatically by `host.agent.search` and ranked
 by cosine similarity to the idea. Start here — read the promising ones in
 full, discard the irrelevant ones, then fill any obvious gaps with your own
 search.

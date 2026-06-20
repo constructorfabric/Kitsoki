@@ -11,7 +11,7 @@ Status: spec for Phase 1 only. Phase 2+ extends the contract as needed.
 ## 1. Repository conventions to follow
 
 - New host handlers go in `internal/host/` (flat package, same as
-  `handlers.go`, `oracle_ask.go`, `transport_post.go`). One file per logical
+  `handlers.go`, `agent_ask.go`, `transport_post.go`). One file per logical
   surface (e.g. `localfiles_ticket.go`, `git_vcs.go`, `local_ci.go`,
   `git_worktree.go`, `append_file_transport.go`, `inbox_add.go`).
 - Each new handler registers itself in `RegisterBuiltins` in `handlers.go`.
@@ -277,7 +277,7 @@ detail, but the keys above are the canonical lingua franca.
 ```
 
 Used by `judge_*.md` prompts as the `schema:` argument to
-`host.oracle.ask_with_mcp`. The structured response is bound to
+`host.agent.ask_with_mcp`. The structured response is bound to
 `world.llm_verdict` so gate clauses can read it.
 
 ## 6. Judge polymorphism — the canonical checkpoint shape
@@ -307,7 +307,7 @@ pattern:
 
     # 3. Conditionally: ask an LLM-judge.
     - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
-      invoke: host.oracle.ask_with_mcp
+      invoke: host.agent.ask_with_mcp
       with:
         prompt:  prompts/judge_<phase>.md
         schema:  schemas/judge_verdict.json
@@ -351,7 +351,7 @@ This shape MUST be identical across all seven rooms (only `<phase>` and
   (P1-A/B from the Opus code review; commit `ca11d6b`.)
   The author writes the shape above verbatim; no per-mode YAML forks.
 - The `bind: { llm_verdict: "submitted" }` syntax follows the existing
-  `host.oracle.ask_with_mcp` bind convention (see `internal/host/oracle_ask_with_mcp.go`).
+  `host.agent.ask_with_mcp` bind convention (see `internal/host/agent_ask_with_mcp.go`).
   Because `bind:` lands at orchestrator-dispatch time (not machine-time),
   the emit_intent's `when:` guard is re-evaluated after the host call
   completes — that's what makes the LLM-judge → auto-accept hop work
@@ -442,7 +442,7 @@ Wave 1 has three independent slices. They never touch the same file.
   append_file_transport_test.go, inbox_add.go, inbox_add_test.go}`
 - Modifies: `internal/host/handlers.go` (adds registrations in
   `RegisterBuiltins`)
-- Reads: `internal/host/{handlers.go, transport_post.go, oracle_ask.go,
+- Reads: `internal/host/{handlers.go, transport_post.go, agent_ask.go,
   host.go}` for handler conventions; `internal/inbox/inbox.go`,
   `internal/transport/transport.go`, `internal/workspace/workspace.go` for
   existing service APIs; `bug-format-proposal.md` for the bug file schema;
@@ -452,7 +452,7 @@ Wave 1 has three independent slices. They never touch the same file.
 ### Slice γ — judge harness author
 - Creates: `internal/judges/{judges.go, judges_test.go}` —
   provides a `RunJudge(ctx, prompt, schema, context) (Verdict, error)`
-  function that wraps `host.oracle.ask_with_mcp` and returns a typed
+  function that wraps `host.agent.ask_with_mcp` and returns a typed
   `Verdict` struct. The wrapper validates the structured response against
   the schema, returns a clear error on parse failure, and emits a typed
   `Verdict { Verdict, Intent, Reason string; Confidence float64 }`.
@@ -461,7 +461,7 @@ Wave 1 has three independent slices. They never touch the same file.
   may choose to author the per-phase prompts instead; this is a soft
   boundary — coordinate via the prompts/ subtree (one prompt per file,
   no overlap on file names).
-- Reads: `internal/host/oracle_ask_with_mcp.go`, `internal/mcp/validator.go`,
+- Reads: `internal/host/agent_ask_with_mcp.go`, `internal/mcp/validator.go`,
   this contract.
 - Test: `go test ./internal/judges/...`
 
@@ -741,7 +741,7 @@ Phase 3 of the proposal (the PoC milestone ★) lands
 `stories/dev-story/` under the alias `core` with concrete bindings
 to the local-files providers (`host.local_files.ticket`, `host.git`,
 `host.local`, `host.git_worktree`, `host.append_to_file`,
-`host.inbox.add`, `host.oracle.ask_with_mcp`). The PoC is "kitsoki
+`host.inbox.add`, `host.agent.ask_with_mcp`). The PoC is "kitsoki
 working on kitsoki through its own UI, with the bug file as both
 ticket and conversation log".
 

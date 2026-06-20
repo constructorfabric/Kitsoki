@@ -10,7 +10,7 @@
 //
 // Why the JSONL trace and not the SQLite session store: the store persists
 // only turn/seq/ts/kind/payload — it drops per-event state_path, call_id, and
-// parent_turn, which the SPA needs (notably oracle-call pairing by call_id).
+// parent_turn, which the SPA needs (notably agent-call pairing by call_id).
 // The JSONL trace is the canonical, full-fidelity record. See
 // tools/runstatus/CLAUDE.md: the trace itself must always be correct, so the
 // live view is built from it directly.
@@ -171,7 +171,7 @@ type Server struct {
 
 	// questions is the per-session forwarded-question feed (operator_questions.go)
 	// and qreg is the pending-answer registry that lets answer_question unblock a
-	// parked oracle turn. Both always non-nil.
+	// parked agent turn. Both always non-nil.
 	questions *questionBuffer
 	qreg      *questionRegistry
 
@@ -970,9 +970,9 @@ func (s *Server) dispatch(ctx context.Context, method string, params map[string]
 
 	// ── Operator questions (forwarded agent questions) ──────────────────────
 	// A subscriber opens runstatus.questions.subscribe and streams GET
-	// /rpc/questions; when an oracle agent forwards a question, a runstatus.question
+	// /rpc/questions; when an agent agent forwards a question, a runstatus.question
 	// frame arrives and the SPA shows a modal. The operator's choice comes back via
-	// session.answer_question, which unblocks the parked oracle turn.
+	// session.answer_question, which unblocks the parked agent turn.
 	case "runstatus.questions.subscribe":
 		return map[string]any{"subscription_id": s.questions.subscribe()}, nil
 
@@ -1113,7 +1113,7 @@ func (s *Server) dispatch(ctx context.Context, method string, params map[string]
 		return map[string]any{"ok": true}, nil
 
 	// ── Call replay ───────────────────────────────────────────────────────────
-	// runstatus.call.replay reconstructs one oracle call from the recorded trace
+	// runstatus.call.replay reconstructs one agent call from the recorded trace
 	// and returns a stub result describing its replayability. Actual re-dispatch
 	// against a live operator is not wired in v1 (no LLM cost in tests); the
 	// stub confirms the call is replayable and returns a note.
@@ -1139,7 +1139,7 @@ func (s *Server) dispatch(ctx context.Context, method string, params map[string]
 		if replayErr != nil {
 			return nil, &rpcError{Code: codeServerError, Message: "call.replay: " + replayErr.Error()}
 		}
-		// v1 stub: confirm replayability without dispatching a live oracle call.
+		// v1 stub: confirm replayability without dispatching a live agent call.
 		return map[string]any{
 			"call_id":       rc.CallID,
 			"original_verb": rc.Verb,
@@ -1170,7 +1170,7 @@ func (s *Server) dispatch(ctx context.Context, method string, params map[string]
 		return map[string]any{"content": string(data)}, nil
 
 	// ── Agent-action transcript sidecar ────────────────────────────────────────
-	// runstatus.session.transcript reads one oracle call's agent-action sidecar
+	// runstatus.session.transcript reads one agent call's agent-action sidecar
 	// (the verbatim backend-native event stream the host teed at the wire) LAZILY
 	// from disk — never folded into the snapshot, because a task run can be
 	// megabytes. The sidecar pair is <TranscriptsDir>/<call_id>.jsonl (one JSON

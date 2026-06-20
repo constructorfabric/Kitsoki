@@ -7,7 +7,7 @@ Why this exists
 The git-ops demo replays four operations a developer actually drove in recorded
 Claude Code sessions (commit, rebase-with-conflict, merge, worktree). In Kitsoki
 those run as a deterministic story: routing/branch-detection/git are free, and
-the only spend is two genuine oracle calls (~$0.10 total, read from the committed
+the only spend is two genuine agent calls (~$0.10 total, read from the committed
 host cassette). The natural question a viewer asks is: *what would the same work
 have cost if I'd just done it in Claude Code?*
 
@@ -35,7 +35,7 @@ So the output is a RANGE, not a false-precision point estimate — and the Kitso
 side is committed ground truth, not a guess.
 
 Pricing: Claude Sonnet 4.x list price (the Claude Code default and the demo's
-oracle model), USD per 1M tokens, as of 2026-06. Override with --price-* if it
+agent model), USD per 1M tokens, as of 2026-06. Override with --price-* if it
 drifts. Token counts are a chars-per-token heuristic (no network, no tokenizer
 dep); --chars-per-token tunes it. None of these knobs change the qualitative
 story — the deterministic engine is ~100x cheaper because it doesn't re-send a
@@ -61,7 +61,7 @@ DEFAULT_CASSETTE = (
     / "git-ops"
     / "flows"
     / "cassettes"
-    / "demo_oracle.cassette.yaml"
+    / "demo_agent.cassette.yaml"
 )
 
 # The four operations the demo replays, in lifecycle order, mapped to their
@@ -77,7 +77,7 @@ DEMO_SESSIONS = [
 # place to update rates. This estimator models the SYNTHETIC/redacted demo corpus
 # (no telemetry); for REAL transcripts use cost_extract.py, which reads recorded
 # usage and needs no chars/token or cold/warm modelling at all. We default to the
-# Sonnet tier here because the demo's oracle model is Sonnet, but real Claude Code
+# Sonnet tier here because the demo's agent model is Sonnet, but real Claude Code
 # coding sessions usually run on the pricier Opus tier (see the case study).
 _P = pricing.PRICING["claude-sonnet-4"]
 DEFAULTS = dict(
@@ -202,7 +202,7 @@ def cost_warm(sess: Session, args) -> float:
 
 
 def read_kitsoki_cost(cassette: Path) -> tuple[float, list[tuple[str, float]]]:
-    """Sum the committed oracle cost_usd values — Kitsoki's real deterministic
+    """Sum the committed agent cost_usd values — Kitsoki's real deterministic
     spend for these operations (the only paid surface in the story)."""
     if not cassette.exists():
         return 0.0, []

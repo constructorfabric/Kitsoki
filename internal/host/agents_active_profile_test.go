@@ -21,7 +21,7 @@ func TestApplyProvider_ActiveProfileFallback(t *testing.T) {
 	if agent.Model != "hf:Qwen/Qwen2.5-Coder-32B-Instruct" {
 		t.Fatalf("active profile model not applied: %q", agent.Model)
 	}
-	if env := OracleProviderEnvFromCtx(ctx); env["OPENAI_BASE_URL"] != "https://api.synthetic.new/openai" {
+	if env := AgentProviderEnvFromCtx(ctx); env["OPENAI_BASE_URL"] != "https://api.synthetic.new/openai" {
 		t.Fatalf("active profile env not installed: %+v", env)
 	}
 	if ActiveProfileNameFromCtx(ctx) != "synthetic-codex" {
@@ -56,7 +56,7 @@ func TestApplyProvider_NamedProviderBeatsProfile(t *testing.T) {
 	if agent.Model != "named-model" {
 		t.Fatalf("named provider model should win: got %q", agent.Model)
 	}
-	if env := OracleProviderEnvFromCtx(ctx); env["ANTHROPIC_BASE_URL"] != "https://openrouter" {
+	if env := AgentProviderEnvFromCtx(ctx); env["ANTHROPIC_BASE_URL"] != "https://openrouter" {
 		t.Fatalf("named provider env should win: %+v", env)
 	}
 }

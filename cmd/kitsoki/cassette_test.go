@@ -289,13 +289,13 @@ func TestCassetteLint_OrphanedEpisode(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 
-	// Write a minimal app that dispatches host.oracle.ask but NOT host.ghost.
+	// Write a minimal app that dispatches host.agent.ask but NOT host.ghost.
 	appYAML := `app:
   id: test-orphan
   version: 0.1.0
 
 hosts:
-  - host.oracle.ask
+  - host.agent.ask
 
 root: idle
 
@@ -313,7 +313,7 @@ states:
       ask:
         - target: idle
           effects:
-            - invoke: host.oracle.ask
+            - invoke: host.agent.ask
               with: {q: hello}
               bind: {result: result}
 `
@@ -322,11 +322,11 @@ states:
 		t.Fatalf("write app.yaml: %v", err)
 	}
 
-	// Cassette references host.oracle.ask (present) AND host.ghost (orphan).
+	// Cassette references host.agent.ask (present) AND host.ghost (orphan).
 	cas := "kind: host_cassette\napp_id: test-orphan\nepisodes:\n" +
 		"  - id: ep_real\n" +
 		"    match:\n" +
-		"      handler: host.oracle.ask\n" +
+		"      handler: host.agent.ask\n" +
 		"    response:\n" +
 		"      data: {result: ok}\n" +
 		"  - id: ep_orphan\n" +
@@ -361,7 +361,7 @@ func TestCassetteLint_NoOrphanWhenHandlerPresent(t *testing.T) {
   version: 0.1.0
 
 hosts:
-  - host.oracle.ask
+  - host.agent.ask
 
 root: idle
 
@@ -379,7 +379,7 @@ states:
       ask:
         - target: idle
           effects:
-            - invoke: host.oracle.ask
+            - invoke: host.agent.ask
               with: {q: hello}
               bind: {result: result}
 `
@@ -388,7 +388,7 @@ states:
 		t.Fatalf("write app.yaml: %v", err)
 	}
 
-	cas := minimalCassette("ep1", "host.oracle.ask")
+	cas := minimalCassette("ep1", "host.agent.ask")
 	casPath := writeTempCassette(t, dir, "cass.yaml", cas)
 
 	out, _, err := runCassetteCmd(t, "lint", casPath, "--against-app", appPath)

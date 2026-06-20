@@ -49,7 +49,7 @@ named, recorded decision the moat is built on.
 |---|---|---|---|
 | `implement-from-spec` (0.71) | BUILD (judgment) | `implementation` + `dev-story` + `cypilot` | **enrich** |
 | `fan-out-agents-and-reconcile` (0.67) | BUILD (judgment) | — none — | **gap → new story** |
-| `explore-codebase` (0.54) | BUILD NOW | off-path/meta read-only agent only | enrich (`oracle`/meta room) |
+| `explore-codebase` (0.54) | BUILD NOW | off-path/meta read-only agent only | enrich (`agent`/meta room) |
 | `verify-by-running` (0.51) | BUILD NOW | `bugfix.validating`, `implementation.test` | **enrich** |
 | `debug-from-error-or-trace` (0.50) | LATER | `bugfix.reproducing` | enrich (later) |
 | `build-compile-fix-loop` / `fix-failing-tests` | LATER | `bugfix.testing`, `implementation.test` | already modeled |
@@ -57,7 +57,7 @@ named, recorded decision the moat is built on.
 
 Three concrete enrichments and one gap (decision deferred — captured here, not yet built):
 
-1. **`implement-from-spec` → `implementation/review_task`.** Add a `host.oracle.decide`
+1. **`implement-from-spec` → `implementation/review_task`.** Add a `host.agent.decide`
    gate that classifies the incoming spec before `write_code`: *complete enough to
    one-shot vs needs a clarification round*, and *engine-level feature vs app-level
    YAML*. The "needs clarification" half is already solved in `prd` — the enrichment

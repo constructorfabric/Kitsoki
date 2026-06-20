@@ -6,11 +6,11 @@
 
 ## Why
 
-The `oracle.decide` verb resolves a gate by returning a single chosen intent
+The `agent.decide` verb resolves a gate by returning a single chosen intent
 plus a confidence — `judges.Verdict{Verdict, Intent, Reason, Confidence}`
 (`internal/judges/judges.go:19-34`), with the schema declaring
 `additionalProperties: false` so any richer structure the model produces is
-**silently dropped** (`oracle_decide.go` ~`:215`). The decider then records
+**silently dropped** (`agent_decide.go` ~`:215`). The decider then records
 `chosen_intent` + `confidence` into `machine.gate_decided`
 (`decider.go:260-273`) and discards everything else.
 
@@ -40,7 +40,7 @@ only the winner still works.
   - `internal/judges/judges.go:19-34` — add `Alternatives []IntentScore` to
     `Verdict`; relax the schema to allow the array (still
     `additionalProperties: false` on each entry).
-  - `internal/host/oracle_decide.go` ~`:215` — parse alternatives when
+  - `internal/host/agent_decide.go` ~`:215` — parse alternatives when
     present; the decide prompt/schema asks for a score per available intent.
   - `internal/orchestrator/decider.go:260-273` — add `alternatives` to the
     `gate_decided` payload.
@@ -67,7 +67,7 @@ only the winner still works.
 ## The model
 
 ```
-gate ──▶ oracle.decide(available_intents, threshold)
+gate ──▶ agent.decide(available_intents, threshold)
             │  INTERPRETIVE (recorded): ranks ALL available intents,
             │  returns winner + confidence + ranked alternatives
             ▼
@@ -105,10 +105,10 @@ documented in `trace-format.md` alongside slice #1.
 
 ## Engine seams & invariants
 
-- **Where it hooks:** the verdict parse in `oracle_decide.go` (~`:215`) and
+- **Where it hooks:** the verdict parse in `agent_decide.go` (~`:215`) and
   the payload build in `decider.go:recordGate` (`:260-273`).
 - **Load-time invariant:** none new — the schema relaxation is validated by
-  the existing oracle-schema conformance path. A defensive runtime check:
+  the existing agent-schema conformance path. A defensive runtime check:
   if `alternatives` is present, every entry's `intent` must be a member of
   the gate's `available_intents` (drop unknowns with a warning rather than
   fail the turn — a hallucinated extra intent must never become selectable).
@@ -125,7 +125,7 @@ documented in `trace-format.md` alongside slice #1.
   recordings capture it going forward. The Layer-7 byte-equality replay
   guard (`internal/runstatus/snapshot.go` `FromSink`) confirms legacy
   cassettes stay byte-identical.
-- **Local-model backend** (`local-model-oracle.md`): grammar-forced output
+- **Local-model backend** (`local-model-agent.md`): grammar-forced output
   can include the ranked array, but small models may rank poorly — the field
   being optional means a backend can omit it without breaking gates.
 
@@ -134,7 +134,7 @@ documented in `trace-format.md` alongside slice #1.
 ```
 ## 1. Engine
 - [ ] 1.1 Add Verdict.alternatives ([{intent,score,reason?}]); relax the decide schema (still additionalProperties:false per entry)
-- [ ] 1.2 Parse alternatives in oracle_decide.go; runtime check that each intent ∈ available_intents (drop+warn unknowns)
+- [ ] 1.2 Parse alternatives in agent_decide.go; runtime check that each intent ∈ available_intents (drop+warn unknowns)
 - [ ] 1.3 Record alternatives (+ threshold) into machine.gate_decided (decider.go recordGate)
 
 ## 2. Verification
@@ -149,8 +149,8 @@ documented in `trace-format.md` alongside slice #1.
 
 ## Verification
 
-No LLM needed: a flow fixture stubs the decide oracle's response (per
-`feedback_oracle_stub_by_id`) to return a verdict *with* a ranked
+No LLM needed: a flow fixture stubs the decide agent's response (per
+`feedback_agent_stub_by_id`) to return a verdict *with* a ranked
 `alternatives` array, and a stateless `kitsoki turn` (or the flow runner)
 asserts the `gate_decided` event carries it while the chosen intent and
 transition match the no-alternatives baseline. A mutation check — stub an

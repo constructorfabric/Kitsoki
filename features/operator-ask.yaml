@@ -3,7 +3,7 @@ id: operator-ask
 kind: feature
 title: Operator questions, forwarded
 tagline: Agent questions become blocking operator modals — never silent defaults.
-summary: "When a dispatched oracle agent asks a question, kitsoki parks the turn and forwards it to the operator: the web UI raises a hard modal with the agent's question and options (single- or multi-select), and the answer flows back to unblock the agent. No headless auto-resolution, no silent landmines."
+summary: "When a dispatched agent agent asks a question, kitsoki parks the turn and forwards it to the operator: the web UI raises a hard modal with the agent's question and options (single- or multi-select), and the answer flows back to unblock the agent. No headless auto-resolution, no silent landmines."
 promo:
   order: 40
 docs:
@@ -32,7 +32,7 @@ tour:
       route: home
       target: story-card
       title: The bug-fix pipeline
-      body: "This story hands a ticket to a dispatched `claude -p` autofix agent. Here's the landmine kitsoki defuses: run that agent headless and its AskUserQuestion doesn't block — the tool silently auto-resolves to an *empty* answer, so the agent sails past the fork on a non-decision you never see. kitsoki hard-denies that tool and forwards the question back to the operator instead — the oracle turn parks, blocking, until a human answers."
+      body: "This story hands a ticket to a dispatched `claude -p` autofix agent. Here's the landmine kitsoki defuses: run that agent headless and its AskUserQuestion doesn't block — the tool silently auto-resolves to an *empty* answer, so the agent sails past the fork on a non-decision you never see. kitsoki hard-denies that tool and forwards the question back to the operator instead — the agent turn parks, blocking, until a human answers."
       placement: right
       kind: explain
       advance: next
@@ -93,7 +93,7 @@ tour:
       route: interactive
       target: oq-submit
       title: Send the answer
-      body: Send answer echoes the operator's choice back to the backend keyed by the question_id, which unblocks the exact parked oracle goroutine — and the modal dismisses. The agent resumes with the operator's decision.
+      body: Send answer echoes the operator's choice back to the backend keyed by the question_id, which unblocks the exact parked agent goroutine — and the modal dismisses. The agent resumes with the operator's decision.
       placement: top
       kind: action
       advance: click-target
@@ -132,7 +132,7 @@ tour:
     - id: oa-done
       route: interactive
       title: That's operator-ask forwarding
-      body: "You've seen the full round-trip: a dispatched agent forwards a question, kitsoki parks the oracle turn and surfaces a blocking modal, the operator picks (single- or multi-select), and Send answer echoes the choice back to unblock the exact parked goroutine. The headless default would have let the agent guess on an empty answer — here a human decides the fork instead, and the runtime never moves until they do."
+      body: "You've seen the full round-trip: a dispatched agent forwards a question, kitsoki parks the agent turn and surfaces a blocking modal, the operator picks (single- or multi-select), and Send answer echoes the choice back to unblock the exact parked goroutine. The headless default would have let the agent guess on an empty answer — here a human decides the fork instead, and the runtime never moves until they do."
       placement: center
       kind: explain
       advance: next

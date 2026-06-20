@@ -5,14 +5,14 @@
 // happy_llm_then_human, comments_round_trip) all stub iface.transport.post
 // via host.append_to_file, so they never exercise the full chain:
 //
-//   oracle.decide returns ok with Data["submitted"] = diagnose_artifact
+//   agent.decide returns ok with Data["submitted"] = diagnose_artifact
 //     → orchestrator binds `diagnose_artifact: submitted` into world
 //     → iface.transport.post's `body: "{{ world.diagnose_artifact.summary_markdown }}"` re-renders
 //     → bodyArg in artifacts_dir pretty-prints map[string]any as JSON
 //     → file on disk
 //
 // This test rebinds iface.transport → host.artifacts_dir and stubs only
-// host.oracle.decide and host.inbox.add inline (returning a fully-shaped
+// host.agent.decide and host.inbox.add inline (returning a fully-shaped
 // diagnose_artifact with a sentinel string), then asserts the file on disk
 // contains the sentinel and is not the silent-failure signatures `{}` or
 // `<map[`.

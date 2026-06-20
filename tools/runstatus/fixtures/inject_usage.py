@@ -4,7 +4,7 @@
 The cassette-replay fixtures (bugfix / completed / in-progress / edge-cases)
 were recorded without token usage, so the runstatus UI has nothing to show in
 the per-call header or the run-total chip. This backfills each
-`oracle.call.complete` event with the canonical transport `meta` shape the live
+`agent.call.complete` event with the canonical transport `meta` shape the live
 claude-CLI transport now emits:
 
     attrs.meta = {
@@ -116,7 +116,7 @@ def inject(path):
     idx = 0
     touched = 0
     for ev in doc.get("events", []):
-        if ev.get("msg") != "oracle.call.complete":
+        if ev.get("msg") != "agent.call.complete":
             continue
         attrs = ev.setdefault("attrs", {})
         meta = attrs.get("meta")
@@ -141,7 +141,7 @@ def inject(path):
     with open(path, "w") as f:
         f.write(text)
         f.write("\n")
-    print(f"{path}: injected usage into {touched} oracle.call.complete events")
+    print(f"{path}: injected usage into {touched} agent.call.complete events")
 
 
 if __name__ == "__main__":

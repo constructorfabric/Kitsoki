@@ -3,9 +3,9 @@
 # effect auto-advances each checkpoint by dispatching the verdict's
 # intent (contract §6 step 4). End-to-end this proves:
 #   - the `when:` guard on the judge invoke (it fires in llm mode)
-#   - the binding of llm_verdict (post host.oracle.decide)
+#   - the binding of llm_verdict (post host.agent.decide)
 #   - the post-bind emit_intent dispatch (DispatchPostBindEmits)
-#     auto-fires `accept` in the SAME turn as the artifact oracle,
+#     auto-fires `accept` in the SAME turn as the artifact agent,
 #     because the judge now runs in the merged room's on_enter.
 #
 # Cascade behaviour: each `accept` lands at the next room, whose
@@ -41,14 +41,14 @@ host_handlers:
   host.local:
     data: { ok: true, log: "PASS: 12 tests", passed: 12, failed: 0 }
 
-  # In `llm` mode every merged room ALSO fires host.oracle.decide
+  # In `llm` mode every merged room ALSO fires host.agent.decide
   # via the `judge_<phase>.md` prompt from on_enter. The runtime can't
   # branch the stub response on prompt (it returns the SAME Data for
   # every call). So our stub returns a submitted: payload that
   # satisfies BOTH the artifact schema AND the judge_verdict schema
   # (verdict/intent/reason/confidence are additional fields the artifact
   # schema ignores via additionalProperties: true).
-  host.oracle.task:
+  host.agent.task:
     data:
       stdout: ""
       ok: true
@@ -76,7 +76,7 @@ host_handlers:
         intent:     "accept"
         reason:     "Artifact looks complete and the confidence is high enough to advance."
 
-  host.oracle.ask:
+  host.agent.ask:
     data:
       stdout: ""
       ok: true
@@ -104,7 +104,7 @@ host_handlers:
         intent:     "accept"
         reason:     "Artifact looks complete and the confidence is high enough to advance."
 
-  host.oracle.decide:
+  host.agent.decide:
     data:
       stdout: ""
       ok: true

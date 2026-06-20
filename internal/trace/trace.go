@@ -11,7 +11,7 @@
 //
 //	turn.start, turn.routed, turn.stepped, turn.persisted, turn.done
 //	harness.request, harness.response.raw, harness.response.parsed
-//	harness.retry, harness.error, harness.exec, harness.oracle_hit, harness.oracle_miss
+//	harness.retry, harness.error, harness.exec, harness.agent_hit, harness.agent_miss
 //	machine.guard.eval, machine.guard.winner, machine.effect.applied
 //	machine.transition, machine.validation.rejected
 //	expr.compile_error, expr.eval_error
@@ -112,7 +112,7 @@ const (
 	// live-watch surface keys on); EvInterceptResolved / EvInterceptAborted close
 	// it (the flow settled at a non-flagged resting place, or was safe-aborted
 	// leaving a clean tree). The live, round-by-round feed while the drive runs is
-	// the persisted session's OWN native events (oracle.call.*, transitions) — the
+	// the persisted session's OWN native events (agent.call.*, transitions) — the
 	// drive needs no bespoke per-round event; `rounds` on the closing event is
 	// derived from that same event log.
 	//
@@ -160,7 +160,7 @@ const (
 	// trace breadcrumb.
 	EvTurnLLMRouted = "turn.llm_routed"
 
-	// EvTurnLLMMiss fires when the local-model routing tier (oracle.local on a
+	// EvTurnLLMMiss fires when the local-model routing tier (agent.local on a
 	// semantic no_match) was tried but did not produce a usable verdict — it
 	// returned "none"/low-confidence or errored — so routing falls through to
 	// the main-turn LLM. The `model` attr names the backend that missed. Lets
@@ -188,7 +188,7 @@ const (
 	EvTimeoutError     = "timeout.error"
 	EvTimeoutRearmed   = "timeout.rearmed"
 
-	// Teleport (used by inbox, off-path return, oracle return, etc.).
+	// Teleport (used by inbox, off-path return, agent return, etc.).
 	// The synthetic turn it appends is already covered by turn.* but
 	// teleport.* records the user-visible "I jumped sideways" intent.
 	EvTeleportStart = "teleport.start"

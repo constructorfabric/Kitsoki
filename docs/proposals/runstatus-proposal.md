@@ -25,11 +25,11 @@ Shipped:
 
   **Deviation from the original plan, with reason:** the live listener
   is a new `kitsoki status serve` command reading the **JSONL trace**,
-  not an `--http` flag on `oracle serve` reading the session store. The
-  oracle-serve daemon is a stateless per-call RPC with no session
+  not an `--http` flag on `agent serve` reading the session store. The
+  agent-serve daemon is a stateless per-call RPC with no session
   history, and — decisively — the SQLite session store does not persist
   per-event `state_path` / `call_id` / `parent_turn`. Those live only
-  in the JSONL trace, and the SPA needs them (oracle-call pairing by
+  in the JSONL trace, and the SPA needs them (agent-call pairing by
   `call_id`, state grouping by `state_path`). Sourcing live mode from
   the store would have been silently lossy, violating the "the trace
   must always be correct" rule. The trace-backed command is both
@@ -60,7 +60,7 @@ One Vite build, two delivery modes:
 
 - **Self-contained HTML artifact** — `kitsoki export-status` writes
   a single file with the snapshot inlined; opens with `file://`.
-- **Live** — the existing oracle daemon gains an HTTP listener;
+- **Live** — the existing agent daemon gains an HTTP listener;
   the SPA connects via JSON-RPC + SSE and updates as the run
   progresses.
 
@@ -132,7 +132,7 @@ single place where "what is this?" gets answered.
 
 ```
 ┌──────────────────────────────┐
-│ kitsoki oracle serve         │  same dispatcher as oracle.*,
+│ kitsoki agent serve         │  same dispatcher as agent.*,
 │   --http :7777               │  one extra namespace.
 │   (existing unix socket +    │
 │    new HTTP listener)        │
@@ -161,9 +161,9 @@ Components never know which mode they're in.
 
 ### Reuse
 
-The oracle-split work (merged in `5b71629`) gives us a working
+The agent-split work (merged in `5b71629`) gives us a working
 JSON-RPC 2.0 dispatcher with interleaved server-side notifications
-(`cmd/kitsoki/oracle_serve.go:309-341`, `:346-373`). The framing,
+(`cmd/kitsoki/agent_serve.go:309-341`, `:346-373`). The framing,
 the `parent_session_id` threading, and the per-call timeout pattern
 are reusable as-is.
 
@@ -208,7 +208,7 @@ New `runstatus.*` namespace, all read-only.
 | `runstatus.session.subscribe` | `{subscription_id}` | Opens a stream slot. |
 | `runstatus.session.unsubscribe` | `{ok:true}` | Tear down. |
 
-Notification shape mirrors `oracle.event`:
+Notification shape mirrors `agent.event`:
 
 ```
 {"jsonrpc":"2.0","method":"runstatus.event",
@@ -386,7 +386,7 @@ Primary target: **artifact mode**. Playwright loads the built HTML
 from `file://` with each fixture inlined. No server, no startup
 ordering, sub-second per test.
 
-Secondary suite: boots `kitsoki oracle serve --http :0` against a
+Secondary suite: boots `kitsoki agent serve --http :0` against a
 recorded trace replay and validates live-mode behaviors (SSE,
 reconnect backfill, subscribe lifecycle). Smaller; runs in CI, not
 on every dev iteration.
@@ -421,7 +421,7 @@ Playwright config: `workers: 4`, no `webServer` for artifact tests
 
 - `internal/runstatus/` — method handlers, session registry, SSE
   sink wrapping the ring buffer.
-- `internal/http/` (or extension of the oracle-serve package) —
+- `internal/http/` (or extension of the agent-serve package) —
   HTTP listener, `POST /rpc`, `GET /rpc/events`, static asset
   handler.
 - `internal/viz/nodemap.go` — `FlowchartWithMap()` and `NodeRef`.
@@ -433,7 +433,7 @@ Playwright config: `workers: 4`, no `webServer` for artifact tests
 
 **Modified:**
 
-- `cmd/kitsoki/oracle_serve.go` — register `runstatus.*` namespace;
+- `cmd/kitsoki/agent_serve.go` — register `runstatus.*` namespace;
   add HTTP listener behind `--http`.
 - `internal/viz/flowchart.go` — extracted helper used by both
   `Flowchart()` and `FlowchartWithMap()`.
@@ -467,7 +467,7 @@ rendering polished.
 
 ### Phase 3 — Live mode
 
-`--http` listener on `kitsoki oracle serve`. `runstatus.*` methods.
+`--http` listener on `kitsoki agent serve`. `runstatus.*` methods.
 SSE stream. Single-session auto-nav. Backfill on reconnect.
 Live-mode Playwright suite.
 
@@ -495,7 +495,7 @@ the runner supports it.
 
 - Transport: **HTTP+SSE** (not WebSocket). JSON-RPC for control,
   `text/event-stream` for updates.
-- Server: **fold into `kitsoki oracle serve`** behind `--http`; one
+- Server: **fold into `kitsoki agent serve`** behind `--http`; one
   daemon, two namespaces.
 - Scope: **single session** for v1; the list endpoint exists so the
   UI's picker code path is real, but it returns 0 or 1 entries.

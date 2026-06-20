@@ -6,9 +6,9 @@
 # frame-seam proof — no fixture stub for the artifact itself).
 #
 # Posture (mirrors happy_deck.yaml — all interpretive calls stubbed by invoke
-# id, memory: oracle-stub-by-id) EXCEPT the one seam we want REAL:
+# id, memory: agent-stub-by-id) EXCEPT the one seam we want REAL:
 #
-#   - intake/brief-gate/authoring oracle calls are STUBBED (no LLM).
+#   - intake/brief-gate/authoring agent calls are STUBBED (no LLM).
 #   - host.slidey.render (render_deck) is STUBBED to return the REAL pre-rendered
 #     mp4 + chapters.json paths under .artifacts/review-video/render — produced
 #     out-of-band by the real slidey producer before the recording (so the demo
@@ -42,7 +42,7 @@ host_handlers:
   host.chat.resolve:
     data: { ok: true, chat_id: "chat-1", title: "Mockup video brief discovery" }
 
-  host.oracle.converse:
+  host.agent.converse:
     by_call:
       distil_brief:
         data:
@@ -53,14 +53,14 @@ host_handlers:
             medium: "deck"
             notes: ""
 
-  host.oracle.decide:
+  host.agent.decide:
     by_call:
       brief_check:
         data:
           ok: true
           submitted: { verdict: "ok", reason: "Feature, scenarios, and medium are all concrete." }
 
-  host.oracle.task:
+  host.agent.task:
     by_call:
       author_source:
         data:

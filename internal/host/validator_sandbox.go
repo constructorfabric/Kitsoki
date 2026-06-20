@@ -1,5 +1,5 @@
-// Package host — read-only subprocess sandbox for host.oracle.decide /
-// host.oracle.extract validators.
+// Package host — read-only subprocess sandbox for host.agent.decide /
+// host.agent.extract validators.
 //
 // ValidatorSandbox runs a subprocess in a best-effort read-only environment so
 // a validator that attempts to mutate state outside /tmp fails with EACCES

@@ -1,0 +1,69 @@
+{
+  "records": [
+    {
+      "session": "sess-fix",
+      "spans": [
+        {
+          "span": [1, 7],
+          "tags": { "action": ["fix-failing-tests"], "surface": ["test", "code"], "scope": ["single-file"] },
+          "actions": [
+            {
+              "tool": "Bash",
+              "signature": "go test ./<pkg>/... -run <Test>",
+              "parameters": { "pkg": "foo", "Test": "TestBar" },
+              "cite": { "line": 3 }
+            },
+            {
+              "tool": "Edit",
+              "signature": "Edit <file>",
+              "parameters": { "file_path": "foo/bar.go" },
+              "cite": { "line": 5 }
+            },
+            {
+              "tool": "Bash",
+              "signature": "go test ./<pkg>/... -run <Test>",
+              "parameters": { "pkg": "foo", "Test": "TestBar" },
+              "cite": { "line": 6 }
+            }
+          ]
+        },
+        {
+          "span": [8, 12],
+          "tags": { "action": ["write-docs"], "surface": ["docs"], "scope": ["single-file"] },
+          "actions": [
+            {
+              "tool": "Write",
+              "signature": "Write <file>",
+              "parameters": { "file_path": "docs/bar.md" },
+              "cite": { "line": 10 }
+            },
+            {
+              "tool": "Read",
+              "signature": "Read <file>",
+              "parameters": { "file_path": "foo/legacy.go" },
+              "cite": { "line": 11 }
+            }
+          ],
+          "agent_gates": [
+            {
+              "decision": "mention the legacy path or omit it",
+              "validator": "human/LLM review of whether legacy callers still reference the path; diff the doc against foo/legacy.go usages"
+            }
+          ]
+        },
+        {
+          "span": [1, 1],
+          "tags": { "action": ["explore-codebase"] },
+          "actions": [
+            {
+              "tool": "Bash",
+              "signature": "grep <pattern>",
+              "parameters": { "pattern": "nonexistent-fabricated-value" },
+              "cite": { "line": 3 }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

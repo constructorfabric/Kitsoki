@@ -203,15 +203,15 @@ func TestTUIWinningPath(t *testing.T) {
 	}
 }
 
-// setupCloakWithOracle builds a cloak orchestrator wired with a real chat
-// store and the host-package's fake-oracle.sh as the claude stand-in.
+// setupCloakWithAgent builds a cloak orchestrator wired with a real chat
+// store and the host-package's fake-agent.sh as the claude stand-in.
 // Returns the underlying store handle so tests can sniff the event log.
-func setupCloakWithOracle(t *testing.T) (*orchestrator.Orchestrator, app.SessionID, store.Store) {
+func setupCloakWithAgent(t *testing.T) (*orchestrator.Orchestrator, app.SessionID, store.Store) {
 	t.Helper()
 
-	// Point the oracle handler at the fake-oracle.sh shipped with the
+	// Point the agent handler at the fake-agent.sh shipped with the
 	// host package's testdata. Path is repo-root-relative.
-	t.Setenv("KITSOKI_ORACLE_CLAUDE_BIN", "../host/testdata/fake-oracle.sh")
+	t.Setenv("KITSOKI_AGENT_CLAUDE_BIN", "../host/testdata/fake-agent.sh")
 
 	def, err := app.Load("../../testdata/apps/cloak/app.yaml")
 	require.NoError(t, err)
@@ -240,12 +240,12 @@ func setupCloakWithOracle(t *testing.T) (*orchestrator.Orchestrator, app.Session
 	return orch, sid, s
 }
 
-// TestTUIOffPathInputRoutesToOracle exercises the off-path runtime end-to-end:
-// /freeform flips ModeOffPath, the next text submission goes to the oracle
+// TestTUIOffPathInputRoutesToAgent exercises the off-path runtime end-to-end:
+// /freeform flips ModeOffPath, the next text submission goes to the agent
 // via AskOffPath, the orchestrator's foreground Turn() machinery is NOT
 // invoked, and only the off-path event kinds land in the session log.
-func TestTUIOffPathInputRoutesToOracle(t *testing.T) {
-	orch, sid, s := setupCloakWithOracle(t)
+func TestTUIOffPathInputRoutesToAgent(t *testing.T) {
+	orch, sid, s := setupCloakWithAgent(t)
 	m := buildModel(t, orch, sid)
 
 	// /freeform → ModeOffPath.
@@ -260,12 +260,12 @@ func TestTUIOffPathInputRoutesToOracle(t *testing.T) {
 	// (not ModeOnPath — the banner stays).
 	require.Equal(t, tuipkg.ModeOffPath, extractMode(t, m))
 
-	// The transcript should contain the fake oracle's echo of our question.
+	// The transcript should contain the fake agent's echo of our question.
 	transcriptText := extractTranscript(t, m)
 	require.Contains(t, transcriptText, "what is the meaning of life?",
 		"transcript should include the user's off-path question header")
 	require.Contains(t, transcriptText, "ANSWER for q=[what is the meaning of life?]",
-		"transcript should include the fake oracle's echoed answer")
+		"transcript should include the fake agent's echoed answer")
 
 	// Sniff the raw event log: only off-path event kinds should be
 	// present from the off-path question; in particular, no

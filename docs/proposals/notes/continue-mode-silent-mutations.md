@@ -112,7 +112,7 @@ reason.
 ### S14 — `chats.Store.SetClaudeSessionID`
 
 - **File:** `internal/chats/store.go:266-278`
-- **What:** Sets `chats.claude_session_id`. Called on the first turn of an oracle chat to record the claude-side session ID.
+- **What:** Sets `chats.claude_session_id`. Called on the first turn of an agent chat to record the claude-side session ID.
 - **Decision:** **JOURNAL-IT** — as part of the `chats/<id>` document's `meta` block. The proposal §4.8 already designates `claude_session_id` as the bridge to claude's own durability layer.
 - **Reason:** Without it, resume cannot reattach the claude session via `--resume <id>` and would start a fresh claude conversation, losing context.
 

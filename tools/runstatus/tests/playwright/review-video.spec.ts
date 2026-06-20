@@ -19,7 +19,7 @@
  *
  * Determinism / no-LLM posture (.agents/skills/kitsoki-ui-demo/SKILL.md):
  *   - `kitsoki web --flow stories/mockup-video/flows/demo_review.yaml`: the
- *     intake/brief-gate/authoring oracle calls are stubbed, and
+ *     intake/brief-gate/authoring agent calls are stubbed, and
  *     host.slidey.render is stubbed to return the REAL pre-rendered files under
  *     .artifacts/review-video/render. host.artifacts_dir is NOT stubbed, so the
  *     REAL builtin runs and journals the artifact handle the resolver serves.

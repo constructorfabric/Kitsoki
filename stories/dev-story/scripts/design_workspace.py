@@ -5,7 +5,7 @@ return the per-session workspace path.
 Usage:
     python3 design_workspace.py <proposed-slug>
 
-The slug itself is named by an oracle.decide call (the LLM turns the idea
+The slug itself is named by an agent.decide call (the LLM turns the idea
 into a short kebab-case name — see prompts/design_slug.md); THIS script is
 the deterministic uniqueness check that completes the validation sandwich:
 it ensures the slug collides with neither an accepted proposal

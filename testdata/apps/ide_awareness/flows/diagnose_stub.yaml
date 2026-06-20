@@ -1,5 +1,5 @@
 # diagnose_stub — slice-1 verification (item 2): host.ide.* stubbed by
-# per-invoke id (feedback_oracle_stub_by_id), exercising BOTH branches.
+# per-invoke id (feedback_agent_stub_by_id), exercising BOTH branches.
 #
 # host_handlers: registers one stub for host.ide.get_diagnostics that
 # dispatches on the invoke's id: (editor_diagnostics) via by_call:. Because the

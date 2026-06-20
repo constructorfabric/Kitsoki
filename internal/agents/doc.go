@@ -21,7 +21,7 @@
 //     [BuildSpec] the loader supplies. A spec whose Name equals a builtin
 //     REPLACES that builtin for the lifetime of the returned registry;
 //     a new name is simply added. This is how an app's agents: block
-//     overrides, say, default-oracle without forking the package.
+//     overrides, say, default-agent without forking the package.
 //  3. [Registry.Get] is the runtime lookup the controller uses each turn;
 //     it returns the Agent and an ok flag, never an error.
 //
@@ -44,13 +44,13 @@
 // resolving an agent by name:
 //
 //	specs := []agents.BuildSpec{{
-//	    Name:         "default-oracle",   // overrides the builtin
+//	    Name:         "default-agent",   // overrides the builtin
 //	    SystemPrompt: "You are the river guide.",
 //	    Tools:        []string{"Read"},
 //	}}
 //	reg, _ := agents.BuildRegistry(specs)
 //
-//	a, ok := reg.Get("default-oracle")
+//	a, ok := reg.Get("default-agent")
 //	// ok == true
 //	// a.SystemPrompt == "You are the river guide."  (override won)
 //	// a.Tools        == ["Read"]

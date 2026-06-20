@@ -29,7 +29,7 @@
 #                    not as an orchestrator host call, so it may or may not
 #                    be needed; stubbed defensively)
 #   host.inbox.add — code_awaiting_reply.on_enter checkpoint post
-#   (oracle.decide suppressed by judge_mode: "human")
+#   (agent.decide suppressed by judge_mode: "human")
 
 test_kind: flow
 app: ../app.yaml
@@ -102,7 +102,7 @@ turns:
   #      body: "{{ world.code_artifact.summary_markdown }}" → writes
   #      CYPILOT-RT-001.md under $KITSOKI_ARTIFACTS_ROOT
   #   2. host.inbox.add (stubbed)
-  #   judge_mode=human suppresses oracle.decide
+  #   judge_mode=human suppresses agent.decide
   - intent: { name: proceed, slots: {} }
     expect_state: code_awaiting_reply
 

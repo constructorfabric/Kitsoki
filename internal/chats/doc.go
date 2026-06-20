@@ -4,7 +4,7 @@
 // `kitsoki chat` CLI call [Store] methods; the [Store] never reaches up
 // into the orchestrator and owns no goroutines of its own.
 //
-// A chat is a conversation thread within a room (e.g. "oracle",
+// A chat is a conversation thread within a room (e.g. "agent",
 // "bugfix.phase_3"). Chats are global: they are not tied to a kitsoki
 // session and survive process restarts, so the same chat can be driven
 // from the TUI, from `kitsoki chat continue`, or as a background job.
@@ -112,7 +112,7 @@
 // content the LLM is highly motivated to follow, or non-Latin obfuscation
 // of closing tags) can still influence picker behaviour. Treat picker
 // results as advisory — they are wired into a confirmation step in the
-// caller (Oracle's "open <ref>" flow) rather than directly mutating state.
+// caller (Agent's "open <ref>" flow) rather than directly mutating state.
 //
 // # Non-goals
 //

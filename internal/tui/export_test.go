@@ -481,7 +481,7 @@ func ScheduleInboxPollForTest(m RootModel, d time.Duration) tea.Cmd {
 
 // NewMetaSendDoneMsgForTest constructs a metaSendDoneMsg for injection
 // into Update(). Used by reload-flag tests to exercise the
-// SendResult.ReloadRequested path without running a real oracle.
+// SendResult.ReloadRequested path without running a real agent.
 func NewMetaSendDoneMsgForTest(userText, assistantText string, reload bool, err error) tea.Msg {
 	return metaSendDoneMsg{
 		userText: userText,

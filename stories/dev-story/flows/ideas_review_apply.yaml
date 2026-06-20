@@ -19,7 +19,7 @@ initial_world:
   judge_mode: "human"
 
 host_handlers:
-  host.oracle.decide:
+  host.agent.decide:
     by_call:
       ideas_review:
         data:

@@ -7,7 +7,7 @@
 #   2. accept arc posts the artifact to transport AND transitions to
 #      proposing — one keystroke, one decision, one post.
 #   3. Lands at proposing in the SAME turn; proposing.on_enter kicks
-#      off its oracle. You should see streamed tool-use events in chat.
+#      off its agent. You should see streamed tool-use events in chat.
 #
 # A second `continue` from proposing repeats the pattern. And so on,
 # one keystroke per merged room, until @exit:done hands off to
@@ -17,7 +17,7 @@
 # on_enter? Because Teleport (the engine warp seam) DOESN'T fire
 # on_enter — it just sets state + merges world. So warping to
 # core.landing and typing `bugfix` works, but adds a navigation hop
-# and a real oracle call before the merged-room advance under test
+# and a real agent call before the merged-room advance under test
 # kicks in. Skipping straight to reproducing with the artifact
 # pre-bound is more direct for verification.
 #
@@ -78,7 +78,7 @@ world:
       ## Reproduction (seeded by verify_autostart warp)
 
       This is a synthetic reproduction artifact pre-bound by the
-      verify_autostart scenario. The real reproducing oracle would
+      verify_autostart scenario. The real reproducing agent would
       write something specific to this bug; for verification
       purposes the body is a placeholder.
 

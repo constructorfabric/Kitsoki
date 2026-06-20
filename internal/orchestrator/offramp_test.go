@@ -114,18 +114,18 @@ func (offRampClarifyHarness) RunTurn(ctx context.Context, in harness.TurnInput) 
 }
 func (offRampClarifyHarness) Close() error { return nil }
 
-// offRampFakeOraclePath resolves the shared fake-oracle.sh stub (the converse
+// offRampFakeAgentPath resolves the shared fake-agent.sh stub (the converse
 // stand-in) by absolute path. White-box sibling of offpath_test.go's
-// fakeOraclePath, replicated because that helper lives in the orchestrator_test
+// fakeAgentPath, replicated because that helper lives in the orchestrator_test
 // package and isn't visible here.
-func offRampFakeOraclePath(t *testing.T) string {
+func offRampFakeAgentPath(t *testing.T) string {
 	t.Helper()
 	_, thisFile, _, ok := runtime.Caller(0)
 	require.True(t, ok)
-	path := filepath.Join(filepath.Dir(thisFile), "..", "host", "testdata", "fake-oracle.sh")
+	path := filepath.Join(filepath.Dir(thisFile), "..", "host", "testdata", "fake-agent.sh")
 	info, err := os.Stat(path)
-	require.NoErrorf(t, err, "fake-oracle.sh not found at %s", path)
-	require.NotZerof(t, info.Mode()&0111, "fake-oracle.sh is not executable")
+	require.NoErrorf(t, err, "fake-agent.sh not found at %s", path)
+	require.NotZerof(t, info.Mode()&0111, "fake-agent.sh is not executable")
 	return path
 }
 
@@ -145,9 +145,9 @@ func offRampAppRootedAt(root string) *app.AppDef {
 		},
 		States: map[string]*app.State{
 			"idea": {
-				View:          app.LegacyView("Tell me about your idea."),
-				OracleOffRamp: &app.OffRampDef{}, // enabled, bare-form voice
-				On:            map[string][]app.Transition{"look": {{Target: "idea"}}},
+				View:         app.LegacyView("Tell me about your idea."),
+				AgentOffRamp: &app.OffRampDef{}, // enabled, bare-form voice
+				On:           map[string][]app.Transition{"look": {{Target: "idea"}}},
 			},
 			"menu": {
 				View: app.LegacyView("Pick something."),
@@ -158,7 +158,7 @@ func offRampAppRootedAt(root string) *app.AppDef {
 }
 
 // setupOffRampOrch wires a white-box orchestrator with a real chats.Store and
-// the fake-oracle stub as the converse backend, returning the orchestrator,
+// the fake-agent stub as the converse backend, returning the orchestrator,
 // raw store, and a fresh session id.
 func setupOffRampOrch(t *testing.T) (*Orchestrator, store.Store, app.SessionID) {
 	return setupOffRampOrchWith(t, offRampNoopHarness{})
@@ -178,9 +178,9 @@ func setupOffRampOrchWith(t *testing.T, h harness.Harness) (*Orchestrator, store
 // genuine INTENT_UNKNOWN — the path the off-ramp wiring intercepts.
 func setupOffRampOrchDef(t *testing.T, def *app.AppDef, h harness.Harness, noMatchMachine bool) (*Orchestrator, store.Store, app.SessionID) {
 	t.Helper()
-	t.Setenv(host.OracleBinEnv, offRampFakeOraclePath(t))
+	t.Setenv(host.AgentBinEnv, offRampFakeAgentPath(t))
 
-	// The runtime treats a non-nil State.OracleOffRamp as "the off-ramp
+	// The runtime treats a non-nil State.AgentOffRamp as "the off-ramp
 	// fires" — that's the loader's post-normalize contract (it nils the
 	// pointer for a disabled `false`). Building &OffRampDef{} in Go therefore
 	// models an enabled bare-form off-ramp without needing the YAML loader.

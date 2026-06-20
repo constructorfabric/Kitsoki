@@ -9,7 +9,7 @@
 `runstatus` renders each event by ad-hoc per-component matching: the
 timeline enumerates subsystem prefixes by hand for its filter chips
 (`TraceTimeline.vue:243`), `EventDetail.vue` dispatches to a specific detail
-component per kind, and the oracle/host detail components each re-derive
+component per kind, and the agent/host detail components each re-derive
 "what am I" from the raw `msg`. There is no single answer to "what *kind of
 thing* is this event" — so badging, coloring, collapse-by-category, and a
 future Graph-view layout-by-kind are each reinvented per surface.
@@ -18,14 +18,14 @@ Langfuse gets its rendering richness for free because the observation
 *type* is semantic — a Generation renders one way, a Retriever another
 (`.context/langfuse-trace-viewer-comparison.md`, idea #2). We already have
 the equivalent raw signal: every `EventKind` is a dotted string with a
-subsystem prefix (`turn.*`, `oracle.*`, `machine.*`, `world.*`, `harness.*`)
+subsystem prefix (`turn.*`, `agent.*`, `machine.*`, `world.*`, `harness.*`)
 and a clear semantic role. What's missing is *naming the small set of
 semantic categories once* so every consumer agrees.
 
 ## What changes
 
 One sentence: **define a canonical, closed set of observation kinds —
-`decision | oracle-call | host-call | narration | world-mutation | routing |
+`decision | agent-call | host-call | narration | world-mutation | routing |
 lifecycle` — as a pure function of the existing `Event.Kind` string, exposed
 once on the Go side (and mirrored in the SPA), so consumers badge, color,
 collapse, and lay out by category instead of re-matching `msg`.**
@@ -42,7 +42,7 @@ documented mapping table + the one place that owns it.
 - **Consumers:** a new canonical map (Go: `internal/store/observation.go` →
   `ObservationKind(kind string) Kind`; SPA: `src/lib/observation.ts`
   mirroring it). Refactor `TraceTimeline.vue:243` (filter chips),
-  `EventDetail.vue` (detail dispatch), and the oracle/host detail routing to
+  `EventDetail.vue` (detail dispatch), and the agent/host detail routing to
   read the category instead of re-matching prefixes.
 - **Format:** no wire change. The taxonomy is documented in
   `docs/tracing/trace-format.md` as the canonical reading of `EventKind`.
@@ -58,9 +58,9 @@ No new event. The taxonomy is a projection of the constants in
 
 | Observation kind | `EventKind`(s) it covers | Why grouped |
 |---|---|---|
-| `decision` | `machine.gate_decided` (`:141`), `oracle.off_path.{question,answer}` (`:67,:70`) | An interpretive choice with available/chosen/confidence — the moat; rendered decision-first (slice #2) |
+| `decision` | `machine.gate_decided` (`:141`), `agent.off_path.{question,answer}` (`:67,:70`) | An interpretive choice with available/chosen/confidence — the moat; rendered decision-first (slice #2) |
 | `routing` | `turn.start` (`:22`, carries tier/match/confidence), `machine.intent_accepted` (`:95`) | What advanced the turn and how it was routed |
-| `oracle-call` | `oracle.call.{start,complete,error}` (`:148,:153,:158`), `oracle.tool_call` (`:29`) | An LLM/operator call with prompt/response/cost/latency |
+| `agent-call` | `agent.call.{start,complete,error}` (`:148,:153,:158`), `agent.tool_call` (`:29`) | An LLM/operator call with prompt/response/cost/latency |
 | `host-call` | `harness.{called,dispatched,returned,error}` (`:50,:57,:59,:118`) | Deterministic side-effecting execution |
 | `narration` | `machine.say` (`:45`), `turn.end` (`:89`, carries the rendered `view`) | Operator-facing text |
 | `world-mutation` | `world.update` (`:39`) | A `set:` world write |
@@ -115,7 +115,7 @@ regeneration required.
 - [ ] 1.1 internal/store/observation.go: ObservationKind(kind) closed-set map + exported Kind type
 - [ ] 1.2 Go test: every EventKind constant maps to exactly one non-empty category (drift guard)
 - [ ] 1.3 src/lib/observation.ts: mirror; Vitest asserts it equals the Go golden dump
-- [ ] 1.4 Refactor TraceTimeline.vue:243 chips, EventDetail.vue dispatch, oracle/host routing to read the category
+- [ ] 1.4 Refactor TraceTimeline.vue:243 chips, EventDetail.vue dispatch, agent/host routing to read the category
 
 ## 2. Prove
 - [ ] 2.1 bugfix.spec.ts still green; rows badge/group by category

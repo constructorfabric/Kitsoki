@@ -20,7 +20,7 @@ host_handlers:
         delay: "20ms"
       write_report:
         data: { exit_code: 0, ok: true, stdout: ".artifacts/fix-tests/report-fixed.md" }
-  host.oracle.task:
+  host.agent.task:
     by_call:
       fix:
         delay: "20ms"

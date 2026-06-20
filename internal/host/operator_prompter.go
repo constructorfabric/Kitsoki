@@ -1,10 +1,10 @@
 // Package host — operator-question forwarding seam.
 //
-// When a dispatched `claude -p` oracle agent needs to ask the operator a
+// When a dispatched `claude -p` agent agent needs to ask the operator a
 // clarifying question, the built-in AskUserQuestion tool is the wrong channel:
 // headless `-p` has no TTY, so the CLI auto-resolves AskUserQuestion with EMPTY
 // answers (~37ms; anthropics/claude-code#50728) and the model proceeds on a
-// guess. AskUserQuestion is therefore hard-denied on every oracle subprocess
+// guess. AskUserQuestion is therefore hard-denied on every agent subprocess
 // (see alwaysDeniedTools).
 //
 // The supported replacement forwards the question INTO kitsoki for generic
@@ -16,7 +16,7 @@
 //
 // Interactivity is detected by the PRESENCE of a prompter in context: the TUI /
 // web run loop installs one via WithOperatorPrompter; non-interactive callers
-// (`kitsoki turn`, flow-fixture tests, cassette replay, the oracle-serve headless
+// (`kitsoki turn`, flow-fixture tests, cassette replay, the agent-serve headless
 // path) install none. When no prompter is attached the dispatch layer keeps the
 // "tool-denied" posture — the replacement tool is not offered and AskUserQuestion
 // stays denied — so the model decides on its own rather than blocking forever on
@@ -63,7 +63,7 @@ type OperatorQuestion struct {
 // tool error so the agent proceeds without the input rather than hanging.
 //
 // Concurrency contract: Ask is called from the host handler's per-call socket
-// listener goroutine and MUST honour ctx cancellation (the oracle call, and thus
+// listener goroutine and MUST honour ctx cancellation (the agent call, and thus
 // the whole turn, blocks inside it). Implementations may serialise questions per
 // session; callers must not assume concurrency.
 type OperatorPrompter interface {
@@ -74,7 +74,7 @@ type OperatorPrompter interface {
 type operatorPrompterKey struct{}
 
 // WithOperatorPrompter returns a child context carrying prompter. The TUI / web
-// run loop installs one so oracle dispatch knows a live operator can answer
+// run loop installs one so agent dispatch knows a live operator can answer
 // forwarded questions. A nil prompter is a no-op — returns ctx unchanged so the
 // "tool-denied" headless posture is the default for callers that never set one.
 func WithOperatorPrompter(ctx context.Context, prompter OperatorPrompter) context.Context {

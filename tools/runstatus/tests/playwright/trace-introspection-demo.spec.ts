@@ -81,7 +81,7 @@ async function loadBugfix(page: Page): Promise<void> {
   await page.waitForSelector(".trace-timeline__row", { timeout: 10000 });
 }
 
-/** Expand the first decide oracle call's detail body so DecideDetail
+/** Expand the first decide agent call's detail body so DecideDetail
  *  (verdict / confidence / evidence / replay) is on screen for its spotlights. */
 async function openDecideDetail(page: Page): Promise<void> {
   const decideRow = page
@@ -92,7 +92,7 @@ async function openDecideDetail(page: Page): Promise<void> {
   await expect(decideRow).toBeVisible({ timeout: 8000 });
   await decideRow.scrollIntoViewIfNeeded();
   // The expand (+) button renders the row-body containing EventDetail →
-  // OracleDetail → DecideDetail.
+  // AgentDetail → DecideDetail.
   await decideRow.locator(".trace-timeline__expand-btn").click();
   await expect(decideRow.locator(".trace-timeline__row-body")).toBeVisible({ timeout: 5000 });
   await expect(page.getByTestId("decide-verdict").first()).toBeVisible({ timeout: 5000 });

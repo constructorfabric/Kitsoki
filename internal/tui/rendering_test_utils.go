@@ -351,7 +351,7 @@ func (c *CapturedIO) Restore() {
 //	// Concurrent goroutine logging while TUI renders
 //	go func() {
 //	    for i := 0; i < 50; i++ {
-//	        slog.Info("oracle.event", "type", "system")
+//	        slog.Info("agent.event", "type", "system")
 //	        time.Sleep(time.Microsecond)
 //	    }
 //	}()
@@ -387,7 +387,7 @@ func (c *CapturedIO) AssertNoMixedOutput(sourceAMarker, sourceBMarker, descripti
 //	helper := NewConcurrentIOTester(t, captured)
 //	helper.LogConcurrently(func() {
 //	    for i := 0; i < 50; i++ {
-//	        slog.Info("oracle.event", "turn", i)
+//	        slog.Info("agent.event", "turn", i)
 //	    }
 //	}).
 //	RenderConcurrently(func() {

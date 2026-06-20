@@ -1,6 +1,6 @@
-# review — interpretive gate: oracle clusters findings into ranked groups.
+# review — interpretive gate: agent clusters findings into ranked groups.
 #
-# The one place where judgment lives. host.oracle.decide reads the deduped
+# The one place where judgment lives. host.agent.decide reads the deduped
 # findings (from idle) and the review-report summary, then emits a group_set:
 # a ranked list of patterns where each group is exactly one code fix.
 #
@@ -17,7 +17,7 @@ states:
       - kv:
           pairs:
             Findings (deduped): "{{ world.findings.total_after|default:0 }} (from {{ world.findings.total_before|default:0 }} raw)"
-            Groups proposed:    '{{ world.groups.items|length|default:"(pending — oracle identifying patterns)" }}'
+            Groups proposed:    '{{ world.groups.items|length|default:"(pending — agent identifying patterns)" }}'
       - heading: "Proposed groups"
       - template: |
           {% if world.groups.items %}
@@ -29,7 +29,7 @@ states:
              Root cause: {{ g.root_cause }}
           {% endfor %}
           {% else %}
-          (pending — oracle has not returned yet)
+          (pending — agent has not returned yet)
           {% endif %}
       - list:
           items:
@@ -52,7 +52,7 @@ states:
     on_enter:
       # Identify patterns. once: true keyed on groups.
       # The re_review intent clears groups to re-arm this.
-      - invoke: host.oracle.decide
+      - invoke: host.agent.decide
         once: true
         with:
           prompt: prompts/identify_patterns.md
@@ -129,7 +129,7 @@ states:
           effects:
             - set:
                 review_feedback: '{{ slots.feedback ?? "" }}'
-                # Clear groups to re-arm the once: oracle call
+                # Clear groups to re-arm the once: agent call
                 groups: {}
 
       quit:

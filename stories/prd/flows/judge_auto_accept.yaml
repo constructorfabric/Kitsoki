@@ -24,9 +24,9 @@ initial_world:
 
 host_handlers:
   # references on_enter runs the optional semantic pre-seed; empty hits = no embeddings.
-  host.oracle.search:
+  host.agent.search:
     data: { hits: [] }
-  host.oracle.decide:
+  host.agent.decide:
     by_call:
       # references on_enter may re-fire defensively on initial entry.
       references_research:
@@ -46,7 +46,7 @@ host_handlers:
             confidence: 0.92
   host.artifacts_dir:
     data: { ok: true, path: ".artifacts/prd_references.md", message_id: "prd_references#1" }
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted:

@@ -2,7 +2,7 @@
 #
 # It does ONE thing: show, hands-on, how a typed command becomes an intent.
 # The router runs four tiers in order (first hit wins); each lesson room
-# isolates one so you can feel the difference. There are no host.oracle.*
+# isolates one so you can feel the difference. There are no host.agent.*
 # `invoke:` calls in this story — the only model use is the router's own LLM
 # tier (extract_llm_on_no_match), which is engine wiring, not a story effect.
 
@@ -17,8 +17,8 @@ app:
 # first use fetches + caches the binary + weights under ~/.cache/kitsoki. If you
 # have no model and no network, set `extract_llm_on_no_match: false` below and
 # the deterministic lessons still work fully.
-oracle_plugins:
-  oracle.local:
+agent_plugins:
+  agent.local:
     plugin: builtin.local_llm
     model: qwen2.5-1.5b-instruct
     grammar: true
@@ -32,7 +32,7 @@ oracle_plugins:
 #         >= semantic_mid_bar  (0.65) → ask a clarification first
 #         == 0.50 (a tie across 2+ intents) → show a disambiguation card
 #   4. extract_llm_on_no_match — ONLY when the deterministic tiers miss: ask the
-#      local model (extract_llm_oracle) to classify the command into one of the
+#      local model (extract_llm_agent) to classify the command into one of the
 #      room's allowed intents. A confident verdict routes; "none" or a
 #      low-confidence verdict falls through to the main-turn LLM.
 routing:
@@ -40,7 +40,7 @@ routing:
   semantic_high_bar: 0.80
   semantic_mid_bar: 0.65
   extract_llm_on_no_match: true
-  extract_llm_oracle: oracle.local
+  extract_llm_agent: agent.local
 
 world:
   lamp:        { type: bool,   default: false }

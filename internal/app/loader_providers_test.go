@@ -105,7 +105,7 @@ app:
   id: test-providers-effect
   version: 0.1.0
 hosts:
-  - host.oracle.decide
+  - host.agent.decide
 providers:
   local_llm:
     model: m
@@ -113,7 +113,7 @@ root: idle
 states:
   idle:
     on_enter:
-      - invoke: host.oracle.decide
+      - invoke: host.agent.decide
         with:
           provider: not_declared
           prompt: hi

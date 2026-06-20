@@ -30,7 +30,7 @@ type HeaderOverrides struct {
 //
 // This is the full-fidelity trace path: unlike events loaded from the SQLite
 // store, JSONL lines carry state_path, call_id, and parent_turn, so the
-// resulting TraceEvents preserve everything the SPA needs (notably oracle-call
+// resulting TraceEvents preserve everything the SPA needs (notably agent-call
 // pairing by call_id).
 func ParseTrace(r io.Reader, warn func(line int, err error)) ([]TraceEvent, error) {
 	var events []TraceEvent
@@ -60,7 +60,7 @@ func ParseTrace(r io.Reader, warn func(line int, err error)) ([]TraceEvent, erro
 }
 
 // SnapshotFromTrace assembles a full [Snapshot] from parsed trace events and an
-// AppDef: it aggregates task tool-call/file-change detail onto oracle.task
+// AppDef: it aggregates task tool-call/file-change detail onto agent.task
 // events, synthesises the session header (honouring ov), and — when withMermaid
 // is set — renders the diagram. A diagram render failure is non-fatal: the
 // Snapshot is returned with an empty Mermaid block and the SPA omits the
@@ -172,7 +172,7 @@ type taskTraceWindow struct {
 	filesChanged []map[string]any
 }
 
-// AggregateTaskDetails scans events and, for every oracle.task.complete event,
+// AggregateTaskDetails scans events and, for every agent.task.complete event,
 // attaches tool_calls (from task.tool events) and files_changed (from task.end
 // events) emitted during the same task invocation, correlated by task trace id.
 // It mutates events in place and never overwrites detail already present.
@@ -210,10 +210,10 @@ func AggregateTaskDetails(events []TraceEvent) {
 		return
 	}
 
-	// Pass 2: attach aggregated data to oracle.task.complete events.
+	// Pass 2: attach aggregated data to agent.task.complete events.
 	for i := range events {
 		ev := &events[i]
-		if ev.Msg != "oracle.task.complete" {
+		if ev.Msg != "agent.task.complete" {
 			continue
 		}
 		traceID, _ := ev.Attrs["task_trace_id"].(string)
@@ -250,7 +250,7 @@ func taskTraceWindowFor(m map[string]*taskTraceWindow, traceID string) *taskTrac
 }
 
 // taskToolCallFromEvent converts a task.tool event into the tool_calls entry
-// shape defined in ORACLE_ATTRS.md.
+// shape defined in AGENT_ATTRS.md.
 func taskToolCallFromEvent(ev *TraceEvent) map[string]any {
 	entry := make(map[string]any)
 	if seq, ok := ev.Attrs["seq"]; ok {
@@ -271,7 +271,7 @@ func taskToolCallFromEvent(ev *TraceEvent) map[string]any {
 }
 
 // buildFilesChanged converts a task.end files_changed value (a path list) into
-// the files_changed shape defined in ORACLE_ATTRS.md, defaulting status to
+// the files_changed shape defined in AGENT_ATTRS.md, defaulting status to
 // "modified" with no diff.
 func buildFilesChanged(rawFiles any) []map[string]any {
 	arr, ok := rawFiles.([]any)

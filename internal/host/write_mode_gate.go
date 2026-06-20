@@ -5,7 +5,7 @@
 // but every MUTATING tool call — Write/Edit/MultiEdit/NotebookEdit, a Bash command
 // that fails the read-only profile, or an effect ≥ write host call — is gated. This
 // file is the gate's decision spine; bash_mcp.go's MCP-wrapper pattern carries the
-// per-Bash-command interception (see WriteModeGateBashProfile), and oracle_task.go
+// per-Bash-command interception (see WriteModeGateBashProfile), and agent_task.go
 // wires the read-only floor at dispatch time.
 //
 // The boundary is sharp (agent-write-mode-opt-in.md "The model"):
@@ -221,11 +221,11 @@ func (g *WriteModeGate) Resolve(ctx context.Context, tc ToolCall) WriteModeDecis
 // effect class, the chosen scope, who decided, and whether it was granted: the
 // agent's side-effect audit trail (agent-write-mode-opt-in.md "Decision recording").
 func (g *WriteModeGate) record(ctx context.Context, action string, eff MutatingEffect, scope GrantScope, by string, granted bool) {
-	sink := EventSinkFromOracleCtx(ctx)
+	sink := EventSinkFromAgentCtx(ctx)
 	if sink == nil {
 		return
 	}
-	oc := OracleCallCtxFrom(ctx)
+	oc := AgentCallCtxFrom(ctx)
 	body := writeModeGrantedPayload{
 		State:   string(oc.StatePath),
 		Action:  action,

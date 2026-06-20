@@ -563,13 +563,13 @@ Built-ins (`internal/host/`):
 
 - **`host.run`** — run a shell command. Args `cmd` (required), `cwd`.
   Returns `{stdout, exit_code, ok}`.
-- **`host.oracle.ask`** — one-shot Claude call driven by a prompt template
+- **`host.agent.ask`** — one-shot Claude call driven by a prompt template
   file. Args `prompt_path` (required, relative paths resolve against the
   app dir), `working_dir` (optional, defaults to the prompt's directory),
   and any other keys you add — those become `{{ args.X }}` inside the
   prompt. Returns `{stdout, exit_code, ok}`. See "LLM-backed effects"
   below for the common patterns.
-- **`host.oracle.converse`** — conversational Claude session via `claude -p
+- **`host.agent.converse`** — conversational Claude session via `claude -p
   --session-id`. Args:
     - `question` (string, required)
     - `chat_id` (string, optional) — when set AND a `ChatStore` is wired,
@@ -583,9 +583,9 @@ Built-ins (`internal/host/`):
       Ignored when `chat_id` is set.
     - `working_dir` (string, optional)
   Use this when the user is having a multi-turn conversation; use
-  `host.oracle.ask` when you want a one-shot response derived from a named
+  `host.agent.ask` when you want a one-shot response derived from a named
   prompt file.
-- **`host.oracle.decide`** — one-shot Claude verdict call with a JSON schema.
+- **`host.agent.decide`** — one-shot Claude verdict call with a JSON schema.
   The schema is required; a `submit` MCP tool is auto-attached so Claude
   must call `submit()` before exiting. Returns `{submitted, rationale,
   exit_code, ok}`. Use this for "Claude produces a structured artifact" —
@@ -610,9 +610,9 @@ Built-ins (`internal/host/`):
 
 To call these, the app must declare them in its top-level `hosts:` list.
 
-### 11.1 LLM-backed effects (`host.oracle.ask`)
+### 11.1 LLM-backed effects (`host.agent.ask`)
 
-`host.oracle.ask` is the primitive behind "draft", "refine", and "repair"
+`host.agent.ask` is the primitive behind "draft", "refine", and "repair"
 style effects. The shape is:
 
 1. You author a prompt template file on disk (conventionally under
@@ -644,7 +644,7 @@ replacement command and nothing else.
 fix:
   - target: terminal_reviewing
     effects:
-      - invoke: host.oracle.ask
+      - invoke: host.agent.ask
         with:
           prompt_path: "prompts/shell_repair.md"
           failed_cmd: "{{ world.proposal_cmd }}"

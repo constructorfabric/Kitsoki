@@ -22,7 +22,7 @@
  *
  * Then the tour opens the META OVERLAY and repeats the loop there: a Story
  * Q&A question streams through /rpc/meta-stream (the deterministic stub
- * oracle emits a thinking event, a Read tool call, then the reply chunks —
+ * agent emits a thinking event, a Read tool call, then the reply chunks —
  * KITSOKI_META_STREAM_DELAY_MS paces it for the camera), rendered by the SAME
  * shared ActivityFeed/ActivityDisclosure components the main chat uses.
  *
@@ -98,7 +98,7 @@ const EXPECTED_FEED: Array<{ kind: "think" | "tool"; match: string }> = [
 ];
 const EXPECTED_SUMMARY = "🧠 3 thoughts · 6 tool calls";
 
-// The meta turn's feed: the stub oracle (story.ask, read-only) emits one
+// The meta turn's feed: the stub agent (story.ask, read-only) emits one
 // thinking event and one Read tool call before streaming the reply; the
 // reply narration itself is deferred and dropped on done, so it must NOT
 // appear as a trailing thought.
@@ -131,7 +131,7 @@ test.beforeAll(async () => {
   if (process.env.KITSOKI_CASSETTE_SLOWPLAY === undefined) {
     process.env.KITSOKI_CASSETTE_SLOWPLAY = "1.5";
   }
-  // The meta turn streams from the stub oracle; pace its events so the
+  // The meta turn streams from the stub agent; pace its events so the
   // overlay's bubble is filmable. Keep a small floor even in fast-validation
   // mode (WEB_CHAT_PACE=0) so the streaming bubble reliably EXISTS long
   // enough for the tour step gated on it — at 0 the turn can finish before
@@ -421,7 +421,7 @@ test("live chat streaming feature-spotlight video", async () => {
             }
             // A UI-created session starts with a FRESH story world, so
             // judge_mode=human and `start` would not fire the transcript-
-            // bearing oracle calls. Patch the world off-camera to the llm
+            // bearing agent calls. Patch the world off-camera to the llm
             // posture the demo cassette's arcs need (mirrors
             // agent-actions-video.spec.ts; setting BOTH ticket_id and
             // workspace_id keeps the idle auto-start arc from firing, so the

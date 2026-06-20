@@ -12,9 +12,9 @@ import (
 // builder stamps onto its Agent.Name and the name BuiltinNames advertises
 // can never drift apart.
 const (
-	// NameDefaultOracle is the toolless fallback agent used when a caller
+	// NameDefaultAgent is the toolless fallback agent used when a caller
 	// names no agent.
-	NameDefaultOracle = "default-oracle"
+	NameDefaultAgent = "default-agent"
 	// NameStoryAuthor is the conversational story/YAML editor.
 	NameStoryAuthor = "story-author"
 	// NameKitsokiEngineer edits Go code in the kitsoki repo and runs tests.
@@ -61,7 +61,7 @@ type Registry interface {
 // ship with kitsoki today.
 func NewBuiltins() Registry {
 	r := &registry{agents: make(map[string]Agent)}
-	r.Register(defaultOracle())
+	r.Register(defaultAgent())
 	r.Register(storyAuthor())
 	r.Register(kitsokiEngineer())
 	r.Register(storyBugReporter())
@@ -77,7 +77,7 @@ func NewBuiltins() Registry {
 // need a stable lexicographic order should sort the returned slice.
 func BuiltinNames() []string {
 	return []string{
-		NameDefaultOracle,
+		NameDefaultAgent,
 		NameStoryAuthor,
 		NameKitsokiEngineer,
 		NameStoryBugReporter,

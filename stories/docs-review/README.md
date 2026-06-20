@@ -66,12 +66,12 @@ The story uses two distinct Opus agents with different tool sets:
 - **`docs_reviewer`** (read-only): reads the entire repo/docs and
   emits a verdict. Tools: `Read`, `Grep`, `Glob`, `Bash` (read-only
   profile). `Edit` and `Write` are rejected at both load time and call
-  time. Used by `host.oracle.decide` in the `reviewing` room.
+  time. Used by `host.agent.decide` in the `reviewing` room.
 
 - **`docs_writer`** (write-capable): takes the verdict's `stale_docs[]`
   worklist and applies targeted edits to bring cited doc sections back
   in sync. Tools: `Read`, `Grep`, `Glob`, `Edit`, `Write`, `Bash`
-  (read-only profile). Used by `host.oracle.task` in the `fixing` room.
+  (read-only profile). Used by `host.agent.task` in the `fixing` room.
   **Does not commit** — changes sit uncommitted in the working tree for
   the operator to review and stage.
 
@@ -81,7 +81,7 @@ The story uses two distinct Opus agents with different tool sets:
    and a `git diff --stat` of the last N commits (with `N = min(20,
    count-1)`, falling back to `git show --stat HEAD` on a 1-commit
    tree) plus any uncommitted working-tree diff into one JSON envelope.
-2. `host.oracle.decide` — Opus agent (`Read`, `Grep`, `Glob`, `Bash`
+2. `host.agent.decide` — Opus agent (`Read`, `Grep`, `Glob`, `Bash`
    under the read-only profile; `Edit`/`Write` rejected at both load
    time and call time) returns a `docs_review_verdict`. Binds the
    full verdict object **and** a scalar `verdict_decision = submitted.decision`.
@@ -113,7 +113,7 @@ the pre-bind world — too early. Guards must therefore live **on the
 emit_intent effect itself**:
 
 ```yaml
-- invoke: host.oracle.decide
+- invoke: host.agent.decide
   bind: { verdict: submitted, verdict_decision: submitted.decision }
 - emit_intent: done
   when: "world.verdict_decision != ''"      # false pre-bind → suppressed
@@ -171,11 +171,11 @@ kitsoki test flows stories/docs-review/app.yaml
 
 | Fixture | What it pins |
 |---|---|
-| `flows/happy_needs_update.yaml` | Oracle returns `needs_update`; story walks to `reviewed`; `verdict_decision` lands. |
-| `flows/happy_up_to_date.yaml` | Oracle returns `up_to_date`; operator re-runs via `review_again`. |
-| `flows/oracle_abandoned.yaml` | `host.oracle.decide` returns `Result.Error` (validator exhaustion); `on_error: review_failed` fires. |
-| `flows/empty_submitted.yaml` | Oracle returns `ok=true` with `submitted: {}` (silent-failure mode that bit us live). Asserts the conditional `no_submit` emit catches it and routes to `review_failed`. |
-| `flows/artifact_round_trip.yaml` | Hybrid: stubs `host.run` + `host.oracle.decide` inline, but lets the **real** `host.artifacts_dir` handler run against a `t.TempDir()` set via `$KITSOKI_ARTIFACTS_ROOT`. Driven by `cmd/kitsoki/docs_review_artifact_test.go`, which asserts the artifact body actually contains the verdict (no `{}` silent-failure, no `<map[…]>` go-stringification). |
+| `flows/happy_needs_update.yaml` | Agent returns `needs_update`; story walks to `reviewed`; `verdict_decision` lands. |
+| `flows/happy_up_to_date.yaml` | Agent returns `up_to_date`; operator re-runs via `review_again`. |
+| `flows/agent_abandoned.yaml` | `host.agent.decide` returns `Result.Error` (validator exhaustion); `on_error: review_failed` fires. |
+| `flows/empty_submitted.yaml` | Agent returns `ok=true` with `submitted: {}` (silent-failure mode that bit us live). Asserts the conditional `no_submit` emit catches it and routes to `review_failed`. |
+| `flows/artifact_round_trip.yaml` | Hybrid: stubs `host.run` + `host.agent.decide` inline, but lets the **real** `host.artifacts_dir` handler run against a `t.TempDir()` set via `$KITSOKI_ARTIFACTS_ROOT`. Driven by `cmd/kitsoki/docs_review_artifact_test.go`, which asserts the artifact body actually contains the verdict (no `{}` silent-failure, no `<map[…]>` go-stringification). |
 
 ### Round-trip artifact test
 
@@ -184,7 +184,7 @@ The first four fixtures stub `host.artifacts_dir` and only check
 makes it through the chain:
 
 ```
-oracle.decide → Data["submitted"] → bind: verdict: submitted
+agent.decide → Data["submitted"] → bind: verdict: submitted
    → body: "{{ world.verdict }}" → bodyArg JSON pretty-print → file on disk
 ```
 
@@ -262,6 +262,6 @@ rendering.
 ## Imports
 
 Standalone-runnable. No `host_interfaces:` — concrete hosts
-(`host.run`, `host.oracle.decide`, `host.artifacts_dir`) are wired
+(`host.run`, `host.agent.decide`, `host.artifacts_dir`) are wired
 directly because the story has one job and substituting them buys
 nothing.

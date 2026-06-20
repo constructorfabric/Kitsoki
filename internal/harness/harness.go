@@ -29,7 +29,7 @@ type TurnInput struct {
 	// AllowedIntents lists the intent names currently valid.
 	AllowedIntents []string `json:"allowed_intents"`
 	// SystemPrompt is an extra rendered prompt fragment the orchestrator may
-	// pass through (e.g. Oracle-Room surfaces); harnesses append it verbatim
+	// pass through (e.g. Agent-Room surfaces); harnesses append it verbatim
 	// to the dynamic suffix.
 	SystemPrompt string `json:"system_prompt,omitempty"`
 	// RecentTurns is an ordered tail (oldest → newest) of the most recent N

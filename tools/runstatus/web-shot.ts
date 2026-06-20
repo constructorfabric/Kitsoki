@@ -7,7 +7,7 @@
  * settle, and write one PNG. It is deliberately dumb — it shoots whatever the
  * URL renders. The DETERMINISM (no-LLM) is the SERVER's: the caller boots
  * `kitsoki web --flow/--host-cassette`, so this helper never needs to know about
- * harnesses or oracles. This is the web twin of `kitsoki shot`.
+ * harnesses or agents. This is the web twin of `kitsoki shot`.
  *
  * Usage:
  *   tsx web-shot.ts --url <u> --out <p> [--viewport WxH]

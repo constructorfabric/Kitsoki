@@ -1,13 +1,13 @@
 // Live routing proof for stories/routing-demo: drives a real paraphrase through
-// orchestrator.Turn with the REAL oracle.local (llama.cpp) wired from the app's
-// oracle_plugins — no fake. It confirms the no_match → local-model tier actually
+// orchestrator.Turn with the REAL agent.local (llama.cpp) wired from the app's
+// agent_plugins — no fake. It confirms the no_match → local-model tier actually
 // fires end to end (the thing the stateless `turn --input` probe can NOT show,
 // since OneShot bypasses the router).
 //
 // Gated behind KITSOKI_LLM_E2E=1 (downloads/needs the model); never in the
 // default suite. The harness is a sentinel ("look"): if the local tier fails to
 // route, the turn falls through to it and last_action stays unset, failing the
-// assertion — so a pass proves oracle.local did the routing.
+// assertion — so a pass proves agent.local did the routing.
 package orchestrator_test
 
 import (
@@ -17,16 +17,16 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"kitsoki/internal/agent"
 	"kitsoki/internal/app"
 	"kitsoki/internal/machine"
-	"kitsoki/internal/oracle"
 	"kitsoki/internal/orchestrator"
 	"kitsoki/internal/store"
 )
 
 func TestRoutingDemo_LiveLocalModel(t *testing.T) {
 	if os.Getenv("KITSOKI_LLM_E2E") != "1" {
-		t.Skip("set KITSOKI_LLM_E2E=1 to route a real paraphrase through oracle.local (needs the local model)")
+		t.Skip("set KITSOKI_LLM_E2E=1 to route a real paraphrase through agent.local (needs the local model)")
 	}
 	if os.Getenv("KITSOKI_CACHE_DIR") == "" {
 		t.Setenv("KITSOKI_CACHE_DIR", os.Getenv("HOME")+"/.cache/kitsoki")
@@ -42,13 +42,13 @@ func TestRoutingDemo_LiveLocalModel(t *testing.T) {
 
 	// Sentinel main-turn harness: a router miss falls through to a harmless
 	// "look", which never sets last_action — so reaching lamp_on proves the
-	// local tier (oracle.local) routed, not the harness.
+	// local tier (agent.local) routed, not the harness.
 	sentinel := &staticHarness{intentName: "look"}
-	reg, err := oracle.BuildRegistryFromDef(def, sentinel)
+	reg, err := agent.BuildRegistryFromDef(def, sentinel)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = reg.Close() })
 
-	orch := orchestrator.New(def, m, s, sentinel, orchestrator.WithOracleRegistry(reg))
+	orch := orchestrator.New(def, m, s, sentinel, orchestrator.WithAgentRegistry(reg))
 	ctx := context.Background()
 	sid, err := orch.NewSession(ctx)
 	require.NoError(t, err)

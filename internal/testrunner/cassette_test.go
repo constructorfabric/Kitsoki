@@ -110,7 +110,7 @@ app_id: inc
 episodes:
   - id: inc_ep
     match:
-      handler: host.oracle
+      handler: host.agent
     response:
       data: !include data.json
 `)
@@ -176,15 +176,15 @@ func TestCassette_MatchByPhase(t *testing.T) {
 kind: host_cassette
 app_id: test
 episodes:
-  - id: phase1_oracle
+  - id: phase1_agent
     match:
-      handler: host.oracle.ask
+      handler: host.agent.ask
       phase: phase_1
     response:
       data: {result: phase1}
-  - id: phase3_oracle
+  - id: phase3_agent
     match:
-      handler: host.oracle.ask
+      handler: host.agent.ask
       phase: phase_3
     response:
       data: {result: phase3}
@@ -195,7 +195,7 @@ episodes:
 	}
 
 	// phase_1.dispatching → first segment = phase_1
-	res, err := invokeDispatcher(t, cas, "host.oracle.ask", nil, "phase_1.dispatching", nil, nil)
+	res, err := invokeDispatcher(t, cas, "host.agent.ask", nil, "phase_1.dispatching", nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -203,7 +203,7 @@ episodes:
 		t.Errorf("expected phase1 result, got %v", res.Data)
 	}
 
-	res2, err := invokeDispatcher(t, cas, "host.oracle.ask", nil, "phase_3.deciding", nil, nil)
+	res2, err := invokeDispatcher(t, cas, "host.agent.ask", nil, "phase_3.deciding", nil, nil)
 	if err != nil {
 		t.Fatalf("phase3: unexpected error: %v", err)
 	}
@@ -221,7 +221,7 @@ app_id: test
 episodes:
   - id: schema_ep
     match:
-      handler: host.oracle.ask_with_mcp
+      handler: host.agent.ask_with_mcp
       schema_name: repro-report.schema.json
     response:
       data: {submitted: {found: true}}
@@ -233,7 +233,7 @@ episodes:
 
 	// schema arg is the full path; matcher should use basename.
 	args := map[string]any{"schema": "/some/path/repro-report.schema.json"}
-	res, err := invokeDispatcher(t, cas, "host.oracle.ask_with_mcp", args, "", nil, nil)
+	res, err := invokeDispatcher(t, cas, "host.agent.ask_with_mcp", args, "", nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -572,7 +572,7 @@ phase_from: "^(phase_\\d+(?:_\\d+)?)\\."
 episodes:
   - id: ep_phase_1_5
     match:
-      handler: host.oracle
+      handler: host.agent
       phase: phase_1_5
     response:
       data: {found: true}
@@ -583,7 +583,7 @@ episodes:
 	}
 
 	// StatePath: "phase_1_5.deciding" should match phase capture "phase_1_5"
-	res, err := invokeDispatcher(t, cas, "host.oracle", nil, "phase_1_5.deciding", nil, nil)
+	res, err := invokeDispatcher(t, cas, "host.agent", nil, "phase_1_5.deciding", nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -702,7 +702,7 @@ episodes:
       data: {result: always}
   - id: phantom
     match:
-      handler: host.oracle
+      handler: host.agent
       phase: phase_999
     response:
       data: {ok: true}

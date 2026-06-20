@@ -272,7 +272,7 @@
                       "EmitIntent": "",
                       "EmitSlots": null,
                       "Effects": null,
-                      "OraclePlugin": ""
+                      "AgentPlugin": ""
                     },
                     {
                       "When": "",
@@ -290,7 +290,7 @@
                       "EmitIntent": "",
                       "EmitSlots": null,
                       "Effects": null,
-                      "OraclePlugin": ""
+                      "AgentPlugin": ""
                     }
                   ],
                   "GuardHint": "It's pitch dark -- you can't see to do that.",
@@ -345,7 +345,7 @@
                       "EmitIntent": "",
                       "EmitSlots": null,
                       "Effects": null,
-                      "OraclePlugin": ""
+                      "AgentPlugin": ""
                     },
                     {
                       "When": "",
@@ -363,7 +363,7 @@
                       "EmitIntent": "",
                       "EmitSlots": null,
                       "Effects": null,
-                      "OraclePlugin": ""
+                      "AgentPlugin": ""
                     }
                   ],
                   "GuardHint": "You can't see well enough in the dark to head that way. Try going north, or finding a way to make light.",
@@ -524,7 +524,7 @@
                       "EmitIntent": "",
                       "EmitSlots": null,
                       "Effects": null,
-                      "OraclePlugin": ""
+                      "AgentPlugin": ""
                     }
                   ],
                   "GuardHint": "",
@@ -581,7 +581,7 @@
                       "EmitIntent": "",
                       "EmitSlots": null,
                       "Effects": null,
-                      "OraclePlugin": ""
+                      "AgentPlugin": ""
                     }
                   ],
                   "GuardHint": "",
@@ -773,7 +773,7 @@
                   "EmitIntent": "",
                   "EmitSlots": null,
                   "Effects": null,
-                  "OraclePlugin": ""
+                  "AgentPlugin": ""
                 }
               ],
               "GuardHint": "",
@@ -812,7 +812,7 @@
                   "EmitIntent": "",
                   "EmitSlots": null,
                   "Effects": null,
-                  "OraclePlugin": ""
+                  "AgentPlugin": ""
                 },
                 {
                   "When": "",
@@ -830,7 +830,7 @@
                   "EmitIntent": "",
                   "EmitSlots": null,
                   "Effects": null,
-                  "OraclePlugin": ""
+                  "AgentPlugin": ""
                 }
               ],
               "GuardHint": "",
@@ -865,7 +865,7 @@
                   "EmitIntent": "",
                   "EmitSlots": null,
                   "Effects": null,
-                  "OraclePlugin": ""
+                  "AgentPlugin": ""
                 }
               ],
               "GuardHint": "You aren't wearing the cloak -- nothing to hang.",
@@ -922,7 +922,7 @@
                   "EmitIntent": "",
                   "EmitSlots": null,
                   "Effects": null,
-                  "OraclePlugin": ""
+                  "AgentPlugin": ""
                 },
                 {
                   "When": "",
@@ -940,7 +940,7 @@
                   "EmitIntent": "",
                   "EmitSlots": null,
                   "Effects": null,
-                  "OraclePlugin": ""
+                  "AgentPlugin": ""
                 }
               ],
               "GuardHint": "",
@@ -975,7 +975,7 @@
                   "EmitIntent": "",
                   "EmitSlots": null,
                   "Effects": null,
-                  "OraclePlugin": ""
+                  "AgentPlugin": ""
                 }
               ],
               "GuardHint": "You're already wearing the cloak.",
@@ -1224,7 +1224,7 @@
                   "EmitIntent": "",
                   "EmitSlots": null,
                   "Effects": null,
-                  "OraclePlugin": ""
+                  "AgentPlugin": ""
                 }
               ],
               "GuardHint": "The weather outside is awful -- you've only just arrived.",
@@ -1259,7 +1259,7 @@
                   "EmitIntent": "",
                   "EmitSlots": null,
                   "Effects": null,
-                  "OraclePlugin": ""
+                  "AgentPlugin": ""
                 }
               ],
               "GuardHint": "",
@@ -1315,8 +1315,8 @@
       "Agent": ""
     },
     "Hosts": null,
-    "OraclePlugins": {
-      "oracle.claude": {
+    "AgentPlugins": {
+      "agent.claude": {
         "Plugin": "builtin.claude_cli",
         "Command": "",
         "Args": null,
@@ -1450,7 +1450,7 @@
     {
       "time": "2026-05-25T12:00:00.02Z",
       "level": "DEBUG",
-      "msg": "oracle.call.start",
+      "msg": "agent.call.start",
       "session_id": "sess-edge-001",
       "turn": 1,
       "state_path": "foyer",
@@ -1464,7 +1464,7 @@
     {
       "time": "2026-05-25T12:00:00.18Z",
       "level": "DEBUG",
-      "msg": "oracle.call.complete",
+      "msg": "agent.call.complete",
       "session_id": "sess-edge-001",
       "turn": 1,
       "state_path": "foyer",
@@ -1531,7 +1531,7 @@
     {
       "time": "2026-05-25T12:00:05.02Z",
       "level": "DEBUG",
-      "msg": "oracle.call.start",
+      "msg": "agent.call.start",
       "session_id": "sess-edge-001",
       "turn": 2,
       "state_path": "foyer",
@@ -1544,7 +1544,7 @@
     {
       "time": "2026-05-25T12:00:05.175Z",
       "level": "DEBUG",
-      "msg": "oracle.call.complete",
+      "msg": "agent.call.complete",
       "session_id": "sess-edge-001",
       "turn": 2,
       "state_path": "foyer",
@@ -1622,7 +1622,7 @@
     {
       "time": "2026-05-25T12:00:10.02Z",
       "level": "DEBUG",
-      "msg": "oracle.call.start",
+      "msg": "agent.call.start",
       "session_id": "sess-edge-001",
       "turn": 3,
       "state_path": "cloakroom",
@@ -1635,7 +1635,7 @@
     {
       "time": "2026-05-25T12:00:10.175Z",
       "level": "DEBUG",
-      "msg": "oracle.call.complete",
+      "msg": "agent.call.complete",
       "session_id": "sess-edge-001",
       "turn": 3,
       "state_path": "cloakroom",
@@ -1714,7 +1714,7 @@
     {
       "time": "2026-05-25T12:00:15.018Z",
       "level": "DEBUG",
-      "msg": "oracle.call.start",
+      "msg": "agent.call.start",
       "session_id": "sess-edge-001",
       "turn": 4,
       "state_path": "cloakroom",
@@ -1727,7 +1727,7 @@
     {
       "time": "2026-05-25T12:00:15.17Z",
       "level": "DEBUG",
-      "msg": "oracle.call.complete",
+      "msg": "agent.call.complete",
       "session_id": "sess-edge-001",
       "turn": 4,
       "state_path": "cloakroom",
@@ -1805,7 +1805,7 @@
     {
       "time": "2026-05-25T12:00:20.018Z",
       "level": "DEBUG",
-      "msg": "oracle.call.start",
+      "msg": "agent.call.start",
       "session_id": "sess-edge-001",
       "turn": 5,
       "state_path": "foyer",
@@ -1818,7 +1818,7 @@
     {
       "time": "2026-05-25T12:00:20.17Z",
       "level": "DEBUG",
-      "msg": "oracle.call.complete",
+      "msg": "agent.call.complete",
       "session_id": "sess-edge-001",
       "turn": 5,
       "state_path": "foyer",
@@ -1908,7 +1908,7 @@
     {
       "time": "2026-05-25T12:00:25.03Z",
       "level": "DEBUG",
-      "msg": "oracle.call.start",
+      "msg": "agent.call.start",
       "session_id": "sess-edge-001",
       "turn": 6,
       "state_path": "bar.lit",
@@ -1922,7 +1922,7 @@
     {
       "time": "2026-05-25T12:00:25.28Z",
       "level": "DEBUG",
-      "msg": "oracle.call.complete",
+      "msg": "agent.call.complete",
       "session_id": "sess-edge-001",
       "turn": 6,
       "state_path": "bar.lit",
@@ -1996,7 +1996,7 @@
     {
       "time": "2026-05-25T12:00:35.018Z",
       "level": "DEBUG",
-      "msg": "oracle.call.start",
+      "msg": "agent.call.start",
       "session_id": "sess-edge-001",
       "turn": 8,
       "state_path": "bar.lit",
@@ -2009,7 +2009,7 @@
     {
       "time": "2026-05-25T12:00:35.17Z",
       "level": "DEBUG",
-      "msg": "oracle.call.complete",
+      "msg": "agent.call.complete",
       "session_id": "sess-edge-001",
       "turn": 8,
       "state_path": "bar.lit",

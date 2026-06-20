@@ -53,7 +53,7 @@ func TestImports_ParentFold(t *testing.T) {
 // `prompt:` and `schema:` args in an imported child's effects are
 // rewritten to absolute paths rooted at the child's own directory.
 //
-// At runtime, host.oracle.ask_with_mcp's resolvePromptPath joins
+// At runtime, host.agent.ask_with_mcp's resolvePromptPath joins
 // relative paths against $KITSOKI_APP_DIR — which is the PARENT app's
 // directory. Without this rebase, an imported sub-story's
 // `with: { prompt: prompts/foo.md }` would resolve to
@@ -61,7 +61,7 @@ func TestImports_ParentFold(t *testing.T) {
 // triggering the room's on_error and short-circuiting the pipeline.
 //
 // Regression for the dogfood: typing `start` in core.bf.idle queued
-// host.oracle.ask_with_mcp with `prompt: prompts/reproducing_executing.md`;
+// host.agent.ask_with_mcp with `prompt: prompts/reproducing_executing.md`;
 // the runtime looked for it under stories/kitsoki-dev/ (parent) and
 // failed because it lives under stories/bugfix/ (child). The visible
 // symptom was "I typed start and nothing happened" — the redirect
@@ -80,12 +80,12 @@ func TestImports_PromptPathsRebasedToChildDir(t *testing.T) {
 
 	var promptArg, schemaArg string
 	for _, eff := range work.OnEnter {
-		if eff.Invoke == "host.oracle.ask" {
+		if eff.Invoke == "host.agent.ask" {
 			promptArg, _ = eff.With["prompt"].(string)
 			schemaArg, _ = eff.With["schema"].(string)
 		}
 	}
-	require.NotEmpty(t, promptArg, "prompt arg should be set on the host.oracle.ask invoke")
+	require.NotEmpty(t, promptArg, "prompt arg should be set on the host.agent.ask invoke")
 
 	// The rewritten path must be absolute.
 	require.True(t, filepath.IsAbs(promptArg),
@@ -460,7 +460,7 @@ func newKitsokiRoot(t *testing.T) string {
 
 // TestImports_OffRampAgentNamespaced is the regression guard for the
 // fold-time rewrite at imports_rewriter.go:142-145: when an imported room
-// opts into the oracle off-ramp with `oracle_off_ramp.agent: <child-agent>`,
+// opts into the agent off-ramp with `agent_off_ramp.agent: <child-agent>`,
 // the fold must prefix that agent name with the import alias (alias+"__"+name)
 // so the renamed parent.Agents[<alias>__<agent>] key satisfies the load-time
 // walkOffRampAgents validator. Without the rewrite, Load fails with an
@@ -470,7 +470,7 @@ func newKitsokiRoot(t *testing.T) string {
 // This mirrors the meta_mode.agent fold (imports.go) and is the ONLY test
 // reaching the off-ramp branch of rewriteState — every other off-ramp test
 // is single-file (non-imported) and the shipped demo uses persona:, not
-// agent:, so OracleOffRamp.Agent is empty there.
+// agent:, so AgentOffRamp.Agent is empty there.
 func TestImports_OffRampAgentNamespaced(t *testing.T) {
 	root := t.TempDir()
 
@@ -489,7 +489,7 @@ root: desk
 states:
   desk:
     description: "menu room"
-    oracle_off_ramp: { agent: guide }
+    agent_off_ramp: { agent: guide }
     on:
       browse:
         - target: "@exit:done"
@@ -525,8 +525,8 @@ states:
 	// The child's `desk` folds under the `sub` alias wrapper.
 	desk := def.States["sub"].States["desk"]
 	require.NotNil(t, desk, "child desk should fold under alias `sub`; got %v", keysOf(def.States["sub"].States))
-	require.NotNil(t, desk.OracleOffRamp, "folded desk keeps its off-ramp")
-	require.Equal(t, "sub__guide", desk.OracleOffRamp.Agent,
+	require.NotNil(t, desk.AgentOffRamp, "folded desk keeps its off-ramp")
+	require.Equal(t, "sub__guide", desk.AgentOffRamp.Agent,
 		"off-ramp agent must be alias-prefixed after fold")
 	require.Contains(t, def.Agents, "sub__guide",
 		"the renamed agent must exist in the folded top-level agents: map")

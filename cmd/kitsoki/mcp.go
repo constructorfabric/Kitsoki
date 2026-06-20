@@ -108,7 +108,7 @@ docs land):
 
 // mcpAttachEntry builds the .mcp.json mcpServers entry that drops this binary in
 // as the "kitsoki" studio server. It mirrors the writeMCPConfigTempfile shape in
-// internal/host/oracle_helpers.go: {"mcpServers": {"kitsoki": {"command": ...,
+// internal/host/agent_helpers.go: {"mcpServers": {"kitsoki": {"command": ...,
 // "args": ["mcp", "--stories-dir", ...]}}}. command is the kitsoki binary path;
 // storiesDir is forwarded as --stories-dir (omitted when empty).
 func mcpAttachEntry(command, storiesDir string) map[string]any {

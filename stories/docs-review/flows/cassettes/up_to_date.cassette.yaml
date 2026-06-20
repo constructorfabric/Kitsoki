@@ -1,5 +1,5 @@
 # Cassette for happy_up_to_date.yaml — same three-call shape, but the
-# oracle returns decision=up_to_date.
+# agent returns decision=up_to_date.
 
 kind: host_cassette
 app_id: docs-review
@@ -24,9 +24,9 @@ episodes:
           working_tree_diff: ""
     replay: any
 
-  - id: oracle_decide
+  - id: agent_decide
     match:
-      handler: host.oracle.decide
+      handler: host.agent.decide
     response:
       data:
         ok: true

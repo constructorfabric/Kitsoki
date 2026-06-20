@@ -8,7 +8,7 @@
 // language model.
 //
 // The package also carries [ConversationalHarness], a separate read-only
-// Q&A backend for the Oracle Room (mode: conversational) that answers in
+// Q&A backend for the Agent Room (mode: conversational) that answers in
 // Markdown rather than routing to an intent.
 //
 // # Algorithm
@@ -119,6 +119,6 @@
 //     RunTurn.
 //   - docs/tracing/cassettes.md — recorded host/turn fixtures, the consumer of
 //     the Replay/Recording pair.
-//   - docs/architecture/oracle-plugin.md — the Oracle Room that
+//   - docs/architecture/agent-plugin.md — the Agent Room that
 //     [ConversationalHarness] backs.
 package harness

@@ -17,7 +17,7 @@ stories — routed and recorded.
   reconnect). `host.ide.{get_diagnostics,get_selection,get_open_editors,open_file,open_diff}`
   in `internal/host/ide_handlers.go`, resolving the link from ctx
   (`host.WithIDELink`). A connected link is recorded as `ide.context_captured`
-  (read verbs) and seeds `world.ide.connected`. The oracle subprocess env is
+  (read verbs) and seeds `world.ide.connected`. The agent subprocess env is
   scrubbed (`CLAUDE_CODE_SSE_PORT` unset, `CLAUDE_CODE_AUTO_CONNECT_IDE=false`)
   at every exec site when a link is held, so the inner `claude` never
   double-connects.

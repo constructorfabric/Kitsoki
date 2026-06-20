@@ -16,7 +16,7 @@
 # classification, the grant scopes, the headless deny, the recorded
 # WriteModeGranted event) is exercised end-to-end without an LLM by the unit
 # table in internal/host/write_mode_gate_test.go — a flow fixture stubs the
-# whole host.oracle.task subprocess, so the in-subprocess gate cannot fire here
+# whole host.agent.task subprocess, so the in-subprocess gate cannot fire here
 # (per AGENTS.md the live agent doing real mutating work is a dogfood-only,
 # gated step, never CI).
 
@@ -29,7 +29,7 @@ host_handlers:
   # The landing_agent task. Stubbed: returns a free-form close-out note
   # (schemas/landing-note.json). In a live run this is where the agent would
   # attempt an Edit and the write-mode gate would hold for the opt-in.
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted:

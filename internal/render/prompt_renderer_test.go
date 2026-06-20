@@ -343,7 +343,7 @@ func TestExampleOverlay_RendersAgainstBugfix(t *testing.T) {
 
 // TestMigratedOregonSwap_RendersViaImportExtend renders the real oregon-trail
 // scout override against the real frontier_event base via @import/frontier,
-// guarding the migrated swap→extend from drift (flows stub the oracle and
+// guarding the migrated swap→extend from drift (flows stub the agent and
 // don't render prompts, so this is the only render-syntax guard for it).
 func TestMigratedOregonSwap_RendersViaImportExtend(t *testing.T) {
 	oregon, _ := filepath.Abs(filepath.Join("..", "..", "stories", "oregon-trail"))

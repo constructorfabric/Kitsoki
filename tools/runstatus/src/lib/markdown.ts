@@ -2,7 +2,7 @@
  * Agent-message markdown rendering for the main operator chat.
  *
  * The engine ships ALREADY-RENDERED text (an 80-col terminal room view, or a
- * streamed oracle reply) — the browser never evaluates pongo. We only apply a
+ * streamed agent reply) — the browser never evaluates pongo. We only apply a
  * light, HTML-safe markdown pass on top:
  *
  *   - fenced code blocks (```lang\n…\n```) → a styled <pre><code> box. This is

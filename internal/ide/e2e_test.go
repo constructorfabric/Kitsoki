@@ -70,16 +70,16 @@ func (s *e2eSink) captured() []store.Event {
 }
 
 // e2eHostCtx builds the ctx the orchestrator hands host.ide.* handlers: the
-// real link injected as a host.IDELink, plus the oracle call-ctx + event sink
+// real link injected as a host.IDELink, plus the agent call-ctx + event sink
 // the journal datapoint rides on. Mirrors dispatchHostCalls' wiring.
 func e2eHostCtx(parent context.Context, l *Link, sink store.EventSink) context.Context {
 	ctx := host.WithIDELink(parent, l)
-	ctx = host.WithOracleCallCtx(ctx, host.OracleCallCtx{
+	ctx = host.WithAgentCallCtx(ctx, host.AgentCallCtx{
 		SessionID: app.SessionID("ide-e2e"),
 		Turn:      app.TurnNumber(7),
 		StatePath: app.StatePath("triage"),
 	})
-	return host.WithOracleEventSink(ctx, sink)
+	return host.WithAgentEventSink(ctx, sink)
 }
 
 // containsRaw reports whether s contains sub (a tiny privacy-assertion shim so
@@ -412,7 +412,7 @@ func TestE2E_Lifecycle_InFlightCallFailsOnDrop(t *testing.T) {
 
 // ── 4: env hygiene — gate input from a REAL connected/absent link ────────────
 
-// TestE2E_EnvHygiene_GateDrivenByRealLink proves the input the oracle-subprocess
+// TestE2E_EnvHygiene_GateDrivenByRealLink proves the input the agent-subprocess
 // env scrub gate keys on (IDELinkFromContext(ctx) != nil && link.Connected()) is
 // driven correctly by a REAL *ide.Link across its lifecycle: true while
 // connected to the stub editor, false after Close. The byte-level scrub of the

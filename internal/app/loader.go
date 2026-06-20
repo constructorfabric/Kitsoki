@@ -16,9 +16,9 @@ import (
 	"sort"
 	"strings"
 
+	"kitsoki/internal/agent/grammar"
 	"kitsoki/internal/agents"
 	starlarkhost "kitsoki/internal/host/starlark"
-	"kitsoki/internal/oracle/grammar"
 
 	goyaml "github.com/goccy/go-yaml"
 )
@@ -203,10 +203,10 @@ func runLoadPipeline(merged *AppDef, path, baseDir string, ifaceOverrides map[st
 		return nil, errors.Join(exitErrs...)
 	}
 
-	// Resolve oracle plugin declarations from oracle_plugins: block. This
+	// Resolve agent plugin declarations from agent_plugins: block. This
 	// validates plugin names, performs ${VAR} substitution in env/headers, and
-	// injects the default oracle.claude entry when absent.
-	if pluginErrs := resolveOraclePlugins(merged, path); len(pluginErrs) > 0 {
+	// injects the default agent.claude entry when absent.
+	if pluginErrs := resolveAgentPlugins(merged, path); len(pluginErrs) > 0 {
 		return nil, errors.Join(pluginErrs...)
 	}
 
@@ -526,7 +526,7 @@ func resolveAgentDecls(def *AppDef, file, baseDir string) []error {
 		errs = append(errs, &ValidationError{File: file, Message: msg})
 	}
 
-	// Set of agents referenced by a read-only oracle verb (ask/decide), where
+	// Set of agents referenced by a read-only agent verb (ask/decide), where
 	// Bash must run under a bash_profile. Drives the bash_profile cross-check.
 	askDecideAgents := collectAskDecideAgents(def)
 
@@ -598,13 +598,13 @@ func resolveAgentDecls(def *AppDef, file, baseDir string) []error {
 
 		// bash_profile validation: Bash in the tool surface requires a
 		// bash_profile *only* when the agent is actually referenced by a
-		// read-only oracle verb (host.oracle.ask / host.oracle.decide), where
+		// read-only agent verb (host.agent.ask / host.agent.decide), where
 		// every Bash invocation must pass through ApplyBashProfile. Agents used
-		// solely with host.oracle.task get full, unprofiled Bash by design, so
+		// solely with host.agent.task get full, unprofiled Bash by design, so
 		// the bare presence of Bash is not a problem there. Cross-check the
 		// effect graph rather than warning unconditionally.
 		if hasTool(decl.Tools, "host.Bash") && decl.BashProfile == nil && askDecideAgents[name] {
-			addErr(fmt.Sprintf("agent %q declares Bash but no bash_profile; required when the agent is referenced by host.oracle.ask or host.oracle.decide (those verbs run every Bash command through a profile allowlist)", name))
+			addErr(fmt.Sprintf("agent %q declares Bash but no bash_profile; required when the agent is referenced by host.agent.ask or host.agent.decide (those verbs run every Bash command through a profile allowlist)", name))
 		}
 
 		// external_side_effect inference: infer from the tool surface when
@@ -650,11 +650,11 @@ func inferExternalSideEffect(tools []string) bool {
 }
 
 // collectAskDecideAgents walks the full effect graph and returns the set of
-// agent names referenced by a read-only oracle verb (host.oracle.ask or
-// host.oracle.decide) via the effect's `with.agent` argument. Those verbs run
+// agent names referenced by a read-only agent verb (host.agent.ask or
+// host.agent.decide) via the effect's `with.agent` argument. Those verbs run
 // every Bash command through a bash_profile allowlist, so a referenced agent
 // that declares Bash without a profile is a load error (see resolveAgentDecls).
-// Effects reached only through host.oracle.task — which grants full Bash by
+// Effects reached only through host.agent.task — which grants full Bash by
 // design — are intentionally not collected.
 func collectAskDecideAgents(def *AppDef) map[string]bool {
 	out := map[string]bool{}
@@ -664,7 +664,7 @@ func collectAskDecideAgents(def *AppDef) map[string]bool {
 	var walkEffects func(effs []Effect)
 	walkEffects = func(effs []Effect) {
 		for _, e := range effs {
-			if e.Invoke == "host.oracle.ask" || e.Invoke == "host.oracle.decide" {
+			if e.Invoke == "host.agent.ask" || e.Invoke == "host.agent.decide" {
 				if a, ok := e.With["agent"].(string); ok && a != "" {
 					out[a] = true
 				}
@@ -750,8 +750,8 @@ func loadAndValidate(b []byte, file string) (*AppDef, []error) {
 		return nil, agentErrs
 	}
 
-	// Resolve oracle plugin declarations from oracle_plugins: block.
-	if pluginErrs := resolveOraclePlugins(&def, file); len(pluginErrs) > 0 {
+	// Resolve agent plugin declarations from agent_plugins: block.
+	if pluginErrs := resolveAgentPlugins(&def, file); len(pluginErrs) > 0 {
 		return nil, pluginErrs
 	}
 
@@ -842,14 +842,14 @@ func validateDef(def *AppDef, file string) (*AppDef, []error) {
 		allowedHosts[h] = struct{}{}
 	}
 	// Build the declared-agents set so effect-level `agent: <name>` refs in
-	// host.oracle.* with: blocks can be statically resolved.
+	// host.agent.* with: blocks can be statically resolved.
 	declaredAgents := make(map[string]struct{}, len(def.Agents))
 	for name := range def.Agents {
 		declaredAgents[name] = struct{}{}
 	}
 	validateStates(file, "", def.States, globalIntents, def.Intents, nil, worldKeys, allStatePaths, stateOnKeys, allowedHosts, declaredAgents, &errs)
 
-	// Oracle off-ramp: normalize an explicit `false` to a nil pointer and
+	// Agent off-ramp: normalize an explicit `false` to a nil pointer and
 	// enforce the terminal/conversational placement invariants. Runs before
 	// validateAgentReferences (step 9b) so the agent check sees the
 	// normalized pointers. See docs/stories/meta-mode.md.
@@ -929,14 +929,14 @@ func validateDef(def *AppDef, file string) (*AppDef, []error) {
 	// authored absolute paths at the parent level.
 	validateNoReachIntoChild(file, def, &errs)
 
-	// ── 9d. oracle-split verb × agent.Tools cross-checks (oracle-split
+	// ── 9d. agent-split verb × agent.Tools cross-checks (agent-split
 	// proposal invariant 1 / M6 / M3).
 	// Enforces: ask/decide/extract → no mutation tools; task → acceptance.schema
 	// required; task + external_side_effect:false + WebFetch/WebSearch → error.
-	validateOracleVerbCrossChecks(file, def, &errs)
+	validateAgentVerbCrossChecks(file, def, &errs)
 
 	// ── 9e. grammar-subset check for builtin.local_llm grammar:true effects.
-	// Every decide effect whose `oracle:` alias resolves to a builtin.local_llm
+	// Every decide effect whose `agent:` alias resolves to a builtin.local_llm
 	// plugin with grammar: true must point at a schema inside llama.cpp's
 	// translatable grammar subset; otherwise grammar would silently fail open at
 	// runtime. Reject out-of-subset schemas at load time.
@@ -1055,7 +1055,7 @@ func applyFreeFormFallback(def *AppDef) {
 		if parentStatePath(path) != fallbackParent {
 			return
 		}
-		if s.DefaultIntent != "" || s.OracleOffRamp != nil {
+		if s.DefaultIntent != "" || s.AgentOffRamp != nil {
 			return
 		}
 		if s.On == nil {
@@ -1228,7 +1228,7 @@ func joinPath(prefix, name string) string {
 //   - Valid world key references in relevant_world.
 //   - compound states: initial child must exist.
 //   - invoke: host.* effects reference only declared hosts.
-//   - `with.agent:` on host.oracle.* effects resolves to a declared agent.
+//   - `with.agent:` on host.agent.* effects resolves to a declared agent.
 //
 // stateOnKeys maps each state path to the set of intent names declared
 // in that state's `on:` block. It is used to statically validate
@@ -1660,8 +1660,8 @@ func validateBackgroundEffectAware(file, location, originStatePath string, eff E
 //
 //   - rejects a write_mode value other than "", "open", or "read_only";
 //   - for write_mode: read_only, requires the room to actually dispatch an agent
-//     (mode: conversational, an oracle_off_ramp, or a host.oracle.task /
-//     host.oracle.converse effect) — declaring it on a non-agent room is rejected
+//     (mode: conversational, an agent_off_ramp, or a host.agent.task /
+//     host.agent.converse effect) — declaring it on a non-agent room is rejected
 //     because it would silently do nothing (principle of least surprise);
 //   - for write_mode: read_only, rejects a contradiction with a statically
 //     write-capable agent (an effect's agent declaring external_side_effect: true):
@@ -1704,7 +1704,7 @@ func validateWriteMode(file string, def *AppDef, errs *[]error) {
 			if s.WriteMode == WriteModeReadOnly {
 				if !roomDispatchesAgent(s) {
 					addErr(fmt.Sprintf("state %q: write_mode: read_only is only meaningful on a room that dispatches an agent "+
-						"(mode: conversational, an oracle_off_ramp, or a host.oracle.task / host.oracle.converse effect); "+
+						"(mode: conversational, an agent_off_ramp, or a host.agent.task / host.agent.converse effect); "+
 						"it would silently do nothing here", statePath))
 				}
 				for _, agentName := range roomDispatchedAgents(s) {
@@ -1785,14 +1785,14 @@ func checkReservedScopeSet(file, location string, eff Effect, errs *[]error) {
 
 // roomDispatchesAgent reports whether a state runs a dispatched agent — the
 // precondition for write_mode: read_only to be meaningful. True when the state
-// is a conversational room, declares an oracle off-ramp, or has any on_enter /
-// transition effect invoking host.oracle.task or host.oracle.converse.
+// is a conversational room, declares an agent off-ramp, or has any on_enter /
+// transition effect invoking host.agent.task or host.agent.converse.
 func roomDispatchesAgent(s *State) bool {
-	if s.Mode == "conversational" || s.OracleOffRamp != nil {
+	if s.Mode == "conversational" || s.AgentOffRamp != nil {
 		return true
 	}
 	dispatch := func(eff Effect) bool {
-		return eff.Invoke == "host.oracle.task" || eff.Invoke == "host.oracle.converse"
+		return eff.Invoke == "host.agent.task" || eff.Invoke == "host.agent.converse"
 	}
 	for _, eff := range s.OnEnter {
 		if dispatch(eff) {
@@ -1812,14 +1812,14 @@ func roomDispatchesAgent(s *State) bool {
 }
 
 // roomDispatchedAgents returns the set of statically-named agents this room
-// dispatches via host.oracle.task / host.oracle.converse effects (the with.agent
+// dispatches via host.agent.task / host.agent.converse effects (the with.agent
 // arg, when a literal string). Templated agent names are skipped — they cannot
 // be resolved at load time. Used by the write_mode static-contradiction check.
 func roomDispatchedAgents(s *State) []string {
 	seen := map[string]struct{}{}
 	var out []string
 	collect := func(eff Effect) {
-		if eff.Invoke != "host.oracle.task" && eff.Invoke != "host.oracle.converse" {
+		if eff.Invoke != "host.agent.task" && eff.Invoke != "host.agent.converse" {
 			return
 		}
 		name, _ := eff.With["agent"].(string)
@@ -1845,10 +1845,10 @@ func roomDispatchedAgents(s *State) []string {
 	return out
 }
 
-// validateAgentRef checks that, when a host.oracle.* effect declares
+// validateAgentRef checks that, when a host.agent.* effect declares
 // `with: { agent: <name> }`, the name resolves to an entry in
 // AppDef.Agents. Effects that omit `agent:` (or whose Invoke is not a
-// host.oracle.* handler) are silently ignored — agent: is host-handler-
+// host.agent.* handler) are silently ignored — agent: is host-handler-
 // specific metadata, not a global field. Templated values (containing
 // "{{") are skipped because they cannot be resolved statically.
 func validateAgentRef(file, location string, eff Effect, declaredAgents map[string]struct{}, errs *[]error) {
@@ -1867,12 +1867,12 @@ func validateAgentRef(file, location string, eff Effect, declaredAgents map[stri
 		// Template — evaluated at runtime; cannot validate statically.
 		return
 	}
-	// Only host.oracle.* handlers consume agent:; flag misuse on others as
+	// Only host.agent.* handlers consume agent:; flag misuse on others as
 	// a useful authoring error rather than a silent typo.
-	if eff.Invoke != "" && !strings.HasPrefix(eff.Invoke, "host.oracle.") {
+	if eff.Invoke != "" && !strings.HasPrefix(eff.Invoke, "host.agent.") {
 		*errs = append(*errs, &ValidationError{
 			File:    file,
-			Message: fmt.Sprintf("%s: with.agent is only meaningful on host.oracle.* invocations (got invoke %q)", location, eff.Invoke),
+			Message: fmt.Sprintf("%s: with.agent is only meaningful on host.agent.* invocations (got invoke %q)", location, eff.Invoke),
 		})
 		return
 	}
@@ -1884,11 +1884,11 @@ func validateAgentRef(file, location string, eff Effect, declaredAgents map[stri
 	}
 }
 
-// oracleMutationTools is the set of tools that are forbidden for
-// host.oracle.ask, host.oracle.decide, and host.oracle.extract (read-only
-// verbs). This mirrors the runtime check in oracle_decide.go and
-// oracle_ask.go. The loader check here is the primary enforcement point.
-var oracleMutationTools = map[string]bool{
+// agentMutationTools is the set of tools that are forbidden for
+// host.agent.ask, host.agent.decide, and host.agent.extract (read-only
+// verbs). This mirrors the runtime check in agent_decide.go and
+// agent_ask.go. The loader check here is the primary enforcement point.
+var agentMutationTools = map[string]bool{
 	"host.Edit":         true,
 	"host.Write":        true,
 	"host.NotebookEdit": true,
@@ -1907,9 +1907,9 @@ var readOnlyArgv0s = map[string]bool{
 	"file": true, "which": true, "type": true,
 }
 
-// validateOracleVerbCrossChecks walks every host.oracle.* effect across the
+// validateAgentVerbCrossChecks walks every host.agent.* effect across the
 // entire AppDef (states + proposals) and enforces three rules from the
-// oracle-split proposal:
+// agent-split proposal:
 //
 //  1. (M6a) ask/decide/extract agents must not declare Edit/Write/NotebookEdit.
 //  2. (M6b) task effects must have acceptance.schema set in their with: block.
@@ -1922,13 +1922,13 @@ var readOnlyArgv0s = map[string]bool{
 // declare a validator.post_cmd whose argv0 is not on the known-read-only
 // allowlist — the runtime sandbox catches actual mutations, but the warning
 // surfaces the potential problem at app-load.
-func validateOracleVerbCrossChecks(file string, def *AppDef, errs *[]error) {
+func validateAgentVerbCrossChecks(file string, def *AppDef, errs *[]error) {
 	if def == nil {
 		return
 	}
 	// Walk all effects in the state tree.
 	walkAllEffects(def.States, func(loc string, eff Effect) {
-		checkOracleEffect(file, loc, eff, def.Agents, errs)
+		checkAgentEffect(file, loc, eff, def.Agents, errs)
 	})
 	// Walk proposal execute effects.
 	for pname, pk := range def.Proposals {
@@ -1936,12 +1936,12 @@ func validateOracleVerbCrossChecks(file string, def *AppDef, errs *[]error) {
 			continue
 		}
 		loc := fmt.Sprintf("proposal %q execute", pname)
-		checkOracleEffect(file, loc, Effect{
+		checkAgentEffect(file, loc, Effect{
 			Invoke: pk.Execute.Invoke,
 			With:   pk.Execute.With,
 		}, def.Agents, errs)
 		for i, child := range pk.Execute.OnComplete {
-			checkOracleEffect(file, fmt.Sprintf("%s on_complete[%d]", loc, i), child, def.Agents, errs)
+			checkAgentEffect(file, fmt.Sprintf("%s on_complete[%d]", loc, i), child, def.Agents, errs)
 		}
 	}
 }
@@ -1981,16 +1981,16 @@ func walkAllEffectsPrefix(prefix string, states map[string]*State, fn func(loc s
 	}
 }
 
-// checkOracleEffect enforces M6 and M3 rules on one effect.
-func checkOracleEffect(file, loc string, eff Effect, agents map[string]*AgentDecl, errs *[]error) {
+// checkAgentEffect enforces M6 and M3 rules on one effect.
+func checkAgentEffect(file, loc string, eff Effect, agents map[string]*AgentDecl, errs *[]error) {
 	if eff.With == nil {
 		return
 	}
 	verb := eff.Invoke
-	if !strings.HasPrefix(verb, "host.oracle.") {
+	if !strings.HasPrefix(verb, "host.agent.") {
 		return
 	}
-	shortVerb := strings.TrimPrefix(verb, "host.oracle.")
+	shortVerb := strings.TrimPrefix(verb, "host.agent.")
 
 	agentName, _ := eff.With["agent"].(string)
 	if strings.Contains(agentName, "{{") {
@@ -2011,9 +2011,9 @@ func checkOracleEffect(file, loc string, eff Effect, agents map[string]*AgentDec
 		// M6a: reject mutation tools.
 		if decl != nil {
 			for _, t := range decl.Tools {
-				if oracleMutationTools[t] {
+				if agentMutationTools[t] {
 					addErr(fmt.Sprintf(
-						"%s: agent %q declares mutation tool %q — not permitted for host.oracle.%s (read-only verb); use host.oracle.task for agentic work",
+						"%s: agent %q declares mutation tool %q — not permitted for host.agent.%s (read-only verb); use host.agent.task for agentic work",
 						loc, agentName, t, shortVerb,
 					))
 				}
@@ -2027,7 +2027,7 @@ func checkOracleEffect(file, loc string, eff Effect, agents map[string]*AgentDec
 					if len(parts) > 0 {
 						argv0 := filepath.Base(parts[0])
 						if !readOnlyArgv0s[argv0] {
-							slog.Warn("oracle verb cross-check: decide/extract validator.post_cmd argv0 is not on the read-only allowlist; runtime sandbox enforces isolation",
+							slog.Warn("agent verb cross-check: decide/extract validator.post_cmd argv0 is not on the read-only allowlist; runtime sandbox enforces isolation",
 								"location", loc, "argv0", argv0, "file", file)
 						}
 					}
@@ -2044,7 +2044,7 @@ func checkOracleEffect(file, loc string, eff Effect, agents map[string]*AgentDec
 			}
 			if strings.TrimSpace(schemaVal) == "" {
 				addErr(fmt.Sprintf(
-					"%s: host.oracle.task requires acceptance.schema to be set in the with: block",
+					"%s: host.agent.task requires acceptance.schema to be set in the with: block",
 					loc,
 				))
 			}
@@ -2067,7 +2067,7 @@ func checkOracleEffect(file, loc string, eff Effect, agents map[string]*AgentDec
 }
 
 // validateLocalLLMGrammarSubset enforces, at load time, that every decide
-// effect whose `oracle:` alias resolves to a builtin.local_llm plugin with
+// effect whose `agent:` alias resolves to a builtin.local_llm plugin with
 // grammar: true points at a schema inside llama.cpp's translatable grammar
 // subset. Without this, an out-of-subset schema would fail open silently at
 // runtime (llama.cpp decodes unconstrained yet returns 200), defeating the
@@ -2075,18 +2075,18 @@ func checkOracleEffect(file, loc string, eff Effect, agents map[string]*AgentDec
 //
 // Scope: the check covers the decide verb only — its schema is a string path in
 // the effect's with.schema. extract (with.schema_path) and ask source differently
-// and are deferred as a follow-up. An empty `oracle:` alias resolves to
-// oracle.claude (not local_llm) and is unaffected. Schema paths resolve relative
+// and are deferred as a follow-up. An empty `agent:` alias resolves to
+// agent.claude (not local_llm) and is unaffected. Schema paths resolve relative
 // to def.BaseDir (matching the runtime app-dir resolution); absolute paths are
 // read as-is. A schema that cannot be read is reported here too, since the gate
 // cannot vouch for a schema it never saw.
 func validateLocalLLMGrammarSubset(file string, def *AppDef, errs *[]error) {
-	if def == nil || len(def.OraclePlugins) == 0 {
+	if def == nil || len(def.AgentPlugins) == 0 {
 		return
 	}
 	// Collect aliases that are builtin.local_llm with grammar: true.
 	grammarLocalLLM := make(map[string]bool)
-	for alias, decl := range def.OraclePlugins {
+	for alias, decl := range def.AgentPlugins {
 		if decl != nil && decl.Plugin == "builtin.local_llm" && decl.Grammar {
 			grammarLocalLLM[alias] = true
 		}
@@ -2100,10 +2100,10 @@ func validateLocalLLMGrammarSubset(file string, def *AppDef, errs *[]error) {
 	}
 
 	walkAllEffects(def.States, func(loc string, eff Effect) {
-		if eff.Invoke != "host.oracle.decide" {
+		if eff.Invoke != "host.agent.decide" {
 			return
 		}
-		if !grammarLocalLLM[eff.OraclePlugin] {
+		if !grammarLocalLLM[eff.AgentPlugin] {
 			return
 		}
 		schemaPath, _ := eff.With["schema"].(string)
@@ -2124,15 +2124,15 @@ func validateLocalLLMGrammarSubset(file string, def *AppDef, errs *[]error) {
 		raw, readErr := os.ReadFile(resolved)
 		if readErr != nil {
 			addErr(fmt.Sprintf(
-				"%s: oracle %q is builtin.local_llm with grammar: true but its decide schema %q could not be read: %v",
-				loc, eff.OraclePlugin, schemaPath, readErr,
+				"%s: agent %q is builtin.local_llm with grammar: true but its decide schema %q could not be read: %v",
+				loc, eff.AgentPlugin, schemaPath, readErr,
 			))
 			return
 		}
 		if subErr := grammar.SubsetOK(raw); subErr != nil {
 			addErr(fmt.Sprintf(
-				"%s: oracle %q is builtin.local_llm with grammar: true but its decide schema %q is outside the llama.cpp grammar subset: %v",
-				loc, eff.OraclePlugin, schemaPath, subErr,
+				"%s: agent %q is builtin.local_llm with grammar: true but its decide schema %q is outside the llama.cpp grammar subset: %v",
+				loc, eff.AgentPlugin, schemaPath, subErr,
 			))
 		}
 	})
@@ -2360,11 +2360,11 @@ func validateMetaModes(file string, def *AppDef, errs *[]error) {
 }
 
 // normalizeAndValidateOffRamps walks every state in the tree and enforces the
-// oracle off-ramp's load-time invariants (see docs/stories/meta-mode.md and
+// agent off-ramp's load-time invariants (see docs/stories/meta-mode.md and
 // the OffRampDef doc):
 //
-//   - An explicit `oracle_off_ramp: false` is normalized to a nil pointer so
-//     every downstream reader can treat `State.OracleOffRamp != nil` as "the
+//   - An explicit `agent_off_ramp: false` is normalized to a nil pointer so
+//     every downstream reader can treat `State.AgentOffRamp != nil` as "the
 //     off-ramp fires." (goccy allocates the pointer even for `false`; the
 //     def's enabled flag is the discriminant.)
 //   - An off-ramp on a `terminal: true` state is rejected: a terminal state
@@ -2389,17 +2389,17 @@ func normalizeAndValidateOffRamps(file string, def *AppDef, errs *[]error) {
 				continue
 			}
 			path := joinPath(prefix, name)
-			if s.OracleOffRamp != nil {
-				if !s.OracleOffRamp.Enabled() {
+			if s.AgentOffRamp != nil {
+				if !s.AgentOffRamp.Enabled() {
 					// Explicit `false`: drop the def so the runtime sees no
 					// off-ramp. No further checks apply.
-					s.OracleOffRamp = nil
+					s.AgentOffRamp = nil
 				} else {
 					if s.Terminal {
 						*errs = append(*errs, &ValidationError{
 							File: file,
 							Message: fmt.Sprintf(
-								"state %q declares oracle_off_ramp on a terminal: true state; a terminal state never routes free text",
+								"state %q declares agent_off_ramp on a terminal: true state; a terminal state never routes free text",
 								path),
 						})
 					}
@@ -2407,7 +2407,7 @@ func normalizeAndValidateOffRamps(file string, def *AppDef, errs *[]error) {
 						*errs = append(*errs, &ValidationError{
 							File: file,
 							Message: fmt.Sprintf(
-								"state %q declares oracle_off_ramp on a mode: conversational state; that harness is already free-form, so the flag is meaningless there",
+								"state %q declares agent_off_ramp on a mode: conversational state; that harness is already free-form, so the flag is meaningless there",
 								path),
 						})
 					}
@@ -2494,7 +2494,7 @@ func validateAgentReferences(file string, def *AppDef, errs *[]error) {
 		}
 	}
 
-	// states.<path>.oracle_off_ramp.agent — one site per off-ramp room. Walk
+	// states.<path>.agent_off_ramp.agent — one site per off-ramp room. Walk
 	// the full state tree (off-ramps may sit on nested states) in sorted path
 	// order for stable error ordering. Mirrors the off_path.agent check.
 	var walkOffRampAgents func(prefix string, states map[string]*State)
@@ -2505,9 +2505,9 @@ func validateAgentReferences(file string, def *AppDef, errs *[]error) {
 				continue
 			}
 			path := joinPath(prefix, name)
-			if s.OracleOffRamp != nil && s.OracleOffRamp.Agent != "" {
-				if _, ok := known[s.OracleOffRamp.Agent]; !ok {
-					addUnknown(s.OracleOffRamp.Agent, fmt.Sprintf("states.%s.oracle_off_ramp.agent", path))
+			if s.AgentOffRamp != nil && s.AgentOffRamp.Agent != "" {
+				if _, ok := known[s.AgentOffRamp.Agent]; !ok {
+					addUnknown(s.AgentOffRamp.Agent, fmt.Sprintf("states.%s.agent_off_ramp.agent", path))
 				}
 			}
 			if len(s.States) > 0 {

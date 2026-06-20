@@ -5,7 +5,7 @@
 // stub iface.transport (host.append_to_file), so they never exercise the
 // chain:
 //
-//   oracle.decide returns ok with Data["submitted"] = decision_artifact
+//   agent.decide returns ok with Data["submitted"] = decision_artifact
 //     → orchestrator binds `decision_artifact: submitted` into world
 //     → decide_awaiting_reply.on_enter templates
 //       `body: "{{ world.decision_artifact.summary_markdown }}"` into
@@ -13,7 +13,7 @@
 //     → bodyArg pretty-prints map[string]any as JSON
 //     → file on disk
 //
-// This test stubs host.oracle.decide inline (returning a fully-shaped
+// This test stubs host.agent.decide inline (returning a fully-shaped
 // decision_artifact with a sentinel string) but lets the real
 // host.artifacts_dir handler run (bound to iface.transport via
 // host_bindings:), then asserts the file on disk contains the sentinel.

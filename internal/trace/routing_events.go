@@ -24,7 +24,7 @@ const (
 	EvTurnTurncacheHit = "turn.turncache_hit"
 
 	// EvTurnOffpathRouted fires when the resolver classifies the turn
-	// as off-path / oracle rather than a state-machine transition.
+	// as off-path / agent rather than a state-machine transition.
 	// Fields: state_path, reason. Chip icon `◇` (grey).
 	EvTurnOffpathRouted = "turn.offpath_routed"
 

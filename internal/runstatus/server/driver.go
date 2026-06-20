@@ -174,7 +174,7 @@ func (d OrchestratorDriver) DismissNotification(ctx context.Context, id string) 
 
 // Teleport resolves the notification, projects it to a [inbox.TeleportTarget],
 // and delegates to Orchestrator.Teleport — the same deterministic jump the TUI
-// and Oracle Room banner use, so the trace is indistinguishable from a TUI
+// and Agent Room banner use, so the trace is indistinguishable from a TUI
 // teleport. A nil JobStore returns [ErrNoInbox]; an unknown id or an empty
 // destination state returns [ErrNotTeleportable].
 func (d OrchestratorDriver) Teleport(ctx context.Context, notificationID string) (*orchestrator.TurnOutcome, error) {

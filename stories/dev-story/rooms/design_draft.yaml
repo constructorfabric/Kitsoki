@@ -1,7 +1,7 @@
 # design_draft — generate the proposal, then publish it.
 #
 # Stage 4 (final) of the 4-stage proposal pipeline. on_enter runs the
-# `design_author` (host.oracle.task) which classifies the kind, copies
+# `design_author` (host.agent.task) which classifies the kind, copies
 # the matching docs/proposals/templates/<kind>.md, fills the Why / What
 # changes / Impact spine, and writes 004-proposal.md into the workspace —
 # OR, when the overlap gate chose change_existing, amends
@@ -51,7 +51,7 @@ states:
           {% empty %}(no follow-ups){% endfor %}
         when: "world.design_artifact.needs_clarification"
       - heading: "Design"
-      - code: '{{ world.design_artifact.summary_markdown|default:"(pending — oracle has not returned yet; the full proposal is written to the output file)" }}'
+      - code: '{{ world.design_artifact.summary_markdown|default:"(pending — agent has not returned yet; the full proposal is written to the output file)" }}'
       - choice:
           mode: single
           prompt: "Actions"
@@ -83,7 +83,7 @@ states:
       # + design_kind — both unset on first entry, both set after). /reload
       # re-renders the stored draft; `refine`/`clarify` clear design_artifact
       # (an unset bind ⇒ once: re-arms) to force a re-draft.
-      - invoke: host.oracle.task
+      - invoke: host.agent.task
         id: design_author
         once: true
         with:
@@ -190,7 +190,7 @@ states:
                 design_draft_cycle:     "{{ world.design_draft_cycle + 1 }}"
                 design_cycle:           "{{ world.design_cycle + 1 }}"
                 design_diff_verdict:    ""
-            - invoke: host.oracle.task
+            - invoke: host.agent.task
               id: design_author_refine
               with:
                 agent: design_author

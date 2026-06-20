@@ -49,9 +49,9 @@ states:
                 design_idea: "{{ world.design_seed_idea != '' ? world.design_seed_idea + ' — ' + slots.message : slots.message }}"
                 design_seed_idea: ""
                 last_error: ""
-            - invoke: host.oracle.decide
+            - invoke: host.agent.decide
               id: name_slug
-              oracle: oracle.local_llm
+              agent: agent.local_llm
               with:
                 prompt_path: prompts/design_slug.md
                 schema: schemas/slug.json

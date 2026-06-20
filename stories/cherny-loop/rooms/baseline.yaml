@@ -8,7 +8,7 @@ states:
   #   gate FAILS (RED)  → the gate works and there's real work to do → `proceed`.
   #   gate PASSES (green) → the gate proves nothing yet → `reconfigure` / `accept`.
   #
-  # The maker (host.oracle.task) is NEVER called in this room — the baseline is
+  # The maker (host.agent.task) is NEVER called in this room — the baseline is
   # the cheap check that gates the expensive loop.
   baseline:
     description: "Baseline — proving the gate fails first"
@@ -26,9 +26,9 @@ states:
           gate_ok:        ok
           gate_exit_code: exit_code
           gate_stdout:    stdout
-      - invoke: host.oracle.decide
+      - invoke: host.agent.decide
         id: "gate-0"   # the baseline review, addressable distinctly from loop gates
-        when: "world.gate_mode == 'oracle'"
+        when: "world.gate_mode == 'agent'"
         with:
           prompt: prompts/gate_review.md
           schema: schemas/gate_verdict.json
@@ -67,7 +67,7 @@ states:
           - prose: "⚠ The gate **passes on the unchanged artifact**. Either the goal is already met, or the gate is too weak to encode it. Don't spend budget on a gate that can't fail — strengthen it (`reconfigure`), or `accept` that the goal is genuinely already met."
             when:  "world.gate_ok == true"
           - heading: "What ran"
-          - code: '{{ world.gate_command|default:"(oracle reviewer — no shell command)" }}'
+          - code: '{{ world.gate_command|default:"(agent reviewer — no shell command)" }}'
             when: "world.gate_mode == 'script'"
           - kv:
               pairs:
@@ -78,7 +78,7 @@ states:
           - code: '{{ world.gate_stdout|default:"(no output)" }}'
             when: "world.gate_mode == 'script'"
           - code: '{{ world.gate_reason|default:"(no rationale)" }}'
-            when: "world.gate_mode == 'oracle'"
+            when: "world.gate_mode == 'agent'"
         choices:
           - heading: "Actions"
           - list:

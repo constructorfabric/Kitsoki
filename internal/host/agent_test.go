@@ -1,0 +1,732 @@
+package host_test
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"regexp"
+	"runtime"
+	"strings"
+	"testing"
+
+	"kitsoki/internal/host"
+)
+
+// stubAgentRunner returns a ClaudeRunner that mimics
+// testdata/fake-agent.sh verbatim: echoes
+// "ANSWER for q=[<stdin>] sid=<session_id>" and appends
+// " system=[...]" and " model=[...]" when those flags are present.
+// The session id is read from either --session-id or --resume.
+func stubAgentRunner() host.ClaudeRunner {
+	return func(ctx context.Context, args []string, stdin, workingDir string) (host.ClaudeRun, error) {
+		var sessionID, systemPrompt, model string
+		for i := 0; i < len(args); i++ {
+			switch args[i] {
+			case "--session-id":
+				if i+1 < len(args) {
+					sessionID = args[i+1]
+					i++
+				}
+			case "--resume":
+				if i+1 < len(args) {
+					sessionID = args[i+1]
+					i++
+				}
+			case "--append-system-prompt", "--system-prompt":
+				if i+1 < len(args) {
+					systemPrompt = args[i+1]
+					i++
+				}
+			case "--model":
+				if i+1 < len(args) {
+					model = args[i+1]
+					i++
+				}
+			}
+		}
+		out := "ANSWER for q=[" + stdin + "] sid=" + sessionID
+		if systemPrompt != "" {
+			out += " system=[" + systemPrompt + "]"
+		}
+		if model != "" {
+			out += " model=[" + model + "]"
+		}
+		return host.ClaudeRun{Stdout: out}, nil
+	}
+}
+
+// stubOneShotRunner returns a ClaudeRunner that mimics
+// testdata/fake-oneshot.sh verbatim: echoes stdin and appends
+// " system=[...]" / " model=[...]" when those flags are set; if
+// stdin contains "FAIL" it returns exit 2 with "simulated failure"
+// on stderr.
+func stubOneShotRunner() host.ClaudeRunner {
+	return func(ctx context.Context, args []string, stdin, workingDir string) (host.ClaudeRun, error) {
+		var systemPrompt, model string
+		for i := 0; i < len(args); i++ {
+			switch args[i] {
+			case "--append-system-prompt", "--system-prompt":
+				if i+1 < len(args) {
+					systemPrompt = args[i+1]
+					i++
+				}
+			case "--model":
+				if i+1 < len(args) {
+					model = args[i+1]
+					i++
+				}
+			}
+		}
+		if strings.Contains(stdin, "FAIL") {
+			return host.ClaudeRun{Stderr: "simulated failure\n", ExitCode: 2}, nil
+		}
+		out := stdin
+		if systemPrompt != "" {
+			out += " system=[" + systemPrompt + "]"
+		}
+		if model != "" {
+			out += " model=[" + model + "]"
+		}
+		return host.ClaudeRun{Stdout: out}, nil
+	}
+}
+
+// fakeOneShotBin returns the path to testdata/fake-oneshot.sh.
+// Retained for the single remaining test that intentionally inspects
+// the bash fake's verbatim non-JSON output shape via AgentBinEnv.
+func fakeOneShotBin(t *testing.T) string {
+	t.Helper()
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed")
+	}
+	path := filepath.Join(filepath.Dir(thisFile), "testdata", "fake-oneshot.sh")
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("fake-oneshot.sh not found at %s: %v", path, err)
+	}
+	if fi.Mode()&0o111 == 0 {
+		t.Fatalf("fake-oneshot.sh is not executable")
+	}
+	return path
+}
+
+// ── host.agent.talk (conversational) ─────────────────────────────────────────
+
+// TestAgentTalk_GeneratesSessionID calls the handler with no session_id and
+// verifies the handler creates a UUID, invokes the fake binary, and returns
+// both the answer and the generated session_id.
+func TestAgentTalk_GeneratesSessionID(t *testing.T) {
+	t.Parallel()
+	ctx := host.WithClaudeRunner(context.Background(), stubAgentRunner())
+
+	res, err := host.AgentConverseHandler(ctx, map[string]any{
+		"question": "how does X work",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.Error != "" {
+		t.Fatalf("unexpected Result.Error: %s", res.Error)
+	}
+
+	sid, _ := res.Data["session_id"].(string)
+	if sid == "" {
+		t.Fatal("expected session_id to be generated")
+	}
+	uuidRE := regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
+	if !uuidRE.MatchString(sid) {
+		t.Fatalf("session_id %q is not a v4 UUID", sid)
+	}
+
+	answer, _ := res.Data["answer"].(string)
+	if !strings.Contains(answer, "how does X work") {
+		t.Fatalf("answer does not echo the question: %q", answer)
+	}
+	if !strings.Contains(answer, sid) {
+		t.Fatalf("answer does not contain the generated session_id: %q (sid=%s)", answer, sid)
+	}
+}
+
+// TestAgentTalk_PreservesSessionID verifies that when a session_id is passed
+// in, it is forwarded to the binary unchanged and returned in the result.
+func TestAgentTalk_PreservesSessionID(t *testing.T) {
+	t.Parallel()
+	ctx := host.WithClaudeRunner(context.Background(), stubAgentRunner())
+
+	const existingSID = "11111111-2222-4333-8444-555555555555"
+	res, err := host.AgentConverseHandler(ctx, map[string]any{
+		"question":   "second turn",
+		"session_id": existingSID,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.Error != "" {
+		t.Fatalf("unexpected Result.Error: %s", res.Error)
+	}
+	if sid, _ := res.Data["session_id"].(string); sid != existingSID {
+		t.Fatalf("session_id not preserved: got %q want %q", sid, existingSID)
+	}
+	if ans, _ := res.Data["answer"].(string); !strings.Contains(ans, existingSID) {
+		t.Fatalf("fake binary did not receive existing session_id: %q", ans)
+	}
+}
+
+// TestAgentTalk_SystemPromptThreaded verifies that when the caller passes a
+// system_prompt arg, the handler forwards it to the claude binary via
+// --append-system-prompt. fake-agent.sh echoes it back as system=[...] when
+// present, letting us assert the threading without inspecting argv directly.
+func TestAgentTalk_SystemPromptThreaded(t *testing.T) {
+	t.Parallel()
+	ctx := host.WithClaudeRunner(context.Background(), stubAgentRunner())
+
+	const persona = "you speak like a frontier scout"
+	res, err := host.AgentConverseHandler(ctx, map[string]any{
+		"question":      "where to camp?",
+		"system_prompt": persona,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.Error != "" {
+		t.Fatalf("unexpected Result.Error: %s", res.Error)
+	}
+	ans, _ := res.Data["answer"].(string)
+	if !strings.Contains(ans, persona) {
+		t.Fatalf("system_prompt was not forwarded to --append-system-prompt; answer=%q", ans)
+	}
+}
+
+// TestAgentTalk_SystemPromptOmitted verifies the layered contract: with no
+// system_prompt arg there is no Layer-3 persona, but the call is STILL grounded
+// — the composed system prompt carries the kitsoki Layer-1 fragment via
+// --system-prompt (which replaces Claude Code's default). Grounding is
+// unconditional; that is the moat protection.
+func TestAgentTalk_SystemPromptOmitted(t *testing.T) {
+	t.Parallel()
+	ctx := host.WithClaudeRunner(context.Background(), stubAgentRunner())
+
+	res, err := host.AgentConverseHandler(ctx, map[string]any{
+		"question": "anything",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.Error != "" {
+		t.Fatalf("unexpected Result.Error: %s", res.Error)
+	}
+	ans, _ := res.Data["answer"].(string)
+	if !strings.Contains(ans, "kitsoki") {
+		t.Fatalf("expected the composed kitsoki grounding even with no persona; answer=%q", ans)
+	}
+}
+
+// TestAgentTalk_MissingQuestion asserts that an empty question returns an
+// application-level error (Result.Error), not a Go error.
+func TestAgentTalk_MissingQuestion(t *testing.T) {
+	t.Parallel()
+	res, err := host.AgentConverseHandler(context.Background(), map[string]any{})
+	if err != nil {
+		t.Fatalf("unexpected Go error: %v", err)
+	}
+	if res.Error == "" {
+		t.Fatal("expected Result.Error for missing question")
+	}
+}
+
+// TestAgentTalk_BinaryMissing asserts that when the claude binary is not
+// available, the handler returns Result.Error with a helpful message and
+// still echoes the (possibly generated) session_id so the caller can retry.
+func TestAgentTalk_BinaryMissing(t *testing.T) {
+	t.Setenv(host.AgentBinEnv, "/definitely/does/not/exist/claude")
+
+	res, err := host.AgentConverseHandler(context.Background(), map[string]any{
+		"question": "anything",
+	})
+	if err != nil {
+		t.Fatalf("unexpected Go error: %v", err)
+	}
+	if res.Error == "" {
+		t.Fatal("expected Result.Error when binary is missing")
+	}
+	if sid, _ := res.Data["session_id"].(string); sid == "" {
+		t.Fatal("expected a session_id to be echoed even on failure so caller can retry")
+	}
+}
+
+// ── host.agent.ask (one-shot) ────────────────────────────────────────────────
+
+// TestAgentAsk_RendersPromptWithArgs verifies that {{ args.X }} placeholders
+// in the prompt file are substituted from the handler's args before the
+// binary is invoked.
+func TestAgentAsk_RendersPromptWithArgs(t *testing.T) {
+	t.Parallel()
+	ctx := host.WithClaudeRunner(context.Background(), stubOneShotRunner())
+
+	// Write a prompt file that references two args.
+	dir := t.TempDir()
+	promptPath := filepath.Join(dir, "repair.md")
+	body := "Command: {{ args.failed_cmd }}\nError: {{ args.last_error }}\n"
+	if err := os.WriteFile(promptPath, []byte(body), 0o644); err != nil {
+		t.Fatalf("write prompt: %v", err)
+	}
+
+	res, err := host.AgentAskHandler(ctx, map[string]any{
+		"prompt_path": promptPath,
+		"failed_cmd":  "ls /nope",
+		"last_error":  "No such file or directory",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.Error != "" {
+		t.Fatalf("unexpected Result.Error: %s", res.Error)
+	}
+
+	out, _ := res.Data["stdout"].(string)
+	if !strings.Contains(out, "ls /nope") {
+		t.Fatalf("stdout does not reflect templated failed_cmd: %q", out)
+	}
+	if !strings.Contains(out, "No such file or directory") {
+		t.Fatalf("stdout does not reflect templated last_error: %q", out)
+	}
+
+	if ok, _ := res.Data["ok"].(bool); !ok {
+		t.Fatal("ok should be true on clean exit")
+	}
+	if code, _ := res.Data["exit_code"].(int); code != 0 {
+		t.Fatalf("exit_code should be 0 on clean exit, got %d", code)
+	}
+}
+
+// TestAgentAsk_ResolvesRelativePath verifies that a prompt_path is resolved
+// relative to KITSOKI_APP_DIR when set.
+func TestAgentAsk_ResolvesRelativePath(t *testing.T) {
+	// Uses t.Setenv(AppDirEnv) — keep serial.
+	t.Setenv(host.AppDirEnv, "")
+	dir := t.TempDir()
+	promptsDir := filepath.Join(dir, "prompts")
+	if err := os.MkdirAll(promptsDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(promptsDir, "hi.md"), []byte("hello {{ args.name }}"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	t.Setenv(host.AppDirEnv, dir)
+	ctx := host.WithClaudeRunner(context.Background(), stubOneShotRunner())
+
+	res, err := host.AgentAskHandler(ctx, map[string]any{
+		"prompt_path": "prompts/hi.md",
+		"name":        "world",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.Error != "" {
+		t.Fatalf("unexpected Result.Error: %s", res.Error)
+	}
+	if out, _ := res.Data["stdout"].(string); !strings.Contains(out, "hello world") {
+		t.Fatalf("relative prompt_path did not resolve: %q", out)
+	}
+}
+
+// TestAgentAsk_MissingPromptPath returns an application-level error.
+func TestAgentAsk_MissingPromptPath(t *testing.T) {
+	t.Parallel()
+	res, err := host.AgentAskHandler(context.Background(), map[string]any{})
+	if err != nil {
+		t.Fatalf("unexpected Go error: %v", err)
+	}
+	if res.Error == "" {
+		t.Fatal("expected Result.Error for missing prompt_path")
+	}
+}
+
+// TestAgentAsk_PromptNotFound returns Result.Error, not a Go error.
+func TestAgentAsk_PromptNotFound(t *testing.T) {
+	t.Parallel()
+	res, err := host.AgentAskHandler(context.Background(), map[string]any{
+		"prompt_path": "/definitely/does/not/exist.md",
+	})
+	if err != nil {
+		t.Fatalf("unexpected Go error: %v", err)
+	}
+	if res.Error == "" {
+		t.Fatal("expected Result.Error for missing prompt file")
+	}
+}
+
+// TestAgentAsk_BinaryMissing returns Result.Error with the install hint.
+func TestAgentAsk_BinaryMissing(t *testing.T) {
+	t.Setenv(host.AgentBinEnv, "/definitely/does/not/exist/claude")
+
+	dir := t.TempDir()
+	promptPath := filepath.Join(dir, "p.md")
+	if err := os.WriteFile(promptPath, []byte("hi"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	res, err := host.AgentAskHandler(context.Background(), map[string]any{
+		"prompt_path": promptPath,
+	})
+	if err != nil {
+		t.Fatalf("unexpected Go error: %v", err)
+	}
+	if res.Error == "" {
+		t.Fatal("expected Result.Error when binary is missing")
+	}
+}
+
+// TestAgentAsk_NonZeroExit populates exit_code, ok=false, and Result.Error.
+func TestAgentAsk_NonZeroExit(t *testing.T) {
+	t.Parallel()
+	ctx := host.WithClaudeRunner(context.Background(), stubOneShotRunner())
+
+	dir := t.TempDir()
+	promptPath := filepath.Join(dir, "p.md")
+	// Sentinel keyword that the stub treats as "exit non-zero".
+	if err := os.WriteFile(promptPath, []byte("FAIL please"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	res, err := host.AgentAskHandler(ctx, map[string]any{
+		"prompt_path": promptPath,
+	})
+	if err != nil {
+		t.Fatalf("unexpected Go error: %v", err)
+	}
+	if ok, _ := res.Data["ok"].(bool); ok {
+		t.Fatal("ok should be false on non-zero exit")
+	}
+	if code, _ := res.Data["exit_code"].(int); code == 0 {
+		t.Fatal("exit_code should be non-zero")
+	}
+	if res.Error == "" {
+		t.Fatal("Result.Error should be set on non-zero exit")
+	}
+}
+
+// TestAgentAsk_RegisteredAsBuiltin verifies the handler is wired into the
+// default Registry via RegisterBuiltins.
+func TestAgentAsk_RegisteredAsBuiltin(t *testing.T) {
+	t.Parallel()
+	r := host.NewRegistry()
+	host.RegisterBuiltins(r)
+	if _, ok := r.Get("host.agent.ask"); !ok {
+		t.Fatal("host.agent.ask was not registered by RegisterBuiltins")
+	}
+}
+
+// ── host.agent.talk chat-aware path ──────────────────────────────────────────
+
+// TestAgentTalk_ChatAwarePath_FirstTurn verifies that on the first turn with a
+// chat_id and a ChatStore in context:
+//   - user message is appended to the transcript
+//   - a new claude_session_id is generated and stored on the chat
+//   - assistant message is appended to the transcript
+//   - result contains chat_id, claude_session_id, transcript_seq
+func TestAgentTalk_ChatAwarePath_FirstTurn(t *testing.T) {
+	t.Parallel()
+	cs := newFakeChatStore()
+	cs.addChat(host.ChatRecord{ID: "chat-1", Title: "My Chat", Status: "active"})
+	ctx := host.WithClaudeRunner(host.WithChatStore(context.Background(), cs), stubAgentRunner())
+
+	res, err := host.AgentConverseHandler(ctx, map[string]any{
+		"question": "What is X?",
+		"chat_id":  "chat-1",
+	})
+	if err != nil {
+		t.Fatalf("unexpected Go error: %v", err)
+	}
+	if res.Error != "" {
+		t.Fatalf("unexpected Result.Error: %s", res.Error)
+	}
+
+	// chat_id echoed back
+	if res.Data["chat_id"] != "chat-1" {
+		t.Fatalf("expected chat_id=chat-1 in result, got %v", res.Data["chat_id"])
+	}
+
+	// claude_session_id generated (non-empty UUID)
+	claudeSID, _ := res.Data["claude_session_id"].(string)
+	if claudeSID == "" {
+		t.Fatal("expected claude_session_id to be generated")
+	}
+
+	// transcript_seq present
+	seq, _ := res.Data["transcript_seq"].(int)
+	if seq < 0 {
+		t.Fatalf("expected transcript_seq >= 0, got %d", seq)
+	}
+
+	// Two messages in transcript: user + assistant
+	msgs := cs.messages["chat-1"]
+	if len(msgs) != 2 {
+		t.Fatalf("expected 2 messages in transcript, got %d", len(msgs))
+	}
+	if msgs[0].Role != "user" {
+		t.Fatalf("expected first message role=user, got %q", msgs[0].Role)
+	}
+	if msgs[1].Role != "assistant" {
+		t.Fatalf("expected second message role=assistant, got %q", msgs[1].Role)
+	}
+
+	// claude session ID stored on chat
+	stored, _ := cs.Get(context.Background(), "chat-1")
+	if stored.ClaudeSessionID == "" {
+		t.Fatal("expected ClaudeSessionID to be stored on chat after first turn")
+	}
+	if stored.ClaudeSessionID != claudeSID {
+		t.Fatalf("stored ClaudeSessionID %q != result claude_session_id %q", stored.ClaudeSessionID, claudeSID)
+	}
+}
+
+// TestAgentTalk_ChatAwarePath_ReusesSessionID verifies that on the second turn
+// the existing claude_session_id is reused, not replaced.
+func TestAgentTalk_ChatAwarePath_ReusesSessionID(t *testing.T) {
+	t.Parallel()
+	const existingClaudeID = "11111111-2222-4333-8444-555555555555"
+	cs := newFakeChatStore()
+	cs.addChat(host.ChatRecord{
+		ID:              "chat-1",
+		Title:           "My Chat",
+		Status:          "active",
+		ClaudeSessionID: existingClaudeID,
+	})
+	ctx := host.WithClaudeRunner(host.WithChatStore(context.Background(), cs), stubAgentRunner())
+
+	res, err := host.AgentConverseHandler(ctx, map[string]any{
+		"question": "Second question",
+		"chat_id":  "chat-1",
+	})
+	if err != nil {
+		t.Fatalf("unexpected Go error: %v", err)
+	}
+	if res.Error != "" {
+		t.Fatalf("unexpected Result.Error: %s", res.Error)
+	}
+
+	returnedSID, _ := res.Data["claude_session_id"].(string)
+	if returnedSID != existingClaudeID {
+		t.Fatalf("expected existing claude_session_id %q to be reused, got %q", existingClaudeID, returnedSID)
+	}
+
+	// The answer from the fake binary should echo the session_id
+	answer, _ := res.Data["answer"].(string)
+	if !strings.Contains(answer, existingClaudeID) {
+		t.Fatalf("fake binary did not receive existing session_id in answer: %q", answer)
+	}
+}
+
+// TestAgentTalk_ChatAwarePath_NoChatStore verifies that providing a chat_id
+// but no store in context produces a domain-level error.
+func TestAgentTalk_ChatAwarePath_NoChatStore(t *testing.T) {
+	t.Parallel()
+	res, err := host.AgentConverseHandler(context.Background(), map[string]any{
+		"question": "anything",
+		"chat_id":  "chat-1",
+	})
+	if err != nil {
+		t.Fatalf("unexpected Go error: %v", err)
+	}
+	if !strings.Contains(res.Error, "no chat store wired") {
+		t.Fatalf("expected 'no chat store wired' error, got: %q", res.Error)
+	}
+}
+
+// TestRunAgentTalkWithChat_AssistantAppendFails_SurfacesError verifies C2:
+// when claude succeeded but persisting the assistant message fails, the
+// handler returns Result.Error so on_error: routing fires.  The answer is
+// still exposed under Result.Data["answer"] so the user sees the reply.
+func TestRunAgentTalkWithChat_AssistantAppendFails_SurfacesError(t *testing.T) {
+	t.Parallel()
+	cs := newFakeChatStore()
+	cs.addChat(host.ChatRecord{ID: "chat-c2", Title: "C2 chat", Status: "active"})
+	cs.failAppendOnRole = "assistant" // user append succeeds; assistant fails
+	ctx := host.WithClaudeRunner(host.WithChatStore(context.Background(), cs), stubAgentRunner())
+
+	res, err := host.AgentConverseHandler(ctx, map[string]any{
+		"question": "ping",
+		"chat_id":  "chat-c2",
+	})
+	if err != nil {
+		t.Fatalf("unexpected Go error: %v", err)
+	}
+	if !strings.Contains(res.Error, "persist assistant message") {
+		t.Fatalf("expected persist-assistant error in Result.Error, got: %q", res.Error)
+	}
+	// The user did get the answer — keep it in Data for diagnostics.
+	answer, _ := res.Data["answer"].(string)
+	if answer == "" {
+		t.Fatal("expected Result.Data[\"answer\"] to be present even when persistence failed")
+	}
+	// The user message must have been appended (only the assistant append fails).
+	msgs := cs.messages["chat-c2"]
+	if len(msgs) != 1 || msgs[0].Role != "user" {
+		t.Fatalf("expected exactly one user message in transcript, got %+v", msgs)
+	}
+}
+
+// ── Named-agent (`agent:` arg) threading ─────────────────────────────────────
+
+// TestAgentTalk_AgentArg_AppliesSystemPrompt verifies that when the caller
+// passes `agent: <name>` AND a host.Agent map is in ctx via WithAgents, the
+// handler resolves the name, applies the agent's SystemPrompt as
+// --append-system-prompt, and forwards Model as --model. This is the
+// engine-side round-trip for the new top-level `agents:` block on AppDef.
+func TestAgentTalk_AgentArg_AppliesSystemPrompt(t *testing.T) {
+	t.Parallel()
+	const systemPrompt = "you are the wagon master, period-accurate"
+	ctx := host.WithClaudeRunner(
+		host.WithAgents(context.Background(), map[string]host.Agent{
+			"wagon_master": {SystemPrompt: systemPrompt, Model: "claude-opus-4-7"},
+		}),
+		stubAgentRunner(),
+	)
+
+	res, err := host.AgentConverseHandler(ctx, map[string]any{
+		"question": "should we ford or caulk?",
+		"agent":    "wagon_master",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.Error != "" {
+		t.Fatalf("unexpected Result.Error: %s", res.Error)
+	}
+	ans, _ := res.Data["answer"].(string)
+	if !strings.Contains(ans, systemPrompt) {
+		t.Fatalf("agent's system_prompt did not reach the binary; answer=%q", ans)
+	}
+	if !strings.Contains(ans, "model=[claude-opus-4-7]") {
+		t.Fatalf("agent's model did not reach the binary; answer=%q", ans)
+	}
+}
+
+// TestAgentTalk_AgentArg_InlineSystemPromptWins asserts the override rule:
+// when both `system_prompt:` and `agent:` are present, the inline value wins
+// (lets authors override one named agent per call). The agent's Model still
+// applies — only the prompt is overridden, model and prompt are independent.
+func TestAgentTalk_AgentArg_InlineSystemPromptWins(t *testing.T) {
+	t.Parallel()
+	const inline = "INLINE OVERRIDE wins"
+	const agentPrompt = "agent persona LOSES"
+	ctx := host.WithClaudeRunner(
+		host.WithAgents(context.Background(), map[string]host.Agent{
+			"wagon_master": {SystemPrompt: agentPrompt},
+		}),
+		stubAgentRunner(),
+	)
+
+	res, err := host.AgentConverseHandler(ctx, map[string]any{
+		"question":      "anything",
+		"agent":         "wagon_master",
+		"system_prompt": inline,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.Error != "" {
+		t.Fatalf("unexpected Result.Error: %s", res.Error)
+	}
+	ans, _ := res.Data["answer"].(string)
+	if !strings.Contains(ans, inline) {
+		t.Fatalf("inline system_prompt did not win over agent's SystemPrompt; answer=%q", ans)
+	}
+	if strings.Contains(ans, agentPrompt) {
+		t.Fatalf("agent's SystemPrompt leaked through despite inline override; answer=%q", ans)
+	}
+}
+
+// TestAgentTalk_AgentArg_UnknownAgent_NoSystemPrompt asserts the runtime
+// safety net: when ctx has no agents map (or the named agent isn't in it),
+// the handler falls back to a call with no Layer-3 persona. It is still
+// grounded by the kitsoki Layer-1 fragment (grounding is unconditional).
+// (Mismatches are normally caught at load time by validateAgentRef; this
+// path only runs in handlers invoked from non-app code, e.g. tests.)
+func TestAgentTalk_AgentArg_UnknownAgent_NoSystemPrompt(t *testing.T) {
+	t.Parallel()
+	ctx := host.WithClaudeRunner(context.Background(), stubAgentRunner())
+
+	res, err := host.AgentConverseHandler(ctx, map[string]any{
+		"question": "anything",
+		"agent":    "does_not_exist",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.Error != "" {
+		t.Fatalf("unexpected Result.Error: %s", res.Error)
+	}
+	ans, _ := res.Data["answer"].(string)
+	if !strings.Contains(ans, "kitsoki") {
+		t.Fatalf("unresolved agent should still be grounded by the kitsoki layer; answer=%q", ans)
+	}
+}
+
+// TestAgentAsk_AgentArg_AppliesSystemPrompt verifies the same agent: round-
+// trip on the one-shot host.agent.ask handler. The prompt-file path is a
+// different code path (agent_ask.go) so this test guards against the
+// agent: support drifting between the two handlers.
+func TestAgentAsk_AgentArg_AppliesSystemPrompt(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	promptPath := filepath.Join(dir, "p.md")
+	if err := os.WriteFile(promptPath, []byte("hi"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	const systemPrompt = "you are the party namer, comma-separated names only"
+	ctx := host.WithClaudeRunner(
+		host.WithAgents(context.Background(), map[string]host.Agent{
+			"party_namer": {SystemPrompt: systemPrompt},
+		}),
+		stubOneShotRunner(),
+	)
+
+	res, err := host.AgentAskHandler(ctx, map[string]any{
+		"prompt_path": promptPath,
+		"agent":       "party_namer",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.Error != "" {
+		t.Fatalf("unexpected Result.Error: %s", res.Error)
+	}
+	out, _ := res.Data["stdout"].(string)
+	if !strings.Contains(out, systemPrompt) {
+		t.Fatalf("agent: did not thread system_prompt through host.agent.ask; stdout=%q", out)
+	}
+}
+
+// TestRunAgentTalkWithChat_SetSessionFails_NoTranscriptPollution verifies
+// I10: when SetClaudeSessionID fails, no user message has been appended yet.
+// Pre-fix order was append-user → set-session, so a session-write failure
+// stranded a user message in the chat with no Claude session to resume.
+func TestRunAgentTalkWithChat_SetSessionFails_NoTranscriptPollution(t *testing.T) {
+	t.Parallel()
+	cs := newFakeChatStore()
+	// Chat starts with empty ClaudeSessionID so the handler will try to
+	// allocate one and call SetClaudeSessionID.
+	cs.addChat(host.ChatRecord{ID: "chat-i10", Title: "I10 chat", Status: "active"})
+	cs.failSetSession = true
+	ctx := host.WithClaudeRunner(host.WithChatStore(context.Background(), cs), stubAgentRunner())
+
+	res, err := host.AgentConverseHandler(ctx, map[string]any{
+		"question": "ping",
+		"chat_id":  "chat-i10",
+	})
+	if err != nil {
+		t.Fatalf("unexpected Go error: %v", err)
+	}
+	if !strings.Contains(res.Error, "set claude session id") {
+		t.Fatalf("expected set-session error in Result.Error, got: %q", res.Error)
+	}
+	// No transcript pollution: the user message must NOT have been appended.
+	msgs := cs.messages["chat-i10"]
+	if len(msgs) != 0 {
+		t.Fatalf("expected empty transcript on SetClaudeSessionID failure, got %+v", msgs)
+	}
+}

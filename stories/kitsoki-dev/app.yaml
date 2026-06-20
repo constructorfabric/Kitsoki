@@ -6,7 +6,7 @@
 # Composition is one import edge: dev-story (general-purpose hub) is
 # imported under alias `core` with concrete host bindings to the
 # local-files providers. The bf → pr chain — and every day-level room
-# (main, ticket_search, inbox, oracle, …) — is reachable via the
+# (main, ticket_search, inbox, agent, …) — is reachable via the
 # `core` compound.
 #
 # # Two-command quickstart
@@ -58,10 +58,10 @@ routing:
   embedding:
     model: "nomic-embed-text-v1.5"
 
-# oracle_plugins must be declared at the instance level — they are NOT inherited
+# agent_plugins must be declared at the instance level — they are NOT inherited
 # from imported children. Mirrors the declaration in dev-story/app.yaml.
-oracle_plugins:
-  oracle.local_llm:
+agent_plugins:
+  agent.local_llm:
     plugin: builtin.local_llm
     model: qwen2.5-1.5b-instruct
     grammar: true
@@ -69,7 +69,7 @@ oracle_plugins:
 # Host allow-list (proposal §9). With `hosts: declared` on the import,
 # every host the child subtree may invoke must appear here. Five
 # iface defaults (ticket / vcs / ci / workspace / transport) are
-# rebound to concrete handlers below; the bare hosts (inbox, oracle)
+# rebound to concrete handlers below; the bare hosts (inbox, agent)
 # pass through.
 hosts:
   # Iface-backed handlers — rebound via host_bindings below. Listed
@@ -82,10 +82,10 @@ hosts:
   - host.append_to_file
   # Bare hosts the chain calls directly.
   - host.inbox.add
-  # oracle-split Phase 9 verbs (all stories migrated).
-  - host.oracle.ask
-  - host.oracle.decide
-  - host.oracle.task
+  # agent-split Phase 9 verbs (all stories migrated).
+  - host.agent.ask
+  - host.agent.decide
+  - host.agent.task
   # Pulled in transitively via dev-story → cypilot import (cypilot
   # uses host.run for its prd/adr/decomposition rooms). The strict
   # `hosts: declared` import on `core` requires every transitively-
@@ -95,7 +95,7 @@ hosts:
   # 4-stage pipeline using decide/task gates, workspace artifact writes,
   # IDE open on first brief scaffold, and embedding-based reference search.
   # Required under `hosts: declared`.
-  - host.oracle.search
+  - host.agent.search
   - host.artifacts_dir
   - host.ide.open_file
   # Design draft (dev-story design_draft) + PRD drafting (prd/drafting) mirror
@@ -105,7 +105,7 @@ hosts:
   # PRD discovery pipeline (dev-story imports stories/prd/): a
   # conversational discovery (converse + a persistent chat) feeding the
   # PRD → Design walk. Required under `hosts: declared`.
-  - host.oracle.converse
+  - host.agent.converse
   - host.chat.resolve
   # Code-review surface (dev-story's code_review room opens diffs in the best
   # surface). Required under `hosts: declared`.

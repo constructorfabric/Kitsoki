@@ -725,7 +725,7 @@ func startsWithListMarker(s string) bool {
 	return false
 }
 
-// AppendOffPathAnswer appends an oracle reply styled with the soft off-path
+// AppendOffPathAnswer appends an agent reply styled with the soft off-path
 // amber tint. The reply runs through the same Markdown pipeline as
 // AppendTurn so formatting (lists, code blocks) renders cleanly. Pass
 // userInput="" when the caller already appended the question header in a
@@ -882,7 +882,7 @@ func (m *transcriptModel) ScrollToLine(n int) {
 
 // AppendMetaStreamLine appends a single muted "→ <text>" line to the
 // transcript.  Used by the meta-mode stream observer to render live
-// progress from a streaming oracle call (tool calls, narration,
+// progress from a streaming agent call (tool calls, narration,
 // retry notes) above the eventual final assistant reply.  The leading
 // arrow matches AppendError / AppendGuardHint / AppendDisambig so the
 // reader sees a consistent prefix for engine-side breadcrumbs.
@@ -904,7 +904,7 @@ func (m *transcriptModel) AppendMetaStreamLine(text string) {
 // AppendRoomBanner emits a room-entry banner above the in-flight
 // tool-call breadcrumbs. The orchestrator fires this when a turn
 // lands in a new room (top-level state change) BEFORE its on_enter
-// host calls dispatch, so a long oracle / Bash / Read stream lands
+// host calls dispatch, so a long agent / Bash / Read stream lands
 // beneath the banner instead of leading it.
 //
 // banner is the pre-styled output from elements.Banner.Render (ANSI

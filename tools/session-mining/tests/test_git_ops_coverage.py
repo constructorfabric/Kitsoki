@@ -3,7 +3,7 @@
 
 Runs the deterministic spine (ground -> tag_score -> outcomes -> emit --outcomes
 -> coverage_prep) over the COMMITTED git-ops example corpus
-(examples/git-ops/{raw,traces,oracle.json}) and asserts every signal the flagship
+(examples/git-ops/{raw,traces,agent.json}) and asserts every signal the flagship
 demonstrates:
 
   * outcome recovery per action (is_error / stdout / stderr),
@@ -14,8 +14,8 @@ demonstrates:
     outcomes, and HINTS the force-push non_goal,
   * schema + cross-link contracts hold.
 
-The oracle output (step B, the one LLM pass) is the committed examples/git-ops/
-oracle.json fixture — exactly as test_outcomes.py / test_intent_pipeline.py do.
+The agent output (step B, the one LLM pass) is the committed examples/git-ops/
+agent.json fixture — exactly as test_outcomes.py / test_intent_pipeline.py do.
 No LLM, no cost (per AGENTS.md). When `jq` is on PATH we ALSO regenerate the
 traces from the real distill.jq and assert byte-fidelity against the committed
 traces, so the corpus can never silently drift from the real distiller.
@@ -80,7 +80,7 @@ def run():
         scored = os.path.join(work, "scored.json")
         outc = os.path.join(work, "outcomes.json")
 
-        ground.main(["--oracle", os.path.join(EX, "oracle.json"), "--traces", traces, "--out", grounded])
+        ground.main(["--agent", os.path.join(EX, "agent.json"), "--traces", traces, "--out", grounded])
         tag_score.main(["--grounded", grounded, "--traces", traces, "--out", scored])
         outcomes.main(["--raw", raw, "--out", outc])
         emit.main(["--scored", scored, "--traces", traces, "--raw", raw,

@@ -20,7 +20,7 @@ import type { TranscriptData, TranscriptEvent } from "./transcript.js";
 import type {
   RoomSummary as EditorRoomSummary,
   RoomDetail as EditorRoomDetail,
-  OraclesResult as EditorOraclesResult,
+  AgentsResult as EditorAgentsResult,
   CassetteKey as EditorCassetteKey,
   CassetteEpisodeSummary as EditorCassetteEpisode,
   ReplayResult as EditorReplayResult,
@@ -137,7 +137,7 @@ export interface OperatorQuestion {
 /**
  * One SSE frame from /rpc/questions (the per-operator forwarded-question feed).
  * question_id is the token answerQuestion echoes back to unblock the parked
- * oracle; questions is the full set the agent asked in one call.
+ * agent; questions is the full set the agent asked in one call.
  */
 export interface OperatorQuestionFrame {
   session_id: string;
@@ -358,7 +358,7 @@ export class LiveSource implements DataSource {
 
   /**
    * Stream one turn via SSE. Calls onEvent for each "delta"/"tool" frame as
-   * the oracle generates output; resolves with the final TurnResult when the
+   * the agent generates output; resolves with the final TurnResult when the
    * "done" frame arrives, or rejects on "error" or network failure.
    */
   turnStream(
@@ -490,7 +490,7 @@ export class LiveSource implements DataSource {
   // ── Agent-action transcripts ──────────────────────────────────────────────
 
   /**
-   * Fetch one oracle call's agent-action transcript via
+   * Fetch one agent call's agent-action transcript via
    * runstatus.session.transcript. The server reads the <call_id>.jsonl +
    * .timings sidecars lazily off disk and returns the verbatim events parsed
    * back to JSON. Maps the Go snake_case `schema_version` to TS `schemaVersion`.
@@ -598,12 +598,12 @@ export class LiveSource implements DataSource {
     });
   }
 
-  /** Oracle contracts + cassette globs for a room (runstatus.editor.oracles). */
-  editorOracles(
+  /** Agent contracts + cassette globs for a room (runstatus.editor.agents). */
+  editorAgents(
     storyPath: string,
     roomId: string
-  ): Promise<EditorOraclesResult> {
-    return this.client.post<EditorOraclesResult>("runstatus.editor.oracles", {
+  ): Promise<EditorAgentsResult> {
+    return this.client.post<EditorAgentsResult>("runstatus.editor.agents", {
       story_path: storyPath,
       room_id: roomId,
     });
@@ -622,17 +622,17 @@ export class LiveSource implements DataSource {
       .then((r) => r.episodes ?? []);
   }
 
-  /** Cassette-override replay of an oracle call (runstatus.editor.replay). */
+  /** Cassette-override replay of an agent call (runstatus.editor.replay). */
   editorReplay(
     storyPath: string,
     roomId: string,
-    oracleIndex: number,
+    agentIndex: number,
     cassetteFile?: string
   ): Promise<EditorReplayResult> {
     const params: Record<string, unknown> = {
       story_path: storyPath,
       room_id: roomId,
-      oracle_index: oracleIndex,
+      agent_index: agentIndex,
     };
     if (cassetteFile) params["cassette_file"] = cassetteFile;
     return this.client.post<EditorReplayResult>(
@@ -706,7 +706,7 @@ export class LiveSource implements DataSource {
   }
 
   /**
-   * Replay one recorded oracle call against a chosen operator.
+   * Replay one recorded agent call against a chosen operator.
    * In v1 the re-dispatch is a stub (no live LLM call); the result confirms
    * replayability and carries a note. new_verdict and diff will be populated
    * once the live dispatch path is wired.
@@ -835,7 +835,7 @@ export class LiveSource implements DataSource {
   /**
    * Subscribe to the forwarded-question feed (a third EventSource on
    * /rpc/questions). When a dispatched agent forwards an AskUserQuestion into
-   * kitsoki, the parked oracle turn blocks until the operator answers; a frame
+   * kitsoki, the parked agent turn blocks until the operator answers; a frame
    * lands here so the SPA can surface the modal. Same subscribe → stream →
    * backoff → unsubscribe lifecycle as the notification feed. Returns an
    * unsubscribe function.
@@ -890,7 +890,7 @@ export class LiveSource implements DataSource {
   }
 
   /**
-   * Answer a forwarded question, unblocking the parked oracle turn. answers is
+   * Answer a forwarded question, unblocking the parked agent turn. answers is
    * keyed by each question's text; the value is the chosen option label
    * (single-select) or an array of labels (multiSelect) — the same shape
    * AskUserQuestion would have returned to the agent.

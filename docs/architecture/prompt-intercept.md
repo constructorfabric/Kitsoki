@@ -291,8 +291,8 @@ Because git-ops also declares a room flagged `intercept_drive: rest` (the
 `conflict` room), this binding is **multi-turn-capable**: every match is driven on
 a persisted session rather than one-shotted (§7). A clean single command
 (`rebase` with no conflict, `pull`, `undo`) still settles in one drive round with
-the oracle never invoked — the no-LLM promise holds for it; a *conflicting* rebase
-enters the multi-turn resolution loop, where the `conflict_resolver` oracle does
+the agent never invoked — the no-LLM promise holds for it; a *conflicting* rebase
+enters the multi-turn resolution loop, where the `conflict_resolver` agent does
 run (acknowledged, recorded LLM use). De-risked no-LLM by
 [`flows/intercept_hub.yaml`](../../stories/git-ops/flows/intercept_hub.yaml)
 (mocked `host.run`) and
@@ -302,10 +302,10 @@ run (acknowledged, recorded LLM use). De-risked no-LLM by
 ## 7. Multi-turn commands
 
 Some recognized commands are not self-contained one-shots: their real execution
-is a **multi-turn, oracle-in-the-loop loop**. The canonical case is *"rebase, and
+is a **multi-turn, agent-in-the-loop loop**. The canonical case is *"rebase, and
 resolve any conflicts."* When the rebase conflicts, git-ops routes to the
 [`conflict` room](../../stories/git-ops/rooms/conflict.yaml), whose `on_enter`
-runs `host.oracle.task` against the `conflict_resolver` agent and — only if the
+runs `host.agent.task` against the `conflict_resolver` agent and — only if the
 verdict is `resolved:true` — drives `rebase_continue` → build-check →
 `conflict_resolved` → `branch_ops`. The stateless `OneShot` (§1.2) **cannot** drive
 this: it stops at the first resting place (`conflict`), and abandoning a
@@ -347,7 +347,7 @@ has no opinion about:
 - **The gate-level trace record.** `intercept.escalated` (opened) paired with
   `intercept.resolved` / `intercept.aborted` (closed); see
   [trace.go](../../internal/trace/trace.go). The live, round-by-round feed while
-  the drive runs is the persisted session's own native events (`oracle.call.*`,
+  the drive runs is the persisted session's own native events (`agent.call.*`,
   transitions).
 
 ### 7.1 Synchronous, with feedback — not backgrounded
@@ -382,7 +382,7 @@ so it always reaches safe-abort first.
 ### 7.2 Verification
 
 Deterministic and free, via the real-git dogfood harness: a `git init` conflict
-repo + the real `host.run` registry + the `conflict_resolver` oracle **stubbed**
+repo + the real `host.run` registry + the `conflict_resolver` agent **stubbed**
 (no LLM). [`TestDriveToRest_ResolvesAndReports`](../../internal/orchestrator/intercept_drive_test.go)
 drives a resolving stub through to `branch_ops` (Resolved, clean tree);
 `TestDriveToRest_EscalationSafeAborts` drives a `resolved:false` stub and asserts

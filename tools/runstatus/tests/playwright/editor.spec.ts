@@ -7,7 +7,7 @@
  * Scenario:
  *   1. Navigate to /editor for the discovered PRD story.
  *   2. Assert the room list renders in BFS order (idle first).
- *   3. Click "clarifying"; assert the hook, domain model, and oracle workbench
+ *   3. Click "clarifying"; assert the hook, domain model, and agent workbench
  *      panes appear, plus the read-only story viewer.
  *   4. Expand a cassette in the workbench's cassette browser.
  */
@@ -88,7 +88,7 @@ test.afterAll(async () => {
   if (tmpDbDir) fs.rmSync(tmpDbDir, { recursive: true, force: true });
 });
 
-test("story editor: room list, room detail, oracle workbench, cassette", async () => {
+test("story editor: room list, room detail, agent workbench, cassette", async () => {
   // Resolve the PRD story's canonical absolute app.yaml path from the catalogue.
   const stories = await rpc<{ path: string; app_id: string }[]>("runstatus.stories.list", {});
   const prd = stories.find((s) => s.path === PRD_APP || s.app_id === "prd");
@@ -114,14 +114,14 @@ test("story editor: room list, room detail, oracle workbench, cassette", async (
   // Detail panes appear.
   await page.waitForSelector('[data-testid="editor-hook"]');
   await expect(page.locator('[data-testid="editor-domain-model"]')).toBeVisible();
-  await expect(page.locator('[data-testid="editor-oracle-workbench"]')).toBeVisible();
+  await expect(page.locator('[data-testid="editor-agent-workbench"]')).toBeVisible();
   await expect(page.locator('[data-testid="editor-story-viewer"]')).toBeVisible();
 
-  // The clarifying room makes an oracle call — its workbench shows a card and
-  // embeds a cassette browser. The PRD story ships no oracle cassette files, so
+  // The clarifying room makes an agent call — its workbench shows a card and
+  // embeds a cassette browser. The PRD story ships no agent cassette files, so
   // the browser renders its (empty) list container; when a story DOES carry
   // matching episodes the same surface lists them and a click expands one.
-  await page.waitForSelector('[data-testid="editor-oracle-card"]');
+  await page.waitForSelector('[data-testid="editor-agent-card"]');
   await expect(page.locator('[data-testid="editor-cassette-list"]').first()).toBeVisible();
 
   const cassetteItems = page.locator('[data-testid="editor-cassette-item"]');

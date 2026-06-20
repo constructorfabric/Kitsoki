@@ -2,12 +2,12 @@
  * git-ops-video.spec.ts — the git-ops story walkthrough video, driven against a
  * REAL `kitsoki web` server in the deterministic no-LLM posture
  * (--flow stories/git-ops/flows/demo_real_sessions.yaml --host-cassette
- * cassettes/demo_oracle.cassette.yaml --mode one-shot). git (host.run) is stubbed
- * FREE by the flow; the two genuine oracle calls (commit message, conflict
+ * cassettes/demo_agent.cassette.yaml --mode one-shot). git (host.run) is stubbed
+ * FREE by the flow; the two genuine agent calls (commit message, conflict
  * resolution) replay through the host cassette with real token usage + cost. The
  * four mined utterances are typed as FREE TEXT and ROUTED live by the semantic
  * tier (no LLM) — the inline routing chip under each bubble shows how each
- * resolved, and the spend meter ticks up only on the two oracle turns (~$0.10).
+ * resolved, and the spend meter ticks up only on the two agent turns (~$0.10).
  *
  * Like multi-story.spec.ts, the WHOLE video is TOUR-DRIVEN: it runs the
  * GIT_OPS_TOUR_STEPS from src/tour/git-ops-manifest.ts via
@@ -134,14 +134,14 @@ test.beforeAll(async () => {
     BIN,
     // one-shot: run each turn's full emit cascade so the root `idle` router
     // advances to branch_ops on a single `look` (staged mode holds its templated
-    // auto-route emit). git (host.run) is stubbed FREE by --flow; the oracle
+    // auto-route emit). git (host.run) is stubbed FREE by --flow; the agent
     // calls (commit message, conflict resolution) are backed by the host cassette
-    // so they replay through the REAL oracle dispatch — emitting oracle.call.complete
+    // so they replay through the REAL agent dispatch — emitting agent.call.complete
     // with genuine token usage + cost (the deterministic engine stays $0; only the
-    // oracle spends). Path is resolved relative to the flow file. No LLM.
+    // agent spends). Path is resolved relative to the flow file. No LLM.
     [
       "web", "--stories-dir", STORIES_DIR, "--flow", FLOW,
-      "--host-cassette", "cassettes/demo_oracle.cassette.yaml",
+      "--host-cassette", "cassettes/demo_agent.cassette.yaml",
       "--mode", "one-shot", "--addr", ADDR, "--db", dbPath,
     ],
     { cwd: repoRoot, stdio: ["ignore", "pipe", "pipe"] },
@@ -284,7 +284,7 @@ test.describe("git-ops story walkthrough (live, no-LLM)", () => {
           // on_enter emit_intent auto-routes at session creation). Scenario ①.
           await waitForState(page, "branch_ops", 15000);
           await dwell(page, SETTLE_MS);
-          await driveText("commit the staged fix"); // routes → commit; oracle authors the message
+          await driveText("commit the staged fix"); // routes → commit; agent authors the message
           await waitForState(page, "commit", 15000);
           await expect(page.getByTestId("routing-chip").last()).toBeVisible({ timeout: 15000 });
           await dwell(page, SETTLE_MS);

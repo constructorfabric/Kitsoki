@@ -2,10 +2,10 @@ package runstatus_test
 
 // TestFromHistory_PassThrough verifies that FromHistory is a pure pass-through:
 // every store.Event in the history maps 1:1 to a TraceEvent in Snapshot.Events,
-// no synthesis, no back-fill, no oracle-specific code path.
+// no synthesis, no back-fill, no agent-specific code path.
 //
-// Covers all EventKind values including OracleCalled/OracleReturned/OracleError
-// (the wave 3-oracle events) to prove they emerge verbatim and the function
+// Covers all EventKind values including AgentCalled/AgentReturned/AgentError
+// (the wave 3-agent events) to prove they emerge verbatim and the function
 // does not synthesise extra events that weren't in the input.
 //
 // Runtime budget: <5 ms (no I/O, no LLM calls, in-memory only).
@@ -43,9 +43,9 @@ func TestFromHistory_PassThrough(t *testing.T) {
 
 	// Construct a synthetic History that covers:
 	//   - a normal turn (TurnStarted, StateEntered, TurnEnded)
-	//   - an oracle exchange (OracleCalled, OracleReturned)
+	//   - an agent exchange (AgentCalled, AgentReturned)
 	//   - an error event (HarnessError — must produce level ERROR)
-	//   - an OracleError event
+	//   - an AgentError event
 	calledPayload, err := json.Marshal(map[string]any{
 		"verb":   "ask",
 		"agent":  "my-agent",
@@ -68,13 +68,13 @@ func TestFromHistory_PassThrough(t *testing.T) {
 		{Turn: 1, Ts: base.Add(0), Kind: store.TurnStarted, StatePath: "foyer", Seq: 0},
 		{Turn: 1, Ts: base.Add(1 * time.Millisecond), Kind: store.StateEntered, StatePath: "foyer", Seq: 1,
 			Payload: json.RawMessage(`{"state":"foyer"}`)},
-		{Turn: 1, Ts: base.Add(2 * time.Millisecond), Kind: store.OracleCalled, StatePath: "foyer", Seq: 2,
+		{Turn: 1, Ts: base.Add(2 * time.Millisecond), Kind: store.AgentCalled, StatePath: "foyer", Seq: 2,
 			CallID: "abc123def456abcd", Payload: calledPayload},
-		{Turn: 1, Ts: base.Add(3 * time.Millisecond), Kind: store.OracleReturned, StatePath: "foyer", Seq: 3,
+		{Turn: 1, Ts: base.Add(3 * time.Millisecond), Kind: store.AgentReturned, StatePath: "foyer", Seq: 3,
 			CallID: "abc123def456abcd", Payload: returnedPayload},
 		{Turn: 1, Ts: base.Add(4 * time.Millisecond), Kind: store.HarnessError, StatePath: "foyer", Seq: 4,
 			Payload: errorPayload},
-		{Turn: 1, Ts: base.Add(5 * time.Millisecond), Kind: store.OracleError, StatePath: "foyer", Seq: 5,
+		{Turn: 1, Ts: base.Add(5 * time.Millisecond), Kind: store.AgentError, StatePath: "foyer", Seq: 5,
 			CallID: "abc123def456abcd", Payload: errorPayload},
 		{Turn: 1, Ts: base.Add(6 * time.Millisecond), Kind: store.TurnEnded, StatePath: "foyer", Seq: 6},
 	}
@@ -112,13 +112,13 @@ func TestFromHistory_PassThrough(t *testing.T) {
 		}
 	}
 
-	// call_id must be surfaced in Attrs for oracle events.
-	oracleCalledIdx := 2
-	assert.Equal(t, "abc123def456abcd", snap.Events[oracleCalledIdx].Attrs["call_id"],
-		"OracleCalled.Attrs[call_id] must carry CallID from store.Event")
-	oracleReturnedIdx := 3
-	assert.Equal(t, "abc123def456abcd", snap.Events[oracleReturnedIdx].Attrs["call_id"],
-		"OracleReturned.Attrs[call_id] must carry CallID from store.Event")
+	// call_id must be surfaced in Attrs for agent events.
+	agentCalledIdx := 2
+	assert.Equal(t, "abc123def456abcd", snap.Events[agentCalledIdx].Attrs["call_id"],
+		"AgentCalled.Attrs[call_id] must carry CallID from store.Event")
+	agentReturnedIdx := 3
+	assert.Equal(t, "abc123def456abcd", snap.Events[agentReturnedIdx].Attrs["call_id"],
+		"AgentReturned.Attrs[call_id] must carry CallID from store.Event")
 
 	// Session header fields.
 	assert.Equal(t, "sess-001", snap.Session.SessionID)
@@ -165,11 +165,11 @@ func TestFromHistory_CurrentStatePrefersStateEntered(t *testing.T) {
 		"the last state_entered must win over turn.end's starting-state stamp")
 }
 
-// TestFromHistory_OracleEventsPassThroughVerbatim confirms that when a History
-// already contains OracleCalled/OracleReturned events, FromHistory does not
-// inject any additional oracle events. This is the core wave 4a contract: the
+// TestFromHistory_AgentEventsPassThroughVerbatim confirms that when a History
+// already contains AgentCalled/AgentReturned events, FromHistory does not
+// inject any additional agent events. This is the core wave 4a contract: the
 // JSONL is authoritative; no synthesis path exists.
-func TestFromHistory_OracleEventsPassThroughVerbatim(t *testing.T) {
+func TestFromHistory_AgentEventsPassThroughVerbatim(t *testing.T) {
 	t.Parallel()
 
 	def := buildMinimalAppDef()
@@ -182,25 +182,25 @@ func TestFromHistory_OracleEventsPassThroughVerbatim(t *testing.T) {
 
 	hist := store.History{
 		{Turn: 1, Ts: base, Kind: store.TurnStarted, StatePath: "start", Seq: 0},
-		{Turn: 1, Ts: base.Add(1 * time.Millisecond), Kind: store.OracleCalled, StatePath: "start", Seq: 1,
+		{Turn: 1, Ts: base.Add(1 * time.Millisecond), Kind: store.AgentCalled, StatePath: "start", Seq: 1,
 			CallID: "callid-001", Payload: calledPayload},
-		{Turn: 1, Ts: base.Add(2 * time.Millisecond), Kind: store.OracleReturned, StatePath: "start", Seq: 2,
+		{Turn: 1, Ts: base.Add(2 * time.Millisecond), Kind: store.AgentReturned, StatePath: "start", Seq: 2,
 			CallID: "callid-001", Payload: returnedPayload},
 		{Turn: 1, Ts: base.Add(3 * time.Millisecond), Kind: store.TurnEnded, StatePath: "start", Seq: 3},
 	}
 
-	snap, err := runstatus.FromHistory(hist, def, "sess-oracle")
+	snap, err := runstatus.FromHistory(hist, def, "sess-agent")
 	require.NoError(t, err)
 
-	// Exactly 4 events — no synthesis of extra oracle events.
+	// Exactly 4 events — no synthesis of extra agent events.
 	assert.Equal(t, 4, len(snap.Events),
-		"must have exactly 4 events (no extra synthesised oracle pairs)")
+		"must have exactly 4 events (no extra synthesised agent pairs)")
 
 	// Kinds in order.
 	wantMsgs := []string{
 		string(store.TurnStarted),
-		string(store.OracleCalled),
-		string(store.OracleReturned),
+		string(store.AgentCalled),
+		string(store.AgentReturned),
 		string(store.TurnEnded),
 	}
 	for i, want := range wantMsgs {

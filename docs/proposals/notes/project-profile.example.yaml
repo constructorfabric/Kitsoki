@@ -13,7 +13,7 @@ summary: |
   the maintainers' own Claude Code transcripts (recency sample).
 
 generated:
-  by: "oracle:project_profiler @ kitsoki-dev"
+  by: "agent:project_profiler @ kitsoki-dev"
   mining_job: intents-20260615
 
 repo:
@@ -126,7 +126,7 @@ rules:
     scope: tests
     source: discovered
     ref: "AGENTS.md#automated-testing"
-    text: "Automated tests never use a real LLM or incur cost — mock oracles via cassettes."
+    text: "Automated tests never use a real LLM or incur cost — mock agents via cassettes."
   - id: worktrees-in-project-root
     scope: repo
     source: discovered

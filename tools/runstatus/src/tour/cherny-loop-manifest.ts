@@ -10,7 +10,7 @@
  * iteration budget stops it.
  *
  * The story is driven NO-LLM via `kitsoki web --flow web_tour.yaml`, whose
- * host_handlers stub the maker (host.oracle.task), the script gate (host.run),
+ * host_handlers stub the maker (host.agent.task), the script gate (host.run),
  * and the per-iteration artifact write (host.artifacts_dir). The flow's turns:
  * block is the Mode-2 proof of this exact path.
  *
@@ -138,7 +138,7 @@ export const CHERNY_LOOP_TOUR_STEPS: readonly TourStep[] = [
     id: "cl-done",
     route: "any",
     title: "That's the Cherny loop",
-    body: "A goal in plain words, a gate that deterministically proves it, a budget that bounds it — and the loop runs itself, every iteration tracked and recorded. Swap the script gate for an adversarial oracle when the goal is prose, not a test. Hit '?' to replay this tour.",
+    body: "A goal in plain words, a gate that deterministically proves it, a budget that bounds it — and the loop runs itself, every iteration tracked and recorded. Swap the script gate for an adversarial agent when the goal is prose, not a test. Hit '?' to replay this tour.",
     placement: "right",
     dim: false,
     kind: "explain",

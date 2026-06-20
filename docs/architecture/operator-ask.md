@@ -1,6 +1,6 @@
 # Operator-ask forwarding — answering an agent's questions
 
-A dispatched oracle agent (`ask`/`decide`/`task`/`converse`, each a
+A dispatched agent agent (`ask`/`decide`/`task`/`converse`, each a
 `claude -p` subprocess) sometimes needs to ask the operator a clarifying
 question. The built-in `AskUserQuestion` tool is the obvious vehicle —
 and it is a landmine. **Operator-ask forwarding** replaces it: the
@@ -21,10 +21,10 @@ forwarding bridge restores that ability through a path kitsoki controls.
 
 ## Design: synchronous block via a per-call socket + a DI prompter
 
-Oracle verbs run **in-process, synchronously, mid-turn**, blocking the
+Agent verbs run **in-process, synchronously, mid-turn**, blocking the
 orchestrator turn goroutine inside the host verb while `claude -p` runs
 as a direct child. A blocking round-trip from that subprocess back out to
-the operator is therefore consistent with how oracle calls already
+the operator is therefore consistent with how agent calls already
 behave — the turn is *already* parked. The bridge is one synchronous
 block layered on top of that park:
 
@@ -39,7 +39,7 @@ claude -p (agent)
                            └─ TUI: bubbletea msg → choice modal → submit resolves
                       ← answers written back over the socket
             ← tool_result = answers
-  └─ agent continues; oracle verb returns; turn completes & renders
+  └─ agent continues; agent verb returns; turn completes & renders
 ```
 
 ### Why an MCP tool, not a claude-code hook
@@ -57,7 +57,7 @@ The decisive question at dispatch is **is a live operator surface
 attached to this session?** That capability is carried in context as an
 `OperatorPrompter` (DI seam, `internal/host`), set by the TUI/web run
 loop and **absent** for `kitsoki turn`, flow-fixture tests, cassette
-replay, and the headless `oracle-serve` path. The seam mirrors
+replay, and the headless `agent-serve` path. The seam mirrors
 `WithKitsokiSessionID` / `WithStreamSink`:
 
 ```go
@@ -88,14 +88,14 @@ Capturing the question, killing the subprocess, transitioning to a
 rejected: MCP tool calls are synchronous, so killing the process leaves
 an **unanswered `tool_use`** at history's end that `--resume` cannot
 cleanly satisfy by injecting a later user message. The synchronous block
-matches existing oracle-call-blocks-turn behavior and is far simpler.
+matches existing agent-call-blocks-turn behavior and is far simpler.
 
 ## The three surfaces
 
 1. **Host bridge** — `internal/host/operator_ask_bridge.go` listens on
    the per-call socket and calls `OperatorPrompter.Ask`; the
    `kitsoki mcp-operator-ask` subcommand (`cmd/kitsoki`) is the MCP stdio
-   grandchild that dials the socket. Reuses the oracle-serve framing
+   grandchild that dials the socket. Reuses the agent-serve framing
    (newline-delimited JSON) and `resolveKitsokiBin` /
    `writeMCPConfigTempfile` helpers.
 2. **Web** — `internal/runstatus/server/operator_questions.go`: a
@@ -126,7 +126,7 @@ trace events are reused verbatim. Only the round-trip transport differs,
 and the prompter picks one at dispatch:
 
 ```
-Claude Code ──(session.drive)──▶ studio turn ──▶ oracle sub-agent ──▶ mcp__operator__ask
+Claude Code ──(session.drive)──▶ studio turn ──▶ agent sub-agent ──▶ mcp__operator__ask
                                                        (per-call unix socket, EXISTING) │
                               studio OperatorPrompter.Ask(sessionID, questions) ◀────────┘
                                   ├─ PRIMARY: MCP elicitation request → client → answer  (one nested session.drive)

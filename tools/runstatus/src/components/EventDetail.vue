@@ -94,8 +94,8 @@
       </div>
     </template>
 
-    <template v-else-if="isOracleComplete">
-      <OracleDetail :event="event" :session-id="resolvedSessionId" />
+    <template v-else-if="isAgentComplete">
+      <AgentDetail :event="event" :session-id="resolvedSessionId" />
     </template>
 
     <template v-else-if="isLlmEvent">
@@ -211,9 +211,9 @@
 <script setup lang="ts">
 import { computed, reactive } from "vue";
 import type { TraceEvent } from "../types.js";
-import OracleDetail from "./oracle/OracleDetail.vue";
-import ConfidenceBar from "./oracle/ConfidenceBar.vue";
-import RoutingDetail from "./oracle/RoutingDetail.vue";
+import AgentDetail from "./agent/AgentDetail.vue";
+import ConfidenceBar from "./agent/ConfidenceBar.vue";
+import RoutingDetail from "./agent/RoutingDetail.vue";
 import HostCliDetail from "./HostCliDetail.vue";
 import HostBuiltinDetail from "./HostBuiltinDetail.vue";
 import AnnotateButton from "./AnnotateButton.vue";
@@ -271,7 +271,7 @@ async function copyAttrs(): Promise<void> {
 // Observation kind — used by the new decision/routing detail branches.
 const obsKind = computed(() => observationKind(props.event.msg));
 
-// oracle.call.complete events get a rich sub-renderer (OracleDetail), which
+// agent.call.complete events get a rich sub-renderer (AgentDetail), which
 // reads attrs.verb to route to the per-verb body.
 const CLI_NAMESPACES = new Set([
   "host.local.run_tests", "host.local.build",
@@ -280,19 +280,19 @@ const CLI_NAMESPACES = new Set([
 ]);
 function isCliNamespace(ns: string): boolean { return CLI_NAMESPACES.has(ns); }
 
-// Canonical oracle completion: the engine emits oracle.call.complete with the
-// verb in attrs.verb. OracleDetail reads attrs.verb to route to the per-verb
+// Canonical agent completion: the engine emits agent.call.complete with the
+// verb in attrs.verb. AgentDetail reads attrs.verb to route to the per-verb
 // sub-renderer (DecideDetail / TaskDetail / …).
-// oracle.call.error ALSO routes to OracleDetail: a failed call still has a verb to
+// agent.call.error ALSO routes to AgentDetail: a failed call still has a verb to
 // render and MAY carry a transcript_ref (the partial agent actions up to the
-// failure), which OracleDetail surfaces as the Agent-actions affordance. OracleDetail
+// failure), which AgentDetail surfaces as the Agent-actions affordance. AgentDetail
 // guards missing success fields with its error banner + raw-attrs fallback.
-const isOracleComplete = computed(
-  () => props.event.msg === "oracle.call.complete" || props.event.msg === "oracle.call.error"
+const isAgentComplete = computed(
+  () => props.event.msg === "agent.call.complete" || props.event.msg === "agent.call.error"
 );
 
-// Legacy: oracle.* start/other + turn.llm.* get the old prompt/response dump.
-const isLlmEvent = computed(() => !isOracleComplete.value && (props.event.msg.startsWith("oracle.") || props.event.msg.startsWith("turn.llm.")));
+// Legacy: agent.* start/other + turn.llm.* get the old prompt/response dump.
+const isLlmEvent = computed(() => !isAgentComplete.value && (props.event.msg.startsWith("agent.") || props.event.msg.startsWith("turn.llm.")));
 const isHostEvent = computed(() => props.event.msg.startsWith("harness.") || props.event.msg.startsWith("host."));
 const isTransitionEvent = computed(() => props.event.msg.startsWith("machine.transition") || props.event.msg === "TransitionApplied");
 </script>

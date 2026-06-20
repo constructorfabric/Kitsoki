@@ -87,7 +87,7 @@ A few more concepts come up at the periphery:
 |---|---|
 | **Slot** | A typed parameter on an intent — `direction: north`, `branch: main`. Validated before any guard runs. |
 | **Effect** | A small declarative mutation: `set` a world value, `increment` a counter, `say` a line of narration, `invoke` a host, `emit` an event to parallel regions. |
-| **Host** | A named handler the application can invoke as an effect — `host.run` for a shell command, `host.oracle.ask` for a one-shot Claude call, `host.transport.post` to deliver a message to an external thread. The application's allow-list of hosts is part of the YAML. |
+| **Host** | A named handler the application can invoke as an effect — `host.run` for a shell command, `host.agent.ask` for a one-shot Claude call, `host.transport.post` to deliver a message to an external thread. The application's allow-list of hosts is part of the YAML. |
 | **Phase** | A repeated room. Phase templates compress pipelines like "execute, post, await reply, retry on failure" into one declaration plus per-phase parameters. |
 | **Off-path** | A global escape hatch: the user can ask a free-form question (often "help") that suspends the current room, runs a sub-conversation, and rehydrates the original room on exit. |
 
@@ -535,7 +535,7 @@ flowchart TD
 | `Harness` | `internal/harness` | `claude_cli`, `live`, `replay`, `recording` |
 | `Store` | `internal/store` | `sqlite` (production); in-memory test stub |
 | `Transport` | `internal/transport` | `tui`, `jira`, `bitbucket` |
-| `host.Handler` | `internal/host` | one per built-in (`host.run`, `host.oracle.*`, `host.chat.*`, …) |
+| `host.Handler` | `internal/host` | one per built-in (`host.run`, `host.agent.*`, `host.chat.*`, …) |
 
 ### 11.3 Package map
 
@@ -670,17 +670,17 @@ complete after-the-fact transcript.
 
 ---
 
-## 12. Oracle-split foundations (Phase 1)
+## 12. Agent-split foundations (Phase 1)
 
-The oracle-split work separates the oracle surface into five named verbs
+The agent-split work separates the agent surface into five named verbs
 ordered by blast radius (`extract`, `decide`, `ask`, `task`, `converse`).
 Phase 1 lands the shared infrastructure all five verbs build on.
-See [`docs/architecture/hosts.md` — Oracle verb summary](hosts.md#oracle-verb-summary)
+See [`docs/architecture/hosts.md` — Agent verb summary](hosts.md#agent-verb-summary)
 for the verb table and selection guide.
 
-### Streaming sink (`internal/host/oracle_stream.go`)
+### Streaming sink (`internal/host/agent_stream.go`)
 
-Every oracle handler calls `OracleStreamer.Run(ctx)` instead of forking claude
+Every agent handler calls `AgentStreamer.Run(ctx)` instead of forking claude
 directly. When a `StreamSink` is installed on the context (the TUI wires one in
 for live progress), the streamer appends `--output-format stream-json --verbose`
 and tees each event to the sink via the existing `emitStreamEvent` path. When no
@@ -784,15 +784,15 @@ All platforms set `HOME` and `TMPDIR` to the scratch dir and apply `MakeSandboxE
 
 ## 13. Task spans and replay modes
 
-`host.oracle.task` is the agentic verb in the oracle-split vocabulary. Unlike
-the single-shot oracle verbs (`extract`, `decide`, `ask`), a task span launches
+`host.agent.task` is the agentic verb in the agent-split vocabulary. Unlike
+the single-shot agent verbs (`extract`, `decide`, `ask`), a task span launches
 a multi-turn Claude session with a declared tool surface, monitors every tool
 call, and records enough state to re-run or analyse the task later without
 invoking the LLM again.
 
 ### 13.1 What a task span records
 
-When a `host.oracle.task` invocation completes, three replay artifacts are
+When a `host.agent.task` invocation completes, three replay artifacts are
 captured in the terminal `task.end` journal event:
 
 | Artifact | Field | What it is |
@@ -844,7 +844,7 @@ Replay of external writes is not safe. Mode C spans are skipped in
 `"skipped N external-side-effect spans."` They can be re-run interactively
 with `--mode llm_rerun` or `--mode hybrid`.
 
-Classification logic lives in `internal/host/oracle_task_replay.go`:
+Classification logic lives in `internal/host/agent_task_replay.go`:
 `inferReplayMode(agent Agent, tools []string) ReplayMode`.
 
 ### 13.3 Read-snapshot cap
@@ -865,11 +865,11 @@ sees the full output.
 
 ### 13.4 Acceptance loop
 
-`host.oracle.task` runs an acceptance loop. On first run, the agent gets a fresh Claude session
+`host.agent.task` runs an acceptance loop. On first run, the agent gets a fresh Claude session
 (`--session-id` from a new ULID). On each retry (up to `max_retries`, default
 5), `--resume` continues the same session so the agent retains its conversational
-context. The kitsoki-internal `kitsoki.oracle.validate` and
-`kitsoki.oracle.task_context` MCP tools are injected automatically into the
+context. The kitsoki-internal `kitsoki.agent.validate` and
+`kitsoki.agent.task_context` MCP tools are injected automatically into the
 tool surface for the duration of the task.
 
 ### 13.5 KITSOKI_SESSION_ID propagation

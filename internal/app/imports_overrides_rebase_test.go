@@ -6,7 +6,7 @@ import (
 )
 
 // TestRebaseWithMap_NestedTaskPaths pins that an imported child's
-// host.oracle.task paths rebase to the child story's directory:
+// host.agent.task paths rebase to the child story's directory:
 //   - context.prompt / context.prompt_path (nested under with.context)
 //   - acceptance.schema (nested under with.acceptance)
 //

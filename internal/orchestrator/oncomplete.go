@@ -414,7 +414,7 @@ func (o *Orchestrator) handleJobTerminal(ctx context.Context, sid app.SessionID,
 	if outcomeForObservers != nil {
 		o.notifyBackgroundTurn(sid, outcomeForObservers)
 	}
-	// A landed background job (e.g. a dispatched host.oracle.task) wrote new
+	// A landed background job (e.g. a dispatched host.agent.task) wrote new
 	// Claude Code transcripts — exactly the live-mining target. Ping the miner so
 	// its debounced live pass picks them up. context.WithoutCancel keeps the
 	// listener ctx's trace values without tying the debounce to the listener's

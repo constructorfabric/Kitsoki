@@ -28,14 +28,14 @@ func TestRoutingPipeline_ProgressAndResolve(t *testing.T) {
 		t.Fatalf("after semantic miss, local-LLM should be active; got %q", got)
 	}
 
-	// A hit whose backend is oracle.local lands on the local-LLM layer, NOT the
+	// A hit whose backend is agent.local lands on the local-LLM layer, NOT the
 	// main-LLM (cloud) layer.
-	p.markHit(TierLLM, "read_email", "oracle.local", 0.91, true)
+	p.markHit(TierLLM, "read_email", "agent.local", 0.91, true)
 	if !p.resolved() {
 		t.Fatal("pipeline should be resolved after a hit")
 	}
 	got := p.renderResolved()
-	for _, want := range []string{"routed via local-LLM", "oracle.local", "read_email", "0.91", "main-LLM " + glyphPending} {
+	for _, want := range []string{"routed via local-LLM", "agent.local", "read_email", "0.91", "main-LLM " + glyphPending} {
 		if !strings.Contains(got, want) {
 			t.Errorf("resolved line missing %q; got %q", want, got)
 		}
@@ -49,9 +49,9 @@ func TestRoutingPipeline_LocalMissThenCloud(t *testing.T) {
 	p := newRoutingPipeline()
 	p.markMiss(TierDeterministic, "")
 	p.markMiss(TierSemantic, "")
-	// Local-LLM tried and missed (backend names oracle.local) → marks that layer
+	// Local-LLM tried and missed (backend names agent.local) → marks that layer
 	// missed and advances to main-LLM, BEFORE the cloud hit lands.
-	p.markMiss(TierLLM, "oracle.local")
+	p.markMiss(TierLLM, "agent.local")
 	if got := p.renderProgress(); !strings.Contains(got, glyphMissed+" local-LLM") || !strings.Contains(got, glyphActive+" main-LLM") {
 		t.Fatalf("local-LLM should be missed and main-LLM active; got %q", got)
 	}
@@ -70,8 +70,8 @@ func TestRoutingPipeline_ResolveFromProvenance(t *testing.T) {
 	t.Parallel()
 
 	local := newRoutingPipeline()
-	local.resolveFromProvenance("llm", "oracle.local", 0.88, "play_music")
-	if got := local.renderResolved(); !strings.Contains(got, "local-LLM · oracle.local") || !strings.Contains(got, "play_music") {
+	local.resolveFromProvenance("llm", "agent.local", 0.88, "play_music")
+	if got := local.renderResolved(); !strings.Contains(got, "local-LLM · agent.local") || !strings.Contains(got, "play_music") {
 		t.Errorf("local provenance should win the local-LLM layer and name the backend; got %q", got)
 	}
 

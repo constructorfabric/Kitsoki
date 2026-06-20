@@ -1,5 +1,5 @@
 /**
- * off-ramp-video.spec.ts — the ORACLE OFF-RAMP feature-spotlight video, driven
+ * off-ramp-video.spec.ts — the AGENT OFF-RAMP feature-spotlight video, driven
  * against a REAL `kitsoki web` server in the deterministic no-LLM REPLAY +
  * HOST-CASSETTE posture (NOT the nil-harness --flow posture the golden
  * agent-actions spec uses): the off-ramp needs FREE-TEXT routing, so the server
@@ -189,7 +189,7 @@ async function sendFreeText(page: Page, text: string): Promise<void> {
   await page.getByTestId("text-floor-send").first().evaluate((el) => (el as HTMLElement).click());
 }
 
-test.describe("oracle off-ramp feature-spotlight (live, no-LLM replay+cassette)", () => {
+test.describe("agent off-ramp feature-spotlight (live, no-LLM replay+cassette)", () => {
   test("home → desk → off-menu question answered in place → menu pick transitions", async () => {
     test.setTimeout(180000);
 

@@ -7,7 +7,7 @@
  * is the GEARS_BUGFIX_TOUR_STEPS manifest (generated from features/gears-bugfix.yaml
  * into src/tour/generated/gears-bugfix.ts), driving the deterministic no-LLM flow
  *   stories/bugfix/flows/tour_gears_gh4115.yaml (+ cassette tour_gears_gh4115.cassette.yaml)
- * whose oracle artifacts, fix diff, and 316/0 cargo log are replayed verbatim
+ * whose agent artifacts, fix diff, and 316/0 cargo log are replayed verbatim
  * from a real LLM run.
  *
  * RECORD PATH: binary-native `kitsoki tour` (no Playwright, no Node):

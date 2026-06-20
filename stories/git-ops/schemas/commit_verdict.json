@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "commit_verdict",
-  "description": "Conventional-commit message authored by the oracle for a staged diff.",
+  "description": "Conventional-commit message authored by the agent for a staged diff.",
   "type": "object",
   "required": ["type", "summary", "message"],
   "properties": {

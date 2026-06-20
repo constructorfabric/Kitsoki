@@ -15,13 +15,13 @@ The driver and its report are in place (commits on `feat/story-conformance-minin
   per user-turn; reprocessing-tax %, per-action climb, measured cold resumes.
 - `tools/session-mining/prep.py` — every mining run writes a `costs.json` sidecar.
 - **`tools/session-mining/cost_report.py` (`make cost-report`)** — per story, pairs
-  the **deterministic numerator** (oracle `cost_usd` summed straight from the
+  the **deterministic numerator** (agent `cost_usd` summed straight from the
   story's host cassette; every routed/host step is $0) with the **raw-agentic
   denominator** (real telemetry scoped by the story's `mining.profile.yaml`,
   per-intent median/p90 distribution, reprocessing tax + cold-resume re-warm), and
   emits a savings table — the reusable form of the
-  [case study](../case-studies/git-ops-cost.md). Dispatched agent/oracle and
-  synthetic-fixture telemetry are dropped. Model-mix lever (raw Opus vs oracle
+  [case study](../case-studies/git-ops-cost.md). Dispatched agent/agent and
+  synthetic-fixture telemetry are dropped. Model-mix lever (raw Opus vs agent
   Sonnet) is surfaced. Tests: `test_cost_report.py` (no LLM).
 
 This covers the original roadmap items 2–5 (real baseline, per-intent matching,
@@ -30,18 +30,18 @@ read from the cassette, not transcribed by hand).
 
 ## Remaining
 
-### 1. Record the oracle numerator live — BIGGEST HONESTY GAP
-`cost_report.py` reads each story's oracle `cost_usd` from its host cassette, but
+### 1. Record the agent numerator live — BIGGEST HONESTY GAP
+`cost_report.py` reads each story's agent `cost_usd` from its host cassette, but
 git-ops's cassette is `record_mode: none` — those two numbers ($0.0121, $0.0834)
 are **authored**, not recorded. The report flags them (⚠ authored); closing it:
-- Record real oracle cassettes (record mode) so the committed numbers are genuine
+- Record real agent cassettes (record mode) so the committed numbers are genuine
   recorded costs. **This costs LLM spend and is gated** — do it only when asked.
-- Optionally capture `oracle.call.complete` `cost_usd`/usage
-  (`internal/host/oracle_event_sink.go`, `oracle_runner.go`) from non-cassette runs
+- Optionally capture `agent.call.complete` `cost_usd`/usage
+  (`internal/host/agent_event_sink.go`, `agent_runner.go`) from non-cassette runs
   into a per-story ledger that `cost_report.py` reads in preference to the cassette,
   so live runs feed the numerator automatically.
 - Until then every other story shows a real raw baseline and a *"not yet measured"*
-  numerator — the honest state until it records an oracle cassette.
+  numerator — the honest state until it records an agent cassette.
 
 ### 2. Methodology refinements
 - **Corpus scope.** The baseline greps the whole repo's real-session family by the
@@ -60,6 +60,6 @@ are **authored**, not recorded. The report flags them (⚠ authored); closing it
 ## Definition of done
 A new story that ships a `mining.profile.yaml` automatically gets a real
 raw-agentic baseline, a per-intent savings distribution, and — once it records an
-oracle cassette — a measured deterministic cost, with no hand assembly. The
+agent cassette — a measured deterministic cost, with no hand assembly. The
 baseline + distribution are **done**; the measured numerator lands per story as
-each records its oracle cassette.
+each records its agent cassette.

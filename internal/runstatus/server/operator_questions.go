@@ -1,6 +1,6 @@
 // operator_questions.go — the web surface's OperatorPrompter.
 //
-// When a dispatched oracle agent forwards a question into kitsoki (see
+// When a dispatched agent agent forwards a question into kitsoki (see
 // internal/host/operator_ask_bridge.go), the in-context OperatorPrompter is the
 // thing that surfaces it to the operator and blocks for the answer. On the web
 // surface that prompter is webOperatorPrompter:
@@ -14,7 +14,7 @@
 // The SSE side mirrors notifications.go exactly: a server-level ring with
 // per-subscription watermarks, streamed over GET /rpc/questions. The only new
 // piece is the pending-answer registry, which lets the answer RPC unblock the
-// goroutine the oracle turn is parked on.
+// goroutine the agent turn is parked on.
 package server
 
 import (
@@ -30,7 +30,7 @@ import (
 	kitsokimcp "kitsoki/internal/mcp"
 )
 
-// withOperatorPrompter installs a webOperatorPrompter on ctx so the oracle
+// withOperatorPrompter installs a webOperatorPrompter on ctx so the agent
 // handlers running inside the upcoming turn can forward questions to this
 // browser session. Keyed on the public session_id the SPA routes on; when
 // absent (shouldn't happen for a drive turn) ctx is returned unchanged and the
@@ -188,7 +188,7 @@ func (b *questionBuffer) since(sent int) (frames []questionFrame, newWatermark i
 }
 
 // questionRegistry tracks in-flight forwarded questions: question_id → the
-// channel the parked oracle goroutine is waiting on. answer() resolves one;
+// channel the parked agent goroutine is waiting on. answer() resolves one;
 // register()/cancel() bracket the wait.
 type questionRegistry struct {
 	mu      sync.Mutex

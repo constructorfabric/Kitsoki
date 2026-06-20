@@ -14,7 +14,7 @@
  *      working — visible as both launcher badges.
  *
  * Posture: deterministic no-LLM. `kitsoki web --flow happy_llm.yaml` runs the
- * meta-mode StubOracleCaller; KITSOKI_META_STREAM_DELAY_MS paces its stream so a
+ * meta-mode StubAgentCaller; KITSOKI_META_STREAM_DELAY_MS paces its stream so a
  * close-mid-stream is reliably filmable. NEVER a real LLM.
  *
  * ONE annotation style throughout — every narrated moment is a TOUR POPOVER, no

@@ -1,5 +1,5 @@
 // Package sysprompt composes the system prompt for every claude invocation
-// kitsoki makes — the intent-routing harness and all host.oracle.* verbs alike —
+// kitsoki makes — the intent-routing harness and all host.agent.* verbs alike —
 // from three cache-ordered layers:
 //
 //	┌─ Layer 1 — KITSOKI (engine builtin, identical everywhere) ──────── most stable
@@ -33,7 +33,7 @@
 //
 // All callers pass the composed prompt via `--system-prompt`, which REPLACES
 // Claude Code's default coding-agent system prompt rather than stacking under it
-// (the older oracle path used `--append-system-prompt`, so judges inherited the
+// (the older agent path used `--append-system-prompt`, so judges inherited the
 // full Claude Code default). Composed.ExcludeDynamic carries the per-verb policy
 // for `--exclude-dynamic-system-prompt-sections`: every verb excludes Claude
 // Code's cwd/git/env/memory sections except [Task], whose agentic repo work

@@ -6,8 +6,8 @@ a stories/<name>/mining.profile.yaml, this pairs two numbers and reports the gap
 
   numerator (the story)   — the DETERMINISTIC cost of running the work as a Kitsoki
                             story: $0 for every routed/host step, plus whatever the
-                            story's oracle calls actually cost. Read straight from
-                            the story's host cassette(s) oracle.cost_usd (see
+                            story's agent calls actually cost. Read straight from
+                            the story's host cassette(s) agent.cost_usd (see
                             read_story_cost). Programmatic, not hand-transcribed.
 
   denominator (the loop)  — the RAW AGENTIC cost of doing the same operations in a
@@ -26,7 +26,7 @@ no conversation is fed back through a model. This tool measures that gap per sto
 per intent, with error bars — instead of one hand-built example.
 
 Honesty notes it carries forward (not papered over):
-  * A story's oracle costs are only as real as its cassette. record_mode `none`
+  * A story's agent costs are only as real as its cassette. record_mode `none`
     cassettes are AUTHORED numbers; the report flags them. Recording the cassette
     live (LLM spend, gated) is what makes the numerator measured end-to-end.
   * The raw baseline is real telemetry, exact-priced via pricing.py; unknown models
@@ -79,7 +79,7 @@ DEFAULT_PROJECTS = "~/.claude/projects/%s*" % _REPO_SLUG
 
 # --- numerator: the deterministic story cost, read from its cassettes ---------
 
-# A cassette's oracle.cost_usd is a YAML key at line start (after indent). The
+# A cassette's agent.cost_usd is a YAML key at line start (after indent). The
 # embedded agent transcript carries `"total_cost_usd":N` inside a quoted JSON
 # string — a DIFFERENT key, and quoted — so anchoring on the YAML key excludes it.
 _COST_RE = re.compile(r'^\s+cost_usd:\s*([0-9.]+)\s*$')
@@ -91,20 +91,20 @@ _HANDLER_RE = re.compile(r'^\s+handler:\s*"?([\w.]+)"?\s*$')
 @dataclass
 class StoryCost:
     """Deterministic cost of running the story: $0 for every host/routing step,
-    plus the real cost of its oracle calls (read from the host cassette)."""
+    plus the real cost of its agent calls (read from the host cassette)."""
 
     usd: float = 0.0
-    oracle_calls: int = 0
+    agent_calls: int = 0
     models: set = field(default_factory=set)
     breakdown: list = field(default_factory=list)  # (handler, cost_usd)
     recorded: bool = True   # False if any backing cassette is record_mode none (authored)
     cassettes: list = field(default_factory=list)
-    measured: bool = False  # True once at least one oracle cost was found
+    measured: bool = False  # True once at least one agent cost was found
 
 
 def read_story_cost(story_dir: str) -> StoryCost:
-    """Sum oracle.cost_usd across the story's host cassettes. Deterministic steps
-    contribute $0 by construction (they never call a model), so the cassette oracle
+    """Sum agent.cost_usd across the story's host cassettes. Deterministic steps
+    contribute $0 by construction (they never call a model), so the cassette agent
     spend IS the story's cost. Flags authored (record_mode none) cassettes."""
     sc = StoryCost()
     cass_glob = os.path.join(story_dir, "flows", "cassettes", "*.yaml")
@@ -129,11 +129,11 @@ def read_story_cost(story_dir: str) -> StoryCost:
                 if m:
                     cost = float(m.group(1))
                     sc.usd += cost
-                    sc.oracle_calls += 1
+                    sc.agent_calls += 1
                     sc.measured = True
                     if cur_model:
                         sc.models.add(cur_model)
-                    sc.breakdown.append((cur_handler or "host.oracle.?", cost))
+                    sc.breakdown.append((cur_handler or "host.agent.?", cost))
         if rec_none:
             sc.recorded = False
     return sc
@@ -207,7 +207,7 @@ def _op_probes(profile: dict) -> list:
 def baseline_from_corpus(profile: dict, project_globs: list,
                          min_bytes: int = 30000) -> Baseline:
     """Scope real transcripts by the story's profile (same grep prefilter mining
-    uses, agent/oracle sessions dropped), find the user turns that did the story's
+    uses, agent/agent sessions dropped), find the user turns that did the story's
     operations, and collect their real cost distribution. No LLM, exact pricing."""
     bl = Baseline(profile=profile)
     probes = _op_probes(profile)
@@ -220,7 +220,7 @@ def baseline_from_corpus(profile: dict, project_globs: list,
         for d in sorted(glob.glob(os.path.expanduser(g))):
             if os.path.isdir(d):
                 paths.extend(sorted(glob.glob(os.path.join(d, "*.jsonl"))))
-    # cheap raw-substring prefilter + drop dispatched agent/oracle transcripts
+    # cheap raw-substring prefilter + drop dispatched agent/agent transcripts
     # (mining them back in is self-cannibalism — same rule as prep.py).
     for p in paths:
         try:
@@ -289,15 +289,15 @@ def render_story(name: str, sc: StoryCost, bl: Baseline) -> list:
         flag = "" if sc.recorded else \
             "  ⚠ authored (record_mode `none` cassette — record live to confirm)"
         parts = ", ".join("%s %s" % (h, _usd(c)) for h, c in sc.breakdown)
-        L.append("- **Story cost (deterministic):** %s over %d oracle call(s) "
+        L.append("- **Story cost (deterministic):** %s over %d agent call(s) "
                  "— %s; model(s) %s.%s"
-                 % (_usd(sc.usd), sc.oracle_calls, parts,
+                 % (_usd(sc.usd), sc.agent_calls, parts,
                     sorted(sc.models) or "?", flag))
     else:
         L.append("- **Story cost (deterministic):** _not yet measured_ — no host "
-                 "cassette with oracle `cost_usd` under "
+                 "cassette with agent `cost_usd` under "
                  "`stories/%s/flows/cassettes/`. Deterministic steps are $0; record "
-                 "the story's oracle cassette to capture the rest." % name)
+                 "the story's agent cassette to capture the rest." % name)
 
     # denominator
     if bl.total_n() == 0:
@@ -337,15 +337,15 @@ def render_story(name: str, sc: StoryCost, bl: Baseline) -> list:
                      "deterministic story)." % _usd(med))
         # model-mix lever
         opus = [m for m in raw_models if "opus" in m]
-        sonnet_oracle = [m for m in sc.models if "sonnet" in m]
-        if opus and sonnet_oracle:
+        sonnet_agent = [m for m in sc.models if "sonnet" in m]
+        if opus and sonnet_agent:
             op, _ = pricing.price_for(opus[0])
-            so, _ = pricing.price_for(sonnet_oracle[0])
+            so, _ = pricing.price_for(sonnet_agent[0])
             lever = op.input / so.input if so.input else 0
-            L.append("- **Model-mix lever:** raw ops run on %s; the story's oracle "
+            L.append("- **Model-mix lever:** raw ops run on %s; the story's agent "
                      "needs only %s (~%.0f× cheaper/token). The deterministic "
                      "boundary is what lets the cheaper model suffice."
-                     % (opus[0], sonnet_oracle[0], lever))
+                     % (opus[0], sonnet_agent[0], lever))
 
     # per-intent distribution
     rows = [(op, st) for op, st in bl.ops.items() if st.n() > 0]
@@ -375,7 +375,7 @@ def build_report(stories: list, project_globs: list) -> str:
     L.append("# Per-story cost report")
     L.append("")
     L.append("Auto-generated savings per story: the **deterministic story cost** "
-             "(oracle spend from the story's host cassettes; every routed/host step "
+             "(agent spend from the story's host cassettes; every routed/host step "
              "is $0) versus the **raw agentic cost** of the same operations in real "
              "Claude Code sessions (real telemetry, exact-priced). The reusable form "
              "of [docs/case-studies/git-ops-cost.md](../../docs/case-studies/git-ops-cost.md); "
@@ -383,7 +383,7 @@ def build_report(stories: list, project_globs: list) -> str:
     L.append("")
     L.append("_No LLM, no cost: reads `message.usage` already on disk via "
              "`cost_extract.py` + `pricing.py`. Raw baseline scoped per story by "
-             "`mining.profile.yaml`'s grep prefilter; dispatched agent/oracle "
+             "`mining.profile.yaml`'s grep prefilter; dispatched agent/agent "
              "sessions dropped (self-cannibalism)._")
     L.append("")
 

@@ -33,7 +33,7 @@ function ensureArtifactsDir(): void {
 }
 
 /**
- * Inline oracle-prompt sidecars into the snapshot so the artifact is fully
+ * Inline agent-prompt sidecars into the snapshot so the artifact is fully
  * self-contained. Under file:// the browser blocks a relative fetch() of the
  * .txt sidecar, so usePromptLoader could never resolve prompt_file. We read
  * each referenced sidecar (relative to the snapshot's dir) and copy its text

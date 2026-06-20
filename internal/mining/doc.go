@@ -27,7 +27,7 @@
 // Drafter (the dev-story-mining mapper/author personas in production; stubs in
 // tests), and the apply gate takes a Reloader (the orchestrator in production;
 // a fake in tests) plus a FlowGate (testrunner.RunFlows in production). No path
-// in this package calls a live LLM — the single oracle draft pass is the
+// in this package calls a live LLM — the single agent draft pass is the
 // caller's injected Drafter, which is cassette-backed when real.
 //
 // See docs/architecture/ambient-mining.md for the loop, the two events, and the

@@ -1,4 +1,4 @@
-# happy_path_commit — branch_ops → staging (add_all) → back → commit (oracle stub) → accept → branch_ops.
+# happy_path_commit — branch_ops → staging (add_all) → back → commit (agent stub) → accept → branch_ops.
 # Free-text trigger: "commit" (bare imperative).
 
 test_kind: flow
@@ -55,7 +55,7 @@ host_handlers:
           ok:        true
           exit_code: 0
           stdout:    "[feat/x abc1234] feat: add foo"
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:

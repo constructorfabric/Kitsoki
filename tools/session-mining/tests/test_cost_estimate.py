@@ -45,11 +45,11 @@ def run():
     # --- Kitsoki ground truth from the committed cassette --------------------
     kit_total, items = ce.read_kitsoki_cost(ce.DEFAULT_CASSETTE)
     check(abs(kit_total - 0.0955) < 1e-9,
-          "kitsoki total should be the two committed oracle costs (0.0955), got %r"
+          "kitsoki total should be the two committed agent costs (0.0955), got %r"
           % kit_total)
-    check(len(items) == 2, "expected 2 paid oracle surfaces, got %d" % len(items))
+    check(len(items) == 2, "expected 2 paid agent surfaces, got %d" % len(items))
     handlers = {h for h, _ in items}
-    check(handlers == {"host.oracle.decide", "host.oracle.task"},
+    check(handlers == {"host.agent.decide", "host.agent.task"},
           "unexpected paid handlers: %r" % handlers)
 
     # --- Session shape is verifiable from the mined transcripts --------------

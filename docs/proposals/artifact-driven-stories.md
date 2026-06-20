@@ -7,7 +7,7 @@
 ## Why
 
 Several kitsoki stories already *are* artifact-driven: each phase hands an
-oracle/host output straight to disk as a named, shareable yaml/markdown file,
+agent/host output straight to disk as a named, shareable yaml/markdown file,
 and the run-through is really the accretion of those files. The **design
 pipeline** (`stories/dev-story/rooms/design*.yaml`) is the worked example — it
 materializes a per-run workspace at `docs/proposals/.workspace/<slug>/`
@@ -53,7 +53,7 @@ and the engine gives it:
 
 - **Instances.** A run-through is a first-class *instance*: a workspace of the
   spec's artifacts, keyed by a story-declared identity. Each phase persists its
-  oracle/host output to the workspace **as soon as it's produced** (a schema'd
+  agent/host output to the workspace **as soon as it's produced** (a schema'd
   [artifact-format](artifact-format.md) file); the world carries only a handle,
   the on-disk artifact is the source of truth (the
   [media-artifact-substrate](media-artifact-substrate.md) rule).

@@ -5,7 +5,7 @@
 //
 //   - TestRunFlows_IDE_StubByInvokeID drives the ide_awareness demo app with
 //     host.ide.get_diagnostics stubbed by per-invoke id (host_handlers: ...
-//     by_call:, the feedback_oracle_stub_by_id convention). Both the
+//     by_call:, the feedback_agent_stub_by_id convention). Both the
 //     editor-attached (connected:true → reviewed) and no-editor
 //     (connected:false → offline) branches are asserted from one multi-doc
 //     fixture.

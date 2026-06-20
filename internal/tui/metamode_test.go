@@ -3,7 +3,7 @@
 // These run as `package tui_test` so they exercise the public RootModel
 // surface plus the export_test.go helpers. Each test wires a real
 // metamode.Controller against in-package fakes (a fake ChatStore +
-// OracleCaller + Registry) so we cover the Enter/Send wiring without
+// AgentCaller + Registry) so we cover the Enter/Send wiring without
 // pulling in the chats SQLite or the host claude shellout.
 package tui_test
 
@@ -175,15 +175,15 @@ func (s *fakeMetaChatStore) WithLock(ctx context.Context, _ string, fn func(cont
 	return fn(ctx)
 }
 
-// fakeMetaOracle scripts a reply (and optionally an error) for Ask.
-type fakeMetaOracle struct {
+// fakeMetaAgent scripts a reply (and optionally an error) for Ask.
+type fakeMetaAgent struct {
 	mu       sync.Mutex
 	gotInput metamode.AskInput
 	reply    string
 	err      error
 }
 
-func (o *fakeMetaOracle) Ask(_ context.Context, in metamode.AskInput) (metamode.AskOutput, error) {
+func (o *fakeMetaAgent) Ask(_ context.Context, in metamode.AskInput) (metamode.AskOutput, error) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	o.gotInput = in
@@ -211,7 +211,7 @@ func (r *fakeMetaRegistry) Register(a agents.Agent) { r.a[a.Name] = a }
 // buildMetaModeModel returns a RootModel pre-wired with a metamode.Controller
 // backed by the supplied fakes. metaModes is the map injected into the
 // orchestrator's AppDef so the loader-side ordering is respected.
-func buildMetaModeModel(t *testing.T, metaModes map[string]*app.MetaModeDef, oracleReply string) (tea.Model, *fakeMetaChatStore, *fakeMetaOracle) {
+func buildMetaModeModel(t *testing.T, metaModes map[string]*app.MetaModeDef, agentReply string) (tea.Model, *fakeMetaChatStore, *fakeMetaAgent) {
 	t.Helper()
 
 	orch, sid := setupCloak(t)
@@ -221,7 +221,7 @@ func buildMetaModeModel(t *testing.T, metaModes map[string]*app.MetaModeDef, ora
 	orch.AppDef().MetaModes = metaModes
 
 	store := &fakeMetaChatStore{}
-	oracle := &fakeMetaOracle{reply: oracleReply}
+	agent := &fakeMetaAgent{reply: agentReply}
 	reg := &fakeMetaRegistry{a: map[string]agents.Agent{
 		"story-author": {
 			Name:         "story-author",
@@ -237,7 +237,7 @@ func buildMetaModeModel(t *testing.T, metaModes map[string]*app.MetaModeDef, ora
 		Chats:  store,
 		Agents: reg,
 		AppDef: orch.AppDef(),
-		Oracle: oracle,
+		Agent:  agent,
 	}
 
 	w := orch.InitialWorld()
@@ -246,7 +246,7 @@ func buildMetaModeModel(t *testing.T, metaModes map[string]*app.MetaModeDef, ora
 	m := tea.Model(tuipkg.NewRootModel(orch, sid, "", initialView,
 		tuipkg.WithMetaController(ctrl),
 	))
-	return m, store, oracle
+	return m, store, agent
 }
 
 // singleStoryMode is the canonical one-mode test fixture.
@@ -358,7 +358,7 @@ func TestMetaMode_UnknownMode(t *testing.T) {
 // presses Enter, and confirms both the user text and the assistant reply
 // land in the transcript.
 func TestMetaMode_TurnAppendsTranscript(t *testing.T) {
-	m, _, oracle := buildMetaModeModel(t, singleStoryMode(), "hello back")
+	m, _, agent := buildMetaModeModel(t, singleStoryMode(), "hello back")
 
 	m = runTurnBlocking(t, m, "/meta")
 	require.Equal(t, tuipkg.ModeMeta, extractMode(t, m))
@@ -373,14 +373,14 @@ func TestMetaMode_TurnAppendsTranscript(t *testing.T) {
 		"user text should appear in the transcript")
 	require.Contains(t, transcript, "hello back",
 		"assistant reply should appear in the transcript")
-	// The oracle's UserMessage now carries the [context] preamble +
+	// The agent's UserMessage now carries the [context] preamble +
 	// the [user]…[/user] block (see metamode.TurnContext). Assert the
 	// typed text appears inside the user block rather than checking
 	// strict equality.
-	require.Contains(t, oracle.gotInput.UserMessage, "[user]\nhello there\n[/user]",
-		"oracle should have been invoked with the typed text inside the [user] block")
-	require.Contains(t, oracle.gotInput.UserMessage, "[context]",
-		"oracle should have received a [context] preamble")
+	require.Contains(t, agent.gotInput.UserMessage, "[user]\nhello there\n[/user]",
+		"agent should have been invoked with the typed text inside the [user] block")
+	require.Contains(t, agent.gotInput.UserMessage, "[context]",
+		"agent should have received a [context] preamble")
 }
 
 // TestMetaMode_ReloadOnApply injects a metaSendDoneMsg with ReloadRequested
@@ -654,12 +654,12 @@ func TestMetaMode_ResumePrefix_TooShort(t *testing.T) {
 // ─── Phase A.6: per-turn TurnContext injection ───────────────────────────────
 
 // TestMetaMode_TurnSendsContext drives a chat turn inside meta mode
-// and asserts the AskInput.UserMessage captured by the fake oracle
+// and asserts the AskInput.UserMessage captured by the fake agent
 // contains a [context] preamble built from RootModel state — at
 // minimum the StatePath (the cloak fixture's initial state) and the
 // rendered view that the player is staring at.
 func TestMetaMode_TurnSendsContext(t *testing.T) {
-	m, _, oracle := buildMetaModeModel(t, singleStoryMode(), "ok")
+	m, _, agent := buildMetaModeModel(t, singleStoryMode(), "ok")
 
 	m = runTurnBlocking(t, m, "/meta")
 	require.Equal(t, tuipkg.ModeMeta, extractMode(t, m))
@@ -668,9 +668,9 @@ func TestMetaMode_TurnSendsContext(t *testing.T) {
 	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	processCommands(m, cmd, 10)
 
-	got := oracle.gotInput.UserMessage
+	got := agent.gotInput.UserMessage
 	require.Contains(t, got, "[context]\n",
-		"oracle should receive a [context] block")
+		"agent should receive a [context] block")
 	require.Contains(t, got, "state: foyer\n",
 		"the cloak fixture starts in `foyer` — TurnContext should carry that")
 	require.Contains(t, got, "view: |\n",
@@ -691,7 +691,7 @@ func TestMetaMode_TurnSendsContext(t *testing.T) {
 // pre-populated trace ring and a temp file path, drives a meta-mode
 // turn, and asserts:
 //
-//   - the oracle saw the trace_file: line in the [context] preamble,
+//   - the agent saw the trace_file: line in the [context] preamble,
 //     pointing at the configured temp file path.
 //   - the on-disk file was rewritten with the ring's snapshot (the
 //     one pre-staged event is present in JSONL form).
@@ -704,7 +704,7 @@ func TestMetaMode_TurnIncludesTracePath(t *testing.T) {
 	orch.AppDef().MetaModes = singleStoryMode()
 
 	store := &fakeMetaChatStore{}
-	oracle := &fakeMetaOracle{reply: "ok"}
+	agent := &fakeMetaAgent{reply: "ok"}
 	reg := &fakeMetaRegistry{a: map[string]agents.Agent{
 		"story-author": {
 			Name:         "story-author",
@@ -716,7 +716,7 @@ func TestMetaMode_TurnIncludesTracePath(t *testing.T) {
 		Chats:  store,
 		Agents: reg,
 		AppDef: orch.AppDef(),
-		Oracle: oracle,
+		Agent:  agent,
 	}
 
 	// Pre-populate the ring with one event so the on-disk dump has
@@ -744,11 +744,11 @@ func TestMetaMode_TurnIncludesTracePath(t *testing.T) {
 	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	processCommands(m, cmd, 10)
 
-	// The oracle should have received the trace_file: line in the
+	// The agent should have received the trace_file: line in the
 	// preamble, pointing at exactly the configured path.
-	got := oracle.gotInput.UserMessage
+	got := agent.gotInput.UserMessage
 	require.Contains(t, got, "trace_file: "+tracePath+"\n",
-		"oracle should see the trace_file: line pinning the dump path")
+		"agent should see the trace_file: line pinning the dump path")
 
 	// And the on-disk file should contain the pre-staged event.
 	body, err := os.ReadFile(tracePath)
@@ -769,11 +769,11 @@ func TestMetaMode_TurnUsesExternalTraceFile(t *testing.T) {
 	orch.AppDef().MetaModes = singleStoryMode()
 
 	store := &fakeMetaChatStore{}
-	oracle := &fakeMetaOracle{reply: "ok"}
+	agent := &fakeMetaAgent{reply: "ok"}
 	reg := &fakeMetaRegistry{a: map[string]agents.Agent{
 		"story-author": {Name: "story-author", SystemPrompt: "you are the story author."},
 	}}
-	ctrl := &metamode.Controller{Chats: store, Agents: reg, AppDef: orch.AppDef(), Oracle: oracle}
+	ctrl := &metamode.Controller{Chats: store, Agents: reg, AppDef: orch.AppDef(), Agent: agent}
 
 	// Pre-populate the ring with one event AND pre-write the external
 	// file with a different sentinel. After the turn the file should
@@ -801,8 +801,8 @@ func TestMetaMode_TurnUsesExternalTraceFile(t *testing.T) {
 	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	processCommands(m, cmd, 10)
 
-	require.Contains(t, oracle.gotInput.UserMessage, "trace_file: "+tracePath+"\n",
-		"oracle should see the external trace path in the preamble")
+	require.Contains(t, agent.gotInput.UserMessage, "trace_file: "+tracePath+"\n",
+		"agent should see the external trace path in the preamble")
 
 	body, err := os.ReadFile(tracePath)
 	require.NoError(t, err)

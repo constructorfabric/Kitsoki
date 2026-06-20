@@ -2,13 +2,13 @@
  * Harness-profile picker feature-spotlight video — driven from the CHAT pane.
  *
  * Drives the runstatus chat-drive surface (InteractiveView) against a real
- * `kitsoki web` server in the deterministic NO-LLM posture: the oracle-probe
- * story (testdata/apps/oracle_probe) asks the active harness profile's model to
+ * `kitsoki web` server in the deterministic NO-LLM posture: the agent-probe
+ * story (testdata/apps/agent_probe) asks the active harness profile's model to
  * identify itself; a host cassette returns a different scripted identity per
  * turn. The demo switches the header provider (claude-native → synthetic-claude
  * → codex-native), types "who are you" each time, and shows two things:
  *   1. the chat answer changes with the provider, and
- *   2. each oracle row in the trace (right pane) is stamped with the selected
+ *   2. each agent row in the trace (right pane) is stamped with the selected
  *      profile + model — the live selection, not the cassette.
  *
  * No real key is used: the harness fixture's ${SYNTHETIC_API_KEY} is satisfied
@@ -41,7 +41,7 @@ import { makeCaption, captureDiagnostics } from "./_helpers/demo.js";
 import { cameraContext } from "./_helpers/camera.js";
 
 const ADDR = demoAddr(7752);
-const STORY_DIR = path.join(repoRoot, "testdata", "apps", "oracle_probe");
+const STORY_DIR = path.join(repoRoot, "testdata", "apps", "agent_probe");
 const FLOW = path.join(STORY_DIR, "flows", "who_are_you.flow.yaml");
 const CASSETTE = path.join(STORY_DIR, "flows", "who_are_you.cassette.yaml");
 const CONFIG = path.join(repoRoot, "tools", "runstatus", "tests", "playwright", "fixtures", "harness.kitsoki.yaml");
@@ -158,14 +158,14 @@ test("harness picker from the chat pane — switch provider, ask who-are-you", a
 
       // The chat shows this provider's distinct answer…
       await expect(page.getByTestId("chat-transcript")).toContainText(step.reply, { timeout: 15000 });
-      // …and the trace stamps the selected profile on this turn's oracle call.
+      // …and the trace stamps the selected profile on this turn's agent call.
       await expect(harnessLabels().filter({ hasText: step.profile }).first()).toBeVisible({ timeout: 15000 });
       await beat(`${step.profile} answered`, `Trace row stamped profile=${step.profile} — matching the picker.`);
       await shot(page, `0${i + 1}-${step.profile}`);
       await dwell(page, SETTLE_MS);
     }
 
-    // Final proof: three oracle calls, three distinct profile stamps in the
+    // Final proof: three agent calls, three distinct profile stamps in the
     // trace, and the claude call stamped with its picked model + effort.
     for (const step of STEPS) {
       await expect(harnessLabels().filter({ hasText: step.profile }).first()).toBeVisible();
@@ -175,7 +175,7 @@ test("harness picker from the chat pane — switch provider, ask who-are-you", a
     // synthetic ran a specific model, not just a syn: alias.
     await expect(harnessLabels().filter({ hasText: "hf:zai-org/GLM-5.1" }).first()).toBeVisible();
     chapters.open("hp-recap", "Three turns, three providers", CHAPTER_SOURCE);
-    await beat("Three turns, three providers", "Each oracle call in the trace carries the profile, model + effort it ran on.");
+    await beat("Three turns, three providers", "Each agent call in the trace carries the profile, model + effort it ran on.");
     await shot(page, "04-trace-all");
     await dwell(page, SETTLE_MS);
   } catch (err) {

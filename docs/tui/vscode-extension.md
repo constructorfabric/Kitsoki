@@ -421,7 +421,7 @@ make vscode-e2e-fast                         # the no-LLM, no-editor-flake de-ri
   browser WebWorker with no `child_process`, so it cannot spawn the Go backend. A
   hosted `kitsoki web` could serve vscode.dev later; out of scope.
 - **A relay hop per call.** `postMessage` adds a serialise/await per RPC versus the
-  browser's direct `fetch` — imperceptible against oracle-bound turn latency.
+  browser's direct `fetch` — imperceptible against agent-bound turn latency.
 - **No deep editor wiring.** Selection-aware prompts, open-file actions, and
   diagnostics belong to the inverse [`/ide`](README.md#editor-awareness-ide)
   substrate; this extension only *embeds* the UI. Composing the two is a deliberate

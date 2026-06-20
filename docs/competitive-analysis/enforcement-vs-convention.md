@@ -299,7 +299,7 @@ that a serious evaluator will reach on their own, so we should reach them
 first:
 
 1. **kitsoki's own enforcement is not yet complete.** The clearest case:
-   `host.oracle.task` granted `Write`/`Edit` will YOLO-implement beyond its
+   `host.agent.task` granted `Write`/`Edit` will YOLO-implement beyond its
    remit — today restrained by *prompt wording*, not a mechanical
    write-path allow-list (the engine fix is proposed, not built:
    [`../proposals/task-fs-sandbox.md`](../proposals/task-fs-sandbox.md)). So
@@ -322,7 +322,7 @@ first:
 
 3. **The steelman of the skeptic.** Maybe mechanical enforcement is not
    worth a separate engine. A solid LangGraph project template + a lint rule
-   banning I/O in non-oracle nodes + a recorder hook might capture ~80% of
+   banning I/O in non-agent nodes + a recorder hook might capture ~80% of
    the value at ~10% of the cost. If true, kitsoki is a research bet that
    the last 20% — *total* enforcement, the decision corpus, per-decision
    operator swap — actually pays. That bet is **unproven**; the PoC exists

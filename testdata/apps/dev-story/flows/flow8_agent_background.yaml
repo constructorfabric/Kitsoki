@@ -1,0 +1,82 @@
+# Flow 8: Agent Room — background chat turn.
+#
+# Proves end-to-end that Effect.Background + chat-aware host.agent.converse +
+# on_complete bridge work together:
+#
+#  1. Navigate to agent list (on_enter loads the list).
+#  2. Start a new chat → agent_active_new (on_enter: host.chat.create).
+#  3. Fire ask_question_bg → agent_asking_bg: on_enter dispatches host.agent.converse
+#     as a background job and binds last_job_id synchronously.
+#  4. advance_clock: "2s" moves virtual time past the 1s handler delay, letting
+#     the job complete and on_complete fire (sets agent_answer).
+#  5. expect_world verifies agent_answer was written by the on_complete chain.
+#  6. expect_inbox verifies: info (job submitted) + success (reply ready) = 2 unread.
+#
+# Note: completionNotification detects chat_id in the result (from the stub data)
+# and emits a "Reply ready" success notification — this exercises the Task B path
+# in oncomplete.go.
+test_kind: flow
+app: ../app.yaml
+initial_state: main
+initial_world:
+  prev_state: "main"
+
+host_handlers:
+  host.chat.list:
+    data:
+      rendered: "(no chats yet)"
+      chats:    []
+      count:    0
+
+  host.chat.create:
+    data:
+      chat_id: "bg-chat-id"
+      title:   "Background Agent Chat"
+      app_id:  "dev-story"
+      room:    "agent"
+
+  host.agent.converse:
+    data:
+      answer:            "Here is the background answer."
+      session_id:        "stub-bg-session-id"
+      chat_id:           "bg-chat-id"
+      claude_session_id: "stub-bg-session-id"
+      transcript_seq:    1
+    delay: "1s"
+
+turns:
+  # Go to Agent list — on_enter loads chat list
+  - intent:
+      name: go_agent
+      slots: {}
+    expect_state: agent
+    expect_world:
+      agent_chat_count: 0
+
+  # Start a new chat → agent_active_new (on_enter: host.chat.create)
+  - intent:
+      name: new_chat
+      slots:
+        title: "Background Agent Chat"
+    expect_state: agent_active_new
+    expect_world:
+      agent_chat_id:    "bg-chat-id"
+      agent_chat_title: "Background Agent Chat"
+
+  # Fire ask_question_bg → transitions to agent_asking_bg.
+  # on_enter dispatches host.agent.converse as a background job and binds last_job_id.
+  # advance_clock: "2s" unblocks the 1s stub delay, job completes, on_complete fires.
+  - intent:
+      name: ask_question_bg
+      slots:
+        question: "What are the trade-offs of immutable infrastructure?"
+    advance_clock: "2s"
+    expect_state: agent_asking_bg
+    expect_world:
+      agent_question: "What are the trade-offs of immutable infrastructure?"
+      agent_answer:   "Here is the background answer."
+    expect_inbox:
+      unread: 2
+      severities: ["info", "success"]
+
+expect_no_errors: true

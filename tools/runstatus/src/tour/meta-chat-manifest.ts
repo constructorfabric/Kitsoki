@@ -98,7 +98,7 @@ export const META_CHAT_TOUR_STEPS: readonly TourStep[] = [
     route: "interactive",
     target: "meta-row-streaming",
     title: "The turn streams live",
-    body: "Ask the agent and the turn streams in the bubble — 🧠 thinking and a Read tool call arrive, paced by the deterministic stub oracle.",
+    body: "Ask the agent and the turn streams in the bubble — 🧠 thinking and a Read tool call arrive, paced by the deterministic stub agent.",
     placement: "left",
     kind: "explain",
     advance: "next",

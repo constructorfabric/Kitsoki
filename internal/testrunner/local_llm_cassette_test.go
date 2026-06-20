@@ -2,10 +2,10 @@
 // conformance gauntlet (step 5a).
 //
 // The cassette transport is the deterministic stand-in for a recorded
-// builtin.local_llm run: a hand-seeded EpisodeOracle fixture
+// builtin.local_llm run: a hand-seeded EpisodeAgent fixture
 // (testdata/local_llm_decide.cassette.yaml) carries a decide verdict and an
-// extract turn as if they came from the alias "oracle.local". Replaying it
-// through NewCassetteOracle must reproduce the seeded Submission bytes
+// extract turn as if they came from the alias "agent.local". Replaying it
+// through NewCassetteAgent must reproduce the seeded Submission bytes
 // identically — that is the cross-transport invariant the four-transport
 // gauntlet asserts (TestConformance_FourTransports), here specialised to the
 // local-model-shaped Submission. Meta (episode_id / match_idx / call_id) is
@@ -19,7 +19,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"kitsoki/internal/oracle"
+	"kitsoki/internal/agent"
 )
 
 // localCassettePath is the committed seeded fixture.
@@ -27,7 +27,7 @@ const localCassettePath = "testdata/local_llm_decide.cassette.yaml"
 
 // TestConformance_LocalLLMCassette loads the seeded local-model cassette and
 // asserts that replaying the decide and extract episodes through the cassette
-// oracle yields the exact seeded Submission bytes, and that the decide
+// agent yields the exact seeded Submission bytes, and that the decide
 // Submission validates against the canonical judge_verdict schema.
 //
 // Test rigor: the assertions compare resp.Submission to the byte-for-byte
@@ -50,12 +50,12 @@ func TestConformance_LocalLLMCassette(t *testing.T) {
 	}
 
 	// Register the cassette under the same alias the fixture's episodes match on.
-	o := NewCassetteOracle(cas, "oracle.local", func() string { return "" }, nil)
+	o := NewCassetteAgent(cas, "agent.local", func() string { return "" }, nil)
 	defer o.Close()
 
 	// ── decide verdict: must replay byte-identically and validate ─────────────
 	const wantDecide = `{"verdict":"pass","intent":"accept","reason":"the change is correct and tested","confidence":0.88}`
-	decideResp, err := o.Ask(context.Background(), oracle.AskRequest{Verb: "decide"})
+	decideResp, err := o.Ask(context.Background(), agent.AskRequest{Verb: "decide"})
 	if err != nil {
 		t.Fatalf("decide Ask: %v", err)
 	}
@@ -73,13 +73,13 @@ func TestConformance_LocalLLMCassette(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read judge_verdict.json: %v", err)
 	}
-	if vErr := oracle.ValidateSubmission(json.RawMessage(schema), decideResp.Submission); vErr != nil {
+	if vErr := agent.ValidateSubmission(json.RawMessage(schema), decideResp.Submission); vErr != nil {
 		t.Errorf("replayed decide Submission failed schema validation: %v", vErr)
 	}
 
 	// ── extract turn: must replay byte-identically ────────────────────────────
 	const wantExtract = `{"ticket":"CLOUD-42","priority":"high"}`
-	extractResp, err := o.Ask(context.Background(), oracle.AskRequest{Verb: "extract"})
+	extractResp, err := o.Ask(context.Background(), agent.AskRequest{Verb: "extract"})
 	if err != nil {
 		t.Fatalf("extract Ask: %v", err)
 	}

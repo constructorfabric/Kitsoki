@@ -7,7 +7,7 @@ match_on:
 
 episodes:
 
-  # ── Non-oracle stubs (replay:any) ────────────────────────────────────────────
+  # ── Non-agent stubs (replay:any) ────────────────────────────────────────────
 
   - id: append_to_file_any
     match:
@@ -44,14 +44,14 @@ episodes:
       data: { ok: true, log: "PASS: 4 tests", passed: 4, failed: 0 }
     replay: any
 
-  # ── Oracle stubs with oracle: blocks (replay:any) ─────────────────────────────
-  # These write oracle.call.start + oracle.call.complete events to the trace
+  # ── Agent stubs with agent: blocks (replay:any) ─────────────────────────────
+  # These write agent.call.start + agent.call.complete events to the trace
   # so the runstatus waterfall, decision-detail, confidence-bar, annotation,
   # and replay tour steps have real data to display.
 
-  - id: oracle_task_any
+  - id: agent_task_any
     match:
-      handler: host.oracle.task
+      handler: host.agent.task
     response:
       data:
         ok: true
@@ -62,7 +62,7 @@ episodes:
           confidence: 0.88
           status: "passed"
           outcome: "pass"
-    oracle:
+    agent:
       verb: task
       agent: "bugfix"
       model: "claude-sonnet-4-6"
@@ -70,7 +70,7 @@ episodes:
       response: '{"summary_title":"Reproduction confirmed","confidence":0.88,"status":"passed"}'
       # Recorded agent-action transcript (claude stream-json, verbatim). On replay
       # this is written to <run>/transcripts/<call_id>.jsonl + .timings and
-      # referenced from oracle.call.complete by a transcript_ref pointer — the
+      # referenced from agent.call.complete by a transcript_ref pointer — the
       # "Agent actions" drawer renders it. Additive: code paths that don't read
       # transcript: ignore it, so the trace-features-video spec replay is unchanged.
       transcript:
@@ -101,9 +101,9 @@ episodes:
         timings: [0, 180, 320, 540, 760, 980, 1000, 1020, 1040, 1070, 1100, 1140, 1180, 1340, 1560, 1720, 1980, 2100]
     replay: any
 
-  - id: oracle_decide_any
+  - id: agent_decide_any
     match:
-      handler: host.oracle.decide
+      handler: host.agent.decide
     response:
       data:
         ok: true
@@ -116,7 +116,7 @@ episodes:
               score: 0.41
             - intent: "skip"
               score: 0.07
-    oracle:
+    agent:
       verb: decide
       agent: "bugfix"
       model: "claude-sonnet-4-6"
@@ -142,9 +142,9 @@ episodes:
         timings: [0, 220, 480, 540, 560, 980, 1180, 1500]
     replay: any
 
-  - id: oracle_ask_any
+  - id: agent_ask_any
     match:
-      handler: host.oracle.ask
+      handler: host.agent.ask
     response:
       data:
         ok: true
@@ -152,7 +152,7 @@ episodes:
           decision: "accept"
           confidence: 0.89
           reason: "Artifact satisfies all constraints."
-    oracle:
+    agent:
       verb: ask
       agent: "bugfix"
       model: "claude-sonnet-4-6"

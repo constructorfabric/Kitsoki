@@ -3,7 +3,7 @@
 
 This is the one signal the deterministic intent-mining spine does not already
 have: what each tool call actually produced (error? stdout/stderr? interrupted?).
-ground.py / tag_score.py / emit.py only ever see the distilled trace + the oracle
+ground.py / tag_score.py / emit.py only ever see the distilled trace + the agent
 hypothesis; the raw `.jsonl` carries the tool results, so we read them HERE, once,
 into a small session-ordered intermediate that emit.py joins by tool ordinal.
 

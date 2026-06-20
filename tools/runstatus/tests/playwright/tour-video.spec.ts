@@ -25,7 +25,7 @@ import {
   repoRoot,
   makeShot,
   waitForState,
-  waitForOracleComplete,
+  waitForAgentComplete,
   prepareVideoDir,
   saveVideoAsMp4,
   ChapterRecorder,
@@ -43,9 +43,9 @@ const TOUR_SPEC_PATH = "features/onboarding-tour.yaml";
 
 const ADDR = demoAddr(7745);
 // Use the bugfix story with the happy_llm flow + the demo cassette.
-// The cassette provides oracle.decide episodes that carry an oracle: block;
-// the web server's cassette dispatcher writes oracle.call.start /
-// oracle.call.complete events so the trace has real decision data for the
+// The cassette provides agent.decide episodes that carry an agent: block;
+// the web server's cassette dispatcher writes agent.call.start /
+// agent.call.complete events so the trace has real decision data for the
 // waterfall, decide-verdict, confidence-bar, annotate, and replay tour steps.
 const STORY_DIR = path.join(repoRoot, "stories", "bugfix");
 const FLOW = path.join(STORY_DIR, "flows", "happy_llm.yaml");
@@ -132,7 +132,7 @@ test("onboarding tour video (no-LLM)", async () => {
         }
       }
 
-      // Before trace-decision-detail: click event rows until an oracle.call.complete
+      // Before trace-decision-detail: click event rows until an agent.call.complete
       // decide event opens the decide-verdict detail pane. Must run BEFORE the
       // waitForTarget check so the element exists when we assert on it.
       if (step.id === "trace-decision-detail") {
@@ -187,14 +187,14 @@ test("onboarding tour video (no-LLM)", async () => {
           if (m) sessionId = m[1];
         } else if (step.advance === "route-match" && step.advanceRoute === "any") {
           await page.waitForURL(/#\/s\/[0-9a-f-]{36}$/, { timeout: 15000 });
-          // After navigating to the observer view, drive oracle-triggering turns
-          // via RPC so the trace has oracle.call.complete events for the
+          // After navigating to the observer view, drive agent-triggering turns
+          // via RPC so the trace has agent.call.complete events for the
           // waterfall / decide-verdict / replay steps.
           if (sessionId) {
             try {
-              // Patch the world so oracle.decide fires: set judge_mode=llm so
+              // Patch the world so agent.decide fires: set judge_mode=llm so
               // the bugfix story's validating room runs the LLM judge on its
-              // on_enter, producing oracle.call.complete events in the trace.
+              // on_enter, producing agent.call.complete events in the trace.
               await server.rpc("runstatus.session.patch_world", {
                 session_id: sessionId,
                 patch: {
@@ -209,16 +209,16 @@ test("onboarding tour video (no-LLM)", async () => {
                   judge_confidence_threshold: 0.8,
                 },
               });
-              // Submit `start` to trigger oracle.decide cascade — fires the
+              // Submit `start` to trigger agent.decide cascade — fires the
               // judge on every checkpoint's on_enter and produces multiple
-              // oracle.call.complete events with duration_ms in the trace.
+              // agent.call.complete events with duration_ms in the trace.
               await server.rpc("runstatus.session.submit", { session_id: sessionId, intent: "start", slots: {} });
-              // Poll the trace to a deadline (not a flat sleep) so the oracle
+              // Poll the trace to a deadline (not a flat sleep) so the agent
               // events have landed before the trace-detail steps spotlight them.
-              await waitForOracleComplete(server, sessionId, 1, 40000);
+              await waitForAgentComplete(server, sessionId, 1, 40000);
             } catch {
               // Non-fatal: the trace introspection steps degrade gracefully
-              // if oracle events are absent.
+              // if agent events are absent.
             }
           }
         }

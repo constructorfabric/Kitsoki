@@ -245,9 +245,9 @@ func (r *SessionRegistry) NewSession(ctx context.Context, storyPath string) (str
 	// Append + History (mirrors web.go).
 	live := server.NewLiveSession(sink, def, string(sid), string(orch.InitialState()))
 	orch.SetEventSink(live)
-	// Bind the cassette deferred oracle sink now that the real sink is ready.
-	if rt.DeferredOracleSink != nil {
-		rt.DeferredOracleSink.SetSink(live)
+	// Bind the cassette deferred agent sink now that the real sink is ready.
+	if rt.DeferredAgentSink != nil {
+		rt.DeferredAgentSink.SetSink(live)
 	}
 
 	// Record the effective story as the first event so the trace self-describes
@@ -410,8 +410,8 @@ func (r *SessionRegistry) AttachExternal(ctx context.Context, storyPath, key str
 
 	live := server.NewLiveSession(sink, def, string(sid), string(orch.InitialState()))
 	orch.SetEventSink(live)
-	if rt.DeferredOracleSink != nil {
-		rt.DeferredOracleSink.SetSink(live)
+	if rt.DeferredAgentSink != nil {
+		rt.DeferredAgentSink.SetSink(live)
 	}
 
 	if err := orch.RecordEffectiveStory(ctx, sid); err != nil {
@@ -745,7 +745,7 @@ func storyTitle(def *app.AppDef) string {
 // that to a structured not-found error.
 //
 // storyDir is the directory containing the manifest, used to resolve cassette
-// globs for the oracle workbench.
+// globs for the agent workbench.
 func (r *SessionRegistry) EditorApp(storyPath string) (app.App, string, bool) {
 	abs, err := filepath.Abs(storyPath)
 	if err != nil {
@@ -788,7 +788,7 @@ func (r *SessionRegistry) agentRegistryLocked() agents.Registry {
 	return r.agentReg
 }
 
-// oracleForMeta picks the meta-mode oracle: the deterministic no-LLM stub when
+// agentForMeta picks the meta-mode agent: the deterministic no-LLM stub when
 // the server runs in flow posture (--flow / --host-cassette), else the real
 // claude-CLI adapter. This is the seam that keeps `kitsoki web --flow` (and the
 // Playwright demo) free of any LLM call.
@@ -796,7 +796,7 @@ func (r *SessionRegistry) agentRegistryLocked() agents.Registry {
 // When in stub posture, KITSOKI_META_STREAM_DELAY_MS sets the per-event pause
 // the stub injects while emitting streaming events. Set it to 60-100 for demo
 // recordings; leave unset (or 0) for fast tests.
-func (r *SessionRegistry) oracleForMeta() metamode.OracleCaller {
+func (r *SessionRegistry) agentForMeta() metamode.AgentCaller {
 	if r.base.Flow != nil {
 		var opts []metamode.StubOption
 		if v := os.Getenv("KITSOKI_META_STREAM_DELAY_MS"); v != "" {
@@ -804,9 +804,9 @@ func (r *SessionRegistry) oracleForMeta() metamode.OracleCaller {
 				opts = append(opts, metamode.WithStubStreamDelay(time.Duration(ms)*time.Millisecond))
 			}
 		}
-		return metamode.NewStubOracleCaller(opts...)
+		return metamode.NewStubAgentCaller(opts...)
 	}
-	return metamode.NewOracleCallerAdapter()
+	return metamode.NewAgentCallerAdapter()
 }
 
 // metaControllerForLocked returns e's meta controller, building it lazily and
@@ -817,7 +817,7 @@ func (r *SessionRegistry) metaControllerForLocked(e *entry) *metamode.Controller
 			Chats:  metamode.NewChatStoreAdapter(e.rt.ChatStore),
 			Agents: r.agentRegistryLocked(),
 			AppDef: e.rt.Orch.AppDef(),
-			Oracle: r.oracleForMeta(),
+			Agent:  r.agentForMeta(),
 		}
 	}
 	return e.metaController
@@ -865,7 +865,7 @@ func (r *SessionRegistry) ensureSelfMetaLocked() error {
 		Chats:  metamode.NewChatStoreAdapter(cs),
 		Agents: r.agentRegistryLocked(),
 		AppDef: def,
-		Oracle: r.oracleForMeta(),
+		Agent:  r.agentForMeta(),
 	}
 	return nil
 }

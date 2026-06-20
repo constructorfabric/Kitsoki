@@ -1,19 +1,19 @@
 # once_reload_safe — on_enter is idempotent: a room whose `once:`-guarded
-# result is already present does NOT re-run its oracle call.
+# result is already present does NOT re-run its agent call.
 #
 # This is the reload-safety contract for the `once: true` invokes added to
 # review_pr_executing / comment_executing / decide_executing. /reload (and the
-# `look` self-loop) re-fires on_enter; `once: true` makes the expensive oracle
+# `look` self-loop) re-fires on_enter; `once: true` makes the expensive agent
 # call a no-op when its bind target is already in world. We prove it without a
 # real reload: enter review_pr_executing with review_summary_artifact ALREADY
-# set to a distinctive preset. The oracle stub returns a DIFFERENT value — so
+# set to a distinctive preset. The agent stub returns a DIFFERENT value — so
 # if the once: guard failed and the reviewer re-ran, the preset would be
 # overwritten. A `look` self-loop re-enters the room (re-firing on_enter);
 # asserting the preset survives proves the reviewer was skipped.
 #
 # Note the contrast with the cheap iface.vcs reads (diff / pr_status): those
 # are intentionally left UNGUARDED and DO re-fetch on every entry — only the
-# expensive oracle.decide is once:-gated.
+# expensive agent.decide is once:-gated.
 
 test_kind: flow
 app: ../app.yaml
@@ -40,7 +40,7 @@ host_handlers:
       diff:     "diff --git a/x.go b/x.go"
       comments: ""
   # If the once: guard failed, this would fire and clobber the preset.
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:
@@ -50,7 +50,7 @@ host_handlers:
 
 turns:
   # `look` re-enters review_pr_executing, re-firing on_enter. review_summary_
-  # artifact is already set ⇒ the once:-guarded oracle.decide is SKIPPED, so
+  # artifact is already set ⇒ the once:-guarded agent.decide is SKIPPED, so
   # the preset survives verbatim (summary_title still PRESET-SURVIVED), not the
   # stub's SHOULD-NOT-RUN output.
   - intent: { name: look, slots: {} }

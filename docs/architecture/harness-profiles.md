@@ -2,20 +2,20 @@
 
 > **Status:** operator-facing reference for the `harness_profiles:` block and
 > the live provider/model switch. A **harness profile** is a named, operator-
-> selectable bundle of the oracle-selection axes — *which backend CLI is forked*,
+> selectable bundle of the agent-selection axes — *which backend CLI is forked*,
 > *which endpoint it talks to*, and *which model it defaults to* — that a live
 > session can switch between from the TUI (`/provider`, `/model`) or the web
 > header picker. The switch takes effect on the **next** turn.
 
-A kitsoki session has four orthogonal oracle-selection axes, each documented on
+A kitsoki session has four orthogonal agent-selection axes, each documented on
 its own page:
 
 - **backend** — which coding-agent CLI is forked
-  ([oracle-backends.md](./oracle-backends.md)): `claude | copilot | codex`.
+  ([agent-backends.md](./agent-backends.md)): `claude | copilot | codex`.
 - **provider** — an env retarget of the forked CLI's subprocess
-  ([oracle-providers.md](./oracle-providers.md)).
+  ([agent-providers.md](./agent-providers.md)).
 - **plugin** — an alternate component that answers
-  ([oracle-plugin.md](./oracle-plugin.md)), e.g. `builtin.local_llm` (llama.cpp).
+  ([agent-plugin.md](./agent-plugin.md)), e.g. `builtin.local_llm` (llama.cpp).
 - **model** — the `--model` passed to the call.
 
 Historically each axis was frozen at startup and reachable only through flags,
@@ -110,8 +110,8 @@ harness_profiles:
 | `effort` | default reasoning effort (`low\|medium\|high\|xhigh\|max`), applied where the backend/model supports it (`claude --effort`). |
 | `efforts` | catalog the `/effort` command + web effort dropdown list — declare only on profiles whose backend/model supports effort (codex ignores `--effort` today). Empty ⇒ no effort control. |
 | `env` | env overrides merged onto the forked CLI subprocess. `${VAR}`-expanded at **load time** (an unset var is a hard error, mirroring `providers:`). **Never recorded in traces.** |
-| `plugin` | routes through an oracle plugin (e.g. `builtin.local_llm`) instead of forking a backend CLI. |
-| `default_profile` (top-level) | the profile new sessions start on; must name a declared profile. Omitted ⇒ the flag-derived static default (today's `--oracle`/`--model`). |
+| `plugin` | routes through an agent plugin (e.g. `builtin.local_llm`) instead of forking a backend CLI. |
+| `default_profile` (top-level) | the profile new sessions start on; must name a declared profile. Omitted ⇒ the flag-derived static default (today's `--agent`/`--model`). |
 
 **Secrets** never live in the file: `env` values use `${VAR}` interpolation
 against the process environment. With no `harness_profiles:` block the static
@@ -120,7 +120,7 @@ flag/env path is preserved byte-for-byte.
 ### Why `env` works for codex/openai, not just claude
 
 A provider/profile's `env` is merged onto **every** backend CLI's subprocess
-environment (`internal/host/oracle_runner.go`, `envWithProvider`), not only the
+environment (`internal/host/agent_runner.go`, `envWithProvider`), not only the
 `claude` one. So a `claude`-backed profile sets `ANTHROPIC_BASE_URL`/
 `ANTHROPIC_AUTH_TOKEN` (which the `claude` CLI reads) and a `codex`-backed
 profile sets `OPENAI_BASE_URL`/`OPENAI_API_KEY` (which the `codex` CLI reads).
@@ -160,10 +160,10 @@ concurrent switch can never tear one call.
 
 ## Trace
 
-Every `oracle.call.start` already stamps the model; a session that selected a
-profile also stamps `profile` (`OracleCalledPayload.Profile`) and, when set,
-`effort`, so a transcript line reads `oracle.decide · profile=claude-native ·
-model=opus · effort=high`. The web trace renders these as a chip on each oracle
+Every `agent.call.start` already stamps the model; a session that selected a
+profile also stamps `profile` (`AgentCalledPayload.Profile`) and, when set,
+`effort`, so a transcript line reads `agent.decide · profile=claude-native ·
+model=opus · effort=high`. The web trace renders these as a chip on each agent
 row, so the trace provenance matches the picker. Only the profile name, backend,
 model, and effort are recorded — **never the `env` secrets**.
 
@@ -214,7 +214,7 @@ and gated, per CLAUDE.md.
 
 ## Backward compatibility
 
-Fully additive, default-off. Existing flags/env/`providers:`/`oracle_plugins:`
+Fully additive, default-off. Existing flags/env/`providers:`/`agent_plugins:`
 keep working unchanged; a profile is a *named* bundle of the same overrides
 applied through the same merge points. With no profiles declared, `/provider`
 and `/model` report the single flag-derived default and the web picker hides.

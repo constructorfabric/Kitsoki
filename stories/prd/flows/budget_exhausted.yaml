@@ -13,7 +13,7 @@ initial_world:
   drafting_budget: 5
 
 host_handlers:
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted:
@@ -24,9 +24,9 @@ host_handlers:
         needs_clarification: false
         follow_up_questions: []
   # references on_enter runs the optional semantic pre-seed; empty hits = no embeddings.
-  host.oracle.search:
+  host.agent.search:
     data: { hits: [] }
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:

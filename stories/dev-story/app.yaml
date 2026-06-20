@@ -4,7 +4,7 @@
 # This is the GENERAL-PURPOSE app: it imports the bugfix and
 # pr-refinement sub-stories and routes between them via the
 # day-level rooms (main, inbox, ticket_search, workspace_manager,
-# standup, code_review, oracle, …). It does NOT bind providers —
+# standup, code_review, agent, …). It does NOT bind providers —
 # concrete bindings happen at the INSTANCE level (kitsoki-dev,
 # cyber-repo/devstory). The `default:` values in `host_interfaces:`
 # are the fallback for standalone runs.
@@ -52,7 +52,7 @@ app:
   author: "Kitsoki"
   license: "CC0"
   # Layer-2 project context: prepended (under the kitsoki grounding) to every
-  # oracle call and the intent router so each operator shares this app's domain.
+  # agent call and the intent router so each operator shares this app's domain.
   # See docs/architecture/system-prompt.md.
   context: |
     This app is an engineer's daily-workflow hub. It routes a developer
@@ -69,8 +69,8 @@ app:
 # Local model for cheap, offline slug naming. Qwen2.5-1.5B-Instruct at Q4_K_M;
 # grammar: true enables constrained decoding so the JSON schema is satisfied on
 # the first decode without retries.
-oracle_plugins:
-  oracle.local_llm:
+agent_plugins:
+  agent.local_llm:
     plugin: builtin.local_llm
     model: qwen2.5-1.5b-instruct
     grammar: true
@@ -79,7 +79,7 @@ oracle_plugins:
 # are unioned implicitly at fold time via resolveAllInterfaces.
 hosts:
   - host.inbox.add
-  - host.oracle.ask
+  - host.agent.ask
   - host.run
   # ── Design pipeline (rooms/design*.yaml) ───────────────────────
   # 4-stage pipeline: intake → search (decide ×2) → refine (task + decide) →
@@ -87,30 +87,30 @@ hosts:
   # host.artifacts_dir so search results can inform it; host.ide.open_file
   # opens it in the editor on first scaffold. An instance importing dev-story
   # with `hosts: declared` must list all four in its own allow-list.
-  - host.oracle.decide
-  - host.oracle.task
-  - host.oracle.search
+  - host.agent.decide
+  - host.agent.task
+  - host.agent.search
   - host.artifacts_dir
   - host.ide.open_file
   - host.ide.open_diff
   # ── PRD discovery (imported `prd`, stories/prd/) ──────────────────
-  # The PRD pipeline is a conversational discovery (host.oracle.converse +
+  # The PRD pipeline is a conversational discovery (host.agent.converse +
   # a persistent chat via host.chat.resolve) that decide/task-gates into a
   # published PRD. Its decide/task/search/artifacts_dir/ide.open_file/run
   # needs are already covered above; converse + chat.resolve are unique to
   # it. An instance importing dev-story with `hosts: declared` must list
   # both in its own allow-list (see stories/kitsoki-dev/app.yaml).
-  - host.oracle.converse
+  - host.agent.converse
   - host.chat.resolve
 
-# Persona table (oracle-split proposal §3.5).
+# Persona table (agent-split proposal §3.5).
 #
-# The dev-story hub's own oracle room makes one-shot prose Q&A
+# The dev-story hub's own agent room makes one-shot prose Q&A
 # calls — read-only inspection, no schema. The verb is ask.
 #
-#   oracle_qa    ask   one-shot prose Q&A (oracle_asking room)
+#   agent_qa    ask   one-shot prose Q&A (agent_asking room)
 agents:
-  oracle_qa:
+  agent_qa:
     system_prompt: "You are an engineering assistant. Answer the operator's question clearly and concisely based on your knowledge and any context provided."
     model: claude-sonnet-4-6
     tools: [Read, Grep, Glob]
@@ -352,10 +352,10 @@ world:
   bugfix_mode:                 { type: string, default: "full" }
   merge_strategy:              { type: string, default: "squash" }
 
-  # ── Standup / oracle / code-review scratch ────────────────────────
+  # ── Standup / agent / code-review scratch ────────────────────────
   standup_summary:     { type: string, default: "" }
-  oracle_question:     { type: string, default: "" }
-  oracle_answer:       { type: string, default: "" }
+  agent_question:     { type: string, default: "" }
+  agent_answer:       { type: string, default: "" }
 
   # ── Design pipeline (rooms/design*.yaml) ───────────────────────
   # 4-stage pipeline: intake → search → refine → draft+publish.
@@ -372,7 +372,7 @@ world:
   design_existing_path:    { type: string, default: "" } # path 002-existing-state.md was written to
   design_overlap_decision: { type: string, default: "" } # "" | new | change_existing
   design_change_target:    { type: string, default: "" } # path of the proposal to amend when change_existing
-  design_reference_hits:   { type: object, default: {} } # raw hits from host.oracle.search: { hits: [{path, chunk_id, text, score}], top }
+  design_reference_hits:   { type: object, default: {} } # raw hits from host.agent.search: { hits: [{path, chunk_id, text, score}], top }
   design_references:       { type: object, default: {} } # { items: [{ path, sections, rationale }] }
   design_references_path:  { type: string, default: "" } # path 003-references.json was written to
 
@@ -477,10 +477,10 @@ intents:
     description: "Open the git command hub — rebase, commit, merge, worktrees."
     examples: [git, "git ops", "git commands", "version control"]
     priority: 20
-  go_oracle:
-    title: "Ask Oracle"
-    description: "Open the Oracle room for Q&A."
-    examples: [oracle, "ask claude", "ask a question", "i have a question", "ask claude how X works"]
+  go_agent:
+    title: "Ask Agent"
+    description: "Open the Agent room for Q&A."
+    examples: [agent, "ask claude", "ask a question", "i have a question", "ask claude how X works"]
     priority: 18
   go_ticket_search:
     title: "Tickets"
@@ -624,10 +624,10 @@ intents:
       pr_title: { type: string, required: false }
       pr_author: { type: string, required: false }
 
-  # Inbox / oracle bare actions (kept minimal for Wave 2).
+  # Inbox / agent bare actions (kept minimal for Wave 2).
   ask_question:
     title: "Ask a Question"
-    description: "Ask the Oracle a question."
+    description: "Ask the Agent a question."
     examples: ["how does X work", "what is Y"]
     priority: 80
     slots:

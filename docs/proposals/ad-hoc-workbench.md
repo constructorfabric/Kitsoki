@@ -91,7 +91,7 @@ assume happens by hand. It reuses, rather than re-invents:
 
 | Existing piece | Role here | Status |
 |---|---|---|
-| [`oracle-off-ramp.md`](oracle-off-ramp.md) | free-text floor: no-match → `converse`, no advance | **worktree** `review/oracle-off-ramp` (shipped, read-only v1); already declared on `dev-story/main` |
+| [`agent-off-ramp.md`](agent-off-ramp.md) | free-text floor: no-match → `converse`, no advance | **worktree** `review/agent-off-ramp` (shipped, read-only v1); already declared on `dev-story/main` |
 | [`story-conformance-mining.md`](story-conformance-mining.md) | outcome + satisfaction capture (did the user undo it?) | **worktree** `feat/story-conformance-mining` (Phase 1) |
 | dev-story **imports/instance** model (`stories/dev-story/app.yaml` `imports:`, `stories/kitsoki-dev/`) | the project root story that extends dev-story and binds providers | landed; ideas.md "extensible stories" |
 | `tools/session-mining/` + [`session-pattern-mining/`](session-pattern-mining/) | the stateless analyzer (distill → ground → score → emit) | landed (CLI, batch) |
@@ -112,7 +112,7 @@ surfaced inline, applied via reload, validated by the flow suite.
 
 ```
   EXISTING transcripts                LIVE session (free-form landing, any instance)
-  ~/.claude/projects/<slug>/*.jsonl         oracle/agent turns → CC transcripts
+  ~/.claude/projects/<slug>/*.jsonl         agent/agent turns → CC transcripts
             │                                          │
             └──────────────┬───────────────────────────┘
                            ▼
@@ -141,10 +141,10 @@ surfaced inline, applied via reload, validated by the flow suite.
 ```
 
 - **Deterministic:** the miner pipeline grounding/scoring (already no-LLM
-  except its one oracle pass), the decision to surface a proposal (a
+  except its one agent pass), the decision to surface a proposal (a
   threshold × a dedup against already-captured structure), applying an
   accepted edit, the reload, and the flow-suite gate.
-- **Interpretive (recorded):** the miner's one oracle segmentation pass, the
+- **Interpretive (recorded):** the miner's one agent segmentation pass, the
   proposer's YAML draft, and the operator's accept/refine/reject verdict.
 - **Inviolate:** ambient mining **never** mutates the running story on its
   own. It only ever produces a *proposal*. Structure changes exactly along the
@@ -157,10 +157,10 @@ surfaced inline, applied via reload, validated by the flow suite.
 
 Not new work; the epic is dead without them.
 
-- **`review/oracle-off-ramp`** is the free-form floor's mechanism: free text
+- **`review/agent-off-ramp`** is the free-form floor's mechanism: free text
   the router can't map becomes a `converse` answer instead of "didn't catch
   that" (`internal/orchestrator/offpath.go` `maybeOffRamp`,
-  `internal/app/types.go` `State.OracleOffRamp`). Already declared on
+  `internal/app/types.go` `State.AgentOffRamp`). Already declared on
   `dev-story/main`. Shipped read-only v1 — no advance, no host calls. That
   ceiling matters: see Slice 1's open question on whether the free-form
   landing needs *more* than converse.
@@ -179,7 +179,7 @@ project root trivial.
 
 **1a — Free-form landing in dev-story.** dev-story gains a free-form root room
 (the "workbench" landing) that behaves like Claude Code — a broad-toolbox
-agent (`cwd` = the repo) with the `oracle_off_ramp` floor — and becomes the
+agent (`cwd` = the repo) with the `agent_off_ramp` floor — and becomes the
 `root:`. The existing menu hub (`main`) and every pipeline (bf/pr/impl/cyp/…)
 stay exactly one intent away and are the **progressively-determinized layer**:
 as proposals land, more of what you'd do free-form becomes a named intent off
@@ -204,7 +204,7 @@ folding the accumulated overrides into a normal dev-story instance like
   `on_enter` `once:`.
 
 **Open question (load-bearing):** what is the free-form landing concretely —
-a `mode: conversational` room, a full-tool `host.oracle.task` room (edits/runs,
+a `mode: conversational` room, a full-tool `host.agent.task` room (edits/runs,
 like the bugfix/implementation task rooms), or just `main` + off-ramp? *Lean:
 a full-tool task room.* "Like Claude Code" means it does work; the off-ramp's
 read-only converse is the Q&A floor, not the work surface. This is the one
@@ -225,10 +225,10 @@ for **any** instance (not just a blank root).
   I'll suggest structure as I find it. `/mine` to control."*
 - **Feed from live work:** thereafter, mine new transcripts on a **debounced**
   cadence — the free-form agent's own turns and any dispatched
-  `host.oracle.task` turns produce Claude Code transcripts the same pipeline
+  `host.agent.task` turns produce Claude Code transcripts the same pipeline
   consumes.
 - **Reuse, don't rebuild:** the `tools/session-mining` pipeline is stateless
-  and single-session-capable (`prep.py --job` → the one oracle pass →
+  and single-session-capable (`prep.py --job` → the one agent pass →
   `ground.py`/`tag_score.py`/`emit.py`). Wrap it as a skill or an internal
   runner invoked via the existing **local background-jobs** infra so it
   survives across turns and never blocks input.
@@ -241,7 +241,7 @@ for **any** instance (not just a blank root).
   `cadence`, `first_pass_sample`, `priority_threshold`, `transcript_dirs`,
   per-project `mined_through` watermark so we never re-mine the same session.
 
-**Cost guardrail.** Mining's one oracle pass costs real LLM at runtime (fine —
+**Cost guardrail.** Mining's one agent pass costs real LLM at runtime (fine —
 this is not a test; the no-LLM rule is for CI). The first-pass over a long
 history is **sampled and budgeted**, runs in the background, and is fully
 pausable via `/mine pause`. Per [CLAUDE.md](../../AGENTS.md), nothing in the
@@ -318,7 +318,7 @@ the **active root instance** instead of being a story you launch.
 |---|---|---|---|
 | config block | `root:` (in `.kitsoki.yaml`) | `{ import: dev-story, overrides: {bindings, world, synonyms} }` | implicit project root (rung 1); absent ⇒ default `import: dev-story` (rung 0) |
 | CLI | `kitsoki materialize` | `[--name <slug>]` | graduate the implicit root to a full story under `stories/<project>/` (rung 2) |
-| story room | dev-story free-form landing | `root:` room, full-tool agent + `oracle_off_ramp` | the "workbench"; menu hub one intent away |
+| story room | dev-story free-form landing | `root:` room, full-tool agent + `agent_off_ramp` | the "workbench"; menu hub one intent away |
 | operator cmd | `/mine` | `status\|pause\|resume\|now\|scope\|queue\|accept\|dismiss` | controls the ambient miner |
 | config block | `mining:` (in `.kitsoki.yaml`) | `{ enabled, cadence, first_pass_sample, priority_threshold, transcript_dirs }` | machine-global, like `harness_profiles:` |
 | config key | `mining.mined_through` | per-project `map[slug]watermark` | de-dup; never re-mine a session |
@@ -331,8 +331,8 @@ the **active root instance** instead of being a story you launch.
 The moat requirement: every interpretive decision lands as a labeled,
 reconstructable datapoint.
 
-- The miner's oracle segmentation pass already records grounded recipes
-  (`analysis.json`, instance-first, `oracle_gates` named).
+- The miner's agent segmentation pass already records grounded recipes
+  (`analysis.json`, instance-first, `agent_gates` named).
 - **New:** `MiningProposalRaised` / `MiningProposalDecided` (table above) put
   the *surface-and-verdict* decision in the kitsoki trace — so for any captured
   structure you can answer "which mined recipe proposed it, what was the
@@ -390,7 +390,7 @@ unchanged.
 
 ## Verification
 
-Everything except the live oracle passes is testable with no LLM:
+Everything except the live agent passes is testable with no LLM:
 
 - **Free-form landing (Slice 1):** flow fixture — boot lands in the free-form
   room; free text off-ramps to a stubbed `converse` (stub-by-id); `go_main`
@@ -403,7 +403,7 @@ Everything except the live oracle passes is testable with no LLM:
 - **Ambient miner (Slice 2):** unit-test the watermark/dedup and the
   history-seed resolver against a fixture transcript dir; the mining pipeline
   itself already has the no-LLM `test_outcomes.py` and grounding tests. The one
-  oracle pass is cassette-backed.
+  agent pass is cassette-backed.
 - **Loop (Slice 3):** flow fixture — a seeded mined recipe → proposer draft
   (stubbed) → accept → reload → assert the new intent/binding is live and the
   flow suite is green; a second fixture where the drafted edit *breaks* a
@@ -419,11 +419,11 @@ drafted YAML correct" — is exercised by hand in a real dogfood run (run
 
 ```
 ## 0. Substrate (existing worktrees)
-- [ ] 0.1 Review + merge review/oracle-off-ramp
+- [ ] 0.1 Review + merge review/agent-off-ramp
 - [ ] 0.2 Review + merge feat/story-conformance-mining (Phase 1 outcomes)
 
 ## 1. Free-form landing + blank root
-- [ ] 1.1 dev-story free-form landing room (full-tool agent + oracle_off_ramp); root: → it; main one intent away
+- [ ] 1.1 dev-story free-form landing room (full-tool agent + agent_off_ramp); root: → it; main one intent away
 - [ ] 1.2 Adapt kitsoki-dev to the free-form landing (inherits via core import); prefix affected dev-story/kitsoki-dev flows with the landing hop
 - [ ] 1.3 Implicit root: .kitsoki.yaml root: (import dev-story + overrides) synthesized by the loader; default-to-dev-story when absent; kitsoki materialize graduates to stories/<project>/
 - [ ] 1.4 First-start banner via on_enter once:
@@ -434,7 +434,7 @@ drafted YAML correct" — is exercised by hand in a real dogfood run (run
 - [ ] 2.2 History-seed resolver (repo → ~/.claude/projects/<slug>) + bounded first pass + system message
 - [ ] 2.3 Debounced live-session mining over the background-jobs runner
 - [ ] 2.4 mining: config block in .kitsoki.yaml + per-project mined_through watermark
-- [ ] 2.5 Cassette-back the single oracle pass; gate ambient mining out of flow fixtures
+- [ ] 2.5 Cassette-back the single agent pass; gate ambient mining out of flow fixtures
 
 ## 3. Mine → propose → apply loop
 - [ ] 3.1 Proposer: recipe (over threshold, deduped vs instance inventory) → delta draft (binding | world | intent/room | stub-wire | gate)
@@ -456,7 +456,7 @@ drafted YAML correct" — is exercised by hand in a real dogfood run (run
 ## Open questions
 
 1. **Free-form landing shape** — `mode: conversational` room vs full-tool
-   `host.oracle.task` room (edits/runs, like Claude Code) vs just `main` +
+   `host.agent.task` room (edits/runs, like Claude Code) vs just `main` +
    off-ramp. *Lean: full-tool task room.* The shipped off-ramp is read-only by
    design; the landing needs the task-room shape bugfix/implementation use.
 2. **Does `main` stay a separate room, or does the free-form landing replace

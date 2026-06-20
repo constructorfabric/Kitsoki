@@ -65,7 +65,7 @@ states:
     on_enter:
       - invoke: host.ide.get_diagnostics
         # id: addresses this single call so a flow fixture can stub it by
-        # per-invoke id (host_handlers: ... by_call:) — the feedback_oracle_
+        # per-invoke id (host_handlers: ... by_call:) — the feedback_agent_
         # stub_by_id convention, applied to a host.ide.* verb.
         id: editor_diagnostics
         bind:

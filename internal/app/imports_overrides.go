@@ -78,7 +78,7 @@ func applyOverrides(child *AppDef, ov *ImportOverrides, file, alias, parentBaseD
 	// Prompt overrides — copy parent's file into the location the child
 	// reads from. The simplest correct implementation: read the override
 	// file from the parent's dir, write it to the child's expected path
-	// in a temp area, then point any host.oracle.* invocation that reads
+	// in a temp area, then point any host.agent.* invocation that reads
 	// that path at the override.
 	//
 	// In practice prompt-bearing invocations carry the path as a
@@ -167,7 +167,7 @@ func rebaseWithMap(with map[string]any, childDir string) {
 		}
 		with[key] = filepath.Join(childDir, raw)
 	}
-	// host.oracle.task nests prompt/prompt_path under with.context and the
+	// host.agent.task nests prompt/prompt_path under with.context and the
 	// acceptance schema under with.acceptance.schema. Both must rebase to the
 	// defining story's dir, else the runtime joins them against the PARENT
 	// app dir ($KITSOKI_APP_DIR) and the file isn't found.

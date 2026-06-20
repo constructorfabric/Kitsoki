@@ -47,7 +47,7 @@
 | Pipeline step | Mechanism | Reference |
 |---|---|---|
 | {Get free-form input} | `choice: mode: form` intake | `oregon-trail/rooms/general_store.yaml` |
-| {Generate something} | `host.oracle.task` + acceptance schema | `bugfix/rooms/*` task pattern |
+| {Generate something} | `host.agent.task` + acceptance schema | `bugfix/rooms/*` task pattern |
 | {Checkpoint / iterate} | `accept` / `refine` + cycle budget | `bugfix/rooms/proposing.yaml` |
 
 ## Story graph
@@ -79,7 +79,7 @@ world:
 
 ### `{room}` — {one-line purpose}
 
-- **`on_enter`:** {host.oracle.decide|task, which agent, prompt inputs,
+- **`on_enter`:** {host.agent.decide|task, which agent, prompt inputs,
   acceptance schema, `bind:` target}.
 - **Intents:** {submit / accept / refine / regenerate / restart_from /
   quit} — params, transitions, cycle-budget gate → `@exit:abandoned`.

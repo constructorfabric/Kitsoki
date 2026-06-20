@@ -135,13 +135,13 @@ func BuildRootImporter(spec *RootSpec, repoRoot string) (def *AppDef, abs string
 			Version: "0.0.0",
 			Title:   fmt.Sprintf("%s — implicit root (dev-story)", filepath.Base(abs)),
 		},
-		// Instance-level oracle plugins + embedding model. These are NOT
-		// inherited from the imported child (oracle_plugins live at the
+		// Instance-level agent plugins + embedding model. These are NOT
+		// inherited from the imported child (agent_plugins live at the
 		// instance level), so the synthesized root must declare them itself
 		// exactly as kitsoki-dev does — otherwise dev-story's
-		// `oracle: oracle.local_llm` references resolve to nothing.
-		OraclePlugins: map[string]*OraclePluginDecl{
-			"oracle.local_llm": {
+		// `agent: agent.local_llm` references resolve to nothing.
+		AgentPlugins: map[string]*AgentPluginDecl{
+			"agent.local_llm": {
 				Plugin:  "builtin.local_llm",
 				Model:   "qwen2.5-1.5b-instruct",
 				Grammar: true,
@@ -247,14 +247,15 @@ func synthesizedRootHosts() []string {
 		"host.append_to_file",
 		// Bare hosts the chain calls directly.
 		"host.inbox.add",
-		"host.oracle.ask",
-		"host.oracle.decide",
-		"host.oracle.task",
+		"host.agent.ask",
+		"host.agent.decide",
+		"host.agent.task",
 		"host.run",
-		"host.oracle.search",
+		"host.agent.search",
 		"host.artifacts_dir",
 		"host.ide.open_file",
-		"host.oracle.converse",
+		"host.ide.open_diff",
+		"host.agent.converse",
 		"host.chat.resolve",
 		"host.diff.open",
 	}

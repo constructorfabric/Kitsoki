@@ -24,7 +24,7 @@ states:
             Ticket:  "{{ world.ticket_id }} — {{ world.ticket_title }}"
             Summary: '{{ world.done_artifact.summary_title|default:"(pending)" }}'
       - heading: "Artifact"
-      - code: '{{ world.done_artifact.summary_markdown|default:"(pending — oracle has not returned yet)" }}'
+      - code: '{{ world.done_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
       - choice:
           mode: single
           prompt: "Actions"
@@ -68,17 +68,17 @@ states:
               intent: look
     relevant_world: [judge_mode, judge_confidence_threshold, ticket_id, ticket_title, thread, done_artifact, validate_artifact, llm_verdict, refine_feedback, cycle]
     on_enter:
-      # `working_dir` pins the oracle to the bugfix worktree even though
-      # done's postmortem oracle mostly reads upstream artifact text —
+      # `working_dir` pins the agent to the bugfix worktree even though
+      # done's postmortem agent mostly reads upstream artifact text —
       # consistency across rooms means an operator never has to remember
-      # which oracle calls see which tree.
+      # which agent calls see which tree.
       # `once: true` for reload-safety: keyed off its own bind
       # (done_artifact), so /reload (or self/on_error re-entry) re-renders
-      # the stored close-out without re-running the oracle. The refine arm
+      # the stored close-out without re-running the agent. The refine arm
       # clears done_artifact to re-arm a fresh run. The accept arc
       # RE-PINS done_artifact for the @exit:done requires: check — that is
       # intentional and left intact.
-      - invoke: host.oracle.decide
+      - invoke: host.agent.decide
         once: true
         with:
           agent: proposer
@@ -97,7 +97,7 @@ states:
         on_error: idle
 
       - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
-        invoke: host.oracle.decide
+        invoke: host.agent.decide
         with:
           agent: judge
           prompt: prompts/judge_done.md
@@ -158,7 +158,7 @@ states:
                 refine_feedback: "{{ slots.feedback ?? world.llm_verdict.reason }}"
                 done_cycle:      "{{ world.done_cycle + 1 }}"
                 cycle:           "{{ world.cycle + 1 }}"
-                # Clear the once: bind so on_enter re-runs the oracle.
+                # Clear the once: bind so on_enter re-runs the agent.
                 done_artifact:   {}
 
       restart_from:

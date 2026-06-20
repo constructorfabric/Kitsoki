@@ -14,7 +14,7 @@ import (
 // stay resolvable. It mirrors the trace in the package comment.
 func ExampleBuildRegistry() {
 	specs := []agents.BuildSpec{{
-		Name:         agents.NameDefaultOracle, // overrides the builtin
+		Name:         agents.NameDefaultAgent, // overrides the builtin
 		SystemPrompt: "You are the river guide.",
 		Tools:        []string{"Read"},
 	}}
@@ -23,9 +23,9 @@ func ExampleBuildRegistry() {
 		panic(err)
 	}
 
-	oracle, ok := reg.Get(agents.NameDefaultOracle)
+	agent, ok := reg.Get(agents.NameDefaultAgent)
 	fmt.Println("override present:", ok)
-	fmt.Println("override prompt: ", oracle.SystemPrompt)
+	fmt.Println("override prompt: ", agent.SystemPrompt)
 
 	_, ok = reg.Get(agents.NameStoryAuthor)
 	fmt.Println("builtin present: ", ok)
@@ -46,7 +46,7 @@ func ExampleBuiltinNames() {
 		fmt.Println(name)
 	}
 	// Output:
-	// default-oracle
+	// default-agent
 	// story-author
 	// kitsoki-engineer
 	// story-bug-reporter

@@ -1,7 +1,7 @@
 /**
  * decision-detail.spec.ts — Slice #2 coverage: verdict-first layout in DecideDetail.
  *
- * Loads the bugfix snapshot (which contains an oracle.call.complete with
+ * Loads the bugfix snapshot (which contains an agent.call.complete with
  * verb=decide carrying attrs.response.intent.confidence = 0.95) and verifies:
  *  - The verdict block (chosen intent chip) renders above the evidence drawer.
  *  - The confidence bar (data-testid="confidence-bar") is visible in the verdict.
@@ -28,10 +28,10 @@ async function load(page: Page): Promise<void> {
 }
 
 /**
- * Find the oracle.call.complete row with verb=decide.
+ * Find the agent.call.complete row with verb=decide.
  * The timeline merges start+complete into one row; the merged row's msg becomes
- * "oracle.decide" or "oracle.call.complete" depending on the verb.
- * We look for any row containing an oracle verb badge text "decide".
+ * "agent.decide" or "agent.call.complete" depending on the verb.
+ * We look for any row containing an agent verb badge text "decide".
  */
 function decideRow(page: Page) {
   // Rows that carry a decide badge (rendered inside the body after click), or
@@ -44,17 +44,17 @@ function decideRow(page: Page) {
 }
 
 test.describe("decision-detail: verdict-first layout (Slice #2)", () => {
-  test("fixture has an oracle.call.complete event with verb=decide and confidence", () => {
+  test("fixture has an agent.call.complete event with verb=decide and confidence", () => {
     // Pre-flight: assert shape in JSON before the UI test so failure is clear.
     const snap = JSON.parse(fs.readFileSync(BUGFIX_SNAPSHOT, "utf-8"));
     const events = snap.events as Array<{ msg: string; attrs: Record<string, unknown> }>;
 
     const decideCompletes = events.filter(
-      (e) => e.msg === "oracle.call.complete" && e.attrs.verb === "decide"
+      (e) => e.msg === "agent.call.complete" && e.attrs.verb === "decide"
     );
     expect(
       decideCompletes.length,
-      "Expected ≥1 oracle.call.complete with verb=decide in bugfix snapshot"
+      "Expected ≥1 agent.call.complete with verb=decide in bugfix snapshot"
     ).toBeGreaterThan(0);
 
     // Confidence lives at attrs.response.intent.confidence in the bugfix fixture.
@@ -79,8 +79,8 @@ test.describe("decision-detail: verdict-first layout (Slice #2)", () => {
     const body = row.locator(".trace-timeline__row-body");
     await expect(body).toBeVisible({ timeout: 5000 });
 
-    // OracleDetail verb badge confirms routing to DecideDetail.
-    const verbBadge = body.locator(".oracle-detail__verb-badge");
+    // AgentDetail verb badge confirms routing to DecideDetail.
+    const verbBadge = body.locator(".agent-detail__verb-badge");
     await expect(verbBadge).toBeVisible({ timeout: 3000 });
     await expect(verbBadge).toContainText(/decide/i);
 

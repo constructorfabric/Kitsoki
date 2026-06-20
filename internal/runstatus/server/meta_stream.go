@@ -3,8 +3,8 @@ package server
 // meta_stream.go — the POST /rpc/meta-stream SSE handler.
 //
 // Unlike the JSON-RPC meta.send (which blocks until the LLM finishes), this
-// endpoint streams oracle events in real time as text/event-stream. The client
-// sees one SSE frame per interesting oracle event ("delta", "tool") and a
+// endpoint streams agent events in real time as text/event-stream. The client
+// sees one SSE frame per interesting agent event ("delta", "tool") and a
 // terminal "done" frame carrying the full MetaSendResult when the turn ends.
 //
 // Protocol:
@@ -59,7 +59,7 @@ type metaStreamFrame struct {
 }
 
 // chanStreamSink is a host.StreamSink that forwards events to a buffered
-// channel. OnStreamEvent is called on the oracle subprocess goroutine and MUST
+// channel. OnStreamEvent is called on the agent subprocess goroutine and MUST
 // NOT block; the select/default drop preserves that contract.
 type chanStreamSink struct {
 	ch chan host.StreamEvent

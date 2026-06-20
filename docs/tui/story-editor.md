@@ -2,7 +2,7 @@
 
 The **story editor** is a per-story static inspector served by
 [`kitsoki web`](../web/README.md). It answers "what does this story *do*" —
-its rooms, the world they read and write, the oracle calls they make, and the
+its rooms, the world they read and write, the agent calls they make, and the
 cassettes that back those calls — **without starting a session**. Where the
 chat surfaces ([RunView / InteractiveView](../web/README.md)) drive a live
 orchestrator, the editor reads a story definition straight off disk and
@@ -61,8 +61,8 @@ Selecting a room calls `runstatus.editor.room` and renders four facets:
 
 - **Hooks** — the room's `on_enter` effects, each flattened to a coarse `kind`
   (`invoke` / `set` / `say` / `emit_intent` / `increment` / `other`) plus the
-  world keys it `bind`s and `set`s. Oracle invokes link into the
-  [Oracle Workbench](#the-oracle-workbench).
+  world keys it `bind`s and `set`s. Agent invokes link into the
+  [Agent Workbench](#the-agent-workbench).
 - **Domain model** — the world variables the room references, each with a type
   (from the world schema) and a conservative `read` / `write` / `readwrite`
   direction.
@@ -89,19 +89,19 @@ Meta chat requires an active session. The editor has none of its own, so when no
 (`Start a session to enable meta chat.`) rather than crashing. With a session
 present it loads the `story`-group meta mode and opens the overlay.
 
-## The Oracle Workbench
+## The Agent Workbench
 
 The workbench
-([`components/editor/OracleWorkbench.vue`](../../tools/runstatus/src/components/editor/OracleWorkbench.vue))
+([`components/editor/AgentWorkbench.vue`](../../tools/runstatus/src/components/editor/AgentWorkbench.vue))
 inspects a room's LLM contracts and the cassettes that back them.
 
-- **Contracts** (`runstatus.editor.oracles`) — one entry per `host.oracle.*`
+- **Contracts** (`runstatus.editor.agents`) — one entry per `host.agent.*`
   invoke the room makes, carrying the verb (`kind`), prompt path, output schema,
   and the **cassette key** an episode must match to back it. The key mirrors the
   runtime's [cassette match logic](../tracing/testing.md): `handler` (the verb),
   `phase` (the room id), `schema_name` (basename of the schema), and the
   author-assigned call `id` when present. See
-  [`internal/app/graph/oracle.go`](../../internal/app/graph/oracle.go).
+  [`internal/app/graph/agent.go`](../../internal/app/graph/agent.go).
 - **Cassette browser** (`runstatus.editor.cassettes`) — every episode under the
   story's cassette globs (`cassettes/*.yaml`, `flows/*.cassette.yaml`,
   `flows/cassettes/*`) whose `match:` is consistent with the contract's key,
@@ -114,9 +114,9 @@ inspects a room's LLM contracts and the cassettes that back them.
 Two safety rules are enforced server-side
 ([`internal/runstatus/server/editor.go`](../../internal/runstatus/server/editor.go)):
 
-- **Cassette-only.** Live replay (a real oracle round-trip) requires a session
+- **Cassette-only.** Live replay (a real agent round-trip) requires a session
   and operator, which the per-story editor has not. A replay request without a
-  `cassette_file` returns `codeReadOnly`. **Task oracles** (`*.task`) are
+  `cassette_file` returns `codeReadOnly`. **Task agents** (`*.task`) are
   rejected outright even with a cassette — running an agent has side effects.
 - **Isolation caveat.** Replay does **not** advance state. It reads recorded
   output and computes the would-be world snapshot; it never mutates a session,
@@ -133,11 +133,11 @@ editor RPC returns `codeReadOnly`.
 
 | Method | Params | Result |
 |---|---|---|
-| `runstatus.editor.rooms` | `{story_path}` | `{rooms: [{id, label, distance, has_oracle}]}` |
+| `runstatus.editor.rooms` | `{story_path}` | `{rooms: [{id, label, distance, has_agent}]}` |
 | `runstatus.editor.room` | `{story_path, room_id}` | `{id, label, distance, on_enter[], world_keys[], intents[], transitions[], view[], source_ref?}` |
-| `runstatus.editor.oracles` | `{story_path, room_id}` | `{contracts: [{kind, prompt_path, output_schema, cassette_key, effect_index}], cassette_globs: []}` |
+| `runstatus.editor.agents` | `{story_path, room_id}` | `{contracts: [{kind, prompt_path, output_schema, cassette_key, effect_index}], cassette_globs: []}` |
 | `runstatus.editor.cassettes` | `{story_path, cassette_key?}` | `{episodes: [{cassette_file, episode_id, handler, phase, schema_name, input_digest, output_preview}]}` |
-| `runstatus.editor.replay` | `{story_path, room_id, oracle_index, cassette_file?}` | `{output, world_snapshot, source: "cassette", cassette_file, episode_id, note}` |
+| `runstatus.editor.replay` | `{story_path, room_id, agent_index, cassette_file?}` | `{output, world_snapshot, source: "cassette", cassette_file, episode_id, note}` |
 
 Graph computation is delegated to the pure
 [`internal/app/graph`](../../internal/app/graph) package (no I/O, no LLM);
@@ -167,9 +167,9 @@ Props:
 - Route + page: [`router.ts`](../../tools/runstatus/src/router.ts) ·
   [`views/EditorPage.vue`](../../tools/runstatus/src/views/EditorPage.vue)
 - Components: [`components/editor/`](../../tools/runstatus/src/components/editor/)
-  (`OracleWorkbench`, `CassetteBrowser`, `DomainModel`, `HookDetail`, `StoryViewer`)
+  (`AgentWorkbench`, `CassetteBrowser`, `DomainModel`, `HookDetail`, `StoryViewer`)
 - RPC client: [`data/live-source.ts`](../../tools/runstatus/src/data/live-source.ts)
-  (`editorRooms` / `editorRoom` / `editorOracles` / `editorCassettes` / `editorReplay`)
+  (`editorRooms` / `editorRoom` / `editorAgents` / `editorCassettes` / `editorReplay`)
 - Backend: [`internal/runstatus/server/editor.go`](../../internal/runstatus/server/editor.go) ·
   pure graph: [`internal/app/graph/`](../../internal/app/graph/)
 - Tests: `tests/unit/{editor-page,story-viewer}.test.ts`,

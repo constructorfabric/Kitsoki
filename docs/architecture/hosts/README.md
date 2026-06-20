@@ -9,7 +9,7 @@ Hosts are grouped by the kind of boundary they cross:
 | Family | Handlers | Guide |
 |---|---|---|
 | Local execution | `host.run`, `host.starlark.run` | [`local.md`](local.md) |
-| Oracle calls | `host.oracle.extract`, `host.oracle.ask`, `host.oracle.decide`, `host.oracle.task`, `host.oracle.converse` | [`oracle.md`](oracle.md) |
+| Agent calls | `host.agent.extract`, `host.agent.ask`, `host.agent.decide`, `host.agent.task`, `host.agent.converse` | [`agent.md`](agent.md) |
 | Transports and artifacts | `host.transport.post`, `host.artifacts_dir`, media producers | [`transports-artifacts.md`](transports-artifacts.md) |
 | Operator-facing state | jobs, chats, IDE, diffs, GitHub Issues, workspace context | [`operator.md`](operator.md) |
 

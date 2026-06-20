@@ -1,12 +1,12 @@
 # party_naming_narrated_agent — exercises the narrated branch of
 # generate_names (world.narration: true) and asserts that the
-# host.oracle.decide invocation threads the named `party_namer`
+# host.agent.decide invocation threads the named `party_namer`
 # agent through to the handler via the top-level agents primitive.
 #
 # Sister fixture to party_naming.yaml, which covers the deterministic
 # branch. Together they cover both arms of the generate_names guard.
 #
-# The host.oracle.decide stub returns a canned typed roster the
+# The host.agent.decide stub returns a canned typed roster the
 # way a real claude call (post-submit) would; the state machine binds
 # each name into party_member_1..5 directly via submitted.names[N]
 # indexed access (no comma split). The agent: arg on the with: block
@@ -27,7 +27,7 @@ host_handlers:
   # tool. The handler is stubbed; we don't actually exercise
   # the validator round-trip here, just confirm the engine threads the
   # agent: arg down AND binds each indexed name into its seat.
-  host.oracle.decide:
+  host.agent.decide:
     data:
       stdout:    "named the party"
       exit_code: 0
@@ -38,7 +38,7 @@ host_handlers:
 turns:
 
   # Single turn: generate_names { theme } → the narrated arm fires
-  # because world.narration is true. host.oracle.decide is
+  # because world.narration is true. host.agent.decide is
   # invoked with the party_namer agent; binds populate party_member_*
   # from submitted.names[0..4].
   - intent:
@@ -62,12 +62,12 @@ turns:
     # the literal `agent: party_namer` on the way down to the handler.
     # This is the primary load-bearing assertion of the fixture: it
     # would fail if a future refactor dropped the agent: arg from
-    # intro.yaml's host.oracle.decide invocation, or if the
+    # intro.yaml's host.agent.decide invocation, or if the
     # engine stopped forwarding `agent:` into HostDispatched.args.
     expect_events:
       - kind: harness.dispatched
         effect:
-          namespace: host.oracle.decide
+          namespace: host.agent.decide
           args:
             prompt: "prompts/name_party.md"
             schema: "mcp/party_names.json"

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Phase 1 slice test: outcome + intent-satisfaction capture, NO LLM.
 
-The oracle output (step B) is supplied as a fixture file exactly like
+The agent output (step B) is supplied as a fixture file exactly like
 test_intent_pipeline.py. This test runs:
 
     outcomes.py  (raw -> outcomes.json)
@@ -157,7 +157,7 @@ def run():
               "batched: block b2 must keep its own is_error/content: %r" % bto[1])
 
         # --- scored spine: ground -> tag_score ---
-        ground.main(["--oracle", os.path.join(FIX, "oracle.json"),
+        ground.main(["--agent", os.path.join(FIX, "agent.json"),
                      "--traces", traces, "--out", grounded])
         tag_score.main(["--grounded", grounded, "--traces", traces, "--out", scored])
 

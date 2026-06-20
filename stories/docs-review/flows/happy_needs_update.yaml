@@ -1,4 +1,4 @@
-# happy_needs_update — the oracle says docs are stale. Walks
+# happy_needs_update — the agent says docs are stale. Walks
 # idle → reviewing (auto-fires `done` after the three host calls) →
 # reviewed (auto-fires `fix_docs` because decision==needs_update) →
 # fixing (docs_writer applies edits, then artifacts_dir persists the

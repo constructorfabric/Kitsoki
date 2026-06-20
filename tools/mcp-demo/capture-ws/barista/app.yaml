@@ -1,7 +1,7 @@
 # Barista — a tiny, fully-deterministic coffee-order story for a demo capture.
 #
 # NO LLM anywhere. Every intent is a plain room transition with NO slots, NO
-# oracle/decide gates, NO host calls, and NO free-text routing. The whole story
+# agent/decide gates, NO host calls, and NO free-text routing. The whole story
 # is driven by DIRECT intents (submitted by name), so it can be replayed over
 # MCP `session.submit` with no model in the loop.
 #
@@ -19,7 +19,7 @@ app:
   license: "CC0"
 
 # A single cosmetic world key, set by a trivial deterministic `set:` effect on
-# the pick transition. No oracle, no host, no slots feed it.
+# the pick transition. No agent, no host, no slots feed it.
 world:
   drink: { type: string, default: "(nothing yet)" }
 

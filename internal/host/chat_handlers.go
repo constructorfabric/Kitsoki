@@ -45,7 +45,7 @@ import (
 // found under another). The \x00-delimited marker keeps a folded key
 // self-describing in the DB and unable to collide with any bare scope_key.
 func chatScopeKey(ctx context.Context, scopeKey string) string {
-	sid := string(OracleCallCtxFrom(ctx).SessionID)
+	sid := string(AgentCallCtxFrom(ctx).SessionID)
 	if sid == "" {
 		return scopeKey
 	}
@@ -576,7 +576,7 @@ func ChatArchiveHandler(ctx context.Context, args map[string]any) (Result, error
 // ChatCreateHandler implements host.chat.create.
 //
 // Always creates a fresh chat (never get-or-create). Use this whenever the
-// caller intends a brand new thread (e.g. Oracle's "ask_question" path where
+// caller intends a brand new thread (e.g. Agent's "ask_question" path where
 // every call seeds a new chat).
 //
 // Args:
@@ -736,7 +736,7 @@ func ChatSuggestTitleHandler(ctx context.Context, args map[string]any) (Result, 
 		Schema: []byte(`{"type":"object","required":["title"],"additionalProperties":false,"properties":{"title":{"type":"string","minLength":1,"maxLength":80}}}`),
 	})
 	if askErr != nil {
-		if errors.Is(askErr, ErrOracleUnavailable) {
+		if errors.Is(askErr, ErrAgentUnavailable) {
 			return Result{Error: fmt.Sprintf("host.chat.suggest_title: %v", askErr)}, nil
 		}
 		if errors.Is(askErr, ErrNoValidatedPayload) {
@@ -772,7 +772,7 @@ func ChatSuggestTitleHandler(ctx context.Context, args map[string]any) (Result, 
 // ChatResolveRefHandler implements host.chat.resolve_ref.
 //
 // Translates a user-supplied chat reference into the full chat ULID. Used
-// by the Oracle list view (and other multi-chat picker UIs) so users can
+// by the Agent list view (and other multi-chat picker UIs) so users can
 // type "open 1", "open 01KQZ3", or even "open the chat about ZTA proxy
 // debugging".
 //
@@ -915,7 +915,7 @@ func ChatResolveRefHandler(ctx context.Context, args map[string]any) (Result, er
 func llmPickChat(ctx context.Context, ref string, chats []ChatRecord, maxChats, maxDeep int, model string, cs ChatStore) (*ChatRecord, string, string, error) {
 	// Probe whether claude is resolvable up-front so we can surface "no
 	// match" rather than a hard error when the binary is missing.
-	if _, err := resolveOracleBin(ctx); err != nil {
+	if _, err := resolveAgentBin(ctx); err != nil {
 		return nil, "", "", nil
 	}
 
@@ -1214,7 +1214,7 @@ func isPlaceholderTitle(t string) bool {
 	lower := strings.ToLower(t)
 	placeholders := []string{
 		"untitled chat",
-		"oracle chat",
+		"agent chat",
 	}
 	for _, p := range placeholders {
 		if lower == p {

@@ -35,9 +35,9 @@ A new importable sub-story **`stories/decompose/`**, pipeline-shaped and
 structurally identical to `stories/bugfix/` / `stories/implementation/`,
 imported into `stories/dev-story/` as alias `decomp` and reached from `main`
 once a proposal is selected. Its shape in one sentence: **a discovery
-conversation distils scope, an `oracle.decide` emits a brief manifest the MCP
+conversation distils scope, an `agent.decide` emits a brief manifest the MCP
 submit validator structurally enforces, a deterministic `host.run` renders +
-lints it to `decomposition.yaml`, an adversarial `oracle.decide` judges
+lints it to `decomposition.yaml`, an adversarial `agent.decide` judges
 feasibility + completeness, and a coordination board — for each brief in
 dependency order — mints a per-brief ticket + worktree, resets the import's
 world, and dispatches it into the `impl` import, one at a time with a human
@@ -53,8 +53,8 @@ deterministic execution, record every decision.
 ## Impact
 
 Story-layer composition only. No new effects, host calls, or widgets — the MCP
-submit validator (`docs/architecture/hosts.md` § `host.oracle.decide`: a
-`schema:` forces a schema-valid `submit()`), `host.oracle.decide/task`,
+submit validator (`docs/architecture/hosts.md` § `host.agent.decide`: a
+`schema:` forces a schema-valid `submit()`), `host.agent.decide/task`,
 `host.artifacts_dir`, the proposal-workspace minting script, and the
 dispatch-into-an-import edge (`stories/implementation/rooms/handoff.yaml`,
 `stories/dev-story/app.yaml:768` impl import) all exist.
@@ -90,10 +90,10 @@ workspace mint, world reset — are story-layer (`host.run` + `set:`), so:
 |---|---|---|
 | Load proposal / epic + children | `host.run` reader script (reads `docs/proposals/<slug>.md`, parses an epic Slices table) | mirror `stories/dev-story/scripts/design_workspace.py` |
 | Mint per-session workspace + editable scope note | `host.run` workspace mint + `host.artifacts_dir` scaffold + `host.ide.open_file` | `stories/dev-story/rooms/design.yaml` (001-brief mint arm) |
-| Interactive discovery | `mode: conversational` + `host.oracle.converse` + a scope-note writer `host.oracle.task` | `stories/dev-story/rooms/design.yaml` discuss arc |
-| **Structural verification of the brief manifest** | `host.oracle.decide` with `schema:` → MCP submit validator forces a schema-valid `submit()` | `docs/architecture/hosts.md` § `host.oracle.decide`; `stories/dev-story/rooms/proposal_idea_completeness.yaml` |
+| Interactive discovery | `mode: conversational` + `host.agent.converse` + a scope-note writer `host.agent.task` | `stories/dev-story/rooms/design.yaml` discuss arc |
+| **Structural verification of the brief manifest** | `host.agent.decide` with `schema:` → MCP submit validator forces a schema-valid `submit()` | `docs/architecture/hosts.md` § `host.agent.decide`; `stories/dev-story/rooms/proposal_idea_completeness.yaml` |
 | Render YAML + deep structural lint (DAG, ids, coverage) | deterministic `host.run` → exit code is the gate | the design pipeline's slug/uniquify "validation sandwich" (`design.yaml` `uniquify`) |
-| **Adversarial feasibility + completeness review** | `host.oracle.decide` skeptic agent → `{verdict, reason, questions}` | `stories/code-review/rooms/review_pr.yaml`; `brief-decision.json` verdict shape |
+| **Adversarial feasibility + completeness review** | `host.agent.decide` skeptic agent → `{verdict, reason, questions}` | `stories/code-review/rooms/review_pr.yaml`; `brief-decision.json` verdict shape |
 | Checkpoint / iterate on a failing gate | `accept` / `revise(feedback)` + cycle budget → `@exit:abandoned` | `stories/bugfix/rooms/proposing.yaml`; `stories/dev-story/rooms/design_draft.yaml` refine arc |
 | **Materialise a brief as a ticket** the pipeline can read | `host.run` writes a local ticket (id/title/body = brief) the default `iface.ticket.get` resolves | `stories/implementation/rooms/review_task.yaml` (`iface.ticket.get`); `host.local_files.ticket` default |
 | Mint a fresh worktree/branch per brief | `host.run` workspace + branch mint | `stories/dev-story/scripts/design_workspace.py`; `stories/dev-story/rooms/workspace_manager.yaml` |
@@ -220,8 +220,8 @@ can't (acyclic deps, id uniqueness, coverage).
 - **`mode: conversational`**, `default_intent: discuss` — verbatim shape from
   `proposal.yaml`. First message scaffolds an editable `002-scope.md` (slicing
   constraints: what must be sequential vs. parallel, the test strategy, risk
-  areas, explicit non-goals); each turn `host.oracle.converse` (a
-  `decomp_interviewer`) sharpens and a `decomp_scope_writer` `host.oracle.task`
+  areas, explicit non-goals); each turn `host.agent.converse` (a
+  `decomp_interviewer`) sharpens and a `decomp_scope_writer` `host.agent.task`
   folds the exchange into `002-scope.md`.
 - **Intents:** `discuss` (self-loop), `ready` → `decompose`, `quit`.
 - **View:** the editable `002-scope.md` path + the latest interviewer reply
@@ -229,7 +229,7 @@ can't (acyclic deps, id uniqueness, coverage).
 
 ### `decompose` — emit the brief manifest (structurally verified)
 
-- **`on_enter`:** `host.oracle.decide` with `agent: decomposer`,
+- **`on_enter`:** `host.agent.decide` with `agent: decomposer`,
   `schema: schemas/decomposition.json`, `working_dir: "."` (read-only repo
   inspection), args = `{source_text, scope_path, children}`. The
   **MCP submit validator** forces a schema-valid `submit()`; `bind:
@@ -260,7 +260,7 @@ can't (acyclic deps, id uniqueness, coverage).
 
 ### `review` — adversarial feasibility + completeness
 
-- **`on_enter`:** `host.oracle.decide` with `agent: decomp_adversary`,
+- **`on_enter`:** `host.agent.decide` with `agent: decomp_adversary`,
   `schema: schemas/review-decision.json` (`{verdict: accept|revise, reason,
   questions[]}`). The prompt frames a **skeptic**: per brief, *is this
   actually buildable as scoped, are its deps right, is anything impossible or
@@ -340,7 +340,7 @@ stories/decompose/
 ## Flow fixtures
 
 Mode-2, intent-only, no-LLM, CI-fast — each `decide`/`task`/`run` stubbed by
-per-invoke `id` (`feedback_oracle_stub_by_id`); stubs replay realistic wire
+per-invoke `id` (`feedback_agent_stub_by_id`); stubs replay realistic wire
 shapes (`feedback_e2e_fidelity_and_boundary`).
 
 - `happy_path` — `idle → discovery → decompose → validate(pass) → review(accept)

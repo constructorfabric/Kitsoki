@@ -215,7 +215,7 @@ states:
       discuss:                       # one required string slot
         - target: .
           effects:
-            - invoke: host.oracle.converse
+            - invoke: host.agent.converse
               with: { question: "{{ slots.message }}" }
       begin_proposal: [ ... ]        # named commands still win earlier
       quit: [ ... ]
@@ -262,12 +262,12 @@ deterministic-or-LLM behaviour kitsoki shipped before §10 Phase 7.
 
 ### 2.1 LLM-tier backend and `extract_llm_on_no_match`
 
-The LLM tier (the last tier in §1) resolves through the oracle
-dispatch path, so it can be backed by **any** declared `oracle_plugins:`
-entry — not only the default `oracle.claude`. The natural choice for
+The LLM tier (the last tier in §1) resolves through the agent
+dispatch path, so it can be backed by **any** declared `agent_plugins:`
+entry — not only the default `agent.claude`. The natural choice for
 routing is the cheap, offline, schema-bounded `builtin.local_llm`
-backend (`oracle: oracle.local`): see
-[oracle-plugin.md §9 "Local model backend"](oracle-plugin.md#9-local-model-backend).
+backend (`agent: agent.local`): see
+[agent-plugin.md §9 "Local model backend"](agent-plugin.md#9-local-model-backend).
 Backing the routing LLM tier with a local model keeps routing working
 on a plane / in an air-gapped CI box and avoids consuming a Claude
 session for a decision that fires on nearly every turn.
@@ -286,7 +286,7 @@ round-trip on every otherwise-unrouted turn.
 > opted-in app still falls through to the main-turn LLM for now. Wiring
 > the actual local-model routing call lands with that calibration
 > (proposal Open Question 4). Backing the LLM tier of the *extract verb*
-> with `oracle.local` (via the effect's `oracle:` alias) needs no flag
+> with `agent.local` (via the effect's `agent:` alias) needs no flag
 > and works today.
 
 ## 3. Growing the synonym library
@@ -401,10 +401,10 @@ synonym layer maps them, the cache only sees exact lexical match.
 This is intentional: signature collision rates stay low, and the
 synonym → cache flow is the documented promotion path.
 
-## 5. Transport routing seam (oracle-split D13)
+## 5. Transport routing seam (agent-split D13)
 
 The semantic routing tiers (§1.2 and §1.3) run through the same
-`host.oracle.extract` handler that an app author invokes explicitly via
+`host.agent.extract` handler that an app author invokes explicitly via
 effects. `TrySemantic` calls `host.RunExtractForRouting`, which injects
 the already-compiled `semroute.Matcher` into the context rather than
 re-loading YAML from disk.
@@ -416,7 +416,7 @@ not a parallel code path. Concretely:
   the resolution came from a live session turn or a programmatic call.
 - The `resolved_by` field on journal entries (`synonyms` / `slot_template`
   / `no_match`) is available for replay tools and dashboards.
-- A future `host.oracle.extract` invocation in an effect can reuse the
+- A future `host.agent.extract` invocation in an effect can reuse the
   same in-process matcher the router already built — no double compile.
 
 From the app author's perspective there is no visible difference.
@@ -477,8 +477,8 @@ relative to the current 37.5% baseline.
 The tier is **additive and opt-in**: stories that do not set
 `routing.embedding.enabled: true` are byte-identical to today; no cassettes
 change. The embedding sidecar lifecycle (fetch, spawn, teardown) follows the
-same pattern as `oracle.local`; see
-[`oracle-plugin.md §9`](oracle-plugin.md#9-local-model-backend) and
+same pattern as `agent.local`; see
+[`agent-plugin.md §9`](agent-plugin.md#9-local-model-backend) and
 [`docs/architecture/embeddings.md`](embeddings.md) for the full substrate
 reference.
 
@@ -488,8 +488,8 @@ reference.
   sit in the broader turn pipeline.
 - [`authoring.md`](../stories/authoring.md) §6.1 — the YAML reference for
   `synonyms:`.
-- [`hosts.md`](hosts.md#hostoracleextract) — `host.oracle.extract`
-  reference (oracle-split Phase 5 handler).
+- [`hosts.md`](hosts.md#hostagentextract) — `host.agent.extract`
+  reference (agent-split Phase 5 handler).
 - [`prompt-intercept.md`](prompt-intercept.md) — the pre-LLM intercept
   gate, another consumer of these no-LLM tiers via `Orchestrator.Classify`.
 - `internal/slotparse/` godoc — every typed parser's exact contract.

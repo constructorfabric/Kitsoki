@@ -152,7 +152,7 @@ func TestReplayHarness_RecordingMiss(t *testing.T) {
 // the LLM can't map an utterance), while an ordinary intent entry in the same
 // recording still resolves to its intent. This is the deterministic no-LLM
 // hook that lets a replay demo drive the orchestrator's clarify branch (and an
-// opt-in oracle off-ramp).
+// opt-in agent off-ramp).
 func TestReplayHarness_ClarifyEntry(t *testing.T) {
 	tmp := t.TempDir()
 	rec := filepath.Join(tmp, "recording.yaml")

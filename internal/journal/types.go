@@ -81,10 +81,10 @@ const KindClarifyRequested = "clarify.requested"
 // KindClarifyAnswered records the user's response to a clarification request.
 const KindClarifyAnswered = "clarify.answered"
 
-// KindOffPathQuestion records an off-path question submitted to the oracle.
+// KindOffPathQuestion records an off-path question submitted to the agent.
 const KindOffPathQuestion = "offpath.question"
 
-// KindOffPathAnswer records the oracle's answer to an off-path question.
+// KindOffPathAnswer records the agent's answer to an off-path question.
 const KindOffPathAnswer = "offpath.answer"
 
 // KindOffPathChatResolved records which chat was resolved for an off-path session.
@@ -148,10 +148,10 @@ const KindChatDriveFailed = "chat.drive.failed"
 // without dispatch. Body: {drive_id, chat_id, reason}.
 const KindChatDriveDismissed = "chat.drive.dismissed"
 
-// ---- oracle call tracing (Phase N: full prompt/response capture) -------------
+// ---- agent call tracing (Phase N: full prompt/response capture) -------------
 
-// KindOracleCall records a completed oracle verb call with full prompt,
-// system prompt, and response payload. One entry per oracle.* call.
+// KindAgentCall records a completed agent verb call with full prompt,
+// system prompt, and response payload. One entry per agent.* call.
 //
 // Body shape:
 //
@@ -162,10 +162,10 @@ const KindChatDriveDismissed = "chat.drive.dismissed"
 // tool_calls and files_changed are NOT stored here — they are aggregated at
 // export time from KindTaskTool / KindTaskEnd entries in the same window.
 // call_id is a per-call UUID that correlates this entry with the lean slog
-// oracle.<verb>.complete record emitted in the same call.
-const KindOracleCall = "oracle.call"
+// agent.<verb>.complete record emitted in the same call.
+const KindAgentCall = "agent.call"
 
-// ---- oracle-split Phase 4 event kinds (task trace) ---------------------------
+// ---- agent-split Phase 4 event kinds (task trace) ---------------------------
 
 // KindTaskTool records a single tool call by a task agent. Body shape:
 //
@@ -229,7 +229,7 @@ type ArtifactEvent struct {
 // ---- IDE link tracing -------------------------------------------------------
 
 // KindIDEContextCaptured records one host.ide.get_* pull whose result feeds a
-// decision (lands toward an oracle prompt or a world slot). It is the labeled
+// decision (lands toward an agent prompt or a world slot). It is the labeled
 // datapoint that makes "the room decided X because the editor showed Y"
 // reconstructable from the trace alone. The raw host.ide.* request/response is
 // already covered by host.invoked/host.returned; this entry pins the IDE

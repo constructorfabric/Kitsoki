@@ -155,9 +155,9 @@ func TestStoryGraphMatchesEditor(t *testing.T) {
 	}
 }
 
-// TestStoryGraphDetailAndOracles exercises the mode selection: a room id selects
-// detail, the oracles flag selects oracle contracts.
-func TestStoryGraphDetailAndOracles(t *testing.T) {
+// TestStoryGraphDetailAndAgents exercises the mode selection: a room id selects
+// detail, the agents flag selects agent contracts.
+func TestStoryGraphDetailAndAgents(t *testing.T) {
 	ctx := context.Background()
 	dir := bugfixDir(t)
 	cs := newStudioWithWorkspace(ctx, t, dir)
@@ -168,9 +168,9 @@ func TestStoryGraphDetailAndOracles(t *testing.T) {
 	require.NotNil(t, detail.Detail)
 	assert.Equal(t, "reproducing", detail.Detail.ID)
 
-	var oracles studio.StoryGraphOK
-	callStory(ctx, t, cs, "story.graph", map[string]any{"room": "reproducing", "oracles": true}, &oracles)
-	assert.Equal(t, "oracles", oracles.Mode)
+	var agents studio.StoryGraphOK
+	callStory(ctx, t, cs, "story.graph", map[string]any{"room": "reproducing", "agents": true}, &agents)
+	assert.Equal(t, "agents", agents.Mode)
 
 	// detail must equal the editor's graph.Detail for the same room.
 	def, err := app.Load(filepath.Join(dir, "app.yaml"))

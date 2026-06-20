@@ -1,7 +1,7 @@
 # happy_path — idle → clarifying → brief → references → drafting → @exit:done.
 #
-# Intent-only (no LLM). The clarifying/references on_enter oracle calls
-# are served by the same stubbed host.oracle.decide; the brief/references
+# Intent-only (no LLM). The clarifying/references on_enter agent calls
+# are served by the same stubbed host.agent.decide; the brief/references
 # artifact writes by stubbed host.artifacts_dir. judge_mode=human so no
 # judge runs.
 #
@@ -27,12 +27,12 @@ host_handlers:
     data: { ok: true, connected: true }
   host.chat.resolve:
     data: { ok: true, chat_id: "chat-1", title: "PRD idea discovery", is_new: true }
-  host.oracle.converse:
+  host.agent.converse:
     data: { ok: true, answer: "A CLI for X that helps developers do Y.", chat_id: "chat-1", claude_session_id: "sess-1" }
   # references on_enter runs the optional semantic pre-seed; empty hits = no embeddings.
-  host.oracle.search:
+  host.agent.search:
     data: { hits: [] }
-  host.oracle.decide:
+  host.agent.decide:
     # Shared decide stub: scout (search), analyst (clarifying), researcher
     # (references), brief_judge — all fall through to this questions-shaped
     # envelope. The clarifying `answer` arc's matcher (id: match_answer) is
@@ -66,7 +66,7 @@ host_handlers:
           ok: true
           exit_code: 0
           stdout_json: { prd_file: "docs/prd/example-cli.md" }
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted:

@@ -12,7 +12,7 @@
 #   1. Posts the artifact (host.append_to_file → appends a
 #      ## Comment block to the bug file)
 #   2. Mirrors into the local inbox
-#   3. Calls the judge oracle (because judge_mode != "human")
+#   3. Calls the judge agent (because judge_mode != "human")
 #   4. If the verdict is confident (confidence >= threshold) AND
 #      neither verdict nor intent is "uncertain", emits the LLM's
 #      intent automatically — advancing the pipeline without a turn.

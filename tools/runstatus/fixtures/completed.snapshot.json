@@ -272,7 +272,7 @@
                       "EmitIntent": "",
                       "EmitSlots": null,
                       "Effects": null,
-                      "OraclePlugin": ""
+                      "AgentPlugin": ""
                     },
                     {
                       "When": "",
@@ -290,7 +290,7 @@
                       "EmitIntent": "",
                       "EmitSlots": null,
                       "Effects": null,
-                      "OraclePlugin": ""
+                      "AgentPlugin": ""
                     }
                   ],
                   "GuardHint": "It's pitch dark -- you can't see to do that.",
@@ -345,7 +345,7 @@
                       "EmitIntent": "",
                       "EmitSlots": null,
                       "Effects": null,
-                      "OraclePlugin": ""
+                      "AgentPlugin": ""
                     },
                     {
                       "When": "",
@@ -363,7 +363,7 @@
                       "EmitIntent": "",
                       "EmitSlots": null,
                       "Effects": null,
-                      "OraclePlugin": ""
+                      "AgentPlugin": ""
                     }
                   ],
                   "GuardHint": "You can't see well enough in the dark to head that way. Try going north, or finding a way to make light.",
@@ -524,7 +524,7 @@
                       "EmitIntent": "",
                       "EmitSlots": null,
                       "Effects": null,
-                      "OraclePlugin": ""
+                      "AgentPlugin": ""
                     }
                   ],
                   "GuardHint": "",
@@ -581,7 +581,7 @@
                       "EmitIntent": "",
                       "EmitSlots": null,
                       "Effects": null,
-                      "OraclePlugin": ""
+                      "AgentPlugin": ""
                     }
                   ],
                   "GuardHint": "",
@@ -773,7 +773,7 @@
                   "EmitIntent": "",
                   "EmitSlots": null,
                   "Effects": null,
-                  "OraclePlugin": ""
+                  "AgentPlugin": ""
                 }
               ],
               "GuardHint": "",
@@ -812,7 +812,7 @@
                   "EmitIntent": "",
                   "EmitSlots": null,
                   "Effects": null,
-                  "OraclePlugin": ""
+                  "AgentPlugin": ""
                 },
                 {
                   "When": "",
@@ -830,7 +830,7 @@
                   "EmitIntent": "",
                   "EmitSlots": null,
                   "Effects": null,
-                  "OraclePlugin": ""
+                  "AgentPlugin": ""
                 }
               ],
               "GuardHint": "",
@@ -865,7 +865,7 @@
                   "EmitIntent": "",
                   "EmitSlots": null,
                   "Effects": null,
-                  "OraclePlugin": ""
+                  "AgentPlugin": ""
                 }
               ],
               "GuardHint": "You aren't wearing the cloak -- nothing to hang.",
@@ -922,7 +922,7 @@
                   "EmitIntent": "",
                   "EmitSlots": null,
                   "Effects": null,
-                  "OraclePlugin": ""
+                  "AgentPlugin": ""
                 },
                 {
                   "When": "",
@@ -940,7 +940,7 @@
                   "EmitIntent": "",
                   "EmitSlots": null,
                   "Effects": null,
-                  "OraclePlugin": ""
+                  "AgentPlugin": ""
                 }
               ],
               "GuardHint": "",
@@ -975,7 +975,7 @@
                   "EmitIntent": "",
                   "EmitSlots": null,
                   "Effects": null,
-                  "OraclePlugin": ""
+                  "AgentPlugin": ""
                 }
               ],
               "GuardHint": "You're already wearing the cloak.",
@@ -1224,7 +1224,7 @@
                   "EmitIntent": "",
                   "EmitSlots": null,
                   "Effects": null,
-                  "OraclePlugin": ""
+                  "AgentPlugin": ""
                 }
               ],
               "GuardHint": "The weather outside is awful -- you've only just arrived.",
@@ -1259,7 +1259,7 @@
                   "EmitIntent": "",
                   "EmitSlots": null,
                   "Effects": null,
-                  "OraclePlugin": ""
+                  "AgentPlugin": ""
                 }
               ],
               "GuardHint": "",
@@ -1315,8 +1315,8 @@
       "Agent": ""
     },
     "Hosts": null,
-    "OraclePlugins": {
-      "oracle.claude": {
+    "AgentPlugins": {
+      "agent.claude": {
         "Plugin": "builtin.claude_cli",
         "Command": "",
         "Args": null,
@@ -1450,7 +1450,7 @@
     {
       "time": "2026-05-25T11:00:00.02Z",
       "level": "DEBUG",
-      "msg": "oracle.call.start",
+      "msg": "agent.call.start",
       "session_id": "sess-done-001",
       "turn": 1,
       "state_path": "foyer",
@@ -1463,7 +1463,7 @@
     {
       "time": "2026-05-25T11:00:00.18Z",
       "level": "DEBUG",
-      "msg": "oracle.call.complete",
+      "msg": "agent.call.complete",
       "session_id": "sess-done-001",
       "turn": 1,
       "state_path": "foyer",
@@ -1529,7 +1529,7 @@
     {
       "time": "2026-05-25T11:00:05.015Z",
       "level": "DEBUG",
-      "msg": "oracle.call.start",
+      "msg": "agent.call.start",
       "session_id": "sess-done-001",
       "turn": 2,
       "state_path": "foyer",
@@ -1542,7 +1542,7 @@
     {
       "time": "2026-05-25T11:00:05.17Z",
       "level": "DEBUG",
-      "msg": "oracle.call.complete",
+      "msg": "agent.call.complete",
       "session_id": "sess-done-001",
       "turn": 2,
       "state_path": "foyer",
@@ -1620,7 +1620,7 @@
     {
       "time": "2026-05-25T11:00:10.015Z",
       "level": "DEBUG",
-      "msg": "oracle.call.start",
+      "msg": "agent.call.start",
       "session_id": "sess-done-001",
       "turn": 3,
       "state_path": "cloakroom",
@@ -1633,7 +1633,7 @@
     {
       "time": "2026-05-25T11:00:10.08Z",
       "level": "DEBUG",
-      "msg": "oracle.call.complete",
+      "msg": "agent.call.complete",
       "session_id": "sess-done-001",
       "turn": 3,
       "state_path": "cloakroom",
@@ -1742,7 +1742,7 @@
     {
       "time": "2026-05-25T11:00:15.015Z",
       "level": "DEBUG",
-      "msg": "oracle.call.start",
+      "msg": "agent.call.start",
       "session_id": "sess-done-001",
       "turn": 4,
       "state_path": "cloakroom",
@@ -1755,7 +1755,7 @@
     {
       "time": "2026-05-25T11:00:15.07Z",
       "level": "DEBUG",
-      "msg": "oracle.call.complete",
+      "msg": "agent.call.complete",
       "session_id": "sess-done-001",
       "turn": 4,
       "state_path": "cloakroom",
@@ -1833,7 +1833,7 @@
     {
       "time": "2026-05-25T11:00:20.015Z",
       "level": "DEBUG",
-      "msg": "oracle.call.start",
+      "msg": "agent.call.start",
       "session_id": "sess-done-001",
       "turn": 5,
       "state_path": "foyer",
@@ -1846,7 +1846,7 @@
     {
       "time": "2026-05-25T11:00:20.168Z",
       "level": "DEBUG",
-      "msg": "oracle.call.complete",
+      "msg": "agent.call.complete",
       "session_id": "sess-done-001",
       "turn": 5,
       "state_path": "foyer",
@@ -1924,7 +1924,7 @@
     {
       "time": "2026-05-25T11:00:25.018Z",
       "level": "DEBUG",
-      "msg": "oracle.call.start",
+      "msg": "agent.call.start",
       "session_id": "sess-done-001",
       "turn": 6,
       "state_path": "bar.lit",
@@ -1937,7 +1937,7 @@
     {
       "time": "2026-05-25T11:00:25.175Z",
       "level": "DEBUG",
-      "msg": "oracle.call.complete",
+      "msg": "agent.call.complete",
       "session_id": "sess-done-001",
       "turn": 6,
       "state_path": "bar.lit",
@@ -2003,7 +2003,7 @@
     {
       "time": "2026-05-25T11:00:30.018Z",
       "level": "DEBUG",
-      "msg": "oracle.call.start",
+      "msg": "agent.call.start",
       "session_id": "sess-done-001",
       "turn": 7,
       "state_path": "bar.lit",
@@ -2016,7 +2016,7 @@
     {
       "time": "2026-05-25T11:00:30.172Z",
       "level": "DEBUG",
-      "msg": "oracle.call.complete",
+      "msg": "agent.call.complete",
       "session_id": "sess-done-001",
       "turn": 7,
       "state_path": "bar.lit",
@@ -2104,7 +2104,7 @@
     {
       "time": "2026-05-25T11:00:35.02Z",
       "level": "DEBUG",
-      "msg": "oracle.call.start",
+      "msg": "agent.call.start",
       "session_id": "sess-done-001",
       "turn": 8,
       "state_path": "ended",
@@ -2117,7 +2117,7 @@
     {
       "time": "2026-05-25T11:00:35.175Z",
       "level": "DEBUG",
-      "msg": "oracle.call.complete",
+      "msg": "agent.call.complete",
       "session_id": "sess-done-001",
       "turn": 8,
       "state_path": "ended",
@@ -2183,7 +2183,7 @@
     {
       "time": "2026-05-25T11:00:40.018Z",
       "level": "DEBUG",
-      "msg": "oracle.call.start",
+      "msg": "agent.call.start",
       "session_id": "sess-done-001",
       "turn": 9,
       "state_path": "ended",
@@ -2196,7 +2196,7 @@
     {
       "time": "2026-05-25T11:00:40.17Z",
       "level": "DEBUG",
-      "msg": "oracle.call.complete",
+      "msg": "agent.call.complete",
       "session_id": "sess-done-001",
       "turn": 9,
       "state_path": "ended",
@@ -2265,7 +2265,7 @@
     {
       "time": "2026-05-25T11:00:45.018Z",
       "level": "DEBUG",
-      "msg": "oracle.call.start",
+      "msg": "agent.call.start",
       "session_id": "sess-done-001",
       "turn": 10,
       "state_path": "ended",
@@ -2278,7 +2278,7 @@
     {
       "time": "2026-05-25T11:00:45.168Z",
       "level": "DEBUG",
-      "msg": "oracle.call.complete",
+      "msg": "agent.call.complete",
       "session_id": "sess-done-001",
       "turn": 10,
       "state_path": "ended",
@@ -2344,7 +2344,7 @@
     {
       "time": "2026-05-25T11:00:50.018Z",
       "level": "DEBUG",
-      "msg": "oracle.call.start",
+      "msg": "agent.call.start",
       "session_id": "sess-done-001",
       "turn": 11,
       "state_path": "ended",
@@ -2357,7 +2357,7 @@
     {
       "time": "2026-05-25T11:00:50.165Z",
       "level": "DEBUG",
-      "msg": "oracle.call.complete",
+      "msg": "agent.call.complete",
       "session_id": "sess-done-001",
       "turn": 11,
       "state_path": "ended",
@@ -2423,7 +2423,7 @@
     {
       "time": "2026-05-25T11:00:55.018Z",
       "level": "DEBUG",
-      "msg": "oracle.call.start",
+      "msg": "agent.call.start",
       "session_id": "sess-done-001",
       "turn": 12,
       "state_path": "ended",
@@ -2436,7 +2436,7 @@
     {
       "time": "2026-05-25T11:00:55.165Z",
       "level": "DEBUG",
-      "msg": "oracle.call.complete",
+      "msg": "agent.call.complete",
       "session_id": "sess-done-001",
       "turn": 12,
       "state_path": "ended",
@@ -2502,7 +2502,7 @@
     {
       "time": "2026-05-25T11:01:00.018Z",
       "level": "DEBUG",
-      "msg": "oracle.call.start",
+      "msg": "agent.call.start",
       "session_id": "sess-done-001",
       "turn": 13,
       "state_path": "ended",
@@ -2515,7 +2515,7 @@
     {
       "time": "2026-05-25T11:01:00.168Z",
       "level": "DEBUG",
-      "msg": "oracle.call.complete",
+      "msg": "agent.call.complete",
       "session_id": "sess-done-001",
       "turn": 13,
       "state_path": "ended",
@@ -2581,7 +2581,7 @@
     {
       "time": "2026-05-25T11:01:05.018Z",
       "level": "DEBUG",
-      "msg": "oracle.call.start",
+      "msg": "agent.call.start",
       "session_id": "sess-done-001",
       "turn": 14,
       "state_path": "ended",
@@ -2594,7 +2594,7 @@
     {
       "time": "2026-05-25T11:01:05.168Z",
       "level": "DEBUG",
-      "msg": "oracle.call.complete",
+      "msg": "agent.call.complete",
       "session_id": "sess-done-001",
       "turn": 14,
       "state_path": "ended",
@@ -2660,7 +2660,7 @@
     {
       "time": "2026-05-25T11:01:10.018Z",
       "level": "DEBUG",
-      "msg": "oracle.call.start",
+      "msg": "agent.call.start",
       "session_id": "sess-done-001",
       "turn": 15,
       "state_path": "ended",
@@ -2673,7 +2673,7 @@
     {
       "time": "2026-05-25T11:01:10.168Z",
       "level": "DEBUG",
-      "msg": "oracle.call.complete",
+      "msg": "agent.call.complete",
       "session_id": "sess-done-001",
       "turn": 15,
       "state_path": "ended",
@@ -2739,7 +2739,7 @@
     {
       "time": "2026-05-25T11:01:15.018Z",
       "level": "DEBUG",
-      "msg": "oracle.call.start",
+      "msg": "agent.call.start",
       "session_id": "sess-done-001",
       "turn": 16,
       "state_path": "ended",
@@ -2752,7 +2752,7 @@
     {
       "time": "2026-05-25T11:01:15.168Z",
       "level": "DEBUG",
-      "msg": "oracle.call.complete",
+      "msg": "agent.call.complete",
       "session_id": "sess-done-001",
       "turn": 16,
       "state_path": "ended",
@@ -2818,7 +2818,7 @@
     {
       "time": "2026-05-25T11:01:20.018Z",
       "level": "DEBUG",
-      "msg": "oracle.call.start",
+      "msg": "agent.call.start",
       "session_id": "sess-done-001",
       "turn": 17,
       "state_path": "ended",
@@ -2831,7 +2831,7 @@
     {
       "time": "2026-05-25T11:01:20.168Z",
       "level": "DEBUG",
-      "msg": "oracle.call.complete",
+      "msg": "agent.call.complete",
       "session_id": "sess-done-001",
       "turn": 17,
       "state_path": "ended",
@@ -2897,7 +2897,7 @@
     {
       "time": "2026-05-25T11:01:25.018Z",
       "level": "DEBUG",
-      "msg": "oracle.call.start",
+      "msg": "agent.call.start",
       "session_id": "sess-done-001",
       "turn": 18,
       "state_path": "ended",
@@ -2910,7 +2910,7 @@
     {
       "time": "2026-05-25T11:01:25.168Z",
       "level": "DEBUG",
-      "msg": "oracle.call.complete",
+      "msg": "agent.call.complete",
       "session_id": "sess-done-001",
       "turn": 18,
       "state_path": "ended",
@@ -2976,7 +2976,7 @@
     {
       "time": "2026-05-25T11:01:30.018Z",
       "level": "DEBUG",
-      "msg": "oracle.call.start",
+      "msg": "agent.call.start",
       "session_id": "sess-done-001",
       "turn": 19,
       "state_path": "ended",
@@ -2989,7 +2989,7 @@
     {
       "time": "2026-05-25T11:01:30.168Z",
       "level": "DEBUG",
-      "msg": "oracle.call.complete",
+      "msg": "agent.call.complete",
       "session_id": "sess-done-001",
       "turn": 19,
       "state_path": "ended",
@@ -3055,7 +3055,7 @@
     {
       "time": "2026-05-25T11:01:35.018Z",
       "level": "DEBUG",
-      "msg": "oracle.call.start",
+      "msg": "agent.call.start",
       "session_id": "sess-done-001",
       "turn": 20,
       "state_path": "ended",
@@ -3068,7 +3068,7 @@
     {
       "time": "2026-05-25T11:01:35.168Z",
       "level": "DEBUG",
-      "msg": "oracle.call.complete",
+      "msg": "agent.call.complete",
       "session_id": "sess-done-001",
       "turn": 20,
       "state_path": "ended",
@@ -3134,7 +3134,7 @@
     {
       "time": "2026-05-25T11:01:40.018Z",
       "level": "DEBUG",
-      "msg": "oracle.call.start",
+      "msg": "agent.call.start",
       "session_id": "sess-done-001",
       "turn": 21,
       "state_path": "ended",
@@ -3147,7 +3147,7 @@
     {
       "time": "2026-05-25T11:01:40.168Z",
       "level": "DEBUG",
-      "msg": "oracle.call.complete",
+      "msg": "agent.call.complete",
       "session_id": "sess-done-001",
       "turn": 21,
       "state_path": "ended",
@@ -3213,7 +3213,7 @@
     {
       "time": "2026-05-25T11:01:45.018Z",
       "level": "DEBUG",
-      "msg": "oracle.call.start",
+      "msg": "agent.call.start",
       "session_id": "sess-done-001",
       "turn": 22,
       "state_path": "ended",
@@ -3226,7 +3226,7 @@
     {
       "time": "2026-05-25T11:01:45.168Z",
       "level": "DEBUG",
-      "msg": "oracle.call.complete",
+      "msg": "agent.call.complete",
       "session_id": "sess-done-001",
       "turn": 22,
       "state_path": "ended",
@@ -3292,7 +3292,7 @@
     {
       "time": "2026-05-25T11:01:50.018Z",
       "level": "DEBUG",
-      "msg": "oracle.call.start",
+      "msg": "agent.call.start",
       "session_id": "sess-done-001",
       "turn": 23,
       "state_path": "ended",
@@ -3305,7 +3305,7 @@
     {
       "time": "2026-05-25T11:01:50.168Z",
       "level": "DEBUG",
-      "msg": "oracle.call.complete",
+      "msg": "agent.call.complete",
       "session_id": "sess-done-001",
       "turn": 23,
       "state_path": "ended",
@@ -3371,7 +3371,7 @@
     {
       "time": "2026-05-25T11:01:55.018Z",
       "level": "DEBUG",
-      "msg": "oracle.call.start",
+      "msg": "agent.call.start",
       "session_id": "sess-done-001",
       "turn": 24,
       "state_path": "ended",
@@ -3384,7 +3384,7 @@
     {
       "time": "2026-05-25T11:01:55.168Z",
       "level": "DEBUG",
-      "msg": "oracle.call.complete",
+      "msg": "agent.call.complete",
       "session_id": "sess-done-001",
       "turn": 24,
       "state_path": "ended",
@@ -3450,7 +3450,7 @@
     {
       "time": "2026-05-25T11:02:00.018Z",
       "level": "DEBUG",
-      "msg": "oracle.call.start",
+      "msg": "agent.call.start",
       "session_id": "sess-done-001",
       "turn": 25,
       "state_path": "ended",
@@ -3463,7 +3463,7 @@
     {
       "time": "2026-05-25T11:02:00.168Z",
       "level": "DEBUG",
-      "msg": "oracle.call.complete",
+      "msg": "agent.call.complete",
       "session_id": "sess-done-001",
       "turn": 25,
       "state_path": "ended",

@@ -1,13 +1,13 @@
-// Hand-authored tour manifest for the ORACLE OFF-RAMP feature-spotlight video.
+// Hand-authored tour manifest for the AGENT OFF-RAMP feature-spotlight video.
 //
 // Unlike the generated manifests under src/tour/generated/ (which are emitted
 // from features/*.yaml), this one is hand-authored: the off-ramp demo has no
 // feature-catalog entry yet, and the tour is driven only by the off-ramp video
 // spec (tests/playwright/off-ramp-video.spec.ts), never the live overlay.
 //
-// THE FEATURE. In a room that opts into `oracle_off_ramp:`, a free-text
+// THE FEATURE. In a room that opts into `agent_off_ramp:`, a free-text
 // utterance the router can't map to a declared intent is handed to a voiced
-// host.oracle.converse turn INSTEAD of bouncing back with "I didn't catch
+// host.agent.converse turn INSTEAD of bouncing back with "I didn't catch
 // that". The room stays put — NO state advance, NO world mutation — and the
 // same menu is there next turn. The contrast that IS the feature: an off-menu
 // QUESTION is answered in place; a menu PICK transitions.
@@ -27,7 +27,7 @@ export const OFF_RAMP_TOUR_STEPS: readonly TourStep[] = [
   {
     id: "or-intro-home",
     route: "home",
-    title: "The oracle off-ramp",
+    title: "The agent off-ramp",
     body: "Every kitsoki story is a deterministic state machine of declared intents. But what happens when a visitor types something the menu can't answer? This tour walks the off-ramp — the no-match door that answers a free-text question in place, without losing your spot.",
     placement: "center",
     kind: "explain",
@@ -40,7 +40,7 @@ export const OFF_RAMP_TOUR_STEPS: readonly TourStep[] = [
     route: "home",
     target: "story-card",
     title: "The Welcome Desk",
-    body: "This story is a single non-conversational menu room — the Welcome Desk. It has a real menu (browse / status / about) AND an implicit free-text composer. It opts into `oracle_off_ramp:`, so an off-menu question gets a voiced answer instead of a bounce.",
+    body: "This story is a single non-conversational menu room — the Welcome Desk. It has a real menu (browse / status / about) AND an implicit free-text composer. It opts into `agent_off_ramp:`, so an off-menu question gets a voiced answer instead of a bounce.",
     placement: "right",
     kind: "explain",
     advance: "next",

@@ -17,7 +17,7 @@
 #      arcs clear brief_path to deliberately re-arm a fresh scaffold.
 #   2. host.ide.open_file — opens the brief in the operator's editor so
 #      they can edit it directly. Not once-guarded (idempotent open).
-#   3. brief judge — host.oracle.decide (id: brief_check, agent:
+#   3. brief judge — host.agent.decide (id: brief_check, agent:
 #      brief_judge). GUARDED: only fires when brief_cycle > 0 (first entry
 #      skips the judge; `ready` increments the cycle and re-enters, arming
 #      it). A `continue` verdict fires the synthetic `advance_brief` intent
@@ -43,7 +43,7 @@ states:
           color:    "#10B981"   # green — a settled input
       # Error surfacing — the brief WRITE (on_enter host.artifacts_dir)
       # failed; on_error held us here (target: .) rather than bouncing to
-      # idle. The brief is deterministic (no oracle), so a failure is an
+      # idle. The brief is deterministic (no agent), so a failure is an
       # artifact-write problem (permissions, disk) the operator can fix and
       # re-confirm. last_error is set by the runtime.
       - template: "⚠ **Brief save failed** — {{ world.last_error }}. Fix the issue and **confirm** to retry."
@@ -160,7 +160,7 @@ states:
       # verdict; a `continue` fires the synthetic advance_brief intent via
       # emit_intent → auto-advance to references. on_error: . holds here so
       # the operator can examine a failed check (last_error rendered above).
-      - invoke: host.oracle.decide
+      - invoke: host.agent.decide
         id: brief_check
         when: "world.brief_cycle > 0"
         with:

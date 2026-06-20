@@ -20,12 +20,12 @@ import (
 	"kitsoki/internal/store"
 )
 
-// gateCtx builds a ctx with an event sink + OracleCallCtx so the gate records
+// gateCtx builds a ctx with an event sink + AgentCallCtx so the gate records
 // WriteModeGranted events that the test can inspect.
 func gateCtx() (context.Context, *captureSink) {
 	sink := &captureSink{}
-	ctx := host.WithOracleEventSink(context.Background(), sink)
-	ctx = host.WithOracleCallCtx(ctx, host.OracleCallCtx{
+	ctx := host.WithAgentEventSink(context.Background(), sink)
+	ctx = host.WithAgentCallCtx(ctx, host.AgentCallCtx{
 		SessionID: app.SessionID("sess-wmg"),
 		Turn:      app.TurnNumber(1),
 		StatePath: app.StatePath("workbench"),

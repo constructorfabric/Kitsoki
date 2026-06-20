@@ -107,7 +107,7 @@ child manifests, `include:` globs, agent `system_prompt_path`, and
 JSON schemas, `views/`, and `.star` scripts — resolved relative to the story's
 own dir (load time via `baseDir`; runtime via the `KITSOKI_APP_DIR` env set in
 `internal/app/loadfiles.go:52`, joined by `resolvePromptPath` in
-`internal/host/oracle_ask.go:415`). These **base-story reads** must come from
+`internal/host/agent_ask.go:415`). These **base-story reads** must come from
 the embedded library; the disjoint set of **target-repo reads** —
 `workdir`/`repo_root` publish paths, artifacts, `host.append_to_file`
 (`append_file_transport.go`), `artifacts_dir_transport.go` — must stay on the OS

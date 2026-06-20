@@ -37,7 +37,7 @@ host_handlers:
       sha:   "facefeed"
   host.local:
     data: { ok: true, state: "failure", checks: "go-test" }
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:

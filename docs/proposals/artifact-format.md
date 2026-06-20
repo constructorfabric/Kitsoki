@@ -193,7 +193,7 @@ selects the library; want #2 is what makes the fidelity actually load-bearing.
 (goccy *does* have a `CommentMap`/AST that can preserve more, but the idiomatic
 path the codebase actually uses is the lossy one, and `yaml.Node` reaches
 fidelity with no extra plumbing. goccy stays where it's used for decode-only
-work — `secrets.go`, `oracle_extract_helpers.go`, etc.; this proposal does not
+work — `secrets.go`, `agent_extract_helpers.go`, etc.; this proposal does not
 rip it out.)
 
 > **Why a package, not a two-function patch?** The round-trip fix alone *is*

@@ -169,7 +169,7 @@ func (m RootModel) handleIDEConnectDone(msg ideConnectDoneMsg) (tea.Model, tea.C
 }
 
 // ideDisconnect closes the link and detaches it from the orchestrator, which
-// restores the normal oracle subprocess env (the scrub is gated on a connected
+// restores the normal agent subprocess env (the scrub is gated on a connected
 // link) and flips the footer chip off.
 func (m RootModel) ideDisconnect() (tea.Model, tea.Cmd) {
 	if !m.ideConnected() {

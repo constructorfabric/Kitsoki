@@ -99,7 +99,7 @@ states:
     view: "landing request={{ world.landing_request }} summary={{ world.landing_note.summary }}"
     on_enter:
       - when: "world.landing_request != ''"
-        invoke: host.oracle.task
+        invoke: host.agent.task
         with:
           acceptance:
             schema: schemas/note.json
@@ -133,7 +133,7 @@ states:
 	t.Cleanup(func() { _ = s.Close() })
 	h := &countingHarness{fall: staticHarness{intentName: "go_main"}}
 	reg := host.NewRegistry()
-	reg.Register("host.oracle.task", func(ctx context.Context, args map[string]any) (host.Result, error) {
+	reg.Register("host.agent.task", func(ctx context.Context, args map[string]any) (host.Result, error) {
 		return host.Result{Data: map[string]any{
 			"ok": true,
 			"submitted": map[string]any{
@@ -215,6 +215,35 @@ func TestDefaultIntent_AbsentFallsThroughToHarness(t *testing.T) {
 	require.NoError(t, err)
 	require.Positive(t, h.calls.Load(),
 		"without default_intent, unmatched prose must fall through to the harness")
+}
+
+// TestMainHarness_StampsLLMProvenance is the guarantee that closes the
+// "unattributable turn" hole: when a free-text turn falls through every
+// deterministic/semantic/turn-cache/default/fallback tier and is resolved by
+// the main-turn interpreter, its TurnStarted event MUST still record
+// routed_by:"llm". Before the fix the main-turn path persisted a TurnStarted
+// with only {turn,input} and no routed_by, so a reader of the trace (and the
+// web routing chip) could not tell which tier handled the turn — it showed up
+// as garbage ({intent:""}, blank tier). This pins that every entry point
+// attributes its route.
+func TestMainHarness_StampsLLMProvenance(t *testing.T) {
+	t.Parallel()
+	// withDefault=false: the chat state declares no default_intent and no
+	// work-intake intent, so unmatched prose has no deterministic sink and
+	// MUST fall through to the harness (which routes it to "quit").
+	orch, h, s, sid := newDefaultIntentApp(t, false)
+	ctx := context.Background()
+
+	_, err := orch.Turn(ctx, sid, "something the matcher cannot map to any command")
+	require.NoError(t, err)
+	require.Positive(t, h.calls.Load(),
+		"the turn must reach the main-turn harness for this guarantee to apply")
+
+	history, err := s.LoadHistory(sid)
+	require.NoError(t, err)
+	// Every persisted free-text turn carries a resolving tier — here the paid
+	// main-turn LLM. No more silent, unattributable TurnStarted rows.
+	assertRoutedBy(t, history, "llm")
 }
 
 // TestFreeFormFallback_UnmatchedProseRoutesToWorkbench pins the general

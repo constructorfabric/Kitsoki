@@ -26,12 +26,12 @@ deterministic (pure computation, replayable) — the moat spine
 
 | Step | Kind | Host |
 |---|---|---|
-| Distil the scenario brief | interpretive (conversation) | `host.oracle.converse` + `host.chat.resolve` |
-| Brief-concrete gate | interpretive (oracle) | `host.oracle.decide` |
-| Author the source | interpretive (agent, write-jailed) | `host.oracle.task` |
+| Distil the scenario brief | interpretive (conversation) | `host.agent.converse` + `host.chat.resolve` |
+| Brief-concrete gate | interpretive (agent) | `host.agent.decide` |
+| Author the source | interpretive (agent, write-jailed) | `host.agent.task` |
 | Render the walkthrough | **deterministic** | `host.slidey.render` (deck) / `host.run` → `record_tour.sh` (tour) + `host.artifacts_dir` |
 | Drain web feedback notes | deterministic | `host.run` → `drain_feedback.sh` |
-| Refine flagged source | interpretive (agent, write-jailed) | `host.oracle.task` |
+| Refine flagged source | interpretive (agent, write-jailed) | `host.agent.task` |
 
 The interpretive *scoping* (brief distillation + the concreteness gate) and the
 interpretive *execution* (authoring + refine) are each recorded host calls; the
@@ -93,18 +93,18 @@ re-renders — epic open question 3), records the iteration, then routes back to
 
 ## Write-jail
 
-The author and refine `host.oracle.task` calls are scoped to the per-session
+The author and refine `host.agent.task` calls are scoped to the per-session
 `workspace` under `.artifacts/mockup-video/` (transient, never committed). The
 prompt is the v1 write-jail (*task-agents-must-not-implement*): the agent
 authors **mockups** — static HTML / a slidey deck — never shippable product
 code, and only under the workspace. The durable engine allowlist is the
-`oracle-capability-model` work.
+`agent-capability-model` work.
 
 ## Authoring & flows
 
 See [`stories/mockup-video/README.md`](../../stories/mockup-video/README.md) for
 the world contract, host requirements, and the 8 Mode-2 flow fixtures (all no
--LLM, oracle calls stubbed by per-invoke id). Run them with:
+-LLM, agent calls stubbed by per-invoke id). Run them with:
 
 ```
 kitsoki test flows stories/mockup-video/app.yaml

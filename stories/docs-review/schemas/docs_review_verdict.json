@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title":   "docs_review_verdict",
-  "description": "Verdict produced by the docs-review story's oracle.decide call. Pinned into world.verdict and written to .artifacts/docs-review-<sha>.md. The shape is designed to render as a listing: one row per (doc, line-range), with 1+ invalidation records explaining the code/doc change that broke that section.",
+  "description": "Verdict produced by the docs-review story's agent.decide call. Pinned into world.verdict and written to .artifacts/docs-review-<sha>.md. The shape is designed to render as a listing: one row per (doc, line-range), with 1+ invalidation records explaining the code/doc change that broke that section.",
   "type":    "object",
   "required": ["decision", "summary", "confidence", "commits", "stale_docs"],
   "properties": {

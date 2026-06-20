@@ -36,7 +36,7 @@ with one click.
 
 ## Impact
 
-- **Code:** `tools/runstatus/src/components/oracle/DecideDetail.vue` (today
+- **Code:** `tools/runstatus/src/components/agent/DecideDetail.vue` (today
   shows choices + decision + prompt/response tabs — reorder + add the
   confidence bar); a new `RoutingDetail.vue` for `turn.start` routing
   provenance; `EventDetail.vue` dispatch (route `decision`/`routing`
@@ -138,7 +138,7 @@ runstatus suite already uses.
 The prompt — which power users *do* read first when debugging a bad
 generation — now takes one extra click. We accept this: the decision is the
 differentiated value, the evidence drawer is one keystroke, and a debugger
-chasing a specific prompt can still filter to `oracle-call` rows where the
+chasing a specific prompt can still filter to `agent-call` rows where the
 prompt leads.
 
 ## Open questions

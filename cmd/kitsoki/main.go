@@ -132,9 +132,9 @@ See docs/ in the repo for the narrative documentation.`,
 	root.AddCommand(uiCmd())
 	root.AddCommand(extractCmd())
 	root.AddCommand(promptsCmd())
-	root.AddCommand(oracleCmd())
-	root.AddCommand(oracleServeCmd())
-	root.AddCommand(migrateOracleCmd())
+	root.AddCommand(agentCmd())
+	root.AddCommand(agentServeCmd())
+	root.AddCommand(migrateAgentCmd())
 	root.AddCommand(cassetteCmd())
 	root.AddCommand(exportStatusCmd())
 	root.AddCommand(statusCmd())
@@ -187,7 +187,7 @@ func runCmd() *cobra.Command {
 	var (
 		harnessType      string
 		claudeModel      string
-		oracleBackend    string
+		agentBackend     string
 		recordingPath    string
 		recordPath       string
 		dbPath           string
@@ -340,7 +340,7 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 				ExecMode:        execMode,
 				HarnessType:     harnessType,
 				ClaudeModel:     claudeModel,
-				OracleBackend:   resolveOracleBackend(oracleBackend),
+				AgentBackend:    resolveAgentBackend(agentBackend),
 				HarnessProfiles: harnessProfiles,
 				DefaultProfile:  defaultProfile,
 				RecordingPath:   recordingPath,
@@ -633,7 +633,7 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 
 				// Suppress slog output during TUI operation to prevent log lines
 				// from mixing with the queue indicator on the same terminal line.
-				// Issue: oracle runner emits slog records while TUI is rendering,
+				// Issue: agent runner emits slog records while TUI is rendering,
 				// causing "2026-05-29 ... INFO ... ⏳ running…" on same line.
 				oldLogger := slog.Default()
 				suppressedLogger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -824,8 +824,8 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 		"harness type: claude|live|replay|recording (default: claude if `claude` binary on PATH, else live if an Anthropic credential is found, else replay)")
 	cmd.Flags().StringVar(&claudeModel, "claude-model", "",
 		fmt.Sprintf("model passed to claude -p --model (default: %s); use 'opus' for higher quality at higher cost", harness.DefaultClaudeModel))
-	cmd.Flags().StringVar(&oracleBackend, "oracle", "",
-		"coding-agent CLI backend for host.oracle.* calls: claude|copilot|codex (default: claude, or $KITSOKI_ORACLE)")
+	cmd.Flags().StringVar(&agentBackend, "agent", "",
+		"coding-agent CLI backend for host.agent.* calls: claude|copilot|codex (default: claude, or $KITSOKI_AGENT)")
 	cmd.Flags().StringVar(&recordingPath, "recording", "",
 		"path to recording YAML file (required for --harness replay)")
 	cmd.Flags().StringVar(&recordPath, "record", "",
@@ -878,20 +878,20 @@ func autoSelectHarness() string {
 	return "replay"
 }
 
-// resolveOracleBackend resolves the oracle backend selector with precedence
-// flag → $KITSOKI_ORACLE → "" (claude default). The runtime treats "" / "claude"
+// resolveAgentBackend resolves the agent backend selector with precedence
+// flag → $KITSOKI_AGENT → "" (claude default). The runtime treats "" / "claude"
 // identically (the default backend), so an empty result is fine.
-func resolveOracleBackend(flag string) string {
+func resolveAgentBackend(flag string) string {
 	if strings.TrimSpace(flag) != "" {
 		return flag
 	}
-	return os.Getenv("KITSOKI_ORACLE")
+	return os.Getenv("KITSOKI_AGENT")
 }
 
 // buildHarness constructs the appropriate harness based on the harness type flag.
 // If harnessType is empty, autoSelectHarness() is called to pick one.
 // claudeModel is the model name for the ClaudeCLIHarness; pass "" to use the default.
-func buildHarness(harnessType, claudeModel, oracleBackend, recordingPath, recordPath string, def *app.AppDef) (harness.Harness, error) {
+func buildHarness(harnessType, claudeModel, agentBackend, recordingPath, recordPath string, def *app.AppDef) (harness.Harness, error) {
 	if harnessType == "" {
 		harnessType = autoSelectHarness()
 	}
@@ -904,16 +904,16 @@ func buildHarness(harnessType, claudeModel, oracleBackend, recordingPath, record
 		// the Exec context) rewrites it onto copilot's flags. Point the harness
 		// at the copilot binary and tag the Exec context so the one engine that
 		// forks the subprocess uses the copilot backend.
-		if oracleBackend == "copilot" {
+		if agentBackend == "copilot" {
 			copilotBin, err := exec.LookPath("copilot")
 			if env := os.Getenv(host.CopilotBinEnv); env != "" {
 				copilotBin, err = env, nil
 			}
 			if err != nil {
-				return nil, fmt.Errorf("--oracle copilot: %w", host.ErrOracleUnavailable)
+				return nil, fmt.Errorf("--agent copilot: %w", host.ErrAgentUnavailable)
 			}
 			copilotExec := func(ctx context.Context, bin string, args []string, stdin, workingDir string) (string, error) {
-				return host.RunClaudeOneShotForHarness(host.WithOracleBackendNamed(ctx, "copilot"), bin, args, stdin, workingDir)
+				return host.RunClaudeOneShotForHarness(host.WithAgentBackendNamed(ctx, "copilot"), bin, args, stdin, workingDir)
 			}
 			return harness.NewClaudeCLI(def, harness.ClaudeCLIConfig{
 				Model:         claudeModel,
@@ -922,16 +922,16 @@ func buildHarness(harnessType, claudeModel, oracleBackend, recordingPath, record
 				ValidatorTool: "kitsoki-validator-submit",
 			})
 		}
-		if oracleBackend == "codex" {
+		if agentBackend == "codex" {
 			codexBin, err := exec.LookPath("codex")
 			if env := os.Getenv(host.CodexBinEnv); env != "" {
 				codexBin, err = env, nil
 			}
 			if err != nil {
-				return nil, fmt.Errorf("--oracle codex: %w", host.ErrOracleUnavailable)
+				return nil, fmt.Errorf("--agent codex: %w", host.ErrAgentUnavailable)
 			}
 			codexExec := func(ctx context.Context, bin string, args []string, stdin, workingDir string) (string, error) {
-				return host.RunClaudeOneShotForHarness(host.WithOracleBackendNamed(ctx, "codex"), bin, args, stdin, workingDir)
+				return host.RunClaudeOneShotForHarness(host.WithAgentBackendNamed(ctx, "codex"), bin, args, stdin, workingDir)
 			}
 			return harness.NewClaudeCLI(def, harness.ClaudeCLIConfig{
 				Model:         claudeModel,
@@ -1170,7 +1170,7 @@ Examples:
 	return cmd
 }
 
-// replayCmd is defined in replay.go (oracle-split Phase 4).
+// replayCmd is defined in replay.go (agent-split Phase 4).
 
 func testCmd() *cobra.Command {
 	cmd := &cobra.Command{

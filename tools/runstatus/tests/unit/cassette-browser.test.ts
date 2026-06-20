@@ -23,7 +23,7 @@ describe("CassetteBrowser", () => {
       props: {
         source: fakeSource(eps),
         storyPath: "/s/app.yaml",
-        cassetteKey: { handler: "host.oracle.decide", phase: "clarifying" },
+        cassetteKey: { handler: "host.agent.decide", phase: "clarifying" },
       },
     });
     await flushPromises();

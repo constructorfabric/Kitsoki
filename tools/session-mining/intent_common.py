@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Shared helpers for the intent-mining deterministic spine (steps C-F).
 
-Stdlib only. Holds the trace/line primitives, vocab parsing, and the oracle/job
+Stdlib only. Holds the trace/line primitives, vocab parsing, and the agent/job
 shapes so ground.py, tag_score.py, and emit.py stay small and DI-friendly.
 
-The oracle output (step B, the one LLM pass) is the only input these steps trust,
+The agent output (step B, the one LLM pass) is the only input these steps trust,
 and they trust it ONLY after grounding against the deterministic trace. See
 README "Intent mining" and review §3.
 """
@@ -24,7 +24,7 @@ TOOL_LINE = re.compile(r"^\s*>\s*(?P<tool>\S+):\s*(?P<arg>.*)$")
 def read_trace_lines(path):
     """Return the trace's lines as a 1-based list (index 0 unused/None).
 
-    The oracle cites 1-based line numbers into traces/<sid>.txt; keeping the list
+    The agent cites 1-based line numbers into traces/<sid>.txt; keeping the list
     1-based means cite['line'] indexes directly without off-by-one juggling.
     """
     with open(path, "r", errors="ignore") as fh:

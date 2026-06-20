@@ -27,9 +27,9 @@ hosts:
   - host.git_worktree
   - host.append_to_file
   - host.inbox.add
-  - host.oracle.ask
-  - host.oracle.decide
-  - host.oracle.task
+  - host.agent.ask
+  - host.agent.decide
+  - host.agent.task
   - host.diff.open
 
 imports:

@@ -142,11 +142,11 @@ same SQL transaction. One section per mutation site.
 
 ## D. `store.AppendEvents` in `internal/orchestrator/offpath.go`
 
-### 10. AskOffPath — question-only (oracle failure path)
+### 10. AskOffPath — question-only (agent failure path)
 
 - **File:** `internal/orchestrator/offpath.go:121` and `offpath.go:138`
 - **Mutates today via:** `store.AppendEvents` (OffPathQuestion at turn=maxTurn+1)
-- **Trigger:** Off-path user question; oracle call failed before returning an answer.
+- **Trigger:** Off-path user question; agent call failed before returning an answer.
 - **Journal entries to emit:**
   - kind: `offpath.question` — doc: null — body: `{question, chat_id}`
 - **Inside which lock:** session writer lock (`mu` via `appendOffPathEvents`)
@@ -159,13 +159,13 @@ same SQL transaction. One section per mutation site.
 
 - **File:** `internal/orchestrator/offpath.go:158`
 - **Mutates today via:** `store.AppendEvents` (OffPathQuestion, OffPathAnswer)
-- **Trigger:** Off-path user question; oracle returned an answer; both events appended in one call.
+- **Trigger:** Off-path user question; agent returned an answer; both events appended in one call.
 - **Journal entries to emit:**
   - kind: `offpath.question` — doc: null — body: `{question, chat_id}`
   - kind: `offpath.answer` — doc: null — body: `{answer, chat_id}`
 - **Inside which lock:** session writer lock (`mu` via `appendOffPathEvents`)
 - **Transaction wrapping:** must be inside the same SQL tx
-- **Notes:** The `answer` field carries the **full literal text** of the oracle reply. This satisfies R8 (determinism: resume never calls the LLM; the answer is in the journal). The `chat_id` links to the `chats/<id>` document that also holds the appended messages; the journal has both the typed entry and the `chats.append` doc entries for full fidelity.
+- **Notes:** The `answer` field carries the **full literal text** of the agent reply. This satisfies R8 (determinism: resume never calls the LLM; the answer is in the journal). The `chat_id` links to the `chats/<id>` document that also holds the appended messages; the journal has both the typed entry and the `chats.append` doc entries for full fidelity.
 
 ---
 
@@ -264,7 +264,7 @@ All chat store writes happen under the chat-level lock (`chat_locks`), NOT the s
 
 - **File:** `internal/chats/store.go:107` (Create), `internal/chats/store.go:240` (Resolve insert path)
 - **Mutates today via:** `INSERT INTO chats ...`
-- **Trigger:** First oracle.ask/oracle.talk call for a room+scope_key combo; `Resolve` races to create if none exists. Also called by `offpath.go` when resolving the off-path chat thread.
+- **Trigger:** First agent.ask/agent.talk call for a room+scope_key combo; `Resolve` races to create if none exists. Also called by `offpath.go` when resolving the off-path chat thread.
 - **Journal entries to emit:**
   - kind: `chats/<id>.update` (or `chats.created`) — doc: `chats/<id>` — body: `{app_id, room, scope_key, title, status: "active", claude_session_id: ""}` (full initial document value as a JSON-Patch `add` op on `/`)
 - **Inside which lock:** chat-level lock (separate from session writer lock)
@@ -277,12 +277,12 @@ All chat store writes happen under the chat-level lock (`chat_locks`), NOT the s
 
 - **File:** `internal/chats/store.go:353`
 - **Mutates today via:** `INSERT INTO chat_messages ...` (inside a tx with an `UPDATE chats SET last_active_at`)
-- **Trigger:** Every oracle.ask/oracle.talk turn appends user + assistant messages; off-path also appends via the oracle.talk handler.
+- **Trigger:** Every agent.ask/agent.talk turn appends user + assistant messages; off-path also appends via the agent.talk handler.
 - **Journal entries to emit:**
   - kind: `chats/<id>.append` — doc: `chats/<id>` — body: `{seq, role, content, metadata}` as a JSON-Patch `add` op on `/messages/-`
 - **Inside which lock:** chat-level lock (per `AppendMessage`'s internal tx)
 - **Transaction wrapping:** Same tx as the `INSERT INTO chat_messages`
-- **Notes:** This is the highest-frequency journal write in a chat-heavy session (~2 messages per oracle.ask turn). The proposal §4.4 checkpoint policy overrides this doc to checkpoint every 10 appended messages. The `content` field carries the **full LLM-returned text** satisfying R8. The `metadata` field carries `claude_session_id` updates and any other per-message metadata.
+- **Notes:** This is the highest-frequency journal write in a chat-heavy session (~2 messages per agent.ask turn). The proposal §4.4 checkpoint policy overrides this doc to checkpoint every 10 appended messages. The `content` field carries the **full LLM-returned text** satisfying R8. The `metadata` field carries `claude_session_id` updates and any other per-message metadata.
 
 ---
 
@@ -315,12 +315,12 @@ All chat store writes happen under the chat-level lock (`chat_locks`), NOT the s
 
 - **File:** `internal/chats/store.go:266`
 - **Mutates today via:** `UPDATE chats SET claude_session_id = ? ...`
-- **Trigger:** First `oracle.ask_with_mcp` call for a chat assigns the claude session ID. Called at `internal/host/oracle_ask_with_mcp.go:477` and `internal/host/oracle.go:206`.
+- **Trigger:** First `agent.ask_with_mcp` call for a chat assigns the claude session ID. Called at `internal/host/agent_ask_with_mcp.go:477` and `internal/host/agent.go:206`.
 - **Journal entries to emit:**
   - kind: `chats/<id>.update` — doc: `chats/<id>` — body: `[{"op": "replace", "path": "/meta/claude_session_id", "value": "<claudeSID>"}]`
-- **Inside which lock:** chat-level lock (oracle.ask holds `chat_locks` row)
-- **Transaction wrapping:** Should join the oracle.ask chat-level tx
-- **Notes:** This is critical for R8 / §4.8: the `claude_session_id` is the bridge that lets `--resume` hand off to claude's own session file. If this update is not in the journal, a resumed session can't call `claude --resume <id>` on the next turn. The `metadata` field of `AppendMessage` may also carry the updated claude session ID (the oracle.ask handler writes it before appending the user message per `oracle_ask_with_mcp.go:456`), but the standalone `SetClaudeSessionID` update also needs a journal entry.
+- **Inside which lock:** chat-level lock (agent.ask holds `chat_locks` row)
+- **Transaction wrapping:** Should join the agent.ask chat-level tx
+- **Notes:** This is critical for R8 / §4.8: the `claude_session_id` is the bridge that lets `--resume` hand off to claude's own session file. If this update is not in the journal, a resumed session can't call `claude --resume <id>` on the next turn. The `metadata` field of `AppendMessage` may also carry the updated claude session ID (the agent.ask handler writes it before appending the user message per `agent_ask_with_mcp.go:456`), but the standalone `SetClaudeSessionID` update also needs a journal entry.
 
 ---
 
@@ -400,7 +400,7 @@ All chat store writes happen under the chat-level lock (`chat_locks`), NOT the s
 
 - **File:** `internal/metamode/ledger.go:81`
 - **Mutates today via:** In-memory map write only — `l.items[id] = &PendingProposal{State: ProposalDraft, ...}`
-- **Trigger:** `authoring.propose` tool handler creates a new proposal during a meta-mode oracle.ask turn.
+- **Trigger:** `authoring.propose` tool handler creates a new proposal during a meta-mode agent.ask turn.
 - **Journal entries to emit:**
   - kind: `metamode.proposal.staged` — doc: null — body: `{proposal_id, state: "draft", created_at}`
 - **Inside which lock:** `l.mu` (ProposalLedger mutex)
@@ -456,11 +456,11 @@ All chat store writes happen under the chat-level lock (`chat_locks`), NOT the s
 
 - **File:** `internal/metamode/controller.go:521`, `internal/metamode/adapter.go:160-161`
 - **Mutates today via:** `chats.Store.SetClaudeSessionID` → `UPDATE chats SET claude_session_id = ? ...`
-- **Trigger:** Meta-mode controller's `Send` method updates the claude session ID after a new oracle.ask call starts a new claude session.
+- **Trigger:** Meta-mode controller's `Send` method updates the claude session ID after a new agent.ask call starts a new claude session.
 - **Journal entries to emit:** Same as site 22 — kind: `chats/<id>.update` with a replace op on `/meta/claude_session_id`
 - **Inside which lock:** meta-mode session lock (controller's own mutex)
 - **Transaction wrapping:** Standalone UPDATE; journal is a standalone short tx
-- **Notes:** This is a second call site for `SetClaudeSessionID` (the first is `internal/host/oracle.go`). Both must emit the same journal entry kind.
+- **Notes:** This is a second call site for `SetClaudeSessionID` (the first is `internal/host/agent.go`). Both must emit the same journal entry kind.
 
 ---
 
@@ -483,7 +483,7 @@ All chat store writes happen under the chat-level lock (`chat_locks`), NOT the s
 | 7 | `orchestrator.go:1738` | TurnStarted(clarify), TransitionApplied, EffectApplied×N, TurnEnded | `clarify.answered`, `world.patch`, `state.transition`, host entries | session writer | same as AppendEvents |
 | 8 | `orchestrator.go:521` / `helpers.go` / `orchestrator.go:1182` | **(none — no persist today)** | `clarify.requested` | `o.mu` only | **standalone tx (no paired events row)** |
 | 9 | `oncomplete.go:228` | TurnStarted, EffectApplied×N, HostInvoked×N, HostDispatched×N, HostReturned×N, EffectApplied($inbox), JobCompleted, TurnEnded | `world.patch`, `jobs/<id>.update`, `host.invoked`×N, `host.dispatched`×N, `host.returned`×N | session writer | same as AppendEvents |
-| 10 | `offpath.go:121,138` | OffPathQuestion (oracle failure) | `offpath.question` | session writer (via appendOffPathEvents) | same as AppendEvents |
+| 10 | `offpath.go:121,138` | OffPathQuestion (agent failure) | `offpath.question` | session writer (via appendOffPathEvents) | same as AppendEvents |
 | 11 | `offpath.go:158` | OffPathQuestion, OffPathAnswer | `offpath.question`, `offpath.answer` | session writer (via appendOffPathEvents) | same as AppendEvents |
 | 12 | `offpath.go:185` | OffPathEntered | `offpath.entered` | session writer (via appendOffPathEvents) | same as AppendEvents |
 | 13 | `offpath.go:193` | OffPathExited | `offpath.exited` | session writer (via appendOffPathEvents) | same as AppendEvents |

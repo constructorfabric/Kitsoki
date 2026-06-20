@@ -44,7 +44,7 @@ script path), the same one-line rebinding `kitsoki-dev` uses for
   unchanged. The `.star.yaml` sidecar declares the `gh` subprocess.
 - **Auth:** relies on the operator's existing `gh auth` — no token handling
   in kitsoki. If `gh` is absent/unauthenticated the op fails cleanly
-  (`on_error` keeps the room), mirroring how `host.oracle.search` degrades.
+  (`on_error` keeps the room), mirroring how `host.agent.search` degrades.
 - **Cassettes:** the subprocess is recorded via the HTTP/exec cassette
   mechanism so **flows and tests never call real `gh`** (CLAUDE.md). Fixture
   cassettes capture representative `gh issue list/view/comment` payloads.

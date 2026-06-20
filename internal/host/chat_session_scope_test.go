@@ -23,7 +23,7 @@ func resolveInSession(t *testing.T, cs host.ChatStore, sid string, args map[stri
 	t.Helper()
 	ctx := host.WithChatStore(context.Background(), cs)
 	if sid != "" {
-		ctx = host.WithOracleCallCtx(ctx, host.OracleCallCtx{SessionID: app.SessionID(sid)})
+		ctx = host.WithAgentCallCtx(ctx, host.AgentCallCtx{SessionID: app.SessionID(sid)})
 	}
 	res, err := host.ChatResolveHandler(ctx, args)
 	if err != nil {

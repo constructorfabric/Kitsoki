@@ -22,7 +22,7 @@ hero:
 
 **One story, every surface.** The same `app.yaml` drives a terminal UI, the web surface, Jira comments, and headless daemons. Drive it as a human, hand it to an agent, or replay it from a cassette — the state machine doesn't care.
 
-**Testable like software, because it is.** Flow fixtures replay whole conversations with zero LLM cost; cassettes pin every oracle response byte-for-byte; the demos on this site are recorded from those same deterministic runs — what you watch here is a test that passes.
+**Testable like software, because it is.** Flow fixtures replay whole conversations with zero LLM cost; cassettes pin every agent response byte-for-byte; the demos on this site are recorded from those same deterministic runs — what you watch here is a test that passes.
 
 ## The features
 

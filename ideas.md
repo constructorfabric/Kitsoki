@@ -2,10 +2,10 @@
 
 - meta mode: ask questions or improve the story itself (replaces edit mode)
 - meta mode works like off path so it's a full convo, can use all normal conventions like proposal
-- meta mode chats are persistent and listed like oracle sessions
+- meta mode chats are persistent and listed like agent sessions
 - meta mode as a generic concept (off-path, self-fix/improvement/extend) — each meta mode has different agent and prompts
 - self mode: ask questions or improve kitsoki itself
-- use specific claude agents for each room/intent where oracle/claude is invoked
+- use specific claude agents for each room/intent where agent/claude is invoked
 - extensible stories — reusable dev story w/ company and project-specific aspects (rooms, intents, etc... as reusable building blocks — extended and composed)
 - add bug report mode
 - --continue to resume existing session
@@ -40,7 +40,7 @@
 - multi-intent — when actions/intents are non-navigational they can be stacked within a single input — on Oregon Trail it's like name the party, define the profession and start month in a single statement
 - single LLM chat across rooms, manage the scope to determine which rooms are contained within the chat, provides better context and richer history without hacks like the history mcp
 - live discovery of story aspects as the user navigates to different projects, projects can define their own story aspects
-- expose oracle API so scripts can funnel their LLM usage via the standard interface instead of invoking claude -p individually, possibly bypassing configuration. this would mean that scripts can use a generic API, and the interface can choose codex vs claude (in the future), and handle the tracing, playback and testing with a standardized mechanism. scripts would then never use claude directly
+- expose agent API so scripts can funnel their LLM usage via the standard interface instead of invoking claude -p individually, possibly bypassing configuration. this would mean that scripts can use a generic API, and the interface can choose codex vs claude (in the future), and handle the tracing, playback and testing with a standardized mechanism. scripts would then never use claude directly
 - pass request id to downstream CLI and API calls so that the session/trace can be correlated, so for instance mcp validator can log directly against the right session (is this racy?)
 - conversation/session info/context mcp for LLM to use for clarification
 - better testing for proposal mode — should work like conversation (w/ persistent convo)
@@ -90,10 +90,10 @@
     - meta and offpath for help and free-form conversation
     - routing basics
     - video, slides and guided tutorial in the web ui (guided tutorial mode is a CRITICAL FEATURE!)
-- bailout oracle standardization
+- bailout agent standardization
     - when you finish a bailout, try to improve the story to handle the case or create an improvement request (bug or feature from user is improvement request)
 - model escalation
-    - if the oracle call produces an unsatisfactory result, story author or user defines escalation chain to try until good result.  keep track of good (no escalation) and bad (escalated) calls for each story site - make it robust to story changes so data timeline remains consistent
+    - if the agent call produces an unsatisfactory result, story author or user defines escalation chain to try until good result.  keep track of good (no escalation) and bad (escalated) calls for each story site - make it robust to story changes so data timeline remains consistent
 - take a claude skill/agent and produce a story using progressive determinism
 - user input text different bg-color in chat to highlight (also in templated view outputs)
 - full meta mode for UI in conjunction w/ vue hot reload in dev
@@ -107,8 +107,8 @@
     - room-by-room, ordered by average graph distance from entrypoint
     - see the hook and domain model of the room, edit the room directly within this domain model
     - integrate the meta chat in the left column, with the deterministic view on the right like the existing web ui
-    - big focus on testing individual oracles, seeing cassettes, etc...
-    - individual oracle contracts
+    - big focus on testing individual agents, seeing cassettes, etc...
+    - individual agent contracts
 - when i click on a session in web ui, take me to the chat view if it is live and the trace view if it's done/errored/etc...
 - inbox and background jobs real
     - TUI and Web UI support
@@ -122,12 +122,12 @@
 - the web ui doesn't show the semantic routing layer aspect from the TUI, so it's not clear what's happening with the routing layer
 - routing decisions are not covered by the trace (in the UI at least)
 - embed kitsoki engine in wasm for the browser - keep the trace in local storage or something
-- name each oracle invocation so the trace has something nice to show
+- name each agent invocation so the trace has something nice to show
 - add world viewer to web ui, show types and current values, allow edit mode w/ validation
 - tool usage disappears after final message - it should be collapsed but inspectable
 - video/slidey edit/feedback mode w/ chat and timestamping/png generation built-in so it's easy to flag a scene or a range and instruct the llm - add it to web ui
 - make web-dev - keyboard shortcut (press r to reload?) that restarts the backend with any changes to go code
-- good fake claude with expectations and cassette playback options, allow good tests about what the harness is expected to do (like check the rendered template for a specific oracle instance as received by the cli)
+- good fake claude with expectations and cassette playback options, allow good tests about what the harness is expected to do (like check the rendered template for a specific agent instance as received by the cli)
 - right-click any item to open a meta chat about the story or kitsoki, and the meta agent will have the exact dom context you clicked and a screenshot for context
 - flow test coverage, identify untested branches
 - set up proper lint/coverage

@@ -1,6 +1,6 @@
 package host
 
-// End-to-end env-hygiene regression (shared decision #1): the oracle subprocess
+// End-to-end env-hygiene regression (shared decision #1): the agent subprocess
 // env must, when kitsoki holds a CONNECTED IDE link, drop CLAUDE_CODE_SSE_PORT
 // and force CLAUDE_CODE_AUTO_CONNECT_IDE=false so an inner `claude` (or bash_mcp
 // child) does not open its OWN socket to the editor; with NO link the env is
@@ -39,14 +39,14 @@ func (l *envGateLink) IDEName() string   { return "Stub Code" }
 func (l *envGateLink) Workspace() string { return "/ws" }
 func (l *envGateLink) Port() int         { return 4242 }
 
-// composeOracleEnv reproduces the EXACT env assembly the real exec sites use:
+// composeAgentEnv reproduces the EXACT env assembly the real exec sites use:
 //
 //	envScrubIDE-gated( envWithSessionID( envWithKitsokiBinOnPath(base), sid ) )
 //
-// matching runClaudeOneShotReal (oracle_runner.go) and runClaudeStreamJSON. The
+// matching runClaudeOneShotReal (agent_runner.go) and runClaudeStreamJSON. The
 // scrub is the OUTERMOST wrap (so it sees the port-bearing entry to drop) and is
 // gated on a connected link in ctx — byte-for-byte what the sites do.
-func composeOracleEnv(ctx context.Context, base []string, sid string) []string {
+func composeAgentEnv(ctx context.Context, base []string, sid string) []string {
 	env := envWithSessionID(envWithKitsokiBinOnPath(base), sid)
 	if l := IDELinkFromContext(ctx); l != nil && l.Connected() {
 		env = envScrubIDE(env)
@@ -67,10 +67,10 @@ func composeBashMCPEnv(ctx context.Context, base, extraEnv []string) []string {
 	return env
 }
 
-// TestE2E_OracleEnv_ScrubbedWhenLinkConnected: a connected link in ctx ⇒ the
-// composed oracle subprocess env has NO CLAUDE_CODE_SSE_PORT and HAS
+// TestE2E_AgentEnv_ScrubbedWhenLinkConnected: a connected link in ctx ⇒ the
+// composed agent subprocess env has NO CLAUDE_CODE_SSE_PORT and HAS
 // CLAUDE_CODE_AUTO_CONNECT_IDE=false, while unrelated/session entries survive.
-func TestE2E_OracleEnv_ScrubbedWhenLinkConnected(t *testing.T) {
+func TestE2E_AgentEnv_ScrubbedWhenLinkConnected(t *testing.T) {
 	base := []string{
 		"PATH=/usr/bin",
 		"CLAUDE_CODE_SSE_PORT=25118", // the integrated-terminal port seed
@@ -78,7 +78,7 @@ func TestE2E_OracleEnv_ScrubbedWhenLinkConnected(t *testing.T) {
 	}
 	ctx := WithIDELink(context.Background(), &envGateLink{connected: true})
 
-	env := composeOracleEnv(ctx, base, "sess-1")
+	env := composeAgentEnv(ctx, base, "sess-1")
 
 	if hasKey(env, "CLAUDE_CODE_SSE_PORT") {
 		t.Fatalf("connected link: CLAUDE_CODE_SSE_PORT must be dropped, got %v", env)
@@ -99,14 +99,14 @@ func TestE2E_OracleEnv_ScrubbedWhenLinkConnected(t *testing.T) {
 	}
 }
 
-// TestE2E_OracleEnv_UnchangedWhenNoLink: with no link in ctx (headless / flow /
+// TestE2E_AgentEnv_UnchangedWhenNoLink: with no link in ctx (headless / flow /
 // /ide-not-connected) the composed env is byte-identical to the no-scrub
 // baseline — the backward-compat guarantee. The port seed survives untouched and
 // no AUTO_CONNECT entry is injected.
-func TestE2E_OracleEnv_UnchangedWhenNoLink(t *testing.T) {
+func TestE2E_AgentEnv_UnchangedWhenNoLink(t *testing.T) {
 	base := []string{"PATH=/usr/bin", "CLAUDE_CODE_SSE_PORT=25118", "HOME=/home/u"}
 
-	withScrubGate := composeOracleEnv(context.Background(), base, "sess-1")
+	withScrubGate := composeAgentEnv(context.Background(), base, "sess-1")
 	baselineNoScrub := envWithSessionID(envWithKitsokiBinOnPath(base), "sess-1")
 
 	if len(withScrubGate) != len(baselineNoScrub) {
@@ -126,14 +126,14 @@ func TestE2E_OracleEnv_UnchangedWhenNoLink(t *testing.T) {
 	}
 }
 
-// TestE2E_OracleEnv_UnchangedWhenLinkDisconnected: a link present in ctx but
+// TestE2E_AgentEnv_UnchangedWhenLinkDisconnected: a link present in ctx but
 // reporting Connected()==false must NOT trigger the scrub (the gate is
 // connected-AND-present). This is the "/ide ran but the editor dropped" path.
-func TestE2E_OracleEnv_UnchangedWhenLinkDisconnected(t *testing.T) {
+func TestE2E_AgentEnv_UnchangedWhenLinkDisconnected(t *testing.T) {
 	base := []string{"PATH=/usr/bin", "CLAUDE_CODE_SSE_PORT=25118"}
 	ctx := WithIDELink(context.Background(), &envGateLink{connected: false})
 
-	env := composeOracleEnv(ctx, base, "")
+	env := composeAgentEnv(ctx, base, "")
 
 	if !hasEnv(env, "CLAUDE_CODE_SSE_PORT=25118") {
 		t.Fatalf("disconnected link: port seed must survive, got %v", env)

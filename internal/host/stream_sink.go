@@ -1,6 +1,6 @@
 // Package host — meta-mode stream-event sink.
 //
-// runClaudeStreamJSON in oracle_runner.go emits one slog.InfoContext
+// runClaudeStreamJSON in agent_runner.go emits one slog.InfoContext
 // record per JSONL line claude prints in stream-json mode. The TUI's
 // transcript pane has no slog listener — it would stay frozen behind
 // the "agent is thinking…" spinner until the terminal `result` event
@@ -11,9 +11,9 @@
 // sink out of the request context (set by the TUI's metaSendCmd via
 // WithStreamSink) and calls OnStreamEvent alongside the slog emit;
 // the slog signal is unchanged. A nil sink is a no-op so existing
-// callers (non-metamode oracle paths, tests) need no changes.
+// callers (non-metamode agent paths, tests) need no changes.
 //
-// Concurrency contract: OnStreamEvent runs on the oracle subprocess's
+// Concurrency contract: OnStreamEvent runs on the agent subprocess's
 // stdout-reader goroutine. Implementations MUST NOT block — a stalled
 // sink would back-pressure claude's stdout pipe and stall the entire
 // LLM call. The TUI implementation forwards into tea.Program.Send via
@@ -36,7 +36,7 @@ type StreamToolUse struct {
 }
 
 // StreamEvent is one observable unit from a streaming claude-cli call.
-// Mirrors the shape of the slog "metamode.oracle.event" record so a
+// Mirrors the shape of the slog "metamode.agent.event" record so a
 // reader of either signal sees the same payload.
 type StreamEvent struct {
 	Type    string // "system" | "assistant" | "user" | "result" | etc.
@@ -78,9 +78,9 @@ type StreamEvent struct {
 	CacheCreationTokens int
 }
 
-// StreamSink receives streamed events from oracle calls. Implementations
+// StreamSink receives streamed events from agent calls. Implementations
 // must be safe to call from any goroutine and must be non-blocking
-// (drop on backpressure rather than stall the oracle subprocess reader).
+// (drop on backpressure rather than stall the agent subprocess reader).
 type StreamSink interface {
 	OnStreamEvent(ctx context.Context, ev StreamEvent)
 }

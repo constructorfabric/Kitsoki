@@ -25,7 +25,7 @@ import (
 
 // winningPath enumerates the intent calls for the Cloak winning path, matching
 // testdata/apps/cloak/flows/winning.yaml. Turn 3 uses a hard-coded go east
-// (same as cloak_test.go does for the oracle-backed turn).
+// (same as cloak_test.go does for the agent-backed turn).
 var winningPath = []intent.IntentCall{
 	{Intent: "go", Slots: world.Slots{"direction": "west"}},  // foyer → cloakroom
 	{Intent: "hang_cloak", Slots: world.Slots{}},             // cloakroom, sets wearing_cloak=false

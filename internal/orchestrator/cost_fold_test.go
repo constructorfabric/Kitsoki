@@ -24,13 +24,13 @@ func effectSet(t *testing.T, ev store.Event) map[string]any {
 	return p.Set
 }
 
-func TestFoldOracleCost(t *testing.T) {
+func TestFoldAgentCost(t *testing.T) {
 	t.Run("accumulates session and sets turn, journaling both", func(t *testing.T) {
 		w := world.New()
 		w.Vars["session_cost_usd"] = 0.0
 		w.Vars["turn_cost_usd"] = 0.0
 
-		evs := foldOracleCost(&w, 0.02)
+		evs := foldAgentCost(&w, 0.02)
 
 		if got := w.Vars["turn_cost_usd"].(float64); got != 0.02 {
 			t.Errorf("turn_cost_usd = %v, want 0.02", got)
@@ -54,7 +54,7 @@ func TestFoldOracleCost(t *testing.T) {
 		w.Vars["session_cost_usd"] = 0.02
 		w.Vars["turn_cost_usd"] = 0.02
 
-		foldOracleCost(&w, 0.05)
+		foldAgentCost(&w, 0.05)
 
 		if got := w.Vars["session_cost_usd"].(float64); got != 0.07 {
 			t.Errorf("session_cost_usd = %v, want 0.07 (0.02 + 0.05)", got)
@@ -69,7 +69,7 @@ func TestFoldOracleCost(t *testing.T) {
 		w.Vars["session_cost_usd"] = 0.07
 		w.Vars["turn_cost_usd"] = 0.05
 
-		evs := foldOracleCost(&w, 0)
+		evs := foldAgentCost(&w, 0)
 
 		if got := w.Vars["turn_cost_usd"].(float64); got != 0 {
 			t.Errorf("turn_cost_usd = %v, want 0 (reset on host.run-only batch)", got)
@@ -91,7 +91,7 @@ func TestFoldOracleCost(t *testing.T) {
 		w.Vars["session_cost_usd"] = 0.07
 		w.Vars["turn_cost_usd"] = 0.0
 
-		if evs := foldOracleCost(&w, 0); len(evs) != 0 {
+		if evs := foldAgentCost(&w, 0); len(evs) != 0 {
 			t.Fatalf("emitted %d events, want 0 (turn already 0, no spend)", len(evs))
 		}
 	})

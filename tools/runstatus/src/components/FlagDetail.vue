@@ -2,11 +2,11 @@
 /**
  * FlagDetail — the right column: the selected flag's captured still, the
  * source_ref it resolves to (with a VS Code deep-link), a per-flag chat for
- * discussion (the read-only off-path oracle), and the dispatch buttons.
+ * discussion (the read-only off-path agent), and the dispatch buttons.
  *
  * Per epic shared decision 3 this panel CAPTURES and DISPATCHES — it never
  * edits a spec or calls a code-writing LLM. The chat is the read-only off-path
- * oracle for discussion; "Send to refine" emits a structured feedback note the
+ * agent for discussion; "Send to refine" emits a structured feedback note the
  * parent hands to runstatus.feedback.add. The interpretive edit is the slice-3
  * story's recorded refine, not a web side-effect.
  */

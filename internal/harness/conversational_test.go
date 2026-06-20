@@ -33,7 +33,7 @@ func TestConversationalHarness_FileRead(t *testing.T) {
 
 	// Write a temp file.
 	dir := t.TempDir()
-	content := "hello oracle world"
+	content := "hello agent world"
 	path := filepath.Join(dir, "test.txt")
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatalf("write temp file: %v", err)

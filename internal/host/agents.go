@@ -1,5 +1,5 @@
 // Package host — Agent context shim and per-call agent resolution for
-// host.oracle.{ask,talk,ask_with_mcp}.
+// host.agent.{ask,talk,ask_with_mcp}.
 //
 // An Agent is a named system prompt (and optional model override) declared in
 // the app's top-level `agents:` block (internal/app/types.go AgentDef). Effects
@@ -47,7 +47,7 @@ type BashProfile struct {
 	ScratchDir string   // optional when Kind == BashProfileSandboxWrite
 }
 
-// Agent is the per-call configuration applied when a host.oracle.* invocation
+// Agent is the per-call configuration applied when a host.agent.* invocation
 // names an agent. SystemPrompt is forwarded to `claude --append-system-prompt`;
 // Model, when non-empty, is forwarded to `claude -p --model`. Description on
 // the app-side AgentDef is documentation-only and intentionally not threaded
@@ -58,7 +58,7 @@ type BashProfile struct {
 // the handler logs a warn-line when both are set.
 //
 // BashProfile is required when Bash is in Tools and the agent is used with
-// host.oracle.ask or host.oracle.decide (enforced at loader time). Nil means
+// host.agent.ask or host.agent.decide (enforced at loader time). Nil means
 // "no Bash profile set"; task/converse handlers ignore this field.
 //
 // DefaultCwd, when non-empty, is used as the working directory for claude when
@@ -94,7 +94,7 @@ type Agent struct {
 }
 
 // Provider is a backend profile applied to the `claude` subprocess for an
-// oracle invocation: Env entries are merged onto the process environment
+// agent invocation: Env entries are merged onto the process environment
 // (overriding ambient values of the same key) and Model, when non-empty,
 // supplies the --model default for an invocation whose agent declares no
 // explicit model. It is the host-side translation of app.ProviderDecl, kept
@@ -110,7 +110,7 @@ type Provider struct {
 // providersKey is the unexported context key for the injected providers map.
 type providersKey struct{}
 
-// WithProviders injects the named-provider map into ctx so oracle handlers can
+// WithProviders injects the named-provider map into ctx so agent handlers can
 // resolve an agent's Provider / an effect's `provider:` arg to a Provider value.
 // Passing nil is safe; handlers that see no providers map leave every call on
 // the ambient environment.
@@ -135,34 +135,34 @@ func ProvidersFromContext(ctx context.Context) map[string]Provider {
 // runClaudeStreamJSON).
 type providerEnvKey struct{}
 
-// WithOracleProviderEnv returns a child context carrying env as the per-call
+// WithAgentProviderEnv returns a child context carrying env as the per-call
 // provider environment overrides applied to the claude subprocess. A nil/empty
 // map is a no-op so callers needn't guard. The most recent call wins (a nested
 // override replaces, not merges).
-func WithOracleProviderEnv(ctx context.Context, env map[string]string) context.Context {
+func WithAgentProviderEnv(ctx context.Context, env map[string]string) context.Context {
 	if len(env) == 0 {
 		return ctx
 	}
 	return context.WithValue(ctx, providerEnvKey{}, env)
 }
 
-// OracleProviderEnvFromCtx returns the provider env overrides installed by
-// WithOracleProviderEnv, or nil when none is installed (ambient environment).
-func OracleProviderEnvFromCtx(ctx context.Context) map[string]string {
+// AgentProviderEnvFromCtx returns the provider env overrides installed by
+// WithAgentProviderEnv, or nil when none is installed (ambient environment).
+func AgentProviderEnvFromCtx(ctx context.Context) map[string]string {
 	if v, ok := ctx.Value(providerEnvKey{}).(map[string]string); ok {
 		return v
 	}
 	return nil
 }
 
-// applyProvider resolves the provider for one oracle invocation and returns the
+// applyProvider resolves the provider for one agent invocation and returns the
 // context and agent to use downstream. Selection precedence (principle of least
 // surprise, mirroring system_prompt / tools): an effect's `with: { provider }`
 // arg wins over the resolved agent's Provider; neither set means the ambient
 // environment (the returned ctx/agent are unchanged).
 //
 // When a provider resolves:
-//   - its Env is installed via WithOracleProviderEnv so the claude exec layer
+//   - its Env is installed via WithAgentProviderEnv so the claude exec layer
 //     merges it onto the subprocess environment, and
 //   - when the agent declares no explicit Model, the provider's Model becomes
 //     the agent's effective model (an explicit agent/effect model still wins).
@@ -187,7 +187,7 @@ func applyProvider(ctx context.Context, args map[string]any, agent Agent) (conte
 			if strings.TrimSpace(agent.Effort) == "" && strings.TrimSpace(prof.Provider.Effort) != "" {
 				agent.Effort = prof.Provider.Effort
 			}
-			ctx = WithOracleProviderEnv(ctx, prof.Provider.Env)
+			ctx = WithAgentProviderEnv(ctx, prof.Provider.Env)
 		}
 		return ctx, agent
 	}
@@ -205,7 +205,7 @@ func applyProvider(ctx context.Context, args map[string]any, agent Agent) (conte
 	if strings.TrimSpace(agent.Effort) == "" && strings.TrimSpace(prov.Effort) != "" {
 		agent.Effort = prov.Effort
 	}
-	ctx = WithOracleProviderEnv(ctx, prov.Env)
+	ctx = WithAgentProviderEnv(ctx, prov.Env)
 	return ctx, agent
 }
 
@@ -216,7 +216,7 @@ type activeProfileKey struct{}
 // ActiveProfile is the resolved harness profile in effect for a session: a
 // Provider (env + model + effort) plus the profile Name (recorded in traces).
 // It is installed per-dispatch by the orchestrator from the live selection and
-// consulted by applyProvider only when an oracle call names no explicit
+// consulted by applyProvider only when an agent call names no explicit
 // provider — so a story/effect that pins a provider or model always wins.
 type ActiveProfile struct {
 	Name     string
@@ -252,7 +252,7 @@ func ActiveProfileNameFromCtx(ctx context.Context) string {
 // agentsKey is the unexported context key for the injected agents map.
 type agentsKey struct{}
 
-// WithAgents injects the agents map into ctx so host.oracle.* handlers can
+// WithAgents injects the agents map into ctx so host.agent.* handlers can
 // resolve a `with: { agent: <name> }` arg to an Agent value. Callers pass a
 // snapshot of AppDef.Agents (translated by the orchestrator) so the handler
 // doesn't need to import the app package. Passing nil is safe; handlers that
@@ -389,7 +389,7 @@ func appendDisallowedToolsFlag(cliArgs []string, tools []string) []string {
 // do.
 var readOnlyDeniedTools = []string{"Write", "Edit", "MultiEdit", "NotebookEdit", "Bash"}
 
-// alwaysDeniedTools are tools denied on EVERY oracle subprocess regardless of
+// alwaysDeniedTools are tools denied on EVERY agent subprocess regardless of
 // agent posture or permission mode.
 //
 // AskUserQuestion is the headless landmine: when a dispatched `claude -p` agent
@@ -482,7 +482,7 @@ func converseToolPolicy(permMode string, agent Agent) (cliMode string, disallowe
 	return cliMode, disallowed
 }
 
-// oracleSettingSources is the --setting-sources value applied to every oracle
+// agentSettingSources is the --setting-sources value applied to every agent
 // subagent invocation. It deliberately OMITS the "user" source so a story's
 // agents never inherit the operator's user-global Claude Code configuration —
 // enabledPlugins, custom agents, and skills installed under ~/.claude.
@@ -498,14 +498,14 @@ func converseToolPolicy(permMode string, agent Agent) (cliMode string, disallowe
 // config still applies, and leaves auth untouched (OAuth/credentials are read
 // from the keychain, not from a setting source). A story's agents are therefore
 // defined by its own --append-system-prompt / --model / --allowedTools flags.
-const oracleSettingSources = "project,local"
+const agentSettingSources = "project,local"
 
 // appendSettingSourcesFlag pins --setting-sources to the hermetic source set so
-// oracle subagents are isolated from the operator's user-global plugins/skills.
+// agent subagents are isolated from the operator's user-global plugins/skills.
 // Applied at every claude-CLI construction site (ask/decide/task via
 // buildBaseCLIArgs, both converse paths, and ask_structured).
 func appendSettingSourcesFlag(cliArgs []string) []string {
-	return append(cliArgs, "--setting-sources", oracleSettingSources)
+	return append(cliArgs, "--setting-sources", agentSettingSources)
 }
 
 // appendDefaultCwd returns workingDir if non-empty, otherwise returns

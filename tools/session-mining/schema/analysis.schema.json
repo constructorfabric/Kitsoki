@@ -47,7 +47,7 @@
             "scope": { "type": "array", "items": { "type": "string" } }
           }
         },
-        "determinism": { "enum": ["deterministic", "oracle-gated", "irreducible-llm"] },
+        "determinism": { "enum": ["deterministic", "agent-gated", "irreducible-llm"] },
         "actions": {
           "type": "array",
           "items": {
@@ -82,7 +82,7 @@
             }
           }
         },
-        "oracle_gates": {
+        "agent_gates": {
           "type": "array",
           "description": "present only when determinism != deterministic",
           "items": {

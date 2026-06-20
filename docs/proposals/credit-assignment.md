@@ -8,7 +8,7 @@
 
 Slice 1 gives a low-reward episode a *score*. That tells you the story did badly;
 it does not tell you **which decision point to change** — and a story's
-forward pass touches many: a routing call, a slot template, an `oracle.decide`
+forward pass touches many: a routing call, a slot template, an `agent.decide`
 gate, a `.star` script, a host invocation, a transition the author declared. A
 neural net answers "which weight" with a gradient. Kitsoki has no gradient, but
 it has something a black-box net does not: a complete, replayable trace of every
@@ -73,7 +73,7 @@ references decisions by their existing ids.
   "input_key": "scenario:scale-frontend",
   "reward_delta": 0.0,              // A.score; or B.score - A.score when paired
   "ranked": [
-    { "decision_ref": "evt:oracle.decide#3", "weight_kind": "decider",
+    { "decision_ref": "evt:agent.decide#3", "weight_kind": "decider",
       "delta": "A routed `clarify`, B routed `scale`", "blame": 0.71 },
     { "decision_ref": "evt:slot.match#1",    "weight_kind": "slot_template",
       "delta": "template missed `replicas` in A", "blame": 0.22 }
@@ -109,7 +109,7 @@ Attribution must be **reproducible from the same inputs** so a replay lines up:
   analyzer. Two methods, escalating: (a) **pairwise-trace-diff** (deterministic,
   default) — align the two traces by room/decision position, find the first
   divergent decision, weight blame by proximity to the scored outcome; (b)
-  **decide-ranked** (optional, cassette-gated) — an `oracle.decide` judge ranks
+  **decide-ranked** (optional, cassette-gated) — an `agent.decide` judge ranks
   candidate decisions when the structural diff is ambiguous. Method (a) is the
   re-runnable, script-form preference from [`concept.md` §3](../architecture/concept.md);
   (b) is the judgment fallback, recorded as interpretive.

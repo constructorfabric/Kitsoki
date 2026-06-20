@@ -2,7 +2,7 @@
 //
 // kitsoki replay <session-id> [--mode file_diff|llm_rerun|hybrid]
 //
-// Three modes (oracle-split proposal §4.3):
+// Three modes (agent-split proposal §4.3):
 //
 //	--mode file_diff   (default) — replay Mode A/B spans deterministically from
 //	                               (initial_state_hash, final_diff). Skips Mode C
@@ -13,7 +13,7 @@
 //	--mode hybrid      — run deterministic spans deterministically; re-run LLM
 //	                     spans for divergence comparison.
 //
-// For host.oracle.extract spans, replay can additionally swap tiers: if the
+// For host.agent.extract spans, replay can additionally swap tiers: if the
 // author has since added a synonym or slot-template that covers a previously
 // LLM-resolved input, the replay shows whether the new deterministic tier
 // would have matched. Phase 5 adds the CLI surface for suggesting synonyms;
@@ -39,7 +39,7 @@ func replayCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "replay <session-id>",
 		Short: "Replay a recorded session's task spans",
-		Long: `Replay the host.oracle.task spans recorded in a session's event log.
+		Long: `Replay the host.agent.task spans recorded in a session's event log.
 
 Three modes are supported:
 
@@ -58,12 +58,12 @@ Three modes are supported:
   hybrid     — replay deterministic spans (Mode A/B), then re-run LLM spans
                for divergence comparison. Combines coverage of both other modes.
 
-For host.oracle.extract spans, the replay additionally checks whether a
+For host.agent.extract spans, the replay additionally checks whether a
 recently-added synonym or slot-template would have resolved the input that
 previously required an LLM call (concept §4 progressive determinism). See
 'kitsoki extract suggest-synonym' (Phase 5) for the authoring side.
 
-For host.oracle.converse spans (D10), the replayer renders an opaque block
+For host.agent.converse spans (D10), the replayer renders an opaque block
 via host.RenderConverseSpan(chatID, seqStart, seqEnd) — conversations are
 the artifact and are not deterministically replayable; the ChatStore is the
 canonical record. Example output:
@@ -85,7 +85,7 @@ Examples:
 			// Phase 4 delivers the flags and the command structure.
 			// The full traversal of journal task.end events and diff-apply
 			// mechanics are wired here once the journal reader API is stable
-			// (Phase 6 will add the oracle-serve surface that makes the reader
+			// (Phase 6 will add the agent-serve surface that makes the reader
 			// addressable per session-id + span kind).
 			//
 			// For now, surface the structured error so the CLI surface is

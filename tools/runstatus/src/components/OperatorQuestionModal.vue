@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // OperatorQuestionModal — surfaces a forwarded agent question to the operator.
 //
-// When a dispatched agent forwards an AskUserQuestion into kitsoki, the oracle
+// When a dispatched agent forwards an AskUserQuestion into kitsoki, the agent
 // turn is parked and BLOCKING until we answer (see operatorQuestions store +
 // internal/host/operator_ask_bridge.go). This modal renders the active question
 // at the head of the queue and submits the operator's selection, which unblocks

@@ -19,7 +19,7 @@ app:
 # Every room auto-advances via a synthetic `route` intent emitted from
 # on_enter (post-bind), so `kitsoki session continue --intent start`
 # walks the whole pipeline to a terminal state in one turn — no human in
-# the loop. The fixer is an agentic `host.oracle.task` pinned to
+# the loop. The fixer is an agentic `host.agent.task` pinned to
 # claude-sonnet-4-6 (which execs `claude -p --model sonnet`).
 #
 # Depth note: the synthetic emit_intent chain is depth-capped at 8. The
@@ -29,7 +29,7 @@ app:
 
 hosts:
   - host.run
-  - host.oracle.task
+  - host.agent.task
   - host.inbox.add
 
 # The fixer persona. Agentic write surface (Edit/Write) plus a bounded

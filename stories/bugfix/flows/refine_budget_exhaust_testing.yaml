@@ -21,7 +21,7 @@ host_handlers:
     data: { ok: true, sha: "abc", diff: "" }
   host.local:
     data: { ok: true, log: "PASS", passed: 1, failed: 0 }
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted:
@@ -30,7 +30,7 @@ host_handlers:
         status:           "passed"
         tests_run:        { passed: 1, failed: 0, log: "PASS" }
 
-  host.oracle.ask:
+  host.agent.ask:
     data:
       ok: true
       submitted:
@@ -39,7 +39,7 @@ host_handlers:
         status:           "passed"
         tests_run:        { passed: 1, failed: 0, log: "PASS" }
 
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:

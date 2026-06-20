@@ -1,4 +1,4 @@
-# authoring — ONE host.oracle.task authors the source from the brief.
+# authoring — ONE host.agent.task authors the source from the brief.
 #
 # tour → static HTML mockup page(s) + a tour manifest ({id,route,target,
 #        title,body,...}, .agents/skills/kitsoki-ui-demo/SKILL.md)
@@ -40,7 +40,7 @@ states:
             - label: "look"
               hint:  "re-render"
     on_enter:
-      - invoke: host.oracle.task
+      - invoke: host.agent.task
         id: author_source
         once: true
         with:

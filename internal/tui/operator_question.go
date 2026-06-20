@@ -36,7 +36,7 @@ import (
 //   - Cancel == true: Esc was pressed. The caller sends a nil answer back to the
 //     prompter (the host maps that to an LLM-visible "proceed on your own").
 //   - Cancel == false: every question is answered. Answers carries the full
-//     map to hand back to the parked oracle.
+//     map to hand back to the parked agent.
 type operatorQuestionResult struct {
 	Cancel  bool
 	Answers map[string]any
@@ -47,7 +47,7 @@ type operatorQuestionResult struct {
 type operatorQuestionModel struct {
 	active    bool
 	questions []host.OperatorQuestion
-	// answerCh is the channel the parked oracle's Ask is blocked on. The
+	// answerCh is the channel the parked agent's Ask is blocked on. The
 	// caller (updateOperatorQuestion) owns sending on it; the model carries it
 	// so the lifecycle stays in one place.
 	answerCh chan map[string]any
@@ -69,13 +69,13 @@ func (m *operatorQuestionModel) IsActive() bool { return m.active }
 
 // Close resets the widget to the inactive zero state. It does NOT touch
 // answerCh's parked reader — the caller is responsible for sending an answer
-// (or nil) before closing, so the oracle never strands.
+// (or nil) before closing, so the agent never strands.
 func (m *operatorQuestionModel) Close() {
 	*m = operatorQuestionModel{}
 }
 
 // Open initialises the widget from a forwarded question batch and the channel
-// the oracle is blocked on. An empty batch is rejected (the host never forwards
+// the agent is blocked on. An empty batch is rejected (the host never forwards
 // one, but the widget is defensive) so Open's caller can fall back cleanly.
 func (m *operatorQuestionModel) Open(questions []host.OperatorQuestion, answerCh chan map[string]any) error {
 	if len(questions) == 0 {

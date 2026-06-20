@@ -22,8 +22,8 @@ const (
 	// KindRouting covers events that advance the turn or record how it was routed.
 	KindRouting Kind = "routing"
 
-	// KindOracleCall covers LLM/operator calls with prompt, response, cost and latency.
-	KindOracleCall Kind = "oracle-call"
+	// KindAgentCall covers LLM/operator calls with prompt, response, cost and latency.
+	KindAgentCall Kind = "agent-call"
 
 	// KindHostCall covers deterministic side-effecting host execution.
 	KindHostCall Kind = "host-call"
@@ -53,9 +53,9 @@ func ObservationKind(kind EventKind) Kind {
 	case TurnStarted, IntentAccepted:
 		return KindRouting
 
-	// oracle-call — LLM/operator calls with prompt/response/cost/latency
-	case OracleCalled, OracleReturned, OracleError, LLMToolCall:
-		return KindOracleCall
+	// agent-call — LLM/operator calls with prompt/response/cost/latency
+	case AgentCalled, AgentReturned, AgentError, LLMToolCall:
+		return KindAgentCall
 
 	// host-call — deterministic side-effecting execution
 	case HostInvoked, HostDispatched, HostReturned, HarnessError:

@@ -40,7 +40,7 @@ host_handlers:
   # ci_monitoring poll doesn't loop.
   host.local:
     data: { ok: true, state: "success", checks: "" }
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:

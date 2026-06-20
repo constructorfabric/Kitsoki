@@ -3,12 +3,12 @@
 # Rooms: intake → brief-gate → authoring → rendering → review → refining → done
 #
 # Interpretive / deterministic split (memory: kitsoki-moat-is-architecture):
-#   intake     interpretive:  host.oracle.converse distils a scenario brief (a chat, not a form)
-#   brief-gate interpretive:  host.oracle.decide — is the brief concrete enough?
-#   authoring  interpretive:  ONE host.oracle.task authors the source (HTML+tour | slidey deck), workspace-jailed
+#   intake     interpretive:  host.agent.converse distils a scenario brief (a chat, not a form)
+#   brief-gate interpretive:  host.agent.decide — is the brief concrete enough?
+#   authoring  interpretive:  ONE host.agent.task authors the source (HTML+tour | slidey deck), workspace-jailed
 #   rendering  DETERMINISTIC: deck → host.slidey.render mp4 ; tour → host.run record_tour.sh — both emit chapters.json (slice 1)
 #   review     deterministic: media(video_handle) inline + drains feedback.jsonl (slice 2) ; checkpoint
-#   refining   interpretive:  ONE host.oracle.task edits each feedback note's source_ref target (binding directives)
+#   refining   interpretive:  ONE host.agent.task edits each feedback note's source_ref target (binding directives)
 #   done       gallery of the final video + scenarios + feedback addressed per iteration
 
 app:
@@ -19,9 +19,9 @@ app:
   license: "CC0"
 
 hosts:
-  - host.oracle.converse
-  - host.oracle.decide
-  - host.oracle.task
+  - host.agent.converse
+  - host.agent.decide
+  - host.agent.task
   - host.slidey.render
   - host.run
   - host.artifacts_dir

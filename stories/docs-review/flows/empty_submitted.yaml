@@ -1,4 +1,4 @@
-# empty_submitted — oracle.decide returns ok=true but the submitted
+# empty_submitted — agent.decide returns ok=true but the submitted
 # payload is {} (missing every required field). Without a defensive
 # guard on reviewing.done, the story walks to `reviewed` and renders
 # garbage. With the guard, it bounces to review_failed.

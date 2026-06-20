@@ -14,7 +14,7 @@ import (
 
 // Teleport jumps the session to the given target state with the slot bag
 // restored. Stackless: does not push the current state onto the room
-// history stack — used by inbox notifications and the Oracle Room banner,
+// history stack — used by inbox notifications and the Agent Room banner,
 // where the source room remains the conceptual "where the user came from"
 // for any subsequent back-pop. Returns the new TurnOutcome with
 // re-rendered view and updated allowed intents.

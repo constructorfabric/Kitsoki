@@ -100,7 +100,7 @@ func (o *Orchestrator) routeViaFreeFormFallback(ctx context.Context, sid app.Ses
 		return nil, false, fmt.Errorf("orchestrator: routeViaFreeFormFallback: load journey: %w", err)
 	}
 	st := lookupStateByPath(o.def, journey.State)
-	if st == nil || st.DefaultIntent != "" || st.OracleOffRamp != nil {
+	if st == nil || st.DefaultIntent != "" || st.AgentOffRamp != nil {
 		return nil, false, nil
 	}
 	if strings.TrimSpace(cfg.State) == string(journey.State) {

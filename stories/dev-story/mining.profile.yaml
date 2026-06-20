@@ -10,7 +10,7 @@
 # mechanically. See docs/stories/story-coverage-mining.md.
 #
 # dev-story is the broad "engineer's-day" hub: its OWN rooms are the day-level
-# surfaces (oracle Q&A, ideas, the PRD→design pipeline, code_review, deploy,
+# surfaces (agent Q&A, ideas, the PRD→design pipeline, code_review, deploy,
 # incident, observability, docs). The actual bugfix / PR-refinement commit loops
 # live in IMPORTED sub-stories (bf, pr) and are mined by git-ops — so the per-room
 # git mechanics (commit, branch, rebase, conflict) are non_goals here.
@@ -26,7 +26,7 @@ scope:
   max: 25
 
   # post-filter to these action tags (vocab/tags.yaml). dev-story's own rooms model
-  # codebase inspection (oracle / design_search), spec-driven authoring (the design
+  # codebase inspection (agent / design_search), spec-driven authoring (the design
   # + PRD pipeline), doc writing (design publish, docs), PR review (code_review) and
   # error triage (incident / observability). It does NOT model the git commit loop —
   # that is the imported bf/pr sub-stories (see non_goals).
@@ -36,7 +36,7 @@ scope:
 # the coverage.md "candidate room" column by coverage_prep.py. Room ids are the
 # files under stories/dev-story/rooms/.
 owns:
-  explore-codebase:           [oracle, design_search, ticket_search]
+  explore-codebase:           [agent, design_search, ticket_search]
   implement-from-spec:        [design, prd_published, ideas]
   write-docs:                 [design_draft, design_materialize, design_refine, docs, prd_published]
   review-feedback:            [code_review]

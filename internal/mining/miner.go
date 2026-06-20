@@ -22,17 +22,17 @@ const (
 	// TriggerSeed is the bounded first-pass over a project's EXISTING transcript
 	// history — fires exactly once per slug, when its watermark is empty. It mines
 	// the human's interactive backlog (entrypoint=cli) and DROPS dispatched
-	// headless agent/oracle sessions (prep.py default).
+	// headless agent/agent sessions (prep.py default).
 	TriggerSeed PassTrigger = PassTrigger(store.MiningTriggerSeed)
 	// TriggerLive is a debounced pass over the NEW transcripts the live free-form
 	// work produced (mtime > watermark). It KEEPS dispatched agent sessions
-	// (prep.py --keep-agent-sessions) because those host.oracle.task turns are
+	// (prep.py --keep-agent-sessions) because those host.agent.task turns are
 	// exactly what work happened.
 	TriggerLive PassTrigger = PassTrigger(store.MiningTriggerLive)
 )
 
 // PassRequest is the resolved input to one pipeline pass — what the injected
-// PipelineRunner needs to run prep.py → the one oracle pass → ground/score/emit.
+// PipelineRunner needs to run prep.py → the one agent pass → ground/score/emit.
 // It is deterministic; the runner reads it and returns the emitted recipes.
 type PassRequest struct {
 	// Slug is the Claude Code projects slug of the repo (mining.Slug).
@@ -69,7 +69,7 @@ type PassResult struct {
 
 // PipelineRunner is the injected seam that wraps tools/session-mining: it runs
 // prep.py(--job, sample, keep-agent-sessions) → intents.workflow.js (THE ONE
-// oracle pass, cassette-backed when real) → ground.py/tag_score.py/emit.py and
+// agent pass, cassette-backed when real) → ground.py/tag_score.py/emit.py and
 // parses analysis.json into recipes. It is the only path that may spend LLM, and
 // only step B does; every test injects a fake. The package never reimplements
 // the analyzer — this seam invokes it.
@@ -113,7 +113,7 @@ type Config struct {
 //
 // Dependency injection is the spine: Resolver, Sched, Pipeline, Marks, Sink,
 // Recipes and Clk are all seams. No path here calls a live LLM — the single
-// oracle pass lives behind the injected PipelineRunner, cassette-backed when
+// agent pass lives behind the injected PipelineRunner, cassette-backed when
 // real.
 type Miner struct {
 	Resolver TranscriptResolver
@@ -199,7 +199,7 @@ func (m *Miner) Start(ctx context.Context, sid app.SessionID, repoPath string) e
 }
 
 // Notify signals that new transcripts may exist (a turn finished, a dispatched
-// host.oracle.task landed). It debounces a live pass by Cadence: repeated calls
+// host.agent.task landed). It debounces a live pass by Cadence: repeated calls
 // within the window coalesce into one pass. A disabled miner records a paused
 // MiningPassRan and runs nothing. Safe to call from any goroutine, off any turn.
 func (m *Miner) Notify(ctx context.Context) {

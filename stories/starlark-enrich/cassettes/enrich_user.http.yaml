@@ -9,7 +9,7 @@
 #     KITSOKI_HTTP_CASSETTE_RECORD=all \
 #       go test ./internal/testrunner/ -run TestStarlarkEnrichExample -count=1
 #
-# This is a SEPARATE cassette kind from the oracle host_cassette: host_cassette
+# This is a SEPARATE cassette kind from the agent host_cassette: host_cassette
 # replaces a whole handler, whereas this lets the REAL host.starlark.run handler
 # run and only replays the network it reaches through ctx.http. The testrunner
 # loads it via the fixture's `starlark_http_cassette:` field, builds a replay

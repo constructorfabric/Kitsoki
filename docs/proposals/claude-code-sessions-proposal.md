@@ -25,7 +25,7 @@ What each proposal section maps to in code, and what's left to do.
 | §0 validation spike | **shipped** | [`notes/claude-code-sessions-spike.md`](notes/claude-code-sessions-spike.md) |
 | §2 concepts | **shipped** | `internal/chats/pty.go`, `internal/chats/queue.go` |
 | §3 chat-mode FSM (idle ↔ headless ↔ pty_attached ↔ pty_background) | **shipped** | `internal/chats/pty.go` types |
-| §4.1 headless envelope | **shipped** unchanged | `internal/host/oracle.go` |
+| §4.1 headless envelope | **shipped** unchanged | `internal/host/agent.go` |
 | §4.2 PTY envelope | **shipped** | `internal/chatattach/attach.go` |
 | §5 mode-switching via `claude --resume` | **shipped** with the §0/A3 split — first attach uses `--session-id`, subsequent uses `--resume` | `internal/chatattach/attach.go:buildClaudeCommand` |
 | §6.1 reuse `chat_locks` | **shipped** unchanged | `internal/chats/lock.go` (pre-existing) |
@@ -42,7 +42,7 @@ What each proposal section maps to in code, and what's left to do.
 | §9.4 changed vs new artifacts | **accurate** — every "Unchanged" stayed unchanged; every "New" line landed | — |
 | §10 persistence and recovery | **shipped** | `internal/chats/pty.go:GCDeadTmux`, `internal/chatattach/attach.go` stale-row + cross-host handling |
 | §11.1 general security | **shipped** | Same posture as today |
-| §11.2 per-chat permission level | **deferred** — Phase H. Every `/attach` runs `--permission-mode default` (interactive prompts); every headless drive runs `bypassPermissions` (today's `host.oracle.ask_with_mcp` posture). The `interactive-only` / `bypass-when-headless` / `bypass-always` policy and `kitsoki chat allow-bypass` verb are not built | — |
+| §11.2 per-chat permission level | **deferred** — Phase H. Every `/attach` runs `--permission-mode default` (interactive prompts); every headless drive runs `bypassPermissions` (today's `host.agent.ask_with_mcp` posture). The `interactive-only` / `bypass-when-headless` / `bypass-always` policy and `kitsoki chat allow-bypass` verb are not built | — |
 | §12 open questions | mostly addressed by shipping; remaining ones flagged inline | — |
 | §13 what this does NOT do | **honoured** — still no daemon, still local-only | — |
 | §15 future work | the deferred phases above are the actionable items; §15.1–15.9 entries that haven't landed are still future work | — |
@@ -110,7 +110,7 @@ notification when a chat goes idle while the user is detached.
   machinery.
 - **`claude_session_id` is the bridge.** Already on `chats`; both
   `claude -p --resume <id>` (headless, today's path in
-  `host.oracle.ask_with_mcp`) and `claude --resume <id>`
+  `host.agent.ask_with_mcp`) and `claude --resume <id>`
   (interactive, in tmux) use it. Mode-switching is
   kill-and-respawn against the same id.
 - **Primary UX: chat container rooms** (§9.3). An app-manifest
@@ -160,9 +160,9 @@ forces a redesign.
 
 | # | Claim | How to verify | If false |
 |---|---|---|---|
-| A1 | `claude --resume <id>` (interactive) and `claude -p --resume <id> --output-format stream-json` (headless) can be used **alternately** against the same on-disk session file (`~/.claude/projects/<workspace>/<id>.jsonl`) without corrupting it. | Spike: drive a session through `host.oracle.ask_with_mcp` (existing headless path), then `claude --resume <id>` interactively, type a turn, exit, then drive another headless turn. Inspect the JSONL between each step. | Mode-switching design (§5) collapses; fall back to "PTY-only sessions" or "headless-only sessions" with no cross-over. |
+| A1 | `claude --resume <id>` (interactive) and `claude -p --resume <id> --output-format stream-json` (headless) can be used **alternately** against the same on-disk session file (`~/.claude/projects/<workspace>/<id>.jsonl`) without corrupting it. | Spike: drive a session through `host.agent.ask_with_mcp` (existing headless path), then `claude --resume <id>` interactively, type a turn, exit, then drive another headless turn. Inspect the JSONL between each step. | Mode-switching design (§5) collapses; fall back to "PTY-only sessions" or "headless-only sessions" with no cross-over. |
 | A2 | The headless stream-json output contains a recognisable end-of-turn marker (likely a `type: "result"` event or `message_stop`). | Spike: run a headless turn, capture the NDJSON, identify the terminal event(s). | §9.1 idle-detection needs a different mechanism (heuristic timeout — much worse UX). |
-| A3 | `claude --session-id <uuid>` is only required for the *first* invocation of a brand-new session id; `--resume <id>` works on subsequent invocations without re-passing `--session-id`. (This is the pattern `host.oracle.ask_with_mcp` already uses; just confirm.) | Inspection of existing `internal/host/oracle_ask_with_mcp.go` retry loop + spike. | Schema changes (chats already stores `claude_session_id`); only the spawn paths need adjusting. |
+| A3 | `claude --session-id <uuid>` is only required for the *first* invocation of a brand-new session id; `--resume <id>` works on subsequent invocations without re-passing `--session-id`. (This is the pattern `host.agent.ask_with_mcp` already uses; just confirm.) | Inspection of existing `internal/host/agent_ask_with_mcp.go` retry loop + spike. | Schema changes (chats already stores `claude_session_id`); only the spawn paths need adjusting. |
 | A4 | Interactive `claude --resume` exits cleanly when tmux kills its containing pane (`tmux kill-session`), leaving the JSONL in a resumable state — not a half-written turn that breaks subsequent `--resume`. | Spike: kill the tmux session mid-turn, then `claude --resume <id>` afterward and check whether the session opens cleanly or errors. | `kitsoki chat detach --mode stop` becomes much harsher (we have to wait for claude to finish a turn before killing). |
 | A5 | `--permission-mode bypassPermissions` (or whatever flag the headless path passes today) yields the same permission behaviour across consecutive `--resume` invocations — permission state is per-invocation, not persisted into the session file. | Spike: confirm by reading claude docs + behavioural check. | Security analysis (§11.2) needs revisiting; per-session permission may require explicit grant tables. |
 
@@ -183,7 +183,7 @@ provides:
   `(app_id, room, scope_key)`, with global lifetime decoupled
   from kitsoki sessions.
 - A `claude_session_id` column on each chat — already used by
-  `host.oracle.ask_with_mcp` to invoke `claude -p --session-id`
+  `host.agent.ask_with_mcp` to invoke `claude -p --session-id`
   and `--resume`.
 - Singleton serialization via
   [`chat_locks`](../../internal/chats/schema.sql) +
@@ -194,12 +194,12 @@ provides:
   |archive|unlock`.
 - A host suite: `host.chat.resolve|list|transcript|create|fork|
   archive|rename|suggest_title|resolve_ref`, plus chat-aware
-  variants of `host.oracle.talk` and `host.oracle.ask_with_mcp`.
+  variants of `host.agent.talk` and `host.agent.ask_with_mcp`.
 
 What chats *doesn't* do yet — the gaps this proposal fills:
 
 - **No interactive mode.** A chat can only be driven turn-by-turn
-  through `host.oracle.*` or `kitsoki chat continue`. There's no
+  through `host.agent.*` or `kitsoki chat continue`. There's no
   way for a developer to drop into the **native claude code TUI**
   against a chat's `claude_session_id` — they'd have to copy the
   id and run `claude --resume <id>` in a separate terminal,
@@ -252,7 +252,7 @@ any instant. New for this proposal; tracked on the
 `chat_pty_sessions` row when applicable:
 
 - **`headless`** — A short-lived `claude -p --resume <id>` is
-  running, driven by `host.oracle.ask_with_mcp` or
+  running, driven by `host.agent.ask_with_mcp` or
   `kitsoki chat continue`. Already exists. Transient — held
   only while the call is in flight, gated by `chat_locks`.
 - **`pty_attached`** — A `claude --resume <id>` process is
@@ -309,7 +309,7 @@ keybinding):
 ```mermaid
 stateDiagram-v2
     [*] --> idle
-    idle --> headless: kitsoki chat continue\nor host.oracle.* with chat_id
+    idle --> headless: kitsoki chat continue\nor host.agent.* with chat_id
     headless --> idle: turn complete
     idle --> pty_attached: kitsoki chat attach
     pty_attached --> pty_background: detach (default, mode=background)
@@ -355,7 +355,7 @@ kitsoki chat continue ─▶ chats.Store.WithLock ─▶ claude -p --resume <id>
 ```
 
 Reference impl:
-[`internal/host/oracle_ask_with_mcp.go`](../../internal/host/oracle_ask_with_mcp.go)
+[`internal/host/agent_ask_with_mcp.go`](../../internal/host/agent_ask_with_mcp.go)
 already handles the spawn, `--session-id`, abandonment-recovery
 retry on `--resume`, and the stream parser. We do not duplicate
 this code; the queue dispatcher calls into the same path.
@@ -822,7 +822,7 @@ minutes. Sync drives would block the state-machine effect
 chain. The async pattern is already familiar in this codebase
 (`host.RequestClarification` resumes after the user answers).
 
-This host wraps the existing chats-aware oracle path; it does
+This host wraps the existing chats-aware agent path; it does
 not duplicate it.
 
 ### 9.3 Chat container rooms — the seamless TUI ↔ PTY handoff
@@ -1026,7 +1026,7 @@ Three principles, in order:
 | `chats` table | **No schema change**; same row lifecycle. |
 | `chat_locks` + `chats.Store.WithLock` | **Reused unchanged.** PTY mode acquires the same lock. |
 | `chat_messages` | **Unchanged.** Drives append messages the same way `kitsoki chat continue` does today. |
-| `host.oracle.ask_with_mcp` / `talk` | **Unchanged.** Continue to drive turns when invoked directly. |
+| `host.agent.ask_with_mcp` / `talk` | **Unchanged.** Continue to drive turns when invoked directly. |
 | `host.chat.*` hosts | **Unchanged.** New `host.chat.drive` joins them. |
 | `kitsoki chat continue` | **Unchanged behaviour;** internally may share code with the queue dispatcher. |
 | Inbox (`internal/inbox/`) | **New producer:** chat-idle and drive-complete events. No API change. |
@@ -1077,7 +1077,7 @@ Recovery cases:
   will fail with a clear error; they need to SSH to the right
   host first. Cross-host attach is §15.7 future work.
 - **Headless `claude -p` crashes mid-turn.** The existing
-  retry loop in `host.oracle.ask_with_mcp` handles this for
+  retry loop in `host.agent.ask_with_mcp` handles this for
   direct callers. For drive-dispatched turns, the dispatcher
   marks the row `'failed'` after retries are exhausted; the
   row stays visible in `kitsoki chat queue view` for
@@ -1123,7 +1123,7 @@ same security context as `claude` invoked directly today.
 Claude exposes a `--permission-mode` flag with values like
 `default` (prompts the user), `acceptEdits`, and
 `bypassPermissions`. The existing
-[`host.oracle.ask_with_mcp`](../../internal/host/oracle_ask_with_mcp.go)
+[`host.agent.ask_with_mcp`](../../internal/host/agent_ask_with_mcp.go)
 already passes `bypassPermissions` for one-shot headless calls
 — there's no human to answer prompts. **PTY mode runs claude
 interactively, where the human can answer prompts.** A drive
@@ -1139,7 +1139,7 @@ mode, in an analogous chat-config when not). Specifically:
 | Chat permission level | PTY mode | Headless mode | Notes |
 |---|---|---|---|
 | **`interactive-only`** | `--permission-mode default` (prompts user) | drives via this chat are **rejected** — error returned to enqueuer | Default for new chats. Indirect transports cannot drive. |
-| **`bypass-when-headless`** | `--permission-mode default` | `--permission-mode bypassPermissions` | Today's `host.oracle.ask_with_mcp` posture. **Explicitly user-granted per chat** before any indirect transport can drive. |
+| **`bypass-when-headless`** | `--permission-mode default` | `--permission-mode bypassPermissions` | Today's `host.agent.ask_with_mcp` posture. **Explicitly user-granted per chat** before any indirect transport can drive. |
 | **`bypass-always`** | `--permission-mode bypassPermissions` | `--permission-mode bypassPermissions` | For trusted automation; user opt-in. |
 
 The granting verb is `kitsoki chat allow-bypass <chat-id>
@@ -1335,7 +1335,7 @@ the frame and bindings allow.
 |---|---|---|
 | **0. Validation spike** | The §0 assumption checks. One page of notes in `docs/proposals/notes/`. **Gate to phase A.** | ~1 day |
 | **A. Schema + queue primitives** | Bump `chats` schema version; add `chat_pty_sessions` and `chat_input_queue` tables; new `Store` methods (`AttachPTY`, `DetachPTY`, `Enqueue`, `Dequeue`, `MarkDrive*`, `GCDeadTmux`). Pure storage layer; no claude integration yet. | ~2-3 days |
-| **B. Drive dispatcher + `host.chat.drive`** | Headless dispatch path: pull pending drives, run through the existing oracle-ask path, record results. New host with sync/async/`on_complete` semantics. `kitsoki chat queue {add,list,dispatch,dismiss}` CLI. No PTY yet. | ~1 week |
+| **B. Drive dispatcher + `host.chat.drive`** | Headless dispatch path: pull pending drives, run through the existing agent-ask path, record results. New host with sync/async/`on_complete` semantics. `kitsoki chat queue {add,list,dispatch,dismiss}` CLI. No PTY yet. | ~1 week |
 | **C. Tmux PTY spawn + bare `kitsoki chat attach`** | `tmux new-session` + `tmux attach` with no kitsoki frame yet. Heartbeats the chat lock. Validates the persistence story (detach, reattach, GC stale tmux). Internally shippable interim. | ~3-4 days |
 | **D. Kitsoki frame (chrome v1)** | The TUI frame: vt-emulator embed, status + instructions rows with distinct bg, SIGWINCH handling. ~2 weeks even with a vendored vt library; budget accordingly per review M3. | ~2 weeks |
 | **E. Tmux key bindings + queue popup** | `kitsoki-tmux.conf` ships; `display-popup` invocations; queue popup interaction (j/k/Enter/e/x). | ~3-4 days |
@@ -1373,7 +1373,7 @@ multi-transport and notification story; phase I is polish.
 5. **Default per-chat permission level.** `interactive-only`
    (safe; indirect drives rejected without explicit grant) vs.
    `bypass-when-headless` (today's de-facto behaviour through
-   `host.oracle.ask_with_mcp` minus the gate). Proposal:
+   `host.agent.ask_with_mcp` minus the gate). Proposal:
    `interactive-only` — explicit grant required.
 6. **`host.chat.drive` default `await:`** `false` (async,
    on_complete callback) vs. `true` (sync, blocks). Proposal:

@@ -8,13 +8,13 @@ import (
 // RunClaudeOneShotForHarness adapts the canonical one-shot claude runner
 // (runClaudeOneShot) to the intent-routing harness's exec contract so the
 // routing harness execs the `claude` binary through the SAME mechanism as
-// every oracle verb. Stream/usage capture, the ClaudeRunner test seam, the
+// every agent verb. Stream/usage capture, the ClaudeRunner test seam, the
 // IDE-link scrub, KITSOKI_SESSION_ID injection, and kitsoki-bin-on-PATH all
 // apply uniformly — there is now exactly one place that forks claude.
 //
 // It lives here, not in harness, because runClaudeOneShot is package-private
 // to host and host is the single owner of the claude invocation engine. The
-// routing harness imports nothing from host (host → oracle → harness already,
+// routing harness imports nothing from host (host → agent → harness already,
 // so harness must not import host); instead the wiring site (cmd/kitsoki)
 // assigns this bare function to harness.ClaudeCLIConfig.Exec. Go's structural
 // func typing makes it satisfy harness.ClaudeExec without host importing

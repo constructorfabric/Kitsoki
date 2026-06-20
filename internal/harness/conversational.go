@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// ConversationalTool is a read-only tool available in the Oracle harness.
+// ConversationalTool is a read-only tool available in the Agent harness.
 type ConversationalTool struct {
 	// Name is the tool identifier.
 	Name string
@@ -18,7 +18,7 @@ type ConversationalTool struct {
 	Call func(ctx context.Context, args map[string]any) (string, error)
 }
 
-// ConversationalResult is the response from the Oracle harness.
+// ConversationalResult is the response from the Agent harness.
 type ConversationalResult struct {
 	// Markdown is the LLM's response for direct display.
 	Markdown string
@@ -26,7 +26,7 @@ type ConversationalResult struct {
 	ToolCalls []ConversationalToolCall
 }
 
-// ConversationalToolCall records one tool invocation during an Oracle turn.
+// ConversationalToolCall records one tool invocation during an Agent turn.
 type ConversationalToolCall struct {
 	Name   string
 	Args   map[string]any
@@ -44,8 +44,8 @@ type ConversationalInput struct {
 	WorkingDir string
 }
 
-// ConversationalHarness is the read-only Q&A backend for the Oracle Room
-// (a state with mode: conversational; see docs/architecture/oracle-plugin.md).
+// ConversationalHarness is the read-only Q&A backend for the Agent Room
+// (a state with mode: conversational; see docs/architecture/agent-plugin.md).
 // Unlike the routing harnesses it does NOT advance the state machine: it
 // answers in Markdown for direct display, and the user leaves via the "back"
 // intent that pops the room history stack. It supports tool use with a
@@ -73,7 +73,7 @@ func (h *ConversationalHarness) Tools() []ConversationalTool {
 	return h.tools
 }
 
-// RunConversational handles one Oracle Room turn.
+// RunConversational handles one Agent Room turn.
 // In this stub implementation, it echoes the user's question wrapped as
 // Markdown with available tool info. A live implementation would call the
 // Anthropic API with tool_use enabled.
@@ -81,7 +81,7 @@ func (h *ConversationalHarness) RunConversational(ctx context.Context, in Conver
 	// Stub: reflect the query back with tool list.
 	// A production implementation would call the LLM here.
 	var sb strings.Builder
-	sb.WriteString("**Oracle Response** (stub mode)\n\n")
+	sb.WriteString("**Agent Response** (stub mode)\n\n")
 	sb.WriteString(fmt.Sprintf("Your question: %s\n\n", in.UserText))
 	sb.WriteString("Available read-only tools:\n")
 	for _, t := range h.tools {
@@ -98,10 +98,10 @@ func (h *ConversationalHarness) InvokeToolByName(ctx context.Context, name strin
 			return t.Call(ctx, args)
 		}
 	}
-	return "", fmt.Errorf("oracle: tool %q is not in the read-only allow-list", name)
+	return "", fmt.Errorf("agent: tool %q is not in the read-only allow-list", name)
 }
 
-// builtinConversationalTools returns the read-only tool set for the Oracle.
+// builtinConversationalTools returns the read-only tool set for the Agent.
 func builtinConversationalTools() []ConversationalTool {
 	return []ConversationalTool{
 		{

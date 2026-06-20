@@ -1,11 +1,11 @@
 # diagnose_artifact_round_trip — exercises the FULL bind-to-disk path that
-# the other pr-refinement fixtures skip. Stubs host.oracle.decide and
+# the other pr-refinement fixtures skip. Stubs host.agent.decide and
 # host.inbox.add inline (via host_handlers), but DOES NOT stub
 # iface.transport.post (rebound to host.artifacts_dir below) so the real
 # handler runs and writes a file to KITSOKI_ARTIFACTS_ROOT.
 #
 # Catches the silent-failure class where:
-#   - oracle.decide returns ok with Data["submitted"] = diagnose_artifact
+#   - agent.decide returns ok with Data["submitted"] = diagnose_artifact
 #   - bind: diagnose_artifact: submitted copies that map into world
 #   - body: "{{ world.diagnose_artifact.summary_markdown }}" templates it
 #   - bodyArg in artifacts_dir pretty-prints to a file on disk
@@ -46,7 +46,7 @@ host_handlers:
       state:   "failure"
       checks:  "go-test"
       comments: ""
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       exit_code: 0
@@ -67,7 +67,7 @@ turns:
   - intent: { name: proceed, slots: {} }
     expect_state: diagnose_executing
 
-  # diagnose_executing.on_enter calls oracle.decide; binds diagnose_artifact.
+  # diagnose_executing.on_enter calls agent.decide; binds diagnose_artifact.
   # proceed transitions to diagnose_awaiting_reply where on_enter calls
   # iface.transport.post (→ host.artifacts_dir, real handler) with the bound
   # diagnose_artifact.summary_markdown as body.

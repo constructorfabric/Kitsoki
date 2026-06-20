@@ -243,7 +243,7 @@
     <!-- Free-text floor: a choice/form widget otherwise hides all free text,
          but the text-only contract (transports.md §7) says every room must be
          drivable by typing. This persistent, de-emphasized composer routes via
-         session.turn (semantic router → oracle off-ramp), so arbitrary text is
+         session.turn (semantic router → agent off-ramp), so arbitrary text is
          always submittable alongside the structured widget — the only path to a
          no-match the off-ramp needs. Mirrors the TUI's Tab escape-hatch
          (choice_widget.go); the widget stays the primary affordance, this is the

@@ -693,7 +693,7 @@ const highlightedPhaseIds = computed<Set<string>>(() => {
 
 // ---- Event lane --------------------------------------------------------
 
-type EventBoxSubsystem = "oracle" | "host" | "machine" | "world" | "user" | "other";
+type EventBoxSubsystem = "agent" | "host" | "machine" | "world" | "user" | "other";
 
 interface PhaseEventBox {
   index: number;
@@ -702,11 +702,11 @@ interface PhaseEventBox {
   durationMs?: number;
 }
 
-// Canonical oracle events: verb lives in attrs.verb, not the msg.
-const ORACLE_START_MSG_DIAG = "oracle.call.start";
-const ORACLE_COMPLETE_MSG_DIAG = "oracle.call.complete";
-function oracleVerbDiag(e: TraceEvent): string {
-  return typeof e.attrs.verb === "string" ? e.attrs.verb : "oracle";
+// Canonical agent events: verb lives in attrs.verb, not the msg.
+const AGENT_START_MSG_DIAG = "agent.call.start";
+const AGENT_COMPLETE_MSG_DIAG = "agent.call.complete";
+function agentVerbDiag(e: TraceEvent): string {
+  return typeof e.attrs.verb === "string" ? e.attrs.verb : "agent";
 }
 
 function fmtDur(ms: number): string {
@@ -732,20 +732,20 @@ const eventLaneByPhase = computed<Map<string, PhaseEventBox[]>>(() => {
   const events = props.events;
   if (!events || !diagram.value) return new Map();
 
-  // oracle complete map: call_id → duration_ms
-  const oracleCompleteDur = new Map<string, number | null>();
-  const oracleStartCallIds = new Set<string>();
+  // agent complete map: call_id → duration_ms
+  const agentCompleteDur = new Map<string, number | null>();
+  const agentStartCallIds = new Set<string>();
   for (const e of events) {
-    if (e.msg === ORACLE_COMPLETE_MSG_DIAG) {
+    if (e.msg === AGENT_COMPLETE_MSG_DIAG) {
       const cid = e.attrs.call_id;
       if (typeof cid === "string") {
         const dur = typeof e.attrs.duration_ms === "number" ? (e.attrs.duration_ms as number) : null;
-        oracleCompleteDur.set(cid, dur);
+        agentCompleteDur.set(cid, dur);
       }
     }
-    if (e.msg === ORACLE_START_MSG_DIAG) {
+    if (e.msg === AGENT_START_MSG_DIAG) {
       const cid = e.attrs.call_id;
-      if (typeof cid === "string") oracleStartCallIds.add(cid);
+      if (typeof cid === "string") agentStartCallIds.add(cid);
     }
   }
 
@@ -756,7 +756,7 @@ const eventLaneByPhase = computed<Map<string, PhaseEventBox[]>>(() => {
     const e = events[i]!;
     if (!e.msg.startsWith("harness.")) continue;
     const ns = typeof e.attrs.namespace === "string" ? e.attrs.namespace : "";
-    if (ns.startsWith("host.oracle.")) continue;
+    if (ns.startsWith("host.agent.")) continue;
     if (e.msg === "harness.dispatched" || e.msg === "harness.returned") {
       harnessSuppress.add(i);
     } else if (e.msg === "harness.called") {
@@ -791,22 +791,22 @@ const eventLaneByPhase = computed<Map<string, PhaseEventBox[]>>(() => {
       continue;
     } else if (e.msg.startsWith("harness.")) {
       const ns = typeof e.attrs.namespace === "string" ? e.attrs.namespace : "";
-      if (ns.startsWith("host.oracle.")) continue;
+      if (ns.startsWith("host.agent.")) continue;
       if (harnessSuppress.has(i)) continue;
       if (e.msg !== "harness.called") continue;
       const parts = ns.split(".");
       const label = parts[parts.length - 1] ?? ns;
       box = { index: i, subsystem: "host", label };
-    } else if (e.msg === ORACLE_COMPLETE_MSG_DIAG) {
+    } else if (e.msg === AGENT_COMPLETE_MSG_DIAG) {
       // Only show orphan completes (no paired start in this trace)
       const cid = typeof e.attrs.call_id === "string" ? e.attrs.call_id : null;
-      if (cid && oracleStartCallIds.has(cid)) continue;
-      box = { index: i, subsystem: "oracle", label: oracleVerbDiag(e) };
-    } else if (e.msg === ORACLE_START_MSG_DIAG) {
-      const verb = oracleVerbDiag(e);
+      if (cid && agentStartCallIds.has(cid)) continue;
+      box = { index: i, subsystem: "agent", label: agentVerbDiag(e) };
+    } else if (e.msg === AGENT_START_MSG_DIAG) {
+      const verb = agentVerbDiag(e);
       const cid = typeof e.attrs.call_id === "string" ? e.attrs.call_id : null;
-      const dur = cid ? oracleCompleteDur.get(cid) : null;
-      box = { index: i, subsystem: "oracle", label: verb, durationMs: dur ?? undefined };
+      const dur = cid ? agentCompleteDur.get(cid) : null;
+      box = { index: i, subsystem: "agent", label: verb, durationMs: dur ?? undefined };
     } else if (e.msg === "machine.say") {
       const text = typeof e.attrs.text === "string" ? e.attrs.text : "";
       const label = "say: " + (text.slice(0, 18) + (text.length > 18 ? "…" : ""));
@@ -1595,7 +1595,7 @@ function onPhaseClick(phase: Phase): void {
   opacity: 0.8;
 }
 
-.state-diagram__event-box--oracle  { background: #7c2d12; color: #fdba74; border-color: #9a3412; }
+.state-diagram__event-box--agent  { background: #7c2d12; color: #fdba74; border-color: #9a3412; }
 .state-diagram__event-box--host    { background: #4a1d96; color: #c4b5fd; border-color: #5b21b6; }
 .state-diagram__event-box--machine { background: var(--k-success-bg, #14532d); color: var(--k-success, #86efac); border-color: var(--k-success, #166534); }
 .state-diagram__event-box--world   { background: #134e4a; color: #5eead4; border-color: #0f766e; }

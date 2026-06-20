@@ -88,7 +88,7 @@ const (
 	// toggles a multi-select option; Enter confirms the current question
 	// (advancing through a multi-question batch); Esc lets the agent decide
 	// on its own. Unlike ModeChoosing this overlays a turn that is still
-	// in flight — the oracle is blocked waiting for the answer — so on commit
+	// in flight — the agent is blocked waiting for the answer — so on commit
 	// the model resumes ModeAwaitingLLM rather than returning to ModeOnPath.
 	// See internal/tui/operator_question.go.
 	ModeOperatorQuestion
@@ -181,7 +181,7 @@ type RootModel struct {
 	// via WithMetaController.
 	metaController *metamode.Controller
 
-	// metaStreamSink, when non-nil, tees streaming oracle events from
+	// metaStreamSink, when non-nil, tees streaming agent events from
 	// each meta-mode Send into the transcript pane via MetaStreamMsg.
 	// The sink is allocated up-front (NewMetaStreamSink) and bound to
 	// the tea.Program post-construction via Attach() — mirrors the
@@ -191,7 +191,7 @@ type RootModel struct {
 	metaStreamSink *MetaStreamSink
 
 	// operatorPrompter, when non-nil, is injected into each turn ctx so a
-	// dispatched oracle agent that forwards an AskUserQuestion surfaces the
+	// dispatched agent agent that forwards an AskUserQuestion surfaces the
 	// question as an inline widget (ModeOperatorQuestion) and blocks for the
 	// operator's answer. Allocated up-front (NewTUIOperatorPrompter) and bound
 	// to the tea.Program post-construction via Attach() — mirrors
@@ -403,7 +403,7 @@ type RootModel struct {
 
 	// pendingIDEAmbient is the editor selection captured at the current
 	// turn's submit (read-at-submit, slice 2 open question #2), waiting to
-	// be injected onto the turn ctx in startAsyncTurn so the oracle prompt
+	// be injected onto the turn ctx in startAsyncTurn so the agent prompt
 	// scope exposes it as `args.ide`. Zero (empty File) when the link is
 	// off, the selection was empty, or the active file is deny-ruled.
 	// Cleared every submit so it never leaks across turns.
@@ -482,7 +482,7 @@ func WithIDEDenyList(patterns []string) RootModelOption {
 
 // WithMetaController injects a pre-built *metamode.Controller into the
 // RootModel. Tests use this to bypass the production wiring (which
-// requires a real agent registry, chat store, and oracle adapter)
+// requires a real agent registry, chat store, and agent adapter)
 // and inject a controller pointed at fakes.
 //
 // When non-nil, this controller is used regardless of what
@@ -562,7 +562,7 @@ func WithMetaStreamSink(sink *MetaStreamSink) RootModelOption {
 }
 
 // WithOperatorPrompter wires a *TUIOperatorPrompter into the RootModel so a
-// dispatched oracle agent that forwards an AskUserQuestion surfaces it as an
+// dispatched agent agent that forwards an AskUserQuestion surfaces it as an
 // inline question widget and blocks for the operator's answer. Like
 // WithMetaStreamSink the prompter is unbound at construction; the caller binds
 // it to the *tea.Program post-construction via prompter.Attach(prog). When
@@ -768,7 +768,7 @@ func NewRootModel(orch *orchestrator.Orchestrator, sid app.SessionID, appPath, i
 				Chats:  metamode.NewChatStoreAdapter(m.chatStore),
 				Agents: reg,
 				AppDef: orch.AppDef(),
-				Oracle: metamode.NewOracleCallerAdapter(),
+				Agent:  metamode.NewAgentCallerAdapter(),
 			}
 		}
 	}
@@ -1082,8 +1082,8 @@ func (m RootModel) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Route to the shared handler. Its own in-flight gate
 		// (ModeMeta+metaMode.inFlight OR ModeAwaitingLLM) decides
 		// whether to render the event or drop it as stale — the
-		// previous unconditional drop here meant on-path oracle calls
-		// (e.g. bf.reproducing_executing's host.oracle.ask_with_mcp)
+		// previous unconditional drop here meant on-path agent calls
+		// (e.g. bf.reproducing_executing's host.agent.ask_with_mcp)
 		// never surfaced their tool-use trail in the transcript even
 		// though the runner was streaming the events all along.
 		return m.handleMetaStreamEvent(msg), nil
@@ -1139,7 +1139,7 @@ func (m RootModel) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.transcript.UpdateLive(m.routing.renderProgress())
 		case RoutingTierHitMsg:
 			// Mark the winning layer (the LLM layer's detail names the backend,
-			// e.g. oracle.local) and settle the resolved line. Guard on hasLive so
+			// e.g. agent.local) and settle the resolved line. Guard on hasLive so
 			// this and the turn-completion finalizer can't both commit (whichever
 			// runs first settles; the other sees no live line and skips).
 			m.routing.markHit(tm.Tier, tm.Intent, hitDetailFor(tm), tm.Confidence, tm.Tier == TierLLM)
@@ -1755,7 +1755,7 @@ func (m RootModel) dispatchInput(input string) (tea.Model, tea.Cmd) {
 	}
 
 	// Off-path mode: free-form chat that does NOT touch world or state.
-	// Routes directly to host.oracle.talk via Orchestrator.AskOffPath
+	// Routes directly to host.agent.talk via Orchestrator.AskOffPath
 	// rather than through MatchDeterministic → harness → machine.
 	if m.mode == ModeOffPath {
 		m.transcript.AppendBlock(ir.settledLine("", "", blocks.SourceOffPath, 0, ""))
@@ -1785,7 +1785,7 @@ func (m RootModel) dispatchInput(input string) (tea.Model, tea.Cmd) {
 	// Cheap, side-effect-free match against the current menu. This avoids the
 	// LLM round-trip when the user typed something we can route locally — but
 	// we still dispatch the resulting transition asynchronously so a slow
-	// on_enter host call (e.g. host.oracle.ask, host.run on a long command)
+	// on_enter host call (e.g. host.agent.ask, host.run on a long command)
 	// doesn't freeze the TUI.
 	orch := m.orch
 	sid := m.sid
@@ -1865,9 +1865,9 @@ func startAsyncTurn(
 ) (RootModel, tea.Cmd) {
 	ctx, cancel := context.WithCancel(context.Background())
 	// Wire the meta-stream sink into the turn context so any
-	// host.oracle.ask_with_mcp call fired by an on_enter chain streams
+	// host.agent.ask_with_mcp call fired by an on_enter chain streams
 	// live tool-use / narration events into the chat transcript — same
-	// surface meta-mode already uses. The oracle handler auto-enables
+	// surface meta-mode already uses. The agent handler auto-enables
 	// stream-json output when StreamSinkFrom(ctx) != nil, and the
 	// orchestrator passes this ctx straight through to host.Invoke.
 	if m.metaStreamSink != nil {
@@ -1875,9 +1875,9 @@ func startAsyncTurn(
 	}
 	// Ambient editor context captured at submit (captureIDEAmbient). A
 	// no-op (empty File) leaves the prompt scope byte-identical to a turn
-	// with no editor; otherwise the oracle handlers expose it as args.ide.
+	// with no editor; otherwise the agent handlers expose it as args.ide.
 	ctx = host.WithIDEAmbient(ctx, m.pendingIDEAmbient)
-	// Wire the operator prompter so a dispatched oracle agent that forwards an
+	// Wire the operator prompter so a dispatched agent agent that forwards an
 	// AskUserQuestion can surface it as an inline widget and block for the
 	// operator's answer. Nil-safe: WithOperatorPrompter no-ops on a nil
 	// prompter, leaving the headless tool-denied posture.
@@ -2334,7 +2334,7 @@ func (m RootModel) handleTraceToggle() RootModel {
 func (m RootModel) dispatchMenuEntry(entry *orchestrator.MenuEntry) (tea.Model, tea.Cmd) {
 	if len(entry.MissingSlots) == 0 {
 		// All slots are known — submit directly. Run async with the spinner
-		// so a slow on_enter host call (e.g. host.oracle.ask) does not freeze
+		// so a slow on_enter host call (e.g. host.agent.ask) does not freeze
 		// the TUI.
 		slots := entry.PrefilledSlots
 		if slots == nil {
@@ -2498,9 +2498,9 @@ func (m RootModel) handleTurnOutcome(msg turnOutcomeMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case orchestrator.ModeOffPath:
-		// A SYNCHRONOUS off-path outcome — the oracle off-ramp fired on a
+		// A SYNCHRONOUS off-path outcome — the agent off-ramp fired on a
 		// no-match free-text utterance in a room that declared
-		// `oracle_off_ramp:`. The orchestrator already ran the converse
+		// `agent_off_ramp:`. The orchestrator already ran the converse
 		// turn and handed back the free-form answer in out.View WITHOUT
 		// advancing the state machine or mutating world. We render that
 		// answer as the soft off-path-themed agent bubble and leave the
@@ -3251,7 +3251,7 @@ func (m *RootModel) replayMetaTranscript(chatID string) {
 // message was already appended to the in-memory transcript when the
 // user hit Enter; here we append the assistant reply and, when the
 // authoring tools fired, reload the orchestrator.
-// handleMetaStreamEvent renders one streaming oracle event into the
+// handleMetaStreamEvent renders one streaming agent event into the
 // chat transcript as a muted "→ …" line. Called from updateMeta only
 // (the top-level Update silently drops stale events from cancelled or
 // already-finished sends).
@@ -3265,9 +3265,9 @@ func (m *RootModel) replayMetaTranscript(chatID string) {
 //     metaSendDoneMsg's AppendSystem; the stream-side result event
 //     would duplicate it)
 //
-// The handler fires whenever an oracle call is in flight — that's
+// The handler fires whenever an agent call is in flight — that's
 // either a meta-mode turn (ModeMeta + metaMode.inFlight) or an
-// on-path turn that's invoking host.oracle.ask_with_mcp from an
+// on-path turn that's invoking host.agent.ask_with_mcp from an
 // on_enter chain (ModeAwaitingLLM). Both surface the live tool-use
 // trail so the user sees progress instead of a silent spinner.
 // Defensive: events arriving when neither path is in flight are
@@ -3407,7 +3407,7 @@ func (m RootModel) handleMetaSendDone(msg metaSendDoneMsg) (tea.Model, tea.Cmd) 
 
 // handleReloadSlash implements `/reload`. It hot-swaps the app
 // definition from disk and re-fires the current state's on_enter
-// chain so view-template edits, on_enter additions, or oracle-prompt
+// chain so view-template edits, on_enter additions, or agent-prompt
 // changes take effect without restarting the session.
 //
 // The flow:
@@ -3418,13 +3418,13 @@ func (m RootModel) handleMetaSendDone(msg metaSendDoneMsg) (tea.Model, tea.Cmd) 
 //  2. Refresh the menu, location, and prompt placeholder so they
 //     reflect the new app graph.
 //  3. Dispatch Orchestrator.RerunOnEnter asynchronously — the
-//     current room's on_enter typically calls an oracle and we don't
+//     current room's on_enter typically calls an agent and we don't
 //     want the TUI to freeze for ~60s. The TurnOutcome flows back
 //     through the existing turnOutcomeMsg handler, which re-renders
 //     the view and resets the prompt.
 //
 // `/reload` is destructive on side-effect-bearing on_enter chains
-// (it WILL re-invoke an oracle, re-post to a transport, etc.). The
+// (it WILL re-invoke an agent, re-post to a transport, etc.). The
 // trade-off is intentional — the operator explicitly asked for "redo
 // whatever actions" so that the dogfood "edit story externally,
 // observe the new behaviour" loop closes without a TUI restart.
@@ -4032,9 +4032,9 @@ func (m RootModel) updateChoosing(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // handleOperatorQuestion opens the inline question widget when a dispatched
-// oracle agent forwards an AskUserQuestion into kitsoki (operatorQuestionMsg,
+// agent agent forwards an AskUserQuestion into kitsoki (operatorQuestionMsg,
 // dispatched by TUIOperatorPrompter.Ask). The turn is still in flight — the
-// oracle is blocked on msg.answerCh — so we overlay the question on the live
+// agent is blocked on msg.answerCh — so we overlay the question on the live
 // region and switch to ModeOperatorQuestion without disturbing the awaiting
 // state we restore on commit.
 //
@@ -4063,7 +4063,7 @@ func (m RootModel) handleOperatorQuestion(msg operatorQuestionMsg) (tea.Model, t
 // turn-outcome messages fall through so the rest of the model keeps reacting
 // (mirror updateChoosing).
 //
-// On commit the answer is sent back over the channel the oracle is parked on and
+// On commit the answer is sent back over the channel the agent is parked on and
 // the model RESUMES ModeAwaitingLLM (the same turn continues) — unlike the
 // choice widget, which starts a fresh turn. A nil answer (Esc) tells the host to
 // let the agent decide on its own.
@@ -4079,7 +4079,7 @@ func (m RootModel) updateOperatorQuestion(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case turnOutcomeMsg:
 		// The turn completed/cancelled while the question was on screen — the
 		// only way this happens is a ctx cancel (Ctrl+C) unblocking the parked
-		// Ask. Tear the widget down (the oracle already returned ctx.Err(); no
+		// Ask. Tear the widget down (the agent already returned ctx.Err(); no
 		// answer is owed) and fall through to the normal handler.
 		m.operatorQuestion.Close()
 		m.transcript.FinalizeLive("")
@@ -4091,7 +4091,7 @@ func (m RootModel) updateOperatorQuestion(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleContinueTurnOutcome(msg)
 
 	case tea.KeyMsg:
-		// Ctrl+C cancels the whole turn — the parked oracle's ctx is cancelled,
+		// Ctrl+C cancels the whole turn — the parked agent's ctx is cancelled,
 		// Ask returns, and a turnOutcomeMsg (cancelled) will follow.
 		if msg.Type == tea.KeyCtrlC {
 			if m.inFlightCancel != nil {
@@ -4108,7 +4108,7 @@ func (m RootModel) updateOperatorQuestion(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 
-		// Hand the answer (or nil on cancel) back to the parked oracle and
+		// Hand the answer (or nil on cancel) back to the parked agent and
 		// resume awaiting the in-flight turn's completion.
 		answerCh := m.operatorQuestion.answerCh
 		body := m.operatorQuestion.View(m.transcript.wrapWidth())
@@ -4431,7 +4431,7 @@ func (m RootModel) View() string {
 		// replaces the textarea's normal "> " prefix on row 0 so
 		// the visual cue is unmistakable.
 		// Backend-neutral: the pendingLLM path runs the whole router, which may
-		// resolve via the local-model routing tier (oracle.local) OR fall through
+		// resolve via the local-model routing tier (agent.local) OR fall through
 		// to the main-turn claude. Naming a specific backend here mislabels a
 		// local-model route as "claude", so the caption stays neutral.
 		caption := "thinking… (Ctrl+C to cancel)"

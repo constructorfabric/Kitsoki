@@ -1,6 +1,6 @@
 # happy_path_squash_merge — squash → accept → main_ops.
 # Pre-seeds squash_mode, staged_diff_stat, commit_message so on_enter
-# oracle.decide is skipped (commit_message already set). Tests the accept
+# agent.decide is skipped (commit_message already set). Tests the accept
 # transition: git_squash_commit → rebase_done: true → main_ops.
 
 test_kind: flow

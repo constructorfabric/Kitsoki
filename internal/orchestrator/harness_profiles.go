@@ -9,7 +9,7 @@ import (
 
 // HarnessProfile is the orchestrator-side runtime form of an operator-declared
 // harness profile (webconfig.HarnessProfile, ${VAR} already expanded). It is a
-// named bundle of the oracle-selection axes a live session can switch between:
+// named bundle of the agent-selection axes a live session can switch between:
 // which backend CLI is forked, which model it defaults to, and the env retarget
 // (e.g. synthetic.new). See docs/architecture/harness-profiles.md.
 type HarnessProfile struct {
@@ -33,7 +33,7 @@ type HarnessProfile struct {
 	// Env is the ${VAR}-expanded env retarget merged onto the forked CLI. Carried
 	// here for resolution; never exposed through Profiles() / traces.
 	Env map[string]string
-	// Plugin routes through an oracle plugin instead of a backend CLI. Optional.
+	// Plugin routes through an agent plugin instead of a backend CLI. Optional.
 	Plugin string
 }
 
@@ -64,7 +64,7 @@ type ProfileInfo struct {
 // WithHarnessProfiles seeds the orchestrator with the declared profiles and the
 // default-profile name new sessions start on. A nil/empty map leaves the session
 // on the legacy flag-derived path (Selection/Profiles report empty, every
-// dispatch resolves to the static --oracle backend). The default profile, when
+// dispatch resolves to the static --agent backend). The default profile, when
 // named and present, becomes the initial selection.
 func WithHarnessProfiles(profiles map[string]HarnessProfile, defaultProfile string) Option {
 	return func(o *Orchestrator) {
@@ -204,7 +204,7 @@ func (o *Orchestrator) resolveSelection(fallbackBackend string) (backend string,
 		},
 	}
 	// A plugin profile keeps the fallback backend (plugins route through the
-	// oracle registry, not a backend fork); a CLI profile selects its backend.
+	// agent registry, not a backend fork); a CLI profile selects its backend.
 	backend = fallbackBackend
 	if p.Plugin == "" {
 		backend = p.Backend

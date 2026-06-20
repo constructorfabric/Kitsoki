@@ -1,6 +1,6 @@
 ---
 id:        2026-06-10T141756Z-decide-postcmd-captured-submit-reported-abandoned
-title:     "host.oracle.decide with validator.post_cmd reports 'abandoned without successful submit' when the schema-valid payload WAS captured"
+title:     "host.agent.decide with validator.post_cmd reports 'abandoned without successful submit' when the schema-valid payload WAS captured"
 target:    kitsoki
 filed_at:  2026-06-10T14:17:56Z
 status:    open
@@ -13,7 +13,7 @@ external: {}
 
 ## Body
 
-A `host.oracle.decide` call that declares a `validator: { post_cmd: ... }` block
+A `host.agent.decide` call that declares a `validator: { post_cmd: ... }` block
 **fails the whole job** with:
 
 ```
@@ -29,11 +29,11 @@ missing submit.
 
 This blocks every `decide` call that uses a post-submission verifier. It
 surfaced migrating the `cyber-repo` bugfix room (`stories/bugfix`) off the
-deprecated `host.oracle.ask_with_mcp` onto `decide` — 6 phases (`phase_minus_1`,
+deprecated `host.agent.ask_with_mcp` onto `decide` — 6 phases (`phase_minus_1`,
 `phase_1_7`, `phase_3`, `phase_6`, `phase_9`, `phase_9_7`, `phase_13`) each carry
 a `validator.post_cmd: "python3 -m bugfix verify-*"` and all hang the same way.
 
-### Root cause (internal/host/oracle_decide.go)
+### Root cause (internal/host/agent_decide.go)
 
 When `validatorBlockPresent`, decide applies the "C1 fix" split:
 
@@ -77,7 +77,7 @@ iterations and ends as "abandoned."
 Every bugfix post_cmd is `python3 -m bugfix verify-*`:
 
 1. **argv0 not on the read-only sandbox allowlist** — the loader already warns:
-   `oracle verb cross-check: decide/extract validator.post_cmd argv0 is not on
+   `agent verb cross-check: decide/extract validator.post_cmd argv0 is not on
    the read-only allowlist; runtime sandbox enforces isolation argv0=python3`.
 2. **cwd is dropped** — `bugfix` is importable only from `tools/loopy`, but the
    sandbox runs with `cmd.Dir = scratchDir` and **`post_cmd_cwd` is not honored**
@@ -86,9 +86,9 @@ Every bugfix post_cmd is `python3 -m bugfix verify-*`:
    bugfix ...` therefore exits non-zero (`No module named bugfix`).
 
 Either alone makes the post_cmd un-passable, so the schema-valid captured verdict
-is discarded on every iteration. The old `host.oracle.ask_with_mcp` validator
+is discarded on every iteration. The old `host.agent.ask_with_mcp` validator
 supported `post_cmd_cwd` and did not sandbox-block the verifier, so the same
-rooms worked before the oracle-split.
+rooms worked before the agent-split.
 
 ### Why it's invisible / mis-reported
 
@@ -137,8 +137,8 @@ rooms worked before the oracle-split.
 
 ### Cross-references
 
-- Likely related: `issues/bugs/2026-06-03T121407Z-oracle-decide-silent-abandon-empty-artifact.md`
-  (oracle-decide silent abandon / empty artifact) — same family, validator
+- Likely related: `issues/bugs/2026-06-03T121407Z-agent-decide-silent-abandon-empty-artifact.md`
+  (agent-decide silent abandon / empty artifact) — same family, validator
   acceptance path.
 - Migration context lives in the cyber-repo worktree
   (`stories/bugfix/app.yaml`, `tools/loopy/`); the room currently works around

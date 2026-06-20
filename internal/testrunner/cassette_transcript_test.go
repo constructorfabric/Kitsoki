@@ -13,28 +13,28 @@ import (
 	"kitsoki/internal/store"
 )
 
-// TestEpisodeOracle_TranscriptReplayGolden is the agent-action-transcripts
-// golden contract (proposal Tasks 3.1/3.2): driving a host.oracle.task episode
-// whose oracle: block carries a recorded transcript: must write a per-call
+// TestEpisodeAgent_TranscriptReplayGolden is the agent-action-transcripts
+// golden contract (proposal Tasks 3.1/3.2): driving a host.agent.task episode
+// whose agent: block carries a recorded transcript: must write a per-call
 // <call_id>.jsonl sidecar that is BYTE-IDENTICAL to the recorded events
 // (canonicalized), a matching .timings sidecar, and a transcript_ref on the
-// oracle.call.complete event whose events count matches — with NO live tool run.
-func TestEpisodeOracle_TranscriptReplayGolden(t *testing.T) {
+// agent.call.complete event whose events count matches — with NO live tool run.
+func TestEpisodeAgent_TranscriptReplayGolden(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 
 	// A small but realistic claude stream-json transcript: a Read tool_use, its
 	// tool_result, and the terminal result event with usage.
-	p := writeCassetteFile(t, dir, "transcript_oracle.yaml", `
+	p := writeCassetteFile(t, dir, "transcript_agent.yaml", `
 kind: host_cassette
 app_id: bugfix
 episodes:
-  - id: phase_1_oracle
+  - id: phase_1_agent
     match:
-      handler: host.oracle.task
+      handler: host.agent.task
     response:
       data: {submitted: {found: true}}
-    oracle:
+    agent:
       verb: task
       agent: bugfix
       model: claude-sonnet-4-6
@@ -57,8 +57,8 @@ episodes:
 	}
 
 	// Install the same ctx seam the orchestrator installs: an event sink, the
-	// oracle call ctx, and a file-backed transcript writer pointing at a
-	// transcripts/ dir (sibling of oracle-prompts/, as in host_dispatch.go).
+	// agent call ctx, and a file-backed transcript writer pointing at a
+	// transcripts/ dir (sibling of agent-prompts/, as in host_dispatch.go).
 	traceDir := filepath.Join(dir, "run")
 	if mkErr := os.MkdirAll(traceDir, 0o755); mkErr != nil {
 		t.Fatalf("mkdir traceDir: %v", mkErr)
@@ -66,26 +66,26 @@ episodes:
 	transcriptsDir := filepath.Join(traceDir, "transcripts")
 
 	sink := newMemSink()
-	ctx := host.WithOracleCallCtx(context.Background(), host.OracleCallCtx{
+	ctx := host.WithAgentCallCtx(context.Background(), host.AgentCallCtx{
 		SessionID: app.SessionID("golden-sess"),
 		Turn:      app.TurnNumber(1),
 		StatePath: "phase_1.dispatching",
 	})
-	ctx = host.WithOraclePromptsDir(ctx, filepath.Join(traceDir, "oracle-prompts"))
+	ctx = host.WithAgentPromptsDir(ctx, filepath.Join(traceDir, "agent-prompts"))
 	ctx = host.WithTranscriptWriter(ctx, host.NewFileTranscriptWriter(transcriptsDir))
 
 	clk := newFakeClock()
 	stateOf := func() string { return "phase_1.dispatching" }
 	// nil fallback: a cassette miss (or any live tool) would error — proving the
 	// replay writes the sidecar from the cassette alone, never from a live run.
-	dispatch := BuildCassetteDispatcherWithSink(cas, "host.oracle.task", stateOf, nil, nil, clk, sink, nil)
+	dispatch := BuildCassetteDispatcherWithSink(cas, "host.agent.task", stateOf, nil, nil, clk, sink, nil)
 
 	if _, derr := dispatch(ctx, nil); derr != nil {
 		t.Fatalf("dispatch: %v", derr)
 	}
 
 	// The deterministic call_id pairs the sidecar with the trace event.
-	callID := host.DeriveCallID("bugfix", "phase_1_oracle:0")
+	callID := host.DeriveCallID("bugfix", "phase_1_agent:0")
 
 	// (a) The <call_id>.jsonl sidecar is byte-identical to the recorded events,
 	// VERBATIM — authored key order preserved, number literals untouched — one
@@ -118,20 +118,20 @@ episodes:
 		t.Errorf("timings sidecar mismatch:\n got=%q\nwant=%q", string(gotTimings), wantTimings)
 	}
 
-	// (b) transcript_ref on oracle.call.complete carries the event count + path.
+	// (b) transcript_ref on agent.call.complete carries the event count + path.
 	var ref *host.TranscriptRef
 	for _, ev := range sink.History() {
-		if ev.Kind != store.OracleReturned {
+		if ev.Kind != store.AgentReturned {
 			continue
 		}
-		var p host.OracleReturnedPayload
+		var p host.AgentReturnedPayload
 		if err := json.Unmarshal(ev.Payload, &p); err != nil {
-			t.Fatalf("unmarshal OracleReturned payload: %v", err)
+			t.Fatalf("unmarshal AgentReturned payload: %v", err)
 		}
 		ref = p.TranscriptRef
 	}
 	if ref == nil {
-		t.Fatal("expected transcript_ref on oracle.call.complete, got nil")
+		t.Fatal("expected transcript_ref on agent.call.complete, got nil")
 	}
 	if ref.Events != len(wantEvents) {
 		t.Errorf("transcript_ref.events: got %d want %d", ref.Events, len(wantEvents))
@@ -148,14 +148,14 @@ episodes:
 
 	// Determinism: a second replay produces the byte-identical sidecar.
 	transcriptsDir2 := filepath.Join(traceDir, "transcripts2")
-	ctx2 := host.WithOracleCallCtx(context.Background(), host.OracleCallCtx{
+	ctx2 := host.WithAgentCallCtx(context.Background(), host.AgentCallCtx{
 		SessionID: app.SessionID("golden-sess"),
 		Turn:      app.TurnNumber(1),
 		StatePath: "phase_1.dispatching",
 	})
 	ctx2 = host.WithTranscriptWriter(ctx2, host.NewFileTranscriptWriter(transcriptsDir2))
 	cas2, _ := LoadCassette(p)
-	dispatch2 := BuildCassetteDispatcherWithSink(cas2, "host.oracle.task", stateOf, nil, nil, clk, newMemSink(), nil)
+	dispatch2 := BuildCassetteDispatcherWithSink(cas2, "host.agent.task", stateOf, nil, nil, clk, newMemSink(), nil)
 	if _, derr := dispatch2(ctx2, nil); derr != nil {
 		t.Fatalf("dispatch2: %v", derr)
 	}
@@ -165,13 +165,13 @@ episodes:
 	}
 }
 
-// TestEpisodeOracle_DecideTranscriptReplayGolden is the decide-arc golden
-// (proposal "The decide submit → validate → nudge cycle"): a host.oracle.decide
+// TestEpisodeAgent_DecideTranscriptReplayGolden is the decide-arc golden
+// (proposal "The decide submit → validate → nudge cycle"): a host.agent.decide
 // episode whose recorded transcript carries the synthetic _kitsoki boundary rows
 // (validator_reject, nudge, validator_accept) interleaved with claude's verbatim
 // events must replay byte-identical, with the _kitsoki rows in order — so the
 // drawer renders the full submit → reject → host-nudge → re-submit → accept arc.
-func TestEpisodeOracle_DecideTranscriptReplayGolden(t *testing.T) {
+func TestEpisodeAgent_DecideTranscriptReplayGolden(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 
@@ -181,10 +181,10 @@ app_id: bugfix
 episodes:
   - id: phase_decide
     match:
-      handler: host.oracle.decide
+      handler: host.agent.decide
     response:
       data: {submitted: {decision: "refund", amount: 49.0}}
-    oracle:
+    agent:
       verb: decide
       agent: bugfix
       model: claude-sonnet-4-6
@@ -214,7 +214,7 @@ episodes:
 	transcriptsDir := filepath.Join(traceDir, "transcripts")
 
 	sink := newMemSink()
-	ctx := host.WithOracleCallCtx(context.Background(), host.OracleCallCtx{
+	ctx := host.WithAgentCallCtx(context.Background(), host.AgentCallCtx{
 		SessionID: app.SessionID("decide-sess"),
 		Turn:      app.TurnNumber(1),
 		StatePath: "phase.dispatching",
@@ -223,7 +223,7 @@ episodes:
 
 	clk := newFakeClock()
 	stateOf := func() string { return "phase.dispatching" }
-	dispatch := BuildCassetteDispatcherWithSink(cas, "host.oracle.decide", stateOf, nil, nil, clk, sink, nil)
+	dispatch := BuildCassetteDispatcherWithSink(cas, "host.agent.decide", stateOf, nil, nil, clk, sink, nil)
 	if _, derr := dispatch(ctx, nil); derr != nil {
 		t.Fatalf("dispatch: %v", derr)
 	}
@@ -265,26 +265,26 @@ episodes:
 	// transcript_ref counts every line (verbatim + synthetic).
 	var ref *host.TranscriptRef
 	for _, ev := range sink.History() {
-		if ev.Kind != store.OracleReturned {
+		if ev.Kind != store.AgentReturned {
 			continue
 		}
-		var pl host.OracleReturnedPayload
+		var pl host.AgentReturnedPayload
 		if err := json.Unmarshal(ev.Payload, &pl); err != nil {
-			t.Fatalf("unmarshal OracleReturned payload: %v", err)
+			t.Fatalf("unmarshal AgentReturned payload: %v", err)
 		}
 		ref = pl.TranscriptRef
 	}
 	if ref == nil {
-		t.Fatal("expected transcript_ref on oracle.call.complete, got nil")
+		t.Fatal("expected transcript_ref on agent.call.complete, got nil")
 	}
 	if ref.Events != len(wantEvents) {
 		t.Errorf("transcript_ref.events: got %d want %d", ref.Events, len(wantEvents))
 	}
 }
 
-// TestEpisodeOracle_NoTranscriptNoSidecar verifies an episode without a
+// TestEpisodeAgent_NoTranscriptNoSidecar verifies an episode without a
 // transcript: block writes no sidecar and no transcript_ref (backward compat).
-func TestEpisodeOracle_NoTranscriptNoSidecar(t *testing.T) {
+func TestEpisodeAgent_NoTranscriptNoSidecar(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	p := writeCassetteFile(t, dir, "no_transcript.yaml", `
@@ -293,10 +293,10 @@ app_id: bugfix
 episodes:
   - id: ep_plain
     match:
-      handler: host.oracle.ask
+      handler: host.agent.ask
     response:
       data: {ok: true}
-    oracle:
+    agent:
       verb: ask
       agent: bugfix
       response: "ok"
@@ -307,12 +307,12 @@ episodes:
 	}
 	transcriptsDir := filepath.Join(dir, "transcripts")
 	sink := newMemSink()
-	ctx := host.WithOracleCallCtx(context.Background(), host.OracleCallCtx{
+	ctx := host.WithAgentCallCtx(context.Background(), host.AgentCallCtx{
 		SessionID: app.SessionID("s"), Turn: 1, StatePath: "p.d",
 	})
 	ctx = host.WithTranscriptWriter(ctx, host.NewFileTranscriptWriter(transcriptsDir))
 	clk := newFakeClock()
-	dispatch := BuildCassetteDispatcherWithSink(cas, "host.oracle.ask", func() string { return "p.d" }, nil, nil, clk, sink, nil)
+	dispatch := BuildCassetteDispatcherWithSink(cas, "host.agent.ask", func() string { return "p.d" }, nil, nil, clk, sink, nil)
 	if _, derr := dispatch(ctx, nil); derr != nil {
 		t.Fatalf("dispatch: %v", derr)
 	}
@@ -320,10 +320,10 @@ episodes:
 		t.Errorf("transcripts dir should not be created when no transcript: block")
 	}
 	for _, ev := range sink.History() {
-		if ev.Kind != store.OracleReturned {
+		if ev.Kind != store.AgentReturned {
 			continue
 		}
-		var pl host.OracleReturnedPayload
+		var pl host.AgentReturnedPayload
 		_ = json.Unmarshal(ev.Payload, &pl)
 		if pl.TranscriptRef != nil {
 			t.Errorf("expected nil transcript_ref, got %+v", pl.TranscriptRef)

@@ -31,7 +31,7 @@ initial_world:
 host_handlers:
   host.ide.open_file:
     data: { ok: true, connected: true }
-  host.oracle.decide:
+  host.agent.decide:
     by_call:
       name_slug:
         data:
@@ -52,11 +52,11 @@ host_handlers:
           ok: true
           submitted: { verdict: "continue", reason: "Crisp why, one-screen change, kind named.", questions: [] }
   # Semantic reference search pre-seeds the researcher (design_materialize).
-  host.oracle.search:
+  host.agent.search:
     data: { hits: [], top: null }
   host.artifacts_dir:
     data: { ok: true, path: "docs/proposals/.workspace/first-class-working-folder/001-brief.md", message_id: "out#1" }
-  host.oracle.task:
+  host.agent.task:
     by_call:
       refine_brief:
         data:
@@ -110,10 +110,10 @@ turns:
         overlaps:     []
         roadmap_fit:  "A net-new runtime primitive; no overlap with the current queue."
     expect_host_calls:
-      - handler: host.oracle.decide
+      - handler: host.agent.decide
         args: { call: "name_slug" }
       # Stage 2 on_enter — the scout only. No folder, no references here.
-      - handler: host.oracle.decide
+      - handler: host.agent.decide
         args: { call: "existing_scan" }
     # The folder + reference work is deferred behind the gate.
     expect_no_host_calls: [host.run, host.artifacts_dir]
@@ -144,7 +144,7 @@ turns:
         args: { call: "uniquify" }
       - handler: host.artifacts_dir
         args: { thread: "002-existing-state" }
-      - handler: host.oracle.decide
+      - handler: host.agent.decide
         args: { call: "references_research" }
       - handler: host.artifacts_dir
         args: { thread: "003-references.json" }
@@ -153,7 +153,7 @@ turns:
         args: { thread: "001-brief" }
       - handler: host.ide.open_file
         args: { path: "docs/proposals/.workspace/first-class-working-folder/001-brief.md" }
-      - handler: host.oracle.task
+      - handler: host.agent.task
         args: { call: "refine_brief" }
 
   # Stage 3: ready — increment cycle (arms the judge) and re-enter.
@@ -170,7 +170,7 @@ turns:
         questions: []
       design_kind: "runtime"
     expect_host_calls:
-      - handler: host.oracle.decide
+      - handler: host.agent.decide
         args: { call: "brief_check" }
     # The draft room surfaces the target path as a discrete "Draft" kv (the
     # golden-example view change).

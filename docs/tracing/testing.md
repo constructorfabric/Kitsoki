@@ -158,18 +158,18 @@ host_handlers:
 #### One stub, many call sites: `by_call:`
 
 Two invokes in one room often share a handler name — most commonly an
-analyst and a judge both calling `host.oracle.decide`. Handler-name keying
+analyst and a judge both calling `host.agent.decide`. Handler-name keying
 alone cannot tell them apart, so a single stub would serve both calls the
 same envelope. Give each invoke an `id:` (see the story-authoring skill,
 §5) and key the stub on it with `by_call:`. The `id` threads into the args
 under the reserved `call` key; the matching envelope's
 `data`/`error`/`infra_error` win over the top-level fallthrough. `by_call:`
-is tried before `by_op:`. **Do not pick a different oracle verb just to
+is tried before `by_op:`. **Do not pick a different agent verb just to
 dodge the collision** — that distorts the story to satisfy the harness.
 
 ```yaml
 host_handlers:
-  host.oracle.decide:
+  host.agent.decide:
     by_call:
       analyst_questions:        # matches the invoke with `id: analyst_questions`
         data: { submitted: { questions: [ … ] } }
@@ -320,7 +320,7 @@ in [`background-jobs/testing.md`](../stories/background-jobs/testing.md).
 `host_handlers:` gives each handler one canned envelope for the entire fixture.
 That is fine for single-dispatch arcs but breaks down once a fixture must drive
 a handler through multiple calls that each return a different response — for
-example, a 14-phase walk where `host.oracle.ask_with_mcp` is called once per
+example, a 14-phase walk where `host.agent.ask_with_mcp` is called once per
 phase and must return a different schema envelope each time. Cassettes solve
 this by recording a flat, ordered episode list across all handlers; the
 testrunner replays episodes in declared order, and any call that matches no
@@ -338,9 +338,9 @@ generated_at: 2026-05-25T00:00:00Z
 match_on: [handler, phase, schema_name]
 
 episodes:
-  - id: phase_1_repro_oracle
+  - id: phase_1_repro_agent
     match:
-      handler:     host.oracle.ask_with_mcp
+      handler:     host.agent.ask_with_mcp
       phase:       phase_1
       schema_name: 01-repro-report.schema.json
     response:
@@ -366,7 +366,7 @@ host_cassette: cassettes/bugfix-happy.yaml
 turns:
   - intent: { name: start, slots: { ticket: ABR-429271 } }
     advance_clock: "200ms"
-    expect_state: phase_1.awaiting_oracle
+    expect_state: phase_1.awaiting_agent
 ```
 
 ### Key properties
@@ -494,9 +494,9 @@ GIF bytes. No external dependencies (no VHS, no ttyd, no ffmpeg).
 
 ---
 
-## 7. Stubbing oracle calls
+## 7. Stubbing agent calls
 
-Every `host.oracle.*` handler reads its claude subprocess from the context via
+Every `host.agent.*` handler reads its claude subprocess from the context via
 `host.WithClaudeRunner`. Tests inject a `ClaudeRunner` function in-process so no
 real subprocess is forked. Phase 1 ships per-verb fake factories for the five new
 verbs:
@@ -504,11 +504,11 @@ verbs:
 ```go
 // Simplest form — always returns the scripted text.
 ctx := host.WithClaudeRunner(context.Background(), host.FakeDecide("verdict"))
-res, _ := host.OracleDecideHandler(ctx, args)
+res, _ := host.AgentDecideHandler(ctx, args)
 
 // Meta form — embeds flag metadata so tests can assert forwarding.
 ctx := host.WithClaudeRunner(context.Background(), host.FakeDecideWithMeta("verdict"))
-res, _ := host.OracleDecideHandler(ctx, args)
+res, _ := host.AgentDecideHandler(ctx, args)
 result, sp, model, tools := host.ParseFakeMetaReply(res.Data["stdout"].(string))
 // tools == "host.Read,host.Grep" — asserts --allowedTools was forwarded.
 ```
@@ -517,11 +517,11 @@ Available factories:
 
 | Factory | Verb |
 |---|---|
-| `host.FakeExtract(text)` | `host.oracle.extract` |
-| `host.FakeDecide(text)` | `host.oracle.decide` |
-| `host.FakeAsk(text)` | `host.oracle.ask` |
-| `host.FakeTask(text)` | `host.oracle.task` |
-| `host.FakeConverse(text)` | `host.oracle.converse` |
+| `host.FakeExtract(text)` | `host.agent.extract` |
+| `host.FakeDecide(text)` | `host.agent.decide` |
+| `host.FakeAsk(text)` | `host.agent.ask` |
+| `host.FakeTask(text)` | `host.agent.task` |
+| `host.FakeConverse(text)` | `host.agent.converse` |
 | `host.FakeDecideWithMeta(text)` | decide — embeds flags in reply |
 | `host.FakeAskWithMeta(text)` | ask — embeds flags in reply |
 | `host.FakeExtractJSON(v)` | extract — JSON-encodes v as stdout |
@@ -541,7 +541,7 @@ or an explicit environment variable.
 
 ## 8. Replay tooling
 
-`kitsoki replay <session-id>` re-runs the `host.oracle.task` spans recorded
+`kitsoki replay <session-id>` re-runs the `host.agent.task` spans recorded
 in a session's event log. It is used for regression testing of code-writing
 tasks (did the agent still produce the same files?) and for evaluating model
 upgrades (does a newer model diverge from the recorded output?).
@@ -561,7 +561,7 @@ Spans with `replay_mode: external_side_effect` are never re-applied in
 any skipped spans:
 
 ```
-skipped 2 external-side-effect spans (host.oracle.task, trace IDs: tsk-abc123, tsk-def456)
+skipped 2 external-side-effect spans (host.agent.task, trace IDs: tsk-abc123, tsk-def456)
 ```
 
 These spans can be inspected with `kitsoki inspect --session-id <id>
@@ -579,10 +579,10 @@ kitsoki replay ses-abc123 --mode llm_rerun --model claude-haiku-4-5
 
 ### Tier-swap detection (Phase 5)
 
-For `host.oracle.extract` spans, the replay additionally checks whether a
+For `host.agent.extract` spans, the replay additionally checks whether a
 recently-added synonym or slot-template would have resolved an input that
 previously required an LLM call. This is the "progressive determinism" loop
-documented in the oracle-split proposal §4: as the author grows the synonym
+documented in the agent-split proposal §4: as the author grows the synonym
 library, earlier LLM calls become unnecessary and the deterministic tier
 covers more.
 
@@ -593,7 +593,7 @@ are present in Phase 4; the CLI surface is not yet wired.
 ### Status
 
 Journal traversal is not yet implemented (Phase 6 will wire the full
-traversal against the oracle-serve surface). Phase 4 delivers the CLI
+traversal against the agent-serve surface). Phase 4 delivers the CLI
 surface, flags, and mode classification. Running `kitsoki replay` in any
 mode returns a structured error explaining what remains.
 

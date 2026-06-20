@@ -3,7 +3,7 @@
 # Reached from main via go_ideas. The hand-maintained backlog (world.ideas_path,
 # default repo-root ideas.md) has three sections — ## Done, ## Partial / in
 # progress, ## Ideas — that drift out of date: things ship but stay parked under
-# ## Ideas. This room runs the `ideas_reviewer` (host.oracle.decide) against the
+# ## Ideas. This room runs the `ideas_reviewer` (host.agent.decide) against the
 # repo root so it can read ideas.md, the commit history (git log, read-only
 # Bash), and the docs (especially docs/proposals/), and proposes section MOVES
 # backed by concrete evidence — plus a few writer's-block candidates.
@@ -82,7 +82,7 @@ states:
       # `once: true` for reload-safety: keyed off its own bind (ideas_review), so
       # /reload re-renders the stored report rather than re-running the scan.
       # `apply` / `regenerate` clear ideas_review to re-arm it.
-      - invoke: host.oracle.decide
+      - invoke: host.agent.decide
         once: true
         id: ideas_review
         with:

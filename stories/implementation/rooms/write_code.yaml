@@ -22,7 +22,7 @@ states:
             Files:      '{{ world.code_artifact.affected_files|default:"(pending)" }}'
             Confidence: '{{ world.code_artifact.confidence|default:"(pending)" }}'
       - heading: "Artifact"
-      - code: '{{ world.code_artifact.summary_markdown|default:"(pending — oracle has not returned yet)" }}'
+      - code: '{{ world.code_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
       - choice:
           mode: single
           prompt: "Actions"
@@ -42,7 +42,7 @@ states:
       # once: skip the regenerate when code_artifact is already bound
       # (reload / self-re-entry safe). Every arc that re-enters
       # write_code_executing for a FRESH run clears the bind below.
-      - invoke: host.oracle.decide
+      - invoke: host.agent.decide
         once: true
         with:
           prompt: prompts/write_code_executing.md
@@ -97,7 +97,7 @@ states:
             Confidence: '{{ world.llm_verdict.confidence|default:"(n/a)" }}'
             Reason:     '{{ world.llm_verdict.reason|default:"(none)" }}'
       - heading: "Artifact"
-      - code: '{{ world.code_artifact.summary_markdown|default:"(pending — oracle has not returned yet)" }}'
+      - code: '{{ world.code_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
       - choice:
           mode: single
           prompt: "Actions"
@@ -135,7 +135,7 @@ states:
           state:   write_code_awaiting_reply
           body:    "{{ world.code_artifact.summary_markdown }}"
       - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
-        invoke: host.oracle.decide
+        invoke: host.agent.decide
         with:
           prompt: prompts/judge_write_code.md
           schema: schemas/judge_verdict.json

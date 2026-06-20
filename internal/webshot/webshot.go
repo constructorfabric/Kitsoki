@@ -30,10 +30,10 @@
 //
 // # No-LLM posture
 //
-// A shot never constructs or calls a harness/oracle: it only serves a handler
+// A shot never constructs or calls a harness/agent: it only serves a handler
 // (built no-LLM by the caller) and screenshots it. The determinism is a function
 // of (story, state, world, viewport). See the package tests for the structural
-// assertion that a shot performs no live harness/oracle work.
+// assertion that a shot performs no live harness/agent work.
 package webshot
 
 import (

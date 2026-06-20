@@ -2,10 +2,10 @@
 // recurring "submitted-but-empty-artifact" bug class.
 //
 // The cassette-driven fixtures (happy_needs_update, empty_submitted,
-// oracle_abandoned, happy_up_to_date) all stub host.artifacts_dir, so
+// agent_abandoned, happy_up_to_date) all stub host.artifacts_dir, so
 // they never exercise the chain:
 //
-//   oracle.decide returns ok with Data["submitted"] = verdict
+//   agent.decide returns ok with Data["submitted"] = verdict
 //     → orchestrator binds `verdict: submitted` into world
 //     → host.artifacts_dir's `body: "{{ world.verdict }}"` re-renders
 //     → bodyArg pretty-prints map[string]any as JSON
@@ -17,7 +17,7 @@
 // representation. None of the cassette flows would have noticed —
 // they assert state + world but never read the artifact file.
 //
-// This test stubs host.run and host.oracle.decide inline (returning a
+// This test stubs host.run and host.agent.decide inline (returning a
 // fully-shaped verdict) but lets the real host.artifacts_dir handler
 // run, then asserts the file on disk contains the verdict fields.
 

@@ -188,7 +188,7 @@ test-flows:
 	done; rm -f ./.kitsoki-flows; exit $$rc
 
 # cost-report builds the per-story cost-savings report (the reusable form of
-# docs/case-studies/git-ops-cost.md): the deterministic story cost (oracle spend
+# docs/case-studies/git-ops-cost.md): the deterministic story cost (agent spend
 # from each story's host cassette) vs the REAL raw-agentic cost of the same
 # operations, from telemetry already on disk. NO LLM, no cost. Writes a markdown
 # table to .artifacts/cost-report/ (gitignored — it reads your local transcripts).
@@ -203,7 +203,7 @@ cost-report:
 # mining-test runs every no-LLM invariant in the session-mining stack: the
 # intent pipeline + parsers, outcome/satisfaction capture, the git-ops coverage
 # end-to-end, and the whole real-cost stack (pricing, extractor, estimator
-# fallback, report driver). All run against committed fixtures + frozen oracle
+# fallback, report driver). All run against committed fixtures + frozen agent
 # JSON — NEVER a live LLM (AGENTS.md). `scripts/run-tests.sh` runs this as its
 # fourth suite so `make test` / CI guard it; run standalone for a fast loop.
 mining-test:
@@ -232,7 +232,7 @@ starcheck-kitsoki:
 
 # fix-tests drives the stories/fix-tests auto-fixer: it runs the full test
 # suite (`make test`), and if anything fails it uses claude (sonnet), via the
-# story's host.oracle.task, to fix the failures — re-running the suite up to 3
+# story's host.agent.task, to fix the failures — re-running the suite up to 3
 # cycles — then writes a Markdown report under .artifacts/fix-tests/.
 #
 # Headless / one-shot: `session create` + `session continue --intent start`
@@ -281,19 +281,19 @@ clean:
 e2e-docker:
 	./test/e2e/run.sh
 
-# fetch-models / fetch-llama-server pre-warm the local-model oracle cache for
+# fetch-models / fetch-llama-server pre-warm the local-model agent cache for
 # offline/CI use: they run the SAME fetch-and-verify path managed mode runs
-# lazily on the first oracle.local call (internal/oracle/server.Fetcher), just
+# lazily on the first agent.local call (internal/agent/server.Fetcher), just
 # ahead of time. Artifacts land in ~/.cache/kitsoki (or $KITSOKI_CACHE_DIR) and
 # are gitignored — nothing binary is committed. endpoint: mode needs neither.
 # MODEL overrides the model id (default: the proposal's Qwen2.5-1.5B default).
 MODEL ?=
 
 fetch-models:
-	go run ./tools/oracle-fetch -model "$(MODEL)"
+	go run ./tools/agent-fetch -model "$(MODEL)"
 
 fetch-llama-server:
-	go run ./tools/oracle-fetch -binary
+	go run ./tools/agent-fetch -binary
 
 # Feature catalog: features/*.yaml at the repo root is the single source of
 # truth for feature content — tour steps, demo bindings, promo/docs metadata,

@@ -84,7 +84,7 @@ func WorkspaceManagerGetHandler(ctx context.Context, args map[string]any) (Resul
 //     tools/loopy/bugfix's `python3 -m bugfix <cmd>`)
 //     be bound directly into a world slot via
 //     `bind: <slot>: stdout_json`.  Mirrors the same
-//     field exposed by host.oracle.ask_with_mcp.
+//     field exposed by host.agent.ask_with_mcp.
 //   - stdout_json_parse_error (string): present (and stdout_json absent)
 //     when the last line looked like JSON but couldn't
 //     be parsed; useful for diagnosing envelope drift.
@@ -263,7 +263,7 @@ func trailingJSONValue(s string) (any, bool) {
 // stringification by the author.  A nil element becomes the empty string.
 //
 // Map/slice values (i.e. world-slot objects bound from a previous
-// host.oracle.ask_with_mcp call) are serialised to compact JSON.  This
+// host.agent.ask_with_mcp call) are serialised to compact JSON.  This
 // lets phase-runner cmds receive structured data on argv without the
 // author having to pre-stringify it themselves — the bugfix room's
 // `verify-impl` step depends on this so the post-submission verifier
@@ -360,7 +360,7 @@ func looksLikeJSON(s string) bool {
 func RegisterBuiltins(r *Registry) {
 	r.Register("host.workspace_manager.get", WorkspaceManagerGetHandler)
 	r.Register("host.run", RunHandler)
-	r.Register("host.oracle.ask", OracleAskHandler)
+	r.Register("host.agent.ask", AgentAskHandler)
 	r.Register("host.transport.post", TransportPostHandler)
 	r.Register("host.jobs.answer_clarification", AnswerClarificationHandler)
 	r.Register("host.chat.resolve", ChatResolveHandler)
@@ -393,12 +393,12 @@ func RegisterBuiltins(r *Registry) {
 	r.Register("host.gh.ticket", GitHubTicketHandler)
 	r.Register("host.cypilot_artifacts", CypilotArtifactsHandler)
 
-	// Oracle five verbs.
-	// host.oracle.ask is registered above.
-	r.Register("host.oracle.extract", OracleExtractHandler)
-	r.Register("host.oracle.decide", OracleDecideHandler)
-	r.Register("host.oracle.task", OracleTaskHandler)
-	r.Register("host.oracle.converse", OracleConverseHandler)
+	// Agent five verbs.
+	// host.agent.ask is registered above.
+	r.Register("host.agent.extract", AgentExtractHandler)
+	r.Register("host.agent.decide", AgentDecideHandler)
+	r.Register("host.agent.task", AgentTaskHandler)
+	r.Register("host.agent.converse", AgentConverseHandler)
 
 	// IDE link (host.ide.*) — editor awareness over the MCP-over-ws Link.
 	// Resolve the link from ctx; a nil/disconnected link returns the typed
@@ -433,16 +433,16 @@ func RegisterBuiltins(r *Registry) {
 	// one extractor shared with the slice-2 web RPC); no LLM.
 	r.Register("host.video.frame", VideoFrameHandler)
 
-	// Embeddings epic, Slice 2 — host.oracle.search.
+	// Embeddings epic, Slice 2 — host.agent.search.
 	// The sentinel handler returns a configuration-required error; apps that
-	// want a working embedder call NewOracleSearchHandler and re-register.
-	r.Register("host.oracle.search", OracleSearchHandler)
+	// want a working embedder call NewAgentSearchHandler and re-register.
+	r.Register("host.agent.search", AgentSearchHandler)
 }
 
-// OracleExtractHandler is implemented in oracle_extract.go.
+// AgentExtractHandler is implemented in agent_extract.go.
 
-// OracleDecideHandler is the implementation of host.oracle.decide.
-// See oracle_decide.go for the full contract.
+// AgentDecideHandler is the implementation of host.agent.decide.
+// See agent_decide.go for the full contract.
 
-// OracleTaskHandler is defined in oracle_task.go.
-// OracleConverseHandler is defined in oracle_converse.go.
+// AgentTaskHandler is defined in agent_task.go.
+// AgentConverseHandler is defined in agent_converse.go.

@@ -10,7 +10,7 @@
 (`internal/machine/machine.go:70-72`, applied per-leaf in
 `internal/orchestrator/host_dispatch_bind.go:165`). There is no transform,
 no expression, no derivation. The moment an author wants to map a host
-result *through* logic — derive a world flag from an `oracle.decide`
+result *through* logic — derive a world flag from an `agent.decide`
 verdict's `{intent, confidence, reason}`, normalise a path, branch a
 `say:` on a returned status — they hit a wall, because **the bound value
 is not visible to any deterministic effect in the same chain.**
@@ -50,7 +50,7 @@ post-bind world via `RunEffectsAndState`
 (`internal/orchestrator/oncomplete.go:167-268`) — `set:`, `say:`,
 `invoke:`, `emit_intent:`, and a `Target:` transition all see
 `last_job_result`. **Synchronous invokes get no equivalent.** A foreground
-`oracle.decide` whose `{intent, confidence}` you want to fold into a world
+`agent.decide` whose `{intent, confidence}` you want to fold into a world
 flag has no natural home for the transform: authors push it into the next
 room's `on_enter`, bury it in the decide schema/prompt, or route-only via
 `emit_intent`. The capability exists for background jobs and is missing for
@@ -80,7 +80,7 @@ symmetric with `on_complete:`.*
   call, no new world key, no new gate/decider.
 - **Stories affected:** none by default — `then:` is opt-in and absent
   everywhere today. Candidate first adopter: any room mapping an
-  `oracle.decide`/`ask_with_mcp` result through a flag (bugfix judge
+  `agent.decide`/`ask_with_mcp` result through a flag (bugfix judge
   rooms, `stories/bugfix/rooms/*`).
 - **Backward compat:** fully additive. Existing stories and cassettes are
   byte-for-byte unaffected; a story with no `then:` runs exactly as today.
@@ -130,7 +130,7 @@ is replayable arithmetic over the recorded bind, not a judgment.
 states:
   judging_executing:
     on_enter:
-      - invoke: host.oracle.decide
+      - invoke: host.agent.decide
         with: { agent: judge, schema: judge_verdict }
         bind: { verdict: submitted }          # flat copy, as today
         then:
@@ -280,7 +280,7 @@ adopters convert a "derive-flag-in-next-room" pattern into a call-site
 
 ## 2. Verification (no LLM)
 - [ ] 2.1 kitsoki turn: invoke with stubbed bind + then:{set} → derived world key present post-turn
-- [ ] 2.2 Flow fixture: oracle.decide stubbed by id → then: maps verdict to flag + emit_intent; legacy (no then:) path still green
+- [ ] 2.2 Flow fixture: agent.decide stubbed by id → then: maps verdict to flag + emit_intent; legacy (no then:) path still green
 - [ ] 2.3 then: on_error path — invoke errors → on_error redirects, then: does NOT run
 - [ ] 2.4 then: emit_intent respects EmitIntentMaxDepth / OrchestratorPostBindMaxDepth
 
@@ -300,8 +300,8 @@ with a stubbed host result: a chain `invoke (bind X) → then: set Y from X`
 lands `Y` derived from the bound `X` in the post-turn world; without the
 change, `Y` is computed against the pre-bind (nil) `X` and the turn either
 errors or sets the wrong value. The intent-only flow fixture stubs
-`host.oracle.decide` **by per-invoke `id:`** (per memory:
-oracle-stub-by-id) and asserts the `then:`-derived flag + the emitted
+`host.agent.decide` **by per-invoke `id:`** (per memory:
+agent-stub-by-id) and asserts the `then:`-derived flag + the emitted
 intent. No real-LLM test is required; the bind value is fixture-supplied,
 so the transform is exercised deterministically.
 

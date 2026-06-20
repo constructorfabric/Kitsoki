@@ -72,7 +72,7 @@ why" mechanically rather than by an operator's read of the trace:
   the competitive 4-layer model both link to as the formal account.
 - **A reward function exists** (slice 1). A declarative, pluggable `reward:`
   scorer assigns a scalar (and a label) to a completed episode, sourced from
-  terminal-room outcome, flow assertions, `oracle.decide` accept/reject,
+  terminal-room outcome, flow assertions, `agent.decide` accept/reject,
   operator accept/refine, or a host exit code. It records a `reward` decision in
   the trace — a recorded, labeled datapoint like every other decision (the moat).
 - **Credit assignment exists** (slice 2). Given a low-reward episode and,
@@ -264,7 +264,7 @@ reconciled into the model.
 ## Non-goals
 
 - **Actually fine-tuning or training an LLM.** The "model" here is the *story*;
-  the LLM behind each decision point is an unchanged, frozen oracle. We adjust
+  the LLM behind each decision point is an unchanged, frozen agent. We adjust
   the scripts/prompts/workflows around it, never its weights.
 - **An autonomous self-modifying agent.** Every optimizer step is gated by the
   validation set and (per slice 3) operator acceptance and a budget. No unbounded

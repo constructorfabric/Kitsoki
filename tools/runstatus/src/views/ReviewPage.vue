@@ -10,7 +10,7 @@
  * captures and dispatches feedback notes (epic shared decision 3) and never
  * edits a spec. Chapters come from runstatus.video.chapters; stills from
  * runstatus.video.frame; dispatch via runstatus.feedback.add; the chat reuses
- * the read-only off-path oracle.
+ * the read-only off-path agent.
  *
  * Route: /review/:sessionId?video=<handle>. The video player + still are media
  * elements resolved through the DataSource.artifactUrl resolver.

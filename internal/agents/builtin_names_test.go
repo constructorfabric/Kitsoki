@@ -4,7 +4,7 @@ import "testing"
 
 // TestBuiltinNames asserts that BuiltinNames() returns the same set of
 // names that NewBuiltins() registers, so the loader can use it as a
-// trustworthy "is this a builtin?" oracle without instantiating a registry.
+// trustworthy "is this a builtin?" agent without instantiating a registry.
 func TestBuiltinNames(t *testing.T) {
 	names := BuiltinNames()
 	if len(names) == 0 {

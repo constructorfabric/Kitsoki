@@ -37,7 +37,7 @@ deterministic ─miss─▶ lex synonym ─miss─▶ lex template ─miss─▶
 ```
 
 It is **deterministic given a pinned model + pooling**, **opt-in**, and
-**additive** — `oracle.claude` and the lexical tiers are untouched, and an app
+**additive** — `agent.claude` and the lexical tiers are untouched, and an app
 that doesn't enable it pays nothing.
 
 ## Impact
@@ -116,15 +116,15 @@ cached, so a re-asked utterance skips the sidecar hop.
 - **Load time:** when `routing.embedding.enabled`, the loader validates the
   model id is one of the pinned models (or that `endpoint:` is set), and that
   `confident_bar`/`margin` are in `[0,1]`. A managed model with no pin and no
-  endpoint is a load-time hard-fail (mirrors `local-model-oracle`'s
+  endpoint is a load-time hard-fail (mirrors `local-model-agent`'s
   `model:`-or-`endpoint:` invariant).
 - **Ordering:** the embed tier runs inside `TrySemantic`
   (`internal/orchestrator/semantic.go:242`) **before** the session lock, on the
   same pre-lock path the LLM tier already respects, so it never blocks
   concurrent turns. It runs only after `Matcher.Match`
   (`internal/semroute/matcher.go:61`) returns a zero verdict, and only when
-  routing already dispatches through the `host.oracle.extract` tiered resolver
-  (the oracle-split path `semantic.go` already uses).
+  routing already dispatches through the `host.agent.extract` tiered resolver
+  (the agent-split path `semantic.go` already uses).
 
 ## Backward compatibility / migration
 
@@ -160,7 +160,7 @@ A reviewer confirms the tier without an LLM via the fake `Embedder` (fixed
 vectors): `kitsoki turn --state … --intent "" --world @w.json` with a
 paraphrase utterance routes to the expected intent at `ConfidenceEmbedding`,
 while a low-margin utterance falls through. The gated live e2e (§2.3) — opt-in,
-following `internal/oracle/local_llm_e2e_test.go`'s shape — is the only test
+following `internal/agent/local_llm_e2e_test.go`'s shape — is the only test
 that touches a real model and is never run by default (memory: [no-llm-tests]).
 Calibration (§3.1) reuses the Oregon Trail recording the lexical tier was tuned
 against.
@@ -176,7 +176,7 @@ against.
    empirically in §3.1 on Oregon Trail; do not guess literals now.*
 3. **Short-text model choice.** Routing on *very short* utterances may favor a
    different model than general MTEB (or the RAG case) suggests; the bake-off
-   confirms whether routing wants a different default than `oracle.search`
+   confirms whether routing wants a different default than `agent.search`
    (epic cross-cutting Q1).
 
 ## Non-goals

@@ -30,5 +30,5 @@ World context:
 Free-form player input: {{ slots.request }}
 
 (Phase H will flesh out this prompt with period vocabulary and a JSON
-schema enforced by host.oracle.decide. For now it is a stub so
+schema enforced by host.agent.decide. For now it is a stub so
 the proposals.yaml `draft:` reference doesn't dangle.)

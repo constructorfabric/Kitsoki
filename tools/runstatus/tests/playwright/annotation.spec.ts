@@ -26,8 +26,8 @@ async function load(page: Page): Promise<void> {
   await page.waitForSelector(".run-view__topbar", { timeout: 10000 });
 }
 
-/** Expand the first oracle.call.complete event to open EventDetail. */
-async function expandFirstOracleEvent(page: Page): Promise<void> {
+/** Expand the first agent.call.complete event to open EventDetail. */
+async function expandFirstAgentEvent(page: Page): Promise<void> {
   // Expand any event row with the "+" button (first one available).
   const expandBtns = page.locator(".trace-timeline__expand-btn");
   await expandBtns.first().click();
@@ -38,7 +38,7 @@ test.describe("annotation slice (static mode)", () => {
     await load(page);
 
     // Expand the first event to open EventDetail.
-    await expandFirstOracleEvent(page);
+    await expandFirstAgentEvent(page);
 
     // The annotate-button trigger should be absent because we are in static
     // mode (window.__KITSOKI_SNAPSHOT__ is defined).
@@ -48,7 +48,7 @@ test.describe("annotation slice (static mode)", () => {
 
   test("annotate form fields are absent in static mode", async ({ page }) => {
     await load(page);
-    await expandFirstOracleEvent(page);
+    await expandFirstAgentEvent(page);
 
     // None of the form data-testids should appear.
     for (const testid of ["annotate-score", "annotate-label", "annotate-comment", "annotate-submit"]) {

@@ -7,16 +7,16 @@ import (
 	"kitsoki/internal/store"
 )
 
-// ReplayableCall holds the inputs needed to re-dispatch one oracle call.
-// All fields are extracted from the oracle.call.start event payload in the
+// ReplayableCall holds the inputs needed to re-dispatch one agent call.
+// All fields are extracted from the agent.call.start event payload in the
 // trace. Prompt is guaranteed non-empty on a valid ReplayableCall — if the
 // trace carries only a prompt_file reference, PromptFile is set and the
 // caller is responsible for resolving the file content.
 type ReplayableCall struct {
-	// CallID is the deterministic oracle call identifier (matched by call_id on
-	// oracle.call.start / oracle.call.complete pairs).
+	// CallID is the deterministic agent call identifier (matched by call_id on
+	// agent.call.start / agent.call.complete pairs).
 	CallID string
-	// Verb is the oracle verb: decide | ask | extract.
+	// Verb is the agent verb: decide | ask | extract.
 	// task and converse are not supported in v1 (side effects require sandbox).
 	Verb string
 	// Prompt is the resolved prompt text (from attrs.prompt on the call.start
@@ -29,7 +29,7 @@ type ReplayableCall struct {
 	// Schema is the schema JSON string or path (from attrs.schema or attrs.input),
 	// optional — not all verbs have a schema.
 	Schema string
-	// Agent is the oracle agent name (from attrs.agent), optional.
+	// Agent is the agent agent name (from attrs.agent), optional.
 	Agent string
 	// Model is the model name (from attrs.model), optional.
 	Model string
@@ -40,7 +40,7 @@ type ReplayableCall struct {
 // require sandbox support not yet shipped) or the prompt reference is missing.
 var ErrNotReplayable = errors.New("call is not replayable: missing prompt or unsupported verb")
 
-// unsupportedVerbs are the oracle verbs excluded from v1 replay because they
+// unsupportedVerbs are the agent verbs excluded from v1 replay because they
 // can have side effects. task may invoke tools with file-system or network
 // access; converse drives multi-turn interactions. Both require the
 // task-fs-sandbox slice before replay is safe.
@@ -49,23 +49,23 @@ var unsupportedVerbs = map[string]bool{
 	"converse": true,
 }
 
-// ExtractReplayableCall scans events for the oracle.call.start event whose
+// ExtractReplayableCall scans events for the agent.call.start event whose
 // call_id matches callID and returns a ReplayableCall populated from its
 // payload attrs.
 //
 // Returns ErrNotReplayable when:
-//   - no oracle.call.start event with the given callID exists in events
+//   - no agent.call.start event with the given callID exists in events
 //   - the resolved verb is "task" or "converse" (side-effect verbs, v1 gate)
 //   - both prompt and prompt_file are absent from the event payload
 func ExtractReplayableCall(events []store.Event, callID string) (ReplayableCall, error) {
 	for _, ev := range events {
-		if ev.Kind != store.OracleCalled {
+		if ev.Kind != store.AgentCalled {
 			continue
 		}
 		if ev.CallID != callID {
 			continue
 		}
-		// Found the matching oracle.call.start event. Decode its payload.
+		// Found the matching agent.call.start event. Decode its payload.
 		var payload map[string]any
 		if len(ev.Payload) > 0 {
 			if err := json.Unmarshal(ev.Payload, &payload); err != nil {

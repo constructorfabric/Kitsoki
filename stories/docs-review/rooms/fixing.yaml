@@ -12,7 +12,7 @@
 #
 # on_enter chain (mirrors the reviewing room's shape):
 #
-#   1. host.oracle.task: hand docs_writer the verdict + rendered
+#   1. host.agent.task: hand docs_writer the verdict + rendered
 #      worklist; agent edits files; submits a docs_fix_artifact.
 #   2. host.artifacts_dir: write the fix artifact to
 #      .artifacts/docs-review-fix-<sha>.json as pure JSON (same
@@ -23,7 +23,7 @@
 states:
 
   fixing:
-    description: "Applying the documentation fixes (write-capable oracle)."
+    description: "Applying the documentation fixes (write-capable agent)."
     view:
       - banner:
           text:     "APPLYING DOC FIXES"
@@ -54,14 +54,14 @@ states:
     relevant_world: [commit_sha, verdict, fix_artifact]
     on_enter:
       # Live progress breadcrumb — fires BEFORE the (slow) docs_writer
-      # oracle call so the operator sees what's happening during the wait
+      # agent call so the operator sees what's happening during the wait
       # rather than a silent screen. See
       # docs/proposals/execution-modes-and-gate-deciders.md.
       - say: 'Applying documentation fixes — handing {{ world.verdict.stale_docs|length }} cited section(s) to the docs writer…'
       # 1. Hand the verdict to the docs writer. Renders a couple of
       # listing strings up-front so the prompt can show the worklist
       # without re-encoding the whole verdict as YAML/JSON twice.
-      - invoke: host.oracle.task
+      - invoke: host.agent.task
         with:
           agent: docs_writer
           acceptance:

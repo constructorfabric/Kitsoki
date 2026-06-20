@@ -24,7 +24,7 @@
 //     so concurrent browser + bridge replies serialise on the same session.
 //
 // Determinism: the default classifier is a pure prefix parse, so a bridge turn
-// is reproducible and incurs no model cost. An oracle-backed classifier is a
+// is reproducible and incurs no model cost. An agent-backed classifier is a
 // future opt-in (proposal open question 3); when one is used, its classification
 // is an interpretive decision and is recorded as such by the Driver.
 //

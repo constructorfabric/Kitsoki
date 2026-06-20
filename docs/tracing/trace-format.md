@@ -69,9 +69,9 @@ Every non-header line has this shape:
 | `payload`    | object | yes      | Event-specific data (`{}` for events with no payload data).  |
 | `parent_turn`| int64  | no       | Set on off-path events; the foreground turn that was in      |
 |              |        |          | flight when the off-path batch was appended.                 |
-| `call_id`    | string | no       | Oracle call identifier (OracleCalled, OracleReturned,        |
-|              |        |          | OracleError only). See §5 for derivation.                    |
-| `episode_id` | string | no       | Cassette episode ID (OracleCalled only, when cassette-backed).|
+| `call_id`    | string | no       | Agent call identifier (AgentCalled, AgentReturned,        |
+|              |        |          | AgentError only). See §5 for derivation.                    |
+| `episode_id` | string | no       | Cassette episode ID (AgentCalled only, when cassette-backed).|
 | `match_idx`  | int    | no       | 0-based match counter for `replay:any` cassette episodes.    |
 
 **`state_path` semantics for transition events:**
@@ -80,7 +80,7 @@ Every non-header line has this shape:
 - All other events carry the active state at the moment they were written.
 
 **`turn.start` payload — routing provenance.** A turn whose intent was
-resolved by a non-LLM tier (so no `oracle.call.*` events appear) carries
+resolved by a non-LLM tier (so no `agent.call.*` events appear) carries
 `"direct": true` plus the provenance of HOW the intent was chosen. Without
 this, a transition like `intent=quit → @exit` is inscrutable in the trace —
 exactly the dogfood failure that motivated these fields (a pasted bug
@@ -186,13 +186,13 @@ All kinds use the dotted form the SPA subsystem chip logic already consumes.
 | `turn.start`                 | At the start of every user turn.                            |
 | `turn.input`                 | When user input is received (before harness is called).     |
 | `turn.end`                   | At the end of every user turn.                              |
-| `oracle.ask.start`           | Immediately before the LLM harness is invoked.              |
-| `oracle.tool_call`           | When the LLM produces a tool call result.                   |
-| `oracle.call.start`          | When an oracle verb is dispatched (verb/agent/model metadata only; prompt is not embedded, see §Oracle event kinds). |
-| `oracle.call.complete`       | When the oracle verb response lands (full response).        |
-| `oracle.call.error`          | When the oracle verb returns an error.                      |
-| `oracle.off_path.question`   | User asks a free-form off-path question. Replay no-op.      |
-| `oracle.off_path.answer`     | Oracle returns an off-path reply. Replay no-op.             |
+| `agent.ask.start`           | Immediately before the LLM harness is invoked.              |
+| `agent.tool_call`           | When the LLM produces a tool call result.                   |
+| `agent.call.start`          | When an agent verb is dispatched (verb/agent/model metadata only; prompt is not embedded, see §Agent event kinds). |
+| `agent.call.complete`       | When the agent verb response lands (full response).        |
+| `agent.call.error`          | When the agent verb returns an error.                      |
+| `agent.off_path.question`   | User asks a free-form off-path question. Replay no-op.      |
+| `agent.off_path.answer`     | Agent returns an off-path reply. Replay no-op.             |
 | `machine.intent_accepted`    | An intent call passes Validate.                             |
 | `machine.validation_failed`  | Machine.Validate rejects a tool call.                       |
 | `machine.guard_rejected`     | All guards for a transition failed.                         |
@@ -200,7 +200,7 @@ All kinds use the dotted form the SPA subsystem chip logic already consumes.
 | `machine.say`                | Once per `say:` effect that resolves. Payload `{"text": …}`; replay no-op. Split out of `world.update` so a timeline can render narration as its own row. |
 | `machine.state_exited`       | Machine leaves a state (compound or leaf).                  |
 | `machine.state_entered`      | Machine enters a state (compound or leaf).                  |
-| `machine.off_path_entered`   | Off-path mode begins. Carries `reason` (see below): a typed `/freeform` trigger (`freeform`) or an automatic oracle off-ramp on a no-match (`off_ramp`). |
+| `machine.off_path_entered`   | Off-path mode begins. Carries `reason` (see below): a typed `/freeform` trigger (`freeform`) or an automatic agent off-ramp on a no-match (`off_ramp`). |
 | `machine.off_path_exited`    | User returns from off-path mode.                            |
 | `machine.timeout`            | Synthetic timeout-fired turn.                               |
 | `harness.called`             | Host side-effect dispatched (pre-bind args).                |
@@ -226,11 +226,11 @@ so older traces lacking them replay unchanged.
 | Payload key  | Type    | When present | Meaning                                                            |
 |--------------|---------|--------------|--------------------------------------------------------------------|
 | `from_state` | string  | always       | The resting state the off-path turn ran against (unchanged afterwards). |
-| `reason`     | string  | always       | `freeform` — the user typed the `off_path:` trigger; or `off_ramp` — an automatic oracle off-ramp on a no-match in a room that declared `oracle_off_ramp:`. |
+| `reason`     | string  | always       | `freeform` — the user typed the `off_path:` trigger; or `off_ramp` — an automatic agent off-ramp on a no-match in a room that declared `agent_off_ramp:`. |
 | `error_code` | string  | `off_ramp` only | The no-match code that triggered the off-ramp: `UNKNOWN_INTENT`, `INTENT_UNKNOWN`, or `LLM_CLARIFICATION`. |
 | `confidence` | float64 | `off_ramp` only | The router confidence at the no-match, for audit.                |
 
-An off-ramp turn emits `oracle.off_path.question` / `oracle.off_path.answer`
+An off-ramp turn emits `agent.off_path.question` / `agent.off_path.answer`
 (the converse exchange) but **never** a `turn.end` with a rejected outcome — the
 whole point is that a no-match is answered instead of bounced. See
 [`docs/stories/state-machine.md`](../stories/state-machine.md) §11.
@@ -273,66 +273,66 @@ The chain a reviewer reconstructs: `recipe → mining.proposal_raised →
 mining.proposal_decided →` (on a kept accept) `the captured intent's own gate →
 machine.gate_decided → ladder move`.
 
-### Oracle event kinds
+### Agent event kinds
 
-Every oracle call produces exactly two events: `oracle.call.start` and
-`oracle.call.complete` (or `oracle.call.error` on failure).  These events are **no-ops
+Every agent call produces exactly two events: `agent.call.start` and
+`agent.call.complete` (or `agent.call.error` on failure).  These events are **no-ops
 for replay** — `BuildJourney` ignores them — but they carry the response and
-oracle metadata for audit and the runstatus SPA. Large prompts and responses
+agent metadata for audit and the runstatus SPA. Large prompts and responses
 (>1KB) are written to sidecar files under the configured prompts directory and
 the event payload references them via `prompt_file` / `response_file`; smaller
 payloads remain inline.
 
 | Kind                   | When written                                               |
 |------------------------|------------------------------------------------------------|
-| `oracle.call.start`    | After `Oracle.Ask` returns (so cassette `episode_id` / `match_idx` from `resp.Meta` are available). |
-| `oracle.call.complete` | After schema validation passes; carries `Submission` + `Meta`. |
-| `oracle.call.error`    | When `Oracle.Ask` returns an error, or schema validation fails, or a sub-event constraint fires. |
+| `agent.call.start`    | After `Agent.Ask` returns (so cassette `episode_id` / `match_idx` from `resp.Meta` are available). |
+| `agent.call.complete` | After schema validation passes; carries `Submission` + `Meta`. |
+| `agent.call.error`    | When `Agent.Ask` returns an error, or schema validation fails, or a sub-event constraint fires. |
 
-**`oracle.call.start` payload fields:**
+**`agent.call.start` payload fields:**
 
 | Field          | Type   | Description                                        |
 |----------------|--------|----------------------------------------------------|
-| `verb`         | string | Oracle verb: `ask`, `decide`, `extract`, `task`, `converse`. |
+| `verb`         | string | Agent verb: `ask`, `decide`, `extract`, `task`, `converse`. |
 | `agent`        | string | Agent name (optional).                             |
 | `model`        | string | Model name (optional).                             |
 | `prompt_file`  | string | Relative path (from the trace dir) to the prompt sidecar when the rendered prompt exceeds ~1KB and a prompts dir is configured; omitted otherwise. |
 | `input`        | object | Verb-specific input descriptor (e.g. `{schema_path}`). |
 
-**`oracle.call.complete` payload fields:**
+**`agent.call.complete` payload fields:**
 
 | Field        | Type   | Description                                          |
 |--------------|--------|------------------------------------------------------|
-| `verb`       | string | Oracle verb.                                         |
+| `verb`       | string | Agent verb.                                         |
 | `agent`      | string | Agent name (optional).                               |
 | `model`      | string | Model name (optional).                               |
 | `duration_ms`| int    | Round-trip duration in milliseconds.                 |
 | `response`   | object | Parsed `Submission` + any verb-specific fields. Omitted when `response_file` is set (large responses). |
 | `response_file` | string | Relative path (from the trace dir) to the response sidecar when the response exceeds ~1KB and a prompts dir is configured; omitted otherwise. |
-| `meta`       | object | Opaque oracle metadata. For the claude-CLI transport: `{ "usage": { "input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens", … }, "cost_usd": <float> }`, captured per invocation from the stream-json `result` event. Omitted when no usage was reported (e.g. a test stub). Plugin transports may carry their own meta (cassette `episode_id` / `match_idx`, …). |
+| `meta`       | object | Opaque agent metadata. For the claude-CLI transport: `{ "usage": { "input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens", … }, "cost_usd": <float> }`, captured per invocation from the stream-json `result` event. Omitted when no usage was reported (e.g. a test stub). Plugin transports may carry their own meta (cassette `episode_id` / `match_idx`, …). |
 | `transcript_ref` | object | Pointer-only reference to the per-call agent-action sidecar — `{ format, path, events, schema_version }` — present when the call's native execution stream was captured. No detail is inlined. See [§Agent-action transcript sidecar](#agent-action-transcript-sidecar). |
 
-**`oracle.call.error` payload fields:**
+**`agent.call.error` payload fields:**
 
 | Field        | Type   | Description                                          |
 |--------------|--------|------------------------------------------------------|
-| `verb`       | string | Oracle verb.                                         |
+| `verb`       | string | Agent verb.                                         |
 | `agent`      | string | Agent name (optional).                               |
 | `duration_ms`| int    | Duration before the error.                           |
 | `error`      | string | Human-readable error message; kind is in `AskError.Kind`. |
-| `transcript_ref` | object | Same pointer as on `oracle.call.complete`, present when a partial transcript was captured before the failure (e.g. a `decide` arc that exhausted its retries). |
+| `transcript_ref` | object | Same pointer as on `agent.call.complete`, present when a partial transcript was captured before the failure (e.g. a `decide` arc that exhausted its retries). |
 
-For the full oracle plugin contract (transports, lifecycle, auth/secrets, and
-sub-events), see [`docs/architecture/oracle-plugin.md`](../architecture/oracle-plugin.md).
+For the full agent plugin contract (transports, lifecycle, auth/secrets, and
+sub-events), see [`docs/architecture/agent-plugin.md`](../architecture/agent-plugin.md).
 
 ### Agent-action transcript sidecar
 
-Every oracle verb whose operator is the claude CLI produces a rich execution
+Every agent verb whose operator is the claude CLI produces a rich execution
 stream — `tool_use` inputs, `tool_result` outputs, assistant `thinking`, and the
 MCP `validator.submit` of a `decide` — that the host already parses
 (`ClaudeRun.RawEvents`). Rather than bloat the lean, replay-stable trace, that
 stream is written **verbatim** to a per-call **sidecar** and referenced from
-`oracle.call.complete` (and `oracle.call.error`) by a single pointer. The story
+`agent.call.complete` (and `agent.call.error`) by a single pointer. The story
 `*.jsonl` gains **only** the `transcript_ref` attr — no new event kinds, no
 inlined detail. A run with no transcripts renders exactly as before.
 
@@ -421,7 +421,7 @@ it is derived from the filename and append counter, not from a random UUID.
 `call_id` is a 64-bit hex string derived from:
 
 ```
-sha256("oracle-call:" + appID + ":" + key)[:16]
+sha256("agent-call:" + appID + ":" + key)[:16]
 ```
 
 where `key` is:
@@ -429,25 +429,25 @@ where `key` is:
 - **Live call:** `turn + ":" + state_path + ":" + seq`
 - **Cassette-backed call:** `episodeID + ":" + matchIdx`
 
-`call_id` is 1:1 with each oracle exchange. The runstatus SPA pairs
-`oracle.call.start` with `oracle.call.complete` by this field. For `replay:any`
+`call_id` is 1:1 with each agent exchange. The runstatus SPA pairs
+`agent.call.start` with `agent.call.complete` by this field. For `replay:any`
 cassette episodes, `episode_id` groups reuses while `call_id` remains unique
 per exchange (different `matchIdx` → different `call_id`).
 
 ### Sub-events (B-4)
 
 A plugin may populate `AskResponse.SubEvents` with plugin-internal events. These
-are appended verbatim to the JSONL between the `oracle.call.start` and `oracle.call.complete`
+are appended verbatim to the JSONL between the `agent.call.start` and `agent.call.complete`
 lines with the following constraints (all enforced by kitsoki; violations produce
-`oracle.call.error` instead of `oracle.call.complete` and no sub-events land):
+`agent.call.error` instead of `agent.call.complete` and no sub-events land):
 
-- **Namespace:** every sub-event `kind` must start with the dispatching oracle
-  plugin name + `.` (e.g. `oracle.autofix_fixer.bash.called`).
-- **`call_id`:** every sub-event `call_id` must match the parent `oracle.call.start` call_id.
+- **Namespace:** every sub-event `kind` must start with the dispatching agent
+  plugin name + `.` (e.g. `agent.autofix_fixer.bash.called`).
+- **`call_id`:** every sub-event `call_id` must match the parent `agent.call.start` call_id.
 - **Size:** sub-events can be arbitrary size (no limits).
 - **Timestamp:** kitsoki re-stamps each sub-event `ts` at append time using its
   own monotonic clock. The plugin's claimed `ts` is discarded. This guarantees all
-  sub-event timestamps fall within `[oracle.call.start.ts, oracle.call.complete.ts)`.
+  sub-event timestamps fall within `[agent.call.start.ts, agent.call.complete.ts)`.
 
 ---
 
@@ -608,7 +608,7 @@ generated fixture so its trace isn't clobbered by sibling fixtures.)
 
 ### Why a cassette, not `host_handlers:`
 
-A session's host/oracle responses vary per call (e.g. `host.oracle.converse`
+A session's host/agent responses vary per call (e.g. `host.agent.converse`
 returns a different reply each of five invocations). `host_handlers:` declares
 **one** response per handler name and so cannot reproduce a varying session. The
 cassette's episodes are consumed first-unplayed-match-by-handler

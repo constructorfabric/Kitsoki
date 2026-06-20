@@ -1,7 +1,7 @@
 # pull_conflict — conflict with conflict_origin="pull" → auto-resolved → main_ops.
 # Uses guide intent to re-enter conflict (triggers on_enter with pre-seeded world).
 # The gather_conflict_files is the first unguarded on_enter effect — relies on
-# the real kitsoki repo having no conflicts (empty conflict_files → goes to gosum check → skip oracle).
+# the real kitsoki repo having no conflicts (empty conflict_files → goes to gosum check → skip agent).
 # Asserts: conflict_origin="pull" routes back to main_ops after resolution.
 
 test_kind: flow
@@ -57,7 +57,7 @@ host_handlers:
             merge_in_progress:  false
             no_common_ancestor: false
             upstream_tracking:  false
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted:
@@ -68,7 +68,7 @@ host_handlers:
         reason:             null
 
 turns:
-  # guide re-enters conflict (fires on_enter): oracle resolves → rebase_continue
+  # guide re-enters conflict (fires on_enter): agent resolves → rebase_continue
   # → build ok → conflict_resolved (conflict_origin=pull) → main_ops
   - intent: { name: guide, slots: { intent: "use upstream" } }
     expect_state: main_ops

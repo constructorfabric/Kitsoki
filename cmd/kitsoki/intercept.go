@@ -36,12 +36,12 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"kitsoki/internal/agent"
 	"kitsoki/internal/app"
 	"kitsoki/internal/chathost"
 	"kitsoki/internal/chats"
 	"kitsoki/internal/host"
 	"kitsoki/internal/machine"
-	"kitsoki/internal/oracle"
 	"kitsoki/internal/orchestrator"
 	"kitsoki/internal/semroute"
 	"kitsoki/internal/store"
@@ -193,7 +193,7 @@ func runInterceptEngine(ctx context.Context, in interceptEngineInput) (intercept
 	}
 
 	// Build the stateless probe rig exactly like turn.go's probe path:
-	// in-memory store, noRunHarness, host builtins, oracle registry. Direct-
+	// in-memory store, noRunHarness, host builtins, agent registry. Direct-
 	// intent execution after classification never invokes the harness, so the
 	// noRunHarness is correct here.
 	def, err := loadAppWithEnv(in.AppPath)
@@ -226,16 +226,16 @@ func runInterceptEngine(ctx context.Context, in interceptEngineInput) (intercept
 	}
 	chatAdapter := chathost.NewAdapter(chatStore)
 
-	oracleReg, oracleRegErr := oracle.BuildRegistryFromDef(def, h)
-	if oracleRegErr != nil {
-		return interceptResult{}, infraError("build oracle registry: %v", oracleRegErr)
+	agentReg, agentRegErr := agent.BuildRegistryFromDef(def, h)
+	if agentRegErr != nil {
+		return interceptResult{}, infraError("build agent registry: %v", agentRegErr)
 	}
-	defer func() { _ = oracleReg.Close() }()
+	defer func() { _ = agentReg.Close() }()
 
 	orch := orchestrator.New(def, m, s, h,
 		orchestrator.WithHostRegistry(hostReg),
 		orchestrator.WithChatStore(chatAdapter),
-		orchestrator.WithOracleRegistry(oracleReg),
+		orchestrator.WithAgentRegistry(agentReg),
 		orchestrator.WithLogger(logger),
 	)
 
@@ -308,11 +308,11 @@ func runInterceptEngine(ctx context.Context, in interceptEngineInput) (intercept
 
 	// Multi-turn binding (conflict-capable intercept): the bound app declares a
 	// room flagged intercept_drive: rest, so the matched command may enter a
-	// multi-turn, oracle-in-the-loop sub-flow that the stateless OneShot cannot
+	// multi-turn, agent-in-the-loop sub-flow that the stateless OneShot cannot
 	// drive (and abandoning it could strand the tree). Don't OneShot — signal the
 	// caller to drive a persisted session to rest (DriveToRest) under its own
 	// budget. Single-command matches in such a binding settle fast there too; the
-	// no-LLM promise still holds for them (the oracle only runs on a real
+	// no-LLM promise still holds for them (the agent only runs on a real
 	// conflict). See docs/architecture/prompt-intercept.md §"Multi-turn commands".
 	if orch.HasInterceptDriveRoom() {
 		return interceptResult{

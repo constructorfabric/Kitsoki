@@ -63,7 +63,7 @@ type WebConfig struct {
 	// by profile name. See docs/architecture/harness-profiles.md.
 	HarnessProfiles map[string]HarnessProfile `yaml:"harness_profiles,omitempty"`
 	// DefaultProfile names the profile new sessions start on. Empty ⇒ the
-	// flag-derived static default (today's --oracle/--model path). Must name a
+	// flag-derived static default (today's --agent/--model path). Must name a
 	// declared profile when set.
 	DefaultProfile string `yaml:"default_profile,omitempty"`
 
@@ -87,7 +87,6 @@ type WebConfig struct {
 	Root *RootConfig `yaml:"root,omitempty"`
 }
 
-
 // InterceptConfig is the operator's binding for the pre-LLM intercept gate. It
 // names the story (App) and the room (Room) whose no-LLM routing tiers classify
 // a piped prompt, plus the confidence ConfidenceBar a deterministic/semantic
@@ -110,7 +109,6 @@ type InterceptConfig struct {
 	// interception (consumed by the Stage-3 hook, not the gate itself).
 	EscapePrefix string `yaml:"escape_prefix,omitempty"`
 }
-
 
 // MiningConfig is the `.kitsoki.yaml` `mining:` block — the machine-global
 // configuration for the ambient session miner. It sits beside harness_profiles:
@@ -243,7 +241,7 @@ func (rc *RootConfig) RootSpec() *app.RootSpec {
 }
 
 // HarnessProfile is one operator-declared harness profile: a named bundle of
-// the oracle-selection axes collapsed behind a single name. Every field is
+// the agent-selection axes collapsed behind a single name. Every field is
 // optional; an all-empty profile means "today's ambient default" (claude
 // backend, ambient auth). Env values use ${VAR} interpolation, expanded at
 // load time against the process environment (an unset var is a hard error,
@@ -275,7 +273,7 @@ type HarnessProfile struct {
 	// + ANTHROPIC_AUTH_TOKEN to retarget claude at synthetic.new). ${VAR}-expanded
 	// at load time. Never recorded in traces.
 	Env map[string]string `yaml:"env,omitempty"`
-	// Plugin routes the profile through an oracle plugin (e.g. builtin.local_llm
+	// Plugin routes the profile through an agent plugin (e.g. builtin.local_llm
 	// for llama.cpp) instead of forking a backend CLI. Optional.
 	Plugin string `yaml:"plugin,omitempty"`
 }
@@ -384,6 +382,7 @@ func mergeConfig(base, local WebConfig) WebConfig {
 	}
 	return out
 }
+
 // resolveRoot validates the `root:` block fail-fast at load (never at first
 // turn), mirroring resolveHarnessProfiles. Three checks:
 //

@@ -16,7 +16,7 @@
 # Per-mode behavior in the merged state:
 #
 #   human mode:
-#     on_enter   → artifact oracle binds reproduction_artifact.
+#     on_enter   → artifact agent binds reproduction_artifact.
 #     view       → renders the artifact for the operator to read.
 #     operator   → types `continue` (or any accept-alias) to advance,
 #                  `refine feedback=…` to re-run with feedback,
@@ -28,7 +28,7 @@
 #                  happens, then advance — all in one keystroke.
 #
 #   llm / llm_then_human:
-#     on_enter   → artifact oracle, THEN judge oracle, THEN emit_intent
+#     on_enter   → artifact agent, THEN judge agent, THEN emit_intent
 #                  the verdict (accept|refine|uncertain). All in the
 #                  same turn. Human sees the room only if the judge's
 #                  verdict was `uncertain` (llm_then_human falls back).
@@ -58,7 +58,7 @@ states:
             Summary:        '{{ world.reproduction_artifact.summary_title|default:"(pending)" }}'
             "Bug verified": '{{ world.reproduction_artifact.bug_verified|default:"(pending)" }}'
       - heading: "Artifact"
-      - code: '{{ world.reproduction_artifact.summary_markdown|default:"(pending — oracle has not returned yet)" }}'
+      - code: '{{ world.reproduction_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
       - choice:
           mode: single
           prompt: "Actions"
@@ -101,15 +101,15 @@ states:
       # 1. Always: produce the reproduction artifact. Schema-validated
       #    payload lands at Result.Data.submitted; bind walks
       #    "submitted" → world.reproduction_artifact.
-      #    `working_dir` pins the oracle subprocess to the bugfix
-      #    worktree so any greps/reads the oracle runs read the right
+      #    `working_dir` pins the agent subprocess to the bugfix
+      #    worktree so any greps/reads the agent runs read the right
       #    tree. See implementing.yaml header for the regression context.
       # `once: true` for reload-safety: keyed off its own bind
       # (reproduction_artifact), so on /reload (or any self/on_error
       # re-entry) the stored artifact re-renders without re-running the
-      # oracle. The refine + restart_from arms below clear
+      # agent. The refine + restart_from arms below clear
       # reproduction_artifact to re-arm a fresh run.
-      - invoke: host.oracle.task
+      - invoke: host.agent.task
         once: true
         with:
           agent: reproducer
@@ -131,7 +131,7 @@ states:
       # 2. Conditionally: run the LLM judge against the artifact.
       #    Skipped in human mode (operator IS the judge).
       - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
-        invoke: host.oracle.decide
+        invoke: host.agent.decide
         with:
           agent: judge
           prompt: prompts/judge_reproducing.md
@@ -190,7 +190,7 @@ states:
                 refine_feedback:        "{{ slots.feedback ?? world.llm_verdict.reason }}"
                 reproducing_cycle:      "{{ world.reproducing_cycle + 1 }}"
                 cycle:                  "{{ world.cycle + 1 }}"
-                # Clear the once: bind so on_enter re-runs the oracle.
+                # Clear the once: bind so on_enter re-runs the agent.
                 reproduction_artifact:  {}
 
       # restart_from re-enters this phase fresh; nothing earlier to
@@ -203,7 +203,7 @@ states:
                 refine_feedback:       ""
                 reproducing_cycle:     0
                 cycle:                 0
-                # Clear the once: bind so on_enter re-runs the oracle fresh.
+                # Clear the once: bind so on_enter re-runs the agent fresh.
                 reproduction_artifact: {}
 
       # jump_to skips ahead. Audited via world.unsafe_jumps_made.

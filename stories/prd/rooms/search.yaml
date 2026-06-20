@@ -3,7 +3,7 @@
 # Stage 2 of the PRD pipeline:
 #   idle → search → clarifying → brief → references → drafting
 #
-# on_enter runs ONE oracle.decide (once: guarded by its bind):
+# on_enter runs ONE agent.decide (once: guarded by its bind):
 #   existing_scan — the `scout` agent identifies overlapping PRDs /
 #   requirement docs and roadmap fit. This is the EARLY GATE: it runs
 #   BEFORE any artifact is written and before the (expensive) multi-round
@@ -150,7 +150,7 @@ states:
     on_enter:
       # Scout: check for overlapping PRDs + roadmap fit. THE EARLY GATE —
       # runs before any artifact is written. once: keyed off prd_existing_state.
-      - invoke: host.oracle.decide
+      - invoke: host.agent.decide
         once: true
         id: existing_scan
         with:

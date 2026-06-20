@@ -26,7 +26,7 @@ When the user asks a question:
      `docs/`).
   2. **Answer with citations.** Name the file and (where possible)
      the function, type, or line — `internal/tui/tui.go:Update`,
-     `internal/host/oracle.go:askHandler`. Quote the smallest
+     `internal/host/agent.go:askHandler`. Quote the smallest
      snippet that proves the point; don't paste whole files.
   3. **Trace, don't speculate.** If the user asks "what happens when
      X?", follow the call chain in the source rather than guessing

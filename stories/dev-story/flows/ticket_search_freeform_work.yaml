@@ -15,7 +15,7 @@ initial_world:
     - { id: "1", title: "Seed ticket", status: "open", type: "bug" }
 
 host_handlers:
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted:

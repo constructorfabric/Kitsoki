@@ -2,7 +2,7 @@
 # the bugfix testing room's implement_review_artifact.
 #
 # Catches the silent-failure class where:
-#   - host.oracle.task returns ok with Data["submitted"] = full artifact
+#   - host.agent.task returns ok with Data["submitted"] = full artifact
 #   - bind: implement_review_artifact: submitted copies the map into world
 #   - on accept: body: "{{ world.implement_review_artifact.summary_markdown }}"
 #     templates the map into iface.transport.post
@@ -17,7 +17,7 @@
 # — an explicit self-transition re-enters the state and fires on_enter
 # (target: "." skips on_enter; explicit "testing" does not).
 # That fires: iface.ci.run_tests → host.local (stubbed) → bind ci_log;
-#             host.oracle.task (stubbed) → bind implement_review_artifact.
+#             host.agent.task (stubbed) → bind implement_review_artifact.
 # Turn 1 is `accept` which invokes iface.transport.post (= host.artifacts_dir
 # real handler) and writes the artifact file to $KITSOKI_ARTIFACTS_ROOT.
 #
@@ -57,10 +57,10 @@ host_handlers:
       failed: 0
       log:    "ok    kitsoki/... [stub]"
 
-  # oracle.decide — safety-net stub so the builtin never shells out.
+  # agent.decide — safety-net stub so the builtin never shells out.
   # judge_mode=human means the when: condition is false; this stub guards
   # against any unexpected fallthrough to the real claude binary.
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok:        true
       exit_code: 0
@@ -70,9 +70,9 @@ host_handlers:
         confidence: 0.9
         verdict:    "accept"
 
-  # oracle.task — returns the full testing_artifact schema with a
+  # agent.task — returns the full testing_artifact schema with a
   # recognizable sentinel string that the Go test asserts must reach disk.
-  host.oracle.task:
+  host.agent.task:
     data:
       ok:        true
       exit_code: 0
@@ -94,7 +94,7 @@ turns:
   # refine with explicit target: testing fires on_enter (unlike `look`
   # which uses target: "." and intentionally skips it). on_enter chain:
   #   1. iface.ci.run_tests → binds ci_log
-  #   2. host.oracle.task → binds implement_review_artifact
+  #   2. host.agent.task → binds implement_review_artifact
   #   3. when(judge_mode==llm): skipped (human)
   - intent: { name: refine, slots: { feedback: "trigger on_enter via explicit self-transition" } }
     expect_state: testing

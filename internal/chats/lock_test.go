@@ -31,7 +31,7 @@ func openStoreForLock(t *testing.T, fake *clock.Fake) *chats.Store {
 
 func newChat(t *testing.T, cs *chats.Store) *chats.Chat {
 	t.Helper()
-	c, err := cs.Create(context.Background(), "app1", "oracle", "", "Test Chat")
+	c, err := cs.Create(context.Background(), "app1", "agent", "", "Test Chat")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -228,7 +228,7 @@ func TestLock_ContentionTwoStores(t *testing.T) {
 		t.Fatalf("NewStore cs2: %v", err)
 	}
 
-	c, err := cs1.Create(context.Background(), "app1", "oracle", "", "Contended Chat")
+	c, err := cs1.Create(context.Background(), "app1", "agent", "", "Contended Chat")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}

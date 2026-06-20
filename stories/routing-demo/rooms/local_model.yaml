@@ -6,7 +6,7 @@ states:
       extends: "base"
       blocks:
         body:
-          - prose: "Each intent here has only a couple of narrow examples, so a natural paraphrase won't match the deterministic tiers. On that miss the router asks oracle.local (a small local model) to pick the best-fitting intent from the ones allowed in this room. A confident verdict routes directly; if the model answers 'none' or with low confidence, the turn falls through to the main-turn LLM. (The model classifies the intent — it does not fill slots; that stays a deterministic-tier job.)"
+          - prose: "Each intent here has only a couple of narrow examples, so a natural paraphrase won't match the deterministic tiers. On that miss the router asks agent.local (a small local model) to pick the best-fitting intent from the ones allowed in this room. A confident verdict routes directly; if the model answers 'none' or with low confidence, the turn falls through to the main-turn LLM. (The model classifies the intent — it does not fill slots; that stays a deterministic-tier job.)"
           - heading: "Allowed intents — and their ONLY examples"
           - kv:
               pairs:
@@ -17,7 +17,7 @@ states:
           - list:
               items:
                 - label: "should I bring an umbrella today"
-                  hint: "→ check_weather (decided by oracle.local)"
+                  hint: "→ check_weather (decided by agent.local)"
                 - label: "put on some tunes"
                   hint: "→ play_music"
                 - label: "did anyone write to me"

@@ -17,10 +17,10 @@ For the effect-level shape (`invoke:`, `with:`, `bind:`, `on_error:`,
 For named-capability composition (`host_interfaces:` declared on a
 sub-story, rebound by importers) see [`imports.md`](../stories/imports.md) §11.
 
-For invoking oracle handlers directly from scripts, CI jobs, or
+For invoking agent handlers directly from scripts, CI jobs, or
 validator subprocesses — without a running state machine — see
-[`docs/architecture/oracle-cli.md`](oracle-cli.md). That document covers
-`kitsoki oracle <verb>`, `kitsoki oracle-serve` (unix-socket daemon),
+[`docs/architecture/agent-cli.md`](agent-cli.md). That document covers
+`kitsoki agent <verb>`, `kitsoki agent-serve` (unix-socket daemon),
 the JSON-RPC method shapes, and `KITSOKI_SESSION_ID` trace continuity.
 
 ## Registry dispatch and prefix-fallback
@@ -46,11 +46,11 @@ carrier handler when the op name is dispatched from `with:` args.
 |---|---|
 | [`host.run`](#hostrun) | Execute a shell command in a working directory. |
 | [`host.starlark.run`](#hoststarlarkrun) | Run a sandboxed, deterministic Starlark glue script (`main(ctx) -> dict`) with typed inputs/outputs and replayable HTTP. |
-| [`host.oracle.extract`](#hostoracleextract) | Tiered resolver: synonyms → slot_template → llm. Returns typed JSON + `resolved_by`. |
-| [`host.oracle.ask`](#hostoracleask) | Read-only inspection call: read tools + Bash under a profile; no mutation. Returns prose + optional typed JSON. |
-| [`host.oracle.decide`](#hostoracledecide) | Typed LLM verdict (schema required; submit auto-attached; read-only tools optional). |
-| [`host.oracle.task`](#hostoracletask) | Agentic verb with full tool surface, acceptance loop, and replay artifacts (Mode A/B/C). |
-| [`host.oracle.converse`](#hostoracleconverse) | Free-form conversational Claude session with permission_mode control. |
+| [`host.agent.extract`](#hostagentextract) | Tiered resolver: synonyms → slot_template → llm. Returns typed JSON + `resolved_by`. |
+| [`host.agent.ask`](#hostagentask) | Read-only inspection call: read tools + Bash under a profile; no mutation. Returns prose + optional typed JSON. |
+| [`host.agent.decide`](#hostagentdecide) | Typed LLM verdict (schema required; submit auto-attached; read-only tools optional). |
+| [`host.agent.task`](#hostagenttask) | Agentic verb with full tool surface, acceptance loop, and replay artifacts (Mode A/B/C). |
+| [`host.agent.converse`](#hostagentconverse) | Free-form conversational Claude session with permission_mode control. |
 | [`host.transport.post`](#hosttransportpost) | Post a message to a registered transport (TUI / Jira / Bitbucket). |
 | [`host.workspace_manager.get`](#hostworkspace_managerget) | Load a structured workspace context (repos, issue, PRs). |
 | [`host.jobs.answer_clarification`](#hostjobsanswer_clarification) | Resume a paused background job with the user's answer. |
@@ -234,7 +234,7 @@ summary per call. In a flow fixture the testrunner injects a **replay client**
 backed by an HTTP cassette, so the *real* script runs with its network served
 from disk — no socket, fully deterministic, no LLM and no cost.
 
-This `http_cassette` is intentionally a **different** kind from the oracle
+This `http_cassette` is intentionally a **different** kind from the agent
 `host_cassette`: a `host_cassette` episode replaces a whole handler with a
 canned `Result`, whereas this one lets the real handler run and only replays its
 HTTP. The model is deliberately close to Python's [VCR.py](https://vcrpy.readthedocs.io/)
@@ -354,17 +354,17 @@ is present in the tree.)
 
 ---
 
-## Oracle verb summary
+## Agent verb summary
 
 Five verbs ordered by blast radius. Pick the narrowest one that fits.
 
 | Verb | Blast radius | Schema required | Mutation | Transcript |
 |---|---|---|---|---|
-| `host.oracle.extract` | Deterministic-first | yes | no | no |
-| `host.oracle.decide` | LLM-only verdict | yes | no | no |
-| `host.oracle.ask` | LLM inspection | optional | no | no |
-| `host.oracle.task` | Agentic write | yes (acceptance) | yes | journal |
-| `host.oracle.converse` | Open conversation | no | optional | ChatStore |
+| `host.agent.extract` | Deterministic-first | yes | no | no |
+| `host.agent.decide` | LLM-only verdict | yes | no | no |
+| `host.agent.ask` | LLM inspection | optional | no | no |
+| `host.agent.task` | Agentic write | yes (acceptance) | yes | journal |
+| `host.agent.converse` | Open conversation | no | optional | ChatStore |
 
 **Choosing a verb:**
 
@@ -374,7 +374,7 @@ Five verbs ordered by blast radius. Pick the narrowest one that fits.
 4. Does the agent need to edit files, run commands, or loop until a `submit()` is accepted? → `task`.
 5. Is this a multi-turn conversation the user drives? → `converse`.
 
-All five verbs share the same streaming path (`OracleStreamer.Run`), the same
+All five verbs share the same streaming path (`AgentStreamer.Run`), the same
 agent-declaration lookup, and the same `KITSOKI_SESSION_ID` propagation. The
 persona table pattern — one named agent per role, declared in `agents:` — is
 documented with worked examples in `stories/bugfix/AGENT-BRIEF.md` and
@@ -382,7 +382,7 @@ documented with worked examples in `stories/bugfix/AGENT-BRIEF.md` and
 
 ### Hermetic isolation from the operator's Claude Code config
 
-The oracle execs the local `claude` CLI, so a story's agents would otherwise
+The agent execs the local `claude` CLI, so a story's agents would otherwise
 inherit whatever the operator has installed under `~/.claude` — including
 **enabled plugins** (and their skills and named agents). Any globally-enabled
 plugin can then hijack a story's agent: the model, handed a task that resembles
@@ -392,7 +392,7 @@ story's `interviewer` role-played BMAD's "John" PM agent — deprecation notice,
 self-chosen output path, its own pick-one menu — none of which the story asked
 for.)
 
-To prevent this, every oracle CLI invocation pins
+To prevent this, every agent CLI invocation pins
 `--setting-sources project,local`, which **omits the `user` source** where
 `enabledPlugins` lives. A story's agents are therefore defined only by their own
 composed system prompt (the layered kitsoki → project → persona prompt passed
@@ -402,7 +402,7 @@ This isolation is orthogonal to layering — Layer 1 is engine text, not operato
 config. Auth is unaffected
 (OAuth/credentials are read from the keychain, not from a setting source). The
 flag is applied at every construction site via `appendSettingSourcesFlag`
-(`internal/host/agents.go`) and locked by `oracle_setting_sources_test.go`.
+(`internal/host/agents.go`) and locked by `agent_setting_sources_test.go`.
 
 A second isolation concern is the **IDE**. The same inherited environment means
 that when kitsoki runs inside a VS Code integrated terminal, the inner `claude`
@@ -411,19 +411,19 @@ server — pulling the operator's selection and opening diffs that the
 orchestration layer never sees, routes, or records. So when kitsoki itself holds
 an IDE link (see [`host.ide.*`](#hostide--editor-awareness) and
 [`transports.md`](transports.md#7-the-ide-link)), a shared env helper
-(`envScrubIDE`) is applied at **every** oracle exec site — `runClaudeOneShotReal`
-and `runClaudeStreamJSON` in `oracle_runner.go`, and the Bash MCP exec — unsetting
+(`envScrubIDE`) is applied at **every** agent exec site — `runClaudeOneShotReal`
+and `runClaudeStreamJSON` in `agent_runner.go`, and the Bash MCP exec — unsetting
 `CLAUDE_CODE_SSE_PORT` and setting `CLAUDE_CODE_AUTO_CONNECT_IDE=false` (the inner
 `claude` also rediscovers a link by scanning `~/.claude/ide/*.lock`, so unsetting
 the port alone is not enough). When no link is held the helper is a byte-identical
-no-op. kitsoki owns the one IDE link; the oracle subprocess receives editor
+no-op. kitsoki owns the one IDE link; the agent subprocess receives editor
 context as prompt context, not via a second socket.
 
 ---
 
-## host.oracle.ask
+## host.agent.ask
 
-Read-only inspection verb (oracle-split Phase 3). The LLM gets read
+Read-only inspection verb (agent-split Phase 3). The LLM gets read
 tools — Read, Grep, Glob, WebFetch, WebSearch, Bash under a profile,
 read-only MCP servers — but cannot mutate anything. One-shot; no
 transcript persistence. Returns prose; returns typed JSON too when
@@ -499,7 +499,7 @@ not per call. See also: `CaptureReadSnapshot`, `DigestMatches` in
 ### Examples
 
 ```yaml
-invoke: host.oracle.ask
+invoke: host.agent.ask
 with:
   prompt_path: prompts/explain_failure.md
   working_dir: "{{ world.repo_root }}"
@@ -514,7 +514,7 @@ on_error: room_ask_failed
 With schema (typed JSON alongside prose):
 
 ```yaml
-invoke: host.oracle.ask
+invoke: host.agent.ask
 with:
   prompt_path: prompts/explain_failure.md
   agent: failure-explainer
@@ -527,12 +527,12 @@ on_error: room_ask_failed
 
 ---
 
-## host.oracle.converse
+## host.agent.converse
 
-Free-form open-ended conversation with persistent transcript (oracle-split
+Free-form open-ended conversation with persistent transcript (agent-split
 Phase 7).
 
-`converse` is distinct from `host.oracle.task` in that there is no
+`converse` is distinct from `host.agent.task` in that there is no
 `acceptance` loop and no synthetic "done" signal — the user or the
 surrounding state machine decides when the conversation ends. The
 agent may have full mutation tools; what gates mutation is Claude
@@ -560,7 +560,7 @@ Code's own permission system, selected by `permission_mode:`.
 ### background mode (D15)
 
 `converse` preserves `background: true` (used by `dev-story`'s
-`oracle_active` room for fire-and-poll submission). When `background: true`
+`agent_active` room for fire-and-poll submission). When `background: true`
 is set on the effect, the orchestrator dispatches the handler as a
 background job and binds the job ID into world. The handler itself runs
 normally; `background:` is a dispatch-time flag, not a handler-level flag.
@@ -589,7 +589,7 @@ converse(chat=abc, seq=[12..18]) — 6 turns, see ChatStore
 ### Example
 
 ```yaml
-invoke: host.oracle.converse
+invoke: host.agent.converse
 with:
   chat_id: "{{ world.chat_id }}"
   question: "{{ in.text }}"
@@ -603,7 +603,7 @@ on_error: room_converse_failed
 
 ---
 
-## host.oracle.task
+## host.agent.task
 
 The agentic call. The LLM may Edit, Write, and Bash freely inside the declared
 working directory. Every tool call produces a `task.tool` journal event. The
@@ -686,7 +686,7 @@ gated:
   `readOnlyDeniedTools` (`Write`, `Edit`, `MultiEdit`, `NotebookEdit`, `Bash`)
   ride `--disallowedTools` as the hard backstop. `Bash` is routed through the
   `kitsoki-bash` MCP wrapper under the read-only profile (the same wrapper
-  `host.oracle.ask`/`decide` use);
+  `host.agent.ask`/`decide` use);
 - a Bash command the read-only profile *rejects* is no longer a flat deny — it
   routes through the **write-mode gate** (`internal/host/write_mode_gate.go`),
   which classifies the call (`effect ≥ write`), short-circuits an active
@@ -712,14 +712,14 @@ cassette is affected. The classification today keys on the
 signals that exist) and upgrades to the full `pure | read | write | external`
 effect class when the effect-taxonomy slice lands.
 
-### Built-in sub-oracle MCP tools
+### Built-in sub-agent MCP tools
 
 Task agents automatically receive three built-in MCP tools scoped to the
 parent session:
 
-- `kitsoki.oracle.extract` — invoke `host.oracle.extract` as a child span
-- `kitsoki.oracle.decide` — invoke `host.oracle.decide` as a child span
-- `kitsoki.oracle.ask` — invoke `host.oracle.ask` as a child span
+- `kitsoki.agent.extract` — invoke `host.agent.extract` as a child span
+- `kitsoki.agent.decide` — invoke `host.agent.decide` as a child span
+- `kitsoki.agent.ask` — invoke `host.agent.ask` as a child span
 
 These tools ensure that sub-LLM calls by the agent join the parent trace
 rather than escaping it. Their invocations appear as child spans under
@@ -729,7 +729,7 @@ the parent `task.tool` entry in the trace tree.
 
 Every subprocess spawned by the agent (the `Bash` tool, the `post_cmd`
 acceptance subprocess) inherits the `KITSOKI_SESSION_ID` environment variable
-from the parent. Any `kitsoki oracle <verb>` call made from within those
+from the parent. Any `kitsoki agent <verb>` call made from within those
 subprocesses attaches to the parent trace automatically.
 
 ### Journal event kinds
@@ -743,7 +743,7 @@ subprocesses attaches to the parent trace automatically.
 ### Example
 
 ```yaml
-invoke: host.oracle.task
+invoke: host.agent.task
 with:
   agent: bug-fix-implementer
   working_dir: ".bug-fix/{{ world.ticket }}/worktree"
@@ -767,7 +767,7 @@ on_error: room_implementing_failed
 
 ---
 
-## host.oracle.extract
+## host.agent.extract
 
 Tiered deterministic-first resolver: maps a free-text input to a typed
 JSON payload using up to three resolver tiers tried in declaration order.
@@ -778,7 +778,7 @@ First match wins.
 1. `synonyms` — author-curated phrase → payload (YAML file). Case-insensitive.
    Comma-separated keys match multiple phrases to the same payload.
 2. `slot_template` — slot-grammar YAML (same syntax, captures `{slot}` patterns).
-3. `llm` — LLM fallback; same read-only tool surface as `host.oracle.ask`.
+3. `llm` — LLM fallback; same read-only tool surface as `host.agent.ask`.
 
 An optional `validator:` block runs after any tier match (read-only sandbox).
 Rejection falls through to the next tier for deterministic results; for LLM it
@@ -1175,7 +1175,7 @@ The architecture-relevant invariants:
 - **Deterministic I/O, recorded.** The RPCs are ordinary host calls
   (`host.invoked`/`host.returned`), stubbable by per-invoke id, replayable
   without a socket. The one interpretive moment — captured editor context
-  entering an oracle prompt — is recorded as the `ide.context_captured`
+  entering an agent prompt — is recorded as the `ide.context_captured`
   journal event (verb, request, workspace/port, and a sha256 digest of the
   response, not the raw text). Emitted by the read verbs only.
 - **`world.ide.connected`.** Seeded once per turn (nested `World["ide"]
@@ -1259,8 +1259,8 @@ Source: [`internal/host/diff_open.go`](../../internal/host/diff_open.go).
 
 Named agents live in the top-level `agents:` block of `app.yaml`.
 Each entry bundles the system prompt, model, tool surface, and (for
-the new oracle verbs) the Bash restriction profile and external-side-effect
-flag into a reusable persona that any `host.oracle.*` call can reference
+the new agent verbs) the Bash restriction profile and external-side-effect
+flag into a reusable persona that any `host.agent.*` call can reference
 by name via `agent: <name>` in the effect's `with:` block.
 
 ```yaml
@@ -1290,7 +1290,7 @@ agents:
 | `inherit_claude_default` | No | Escape hatch: `true` opts the agent out of layering and back to `--append-system-prompt` onto Claude Code's default (no kitsoki/project grounding). Default `false`. See [system-prompt.md](system-prompt.md). |
 | `tools` | No | Forwarded as `--allowedTools <csv>`. Normalised to `host.X` form by the loader. |
 | `cwd` | No | Default working directory for claude when the effect omits `working_dir:`. Env vars (`$VAR`, `${VAR}`) are expanded at load time. |
-| `bash_profile` | Conditional | Required when `Bash` is in `tools` and the agent is used with `host.oracle.ask` or `host.oracle.decide`. Three forms (see below). |
+| `bash_profile` | Conditional | Required when `Bash` is in `tools` and the agent is used with `host.agent.ask` or `host.agent.decide`. Three forms (see below). |
 | `external_side_effect` | No | Declares whether the agent touches external state (network, remote APIs). The loader infers a default from the tool surface and emits a warn-line when declared and inferred values disagree. |
 
 ### `bash_profile` forms
@@ -1316,7 +1316,7 @@ when it detects the conflict so accidental overrides surface in the trace.
 
 **Per-call `working_dir:` wins over `agent.DefaultCwd`.** The fallback
 chain is: effect `working_dir:` > `agent.cwd` > prompt-file directory
-(for `host.oracle.ask`).
+(for `host.agent.ask`).
 
 ### `external_side_effect` inference
 
@@ -1332,18 +1332,18 @@ time, not an error — the author's explicit value wins.
 
 ---
 
-## host.oracle.decide
+## host.agent.decide
 
 Reasoning verdict call. LLM judgment is required; the schema is mandatory;
 `submit` is auto-attached. The agent may optionally have a read-only tool
 surface. No mutation tools, ever — the handler rejects `Edit`, `Write`, and
 `NotebookEdit` at call time (the loader also rejects them at app-load).
 
-**Distinct from `host.oracle.ask`:** `ask` returns prose (schema optional);
+**Distinct from `host.agent.ask`:** `ask` returns prose (schema optional);
 `decide` returns a typed verdict (schema required) and supports a read-only
 semantic validator. Same read-only tool surface, different output contract.
 
-**Distinct from `host.oracle.extract`:** `extract` can be answered by a
+**Distinct from `host.agent.extract`:** `extract` can be answered by a
 synonym, regex, or slot template; `decide` cannot — the LLM's judgment is the
 point. "Is this PR diff a security concern?" is `decide`. "Map this utterance
 to one of {start, status, cancel}" is `extract`.
@@ -1360,7 +1360,7 @@ to one of {start, status, cancel}" is `extract`.
 | `args` | map | no | Template variables for the prompt (`{{ args.X }}`). When omitted, the full call-args map is used (legacy path). |
 | `validator` | map | no | Optional read-only post-command semantic validator. See "Validator block" below. |
 | `mcp_servers` | map | no | Additional MCP servers to attach (`{ name: { command, args, env } }`). Merged with the auto-attached submit validator. |
-| `tools` | list | no | Per-call tool override. Wins over `agent.Tools` (D5 in the oracle-split proposal). Mutation tools are rejected. |
+| `tools` | list | no | Per-call tool override. Wins over `agent.Tools` (D5 in the agent-split proposal). Mutation tools are rejected. |
 
 ### Returns
 
@@ -1378,7 +1378,7 @@ to one of {start, status, cancel}" is `extract`.
 `Edit`, `Write`, and `NotebookEdit` are hard-rejected by the handler at call
 time. The loader additionally rejects them at app-load when the agent is used
 in a `decide` call. Authors who need agentic work (file edits, Bash mutations)
-should use `host.oracle.task`.
+should use `host.agent.task`.
 
 Read-only tools (`Read`, `Grep`, `Glob`, `WebFetch`, `WebSearch`, `Bash` under
 a profile) are permitted and forwarded as `--allowedTools` to claude.
@@ -1416,7 +1416,7 @@ Minimal judge call:
 
 ```yaml
 effects:
-  - invoke: host.oracle.decide
+  - invoke: host.agent.decide
     with:
       prompt: prompts/judge_pr.md
       schema: schemas/pr_verdict.json
@@ -1438,7 +1438,7 @@ agents:
     tools: [Read, Grep, Glob]
 
 effects:
-  - invoke: host.oracle.decide
+  - invoke: host.agent.decide
     with:
       prompt: prompts/judge_pr.md
       schema: schemas/pr_verdict.json
@@ -1455,7 +1455,7 @@ With a semantic validator:
 
 ```yaml
 effects:
-  - invoke: host.oracle.decide
+  - invoke: host.agent.decide
     with:
       prompt: prompts/judge_pr.md
       schema: schemas/pr_verdict.json
@@ -1475,18 +1475,18 @@ effects:
 
 ## Migration history
 
-All oracle call sites in this codebase were migrated from `host.oracle.ask_with_mcp`
-and `host.oracle.talk` to the five-verb schema above during oracle-split Phases 6–9
-(see git log for the `oracle-split` commit series). The `kitsoki migrate-oracle`
-codemod (`cmd/kitsoki/migrate_oracle.go`) automated the bulk of the migration;
-the classification rules it applies are documented in [`oracle-cli.md`](oracle-cli.md).
+All agent call sites in this codebase were migrated from `host.agent.ask_with_mcp`
+and `host.agent.talk` to the five-verb schema above during agent-split Phases 6–9
+(see git log for the `agent-split` commit series). The `kitsoki migrate-agent`
+codemod (`cmd/kitsoki/migrate_agent.go`) automated the bulk of the migration;
+the classification rules it applies are documented in [`agent-cli.md`](agent-cli.md).
 
-One Go-level entry point survives the migration: `host.OracleAskWithMCPHandler`
-in `internal/host/oracle_ask_with_mcp.go` is called from `internal/metamode/adapter.go`
+One Go-level entry point survives the migration: `host.AgentAskWithMCPHandler`
+in `internal/host/agent_ask_with_mcp.go` is called from `internal/metamode/adapter.go`
 for chat-aware metamode. It is **not** a registered verb — apps cannot invoke
-`host.oracle.ask_with_mcp` via YAML; the loader will reject it as unknown.
-Future work folds the chat-aware metamode path onto `host.oracle.converse` (or a
-dedicated chat-aware oracle abstraction); that work removes the leftover entry
+`host.agent.ask_with_mcp` via YAML; the loader will reject it as unknown.
+Future work folds the chat-aware metamode path onto `host.agent.converse` (or a
+dedicated chat-aware agent abstraction); that work removes the leftover entry
 point and its tests.
 
 ---

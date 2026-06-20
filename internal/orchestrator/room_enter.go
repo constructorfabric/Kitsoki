@@ -2,7 +2,7 @@
 //
 // The transcript pane should show the room's banner the moment we
 // arrive in a new room, BEFORE the room's on_enter chain starts
-// firing tool-call breadcrumbs (oracle / Bash / Grep / Read). The
+// firing tool-call breadcrumbs (agent / Bash / Grep / Read). The
 // banner is part of the room's view: block — and the view doesn't
 // render until the turn completes — so without this hook the user
 // sees "→ in-room: core__continue" followed by a long stream of

@@ -46,7 +46,7 @@ kitsoki drive <app.yaml> --script inputs.txt --transcript out.md \
 `inputs.txt` is human-typed text, one line per turn:
 
 ```
-consult the oracle
+consult the agent
 how does the ZTA proxy work
 go back
 open terminal
@@ -59,10 +59,10 @@ TUI), writes a rich markdown transcript:
 
 ```md
 ## Turn 1 — main
-> consult the oracle
-routed → `go_oracle` (confidence 0.95, 3.2s)
+> consult the agent
+routed → `go_agent` (confidence 0.95, 3.2s)
 view:
-    Oracle — interactive Claude session
+    Agent — interactive Claude session
     ...
 ```
 

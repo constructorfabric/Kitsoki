@@ -15,18 +15,18 @@ import (
 	"os"
 	"path/filepath"
 
+	"kitsoki/internal/agent"
 	"kitsoki/internal/app"
 	"kitsoki/internal/harness"
 	"kitsoki/internal/host"
 	"kitsoki/internal/machine"
-	"kitsoki/internal/oracle"
 	"kitsoki/internal/orchestrator"
 	"kitsoki/internal/store"
 )
 
 // traceSession bundles the wired orchestrator, its JSONL trace sink, and the
 // bootstrapped session for a trace-backed surface. Call Close when done — it
-// tears down the harness, oracle registry, in-memory store, JSONL sink, and
+// tears down the harness, agent registry, in-memory store, JSONL sink, and
 // any story-reconstruction temp files in the right order.
 type traceSession struct {
 	Def  *app.AppDef
@@ -51,7 +51,7 @@ func (ts *traceSession) Close() {
 // supplied routing harness, creates a session, and records the effective story.
 //
 // The harness h is owned by the caller's intent but Closed by traceSession.Close
-// (the oracle registry built here wraps it for external transports; the
+// (the agent registry built here wraps it for external transports; the
 // orchestrator routes through it). Pass the real routing harness for drive, or
 // a noRunHarness for the direct-intent turn path.
 //
@@ -144,20 +144,20 @@ func setupTraceSession(ctx context.Context, appPath, tracePath string, h harness
 		return nil, infraError("validate hosts: %v", err)
 	}
 
-	// Build the oracle registry for external transports declared in
-	// oracle_plugins:. The routing harness h backs the oracle.claude builtin.
-	oracleReg, oracleRegErr := oracle.BuildRegistryFromDef(def, h)
-	if oracleRegErr != nil {
+	// Build the agent registry for external transports declared in
+	// agent_plugins:. The routing harness h backs the agent.claude builtin.
+	agentReg, agentRegErr := agent.BuildRegistryFromDef(def, h)
+	if agentRegErr != nil {
 		ts.Close()
-		return nil, infraError("build oracle registry: %v", oracleRegErr)
+		return nil, infraError("build agent registry: %v", agentRegErr)
 	}
-	ts.closers = append(ts.closers, func() { _ = oracleReg.Close() })
+	ts.closers = append(ts.closers, func() { _ = agentReg.Close() })
 
 	orch := orchestrator.New(def, m, s, h,
 		orchestrator.WithHostRegistry(hostReg),
 		orchestrator.WithEventSink(sink),
 		orchestrator.WithEventSinkAuthority(true),
-		orchestrator.WithOracleRegistry(oracleReg),
+		orchestrator.WithAgentRegistry(agentReg),
 	)
 	ts.Orch = orch
 

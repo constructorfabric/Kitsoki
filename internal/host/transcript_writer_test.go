@@ -158,7 +158,7 @@ func TestClaudeTeeToSidecar(t *testing.T) {
 }
 
 // TestClaudeTeeSkippedWithoutCallID verifies the tee is a no-op when no call_id
-// is in ctx (a non-oracle claude invocation), so no sidecar is written.
+// is in ctx (a non-agent claude invocation), so no sidecar is written.
 func TestClaudeTeeSkippedWithoutCallID(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

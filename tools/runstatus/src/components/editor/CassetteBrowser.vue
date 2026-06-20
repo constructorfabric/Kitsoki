@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * CassetteBrowser — lists the cassette episodes matching one oracle contract's
+ * CassetteBrowser — lists the cassette episodes matching one agent contract's
  * CassetteKey (runstatus.editor.cassettes). Each row shows the input digest +
  * output preview; clicking a row selects-and-expands it and emits `select` with
  * the episode so the parent can drive a cassette-override replay (which feeds

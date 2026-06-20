@@ -5,7 +5,7 @@ package mcp_test
 // drives some submit calls, then re-instantiates a *new* ValidatorServer
 // with the same StateFilePath to verify the counters were resumed.
 //
-// This is the mechanism host.oracle.ask_with_mcp uses to make a logical
+// This is the mechanism host.agent.ask_with_mcp uses to make a logical
 // validator session span multiple `claude --resume` re-engagements: the
 // orchestrator's MCP-config tells the validator subprocess to read/write
 // the same state file across iterations.

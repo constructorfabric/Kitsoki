@@ -49,7 +49,7 @@ StudioSession (one MCP connection)
 
 The server core records **nothing new**: each driving handle writes through the
 same JSONL event sink as [`kitsoki turn --trace`](developer-guide.md#61-the-trace-is-your-transcript),
-so routed intents, `oracle.call.*`, and transitions land in that session's
+so routed intents, `agent.call.*`, and transitions land in that session's
 trace and replay unchanged. The studio session itself is ephemeral process
 state; its handles point at durable traces. Handle resolution is **fail-fast** —
 an unknown session handle, or a `story.*` call with no workspace bound, returns
@@ -90,7 +90,7 @@ uses, so the MCP surface can never disagree with them.
 | `story.read` | `{path} → {content}` | workspace-scoped file read |
 | `story.write` | `{path, content} → {written, validation}` | write, then **auto-validate** in one round-trip; path-escape rejected |
 | `story.validate` | `{dir?} → {ok, errors[]}` | `app.Load` → `[]ValidationError{File, Line, Column, Message}` — the full load-time invariant set |
-| `story.graph` | `{dir?, room?} → {rooms[] \| detail \| oracles[]}` | `graph.RoomList` / `Detail` / `OracleContracts` (the pure functions behind `/editor`) |
+| `story.graph` | `{dir?, room?} → {rooms[] \| detail \| agents[]}` | `graph.RoomList` / `Detail` / `AgentContracts` (the pure functions behind `/editor`) |
 | `story.test` | `{dir?, flows?} → {report}` | `testrunner.RunFlows` (no LLM; honours `--recording`/`--host-cassette`) |
 
 ### `session.*` — drive & introspect
@@ -147,7 +147,7 @@ result.
 
 ## Operator-ask — the MCP client *is* the operator
 
-A driven turn can dispatch a kitsoki oracle sub-agent (`host.oracle.ask/decide/
+A driven turn can dispatch a kitsoki agent sub-agent (`host.agent.ask/decide/
 task`) that asks the operator a clarifying question via `mcp__operator__ask`. In
 a TUI/web run a live surface answers it; a plain headless session has no operator
 and the sub-agent takes the "proceed on your own" path
@@ -170,7 +170,7 @@ suspend/resume fallback) and the no-LLM test posture.
 
 The server drops into a client's `.mcp.json` the same way the bash/operator
 servers attach
-([`writeMCPConfigTempfile`](../../internal/host/oracle_helpers.go) shape):
+([`writeMCPConfigTempfile`](../../internal/host/agent_helpers.go) shape):
 
 ```json
 { "mcpServers": { "kitsoki": {

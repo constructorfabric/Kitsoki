@@ -191,7 +191,7 @@ states:
 
 ## Chat-aware background turn
 
-**Pattern:** A chat-aware Oracle invocation, dispatched as a background job
+**Pattern:** A chat-aware Agent invocation, dispatched as a background job
 so the orchestrator (or `loop.py`) doesn't block waiting for Claude. The
 chat lock serialises concurrent drivers; on completion the inbox shows a
 chat-friendly notification ("Reply ready — <preview>") that teleports back
@@ -202,7 +202,7 @@ to the originating room with `world.last_job_result.answer` bound.
 ```yaml
 hosts:
   - host.chat.resolve
-  - host.oracle.decide
+  - host.agent.decide
 
 states:
   phase_3_executing:
@@ -210,7 +210,7 @@ states:
       - invoke: host.chat.resolve
         with: { app: "bugfix", room: "phase_3", scope_key: "{{ world.ticket_key }}" }
         bind: { active_chat_id: "chat_id" }
-      - invoke: host.oracle.decide
+      - invoke: host.agent.decide
         with:
           chat_id: "{{ world.active_chat_id }}"
           prompt: prompts/03-fix-proposal.txt
@@ -232,7 +232,7 @@ states:
 
 ### Notes
 
-- `host.oracle.converse` works the same way; use it for free-form Q&A rooms.
+- `host.agent.converse` works the same way; use it for free-form Q&A rooms.
 - `host.chat.resolve` is idempotent — calling it on every `on_enter` is
   cheap and correct.
 

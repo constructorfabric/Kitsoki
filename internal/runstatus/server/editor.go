@@ -96,17 +96,17 @@ func (s *Server) dispatchEditor(method string, params map[string]any) (any, *rpc
 		_ = dir
 		return detail, nil, true
 
-	// runstatus.editor.oracles {story_path, room_id} → {contracts, cassette_globs}
-	case "runstatus.editor.oracles":
+	// runstatus.editor.agents {story_path, room_id} → {contracts, cassette_globs}
+	case "runstatus.editor.agents":
 		a, dir, rerr := s.resolveEditorApp(params)
 		if rerr != nil {
 			return nil, rerr, true
 		}
 		roomID, _ := params["room_id"].(string)
 		if roomID == "" {
-			return nil, &rpcError{Code: codeServerError, Message: "editor.oracles: missing 'room_id'"}, true
+			return nil, &rpcError{Code: codeServerError, Message: "editor.agents: missing 'room_id'"}, true
 		}
-		contracts := graph.OracleContracts(a, roomID)
+		contracts := graph.AgentContracts(a, roomID)
 		return map[string]any{
 			"contracts":      contracts,
 			"cassette_globs": graph.CassetteGlob(dir),
@@ -126,7 +126,7 @@ func (s *Server) dispatchEditor(method string, params map[string]any) (any, *rpc
 		}
 		return map[string]any{"episodes": eps}, nil, true
 
-	// runstatus.editor.replay {story_path, room_id, oracle_index, cassette_file?}
+	// runstatus.editor.replay {story_path, room_id, agent_index, cassette_file?}
 	//   → {output, world_snapshot, source: "cassette", note?}
 	case "runstatus.editor.replay":
 		a, dir, rerr := s.resolveEditorApp(params)
@@ -155,7 +155,7 @@ type CassetteEpisodeSummary struct {
 
 // listCassetteEpisodes loads every cassette under the story's cassette globs and
 // returns the episodes whose match map is consistent with key (handler / phase /
-// schema_name when set on the key). A nil/empty key returns all oracle episodes.
+// schema_name when set on the key). A nil/empty key returns all agent episodes.
 func listCassetteEpisodes(storyDir string, key graph.CassetteKey) ([]CassetteEpisodeSummary, error) {
 	var files []string
 	for _, glob := range graph.CassetteGlob(storyDir) {
@@ -233,22 +233,22 @@ func matchString(ep *testrunner.CassetteEpisode, field string) string {
 // episodeInputDigest returns a short digest of the episode's recorded input /
 // prompt for the list view.
 func episodeInputDigest(ep *testrunner.CassetteEpisode) string {
-	if ep.Oracle != nil {
-		if ep.Oracle.Prompt != "" {
-			return preview(ep.Oracle.Prompt, 120)
+	if ep.Agent != nil {
+		if ep.Agent.Prompt != "" {
+			return preview(ep.Agent.Prompt, 120)
 		}
-		if ep.Oracle.Input != nil {
-			return preview(fmt.Sprint(ep.Oracle.Input), 120)
+		if ep.Agent.Input != nil {
+			return preview(fmt.Sprint(ep.Agent.Input), 120)
 		}
 	}
 	return preview(fmt.Sprint(ep.Match), 120)
 }
 
 // episodeOutputPreview returns the first ~200 chars of the episode's recorded
-// output (oracle response or response data).
+// output (agent response or response data).
 func episodeOutputPreview(ep *testrunner.CassetteEpisode) string {
-	if ep.Oracle != nil && ep.Oracle.Response != "" {
-		return preview(ep.Oracle.Response, 200)
+	if ep.Agent != nil && ep.Agent.Response != "" {
+		return preview(ep.Agent.Response, 200)
 	}
 	if ep.Response.Data != nil {
 		return preview(fmt.Sprint(ep.Response.Data), 200)
@@ -270,24 +270,24 @@ func preview(s string, n int) string {
 // ── Replay ──────────────────────────────────────────────────────────────────
 
 // editorReplay implements the cassette-override read path: it loads the
-// recorded output for an oracle call from a cassette and returns it plus a
+// recorded output for an agent call from a cassette and returns it plus a
 // best-effort post-bind world snapshot derived from the effect's bind
-// directives. The live-dispatch path (a real oracle round-trip) requires a
+// directives. The live-dispatch path (a real agent round-trip) requires a
 // session and is intentionally NOT wired here — the editor is per-story, not
 // per-session — so a request without a cassette_file returns codeReadOnly.
-// Task-oracle live replay is rejected with a clear error regardless.
+// Task-agent live replay is rejected with a clear error regardless.
 func editorReplay(a app.App, storyDir string, params map[string]any) (any, *rpcError, bool) {
 	roomID, _ := params["room_id"].(string)
 	if roomID == "" {
 		return nil, &rpcError{Code: codeServerError, Message: "editor.replay: missing 'room_id'"}, true
 	}
-	idx, hasIdx := intParam(params, "oracle_index")
+	idx, hasIdx := intParam(params, "agent_index")
 	if !hasIdx {
-		return nil, &rpcError{Code: codeServerError, Message: "editor.replay: missing 'oracle_index'"}, true
+		return nil, &rpcError{Code: codeServerError, Message: "editor.replay: missing 'agent_index'"}, true
 	}
-	contracts := graph.OracleContracts(a, roomID)
+	contracts := graph.AgentContracts(a, roomID)
 	if idx < 0 || idx >= len(contracts) {
-		return nil, &rpcError{Code: codeServerError, Message: fmt.Sprintf("editor.replay: oracle_index %d out of range (room has %d oracle calls)", idx, len(contracts))}, true
+		return nil, &rpcError{Code: codeServerError, Message: fmt.Sprintf("editor.replay: agent_index %d out of range (room has %d agent calls)", idx, len(contracts))}, true
 	}
 	contract := contracts[idx]
 
@@ -298,7 +298,7 @@ func editorReplay(a app.App, storyDir string, params map[string]any) (any, *rpcE
 		return nil, &rpcError{Code: codeReadOnly, Message: "editor.replay: live replay requires a session; supply 'cassette_file' for cassette-override replay"}, true
 	}
 	if strings.HasSuffix(contract.Kind, ".task") {
-		return nil, &rpcError{Code: codeServerError, Message: "editor.replay: task-oracle live replay is not supported (would run an agent with side effects)"}, true
+		return nil, &rpcError{Code: codeServerError, Message: "editor.replay: task-agent live replay is not supported (would run an agent with side effects)"}, true
 	}
 
 	// Resolve the cassette file relative to the story dir when not absolute.
@@ -322,7 +322,7 @@ func editorReplay(a app.App, storyDir string, params map[string]any) (any, *rpcE
 		}
 	}
 	if matched == nil {
-		return nil, &rpcError{Code: codeNotFound, Message: "editor.replay: no episode in cassette matches this oracle call"}, true
+		return nil, &rpcError{Code: codeNotFound, Message: "editor.replay: no episode in cassette matches this agent call"}, true
 	}
 
 	output := episodeRecordedOutput(matched)
@@ -334,16 +334,16 @@ func editorReplay(a app.App, storyDir string, params map[string]any) (any, *rpcE
 		"source":         "cassette",
 		"cassette_file":  cassetteFile,
 		"episode_id":     matched.ID,
-		"note":           "cassette-override replay: recorded output + bind-directive world snapshot (no live oracle, no LLM)",
+		"note":           "cassette-override replay: recorded output + bind-directive world snapshot (no live agent, no LLM)",
 	}, nil, true
 }
 
 // episodeRecordedOutput returns the episode's recorded output as a value the
-// frontend can render: the oracle response string when present, else the
+// frontend can render: the agent response string when present, else the
 // response data map.
 func episodeRecordedOutput(ep *testrunner.CassetteEpisode) any {
-	if ep.Oracle != nil && ep.Oracle.Response != "" {
-		return ep.Oracle.Response
+	if ep.Agent != nil && ep.Agent.Response != "" {
+		return ep.Agent.Response
 	}
 	if ep.Response.Data != nil {
 		return ep.Response.Data
@@ -358,7 +358,7 @@ func episodeRecordedOutput(ep *testrunner.CassetteEpisode) any {
 // effect's bind directives: for each world_key←result_key binding, it pulls the
 // matching key out of the recorded output (when the output is a map) so the
 // editor can show what the call would write to the world.
-func bindWorldSnapshot(a app.App, roomID string, contract graph.OracleContract, output any) map[string]any {
+func bindWorldSnapshot(a app.App, roomID string, contract graph.AgentContract, output any) map[string]any {
 	snap := map[string]any{}
 	st, ok := a.LookupState(app.StatePath(roomIDOf(roomID)))
 	if !ok {

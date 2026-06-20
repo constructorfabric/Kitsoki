@@ -29,14 +29,14 @@ jobCtx, cancel := context.WithCancel(ctx)   // ctx = the submitting turn's conte
 
 In `kitsoki web`, the caller's `ctx` is the **per-turn HTTP request context**,
 which is cancelled the instant the turn handler returns. So the request
-returning killed the in-flight background handler (here a `host.oracle.decide`
+returning killed the in-flight background handler (here a `host.agent.decide`
 → `claude` exec) with `context canceled`, ~immediately. The room sat forever
 on its `…executing` view because the job it was waiting on never ran.
 
 This only bites in web mode. In the TUI the dispatch context lives as long as
 the process, so the same job survives.
 
-Adjacent to `2026-06-03T121407Z-oracle-decide-silent-abandon-empty-artifact.md`
+Adjacent to `2026-06-03T121407Z-agent-decide-silent-abandon-empty-artifact.md`
 (also a decide-fails-invisibly shape) but a distinct root cause: there the LLM
 returned no submit; here the exec never got to run at all.
 
@@ -44,17 +44,17 @@ returned no submit; here the exec never got to run at all.
 
 1. `kitsoki run stories/bugfix/app.yaml` via the **web** transport (`kitsoki web`).
 2. Set up a ticket so the `ticket_setup` room dispatches the
-   `phase_minus_1` context-extraction as a background `host.oracle.decide`
+   `phase_minus_1` context-extraction as a background `host.agent.decide`
    and transitions to `phase_minus_1_executing`.
 3. Observe the room render *"running — this takes ~30 seconds; the screen will
    refresh automatically…"* and then never refresh.
 
 ### Expected vs actual
 
-- **Expected:** the background oracle call runs to completion (~30s) and the
+- **Expected:** the background agent call runs to completion (~30s) and the
   room advances when the artifact is bound.
 - **Actual:** the job dies `~96ms` after start with
-  `host.oracle.decide: claude exec failed: context canceled`; the UI sits on
+  `host.agent.decide: claude exec failed: context canceled`; the UI sits on
   the stale "running…" view (the `background_completion` turn's failure
   `say` / `last_error` never surfaced over the web transport, so it "looks
   hung").
@@ -65,11 +65,11 @@ From `94c6daa4-web-…jsonl`, turn 4 → turn 5:
 
 ```
 turn 4  ticket_setup  -> phase_minus_1_executing  (view: "running — ~30s…")
-        scheduler.submitted job 01KTWS4D2RE8QX1PBPK61VYSC4 host.oracle.decide
+        scheduler.submitted job 01KTWS4D2RE8QX1PBPK61VYSC4 host.agent.decide
         turn.end @ 02:03:47.220
 turn 5  background_completion @ 02:03:47.273   (53ms later)
-        oracle.call.error duration_ms=96
-          error="host.oracle.decide: claude exec failed: context canceled"
+        agent.call.error duration_ms=96
+          error="host.agent.decide: claude exec failed: context canceled"
         scheduler.completed status=failed
 ```
 
@@ -85,7 +85,7 @@ turn's (request-scoped, in web mode) context.
 ## Fix
 
 Detach from the caller's cancellation while preserving its values (trace
-sink, oracle-call ctx), then wrap in the scheduler's own cancel so explicit
+sink, agent-call ctx), then wrap in the scheduler's own cancel so explicit
 `Cancel(id)` remains the sole abort path:
 
 ```go

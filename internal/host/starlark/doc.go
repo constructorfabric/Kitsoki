@@ -3,7 +3,7 @@
 // restricted interpreter and returns a map of named outputs.
 //
 // Why this exists: kitsoki's value proposition is separating interpretive
-// decisions (the LLM oracle) from deterministic execution. A great deal of
+// decisions (the LLM agent) from deterministic execution. A great deal of
 // "glue" in a story — shaping a payload, calling a plain HTTP API, deriving a
 // few fields — is deterministic but too fiddly to express in the YAML effect
 // vocabulary and too small to justify a bespoke Go host handler. host.run can

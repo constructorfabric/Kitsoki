@@ -28,7 +28,7 @@
 #   * initial_world: DEFAULTS — no external-target override keys. design_ticket_dir
 #                    is "issues/features" (MINTS the ticket) where gears uses "".
 #
-# Intent-only (no LLM). The prd discovery rooms' on_enter oracle calls are
+# Intent-only (no LLM). The prd discovery rooms' on_enter agent calls are
 # served by the same stubbed hosts as stories/prd/flows/happy_path.yaml; the
 # design half mirrors flows/design_happy_path.yaml. prd's intents are typed
 # PREFIXED (prd__discuss …) because imports.prd.intents.import is []; the design
@@ -54,11 +54,11 @@ host_handlers:
     data: { ok: true, connected: true }
   host.chat.resolve:
     data: { ok: true, chat_id: "chat-1", title: "PRD idea discovery", is_new: true }
-  host.oracle.converse:
+  host.agent.converse:
     data: { ok: true, answer: "A self-serve tour subcommand so kitsoki can render its own demo videos.", chat_id: "chat-1", claude_session_id: "sess-1" }
-  host.oracle.search:
+  host.agent.search:
     data: { hits: [], top: null }
-  host.oracle.decide:
+  host.agent.decide:
     # prd clarifying question generation (the un-id'd decide).
     data:
       ok: true
@@ -94,7 +94,7 @@ host_handlers:
           submitted: { verdict: "continue", reason: "Crisp why, kitsoki design shape, components named.", questions: [] }
   host.artifacts_dir:
     data: { ok: true, path: "docs/proposals/.workspace/tour-subcommand/001-brief.md", message_id: "out#1" }
-  host.oracle.task:
+  host.agent.task:
     by_call:
       # PRD author (prd drafting) — id: prd_author.
       prd_author:

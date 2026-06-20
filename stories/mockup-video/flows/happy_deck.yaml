@@ -1,8 +1,8 @@
 # happy_deck — full path, medium=deck: intake → brief-gate(ok) → authoring(accept)
 #                → rendering(deck) → review(accept) → done.
 #
-# All host calls stubbed (Mode-2, intent-only, no LLM). Oracle calls stubbed
-# by per-invoke id (memory: oracle-stub-by-id).
+# All host calls stubbed (Mode-2, intent-only, no LLM). Agent calls stubbed
+# by per-invoke id (memory: agent-stub-by-id).
 
 test_kind: flow
 app: ../app.yaml
@@ -18,7 +18,7 @@ host_handlers:
   host.chat.resolve:
     data: { ok: true, chat_id: "chat-1", title: "Mockup video brief discovery" }
 
-  host.oracle.converse:
+  host.agent.converse:
     by_call:
       distil_brief:
         data:
@@ -29,14 +29,14 @@ host_handlers:
             medium: "deck"
             notes: ""
 
-  host.oracle.decide:
+  host.agent.decide:
     by_call:
       brief_check:
         data:
           ok: true
           submitted: { verdict: "ok", reason: "Feature, scenarios, and medium are all concrete." }
 
-  host.oracle.task:
+  host.agent.task:
     by_call:
       author_source:
         data:

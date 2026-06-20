@@ -38,7 +38,7 @@ type recordingFile struct {
 //     live harness returns when the LLM answers without calling the tool),
 //     carrying the optional `message:` as free-form text. This lets a no-LLM
 //     replay demo trigger the orchestrator's clarify branch (and, for an
-//     off-ramp room, the oracle off-ramp) without an LLM.
+//     off-ramp room, the agent off-ramp) without an LLM.
 //
 // Example clarify entry:
 //
@@ -97,7 +97,7 @@ func (e *ErrRecordingMiss) Error() string {
 //   - Clarify entry (`clarify: true`): RunTurn returns a [*ClarifyResponse]
 //     with the entry's `message:`, identical to the live harness's "the LLM
 //     couldn't map this" path. This lets a deterministic, no-LLM replay demo
-//     drive the orchestrator's clarify branch (and an opt-in oracle off-ramp).
+//     drive the orchestrator's clarify branch (and an opt-in agent off-ramp).
 //     See recordingEntry for the on-disk shape.
 type ReplayHarness struct {
 	// exact maps (state, input) → entry using the original casing.

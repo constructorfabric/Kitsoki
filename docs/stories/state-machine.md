@@ -144,15 +144,15 @@ Order matters inside an intent's transition list:
 
 #### `write_mode` — read-only-by-default agent rooms
 
-A room that dispatches an agent (`host.oracle.task`, a `mode: conversational`
-room, or one with an `oracle_off_ramp`) may declare a side-effect posture:
+A room that dispatches an agent (`host.agent.task`, a `mode: conversational`
+room, or one with an `agent_off_ramp`) may declare a side-effect posture:
 
 ```yaml
 states:
   workbench:
     write_mode: read_only   # | open  (default: open / absent = today's posture)
     on:
-      do: [{ target: workbench, effects: [{ invoke: host.oracle.task, with: { agent: builder, acceptance: { schema: schemas/out.json } } }] }]
+      do: [{ target: workbench, effects: [{ invoke: host.agent.task, with: { agent: builder, acceptance: { schema: schemas/out.json } } }] }]
 ```
 
 - `open` (or absent): the dispatched agent runs under its declared posture
@@ -172,7 +172,7 @@ postures must agree); and a story may not `set:` the engine-reserved
 
 #### `intercept_drive` — multi-turn rooms the intercept gate drives to rest
 
-A room whose entry begins a multi-turn, oracle-in-the-loop sub-flow (e.g. the
+A room whose entry begins a multi-turn, agent-in-the-loop sub-flow (e.g. the
 git-ops [`conflict` room](../../stories/git-ops/rooms/conflict.yaml): resolve →
 `rebase_continue` → `conflict_resolved`) declares:
 
@@ -447,13 +447,13 @@ effects:
 Templates inside effects use the same `{{ … }}` syntax as views. Inside
 `with:` and `bind:`, **arguments and results are typed** —
 `stdout`, `exit_code`, `ok` for `host.run`; `answer`, `chat_id`, etc.
-for `host.oracle.converse`.
+for `host.agent.converse`.
 
 #### Routing on an async host result (`emit_intent` + the `''` guard)
 
 `emit_intent` on an `on_enter` invoke is the idiom for **"call out, then
 branch on what came back"** — an LLM judge → `accept`, a diff review →
-`accept`/`reject`. The subtlety: an awaited harness call (oracle, IDE, the
+`accept`/`reject`. The subtlety: an awaited harness call (agent, IDE, the
 review-diff `host.diff.open`) binds its result **asynchronously** — the
 `emit_intent` expression is evaluated once on the synchronous `on_enter`
 pass (before the bind has settled) and again by the orchestrator's
@@ -494,7 +494,7 @@ guard (shaping a payload, deriving several fields, a plain HTTP call) but
 is still **deterministic** — no LLM judgement needed — reach for
 [`host.starlark.run`](../architecture/hosts.md#hoststarlarkrun): a
 sandboxed Starlark script (`main(ctx) -> dict`) with typed inputs/outputs
-and replayable HTTP. It is the deterministic counterpart to an oracle
+and replayable HTTP. It is the deterministic counterpart to an agent
 call.
 
 ```yaml
@@ -561,16 +561,16 @@ Two scopes live alongside `world`:
 - **`$host_error`** — set by the orchestrator when an `on_error:`
   transition fires; readable in the *target* state's first guard.
 
-Two reserved, engine-managed `world` keys carry oracle spend so a story can
+Two reserved, engine-managed `world` keys carry agent spend so a story can
 budget against cost without any host wiring (both seeded to `0` by
-`WorldFromSchema`, so a guard reads a number even before the first oracle call):
+`WorldFromSchema`, so a guard reads a number even before the first agent call):
 
 - **`world.turn_cost_usd`** — `total_cost_usd` of the most recent host-dispatch
-  batch (reset to `0` on a batch with no oracle spend, e.g. `host.run`-only).
-- **`world.session_cost_usd`** — cumulative oracle spend across the session.
+  batch (reset to `0` on a batch with no agent spend, e.g. `host.run`-only).
+- **`world.session_cost_usd`** — cumulative agent spend across the session.
 
-The orchestrator overwrites these each turn from the oracle transport's reported
-cost (`foldOracleCost`, journaled as `EffectApplied` so replay reconstructs the
+The orchestrator overwrites these each turn from the agent transport's reported
+cost (`foldAgentCost`, journaled as `EffectApplied` so replay reconstructs the
 same totals). Cassette episodes carry `cost_usd`, so cost-budget guards are
 deterministic in flow tests. Typical use — stop a loop on goal-met *or*
 budget-hit:
@@ -650,11 +650,11 @@ through the same lock:
   When the user submits an `answer_clarification` intent, the answer is
   written to the job row and the handler resumes.
 - **Off-path.** A global trigger (default: `help`) suspends the current
-  state and pushes the user into a free-form Oracle-style sub-room. On
+  state and pushes the user into a free-form Agent-style sub-room. On
   exit, the previous state is rehydrated.
 - **Teleport.** `Orchestrator.Teleport` jumps to a target state without
   going through a transition — used by inbox notifications and the
-  Oracle Room banner. Pushes the source state onto the history stack.
+  Agent Room banner. Pushes the source state onto the history stack.
 - **Hot reload.** When the watched `app.yaml` changes mid-session — or
   the operator types `/reload` — the orchestrator re-validates, swaps in
   the new `AppDef`, rebinds the current state if it still exists, and
@@ -689,7 +689,7 @@ Make `on_enter` idempotent with one of:
   existing chat keyed by `app/room/scope_key`, or creates one) over
   `host.chat.create`; `host.git_worktree` returns the existing worktree
   rather than erroring. Reserve the unconditional `create` for dedicated
-  "start a *new* one" states (e.g. dev-story's `oracle_*_new` rooms).
+  "start a *new* one" states (e.g. dev-story's `agent_*_new` rooms).
 - **`once: true` on the invoke (preferred for expensive/non-idempotent
   calls).** Set `once: true` on an `invoke:` effect and the engine skips it
   whenever **every** one of its `bind:` target world keys is already set
@@ -700,7 +700,7 @@ Make `on_enter` idempotent with one of:
 
   ```yaml
   on_enter:
-    - invoke: host.oracle.decide       # the expensive call
+    - invoke: host.agent.decide       # the expensive call
       once: true                       # skip while proposal_brief_decision is set
       bind: { proposal_brief_decision: submitted }
   on:
@@ -1041,7 +1041,7 @@ off_path:
 ```
 
 Triggering the off-path intent saves the current state, switches to a
-free-form Oracle-style sub-conversation, and renders the banner. When
+free-form Agent-style sub-conversation, and renders the banner. When
 the user types `/back` (or whatever the off-path's exit intent is),
 the previous state is rehydrated and play resumes.
 
@@ -1056,19 +1056,19 @@ the declarative `agents:` block — see [`meta-mode.md`](meta-mode.md).
 Meta mode is what most authors should reach for today; off-path remains
 the simple banner-only escape hatch.
 
-### The oracle off-ramp — the automatic no-match door
+### The agent off-ramp — the automatic no-match door
 
 One voice, two entrances. Off-path is reached through a *typed-trigger*
-door; the **oracle off-ramp** is the *automatic*, room-scoped door into the
-same free-form `converse` mechanism. A room that declares `oracle_off_ramp:`
-routes a genuine no-match into an oracle answer instead of rejecting, with
+door; the **agent off-ramp** is the *automatic*, room-scoped door into the
+same free-form `converse` mechanism. A room that declares `agent_off_ramp:`
+routes a genuine no-match into an agent answer instead of rejecting, with
 no transition and no world write — the room stays put and its menu is there
 next turn.
 
 ```yaml
 main:                       # a normal menu / discovery room
-  oracle_off_ramp:
-    agent: oracle_qa        # bare `oracle_off_ramp: true` adopts the off-path voice
+  agent_off_ramp:
+    agent: agent_qa        # bare `agent_off_ramp: true` adopts the off-path voice
 ```
 
 The off-ramp fires on the **real no-match** path: free text the router
@@ -1086,7 +1086,7 @@ labeled `reason: "off_ramp"` with the triggering `error_code`, followed by
 the usual `OffPathQuestion` / `OffPathAnswer`; there is no
 `TurnEnded(rejected)` and no transition. First adopter: the dev-story hub
 (`stories/dev-story/rooms/main.yaml`). Full design narrative:
-[`architecture.md` §9](architecture.md#9-oracle-rooms-meta-and-off-path).
+[`architecture.md` §9](architecture.md#9-agent-rooms-meta-and-off-path).
 
 ---
 

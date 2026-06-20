@@ -44,7 +44,7 @@ The TUI surfaces meta sessions in two ways:
 
 Meta sessions are **persistent by default**. They live in the chats
 store and can be listed, resumed, archived, and inspected from the
-CLI exactly like oracle chats. The key is
+CLI exactly like agent chats. The key is
 `(AppID, "meta:<modeName>", scopeKey=state_path)` — same state means
 the same chat resumes; a different state opens a new one.
 
@@ -178,7 +178,7 @@ agents:
 
 Three more agents ship pre-registered alongside `story-author`:
 
-- **`default-oracle`** — vanilla helpful-assistant prompt with no
+- **`default-agent`** — vanilla helpful-assistant prompt with no
   tools and no privileged surface. Acts as the unspecified-caller
   fallback (off-path runtime once it ships LLM dispatch; future
   free-form chat). Apps override under the same name to give
@@ -236,16 +236,16 @@ groups):
 The entire `kitsoki.*` group is omitted from the injection set
 when `KITSOKI_REPO` is unset.
 
-**Oracle verb for read-only metas.** The two read-only modes above
+**Agent verb for read-only metas.** The two read-only modes above
 (`story.ask`, `kitsoki.ask`) — and any app-declared meta whose agent's
-`Tools` contains only read-only entries — use `host.oracle.ask` as
-their underlying oracle verb (oracle-split proposal §2.3, decision
+`Tools` contains only read-only entries — use `host.agent.ask` as
+their underlying agent verb (agent-split proposal §2.3, decision
 D14). The loader cross-checks: a meta whose agent carries `Edit` or
 `Write` in its tool list cannot be wired to `ask`; it must use
-`host.oracle.converse` (Phase 7) or `host.oracle.task` (Phase 4)
+`host.agent.converse` (Phase 7) or `host.agent.task` (Phase 4)
 instead. When declaring a read-only `/meta` overlay, set the agent's
 tools to the read-only allowlist and omit `bash_profile:` unless
-`Bash` is needed. The `host.oracle.ask` handler enforces the read-only
+`Bash` is needed. The `host.agent.ask` handler enforces the read-only
 contract at call time as a safety net even if the loader check is
 bypassed.
 
@@ -282,13 +282,13 @@ The `/meta self` single-token trigger from prior versions is gone
 
 Outside meta mode, any state's `on_enter:` or transition `effects:`
 can target an agent for a single LLM call via the `agent:` argument
-on any `host.oracle.*` verb:
+on any `host.agent.*` verb:
 
 ```yaml
 states:
   forecast:
     on_enter:
-      - invoke: host.oracle.converse
+      - invoke: host.agent.converse
         with:
           agent: weather-bot          # named agent from agents:
           args:
@@ -357,14 +357,14 @@ names outside that reserved set.
 When a meta-mode session is active the side panel renders the
 "Meta mode" cheatsheet — the on-path actions menu is irrelevant
 because the FSM is paused. Other slash commands (e.g. `/inbox`,
-oracle entry) are deliberately not processed while in meta.
+agent entry) are deliberately not processed while in meta.
 
 ---
 
 ## 6. What the agent receives each turn
 
 The controller prepends a `[context]` preamble to every user
-message before handing it to the oracle. The literal text of the
+message before handing it to the agent. The literal text of the
 user's message lives inside a `[user]` block. Persisted transcripts
 contain only the user's text — the preamble is a per-turn derived
 artefact, not author-written.
@@ -509,10 +509,10 @@ kitsoki chat list --room meta:story --scope bar.dark
 The `--room` matcher takes the exact room key, so `--room meta:story`
 matches only the `story` mode's chats. To inspect every mode at
 once use a prefix match through the chats CLI's existing
-`--scope-prefix` plumbing; that surface is unchanged from oracle
+`--scope-prefix` plumbing; that surface is unchanged from agent
 chats.
 
-The chats store schema is the same one oracle and other chat-shaped
+The chats store schema is the same one agent and other chat-shaped
 flows already use — see `internal/chats/` for the persistence
 contract.
 
@@ -526,7 +526,7 @@ contract.
 | Agents registry + `story-author` builtin | `internal/agents/` |
 | Meta-mode controller (Enter / Send / Exit, ledger, tree-diff reload, WithLock integration so meta turns serialize against drive dispatch / `chat continue` / `/attach`) | `internal/metamode/controller.go` |
 | TUI overlay, slash-command dispatch, `/meta list` rendering, `/attach` + `/sessions list|attach` | `internal/tui/metamode.go`, `internal/tui/tui.go`, `internal/tui/meta_attach.go`, `internal/tui/sessions.go` |
-| Per-call `agent:` arg on `host.oracle.*` verbs | `internal/host/oracle_ask.go`, `internal/host/oracle_decide.go`, `internal/host/oracle_extract.go`, `internal/host/oracle_task.go`, `internal/host/oracle_converse.go` |
+| Per-call `agent:` arg on `host.agent.*` verbs | `internal/host/agent_ask.go`, `internal/host/agent_decide.go`, `internal/host/agent_extract.go`, `internal/host/agent_task.go`, `internal/host/agent_converse.go` |
 | Authoring-tool dispatcher (legacy structured tokens) | `internal/host/authoring_tools.go` |
 | Trace ring buffer + per-turn dump        | `internal/trace/ringbuffer.go` |
 | Process-wide wiring (registry install, trace file, chat store, tmux client, inbox watcher) | `cmd/kitsoki/main.go` |
@@ -542,44 +542,44 @@ In-tree apps with a working `meta_modes.story`:
 
 ---
 
-## 10. Oracle-verb mapping for meta and off-path (oracle-split Phase 7)
+## 10. Agent-verb mapping for meta and off-path (agent-split Phase 7)
 
-The oracle-split proposal (§2.5 / D14) defines two flavours for the
-oracle call that backs each meta turn:
+The agent-split proposal (§2.5 / D14) defines two flavours for the
+agent call that backs each meta turn:
 
-| Flavour | Oracle verb | Permission surface |
+| Flavour | Agent verb | Permission surface |
 |---|---|---|
-| Read-only metas (inspect, explain, Q&A) | `host.oracle.ask` | Read-only tool surface; enforced by loader |
-| Free-form metas (edit files, run tools) | `host.oracle.converse` | `permission_mode:` gates mutation |
+| Read-only metas (inspect, explain, Q&A) | `host.agent.ask` | Read-only tool surface; enforced by loader |
+| Free-form metas (edit files, run tools) | `host.agent.converse` | `permission_mode:` gates mutation |
 
 **Today** all meta turns go through the controller's built-in dispatch
-path (not through a raw `host.oracle.*` effect). The mapping above is
+path (not through a raw `host.agent.*` effect). The mapping above is
 the *declarative target* — the shape that `/meta <name>` entries will
 declare in `app.yaml` once the controller is updated to route through
-the oracle surface:
+the agent surface:
 
 ```yaml
 meta_modes:
   advisor:
     agent: bugfix-advisor
-    oracle_verb: converse        # free-form; may mutate
+    agent_verb: converse        # free-form; may mutate
     permission_mode: ask         # operator confirms each mutation
 
   explainer:
     agent: story-explainer
-    oracle_verb: ask             # read-only; loader enforces tool surface
+    agent_verb: ask             # read-only; loader enforces tool surface
 ```
 
 For now the controller hardcodes `--permission-mode bypassPermissions`
 (see §10 Limitations below). When the controller migrates to the
-`host.oracle.*` surface, free-form metas that currently use
-`bypassPermissions` will declare `oracle_verb: converse` and read-only
-metas will declare `oracle_verb: ask`. The loader will cross-check the
+`host.agent.*` surface, free-form metas that currently use
+`bypassPermissions` will declare `agent_verb: converse` and read-only
+metas will declare `agent_verb: ask`. The loader will cross-check the
 declared verb against the agent's tool surface at app-load time.
 
-The **oracle off-ramp** is a third consumer of this `converse` voice: a
-room's `oracle_off_ramp.agent:` joins the same agent-precedence chain
-(`per-call agent:` > `meta_modes[mode].agent` > `oracle_off_ramp.agent` >
+The **agent off-ramp** is a third consumer of this `converse` voice: a
+room's `agent_off_ramp.agent:` joins the same agent-precedence chain
+(`per-call agent:` > `meta_modes[mode].agent` > `agent_off_ramp.agent` >
 `off_path.agent` > app default). It is the automatic no-match door rather
 than a typed `/meta` overlay — see
 [`state-machine.md` §11](state-machine.md#11-off-path-the-global-escape-hatch).
@@ -636,7 +636,7 @@ What ships with kitsoki today (formerly under "Limitations"):
   merged in by `Controller.ListChats` — and resumes the picked
   row without typing `/meta resume <id>`.
 - **`/attach` hands the terminal to claude.** While `/meta`
-  drives turns through kitsoki's Go-side oracle adapter (with
+  drives turns through kitsoki's Go-side agent adapter (with
   file-change detection and orchestrator reload), `/attach`
   flips the same chat row into a tmux-hosted `claude --resume`
   pane so the user gets claude's native UI. Detach with

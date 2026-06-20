@@ -3,7 +3,7 @@
 // silent "happy state, missing fields" rendering bugs in the past.
 //
 // The schema lives at stories/docs-review/schemas/docs_review_verdict.json
-// and is consumed by host.oracle.decide at runtime. The validator is
+// and is consumed by host.agent.decide at runtime. The validator is
 // authoritative — if the schema stops rejecting these shapes, the story
 // can land in `reviewed` with `(missing)` everywhere and we won't notice
 // until an operator complains.
@@ -48,7 +48,7 @@ func loadDocsReviewSchema(t *testing.T) []byte {
 	return raw
 }
 
-// fullValidVerdict is the canonical shape the docs-review oracle is
+// fullValidVerdict is the canonical shape the docs-review agent is
 // supposed to submit. Helper for the "small mutation" rejection tests.
 const fullValidVerdict = `{
   "decision": "needs_update",
@@ -103,8 +103,8 @@ func TestDocsReviewSchema_AcceptsUpToDate(t *testing.T) {
 }
 
 // TestDocsReviewSchema_RejectsEmpty pins the bug we just hit live: the
-// agent submits `{}` (or oracle.decide returns ok with no submit) and
-// nothing flags it. The schema MUST reject this so host.oracle.decide
+// agent submits `{}` (or agent.decide returns ok with no submit) and
+// nothing flags it. The schema MUST reject this so host.agent.decide
 // loops back for a retry instead of binding empty into world.verdict.
 func TestDocsReviewSchema_RejectsEmpty(t *testing.T) {
 	schema := loadDocsReviewSchema(t)

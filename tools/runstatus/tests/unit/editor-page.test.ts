@@ -14,7 +14,7 @@ vi.mock("../../src/data/source.js", () => ({
 
 const editorRooms = vi.fn<[string], Promise<RoomSummary[]>>();
 const editorRoom = vi.fn<[string, string], Promise<RoomDetail>>();
-const editorOracles = vi.fn().mockResolvedValue({ contracts: [], cassette_globs: [] });
+const editorAgents = vi.fn().mockResolvedValue({ contracts: [], cassette_globs: [] });
 const editorCassettes = vi.fn().mockResolvedValue([]);
 const listStories = vi.fn().mockResolvedValue([
   { path: "/repo/stories/prd/app.yaml", app_id: "prd", title: "PRD", active_sessions: [] },
@@ -25,7 +25,7 @@ vi.mock("../../src/data/live-source.js", () => ({
   LiveSource: vi.fn().mockImplementation(() => ({
     editorRooms,
     editorRoom,
-    editorOracles,
+    editorAgents,
     editorCassettes,
     listStories,
     metaModes,
@@ -46,9 +46,9 @@ import { createPinia, setActivePinia } from "pinia";
 import EditorPage from "../../src/views/EditorPage.vue";
 
 const ROOMS: RoomSummary[] = [
-  { id: "idle", label: "Idle", distance: 0, has_oracle: false },
-  { id: "clarifying", label: "Clarifying", distance: 1, has_oracle: true },
-  { id: "brief", label: "Brief", distance: 2, has_oracle: false },
+  { id: "idle", label: "Idle", distance: 0, has_agent: false },
+  { id: "clarifying", label: "Clarifying", distance: 1, has_agent: true },
+  { id: "brief", label: "Brief", distance: 2, has_agent: false },
 ];
 
 function detail(over: Partial<RoomDetail> = {}): RoomDetail {
@@ -56,7 +56,7 @@ function detail(over: Partial<RoomDetail> = {}): RoomDetail {
     id: "clarifying",
     label: "Clarifying",
     distance: 1,
-    on_enter: [{ kind: "invoke", invoke: "host.oracle.decide" }],
+    on_enter: [{ kind: "invoke", invoke: "host.agent.decide" }],
     world_keys: [{ name: "idea", type: "string", direction: "read" }],
     intents: [{ name: "submit" }],
     transitions: [{ intent: "submit", target: "brief" }],
@@ -97,7 +97,7 @@ describe("EditorPage", () => {
     await flushPromises();
     expect(w.find('[data-testid="editor-hook"]').exists()).toBe(true);
     expect(w.find('[data-testid="editor-domain-model"]').exists()).toBe(true);
-    expect(w.find('[data-testid="editor-oracle-workbench"]').exists()).toBe(true);
+    expect(w.find('[data-testid="editor-agent-workbench"]').exists()).toBe(true);
     const viewer = w.find('[data-testid="editor-story-viewer"]');
     expect(viewer.exists()).toBe(true);
     // Pin the wire contract: the room detail's view elements are real

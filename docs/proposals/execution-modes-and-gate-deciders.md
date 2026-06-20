@@ -26,7 +26,7 @@ narrative docs (`docs/stories/state-machine.md`, `docs/stories/authoring.md`) an
   `kitsoki turn`); flow fixtures accept `mode:` (`internal/testrunner`).
 - **Engine-driven LLM decider** (§3.2): when a one-shot (or `decider: llm`)
   run rests at a multi-way gate with no firing conditional-default emit, the
-  engine invokes a configured judge agent via `host.oracle.decide` (passing
+  engine invokes a configured judge agent via `host.agent.decide` (passing
   the gate's candidate intents — `machine.DecisionCandidates`), parses the
   verdict (`internal/orchestrator/decider.go`), and either fires the chosen
   intent (`judges.ShouldAutoFire` + candidate-membership check) or **bails to
@@ -46,7 +46,7 @@ narrative docs (`docs/stories/state-machine.md`, `docs/stories/authoring.md`) an
   the final room. When a sink is present the say is streamed (not merged
   into the final view); headless callers keep the merged prepend.
   docs-review's `reviewed`/`fixing`/`fixed` now carry `say:`
-  breadcrumbs (verdict → "applying fixes…" before the slow oracle.task →
+  breadcrumbs (verdict → "applying fixes…" before the slow agent.task →
   "docs patched").
 - Tests: `internal/orchestrator/execution_mode_gate_test.go` (engine
   unit — staged stop incl. fails-without-fix check, plus per-room say
@@ -139,7 +139,7 @@ pins an LLM/auto decider — §3.3).
 When a one-shot gate has >1 intent and no default, the engine invokes an
 LLM decider, reusing the existing contract:
 
-- `host.oracle.decide` against a `judge` agent + `judge_verdict.json`
+- `host.agent.decide` against a `judge` agent + `judge_verdict.json`
   schema → a `judges.Verdict{verdict, intent, reason, confidence}`.
 - `judges.Parse` validates; `Verdict.ShouldAutoFire(threshold)` is the
   single source of truth for "is this auto-fireable?"

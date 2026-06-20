@@ -1,0 +1,508 @@
+# Agent Room — persistent chat-thread conversations with Claude Code.
+#
+# State layout:
+#   agent              — chat list view; on_enter loads the list via host.chat.list
+#   agent_active       — transcript view for an existing open chat
+#   agent_asking_new   — creates a fresh chat THEN calls host.agent.converse (ask_question from list)
+#   agent_asking       — calls host.agent.converse in an already-open chat
+#   agent_error        — error fallback
+#
+# Auto-persistence: every ask_question from the list view creates a new chat
+# (host.chat.create), fires host.agent.converse, then host.chat.suggest_title
+# generates a polished title. Each chat persists across restarts.
+#
+# Effect.When is NOT supported — conditional create vs no-create is achieved
+# via the two-state split (agent_asking_new / agent_asking).
+
+states:
+  agent:
+    mode: conversational
+    description: "Agent Room — chat list. Start a new thread or open an existing one."
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Agent — persistent Claude chats"
+          # Empty-list onboarding. Element-level when: replaces inline {% if %}.
+          - prose: "No chats yet."
+            when:  "world.agent_chat_count == 0"
+          - prose: "Type a question to start your first conversation:"
+            when:  "world.agent_chat_count == 0"
+          - code: |
+              "how does the ZTA proxy work"
+              "explain the beasy flow"
+              "walk me through bug-fix.py"
+            when:  "world.agent_chat_count == 0"
+          # Non-empty list — show the chat count and the host-rendered
+          # chats view (which already contains its own formatting).
+          - kv:
+              pairs:
+                Chats: "{{ world.agent_chat_count }}"
+            when:  "world.agent_chat_count > 0"
+          - code: "{{ world.agent_chats_view }}"
+            when:  "world.agent_chat_count > 0"
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - { label: "ask \"…\"",                    hint: "start a new chat with this question" }
+                - { label: "open <number/id>",             hint: "resume an existing chat" }
+                - { label: "rename <number/id> \"title\"", hint: "rename a chat" }
+                - { label: "remove <number/id>",           hint: "archive (hides from list)" }
+                - { label: "back",                         hint: "return to previous room" }
+    relevant_world: [agent_chats_view, agent_chat_count]
+    relevant_slots: []
+    on_enter:
+      - invoke: host.chat.list
+        with:
+          app:  "dev-story"
+          room: "agent"
+        bind:
+          agent_chats_view: "rendered"
+          agent_chat_count: "count"
+        on_error: agent_error
+
+    on:
+      ask_question:
+        # Ask from list → create a fresh chat then ask. Routes to agent_asking_new
+        # which creates the chat in on_enter before firing host.agent.converse.
+        - target: agent_asking_new
+          effects:
+            - set:
+                agent_chat_id:    ""
+                agent_question:   "{{ slots.question }}"
+                agent_chat_title: ""
+                agent_answer:     ""
+
+      new_chat:
+        # Explicit new chat (no question yet) → open a blank chat.
+        - target: agent_active_new
+          effects:
+            - set:
+                agent_chat_id:    ""
+                agent_question:   ""
+                agent_chat_title: "{{ slots.title }}"
+                agent_answer:     ""
+
+      open_chat:
+        # User typed "open 1" or "open 01KQZ3" — resolve the ref to a full ULID
+        # via host.chat.resolve_ref before transitioning. The handler accepts
+        # list positions, ULID prefixes, or full ULIDs.
+        - target: agent_active
+          effects:
+            - invoke: host.chat.resolve_ref
+              with:
+                app:  "dev-story"
+                room: "agent"
+                ref:  "{{ slots.chat_id }}"
+              bind:
+                agent_chat_id: "chat_id"
+              on_error: agent_error
+            - set:
+                agent_question:   ""
+                agent_answer:     ""
+
+      rename_chat:
+        - target: agent
+          effects:
+            - invoke: host.chat.resolve_ref
+              with:
+                app:  "dev-story"
+                room: "agent"
+                ref:  "{{ slots.chat_id }}"
+              bind:
+                agent_chat_id: "chat_id"
+              on_error: agent_error
+            - invoke: host.chat.rename
+              with:
+                chat_id: "{{ world.agent_chat_id }}"
+                title:   "{{ slots.title }}"
+              on_error: agent_error
+
+      archive_chat:
+        - target: agent
+          effects:
+            - invoke: host.chat.resolve_ref
+              with:
+                app:  "dev-story"
+                room: "agent"
+                ref:  "{{ slots.chat_id }}"
+              bind:
+                agent_chat_id: "chat_id"
+              on_error: agent_error
+            - invoke: host.chat.archive
+              with:
+                chat_id: "{{ world.agent_chat_id }}"
+              on_error: agent_error
+
+      go_back:
+        - target: "{{ world.prev_state }}"
+
+      go_main:
+        - target: main
+
+      go_inbox:
+        - target: inbox
+          push_history: false
+
+  agent_active_new:
+    mode: conversational
+    description: "Creating a new Agent chat..."
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Agent — {{ world.agent_chat_title }}"
+          - kv:
+              pairs:
+                Chat ID: "{{ world.agent_chat_id }}"
+          - prose: "(empty chat — ask a question to begin)"
+          - prose: "Ask a question, or use \"back\" to return to the chat list."
+    relevant_world: [agent_chat_id, agent_chat_title]
+    relevant_slots: []
+    on_enter:
+      - invoke: host.chat.create
+        with:
+          app:   "dev-story"
+          room:  "agent"
+          title: "{{ world.agent_chat_title }}"
+        bind:
+          agent_chat_id:    "chat_id"
+          agent_chat_title: "title"
+        on_error: agent_error
+
+    on:
+      ask_question:
+        - target: agent_asking
+          effects:
+            - set:
+                agent_question: "{{ slots.question }}"
+                agent_answer:   ""
+
+      ask_question_bg:
+        - target: agent_asking_bg
+          effects:
+            - set:
+                agent_question: "{{ slots.question }}"
+                agent_answer:   ""
+
+      rename_chat:
+        - target: agent_active_new
+          effects:
+            - invoke: host.chat.rename
+              with:
+                chat_id: "{{ world.agent_chat_id }}"
+                title:   "{{ slots.title }}"
+              on_error: agent_error
+
+      go_back:
+        - target: agent
+
+      go_main:
+        - target: main
+
+      go_inbox:
+        - target: inbox
+          push_history: false
+
+  agent_active:
+    mode: conversational
+    description: "Active Agent chat — view transcript and ask questions."
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Agent — {{ world.agent_chat_title }}"
+          - kv:
+              pairs:
+                Chat ID: "{{ world.agent_chat_id }}"
+          - code: "{{ world.agent_transcript_view }}"
+          - prose: "Ask a question, or use \"back\" to return to the chat list."
+    relevant_world: [agent_chat_id, agent_chat_title, agent_transcript_view, agent_answer]
+    relevant_slots: []
+    on_enter:
+      - invoke: host.chat.transcript
+        with:
+          chat_id: "{{ world.agent_chat_id }}"
+        bind:
+          agent_transcript_view: "rendered"
+          agent_chat_title:      "title"
+        on_error: agent_error
+
+    on:
+      ask_question:
+        - target: agent_asking
+          effects:
+            - set:
+                agent_question: "{{ slots.question }}"
+                agent_answer:   ""
+
+      explore_area:
+        - target: agent_asking
+          effects:
+            - set:
+                agent_question: "Walk me through: {{ slots.area }}"
+                agent_answer:   ""
+
+      brainstorm:
+        - target: agent_asking
+          effects:
+            - set:
+                agent_question: "Let's brainstorm: {{ slots.topic }}"
+                agent_answer:   ""
+
+      rename_chat:
+        - target: agent_active
+          effects:
+            - invoke: host.chat.rename
+              with:
+                chat_id: "{{ world.agent_chat_id }}"
+                title:   "{{ slots.title }}"
+              on_error: agent_error
+
+      go_back:
+        - target: agent
+
+      go_main:
+        - target: main
+
+      go_inbox:
+        - target: inbox
+          push_history: false
+
+  agent_asking_new:
+    mode: conversational
+    description: "Starting a new Agent chat and asking your question..."
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Agent — {{ world.agent_chat_title }}"
+          - kv:
+              pairs:
+                Q: "{{ world.agent_question }}"
+                A: "{{ world.agent_answer }}"
+          - prose: "[Claude is thinking...]"
+            when:  "world.agent_answer == ''"
+          - prose: "Ask another question, or use \"back\" to return to the chat list."
+    relevant_world: [agent_chat_id, agent_chat_title, agent_question, agent_answer]
+    relevant_slots: []
+    on_enter:
+      # Step 1: Create a fresh chat. Title defaults to the question (handler truncates to 80 chars).
+      - invoke: host.chat.create
+        with:
+          app:   "dev-story"
+          room:  "agent"
+          title: "{{ world.agent_question }}"
+        bind:
+          agent_chat_id:    "chat_id"
+          agent_chat_title: "title"
+        on_error: agent_error
+
+      # Step 2: Ask the question in the new chat.
+      - invoke: host.agent.converse
+        with:
+          question: "{{ world.agent_question }}"
+          chat_id:  "{{ world.agent_chat_id }}"
+        bind:
+          agent_answer: "answer"
+        on_error: agent_error
+
+      # Step 3: Generate a polished title from the transcript (benign if it fails).
+      - invoke: host.chat.suggest_title
+        with:
+          chat_id: "{{ world.agent_chat_id }}"
+          force: false
+        bind:
+          agent_chat_title: "title"
+        on_error: agent_error
+
+    on:
+      ask_question:
+        - target: agent_asking
+          effects:
+            - set:
+                agent_question: "{{ slots.question }}"
+                agent_answer:   ""
+
+      explore_area:
+        - target: agent_asking
+          effects:
+            - set:
+                agent_question: "Walk me through: {{ slots.area }}"
+                agent_answer:   ""
+
+      brainstorm:
+        - target: agent_asking
+          effects:
+            - set:
+                agent_question: "Let's brainstorm: {{ slots.topic }}"
+                agent_answer:   ""
+
+      rename_chat:
+        - target: agent_asking_new
+          effects:
+            - invoke: host.chat.rename
+              with:
+                chat_id: "{{ world.agent_chat_id }}"
+                title:   "{{ slots.title }}"
+              on_error: agent_error
+
+      go_back:
+        - target: agent
+
+      go_main:
+        - target: main
+
+      go_inbox:
+        - target: inbox
+          push_history: false
+
+  agent_asking:
+    mode: conversational
+    description: "Agent is working on your question..."
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Agent — {{ world.agent_chat_title }}"
+          - kv:
+              pairs:
+                Q: "{{ world.agent_question }}"
+                A: "{{ world.agent_answer }}"
+          - prose: "[Claude is thinking...]"
+            when:  "world.agent_answer == ''"
+          - prose: "Ask another question, or use \"back\" to return to the chat list."
+    relevant_world: [agent_chat_id, agent_chat_title, agent_question, agent_answer]
+    relevant_slots: []
+    on_enter:
+      - invoke: host.agent.converse
+        with:
+          question: "{{ world.agent_question }}"
+          chat_id:  "{{ world.agent_chat_id }}"
+        bind:
+          agent_answer: "answer"
+        on_error: agent_error
+
+      # Suggest a title after the first answer; skip if already user-set.
+      - invoke: host.chat.suggest_title
+        with:
+          chat_id: "{{ world.agent_chat_id }}"
+          force: false
+        bind:
+          agent_chat_title: "title"
+        on_error: agent_error
+
+    on:
+      ask_question:
+        - target: agent_asking
+          effects:
+            - set:
+                agent_question: "{{ slots.question }}"
+                agent_answer:   ""
+
+      explore_area:
+        - target: agent_asking
+          effects:
+            - set:
+                agent_question: "Walk me through: {{ slots.area }}"
+                agent_answer:   ""
+
+      brainstorm:
+        - target: agent_asking
+          effects:
+            - set:
+                agent_question: "Let's brainstorm: {{ slots.topic }}"
+                agent_answer:   ""
+
+      rename_chat:
+        - target: agent_asking
+          effects:
+            - invoke: host.chat.rename
+              with:
+                chat_id: "{{ world.agent_chat_id }}"
+                title:   "{{ slots.title }}"
+              on_error: agent_error
+
+      go_back:
+        - target: agent
+
+      go_main:
+        - target: main
+
+      go_inbox:
+        - target: inbox
+          push_history: false
+
+  agent_error:
+    description: "Agent call failed — Claude was unavailable or errored."
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Error: "{{ world.last_error }}"
+                Chat:  "{{ world.agent_chat_id|default:\"(none)\" }}"
+          - prose: "Try again, or use \"back\" to return."
+    relevant_world: [last_error, agent_chat_id]
+    relevant_slots: []
+    on:
+      ask_question:
+        - target: agent_asking
+          effects:
+            - set:
+                agent_question: "{{ slots.question }}"
+                agent_answer:   ""
+                last_error:      ""
+
+      retry:
+        - target: agent_active
+
+      go_back:
+        - target: "{{ world.prev_state }}"
+
+      go_main:
+        - target: main
+
+  # ─── Background-agent state (used by flow8 / orchestrator background tests) ─
+
+  agent_asking_bg:
+    mode: conversational
+    description: "Background Agent — question dispatched as a background job."
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Agent — {{ world.agent_chat_title }}"
+          - kv:
+              pairs:
+                Q: "{{ world.agent_question }}"
+                A: "{{ world.agent_answer }}"
+          - prose: "[Waiting for Claude reply in background… check Inbox for notification.]"
+            when:  "world.agent_answer == ''"
+          - prose: "Use \"back\" to return to the chat list."
+    relevant_world: [agent_chat_id, agent_chat_title, agent_question, agent_answer, last_job_id]
+    relevant_slots: []
+    on_enter:
+      - invoke: host.agent.converse
+        with:
+          question: "{{ world.agent_question }}"
+          chat_id:  "{{ world.agent_chat_id }}"
+        background: true
+        bind:
+          last_job_id: "job_id"
+        on_complete:
+          - set:
+              agent_answer: "{{ world.last_job_result.answer }}"
+
+    on:
+      go_back:
+        - target: agent
+
+      go_main:
+        - target: main
+
+      go_inbox:
+        - target: inbox
+          push_history: false

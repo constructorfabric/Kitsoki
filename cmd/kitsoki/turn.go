@@ -31,13 +31,13 @@ import (
 
 	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"kitsoki/internal/agent"
 	"kitsoki/internal/app"
 	"kitsoki/internal/chathost"
 	"kitsoki/internal/chats"
 	"kitsoki/internal/harness"
 	"kitsoki/internal/host"
 	"kitsoki/internal/machine"
-	"kitsoki/internal/oracle"
 	"kitsoki/internal/orchestrator"
 	"kitsoki/internal/store"
 )
@@ -236,19 +236,19 @@ Examples:
 			}
 			chatAdapter := chathost.NewAdapter(chatStore)
 
-			// Build the oracle plugin registry from the app's oracle_plugins
-			// declarations. Wiring this lets rooms use external oracle transports
-			// (subprocess, mcp_http) via the oracle: field on effects.
-			oracleReg, oracleRegErr := oracle.BuildRegistryFromDef(def, h)
-			if oracleRegErr != nil {
-				return fmt.Errorf("build oracle registry: %w", oracleRegErr)
+			// Build the agent plugin registry from the app's agent_plugins
+			// declarations. Wiring this lets rooms use external agent transports
+			// (subprocess, mcp_http) via the agent: field on effects.
+			agentReg, agentRegErr := agent.BuildRegistryFromDef(def, h)
+			if agentRegErr != nil {
+				return fmt.Errorf("build agent registry: %w", agentRegErr)
 			}
-			defer func() { _ = oracleReg.Close() }()
+			defer func() { _ = agentReg.Close() }()
 
 			orch := orchestrator.New(def, m, s, h,
 				orchestrator.WithHostRegistry(hostReg),
 				orchestrator.WithChatStore(chatAdapter),
-				orchestrator.WithOracleRegistry(oracleReg),
+				orchestrator.WithAgentRegistry(agentReg),
 			)
 
 			result, err := orch.OneShot(cmd.Context(), orchestrator.OneShotInput{

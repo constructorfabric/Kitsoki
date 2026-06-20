@@ -9,7 +9,7 @@ import (
 // shape, ${VAR} already expanded and validated by webconfig.Load) into the
 // orchestrator's runtime form, stamping each entry's Name from its key. An
 // empty/declared-nothing config yields (nil, "") so the caller skips the option
-// and the session stays on the static --oracle path.
+// and the session stays on the static --agent path.
 func harnessProfilesFromConfig(cfg webconfig.WebConfig) (map[string]orchestrator.HarnessProfile, string) {
 	if len(cfg.HarnessProfiles) == 0 {
 		return nil, ""

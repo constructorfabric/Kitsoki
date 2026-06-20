@@ -3,33 +3,33 @@
 // Mirrors session-idea-mining/mine.workflow.js: one reader agent per batch,
 // schema-validated structured output. Each reader SEGMENTS a distilled trace into
 // intent spans and, per span, drafts a recipe — but it is treated as a strictly-
-// validated ORACLE: every action MUST carry a citation (the 1-based trace line it
+// validated AGENT: every action MUST carry a citation (the 1-based trace line it
 // came from), and ground.py later rejects any action/parameter that doesn't check
-// out against the real trace (review §3). The oracle therefore proposes; the
+// out against the real trace (review §3). The agent therefore proposes; the
 // deterministic spine disposes.
 //
 // Invoke AFTER `prep.py --job <name>` (no --redact; intent mining is local):
 //   Workflow({ scriptPath: "tools/session-mining/intents.workflow.js", args: {
 //     batchDir:   ".artifacts/session-mining/<job>/batches",  // prep.py BATCHDIR=
 //     batchCount: 7,                                           // prep.py BATCHES=
-//     outDir:     ".artifacts/session-mining/<job>/oracle",    // raw per-batch JSON
+//     outDir:     ".artifacts/session-mining/<job>/agent",    // raw per-batch JSON
 //     actionTags:  [...core.yaml ids...],   // optional; mirror vocab/tags.yaml
 //     surfaceTags: [...], scopeTags: [...]   // optional; mirror vocab/tags.yaml
 //   }})
 //
-// Writes one oracle-batch-NN.json per batch under outDir (each {records:[...]}),
-// then ground.py --oracle <outDir> grounds them. The workflow also RETURNS the
+// Writes one agent-batch-NN.json per batch under outDir (each {records:[...]}),
+// then ground.py --agent <outDir> grounds them. The workflow also RETURNS the
 // merged records so a caller can pipe them directly.
 //
-// IMPORTANT: the oracle must NOT emit the verbatim user text — that is recovered
+// IMPORTANT: the agent must NOT emit the verbatim user text — that is recovered
 // deterministically from the raw jsonl in emit.py (step F). It emits the span's
 // line range only.
 
 export const meta = {
   name: 'session-intent-mining',
-  description: 'Segment distilled traces into intent spans + drafted, cited recipes (the strictly-validated oracle pass)',
+  description: 'Segment distilled traces into intent spans + drafted, cited recipes (the strictly-validated agent pass)',
   phases: [
-    { title: 'Oracle', detail: 'one reader agent per batch: segment into intent spans + cited recipes' },
+    { title: 'Agent', detail: 'one reader agent per batch: segment into intent spans + cited recipes' },
   ],
 }
 
@@ -41,7 +41,7 @@ const A = (typeof args === 'string')
 
 const batchDir = A.batchDir
 const batchCount = A.batchCount
-const outDir = A.outDir || (batchDir ? batchDir.replace(/batches\/?$/, 'oracle') : null)
+const outDir = A.outDir || (batchDir ? batchDir.replace(/batches\/?$/, 'agent') : null)
 if (!batchDir || !batchCount) {
   throw new Error('intents.workflow.js requires args.batchDir and args.batchCount (run prep.py --job first)')
 }
@@ -58,7 +58,7 @@ const surfaceTags = A.surfaceTags || [
 ]
 const scopeTags = A.scopeTags || ['single-file', 'cross-module', 'repo-wide']
 
-const READER_BRIEF = `You are an intent-mining ORACLE over the user's REAL Claude Code session traces (distilled to compact action traces). For each trace you will SEGMENT it into INTENT SPANS and, per span, draft the concrete recipe that would reproduce what the user asked for.
+const READER_BRIEF = `You are an intent-mining AGENT over the user's REAL Claude Code session traces (distilled to compact action traces). For each trace you will SEGMENT it into INTENT SPANS and, per span, draft the concrete recipe that would reproduce what the user asked for.
 
 ## What an intent span is
 A contiguous run of trace lines that serves ONE user request. A new \`USER:\` line that starts a genuinely new request begins a new span. Tool-result noise and AI narration belong to the span they serve.
@@ -82,9 +82,9 @@ Trace lines are 1-BASED. When you cite a line, use its 1-based number.
     - \`signature\`: a GENERICIZED form of the call (e.g. "go test ./<pkg>/... -run <Test>"). Real shape, placeholders for specifics.
     - \`parameters\`: the concrete values, each of which MUST appear verbatim inside the cited line's argument (they will be checked).
     - \`cite\`: { "line": <1-based trace line this action came from> }. MANDATORY. Cite the EXACT line; a wrong citation drops the action.
-- \`oracle_gates\` (ONLY if the recipe is not fully mechanical): the judgment forks, each { decision, validator } where validator describes the strict check (schema/assert/diff/review) that would confirm the choice.
+- \`agent_gates\` (ONLY if the recipe is not fully mechanical): the judgment forks, each { decision, validator } where validator describes the strict check (schema/assert/diff/review) that would confirm the choice.
 
-## Hard discipline (you are a validated oracle, not a narrator)
+## Hard discipline (you are a validated agent, not a narrator)
 - NEVER invent an action or a parameter. If you can't point to the exact trace line, DON'T emit it. Ungrounded actions are rejected downstream and only hurt the report.
 - DO NOT emit the verbatim user text — only the span's line range. The verbatim text is recovered deterministically elsewhere.
 - A trace with no real intents contributes zero spans. Don't manufacture.`
@@ -119,7 +119,7 @@ const SPAN_SCHEMA = {
       required: ['action'],
     },
     actions: { type: 'array', items: ACTION_SCHEMA },
-    oracle_gates: {
+    agent_gates: {
       type: 'array',
       items: {
         type: 'object', additionalProperties: false,
@@ -151,7 +151,7 @@ const READER_SCHEMA = {
   required: ['traces_read', 'records'],
 }
 
-phase('Oracle')
+phase('Agent')
 const batchNums = Array.from({ length: batchCount }, (_, i) => i + 1)
 const batchResults = await parallel(batchNums.map(n => () => {
   const manifest = `${batchDir}/batch-${String(n).padStart(2, '0')}.txt`
@@ -160,11 +160,11 @@ const batchResults = await parallel(batchNums.map(n => () => {
 
 Your batch manifest is at: ${manifest}
 Read that file to get the list of distilled trace file paths. For EACH trace path, Read it IN FULL, segment it into intent spans, and draft each span's cited recipe per the discipline above. The \`session\` for a record is the trace's basename without the .txt extension. Return structured output.`,
-    { label: `oracle:batch-${n}`, phase: 'Oracle', schema: READER_SCHEMA }
+    { label: `agent:batch-${n}`, phase: 'Agent', schema: READER_SCHEMA }
   )
 }))
 
-// Persist one raw oracle JSON per batch (ground.py reads the dir), and merge.
+// Persist one raw agent JSON per batch (ground.py reads the dir), and merge.
 const allRecords = []
 let tracesRead = 0
 for (let i = 0; i < batchResults.length; i++) {
@@ -177,7 +177,7 @@ for (let i = 0; i < batchResults.length; i++) {
   // a writeFile hook is actually present. The records are ALWAYS returned below, so
   // a caller can persist the result itself and feed ground.py either way.
   if (outDir && typeof writeFile === 'function') {
-    const path = `${outDir}/oracle-batch-${String(batchNums[i]).padStart(2, '0')}.json`
+    const path = `${outDir}/agent-batch-${String(batchNums[i]).padStart(2, '0')}.json`
     try {
       await writeFile(path, JSON.stringify({ records: recs }, null, 2))
     } catch (e) {
@@ -187,6 +187,6 @@ for (let i = 0; i < batchResults.length; i++) {
 }
 
 const spanCount = allRecords.reduce((a, r) => a + (r.spans || []).length, 0)
-log(`Oracle: ${spanCount} intent spans across ${allRecords.length} traces (${tracesRead} read) -> ${outDir || '(not written)'}`)
+log(`Agent: ${spanCount} intent spans across ${allRecords.length} traces (${tracesRead} read) -> ${outDir || '(not written)'}`)
 
 return { tracesRead, traceCount: allRecords.length, spanCount, records: allRecords, outDir }

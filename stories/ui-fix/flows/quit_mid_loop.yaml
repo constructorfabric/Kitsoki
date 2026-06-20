@@ -33,7 +33,7 @@ initial_world:
 starlark_http_cassette: ../testdata/empty.http.yaml
 
 host_handlers:
-  host.oracle.task:
+  host.agent.task:
     data:
       submitted:
         applied: true

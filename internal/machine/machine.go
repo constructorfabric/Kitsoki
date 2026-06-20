@@ -98,11 +98,11 @@ type HostInvocation struct {
 	// The orchestrator persists these alongside the job spec; the machine
 	// does not consume them.
 	OnComplete []app.Effect `json:"on_complete,omitempty"`
-	// OraclePlugin is the oracle alias (e.g. "oracle.autofix_fixer") declared
-	// on the effect via the `oracle:` field. Empty means resolve to the default
-	// "oracle.claude". Carried from app.Effect.OraclePlugin so the orchestrator
+	// AgentPlugin is the agent alias (e.g. "agent.autofix_fixer") declared
+	// on the effect via the `agent:` field. Empty means resolve to the default
+	// "agent.claude". Carried from app.Effect.AgentPlugin so the orchestrator
 	// can route through host.Dispatch with the correct plugin.
-	OraclePlugin string `json:"oracle_plugin,omitempty"`
+	AgentPlugin string `json:"agent_plugin,omitempty"`
 }
 
 // TurnResult is returned by Machine.Turn after a successful transition. It is
@@ -219,7 +219,7 @@ type Machine interface {
 	// This is the bridge that makes emit_intent: composable with
 	// host.* invocations that bind into world AFTER machine.Turn
 	// returns — the canonical case being the bugfix story's LLM-judge
-	// step (host.oracle.ask_with_mcp binds llm_verdict, the next
+	// step (host.agent.ask_with_mcp binds llm_verdict, the next
 	// effect's `when:` reads it).
 	//
 	// The pass walks only emit_intent: entries; set/increment/say/invoke
@@ -809,7 +809,7 @@ func (m *machineImpl) Turn(ctx context.Context, cur app.StatePath, w world.World
 	//
 	// Pre-2026-05-20 the test was just `resolvedTarget != cur`, which
 	// silently swallowed the refine arc's intent: the user typed
-	// `refine` in reproducing, the cycle counter bumped, but the oracle
+	// `refine` in reproducing, the cycle counter bumped, but the agent
 	// never re-fired and the artifact text stayed identical. The user
 	// described it as "the refinement came back immediately and didn't
 	// change the artifact text."
@@ -1437,7 +1437,7 @@ func (m *machineImpl) applyEffectsTraced(ctx context.Context, effects []app.Effe
 				// emit_intent effects routinely reference world keys that
 				// only get populated by host-call binds (e.g. the bugfix
 				// story's `world.llm_verdict.confidence`, bound by
-				// host.oracle.ask_with_mcp later in the same on_enter
+				// host.agent.ask_with_mcp later in the same on_enter
 				// chain). Binds happen at orchestrator-dispatch time, not
 				// machine-time, so the When eval can error against nil
 				// references here even though the post-bind eval would
@@ -1588,7 +1588,7 @@ func (m *machineImpl) applyEffectsTraced(ctx context.Context, effects []app.Effe
 				EmitEvent:     eff.Emit,
 				Background:    eff.Background,
 				OnComplete:    eff.OnComplete,
-				OraclePlugin:  eff.OraclePlugin,
+				AgentPlugin:   eff.AgentPlugin,
 			}
 			hostCalls = append(hostCalls, hc)
 			m.logger.DebugContext(ctx, trace.EvMachineEffectApplied,
@@ -2677,9 +2677,9 @@ func WorldFromSchema(schema app.WorldSchema) world.World {
 	}
 	// Reserved, engine-managed cost vars. Seeded to 0 so a story can guard on
 	// them (`when: "world.session_cost_usd >= world.cost_budget"`) without
-	// declaring them, and so a guard that runs before any oracle call reads a
-	// number rather than nil. The orchestrator overwrites these from real oracle
-	// spend each turn (see foldOracleCost). A story that declares its own default
+	// declaring them, and so a guard that runs before any agent call reads a
+	// number rather than nil. The orchestrator overwrites these from real agent
+	// spend each turn (see foldAgentCost). A story that declares its own default
 	// for either key keeps it — the seed only fills an absent key.
 	if _, ok := w.Vars["session_cost_usd"]; !ok {
 		w.Vars["session_cost_usd"] = 0.0

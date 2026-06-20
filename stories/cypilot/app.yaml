@@ -48,18 +48,18 @@ app:
 
 # Host allow-list.  iface.<name>.<op> dispatch sites union their bindings
 # into the hosts list implicitly through resolveAllInterfaces; bare calls
-# (host.inbox.add, host.oracle.decide, host.run) must be listed
+# (host.inbox.add, host.agent.decide, host.run) must be listed
 # explicitly.
 hosts:
   - host.inbox.add
-  - host.oracle.decide
+  - host.agent.decide
   - host.run
 
-# Persona table (oracle-split proposal §3.5).
+# Persona table (agent-split proposal §3.5).
 #
 # All LLM calls in cypilot are inter-phase judges — every
 # artifact is produced by iface.artifact.create (the cypilot
-# CLI). The oracle surface is verdict-only.
+# CLI). The agent surface is verdict-only.
 #
 #   judge    decide   schema=judge_verdict.json; every awaiting_reply gate
 agents:

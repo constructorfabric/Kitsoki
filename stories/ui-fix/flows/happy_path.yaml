@@ -71,7 +71,7 @@ host_handlers:
       groups:
         items: []
 
-  host.oracle.decide:
+  host.agent.decide:
     data:
       submitted:
         items:
@@ -96,7 +96,7 @@ host_handlers:
             before_frames: ["03-home@mobile.png"]
             recommendation: "Detect mobile viewport and position popover bottom-anchored"
 
-  host.oracle.task:
+  host.agent.task:
     data:
       submitted:
         applied: true
@@ -126,7 +126,7 @@ turns:
   - intent: { name: look, slots: {} }
     expect_state: review
 
-  # review: oracle identified 2 groups; start the fix loop
+  # review: agent identified 2 groups; start the fix loop
   - intent: { name: start, slots: {} }
     expect_state: fixing
     expect_world:

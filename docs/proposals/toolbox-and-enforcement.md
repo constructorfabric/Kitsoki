@@ -1,8 +1,8 @@
-# Runtime: toolboxes + one enforcement policy for every oracle
+# Runtime: toolboxes + one enforcement policy for every agent
 
 **Status:** Draft v1. Nothing implemented yet.
 **Kind:**   runtime
-**Epic:**   [oracle-capability-model.md](oracle-capability-model.md) (slice 2 — the grant surface + tool-layer enforcement)
+**Epic:**   [agent-capability-model.md](agent-capability-model.md) (slice 2 — the grant surface + tool-layer enforcement)
 
 ## Why
 
@@ -11,27 +11,27 @@ There is no toolbox concept in kitsoki — the word appears only as a metaphor
 `Tools []string` list (`internal/host/agents.go:74`), merged per-call by
 `effectiveTools` (`agents.go:144`) and forwarded as a `--allowedTools` flag
 (`appendAllowedToolsFlag`, `agents.go:180`). Worse, **what that tool surface is
-allowed to do is enforced three different ways depending on which oracle verb
+allowed to do is enforced three different ways depending on which agent verb
 you happen to call**:
 
-- `oracle.ask` / `oracle.decide` — a hardcoded `mutationTools` deny set
-  (`internal/host/oracle_ask.go:42`; shared into decide at
-  `oracle_decide.go:42`), rejected at runtime. Read-only by construction, no
+- `agent.ask` / `agent.decide` — a hardcoded `mutationTools` deny set
+  (`internal/host/agent_ask.go:42`; shared into decide at
+  `agent_decide.go:42`), rejected at runtime. Read-only by construction, no
   knob.
-- `oracle.converse` — `converseToolPolicy` (`agents.go:215`) maps a
+- `agent.converse` — `converseToolPolicy` (`agents.go:215`) maps a
   permission-mode string to CLI flags and, *only when* `agentIsReadOnly`
   (`agents.go:208`) is true, downgrades `bypassPermissions`→`default` and
   appends `readOnlyDeniedTools` (`agents.go:206`). Gated on the overloaded
   `external_side_effect: false` boolean.
-- `oracle.task` — `buildBaseCLIArgs` sets `bypassPermissions`
-  (`oracle_task.go:191`) and forwards every declared tool unrestricted
-  (`oracle_task.go:193`). Nothing reins it in — the YOLO that motivated the
+- `agent.task` — `buildBaseCLIArgs` sets `bypassPermissions`
+  (`agent_task.go:191`) and forwards every declared tool unrestricted
+  (`agent_task.go:193`). Nothing reins it in — the YOLO that motivated the
   whole epic.
 
 Three mechanisms, three vocabularies, three blast radii, no shared model.
 [Slice 1](effect-taxonomy.md) gives us the missing model — an `effect` class
 per tool surface. This slice makes the **grant** reusable (a toolbox) and the
-**enforcement** uniform (one policy keyed on the class), so every oracle is
+**enforcement** uniform (one policy keyed on the class), so every agent is
 restricted the same way for the same reason.
 
 ## What changes
@@ -46,14 +46,14 @@ Two coupled additions:
 
 2. **One enforcement policy** — `enforceToolbox(agent) → {cliMode, allowed[],
    denied[]}` — derived purely from the resolved toolbox's effect class, and
-   applied by **all four** oracle handlers (`ask`, `decide`, `converse`,
+   applied by **all four** agent handlers (`ask`, `decide`, `converse`,
    `task`) at the tool layer. The three ad-hoc paths
    (`mutationTools`-rejection, `converseToolPolicy`'s read-only branch, task's
    unrestricted spawn) collapse into this one function.
 
-> One sentence: an oracle's tools come from a named toolbox; the engine
+> One sentence: an agent's tools come from a named toolbox; the engine
 > classifies that toolbox once (slice 1) and enforces the same allowlist +
-> mutator-deny on every oracle kind — no verb gets a private rulebook.
+> mutator-deny on every agent kind — no verb gets a private rulebook.
 
 The kernel layer beneath this — confining the `write`/`external` tiers so a
 `Bash`-holding agent can't `python -c 'open(...).write()'` past the
@@ -62,11 +62,11 @@ boundary; slice 3 is the OS boundary under it.
 
 ## Impact
 
-- **Code seams:** `internal/app/types.go` (`Toolboxes` top-level map; `Toolbox`/`ToolsAdd`/`ToolsRemove` on the agent decl), `internal/app/loader.go` (resolve `toolbox:` → tools, validate references, compute the join), `internal/host/agents.go:144`/`:180`/`:206`/`:215` (`effectiveTools` resolves the toolbox; `converseToolPolicy` becomes `enforceToolbox`), `internal/host/oracle_ask.go:42`/`oracle_decide.go:42` (drop the private `mutationTools` path → call `enforceToolbox`), `internal/host/oracle_task.go:191` (stop hardcoding `bypassPermissions`; honor `enforceToolbox`).
+- **Code seams:** `internal/app/types.go` (`Toolboxes` top-level map; `Toolbox`/`ToolsAdd`/`ToolsRemove` on the agent decl), `internal/app/loader.go` (resolve `toolbox:` → tools, validate references, compute the join), `internal/host/agents.go:144`/`:180`/`:206`/`:215` (`effectiveTools` resolves the toolbox; `converseToolPolicy` becomes `enforceToolbox`), `internal/host/agent_ask.go:42`/`agent_decide.go:42` (drop the private `mutationTools` path → call `enforceToolbox`), `internal/host/agent_task.go:191` (stop hardcoding `bypassPermissions`; honor `enforceToolbox`).
 - **Vocabulary:** `toolboxes:` (top-level), `toolbox:` / `tools_add:` / `tools_remove:` (agent) — table below. No new effects (slice 1 owns those).
 - **Stories affected:** none forced — inline `tools:` keeps working. Stories may *opt in* to toolboxes to dedupe (e.g. the read-only judge/extract agents across `dev-story`, `prd`, `bugfix`, `docs-review` collapse to one `read_only` box).
 - **Backward compat:** additive. An agent with no `toolbox:` behaves exactly as today; the only behavior change is that `ask`/`decide`/`task` now route through the *same* policy as converse — which is behavior-preserving because the policy reproduces each verb's current effective allowlist for the classes those verbs already imply (see Migration).
-- **Docs on ship:** `docs/stories/state-machine.md` (agent + toolbox decl), `docs/architecture/hosts.md` (the one enforcement policy, per oracle kind).
+- **Docs on ship:** `docs/stories/state-machine.md` (agent + toolbox decl), `docs/architecture/hosts.md` (the one enforcement policy, per agent kind).
 
 ## Vocabulary changes
 
@@ -93,7 +93,7 @@ agents:
 
 `enforceToolbox` is the single policy. It resolves the agent's toolbox to a
 tool surface, asks slice 1 for the effect class, and returns the CLI posture —
-identically for every oracle handler:
+identically for every agent handler:
 
 ```
 agent ─▶ resolve toolbox (named + add/remove) ─▶ tool surface
@@ -128,9 +128,9 @@ the resolved class. The moat is untouched.
 No new event kind. The resolved toolbox name + effect class already ride on the
 host event via slice 1 (`effect`/`deterministic` recorded at
 `host_dispatch.go:187`); this slice adds the **toolbox name** and the
-**resolved allowed/denied sets** to the existing oracle-invoke event so a trace
+**resolved allowed/denied sets** to the existing agent-invoke event so a trace
 shows *which box governed the call and what it permitted* — the exact data the
-[conformance check](oracle-contract-eval.md) reads to prove no tool use
+[conformance check](agent-contract-eval.md) reads to prove no tool use
 exceeded the box.
 
 ## Engine seams & invariants
@@ -139,8 +139,8 @@ exceeded the box.
   named box's tools, then `tools_add`/`tools_remove`, then per-call `tools:`
   override (unchanged precedence).
 - `converseToolPolicy` (`agents.go:215`) is generalized to `enforceToolbox`
-  and called from `oracle_ask.go`, `oracle_decide.go`, `oracle_converse.go`,
-  and `oracle_task.go` — the per-verb branches deleted.
+  and called from `agent_ask.go`, `agent_decide.go`, `agent_converse.go`,
+  and `agent_task.go` — the per-verb branches deleted.
 - Load-time invariants: `toolbox:` references a declared box (else
   `ValidationError`); `toolbox:` + `tools:` on one agent → error; a box's
   asserted `effect:` disagreeing with its tool-join → error (this is the same
@@ -175,10 +175,10 @@ judge/extract agents onto a shared `read_only` box.
 ## 2. One enforcement policy
 - [ ] 2.1 converseToolPolicy → enforceToolbox(agent) keyed on slice-1 effect class
 - [ ] 2.2 Route ask/decide/converse/task through enforceToolbox; delete the private mutationTools path and task's hardcoded bypassPermissions
-- [ ] 2.3 Record toolbox name + resolved allowed/denied on the oracle-invoke event
+- [ ] 2.3 Record toolbox name + resolved allowed/denied on the agent-invoke event
 
 ## 3. Verification
-- [ ] 3.1 enforceToolbox table test: pure/read/write/external → expected cliMode+allow+deny, for each of the four oracle kinds
+- [ ] 3.1 enforceToolbox table test: pure/read/write/external → expected cliMode+allow+deny, for each of the four agent kinds
 - [ ] 3.2 Behavior-preserving proof: ask/decide deny set unchanged; task allowlist unchanged pre-sandbox (extend converse_tool_policy_test)
 - [ ] 3.3 Load test: every invalid toolbox shape fails with a clear error
 - [ ] 3.4 Flow smoke: existing stories (inline tools) unchanged; one story migrated to a shared box stays green
@@ -191,7 +191,7 @@ judge/extract agents onto a shared `read_only` box.
 ## Verification
 
 No LLM. `enforceToolbox` is a pure function — a table test drives
-`{class} × {oracle kind}` → expected `{cliMode, allowed, denied}` and asserts
+`{class} × {agent kind}` → expected `{cliMode, allowed, denied}` and asserts
 the four kinds now agree. The behavior-preserving claim is proved by snapshotting
 each verb's current effective allowlist and showing the unified policy
 reproduces it. Toolbox resolution + load invariants are `internal/app` loader

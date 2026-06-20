@@ -455,18 +455,18 @@ func (r *sqliteReader) LatestCheckpoint(sid app.SessionID, doc DocID) (Entry, bo
 	}, true, nil
 }
 
-// LoadOracleCallEntries returns all KindOracleCall journal entries for sid as
+// LoadAgentCallEntries returns all KindAgentCall journal entries for sid as
 // a slice of Entry values (including timestamps). Entries are ordered by
 // (turn, seq).
-func LoadOracleCallEntries(db *sql.DB, sid app.SessionID) ([]Entry, error) {
+func LoadAgentCallEntries(db *sql.DB, sid app.SessionID) ([]Entry, error) {
 	rows, err := db.Query(
 		`SELECT ts, turn, seq, body_json FROM journal
-		 WHERE session_id = ? AND kind = 'oracle.call'
+		 WHERE session_id = ? AND kind = 'agent.call'
 		 ORDER BY turn ASC, seq ASC`,
 		string(sid),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("journal.LoadOracleCallEntries: query: %w", err)
+		return nil, fmt.Errorf("journal.LoadAgentCallEntries: query: %w", err)
 	}
 	defer rows.Close()
 
@@ -486,29 +486,29 @@ func LoadOracleCallEntries(db *sql.DB, sid app.SessionID) ([]Entry, error) {
 			Session: sid,
 			Turn:    app.TurnNumber(turnN),
 			Seq:     seq,
-			Kind:    KindOracleCall,
+			Kind:    KindAgentCall,
 			Body:    json.RawMessage(bodyStr),
 		})
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("journal.LoadOracleCallEntries: scan: %w", err)
+		return nil, fmt.Errorf("journal.LoadAgentCallEntries: scan: %w", err)
 	}
 	return out, nil
 }
 
-// LoadOracleCalls returns all KindOracleCall journal entries for sid, keyed by
+// LoadAgentCalls returns all KindAgentCall journal entries for sid, keyed by
 // the call_id field in the body. Entries with no parseable call_id are skipped.
 // This is used by export-status to merge full prompt/response payloads into the
-// lean slog oracle.<verb>.complete records.
-func LoadOracleCalls(db *sql.DB, sid app.SessionID) (map[string]json.RawMessage, error) {
+// lean slog agent.<verb>.complete records.
+func LoadAgentCalls(db *sql.DB, sid app.SessionID) (map[string]json.RawMessage, error) {
 	rows, err := db.Query(
 		`SELECT body_json FROM journal
-		 WHERE session_id = ? AND kind = 'oracle.call'
+		 WHERE session_id = ? AND kind = 'agent.call'
 		 ORDER BY turn ASC, seq ASC`,
 		string(sid),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("journal.LoadOracleCalls: query: %w", err)
+		return nil, fmt.Errorf("journal.LoadAgentCalls: query: %w", err)
 	}
 	defer rows.Close()
 
@@ -528,7 +528,7 @@ func LoadOracleCalls(db *sql.DB, sid app.SessionID) (map[string]json.RawMessage,
 		out[partial.CallID] = json.RawMessage(bodyStr)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("journal.LoadOracleCalls: scan: %w", err)
+		return nil, fmt.Errorf("journal.LoadAgentCalls: scan: %w", err)
 	}
 	return out, nil
 }

@@ -12,7 +12,7 @@ set* — every decision is a labeled datapoint in the event log
 (running a session). What it can't do is say, mechanically, **how good a finished
 episode was**. Today that judgment lives in an operator's head as they read a
 trace, or it is implicit in scattered places — a flow assertion that passed, an
-`oracle.decide` that accepted, a terminal room that was (or wasn't) reached, a
+`agent.decide` that accepted, a terminal room that was (or wasn't) reached, a
 `host.run` exit code. The signal is *there*, in the trace, but it is never
 collected into one scalar the rest of the training loop (the epic's slices 2–3)
 can optimize against.
@@ -56,7 +56,7 @@ finished run gets exactly one scored reward.*
 | scorer | `terminal` | room name → `{score, label}` | deterministic: which terminal room was reached |
 | scorer | `flow` | assertion outcome → `{score, label}` | deterministic: did the run satisfy declared assertions |
 | scorer | `host` | exit code / parsed output → `{score, label}` | deterministic: e.g. a test command's exit code |
-| scorer | `decide` | reuses `oracle.decide` accept/reject | the existing gate verdict as reward |
+| scorer | `decide` | reuses `agent.decide` accept/reject | the existing gate verdict as reward |
 | scorer | `effort` | L1 retry / L2 recycle counts → `{score, label}` | deterministic: in-run self-correction is a cost/quality signal (a step that needed 3 retries scores below a first-try success) |
 | scorer | `operator` | human accept/refine rating | deferred reward; resolved when the operator rates |
 | gate / decider | `combine` | `default \| llm \| human` | how multiple source scores fold into one scalar |
@@ -67,7 +67,7 @@ The reward block mirrors the existing gate/decider shape
 ([`docs/stories/architecture.md:501`](../stories/architecture.md)) deliberately —
 a reward is just a *gate whose choices are scores*, resolved by a scorer instead
 of a router. Reuse the decider taxonomy: a `default` scorer is deterministic
-(read world/trace, return a fixed score); an `llm` scorer is an `oracle.decide`
+(read world/trace, return a fixed score); an `llm` scorer is an `agent.decide`
 judge ("rate this finished run 0–1 with a reason"); a `human` scorer is an
 operator rating surfaced via the operator bridge.
 
@@ -105,7 +105,7 @@ episode:
 
 For an `llm`/`human` source, the entry carries the prompt/world snapshot id and
 rationale so a reviewer can audit *this* score (same contract as any
-`oracle.decide`). This event is what slice 2's credit assignment reads to know
+`agent.decide`). This event is what slice 2's credit assignment reads to know
 which episodes are failures and which are successes.
 
 ## Engine seams & invariants
@@ -116,7 +116,7 @@ which episodes are failures and which are successes.
   deferred).
 - **Load-time invariants** (fail-fast at load, not at runtime): every `source`
   names a registered scorer; `terminal`/`host` sources reference rooms/hosts that
-  exist; `combine` is a known strategy; an `llm` scorer names a real `oracle.decide`
+  exist; `combine` is a known strategy; an `llm` scorer names a real `agent.decide`
   schema. A malformed `reward:` block fails the load with a clear message, like
   every other story invariant.
 - **DI:** the scorer registry is injected (not a package global), so tests supply

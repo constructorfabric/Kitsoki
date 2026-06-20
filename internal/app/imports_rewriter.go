@@ -133,15 +133,15 @@ func (rw *childRewriter) rewriteState(s *State) {
 		rw.rewriteEffect(&s.OnEnter[i])
 	}
 
-	// OracleOffRamp.Agent: the off-ramp voice may name a child agent.
+	// AgentOffRamp.Agent: the off-ramp voice may name a child agent.
 	// Prefix it like meta_mode.agent and with:{agent} so the folded
 	// agents: map (parent.Agents[<alias>__<agent>]) resolves at load
 	// time. Without this an imported room that opts into the off-ramp
-	// with `oracle_off_ramp.agent: <child-agent>` carries a dangling
+	// with `agent_off_ramp.agent: <child-agent>` carries a dangling
 	// reference to the child's pre-fold agent name.
-	if s.OracleOffRamp != nil && s.OracleOffRamp.Agent != "" {
-		if _, isChild := rw.childAgent[s.OracleOffRamp.Agent]; isChild {
-			s.OracleOffRamp.Agent = rw.alias + "__" + s.OracleOffRamp.Agent
+	if s.AgentOffRamp != nil && s.AgentOffRamp.Agent != "" {
+		if _, isChild := rw.childAgent[s.AgentOffRamp.Agent]; isChild {
+			s.AgentOffRamp.Agent = rw.alias + "__" + s.AgentOffRamp.Agent
 		}
 	}
 

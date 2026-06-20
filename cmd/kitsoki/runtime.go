@@ -10,6 +10,8 @@ import (
 
 	goyaml "github.com/goccy/go-yaml"
 
+	"kitsoki/internal/agent"
+	agentserver "kitsoki/internal/agent/server"
 	"kitsoki/internal/agents"
 	"kitsoki/internal/app"
 	"kitsoki/internal/chathost"
@@ -24,8 +26,6 @@ import (
 	"kitsoki/internal/journal"
 	"kitsoki/internal/machine"
 	"kitsoki/internal/mining"
-	"kitsoki/internal/oracle"
-	oracleserver "kitsoki/internal/oracle/server"
 	"kitsoki/internal/orchestrator"
 	"kitsoki/internal/store"
 	"kitsoki/internal/testrunner"
@@ -52,13 +52,13 @@ type sessionRuntime struct {
 	ChatStore   *chats.Store
 	Machine     machine.Machine
 	Harness     harness.Harness
-	OracleReg   *oracle.Registry
+	AgentReg    *agent.Registry
 	Logger      *slog.Logger
 
-	// DeferredOracleSink is non-nil when the runtime was built with a host
+	// DeferredAgentSink is non-nil when the runtime was built with a host
 	// cassette (--host-cassette). Callers must call SetSink on it after wiring
-	// the session's event sink so cassette oracle events flow to the trace.
-	DeferredOracleSink *store.DeferredSink
+	// the session's event sink so cassette agent events flow to the trace.
+	DeferredAgentSink *store.DeferredSink
 
 	closers []func()
 }
@@ -74,8 +74,8 @@ func (rt *sessionRuntime) Close() {
 // (one episode group per `match.handler`) with a cassette-backed dispatcher in
 // hostReg. It is shared by both postures: the nil-harness flow posture
 // (relativeTo = the flow file's dir) and the live-harness posture (relativeTo =
-// "" → resolve against cwd). The cassette's oracle: blocks flow to the session
-// trace via rt.DeferredOracleSink, which the caller forwards once the live sink
+// "" → resolve against cwd). The cassette's agent: blocks flow to the session
+// trace via rt.DeferredAgentSink, which the caller forwards once the live sink
 // is wired (registry.go calls SetSink right after orch.SetEventSink).
 func applyHostCassette(rt *sessionRuntime, hostReg *host.Registry, cassettePath, relativeTo string) error {
 	if !filepath.IsAbs(cassettePath) && relativeTo != "" {
@@ -89,7 +89,7 @@ func applyHostCassette(rt *sessionRuntime, hostReg *host.Registry, cassettePath,
 	// matcher keys on handler + args only.
 	stateOf := func() string { return "" }
 	deferredSink := store.NewDeferredSink()
-	rt.DeferredOracleSink = deferredSink
+	rt.DeferredAgentSink = deferredSink
 	seen := map[string]bool{}
 	for _, ep := range cas.Episodes {
 		hn, ok := ep.Match["handler"].(string)
@@ -105,13 +105,13 @@ func applyHostCassette(rt *sessionRuntime, hostReg *host.Registry, cassettePath,
 }
 
 // runtimeConfig selects which construction posture buildSessionRuntime takes.
-// The three postures are mutually exclusive in their oracle/host wiring:
+// The three postures are mutually exclusive in their agent/host wiring:
 //
 //   - Flow != nil: deterministic flow-driven posture. Host stubs from the flow
 //     fixture (and/or a host cassette) back the session; the harness is nil
-//     (intents are submitted explicitly, no LLM); no oracle plugin registry.
+//     (intents are submitted explicitly, no LLM); no agent plugin registry.
 //   - Flow == nil: live posture. A real harness is built (buildHarness), the
-//     oracle plugin registry is built from the app def, and host builtins are
+//     agent plugin registry is built from the app def, and host builtins are
 //     registered + allow-list validated.
 type runtimeConfig struct {
 	// AppPath is the resolved path to the app.yaml. Required.
@@ -131,14 +131,14 @@ type runtimeConfig struct {
 	RecordingPath string
 	RecordPath    string
 	PromptOverlay string
-	// OracleBackend selects the coding-agent CLI backend ("" / "claude" |
-	// "copilot") for host.oracle.* calls. Empty keeps the default (claude).
-	OracleBackend string
+	// AgentBackend selects the coding-agent CLI backend ("" / "claude" |
+	// "copilot") for host.agent.* calls. Empty keeps the default (claude).
+	AgentBackend string
 
 	// HarnessProfiles / DefaultProfile carry the operator-declared harness
 	// profiles (from .kitsoki.yaml) into the orchestrator so a live session can
 	// switch backend/model/env via /provider /model or the web picker. Empty
-	// leaves the static OracleBackend path untouched.
+	// leaves the static AgentBackend path untouched.
 	HarnessProfiles map[string]orchestrator.HarnessProfile
 	DefaultProfile  string
 
@@ -154,7 +154,7 @@ type runtimeConfig struct {
 	Reloader func() (*app.AppDef, error)
 
 	// Mining carries the resolved .kitsoki.yaml `mining:` block. When
-	// Mining.Enabled is true (and a real harness backs the one oracle pass), the
+	// Mining.Enabled is true (and a real harness backs the one agent pass), the
 	// runtime builds an ambient session miner and injects it via
 	// orchestrator.SetMiner. Default-zero (no block / enabled:false) ⇒ no miner is
 	// built — the path every flow/test fixture takes, so no fixture spends LLM.
@@ -198,7 +198,7 @@ type runtimeBase struct {
 	ClaudeModel   string
 	RecordingPath string
 	RecordPath    string
-	OracleBackend string
+	AgentBackend  string
 
 	// HarnessProfiles / DefaultProfile are resolved once at web startup from
 	// .kitsoki.yaml and inherited by every session the registry spins up.
@@ -220,7 +220,7 @@ type runtimeBase struct {
 	// HostCassette layers a host cassette over the LIVE (harness) posture: when
 	// a real harness is built (e.g. --harness replay drives free-text routing
 	// deterministically) but specific host.* calls must still be stubbed (the
-	// off-ramp's host.oracle.converse), this path's episodes replace those
+	// off-ramp's host.agent.converse), this path's episodes replace those
 	// handlers in the real host registry. It is the replay-harness analogue of
 	// Flow.HostCassette (which only applies in the nil-harness flow posture).
 	// Empty = no cassette layered. Resolved relative to cwd.
@@ -254,7 +254,7 @@ func (b runtimeBase) config(storyPath string, def *app.AppDef) runtimeConfig {
 		ClaudeModel:       b.ClaudeModel,
 		RecordingPath:     b.RecordingPath,
 		RecordPath:        b.RecordPath,
-		OracleBackend:     b.OracleBackend,
+		AgentBackend:      b.AgentBackend,
 		HarnessProfiles:   b.HarnessProfiles,
 		DefaultProfile:    b.DefaultProfile,
 		Flow:              b.Flow,
@@ -269,7 +269,7 @@ func (b runtimeBase) config(storyPath string, def *app.AppDef) runtimeConfig {
 // buildSessionRuntime performs the orchestrator CONSTRUCTION shared by
 // `kitsoki run` and `kitsoki web`: open the store, build journal reader/writer,
 // job store + scheduler, chat store, machine, host registry (per posture),
-// oracle registry (live posture only), and the orchestrator itself — then run
+// agent registry (live posture only), and the orchestrator itself — then run
 // ValidatePromptExtensions. It does NOT create a session, set an event sink,
 // run on_enter, or start any UI; those belong to the caller.
 func buildSessionRuntime(cfg runtimeConfig) (*sessionRuntime, error) {
@@ -327,16 +327,16 @@ func buildSessionRuntime(cfg runtimeConfig) (*sessionRuntime, error) {
 	}
 	rt.Machine = m
 
-	// ── Host registry + harness + oracle, per posture ──────────────────────
+	// ── Host registry + harness + agent, per posture ──────────────────────
 	var (
-		h         harness.Harness
-		oracleReg *oracle.Registry
-		hostReg   *host.Registry
+		h              harness.Harness
+		agentPluginReg *agent.Registry
+		hostReg        *host.Registry
 	)
 
 	if cfg.Flow != nil {
 		// Deterministic flow posture: stub host handlers, no harness, no
-		// oracle plugins. Mirrors testrunner.buildOrchestratorRig's stub
+		// agent plugins. Mirrors testrunner.buildOrchestratorRig's stub
 		// wiring (host.RegisterBuiltins + RegisterHostStubs), simplified — the
 		// web surface never records, so no record-mode cassette wiring.
 		hostReg = host.NewRegistry()
@@ -387,7 +387,7 @@ func buildSessionRuntime(cfg runtimeConfig) (*sessionRuntime, error) {
 		host.RegisterBuiltins(hostReg)
 		// Layer a host cassette over the live-harness posture when requested
 		// (e.g. --harness replay for free-text routing + --host-cassette for the
-		// off-ramp's host.oracle.converse). The cassette's episodes replace the
+		// off-ramp's host.agent.converse). The cassette's episodes replace the
 		// matching builtin handlers so those host.* calls are deterministic while
 		// the real harness still drives intent routing. Applied BEFORE the
 		// allow-list check so a stubbed handler is still a registered host.
@@ -400,7 +400,7 @@ func buildSessionRuntime(cfg runtimeConfig) (*sessionRuntime, error) {
 			return nil, fmt.Errorf("validate hosts: %w", err)
 		}
 
-		h, err = buildHarness(cfg.HarnessType, cfg.ClaudeModel, cfg.OracleBackend, cfg.RecordingPath, cfg.RecordPath, def)
+		h, err = buildHarness(cfg.HarnessType, cfg.ClaudeModel, cfg.AgentBackend, cfg.RecordingPath, cfg.RecordPath, def)
 		if err != nil {
 			return nil, fmt.Errorf("build harness: %w", err)
 		}
@@ -408,14 +408,14 @@ func buildSessionRuntime(cfg runtimeConfig) (*sessionRuntime, error) {
 		setHarnessLogger(h, logger)
 		rt.closers = append(rt.closers, func() { _ = h.Close() })
 
-		oracleReg, err = oracle.BuildRegistryFromDef(def, h)
+		agentPluginReg, err = agent.BuildRegistryFromDef(def, h)
 		if err != nil {
-			return nil, fmt.Errorf("build oracle registry: %w", err)
+			return nil, fmt.Errorf("build agent registry: %w", err)
 		}
-		rt.OracleReg = oracleReg
-		rt.closers = append(rt.closers, func() { _ = oracleReg.Close() })
+		rt.AgentReg = agentPluginReg
+		rt.closers = append(rt.closers, func() { _ = agentPluginReg.Close() })
 
-		// Wire host.oracle.search when app.routing.embedding is configured.
+		// Wire host.agent.search when app.routing.embedding is configured.
 		// Supports endpoint mode (Endpoint set) and managed mode (Model set,
 		// no Endpoint). In managed mode the sidecar is started with
 		// --embeddings --pooling mean so it serves /v1/embeddings, not chat.
@@ -430,19 +430,19 @@ func buildSessionRuntime(cfg runtimeConfig) (*sessionRuntime, error) {
 				cacheDir = ".kitsoki-embed-cache"
 			}
 			store := embedstore.NewStore(cacheDir)
-			hostReg.Replace("host.oracle.search",
-				host.NewOracleSearchHandler(embedModel(ec), filepath.Dir(cfg.AppPath), embedder, store))
-			slog.Info("host.oracle.search: wired", "endpoint", ec.Endpoint, "model", embedModel(ec))
+			hostReg.Replace("host.agent.search",
+				host.NewAgentSearchHandler(embedModel(ec), filepath.Dir(cfg.AppPath), embedder, store))
+			slog.Info("host.agent.search: wired", "endpoint", ec.Endpoint, "model", embedModel(ec))
 		}
 	}
 
 	// Agents registry (builtins + AppDef overrides), installed process-wide so
 	// handlers honouring `agent:` resolve names. Same in both postures.
-	agentReg, err := agents.BuildRegistry(def.AgentSpecs())
+	metaAgentReg, err := agents.BuildRegistry(def.AgentSpecs())
 	if err != nil {
 		return nil, fmt.Errorf("build agents registry: %w", err)
 	}
-	host.SetAgentRegistry(agentReg)
+	host.SetAgentRegistry(metaAgentReg)
 
 	// ── Orchestrator options ────────────────────────────────────────────────
 	runOpts := []orchestrator.Option{
@@ -456,8 +456,8 @@ func buildSessionRuntime(cfg runtimeConfig) (*sessionRuntime, error) {
 		orchestrator.WithJournalReader(jr),
 		orchestrator.WithExecutionMode(cfg.ExecMode),
 	}
-	if oracleReg != nil {
-		runOpts = append(runOpts, orchestrator.WithOracleRegistry(oracleReg))
+	if agentPluginReg != nil {
+		runOpts = append(runOpts, orchestrator.WithAgentRegistry(agentPluginReg))
 	}
 	if cfg.RoomEnterSink != nil {
 		runOpts = append(runOpts, orchestrator.WithRoomEnterSink(cfg.RoomEnterSink))
@@ -468,8 +468,8 @@ func buildSessionRuntime(cfg runtimeConfig) (*sessionRuntime, error) {
 	if cfg.PromptOverlay != "" {
 		runOpts = append(runOpts, orchestrator.WithPromptOverlay(cfg.PromptOverlay))
 	}
-	if cfg.OracleBackend != "" {
-		runOpts = append(runOpts, orchestrator.WithOracleBackendName(cfg.OracleBackend))
+	if cfg.AgentBackend != "" {
+		runOpts = append(runOpts, orchestrator.WithAgentBackendName(cfg.AgentBackend))
 	}
 	if len(cfg.HarnessProfiles) > 0 {
 		runOpts = append(runOpts, orchestrator.WithHarnessProfiles(cfg.HarnessProfiles, cfg.DefaultProfile))
@@ -491,7 +491,7 @@ func buildSessionRuntime(cfg runtimeConfig) (*sessionRuntime, error) {
 	rt.Orch = orch
 
 	// ── Ambient session miner ────────────────────────────────────────────────
-	// Built only in live posture (a real harness backs the one oracle pass) and
+	// Built only in live posture (a real harness backs the one agent pass) and
 	// only when mining.enabled. The orchestrator is the miner's EventSink, so the
 	// miner is built AFTER the orchestrator and installed via SetMiner. Flow /
 	// nil-harness postures never build it → no flow fixture ever spends LLM.
@@ -534,7 +534,7 @@ func buildSessionRuntime(cfg runtimeConfig) (*sessionRuntime, error) {
 	// IDE link (web posture only): when the embedding VS Code extension advertises
 	// its MCP server via CLAUDE_CODE_SSE_PORT, connect so host.ide.* verbs drive
 	// that window — opening the brief/PRD and showing refine diffs. SetIDELink
-	// also engages the inner-oracle env scrub (a live author can't hijack the
+	// also engages the inner-agent env scrub (a live author can't hijack the
 	// link). Best-effort: a missing/declined editor leaves the link nil (the
 	// connected:false path), never failing construction.
 	if cfg.ConnectIDEFromEnv && os.Getenv("CLAUDE_CODE_SSE_PORT") != "" {
@@ -590,14 +590,14 @@ func embedModel(ec *app.EmbedConfig) string {
 // In endpoint mode (ec.Endpoint set) the sidecar attaches to a running server.
 // In managed mode (ec.Model set, no Endpoint) the sidecar fetches the GGUF and
 // spawns llama-server with --embeddings --pooling mean on first use.
-func buildEmbedder(ec *app.EmbedConfig) (*oracle.LocalEmbedder, func(), error) {
+func buildEmbedder(ec *app.EmbedConfig) (*agent.LocalEmbedder, func(), error) {
 	model := embedModel(ec)
-	opts := []oracleserver.Option{
+	opts := []agentserver.Option{
 		// Embedding sidecars must run with --embeddings --pooling mean so the
 		// server serves /v1/embeddings rather than /v1/chat/completions.
-		oracleserver.WithExtraArgs("--embeddings", "--pooling", "mean"),
+		agentserver.WithExtraArgs("--embeddings", "--pooling", "mean"),
 	}
-	sc := oracleserver.NewSidecar(model, "", ec.Endpoint, 0, opts...)
-	emb := oracle.NewLocalEmbedder(model, sc)
+	sc := agentserver.NewSidecar(model, "", ec.Endpoint, 0, opts...)
+	emb := agent.NewLocalEmbedder(model, sc)
 	return emb, func() { _ = emb.Close() }, nil
 }

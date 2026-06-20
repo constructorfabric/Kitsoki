@@ -26,7 +26,7 @@ states:
         - target: .
 
   # ── order: pick a drink. The pick is a plain transition that ALSO sets a
-  #    deterministic world key via a trivial `set:` effect (no slots/oracle). ──
+  #    deterministic world key via a trivial `set:` effect (no slots/agent). ──
   order:
     description: "At the counter — pick your drink."
     relevant_world: [drink]

@@ -6,8 +6,8 @@
 
 ## Why
 
-The two consumers in the [embeddings epic](embeddings.md) — `oracle.search`
-([slice 2](oracle-search.md)) and the embedding routing tier
+The two consumers in the [embeddings epic](embeddings.md) — `agent.search`
+([slice 2](agent-search.md)) and the embedding routing tier
 ([slice 3](embedding-routing-tier.md)) — both need exactly the same two
 things: a way to turn text into vectors, and a way to rank a query vector
 against a corpus of document vectors. Building either inside its consumer
@@ -20,7 +20,7 @@ substrate.
 
 A new pure-Go `internal/embed` package with two cooperating pieces — a
 brute-force cosine `Index` and an `Embedder` seam — plus a second `Sidecar`
-mode in `internal/oracle/server/` that serves `/v1/embeddings`. Nothing
+mode in `internal/agent/server/` that serves `/v1/embeddings`. Nothing
 consumes it yet; this slice ends when a fake embedder ranks a corpus in a unit
 test and the gated live e2e embeds against a real sidecar.
 
@@ -29,18 +29,18 @@ test and the gated live e2e embeds against a real sidecar.
 - **Code seams:**
   - new `internal/embed/` — `Index`, `Embedder`, `Role`, the deterministic
     fake, and an `embed.Store` (gob persistence).
-  - `internal/oracle/server/fetch.go:74` (`modelPins`) — an embedding model
+  - `internal/agent/server/fetch.go:74` (`modelPins`) — an embedding model
     pin (nomic-embed-text-v1.5; bge-small-en-v1.5 fallback).
-  - `internal/oracle/server/sidecar.go` — a second `Sidecar` constructed with
+  - `internal/agent/server/sidecar.go` — a second `Sidecar` constructed with
     `--embeddings --pooling mean` + the embedding GGUF; a `/v1/embeddings`
-    HTTP client modelled on `internal/oracle/local_llm.go`'s
+    HTTP client modelled on `internal/agent/local_llm.go`'s
     `/v1/chat/completions` client.
 - **Vocabulary:** none author-facing. This slice adds Go types only; the
   config blocks live in the consumer slices.
 - **Stories affected:** none.
 - **Backward compat:** purely additive. No story, cassette, or trace changes.
 - **Docs on ship:** `internal/embed/doc.go`; a new substrate section in
-  `docs/architecture/embeddings.md`; `oracle-plugin.md` §9 gains the embedding
+  `docs/architecture/embeddings.md`; `agent-plugin.md` §9 gains the embedding
   sidecar mode.
 
 ## The model
@@ -74,7 +74,7 @@ type Embedder interface {
 
 is the **stub seam**: the live implementation POSTs to the embedding sidecar's
 `/v1/embeddings`; tests inject a deterministic fake (fixed vectors per phrase).
-This applies the [oracle stub-by-id](../architecture/oracle-plugin.md)
+This applies the [agent stub-by-id](../architecture/agent-plugin.md)
 discipline to embeddings and keeps the no-LLM-in-tests rule (CLAUDE.md) intact.
 
 > **Prefix discipline — get this wrong and ranking silently degrades**
@@ -95,7 +95,7 @@ both consumers report them identically.
 
 - **Sidecar lifecycle:** a dedicated embedding `Sidecar` (separate port, GGUF,
   `--embeddings --pooling mean`) reusing the shipped `EnsureRunning` lazy-spawn
-  + `/health` gate + SIGTERM teardown (`internal/oracle/server/sidecar.go:170`,
+  + `/health` gate + SIGTERM teardown (`internal/agent/server/sidecar.go:170`,
   `:271`). `--embeddings` restricts a server to embedding use, so this is a
   *second* server instance, not a flag on the chat sidecar (research §2).
 - **Acquisition:** the embedding GGUF is fetched + sha256-verified against a
@@ -121,7 +121,7 @@ imports it; no story migrates, no cassette moves.
 - [ ] 1.3 embed.Store: gob persistence keyed by (model, dim, pooling, corpus hash)
 - [ ] 1.4 Unit + bench: rank correctness, persistence round-trip, ~ns/op dot at N=1k
 
-## 2. Embedding sidecar (internal/oracle/server)
+## 2. Embedding sidecar (internal/agent/server)
 - [ ] 2.1 Embedding model pin (nomic-embed-text-v1.5; bge-small fallback) in fetch.go
 - [ ] 2.2 Dedicated Sidecar spawn with --embeddings --pooling mean
 - [ ] 2.3 Live /v1/embeddings client (modelled on local_llm.go) implementing Embedder
@@ -129,7 +129,7 @@ imports it; no story migrates, no cassette moves.
 
 ## 3. Document
 - [ ] 3.1 internal/embed/doc.go + docs/architecture/embeddings.md substrate section
-- [ ] 3.2 oracle-plugin.md §9 embedding sidecar mode; mark this slice shipped in the epic
+- [ ] 3.2 agent-plugin.md §9 embedding sidecar mode; mark this slice shipped in the epic
 ```
 
 ## Verification
@@ -139,7 +139,7 @@ builds an `Index`, ranks a query, and asserts the order; a second test
 round-trips an index through `embed.Store` and confirms the cache key changes
 when the model/dim/corpus changes. The only test touching a real model is a
 gated live e2e (`KITSOKI_EMBED_E2E=1`, following
-`internal/oracle/local_llm_e2e_test.go`'s shape): real sidecar
+`internal/agent/local_llm_e2e_test.go`'s shape): real sidecar
 fetch→embed→rank, plus a second-run cache hit. Never run by default (memory:
 [no-llm-tests]).
 

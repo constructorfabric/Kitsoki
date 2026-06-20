@@ -1,6 +1,6 @@
 # diagnose — CI failure analysis. Two substates:
 #
-#   diagnose_executing       — runs host.oracle.decide with the
+#   diagnose_executing       — runs host.agent.decide with the
 #                              ci_log + failed_checks; binds the
 #                              diagnose_artifact (root cause + fix
 #                              proposal).
@@ -13,7 +13,7 @@
 states:
 
   diagnose_executing:
-    description: "Diagnosing the CI failure via the oracle."
+    description: "Diagnosing the CI failure via the agent."
     # Flattened view (choice-widget proposal §4.5).
     view:
       - kv:
@@ -24,7 +24,7 @@ states:
             Diagnosis:         '{{ world.diagnose_artifact.summary_title|default:"(pending)" }}'
             Confidence:        '{{ world.diagnose_artifact.confidence|default:"(pending)" }}'
       - heading: "Artifact"
-      - code: '{{ world.diagnose_artifact.summary_markdown|default:"(pending — oracle has not returned yet)" }}'
+      - code: '{{ world.diagnose_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
       - choice:
           mode: single
           prompt: "Actions"
@@ -46,7 +46,7 @@ states:
     on_enter:
       # once: true — the diagnoser LLM re-fires on /reload otherwise. Skipped
       # once diagnose_artifact is bound; both `refine` arcs clear it to re-run.
-      - invoke: host.oracle.decide
+      - invoke: host.agent.decide
         once: true
         with:
           agent: diagnoser
@@ -129,7 +129,7 @@ states:
 
       # 3. Conditionally: ask an LLM-judge.
       - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
-        invoke: host.oracle.decide
+        invoke: host.agent.decide
         with:
           agent: judge
           prompt: prompts/judge_diagnose.md

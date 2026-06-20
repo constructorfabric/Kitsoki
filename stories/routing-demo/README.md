@@ -3,7 +3,7 @@
 A small teaching story for kitsoki's **command router** — how a line of typed
 text becomes an intent. It exists to make the four routing tiers visible and to
 double as a routing test bed. It is *not* importable and invokes no
-`host.oracle.*` calls; the only model use is the router's own LLM tier.
+`host.agent.*` calls; the only model use is the router's own LLM tier.
 
 ## The four tiers (run in order, first hit wins)
 
@@ -12,7 +12,7 @@ double as a routing test bed. It is *not* importable and invokes no
 | 1 | **synonyms / examples** | an intent's declared `synonyms:` + menu `examples:` (and exact text) | no — offline |
 | 2 | **slot_template** | patterns like `budget {amount}` that also fill slots | no — offline |
 | 3 | **semantic bands** | a deterministic hit's *confidence* picks the action | no — offline |
-| 4 | **`extract_llm_on_no_match`** | on a deterministic miss, the local model classifies the command into an allowed intent | yes — `oracle.local` |
+| 4 | **`extract_llm_on_no_match`** | on a deterministic miss, the local model classifies the command into an allowed intent | yes — `agent.local` |
 
 Tier 3 turns a confidence number into a behaviour:
 
@@ -24,7 +24,7 @@ Tier 4 is opt-in (`extract_llm_on_no_match: true`) and additive: a confident
 verdict routes; a `"none"` / low-confidence verdict falls through to the
 main-turn LLM exactly as before. See
 [`docs/architecture/semantic-routing.md`](../../docs/architecture/semantic-routing.md)
-and [`docs/architecture/oracle-plugin.md` "Local model backend"](../../docs/architecture/oracle-plugin.md).
+and [`docs/architecture/agent-plugin.md` "Local model backend"](../../docs/architecture/agent-plugin.md).
 
 The whole `routing:` config lives at the top of [`app.yaml`](./app.yaml).
 

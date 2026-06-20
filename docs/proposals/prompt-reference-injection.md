@@ -19,7 +19,7 @@ real story, optional structured trace field. See Tasks.
   path. This proposal adds a primitive that is deliberately NOT tied to that
   machinery: a built-in template filter that line-numbers embedded content and
   emits a traceable source attribution — available in every render path,
-  regardless of which renderer or oracle backend is in play.
+  regardless of which renderer or agent backend is in play.
 
   v2 supersedes v1's `{% reference %}` tag, which resolved paths through the
   prompt-extension search-path loader (@shared/@story). That loader only exists
@@ -124,7 +124,7 @@ support for slices is an open question below.)
   `filterCol`/`filterReverse`). Because registration is global, the filter is
   live on **both** the inline `render.Pongo` path (`pongo.go:196`) and the
   `AppRenderer` paths (`prompt_renderer.go`) — i.e. every prompt render, under any
-  oracle backend.
+  agent backend.
 - **Vocabulary:** one new built-in filter (table below). No new effect, world
   key, host call, tag, or `@` namespace.
 - **Stories affected:** none — additive; no prompt uses it until an author does.
@@ -171,7 +171,7 @@ No new interpretive decision — but the **provenance is a labeled datapoint**,
 parallel to how prompt extension records `prompt_overlay` / `spec_*`
 (`internal/host/prompt_render.go:80`, `docs/stories/prompts.md` §Trace provenance):
 
-- The oracle-call event already captures the **rendered prompt bytes**, which now
+- The agent-call event already captures the **rendered prompt bytes**, which now
   contain the attribution header + line-numbered body verbatim — the trace is
   self-describing and the citation is walkable by a human with zero new code.
 - When the content came from a **host file-read**, that read is *itself* a
@@ -179,7 +179,7 @@ parallel to how prompt extension records `prompt_overlay` / `spec_*`
   independent of the prompt. The `sha256` in the attribution lets you tie the
   embedded block back to that read.
 - **Optional follow-up:** record a structured `references: [{src, sha256, lines}]`
-  list on the oracle-call event so "which sources fed this prompt, at what bytes"
+  list on the agent-call event so "which sources fed this prompt, at what bytes"
   is queryable without parsing prompt text — the moat move (a tracing.md concern;
   link a tracing proposal if the schema change wants its own review).
 
@@ -213,7 +213,7 @@ every existing prompt and cassette renders byte-identically. No migration.
 - [x] 1.1 pongo2.RegisterFilter("reference", filterReference) in pongo.go init()
 - [x] 1.2 filterReference: split lines, right-aligned numbered gutter, sha256, attribution wrapper
 - [x] 1.3 Nil / missing input → pass through unchanged (reverse-style no-op)
-- [ ] 1.5 (optional) structured `references: [{src, sha256, lines}]` provenance on the oracle-call event
+- [ ] 1.5 (optional) structured `references: [{src, sha256, lines}]` provenance on the agent-call event
 
 ## 2. Verification
 - [x] 2.1 Unit: numbers lines 1..N with correct right-aligned gutter; lines= span + sha256 correct

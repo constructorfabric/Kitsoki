@@ -41,7 +41,7 @@ initial_world:
 starlark_http_cassette: ../testdata/empty.http.yaml
 
 host_handlers:
-  host.oracle.task:
+  host.agent.task:
     data:
       submitted:
         applied: true
@@ -105,7 +105,7 @@ turns:
     expect_world:
       group_cycle: 1
 
-  # second accept: fixing.on_enter runs oracle.task (fix_result cleared);
+  # second accept: fixing.on_enter runs agent.task (fix_result cleared);
   # → verifying → starlark still returns cleared=false (same stub)
   # → back to fixing again (group_cycle=2); OR: change starlark stub to cleared=true?
   # For simplicity: check that group_cycle incremented and we're back in fixing.

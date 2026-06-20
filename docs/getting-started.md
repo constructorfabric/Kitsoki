@@ -120,20 +120,20 @@ If anything here fails, the `kitsoki-web-debug` and
 ## 4. Optional — a local LLM via llama.cpp
 
 By default the LLM decision points fork the `claude` CLI
-(`oracle.claude`). You can instead route the **small, high-frequency**
+(`agent.claude`). You can instead route the **small, high-frequency**
 decisions — semantic routing's LLM tier and schema-bounded `decide`
 gates — to a local [llama.cpp](https://github.com/ggml-org/llama.cpp)
 `llama-server` over OpenAI-compatible HTTP. This is the
-`builtin.local_llm` oracle backend. It's opt-in and additive: a story
+`builtin.local_llm` agent backend. It's opt-in and additive: a story
 only uses it if it *both* declares the plugin *and* routes a call to
 it.
 
-Full reference: [`docs/architecture/oracle-plugin.md` §9 Local model
-backend](architecture/oracle-plugin.md#9-local-model-backend).
+Full reference: [`docs/architecture/agent-plugin.md` §9 Local model
+backend](architecture/agent-plugin.md#9-local-model-backend).
 
 ### Two modes
 
-- **Managed mode** (`model:`): zero-touch. On the first `oracle.local`
+- **Managed mode** (`model:`): zero-touch. On the first `agent.local`
   call kitsoki fetches a pinned `llama-server` release + the model's
   GGUF weights into the user cache dir (`~/Library/Caches/kitsoki` on
   macOS, `~/.cache/kitsoki` on Linux; override with
@@ -156,8 +156,8 @@ Let kitsoki fetch and run everything. Just set `model:` instead of
 `endpoint:`:
 
 ```yaml
-oracle_plugins:
-  oracle.local:
+agent_plugins:
+  agent.local:
     plugin: builtin.local_llm
     model: qwen2.5-1.5b-instruct
     grammar: true                      # best-effort schema → grammar constraint
@@ -165,7 +165,7 @@ oracle_plugins:
     # server_bin: /path/to/llama-server # optional; skip the binary fetch
 ```
 
-The first `oracle.local` call downloads the pinned `llama-server`
+The first `agent.local` call downloads the pinned `llama-server`
 (~10 MB on macOS) and the GGUF weights (~1.1 GB), sha256-verifies both,
 spawns the sidecar, and health-gates it. On Apple Silicon a warm
 grammar-constrained `decide` then returns in well under a second
@@ -198,26 +198,26 @@ Run the server yourself and attach to it. On macOS:
 2. Declare the plugin in your story's `app.yaml`:
 
    ```yaml
-   oracle_plugins:
-     oracle.local:
+   agent_plugins:
+     agent.local:
        plugin: builtin.local_llm
        endpoint: http://127.0.0.1:8080
        grammar: true        # best-effort schema → grammar constraint
    ```
 
-### Routing a call to the local oracle (either mode)
+### Routing a call to the local agent (either mode)
 
-Route a call to it (e.g. on an agent or a `host.oracle.decide` effect)
-with `oracle: oracle.local`. `oracle.claude` stays the default for
+Route a call to it (e.g. on an agent or a `host.agent.decide` effect)
+with `agent: agent.local`. `agent.claude` stays the default for
 everything that doesn't name it.
 
 ### Good to know
 
 - **`grammar:` is a bias, not a guarantee.** llama.cpp constrains JSON
   *shape* (within its supported grammar subset), not numeric *range*.
-  `ValidateSubmission` — which kitsoki runs on every oracle answer — is
+  `ValidateSubmission` — which kitsoki runs on every agent answer — is
   the actual structural guarantee. On a validation reject the call
-  **falls back to `oracle.claude` once** (same `call_id`), so local
+  **falls back to `agent.claude` once** (same `call_id`), so local
   models degrade gracefully rather than failing the turn.
 - Spell out field scales in your `decide` prompt; a small model may
   emit `confidence: 95` for a `0..1` field (caught + fixed by the
@@ -247,7 +247,7 @@ kitsoki web --stories-dir stories           # pick the provider in the header
 ```
 
 The key is referenced as `${SYNTHETIC_API_KEY}` in the YAML — never inlined,
-never recorded in a trace. Each oracle call's trace row shows `profile=… ·
+never recorded in a trace. Each agent call's trace row shows `profile=… ·
 model=… · effort=…` so you can see exactly which backend/model answered.
 
 Beyond the provider, a profile can offer a **model** picker (e.g. claude's
@@ -259,7 +259,7 @@ picker (`low`…`max`, applied as claude's `--effort`). See
 ### Verified providers (and the auth gotchas that matter)
 
 These three were driven end-to-end through kitsoki — each genuinely answered a
-real `host.oracle.ask`:
+real `host.agent.ask`:
 
 | Profile | Backend | Result |
 |---|---|---|
@@ -334,7 +334,7 @@ cd "$KITSOKI_REPO"
 kitsoki run /Users/brad/code/Kitsoki/stories/<story>/app.yaml
 ```
 
-> If your demo story declares a `builtin.local_llm` oracle (§4), the
+> If your demo story declares a `builtin.local_llm` agent (§4), the
 > same endpoint/managed rules apply regardless of which repo you run
 > from — the cache and sidecar are per-user, not per-repo.
 

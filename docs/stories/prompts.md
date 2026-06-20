@@ -1,6 +1,6 @@
 # Prompt extension — specialize a story without forking it
 
-A story's prompts (`prompts/*.md`, rendered through pongo2 when an oracle
+A story's prompts (`prompts/*.md`, rendered through pongo2 when an agent
 effect invokes them) are where its generic logic meets a specific project's
 reality: coding standards, repo layout, domain vocabulary, review rubric,
 house tone. **Prompt extension** is how a *project* injects that detail
@@ -146,7 +146,7 @@ parent's immediate imports.)
 ## Trace provenance
 
 Prompt assembly is deterministic — no new interpretive decision is recorded.
-The oracle-call event already captures the rendered prompt bytes (post-extends,
+The agent-call event already captures the rendered prompt bytes (post-extends,
 post-include) the LLM saw. When an overlay is in effect, the `ask` / `decide` /
 `task` events also record:
 
@@ -187,7 +187,7 @@ Why a filter, not a tag with a path:
   `{{ args.x }}` / `{{ world.x }}`, or the bytes of a recorded host file-read.
   Because it reads no file and uses no `@story`/`@shared` search path, it works in
   *every* render context — the inline path (CLI one-shots, meta / off-path agents)
-  as well as the overlay/`AppRenderer` path — under any oracle backend.
+  as well as the overlay/`AppRenderer` path — under any agent backend.
 - **The body is verbatim.** Unlike `{% include %}`, the filter never re-parses its
   input as a template, so a document containing `{{ … }}` / `{% … %}` is embedded
   untouched.
@@ -196,7 +196,7 @@ Why a filter, not a tag with a path:
   that cites "`api-spec.md` line 54" lands on the right text. Don't pass a slice
   unless your citations are relative to it.
 - **The attribution is traceable.** The `src` label and `sha256` (first 8 hex of
-  the content digest) ride in the rendered prompt bytes the oracle-call event
+  the content digest) ride in the rendered prompt bytes the agent-call event
   already records — so a reader of the trace can recover what the model saw and
   confirm it against the source. When the content came from a host file-read, that
   read is its own recorded host call, and the hash ties the two together.
@@ -247,7 +247,7 @@ specialization surface and behaves exactly as before.
 `{% include %}` / `@import` references at startup and aborts with a located
 message if one is missing, malformed, an unknown `@import` alias, or a
 self-reference — so a broken extension fails fast at load rather than only when
-that oracle effect first fires. It also rejects an overlay that **overrides a
+that agent effect first fires. It also rejects an overlay that **overrides a
 block no base in its `{% extends %}` chain declares** (a typo'd or renamed
 block name) — pongo2 would otherwise ignore it, silently dropping the
 specialization. Examples:

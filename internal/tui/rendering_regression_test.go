@@ -177,16 +177,16 @@ func TestConcurrentIODoesNotMix(t *testing.T) {
 	// 2. Introduce concurrent operations that would trigger the bug
 	// 3. Assert on the COMBINED output from all sources
 	//
-	// Example scenario: Oracle logs while TUI renders queue indicator
+	// Example scenario: Agent logs while TUI renders queue indicator
 	//
 	// captured := tui.CaptureSlog(t)
 	// defer captured.Restore()
 	//
 	// done := make(chan struct{})
 	// go func() {
-	//     // Simulate oracle runner logging events
+	//     // Simulate agent runner logging events
 	//     for i := 0; i < 50; i++ {
-	//         slog.Info("metamode.oracle.event", "type", "system")
+	//         slog.Info("metamode.agent.event", "type", "system")
 	//         time.Sleep(time.Microsecond)  // Interleave with rendering
 	//     }
 	//     close(done)
@@ -228,18 +228,18 @@ func TestIntegrationPatternExample(t *testing.T) {
 
 	// Step 2: Simulate concurrent operations
 	// (In real usage, would have actual concurrent logging + TUI rendering)
-	slog.Info("oracle.event", "type", "system", "turn", 1)
-	slog.Info("oracle.event", "type", "thinking_tokens", "turn", 2)
+	slog.Info("agent.event", "type", "system", "turn", 1)
+	slog.Info("agent.event", "type", "thinking_tokens", "turn", 2)
 
 	// Step 3: Verify the output (what user sees)
 	output := captured.StderrBuf.String()
 
 	// Step 4: Assert on ACTUAL output, not just function return values
-	require.Contains(t, output, "oracle.event", "slog should capture events")
+	require.Contains(t, output, "agent.event", "slog should capture events")
 
 	// This is the key pattern: verify that concurrent sources don't corrupt
 	// each other's output. In a real bug, you'd see things like:
-	// "INFO oracle.event ... ⏳ running…" (mixed on same line)
+	// "INFO agent.event ... ⏳ running…" (mixed on same line)
 	analyzer := tui.NewRenderingAnalyzer(t, output)
 	analyzer.AssertNotContains("⏳") // Queue indicator shouldn't be in logs
 }

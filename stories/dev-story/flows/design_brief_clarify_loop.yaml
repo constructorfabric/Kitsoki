@@ -30,7 +30,7 @@ initial_world:
 host_handlers:
   host.ide.open_file:
     data: { ok: true, connected: true }
-  host.oracle.task:
+  host.agent.task:
     by_call:
       refine_brief:
         data:
@@ -38,7 +38,7 @@ host_handlers:
           submitted:
             summary: "Idea is clear; impact section needs more detail."
             gaps:    ["Specify cleanup timing", "Name the engine seam"]
-  host.oracle.decide:
+  host.agent.decide:
     by_call:
       brief_check:
         data:
@@ -60,7 +60,7 @@ turns:
         reason:    "The What-changes is vague and no kind is named."
         questions: ["Which engine seam does this touch?", "What does the operator do differently?"]
     expect_host_calls:
-      - handler: host.oracle.decide
+      - handler: host.agent.decide
         args: { call: "brief_check" }
     # Scaffold and refiner are once-guarded (brief_path and refine_analysis are
     # already set), so they must NOT re-run on re-entry.

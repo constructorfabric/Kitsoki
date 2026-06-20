@@ -1,8 +1,8 @@
-# Off-Ramp Demo — the smallest complete showcase of the oracle off-ramp.
+# Off-Ramp Demo — the smallest complete showcase of the agent off-ramp.
 #
 # The off-ramp is the *no-match door* into a free-form converse answer: in a
-# room that opts in with `oracle_off_ramp:`, a free-text utterance the router
-# can't map to any declared intent is handed to a voiced host.oracle.converse
+# room that opts in with `agent_off_ramp:`, a free-text utterance the router
+# can't map to any declared intent is handed to a voiced host.agent.converse
 # turn instead of bouncing back to the menu. The room stays put — no state
 # advance, no world mutation — and the same menu is there next turn.
 #
@@ -24,11 +24,11 @@ app:
   author: "kitsoki"
   license: "CC0"
 
-# host.oracle.converse is the off-ramp's voice. It is invoked by the engine
+# host.agent.converse is the off-ramp's voice. It is invoked by the engine
 # (orchestrator.AskOffPath), not by an `invoke:` in a room, but it must still be
 # in the allow-list so the off-ramp call is permitted.
 hosts:
-  - host.oracle.converse
+  - host.agent.converse
 
 world:
   # Where the menu intents land you. Purely cosmetic state so the menu picks

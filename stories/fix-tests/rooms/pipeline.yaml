@@ -97,7 +97,7 @@ states:
     on_enter:
       # Increment first so the fixer (and the views) see a 1-based cycle.
       - increment: { cycle: 1 }
-      - invoke: host.oracle.task
+      - invoke: host.agent.task
         id: fix
         background: true
         with:

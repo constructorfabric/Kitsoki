@@ -1,6 +1,6 @@
 states:
   # THE OFF-RAMP ROOM. A normal, non-conversational discovery menu that opts in
-  # to the oracle off-ramp. The off-ramp is REJECTED at load on a terminal: true
+  # to the agent off-ramp. The off-ramp is REJECTED at load on a terminal: true
   # or mode: conversational state, so it belongs on exactly this kind of resting
   # menu room. The struct form below styles the off-ramp voice independently of
   # any app-level off_path: block: a friendly-guide persona and a banner that
@@ -18,7 +18,7 @@ states:
   desk:
     description: "Welcome Desk — pick a menu item OR just ask a question"
     relevant_world: [visited]
-    oracle_off_ramp:
+    agent_off_ramp:
       persona: >
         You are a warm, concise guide at the kitsoki Welcome Desk. The visitor
         asked something the menu can't answer. Give a genuinely helpful, honest,
@@ -117,7 +117,7 @@ states:
           pairs:
             Engine:   "ok"
             Sessions: "ok"
-            Oracle:   "ok (stubbed in this demo)"
+            Agent:   "ok (stubbed in this demo)"
       - choice:
           mode: single
           prompt: "Actions"
@@ -138,7 +138,7 @@ states:
     description: "About — what the Welcome Desk is"
     relevant_world: [visited]
     view:
-      - prose: "The Welcome Desk is a one-room demo of the oracle off-ramp: a discovery menu that answers off-menu questions in place via a voiced converse turn, without advancing the state machine or mutating world."
+      - prose: "The Welcome Desk is a one-room demo of the agent off-ramp: a discovery menu that answers off-menu questions in place via a voiced converse turn, without advancing the state machine or mutating world."
       - choice:
           mode: single
           prompt: "Actions"

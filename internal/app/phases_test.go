@@ -126,7 +126,7 @@ func TestPhases_CheckpointIntentsMerged(t *testing.T) {
 // still inherit the template's default on_enter unchanged.
 //
 // This is the substrate for script-driven phases (host.run) coexisting in
-// a room whose template defaults to host.oracle.ask_with_mcp — see
+// a room whose template defaults to host.agent.ask_with_mcp — see
 // stories/bugfix/app.yaml's phase_0 / phase_0_5 / phase_9_5 / phase_9_6 /
 // phase_12 entries.
 func TestPhases_OnEnterOverride(t *testing.T) {
@@ -137,8 +137,8 @@ func TestPhases_OnEnterOverride(t *testing.T) {
 	llm := def.States["phase_llm_executing"]
 	require.NotNil(t, llm)
 	require.Len(t, llm.OnEnter, 1, "phase_llm must inherit the template's single default on_enter effect")
-	assert.Equal(t, "host.oracle.ask_with_mcp", llm.OnEnter[0].Invoke,
-		"phase_llm must call the template's host.oracle.ask_with_mcp")
+	assert.Equal(t, "host.agent.ask_with_mcp", llm.OnEnter[0].Invoke,
+		"phase_llm must call the template's host.agent.ask_with_mcp")
 	// `{{ tpl.id }}_artifact` substitution must run in the inherited body.
 	assert.Equal(t, "submitted", llm.OnEnter[0].Bind["phase_llm_artifact"],
 		"template substitution must apply to the inherited bind keys")
@@ -150,7 +150,7 @@ func TestPhases_OnEnterOverride(t *testing.T) {
 	require.Len(t, scr.OnEnter, 1,
 		"phase_script must have exactly the override's effect — replacement, not merge")
 	assert.Equal(t, "host.run", scr.OnEnter[0].Invoke,
-		"phase_script must call host.run from the override; the template's host.oracle.ask_with_mcp must NOT bleed through")
+		"phase_script must call host.run from the override; the template's host.agent.ask_with_mcp must NOT bleed through")
 
 	// `{{ tpl.id }}` and `{{ world.X }}` substitutions must apply to the
 	// override body (the latter passes through unchanged at expansion

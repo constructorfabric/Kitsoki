@@ -25,11 +25,11 @@ host_handlers:
   host.git:            { data: { ok: true, sha: "abc", diff: "@@ -1 +1 @@", files: ["internal/foo.go"] } }
   host.local:          { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
   host.diff.open:      { data: { verdict: "accept", reviewed: true, surface: "ide" } }
-  host.oracle.task:
+  host.agent.task:
     data: { ok: true, submitted: { summary_title: "stub", summary_markdown: "stub", verdict: "continue", intent: "accept", confidence: 0.95 } }
-  host.oracle.ask:
+  host.agent.ask:
     data: { ok: true, submitted: { summary_title: "stub", summary_markdown: "stub", verdict: "continue", intent: "accept", confidence: 0.95 } }
-  host.oracle.decide:
+  host.agent.decide:
     data: { ok: true, submitted: { summary_title: "stub", summary_markdown: "stub", verdict: "continue", intent: "accept", confidence: 0.95 } }
 
 turns:

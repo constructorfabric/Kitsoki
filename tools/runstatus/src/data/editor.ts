@@ -13,7 +13,7 @@ export interface RoomSummary {
   id: string;
   label: string;
   distance: number;
-  has_oracle: boolean;
+  has_agent: boolean;
 }
 
 /** A flattened on_enter effect card (graph.EffectSpec). */
@@ -67,7 +67,7 @@ export interface RoomDetail {
   source_ref?: SourceRef;
 }
 
-/** The cassette-match tuple for an oracle call (graph.CassetteKey). */
+/** The cassette-match tuple for an agent call (graph.CassetteKey). */
 export interface CassetteKey {
   handler: string;
   phase: string;
@@ -75,8 +75,8 @@ export interface CassetteKey {
   call?: string;
 }
 
-/** One host.oracle.* contract a room makes (graph.OracleContract). */
-export interface OracleContract {
+/** One host.agent.* contract a room makes (graph.AgentContract). */
+export interface AgentContract {
   kind: string;
   prompt_path?: string;
   output_schema?: string;
@@ -84,9 +84,9 @@ export interface OracleContract {
   effect_index: number;
 }
 
-/** Response of runstatus.editor.oracles. */
-export interface OraclesResult {
-  contracts: OracleContract[];
+/** Response of runstatus.editor.agents. */
+export interface AgentsResult {
+  contracts: AgentContract[];
   cassette_globs: string[];
 }
 

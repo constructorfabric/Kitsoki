@@ -1,10 +1,10 @@
 # Host cassette stubbing the off-ramp's voice for the demo.
 #
 # The off-ramp answers an off-menu question by firing a single
-# host.oracle.converse turn (orchestrator.AskOffPath). This cassette returns a
+# host.agent.converse turn (orchestrator.AskOffPath). This cassette returns a
 # fixed, on-theme answer for that call so the demo is deterministic and the
 # rendered frames are byte-stable. The orchestrator reads the answer from
-# Result.Data.answer (offpath.go); `oracle.response` mirrors it for the trace.
+# Result.Data.answer (offpath.go); `agent.response` mirrors it for the trace.
 #
 # match_on: [handler] — one episode keyed only by the handler name, so it backs
 # the single converse call the off-ramp makes. Combinable with
@@ -17,7 +17,7 @@ match_on: [handler]
 
 episodes:
   - id: trust_answer
-    match: { handler: host.oracle.converse }
+    match: { handler: host.agent.converse }
     response:
       data:
         ok: true
@@ -28,7 +28,7 @@ episodes:
           story permits, and each turn is recorded as a replayable trace you
           can inspect after the fact. Start small on a low-stakes story, watch
           what it does in the trace, and widen its scope only as it earns it.
-    oracle:
+    agent:
       verb: converse
       agent: ""
       model: ""

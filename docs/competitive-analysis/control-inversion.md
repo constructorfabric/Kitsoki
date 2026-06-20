@@ -59,7 +59,7 @@ from, turn by turn.
 **What it gets right** is the entrance. You say anything; the agent figures
 it out. For open-ended exploratory work — "find why this test is flaky,"
 "draft the migration" — that latitude is exactly the point, and kitsoki does
-not try to replace it. (Inside a kitsoki room, a `host.oracle.task` *is* a
+not try to replace it. (Inside a kitsoki room, a `host.agent.task` *is* a
 relatively free agent; see [`concept.md` §5](../architecture/concept.md#5-the-spectrum-of-stories).)
 
 **What it gets wrong** is that *every* decision becomes a moment of LLM

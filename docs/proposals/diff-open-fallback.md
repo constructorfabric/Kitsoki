@@ -82,7 +82,7 @@ refine; `null` → ask accept/refine as a normal intent). See **The model**.
 Two input modes, both supported:
 
 - **Mode A — review already-applied edits (headline):** the agent already
-  wrote the change (e.g. `oracle.task` with Edit, which returns
+  wrote the change (e.g. `agent.task` with Edit, which returns
   `files_changed` + `final_diff`). Pass `{paths, base: "HEAD"}`; the surface
   shows working-tree-vs-base. Accept = keep; reject = revert (Open
   question 4). This is the "we edited this, review it" case.

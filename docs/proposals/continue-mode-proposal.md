@@ -172,7 +172,7 @@ What’s missing or wrong today:
    but not identical payloads.
 4. **No first-class log for non-FSM mutable state.** Today:
    - Chat appends happen inside the chat-level lock at
-     [`internal/host/oracle.go:213`](../../internal/host/oracle.go),
+     [`internal/host/agent.go:213`](../../internal/host/agent.go),
      not the session writer lock — so they’re ordered with respect
      to other chat writers but not with respect to FSM events.
    - Pending clarifications are kept **in-memory only** in
@@ -292,7 +292,7 @@ reconstructed from a patch sequence:
   "ev": "host.invoked",
   "doc": null,
   "body": {
-    "namespace": "host.oracle.ask_with_mcp",
+    "namespace": "host.agent.ask_with_mcp",
     "args": { … },
     "background": false
   }
@@ -332,7 +332,7 @@ patches with `doc_version <= checkpoint.doc_version` are dropped.
 
 Cadence: globally every 20 turns after `TurnEnded`. Per-document
 overrides for high-churn docs — `chats/<id>` ticks once per 10
-appended messages (v1 said 50, which is too coarse for oracle-ask
+appended messages (v1 said 50, which is too coarse for agent-ask
 flows that append two messages per call). Per-document policy is a
 constant table in the journal package; turning it into YAML config
 is phase C.
@@ -363,11 +363,11 @@ pass/fail, and a "what changes in the proposal if this fails" line.
 | R1 | Schema-aware patch applier preserves declared types across round-trip. Numeric world vars declared `type: int` must come back as `int64` after `json.Unmarshal` + JSON-Patch replace; `type: bool` must not pass through as `float64(1)`; `type: object` arrays must round-trip element-typed. **Reference:** `coerceWorldVar` at [`internal/store/replay.go:179`](../../internal/store/replay.go) is the existing template. | Build a small applier prototype that walks `app.WorldSchema` after every patch; round-trip every world fixture under `testdata/apps/*/flows/*.yaml` and assert deep-equal against the pre-trip value. | The patch payload format moves from RFC-6902 to a kitsoki-specific typed-diff. Layout stays the same; only the body of `world.patch` changes. |
 | R2 | State-path representation survives. Compound paths (`a.b.c`) and parallel-encoded paths (`root#leaf_a|leaf_b`, see [`internal/machine/parallel.go:75`](../../internal/machine/parallel.go)) must round-trip through `{"op":"replace","path":"/path","value":"<encoded>"}` and re-parse cleanly via the existing `machine` parser. RFC 6901 escaping of `/`, `~`, `#`, `|` is checked. | For every state-path emitted in `testdata/apps/*/flows/*.yaml` runs, encode → patch → decode and assert equality. | Add a dedicated `state.transition` typed entry instead of a patch op; the field stays a string but is parsed at write/read time. |
 | R3 | Adding the `journal` `INSERT` *inside an already-open `AppendEvents` transaction* adds <100µs per row at p95. **A standalone-transaction insert is fsync-dominated at 3–6ms; the dual-write target only holds when the journal piggybacks the existing turn-write tx** (§4.9 Rule 1). **Reference:** `BuildTraceLogger` at [`cmd/kitsoki/trace.go`](../../cmd/kitsoki/trace.go) and the ring buffer at [`internal/trace/ringbuffer.go`](../../internal/trace/ringbuffer.go). | Benchmark inside an open transaction on the dev SQLite file with WAL + busy-timeout configured as today. **Spike outcome (R3): measured 17µs p95 inside an open tx; standalone 3–6ms.** | If transaction-piggyback is not feasible at any site: drop the SQLite mirror in v1; the JSONL file alone is authoritative; phase B builds the `journal` SQL table. |
-| R4 | Concurrency: chat appends today bypass the session writer lock (they hold a chat-level lock at [`internal/chats/lock.go:47`](../../internal/chats/lock.go)). Decide whether journal writes for chat appends acquire the session writer lock too (slow path) or whether the journal accepts cross-lock interleaving (fast path) with `(turn, seq)` ordering compromised. | Stress test: drive a session through a `host.oracle.ask_with_mcp` call (chat append) interleaved with a foreground turn. Inspect the resulting journal for ordering anomalies. | If cross-lock interleaving is observable: introduce a per-document write epoch — `(doc_version)` is still total order *per document*, even if `(turn, seq)` is not total order *globally*. Resume reads doc-by-doc anyway, so this is acceptable. Document it explicitly. |
+| R4 | Concurrency: chat appends today bypass the session writer lock (they hold a chat-level lock at [`internal/chats/lock.go:47`](../../internal/chats/lock.go)). Decide whether journal writes for chat appends acquire the session writer lock too (slow path) or whether the journal accepts cross-lock interleaving (fast path) with `(turn, seq)` ordering compromised. | Stress test: drive a session through a `host.agent.ask_with_mcp` call (chat append) interleaved with a foreground turn. Inspect the resulting journal for ordering anomalies. | If cross-lock interleaving is observable: introduce a per-document write epoch — `(doc_version)` is still total order *per document*, even if `(turn, seq)` is not total order *globally*. Resume reads doc-by-doc anyway, so this is acceptable. Document it explicitly. |
 | R5 | Snapshot machinery is not on a schedule today. **Confirmed by audit** — `grep -rn '\.Snapshot(' internal/orchestrator/` returns only test callers. The journal-checkpoint path is the natural place to add scheduling. | n/a — confirmed by grep. | n/a. |
 | R6 | Enumerate every silent mutation site (state change that does not currently emit either a typed `EventKind` or a `trace.Ev*`). Audit found at least: `MarkNotificationRead` ([`internal/tui/tui.go:556`](../../internal/tui/tui.go)), `metamode.ProposalLedger` updates ([`internal/metamode/ledger.go`](../../internal/metamode/ledger.go)) outside chat-metadata writes, `o.pending` writes ([`orchestrator.go:528`](../../internal/orchestrator/orchestrator.go)). Decide for each: (a) journal it, (b) leave outside journal and document why. | A small file `docs/proposals/notes/continue-mode-silent-mutations.md` listing every mutation site and decision. | Each "leave outside journal" decision adds a footnote to §2 explaining what resume does *not* restore. |
 | R7 | **Spike outcome (R7): NOT total via projection from events alone.** The TUI's view text exists only transiently in `TurnResult.View`; no current event payload carries it. Naive projection cannot reconstruct what the user actually saw on the previous turn. **v3 resolution:** journal the rendered view text per turn as a `view.rendered` typed entry (see §2.2, §4.6). This makes transcript rehydration a pure read — no view-template re-evaluation, no determinism breach. **Reference:** [`internal/tui/tui.go:99`](../../internal/tui/tui.go) for what RootModel actually holds; [`internal/tui/transcript.go`](../../internal/tui/transcript.go) for the transcript's accumulator. | Confirmed by spike — see `docs/proposals/notes/continue-mode-spike.md` §R7. | n/a (resolved in v3). |
-| R8 | **Determinism: resume never calls the LLM.** Every payload kind that today carries LLM output (`LLMToolCall` body, `host.oracle.ask_with_mcp` return, `OffPathAnswer`, chat-message append text) must already include the *literal* response bytes — no pointer-style "resolve on read" lookups, no recall fallback. Confirm by reading each event-emission site and asserting the payload is text-complete. | Walk every `EventKind` in [`internal/store/event.go:17`](../../internal/store/event.go) and every typed journal kind in §2.2; for each, identify the field carrying the LLM output and confirm it is the full text. Cross-check `internal/store/replay.go` to see what payload `BuildJourney` already reads. | If any payload is a pointer/handle: phase A adds the missing text fields to the event/journal payload before the schema-aware applier ships. |
+| R8 | **Determinism: resume never calls the LLM.** Every payload kind that today carries LLM output (`LLMToolCall` body, `host.agent.ask_with_mcp` return, `OffPathAnswer`, chat-message append text) must already include the *literal* response bytes — no pointer-style "resolve on read" lookups, no recall fallback. Confirm by reading each event-emission site and asserting the payload is text-complete. | Walk every `EventKind` in [`internal/store/event.go:17`](../../internal/store/event.go) and every typed journal kind in §2.2; for each, identify the field carrying the LLM output and confirm it is the full text. Cross-check `internal/store/replay.go` to see what payload `BuildJourney` already reads. | If any payload is a pointer/handle: phase A adds the missing text fields to the event/journal payload before the schema-aware applier ships. |
 | R9 | **Trace + SQLite coexistence under failure.** Inject a SQLite write failure mid-turn (e.g. `pragma journal_mode=DELETE` followed by a forced lock) and confirm the journal write either commits with the rest of the turn or aborts the turn cleanly — never leaves a half-written turn. Inject a JSONL write failure (disk full / EROFS) and confirm the SQLite write still commits and the TUI surfaces a warning but does not abort. Inject a slog handler panic and confirm the `--trace-pretty` path keeps writing. | Three small failure-injection tests under `internal/journal/coexistence_test.go`. | If atomicity is not preserved: §4.9 must mandate a single SQL transaction wrapping both `INSERT INTO events` and `INSERT INTO journal`; the slog handler must be made panic-safe (recover + downgrade to ERROR). |
 
 ---
@@ -507,7 +507,7 @@ compatibility over taxonomic purity.
 - Globally: every 20 turns per session, after `TurnEnded` lands.
 - Per-document overrides:
   - `chats/<id>`: one checkpoint per 10 appended messages
-    (oracle-ask flows append two messages per call).
+    (agent-ask flows append two messages per call).
   - `jobs/<id>`: checkpoint on every status transition (these are
     rare and tiny).
   - `world`: 20 turns, unchanged.
@@ -721,7 +721,7 @@ LLM is not consulted.
 On the **first turn after resume**, when the user types into the
 chat, kitsoki calls `claude -p --resume <claude_session_id>` exactly
 as it does today
-([`internal/host/oracle_ask_with_mcp.go`](../../internal/host/oracle_ask_with_mcp.go)).
+([`internal/host/agent_ask_with_mcp.go`](../../internal/host/agent_ask_with_mcp.go)).
 Claude reads its own JSONL session file and the conversation context
 is whole — even though the kitsoki process restarted between turns.
 
@@ -1137,7 +1137,7 @@ and the TUI's first frame:
 The first time any of the "No" rows can fire is **after** resume
 completes and the user submits their next input. At that point the
 engine is in the same logical state as a non-resumed session — and
-`host.oracle.ask_with_mcp` calling `claude --resume <session_id>`
+`host.agent.ask_with_mcp` calling `claude --resume <session_id>`
 benefits from claude's own session persistence (§4.8).
 
 A violation of this contract is a P0 bug. The §4.5 constructor
@@ -1324,7 +1324,7 @@ application code; the other tables are projections.
   time.
 - **Not an undo/redo UI.** Time-travel ships in phase C.
 - **Not a replacement for `--harness replay`.** Recordings replay
-  LLM oracle answers used in tests; the journal replays state used
+  LLM agent answers used in tests; the journal replays state used
   in human sessions.
 - **Not a multi-attach mechanism.** See
   [`claude-code-sessions-proposal.md`](claude-code-sessions-proposal.md).

@@ -1,6 +1,6 @@
-// Package host — wrapped Bash MCP server for host.oracle.ask and host.oracle.decide.
+// Package host — wrapped Bash MCP server for host.agent.ask and host.agent.decide.
 //
-// Problem (H1 from the oracle code review):
+// Problem (H1 from the agent code review):
 // ApplyBashProfile, MakeSandboxEnv, and EnsureScratchDir were defined but
 // never called from production code. The Bash tool flowed directly through
 // claude's built-in implementation; kitsoki couldn't intercept argv. An ask
@@ -17,7 +17,7 @@
 //     set to the scratch dir for sandboxed-write profiles.
 //  5. Returns stdout+stderr+exit-code as the tool result.
 //
-// Handlers wire the server as follows (oracle_ask.go, oracle_decide.go):
+// Handlers wire the server as follows (agent_ask.go, agent_decide.go):
 //   - When Bash appears in the effective tool list, BuildBashMCPEntry appends
 //     a "kitsoki-bash" MCP server entry to the --mcp-config JSON.
 //   - The tool is namespaced "mcp__kitsoki-bash__Bash" in claude's tool list.

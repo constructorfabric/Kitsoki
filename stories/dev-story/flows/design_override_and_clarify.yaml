@@ -11,18 +11,18 @@ app: ../app.yaml
 initial_state: design_search
 initial_world:
   judge_mode:         "human"
-  design_idea:      "Add a local model oracle sidecar."
+  design_idea:      "Add a local model agent sidecar."
   design_workspace: "docs/proposals/.workspace/lmo"
 
 host_handlers:
-  host.oracle.decide:
+  host.agent.decide:
     by_call:
       existing_scan:
         data:
           ok: true
           submitted:
             overlaps:
-              - { path: "docs/proposals/local-model-oracle.md", kind: "accepted", summary: "Already proposes a sidecar.", recommendation: "amend" }
+              - { path: "docs/proposals/local-model-agent.md", kind: "accepted", summary: "Already proposes a sidecar.", recommendation: "amend" }
             roadmap_fit: "Overlaps the accepted proposal."
       references_research:
         data:
@@ -30,7 +30,7 @@ host_handlers:
           submitted: { items: [] }
   # override_new now cascades through design_materialize, which mints the
   # folder (uniquify), runs the semantic reference search, then advances.
-  host.oracle.search:
+  host.agent.search:
     data: { hits: [], top: null }
   host.run:
     by_call:
@@ -45,7 +45,7 @@ host_handlers:
   # Stubs for design_refine on_enter (advanced to by override_new → materialize)
   host.ide.open_file:
     data: { ok: true, connected: true }
-  host.oracle.task:
+  host.agent.task:
     by_call:
       refine_brief:
         data:

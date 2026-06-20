@@ -22,9 +22,9 @@ initial_world:
 
 host_handlers:
   # references on_enter runs the optional semantic pre-seed; empty hits = no embeddings.
-  host.oracle.search:
+  host.agent.search:
     data: { hits: [] }
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:
@@ -32,7 +32,7 @@ host_handlers:
           - { path: "docs/auth.md", sections: "Tokens", rationale: "token model the PRD must honour" }
   host.artifacts_dir:
     data: { ok: true, path: ".artifacts/out.md", message_id: "out#1" }
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted:

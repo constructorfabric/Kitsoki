@@ -1,7 +1,7 @@
-// Package host — prompt rendering seam for the oracle verb handlers.
+// Package host — prompt rendering seam for the agent verb handlers.
 //
 // Prompt extension: when the orchestrator injects a prompt renderer (built
-// from a story's overlay → story search path), the oracle handlers resolve a
+// from a story's overlay → story search path), the agent handlers resolve a
 // prompt reference overlay-first and render it through a pongo2.TemplateSet so
 // {% extends %} / {% include %} and the @story / @shared namespaces resolve —
 // the same machinery views already use. When no renderer is in ctx (CLI
@@ -23,7 +23,7 @@ import (
 // renderer.
 type promptRendererKey struct{}
 
-// WithPromptRenderer injects a prompt renderer into ctx so the oracle handlers
+// WithPromptRenderer injects a prompt renderer into ctx so the agent handlers
 // resolve and render prompt files across the story's overlay → story search
 // path. Passing nil is safe — handlers then use the legacy path. The renderer
 // is built by the orchestrator per run (it knows the story base dir, the
@@ -74,7 +74,7 @@ func renderPromptBytes(ctx context.Context, src string, templateArgs map[string]
 
 // promptTraceProvenance returns the active overlay dir and the spec_ block
 // provenance (which of the base's spec_ blocks the overlay overrode vs. left
-// defaulted) for a prompt reference, for recording on the oracle.call event.
+// defaulted) for a prompt reference, for recording on the agent.call event.
 // All-empty when there's no prompt renderer/overlay or ref isn't an overlaid
 // story prompt — so callers can attach the results unconditionally.
 func promptTraceProvenance(ctx context.Context, ref string) (overlay string, defaulted, overridden []string) {

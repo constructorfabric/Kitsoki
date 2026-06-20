@@ -78,7 +78,7 @@ host_handlers:
   host.local_files.ticket:
     data: { ok: true, tickets: [] }
 
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted:
@@ -87,7 +87,7 @@ host_handlers:
         reason:     "n/a (judge_mode=human)"
         confidence: 0.0
 
-  host.oracle.ask:
+  host.agent.ask:
     data:
       ok: true
       submitted:
@@ -96,7 +96,7 @@ host_handlers:
         reason:     "n/a (judge_mode=human)"
         confidence: 0.0
 
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:

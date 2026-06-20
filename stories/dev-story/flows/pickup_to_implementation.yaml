@@ -49,8 +49,8 @@ host_handlers:
       body:  "Stub task body."
       url:   "issues/tasks/tkt-t-100.md"
       tickets: "TKT-T-100: Add /healthz endpoint"
-  # Phase 9: implementation rooms now use host.oracle.decide.
-  host.oracle.decide:
+  # Phase 9: implementation rooms now use host.agent.decide.
+  host.agent.decide:
     data:
       ok: true
       submitted:
@@ -69,7 +69,7 @@ host_handlers:
         intent:     "accept"
         reason:     "Stub."
 
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted:
@@ -88,7 +88,7 @@ host_handlers:
         intent:     "accept"
         reason:     "Stub."
 
-  host.oracle.ask:
+  host.agent.ask:
     data:
       ok: true
       submitted:

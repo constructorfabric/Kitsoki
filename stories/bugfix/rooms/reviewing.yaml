@@ -1,5 +1,5 @@
 # reviewing — phase 5 of the bugfix pipeline (self code + security review).
-# No artifact-producing oracle. The reviewing pass is a synchronous
+# No artifact-producing agent. The reviewing pass is a synchronous
 # narrative beat: read the diff, say something, advance to validating.
 
 states:
@@ -20,7 +20,7 @@ states:
             Summary: '{{ world.implement_review_artifact.summary_title|default:"(pending)" }}'
             Status:  '{{ world.implement_review_artifact.status|default:"(pending)" }}'
       - heading: "Artifact"
-      - code: '{{ world.implement_review_artifact.summary_markdown|default:"(pending — oracle has not returned yet)" }}'
+      - code: '{{ world.implement_review_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
       - choice:
           mode: single
           prompt: "Actions"

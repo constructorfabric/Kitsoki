@@ -16,7 +16,7 @@ initial_world:
   refine_budget: 6
 
 host_handlers:
-  host.oracle.task:
+  host.agent.task:
     by_call:
       author_source:
         data: { ok: true, submitted: { kind: "slidey", paths: ["d.json"], spec_path: "d.json", summary: "Authored deck." } }

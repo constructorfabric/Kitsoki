@@ -29,9 +29,9 @@ initial_world:
 
 host_handlers:
   # references on_enter runs the optional semantic pre-seed; empty hits = no embeddings.
-  host.oracle.search:
+  host.agent.search:
     data: { hits: [] }
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:

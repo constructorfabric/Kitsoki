@@ -69,7 +69,7 @@ Trace `harness.returned` for the step (exit_code 0, ok):
 ```json
 { "exit_code": 0, "ok": true,
   "stdout": {
-    "branch": "feat/copilot-oracle-backend",
+    "branch": "feat/copilot-agent-backend",
     "route": "on_branch",
     "on_integration": false,
     "commits_ahead": 3, "commits_behind": 2, "has_uncommitted": true } }

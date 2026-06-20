@@ -1,12 +1,12 @@
 // Package app — provider declaration loader.
 //
-// See docs/architecture/oracle-providers.md for the declaration format.
+// See docs/architecture/agent-providers.md for the declaration format.
 //
 // resolveProviders is called after parseAndMerge / resolveImports to:
 //  1. Validate every ProviderDecl in def.Providers (non-empty name; a provider
 //     that sets neither model: nor env: is useless and rejected).
 //  2. Perform single-pass ${VAR} substitution in each provider's Env map,
-//     reusing the same expandEnvVar contract as oracle_plugins. Unset env vars
+//     reusing the same expandEnvVar contract as agent_plugins. Unset env vars
 //     are hard errors.
 //
 // Reference validation (an agent's provider: and an effect's
@@ -42,7 +42,7 @@ func validateEffort(site, effort string) string {
 
 // resolveProviders validates and resolves all provider declarations. It must be
 // called after parseAndMerge. Errors are returned (not appended to a shared
-// slice) so the caller threads them the same way as resolveOraclePlugins.
+// slice) so the caller threads them the same way as resolveAgentPlugins.
 func resolveProviders(def *AppDef, file string) []error {
 	if def == nil || len(def.Providers) == 0 {
 		return nil
@@ -115,7 +115,7 @@ func validateProviderReferences(file string, def *AppDef, errs *[]error) {
 		}
 	}
 
-	// effect with.provider — only meaningful on host.oracle.* invocations.
+	// effect with.provider — only meaningful on host.agent.* invocations.
 	walkAllEffects(def.States, func(loc string, eff Effect) {
 		if eff.With == nil {
 			return
@@ -128,10 +128,10 @@ func validateProviderReferences(file string, def *AppDef, errs *[]error) {
 		if !ok || name == "" || strings.Contains(name, "{{") {
 			return
 		}
-		if eff.Invoke != "" && !strings.HasPrefix(eff.Invoke, "host.oracle.") {
+		if eff.Invoke != "" && !strings.HasPrefix(eff.Invoke, "host.agent.") {
 			*errs = append(*errs, &ValidationError{
 				File:    file,
-				Message: fmt.Sprintf("%s: with.provider is only meaningful on host.oracle.* invocations (got invoke %q)", loc, eff.Invoke),
+				Message: fmt.Sprintf("%s: with.provider is only meaningful on host.agent.* invocations (got invoke %q)", loc, eff.Invoke),
 			})
 			return
 		}

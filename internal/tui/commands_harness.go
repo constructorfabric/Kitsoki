@@ -26,7 +26,7 @@ func (ProviderCommand) Name() string { return "/provider" }
 func (ProviderCommand) Run(m RootModel, args []string) (string, RootModel, tea.Cmd) {
 	profiles := m.orch.Profiles()
 	if len(profiles) == 0 {
-		return blockSlashLine(m, "(no harness profiles declared in .kitsoki.yaml; using the launch --oracle backend)"), m, nil
+		return blockSlashLine(m, "(no harness profiles declared in .kitsoki.yaml; using the launch --agent backend)"), m, nil
 	}
 	if len(args) == 0 {
 		return renderProviderBlock(m, profiles), m, nil

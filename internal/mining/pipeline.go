@@ -16,7 +16,7 @@ import (
 // tools/session-mining's stateless steps in order
 //
 //	prep.py --job <job> [--sample recency --max N | mtime-window] [--keep-agent-sessions]
-//	  → intents.workflow.js   (THE ONE oracle pass — cassette-backed when real)
+//	  → intents.workflow.js   (THE ONE agent pass — cassette-backed when real)
 //	  → ground.py → tag_score.py → emit.py   (deterministic C→F tail)
 //
 // and parses the emitted analysis.json into the proposer's Recipe shape. It is
@@ -25,7 +25,7 @@ import (
 // reimplements the analyzer; it invokes the existing CLI. See
 // docs/architecture/ambient-mining.md.
 //
-// The oracle step is isolated behind OracleCmd so tests/dogfood can swap the
+// The agent step is isolated behind AgentCmd so tests/dogfood can swap the
 // real `node intents.workflow.js` for a cassette replay without touching the
 // deterministic steps.
 type ExecPipelineRunner struct {
@@ -36,10 +36,10 @@ type ExecPipelineRunner struct {
 	WorkDir string
 	// Python is the python interpreter (default "python3").
 	Python string
-	// OracleCmd builds the argv for the one oracle pass given the prep output
+	// AgentCmd builds the argv for the one agent pass given the prep output
 	// path and the job dir. Defaults to `node intents.workflow.js <intents-in>`.
 	// A cassette-backed dogfood run swaps this; tests never reach it.
-	OracleCmd func(toolsDir, intentsIn, jobDir string) (name string, args []string)
+	AgentCmd func(toolsDir, intentsIn, jobDir string) (name string, args []string)
 }
 
 // RunPass implements PipelineRunner. It is intentionally conservative: any step
@@ -72,8 +72,8 @@ func (r *ExecPipelineRunner) RunPass(ctx context.Context, req PassRequest) (Pass
 	}
 
 	// A — prep.py. The seed keeps prep's default (drops dispatched headless
-	// agent/oracle sessions, mining the human's interactive backlog); the live
-	// pass passes --keep-agent-sessions because the host.oracle.task turns ARE
+	// agent/agent sessions, mining the human's interactive backlog); the live
+	// pass passes --keep-agent-sessions because the host.agent.task turns ARE
 	// what work happened (the cli-vs-sdk distinction is the seed/live difference).
 	prepArgs := []string{
 		filepath.Join(r.ToolsDir, "prep.py"),
@@ -152,7 +152,7 @@ type analysisInstance struct {
 // parseAnalysis reads analysis.json and translates each non-quarantined instance
 // into a Recipe. The translation is deterministic policy, documented in
 // docs/architecture/ambient-mining.md: a `deterministic` verdict maps to a
-// binding recipe (the cheapest rung), an `oracle-gated` verdict to a gate, and
+// binding recipe (the cheapest rung), an `agent-gated` verdict to a gate, and
 // priority is the measured repeat/friction signal (more tool calls + rerun
 // cycles ⇒ higher capture value). A missing file is a benign empty pass.
 func parseAnalysis(path string, _ float64) ([]Recipe, int, error) {
@@ -192,7 +192,7 @@ func kindForDeterminism(verdict string) DeltaKind {
 	switch verdict {
 	case "deterministic":
 		return KindBinding
-	case "oracle-gated":
+	case "agent-gated":
 		return KindGate
 	default:
 		// irreducible-llm or unknown — an intent recipe (the proposer's mapper

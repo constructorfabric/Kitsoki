@@ -9,15 +9,15 @@ import (
 
 // A tiny hand-written 2-turn trace exercising the converter: an on_enter host
 // call (turn 0), then two transitions whose intents differ, with a
-// per-call-varying host.oracle.converse handler invoked twice (different
+// per-call-varying host.agent.converse handler invoked twice (different
 // answers). No real LLM, no files — pure transform.
 const tinyTrace = `{"kind":"session.header","schema_version":1,"written_at":"2026-06-01T00:00:00Z"}
 {"turn":0,"seq":0,"ts":"2026-06-01T00:00:00.001Z","kind":"harness.returned","state_path":"idle","payload":{"namespace":"host.chat.resolve","data":{"chat_id":"chat-1","is_new":true}}}
 {"turn":1,"seq":0,"ts":"2026-06-01T00:00:00.002Z","kind":"turn.input","state_path":"idle","payload":{"input":"hello there operator","intent":""}}
-{"turn":1,"seq":1,"ts":"2026-06-01T00:00:00.003Z","kind":"harness.returned","state_path":"idle","payload":{"namespace":"host.oracle.converse","data":{"answer":"first reply"}}}
+{"turn":1,"seq":1,"ts":"2026-06-01T00:00:00.003Z","kind":"harness.returned","state_path":"idle","payload":{"namespace":"host.agent.converse","data":{"answer":"first reply"}}}
 {"turn":1,"seq":2,"ts":"2026-06-01T00:00:00.004Z","kind":"machine.transition","state_path":"idle","payload":{"from":"idle","to":"idle","intent":"discuss","slots":{"message":"hello"}}}
 {"turn":2,"seq":0,"ts":"2026-06-01T00:00:00.005Z","kind":"turn.input","state_path":"idle","payload":{"input":"1 - they're an analyst","intent":""}}
-{"turn":2,"seq":1,"ts":"2026-06-01T00:00:00.006Z","kind":"harness.returned","state_path":"idle","payload":{"namespace":"host.oracle.converse","data":{"answer":"second reply"}}}
+{"turn":2,"seq":1,"ts":"2026-06-01T00:00:00.006Z","kind":"harness.returned","state_path":"idle","payload":{"namespace":"host.agent.converse","data":{"answer":"second reply"}}}
 {"turn":2,"seq":2,"ts":"2026-06-01T00:00:00.007Z","kind":"machine.transition","state_path":"idle","payload":{"from":"idle","to":"clarifying","intent":"start","slots":{}}}
 `
 
@@ -106,9 +106,9 @@ func TestConvertTraceToFlow_MapsTransitionsAndResponses(t *testing.T) {
 	if got := cas.Episodes[0].Response.Data["chat_id"]; got != "chat-1" {
 		t.Errorf("episode[0] chat_id = %v, want chat-1", got)
 	}
-	// Episodes 1 and 2: both host.oracle.converse, distinct answers, in order.
-	if got := cas.Episodes[1].Match["handler"]; got != "host.oracle.converse" {
-		t.Errorf("episode[1] handler = %v, want host.oracle.converse", got)
+	// Episodes 1 and 2: both host.agent.converse, distinct answers, in order.
+	if got := cas.Episodes[1].Match["handler"]; got != "host.agent.converse" {
+		t.Errorf("episode[1] handler = %v, want host.agent.converse", got)
 	}
 	if got := cas.Episodes[1].Response.Data["answer"]; got != "first reply" {
 		t.Errorf("episode[1] answer = %v, want 'first reply'", got)

@@ -26,7 +26,7 @@ func TestCompletionNotification_ChatAware(t *testing.T) {
 				},
 			},
 		}
-		j := &jobs.Job{Kind: "host.oracle.talk"}
+		j := &jobs.Job{Kind: "host.agent.talk"}
 
 		sev, title, body := completionNotification(ev, j)
 
@@ -60,7 +60,7 @@ func TestCompletionNotification_ChatAware(t *testing.T) {
 				},
 			},
 		}
-		j := &jobs.Job{Kind: "host.oracle.ask_with_mcp"}
+		j := &jobs.Job{Kind: "host.agent.ask_with_mcp"}
 
 		sev, title, body := completionNotification(ev, j)
 
@@ -85,7 +85,7 @@ func TestCompletionNotification_ChatAware(t *testing.T) {
 				},
 			},
 		}
-		j := &jobs.Job{Kind: "host.oracle.talk", Error: "claude crashed"}
+		j := &jobs.Job{Kind: "host.agent.talk", Error: "claude crashed"}
 
 		sev, title, body := completionNotification(ev, j)
 
@@ -95,7 +95,7 @@ func TestCompletionNotification_ChatAware(t *testing.T) {
 		if !strings.Contains(title, "Reply failed") {
 			t.Errorf("expected 'Reply failed' in title, got %q", title)
 		}
-		if !strings.Contains(title, "host.oracle.talk") {
+		if !strings.Contains(title, "host.agent.talk") {
 			t.Errorf("expected kind in title, got %q", title)
 		}
 		if body != "claude crashed" {
@@ -176,7 +176,7 @@ func TestCompletionNotification_MultiByteAnswer(t *testing.T) {
 					},
 				},
 			}
-			j := &jobs.Job{Kind: "host.oracle.talk"}
+			j := &jobs.Job{Kind: "host.agent.talk"}
 
 			_, title, body := completionNotification(ev, j)
 

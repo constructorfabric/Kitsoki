@@ -60,8 +60,8 @@ host_handlers:
     data: { ok: true, tickets: "" }
   # Confident verdict — every checkpoint where judge_mode is non-human
   # will auto-fire `accept` until we flip the mode.
-  host.oracle.decide:
-    data: &oracle_stub
+  host.agent.decide:
+    data: &agent_stub
       ok: true
       submitted:
         summary_title:    "TUI view render before bind — autonomous walk"
@@ -96,12 +96,12 @@ host_handlers:
         reason:     "Confident; advance autonomously."
         confidence_pct: 90
 
-  # host.oracle.task — bf reproducing/implementing/testing/validating
+  # host.agent.task — bf reproducing/implementing/testing/validating
   # rooms generate their artifact via the `task` verb (judge steps use
   # `decide`). Same stub payload as decide (shared anchor); the artifact
   # schema's additionalProperties tolerates the judge fields.
-  host.oracle.task:
-    data: *oracle_stub
+  host.agent.task:
+    data: *agent_stub
 
 turns:
   # ── Phase A — autonomous walk (llm_then_human + confident) ──────────

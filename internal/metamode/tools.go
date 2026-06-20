@@ -17,7 +17,7 @@ import "strings"
 //
 // Used by Controller.Send when projecting MetaModeDef.Tools (which the
 // loader accepts in either form) into the
-// OracleCaller's tool allowlist. Keeps the loader free of host-package
+// AgentCaller's tool allowlist. Keeps the loader free of host-package
 // knowledge and the YAML surface forgiving.
 //
 // The list this produces is informational today — every claude

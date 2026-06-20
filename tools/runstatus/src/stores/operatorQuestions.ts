@@ -12,7 +12,7 @@ import type {
  *
  * Feed model: the live feed (subscribeQuestions) is the only source. A frame
  * arrives when a dispatched agent forwards an AskUserQuestion into kitsoki (the
- * oracle turn is parked, blocking, until we answer). Frames queue FIFO; the head
+ * agent turn is parked, blocking, until we answer). Frames queue FIFO; the head
  * is surfaced as a blocking modal. answer() echoes the question_id back so the
  * backend can unblock the exact parked goroutine, then advances the queue.
  *

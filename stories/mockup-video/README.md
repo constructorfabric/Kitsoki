@@ -38,12 +38,12 @@ intake ──(converse: distil brief)──▶ brief-gate ──ok──▶ auth
 
 | Room | Split | What it does |
 |---|---|---|
-| `intake` | interpretive | `mode: conversational` discovery (`host.oracle.converse` + `host.chat.resolve`). `ready` distils the brief `{feature, scenarios[], medium, notes}`. A chat, not a form (memory: *freeform-capture-is-conversational*). |
-| `brief-gate` | interpretive | `host.oracle.decide` against `prompts/brief_ready.md` — is the brief concrete? Auto-routes `ok` → authoring / `clarify` → intake. |
-| `authoring` | interpretive | **One** `host.oracle.task` authors the source, workspace-jailed (memory: *task-agents-must-not-implement*). `accept` → rendering ; `revise` re-authors. `once:`-guarded. |
+| `intake` | interpretive | `mode: conversational` discovery (`host.agent.converse` + `host.chat.resolve`). `ready` distils the brief `{feature, scenarios[], medium, notes}`. A chat, not a form (memory: *freeform-capture-is-conversational*). |
+| `brief-gate` | interpretive | `host.agent.decide` against `prompts/brief_ready.md` — is the brief concrete? Auto-routes `ok` → authoring / `clarify` → intake. |
+| `authoring` | interpretive | **One** `host.agent.task` authors the source, workspace-jailed (memory: *task-agents-must-not-implement*). `accept` → rendering ; `revise` re-authors. `once:`-guarded. |
 | `rendering` | **deterministic** | `deck` → `host.slidey.render` mp4 ; `tour` → `host.run scripts/record_tour.sh` (wraps the `kitsoki-ui-demo` recorder). Both emit `<out>.mp4` + `<out>.chapters.json` (slice 1), then `host.artifacts_dir` → `video_handle` / `chapters_handle`. Auto-advances to review. |
 | `review` | deterministic | `media(video_handle)` inline + a pointer to `/review?video={handle}`. `on_enter` drains `feedback.jsonl` (slice-2 web notes) into `feedback_batch`. Checkpoint: `accept`/`refine`/`rerender`/`quit`. |
-| `refining` | interpretive | **One** `host.oracle.task` edits each feedback note's `source_ref` target (the HTML page for `tour`, the scene object for `slidey`), the notes treated as **binding directives** with a per-note compliance checklist (memory: *refine-honours-operator-guidance*). Records the iteration, re-renders. |
+| `refining` | interpretive | **One** `host.agent.task` edits each feedback note's `source_ref` target (the HTML page for `tour`, the scene object for `slidey`), the notes treated as **binding directives** with a per-note compliance checklist (memory: *refine-honours-operator-guidance*). Records the iteration, re-renders. |
 | `done` | — | Gallery: the final video, the scenarios it covers, the refine log per iteration. |
 
 ## World contract
@@ -66,7 +66,7 @@ intake ──(converse: distil brief)──▶ brief-gate ──ok──▶ auth
 
 ## Host requirements
 
-`host.oracle.converse` / `decide` / `task`, `host.slidey.render` (deck render),
+`host.agent.converse` / `decide` / `task`, `host.slidey.render` (deck render),
 `host.run` (tour render via `record_tour.sh` + feedback drain via
 `drain_feedback.sh`), `host.artifacts_dir` (media-emit → handle),
 `host.chat.resolve` (intake chat), `host.starlark.run` (iteration accumulate).
@@ -77,8 +77,8 @@ refines source; it builds neither recorder.
 
 ## Flows
 
-All Mode-2, intent-only, no LLM (CLAUDE.md). Oracle/host calls stubbed by
-per-invoke `id` (memory: *oracle-stub-by-id*); the render/run/artifacts and
+All Mode-2, intent-only, no LLM (CLAUDE.md). Agent/host calls stubbed by
+per-invoke `id` (memory: *agent-stub-by-id*); the render/run/artifacts and
 starlark accumulate are stubbed to fixture handles. `kitsoki test flows
 stories/mockup-video/app.yaml` → 8/8 pass.
 

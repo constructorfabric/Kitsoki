@@ -4,7 +4,7 @@
 # lists worktrees; routes to main_ops (integration branch) or
 # branch_ops (feature branch). Each hub offers legal operations for
 # that context. All git commands run via host.run in argv mode; the
-# oracle appears only for commit message authoring and conflict resolution.
+# agent appears only for commit message authoring and conflict resolution.
 #
 # See docs/stories/git-ops.md for the full design rationale.
 
@@ -17,8 +17,8 @@ app:
 
 hosts:
   - host.run
-  - host.oracle.decide
-  - host.oracle.task
+  - host.agent.decide
+  - host.agent.task
 
 # conflict_resolver is declared with tools: [Read, Edit] and NO Bash —
 # the v1 write-fence. The agent physically cannot run git commit / push /
@@ -136,7 +136,7 @@ intents:
 
   # ── Hub operations ───────────────────────────────────────────────────
   commit:
-    description: "Stage and commit changes with an oracle-authored message."
+    description: "Stage and commit changes with an agent-authored message."
     # "commit the staged fix"/"…work" are verbatim mined real-session phrasings.
     # They subset-match BOTH commit ("commit") and stage ("staged"→stage), so
     # routing resolves them via the leading-verb tie-break (the imperative verb
@@ -234,19 +234,19 @@ intents:
     priority: 60
 
   accept:
-    description: "Accept the oracle's output and execute the operation."
+    description: "Accept the agent's output and execute the operation."
     examples: ["accept", "ok", "yes", "lgtm", "continue", "proceed"]
     priority: 85
 
   edit_message:
-    description: "Replace the oracle commit message with a custom one."
+    description: "Replace the agent commit message with a custom one."
     examples: ["edit", "change message", "use this message"]
     priority: 60
     slots:
       message: { type: string, required: false }
 
   regenerate:
-    description: "Ask the oracle to produce a new commit message."
+    description: "Ask the agent to produce a new commit message."
     examples: ["regenerate", "try again", "redo"]
     priority: 60
 

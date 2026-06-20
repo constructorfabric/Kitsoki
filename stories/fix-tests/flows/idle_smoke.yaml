@@ -1,6 +1,6 @@
 # idle_smoke — verify the fix-tests app loads and the idle room responds.
 #
-# The pipeline rooms use background jobs (host.run, host.oracle.task) which
+# The pipeline rooms use background jobs (host.run, host.agent.task) which
 # require advance_clock to drain. This fixture tests only the idle state —
 # the entry point before a `start` kick — to verify the app structure is
 # valid without needing a background-job rig.

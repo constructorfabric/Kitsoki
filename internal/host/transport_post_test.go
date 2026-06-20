@@ -96,7 +96,7 @@ func TestTransportPost_RequiredArgs(t *testing.T) {
 
 // TestTransportPost_BodyAcceptsStructuredPayload covers the production case
 // where `bind` writes a host-result object (e.g. the validated submit() dict
-// from `host.oracle.ask_with_mcp`) into a world slot, and the next checkpoint
+// from `host.agent.ask_with_mcp`) into a world slot, and the next checkpoint
 // effect's `body:` template renders that slot.  Without the JSON-coercion
 // fallback in `bodyArg`, the type assertion silently drops the dict and the
 // transport receives an empty body — the bug discovered live on PLTFRM-89912.

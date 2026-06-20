@@ -38,7 +38,7 @@ func (e *chatBusyError) Is(target error) bool {
 // immediately — no time-based threshold is required, because a dead PID on
 // our host means the previous owner has definitely released the lock at
 // the OS level. Cross-host locks are always treated as busy: we cannot
-// probe liveness across hosts, and the chat-aware oracle path does not
+// probe liveness across hosts, and the chat-aware agent path does not
 // emit heartbeats, so a 30-second timer would wedge other hosts waiting
 // for activity that never comes.
 //
@@ -128,7 +128,7 @@ func (s *Store) acquireChatLock(ctx context.Context, chatID string) error {
 		// Same host, different PID: probe liveness. A dead PID on this host
 		// means the prior owner has been torn down by the OS, so its lock
 		// row is safe to reap regardless of how recently it heartbeated —
-		// the chat-aware oracle path doesn't heartbeat at all, and a crash
+		// the chat-aware agent path doesn't heartbeat at all, and a crash
 		// mid-call would otherwise wedge the chat indefinitely.
 		if processAlive(ownerPID) {
 			return &chatBusyError{pid: ownerPID, ts: ownerTS}

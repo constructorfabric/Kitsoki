@@ -16,7 +16,7 @@ initial_world:
   design_draft_budget: 5
 
 host_handlers:
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted:

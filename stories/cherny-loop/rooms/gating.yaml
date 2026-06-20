@@ -1,7 +1,7 @@
 states:
   # gating — the CHECKER half of one autonomous loop step. Entered by iterating's
   # auto-emitted `check`. on_enter runs the configured checker (deterministic
-  # script or adversarial oracle) and routes on the verdict + budgets via guarded
+  # script or adversarial agent) and routes on the verdict + budgets via guarded
   # emit_intents — all of which run with no operator input, so the loop advances
   # itself. A failed gate with budget left emits `loop_again`, which re-enters
   # `iterating` (a real state change, so its on_enter — the next maker step —
@@ -21,10 +21,10 @@ states:
           gate_ok:        ok
           gate_exit_code: exit_code
           gate_stdout:    stdout
-      # Oracle gate — adversarial review for goals no test can encode.
-      - invoke: host.oracle.decide
+      # Agent gate — adversarial review for goals no test can encode.
+      - invoke: host.agent.decide
         id: "gate-{{ world.iteration }}"
-        when: "world.gate_mode == 'oracle'"
+        when: "world.gate_mode == 'agent'"
         with:
           prompt: prompts/gate_review.md
           schema: schemas/gate_verdict.json

@@ -29,7 +29,7 @@ host_handlers:
       comments: ""
   host.local_files.ticket:
     data: { ok: true }
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:
@@ -45,7 +45,7 @@ host_handlers:
         verdict:    "fail"
         intent:     "refine"
         reason:     "Block on CSRF."
-  host.oracle.ask:
+  host.agent.ask:
     data:
       ok: true
       stdout: "Login redirect missing CSRF guard; please add."

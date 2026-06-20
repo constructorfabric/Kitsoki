@@ -11,7 +11,7 @@ import (
 )
 
 // TranscriptData is the runstatus.session.transcript response and the inlined
-// static-export shape: one oracle call's verbatim backend-native event stream
+// static-export shape: one agent call's verbatim backend-native event stream
 // plus the parallel capture-time offsets that power the waterfall. It mirrors
 // the SPA's TranscriptData (tools/runstatus/src/data/source.ts) field-for-field.
 //

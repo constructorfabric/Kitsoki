@@ -12,19 +12,19 @@ initial_state: search
 initial_world:
   workdir:    "."
   judge_mode: "human"
-  idea:       "Add a local model oracle sidecar."
+  idea:       "Add a local model agent sidecar."
   # Pre-populate the scout result so the confirm guard sees the overlap.
   prd_existing_state:
     overlaps:
-      - { path: "docs/prd-local-model-oracle.md", kind: "accepted", summary: "Already specifies a llama.cpp sidecar for routing / small-decide.", recommendation: "amend" }
-    roadmap_fit: "Duplicates the accepted local-model-oracle PRD."
+      - { path: "docs/prd-local-model-agent.md", kind: "accepted", summary: "Already specifies a llama.cpp sidecar for routing / small-decide.", recommendation: "amend" }
+    roadmap_fit: "Duplicates the accepted local-model-agent PRD."
 
 host_handlers:
   # Stubs for clarifying's on_enter analyst decide (advanced to by both arcs).
   # references on_enter runs the optional semantic pre-seed; empty hits = no embeddings.
-  host.oracle.search:
+  host.agent.search:
     data: { hits: [] }
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:
@@ -38,7 +38,7 @@ host_handlers:
         data:
           ok: true
           exit_code: 0
-          stdout_json: { slug: "local-model-oracle", workspace: ".artifacts/prd/local-model-oracle" }
+          stdout_json: { slug: "local-model-agent", workspace: ".artifacts/prd/local-model-agent" }
 
 turns:
   # confirm is guarded on an empty overlap list — with an overlap present it
@@ -49,15 +49,15 @@ turns:
       prd_overlap_decision: ""
     # The overlap is surfaced as a discrete "Overlap 1" kv so the operator
     # can see the matching doc's path at a glance.
-    expect_view_matches: "Overlap 1.*prd-local-model-oracle\\.md"
+    expect_view_matches: "Overlap 1.*prd-local-model-agent\\.md"
 
   # Amend the existing PRD instead — records the decision + target, advances
   # to clarifying.
-  - intent: { name: change_existing, slots: { target: "docs/prd-local-model-oracle.md" } }
+  - intent: { name: change_existing, slots: { target: "docs/prd-local-model-agent.md" } }
     expect_state: clarifying
     expect_world:
       prd_overlap_decision: "change_existing"
-      prd_change_target:    "docs/prd-local-model-oracle.md"
-      prd_workspace:        ".artifacts/prd/local-model-oracle"
+      prd_change_target:    "docs/prd-local-model-agent.md"
+      prd_workspace:        ".artifacts/prd/local-model-agent"
 
 expect_no_errors: true

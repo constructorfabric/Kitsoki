@@ -54,7 +54,7 @@ host_handlers:
       title: "Bump auth timeout default"
       body:  "Change the default auth handshake timeout from 5s to 15s."
       url:   "issues/tasks/tkt-t-002.md"
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:

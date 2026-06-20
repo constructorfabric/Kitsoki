@@ -9,7 +9,7 @@
 # references' ⚠ template surfaces it. The operator then quits from references
 # (clean abandon trail).
 #
-# The author task is the only host.oracle.task call site, so a top-level
+# The author task is the only host.agent.task call site, so a top-level
 # `error` on the handler targets it (no by_call needed).
 
 test_kind: flow
@@ -27,9 +27,9 @@ initial_world:
 host_handlers:
   # references on_enter (initial entry) — researcher decide + artifact write.
   # references on_enter runs the optional semantic pre-seed; empty hits = no embeddings.
-  host.oracle.search:
+  host.agent.search:
     data: { hits: [] }
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:
@@ -38,8 +38,8 @@ host_handlers:
   host.artifacts_dir:
     data: { ok: true, path: ".artifacts/prd_references.md", message_id: "prd_references#1" }
   # The author task fails → drafting's on_error: references steps back.
-  host.oracle.task:
-    error: "host.oracle.task: author session abandoned without successful submit"
+  host.agent.task:
+    error: "host.agent.task: author session abandoned without successful submit"
 
 turns:
   # references.confirm → drafting; the on_enter author task fails →
@@ -48,7 +48,7 @@ turns:
   - intent: { name: confirm, slots: {} }
     expect_state: references
     expect_world:
-      last_error: "host.oracle.task: author session abandoned without successful submit"
+      last_error: "host.agent.task: author session abandoned without successful submit"
 
   # The operator bails from references — the abandon trail records WHERE.
   - intent: { name: quit, slots: {} }

@@ -5,14 +5,14 @@ D. Tag & group:
    - validate every tag against vocab/tags.yaml (unknown tags warned + dropped),
    - roll up per-dimension tag counts,
    - cluster spans by (action tag-set + normalized action signature) so recurring
-     intents surface. The oracle already assigned tags in step B; this only
+     intents surface. The agent already assigned tags in step B; this only
      aggregates/clusters.
 
 E. Score determinism per instance from MEASURED trace signals + grounding
    completeness + presence of judgment gates (NOT unvalidated LLM estimates):
-     - deterministic   : every action grounded, no oracle_gates, no edit->rerun
+     - deterministic   : every action grounded, no agent_gates, no edit->rerun
                          churn beyond a clean run.
-     - oracle-gated    : reproducible except at N named gates (oracle_gates present
+     - agent-gated    : reproducible except at N named gates (agent_gates present
                          and validated), OR grounding incomplete but mostly-ok.
      - irreducible-llm : nothing grounded (quarantined) — the recipe can't be
                          trusted as deterministic.
@@ -95,18 +95,18 @@ def score_determinism(span):
     g = span.get("grounding", {})
     cited = g.get("actions_cited", 0)
     validated = g.get("actions_validated", 0)
-    gates = span.get("oracle_gates") or []
+    gates = span.get("agent_gates") or []
 
     if g.get("quarantined") or (cited > 0 and validated == 0):
         return "irreducible-llm"
     if gates:
-        return "oracle-gated"
+        return "agent-gated"
     if cited == 0:
         # no concrete actions recovered -> open-ended
         return "irreducible-llm"
     if validated < cited:
-        # partially grounded recipe still needs an oracle to fill the gap
-        return "oracle-gated"
+        # partially grounded recipe still needs an agent to fill the gap
+        return "agent-gated"
     return "deterministic"
 
 

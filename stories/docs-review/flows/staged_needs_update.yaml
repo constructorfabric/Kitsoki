@@ -17,7 +17,7 @@ mode: staged
 host_cassette: cassettes/needs_update.cassette.yaml
 
 turns:
-  # start runs reviewing's on_enter (host.run + oracle.decide +
+  # start runs reviewing's on_enter (host.run + agent.decide +
   # artifacts_dir), auto-advances reviewing → reviewed (single forward
   # intent), then STOPS at reviewed — the fix_docs auto-advance is
   # suppressed because reviewed is a decision gate in staged mode.

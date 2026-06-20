@@ -41,7 +41,7 @@ host_handlers:
       sha:   "feedface"
   host.local:
     data: { ok: true, state: "failure", checks: "lint,go-test" }
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:

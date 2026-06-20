@@ -7,7 +7,7 @@
 states:
 
   review_pr_executing:
-    description: "Reviewing PR diff via the oracle."
+    description: "Reviewing PR diff via the agent."
     # Choice-widget migration (§4 row 4). Flattened the
     # `extends: "base"` / `blocks:` shell because §4.5 forbids
     # `choice:` inside `blocks:`. The status / heading chrome from
@@ -21,7 +21,7 @@ states:
             Summary:    '{{ world.review_summary_artifact.summary_title|default:"(pending)" }}'
             Confidence: '{{ world.review_summary_artifact.confidence|default:"(pending)" }}'
       - heading: "Artifact"
-      - code: '{{ world.review_summary_artifact.summary_markdown|default:"(pending — oracle has not returned yet)" }}'
+      - code: '{{ world.review_summary_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
       - choice:
           mode: single
           prompt: "Actions"
@@ -68,7 +68,7 @@ states:
       # `refine` arc below clears review_summary_artifact to re-arm it. The two
       # preceding iface.vcs reads (diff / pr_status) are intentionally left
       # unguarded — they are cheap read-only refreshes that SHOULD re-fetch.
-      - invoke: host.oracle.decide
+      - invoke: host.agent.decide
         once: true
         with:
           prompt: prompts/review_pr_executing.md
@@ -111,7 +111,7 @@ states:
             Confidence: '{{ world.llm_verdict.confidence|default:"(n/a)" }}'
             Reason:     '{{ world.llm_verdict.reason|default:"(none)" }}'
       - heading: "Artifact"
-      - code: '{{ world.review_summary_artifact.summary_markdown|default:"(pending — oracle has not returned yet)" }}'
+      - code: '{{ world.review_summary_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
       - choice:
           mode: single
           prompt: "Actions"
@@ -152,7 +152,7 @@ states:
           state:   review_pr_awaiting_reply
           body:    "{{ world.review_summary_artifact.summary_markdown }}"
       - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
-        invoke: host.oracle.decide
+        invoke: host.agent.decide
         with:
           prompt: prompts/judge_review_pr.md
           schema: schemas/judge_verdict.json

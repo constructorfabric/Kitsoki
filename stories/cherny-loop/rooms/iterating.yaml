@@ -18,7 +18,7 @@ states:
     relevant_world: [iteration, iteration_budget, goal_text, goal_artifact, maker_summary, last_gate_failure, session_cost_usd]
     on_enter:
       - increment: { iteration: 1 }
-      - invoke: host.oracle.task
+      - invoke: host.agent.task
         id: "maker-{{ world.iteration }}"
         with:
           agent: maker

@@ -6,7 +6,7 @@
 # world.clarification_log. The brief + references rooms sit on the path
 # back to drafting; passing through them does not disturb the transcript.
 #
-# The shared host.oracle.decide stub returns the questions shape; the
+# The shared host.agent.decide stub returns the questions shape; the
 # references room binds it into world.references and reads only `.items`
 # (empty here), so the transcript stays clean (clarifications carry just
 # `questions`). This flow does not assert references content.
@@ -24,7 +24,7 @@ host_handlers:
   # The brief room opens the editable brief in the editor on entry.
   host.ide.open_file:
     data: { ok: true, connected: true }
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted:
@@ -35,9 +35,9 @@ host_handlers:
         needs_clarification: true
         follow_up_questions: ["What is the scope boundary?"]
   # references on_enter runs the optional semantic pre-seed; empty hits = no embeddings.
-  host.oracle.search:
+  host.agent.search:
     data: { hits: [] }
-  host.oracle.decide:
+  host.agent.decide:
     # Shared stub: the analyst (id: analyst_questions) falls through to this
     # questions envelope; the `answer` arc's matcher (id: match_answer) is
     # intercepted below. by_call can't sequence, so both rounds get the same

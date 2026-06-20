@@ -9,11 +9,11 @@
 #      Once: keyed off design_brief_path (non-empty ⇒ already ran).
 #   2. host.ide.open_file — opens the brief in the operator's editor.
 #      Once: keyed off design_brief_path.
-#   3. design_refiner (host.oracle.task id=refine_brief) — reads the
+#   3. design_refiner (host.agent.task id=refine_brief) — reads the
 #      search results + idea and fills in the brief scaffold.
 #      Bind → design_refine_analysis.
 #      Once: keyed off design_refine_analysis (non-empty ⇒ already ran).
-#   4. brief judge (host.oracle.decide id=brief_check) — evaluates the
+#   4. brief judge (host.agent.decide id=brief_check) — evaluates the
 #      brief against the quality rubric.
 #      GUARDED: only fires when design_brief_cycle > 0 (first entry skips
 #      the judge; `ready` increments the cycle and re-enters, arming it).
@@ -157,7 +157,7 @@ states:
           path: "{{ world.design_brief_path }}"
         on_error: .
       # 3. Refiner fills the scaffold with search context (once: analysis not yet set).
-      - invoke: host.oracle.task
+      - invoke: host.agent.task
         once: true
         id: refine_brief
         with:
@@ -177,7 +177,7 @@ states:
           design_refine_analysis: submitted
         on_error: design_search
       # 4. Brief judge — GUARDED on design_brief_cycle > 0 (ready arms it).
-      - invoke: host.oracle.decide
+      - invoke: host.agent.decide
         id: brief_check
         when: "world.design_brief_cycle > 0"
         with:
@@ -203,7 +203,7 @@ states:
             # which case the view falls back to "re-ran on the saved brief".)
             - set:
                 design_last_refine_message: "{{ slots.message }}"
-            - invoke: host.oracle.task
+            - invoke: host.agent.task
               id: refine_brief_update
               with:
                 agent: design_refiner

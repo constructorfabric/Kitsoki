@@ -1,6 +1,6 @@
 # Apply the documentation fixes
 
-The docs-review oracle decided this repo's docs are out of sync with
+The docs-review agent decided this repo's docs are out of sync with
 the code at HEAD `{{ args.commit_sha }}`. Your job is to **apply** the
 fixes — concrete, minimal, surgical edits — so the docs once again
 reflect what the code does.

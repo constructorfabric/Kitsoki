@@ -1,6 +1,6 @@
 # clarifying — generate clarifying questions, collect answers (multi-round).
 #
-# on_enter runs the analyst (host.oracle.decide) which reads the idea, the
+# on_enter runs the analyst (host.agent.decide) which reads the idea, the
 # upstream docs, and the accumulated clarification_log and returns
 # { questions: [{id, question, why}] } — instructed to ask only genuinely
 # new questions (or an empty list) so round 2+ doesn't re-ask resolved
@@ -116,7 +116,7 @@ states:
     on_enter:
       # Generate this round's questions. working_dir pins the analyst's
       # Read/Grep to where the upstream docs live; its tool calls land as
-      # oracle.tool_call trace events (serving the "what files were used"
+      # agent.tool_call trace events (serving the "what files were used"
       # ask). Skipped state-seeding bypass: flow fixtures that seed
       # initial_state=clarifying write events directly and do not re-fire
       # this on_enter.
@@ -125,7 +125,7 @@ states:
       # `regenerate` arc clears clarifications (its own bind) to force a
       # fresh analyst run. clarify/restart_from re-enter from elsewhere with
       # clarifications cleared (or seeded empty), so they re-run too.
-      - invoke: host.oracle.decide
+      - invoke: host.agent.decide
         once: true
         id: analyst_questions
         with:
@@ -170,7 +170,7 @@ states:
             # the operator named a number, is passed as a hint. on_error: . so
             # a matcher hiccup re-renders the room (last_error surfaced) rather
             # than losing the operator's place.
-            - invoke: host.oracle.decide
+            - invoke: host.agent.decide
               id: match_answer
               with:
                 agent: answer_matcher

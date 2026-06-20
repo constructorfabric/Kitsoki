@@ -19,6 +19,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"kitsoki/internal/agent"
 	"kitsoki/internal/app"
 	"kitsoki/internal/chats"
 	"kitsoki/internal/clock"
@@ -29,7 +30,6 @@ import (
 	"kitsoki/internal/jobs"
 	"kitsoki/internal/journal"
 	"kitsoki/internal/machine"
-	"kitsoki/internal/oracle"
 	"kitsoki/internal/render"
 	"kitsoki/internal/semroute"
 	"kitsoki/internal/store"
@@ -62,15 +62,15 @@ type Orchestrator struct {
 	// on_complete processing and to post notifications.
 	jobStore *jobs.JobStore
 
-	// chatStore is the SQLite-backed chat store used by chat-aware oracle handlers
+	// chatStore is the SQLite-backed chat store used by chat-aware agent handlers
 	// and the host.chat.* built-ins. Optional; nil disables chat persistence.
 	chatStore host.ChatStore
 
-	// promptRenderer renders oracle prompt files through the story's prompt
+	// promptRenderer renders agent prompt files through the story's prompt
 	// search path (overlay → story) so a prompt can {% extends %} / {% include %}
 	// the story's base prompts and a project can extend a story without forking
 	// it. Built once from def.BaseDir + def.Prompts; nil when there's no
-	// on-disk story dir (LoadBytes / tests), in which case oracle handlers use
+	// on-disk story dir (LoadBytes / tests), in which case agent handlers use
 	// the legacy KITSOKI_APP_DIR + render.Pongo path. See docs/stories/prompts.md.
 	promptRenderer *render.AppRenderer
 
@@ -78,18 +78,18 @@ type Orchestrator struct {
 	// --prompt-overlay) that overrides def.Prompts.Overlay when set.
 	promptOverlay string
 
-	// oracleBackendName selects the coding-agent CLI every host.oracle.* call
+	// agentBackendName selects the coding-agent CLI every host.agent.* call
 	// (and the intent-routing harness) forks: "" / "claude" (default) or
 	// "copilot". Installed into the dispatch context via
-	// host.WithOracleBackendNamed alongside the agents/providers maps. Set via
-	// WithOracleBackendName (kitsoki --oracle / $KITSOKI_ORACLE). When a harness
+	// host.WithAgentBackendNamed alongside the agents/providers maps. Set via
+	// WithAgentBackendName (kitsoki --agent / $KITSOKI_AGENT). When a harness
 	// profile is selected (below) its backend supersedes this per-dispatch; this
 	// remains the fallback for the no-profile path.
-	oracleBackendName string
+	agentBackendName string
 
 	// harnessProfiles / defaultProfile / selection make the backend/provider/model
 	// a session-mutable, profile-named choice resolved per-dispatch instead of the
-	// static oracleBackendName. Seeded by WithHarnessProfiles from .kitsoki.yaml;
+	// static agentBackendName. Seeded by WithHarnessProfiles from .kitsoki.yaml;
 	// empty leaves the legacy static path untouched. selection is read on every
 	// dispatch (resolveSelection) and written from a surface goroutine
 	// (SetSelection) — guarded by selMu. See docs/architecture/harness-profiles.md.
@@ -108,7 +108,7 @@ type Orchestrator struct {
 	// every time a turn transitions into a new room (top-level state).
 	// Fired AFTER the machine collects on_enter side-effects but BEFORE
 	// host calls dispatch, so the banner lands in the TUI transcript
-	// before any oracle / Bash / etc. tool-use breadcrumbs from the
+	// before any agent / Bash / etc. tool-use breadcrumbs from the
 	// on_enter chain stream in. Optional; nil disables the hook.
 	roomEnterSink RoomEnterSink
 
@@ -119,12 +119,12 @@ type Orchestrator struct {
 	// aren't on host.ChatStore. Optional; nil disables the surfacing.
 	chatsConcrete *chats.Store
 
-	// oracleRegistry holds the per-app oracle plugin registry.
-	// When non-nil, injected into the dispatch context via host.WithOracleRegistry
-	// so oracle handlers can route through Oracle.Ask. When nil, handlers fall
+	// agentRegistry holds the per-app agent plugin registry.
+	// When non-nil, injected into the dispatch context via host.WithAgentRegistry
+	// so agent handlers can route through Agent.Ask. When nil, handlers fall
 	// through to their existing direct claude-CLI logic (backwards compat).
-	// Set via WithOracleRegistry.
-	oracleRegistry *oracle.Registry
+	// Set via WithAgentRegistry.
+	agentRegistry *agent.Registry
 
 	// journalWriter is the durable journal writer (continue-mode dual-write).
 	// When nil, callers fall through to the legacy AppendEvents path.
@@ -238,7 +238,7 @@ type Orchestrator struct {
 	// handlers can resolve the live editor, and its Connected() status seeds the
 	// `ide.connected` world key each turn. nil is the default and is safe:
 	// host.ide.* handlers then return the typed not-connected Result and the
-	// oracle env-scrub gate stays off (headless / flow tests are byte-identical
+	// agent env-scrub gate stays off (headless / flow tests are byte-identical
 	// to before). Set by the TUI (slice 2) via SetIDELink once it owns a Link.
 	//
 	// ideMu guards ideLink: the TUI mutates it from its bubbletea Update loop
@@ -368,7 +368,7 @@ func New(def *app.AppDef, m machine.Machine, s store.Store, h harness.Harness, o
 		opt(o)
 	}
 	// Build the prompt renderer from the story's base dir + prompts config so
-	// oracle prompt files render through a search-path TemplateSet ({% extends %}
+	// agent prompt files render through a search-path TemplateSet ({% extends %}
 	// / {% include %}, @story / @shared, overlay-first). nil when there's no
 	// on-disk story dir (LoadBytes / tests) — handlers then use the legacy path.
 	o.promptRenderer = buildPromptRenderer(def, o.promptOverlay)
@@ -478,11 +478,11 @@ func WithPromptOverlay(dir string) Option {
 	return func(o *Orchestrator) { o.promptOverlay = dir }
 }
 
-// WithOracleBackendName selects the coding-agent CLI backend ("claude" default,
-// or "copilot") for every host.oracle.* call. An empty/"claude" name keeps the
+// WithAgentBackendName selects the coding-agent CLI backend ("claude" default,
+// or "copilot") for every host.agent.* call. An empty/"claude" name keeps the
 // default; an unrecognized name degrades safely to claude.
-func WithOracleBackendName(name string) Option {
-	return func(o *Orchestrator) { o.oracleBackendName = name }
+func WithAgentBackendName(name string) Option {
+	return func(o *Orchestrator) { o.agentBackendName = name }
 }
 
 // WithLogger sets the logger used for structured tracing.
@@ -533,7 +533,7 @@ func WithJobStore(js *jobs.JobStore) Option {
 	}
 }
 
-// WithChatStore wires a host.ChatStore so that chat-aware oracle calls and the
+// WithChatStore wires a host.ChatStore so that chat-aware agent calls and the
 // host.chat.* built-in handlers have access to the persistent chat transcript.
 // When nil (the default), chat persistence is silently disabled and handlers
 // that require a store return Result{Error: "…no chat store wired"}.
@@ -575,13 +575,13 @@ func WithClock(c clock.Clock) Option {
 	}
 }
 
-// WithOracleRegistry wires an oracle.Registry into the orchestrator so the
-// dispatch context carries oracle plugin resolution. When nil (the default),
-// oracle handlers fall through to their existing direct claude-CLI logic.
+// WithAgentRegistry wires an agent.Registry into the orchestrator so the
+// dispatch context carries agent plugin resolution. When nil (the default),
+// agent handlers fall through to their existing direct claude-CLI logic.
 // For B-2/B-7: pass a registry built from the app's hosts: declarations.
-func WithOracleRegistry(reg *oracle.Registry) Option {
+func WithAgentRegistry(reg *agent.Registry) Option {
 	return func(o *Orchestrator) {
-		o.oracleRegistry = reg
+		o.agentRegistry = reg
 	}
 }
 
@@ -1094,11 +1094,21 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 		}
 	}
 
-	// Append TurnStarted event.
-	startEvent := newOrchestratorEvent(store.TurnStarted, map[string]any{
+	// TurnStarted payload. Built here, but the routing provenance is stamped
+	// only AFTER the harness resolves (below), once we know this turn truly
+	// reached the paid main-turn interpreter. The deterministic / semantic /
+	// turn-cache / default / fallback tiers all stamp `routed_by` via
+	// RouteProvenance before they ever reach this code; the main-turn path is
+	// the LAST tier, so without stamping it here a turn that fell through every
+	// earlier tier would persist a TurnStarted with NO routed_by at all — an
+	// unattributable "which tier handled this?" hole in the trace (the bug that
+	// produced the empty `{intent:""}` rows). The event is materialised at the
+	// `prefix` build site once provenance is known; the early-return paths above
+	// (nil harness, clarify, harness error) never persist it.
+	startPayload := map[string]any{
 		"turn":  int64(turnNum),
 		"input": input,
-	}, turnNum)
+	}
 
 	// 3. Call harness.
 	//
@@ -1128,11 +1138,11 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 			)
 			// A ClarifyResponse is the LLM/router saying "I couldn't map this
 			// free text to any allowed intent" — a genuine no-match. For a room
-			// that opted into the oracle off-ramp, intercept it here and hand the
+			// that opted into the agent off-ramp, intercept it here and hand the
 			// user's ORIGINAL free text to the off-ramp converse turn instead of
 			// returning the soft clarify. For every other (non-opted-in) room the
 			// behavior below is byte-identical to before: maybeOffRamp is scoped
-			// to off-ramp rooms via the State.OracleOffRamp gate, so it returns
+			// to off-ramp rooms via the State.AgentOffRamp gate, so it returns
 			// (nil, false) in the common case (see offpath.go's isNoMatchCode).
 			if outcome, ok := o.maybeOffRamp(ctx, sid, journey.State, input,
 				codeLLMClarification, 0, allowedNames, turnNum); ok {
@@ -1219,6 +1229,21 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 		result.Events[i].Turn = turnNum
 	}
 
+	// This turn reached the main-turn interpreter — every earlier
+	// deterministic/semantic/turn-cache/default/fallback tier missed. Stamp
+	// that on TurnStarted so the persisted trace ALWAYS records the resolving
+	// tier (routed_by:"llm" — the one paid tier), with the interpreter seam as
+	// match_type and the harness's self-reported confidence. This is the
+	// guarantee that no free-text turn lands in the trace without an
+	// attributable route (see the startPayload comment above).
+	llmProv := RouteProvenance{
+		Source:     "llm",
+		MatchType:  "main-turn",
+		Confidence: harnessConfidence(params),
+	}
+	llmProv.stampOn(startPayload)
+	startEvent := newOrchestratorEvent(store.TurnStarted, startPayload, turnNum)
+
 	// Build a prefix of orchestrator-level events.
 	prefix := []store.Event{startEvent, llmEvent}
 
@@ -1273,8 +1298,8 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 			}, nil
 
 		default:
-			// Oracle off-ramp: on a genuine no-match in a room that declared
-			// oracle_off_ramp, hand the original free text to a converse turn
+			// Agent off-ramp: on a genuine no-match in a room that declared
+			// agent_off_ramp, hand the original free text to a converse turn
 			// instead of persisting a rejection (Task 1.3/1.4). Inert for every
 			// other code flowing through here (GUARD_FAILED, INVALID_SLOT_VALUE,
 			// INTENT_NOT_ALLOWED_IN_STATE, …) and when the room has no off-ramp.
@@ -1349,13 +1374,13 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 	// Success path: dispatch any host calls collected by the machine, apply
 	// their bindings to world, and refresh the view so the user sees the
 	// updated state on the same turn.
-	// Stamp the foreground turn on ctx so every oracle.call.* event this turn
+	// Stamp the foreground turn on ctx so every agent.call.* event this turn
 	// emits — including those fired by the post-bind emit recursion
 	// (settlePostBindEmits), which is how the bugfix story advances phase to
 	// phase — carries the real foreground turn rather than turn=0
 	// (turn=0). dispatchHostCalls overwrites StatePath
 	// per call with the destination phase, so only Turn need be set here.
-	ctx = host.WithOracleCallCtx(ctx, host.OracleCallCtx{
+	ctx = host.WithAgentCallCtx(ctx, host.AgentCallCtx{
 		SessionID: sid,
 		Turn:      turnNum,
 		StatePath: result.NewState,
@@ -1900,10 +1925,10 @@ func (o *Orchestrator) submitDirect(ctx context.Context, sid app.SessionID, inte
 	prov.stampOn(successStartPayload)
 	startEvent := newOrchestratorEvent(store.TurnStarted, successStartPayload, turnNum)
 
-	// Stamp the foreground turn on ctx so oracle.call.* events fired by the
+	// Stamp the foreground turn on ctx so agent.call.* events fired by the
 	// on_enter chain and the post-bind emit recursion carry the real turn (not
 	// turn=0).
-	ctx = host.WithOracleCallCtx(ctx, host.OracleCallCtx{
+	ctx = host.WithAgentCallCtx(ctx, host.AgentCallCtx{
 		SessionID: sid,
 		Turn:      turnNum,
 		StatePath: result.NewState,
@@ -2257,7 +2282,7 @@ func (o *Orchestrator) ContinueTurn(ctx context.Context, sid app.SessionID, supp
 				allowedNames = append(allowedNames, a.Name)
 			}
 		}
-		// Oracle off-ramp: routed through the same helper so the rejection
+		// Agent off-ramp: routed through the same helper so the rejection
 		// sites can't drift (Task 1.3). This is the slot-continuation path —
 		// it carries no fresh free-text utterance, so maybeOffRamp's empty-input
 		// guard makes it inert here; the call exists for parity, not effect.
@@ -2870,7 +2895,7 @@ func stampStatePath(evs []store.Event, state, fallback app.StatePath) {
 
 // buildPromptRenderer constructs the prompt renderer for a story from its
 // base dir and optional prompts: config. Returns nil when def has no on-disk
-// base dir (LoadBytes / tests) so oracle handlers fall back to the legacy
+// base dir (LoadBytes / tests) so agent handlers fall back to the legacy
 // KITSOKI_APP_DIR + render.Pongo path. Shared/overlay paths are resolved
 // relative to BaseDir when not absolute. The renderer is uncached so an
 // author's prompt edits take effect on the next turn without a restart, the
@@ -2965,7 +2990,7 @@ func agentsForContext(def *app.AppDef) map[string]host.Agent {
 
 // providersForContext translates the app-side ProviderDecl map into the
 // host-side Provider map injected per dispatch (via host.WithProviders) so
-// oracle handlers can resolve an agent's Provider / an effect's `provider:` arg
+// agent handlers can resolve an agent's Provider / an effect's `provider:` arg
 // to its env overrides + default model. Returns nil when the app declares no
 // providers so handlers see a clean "no providers wired" signal.
 func providersForContext(def *app.AppDef) map[string]host.Provider {
@@ -2991,7 +3016,7 @@ func providersForContext(def *app.AppDef) map[string]host.Provider {
 
 // projectContextFor translates the app's Layer-2 authoring fields (app.context
 // / context_path) into the host-side ProjectContext injected per dispatch, so
-// every oracle call composes the project grounding into its system prompt. A
+// every agent call composes the project grounding into its system prompt. A
 // nil def or an app with neither field set yields a zero ProjectContext (the
 // host then falls back to the prompts/_project.md convention, then to no
 // project layer).

@@ -1,0 +1,10 @@
+{
+  "_comment": "Reference agent response shape for conformance tests (B-4/B-5).",
+  "_note": "All four transports (in-process, subprocess, mcp_http, cassette) must produce byte-identical Submission for this input.",
+  "verb": "decide",
+  "prompt_head": "which is the best option for this context?",
+  "expected_submission": {
+    "echo_verb": "decide",
+    "echo_prompt_head": "which is the best option for this context?"
+  }
+}

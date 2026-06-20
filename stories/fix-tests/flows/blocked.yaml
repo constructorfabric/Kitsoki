@@ -16,7 +16,7 @@ host_handlers:
         delay: "10ms"
       write_report:
         data: { exit_code: 0, ok: true, stdout: ".artifacts/fix-tests/report-blocked.md" }
-  host.oracle.task:
+  host.agent.task:
     by_call:
       fix:
         delay: "10ms"

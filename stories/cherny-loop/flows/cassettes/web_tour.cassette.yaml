@@ -53,21 +53,21 @@ episodes:
               limiter_test.go:68: timeout: Allow held the lock across time.Sleep (deadlock)
           FAIL	kitsoki/internal/ratelimit	1.231s
 
-  # ── Maker iterations (host.oracle.task) ───────────────────────────────────
+  # ── Maker iterations (host.agent.task) ───────────────────────────────────
   - id: maker-1
-    match: { handler: host.oracle.task, call: maker-1 }
+    match: { handler: host.agent.task, call: maker-1 }
     response:
       data:
         submitted:
           summary: "Initialize the bucket with tokens=burst so a cold limiter allows a full burst"
   - id: maker-2
-    match: { handler: host.oracle.task, call: maker-2 }
+    match: { handler: host.agent.task, call: maker-2 }
     response:
       data:
         submitted:
           summary: "Refill tokens by elapsed×rate on each Allow, capped at the burst size"
   - id: maker-3
-    match: { handler: host.oracle.task, call: maker-3 }
+    match: { handler: host.agent.task, call: maker-3 }
     response:
       data:
         submitted:

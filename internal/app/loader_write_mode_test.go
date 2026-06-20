@@ -10,14 +10,14 @@ import (
 // loader_write_mode_test.go — load-time invariants for the write_mode: room
 // posture (agent-write-mode-opt-in.md "Load-time invariants").
 
-// write_mode: read_only loads cleanly on an agent-dispatch room (a host.oracle.task
+// write_mode: read_only loads cleanly on an agent-dispatch room (a host.agent.task
 // effect), and the posture is preserved on the State.
 func TestWriteMode_ReadOnly_OnTaskRoom(t *testing.T) {
 	yaml := `app:
   id: wm-ok
   version: 0.1.0
 hosts:
-  - host.oracle.task
+  - host.agent.task
 intents:
   go:
     title: Go
@@ -29,7 +29,7 @@ states:
       go:
         - target: workbench
           effects:
-            - invoke: host.oracle.task
+            - invoke: host.agent.task
               with:
                 agent: builder
                 acceptance: { schema: schemas/out.json }
@@ -114,7 +114,7 @@ func TestWriteMode_ReadOnly_StaticWriteContradiction(t *testing.T) {
   id: wm-contradiction
   version: 0.1.0
 hosts:
-  - host.oracle.task
+  - host.agent.task
 intents:
   go:
     title: Go
@@ -126,7 +126,7 @@ states:
       go:
         - target: workbench
           effects:
-            - invoke: host.oracle.task
+            - invoke: host.agent.task
               with:
                 agent: writer
                 acceptance: { schema: schemas/out.json }

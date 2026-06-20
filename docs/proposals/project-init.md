@@ -49,7 +49,7 @@ gates on `accept`/`refine`/`quit` under the existing judge-polymorphism flag:
 
 ```
 main ──go_init──▶ init_intake ──▶ init_discover ──▶ init_mine ──▶ init_synthesize ──▶ init_review
-                  (preferences)    (scan repo)       (mine its     (oracle drafts        (PROPOSE: the
+                  (preferences)    (scan repo)       (mine its     (agent drafts        (PROPOSE: the
                                     no-LLM            transcripts)   the profile +         dry-run report)
                                                                      validates)               │
                                                                                     confirm ◀──┤ refine/quit
@@ -93,7 +93,7 @@ pattern that already exists.
   `generated.at`), `scripts/readiness.sh` (boot→probe→teardown). Mining reuses
   the existing kit verbatim.
 - **Engine/host changes:** **none in v1** — composes existing hosts only
-  (`host.run`, `host.starlark.run`, `host.oracle.{converse,task,decide}`,
+  (`host.run`, `host.starlark.run`, `host.agent.{converse,task,decide}`,
   `host.chat.resolve`, `host.artifacts_dir`, `host.ide.open_file`, and the MCP
   submit validator). The one thing that *could* be a runtime slice — a
   first-class **persistent** dev-server lifecycle host — is deliberately avoided:
@@ -118,17 +118,17 @@ This is the proof the feature is composition, not invention.
 
 | Pipeline step | Mechanism it reuses | Reference |
 |---|---|---|
-| Capture preferences | `host.oracle.converse` + persistent chat (intake), or `choice: mode: form`; **never** `AskUserQuestion` | prd intake; [`operator-ask.md`](../architecture/operator-ask.md) |
+| Capture preferences | `host.agent.converse` + persistent chat (intake), or `choice: mode: form`; **never** `AskUserQuestion` | prd intake; [`operator-ask.md`](../architecture/operator-ask.md) |
 | Discover repo shape | deterministic `host.starlark.run` / `host.run` script → structured bind | `stories/starlark-enrich/`; `host.run` in dev-story-mining |
 | Mine the project's transcripts | the session-mining kit, recency sample | [`tools/session-mining/`](../../tools/session-mining/README.md); `dev-story-mining/rooms/mine.yaml` |
-| Draft the profile (the report) | `host.oracle.task` + acceptance schema, **MCP submit validator** enforces shape at the tool boundary | `work-decomposition.md`; `internal/host/oracle_ask_with_mcp.go`, `schema_shorthand.go` |
+| Draft the profile (the report) | `host.agent.task` + acceptance schema, **MCP submit validator** enforces shape at the tool boundary | `work-decomposition.md`; `internal/host/agent_ask_with_mcp.go`, `schema_shorthand.go` |
 | Re-check the report deterministically | pinned JSON Schema validator script (the validation sandwich) | `decompose_validate.py` pattern; proven in §Verification |
 | Checkpoint gate (accept/refine/quit) | `accept`/`refine(feedback)` + cycle budget, judge polymorphism | `dev-story-mining/rooms/mine.yaml:61-108`; `stories/bugfix` |
 | Propose-then-confirm | dry-run artifact, then a guarded `confirm` that runs the deterministic mutation | design publish; ideas `apply` gate (dev-story README §ideas) |
 | Compile profile → instance | render `stories/<id>-dev/app.yaml` from the bindings | `stories/kitsoki-dev/app.yaml:131`; `gears-rust` External-target profile (`stories/dev-story/app.yaml:365-381`) |
 | Set up conventions + `.gitignore` | deterministic write script | `publish_design.py` / `ideas_reconcile.py` pattern |
 | Run readiness + tests | `host.run`, integrating the project's own `commands`/`testing` | `iface.ci.run_tests`/`build`; `make test` |
-| Classify a verify failure (regression vs pre-existing) | `host.oracle.decide` over a baseline re-run | the "pre-existing vs regression" gate, [`dev-story-from-transcripts.md`](../../.context/dev-story-from-transcripts.md) theme A |
+| Classify a verify failure (regression vs pre-existing) | `host.agent.decide` over a baseline re-run | the "pre-existing vs regression" gate, [`dev-story-from-transcripts.md`](../../.context/dev-story-from-transcripts.md) theme A |
 | Golden-path UI scenario | Playwright in the no-LLM `--flow`/`--host-cassette` posture | `features/` + qa; `feature.schema.json`; `tools/runstatus/tests/playwright/` |
 
 ## The report — `project-profile/v1`
@@ -180,9 +180,9 @@ no-write outcome.)
 ## Per-room detail
 
 ### `init_intake` — capture the few things discovery can't infer
-- **Surface:** `host.oracle.converse` + a persistent chat (like prd discovery),
+- **Surface:** `host.agent.converse` + a persistent chat (like prd discovery),
   *or* a `choice: mode: form`. Questions are forwarded via the operator-ask
-  bridge — **`AskUserQuestion` is hard-denied** in oracles; headless/cassette
+  bridge — **`AskUserQuestion` is hard-denied** in agents; headless/cassette
   runs proceed on defaults ([`operator-ask.md`](../architecture/operator-ask.md)).
 - **Captures:** convention choice (kitsoki/project/hybrid), tracker (local files
   / GitHub issues / Jira), autonomy + `judge_mode`, any known dev/test commands,
@@ -202,7 +202,7 @@ no-write outcome.)
   `dev-story-mining/rooms/mine.yaml`; **cassette-backed in tests** (no live LLM).
 
 ### `init_synthesize` — draft the profile (the report)
-- **`on_enter`:** `host.oracle.task` (`project_profiler`) reads discovery +
+- **`on_enter`:** `host.agent.task` (`project_profiler`) reads discovery +
   mining + preferences and emits the profile into the per-session workspace
   (`host.artifacts_dir`); the **MCP submit validator** enforces the schema shape
   at the tool boundary; then a deterministic `host.run scripts/profile_validate.py`
@@ -218,7 +218,7 @@ no-write outcome.)
 - **Intents:** `confirm` → `init_apply`; `refine(feedback)` → re-enter
   `init_synthesize` (`init_cycle++`, budget → `@exit:abandoned`);
   `regenerate`; `quit` → `@exit:abandoned`. Optional `init_judge`
-  (`host.oracle.decide`) advances confidently under `llm`/`llm_then_human`.
+  (`host.agent.decide`) advances confidently under `llm`/`llm_then_human`.
 
 ### `init_apply` — write the safe scaffolding (gated behind confirm)
 - **`on_enter`:** `host.run scripts/apply_profile.py` renders
@@ -232,7 +232,7 @@ no-write outcome.)
 - **`on_enter`:** runs each `setup_plan.verifications[]` via `host.run`,
   integrating the project's own commands — boot dev server → readiness probe →
   `tests` → `golden_path`. A `required` check that fails is **reported, not
-  hidden**; a `host.oracle.decide` classifies a test failure as regression vs
+  hidden**; a `host.agent.decide` classifies a test failure as regression vs
   pre-existing (theme A) so init never false-passes on a baseline-broken repo.
   Binds `init_readiness`.
 
@@ -243,7 +243,7 @@ no-write outcome.)
 
 ## Flow fixtures (Mode-2, intent-only, no-LLM, CI-fast)
 
-The regression contract. All oracle/mining/verify host calls are cassette-backed.
+The regression contract. All agent/mining/verify host calls are cassette-backed.
 
 - `init_smoke` — `main → init_intake`, render.
 - `init_happy_path` — full walk to `@exit:done`; asserts the profile validates,

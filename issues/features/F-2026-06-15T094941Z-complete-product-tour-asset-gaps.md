@@ -43,7 +43,7 @@ infrastructure) and G5 (explicitly v2 per §8.5). Commits:
   security boundary.
 - **U1 + G3 — DONE** (`8718f16`): trace-features gains `trace-routing` (expands
   an explicit-intent turn.start, spotlights `Direct: yes` / `direct:true` — the
-  ~78% zero-oracle proof) and `trace-world-diff` (expands a world.update row,
+  ~78% zero-agent proof) and `trace-world-diff` (expands a world.update row,
   spotlights the WorldDiffViewer before/after). Frontend testids
   `world-diff-viewer` + `subsystem-chip-<sys>`; targeted backdrop-proof spec
   hooks. **G3 premise corrected:** `WorldDiffViewer.vue` was NEVER orphaned —
@@ -58,7 +58,7 @@ infrastructure) and G5 (explicitly v2 per §8.5). Commits:
   schema (only `tour ⇒ demo`); generate.ts skips tour-less features and the live
   SPA imports no per-feature tours — so wrapping the scene-driven specs is the
   lightweight "wrap the built spec" the ticket originally specified, NOT a spec
-  rewrite. Both specs are no-LLM (meta stub / oracle_probe cassette).
+  rewrite. Both specs are no-LLM (meta stub / agent_probe cassette).
 - **U4 — INTENTIONALLY NOT CONVERTED**: the category chips are multi-select,
   all-on by default, so a single chip click *toggles a category OFF* — there is
   no clean one-click "filter down to X" beat, and adding the action introduces
@@ -74,7 +74,7 @@ infrastructure) and G5 (explicitly v2 per §8.5). Commits:
 with the §8 decisions made) and `.context/complete-product-tour-progress.md`.
 
 Severity rationale: the four irrefutable on-screen proofs (host-rejects-the-model,
-zero-oracle-call routing, live FSM self-edit, film-is-a-CI-test) each have **no
+zero-agent-call routing, live FSM self-edit, film-is-a-CI-test) each have **no
 analog in a general coding agent**, and three of them are currently un-filmable.
 That makes these P1 for the demo, not cosmetic.
 
@@ -93,9 +93,9 @@ own YAML and reloading, with the edit recorded as a `story.changed` trace event
 **G2 — `features/harness-picker.yaml` does not exist (P1).**
 `harness-picker-video.spec.ts` is built and byte-deterministic but uncatalogued,
 so live provider/model/effort switching with per-call provenance
-(`oracle.call.complete.meta`) never reaches the promo grid.
+(`agent.call.complete.meta`) never reaches the promo grid.
 *Fix:* NEW `features/harness-picker.yaml`. Open question: it films on
-`testdata/apps/oracle_probe` (synthetic) — consider a first-party story that
+`testdata/apps/agent_probe` (synthetic) — consider a first-party story that
 declares `harness_profiles` so the differentiator isn't shown on a throwaway.
 
 **G3 — `WorldDiffViewer.vue` is orphaned + `world-diff` step exists in no
@@ -137,7 +137,7 @@ pull from Phase 4 into v1 if the diff beat stays in the cut.
 These are NOT missing — they ship today and are the sharpest weapons, but the
 proposal buries them. Captured here so the demo work surfaces them:
 
-- **U1 — Zero-oracle-call routing / "the LLM was never called."** `turn.start`
+- **U1 — Zero-agent-call routing / "the LLM was never called."** `turn.start`
   carries `direct:true` / `routed_by: deterministic|semantic|turncache`
   (`trace-format.md:90–99`), surfaced by `RoutingDetail.vue`'s `routed_by` badge.
   ~78% of turns never call the model (`README.md:44–50`). This defeats the

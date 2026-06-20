@@ -11,7 +11,7 @@ package testrunner
 //   - IncludeTargetMissing:           missing !include target fails at load
 //   - IncludeTargetOutsideDir:        cross-directory !include (known gap)
 //   - EpisodeOrderOffPath:            independent dispatchers don't cross-contaminate
-//   - CrashRecovery:                  trace with dangling OracleCalled folds ok
+//   - CrashRecovery:                  trace with dangling AgentCalled folds ok
 
 import (
 	"context"
@@ -24,9 +24,9 @@ import (
 	"sync"
 	"testing"
 
+	"kitsoki/internal/agent"
 	"kitsoki/internal/app"
 	"kitsoki/internal/host"
-	"kitsoki/internal/oracle"
 	"kitsoki/internal/store"
 	"kitsoki/internal/world"
 )
@@ -99,8 +99,8 @@ episodes:
 		t.Errorf("distinct matchIdx must produce distinct call_ids: %q %q %q", id0, id1, id2)
 	}
 
-	// oracle: + replay:any was previously forbidden; relaxed in phase B.
-	t.Log("oracle: + replay:any combination is allowed")
+	// agent: + replay:any was previously forbidden; relaxed in phase B.
+	t.Log("agent: + replay:any combination is allowed")
 }
 
 // ─── matchIdx continuity across resume ───────────────────────────────────────
@@ -146,36 +146,36 @@ func TestCassettesDeterminism_MatchIdxContinuity(t *testing.T) {
 // TestCassettesDeterminism_MatchIdxContinuityFullRoundTrip exercises the full
 // engine path for matchIdx continuity across resume (finding 2.10):
 //
-//  1. Create a cassette with a replay:any oracle episode and a JSONL trace sink.
+//  1. Create a cassette with a replay:any agent episode and a JSONL trace sink.
 //  2. Dispatch 3 times (pre-resume). The dispatcher (BuildCassetteDispatcherWithSink)
-//     writes OracleCalled events to the sink directly via writeCassetteOracleEvents.
+//     writes AgentCalled events to the sink directly via writeCassetteAgentEvents.
 //     No manual sink.Append calls — the dispatcher owns the write.
 //  3. Close the sink; reload it (simulating session resume).
 //  4. Build a new dispatcher seeded from the reloaded history.
 //  5. Dispatch 2 more times (post-resume). Verify match_idx 3 and 4, and that
 //     post-resume call_ids differ from pre-resume ones.
 //
-// replay:any + oracle: is now legal on the JSONL path because
+// replay:any + agent: is now legal on the JSONL path because
 // each match produces a new event pair with a distinct call_id (matchIdx-keyed).
 func TestCassettesDeterminism_MatchIdxContinuityFullRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	const appID = "roundtrip_app"
-	const epID = "oracle_ep"
+	const epID = "agent_ep"
 
 	dir := t.TempDir()
-	// replay:any + oracle: is now valid (finding 2.10).
-	casPath := writeCassetteFile(t, dir, "replay_any_oracle.yaml", `
+	// replay:any + agent: is now valid (finding 2.10).
+	casPath := writeCassetteFile(t, dir, "replay_any_agent.yaml", `
 kind: host_cassette
 app_id: `+appID+`
 episodes:
   - id: `+epID+`
     match:
-      handler: host.oracle.ask
+      handler: host.agent.ask
     response:
       data: {ok: true}
     replay: any
-    oracle:
+    agent:
       verb: ask
       agent: test
       prompt: test prompt
@@ -196,12 +196,12 @@ episodes:
 	stateOf := func() string { return "main" }
 
 	// Phase 1: build dispatcher with the sink (no prior history).
-	// The dispatcher calls writeCassetteOracleEvents internally — no manual Append.
-	dispatch := BuildCassetteDispatcherWithSink(cas, "host.oracle.ask", stateOf, nil, nil, clk, sink, nil)
+	// The dispatcher calls writeCassetteAgentEvents internally — no manual Append.
+	dispatch := BuildCassetteDispatcherWithSink(cas, "host.agent.ask", stateOf, nil, nil, clk, sink, nil)
 
-	// Pre-resume: 3 dispatches. The dispatcher writes OracleCalled+OracleReturned.
+	// Pre-resume: 3 dispatches. The dispatcher writes AgentCalled+AgentReturned.
 	for i := 0; i < 3; i++ {
-		ctx := host.WithOracleCallCtx(context.Background(), host.OracleCallCtx{
+		ctx := host.WithAgentCallCtx(context.Background(), host.AgentCallCtx{
 			SessionID: "test-session",
 			Turn:      app.TurnNumber(1),
 			StatePath: "main",
@@ -226,29 +226,29 @@ episodes:
 
 	priorHist := sink2.History()
 
-	// Collect the OracleCalled events the dispatcher wrote.
-	var oracleCalledEvents []store.Event
+	// Collect the AgentCalled events the dispatcher wrote.
+	var agentCalledEvents []store.Event
 	for _, ev := range priorHist {
-		if ev.Kind == store.OracleCalled {
-			oracleCalledEvents = append(oracleCalledEvents, ev)
+		if ev.Kind == store.AgentCalled {
+			agentCalledEvents = append(agentCalledEvents, ev)
 		}
 	}
-	if len(oracleCalledEvents) != 3 {
-		t.Fatalf("expected 3 OracleCalled events in history, got %d (dispatcher must write them — no manual Append)", len(oracleCalledEvents))
+	if len(agentCalledEvents) != 3 {
+		t.Fatalf("expected 3 AgentCalled events in history, got %d (dispatcher must write them — no manual Append)", len(agentCalledEvents))
 	}
 
 	// Verify episode_id, match_idx, and distinct call_ids.
 	var preCallIDs []string
-	for i, ev := range oracleCalledEvents {
+	for i, ev := range agentCalledEvents {
 		if ev.EpisodeID != epID {
-			t.Errorf("OracleCalled[%d]: episode_id=%q, want %q", i, ev.EpisodeID, epID)
+			t.Errorf("AgentCalled[%d]: episode_id=%q, want %q", i, ev.EpisodeID, epID)
 		}
 		if ev.MatchIdx != i {
-			t.Errorf("OracleCalled[%d]: match_idx=%d, want %d", i, ev.MatchIdx, i)
+			t.Errorf("AgentCalled[%d]: match_idx=%d, want %d", i, ev.MatchIdx, i)
 		}
 		expectedCallID := host.DeriveCallID(appID, fmt.Sprintf("%s:%d", epID, i))
 		if ev.CallID != expectedCallID {
-			t.Errorf("OracleCalled[%d]: call_id=%q, want %q", i, ev.CallID, expectedCallID)
+			t.Errorf("AgentCalled[%d]: call_id=%q, want %q", i, ev.CallID, expectedCallID)
 		}
 		preCallIDs = append(preCallIDs, ev.CallID)
 	}
@@ -261,11 +261,11 @@ episodes:
 
 	// BuildCassetteDispatcherWithSink seeds match counts from prior history
 	// so post-resume dispatches get matchIdx 3, 4 (not 0, 1).
-	dispatch2 := BuildCassetteDispatcherWithSink(cas2, "host.oracle.ask", stateOf, nil, nil, clk, sink2, priorHist)
+	dispatch2 := BuildCassetteDispatcherWithSink(cas2, "host.agent.ask", stateOf, nil, nil, clk, sink2, priorHist)
 
-	// Post-resume: 2 dispatches. The dispatcher writes OracleCalled+OracleReturned.
+	// Post-resume: 2 dispatches. The dispatcher writes AgentCalled+AgentReturned.
 	for i := 0; i < 2; i++ {
-		ctx := host.WithOracleCallCtx(context.Background(), host.OracleCallCtx{
+		ctx := host.WithAgentCallCtx(context.Background(), host.AgentCallCtx{
 			SessionID: "test-session",
 			Turn:      app.TurnNumber(2),
 			StatePath: "main",
@@ -276,23 +276,23 @@ episodes:
 		}
 	}
 
-	// Collect post-resume OracleCalled events (new since the reload).
+	// Collect post-resume AgentCalled events (new since the reload).
 	allHistAfter := sink2.History()
 	var postCallIDs []string
 	for _, ev := range allHistAfter {
-		if ev.Kind == store.OracleCalled {
+		if ev.Kind == store.AgentCalled {
 			// Skip pre-resume events (match_idx < 3).
 			if ev.MatchIdx >= 3 {
 				postCallIDs = append(postCallIDs, ev.CallID)
 				expectedMatchIdx := len(postCallIDs) - 1 + 3
 				if ev.MatchIdx != expectedMatchIdx {
-					t.Errorf("post-resume OracleCalled: match_idx=%d, want %d", ev.MatchIdx, expectedMatchIdx)
+					t.Errorf("post-resume AgentCalled: match_idx=%d, want %d", ev.MatchIdx, expectedMatchIdx)
 				}
 			}
 		}
 	}
 	if len(postCallIDs) != 2 {
-		t.Fatalf("expected 2 post-resume OracleCalled events, got %d", len(postCallIDs))
+		t.Fatalf("expected 2 post-resume AgentCalled events, got %d", len(postCallIDs))
 	}
 
 	// Assert: post-resume call_ids differ from pre-resume ones.
@@ -381,10 +381,10 @@ func requireAllEpisodesPlayed(t *testing.T, cas *Cassette) {
 // ─── Episode response fails schema ───────────────────────────────────────────
 
 // TestCassettesDeterminism_EpisodeResponseFailsSchema verifies that a cassette
-// whose recorded response fails the room's schema check produces an OracleError
+// whose recorded response fails the room's schema check produces an AgentError
 // event pointing at the cassette as the source (B-7 / finding 6).
 //
-// Uses NewCassetteOracle + host.Dispatch (the production Dispatch path) which
+// Uses NewCassetteAgent + host.Dispatch (the production Dispatch path) which
 // validates Submission against SchemaJSON. The legacy BuildCassetteDispatcher
 // path does not route through Dispatch and is not affected by this test.
 func TestCassettesDeterminism_EpisodeResponseFailsSchema(t *testing.T) {
@@ -392,7 +392,7 @@ func TestCassettesDeterminism_EpisodeResponseFailsSchema(t *testing.T) {
 
 	dir := t.TempDir()
 
-	// Episode whose oracle.response is {"wrong_field": true} — the schema below
+	// Episode whose agent.response is {"wrong_field": true} — the schema below
 	// requires only {"result": string} with additionalProperties: false.
 	casPath := writeCassetteFile(t, dir, "schema_fail.yaml", `
 kind: host_cassette
@@ -400,10 +400,10 @@ app_id: schema_test_app
 episodes:
   - id: bad_schema_ep
     match:
-      handler: oracle.test_fixer
+      handler: agent.test_fixer
     response:
       data: {ok: true}
-    oracle:
+    agent:
       verb: ask
       response: '{"wrong_field": true}'
 `)
@@ -420,28 +420,28 @@ episodes:
 		"additionalProperties": false
 	}`)
 
-	// Create the cassetteOracle and register it in a registry.
-	co := NewCassetteOracle(cas, "oracle.test_fixer", func() string { return "test_state" }, nil)
+	// Create the cassetteAgent and register it in a registry.
+	co := NewCassetteAgent(cas, "agent.test_fixer", func() string { return "test_state" }, nil)
 	defer co.Close()
 
-	reg := oracle.NewRegistry()
-	reg.Register("oracle.test_fixer", co)
+	reg := agent.NewRegistry()
+	reg.Register("agent.test_fixer", co)
 
 	// Set up a sink to capture events.
 	sink := newMemSink()
 	ctx := context.Background()
-	ctx = host.WithOracleRegistry(ctx, reg)
-	ctx = host.WithOracleEventSink(ctx, sink)
-	ctx = host.WithOracleCallCtx(ctx, host.OracleCallCtx{SessionID: "test-sess"})
+	ctx = host.WithAgentRegistry(ctx, reg)
+	ctx = host.WithAgentEventSink(ctx, sink)
+	ctx = host.WithAgentCallCtx(ctx, host.AgentCallCtx{SessionID: "test-sess"})
 
 	// Dispatch through host.Dispatch with the strict schema.
-	dr := host.OracleDispatchRequest{
-		Req: oracle.AskRequest{
+	dr := host.AgentDispatchRequest{
+		Req: agent.AskRequest{
 			Verb:       "ask",
 			PromptText: "fix the bug",
 			SchemaJSON: schemaJSON,
 		},
-		PluginName: "oracle.test_fixer",
+		PluginName: "agent.test_fixer",
 		Verb:       "ask",
 	}
 	_, dispErr := host.Dispatch(ctx, dr)
@@ -452,35 +452,35 @@ episodes:
 	}
 
 	// The error should be a schema_invalid AskError.
-	var ae *oracle.AskError
+	var ae *agent.AskError
 	if !errors.As(dispErr, &ae) {
-		t.Fatalf("expected *oracle.AskError, got %T: %v", dispErr, dispErr)
+		t.Fatalf("expected *agent.AskError, got %T: %v", dispErr, dispErr)
 	}
 	if ae.Kind != "schema_invalid" {
 		t.Errorf("AskError.Kind: got %q, want schema_invalid", ae.Kind)
 	}
 
-	// The sink should contain OracleCalled + OracleError events (not OracleReturned).
+	// The sink should contain AgentCalled + AgentError events (not AgentReturned).
 	events := sink.events
 	var calledCount, errorCount, returnedCount int
 	for _, ev := range events {
 		switch ev.Kind {
-		case store.OracleCalled:
+		case store.AgentCalled:
 			calledCount++
-		case store.OracleReturned:
+		case store.AgentReturned:
 			returnedCount++
-		case store.OracleError:
+		case store.AgentError:
 			errorCount++
 		}
 	}
 	if calledCount != 1 {
-		t.Errorf("OracleCalled event count: got %d, want 1", calledCount)
+		t.Errorf("AgentCalled event count: got %d, want 1", calledCount)
 	}
 	if errorCount != 1 {
-		t.Errorf("OracleError event count: got %d, want 1", errorCount)
+		t.Errorf("AgentError event count: got %d, want 1", errorCount)
 	}
 	if returnedCount != 0 {
-		t.Errorf("OracleReturned event count: got %d, want 0 (should not appear on schema failure)", returnedCount)
+		t.Errorf("AgentReturned event count: got %d, want 0 (should not appear on schema failure)", returnedCount)
 	}
 }
 
@@ -508,10 +508,10 @@ app_id: myapp
 episodes:
   - id: large_ep
     match:
-      handler: host.oracle.ask
+      handler: host.agent.ask
     response:
       data: {ok: true}
-    oracle:
+    agent:
       verb: ask
       agent: test
       prompt: !include large.txt
@@ -522,14 +522,14 @@ episodes:
 		t.Fatalf("LoadCassette with large !include: %v", err)
 	}
 
-	if len(cas.Episodes) == 0 || cas.Episodes[0].Oracle == nil {
-		t.Fatal("expected episode with oracle block")
+	if len(cas.Episodes) == 0 || cas.Episodes[0].Agent == nil {
+		t.Fatal("expected episode with agent block")
 	}
-	if len(cas.Episodes[0].Oracle.Prompt) != size {
-		t.Errorf("resolved prompt must be %d bytes, got %d", size, len(cas.Episodes[0].Oracle.Prompt))
+	if len(cas.Episodes[0].Agent.Prompt) != size {
+		t.Errorf("resolved prompt must be %d bytes, got %d", size, len(cas.Episodes[0].Agent.Prompt))
 	}
 
-	// Write this as a JSONL OracleCalled event — must now succeed.
+	// Write this as a JSONL AgentCalled event — must now succeed.
 	s, err := store.OpenJSONL(filepath.Join(dir, "trace.jsonl"))
 	if err != nil {
 		t.Fatalf("OpenJSONL: %v", err)
@@ -538,21 +538,21 @@ episodes:
 
 	payload, marshalErr := json.Marshal(map[string]any{
 		"verb":   "ask",
-		"prompt": cas.Episodes[0].Oracle.Prompt,
+		"prompt": cas.Episodes[0].Agent.Prompt,
 	})
 	if marshalErr != nil {
-		t.Fatalf("marshal oracle payload: %v", marshalErr)
+		t.Fatalf("marshal agent payload: %v", marshalErr)
 	}
 
 	appendErr := s.Append(store.Event{
 		Turn:    app.TurnNumber(1),
 		Seq:     0,
-		Kind:    store.OracleCalled,
+		Kind:    store.AgentCalled,
 		Payload: json.RawMessage(payload),
 		CallID:  host.DeriveCallID("myapp", "large_ep:0"),
 	})
 	if appendErr != nil {
-		t.Errorf("Append of large oracle payload must succeed, got error: %v", appendErr)
+		t.Errorf("Append of large agent payload must succeed, got error: %v", appendErr)
 	}
 
 	// Verify it was written correctly
@@ -579,7 +579,7 @@ episodes:
       handler: host.run
     response:
       data: {ok: true}
-    oracle:
+    agent:
       verb: ask
       prompt: !include nonexistent_file.txt
 `)
@@ -615,7 +615,7 @@ episodes:
       handler: host.run
     response:
       data: {ok: true}
-    oracle:
+    agent:
       verb: ask
       prompt: !include ../outside.txt
 `)
@@ -685,7 +685,7 @@ episodes:
 // ─── Cassette + crash recovery ───────────────────────────────────────────────
 
 // TestCassettesDeterminism_CrashRecovery verifies that a trace ending on
-// OracleCalled (no OracleReturned — crash) can be reopened and folded.
+// AgentCalled (no AgentReturned — crash) can be reopened and folded.
 // matchIdx reconciliation is a phase B engine change.
 func TestCassettesDeterminism_CrashRecovery(t *testing.T) {
 	t.Parallel()
@@ -708,11 +708,11 @@ func TestCassettesDeterminism_CrashRecovery(t *testing.T) {
 	if err := s.Append(store.Event{
 		Turn:    app.TurnNumber(1),
 		Seq:     1,
-		Kind:    store.OracleCalled,
+		Kind:    store.AgentCalled,
 		Payload: json.RawMessage(`{"verb":"ask","prompt":"test"}`),
 		CallID:  host.DeriveCallID("myapp", "ep1:0"),
 	}); err != nil {
-		t.Fatalf("Append OracleCalled: %v", err)
+		t.Fatalf("Append AgentCalled: %v", err)
 	}
 	if err := s.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
@@ -730,7 +730,7 @@ func TestCassettesDeterminism_CrashRecovery(t *testing.T) {
 		t.Errorf("expected 2 events, got %d", len(hist))
 	}
 
-	// Fold — OracleCalled is a no-op.
+	// Fold — AgentCalled is a no-op.
 	def := &app.AppDef{App: app.AppMeta{ID: "test", Version: "1.0"}}
 	initial := world.New()
 	js, foldErr := store.BuildJourney(def, "start", initial, hist)
@@ -741,5 +741,5 @@ func TestCassettesDeterminism_CrashRecovery(t *testing.T) {
 		t.Fatal("fold result nil")
 	}
 
-	t.Log("known: matchIdx reconciliation (cassette considers OracleCalled as matched) requires phase B")
+	t.Log("known: matchIdx reconciliation (cassette considers AgentCalled as matched) requires phase B")
 }

@@ -68,7 +68,7 @@ func seedSessionsPanelChat(t *testing.T, m tea.Model, store *fakeMetaChatStore, 
 //     session's banner.
 //
 // We never reach a real DB or a real claude: the fake chat store and
-// fake oracle (wired via buildMetaModeModel) cover both seams.
+// fake agent (wired via buildMetaModeModel) cover both seams.
 func TestSessionsPanelFlow_HappyPathResume(t *testing.T) {
 	m, store, _ := buildMetaModeModel(t, singleStoryMode(), "")
 	chatID := seedSessionsPanelChat(t, m, store, "panelchat01", "what should I do about the foyer?")

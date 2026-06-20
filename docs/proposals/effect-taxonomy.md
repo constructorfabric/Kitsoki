@@ -2,7 +2,7 @@
 
 **Status:** Draft v1. Nothing implemented yet.
 **Kind:**   runtime
-**Epic:**   [oracle-capability-model.md](oracle-capability-model.md) (slice 1 — the classification substrate)
+**Epic:**   [agent-capability-model.md](agent-capability-model.md) (slice 1 — the classification substrate)
 
 ## Why
 
@@ -11,7 +11,7 @@ partial places, and most of the surface isn't classified at all:
 
 - **Agents** carry `external_side_effect: bool` (`internal/app/types.go:999`),
   read two incompatible ways — as the task **replay mode**
-  (`inferReplayMode`, `internal/host/oracle_task_replay.go:85`: `false` ⇒ Mode A
+  (`inferReplayMode`, `internal/host/agent_task_replay.go:85`: `false` ⇒ Mode A
   "local mutations, replayable") and as the converse **read-only posture**
   (`agentIsReadOnly`, `internal/host/agents.go:208`: `false` ⇒ "deny every
   mutator"). One bit, two meanings — and it can't tell read-only from
@@ -30,7 +30,7 @@ partial places, and most of the surface isn't classified at all:
   be recorded and never repeated."
 
 This blocks the rest of the [capability-model
-epic](oracle-capability-model.md): you cannot **enforce** a boundary
+epic](agent-capability-model.md): you cannot **enforce** a boundary
 (slices 2–3) you have not **named**. It also blocks two longer-range wants.
 **Trace replayability:** to replay a recorded run faithfully we must know which
 calls can be re-executed (deterministic reads) and which must be served from
@@ -45,7 +45,7 @@ The same axis underlies all of it. This slice names it once.
 ## What changes
 
 Introduce a single **effect taxonomy** that classifies *any* unit of work — a
-host-call operation or an oracle agent — by two orthogonal axes, and derive
+host-call operation or an agent agent — by two orthogonal axes, and derive
 converse permission, task replay mode, and (future) cache/replay policy from
 it instead of re-interpreting one boolean per consumer.
 
@@ -59,7 +59,7 @@ enum `PURE | QUERY | MUTATION | SIDE_EFFECT`
 (`~/code/cyberville/acronis-platform/dts/types.raml:97`), read by its engine to
 gate write verbs, decide cacheability, and flag CI-safe functions, with
 idempotency kept as a *separate* `is_idempotent` axis (`types.raml:125`). Our
-LLM calls force the same separation: a tool-less `oracle.extract` call touches
+LLM calls force the same separation: a tool-less `agent.extract` call touches
 nothing (PURE) yet is non-deterministic — so effect class and determinism
 cannot be one enum.
 
@@ -70,7 +70,7 @@ that jails the `write`/`external` tiers is [slice 3](task-fs-sandbox.md).
 
 ## Impact
 
-- **Code seams:** `internal/app/types.go` (effect fields on `HostInterfaceOp` and agent decl), `internal/app/loader.go:557`/`:589`/`:1559` (inference, invariants), `internal/host/agents.go:208`/`:215` (converse), `internal/host/oracle_task_replay.go:85` (replay mode), `internal/host/handlers.go:228` (builtin classification table), `internal/orchestrator/host_dispatch.go:187` (record the class on the event).
+- **Code seams:** `internal/app/types.go` (effect fields on `HostInterfaceOp` and agent decl), `internal/app/loader.go:557`/`:589`/`:1559` (inference, invariants), `internal/host/agents.go:208`/`:215` (converse), `internal/host/agent_task_replay.go:85` (replay mode), `internal/host/handlers.go:228` (builtin classification table), `internal/orchestrator/host_dispatch.go:187` (record the class on the event).
 - **Vocabulary:** new `effect:` + `deterministic:` (table below); `external_side_effect: bool` becomes a deprecated alias.
 - **Stories affected:** the nine `external_side_effect:` declarations migrate (behavior-preserving — all run via `task` today). Host-call classifications are author-invisible defaults unless a story overrides via `host_interfaces:`.
 - **Backward compat:** alias kept one release with a warn-line; cassette `replay_mode` body values unchanged, so fixtures pass unmodified.
@@ -81,7 +81,7 @@ that jails the `write`/`external` tiers is [slice 3](task-fs-sandbox.md).
 | Kind | Name | Shape | Notes |
 |---|---|---|---|
 | effect field | `effect` | `pure \| read \| write \| external` | on a `HostInterfaceOp` / builtin verb / agent (agent = join over tools) |
-| effect field | `deterministic` | `bool` (default `true`) | false ⇒ re-running won't reproduce the result (every oracle/LLM call; live external reads) |
+| effect field | `deterministic` | `bool` (default `true`) | false ⇒ re-running won't reproduce the result (every agent/LLM call; live external reads) |
 | agent field (dep) | `external_side_effect` | `bool` | **deprecated alias** → `effect` (`true`→`external`; `false`→`write` if tools include a mutator, else `read`) |
 
 The effect ladder (each tier a superset of the last's blast radius):
@@ -119,8 +119,8 @@ Three consumers read the pair:
 | Consumer | Rule | Replaces |
 |---|---|---|
 | converse permission | read-only ⟺ `effect ≤ read` → bind allowlist + deny `readOnlyDeniedTools` | `agentIsReadOnly` (`agents.go:208`) |
-| task replay mode | `external`→Mode C (record-only); `write`→Mode A/B (diff/tarball); `pure`/`read`→Mode A, re-executable iff `deterministic` | `inferReplayMode` (`oracle_task_replay.go:85`) |
-| replay strategy (host calls) | `deterministic && effect ≤ read` ⇒ may re-execute on replay; else serve from recording; `external` ⇒ never re-run | *(new — non-oracle calls had none)* |
+| task replay mode | `external`→Mode C (record-only); `write`→Mode A/B (diff/tarball); `pure`/`read`→Mode A, re-executable iff `deterministic` | `inferReplayMode` (`agent_task_replay.go:85`) |
+| replay strategy (host calls) | `deterministic && effect ≤ read` ⇒ may re-execute on replay; else serve from recording; `external` ⇒ never re-run | *(new — non-agent calls had none)* |
 | cache (future) | `pure`+det ⇒ memoize by input; `pure`/`read` non-det ⇒ cache by input signature (cf. `turncache`); `write`/`external` ⇒ never | *(new)* |
 
 The first two consumers are rewritten in earnest by [slice
@@ -132,7 +132,7 @@ policy; this slice supplies the class they switch on.
 Host events (`HostInvoked`/`HostDispatched`/`HostReturned`,
 `internal/store/event.go:50`) gain the resolved `effect`/`deterministic` on
 dispatch, so a trace is self-describing for replay without re-deriving from the
-story. This is also what the [conformance check](oracle-contract-eval.md)
+story. This is also what the [conformance check](agent-contract-eval.md)
 audits against — the recorded class is the contract a run is checked to have
 honored. `task.end`'s existing `replay_mode` (`internal/journal/types.go:190`)
 is unchanged — its three values map 1:1 from the agent's joined effect class,
@@ -141,7 +141,7 @@ so existing cassettes stay valid. No new event kind.
 ## Engine seams & invariants
 
 - `agentIsReadOnly` ⇒ `effectClass(agent) <= read`; `converseToolPolicy`
-  (`agents.go:215`) and `inferReplayMode` (`oracle_task_replay.go:85`) switch on
+  (`agents.go:215`) and `inferReplayMode` (`agent_task_replay.go:85`) switch on
   the joined class instead of the boolean.
 - `inferExternalSideEffect` (`loader.go:589`) is rewritten to compute an effect
   class from the tool surface (it currently only sees WebFetch/WebSearch — it's
@@ -172,17 +172,17 @@ values stable).
 ```
 ## 1. Taxonomy + classification data
 - [ ] 1.1 Effect enum (pure|read|write|external) + deterministic bool; effect-join helper over a tool surface
-- [ ] 1.2 Builtin classification table for every verb (per-op for host.git/gh/local); default deterministic, oracle=false
+- [ ] 1.2 Builtin classification table for every verb (per-op for host.git/gh/local); default deterministic, agent=false
 - [ ] 1.3 `effect`/`deterministic` fields on HostInterfaceOp + agent decl (types.go); external_side_effect alias + warn-line
 
 ## 2. Wire the present consumers
 - [ ] 2.1 inferExternalSideEffect → effect-class inference (Write/Edit-aware); loader invariants (read+mutator hard-fail, disagreement warn)
-- [ ] 2.2 agentIsReadOnly / converseToolPolicy / inferReplayMode read the joined class (agents.go, oracle_task_replay.go)
+- [ ] 2.2 agentIsReadOnly / converseToolPolicy / inferReplayMode read the joined class (agents.go, agent_task_replay.go)
 - [ ] 2.3 Record effect/deterministic on Host* events (host_dispatch.go, event.go)
 
 ## 3. Verification
 - [ ] 3.1 Loader unit: effect inference across pure/read/write/external; read+Write hard-fails; alias maps both branches of `false`
-- [ ] 3.2 converse_tool_policy_test + oracle_task_replay test driven off effect class; cassette replay_mode values stable
+- [ ] 3.2 converse_tool_policy_test + agent_task_replay test driven off effect class; cassette replay_mode values stable
 - [ ] 3.3 Builtin table coverage test: every registered verb has a classification (fail if a new verb is unclassified)
 - [ ] 3.4 Full story load smoke post-migration
 
@@ -195,7 +195,7 @@ values stable).
 
 No LLM needed. Effect-join, loader invariants, and all three derivations are
 table-driven Go unit tests (`internal/app`, `internal/host`); the existing
-`converse_tool_policy_test.go` and `oracle_task_replay` tests extend directly.
+`converse_tool_policy_test.go` and `agent_task_replay` tests extend directly.
 A coverage test asserts every registered verb is classified, so a new builtin
 can't slip in unclassified. Cassette replay is unaffected (no `replay_mode`
 value change), so flow fixtures pass unmodified.
@@ -215,7 +215,7 @@ value change), so flow fixtures pass unmodified.
    when a real call needs it.*
 4. Scope of this slice — wire converse + replay-mode now (Phases 1–2), or
    also land the host-call replay-strategy consumer? *Lean: define the taxonomy
-   + record it on events now; the non-oracle replay/cache consumers land as
+   + record it on events now; the non-agent replay/cache consumers land as
    follow-ups once the data exists.*
 
 ## Non-goals

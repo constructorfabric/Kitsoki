@@ -1,9 +1,9 @@
 package host_test
 
 // prompt_extension_test.go — integration coverage for prompt extension at the
-// oracle-handler boundary: a prompt renderer injected via WithPromptRenderer
+// agent-handler boundary: a prompt renderer injected via WithPromptRenderer
 // makes a story's prompt {% extends %} an overlay (or fill blocks) end-to-end
-// through OracleAskHandler. We capture the rendered prompt the handler hands to
+// through AgentAskHandler. We capture the rendered prompt the handler hands to
 // the (stubbed) claude runner and assert on the COMBINED, post-extends text the
 // LLM would have seen — not a function return — per CLAUDE.md's multi-system
 // testing guidance.
@@ -39,13 +39,13 @@ func writeFile(t *testing.T, dir, rel, body string) {
 	}
 }
 
-// TestOracleAsk_OverlayExtendsThroughHandler is the end-to-end proof: the
+// TestAgentAsk_OverlayExtendsThroughHandler is the end-to-end proof: the
 // effect's prompt_path is unchanged (prompts/diagnose.md) but with an overlay
 // injected via WithPromptRenderer the handler resolves it overlay-first, the
 // overlay {% extends %} the story base, and the rendered prompt the runner
 // receives carries both the inherited structural text and the overlay's filled
 // block.
-func TestOracleAsk_OverlayExtendsThroughHandler(t *testing.T) {
+func TestAgentAsk_OverlayExtendsThroughHandler(t *testing.T) {
 	story := t.TempDir()
 	overlay := t.TempDir()
 
@@ -66,7 +66,7 @@ func TestOracleAsk_OverlayExtendsThroughHandler(t *testing.T) {
 	ctx := host.WithClaudeRunner(context.Background(), captureRunner(&captured))
 	ctx = host.WithPromptRenderer(ctx, pr)
 
-	res, err := host.OracleAskHandler(ctx, map[string]any{"prompt_path": "prompts/diagnose.md"})
+	res, err := host.AgentAskHandler(ctx, map[string]any{"prompt_path": "prompts/diagnose.md"})
 	if err != nil {
 		t.Fatalf("handler Go error: %v", err)
 	}
@@ -80,12 +80,12 @@ func TestOracleAsk_OverlayExtendsThroughHandler(t *testing.T) {
 	}
 }
 
-// TestOracleAsk_NoRenderer_ExtendsFails is the guard that the wiring is doing
+// TestAgentAsk_NoRenderer_ExtendsFails is the guard that the wiring is doing
 // the work: the SAME overlay prompt (which {% extends %} a story base) rendered
 // WITHOUT a prompt renderer in ctx — the legacy render.Pongo path with no
 // template root — cannot resolve the extends and errors. If this ever passes,
 // the feature has silently stopped depending on the injected renderer.
-func TestOracleAsk_NoRenderer_ExtendsFails(t *testing.T) {
+func TestAgentAsk_NoRenderer_ExtendsFails(t *testing.T) {
 	dir := t.TempDir()
 	// A prompt that extends another template; with no loader this can't resolve.
 	writeFile(t, dir, "p.md", `{% extends "@story/base.md" %}`+"\n"+`{% block x %}y{% endblock %}`)
@@ -94,7 +94,7 @@ func TestOracleAsk_NoRenderer_ExtendsFails(t *testing.T) {
 	ctx := host.WithClaudeRunner(context.Background(), captureRunner(&captured))
 	// No WithPromptRenderer — legacy path.
 
-	res, err := host.OracleAskHandler(ctx, map[string]any{"prompt_path": filepath.Join(dir, "p.md")})
+	res, err := host.AgentAskHandler(ctx, map[string]any{"prompt_path": filepath.Join(dir, "p.md")})
 	if err != nil {
 		t.Fatalf("handler Go error: %v", err)
 	}
@@ -106,10 +106,10 @@ func TestOracleAsk_NoRenderer_ExtendsFails(t *testing.T) {
 	}
 }
 
-// TestOracleAsk_NoOverlay_Inert: with a renderer but no overlay, a plain prompt
+// TestAgentAsk_NoOverlay_Inert: with a renderer but no overlay, a plain prompt
 // renders to exactly its content (args substituted) — the backward-compat
 // guarantee at the handler boundary.
-func TestOracleAsk_NoOverlay_Inert(t *testing.T) {
+func TestAgentAsk_NoOverlay_Inert(t *testing.T) {
 	story := t.TempDir()
 	writeFile(t, story, "prompts/p.md", "Plain prompt for {{ args.who }}.")
 
@@ -121,7 +121,7 @@ func TestOracleAsk_NoOverlay_Inert(t *testing.T) {
 	ctx := host.WithClaudeRunner(context.Background(), captureRunner(&captured))
 	ctx = host.WithPromptRenderer(ctx, pr)
 
-	res, err := host.OracleAskHandler(ctx, map[string]any{
+	res, err := host.AgentAskHandler(ctx, map[string]any{
 		"prompt_path": "prompts/p.md",
 		"args":        map[string]any{"who": "acme"},
 	})

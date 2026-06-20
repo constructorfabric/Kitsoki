@@ -28,12 +28,12 @@ host_handlers:
     data: { ok: true, connected: true }
   host.chat.resolve:
     data: { ok: true, chat_id: "chat-1", title: "PRD idea discovery", is_new: true }
-  host.oracle.converse:
+  host.agent.converse:
     data: { ok: true, answer: "A CLI for X.", chat_id: "chat-1", claude_session_id: "sess-1" }
   # references on_enter runs the optional semantic pre-seed; empty hits = no embeddings.
-  host.oracle.search:
+  host.agent.search:
     data: { hits: [] }
-  host.oracle.decide:
+  host.agent.decide:
     # The analyst decide fails → clarifying's on_error: . holds in place
     # with last_error set. by_call keys the failure on the invoke id
     # (analyst_questions) so only THIS call site errors.
@@ -47,7 +47,7 @@ host_handlers:
             overlaps: []
             roadmap_fit: "Greenfield — no existing PRD covers this."
       analyst_questions:
-        error: "host.oracle.decide: analyst session abandoned without successful submit"
+        error: "host.agent.decide: analyst session abandoned without successful submit"
   # search-confirm mints the per-PRD workspace before clarifying's analyst runs.
   host.run:
     by_call:
@@ -74,7 +74,7 @@ turns:
   - intent: { name: confirm, slots: {} }
     expect_state: clarifying
     expect_world:
-      last_error: "host.oracle.decide: analyst session abandoned without successful submit"
+      last_error: "host.agent.decide: analyst session abandoned without successful submit"
 
   # The operator skips past to the brief with what they have — the clean
   # exit clears last_error so it doesn't leak into brief's view.

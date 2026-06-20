@@ -11,7 +11,7 @@
 # the parent's exit mapping. The host game can also rebind the
 # `narrator` host_interface so encounter prose flows through whichever
 # voice / channel the host already uses (host.transport.post for a
-# diary, host.oracle.ask for a per-call LLM, plain host.run for a
+# diary, host.agent.ask for a per-call LLM, plain host.run for a
 # headless echo).
 app:
   id: robbery

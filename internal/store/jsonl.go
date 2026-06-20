@@ -360,7 +360,7 @@ func splitLines(data []byte) ([]json.RawMessage, error) {
 // traceEvent is the on-disk shape of a store.Event in the JSONL trace.
 // state_path and parent_turn are top-level fields written at event time by
 // the orchestrator; no exporter-side back-fill is needed or performed.
-// episode_id and match_idx are present only on cassette-backed OracleCalled
+// episode_id and match_idx are present only on cassette-backed AgentCalled
 // events; they enable post-resume reconstruction of per-episode match counters
 // so replay:any episodes produce collision-free call_ids after a reload.
 type traceEvent struct {

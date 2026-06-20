@@ -24,7 +24,7 @@ host_handlers:
   host.chat.resolve:
     data: { ok: true, chat_id: "chat-1", title: "discovery" }
 
-  host.oracle.converse:
+  host.agent.converse:
     by_call:
       distil_brief:
         data:
@@ -35,7 +35,7 @@ host_handlers:
             medium: "deck"
             notes: ""
 
-  host.oracle.decide:
+  host.agent.decide:
     by_call:
       brief_check:
         data: { ok: true, submitted: { verdict: "clarify", reason: "No scenarios named; 'the dashboard' is too vague.", questions: ["Which feature?", "Which scenarios?"] } }

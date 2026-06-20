@@ -7,7 +7,7 @@ initial_state: configuring
 
 host_handlers:
   host.run:           { data: { ok: false, exit_code: 1, stdout: "FAIL: still red" } }
-  host.oracle.task:   { data: { submitted: { summary: "another change" } } }
+  host.agent.task:   { data: { submitted: { summary: "another change" } } }
   host.artifacts_dir: { data: { ok: true } }
 
 turns:

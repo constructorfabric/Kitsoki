@@ -55,7 +55,7 @@ const CHAPTER_SOURCE = "features/agent-actions.yaml";
 const ADDR = demoAddr(7748);
 // Same server posture as the trace-features spec: the bugfix story under the
 // happy_llm flow + the demo cassette, so the trace carries real
-// oracle.call.complete events whose transcript_ref pointers back the drawer.
+// agent.call.complete events whose transcript_ref pointers back the drawer.
 const STORY_DIR = path.join(repoRoot, "stories", "bugfix");
 const FLOW = path.join(STORY_DIR, "flows", "happy_llm.yaml");
 const HOST_CASSETTE = path.join(STORY_DIR, "flows", "demo.cassette.yaml");
@@ -95,11 +95,11 @@ async function resolveTarget(page: Page, step: TourStep): Promise<Locator> {
 }
 
 /**
- * Poll the trace RPC until at least two oracle.call.complete events carry a
+ * Poll the trace RPC until at least two agent.call.complete events carry a
  * transcript_ref (the task + decide calls), so the tour never starts before the
  * drawer-backing data has settled. Deterministic replacement for a fixed sleep.
  */
-async function waitForOracleTranscripts(sessionId: string, timeoutMs: number): Promise<void> {
+async function waitForAgentTranscripts(sessionId: string, timeoutMs: number): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   let withRef = 0;
   while (Date.now() < deadline) {
@@ -110,17 +110,17 @@ async function waitForOracleTranscripts(sessionId: string, timeoutMs: number): P
       )
       .catch(() => ({ events: [] as Array<{ msg: string; attrs?: Record<string, unknown> }> }));
     withRef = (tr.events ?? []).filter(
-      (e) => e.msg === "oracle.call.complete" && !!(e.attrs && e.attrs["transcript_ref"])
+      (e) => e.msg === "agent.call.complete" && !!(e.attrs && e.attrs["transcript_ref"])
     ).length;
-    diag(`waitForOracleTranscripts: ${withRef} call(s) with transcript_ref`);
+    diag(`waitForAgentTranscripts: ${withRef} call(s) with transcript_ref`);
     if (withRef >= 2) return;
     await new Promise((r) => setTimeout(r, 500));
   }
-  throw new Error(`oracle transcripts never settled: only ${withRef} call(s) with transcript_ref after ${timeoutMs}ms`);
+  throw new Error(`agent transcripts never settled: only ${withRef} call(s) with transcript_ref after ${timeoutMs}ms`);
 }
 
 /**
- * Open the OracleDetail drawer for the oracle.call.complete whose captured
+ * Open the AgentDetail drawer for the agent.call.complete whose captured
  * transcript has `wantEvents` events. Strategy mirrors the trace spec's
  * row-clicking loop: expand trace-event-rows in turn, and for each one check
  * whether the now-visible agent-actions affordance reads "Agent actions
@@ -145,7 +145,7 @@ async function openDrawerForCall(page: Page, wantEvents: number): Promise<boolea
     // covers the trace rows, which intercepts hit-test clicks and times them
     // out. el.click() fires the row header's @click regardless of the backdrop.
     await header.evaluate((el) => (el as HTMLElement).click()).catch(() => undefined);
-    // The affordance only renders for oracle.call.complete rows that carry a
+    // The affordance only renders for agent.call.complete rows that carry a
     // transcript_ref. Look for the one whose badge count matches.
     const aff = page.getByTestId("agent-actions-affordance");
     const affCount = await aff.count();
@@ -311,7 +311,7 @@ test("agent action transcripts feature-spotlight video", async () => {
           } else if (step.advanceRoute === "any") {
             await page.waitForURL(/#\/s\/[0-9a-f-]{36}$/, { timeout: 15000 });
             if (sessionId) {
-              // On the observer now: patch the world + submit so BOTH oracle
+              // On the observer now: patch the world + submit so BOTH agent
               // calls (task + decide) complete AND carry a transcript_ref before
               // the drawer steps spotlight them. Poll the trace RPC to a deadline
               // rather than a flat sleep — the affordance never renders until the
@@ -335,7 +335,7 @@ test("agent action transcripts feature-spotlight video", async () => {
                 intent: "start",
                 slots: {},
               });
-              await waitForOracleTranscripts(sessionId, 40000);
+              await waitForAgentTranscripts(sessionId, 40000);
               // The RPC settle above proves the SERVER trace carries both
               // calls; the page renders them only after the next SSE poll
               // tick (500ms) plus a Vue frame. The drawer steps scan the
@@ -345,7 +345,7 @@ test("agent action transcripts feature-spotlight video", async () => {
               await expect(
                 page
                   .getByTestId("trace-event-row")
-                  .filter({ hasText: "oracle.decide" })
+                  .filter({ hasText: "agent.decide" })
                   .first()
               ).toBeVisible({ timeout: 15000 });
             }
@@ -386,7 +386,7 @@ test("agent action transcripts feature-spotlight video", async () => {
 });
 
 /**
- * Open the TASK call's OracleDetail by expanding its trace-event-row, so the
+ * Open the TASK call's AgentDetail by expanding its trace-event-row, so the
  * agent-actions-affordance (the aa-affordance step's target) is present for the
  * tour to click. Reuses openDrawerForCall's matching logic but stops BEFORE
  * clicking the affordance — the tour step itself performs that click.

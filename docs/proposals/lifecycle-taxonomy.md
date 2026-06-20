@@ -129,7 +129,7 @@ The two classic SDLC artifacts deliberately do **not** become objects here:
   `!include` resolution extracted from
   `internal/testrunner/cassette.go:291` (`resolveIncludes`) into a shared
   package both consumers use. Schema validation wired the same way as
-  `internal/host/oracle_extract_helpers.go:66` (`jsonSchemaValidate`).
+  `internal/host/agent_extract_helpers.go:66` (`jsonSchemaValidate`).
 - **Schemas:** `internal/lifecycle/schemas/{common,feature,proposal,plan,test-spec}-v1.json`,
   embedded via `go:embed`, `$id` convention per
   `internal/app/schemas/choice.schema.json`
@@ -203,7 +203,7 @@ title: Agent Actions drawer
 status: shipped          # idea | proposed | planned | in-progress | shipped
 summary: |
   Per-tool-call detail for every agent in the web UI: a drawer on each
-  oracle-call row showing the full action transcript.
+  agent-call row showing the full action transcript.
 help: !include help.md   # long-form operator help, edited as markdown
 composed_of:             # feature composition — an acyclic DAG, parent→child
   - web-agent-actions-drawer
@@ -222,7 +222,7 @@ tutorials:
       - title: Open a session with agent activity
         body: |
           From the home screen, pick any run whose transcript shows a
-          spinner row — that row is a live oracle call.
+          spinner row — that row is a live agent call.
         media:
           - kind: screenshot
             path: media/tutorial-step-1.png
@@ -315,24 +315,24 @@ tasks:
     title: Per-call transcript sidecar
     kind: runtime          # story | runtime | tui | tracing | test | docs
     goal: |
-      Every oracle call with raw events lands a sidecar keyed by call_id;
+      Every agent call with raw events lands a sidecar keyed by call_id;
       the trace carries a pointer only.
     depends_on: []
     risk: medium
     expected_files:        # the file-by-file contract
-      - path: internal/host/oracle_transcript.go
+      - path: internal/host/agent_transcript.go
         action: create     # create | modify | delete
         changes: |
           Sidecar writer: serialize `ClaudeRun.RawEvents` to
           `<trace-dir>/transcripts/<call_id>.jsonl`; fsync before the
           trace event referencing it is emitted.
-      - path: internal/host/oracle.go
+      - path: internal/host/agent.go
         action: modify
         changes: |
-          Thread the sidecar path into the `oracle.call.*` trace event as
+          Thread the sidecar path into the `agent.call.*` trace event as
           `transcript_ref`; no inlined detail.
     acceptance:
-      - Sidecar exists for every oracle call in a recorded run
+      - Sidecar exists for every agent call in a recorded run
       - Trace event carries transcript_ref and no inlined events
     test_specs: [web-agent-actions-spec]   # which TestSpecs this satisfies
     agent_brief: |
@@ -369,7 +369,7 @@ scenarios:
         produced_by: tools/runstatus/tests/playwright/agent-actions-video.spec.ts
   - id: streaming-update
     acceptance: streaming-rows-update
-    given: A live run with an in-flight oracle call
+    given: A live run with an in-flight agent call
     when: New tool calls stream in
     then: The open drawer appends rows without a reload.
     harness: flow
@@ -492,7 +492,7 @@ determinism tests passing unchanged
 2. **Unify Plan tasks with decomposition briefs** — should
    `schemas/decomposition.json` be retired in favor of `lifecycle/plan/v1`
    (the decompose story emits Plans), or do both shapes live? *Lean: unify;
-   the brief shape was designed to be emitted by an oracle and the Plan task
+   the brief shape was designed to be emitted by an agent and the Plan task
    is a superset — but the decompose story isn't built yet, so this is cheap
    to decide now and expensive later.*
 3. **Proposal migration posture** — new proposals authored as YAML-primary

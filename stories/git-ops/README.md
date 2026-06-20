@@ -1,9 +1,9 @@
 # git-ops — Interactive Git Workflow
 
-A guided, deterministic git workflow story: staging, commit (with oracle-authored
+A guided, deterministic git workflow story: staging, commit (with agent-authored
 message), rebase, squash-merge, worktree lifecycle, and conflict resolution.
 
-The oracle appears in exactly two cases: authoring a commit message and resolving
+The agent appears in exactly two cases: authoring a commit message and resolving
 a rebase/merge conflict. All other git operations are deterministic `host.run` shell calls.
 
 > **No auto-fetch:** Rebase targets the **local** integration ref. If your integration
@@ -37,7 +37,7 @@ None — git-ops is a standalone hub story with a terminal `done` state.
 | `integration_branch` | string | `main` | The long-lived branch to rebase and merge onto. |
 | `build_check_cmd` | string | `go build ./... && go test ./...` | Post-merge / post-conflict build gate. |
 | `build_check_disabled` | bool | `false` | Skip the build gate entirely. |
-| `refactor_mode` | bool | `false` | Signals the oracle to use `refactor` commit type. |
+| `refactor_mode` | bool | `false` | Signals the agent to use `refactor` commit type. |
 
 ## Hub routing
 
@@ -63,9 +63,9 @@ importing git-ops. See
 |---|---|
 | `rebase` | Rebase onto integration branch. Sets `rebase_done=true` on success. Auto-creates a backup tag for branches with >1 commit. |
 | `merge_into_main` | Merge into integration branch (requires `rebase_done=true`). Runs three guards before merging. |
-| `squash` | Squash all branch commits into one oracle-authored commit. |
+| `squash` | Squash all branch commits into one agent-authored commit. |
 | `stage` | Classify and stage changes. Flags suspicious files. |
-| `commit` | Oracle-authored conventional commit message. |
+| `commit` | Agent-authored conventional commit message. |
 | `undo` | Undo last commit (`--mixed`, `--soft`, or confirmed `--hard`). |
 | `worktree_list` | List and classify existing worktrees. |
 | `cleanup` | Remove worktree and branch. |
@@ -80,7 +80,7 @@ importing git-ops. See
 | `worktree_list` | List and classify existing worktrees. |
 | `cleanup` | Remove worktree and branch. |
 | `stage` | Classify and stage changes. |
-| `commit` | Oracle-authored conventional commit message. |
+| `commit` | Agent-authored conventional commit message. |
 | `undo` | Undo last commit. |
 
 ### Conflict resolution

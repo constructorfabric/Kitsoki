@@ -15,7 +15,7 @@ states:
                 - label: "illuminate"
                   hint: "a bare synonym → deterministic"
                 - label: "could you brighten this place up"
-                  hint: "a paraphrase → misses deterministic → oracle.local routes it to lamp_on"
+                  hint: "a paraphrase → misses deterministic → agent.local routes it to lamp_on"
                 - label: "lamp off / darken"
                   hint: "the off side, same idea"
           - heading: "A budget — slot_template (fills a slot)"

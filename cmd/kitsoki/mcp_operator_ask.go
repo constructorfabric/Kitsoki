@@ -3,7 +3,7 @@
 // Runs an MCP stdio server exposing one tool — by default named "ask" — that
 // forwards a multiple-choice question to the live kitsoki operator and returns
 // their answer to the calling model. It is the supported replacement for the
-// built-in AskUserQuestion tool, which is hard-denied on every oracle
+// built-in AskUserQuestion tool, which is hard-denied on every agent
 // subprocess (headless `claude -p` has no TTY, so AskUserQuestion auto-resolves
 // with empty answers — anthropics/claude-code#50728).
 //
@@ -12,7 +12,7 @@
 // the kitsoki host handler that spawned the agent, which surfaces it on the
 // web/TUI surface, collects the operator's answer, and returns it. The host side
 // of that socket is wired in phase 3; this subcommand is auto-attached by the
-// oracle dispatch layer (via --mcp-config) only when a live operator surface is
+// agent dispatch layer (via --mcp-config) only when a live operator surface is
 // attached to the session.
 //
 // Example claude --mcp-config entry:
@@ -39,7 +39,7 @@ import (
 	kitsokimcp "kitsoki/internal/mcp"
 )
 
-// operatorAskSocketEnv is the environment variable the oracle dispatch layer
+// operatorAskSocketEnv is the environment variable the agent dispatch layer
 // sets on the subprocess so the auto-attached server finds its per-call socket
 // without the MCP-config args needing to embed an absolute path.
 const operatorAskSocketEnv = "KITSOKI_OPERATOR_ASK_SOCK"
@@ -63,7 +63,7 @@ out / is cancelled, in which case an LLM-visible error is returned so the agent
 proceeds on its own).
 
 The socket path comes from --socket or, when omitted, the
-` + operatorAskSocketEnv + ` environment variable (set by the oracle dispatch
+` + operatorAskSocketEnv + ` environment variable (set by the agent dispatch
 layer on the subprocess).`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {

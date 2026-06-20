@@ -22,7 +22,7 @@ import (
 // text mis-routed). This test fails if ANY link in that chain breaks:
 //
 //	free text  →  default_intent routing tier  →  discuss/converse effect
-//	           →  host.oracle.converse  →  appendIDEAmbient  →  prompt to model
+//	           →  host.agent.converse  →  appendIDEAmbient  →  prompt to model
 //
 // The editor selection is injected onto the turn ctx exactly as the TUI does
 // (host.WithIDEAmbient), and a capturing ClaudeRunner records the prompt the
@@ -48,7 +48,7 @@ states:
       discuss:
         - target: .
           effects:
-            - invoke: host.oracle.converse
+            - invoke: host.agent.converse
               with:
                 question: "{{ slots.message }}"
 `
@@ -119,7 +119,7 @@ states:
       discuss:
         - target: .
           effects:
-            - invoke: host.oracle.converse
+            - invoke: host.agent.converse
               with:
                 question: "{{ slots.message }}"
 `

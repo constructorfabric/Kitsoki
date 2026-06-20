@@ -1,12 +1,12 @@
 // Package orchestrator — off-path runtime. See docs/stories/meta-mode.md
 // for the read-only off-path / meta agent narrative.
 //
-// Off-path is the global escape hatch: a free-form chat with the oracle
+// Off-path is the global escape hatch: a free-form chat with the agent
 // that DOES NOT mutate world or state. It is intentionally orthogonal to
 // the state machine — no Turn() is fired, no TransitionApplied event is
 // emitted, the journey state is inviolate.
 //
-// The orchestrator owns the chat-thread resolution and the host.oracle.converse
+// The orchestrator owns the chat-thread resolution and the host.agent.converse
 // invocation directly (no allow-list check on the app's `hosts:` block —
 // off-path is engine-provided, not app-provided). Events OffPathQuestion
 // and OffPathAnswer are appended for replay parity; OffPathEntered and
@@ -55,7 +55,7 @@ func offRampLockHeld(ctx context.Context) bool {
 	return v
 }
 
-// AskOffPath fires a single host.oracle.converse turn for an off-path question
+// AskOffPath fires a single host.agent.converse turn for an off-path question
 // against a per-session chat thread. It does NOT mutate world, advance the
 // state machine, or emit StateExited/StateEntered events.
 //
@@ -65,7 +65,7 @@ func offRampLockHeld(ctx context.Context) bool {
 // the user spoke; the error surfaces via the returned error.
 //
 // When no ChatStore is wired into the orchestrator, off-path runs in the
-// legacy oracle.talk path (no chat persistence) — the user still gets an
+// legacy agent.talk path (no chat persistence) — the user still gets an
 // answer, but there is no transcript history across turns.
 func (o *Orchestrator) AskOffPath(ctx context.Context, sid app.SessionID, question string) (string, error) {
 	// Default voice: the app's off_path: persona/agent (nil-safe).
@@ -84,7 +84,7 @@ func (o *Orchestrator) offPathVoice() offRampVoice {
 
 // offRampVoice is the persona/agent pair that styles an off-path or off-ramp
 // converse call. It exists so the off-ramp can override the off-path voice
-// per room (oracle_off_ramp.agent > off_path.agent), with persona winning
+// per room (agent_off_ramp.agent > off_path.agent), with persona winning
 // over agent within a single voice — mirroring AskOffPath's existing
 // precedence (see the args-build block below).
 type offRampVoice struct {
@@ -123,7 +123,7 @@ func (o *Orchestrator) askOffPathVoiced(ctx context.Context, sid app.SessionID, 
 		}
 	}
 
-	// Build args mirroring the dev-story oracle.yaml host.oracle.converse pattern.
+	// Build args mirroring the dev-story agent.yaml host.agent.converse pattern.
 	args := map[string]any{
 		"question": question,
 	}
@@ -140,7 +140,7 @@ func (o *Orchestrator) askOffPathVoiced(ctx context.Context, sid app.SessionID, 
 	// (--append-system-prompt [+ --model]); the agent: route keeps the
 	// persona text declared in one place (the agents block) rather than
 	// duplicated under off_path:. The voice is the app off_path: block for a
-	// typed /freeform entry, or the room's oracle_off_ramp: override for an
+	// typed /freeform entry, or the room's agent_off_ramp: override for an
 	// off-ramp entry (see maybeOffRamp).
 	if voice.persona != "" {
 		args["system_prompt"] = voice.persona
@@ -157,14 +157,14 @@ func (o *Orchestrator) askOffPathVoiced(ctx context.Context, sid app.SessionID, 
 	// resolved agent) without having to import the app package.
 	ctx = host.WithAgents(ctx, agentsForContext(o.def))
 	ctx = host.WithProviders(ctx, providersForContext(o.def))
-	// Off-path oracle calls honor the live harness selection too (see
+	// Off-path agent calls honor the live harness selection too (see
 	// host_dispatch.go).
-	backendName, activeProfile := o.resolveSelection(o.oracleBackendName)
-	ctx = host.WithOracleBackendNamed(ctx, backendName)
+	backendName, activeProfile := o.resolveSelection(o.agentBackendName)
+	ctx = host.WithAgentBackendNamed(ctx, backendName)
 	ctx = host.WithActiveProfile(ctx, activeProfile)
 	ctx = host.WithPromptRenderer(ctx, o.promptRenderer)
 	ctx = host.WithProjectContext(ctx, projectContextFor(o.def))
-	// Inject the live IDE link (nil-safe) so the off-path oracle subprocess
+	// Inject the live IDE link (nil-safe) so the off-path agent subprocess
 	// engages the same env-scrub gate as the main dispatch path.
 	ctx = host.WithIDELink(ctx, o.currentIDELink())
 
@@ -177,12 +177,12 @@ func (o *Orchestrator) askOffPathVoiced(ctx context.Context, sid app.SessionID, 
 
 	// Resolve the converse handler through the host registry when one is wired,
 	// so a deterministic stub (a --host-cassette dispatcher that Replace()d
-	// host.oracle.converse, or a flow host_handlers stub) intercepts the
+	// host.agent.converse, or a flow host_handlers stub) intercepts the
 	// off-path/off-ramp voice exactly like any other host.* call. Falling back
 	// to the package handler keeps the no-registry path (bare tests) working.
-	converse := host.OracleConverseHandler
+	converse := host.AgentConverseHandler
 	if o.hosts != nil {
-		if h, ok := o.hosts.Get("host.oracle.converse"); ok {
+		if h, ok := o.hosts.Get("host.agent.converse"); ok {
 			converse = h
 		}
 	}
@@ -199,7 +199,7 @@ func (o *Orchestrator) askOffPathVoiced(ctx context.Context, sid app.SessionID, 
 		}
 		o.logger.WarnContext(ctx, trace.EvOffPathAskError,
 			slog.String("session_id", string(sid)),
-			slog.String("phase", "oracle_talk"),
+			slog.String("phase", "agent_talk"),
 			slog.String("err", err.Error()),
 		)
 		return "", fmt.Errorf("orchestrator: AskOffPath: %w", err)
@@ -216,7 +216,7 @@ func (o *Orchestrator) askOffPathVoiced(ctx context.Context, sid app.SessionID, 
 		}
 		o.logger.WarnContext(ctx, trace.EvOffPathAskError,
 			slog.String("session_id", string(sid)),
-			slog.String("phase", "oracle_talk_domain"),
+			slog.String("phase", "agent_talk_domain"),
 			slog.String("err", res.Error),
 		)
 		return "", fmt.Errorf("orchestrator: AskOffPath: %s", res.Error)
@@ -252,7 +252,7 @@ const (
 	// off_path trigger string). This is the historical, implicit reason.
 	offPathReasonFreeform = "freeform"
 	// offPathReasonOffRamp labels an automatic off-ramp entry: a free-text
-	// no-match in a room that declared oracle_off_ramp.
+	// no-match in a room that declared agent_off_ramp.
 	offPathReasonOffRamp = "off_ramp"
 )
 
@@ -279,7 +279,7 @@ func (o *Orchestrator) MarkOffPathEntered(sid app.SessionID, fromState app.State
 }
 
 // markOffRampEntered appends an OffPathEntered event for an automatic off-ramp
-// entry — a free-text no-match in a room that declared oracle_off_ramp. The
+// entry — a free-text no-match in a room that declared agent_off_ramp. The
 // event mirrors MarkOffPathEntered but labels reason: "off_ramp" and records
 // the triggering no-match error code (UNKNOWN_INTENT / INTENT_UNKNOWN) plus the
 // router confidence, so a trace can tell why the turn went free-form. All three
@@ -310,7 +310,7 @@ func (o *Orchestrator) markOffRampEntered(ctx context.Context, sid app.SessionID
 const codeLLMClarification intent.ErrorCode = "LLM_CLARIFICATION"
 
 // isNoMatchCode reports whether code is a genuine "the user said something we
-// could not map to a declared intent" signal — the only class the oracle
+// could not map to a declared intent" signal — the only class the agent
 // off-ramp intercepts. There are three such entry points:
 //
 //   - LLM_CLARIFICATION — free-text path. The harness returned a ClarifyResponse
@@ -333,7 +333,7 @@ func isNoMatchCode(code intent.ErrorCode) bool {
 		code == codeLLMClarification
 }
 
-// maybeOffRamp is the single interception point for the oracle off-ramp,
+// maybeOffRamp is the single interception point for the agent off-ramp,
 // consulted immediately before each shared ModeRejected return that carries
 // ve.Code (the main-turn LLM path, the RunIntent path, and the ContinueTurn
 // path). Routing all three rejection sites through one helper keeps them from
@@ -341,13 +341,13 @@ func isNoMatchCode(code intent.ErrorCode) bool {
 //
 // It fires only when BOTH hold:
 //   - code is a genuine no-match (isNoMatchCode), AND
-//   - the resting state declared oracle_off_ramp (State.OracleOffRamp != nil,
+//   - the resting state declared agent_off_ramp (State.AgentOffRamp != nil,
 //     after the loader's normalize pass).
 //
 // On a hit it records an OffPathEntered event labeled reason: "off_ramp" with
 // the triggering code (markOffRampEntered), hands the user's ORIGINAL free
-// text to an oracle converse turn via askOffPathVoiced — honoring the room's
-// oracle_off_ramp voice over the app off_path: voice — and returns a
+// text to an agent converse turn via askOffPathVoiced — honoring the room's
+// agent_off_ramp voice over the app off_path: voice — and returns a
 // ModeOffPath outcome WITHOUT advancing the state machine (no Turn(), no
 // TransitionApplied) and WITHOUT mutating world. The resting state and its
 // menu are returned unchanged so the same options are there next turn.
@@ -374,7 +374,7 @@ func (o *Orchestrator) maybeOffRamp(
 		return nil, false
 	}
 	st := lookupStateByPath(o.def, state)
-	if st == nil || st.OracleOffRamp == nil {
+	if st == nil || st.AgentOffRamp == nil {
 		return nil, false
 	}
 	// The off-ramp needs the original free text to converse over. A no-match
@@ -421,22 +421,22 @@ func (o *Orchestrator) maybeOffRamp(
 }
 
 // offRampVoice resolves the converse voice for a room's off-ramp. The room's
-// oracle_off_ramp: agent/persona takes precedence over the app off_path:
+// agent_off_ramp: agent/persona takes precedence over the app off_path:
 // voice (mirroring the agent/persona precedence noted in meta-mode.md); an
 // empty field on the off-ramp falls back to the off_path: voice.
 func (o *Orchestrator) offRampVoice(st *app.State) offRampVoice {
 	base := o.offPathVoice()
-	if st == nil || st.OracleOffRamp == nil {
+	if st == nil || st.AgentOffRamp == nil {
 		return base
 	}
 	v := base
-	if st.OracleOffRamp.Persona != "" {
+	if st.AgentOffRamp.Persona != "" {
 		// An explicit off-ramp persona overrides both the off_path persona and
 		// agent (persona wins within a voice).
-		v.persona = st.OracleOffRamp.Persona
+		v.persona = st.AgentOffRamp.Persona
 		v.agent = ""
-	} else if st.OracleOffRamp.Agent != "" {
-		v.agent = st.OracleOffRamp.Agent
+	} else if st.AgentOffRamp.Agent != "" {
+		v.agent = st.AgentOffRamp.Agent
 		v.persona = ""
 	}
 	return v

@@ -11,15 +11,15 @@ app: ../app.yaml
 initial_state: design_search
 initial_world:
   judge_mode:         "human"
-  design_idea:      "Add a local model oracle sidecar."
+  design_idea:      "Add a local model agent sidecar."
   design_slug:      "lmo"
   design_workspace: "docs/proposals/.workspace/lmo"
   # Pre-populate the scout and researcher results so the confirm guard sees them.
-  # Seeding bypasses on_enter, so we inline the oracle results here.
+  # Seeding bypasses on_enter, so we inline the agent results here.
   design_existing_state:
     overlaps:
-      - { path: "docs/proposals/local-model-oracle.md", kind: "accepted", summary: "Already proposes a llama.cpp sidecar for routing/small-decide.", recommendation: "amend" }
-    roadmap_fit: "Duplicates the accepted local-model-oracle proposal."
+      - { path: "docs/proposals/local-model-agent.md", kind: "accepted", summary: "Already proposes a llama.cpp sidecar for routing/small-decide.", recommendation: "amend" }
+    roadmap_fit: "Duplicates the accepted local-model-agent proposal."
   design_existing_path:   "docs/proposals/.workspace/lmo/002-existing-state.md"
   design_references:
     items: []
@@ -31,7 +31,7 @@ host_handlers:
   # Stubs for design_refine on_enter (advanced to by change_existing)
   host.ide.open_file:
     data: { ok: true, connected: true }
-  host.oracle.task:
+  host.agent.task:
     by_call:
       refine_brief:
         data:
@@ -47,14 +47,14 @@ turns:
       design_overlap_decision: ""
     # The overlap is surfaced as a discrete "Overlap 1" kv (the golden-example
     # view change) so the operator can see the matching draft's path at a glance.
-    expect_view_matches: "Overlap 1.*local-model-oracle\\.md"
+    expect_view_matches: "Overlap 1.*local-model-agent\\.md"
 
   # Amend the existing proposal instead — records the decision + target,
   # advances to design_refine.
-  - intent: { name: change_existing, slots: { target: "docs/proposals/local-model-oracle.md" } }
+  - intent: { name: change_existing, slots: { target: "docs/proposals/local-model-agent.md" } }
     expect_state: design_refine
     expect_world:
       design_overlap_decision: "change_existing"
-      design_change_target:    "docs/proposals/local-model-oracle.md"
+      design_change_target:    "docs/proposals/local-model-agent.md"
 
 expect_no_errors: true

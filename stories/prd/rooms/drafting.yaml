@@ -1,6 +1,6 @@
 # drafting — generate the PRD, then checkpoint.
 #
-# on_enter runs the author (host.oracle.task) which writes the PRD to
+# on_enter runs the author (host.agent.task) which writes the PRD to
 # {{ workdir }}/{{ output_path }} and returns prd_artifact. The acceptance
 # schema requires needs_clarification + follow_up_questions so the author
 # can explicitly say "I need more input before this is solid" — surfaced
@@ -66,7 +66,7 @@ states:
           {% empty %}(no follow-ups){% endfor %}
         when: "world.prd_artifact.needs_clarification"
       - heading: "PRD"
-      - code: '{{ world.prd_artifact.summary_markdown|default:"(pending — oracle has not returned yet; the full PRD is written to the output file)" }}'
+      - code: '{{ world.prd_artifact.summary_markdown|default:"(pending — agent has not returned yet; the full PRD is written to the output file)" }}'
       - choice:
           mode: single
           prompt: "Actions"
@@ -107,7 +107,7 @@ states:
       # /reload re-renders the stored draft; `refine` clears prd_artifact (its
       # own bind) to force a fresh author run. clarify/restart_from re-enter
       # via clarifying, so drafting re-runs naturally when reached again.
-      - invoke: host.oracle.task
+      - invoke: host.agent.task
         id: prd_author
         once: true
         with:
@@ -156,7 +156,7 @@ states:
       # stored verdict short-circuits the re-run.
       - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
         once: true
-        invoke: host.oracle.decide
+        invoke: host.agent.decide
         id: judge_verdict
         with:
           agent: judge
@@ -272,7 +272,7 @@ states:
                 prd_diff_verdict: ""
             # Re-draft into 004-prd.next.md — do NOT clobber the live 004-prd.md,
             # so the diff has a real before/after.
-            - invoke: host.oracle.task
+            - invoke: host.agent.task
               id: prd_author_refine
               with:
                 agent: author

@@ -1,5 +1,5 @@
-// Package host — Bash tool restriction profiles for host.oracle.ask and
-// host.oracle.decide.
+// Package host — Bash tool restriction profiles for host.agent.ask and
+// host.agent.decide.
 //
 // Three profiles restrict what Bash commands an LLM agent may run inside an
 // ask/decide call. The profile is applied by the

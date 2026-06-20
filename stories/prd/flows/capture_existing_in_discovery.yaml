@@ -19,7 +19,7 @@ initial_world:
 host_handlers:
   host.chat.resolve:
     data: { ok: true, chat_id: "chat-1", title: "PRD idea discovery", is_new: true }
-  host.oracle.converse:
+  host.agent.converse:
     data: { ok: true, answer: "Got it — I'll factor that in.", chat_id: "chat-1", claude_session_id: "sess-1" }
 
 turns:

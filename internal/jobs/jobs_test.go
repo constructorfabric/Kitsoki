@@ -103,7 +103,7 @@ func TestCancel(t *testing.T) {
 }
 
 // TestSubmit_SurvivesCallerContextCancel is the regression for the silent
-// bugfix-pipeline hang: a background oracle.decide job died with
+// bugfix-pipeline hang: a background agent.decide job died with
 // "context canceled" ~96ms after starting because its context was a child of
 // the submitting turn's ctx. In web mode that ctx is the per-turn HTTP request
 // context, cancelled the instant the turn handler returns — so the job the room
@@ -119,7 +119,7 @@ func TestSubmit_SurvivesCallerContextCancel(t *testing.T) {
 	callerCtx, cancelCaller := context.WithCancel(context.Background())
 
 	id, err := sched.Submit(callerCtx, jobs.JobSpec{
-		Kind: "host.oracle.decide",
+		Kind: "host.agent.decide",
 		Handler: func(ctx context.Context, args map[string]any) (host.Result, error) {
 			select {
 			case <-ctx.Done():

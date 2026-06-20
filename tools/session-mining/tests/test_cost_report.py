@@ -2,7 +2,7 @@
 """Tests for cost_report.py — the per-story savings driver. NO LLM, no network.
 
 Covers the two halves it joins:
-  * read_story_cost — sums oracle.cost_usd from a story's host cassette(s) and
+  * read_story_cost — sums agent.cost_usd from a story's host cassette(s) and
     flags authored (record_mode none) numbers.
   * baseline_from_corpus — scopes synthetic transcripts by a profile, attributes
     per-operation real cost, drops fixture/synthetic + dispatched-agent sessions,
@@ -64,7 +64,7 @@ def run():
           or cr._pct([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 0.9) == 9,
           "p90 nearest-rank picks the top of a 10-sample")
 
-    # --- read_story_cost: sum oracle costs from a cassette, flag authored ----
+    # --- read_story_cost: sum agent costs from a cassette, flag authored ----
     with tempfile.TemporaryDirectory() as d:
         cdir = os.path.join(d, "flows", "cassettes")
         os.makedirs(cdir)
@@ -74,8 +74,8 @@ def run():
             "episodes:",
             "  - id: a",
             "    match:",
-            "      handler: host.oracle.decide",
-            "    oracle:",
+            "      handler: host.agent.decide",
+            "    agent:",
             '      model: "claude-sonnet-4-6"',
             "      cost_usd: 0.0121",
             # the embedded transcript carries a DIFFERENT key in quoted JSON — must
@@ -83,8 +83,8 @@ def run():
             "      response: '{\"total_cost_usd\":0.0121}'",
             "  - id: b",
             "    match:",
-            "      handler: host.oracle.task",
-            "    oracle:",
+            "      handler: host.agent.task",
+            "    agent:",
             '      model: "claude-sonnet-4-6"',
             "      cost_usd: 0.0834",
             "",
@@ -92,15 +92,15 @@ def run():
         with open(os.path.join(cdir, "demo.cassette.yaml"), "w") as fh:
             fh.write(cass)
         sc = cr.read_story_cost(d)
-    approx(sc.usd, 0.0955, "story cost = sum of the two oracle cost_usd")
-    check(sc.oracle_calls == 2, "two oracle calls, got %d" % sc.oracle_calls)
+    approx(sc.usd, 0.0955, "story cost = sum of the two agent cost_usd")
+    check(sc.agent_calls == 2, "two agent calls, got %d" % sc.agent_calls)
     check(not sc.recorded, "record_mode none must flag authored (recorded=False)")
     check(sc.measured, "measured must be True when costs were found")
     check(sc.models == {"claude-sonnet-4-6"}, "model captured: %r" % sc.models)
-    check([h for h, _ in sc.breakdown] == ["host.oracle.decide", "host.oracle.task"],
+    check([h for h, _ in sc.breakdown] == ["host.agent.decide", "host.agent.task"],
           "breakdown handlers in order: %r" % sc.breakdown)
 
-    # a story with no cassette -> not measured (deterministic-only, unknown oracle)
+    # a story with no cassette -> not measured (deterministic-only, unknown agent)
     with tempfile.TemporaryDirectory() as d:
         empty = cr.read_story_cost(d)
     check(not empty.measured, "no cassette -> not measured")
@@ -127,7 +127,7 @@ def run():
                           "cache_read_input_tokens": 0,
                           "cache_creation_input_tokens": 0}}},
         ])
-        # C: a dispatched agent/oracle session (entrypoint != cli) — dropped before
+        # C: a dispatched agent/agent session (entrypoint != cli) — dropped before
         # parsing, even though it git-commits.
         _write(os.path.join(proj, "agent.jsonl"), [
             {"type": "user", "entrypoint": "sdk-cli", "message": {"content": "git commit"}},

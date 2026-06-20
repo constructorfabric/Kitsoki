@@ -9,7 +9,7 @@
 kitsoki's core architectural commitment is "every interpretive decision is a
 labeled datapoint → self-improvement"
 (`feedback_kitsoki_moat_is_architecture`). The trace already records the
-decisions (`machine.gate_decided`, oracle calls, routing). What's missing is
+decisions (`machine.gate_decided`, agent calls, routing). What's missing is
 the **label**: there is no human-annotation, score, or feedback event
 anywhere in the system — a repo-wide search finds none
 (`internal/store/event.go` has no `*Score`/`*Annotation` kind; "annotation"
@@ -28,7 +28,7 @@ training/eval datapoint, the raw material the moat promises to learn from.
 
 One sentence: **add a read-only `trace.annotation` event kind — an operator
 attaches a `{target_call_id|target_turn, score?, label?, comment?}` to a
-gate/turn/oracle-call from the runstatus viewer, recorded as operator
+gate/turn/agent-call from the runstatus viewer, recorded as operator
 metadata in a trace-adjacent annotation stream, never mutating the story
 trace or advancing the machine.**
 
@@ -75,7 +75,7 @@ replayable, and meta-mode's read-only invariant
 | `trace.annotation` | operator submits an annotation from the viewer | `target_call_id` **or** `(session_id, turn)`; optional `score` (numeric), `label` (string/enum), `comment`; `annotator`; `ts` |
 
 A target is identified the same way the viewer already pairs events — by
-`call_id` for an oracle call/gate, or `(session_id, turn)` for a whole turn.
+`call_id` for an agent call/gate, or `(session_id, turn)` for a whole turn.
 Multiple annotations per target are allowed (append-only); the viewer shows
 the latest or all, per Open question 2.
 
@@ -161,7 +161,7 @@ evolve without breaking older sidecars.
 
 - **Auto-scoring / LLM-as-judge evaluators.** This slice is *human*
   annotation. Programmatic evaluators that score traces automatically are a
-  separate capability (and overlap `oracle-contract-eval.md`'s Layer-2
+  separate capability (and overlap `agent-contract-eval.md`'s Layer-2
   correctness eval) — out of scope here.
 - **Cross-run aggregation / an eval dashboard.** Turning the annotation
   streams into a training/eval dataset is the downstream payoff, a separate

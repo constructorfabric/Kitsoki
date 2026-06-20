@@ -184,11 +184,11 @@ func parseDiffVerdict(payload any, text string) any {
 // Best-effort: a nil sink (flow tests, headless) is a silent no-op, never a
 // reason to fail the host call.
 func emitDiffGateDecided(ctx context.Context, surface, verdict string, diffArgs map[string]any) {
-	sink := EventSinkFromOracleCtx(ctx)
+	sink := EventSinkFromAgentCtx(ctx)
 	if sink == nil {
 		return
 	}
-	oc := OracleCallCtxFrom(ctx)
+	oc := AgentCallCtxFrom(ctx)
 	body := map[string]any{
 		"state":             string(oc.StatePath),
 		"decider":           "human",

@@ -14,7 +14,7 @@ import (
 )
 
 // ExampleController_Send is the typed-seam worked example: enter an
-// "edit" mode, send one turn through a fake oracle and an in-memory chat
+// "edit" mode, send one turn through a fake agent and an in-memory chat
 // store, and read the SendResult — the same Enter → Send shape the TUI
 // drives, with the orchestrator never touched.
 func ExampleController_Send() {
@@ -42,7 +42,7 @@ func ExampleController_Send() {
 		Chats:  &exampleChatStore{},
 		Agents: reg,
 		AppDef: def,
-		Oracle: exampleOracle{reply: "Renamed the foyer to atrium."},
+		Agent:  exampleAgent{reply: "Renamed the foyer to atrium."},
 		Clock:  func() time.Time { return time.Unix(0, 0).UTC() },
 	}
 
@@ -70,11 +70,11 @@ func ExampleController_Send() {
 	// reloadRequested: false
 }
 
-// exampleOracle is a fake OracleCaller that returns a fixed reply and
+// exampleAgent is a fake AgentCaller that returns a fixed reply and
 // echoes the session id, standing in for the claude shellout.
-type exampleOracle struct{ reply string }
+type exampleAgent struct{ reply string }
 
-func (o exampleOracle) Ask(_ context.Context, in metamode.AskInput) (metamode.AskOutput, error) {
+func (o exampleAgent) Ask(_ context.Context, in metamode.AskInput) (metamode.AskOutput, error) {
 	return metamode.AskOutput{Reply: o.reply, NewClaudeSessionID: in.ClaudeSessionID}, nil
 }
 

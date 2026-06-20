@@ -74,7 +74,7 @@ kitsoki session continue --app stories/fix-tests/app.yaml --id <sid> \
 This story is **not importable** — it has no `exits:`, `host_interfaces:`, or
 `world_in:` contract. It is a top-level app driven by `make fix-tests`.
 
-Hosts used: `host.run`, `host.oracle.task`, `host.inbox.add`.
+Hosts used: `host.run`, `host.agent.task`, `host.inbox.add`.
 
 ## Tests
 

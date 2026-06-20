@@ -1,18 +1,18 @@
 # Tracing: agent action transcripts — full per-call tool-use detail in the web UI
 
 **Status:** Draft v1. Nothing implemented yet.
-**Kind:**   tracing (with a runtime sub-slice: an Oracle-interface capability — see Decomposition)
+**Kind:**   tracing (with a runtime sub-slice: an Agent-interface capability — see Decomposition)
 **Epic:**   — standalone (sibling of [`trace-introspection.md`](trace-introspection.md); see "Relationship to trace-introspection")
 
 ## Why
 
-**Every oracle verb — not just `task` — produces a rich execution transcript,
+**Every agent verb — not just `task` — produces a rich execution transcript,
 and an operator reviewing the run in `runstatus` can see none of it.** A
-`host.oracle.task` agent (the bugfix autofix agent, the proposal `draft` agent)
+`host.agent.task` agent (the bugfix autofix agent, the proposal `draft` agent)
 executes a long chain of `Read` / `Grep` / `Edit` / `Bash` / sub-`Task` calls.
 But a `decide` call is just as rich: it auto-attaches the kitsoki **mcp-validator**
 (`submit()`) and, when bash is enabled, the **`kitsoki-bash` MCP server**
-(`internal/host/oracle_decide.go:185,176`), so the model's stream is full of MCP
+(`internal/host/agent_decide.go:185,176`), so the model's stream is full of MCP
 `tool_use` blocks plus its own reasoning prose before it submits. `ask` and
 `converse` likewise emit assistant **thinking/narration** and any tool calls
 their agent surface allows. This is not a `task`-only feature — *any* verb whose
@@ -21,9 +21,9 @@ operator is the claude CLI produces tool-use, thinking, and MCP-call detail.
 The reason it's invisible is that this detail is captured and then either rolled
 up to names-only or discarded entirely:
 
-- For `task`, the detail pane shows the rolled-up `oracle.task.complete` with a
+- For `task`, the detail pane shows the rolled-up `agent.task.complete` with a
   list of tool *names* and a ≤200-rune `input_preview` each
-  (`internal/host/oracle_task_transport.go:96`, surfaced by
+  (`internal/host/agent_task_transport.go:96`, surfaced by
   `internal/runstatus/trace.go:179` `AggregateTaskDetails`). The full inputs (the
   command that ran, the file edited, the diff), the full outputs (bash stdout,
   file contents read), and the reasoning prose are **dropped**.
@@ -39,15 +39,15 @@ idea #7) flagged "richer I/O rendering … on-demand sidecar fetch" as the cheap
 polish we were missing.
 
 The striking part: **we already capture everything we need and throw it away.**
-The host runs claude with "stream-json everywhere" (`oracle_runner.go:76,124`):
+The host runs claude with "stream-json everywhere" (`agent_runner.go:76,124`):
 `runClaudeOneShot` rewrites *every* call to `--output-format stream-json` and
-`runClaudeStreamJSON` (`oracle_runner.go:283`) parses each JSONL line into
-`ClaudeRun.RawEvents []json.RawMessage` (`oracle_runner.go:37`) — the *complete,
+`runClaudeStreamJSON` (`agent_runner.go:283`) parses each JSONL line into
+`ClaudeRun.RawEvents []json.RawMessage` (`agent_runner.go:37`) — the *complete,
 untruncated* claude transcript, including every `tool_use` input, `tool_result`
 content block, and assistant thinking block. This holds for `task`, `ask`,
 `decide`, and `converse` alike; the lone exception is an explicit
 `--output-format json` request (ask_with_mcp's `stdout_json` envelope binding,
-`oracle_runner.go:104`), which stays buffered and yields only the final result
+`agent_runner.go:104`), which stays buffered and yields only the final result
 envelope. After extracting the final reply, token usage, and the 200-rune
 previews, **`RawEvents` is dropped on the floor** — surfaced as names-only for
 `task`, and not at all for the other verbs. The "existing claude jsonl" the
@@ -63,24 +63,24 @@ Two constraints from the request shape the design:
    [`trace-annotation.md`](trace-annotation.md) uses for operator annotations,
    and the same mechanism `internal/runstatus/artifact.go:135` already uses to
    keep large prompt text out of the snapshot JSON.
-2. **Make it part of the Oracle interface.** Today only the claude backend
+2. **Make it part of the Agent interface.** Today only the claude backend
    produces this stream. The local-model backend
-   (`internal/oracle/local_llm.go`) and any subprocess / MCP-HTTP plugin must be
+   (`internal/agent/local_llm.go`) and any subprocess / MCP-HTTP plugin must be
    able to surface their own backend-native execution detail through one
    contract, so "fully understand the actions of every agent" holds regardless
    of which operator answered the call.
 
 ## What changes
 
-One sentence: **capture each oracle call's native execution transcript — the
+One sentence: **capture each agent call's native execution transcript — the
 claude stream-json we already parse, the OpenAI request/response for
 `local_llm`, whatever a subprocess plugin chooses to emit — into a per-call
 *sidecar transcript artifact* keyed by the deterministic `call_id`, reference it
-from `oracle.call.complete` with a single `transcript_ref` pointer (no detail
+from `agent.call.complete` with a single `transcript_ref` pointer (no detail
 inlined), and render it in `runstatus` as an on-demand "Agent actions" timeline
 drawer with per-tool-call input/output fidelity.**
 
-The Oracle contract gains one optional seam (`AskResponse.Transcript`, the
+The Agent contract gains one optional seam (`AskResponse.Transcript`, the
 sidecar-bound sibling of the existing `SubEvents`); the host claude path tees
 the `RawEvents` it already has into the same sidecar writer; everything else is
 a new consumer of data we start persisting.
@@ -88,17 +88,17 @@ a new consumer of data we start persisting.
 ## Impact
 
 - **Producers:**
-  - `internal/oracle/oracle.go` — `AskResponse` gains an optional
+  - `internal/agent/agent.go` — `AskResponse` gains an optional
     `Transcript *Transcript` field (out-of-`host` backends carry detail up to
     the dispatcher this way). Mirrors `SubEvents` but is sidecar-bound, not
     trace-bound.
-  - `internal/host/oracle_runner.go` — the claude path writes
+  - `internal/host/agent_runner.go` — the claude path writes
     `ClaudeRun.RawEvents` (already captured) to the sidecar via a new
     `TranscriptWriter` pulled from context (mirrors the `StreamSink` seam at
     `internal/host/stream_sink.go:89`).
-  - `internal/oracle/local_llm.go` — populates `AskResponse.Transcript` from its
+  - `internal/agent/local_llm.go` — populates `AskResponse.Transcript` from its
     one request/response pair (and any `tool_calls`).
-  - Oracle dispatch (where `oracle.call.complete` is emitted) — writes the
+  - Agent dispatch (where `agent.call.complete` is emitted) — writes the
     sidecar, attaches `transcript_ref` to the event.
 - **Consumers:**
   - `internal/runstatus/server` — new JSON-RPC method
@@ -106,12 +106,12 @@ a new consumer of data we start persisting.
   - `tools/runstatus/src/data/source.ts` — `getTranscript(sessionId, callId)`
     on both `LiveSource` and `SnapshotSource`.
   - `tools/runstatus/src/components/` — a new `AgentActions.vue` timeline;
-    `OracleDetail` gains an "Agent actions" affordance when `transcript_ref` is
+    `AgentDetail` gains an "Agent actions" affordance when `transcript_ref` is
     present.
   - `internal/runstatus/artifact.go` — static-export inlining of transcript
     sidecars (same path as prompt sidecars today).
 - **Format:** per-call sidecar files under `<run>.transcripts/<call_id>.jsonl`;
-  one new **pointer-only** attr (`transcript_ref`) on `oracle.call.complete`. No
+  one new **pointer-only** attr (`transcript_ref`) on `agent.call.complete`. No
   new event *kinds* in the story trace; no inlined detail.
 - **Backward compat:** total. A run with no transcripts dir renders exactly as
   today (no "Agent actions" affordance). Old cassettes replay unchanged.
@@ -231,7 +231,7 @@ Two forms exist and matter:
   `{"type":"assistant","message":{"content":[{"type":"text"|"tool_use",…}]}}`,
   `{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":…}]}}`,
   `{"type":"result","subtype":"success","result":…,"usage":…,"total_cost_usd":…}`.
-  `oracle_runner.go:269` already documents and parses exactly these shapes
+  `agent_runner.go:269` already documents and parses exactly these shapes
   (and the research confirms a `parent_tool_use_id` on assistant events that
   marks **subagent/nested** tool use — useful for the drawer's nesting). This is
   the recommended source: in-process, real-time, no session-persistence
@@ -241,8 +241,8 @@ Two forms exist and matter:
   where `<cwd-slug>` is the working dir with path separators → hyphens):
   richer per-line records (`uuid`, `parentUuid`, `sessionId`, `cwd`, `gitBranch`,
   `version`, `message` in Anthropic shape, top-level `toolUseResult`,
-  `isSidechain` for sub-agents, `summary` compaction records). The oracle agent
-  path *does* mint/resume a claude session (`oracle_ask_with_mcp.go:631`
+  `isSidechain` for sub-agents, `summary` compaction records). The agent agent
+  path *does* mint/resume a claude session (`agent_ask_with_mcp.go:631`
   `--session-id` / `--resume`), so this file exists for `task` runs and is a
   possible *enrichment* source. But it is **partly reverse-engineered** (no
   official schema; `type` values and `toolUseResult` shape drift across CLI
@@ -275,7 +275,7 @@ command+output for `Bash`) and build the viewer native.
 ### OpenAI / llama.cpp tool shape (cross-backend confirmation)
 
 In the OpenAI-compatible chat-completions response that `local_llm` already
-parses (`internal/oracle/local_llm.go:99`), tool calls surface as a
+parses (`internal/agent/local_llm.go:99`), tool calls surface as a
 `message.tool_calls` array — OpenAI's shape is `{id, type:"function",
 function:{name, arguments}}` where `arguments` is a **JSON-encoded string**, and
 streaming deltas arrive as `delta.tool_calls[]` fragments concatenated by
@@ -326,10 +326,10 @@ no per-tool connector); the things to keep bespoke are the **viewer** and the
 
 The story trace gains **only a pointer**. The detail lives in the sidecar.
 
-Pointer on `oracle.call.complete` (story `*.jsonl`):
+Pointer on `agent.call.complete` (story `*.jsonl`):
 
 ```jsonc
-{ "msg": "oracle.call.complete", "ts": "2026-06-09T18:22:04Z",
+{ "msg": "agent.call.complete", "ts": "2026-06-09T18:22:04Z",
   "attrs": { "call_id": "2d8e4fbb0a78646d", "verb": "task", "agent": "autofix",
              "model": "claude-…", "duration_ms": 8123,
              "meta": { "input_tokens": 1200, "output_tokens": 640, "cost_usd": 0.04 },
@@ -378,15 +378,15 @@ the transcript it is recorded into the cassette and replayed verbatim (see
 
 | Artifact | When written | Key fields |
 |---|---|---|
-| `transcript_ref` (trace attr) | at `oracle.call.complete` | `format`, `path`, `events`, `schema_version` — pointer only |
+| `transcript_ref` (trace attr) | at `agent.call.complete` | `format`, `path`, `events`, `schema_version` — pointer only |
 | `<call_id>.jsonl` (sidecar) | per call, if transcript present | backend-native events, verbatim |
 | `<call_id>.timings` (sidecar) | per call, with the transcript | event-index → ms-offset; powers the waterfall, kept out of the verbatim stream |
 
 ### The `decide` submit → validate → nudge cycle (a first-class case)
 
 The generic retry/error surfacing above (`api_retry`, `tool_result.is_error`)
-does **not** capture the most diagnostic part of an `oracle.decide` call, because
-of how the loop is built (`internal/host/oracle_decide.go:483`
+does **not** capture the most diagnostic part of an `agent.decide` call, because
+of how the loop is built (`internal/host/agent_decide.go:483`
 `runDecideWithValidatorRetryLoop`):
 
 - A single decide `call_id` is **several claude sessions**, not one — an outer
@@ -399,7 +399,7 @@ of how the loop is built (`internal/host/oracle_decide.go:483`
 - On rejection (or an abandoned turn), the host injects a **nudge**
   (`renderDecideNudge` / `decideAbandonmentNudgeTemplate:758,59`) carrying the
   last rejection reason, as the **stdin of the next `--resume`**
-  (`oracle_decide.go:523`).
+  (`agent_decide.go:523`).
 
 The trap: in `-p` stream-json, the input prompt is *not* echoed back as an event,
 so a pure `RawEvents` tee captures the `submit`, the reasoning, and the result —
@@ -435,10 +435,10 @@ verdict" is visible at a glance.
 {"type":"result","subtype":"success","result":"refund","usage":{"input_tokens":1400,"output_tokens":320},"total_cost_usd":0.03}
 ```
 
-The Oracle-interface seam:
+The Agent-interface seam:
 
 ```go
-// oracle.go — AskResponse gains (sidecar-bound sibling of SubEvents):
+// agent.go — AskResponse gains (sidecar-bound sibling of SubEvents):
 type Transcript struct {
     Format string            // "claude-stream-json" | "openai-chat" | "<plugin>"
     Events []json.RawMessage // backend-native, verbatim, one per line
@@ -459,16 +459,16 @@ reads is the least deterministic data in the system, so it must **never be
 re-executed on replay; it is replayed from the cassette.**
 
 - `call_id` is already deterministic (`internal/host/callid.go`,
-  `sha256("oracle-call:"+appID+":"+episodeID)[:16]` under replay), so the
+  `sha256("agent-call:"+appID+":"+episodeID)[:16]` under replay), so the
   sidecar filename is stable and pairs with the trace pointer by value alone.
-- **Cassette fidelity:** `EpisodeOracle` (`internal/testrunner/cassette.go:75`)
+- **Cassette fidelity:** `EpisodeAgent` (`internal/testrunner/cassette.go:75`)
   gains an optional `transcript:` block (or an `!include`d sidecar). On replay,
   the recorded transcript is written to the sidecar verbatim — the run is
   byte-identical, and the "Agent actions" drawer shows the recorded actions. No
   live tool ever runs.
 - Live capture writes the real `RawEvents`; record mode (`new_episodes`) folds
   them into the episode. This matches the existing usage/cost capture flow
-  (`recordOracleUsage`) — transcript is one more recorded-and-replayed artifact.
+  (`recordAgentUsage`) — transcript is one more recorded-and-replayed artifact.
 - **Capture-time stamps are recorded, never regenerated.** The waterfall's
   per-step latency comes from offsets stamped at the `TranscriptWriter` tee and
   folded into the episode alongside the transcript; on replay they are written to
@@ -483,10 +483,10 @@ re-executed on replay; it is replayed from the cassette.**
 
 ## Producers & consumers
 
-- **Producer (claude):** `oracle_runner.go` already holds the complete stream;
+- **Producer (claude):** `agent_runner.go` already holds the complete stream;
   the base case is "if a `TranscriptWriter` is in ctx, hand it `RawEvents`" — no
   new parsing. The one richer producer is the **decide loop**
-  (`oracle_decide.go:483`): it accumulates `RawEvents` across every `--resume`
+  (`agent_decide.go:483`): it accumulates `RawEvents` across every `--resume`
   outer iteration under the one `call_id`, and writes the synthetic `_kitsoki`
   nudge / validator-reject boundary events the raw stream omits (see §"The
   `decide` submit → validate → nudge cycle").
@@ -496,7 +496,7 @@ re-executed on replay; it is replayed from the cassette.**
 - **Consumer (server):** `runstatus.session.transcript {call_id}` reads the
   sidecar lazily; never loaded into the snapshot wholesale (a `task` run can be
   megabytes).
-- **Consumer (SPA):** `OracleDetail` shows an "Agent actions (42)" affordance
+- **Consumer (SPA):** `AgentDetail` shows an "Agent actions (42)" affordance
   when `transcript_ref` is present; clicking fetches and renders the drawer. The
   same drawer serves every verb, and static export inlines the sidecar the same
   way `artifact.go:135` inlines prompts. What it renders reproduces — over data
@@ -533,17 +533,17 @@ re-executed on replay; it is replayed from the cassette.**
 
 - Old story traces: no `transcript_ref` → no affordance. Unchanged.
 - Old cassettes: no `transcript:` block → replay as today, drawer absent.
-- New `AskResponse.Transcript` is optional; existing oracle backends and the
+- New `AskResponse.Transcript` is optional; existing agent backends and the
   subprocess/HTTP wire are unaffected when it is nil.
 - Story `*.jsonl` schema is **unchanged except one additive optional attr** — no
   new event kinds, honoring "don't add detail to the trace yet."
 
 ## Fixtures / golden traces
 
-- A flow fixture running a `host.oracle.task` agent under a cassette whose
+- A flow fixture running a `host.agent.task` agent under a cassette whose
   episode carries a recorded `transcript:` — assert the sidecar is written
   byte-for-byte and `transcript_ref.events` matches.
-- A runstatus snapshot test: `OracleDetail` renders the affordance + count from
+- A runstatus snapshot test: `AgentDetail` renders the affordance + count from
   `transcript_ref`; `AgentActions.vue` unit test renders a tool_use/tool_result
   pair (input collapsible, output shown).
 - A `local_llm` unit test asserting `AskResponse.Transcript` round-trips the
@@ -552,8 +552,8 @@ re-executed on replay; it is replayed from the cassette.**
 ## Tasks
 
 ```
-## 1. Oracle-interface seam (runtime sub-slice)
-- [ ] 1.1 Add Transcript type + optional AskResponse.Transcript field (oracle.go)
+## 1. Agent-interface seam (runtime sub-slice)
+- [ ] 1.1 Add Transcript type + optional AskResponse.Transcript field (agent.go)
 - [ ] 1.2 Add TranscriptWriter ctx seam (mirror stream_sink.go)
 - [ ] 1.3 local_llm populates Transcript from its req/resp
 
@@ -564,14 +564,14 @@ re-executed on replay; it is replayed from the cassette.**
 - [ ] 2.4 Decide loop: accumulate RawEvents across --resume iterations under one call_id; write synthetic _kitsoki nudge/validator-reject boundary events; mirror tool_bypassed banner
 
 ## 3. Replay fidelity
-- [ ] 3.1 EpisodeOracle gains optional transcript: block (+ !include)
+- [ ] 3.1 EpisodeAgent gains optional transcript: block (+ !include)
 - [ ] 3.2 Replay writes recorded transcript verbatim; golden byte-identical test
 - [ ] 3.3 record mode (new_episodes) captures live transcript into episode
 
 ## 4. Web consumer
 - [ ] 4.1 runstatus.session.transcript {call_id} RPC + lazy sidecar read
 - [ ] 4.2 source.ts getTranscript on Live + Snapshot sources
-- [ ] 4.3 AgentActions.vue timeline (typed rows, collapsible I/O); OracleDetail affordance
+- [ ] 4.3 AgentActions.vue timeline (typed rows, collapsible I/O); AgentDetail affordance
 - [ ] 4.4 artifact.go inlines transcript + timings sidecars for static export
 - [ ] 4.5 Timeline waterfall from .timings; error/retry + running-cost rows
 - [ ] 4.6 Guardrail typing of validator submit; session rollup across a run's call_ids
@@ -598,7 +598,7 @@ re-executed on replay; it is replayed from the cassette.**
    that way?** Lean: **shape only**; ship the exporter when someone asks to push
    to Phoenix/Langfuse.
 5. **The buffered `--output-format json` path** (ask_with_mcp's `stdout_json`
-   envelope binding, `oracle_runner.go:104`) is the one call shape that does *not*
+   envelope binding, `agent_runner.go:104`) is the one call shape that does *not*
    stream per-event detail — it returns only a result envelope, so its transcript
    would be a single synthesized event (final text + usage), not a per-tool
    timeline. Lean: **synthesize a one-event transcript from the envelope** so the
@@ -632,7 +632,7 @@ re-executed on replay; it is replayed from the cassette.**
 `trace-introspection.md` improves how the *existing* trace is *projected*
 (waterfall, typed observations, decision-first detail, annotation). This
 proposal adds a *new evidence layer* (the discarded agent transcript) under a
-*new sidecar*, surfaced by one pointer. They compose: a typed `oracle-call`
+*new sidecar*, surfaced by one pointer. They compose: a typed `agent-call`
 observation (introspection) that, when it's an agent `task`, opens into this
 transcript drawer. If we'd rather manage them together, this becomes a fifth
 slice of that epic; kept standalone here because its producer/format/determinism
@@ -642,7 +642,7 @@ story is self-contained.
 
 | Slice | Kind | Scope | Depends on |
 |---|---|---|---|
-| transcript-oracle-seam | runtime | `AskResponse.Transcript`, `TranscriptWriter` ctx seam, `local_llm` producer | — |
+| transcript-agent-seam | runtime | `AskResponse.Transcript`, `TranscriptWriter` ctx seam, `local_llm` producer | — |
 | transcript-capture | tracing | claude tee + sidecar write + capture-time `.timings` + `transcript_ref`; cassette replay fidelity | seam |
 | transcript-web | tracing | RPC + `source.ts` + `AgentActions.vue` (typed rows, waterfall, error/retry, cost accrual, guardrail typing, session rollup, cassette-vs-live diff) + static-export inlining | capture |
 

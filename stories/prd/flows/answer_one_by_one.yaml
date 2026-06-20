@@ -27,9 +27,9 @@ initial_world:
 host_handlers:
   host.ide.open_file:
     data: { ok: true, connected: true }
-  host.oracle.search:
+  host.agent.search:
     data: { hits: [] }
-  host.oracle.decide:
+  host.agent.decide:
     # on_enter analyst (id: analyst_questions) → falls through to this envelope.
     data:
       ok: true

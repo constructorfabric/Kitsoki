@@ -49,7 +49,7 @@ func StarlarkRunHandler(ctx context.Context, args map[string]any) (Result, error
 	}
 
 	// Resolve a relative script path against KITSOKI_APP_DIR (the directory of
-	// app.yaml, published by loaders), mirroring the oracle prompt/schema path
+	// app.yaml, published by loaders), mirroring the agent prompt/schema path
 	// convention (resolvePromptPath). The loader's validateStarlarkEffects
 	// resolves against def.BaseDir at load time but does NOT rewrite the
 	// effect's with.script to absolute, so by dispatch the arg is still the

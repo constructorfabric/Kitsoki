@@ -2,7 +2,7 @@ package studio
 
 // operator_prompter.go — the MCP client surface's host.OperatorPrompter (slice 8).
 //
-// When a studio-driven turn dispatches a kitsoki oracle sub-agent that calls
+// When a studio-driven turn dispatches a kitsoki agent sub-agent that calls
 // mcp__operator__ask (internal/host/operator_ask_bridge.go), the in-context
 // OperatorPrompter is what surfaces the question and blocks for the answer. The
 // TUI prompter pushes to bubbletea; the web prompter pushes to SSE; this — the

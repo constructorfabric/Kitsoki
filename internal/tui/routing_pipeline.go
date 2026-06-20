@@ -6,10 +6,10 @@ package tui
 // them into a pipeline the transcript renders in place:
 //
 //	in flight:  routing   ✗ deterministic   ✗ semantic   ▶ LLM
-//	resolved:   ✓ routed via LLM · oracle.local → read_email  (0.91)    [deterministic ✗  semantic ✗  LLM ✓]
+//	resolved:   ✓ routed via LLM · agent.local → read_email  (0.91)    [deterministic ✗  semantic ✗  LLM ✓]
 //
 // Three layers mirror the router's tiers (deterministic → semantic → LLM); the
-// LLM layer's detail names the backend that actually answered (oracle.local vs
+// LLM layer's detail names the backend that actually answered (agent.local vs
 // the cloud model), which is what tells the operator which model was used.
 //
 // To avoid double-settling, the observer messages only UPDATE the live line;
@@ -63,14 +63,14 @@ type routingPipeline struct {
 	layers     []routeLayer
 	winner     int // index of the hit layer; -1 until resolved
 	intent     string
-	detail     string // backend / reason on the winning layer (e.g. "oracle.local")
+	detail     string // backend / reason on the winning layer (e.g. "agent.local")
 	confidence float64
 	showConf   bool
 }
 
 // newRoutingPipeline starts a fresh pipeline with the deterministic layer
 // active and the rest pending. There are TWO LLM layers because the router
-// tries a cheap local model (oracle.local) on a no_match BEFORE falling through
+// tries a cheap local model (agent.local) on a no_match BEFORE falling through
 // to the cloud main-turn model — and which one answered is the whole point.
 func newRoutingPipeline() routingPipeline {
 	return routingPipeline{
@@ -86,7 +86,7 @@ func newRoutingPipeline() routingPipeline {
 
 // layerKeyFor maps a RoutingTier (and, for the LLM tier, its backend detail)
 // onto one of the pipeline layers. The LLM tier splits by backend: an
-// oracle-plugin backend (e.g. oracle.local) is the local-LLM layer; anything
+// agent-plugin backend (e.g. agent.local) is the local-LLM layer; anything
 // else (a cloud model name like claude-…) is the main-LLM layer.
 func layerKeyFor(t RoutingTier, detail string) string {
 	switch t {
@@ -95,7 +95,7 @@ func layerKeyFor(t RoutingTier, detail string) string {
 	case TierSemantic, TierTemplate, TierTurncache:
 		return "semantic"
 	default: // TierLLM, TierOffpath, unknown
-		if strings.HasPrefix(detail, "oracle.") {
+		if strings.HasPrefix(detail, "agent.") {
 			return "local-llm"
 		}
 		return "main-llm"
@@ -155,7 +155,7 @@ func (p *routingPipeline) markHit(t RoutingTier, intent, detail string, confiden
 func (p routingPipeline) resolved() bool { return len(p.layers) > 0 && p.winner >= 0 }
 
 // hitDetailFor extracts the backend/reason to show on a winning layer from a
-// hit message: the LLM layer shows the model/backend (e.g. oracle.local), the
+// hit message: the LLM layer shows the model/backend (e.g. agent.local), the
 // cache layer shows "cache", deterministic/semantic show nothing.
 func hitDetailFor(tm RoutingTierHitMsg) string {
 	switch tm.Tier {
@@ -189,7 +189,7 @@ func (p *routingPipeline) resolveFromProvenance(routedBy, matchType string, conf
 		detail = "slot-fill"
 	case "llm":
 		tier = TierLLM
-		detail = matchType // the local-model backend, e.g. oracle.local
+		detail = matchType // the local-model backend, e.g. agent.local
 	default:
 		// No provenance stamped → the main-turn LLM (claude) handled it.
 		tier = TierLLM

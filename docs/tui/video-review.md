@@ -119,8 +119,8 @@ Web surface — Vitest + Playwright (not the Go `CapturedIO` harness):
 - **Editing the video or its spec in the browser** — the panel dispatches
   feedback; the LLM edits in the story. No trim/reorder/splice.
 - **Calling a code-writing LLM from the web tier** — the per-flag chat is the
-  read-only off-path oracle for discussion; the refine that edits source is the
-  story's recorded `oracle.task`.
+  read-only off-path agent for discussion; the refine that edits source is the
+  story's recorded `agent.task`.
 - **A general video library / browser** — `/review` reviews one video by
   handle; discovery is the run surface / story's job.
 - **TUI (terminal) support** — web-only.

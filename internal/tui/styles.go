@@ -109,7 +109,7 @@ var (
 				Bold(true).
 				Italic(true)
 
-	// transcriptOffPathAnswerStyle renders an oracle answer surfaced in
+	// transcriptOffPathAnswerStyle renders an agent answer surfaced in
 	// off-path mode. Soft amber to match the off-path framing without
 	// shouting; not italic because the body is normal prose.
 	transcriptOffPathAnswerStyle = lipgloss.NewStyle().

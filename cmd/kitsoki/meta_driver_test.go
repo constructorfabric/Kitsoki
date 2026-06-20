@@ -27,7 +27,7 @@ func modeKeys(t *testing.T, reg *SessionRegistry, sid string) map[string]bool {
 }
 
 // TestMetaDriver_PerSession_AskAndEdit drives a live session's meta driver end
-// to end against the no-LLM stub oracle: read-only Story Q&A returns a reply
+// to end against the no-LLM stub agent: read-only Story Q&A returns a reply
 // and persists the transcript without a reload; Story edit mutates the story
 // tree so the turn requests a reload. No LLM is touched.
 func TestMetaDriver_PerSession_AskAndEdit(t *testing.T) {

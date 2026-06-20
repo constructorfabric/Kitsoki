@@ -4,19 +4,19 @@ package runstatus_test
 //
 // For every cassette under stories/*/flows/*.yaml and stories/*/cassettes/*.yaml,
 // the test:
-//   1. Parses the cassette to find oracle events.
-//   2. Builds a synthetic History containing OracleCalled/OracleReturned events
-//      as they would appear after wave 3-oracle wrote them to the JSONL.
+//   1. Parses the cassette to find agent events.
+//   2. Builds a synthetic History containing AgentCalled/AgentReturned events
+//      as they would appear after wave 3-agent wrote them to the JSONL.
 //   3. Calls FromHistory, marshals Snapshot.Events back, and asserts the result
 //      equals what a direct pass-through would produce.
 //
-// Negative case: asserts that WithOracleJournal does NOT exist as a symbol in
+// Negative case: asserts that WithAgentJournal does NOT exist as a symbol in
 // the runstatus package (it was deleted in wave 4a). This is verified via a
 // compile-time assertion: a test file that references the symbol would fail
 // to build. Since the symbol is absent, this test file itself IS the proof.
 //
-// The compile-time proof is in the comment below — if WithOracleJournal still
-// existed, the line `var _ = runstatus.WithOracleJournal` would compile, and
+// The compile-time proof is in the comment below — if WithAgentJournal still
+// existed, the line `var _ = runstatus.WithAgentJournal` would compile, and
 // this test would need to assert the opposite. Since the line would fail to
 // compile, its absence is the assertion.
 
@@ -47,16 +47,16 @@ func joinRawLines(rawLines [][]byte) []byte {
 	return out
 }
 
-// Compile-time assertion: if WithOracleJournal existed, the line below would
+// Compile-time assertion: if WithAgentJournal existed, the line below would
 // compile and we'd need a different approach. Its absence (deletion in wave 4a)
-// means this file compiles cleanly only because WithOracleJournal is gone.
+// means this file compiles cleanly only because WithAgentJournal is gone.
 //
-// var _ = runstatus.WithOracleJournal  // would not compile — symbol deleted
+// var _ = runstatus.WithAgentJournal  // would not compile — symbol deleted
 
 // ─── Layer 7: FromHistory is a pure pass-through ─────────────────────────────
 
 // TestLayer7_FromHistory_PurePassthrough verifies that for a History containing
-// oracle events (OracleCalled, OracleReturned), FromHistory maps every event
+// agent events (AgentCalled, AgentReturned), FromHistory maps every event
 // 1:1 to Snapshot.Events with no synthesis, no injection, and no deletion.
 func TestLayer7_FromHistory_PurePassthrough(t *testing.T) {
 	t.Parallel()
@@ -80,9 +80,9 @@ func TestLayer7_FromHistory_PurePassthrough(t *testing.T) {
 
 	hist := store.History{
 		{Turn: 1, Ts: base, Kind: store.TurnStarted, StatePath: "start", Seq: 0},
-		{Turn: 1, Ts: base.Add(time.Millisecond), Kind: store.OracleCalled, StatePath: "start", Seq: 1,
+		{Turn: 1, Ts: base.Add(time.Millisecond), Kind: store.AgentCalled, StatePath: "start", Seq: 1,
 			CallID: "aabbccdd11223344", Payload: calledPayload},
-		{Turn: 1, Ts: base.Add(2 * time.Millisecond), Kind: store.OracleReturned, StatePath: "start", Seq: 2,
+		{Turn: 1, Ts: base.Add(2 * time.Millisecond), Kind: store.AgentReturned, StatePath: "start", Seq: 2,
 			CallID: "aabbccdd11223344", Payload: returnedPayload},
 		{Turn: 1, Ts: base.Add(3 * time.Millisecond), Kind: store.TurnEnded, StatePath: "start", Seq: 3},
 	}
@@ -103,11 +103,11 @@ func TestLayer7_FromHistory_PurePassthrough(t *testing.T) {
 		assert.True(t, orig.Ts.Equal(ev.Time), "events[%d].Time", i)
 	}
 
-	// call_id must appear in Attrs for oracle events.
+	// call_id must appear in Attrs for agent events.
 	assert.Equal(t, "aabbccdd11223344", snap.Events[1].Attrs["call_id"],
-		"OracleCalled.Attrs[call_id] must be present")
+		"AgentCalled.Attrs[call_id] must be present")
 	assert.Equal(t, "aabbccdd11223344", snap.Events[2].Attrs["call_id"],
-		"OracleReturned.Attrs[call_id] must be present")
+		"AgentReturned.Attrs[call_id] must be present")
 }
 
 // TestLayer7_ByteEqualRoundTrip verifies the headline byte-equality gate:
@@ -141,8 +141,8 @@ func TestLayer7_ByteEqualRoundTrip(t *testing.T) {
 
 	eventsToWrite := store.History{
 		{Turn: 1, Seq: 0, Ts: ts1, Kind: store.TurnStarted, StatePath: "start", Payload: json.RawMessage(`{}`)},
-		{Turn: 1, Seq: 1, Ts: ts2, Kind: store.OracleCalled, StatePath: "start", CallID: "abc123", Payload: calledPayload},
-		{Turn: 1, Seq: 2, Ts: ts3, Kind: store.OracleReturned, StatePath: "start", CallID: "abc123", Payload: returnedPayload},
+		{Turn: 1, Seq: 1, Ts: ts2, Kind: store.AgentCalled, StatePath: "start", CallID: "abc123", Payload: calledPayload},
+		{Turn: 1, Seq: 2, Ts: ts3, Kind: store.AgentReturned, StatePath: "start", CallID: "abc123", Payload: returnedPayload},
 	}
 
 	s, err := store.OpenJSONL(tracePath)
@@ -196,7 +196,7 @@ func TestLayer7_ByteEqualRoundTrip(t *testing.T) {
 		originalEventBytes, reconstructedHist)
 }
 
-// TestLayer7_WithOracleJournal_SymbolAbsent has been removed (finding from audit).
+// TestLayer7_WithAgentJournal_SymbolAbsent has been removed (finding from audit).
 // The original test passed trivially (no assertions) and the compile-time proof
 // was illusory: the test file not referencing the symbol is not proof the symbol
 // is gone. The real proof is that `go build ./internal/runstatus/...` succeeds,
@@ -205,11 +205,11 @@ func TestLayer7_ByteEqualRoundTrip(t *testing.T) {
 
 // ─── Layer 7: Walk cassette fixtures ─────────────────────────────────────────
 
-// TestLayer7_CassetteOracleEventsPassThrough verifies that oracle events from
+// TestLayer7_CassetteAgentEventsPassThrough verifies that agent events from
 // cassette fixtures pass through FromHistory unchanged. For each cassette YAML,
-// we build a minimal History with OracleCalled/OracleReturned events matching
-// the cassette's oracle blocks and assert 1:1 mapping through FromHistory.
-func TestLayer7_CassetteOracleEventsPassThrough(t *testing.T) {
+// we build a minimal History with AgentCalled/AgentReturned events matching
+// the cassette's agent blocks and assert 1:1 mapping through FromHistory.
+func TestLayer7_CassetteAgentEventsPassThrough(t *testing.T) {
 	t.Parallel()
 
 	// Find the project root relative to this test file.
@@ -222,7 +222,7 @@ func TestLayer7_CassetteOracleEventsPassThrough(t *testing.T) {
 	cassettePaths, err := findCassetteFiles(projectRoot)
 	if err != nil || len(cassettePaths) == 0 {
 		t.Logf("no cassette files found (skipping cassette pass-through sub-cases): %v", err)
-		// Not fatal: the cassette-specific tests in testrunner cover the oracle events.
+		// Not fatal: the cassette-specific tests in testrunner cover the agent events.
 		t.Skip("no cassette files found")
 		return
 	}
@@ -232,11 +232,11 @@ func TestLayer7_CassetteOracleEventsPassThrough(t *testing.T) {
 		t.Run(filepath.Base(casPath), func(t *testing.T) {
 			t.Parallel()
 
-			// Build a synthetic history containing oracle events as they would
-			// appear from wave 3-oracle writes.
-			hist := buildSyntheticOracleHistory(t, casPath)
+			// Build a synthetic history containing agent events as they would
+			// appear from wave 3-agent writes.
+			hist := buildSyntheticAgentHistory(t, casPath)
 			if len(hist) == 0 {
-				t.Skip("no oracle events in cassette")
+				t.Skip("no agent events in cassette")
 				return
 			}
 
@@ -279,10 +279,10 @@ func findCassetteFiles(projectRoot string) ([]string, error) {
 	return paths, err
 }
 
-// buildSyntheticOracleHistory reads a cassette YAML file, finds episodes with
-// oracle: blocks, and returns a synthetic History with OracleCalled/OracleReturned
-// pairs as wave 3-oracle would write them.
-func buildSyntheticOracleHistory(t *testing.T, casPath string) store.History {
+// buildSyntheticAgentHistory reads a cassette YAML file, finds episodes with
+// agent: blocks, and returns a synthetic History with AgentCalled/AgentReturned
+// pairs as wave 3-agent would write them.
+func buildSyntheticAgentHistory(t *testing.T, casPath string) store.History {
 	t.Helper()
 
 	raw, err := os.ReadFile(casPath)
@@ -291,11 +291,11 @@ func buildSyntheticOracleHistory(t *testing.T, casPath string) store.History {
 		return nil
 	}
 
-	// Simple line-scan to detect oracle: blocks without parsing full YAML.
-	// We count lines with "oracle:" to detect cassettes that have oracle blocks.
+	// Simple line-scan to detect agent: blocks without parsing full YAML.
+	// We count lines with "agent:" to detect cassettes that have agent blocks.
 	content := string(raw)
-	hasOracle := containsSubstring(content, "oracle:")
-	if !hasOracle {
+	hasAgent := containsSubstring(content, "agent:")
+	if !hasAgent {
 		return nil
 	}
 
@@ -307,9 +307,9 @@ func buildSyntheticOracleHistory(t *testing.T, casPath string) store.History {
 	return store.History{
 		{Turn: 1, Ts: base, Kind: store.TurnStarted, StatePath: "start", Seq: 0,
 			Payload: json.RawMessage(`{}`)},
-		{Turn: 1, Ts: base.Add(time.Millisecond), Kind: store.OracleCalled, StatePath: "start", Seq: 1,
+		{Turn: 1, Ts: base.Add(time.Millisecond), Kind: store.AgentCalled, StatePath: "start", Seq: 1,
 			CallID: "synth0001000000aa", Payload: calledPayload},
-		{Turn: 1, Ts: base.Add(2 * time.Millisecond), Kind: store.OracleReturned, StatePath: "start", Seq: 2,
+		{Turn: 1, Ts: base.Add(2 * time.Millisecond), Kind: store.AgentReturned, StatePath: "start", Seq: 2,
 			CallID: "synth0001000000aa", Payload: returnedPayload},
 		{Turn: 1, Ts: base.Add(3 * time.Millisecond), Kind: store.TurnEnded, StatePath: "start", Seq: 3,
 			Payload: json.RawMessage(`{}`)},

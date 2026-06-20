@@ -11,7 +11,7 @@ import (
 	"kitsoki/internal/store"
 )
 
-// writeStory writes a minimal on-disk story with one oracle prompt and returns
+// writeStory writes a minimal on-disk story with one agent prompt and returns
 // the app.yaml path.
 func writeStory(t *testing.T, promptBody string) string {
 	t.Helper()
@@ -23,7 +23,7 @@ func writeStory(t *testing.T, promptBody string) string {
 		t.Fatalf("write prompt: %v", err)
 	}
 	appYAML := `app: { id: t, version: "1" }
-hosts: [host.oracle.ask]
+hosts: [host.agent.ask]
 world:
   out: { type: string, default: "" }
 root: idle
@@ -31,7 +31,7 @@ states:
   idle:
     view: "hi"
     on_enter:
-      - invoke: host.oracle.ask
+      - invoke: host.agent.ask
         with:
           prompt: prompts/ask.md
         bind:

@@ -454,7 +454,7 @@ contract property:
 > `on_enter` shapes; only `<phase>` and the next-room target vary.
 > ([`stories/bugfix/README.md`](../../stories/bugfix/README.md))
 
-The judge runs a single `host.oracle.decide` call gated by `when:
+The judge runs a single `host.agent.decide` call gated by `when:
 judge_mode != "human"`. The verdict lands in `world.llm_verdict`; an
 `emit_intent:` effect auto-fires the verdict's intent in the same
 turn when `confidence >= judge_confidence_threshold`. The state
@@ -466,7 +466,7 @@ What this requires from the runtime:
   inside the current turn, with a depth cap
   (`machine.EmitIntentMaxDepth = 8`).
 - A `when:` guard language that can read both `world.*` and the
-  bound result of the previous oracle call in the same `on_enter`.
+  bound result of the previous agent call in the same `on_enter`.
 - A view layer that re-renders deterministically after the auto-fire
   resolves, with no LLM call.
 
@@ -484,7 +484,7 @@ What it would cost in CALM: three flows or one flow with imperative
 seven times. The auto-fire requires a custom action that tail-calls
 into the next flow step; CALM's command stream is not
 author-extensible, so the engine cannot enforce the `emit_intent`
-contract. The `host.oracle.decide` verdict's typed return
+contract. The `host.agent.decide` verdict's typed return
 (`{verdict, intent, reason, confidence}`) becomes a custom Python
 action with no schema gate.
 
@@ -587,11 +587,11 @@ sub-apps. LangGraph subgraphs come closest (with explicit state
 mapping) but have no notion of a capability surface that the parent
 rebinds per child instance.
 
-### 6.4 Oracle-verb taxonomy with per-verb guarantees
+### 6.4 Agent-verb taxonomy with per-verb guarantees
 
-Each oracle call in `bugfix` carries an `agent:` selecting a persona,
+Each agent call in `bugfix` carries an `agent:` selecting a persona,
 and uses the verb dictated by the call's blast radius
-([`stories/bugfix/README.md` §Oracle-split persona table](../../stories/bugfix/README.md)):
+([`stories/bugfix/README.md` §Agent-split persona table](../../stories/bugfix/README.md)):
 
 | Persona | Verb | Why this verb |
 |---|---|---|
@@ -622,7 +622,7 @@ code-review property.
 `stories/bugfix/flows/` contains 25 YAML fixtures, each a scripted
 sequence of intents-with-slots that exercises a path through the
 state graph against stub host envelopes. They are not LLM tests —
-they're FSM tests with the LLM stubbed at the oracle boundary.
+they're FSM tests with the LLM stubbed at the agent boundary.
 
 ```
 happy_human.yaml                       — accept at every checkpoint
@@ -666,7 +666,7 @@ feedback in under a second.
 | **Sub-story imports w/ capability rebinding** | flow link | none | subgraph (no rebind) | ✓ `host_bindings` |
 | **World isolation + projection per import** | none | none | partial | ✓ `world_in:` / per-exit `set:` |
 | **`emit_intent` resolution across import depth** | n/a | n/a | n/a | ✓ `IntentAliases` walk |
-| **Oracle-verb blast-radius taxonomy** | one action type | webhook | one node | ✓ ask / decide / task / extract / converse |
+| **Agent-verb blast-radius taxonomy** | one action type | webhook | one node | ✓ ask / decide / task / extract / converse |
 | **Sandbox-enforced read-only LLM call** | DIY | none | DIY | ✓ verb-level |
 | **Semantic routing tiers before LLM** | NLU adapter | route matcher | DIY | ✓ four tiers |
 | **Multi-surface transport (TUI / MCP / Jira / file)** | channels DIY | CX channels | LangServe | ✓ first-class |

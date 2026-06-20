@@ -44,7 +44,7 @@ states:
               intent: look
     relevant_world: [job, judge_mode, judge_confidence_threshold, map_artifact, decide_artifact, selected_theme, llm_verdict, refine_feedback, cycle]
     on_enter:
-      - invoke: host.oracle.ask
+      - invoke: host.agent.ask
         once: true
         with:
           agent: ranker
@@ -58,7 +58,7 @@ states:
           selected_theme:  "submitted.selected[0].theme"
         on_error: idle
       - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
-        invoke: host.oracle.decide
+        invoke: host.agent.decide
         with:
           agent: judge
           prompt: prompts/judge_generic.md

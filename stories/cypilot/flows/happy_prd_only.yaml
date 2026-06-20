@@ -50,7 +50,7 @@ host_handlers:
         summary_markdown: "PRD body covering the multi-app surface."
         plan_path:        ".plans/multi-app-mode"
         phase_count:      3
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:

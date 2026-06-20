@@ -146,10 +146,10 @@ func TestCloakWinningPath(t *testing.T) {
 
 	for i, turn := range fix.Turns {
 		if turn.Intent == nil {
-			// Free-text turns (turn 3 uses oracle). For Stage 3, skip; the oracle
+			// Free-text turns (turn 3 uses agent). For Stage 3, skip; the agent
 			// is not yet wired. We hard-code the equivalent intent.
 			// Turn 3: "head east" → go east from cloakroom.
-			t.Logf("turn %d: skipping free-text turn (no oracle in Stage 3)", i+1)
+			t.Logf("turn %d: skipping free-text turn (no agent in Stage 3)", i+1)
 			// Hard-code: go east.
 			res, err := m.Turn(context.Background(), cur, w, intent.IntentCall{
 				Intent: "go",

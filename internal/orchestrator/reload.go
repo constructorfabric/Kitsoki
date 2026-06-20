@@ -133,13 +133,13 @@ func hasNestedState(s *app.State, prefix, target string) bool {
 // a TurnOutcome with the freshly rendered view. This is the
 // "/reload" partner of Reload: Reload swaps the app definition, then
 // RerunOnEnter replays the entered state's actions so view-template
-// edits, on_enter additions, or oracle-prompt changes take effect
+// edits, on_enter additions, or agent-prompt changes take effect
 // without the user having to re-type an intent.
 //
 // Caveats by design:
 //
 //   - It re-fires the on_enter chain as-is. If the chain posts to a
-//     transport, calls an oracle, or otherwise has external side
+//     transport, calls an agent, or otherwise has external side
 //     effects, those side effects will repeat. The user explicitly
 //     asked for this ("redo whatever actions") — the trade-off is
 //     spelled out in `/reload`'s slash help.

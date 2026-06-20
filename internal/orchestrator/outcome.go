@@ -25,7 +25,7 @@ const (
 	ModeCompleted
 	// ModeOffPath indicates a free-form off-path chat turn.
 	// Off-path turns do NOT mutate world or state; they route through
-	// Orchestrator.AskOffPath, which fires host.oracle.talk against a
+	// Orchestrator.AskOffPath, which fires host.agent.talk against a
 	// per-session chat thread keyed by (app_id, room="off_path",
 	// scope_key=session_id). No TransitionApplied event is emitted; only
 	// OffPathEntered/Exited and OffPathQuestion/Answer are appended.

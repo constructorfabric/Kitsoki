@@ -40,7 +40,7 @@ host_handlers:
   host.local:
     data: { ok: true, state: "success", log: "" }
   # bf.reproducing.on_enter dispatches the reproducer task; stub it.
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted:

@@ -1,6 +1,6 @@
 // Package host — per-call agent-transcript sidecar writer.
 //
-// Every oracle verb whose operator is the claude CLI produces a rich
+// Every agent verb whose operator is the claude CLI produces a rich
 // execution stream — tool_use inputs, tool_result outputs, assistant
 // thinking — that the host already parses (ClaudeRun.RawEvents) and
 // today throws away. TranscriptWriter is the ctx-seam that lets the
@@ -17,7 +17,7 @@
 // single decide call_id is several `claude --resume` sessions, so the
 // loop Appends across all of them under one id and Finalizes once.
 //
-// Concurrency contract: multiple oracle calls can interleave on the same
+// Concurrency contract: multiple agent calls can interleave on the same
 // writer (parallel background + foreground turns), so a shared writer
 // MUST be safe for concurrent use across distinct call_ids. The
 // file-backed implementation guards its per-call buffers with a mutex.
@@ -124,13 +124,13 @@ func replaySleeperFrom(ctx context.Context) replaySleeper {
 // the .timings format) changes incompatibly so a consumer can refuse or adapt.
 const TranscriptSchemaVersion = 1
 
-// TranscriptRef is the pointer-only reference attached to oracle.call.complete
+// TranscriptRef is the pointer-only reference attached to agent.call.complete
 // in the story trace. It carries no detail — just enough to locate and
 // summarize the sidecar so the UI can show an "Agent actions (N)" affordance
 // and lazily fetch the full stream on demand.
 type TranscriptRef struct {
 	// Format names the event schema in the sidecar (e.g. "claude-stream-json",
-	// "openai-chat", or a plugin identifier). Mirrors oracle.Transcript.Format.
+	// "openai-chat", or a plugin identifier). Mirrors agent.Transcript.Format.
 	Format string `json:"format"`
 	// Path is the sidecar location relative to the trace dir, e.g.
 	// "transcripts/<call_id>.jsonl". Relative so a run dir stays relocatable.
@@ -141,7 +141,7 @@ type TranscriptRef struct {
 	SchemaVersion int `json:"schema_version"`
 }
 
-// TranscriptWriter accumulates one oracle call's native execution events into a
+// TranscriptWriter accumulates one agent call's native execution events into a
 // sidecar and finalizes them under the call's deterministic id. The decide loop
 // Appends across several `claude --resume` sessions sharing one call_id, then
 // Finalizes once to flush the sidecar and obtain the trace pointer.
@@ -172,18 +172,18 @@ type TranscriptWriter interface {
 	Finalize(callID, format string) *TranscriptRef
 }
 
-// callIDKey is the context key for the active oracle call's deterministic
+// callIDKey is the context key for the active agent call's deterministic
 // call_id. The claude transport tees its RawEvents into the TranscriptWriter
-// under this id (see oracle_runner.go runClaudeStreamJSON), and the dispatch
+// under this id (see agent_runner.go runClaudeStreamJSON), and the dispatch
 // path Finalizes the same id to obtain the trace pointer. It is set by each
 // verb handler / the dispatcher just before the claude subprocess runs, so the
-// sidecar filename pairs with the oracle.call.complete event's CallID by value.
+// sidecar filename pairs with the agent.call.complete event's CallID by value.
 type callIDKey struct{}
 
-// WithCallID returns a child context carrying the active oracle call_id. A nil
+// WithCallID returns a child context carrying the active agent call_id. A nil
 // (empty) id is a no-op so callers can set it unguarded. The claude tee in
 // runClaudeStreamJSON reads it via CallIDFrom; when absent (no call_id in ctx)
-// the tee is skipped, so non-oracle claude invocations write no sidecar.
+// the tee is skipped, so non-agent claude invocations write no sidecar.
 func WithCallID(ctx context.Context, callID string) context.Context {
 	if callID == "" {
 		return ctx
@@ -191,14 +191,14 @@ func WithCallID(ctx context.Context, callID string) context.Context {
 	return context.WithValue(ctx, callIDKey{}, callID)
 }
 
-// CallIDFrom returns the active oracle call_id installed in ctx, or "" when none
-// is installed (the common case for non-oracle claude calls and unit tests).
+// CallIDFrom returns the active agent call_id installed in ctx, or "" when none
+// is installed (the common case for non-agent claude calls and unit tests).
 func CallIDFrom(ctx context.Context) string {
 	s, _ := ctx.Value(callIDKey{}).(string)
 	return s
 }
 
-// callStartKey is the context key for the active oracle call's start instant.
+// callStartKey is the context key for the active agent call's start instant.
 // The claude tee (runClaudeStreamJSON) stamps each verbatim event with its
 // offset from this instant. A SINGLE decide call_id spans several `claude
 // --resume` subprocesses, each of which would otherwise reset its own clock to
@@ -229,7 +229,7 @@ func CallStartFrom(ctx context.Context) (time.Time, bool) {
 // transcriptWriterKey is the context key for a per-session TranscriptWriter.
 type transcriptWriterKey struct{}
 
-// WithTranscriptWriter returns a child context carrying w. The oracle path
+// WithTranscriptWriter returns a child context carrying w. The agent path
 // pulls it out via TranscriptWriterFrom and tees events into it. A nil writer
 // is a no-op — returns ctx unchanged so callers can use the value unguarded.
 func WithTranscriptWriter(ctx context.Context, w TranscriptWriter) context.Context {
@@ -252,8 +252,8 @@ func TranscriptWriterFrom(ctx context.Context) TranscriptWriter {
 // the result unguarded (a nil ref is omitted from the event payload). The Format
 // is the in-host claude stream-json format — out-of-host backends Append their
 // own-format events first, but a single call only ever has one transcript, so
-// one Finalize covers both producers. See oracle_event_sink.go's use on
-// appendOracleReturnedEvent.
+// one Finalize covers both producers. See agent_event_sink.go's use on
+// appendAgentReturnedEvent.
 func finalizeTranscript(ctx context.Context, callID string) *TranscriptRef {
 	w := TranscriptWriterFrom(ctx)
 	if w == nil || callID == "" {
@@ -263,12 +263,12 @@ func finalizeTranscript(ctx context.Context, callID string) *TranscriptRef {
 }
 
 // finalizeOutOfHostTranscript feeds an out-of-host backend's carried-up events
-// (oracle.AskResponse.Transcript: format + verbatim events + optional timings)
+// (agent.AskResponse.Transcript: format + verbatim events + optional timings)
 // into the writer for callID, then Finalizes under the backend's own format and
 // returns the trace pointer. Used by the dispatcher so out-of-host backends
 // (local_llm, subprocess, MCP-HTTP) converge on the SAME sidecar + transcript_ref
 // as the in-host claude tee. The caller passes the format/events/timings rather
-// than the oracle.Transcript type to avoid a host→oracle import cycle.
+// than the agent.Transcript type to avoid a host→agent import cycle.
 //
 // Returns nil (writing nothing) when no writer is installed, callID is empty, or
 // there are no events. timings, when shorter than events, defaults missing
@@ -287,7 +287,7 @@ func finalizeOutOfHostTranscript(ctx context.Context, callID, format string, eve
 // continue under the same call_id (the local_llm → claude validation-reject
 // fallback): the rejected local-model transcript — exactly the evidence the
 // operator wants — is preserved by appending it here so a single later Finalize
-// (on the closing OracleReturned/OracleError) flushes the whole arc into one
+// (on the closing AgentReturned/AgentError) flushes the whole arc into one
 // sidecar. A nil writer / empty callID / empty events is a no-op.
 func appendOutOfHostTranscript(ctx context.Context, callID, format string, events []json.RawMessage, timings []int64) {
 	w := TranscriptWriterFrom(ctx)
@@ -305,7 +305,7 @@ func appendOutOfHostTranscript(ctx context.Context, callID, format string, event
 
 // WriteReplayTranscript writes a recorded transcript (format + verbatim events +
 // optional timings) to the per-call sidecar via the TranscriptWriter in ctx and
-// returns the trace pointer to attach to oracle.call.complete. It is the replay
+// returns the trace pointer to attach to agent.call.complete. It is the replay
 // entry point for the cassette dispatcher (internal/testrunner): on replay the
 // recorded transcript is written to the sidecar verbatim — no live tool runs —
 // so a replayed run produces a byte-identical sidecar (the golden contract). It
@@ -356,7 +356,7 @@ func slowPlayReplay(ctx context.Context, format string, events []json.RawMessage
 	if sink == nil || len(events) == 0 {
 		return
 	}
-	backend := OracleBackendFromContext(ctx)
+	backend := AgentBackendFromContext(ctx)
 	sleep := replaySleeperFrom(ctx)
 
 	var prevOffset int64
@@ -394,7 +394,7 @@ func slowPlayReplay(ctx context.Context, format string, events []json.RawMessage
 // isSyntheticKitsokiEvent reports whether ev is a kitsoki-side synthetic row (a
 // decide nudge, validator-reject boundary, tool-bypass banner) rather than a
 // backend-native stream event. Such rows carry a top-level "_kitsoki" marker key
-// (see AppendSynthetic / oracle_decide.go) and are skipped by the live classifier,
+// (see AppendSynthetic / agent_decide.go) and are skipped by the live classifier,
 // so slow-play must not surface them to the StreamSink either.
 func isSyntheticKitsokiEvent(ev map[string]any) bool {
 	_, ok := ev["_kitsoki"]

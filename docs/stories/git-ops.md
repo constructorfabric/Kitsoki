@@ -1,8 +1,8 @@
 # git-ops — Interactive Git Workflow Story
 
 `stories/git-ops/` is a hub-and-spoke story that provides a guided,
-deterministic git workflow: staging, commit (oracle-authored message), rebase,
-squash-merge, worktree lifecycle, and conflict resolution. The oracle appears
+deterministic git workflow: staging, commit (agent-authored message), rebase,
+squash-merge, worktree lifecycle, and conflict resolution. The agent appears
 in exactly two places — authoring a commit message and resolving a conflict.
 All other operations are deterministic `host.run` shell calls.
 
@@ -38,9 +38,9 @@ world. The single invoke + static emit_intent pattern is the canonical shape
 for auto-routing rooms.
 
 **once: for idempotent on_enter.** The conflict room uses `once: true` on both
-`gather_conflict_files` (keyed on `conflict_files`) and `host.oracle.task`
+`gather_conflict_files` (keyed on `conflict_files`) and `host.agent.task`
 (keyed on `conflict_verdict`). When the guide intent clears both fields, the
-next on_enter re-runs both; when verdict is pre-seeded (flow tests), oracle
+next on_enter re-runs both; when verdict is pre-seeded (flow tests), agent
 is skipped.
 
 **No `git checkout` for merges.** The `merge_into_main` room runs
@@ -63,10 +63,10 @@ deterministic effects.
 | `main_ops` | Integration branch hub |
 | `branch_ops` | Feature branch hub |
 | `staging` | Classify working-tree changes, interactive git add |
-| `commit` | Oracle-authored conventional commit message |
+| `commit` | Agent-authored conventional commit message |
 | `squash` | Squash all branch commits into one |
 | `rebase` | git rebase against integration branch (local ref) |
-| `conflict` | Oracle auto-resolution with operator escalation |
+| `conflict` | Agent auto-resolution with operator escalation |
 | `merge_into_main` | Merge feature branch into integration (worktree-aware) |
 | `merge_branch` + `merge_exec` | Merge a named branch (from main_ops) |
 | `pull` | git pull --rebase from upstream |
@@ -98,18 +98,18 @@ Post-merge build gate: runs `world.build_check_cmd` (skipped when
 
 1. `gather_conflict_files` — `git diff --diff-filter=U` to list conflicted files.
    go.sum special case: `git checkout --theirs go.sum && go mod tidy`.
-2. `host.oracle.task` (agent: `conflict_resolver`, tools: [Read, Edit]) — removes
+2. `host.agent.task` (agent: `conflict_resolver`, tools: [Read, Edit]) — removes
    all conflict markers. Default strategy: take target-branch version, re-apply
    source additive changes.
 3. `git diff --check` (`acceptance.post_cmd`) rejects leftover markers.
 4. Story runs `git rebase --continue --no-edit`.
 5. `build_check_cmd` validates semantic correctness. Failure routes to escalation
-   (operator provides guidance → retry oracle round).
+   (operator provides guidance → retry agent round).
 
 ## Flow fixtures
 
 All 26 fixtures are intent-only with no LLM calls. `host.run` calls are stubbed
-via `by_call:` keyed on `id:`. `host.oracle.task` and `host.oracle.decide` use
+via `by_call:` keyed on `id:`. `host.agent.task` and `host.agent.decide` use
 global `data:` stubs.
 
 Key invariants verified:

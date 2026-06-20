@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "gate_verdict",
-  "description": "The oracle gate's adversarial verdict on the goal artifact.",
+  "description": "The agent gate's adversarial verdict on the goal artifact.",
   "type": "object",
   "additionalProperties": false,
   "properties": {

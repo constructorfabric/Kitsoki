@@ -40,7 +40,7 @@ initial_world:
 host_handlers:
   host.ide.open_file:
     data: { ok: true, connected: true }
-  host.oracle.task:
+  host.agent.task:
     by_call:
       # The discuss arc folds the operator's message into the brief and returns
       # the UPDATED gap list: question 1 is now answered (dropped), question 2 is
@@ -73,7 +73,7 @@ turns:
           - "2. Which engine seam establishes the folder at session start?"
           - "3. How does the per-session folder interact with the existing import cache?"
     expect_host_calls:
-      - handler: host.oracle.task
+      - handler: host.agent.task
         args: { call: "refine_brief_update" }
     # on_enter scaffold/open/refiner are once-guarded (brief_path + analysis
     # already set) so they must NOT re-fire on this self-transition.

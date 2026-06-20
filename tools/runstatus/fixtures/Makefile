@@ -8,9 +8,9 @@ SRC        := $(REPO_ROOT)/tools/runstatus/fixtures/sources
 OUT        := $(REPO_ROOT)/tools/runstatus/fixtures
 ARTIFACTS  := $(REPO_ROOT)/.artifacts
 
-.PHONY: all in-progress completed edge-cases bugfix oracle-rich oracle-with-separate-prompts artifacts
+.PHONY: all in-progress completed edge-cases bugfix agent-rich agent-with-separate-prompts artifacts
 
-all: in-progress completed edge-cases bugfix oracle-rich oracle-with-separate-prompts
+all: in-progress completed edge-cases bugfix agent-rich agent-with-separate-prompts
 
 # artifacts: build a self-contained HTML artifact for every *.snapshot.json
 # here, via the kitsoki binary (the Go replacement for the old
@@ -29,7 +29,7 @@ artifacts:
 # orchestrator (in-memory store, host stubs from the flow) and dump the
 # resulting event log as a snapshot. Event names + ordering match production.
 # inject_usage.py backfills plausible token-usage meta (input/output/cache
-# tokens + cost) onto the oracle.call.complete events of cassette-replay
+# tokens + cost) onto the agent.call.complete events of cassette-replay
 # snapshots, which were recorded without usage. Live traces carry real usage;
 # this is synthetic fixture data so the runstatus UI has something to render.
 INJECT := python3 $(REPO_ROOT)/tools/runstatus/fixtures/inject_usage.py
@@ -63,14 +63,14 @@ edge-cases:
 		-o $(OUT)/edge-cases.snapshot.json
 	$(INJECT) $(OUT)/edge-cases.snapshot.json
 
-# oracle-rich: self-contained Python generator; no Go toolchain required.
+# agent-rich: self-contained Python generator; no Go toolchain required.
 # Reads bugfix.snapshot.json for the app/mermaid blocks and emits
-# a new snapshot exercising all five oracle verbs with full rich attrs.
-oracle-rich:
-	python3 $(SRC)/oracle-rich.gen.py > $(OUT)/oracle-rich.snapshot.json
+# a new snapshot exercising all five agent verbs with full rich attrs.
+agent-rich:
+	python3 $(SRC)/agent-rich.gen.py > $(OUT)/agent-rich.snapshot.json
 
-# oracle-with-separate-prompts: like oracle-rich but with large prompts stored
-# in sidecar oracle-prompts/*.txt files (prompt_file / system_prompt_file).
+# agent-with-separate-prompts: like agent-rich but with large prompts stored
+# in sidecar agent-prompts/*.txt files (prompt_file / system_prompt_file).
 # Exercises usePromptLoader resolving sidecars under file://.
-oracle-with-separate-prompts:
-	python3 $(SRC)/oracle-with-separate-prompts.gen.py > $(OUT)/oracle-with-separate-prompts.snapshot.json
+agent-with-separate-prompts:
+	python3 $(SRC)/agent-with-separate-prompts.gen.py > $(OUT)/agent-with-separate-prompts.snapshot.json

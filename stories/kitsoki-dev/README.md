@@ -59,7 +59,7 @@ $ kitsoki run stories/kitsoki-dev/app.yaml --warp scenarios/autonomous_ready.yam
 `judge_mode: llm_then_human` makes every checkpoint:
 
 1. Post the artifact (transport + inbox mirror).
-2. Call the LLM-judge oracle prompt.
+2. Call the LLM-judge agent prompt.
 3. If `confidence >= judge_confidence_threshold` (default 0.8) AND
    neither verdict nor intent is `uncertain`, auto-emit the LLM's
    verdict intent (typically `accept`) — advancing the pipeline
@@ -224,7 +224,7 @@ LLM produces a reproduction artifact; the room binds it into
    `issues/bugs/2026-05-14T103205Z-tui-view-render-before-bind.md`
    as `## Comment <iso> by kitsoki`.
 2. `host.inbox.add` — mirrors the artifact into the TUI inbox.
-3. (skipped in `human` mode) `iface.oracle.ask_with_mcp` — runs the
+3. (skipped in `human` mode) `iface.agent.ask_with_mcp` — runs the
    LLM-judge prompt.
 4. (skipped in `human` mode) `emit_intent` — auto-fires the verdict.
 

@@ -206,8 +206,8 @@ session-scoped.
 - **Editing the video or its spec in the browser** — the panel dispatches
   feedback; the LLM edits (slice 3). No trim/reorder/splice (epic non-goal).
 - **Calling a code-writing LLM from the web tier** — the per-flag chat is the
-  read-only off-path oracle for *discussion*; the refine that edits source is
-  the story's recorded `oracle.task` (epic shared decision 3).
+  read-only off-path agent for *discussion*; the refine that edits source is
+  the story's recorded `agent.task` (epic shared decision 3).
 - **A general video library / browser** — `/review` reviews one video (by
   handle); discovery is the run surface / story's job.
 - **TUI (terminal) support** — web-only; the terminal renders the `media`

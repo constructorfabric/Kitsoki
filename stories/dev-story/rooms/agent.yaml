@@ -1,0 +1,90 @@
+# agent — Q&A surface against the agent host. Minimal Wave 2 shape:
+# a single ask_question intent that fires host.agent.ask and
+# binds the answer. The existing pattern (testdata/apps/dev-story/
+# rooms/agent.yaml) has multi-turn chat surfaces; Wave 3 ports those.
+#
+# Per docs/stories/choice-widget.md §1 the agent is an open-ended chat
+# surface — the canonical "type your question" mode is still the
+# semroute path. We expose `ask_question` here as a `single + param:`
+# row anyway so operators driving by widget have a deterministic entry,
+# but a free-typed prose question continues to route through the
+# semantic router and lands on this same intent.
+
+states:
+
+  agent:
+    description: "Agent — Q&A with Claude."
+    # Flattened view (no extends/blocks) — `choice:` cannot live inside a
+    # `blocks:` map (typed metadata is lost through the inheritance
+    # pipeline; see docs/stories/choice-widget.md §3.1).
+    view:
+      - kv:
+          pairs:
+            "Last question": '{{ world.agent_question|default:"(none)" }}'
+            "Last answer":   '{{ world.agent_answer|default:"(none)" }}'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "ask_question"
+              intent: ask_question
+              hint:   "fire one Agent query"
+              param:
+                slot:        question
+                type:        string
+                placeholder: "what do you want to ask?"
+                required:    true
+            - { label: "go_back", intent: go_back, hint: "return to the previous room" }
+            - { label: "go_main", intent: go_main, hint: "back to the engineer's day landing" }
+            - { label: "look",    intent: look,    hint: "re-render" }
+    relevant_world: [agent_question, agent_answer]
+    on:
+      ask_question:
+        - target: agent_asking
+          effects:
+            # Clear the prior answer so the once: guard on agent_asking re-arms
+            # for the new question (otherwise the cached answer would be reused).
+            - set: { agent_question: "{{ slots.question }}", agent_answer: "" }
+      go_back:
+        - target: "{{ world.prev_state }}"
+      go_main:
+        - target: landing
+      look:
+        - target: .
+
+  agent_asking:
+    description: "Querying the Agent."
+    # Flattened view (see above).
+    view:
+      - kv:
+          pairs:
+            Question: "{{ world.agent_question }}"
+            Answer:   '{{ world.agent_answer|default:"(pending — agent has not returned yet)" }}'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - { label: "go_back", intent: go_back, hint: "return to agent" }
+            - { label: "go_main", intent: go_main, hint: "back to the engineer's day landing" }
+            - { label: "look",    intent: look,    hint: "re-render" }
+    relevant_world: [agent_question, agent_answer]
+    on_enter:
+      # once: true — re-render the cached answer on /reload instead of
+      # re-spending the LLM. `ask_question` clears agent_answer to re-arm.
+      - invoke: host.agent.ask
+        once: true
+        with:
+          agent: agent_qa
+          prompt: prompts/agent_ask.md
+          args:
+            question: "{{ world.agent_question }}"
+        bind:
+          agent_answer: stdout
+        on_error: agent
+    on:
+      go_back:
+        - target: agent
+      go_main:
+        - target: landing
+      look:
+        - target: .

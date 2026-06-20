@@ -139,7 +139,7 @@ export interface DataSource {
     sessionId: string,
     slots: Record<string, unknown>
   ): Promise<TurnResult>;
-  /** Read-only off-path question against the default oracle. */
+  /** Read-only off-path question against the default agent. */
   offpath(sessionId: string, input: string): Promise<{ answer: string }>;
 
   // ── Harness profiles (optional; live session only) ───────────────────────
@@ -187,7 +187,7 @@ export interface DataSource {
   // ── Agent-action transcripts ──────────────────────────────────────────────
 
   /**
-   * Fetch one oracle call's agent-action transcript (the verbatim
+   * Fetch one agent call's agent-action transcript (the verbatim
    * backend-native event stream + capture-time offsets) keyed by its
    * deterministic call_id. LiveSource hits runstatus.session.transcript (lazy
    * server-side sidecar read); SnapshotSource resolves the inlined

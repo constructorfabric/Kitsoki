@@ -8,7 +8,7 @@ Consumes the deterministic, scored records (tag_score.py output) and produces:
                  analysis_ref. Plus tag rollups + total_intents + version stamps.
   analysis.json  REPORT 2 — per-instance recipe. Each record: instance_id, tags,
                  determinism, actions (tool/signature/parameters/cite/grounded),
-                 oracle_gates (only when not fully deterministic), measured,
+                 agent_gates (only when not fully deterministic), measured,
                  grounding. Plus the clusters.
 
 VERBATIM user text is recovered DETERMINISTICALLY from the raw .jsonl (NOT from
@@ -259,9 +259,9 @@ def main(argv=None):
                 "measured": span.get("measured", {}),
                 "grounding": span.get("grounding", {}),
             }
-            gates = span.get("oracle_gates")
+            gates = span.get("agent_gates")
             if span.get("determinism") != "deterministic" and gates:
-                inst["oracle_gates"] = gates
+                inst["agent_gates"] = gates
             if outc:
                 inst["satisfaction"] = satisfaction_for(
                     span_idx, spans, trace_lines, user_lines, raw_turns)

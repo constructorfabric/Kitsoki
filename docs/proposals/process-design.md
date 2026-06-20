@@ -93,13 +93,13 @@ it will go:
 | Kind | Mechanism | When | Cost |
 |---|---|---|---|
 | **Deterministic** | `set:` / `increment:` / `host.run` / `host.artifacts_dir` — no model | The step is a computation, a file write, a shell command, a composition of known inputs | Free, instant, perfectly repeatable |
-| **Decision** | `host.oracle.decide` — typed JSON verdict against a schema, read-only tools | A bounded judgment: classify, choose, score, extract | One short call; output is schema-validated |
-| **Task** | `host.oracle.task` — agentic write with an acceptance loop, schema-bound result | Open-ended generation that edits the working tree (write code, draft a doc) | The expensive tier; reserve it |
+| **Decision** | `host.agent.decide` — typed JSON verdict against a schema, read-only tools | A bounded judgment: classify, choose, score, extract | One short call; output is schema-validated |
+| **Task** | `host.agent.task` — agentic write with an acceptance loop, schema-bound result | Open-ended generation that edits the working tree (write code, draft a doc) | The expensive tier; reserve it |
 
 The canonical proof that this is *real*, not aspirational, is the `prd`
 story. Look at `stories/prd/rooms/brief.yaml`: the brief is **not** an LLM
 synthesis — it is `world.idea` + `world.clarification_log` composed by a
-pure `host.artifacts_dir` write (`mode: replace`), no oracle call at all.
+pure `host.artifacts_dir` write (`mode: replace`), no agent call at all.
 The model only appears where genuine interpretation is needed: `clarifying`
 and `references` use `decide`; `drafting` uses `task`. Four rooms, three
 kinds, each chosen deliberately. That is the standard to hold every process
@@ -120,7 +120,7 @@ The decider is the pluggable interpretive operator, and it is one of:
 
 - **`default`** — a deterministic conditional (`emit_intent: X when <cond>`).
   Prefer this. A guard on world state is a free, testable decision.
-- **`llm`** — an `host.oracle.decide` judge: `{verdict, intent, confidence}`.
+- **`llm`** — an `host.agent.decide` judge: `{verdict, intent, confidence}`.
   Auto-fires above a confidence threshold; **bails to human** below it.
 - **`human`** — the turn rests at the room; the operator picks. The safe
   default (`--mode staged`).
@@ -160,7 +160,7 @@ interpretive — always with a human floor.**
 3. **Guards on world state (`when:`).** "Confidence ≥ threshold", "cycle <
    budget", "required artifact present". Pure, instant, and they read in the
    flow fixtures.
-4. **Agentic judgment (`host.oracle.decide`).** Only for properties no
+4. **Agentic judgment (`host.agent.decide`).** Only for properties no
    deterministic check can express: *is this PRD coherent? does this design
    actually address the requirement? is this the right decomposition?* The
    judge returns a confidence; the gate **bails to human** below the

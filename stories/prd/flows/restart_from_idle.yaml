@@ -32,7 +32,7 @@ host_handlers:
   # fire defensively on initial entry (author task).
   host.chat.resolve:
     data: { ok: true, chat_id: "chat-1", title: "PRD idea discovery", is_new: false }
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted:

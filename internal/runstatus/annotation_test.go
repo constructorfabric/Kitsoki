@@ -47,7 +47,7 @@ func TestAppendAnnotation_roundtrip(t *testing.T) {
 		TargetCallID: "deadbeef12345678",
 		Score:        &score1,
 		Label:        "good",
-		Comment:      "oracle picked the right intent",
+		Comment:      "agent picked the right intent",
 		Annotator:    "alice@example.com",
 	}
 	a2 := runstatus.Annotation{

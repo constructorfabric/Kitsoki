@@ -3,7 +3,7 @@
 # Stage 2 of the 4-stage proposal pipeline:
 #   intake → design_search → design_refine → design_draft (+ publish)
 #
-# on_enter runs ONE oracle.decide (once: guarded by its bind):
+# on_enter runs ONE agent.decide (once: guarded by its bind):
 #   existing_scan — the design_scout identifies overlapping proposals and
 #   roadmap fit. This is the EARLY GATE: it runs before any workspace folder
 #   is created and before reference curation, so a duplicate idea is caught
@@ -136,7 +136,7 @@ states:
     on_enter:
       # Scout: check for overlapping proposals + roadmap fit. THE EARLY GATE —
       # runs before any folder is created. once: keyed off design_existing_state.
-      - invoke: host.oracle.decide
+      - invoke: host.agent.decide
         once: true
         id: existing_scan
         with:

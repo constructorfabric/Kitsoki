@@ -12,7 +12,7 @@ import type {
 import type { DataSource } from "../data/source.js";
 import type { LiveSource } from "../data/live-source.js";
 import { appendThought, appendTool, type StreamItem } from "../lib/activity.js";
-import { readOracleUsage } from "../components/oracle/lib.js";
+import { readAgentUsage } from "../components/agent/lib.js";
 import { humanizeIntent } from "../lib/intent.js";
 
 /**
@@ -49,7 +49,7 @@ export interface TranscriptEntry {
   stream?: StreamItem[];
   /**
    * True when this agent bubble came from an off-ramp turn (TurnResult mode
-   * "offpath"): a free-form `host.oracle.converse` answer that did NOT advance
+   * "offpath"): a free-form `host.agent.converse` answer that did NOT advance
    * state. The transcript marks it so the bubble can be rendered distinctly
    * ("off path") — the menu still persists because state is unchanged.
    */
@@ -109,8 +109,8 @@ export const useRunStore = defineStore("run", () => {
   // scrolls again).
   const highlightTick = ref<number>(0);
 
-  // Aggregate token usage + cost across every oracle.call.complete event in the
-  // run. Reads the canonical transport meta via readOracleUsage. `present` is
+  // Aggregate token usage + cost across every agent.call.complete event in the
+  // run. Reads the canonical transport meta via readAgentUsage. `present` is
   // false when no call carried any usage (so the UI can hide the chip).
   const usageTotals = computed(() => {
     let promptTokens = 0;
@@ -119,8 +119,8 @@ export const useRunStore = defineStore("run", () => {
     let calls = 0;
     let present = false;
     for (const e of events.value) {
-      if (e.msg !== "oracle.call.complete") continue;
-      const u = readOracleUsage(e.attrs);
+      if (e.msg !== "agent.call.complete") continue;
+      const u = readAgentUsage(e.attrs);
       if (u.promptTokens || u.responseTokens || u.costUsd) present = true;
       promptTokens += u.promptTokens ?? 0;
       responseTokens += u.responseTokens ?? 0;
@@ -397,7 +397,7 @@ export const useRunStore = defineStore("run", () => {
 
   /**
    * Submit an explicit intent (+ slots): push a user transcript entry, advance
-   * the session, and apply the resulting view. Streams oracle progress via SSE
+   * the session, and apply the resulting view. Streams agent progress via SSE
    * when the source supports it (LiveSource).
    */
   async function submitIntent(
@@ -427,7 +427,7 @@ export const useRunStore = defineStore("run", () => {
   }
 
   /**
-   * Send free text as a turn. Streams oracle progress via SSE when the source
+   * Send free text as a turn. Streams agent progress via SSE when the source
    * supports it (LiveSource).
    */
   async function sendText(

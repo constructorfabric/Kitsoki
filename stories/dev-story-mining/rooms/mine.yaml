@@ -21,7 +21,7 @@ states:
           pairs:
             Brief:    '{{ world.mine_artifact.brief_path|default:"(pending)" }}'
             Intents:  '{{ world.mine_artifact.intent_count|default:"(pending)" }}'
-            Split:    '🟢 {{ world.mine_artifact.deterministic|default:"–" }} · 🟡 {{ world.mine_artifact.oracle_gated|default:"–" }} · 🔴 {{ world.mine_artifact.irreducible|default:"–" }}'
+            Split:    '🟢 {{ world.mine_artifact.deterministic|default:"–" }} · 🟡 {{ world.mine_artifact.agent_gated|default:"–" }} · 🔴 {{ world.mine_artifact.irreducible|default:"–" }}'
       - heading: "Brief"
       - code: '{{ world.mine_artifact.summary_markdown|default:"(pending — miner has not returned yet)" }}'
       - choice:
@@ -43,7 +43,7 @@ states:
               intent: look
     relevant_world: [job, project_dir, min_intents, judge_mode, judge_confidence_threshold, mine_artifact, llm_verdict, refine_feedback, cycle]
     on_enter:
-      - invoke: host.oracle.task
+      - invoke: host.agent.task
         once: true
         with:
           agent: miner
@@ -59,7 +59,7 @@ states:
           mine_artifact: submitted
         on_error: idle
       - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
-        invoke: host.oracle.decide
+        invoke: host.agent.decide
         with:
           agent: judge
           prompt: prompts/judge_generic.md

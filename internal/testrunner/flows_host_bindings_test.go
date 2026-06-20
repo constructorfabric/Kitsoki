@@ -92,7 +92,7 @@ host_handlers:
     data: { ok: true, log: "ok", passed: 1, failed: 0, state: "success" }
   host.local_files.ticket:
     data: { ok: true, tickets: [] }
-  host.oracle.ask_with_mcp:
+  host.agent.ask_with_mcp:
     data:
       ok: true
       submitted:

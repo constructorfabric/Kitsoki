@@ -863,7 +863,7 @@ func conformanceConcurrentMutations(t *testing.T, mk cacheFactory) {
 // conformanceFinalStateMatchesMemory drives an identical sequence of
 // operations on the supplied backend and on a NewMemory reference, then
 // asserts the final Get result agrees. This is the property test: the
-// SQLite backend cannot drift from the in-memory oracle.
+// SQLite backend cannot drift from the in-memory agent.
 func conformanceFinalStateMatchesMemory(t *testing.T, mk cacheFactory) {
 	t.Helper()
 	cfg := testConformanceConfig()

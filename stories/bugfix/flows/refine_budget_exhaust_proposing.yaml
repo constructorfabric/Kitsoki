@@ -22,7 +22,7 @@ host_handlers:
     data: { ok: true, sha: "abc", diff: "" }
   host.local:
     data: { ok: true, log: "PASS", passed: 1, failed: 0 }
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted:
@@ -36,7 +36,7 @@ host_handlers:
         confidence:       0.85
         reasoning:        "Trace shows the off-by-one in the obvious place."
 
-  host.oracle.ask:
+  host.agent.ask:
     data:
       ok: true
       submitted:
@@ -50,7 +50,7 @@ host_handlers:
         confidence:       0.85
         reasoning:        "Trace shows the off-by-one in the obvious place."
 
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:

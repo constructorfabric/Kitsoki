@@ -1,15 +1,15 @@
 # once_reload_safe — on_enter is idempotent: a room whose artifact is
-# already bound does NOT re-run its oracle call.
+# already bound does NOT re-run its agent call.
 #
 # This is the reload-safety contract for the `once: true` invokes added to
 # the bugfix pipeline. /reload (and any self / on_error re-entry) re-fires
-# on_enter; the `once:` flag makes the expensive oracle call a no-op when
+# on_enter; the `once:` flag makes the expensive agent call a no-op when
 # its bind target is already populated. We prove it here without a real
 # reload: we ENTER proposing (via accept from reproducing) with
 # propose_fix_artifact ALREADY preset to a distinctive marker, while the
-# host.oracle.decide stub returns a DIFFERENT value. If `once:` failed and
+# host.agent.decide stub returns a DIFFERENT value. If `once:` failed and
 # the proposer re-ran, the stub's value would overwrite the preset.
-# Asserting the preset SURVIVES proves the oracle was skipped.
+# Asserting the preset SURVIVES proves the agent was skipped.
 #
 # judge_mode=human so the only on_enter decide is the proposer itself
 # (the judge step is gated off in human mode) — no shared llm_verdict
@@ -53,17 +53,17 @@ host_handlers:
     data: { ok: true, log: "PASS", passed: 1, failed: 0 }
   # If `once:` failed, the proposing on_enter proposer would fire this and
   # overwrite the preset with SHOULD-NOT-RUN.
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:
         summary_title:    "SHOULD-NOT-RUN"
-        summary_markdown: "Stub re-ran the oracle — once: failed."
+        summary_markdown: "Stub re-ran the agent — once: failed."
         confidence:       0.10
         fix_description:  "stub"
         root_cause:       "stub"
         affected_files:   ["stub.go"]
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted:

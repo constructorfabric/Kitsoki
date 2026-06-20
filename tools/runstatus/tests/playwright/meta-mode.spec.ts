@@ -1,7 +1,7 @@
 /**
  * meta-mode.spec.ts — end-to-end product demo for the web UI's META MODE
  * overlay, driven against a REAL `kitsoki web` server in the deterministic
- * no-LLM posture (--flow: host stubbed, harness nil, the meta oracle replaced
+ * no-LLM posture (--flow: host stubbed, harness nil, the meta agent replaced
  * by the deterministic stub — no LLM is ever called).
  *
  * Meta mode is a global, persistent overlay chat with kitsoki's named agents:
@@ -11,9 +11,9 @@
  *
  * The demo proves the full experience, recording a MacBook-resolution video +
  * per-scene screenshots. Streaming is validated by setting
- * KITSOKI_META_STREAM_DELAY_MS so the stub oracle emits tool/delta events with
+ * KITSOKI_META_STREAM_DELAY_MS so the stub agent emits tool/delta events with
  * a visible pause — the streaming bubble, 🧠 brain icon, and tool breadcrumbs
- * all render for at least the duration of the oracle call before the committed
+ * all render for at least the duration of the agent call before the committed
  * message lands.
  *
  * Scenes:
@@ -190,7 +190,7 @@ async function metaSendWithStreamCheck(
   await page.getByTestId("meta-composer-send").click();
 
   // In non-CI mode, the stub emits events with a delay → streaming bubble stays
-  // visible for the duration of the oracle call. Assert and screenshot it.
+  // visible for the duration of the agent call. Assert and screenshot it.
   if (PACE > 0 && opts.checkStream !== false) {
     const streamBubble = page.getByTestId("meta-row-streaming");
     await expect(streamBubble).toBeVisible({ timeout: 5000 });

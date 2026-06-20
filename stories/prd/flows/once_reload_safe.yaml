@@ -1,5 +1,5 @@
 # once_reload_safe — on_enter is idempotent: a room whose result is already
-# present does NOT re-run its oracle call.
+# present does NOT re-run its agent call.
 #
 # This is the reload-safety contract behind `once: true`. /reload re-fires
 # on_enter; the `once:` flag makes the expensive decide/task a no-op when ALL
@@ -45,9 +45,9 @@ host_handlers:
   host.ide.open_file:
     data: { ok: true, connected: true }
   # references on_enter runs the optional semantic pre-seed; empty hits = no embeddings.
-  host.oracle.search:
+  host.agent.search:
     data: { hits: [] }
-  host.oracle.decide:
+  host.agent.decide:
     by_call:
       # references room's researcher — if once: failed this would overwrite
       # the preset references with the SHOULD-NOT-RUN list.
@@ -57,7 +57,7 @@ host_handlers:
           submitted:
             items:
               - { path: "docs/SHOULD-NOT-RUN.md", sections: "x", rationale: "this list should never replace the preset" }
-  host.oracle.task:
+  host.agent.task:
     # drafting author — if once: failed this would overwrite the preset draft.
     data:
       ok: true

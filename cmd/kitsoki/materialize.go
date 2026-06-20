@@ -123,14 +123,14 @@ func runMaterialize(repoRoot, configPath, nameFlag string) (string, error) {
 // strict subset of the app.yaml schema (the same keys kitsoki-dev declares) so
 // app.Load round-trips it. Field order here is the on-disk order.
 type rootYAMLDoc struct {
-	App           rootYAMLApp               `yaml:"app"`
-	OraclePlugins map[string]rootYAMLOracle `yaml:"oracle_plugins"`
-	Routing       rootYAMLRouting           `yaml:"routing"`
-	Hosts         []string                  `yaml:"hosts"`
-	Imports       map[string]rootYAMLImport `yaml:"imports"`
-	World         map[string]rootYAMLVar    `yaml:"world,omitempty"`
-	Intents       map[string]rootYAMLIntent `yaml:"intents,omitempty"`
-	Root          string                    `yaml:"root"`
+	App          rootYAMLApp               `yaml:"app"`
+	AgentPlugins map[string]rootYAMLAgent  `yaml:"agent_plugins"`
+	Routing      rootYAMLRouting           `yaml:"routing"`
+	Hosts        []string                  `yaml:"hosts"`
+	Imports      map[string]rootYAMLImport `yaml:"imports"`
+	World        map[string]rootYAMLVar    `yaml:"world,omitempty"`
+	Intents      map[string]rootYAMLIntent `yaml:"intents,omitempty"`
+	Root         string                    `yaml:"root"`
 }
 
 type rootYAMLVar struct {
@@ -144,7 +144,7 @@ type rootYAMLApp struct {
 	Title   string `yaml:"title,omitempty"`
 }
 
-type rootYAMLOracle struct {
+type rootYAMLAgent struct {
 	Plugin  string `yaml:"plugin"`
 	Model   string `yaml:"model,omitempty"`
 	Grammar bool   `yaml:"grammar,omitempty"`
@@ -190,8 +190,8 @@ func emitRootYAML(spec *app.RootSpec, slug string) ([]byte, error) {
 			Version: imp.App.Version,
 			Title:   fmt.Sprintf("%s — dev-story instance (materialized implicit root)", slug),
 		},
-		OraclePlugins: map[string]rootYAMLOracle{
-			"oracle.local_llm": {Plugin: "builtin.local_llm", Model: "qwen2.5-1.5b-instruct", Grammar: true},
+		AgentPlugins: map[string]rootYAMLAgent{
+			"agent.local_llm": {Plugin: "builtin.local_llm", Model: "qwen2.5-1.5b-instruct", Grammar: true},
 		},
 		Routing: rootYAMLRouting{Embedding: rootYAMLEmbedding{Model: "nomic-embed-text-v1.5"}},
 		Hosts:   imp.Hosts,

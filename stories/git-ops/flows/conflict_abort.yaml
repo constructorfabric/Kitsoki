@@ -22,7 +22,7 @@ host_handlers:
           ok:        true
           exit_code: 0
           stdout:    "HEAD is now at abc1234 previous commit"
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted:

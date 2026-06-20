@@ -1,9 +1,9 @@
 # llm_judge — idle → clarifying → brief → references → drafting in llm judge
-# mode, proving the THREE `host.oracle.decide` call sites (clarifying's
+# mode, proving the THREE `host.agent.decide` call sites (clarifying's
 # `analyst_questions`, references' `references_research`, drafting's
 # `judge_verdict`) are stubbed INDEPENDENTLY in one fixture via `by_call:`.
 #
-# All three calls share the handler name `host.oracle.decide`. Before
+# All three calls share the handler name `host.agent.decide`. Before
 # invoke-`id:` addressing, a single fixture could not give them distinct
 # responses without either giving one a different verb (distorting the story)
 # or splitting the traversal across fixtures. Here the analyst returns
@@ -28,7 +28,7 @@ host_handlers:
     data: { ok: true, connected: true }
   host.chat.resolve:
     data: { ok: true, chat_id: "chat-1", title: "PRD idea discovery", is_new: true }
-  host.oracle.converse:
+  host.agent.converse:
     data: { ok: true, answer: "A CLI for X that helps developers do Y.", chat_id: "chat-1", claude_session_id: "sess-1" }
   # search-confirm mints the per-PRD workspace.
   host.run:
@@ -40,9 +40,9 @@ host_handlers:
           stdout_json: { slug: "a-cli-for-x", workspace: ".artifacts/prd/a-cli-for-x" }
   # One stub, two call sites — addressed by the invoke `id:`.
   # references on_enter runs the optional semantic pre-seed; empty hits = no embeddings.
-  host.oracle.search:
+  host.agent.search:
     data: { hits: [] }
-  host.oracle.decide:
+  host.agent.decide:
     by_call:
       # The prior-art scout (search room) — no overlap, so confirm proceeds.
       existing_scan:
@@ -74,7 +74,7 @@ host_handlers:
             confidence: 0.55
   host.artifacts_dir:
     data: { ok: true, path: ".artifacts/out.md", message_id: "out#1" }
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted:

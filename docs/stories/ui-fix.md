@@ -17,8 +17,8 @@ deterministic (pure computation, replayable):
 | Step | Kind | Host |
 |---|---|---|
 | Load + mechanical dedup | deterministic | `host.run` + `host.starlark.run` |
-| Pattern identification | interpretive (oracle) | `host.oracle.decide` |
-| Apply group fix | interpretive (agent) | `host.oracle.task` |
+| Pattern identification | interpretive (agent) | `host.agent.decide` |
+| Apply group fix | interpretive (agent) | `host.agent.task` |
 | Verify cleared | deterministic | `host.run` + `host.starlark.run` |
 | Before/after media | deterministic | `host.contact_sheet` / `host.slidey.render` + `host.artifacts_dir` |
 

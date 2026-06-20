@@ -94,7 +94,7 @@ agent path (unchanged + linked):
 ```
 
 **Interpretive vs. deterministic:** the *decision* to escalate, when a story
-makes one, is the story's existing `host.oracle.decide` (recorded as it already
+makes one, is the story's existing `host.agent.decide` (recorded as it already
 is). Everything this slice adds — reading the mode, suppressing routing,
 delivering operator prose, emitting notifications — is **deterministic**. No new
 interpretive decision type; the moat is untouched.

@@ -119,7 +119,7 @@ func TestChatDrive_AwaitSuccess(t *testing.T) {
 	t.Parallel()
 	cs := newFakeChatStore()
 	cs.addChat(host.ChatRecord{ID: "chat-1", Status: "active"})
-	ctx := host.WithClaudeRunner(host.WithChatStore(context.Background(), cs), stubOracleRunner())
+	ctx := host.WithClaudeRunner(host.WithChatStore(context.Background(), cs), stubAgentRunner())
 
 	res, err := host.ChatDriveHandler(ctx, map[string]any{
 		"chat_id": "chat-1",

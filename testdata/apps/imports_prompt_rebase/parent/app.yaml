@@ -4,7 +4,7 @@ app:
   version: 0.1.0
 
 hosts:
-  - host.oracle.ask
+  - host.agent.ask
 
 world: {}
 

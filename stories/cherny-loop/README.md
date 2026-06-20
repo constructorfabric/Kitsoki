@@ -28,7 +28,7 @@ loop drives itself maker → gate → repeat until a gate passes or a budget sto
   loop *refuses to spend* and rests for the operator (`reconfigure` or `accept`).
   This is the red-before-green discipline: never spend budget on a gate that can't
   fail. The RED proof becomes the first maker feedback.
-- **iterating** — the **maker** (`host.oracle.task`) makes the smallest change
+- **iterating** — the **maker** (`host.agent.task`) makes the smallest change
   toward the goal, fed the *previous gate's failure reason* as feedback (the
   ralph-style reset: anchors + one failure reason, not a growing transcript),
   then **auto-emits `check`** into gating.
@@ -54,10 +54,10 @@ unbounded autonomy.
 | Mode | Checker | Use for |
 |---|---|---|
 | `script` (default) | `host.run` the command in `gate_command`; pass iff exit 0 | mechanically checkable goals — tests pass, type-checks, lint clean. Deterministic, free, incorruptible. |
-| `oracle` | `host.oracle.decide` adversarially reviews the artifact; pass iff verdict `pass` | goals no test can encode — prose quality, design soundness. |
+| `agent` | `host.agent.decide` adversarially reviews the artifact; pass iff verdict `pass` | goals no test can encode — prose quality, design soundness. |
 
 The script gate is the strongest maker/checker split (code can't be talked into
-passing) and costs nothing, so it is the default. Reach for the oracle gate only
+passing) and costs nothing, so it is the default. Reach for the agent gate only
 when the goal is subjective.
 
 ## Termination — goal met OR budget hit
@@ -88,7 +88,7 @@ the run trail that makes a loop auditable and resumable.
 ## Tests
 
 Deterministic, no-LLM flow fixtures under `flows/` cover: achieved (script +
-oracle gates), iteration-budget exhaustion, cost-budget exhaustion, the
+agent gates), iteration-budget exhaustion, cost-budget exhaustion, the
 feedback-into-next-iteration edge, and a full multi-iteration run to the ceiling.
 
 ```

@@ -142,7 +142,7 @@ and Drive headers carry a **provider dropdown** and a dependent **model
 dropdown** — the live control over which LLM backend/provider and model answer
 this session. Switching fires `runstatus.session.set_selection` and takes effect
 on the next turn; the model dropdown appears only for a profile that declares a
-model catalog. Each oracle row in the trace is then **stamped with the profile
+model catalog. Each agent row in the trace is then **stamped with the profile
 and model it ran on**, so the trace provenance matches what was picked. See
 [Harness Profiles](../architecture/harness-profiles.md) for the full mechanism
 (it is the same selection the TUI's `/provider` / `/model` drive).
@@ -324,8 +324,8 @@ synthetic `AppDef` for the cross-app `kitsoki.*` modes). Read-only surfaces
 (`kitsoki status serve`) leave `Entry.Meta` nil, so meta RPCs report
 `codeReadOnly`.
 
-**No-LLM posture.** Under `--flow` / `--host-cassette` the meta oracle is
-replaced by a deterministic stub (`internal/metamode/stub_oracle.go`): read-only
+**No-LLM posture.** Under `--flow` / `--host-cassette` the meta agent is
+replaced by a deterministic stub (`internal/metamode/stub_agent.go`): read-only
 modes return a scripted reply; Story-edit makes a real, controlled disk write so
 the edit→commit→reload handshake fires for real with no LLM. This is what the
 Playwright demo (`tests/playwright/meta-mode.spec.ts`) records.
@@ -379,7 +379,7 @@ shareable MP4/GIF/contact-sheet artifacts.
 
 ## Global inbox (background-turn notifications)
 
-A `background: true` turn (an `oracle.task`, a `host.run`, a test run) runs off
+A `background: true` turn (an `agent.task`, a `host.run`, a test run) runs off
 the turn loop; when it terminates the engine posts a **notification** stamped
 with where the work began. The TUI surfaces these via a polling panel
 (`internal/tui/inbox.go`); the web surfaces the **same** notifications as a
@@ -425,7 +425,7 @@ browser click ─▶ runstatus.session.teleport {notification_id}
 ```
 
 Teleport is request/response, not push — it reuses the stackless jump the TUI
-and the Oracle Room banner already drive, so a browser teleport is
+and the Agent Room banner already drive, so a browser teleport is
 indistinguishable from a TUI one in the trace.
 
 ### The surfaces
@@ -499,7 +499,7 @@ shareable artifacts).
 kitsoki web --stories-dir stories/prd --flow stories/prd/flows/happy_path.yaml
 ```
 
-With `--flow`, the fixture's `host_handlers:` stub **every** `host.*`/oracle
+With `--flow`, the fixture's `host_handlers:` stub **every** `host.*`/agent
 call and **no harness is built**; the posture is threaded into `runtimeBase`, so
 **every** session the home screen starts is fully reproducible. This is the same
 fixture `kitsoki test flows` replays, so the web UI and the tests resolve a stub
@@ -744,7 +744,7 @@ Other tests: `cd tools/runstatus && pnpm test` (Vitest, frontend);
 
 The same server hosts the [story editor](../tui/story-editor.md) at the
 `/editor` hash route — a **per-story static inspector** (BFS room list, per-room
-hooks / domain model / typed view / IDE deep-link, and the Oracle Workbench with
+hooks / domain model / typed view / IDE deep-link, and the Agent Workbench with
 its cassette browser + cassette-only replay). It needs no session: the
 `runstatus.editor.*` RPC family recompiles the story off disk on every call,
 backed by the registry's optional `EditorProvider` capability. See the

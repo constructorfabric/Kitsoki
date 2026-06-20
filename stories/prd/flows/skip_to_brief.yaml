@@ -29,9 +29,9 @@ host_handlers:
     data: { ok: true, connected: true }
   # Defensive: if the runner fires clarifying's on_enter on initial entry.
   # references on_enter runs the optional semantic pre-seed; empty hits = no embeddings.
-  host.oracle.search:
+  host.agent.search:
     data: { hits: [] }
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:

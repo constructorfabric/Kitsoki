@@ -109,16 +109,16 @@ Standalone Wave 3 needs:
 |---|---|---|
 | `host.cypilot_artifacts` | NEW (Wave 3 / Phase 5) | `internal/host/cypilot_artifacts.go` |
 | `host.git`, `host.local`, `host.append_to_file`, `host.inbox.add` | Wave 1 | (existing) |
-| `host.oracle.decide` | oracle-split Phase 8 | `internal/host/oracle_decide.go` |
+| `host.agent.decide` | agent-split Phase 8 | `internal/host/agent_decide.go` |
 
 When `cpt` is not on PATH, `host.cypilot_artifacts` surfaces a clean
 domain error from every op rather than crashing.  The room's
 `on_error:` arc routes back to the previous `_awaiting_reply` so the
 operator can fix the environment and refine.
 
-### Oracle-split persona table (Phase 8)
+### Agent-split persona table (Phase 8)
 
-All oracle calls in this story are judge verdicts — no artifact
+All agent calls in this story are judge verdicts — no artifact
 production, no file writes. The single persona is:
 
 | Persona | Verb | Phases |
@@ -136,7 +136,7 @@ Same shape as `stories/bugfix/` / `stories/pr-refinement/`.  Every
 
 1. `iface.transport.post` — artifact body to the bound channel.
 2. `host.inbox.add` — mirror to the local TUI inbox.
-3. Conditional `host.oracle.decide` (agent: `judge`) — LLM-judge over
+3. Conditional `host.agent.decide` (agent: `judge`) — LLM-judge over
    the artifact + validate report (when judge_mode != "human").
 4. Conditional `emit_intent:` — auto-fire the verdict's intent when
    confidence >= threshold AND verdict/intent != "uncertain".

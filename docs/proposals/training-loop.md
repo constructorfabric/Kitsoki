@@ -48,11 +48,11 @@ never an autonomous one.*
 
 - **Code seams:** new `internal/training/` orchestrator (loop driver + acceptance
   gate, DI over slice-1 reward and slice-2 attribution); a new `train` story under
-  `stories/kitsoki-dev/` (rooms + an `oracle.task` candidate-edit author); reuses
+  `stories/kitsoki-dev/` (rooms + an `agent.task` candidate-edit author); reuses
   the existing flow-fixture runner ([`testing.md`](../tracing/testing.md)) as the
   validation harness.
 - **Vocabulary:** no new effects/host calls in the engine proper — the loop is
-  orchestration over slices 1–2 plus the existing `oracle.task` (to draft the
+  orchestration over slices 1–2 plus the existing `agent.task` (to draft the
   edit) and `host.run`/flow-runner (to validate). The `train` story is ordinary
   YAML.
 - **Stories affected:** none change behavior; the loop *operates on* a target
@@ -71,7 +71,7 @@ never an autonomous one.*
    attribution (slice 2) ──▶ {decision_ref, weight_kind, blame}
               │
               ▼
-   candidate edit  ── oracle.task drafts a change to the named weight ──┐
+   candidate edit  ── agent.task drafts a change to the named weight ──┐
    (the optimizer step;                                                 │
     budget = learning rate)                                             │
               │                                                         │
@@ -153,7 +153,7 @@ deliberately coarse altitude now and leave the finer points to a future iteratio
 ## Decision recording
 
 Each loop turn lands recorded decisions (the moat): the `reward` (slice 1), the
-`attribution` (slice 2), the **candidate-edit** `oracle.task` (prompt, world
+`attribution` (slice 2), the **candidate-edit** `agent.task` (prompt, world
 snapshot, the diff it produced), the **validation** result (which fixtures ran,
 the reward delta), and the **accept/discard** verdict (decider: human via the
 operator bridge, or `default` when a flow gates it headlessly). A training session
@@ -165,7 +165,7 @@ prompt-and-pray).
 
 - The orchestrator is **pure orchestration** over existing primitives — it adds no
   new engine concept. It injects (DI) the slice-1 scorer, the slice-2 analyzer,
-  the `oracle.task` runner, and the flow-fixture runner; tests supply
+  the `agent.task` runner, and the flow-fixture runner; tests supply
   deterministic fakes/cassettes for all four.
 - **The `train` story operates in a sandbox.** Candidate edits are applied to a
   worktree/copy of the target story (reuse the existing task FS-sandbox pattern),
@@ -194,7 +194,7 @@ behavior change.
 - [ ] 1.6 Hot-apply replay: per-turn weight-version pinning + `weights.reload` decision marker; replayer loads the version in effect per turn. Gate rejects a hot-apply touching the current room or a populated world key (defer live-state migration)
 
 ## 2. Story
-- [ ] 2.1 `train` process story under stories/kitsoki-dev/: pick-scenario → show-attribution → draft-edit (oracle.task) → validate → accept/refine
+- [ ] 2.1 `train` process story under stories/kitsoki-dev/: pick-scenario → show-attribution → draft-edit (agent.task) → validate → accept/refine
 - [ ] 2.2 The candidate-edit task: scoped by weight_kind to one progressive-determinism conversion
 
 ## 3. Verification
@@ -211,7 +211,7 @@ behavior change.
 ## Verification
 
 No-LLM throughout. Seed a failure→success scenario, supply a cassette for the
-candidate-edit `oracle.task` (a fixed diff) and for any `decide` reward/attribution
+candidate-edit `agent.task` (a fixed diff) and for any `decide` reward/attribution
 judge, and drive the loop via a flow fixture: assert it reaches ACCEPT and the
 replayed reward rises. A second fixture supplies a regressing candidate and
 asserts DISCARD — and per CLAUDE.md is verified to *fail without the acceptance
@@ -220,8 +220,8 @@ CI).
 
 ## Open questions
 
-1. **Who authors the candidate edit — operator or `oracle.task`?** *Lean:
-   `oracle.task` drafts, operator/flow accepts (the epic's open question #2). The
+1. **Who authors the candidate edit — operator or `agent.task`?** *Lean:
+   `agent.task` drafts, operator/flow accepts (the epic's open question #2). The
    loop never both proposes and accepts unsupervised.*
 2. **Single step or epoch?** v1 is one scenario → one edit → accept (Layer 3).
    The batched epoch (Layer 4: mine *many* kitsoki traces for the recurring
@@ -249,7 +249,7 @@ CI).
   validation-gated, and acceptance-gated. The 4-layer Layer-3 runaway-patching
   risk is heeded by construction.
 - **Tuning the LLM.** The optimizer adjusts the story's weights (prompts, slot
-  templates, `.star`, graph, deciders); the oracle behind each decision point is
+  templates, `.star`, graph, deciders); the agent behind each decision point is
   frozen.
 - **Batched epochs / cross-run pattern mining (Layer 4 "analyze").** Seam left
   (a `distill` that feeds the existing `session-mining` kit); out of scope for v1.

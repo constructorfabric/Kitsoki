@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""ground.py — step C of intent mining: ground & validate the oracle hypothesis.
+"""ground.py — step C of intent mining: ground & validate the agent hypothesis.
 
-The oracle (step B, the one LLM pass) PROPOSES a structured hypothesis: for each
+The agent (step B, the one LLM pass) PROPOSES a structured hypothesis: for each
 intent span, a drafted recipe of actions, each carrying a citation (the trace line
 it claims to come from). This step VERIFIES that hypothesis against the
-deterministic trace — it is what turns the LLM into a *strictly-validated oracle*
+deterministic trace — it is what turns the LLM into a *strictly-validated agent*
 (review §3):
 
   1. confirm the cited trace line actually contains that tool call (reject
@@ -14,7 +14,7 @@ deterministic trace — it is what turns the LLM into a *strictly-validated orac
   3. mark each action grounded/ungrounded; quarantine any span whose actions can't
      be grounded at all.
 
-Input  (--oracle):  one merged oracle JSON, OR a dir of per-batch oracle JSON
+Input  (--agent):  one merged agent JSON, OR a dir of per-batch agent JSON
                     files. Shape per file:
    { "session": "<sid>", "spans": [
        { "span": [first, last], "tags": {...},
@@ -34,8 +34,8 @@ import sys
 import intent_common as ic
 
 
-def _glob_oracle(path):
-    """Return a list of per-trace oracle records from a file or a dir."""
+def _glob_agent(path):
+    """Return a list of per-trace agent records from a file or a dir."""
     records = []
     if os.path.isdir(path):
         for f in sorted(os.listdir(path)):
@@ -128,15 +128,15 @@ def ground_record(record, traces_dir):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="Ground & validate oracle output against traces.")
-    ap.add_argument("--oracle", required=True, help="oracle JSON file or dir of per-batch JSON")
+    ap = argparse.ArgumentParser(description="Ground & validate agent output against traces.")
+    ap.add_argument("--agent", required=True, help="agent JSON file or dir of per-batch JSON")
     ap.add_argument("--traces", required=True, help="traces/ dir (holds <session>.txt)")
     ap.add_argument("--out", required=True, help="write grounded.json here")
     ap.add_argument("--keep-quarantined", action="store_true",
                     help="keep quarantined spans (default: drop spans that grounded nothing)")
     args = ap.parse_args(argv)
 
-    records = _glob_oracle(args.oracle)
+    records = _glob_agent(args.agent)
     grounded = [ground_record(r, args.traces) for r in records]
 
     total_spans = 0

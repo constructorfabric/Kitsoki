@@ -37,7 +37,7 @@
 # rooms/clarifying.yaml). clarifying_budget caps the number of rounds.
 #
 # No engine / widget changes — everything composes existing mechanisms
-# (choice forms, host.oracle.*, host.artifacts_dir, host.run for the
+# (choice forms, host.agent.*, host.artifacts_dir, host.run for the
 # deterministic slug/publish glue, the cycle-budget refine loop, named
 # agents, tracing). See README.md for the full
 # contract + design.
@@ -55,15 +55,15 @@ app:
 # does not post the finished PRD anywhere out-of-band (optional, trivial
 # to add as an effect on the accept arc later).
 hosts:
-  - host.oracle.converse
-  - host.oracle.decide
-  - host.oracle.task
+  - host.agent.converse
+  - host.agent.decide
+  - host.agent.task
   - host.chat.resolve     # get-or-create the discovery chat; idempotent across on_enter re-fires (e.g. /reload). NOT host.chat.create — see rooms/idle.yaml.
   - host.artifacts_dir    # write the brief + reference-list artifacts into the per-PRD workspace under {{ workdir }}/.artifacts/prd/<slug> — see rooms/brief.yaml, rooms/references.yaml.
   - host.ide.open_file    # open the editable brief in the operator's editor on brief-room entry — see rooms/brief.yaml.
   - host.ide.open_diff    # show a refine as a native diff with an in-editor accept/reject verdict gate — see rooms/drafting.yaml.
   - host.run              # deterministic glue scripts: mint the per-PRD workspace slug (scripts/prd_slug.py, search room) and publish the accepted PRD to its durable home (scripts/prd_publish.py, drafting room).
-  - host.oracle.search    # OPTIONAL semantic pre-seed for the references room: embeds the idea and retrieves close docs chunks to pre-rank the researcher (see rooms/references.yaml). Fails cleanly (on_error stays in references) when no embedding endpoint is configured.
+  - host.agent.search    # OPTIONAL semantic pre-seed for the references room: embeds the idea and retrieves close docs chunks to pre-rank the researcher (see rooms/references.yaml). Fails cleanly (on_error stays in references) when no embedding endpoint is configured.
 
 # Persona table — names a model + tool surface per step so the trace
 # attributes model + token usage to each step.
@@ -190,7 +190,7 @@ world:
   references_cycle: { type: int,    default: 0 }    # references re-search rounds consumed; caps via references_budget
   references_budget: { type: int,   default: 3 }    # max references regenerations before regenerate abandons
   references_revise: { type: bool,  default: false } # true on a `refine` (revise the current list in place); false on a fresh `regenerate` search — steers prompts/references.md
-  reference_hits:    { type: list, default: [] }     # OPTIONAL semantic pre-seed (host.oracle.search → the `hits` array): [{ path, score, chunk_id, text }]. Bound in the references_seed room. Empty when embeddings are unconfigured (on_error fallback) — the researcher then scans from scratch. Pre-ranks the researcher's reading (prompts/references.md).
+  reference_hits:    { type: list, default: [] }     # OPTIONAL semantic pre-seed (host.agent.search → the `hits` array): [{ path, score, chunk_id, text }]. Bound in the references_seed room. Empty when embeddings are unconfigured (on_error fallback) — the researcher then scans from scratch. Pre-ranks the researcher's reading (prompts/references.md).
 
   # ── draft + refine ──────────────────────────────────────────────────
   prd_artifact:    { type: object, default: {} }   # task result: { title, summary_markdown, file_path, confidence, needs_clarification, follow_up_questions }
@@ -271,7 +271,7 @@ intents:
       # it, skipping the entire clarifying phase).
       #
       # `n` is OPTIONAL: free-text answers omit it. The `answer` arc hands
-      # the whole reply (`text`) to the answer_matcher oracle, which reads the
+      # the whole reply (`text`) to the answer_matcher agent, which reads the
       # question list and decides which question(s) the reply answers — so an
       # out-of-order, number-less answer still lands on the right question
       # (see rooms/clarifying.yaml + prompts/match_answer.md). `n`, when an

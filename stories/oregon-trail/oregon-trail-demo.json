@@ -71,9 +71,9 @@
           ]
         }
       ],
-      "caption": "Every screen is a kitsoki room. Transitions are declared; the oracle routes free text to the matching intent.",
+      "caption": "Every screen is a kitsoki room. Transitions are declared; the agent routes free text to the matching intent.",
       "hold": 240,
-      "narration": "Every screen is a kitsoki room. The oracle routes free text to the matching intent."
+      "narration": "Every screen is a kitsoki room. The agent routes free text to the matching intent."
     },
 
     {
@@ -119,7 +119,7 @@
             { "kind": "decision", "verb": "route", "outcome": "generate_names · theme:Beatles" }
           ],
           "effects": [
-            { "kind": "tool", "name": "host.oracle.decide", "ok": true, "detail": "party_namer · schema:party_names.json", "duration": "1.2s" },
+            { "kind": "tool", "name": "host.agent.decide", "ok": true, "detail": "party_namer · schema:party_names.json", "duration": "1.2s" },
             { "kind": "world", "changes": [
               { "key": "party_names", "before": "∅", "after": "John,Paul,George,Ringo,Pete" }
             ]},
@@ -129,7 +129,7 @@
       ],
       "cardHold": 150,
       "hold": 210,
-      "narration": "Casual phrasing, typed intents. 'Banker' fires pick_profession. 'Name the party after the Beatles' calls oracle.decide — schema-typed JSON for five names."
+      "narration": "Casual phrasing, typed intents. 'Banker' fires pick_profession. 'Name the party after the Beatles' calls agent.decide — schema-typed JSON for five names."
     },
 
     {
@@ -156,7 +156,7 @@
       ],
       "caption": "Freeform basket orders need LLM slot extraction. Short commands hit synonyms — no LLM call.",
       "hold": 240,
-      "narration": "Full basket orders need LLM slot extraction. Short commands hit synonyms — no oracle call."
+      "narration": "Full basket orders need LLM slot extraction. Short commands hit synonyms — no agent call."
     },
 
     {
@@ -322,7 +322,7 @@
           "room": "trail_guide.active_new",
           "user": null,
           "flow": [
-            { "kind": "assistant", "tag": "oracle · converse", "model": "claude-sonnet-4-6", "text": "The Kansas runs high in April — depth up to 1.6× normal. Ford only if shallow. Otherwise caulk and float; the oxen keep their footing. Spare axle in hand before you commit." }
+            { "kind": "assistant", "tag": "agent · converse", "model": "claude-sonnet-4-6", "text": "The Kansas runs high in April — depth up to 1.6× normal. Ford only if shallow. Otherwise caulk and float; the oxen keep their footing. Spare axle in hand before you commit." }
           ],
           "effects": [
             { "kind": "tool", "name": "host.chat.suggest_title", "ok": true, "detail": "auto-title: wagon fording advice", "duration": "8ms" },
@@ -336,7 +336,7 @@
       ],
       "cardHold": 150,
       "hold": 210,
-      "narration": "At any checkpoint, consult the wagon master. A mode:conversational room backed by host.oracle.converse — the same chat thread persists across the whole journey."
+      "narration": "At any checkpoint, consult the wagon master. A mode:conversational room backed by host.agent.converse — the same chat thread persists across the whole journey."
     },
 
     {

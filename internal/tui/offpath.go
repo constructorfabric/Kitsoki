@@ -125,7 +125,7 @@ func (m RootModel) enterOffPath() (tea.Model, tea.Cmd) {
 	m.location, _ = m.location.Update(offPathToggled{on: true})
 	m.transcript, _ = m.transcript.Update(offPathToggled{on: true})
 	_, exitCmd := offPathTriggers(m.orch.AppDef())
-	m.prompt.Placeholder = fmt.Sprintf("freeform chat — type to ask the oracle, %s to return", exitCmd)
+	m.prompt.Placeholder = fmt.Sprintf("freeform chat — type to ask the agent, %s to return", exitCmd)
 	// Off-path prefix stays "> " but recolors to amber so the prompt
 	// matches the off-path framing (transcript border, location bar).
 	setPromptPrefix(&m.prompt, promptPrefixOnPath)

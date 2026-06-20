@@ -1,12 +1,12 @@
 # once_reload_safe — on_enter is idempotent: a room whose artifact is
-# already present does NOT re-run its oracle decide.
+# already present does NOT re-run its agent decide.
 #
 # This is the reload-safety contract for the `once: true` invokes on the
 # four _executing rooms. /reload (and self-re-entry / on_error) re-fires
-# on_enter; `once: true` makes the expensive host.oracle.decide a no-op
+# on_enter; `once: true` makes the expensive host.agent.decide a no-op
 # whenever its bind target is already set in world. We prove it here by
 # entering review_task_executing (its on_enter fires) with
-# task_summary_artifact ALREADY preset. The oracle stub returns a
+# task_summary_artifact ALREADY preset. The agent stub returns a
 # DIFFERENT (SHOULD-NOT-RUN) artifact — so if `once:` failed and the
 # decide re-ran, the preset would be overwritten. Asserting the preset
 # survives verbatim proves the decide was skipped.
@@ -45,7 +45,7 @@ host_handlers:
       body:  "Probe body."
       url:   "issues/tasks/tkt-t-rs1.md"
   # If `once:` failed, this would fire and overwrite the preset artifact.
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:

@@ -139,22 +139,22 @@ func TestStatePathNonEmpty_Rejected(t *testing.T) {
 	}
 }
 
-// TestMidOracleCall_ReIssueOnNextTurn verifies the policy (a) for mid-oracle-call
-// traces: a trace that ends with a dangling OracleCalled (no OracleReturned)
-// can be loaded and a subsequent turn runs normally. The dangling OracleCalled
+// TestMidAgentCall_ReIssueOnNextTurn verifies the policy (a) for mid-agent-call
+// traces: a trace that ends with a dangling AgentCalled (no AgentReturned)
+// can be loaded and a subsequent turn runs normally. The dangling AgentCalled
 // is treated as a no-op by BuildJourney (replay-safe), so the next turn starts
 // from the last fully-committed world state.
 //
 // Finding 2.9: "add an integration test that demonstrates the re-issue". The
-// re-issue means the orchestrator starts fresh from the pre-oracle world state,
+// re-issue means the orchestrator starts fresh from the pre-agent world state,
 // so the next SubmitDirect is equivalent to running the same intent from scratch.
 // The test asserts that (a) the turn succeeds, (b) the session state is correct
-// after the dangling-oracle trace is loaded, and (c) a new SubmitDirect appends
-// new events to the trace (demonstrating the oracle would be re-issued if needed).
-func TestMidOracleCall_ReIssueOnNextTurn(t *testing.T) {
+// after the dangling-agent trace is loaded, and (c) a new SubmitDirect appends
+// new events to the trace (demonstrating the agent would be re-issued if needed).
+func TestMidAgentCall_ReIssueOnNextTurn(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	tracePath := filepath.Join(dir, "mid_oracle.jsonl")
+	tracePath := filepath.Join(dir, "mid_agent.jsonl")
 
 	def, err := app.Load("../../testdata/apps/cloak/app.yaml")
 	require.NoError(t, err)
@@ -162,8 +162,8 @@ func TestMidOracleCall_ReIssueOnNextTurn(t *testing.T) {
 	require.NoError(t, err)
 
 	// Write a trace that has 1 committed turn (go west → cloakroom) then a
-	// dangling OracleCalled (as if the oracle was dispatched but the process
-	// crashed before OracleReturned was written).
+	// dangling AgentCalled (as if the agent was dispatched but the process
+	// crashed before AgentReturned was written).
 	sink, err := store.OpenJSONL(tracePath)
 	require.NoError(t, err)
 
@@ -177,19 +177,19 @@ func TestMidOracleCall_ReIssueOnNextTurn(t *testing.T) {
 		require.NoError(t, sink.Append(ev))
 	}
 
-	// Dangling OracleCalled for turn 2 — process "crashed" before OracleReturned.
+	// Dangling AgentCalled for turn 2 — process "crashed" before AgentReturned.
 	calledPayload, _ := json.Marshal(map[string]any{"verb": "ask", "prompt": "test prompt"})
 	require.NoError(t, sink.Append(store.Event{
 		Turn:    2,
-		Kind:    store.OracleCalled,
+		Kind:    store.AgentCalled,
 		CallID:  "deadbeef12345678",
 		Payload: json.RawMessage(calledPayload),
 	}))
 	require.NoError(t, sink.Close())
 
-	// Now load the trace and run a new turn. The dangling OracleCalled is a
+	// Now load the trace and run a new turn. The dangling AgentCalled is a
 	// fold no-op; the orchestrator should pick up at state="cloakroom" (turn 1's
-	// final state) and run turn 3 (turn 2 was claimed by the oracle call).
+	// final state) and run turn 3 (turn 2 was claimed by the agent call).
 	sink2, err := store.OpenJSONL(tracePath)
 	require.NoError(t, err)
 	defer sink2.Close()
@@ -212,17 +212,17 @@ func TestMidOracleCall_ReIssueOnNextTurn(t *testing.T) {
 	require.NoError(t, err)
 
 	// The next SubmitDirect should succeed — proving the orchestrator
-	// recovered cleanly from the mid-oracle-call state.
+	// recovered cleanly from the mid-agent-call state.
 	out, err := orch.SubmitDirect(ctx, sid, "hang_cloak", nil)
-	require.NoError(t, err, "SubmitDirect must succeed after mid-oracle-call recovery")
+	require.NoError(t, err, "SubmitDirect must succeed after mid-agent-call recovery")
 	require.Equal(t, orchestrator.ModeTransitioned, out.Mode,
 		"hang_cloak in cloakroom must transition successfully")
 
-	// The trace now has new events appended after the dangling OracleCalled,
+	// The trace now has new events appended after the dangling AgentCalled,
 	// demonstrating that the re-issue (new turn) completed.
 	histAfter := sink2.History()
 	require.Greater(t, len(histAfter), 4,
-		"trace must have more events after the new turn (dangling oracle + new turn events)")
+		"trace must have more events after the new turn (dangling agent + new turn events)")
 }
 
 // TestStatePathNonEmpty_RunIntent_Accepted verifies that every event written

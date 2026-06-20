@@ -37,7 +37,7 @@ states:
               intent: look
     relevant_world: [job, stories_dir, judge_mode, judge_confidence_threshold, author_artifact, record_artifact, llm_verdict, refine_feedback, cycle]
     on_enter:
-      - invoke: host.oracle.ask
+      - invoke: host.agent.ask
         once: true
         with:
           agent: recorder
@@ -50,7 +50,7 @@ states:
           record_artifact: submitted
         on_error: idle
       - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
-        invoke: host.oracle.decide
+        invoke: host.agent.decide
         with:
           agent: judge
           prompt: prompts/judge_generic.md

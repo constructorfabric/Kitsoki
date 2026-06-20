@@ -7,7 +7,7 @@ engine treats as a single app. The pieces:
   rooms/*.yaml (or inline)    State definitions ("rooms" = states).
   flows/*.yaml                Mode-2 deterministic flow tests.
   prompts/*.md                LLM prompt templates referenced by
-                              host.oracle.ask. Each file is a Go
+                              host.agent.ask. Each file is a Go
                               template — `{{ args.X }}` placeholders
                               are filled by the engine at call time.
   scripts/                    Scripts invoked via host.run (Python,

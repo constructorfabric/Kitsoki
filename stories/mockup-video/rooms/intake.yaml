@@ -50,7 +50,7 @@ states:
                 intake_message: "{{ slots.message }}"
                 intake_answer:  ""
             - increment: { intake_turns: 1 }
-            - invoke: host.oracle.converse
+            - invoke: host.agent.converse
               with:
                 chat_id:     "{{ world.intake_chat_id }}"
                 agent:       interviewer
@@ -63,7 +63,7 @@ states:
       ready:
         - target: brief-gate
           effects:
-            - invoke: host.oracle.converse
+            - invoke: host.agent.converse
               id: distil_brief
               with:
                 chat_id:     "{{ world.intake_chat_id }}"

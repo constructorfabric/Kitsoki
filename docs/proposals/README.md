@@ -79,7 +79,7 @@ thought.
   persisting the claude stream-json we already capture (`ClaudeRun.RawEvents`)
   to a per-call **sidecar** keyed by `call_id` — referenced from the trace by a
   pointer only (no detail inlined) — and generalizing it as an optional
-  `AskResponse.Transcript` Oracle-interface seam (claude / `local_llm` /
+  `AskResponse.Transcript` Agent-interface seam (claude / `local_llm` /
   subprocess). Detailed prior-art survey (Langfuse, OTel GenAI, Phoenix et al.,
   Claude Code jsonl, OSS viewers). Nothing implemented yet.
 - [`ai-collaboration-proposal.md`](ai-collaboration-proposal.md) —
@@ -132,8 +132,8 @@ thought.
     `kitsoki issues migrate` is shipped + the `issues/` archive frozen; the
     `kitsoki-dev` rebind to `host.gh.ticket` (the cutover) is the deferred last
     step.
-- [`oracle-capability-model.md`](oracle-capability-model.md) — **epic.**
-  One capability model governing **every** oracle (decide / ask / converse /
+- [`agent-capability-model.md`](agent-capability-model.md) — **epic.**
+  One capability model governing **every** agent (decide / ask / converse /
   task), unifying three ad-hoc restrictions and an overloaded boolean. Four
   cooperating layers — **toolbox** (a named, reusable tool grant) → **effect
   class** (`pure | read | write | external` + `deterministic`) → **layered
@@ -146,14 +146,14 @@ thought.
     mutator. (Modelled on Acronis DTS's `deterministic_behavior` enum.)
   - [`toolbox-and-enforcement.md`](toolbox-and-enforcement.md) (runtime) —
     named `toolboxes:` + `tools_add:`; one effect-derived tool-layer policy for
-    all four oracle kinds, collapsing the `mutationTools` deny, the converse
+    all four agent kinds, collapsing the `mutationTools` deny, the converse
     read-only branch, and task's unrestricted spawn into one path.
   - [`task-fs-sandbox.md`](task-fs-sandbox.md) (runtime) — the kernel boundary
     beneath the tools: `sandbox:` (bwrap/Landlock) confines the write/external
     tiers so no tool — Write, Bash, python, sed — escapes the workspace; engine
     validates + persists the diff. PoC proven on this host.
   - conformance check folded into
-    [`oracle-contract-eval.md`](oracle-contract-eval.md) (§Layer 1b) — offline
+    [`agent-contract-eval.md`](agent-contract-eval.md) (§Layer 1b) — offline
     lint that recorded tool uses never exceeded the declared toolbox/effect.
 - [`artifact-format.md`](artifact-format.md) — a schema-verified
   markdown-with-frontmatter artifact format with **lossless** round-trip via
@@ -197,19 +197,19 @@ thought.
   via a generalized `!include`, and a deterministic two-layer validation
   (per-file schema + catalog lint: DAGs, refs, coverage). Initial design for
   review; nothing implemented yet.
-- [`local-model-oracle.md`](local-model-oracle.md) — a `builtin.local_llm`
-  oracle plugin that drives a local llama.cpp `llama-server` sidecar over
+- [`local-model-agent.md`](local-model-agent.md) — a `builtin.local_llm`
+  agent plugin that drives a local llama.cpp `llama-server` sidecar over
   OpenAI-compatible HTTP, with grammar-forced schema-valid output, for
   routing and small `decide` verdicts. Nothing implemented yet; spike (§0)
   required before committing.
-- [`oracle-contract-eval.md`](oracle-contract-eval.md) — schema-conformance
+- [`agent-contract-eval.md`](agent-contract-eval.md) — schema-conformance
   linting of cassette/flow mocks (Layer 1, offline) plus a per-call-site
   correctness eval (Layer 2, gated): `{input, expected}` datasets scored as a
   correctness % across backends (Claude vs free llama.cpp), so a call site can
   be routed to the cheap backend with evidence. Produces the measurement
-  `local-model-oracle.md` consumes. Nothing implemented yet.
-- `oracle-off-ramp.md` — a per-room `oracle_off_ramp:` opt-in: when free text
-  maps to no declared intent, hand the turn to an oracle `converse` answer
+  `local-model-agent.md` consumes. Nothing implemented yet.
+- `agent-off-ramp.md` — a per-room `agent_off_ramp:` opt-in: when free text
+  maps to no declared intent, hand the turn to an agent `converse` answer
   instead of rejecting, with no state/world change. **Shipped**; the proposal
   was retired into the narrative docs — see
   [`docs/stories/architecture.md`](../stories/architecture.md) §9,
@@ -219,7 +219,7 @@ thought.
 - `web-text-input-floor.md` — (tui, web) always offer a free-text composer in
   the web UI, even when a `choice:` widget is shown. Closed the biggest gap in
   the [text-only contract](../architecture/transports.md#7-every-story-must-work-text-only)
-  and unblocked the oracle off-ramp on the web. **Shipped** as the `showTextFloor`
+  and unblocked the agent off-ramp on the web. **Shipped** as the `showTextFloor`
   free-text floor (`tools/runstatus/src/components/InputBar.vue`); the proposal
   was retired.
 - [`stories/prd/`](../../stories/prd/README.md) — a standalone
@@ -231,7 +231,7 @@ thought.
   HTML export, timeline virtualization, and live JSON-RPC + SSE mode
   remain.
 - [`runstatus-trace-fidelity.md`](runstatus-trace-fidelity.md) —
-  make the bugfix trace canonical (`oracle.call.*`, a distinct
+  make the bugfix trace canonical (`agent.call.*`, a distinct
   `machine.say` kind, `turn.input`) and rewire runstatus so each
   meaningful aspect renders once per column. Producer half shipped
   and documented in `docs/tracing/trace-format.md`; the runstatus
@@ -242,7 +242,7 @@ thought.
   detail, recorded decide alternatives, human annotation, and single-call
   operator replay. Nothing implemented yet; decomposed into six slices:
   - [`trace-observation-kinds.md`](trace-observation-kinds.md) (tracing) — a
-    derived semantic kind taxonomy over `EventKind` (decision / oracle-call /
+    derived semantic kind taxonomy over `EventKind` (decision / agent-call /
     host-call / narration / world-mutation / routing / lifecycle) so every
     consumer badges, colors, and collapses by category; no wire change.
   - [`trace-decision-detail.md`](trace-decision-detail.md) (tui) — hero the
@@ -259,7 +259,7 @@ thought.
     `trace.annotation` event in a trace-adjacent sidecar; operators score /
     label / comment a gate or turn, making traces a labeled dataset.
   - [`replay-decision.md`](replay-decision.md) (runtime) — `kitsoki
-    replay-call`: reconstruct one recorded oracle call from the embedded story
+    replay-call`: reconstruct one recorded agent call from the embedded story
     and re-dispatch it against a different operator / edited prompt, then diff
     the verdict — the pluggable-operator moat made visible.
 - [`semantic-routing-proposal.md`](semantic-routing-proposal.md) —
@@ -269,7 +269,7 @@ thought.
   [`../architecture/semantic-routing.md`](../architecture/semantic-routing.md).
 - [`embeddings.md`](embeddings.md) — **epic.** All 3 slices shipped. See
   [`docs/architecture/embeddings.md`](../architecture/embeddings.md) (substrate
-  + `oracle.search`) and [`docs/architecture/semantic-routing.md`](../architecture/semantic-routing.md)
+  + `agent.search`) and [`docs/architecture/semantic-routing.md`](../architecture/semantic-routing.md)
   §6 (routing tier). Child slice files deleted.
 - [`visual-outputs.md`](visual-outputs.md) — **epic.** Make a visual output
   a step produces (MP4 / PNG slideshow / slidey deck) a first-class,
@@ -305,18 +305,18 @@ thought.
 - [`ui-fix-story.md`](ui-fix-story.md) — **story.** A new `stories/ui-fix/`
   review→per-group fix pipeline over the `kitsoki-ui-review` skill's
   `verdict.json`: a deterministic dedup (`host.starlark.run`) feeds an
-  interpretive **pattern-review** gate (`host.oracle.decide` clusters 371
+  interpretive **pattern-review** gate (`host.agent.decide` clusters 371
   findings into ranked root-cause **groups** — never blind iteration), then a
-  loop fixes **one group per agent instance** (`host.oracle.task` scoped to
+  loop fixes **one group per agent instance** (`host.agent.task` scoped to
   `tools/runstatus/src/`) with a human diff checkpoint, a no-LLM geometry+axe
   re-audit proving it cleared, and a **before/after slideshow/video per
   group** via the shipped `visual-outputs` media seam (`host.contact_sheet` /
   `host.slidey.render` → `media` element). `done` is a before/after gallery.
   Composes existing hosts only. Nothing implemented yet.
 - ~~story-editor-view (epic) + story-graph-api / story-editor-shell /
-  oracle-workbench (slices)~~ — **shipped.** The story editor surface
+  agent-workbench (slices)~~ — **shipped.** The story editor surface
   (`/editor` route, BFS room list, hook / domain-model / typed-view detail,
-  meta chat, oracle workbench with cassette browser + isolated replay, reusable
+  meta chat, agent workbench with cassette browser + isolated replay, reusable
   `StoryViewer.vue`) now lives in narrative docs:
   [`docs/tui/story-editor.md`](../tui/story-editor.md). Proposals deleted.
 - [`mockup-video-studio.md`](mockup-video-studio.md) — **epic.** Author UI
@@ -356,10 +356,10 @@ thought.
 - [`work-decomposition.md`](work-decomposition.md) — **story.** A new
   `stories/decompose/` sub-story imported into dev-story: hand it an accepted
   proposal (or epic + children) and an interactive discovery conversation
-  distils scope, an `oracle.decide` emits a brief manifest the MCP submit
+  distils scope, an `agent.decide` emits a brief manifest the MCP submit
   validator structurally enforces, a deterministic `host.run` renders + lints
   it to `decomposition.yaml` (acyclic DAG, coverage), an adversarial
-  `oracle.decide` judges feasibility + completeness, and a coordination board
+  `agent.decide` judges feasibility + completeness, and a coordination board
   dispatches each brief into the `impl` import one at a time with a human gate.
   Nothing implemented yet.
 - [`hybrid-session-driving.md`](hybrid-session-driving.md) — **runtime.** Let

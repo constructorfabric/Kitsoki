@@ -68,7 +68,7 @@ func TestConverseToolPolicy(t *testing.T) {
 }
 
 // TestAlwaysDeniedTools_HeadlessAskUserQuestion locks in the headless fix:
-// AskUserQuestion must be denied on every oracle subprocess, because a
+// AskUserQuestion must be denied on every agent subprocess, because a
 // dispatched `claude -p` has no TTY and the CLI auto-resolves the tool with
 // empty answers (upstream anthropics/claude-code#50728), silently feeding the
 // model a blank answer. See alwaysDeniedTools.

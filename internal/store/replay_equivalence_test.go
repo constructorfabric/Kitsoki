@@ -4,7 +4,7 @@ package store_test
 //
 // Sub-cases from the proposal:
 //   - ResumeAtEveryEventBoundary: N variants for a fixture of N events.
-//   - ResumeMidOracleCall:        fixture ending on OracleCalled; assert policy (fail loud or re-issue).
+//   - ResumeMidAgentCall:        fixture ending on AgentCalled; assert policy (fail loud or re-issue).
 //   - WallClockIndependence:      same fixture under three TZ settings produces identical (state,world,turn).
 //   - CrossBinarySimulation:      schema_version forward-compat assertions (no actual two-binary case).
 //
@@ -148,22 +148,22 @@ func TestLayer3_ResumeAtEveryEventBoundary(t *testing.T) {
 	}
 }
 
-// ─── Layer 3.2: Resume mid-oracle-call ────────────────────────────────────────
+// ─── Layer 3.2: Resume mid-agent-call ────────────────────────────────────────
 
-// TestLayer3_ResumeMidOracleCall verifies the policy when a trace terminates
-// on OracleCalled with no matching OracleReturned.
+// TestLayer3_ResumeMidAgentCall verifies the policy when a trace terminates
+// on AgentCalled with no matching AgentReturned.
 //
-// Pinned policy: BuildJourney silently ignores OracleCalled/OracleReturned
-// (they are replay no-ops). So a trace ending on OracleCalled folds to the
-// same (state, world, turn) as a trace without the dangling OracleCalled.
+// Pinned policy: BuildJourney silently ignores AgentCalled/AgentReturned
+// (they are replay no-ops). So a trace ending on AgentCalled folds to the
+// same (state, world, turn) as a trace without the dangling AgentCalled.
 // This test pins that behaviour — silent recovery — which is what the engine
 // actually does. The proposal allows either policy (a) re-issue or (b) fail
-// loud; we pick (a) since BuildJourney treats oracle events as no-ops.
-func TestLayer3_ResumeMidOracleCall(t *testing.T) {
+// loud; we pick (a) since BuildJourney treats agent events as no-ops.
+func TestLayer3_ResumeMidAgentCall(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 
-	// History up to the point where an oracle was called but not returned.
+	// History up to the point where an agent was called but not returned.
 	callID := "deadbeef12345678"
 	calledPayload, err := json.Marshal(map[string]any{
 		"verb": "ask", "prompt": "What shall I do?",
@@ -176,13 +176,13 @@ func TestLayer3_ResumeMidOracleCall(t *testing.T) {
 		mkEvent(1, 2, store.TurnEnded, map[string]any{}),
 	}
 
-	// Same history with an orphan OracleCalled appended at the end (mid-call trace).
+	// Same history with an orphan AgentCalled appended at the end (mid-call trace).
 	historyMidCall := append(historyComplete[:len(historyComplete):len(historyComplete)],
 		store.Event{
 			Turn:    2,
 			Seq:     0,
 			Ts:      time.Now().UTC(),
-			Kind:    store.OracleCalled,
+			Kind:    store.AgentCalled,
 			Payload: calledPayload,
 			CallID:  callID,
 		},
@@ -200,18 +200,18 @@ func TestLayer3_ResumeMidOracleCall(t *testing.T) {
 	// Fold.
 	js, err := store.BuildJourney(def, "foyer", initial, resumed)
 	require.NoError(t, err,
-		"BuildJourney must not error on trace ending with dangling OracleCalled")
+		"BuildJourney must not error on trace ending with dangling AgentCalled")
 
-	// The dangling OracleCalled is a replay no-op. State must equal the
-	// state from historyComplete (oracle events don't advance state).
+	// The dangling AgentCalled is a replay no-op. State must equal the
+	// state from historyComplete (agent events don't advance state).
 	jsComplete, err := store.BuildJourney(def, "foyer", initial, historyComplete)
 	require.NoError(t, err)
 
 	require.Equal(t, jsComplete.State, js.State,
-		"state after resume-mid-oracle-call must equal state from history without the dangling call")
+		"state after resume-mid-agent-call must equal state from history without the dangling call")
 	require.Equal(t, jsComplete.World.Vars, js.World.Vars,
-		"world after resume-mid-oracle-call must be unchanged")
-	// Turn counter: OracleCalled has turn=2, so js.Turn may be 2 (it advances
+		"world after resume-mid-agent-call must be unchanged")
+	// Turn counter: AgentCalled has turn=2, so js.Turn may be 2 (it advances
 	// the turn counter). That's acceptable — what matters is state/world parity.
 	_ = js.Turn
 }

@@ -2,7 +2,7 @@
 //
 // OperatorAskServer is a stdio MCP server that exposes a single `ask` tool —
 // the supported replacement for the built-in AskUserQuestion tool, which is
-// hard-denied on every oracle subprocess because headless `claude -p` has no TTY
+// hard-denied on every agent subprocess because headless `claude -p` has no TTY
 // and auto-resolves it with empty answers (anthropics/claude-code#50728).
 //
 // When a dispatched agent calls `ask`, this server does NOT answer the question
@@ -15,7 +15,7 @@
 // this file owns the agent-facing tool and the client half of the protocol.
 //
 // Wire protocol (newline-delimited JSON, one request → one response, same
-// framing as oracle-serve):
+// framing as agent-serve):
 //
 //	→ {"questions":[{"question":…,"header":…,"options":[{"label":…,"description":…}],"multiSelect":…}]}
 //	← {"answers":{"<question text>":"<label>"|["<label>",…]}}            // success

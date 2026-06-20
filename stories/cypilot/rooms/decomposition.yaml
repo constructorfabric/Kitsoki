@@ -131,7 +131,7 @@ states:
           state:  decomposition_awaiting_reply
           body:   "Plan path: {{ world.decomposition_artifact.plan_path }}, {{ world.feature_count }} phases."
       - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
-        invoke: host.oracle.decide
+        invoke: host.agent.decide
         with:
           agent: judge
           prompt: prompts/judge_decomposition.md

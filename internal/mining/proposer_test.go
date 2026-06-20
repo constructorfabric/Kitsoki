@@ -125,7 +125,7 @@ func TestPropose_DropsAlreadyModeled(t *testing.T) {
 }
 
 // TestPropose_DropsBelowThreshold proves the threshold gate short-circuits
-// before any oracle pass (the mapper is never called).
+// before any agent pass (the mapper is never called).
 func TestPropose_DropsBelowThreshold(t *testing.T) {
 	mapper := &stubMapper{status: StatusGap}
 	drafter := &stubDrafter{}

@@ -18,18 +18,18 @@ import (
 	"kitsoki/internal/store"
 )
 
-// fakeOraclePath returns the absolute path to the host package's fake-oracle.sh,
-// shared with TestOracleTalk_* via internal/host/testdata. Reused here so the
+// fakeAgentPath returns the absolute path to the host package's fake-agent.sh,
+// shared with TestAgentTalk_* via internal/host/testdata. Reused here so the
 // off-path test doesn't need its own stub binary.
-func fakeOraclePath(t *testing.T) string {
+func fakeAgentPath(t *testing.T) string {
 	t.Helper()
 	_, thisFile, _, ok := runtime.Caller(0)
 	require.True(t, ok)
-	// internal/orchestrator → ../host/testdata/fake-oracle.sh
-	path := filepath.Join(filepath.Dir(thisFile), "..", "host", "testdata", "fake-oracle.sh")
+	// internal/orchestrator → ../host/testdata/fake-agent.sh
+	path := filepath.Join(filepath.Dir(thisFile), "..", "host", "testdata", "fake-agent.sh")
 	info, err := os.Stat(path)
-	require.NoErrorf(t, err, "fake-oracle.sh not found at %s", path)
-	require.NotZerof(t, info.Mode()&0111, "fake-oracle.sh is not executable")
+	require.NoErrorf(t, err, "fake-agent.sh not found at %s", path)
+	require.NotZerof(t, info.Mode()&0111, "fake-agent.sh is not executable")
 	return path
 }
 
@@ -56,13 +56,13 @@ func minimalOffPathApp() *app.AppDef {
 }
 
 // setupOffPathOrch builds an orchestrator wired with a real chats.Store and
-// the fake-oracle.sh binary as the claude stand-in, then returns the
+// the fake-agent.sh binary as the claude stand-in, then returns the
 // orchestrator plus the raw store and chat store and a fresh session id.
 // Tests sniff store.LoadHistory directly to assert event-log content because
 // the orchestrator doesn't expose its internal store handle.
 func setupOffPathOrch(t *testing.T) (*orchestrator.Orchestrator, store.Store, *chats.Store, app.SessionID) {
 	t.Helper()
-	t.Setenv(host.OracleBinEnv, fakeOraclePath(t))
+	t.Setenv(host.AgentBinEnv, fakeAgentPath(t))
 
 	def := minimalOffPathApp()
 	m, err := machine.New(def)
@@ -87,7 +87,7 @@ func setupOffPathOrch(t *testing.T) (*orchestrator.Orchestrator, store.Store, *c
 }
 
 // TestAskOffPath_ReturnsReply asserts the happy-path: a question is fired
-// against the fake oracle, an answer comes back, and the world/state are
+// against the fake agent, an answer comes back, and the world/state are
 // unchanged.
 func TestAskOffPath_ReturnsReply(t *testing.T) {
 	orch, _, _, sid := setupOffPathOrch(t)
@@ -102,7 +102,7 @@ func TestAskOffPath_ReturnsReply(t *testing.T) {
 	answer, err := orch.AskOffPath(ctx, sid, "what is 2+2?")
 	require.NoError(t, err)
 	require.Contains(t, answer, "ANSWER for q=[what is 2+2?]",
-		"fake-oracle should have echoed the question in its reply")
+		"fake-agent should have echoed the question in its reply")
 
 	// Re-load: state and world must be unchanged. Turn IS allowed to
 	// advance — off-path events claim unique turn numbers (via the

@@ -17,7 +17,7 @@ states:
                 - label: "3. semantic bands"
                   hint: "a hit's confidence picks the action: route / clarify / disambiguate"
                 - label: "4. local model on no_match"
-                  hint: "deterministic miss → oracle.local classifies → confident routes, else main-LLM"
+                  hint: "deterministic miss → agent.local classifies → confident routes, else main-LLM"
           - heading: "The routing config (this story's app.yaml)"
           - code: |
               routing:
@@ -25,7 +25,7 @@ states:
                 semantic_high_bar: 0.80          # >= this confidence -> route directly
                 semantic_mid_bar:  0.65          # >= this -> ask a clarification first
                 extract_llm_on_no_match: true    # tier 4 on/off
-                extract_llm_oracle: oracle.local # which model backend tier 4 uses
+                extract_llm_agent: agent.local # which model backend tier 4 uses
         choices:
           - heading: "Lessons"
           - list:
@@ -33,7 +33,7 @@ states:
                 - label: "deterministic"
                   hint: "tiers 1 & 2 — synonyms, examples, slot_template"
                 - label: "local model"
-                  hint: "tier 4 — paraphrases routed by oracle.local"
+                  hint: "tier 4 — paraphrases routed by agent.local"
                 - label: "ambiguous"
                   hint: "tie → disambiguation card"
                 - label: "quit"

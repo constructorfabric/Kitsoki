@@ -198,7 +198,7 @@ func TestIDEIndicator_RendersWithConcurrentLogging(t *testing.T) {
 	helper := tuipkg.NewConcurrentIOTester(t, captured)
 	helper.LogConcurrently(func() {
 		for i := 0; i < 50; i++ {
-			slog.Info("oracle.event", "turn", i)
+			slog.Info("agent.event", "turn", i)
 		}
 	}).RenderConcurrently(func() {
 		for i := 0; i < 50; i++ {

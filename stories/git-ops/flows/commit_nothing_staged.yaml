@@ -1,4 +1,4 @@
-# commit_nothing_staged — commit room when nothing is staged → back to hub, oracle NOT prioritized.
+# commit_nothing_staged — commit room when nothing is staged → back to hub, agent NOT prioritized.
 # diff_stat script returns route="nothing_staged" → emit routes back to branch_ops.
 
 test_kind: flow
@@ -35,7 +35,7 @@ host_handlers:
             staged_diff_stat: ""
             route:            "nothing_staged"
             squash_mode:      false
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:

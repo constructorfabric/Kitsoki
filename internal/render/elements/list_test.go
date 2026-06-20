@@ -45,7 +45,7 @@ func TestList_TwoColumnAlignment(t *testing.T) {
 		Items: []app.ListItem{
 			{Label: "Start a new task", Hint: "jira search"},
 			{Label: "Continue existing task", Hint: "workspace manager"},
-			{Label: "Consult the Oracle", Hint: "general Q&A"},
+			{Label: "Consult the Agent", Hint: "general Q&A"},
 		},
 	}
 	out, err := list.Render(80, expr.Env{}, nil)

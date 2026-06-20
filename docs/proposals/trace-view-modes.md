@@ -12,10 +12,10 @@
 
 `runstatus` shows a run as a state diagram (left) + an event timeline
 (right). The timeline is a single projection — a vertical list grouped by
-phase/turn. We record `duration_ms` on every oracle and host call
-(`oracle_dispatch.go:420`; rendered today only as inline text via `fmtMs()`
+phase/turn. We record `duration_ms` on every agent and host call
+(`agent_dispatch.go:420`; rendered today only as inline text via `fmtMs()`
 at `TraceTimeline.vue:123-125`), but there is **no latency waterfall**, so
-"this turn took 8s and 6s of it was one `host.oracle.task`" is invisible
+"this turn took 8s and 6s of it was one `host.agent.task`" is invisible
 without reading numbers row by row.
 
 Langfuse's lesson (`.context/langfuse-trace-viewer-comparison.md`, idea #1 —
@@ -70,16 +70,16 @@ RunView right pane:                  Home session table:
 ┌─[Tree][Timeline][Graph]──────────┐ ┌ Story ▲ │ State │ Turns │ Cost │ Dur │ ⚑ ┐
 │ Timeline (waterfall):            │ │ bugfix  │ done  │   7   │ $.04 │ 88s │   │
 │ turn 2 proposing                 │ │ feature │ await │  12   │ $.11 │142s │ ⚑ │  ← bailed
-│  oracle.decide ▓▓▓▓▓▓▓▓ 88.9s    │ │ dev     │ idle  │   3   │  $0  │  4s │   │
+│  agent.decide ▓▓▓▓▓▓▓▓ 88.9s    │ │ dev     │ idle  │   3   │  $0  │  4s │   │
 │  host.run      ▓ 0.4s            │ └ (click a header to sort; filter chips) ┘
 │ turn 3 implementing              │
-│  oracle.task   ▓▓▓▓ 41s          │
+│  agent.task   ▓▓▓▓ 41s          │
 └──────────────────────────────────┘
 ```
 
 ## Rendering changes
 
-- **`TraceWaterfall.vue`** (new) — one row per oracle/host call, a bar whose
+- **`TraceWaterfall.vue`** (new) — one row per agent/host call, a bar whose
   **length ∝ `duration_ms`** and whose offset ∝ start time within its turn,
   so parallelism and bottlenecks are visible at a glance. Bars colored by
   observation category (slice #1). Non-timed events (`world.update`,
@@ -93,7 +93,7 @@ RunView right pane:                  Home session table:
   node → scroll the timeline" linking is preserved within the Graph tab).
 - **Home triage table** — make the existing columns sortable
   (`HomeView.vue:73-108`) and add derived columns the survey calls for:
-  **turn count**, **total cost** (sum of `cost_usd` across oracle calls),
+  **turn count**, **total cost** (sum of `cost_usd` across agent calls),
   **total duration**, **terminal/active**, **bailed-to-human?** (any
   `gate_decided.bailed_to_human`). Filter chips: active/terminal,
   has-bailed. These are computed from the snapshot the session already

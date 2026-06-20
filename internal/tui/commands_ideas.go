@@ -57,7 +57,7 @@ func gitToplevel() (string, error) {
 
 // IdeasCommand implements `/ideas <text>` — a deterministic capture
 // command. It appends a single bullet line to ideas.md and renders a
-// confirmation block; it never touches the oracle. The point is to let
+// confirmation block; it never touches the agent. The point is to let
 // an operator jot a thought mid-conversation and move on: no turn is
 // dispatched, world state is untouched, and the on-path room keeps doing
 // whatever it was doing. This is the deterministic-execution principle

@@ -14,7 +14,7 @@ import (
 // the single registration path shared by the deterministic flow-test runner
 // (RunFlows) and any other surface that wants to drive a session against a
 // flow's canned host responses — notably `kitsoki web --flow`, which serves a
-// live, interactive session whose oracle/host calls are answered by these same
+// live, interactive session whose agent/host calls are answered by these same
 // stubs. Keeping one implementation guarantees the web UI and the flow tests
 // resolve a stub identically (Delay, RequestClarification, ByCall, ByOp,
 // InfraError, Error, Data — in that resolution order).

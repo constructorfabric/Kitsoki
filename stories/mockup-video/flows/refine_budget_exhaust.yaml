@@ -28,7 +28,7 @@ host_handlers:
     by_call:
       drain_feedback:
         data: { ok: true, exit_code: 0, stdout_json: { items: [] } }
-  host.oracle.task:
+  host.agent.task:
     by_call:
       refine_source:
         data: { ok: true, submitted: { kind: "slidey", paths: ["d.json"], spec_path: "d.json", summary: "x", edited: [] } }
@@ -45,7 +45,7 @@ turns:
           - video_handle: "mockup-video#1"
             feedback_addressed: ["scene:scenario-1"]
             instruction: "first pass"
-    expect_no_host_calls: [host.oracle.task]
+    expect_no_host_calls: [host.agent.task]
 
   # accept still terminates cleanly.
   - intent: { name: accept, slots: {} }

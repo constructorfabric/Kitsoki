@@ -785,7 +785,7 @@ func TestPongo_RecoversFromFilterPanic(t *testing.T) {
 
 // TestTruncatechars_PreservesSourceColorBalance pins the override of pongo2's
 // built-in truncatechars: a world var carrying LLM source-color sentinels (the
-// shape `world.idea` has after an oracle bind) must keep its sentinel pair
+// shape `world.idea` has after an agent bind) must keep its sentinel pair
 // balanced when truncated, so a downstream colorizer cannot bleed the LLM band
 // across the rest of the view. The stock filter drops the close off the tail.
 func TestTruncatechars_PreservesSourceColorBalance(t *testing.T) {

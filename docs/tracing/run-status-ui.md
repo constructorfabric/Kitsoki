@@ -46,7 +46,7 @@ The same command emits raw Snapshot JSON instead when `-o` does not end in
 HTML with `make -C tools/runstatus/fixtures artifacts` (after `make build` has
 staged the SPA).
 
-`--from-snapshot` inlines any oracle-prompt sidecars (`prompt_file` /
+`--from-snapshot` inlines any agent-prompt sidecars (`prompt_file` /
 `system_prompt_file`) referenced by events, resolving them relative to the
 snapshot's directory, so the artifact is fully self-contained under `file://`.
 
@@ -71,7 +71,7 @@ The live server reads the **JSONL trace**, not the SQLite session store,
 because the trace is the full-fidelity record. The SQLite store persists only
 `turn/seq/ts/kind/payload`; it does **not** persist per-event `state_path`,
 `call_id`, or `parent_turn`. Those survive only in the JSONL trace, and the UI
-needs them — `call_id` pairs `oracle.call.start`/`.complete`, `state_path`
+needs them — `call_id` pairs `agent.call.start`/`.complete`, `state_path`
 groups events by state. Sourcing the live view from the store would silently
 drop them, contradicting the rule that [the trace must always be
 correct](../../tools/runstatus/CLAUDE.md). The artifact and live paths build
@@ -138,7 +138,7 @@ clipped). The showcase walkthrough is
 
 ## Agent actions drawer
 
-When an oracle event carries a
+When an agent event carries a
 [`transcript_ref`](trace-format.md#agent-action-transcript-sidecar), its detail
 pane shows an **"Agent actions (N)"** affordance (N = the captured event count).
 Opening it lazily fetches the per-call sidecar

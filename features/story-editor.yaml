@@ -2,8 +2,8 @@
 id: story-editor
 kind: feature
 title: The story editor
-tagline: Rooms, hooks, domain model, and the Oracle Workbench — one inspector.
-summary: "The per-story editor surface: the BFS-ordered room list, room detail with hook and domain model and IDE deep-link, the meta-chat column, and the Oracle Workbench's contract cards and cassette browser."
+tagline: Rooms, hooks, domain model, and the Agent Workbench — one inspector.
+summary: "The per-story editor surface: the BFS-ordered room list, room detail with hook and domain model and IDE deep-link, the meta-chat column, and the Agent Workbench's contract cards and cassette browser."
 promo:
   order: 60
 demo:
@@ -19,7 +19,7 @@ tour:
     - id: se-intro-home
       route: home
       title: Authoring, without the YAML expedition
-      body: Every kitsoki story is a deterministic graph of rooms authored in YAML. The Story Editor gives that graph a browseable surface — room order, wiring, and oracle contracts — without leaving the web UI. We'll walk it on the PRD-authoring story.
+      body: Every kitsoki story is a deterministic graph of rooms authored in YAML. The Story Editor gives that graph a browseable surface — room order, wiring, and agent contracts — without leaving the web UI. We'll walk it on the PRD-authoring story.
       placement: center
       kind: explain
       advance: next
@@ -70,7 +70,7 @@ tour:
       route: any
       target: editor-meta-chat
       title: Meta chat, alongside
-      body: The left column is the same off-path meta oracle you have on the run surface — ask 'what does this room's prompt do?' without leaving the page. It needs a live session, so until one is attached it shows this placeholder.
+      body: The left column is the same off-path meta agent you have on the run surface — ask 'what does this room's prompt do?' without leaving the page. It needs a live session, so until one is attached it shows this placeholder.
       placement: right
       kind: explain
       advance: next
@@ -100,7 +100,7 @@ tour:
       route: any
       target: editor-hook
       title: The hook (on_enter)
-      body: "Each on_enter effect renders as a typed card — the host call, its arguments, and the world bindings it produces. The clarifying room fires a decide oracle to surface the gaps in the brief. This is also the security boundary: every host.* call a room makes is checked against the story's allow-list at load time, and each agent runs with an explicit tool allow-list — so the hooks you read here are the complete, auditable list of what the machine can do, no matter what the model asks for."
+      body: "Each on_enter effect renders as a typed card — the host call, its arguments, and the world bindings it produces. The clarifying room fires a decide agent to surface the gaps in the brief. This is also the security boundary: every host.* call a room makes is checked against the story's allow-list at load time, and each agent runs with an explicit tool allow-list — so the hooks you read here are the complete, auditable list of what the machine can do, no matter what the model asks for."
       placement: right
       kind: explain
       advance: next
@@ -128,19 +128,19 @@ tour:
       dwellMs: 5000
     - id: se-workbench
       route: any
-      target: editor-oracle-workbench
-      title: The Oracle Workbench
-      body: "For any room that calls an oracle, the workbench lists its contracts: the call kind, the prompt template, the declared output schema, and the cassette key that flow-tests match on — the contract an author tunes."
+      target: editor-agent-workbench
+      title: The Agent Workbench
+      body: "For any room that calls an agent, the workbench lists its contracts: the call kind, the prompt template, the declared output schema, and the cassette key that flow-tests match on — the contract an author tunes."
       placement: left
       kind: explain
       advance: next
-      waitForTarget: editor-oracle-card
+      waitForTarget: editor-agent-card
       dwellMs: 5500
     - id: se-cassette
       route: any
       target: editor-cassette-list
       title: Browse the cassettes
-      body: Each contract embeds a cassette browser — pick a recorded episode, preview its output, and replay the call in isolation to see the room render with that response. The PRD story ships no oracle cassettes yet, so the browser honestly shows its empty state.
+      body: Each contract embeds a cassette browser — pick a recorded episode, preview its output, and replay the call in isolation to see the room render with that response. The PRD story ships no agent cassettes yet, so the browser honestly shows its empty state.
       placement: left
       kind: explain
       advance: next
@@ -149,7 +149,7 @@ tour:
     - id: se-done
       route: any
       title: The whole story, on one surface
-      body: "That's the Story Editor: a reachability-ordered room map, per-room hook / domain-model / typed-view detail, IDE deep-links, a meta-chat scratchpad, and an oracle workbench with a cassette browser — all a static, no-LLM read of the story as authored. Hit '?' anytime to replay this tour."
+      body: "That's the Story Editor: a reachability-ordered room map, per-room hook / domain-model / typed-view detail, IDE deep-links, a meta-chat scratchpad, and an agent workbench with a cassette browser — all a static, no-LLM read of the story as authored. Hit '?' anytime to replay this tour."
       placement: center
       kind: explain
       advance: next

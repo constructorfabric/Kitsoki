@@ -17,7 +17,7 @@ initial_world:
 host_handlers:
   host.ide.open_file:
     data: { ok: true, connected: true }
-  host.oracle.decide:
+  host.agent.decide:
     by_call:
       name_slug:
         data:
@@ -38,11 +38,11 @@ host_handlers:
         data:
           ok: true
           submitted: { verdict: "continue", reason: "Clear why, scoped change, kind is story.", questions: [] }
-  host.oracle.search:
+  host.agent.search:
     data: { hits: [], top: null }
   host.artifacts_dir:
     data: { ok: true, path: "docs/proposals/.workspace/tamagotchi-pet-ui/001-brief.md", message_id: "out#1" }
-  host.oracle.task:
+  host.agent.task:
     by_call:
       refine_brief:
         data:

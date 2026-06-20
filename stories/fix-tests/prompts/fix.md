@@ -1,6 +1,6 @@
 {% comment %}
 Fixer prompt. Rendered for the `fixer` agent (claude / sonnet) inside
-host.oracle.task. The agent has Read/Grep/Glob/Edit/Write and a bash
+host.agent.task. The agent has Read/Grep/Glob/Edit/Write and a bash
 allowlist of [go, make] so it can run the suite to check its work.
 
 Project-specific guidance is marked with `spec_` blocks so a different

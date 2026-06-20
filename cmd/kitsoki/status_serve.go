@@ -60,7 +60,7 @@ the browser as the run appends to the file.
 'kitsoki run'). The trace — not the SQLite session store — is the source
 because it is the full-fidelity record: it carries per-event state_path,
 call_id, and parent_turn, which the store does not persist and which the UI
-needs (notably oracle-call pairing). The file may not exist yet when serving
+needs (notably agent-call pairing). The file may not exist yet when serving
 starts; the UI shows an empty run until the first events are written.
 
 The runstatus SPA must be bundled into the binary (run 'make build', which

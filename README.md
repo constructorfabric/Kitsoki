@@ -174,8 +174,8 @@ kitsoki/
 ├── cmd/kitsoki/           CLI: run, serve, viz, trace, replay,
 │                          replay-routing, test, record, session, chat,
 │                          inspect, turn, render, docs, bug, cassette,
-│                          extract, journal, oracle, oracle-serve,
-│                          migrate-oracle, mcp-bash, mcp-validator,
+│                          extract, journal, agent, agent-serve,
+│                          migrate-agent, mcp-bash, mcp-validator,
 │                          export-status, ui, version
 ├── internal/              platform packages — see docs/architecture/overview.md
 ├── docs/                  narrative documentation
@@ -225,13 +225,13 @@ under 10 seconds.
 
 Recent frontier work:
 
-- **Oracle plugin system** (`docs/architecture/oracle-plugin.md`,
-  `docs/architecture/oracle-cli.md`) — pluggable oracle transports declared under
-  `oracle_plugins:`, dispatched through `host.oracle.<verb>` effects
+- **Agent plugin system** (`docs/architecture/agent-plugin.md`,
+  `docs/architecture/agent-cli.md`) — pluggable agent transports declared under
+  `agent_plugins:`, dispatched through `host.agent.<verb>` effects
   with schema validation, subprocess / MCP-over-HTTP transports, and
   a registry/dispatch seam audited end-to-end.
 - **JSONL trace as authoritative state**
-  (`docs/tracing/trace-format.md`) — the unified event log (`oracle.call.start`
+  (`docs/tracing/trace-format.md`) — the unified event log (`agent.call.start`
   / `.complete` / `.error`, `EventSink`, deterministic `call_id`) is
   now the session's source of truth, with replay guarantees layered
   on top.

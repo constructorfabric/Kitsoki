@@ -21,7 +21,7 @@ host_handlers:
     data: { ok: true, sha: "abc123", diff: "" }
   host.local:
     data: { ok: true, log: "" }
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted:
@@ -35,7 +35,7 @@ host_handlers:
         confidence:      0.5
         reasoning:       "We're going to quit at this checkpoint; the proposal is informational only."
 
-  host.oracle.ask:
+  host.agent.ask:
     data:
       ok: true
       submitted:
@@ -49,7 +49,7 @@ host_handlers:
         confidence:      0.5
         reasoning:       "We're going to quit at this checkpoint; the proposal is informational only."
 
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:

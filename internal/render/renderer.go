@@ -134,7 +134,7 @@ func (r *AppRenderer) Render(src string, env expr.Env) (out string, err error) {
 	// can panic rather than return an error (the stock wordwrap did exactly
 	// this). Recover at this seam — as package-level Pongo does — so a filter
 	// panic degrades to an ordinary render error instead of unwinding past the
-	// caller (the TUI's render-error fallback / the oracle dispatch goroutine).
+	// caller (the TUI's render-error fallback / the agent dispatch goroutine).
 	defer func() {
 		if rec := recover(); rec != nil {
 			out = ""

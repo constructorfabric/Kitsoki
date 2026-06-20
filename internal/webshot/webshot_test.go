@@ -20,7 +20,7 @@ import (
 //
 // These keep the default suite GREEN with NO browser and NO real kitsoki web:
 // the server half is a httptest server that 200s on / (so the real
-// HandlerServer boot/health/teardown path runs) while recording any RPC/oracle
+// HandlerServer boot/health/teardown path runs) while recording any RPC/agent
 // hits, and the browser half is a stub that writes a synthetic PNG of the
 // requested viewport. The real Chromium path is exercised only by the GATED
 // TestShot_E2E below.
@@ -51,11 +51,11 @@ func (s *stubInvoker) Capture(_ context.Context, req CaptureRequest) error {
 
 // noLLMHandler is a stand-in kitsoki-web handler: it 200s on GET / (so the real
 // HandlerServer health poll passes) and flips a flag if anything ever touches an
-// oracle/LLM-shaped endpoint during a shot — proving the shot itself performs no
-// live harness/oracle work.
+// agent/LLM-shaped endpoint during a shot — proving the shot itself performs no
+// live harness/agent work.
 type noLLMHandler struct {
 	rootHits    int32
-	oracleHits  int32
+	agentHits   int32
 	lastNonRoot string
 }
 
@@ -67,9 +67,9 @@ func (h *noLLMHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.lastNonRoot = r.URL.Path
-	// Any oracle/LLM-shaped path during a shot is a posture violation.
-	if strings.Contains(r.URL.Path, "oracle") || strings.Contains(r.URL.Path, "llm") {
-		atomic.AddInt32(&h.oracleHits, 1)
+	// Any agent/LLM-shaped path during a shot is a posture violation.
+	if strings.Contains(r.URL.Path, "agent") || strings.Contains(r.URL.Path, "llm") {
+		atomic.AddInt32(&h.agentHits, 1)
 	}
 	w.WriteHeader(http.StatusOK)
 }
@@ -116,9 +116,9 @@ func TestShot_ReturnsPNGOfKnownState(t *testing.T) {
 	}
 }
 
-// TestShot_NoLLMPosture asserts a shot performs NO live harness/oracle work:
+// TestShot_NoLLMPosture asserts a shot performs NO live harness/agent work:
 // the only endpoint the boot/health/capture path hits on the served handler is
-// GET / (health), and no oracle/LLM-shaped path is ever touched. The
+// GET / (health), and no agent/LLM-shaped path is ever touched. The
 // determinism is the served handler's (built no-LLM by the caller); this guards
 // the seam from sneaking in a live call of its own.
 func TestShot_NoLLMPosture(t *testing.T) {
@@ -132,8 +132,8 @@ func TestShot_NoLLMPosture(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Shot: %v", err)
 	}
-	if got := atomic.LoadInt32(&h.oracleHits); got != 0 {
-		t.Errorf("shot hit an oracle/LLM endpoint %d time(s); want 0 (last non-root path %q)", got, h.lastNonRoot)
+	if got := atomic.LoadInt32(&h.agentHits); got != 0 {
+		t.Errorf("shot hit an agent/LLM endpoint %d time(s); want 0 (last non-root path %q)", got, h.lastNonRoot)
 	}
 	if got := atomic.LoadInt32(&h.rootHits); got == 0 {
 		t.Errorf("health poll never hit GET / (rootHits=0)")
@@ -223,7 +223,7 @@ func (p *probeServer) Serve(ctx context.Context) (string, func(), error) {
 // TestShot_RejectsAmbiguousSpec proves the "exactly one source" rule.
 func TestShot_RejectsAmbiguousSpec(t *testing.T) {
 	cases := []Spec{
-		{},                                          // neither
+		{}, // neither
 		{StoryPath: "stories/bugfix", SessionID: "x"}, // both
 	}
 	for _, spec := range cases {

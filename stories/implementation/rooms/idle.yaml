@@ -33,7 +33,7 @@ states:
     # world.workdir; entry paths that don't pre-seed it (dev-story's
     # `drive` / `go_implementation` / design_done `implement`) used to
     # land here with workdir="" and run the whole pipeline against the
-    # repo root with no branch — the oracle saw an empty workdir and got
+    # repo root with no branch — the agent saw an empty workdir and got
     # "confused". Flow fixtures seed initial_state=idle (which bypasses
     # on_enter) so they keep observing the parked state; live entry now
     # gets a real worktree. Guarded by impl_provision_attempted so an

@@ -91,7 +91,7 @@ host_handlers:
       transition:
         data: { ok: true }
 
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted:
@@ -121,7 +121,7 @@ host_handlers:
         intent:     "accept"
         reason:     "Stub artifact passes the schema."
 
-  host.oracle.ask:
+  host.agent.ask:
     data:
       ok: true
       submitted:
@@ -151,7 +151,7 @@ host_handlers:
         intent:     "accept"
         reason:     "Stub artifact passes the schema."
 
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:
@@ -194,7 +194,7 @@ turns:
   # block. Asserting both that the artifact landed AND that the
   # environment_check sub-object plumbs through verifies the
   # schemas/reproducing_artifact.json change AND the bind: round-
-  # trip from the oracle stub.
+  # trip from the agent stub.
   - intent: { name: bf__accept, slots: {} }
     expect_state: bf.proposing
     expect_world:

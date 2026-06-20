@@ -13,10 +13,10 @@
 
 import { describe, it, expect } from "vitest";
 import { mount } from "@vue/test-utils";
-import AgentActions from "../../src/components/oracle/AgentActions.vue";
-import AgentActionRow from "../../src/components/oracle/AgentActionRow.vue";
-import AgentActionWaterfall from "../../src/components/oracle/AgentActionWaterfall.vue";
-import TranscriptDiff from "../../src/components/oracle/TranscriptDiff.vue";
+import AgentActions from "../../src/components/agent/AgentActions.vue";
+import AgentActionRow from "../../src/components/agent/AgentActionRow.vue";
+import AgentActionWaterfall from "../../src/components/agent/AgentActionWaterfall.vue";
+import TranscriptDiff from "../../src/components/agent/TranscriptDiff.vue";
 import { normalizeTranscript, type TranscriptData } from "../../src/data/transcript.js";
 
 function data(

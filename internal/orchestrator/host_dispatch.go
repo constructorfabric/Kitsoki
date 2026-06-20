@@ -107,7 +107,7 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 	if o.journalWriter != nil {
 		ctx = host.WithArtifactJournalWriter(ctx, journal.SessionStamping(o.journalWriter, sid))
 	}
-	// Inject the agents map so host.oracle.* invocations can resolve
+	// Inject the agents map so host.agent.* invocations can resolve
 	// `with: { agent: <name> }` references to a host.Agent value. Built
 	// once per dispatch (cheap — translation is tag-equivalent).
 	ctx = host.WithAgents(ctx, agentsForContext(o.def))
@@ -116,18 +116,18 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 	// profile chooses the backend to fork and the env/model default (installed as
 	// the lowest-precedence provider via WithActiveProfile). No profile selected
 	// ⇒ the static backend and a no-op active profile (legacy path, byte-identical).
-	backendName, activeProfile := o.resolveSelection(o.oracleBackendName)
-	ctx = host.WithOracleBackendNamed(ctx, backendName)
+	backendName, activeProfile := o.resolveSelection(o.agentBackendName)
+	ctx = host.WithAgentBackendNamed(ctx, backendName)
 	ctx = host.WithActiveProfile(ctx, activeProfile)
-	// Inject the prompt renderer so oracle handlers resolve and render prompt
+	// Inject the prompt renderer so agent handlers resolve and render prompt
 	// files through the story's overlay → story search path. nil is safe
 	// (handlers use the legacy path).
 	ctx = host.WithPromptRenderer(ctx, o.promptRenderer)
 	// Inject the project's Layer-2 system-prompt grounding (app.context /
-	// context_path) so every oracle call composes kitsoki → project → task.
+	// context_path) so every agent call composes kitsoki → project → task.
 	ctx = host.WithProjectContext(ctx, projectContextFor(o.def))
 	// Inject the live IDE link so host.ide.* handlers resolve the editor and the
-	// oracle env-scrub gate engages. nil is safe (not-connected result, no
+	// agent env-scrub gate engages. nil is safe (not-connected result, no
 	// scrub). The `world.ide.connected` gate is seeded once per turn in
 	// loadJourney (the single seam every room runs through, including rooms with
 	// no host calls), so it is NOT written here; re-seed against this dispatch's
@@ -136,17 +136,17 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 	ctx = host.WithIDELink(ctx, o.currentIDELink())
 	o.seedIDEConnected(w)
 
-	// Wave 3-oracle: inject the EventSink so oracle handlers can parallel-write
-	// OracleCalled / OracleReturned / OracleError events to the JSONL alongside
+	// Wave 3-agent: inject the EventSink so agent handlers can parallel-write
+	// AgentCalled / AgentReturned / AgentError events to the JSONL alongside
 	// the existing journal write.
 	if o.eventSink != nil {
-		ctx = host.WithOracleEventSink(ctx, o.eventSink)
+		ctx = host.WithAgentEventSink(ctx, o.eventSink)
 		// Also inject the prompts directory so large prompts are stored separately
 		// to stay under PIPE_BUF. Extract it from the JSONLSink path.
 		if jl, ok := o.eventSink.(*store.JSONLSink); ok {
 			traceDir := filepath.Dir(jl.Path)
-			promptsDir := filepath.Join(traceDir, "oracle-prompts")
-			ctx = host.WithOraclePromptsDir(ctx, promptsDir)
+			promptsDir := filepath.Join(traceDir, "agent-prompts")
+			ctx = host.WithAgentPromptsDir(ctx, promptsDir)
 			// Install the per-call agent-action-transcript writer alongside the
 			// prompts dir, so the claude tee / out-of-host backends persist their
 			// native execution detail to <trace_dir>/transcripts/<call_id>.jsonl
@@ -168,30 +168,30 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 			}
 		}
 	}
-	// B-2: inject the oracle plugin registry so handlers can route through
-	// Oracle.Ask. When nil, handlers fall through to direct claude-CLI logic.
-	if o.oracleRegistry != nil {
-		ctx = host.WithOracleRegistry(ctx, o.oracleRegistry)
+	// B-2: inject the agent plugin registry so handlers can route through
+	// Agent.Ask. When nil, handlers fall through to direct claude-CLI logic.
+	if o.agentRegistry != nil {
+		ctx = host.WithAgentRegistry(ctx, o.agentRegistry)
 	}
-	// OracleCallCtx carries session/turn/state so oracle.call.start /
-	// oracle.call.complete events are stamped with the FOREGROUND turn of the
+	// AgentCallCtx carries session/turn/state so agent.call.start /
+	// agent.call.complete events are stamped with the FOREGROUND turn of the
 	// transition that entered `state` and with `state` itself as the
 	// destination phase (see docs/tracing/trace-format.md). The Turn is supplied
-	// by the turn entry point via WithOracleCallCtx on the ctx (Turn /
+	// by the turn entry point via WithAgentCallCtx on the ctx (Turn /
 	// RunIntent / SubmitDirect) and is inherited here — including across the
 	// post-bind emit recursion (settlePostBindEmits), which is how the bugfix
 	// story advances phase-to-phase. We always rewrite StatePath to `state`
 	// (the destination phase the on_enter chain is running in) so a stale
-	// entry-state path can never leak onto a phase's oracle events; the Turn
+	// entry-state path can never leak onto a phase's agent events; the Turn
 	// is preserved from any existing ctx (zero only when no entry point set it,
 	// e.g. RunInitialOnEnter, which stamps turn=0 deliberately).
-	existing := host.OracleCallCtxFrom(ctx)
+	existing := host.AgentCallCtxFrom(ctx)
 	// Write-mode posture (agent-write-mode-opt-in): carry the dispatching room's
 	// write_mode and the active grant scope (the engine-reserved write_mode_scope
-	// world key) so host.oracle.task can boot the agent read-only and gate
+	// world key) so host.agent.task can boot the agent read-only and gate
 	// mutating steps. Absent / open leaves both empty → today's dispatch posture.
 	writeMode, writeModeScope := o.writeModePosture(state, w)
-	ctx = host.WithOracleCallCtx(ctx, host.OracleCallCtx{
+	ctx = host.WithAgentCallCtx(ctx, host.AgentCallCtx{
 		SessionID:      sid,
 		Turn:           existing.Turn,
 		StatePath:      state,
@@ -211,7 +211,7 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 	// See machine.HostInvocation.WorldSnapshot.
 	dispatchBinds := map[string]any{}
 
-	// batchCost sums the oracle cost (total_cost_usd) of every call in this
+	// batchCost sums the agent cost (total_cost_usd) of every call in this
 	// batch; folded into the reserved cost world vars after the loop.
 	var batchCost float64
 
@@ -256,7 +256,7 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 		// Replay treats it as a no-op (see store/replay.go).
 		//
 		// Stamp it with the foreground turn (existing.Turn, inherited from the
-		// turn entry point via OracleCallCtx) so the live JSONL write buckets it
+		// turn entry point via AgentCallCtx) so the live JSONL write buckets it
 		// under the turn it actually belongs to, not turn 0.
 		hostDispatchedEv := newOrchestratorEvent(store.HostDispatched, map[string]any{
 			"namespace":          hc.Namespace,
@@ -269,7 +269,7 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 		// is committed only at turn-end, so a slow or wedged host.run leaves the
 		// trace and the web SSE stream empty and the UI frozen with nothing to
 		// show for it (the silent-freeze half of the triage-hang bug). Mirrors
-		// the oracle handlers' live OracleCalled write (see WithOracleEventSink
+		// the agent handlers' live AgentCalled write (see WithAgentEventSink
 		// above).
 		//
 		// The event ALSO stays in the returned `events` batch unconditionally:
@@ -294,25 +294,25 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 		}
 		events = append(events, hostDispatchedEv)
 
-		// B-7: inject the oracle plugin alias into the context so the handler
+		// B-7: inject the agent plugin alias into the context so the handler
 		// can route through host.Dispatch with the correct plugin. When
-		// OraclePlugin is empty the handler falls back to "oracle.claude" (the
-		// default). This is the production wiring that makes explicit `oracle:`
+		// AgentPlugin is empty the handler falls back to "agent.claude" (the
+		// default). This is the production wiring that makes explicit `agent:`
 		// effect fields take effect at runtime.
 		// Install a fresh per-call usage box so the claude CLI transport can
-		// record token usage that appendOracleReturnedEvent surfaces on the
-		// OracleReturned event's Meta. One box per host call keeps usage from
+		// record token usage that appendAgentReturnedEvent surfaces on the
+		// AgentReturned event's Meta. One box per host call keeps usage from
 		// leaking between calls in the same on_enter block.
-		invokeCtx := host.WithOracleUsageBox(ctx)
-		if hc.OraclePlugin != "" {
-			invokeCtx = host.WithOraclePluginName(invokeCtx, hc.OraclePlugin)
+		invokeCtx := host.WithAgentUsageBox(ctx)
+		if hc.AgentPlugin != "" {
+			invokeCtx = host.WithAgentPluginName(invokeCtx, hc.AgentPlugin)
 		}
 		// Expose the world as it stands at this call (after earlier binds in the
 		// same on_enter block) so host.starlark.run scripts can read ctx.world.
 		invokeCtx = host.WithWorldSnapshot(invokeCtx, w.Vars)
 
 		res, err := o.hosts.Invoke(invokeCtx, hc.Namespace, invokeArgs)
-		batchCost += host.OracleCostFrom(invokeCtx)
+		batchCost += host.AgentCostFrom(invokeCtx)
 		if err != nil {
 			// Infrastructure failure (e.g. handler not registered): record and move on.
 			w.Vars["last_error"] = err.Error()
@@ -468,9 +468,9 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 		}
 	}
 
-	// Fold this batch's oracle spend into the reserved cost world vars before the
+	// Fold this batch's agent spend into the reserved cost world vars before the
 	// redirect/render paths so they (and any error room) see the current totals.
-	if costEvents := foldOracleCost(&w, batchCost); len(costEvents) > 0 {
+	if costEvents := foldAgentCost(&w, batchCost); len(costEvents) > 0 {
 		events = append(events, costEvents...)
 		applied = true
 	}
@@ -731,9 +731,9 @@ func (o *Orchestrator) dispatchHostCallsDetailed(ctx context.Context, calls []ma
 	}
 	// Mirror the primary dispatch path: a media-emit during this OneShot dispatch
 	// must journal its artifact too (see the dispatchHostCalls wiring above). The
-	// session id rides on the ctx's OracleCallCtx here (no sid param on this path).
+	// session id rides on the ctx's AgentCallCtx here (no sid param on this path).
 	if o.journalWriter != nil {
-		if oc := host.OracleCallCtxFrom(ctx); oc.SessionID != "" {
+		if oc := host.AgentCallCtxFrom(ctx); oc.SessionID != "" {
 			ctx = host.WithArtifactJournalWriter(ctx, journal.SessionStamping(o.journalWriter, oc.SessionID))
 		}
 	}
@@ -743,15 +743,15 @@ func (o *Orchestrator) dispatchHostCallsDetailed(ctx context.Context, calls []ma
 	// profile chooses the backend to fork and the env/model default (installed as
 	// the lowest-precedence provider via WithActiveProfile). No profile selected
 	// ⇒ the static backend and a no-op active profile (legacy path, byte-identical).
-	backendName, activeProfile := o.resolveSelection(o.oracleBackendName)
-	ctx = host.WithOracleBackendNamed(ctx, backendName)
+	backendName, activeProfile := o.resolveSelection(o.agentBackendName)
+	ctx = host.WithAgentBackendNamed(ctx, backendName)
 	ctx = host.WithActiveProfile(ctx, activeProfile)
-	// Inject the prompt renderer so oracle handlers resolve and render prompt
+	// Inject the prompt renderer so agent handlers resolve and render prompt
 	// files through the story's overlay → story search path. nil is safe
 	// (handlers use the legacy path).
 	ctx = host.WithPromptRenderer(ctx, o.promptRenderer)
 	// Inject the project's Layer-2 system-prompt grounding (app.context /
-	// context_path) so every oracle call composes kitsoki → project → task.
+	// context_path) so every agent call composes kitsoki → project → task.
 	ctx = host.WithProjectContext(ctx, projectContextFor(o.def))
 	// Inject the live IDE link (nil-safe). The `world.ide.connected` gate is
 	// seeded per turn in loadJourney; re-seed against this dispatch's world (see
@@ -772,7 +772,7 @@ func (o *Orchestrator) dispatchHostCallsDetailed(ctx context.Context, calls []ma
 	// See machine.HostInvocation.WorldSnapshot.
 	dispatchBinds := map[string]any{}
 
-	// batchCost sums the oracle cost (total_cost_usd) of every call in this
+	// batchCost sums the agent cost (total_cost_usd) of every call in this
 	// batch; folded into the reserved cost world vars after the loop.
 	var batchCost float64
 
@@ -789,14 +789,14 @@ func (o *Orchestrator) dispatchHostCallsDetailed(ctx context.Context, calls []ma
 			"rerender_fell_back": fellBack,
 			"background":         hc.Background,
 		}, 0))
-		// B-7: inject oracle plugin alias for summary dispatch path.
+		// B-7: inject agent plugin alias for summary dispatch path.
 		invokeCtx2 := host.WithWorldSnapshot(ctx, w.Vars)
-		invokeCtx2 = host.WithOracleUsageBox(invokeCtx2)
-		if hc.OraclePlugin != "" {
-			invokeCtx2 = host.WithOraclePluginName(invokeCtx2, hc.OraclePlugin)
+		invokeCtx2 = host.WithAgentUsageBox(invokeCtx2)
+		if hc.AgentPlugin != "" {
+			invokeCtx2 = host.WithAgentPluginName(invokeCtx2, hc.AgentPlugin)
 		}
 		res, err := o.hosts.Invoke(invokeCtx2, hc.Namespace, invokeArgs)
-		batchCost += host.OracleCostFrom(invokeCtx2)
+		batchCost += host.AgentCostFrom(invokeCtx2)
 		if err != nil {
 			summary.Error = err.Error()
 			summaries = append(summaries, summary)
@@ -875,9 +875,9 @@ func (o *Orchestrator) dispatchHostCallsDetailed(ctx context.Context, calls []ma
 		}
 	}
 
-	// Fold this batch's oracle spend into the reserved cost world vars before the
+	// Fold this batch's agent spend into the reserved cost world vars before the
 	// redirect/render paths so they (and any error room) see the current totals.
-	if costEvents := foldOracleCost(&w, batchCost); len(costEvents) > 0 {
+	if costEvents := foldAgentCost(&w, batchCost); len(costEvents) > 0 {
 		events = append(events, costEvents...)
 		applied = true
 	}
@@ -910,20 +910,20 @@ func (o *Orchestrator) dispatchHostCallsDetailed(ctx context.Context, calls []ma
 	return summaries, events, w, view, "", nil
 }
 
-// foldOracleCost folds the oracle spend accumulated across one host-dispatch
-// batch (batchCost, the sum of host.OracleCostFrom over the batch's calls) into
+// foldAgentCost folds the agent spend accumulated across one host-dispatch
+// batch (batchCost, the sum of host.AgentCostFrom over the batch's calls) into
 // the reserved, engine-managed world vars, returning the EffectApplied events to
 // journal so replay reconstructs the same totals from the event log:
 //
 //   - turn_cost_usd    — cost of the most recent host-dispatch batch (reset to 0
-//     on a batch with no oracle spend, e.g. host.run-only).
-//   - session_cost_usd — cumulative oracle spend across the whole session.
+//     on a batch with no agent spend, e.g. host.run-only).
+//   - session_cost_usd — cumulative agent spend across the whole session.
 //
 // Stories guard on these directly (e.g. `when: "world.session_cost_usd >=
 // world.cost_budget"`); WorldFromSchema seeds both to 0 so a guard that runs
-// before any oracle call still reads a number. No event is emitted when nothing
+// before any agent call still reads a number. No event is emitted when nothing
 // changed, keeping the journal free of no-op writes.
-func foldOracleCost(w *world.World, batchCost float64) []store.Event {
+func foldAgentCost(w *world.World, batchCost float64) []store.Event {
 	var events []store.Event
 	if batchCost != worldFloat(w.Vars["turn_cost_usd"]) {
 		w.Vars["turn_cost_usd"] = batchCost
@@ -941,7 +941,7 @@ func foldOracleCost(w *world.World, batchCost float64) []store.Event {
 	return events
 }
 
-// worldFloat coerces a world value to float64 — float64 when set by foldOracleCost
+// worldFloat coerces a world value to float64 — float64 when set by foldAgentCost
 // or rehydrated from journal JSON, int when a story declares an integer default,
 // 0 when missing or non-numeric.
 func worldFloat(v any) float64 {

@@ -193,7 +193,7 @@ func TestExportStatus_WithMermaid(t *testing.T) {
 }
 
 // TestAggregateTaskDetails verifies that aggregateTaskDetails correctly
-// correlates task.tool and task.end slog events to their oracle.task.complete
+// correlates task.tool and task.end slog events to their agent.task.complete
 // event using task_trace_id / parent_trace_id.
 //
 // Runtime budget: <1 ms (pure in-memory slice manipulation, no I/O).
@@ -237,7 +237,7 @@ func TestAggregateTaskDetails(t *testing.T) {
 			},
 		},
 		{
-			Msg: "oracle.task.complete",
+			Msg: "agent.task.complete",
 			Attrs: map[string]any{
 				"call_id":       "call-xyz",
 				"model":         "claude-3-sonnet",
@@ -246,8 +246,8 @@ func TestAggregateTaskDetails(t *testing.T) {
 			},
 		},
 		{
-			// A different oracle verb — must not gain tool_calls.
-			Msg: "oracle.decide.complete",
+			// A different agent verb — must not gain tool_calls.
+			Msg: "agent.decide.complete",
 			Attrs: map[string]any{
 				"call_id": "call-decide-999",
 				"model":   "claude-3-sonnet",
@@ -257,9 +257,9 @@ func TestAggregateTaskDetails(t *testing.T) {
 
 	runstatus.AggregateTaskDetails(events)
 
-	// oracle.task.complete must have tool_calls and files_changed.
+	// agent.task.complete must have tool_calls and files_changed.
 	taskComplete := events[4]
-	require.Equal(t, "oracle.task.complete", taskComplete.Msg)
+	require.Equal(t, "agent.task.complete", taskComplete.Msg)
 
 	toolCalls, ok := taskComplete.Attrs["tool_calls"].([]map[string]any)
 	require.True(t, ok, "tool_calls must be a []map[string]any")
@@ -273,10 +273,10 @@ func TestAggregateTaskDetails(t *testing.T) {
 	assert.Equal(t, "workerpool/dispatcher.go", filesChanged[0]["path"])
 	assert.Equal(t, "modified", filesChanged[0]["status"])
 
-	// oracle.decide.complete must NOT gain tool_calls.
+	// agent.decide.complete must NOT gain tool_calls.
 	decideComplete := events[5]
-	require.Equal(t, "oracle.decide.complete", decideComplete.Msg)
-	assert.Nil(t, decideComplete.Attrs["tool_calls"], "oracle.decide.complete must not gain tool_calls")
+	require.Equal(t, "agent.decide.complete", decideComplete.Msg)
+	assert.Nil(t, decideComplete.Attrs["tool_calls"], "agent.decide.complete must not gain tool_calls")
 }
 
 // TestTerminalDetection asserts terminal-state detection (exercised through

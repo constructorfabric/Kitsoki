@@ -1,9 +1,9 @@
-// Package host — ambient editor-context seam for oracle prompts.
+// Package host — ambient editor-context seam for agent prompts.
 //
 // When the TUI holds a live IDE link it reads the active selection at
-// turn-submit and threads it onto the turn ctx with WithIDEAmbient. The oracle
-// operator-facing handlers (oracle_ask.go, oracle_ask_with_mcp.go,
-// oracle_converse.go) expose it two ways:
+// turn-submit and threads it onto the turn ctx with WithIDEAmbient. The agent
+// operator-facing handlers (agent_ask.go, agent_ask_with_mcp.go,
+// agent_converse.go) expose it two ways:
 //
 //   - As the reserved `args.ide` template key (mergeIDEAmbient), so a prompt can
 //     reference `{{ args.ide.file }}` / `{{ args.ide.selection }}` for precise
@@ -64,7 +64,7 @@ func (a IDEAmbient) asMap() map[string]any {
 type ideAmbientKey struct{}
 
 // WithIDEAmbient injects the turn's ambient editor context into ctx so the
-// oracle handlers expose it as `args.ide`. An empty IDEAmbient (no File) is a
+// agent handlers expose it as `args.ide`. An empty IDEAmbient (no File) is a
 // no-op — the scope stays byte-identical to a turn with no editor context, so
 // the deny-list and disconnected paths never need a separate ctx branch.
 func WithIDEAmbient(ctx context.Context, a IDEAmbient) context.Context {
@@ -86,7 +86,7 @@ func IDEAmbientFromCtx(ctx context.Context) (IDEAmbient, bool) {
 // not already bound `ide` themselves (an explicit author binding wins). It never
 // mutates the caller's map: when there is nothing to merge it returns the input
 // unchanged, and otherwise it shallow-copies before adding the key. This is the
-// single seam every oracle prompt path calls so `{{ args.ide.* }}` resolves
+// single seam every agent prompt path calls so `{{ args.ide.* }}` resolves
 // consistently.
 func mergeIDEAmbient(ctx context.Context, templateArgs map[string]any) map[string]any {
 	amb, ok := IDEAmbientFromCtx(ctx)
@@ -113,7 +113,7 @@ const ideAmbientPreambleHeader = "## Active editor selection (via /ide)"
 const ideAmbientPreambleHeaderFile = "## Active editor (via /ide)"
 
 // IDEAmbientPreamble renders the standardized editor-selection block that is
-// appended to an operator-facing oracle prompt (ask / ask_with_mcp / converse)
+// appended to an operator-facing agent prompt (ask / ask_with_mcp / converse)
 // whenever a selection rode the turn — the "always injected when /ide is
 // connected" seam. It returns "" when no selection is present (the `/ide` link
 // is off, nothing was selected, or the file was deny-ruled TUI-side), so a turn

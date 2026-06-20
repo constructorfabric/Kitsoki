@@ -40,9 +40,9 @@ host_handlers:
           exit_code: 0
           stdout_json: { prd_file: "docs/prd/example-cli.md" }
   # references on_enter runs the optional semantic pre-seed; empty hits = no embeddings.
-  host.oracle.search:
+  host.agent.search:
     data: { hits: [] }
-  host.oracle.decide:
+  host.agent.decide:
     by_call:
       # The brief judge — passes.
       brief_check:
@@ -58,7 +58,7 @@ host_handlers:
       submitted:
         items:
           - { path: "docs/architecture/auth.md", sections: "Token model", rationale: "the PRD must honour the existing token lifecycle" }
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted:
@@ -82,7 +82,7 @@ turns:
         reason:    "Crisp Why, one-screen What-changes, users and scope are clear."
         questions: []
     expect_host_calls:
-      - handler: host.oracle.decide
+      - handler: host.agent.decide
         args: { call: "brief_check" }
     # (The scaffold's once-guard against re-running is asserted in
     # brief_ready_judge_clarify, which stays IN the brief room so the

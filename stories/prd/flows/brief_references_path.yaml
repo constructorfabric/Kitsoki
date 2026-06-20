@@ -3,7 +3,7 @@
 # Covers the two new confirm-gated rooms with a flow that asserts the
 # references CONTENT. It starts at `brief` (idea + transcript seeded), so
 # the ONLY on_enter decide in the run is the references room's researcher
-# — the shared host.oracle.decide stub can therefore return the reference
+# — the shared host.agent.decide stub can therefore return the reference
 # list shape without colliding with clarifying's questions shape (which is
 # covered by happy_path / multi_round). host.artifacts_dir is stubbed; the
 # stub returns one path for every write, so we assert the DISPATCH (the
@@ -34,9 +34,9 @@ host_handlers:
           stdout_json: { prd_file: "docs/prd/example-cli.md" }
   # The references room's researcher — the only decide in this run.
   # references on_enter runs the optional semantic pre-seed; empty hits = no embeddings.
-  host.oracle.search:
+  host.agent.search:
     data: { hits: [] }
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:
@@ -45,7 +45,7 @@ host_handlers:
           - { path: "docs/api/rate-limits.md",   sections: "§3.2",        rationale: "rate-limit contract the feature lives under" }
   host.artifacts_dir:
     data: { ok: true, path: ".artifacts/out.md", message_id: "out#1" }
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted:

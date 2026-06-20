@@ -6,7 +6,7 @@
 # submit_answers' optional `answers` slot swallowed stray prose and advanced
 # straight to brief, leaving every question unanswered).
 #
-# The `answer` arc hands the whole reply to the answer_matcher oracle, which
+# The `answer` arc hands the whole reply to the answer_matcher agent, which
 # decides which question it answers — here a reply about the success metric
 # lands on q2 even though q1 is still open and no number was typed. The
 # matcher is STUBBED (no real LLM), keyed by the invoke id `match_answer`;
@@ -27,9 +27,9 @@ initial_world:
       - { id: "q3", question: "What is explicitly out of scope?", why: "bounds the work" }
 
 host_handlers:
-  host.oracle.search:
+  host.agent.search:
     data: { hits: [] }
-  host.oracle.decide:
+  host.agent.decide:
     # on_enter analyst (id: analyst_questions) → falls through to this envelope.
     data:
       ok: true

@@ -26,11 +26,11 @@ import (
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"kitsoki/internal/agent"
 	"kitsoki/internal/app"
 	"kitsoki/internal/harness"
 	"kitsoki/internal/host"
 	"kitsoki/internal/machine"
-	"kitsoki/internal/oracle"
 	"kitsoki/internal/orchestrator"
 	rsserver "kitsoki/internal/runstatus/server"
 	"kitsoki/internal/store"
@@ -46,8 +46,8 @@ var registerExtraHostCaps func(reg *host.Registry)
 
 // noRouteHarness is a placeholder harness for a runtime that never routes free
 // text — the spec-render path (render.tui/png/web on a {story_path, state}
-// spec), which only teleports + re-renders. The oracle registry constructor
-// requires a non-nil harness even when no oracle will ever fire, so this
+// spec), which only teleports + re-renders. The agent registry constructor
+// requires a non-nil harness even when no agent will ever fire, so this
 // satisfies the contract while failing loudly if anything DID try to route.
 // Mirrors cmd/kitsoki noRunHarness (package main, not importable here).
 type noRouteHarness struct{}
@@ -133,7 +133,7 @@ func newSessionRuntime(ctx context.Context, storyPath, tracePath string, h harne
 	rt := &sessionRuntime{}
 
 	// A nil harness means "this runtime never routes free text" (the spec-render
-	// path). The oracle registry still requires a non-nil harness, so substitute
+	// path). The agent registry still requires a non-nil harness, so substitute
 	// a no-route placeholder that fails loudly if anything tries to route.
 	if h == nil {
 		h = noRouteHarness{}
@@ -194,18 +194,18 @@ func newSessionRuntime(ctx context.Context, storyPath, tracePath string, h harne
 		return nil, &openError{Code: ErrBadRequest, Msg: fmt.Sprintf("session: validate hosts: %v", err)}
 	}
 
-	oracleReg, oracleRegErr := oracle.BuildRegistryFromDef(def, h)
-	if oracleRegErr != nil {
+	agentReg, agentRegErr := agent.BuildRegistryFromDef(def, h)
+	if agentRegErr != nil {
 		rt.Close()
-		return nil, &openError{Code: ErrBadRequest, Msg: fmt.Sprintf("session: build oracle registry: %v", oracleRegErr)}
+		return nil, &openError{Code: ErrBadRequest, Msg: fmt.Sprintf("session: build agent registry: %v", agentRegErr)}
 	}
-	rt.closers = append(rt.closers, func() { _ = oracleReg.Close() })
+	rt.closers = append(rt.closers, func() { _ = agentReg.Close() })
 
 	orch := orchestrator.New(def, m, s, h,
 		orchestrator.WithHostRegistry(hostReg),
 		orchestrator.WithEventSink(sink),
 		orchestrator.WithEventSinkAuthority(true),
-		orchestrator.WithOracleRegistry(oracleReg),
+		orchestrator.WithAgentRegistry(agentReg),
 	)
 	rt.orch = orch
 

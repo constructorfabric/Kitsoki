@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref, computed } from 'vue';
-import { usePromptLoader } from '../../src/components/oracle/usePromptLoader.js';
+import { usePromptLoader } from '../../src/components/agent/usePromptLoader.js';
 
 describe('usePromptLoader', () => {
   beforeEach(() => {

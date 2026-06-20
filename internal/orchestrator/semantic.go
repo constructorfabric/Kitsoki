@@ -90,10 +90,10 @@ func (o *Orchestrator) routingEnabled() bool {
 }
 
 // extractLLMOnNoMatch reports whether the app opted the semantic router into
-// invoking the host.oracle.extract LLM tier on a no_match (RoutingConfig.
+// invoking the host.agent.extract LLM tier on a no_match (RoutingConfig.
 // ExtractLLMOnNoMatch). Default false: a nil Routing block leaves it off, and
 // DefaultRoutingConfig does not set it. The point of the opt-in is to back that
-// LLM tier with a cheap local model (oracle: oracle.local) so an unrouted turn
+// LLM tier with a cheap local model (agent: agent.local) so an unrouted turn
 // gets a schema-bounded, offline routing attempt before the main-turn LLM. The
 // deterministic tiers always run first; this only changes what happens AFTER a
 // deterministic no_match.
@@ -104,34 +104,34 @@ func (o *Orchestrator) extractLLMOnNoMatch() bool {
 	return o.def.Routing.ExtractLLMOnNoMatch
 }
 
-// extractLLMOracle is the oracle_plugins alias the no_match LLM routing tier
-// dispatches to. It honours RoutingConfig.ExtractLLMOracle and defaults to
-// "oracle.local" (the local-model backend convention).
-func (o *Orchestrator) extractLLMOracle() string {
-	if o.def != nil && o.def.Routing != nil && o.def.Routing.ExtractLLMOracle != "" {
-		return o.def.Routing.ExtractLLMOracle
+// extractLLMAgent is the agent_plugins alias the no_match LLM routing tier
+// dispatches to. It honours RoutingConfig.ExtractLLMAgent and defaults to
+// "agent.local" (the local-model backend convention).
+func (o *Orchestrator) extractLLMAgent() string {
+	if o.def != nil && o.def.Routing != nil && o.def.Routing.ExtractLLMAgent != "" {
+		return o.def.Routing.ExtractLLMAgent
 	}
-	return "oracle.local"
+	return "agent.local"
 }
 
 // routeViaLLM runs the LLM tier of the semantic router on a deterministic
-// no_match: it dispatches host.RunRoutingLLM through the configured oracle
-// plugin (typically oracle.local) and returns the resulting verdict. The caller
+// no_match: it dispatches host.RunRoutingLLM through the configured agent
+// plugin (typically agent.local) and returns the resulting verdict. The caller
 // feeds a successful verdict through the same confidence-band switch as the
 // deterministic tiers. Returns ok=false (and the caller falls through to the
 // main-turn LLM) when no registry is wired, no intent fits, or the call errors.
 func (o *Orchestrator) routeViaLLM(ctx context.Context, sid app.SessionID, turn app.TurnNumber, state app.StatePath, input string, allowed []string) (semroute.Verdict, bool, error) {
-	if o.oracleRegistry == nil {
+	if o.agentRegistry == nil {
 		return semroute.Verdict{}, false, nil
 	}
-	llmCtx := host.WithOracleRegistry(ctx, o.oracleRegistry)
-	llmCtx = host.WithOraclePluginName(llmCtx, o.extractLLMOracle())
-	llmCtx = host.WithOracleCallCtx(llmCtx, host.OracleCallCtx{
+	llmCtx := host.WithAgentRegistry(ctx, o.agentRegistry)
+	llmCtx = host.WithAgentPluginName(llmCtx, o.extractLLMAgent())
+	llmCtx = host.WithAgentCallCtx(llmCtx, host.AgentCallCtx{
 		SessionID: sid,
 		Turn:      turn,
 		StatePath: state,
 	})
-	llmCtx = host.WithOracleUsageBox(llmCtx)
+	llmCtx = host.WithAgentUsageBox(llmCtx)
 	return host.RunRoutingLLM(llmCtx, input, string(state), allowed)
 }
 
@@ -265,9 +265,9 @@ func (o *Orchestrator) semanticBars() (high, mid float64) {
 // the orchestrator runs deterministic first, semantic second, LLM
 // last (see docs/architecture/semantic-routing.md "The four tiers").
 //
-// After the oracle-split Phase 5, this method dispatches through
+// After the agent-split Phase 5, this method dispatches through
 // [host.RunExtractForRouting] — making the semantic router one consumer
-// of the host.oracle.extract tiered-resolver (oracle-split D13).
+// of the host.agent.extract tiered-resolver (agent-split D13).
 // The transport-level routing tests are unaffected: they test Turn()
 // outcomes, not the internal routing path.
 //
@@ -315,7 +315,7 @@ func (o *Orchestrator) TrySemantic(ctx context.Context, sid app.SessionID, input
 		allowedNames[i] = ai.Name
 	}
 
-	// Phase 5 (oracle-split D13): dispatch through host.oracle.extract's
+	// Phase 5 (agent-split D13): dispatch through host.agent.extract's
 	// tiered resolver so the semantic router is one consumer of the extract
 	// handler rather than a standalone path. RunExtractForRouting injects the
 	// compiled Matcher into a context and calls the synonyms tier, returning
@@ -359,7 +359,7 @@ func (o *Orchestrator) TrySemantic(ctx context.Context, sid app.SessionID, input
 
 		if !embedHit {
 			// When the app opted into ExtractLLMOnNoMatch, run the LLM tier — backed
-			// by a cheap local model via oracle: oracle.local — for a schema-bounded
+			// by a cheap local model via agent: agent.local — for a schema-bounded
 			// routing attempt before the main-turn LLM. A "none"/out-of-list verdict,
 			// no registry, or an error falls through to the main-turn LLM.
 			if !o.extractLLMOnNoMatch() {
@@ -371,7 +371,7 @@ func (o *Orchestrator) TrySemantic(ctx context.Context, sid app.SessionID, input
 				// local-LLM miss (so the pipeline marks that layer) and fall through
 				// to the main-turn LLM.
 				tl.Debug(ctx, trace.EvTurnLLMMiss,
-					slog.String("model", o.extractLLMOracle()),
+					slog.String("model", o.extractLLMAgent()),
 					slog.String("reason", "error"),
 					slog.String("err", llmErr.Error()),
 				)
@@ -379,7 +379,7 @@ func (o *Orchestrator) TrySemantic(ctx context.Context, sid app.SessionID, input
 			}
 			if !ok {
 				tl.Debug(ctx, trace.EvTurnLLMMiss,
-					slog.String("model", o.extractLLMOracle()),
+					slog.String("model", o.extractLLMAgent()),
 					slog.String("reason", "no_match"),
 				)
 				return nil, false, nil
@@ -458,7 +458,7 @@ func (o *Orchestrator) TrySemantic(ctx context.Context, sid app.SessionID, input
 			// deterministic synonym hit.
 			tl.Debug(ctx, trace.EvTurnLLMRouted,
 				slog.String("intent", verdict.Intent),
-				slog.String("model", o.extractLLMOracle()),
+				slog.String("model", o.extractLLMAgent()),
 				slog.Float64("confidence", verdict.Confidence),
 			)
 		} else {
@@ -487,14 +487,14 @@ func (o *Orchestrator) TrySemantic(ctx context.Context, sid app.SessionID, input
 		// replay-from-journal, and anyone diagnosing an unexpected
 		// transition all need this. See RouteProvenance.
 		// Record WHICH tier routed. The LLM tier (verdict.MatchKind=="llm")
-		// reports source "llm" and names the backend plugin (e.g. oracle.local)
+		// reports source "llm" and names the backend plugin (e.g. agent.local)
 		// so the trace shows a local-model route is distinct from a deterministic
-		// synonym — and from a main-turn claude route. (The matching oracle.call.*
+		// synonym — and from a main-turn claude route. (The matching agent.call.*
 		// events also carry the plugin name.)
 		prov := RouteProvenance{Source: "semantic", MatchType: verdict.MatchReason, Confidence: verdict.Confidence}
 		if verdict.MatchKind == "llm" {
 			prov.Source = "llm"
-			prov.MatchType = o.extractLLMOracle()
+			prov.MatchType = o.extractLLMAgent()
 		}
 		outcome, err := o.SubmitDirectRouted(ctx, sid, verdict.Intent, slots, input, prov)
 		if err != nil {

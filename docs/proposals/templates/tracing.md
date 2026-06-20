@@ -29,7 +29,7 @@
 ## What changes
 
 <!-- One screen. New/changed events vs. a new consumer of existing events.
-     The one sentence that frames it ("cassettes must carry oracle metadata
+     The one sentence that frames it ("cassettes must carry agent metadata
      so runstatus snapshots show model + token usage per step"). -->
 
 ## Impact

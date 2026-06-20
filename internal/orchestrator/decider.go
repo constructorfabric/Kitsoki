@@ -12,7 +12,7 @@ package orchestrator
 // GateDecided event.
 //
 // This is the generalisation of the bugfix story's hand-rolled
-// `oracle.decide → emit_intent "{{ llm_verdict.intent }}"` shape: the author
+// `agent.decide → emit_intent "{{ llm_verdict.intent }}"` shape: the author
 // no longer wires a judge into every room — the engine drives it at any gate.
 
 import (
@@ -45,11 +45,11 @@ const defaultDeciderThreshold = 0.8
 // firing default simply rest, as before).
 type DeciderConfig struct {
 	// Agent is the name of the judge agent (declared in the app's agents:)
-	// the engine invokes via host.oracle.decide. Required.
+	// the engine invokes via host.agent.decide. Required.
 	Agent string
-	// Schema is the path to the decision schema the oracle enforces MCP-side.
+	// Schema is the path to the decision schema the agent enforces MCP-side.
 	// The submitted object must carry {intent, confidence, reason}. Required
-	// (host.oracle.decide rejects an empty schema).
+	// (host.agent.decide rejects an empty schema).
 	Schema string
 	// Prompt, when set, is the path to a decision-prompt template; the engine
 	// passes the gate candidates + world as template args. When empty the
@@ -168,7 +168,7 @@ func (o *Orchestrator) resolveAutoGate(ctx context.Context, sid app.SessionID, r
 	o.resolveAutoGate(ctx, sid, res, tl, depth+1)
 }
 
-// invokeDecider builds and dispatches a host.oracle.decide call for the gate,
+// invokeDecider builds and dispatches a host.agent.decide call for the gate,
 // then parses the agent's submitted object into a judges.Verdict.
 func (o *Orchestrator) invokeDecider(ctx context.Context, sid app.SessionID, res *machine.TurnResult, candidates []machine.AllowedIntent, tl *trace.TurnLogger) (judges.Verdict, error) {
 	const verdictKey = "__engine_decider_verdict"
@@ -189,7 +189,7 @@ func (o *Orchestrator) invokeDecider(ctx context.Context, sid app.SessionID, res
 	}
 
 	hc := machine.HostInvocation{
-		Namespace: "host.oracle.decide",
+		Namespace: "host.agent.decide",
 		Args:      args,
 		Bind:      map[string]string{verdictKey: "submitted"},
 	}

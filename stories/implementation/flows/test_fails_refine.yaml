@@ -39,7 +39,7 @@ host_handlers:
       body: "Add /healthz handler returning 200 OK."
       title: "Add /healthz endpoint"
       url:  "issues/tasks/tkt-t-003.md"
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:

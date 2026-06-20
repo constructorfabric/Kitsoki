@@ -11,7 +11,7 @@
 
 export type ObservationKind =
   | "decision"
-  | "oracle-call"
+  | "agent-call"
   | "host-call"
   | "narration"
   | "world-mutation"
@@ -27,8 +27,8 @@ export function observationKind(msg: string): ObservationKind {
     // decision — interpretive choices with available/chosen/confidence
     case "machine.gate_decided":
     case "machine.write_mode_granted":
-    case "oracle.off_path.question":
-    case "oracle.off_path.answer":
+    case "agent.off_path.question":
+    case "agent.off_path.answer":
       return "decision";
 
     // routing — what advanced the turn and how it was routed
@@ -36,12 +36,12 @@ export function observationKind(msg: string): ObservationKind {
     case "machine.intent_accepted":
       return "routing";
 
-    // oracle-call — LLM/operator calls with prompt/response/cost/latency
-    case "oracle.call.start":
-    case "oracle.call.complete":
-    case "oracle.call.error":
-    case "oracle.tool_call":
-      return "oracle-call";
+    // agent-call — LLM/operator calls with prompt/response/cost/latency
+    case "agent.call.start":
+    case "agent.call.complete":
+    case "agent.call.error":
+    case "agent.tool_call":
+      return "agent-call";
 
     // host-call — deterministic side-effecting execution
     case "harness.called":
@@ -71,7 +71,7 @@ export function observationKind(msg: string): ObservationKind {
  */
 export const COLOR_MAP: Record<ObservationKind, string> = {
   decision:       "#7c3aed", // purple
-  "oracle-call":  "#0ea5e9", // blue
+  "agent-call":  "#0ea5e9", // blue
   "host-call":    "#f59e0b", // amber
   narration:      "#10b981", // emerald
   "world-mutation": "#ec4899", // pink

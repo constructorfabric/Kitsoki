@@ -369,7 +369,7 @@ phase_templates:
           # on_enter picks illness_kind by a deterministic sub-roll
           # (rng_last % 5) and zeroes current_event_attempts. In
           # narrated mode (world.narration == true) the diagnosis comes
-          # from host.oracle.decide with the typed-JSON validator
+          # from host.agent.decide with the typed-JSON validator
           # bound to stories/oregon-trail/mcp/illness.json — Claude
           # returns { illness, severity, treatment } via the submit
           # tool (proposal §9.6). The narrated arm also writes
@@ -409,11 +409,11 @@ phase_templates:
                   illness_severity: "{{ world.rng_last % 5 + 1 }}"
                   illness_treatment: "rest"
               # Narrated arm — Claude returns typed JSON via the submit
-              # tool. host.oracle.decide validates the payload against
+              # tool. host.agent.decide validates the payload against
               # the schema; the validated payload is exposed as
               # Result.Data.submitted which `bind:` walks via dotted paths.
               - when: "world.narration"
-                invoke: host.oracle.decide
+                invoke: host.agent.decide
                 with:
                   prompt: "prompts/event_disease.md"
                   schema: "mcp/illness.json"
@@ -582,7 +582,7 @@ phase_templates:
           # repair (no spare): +1 attempt, guard hint to wait_out;
           # after 2 attempts the wagon is abandoned (party_alive -= 1).
           # wait_out: +5 days, returns to traveling.
-          # Phase H: in narrated mode, host.oracle.ask renders 2-4
+          # Phase H: in narrated mode, host.agent.ask renders 2-4
           # sentences of period-flavored prose into world.last_event_prose
           # using the rolled breakdown_part. The view: template prefers
           # the prose when set and falls back to the canned line otherwise.
@@ -605,7 +605,7 @@ phase_templates:
               # `stdout` value lands in world.last_event_prose and the
               # view template reads it.
               - when: "world.narration"
-                invoke: host.oracle.ask
+                invoke: host.agent.ask
                 with:
                   prompt_path: "prompts/event_breakdown.md"
                   agent: trail_narrator
@@ -751,7 +751,7 @@ phase_templates:
           # wait_out: lose 1-3 days (deterministic from rng_last);
           # food spoils 20 lbs if heavy_rain.
           # push_on: continue, health_avg -= 10.
-          # Phase H: in narrated mode, host.oracle.ask renders 2-4
+          # Phase H: in narrated mode, host.agent.ask renders 2-4
           # sentences of period prose keyed on weather_kind + month +
           # terrain. The view: template prefers the prose when set.
           event_weather:
@@ -763,7 +763,7 @@ phase_templates:
                   weather_kind: "{{ world.month == 'november' || world.month == 'december' || world.month == 'january' || world.month == 'february' ? 'snow' : (world.month == 'march' || world.month == 'april' || world.month == 'may' ? 'heavy_rain' : (world.month == 'june' || world.month == 'july' || world.month == 'august' ? (world.rng_last % 2 == 0 ? 'hail' : 'fog') : (world.rng_last % 2 == 0 ? 'heavy_rain' : 'fog'))) }}"
                   last_event_prose: ""
               - when: "world.narration"
-                invoke: host.oracle.ask
+                invoke: host.agent.ask
                 with:
                   prompt_path: "prompts/event_weather.md"
                   agent: trail_narrator
@@ -841,7 +841,7 @@ phase_templates:
           # accept_trade: swap 50 food ↔ 1 clothing_set.
           # decline_trade: no-op, return to traveling.
           # move_on: same as decline.
-          # Phase H: in narrated mode, host.oracle.ask renders 2-4
+          # Phase H: in narrated mode, host.agent.ask renders 2-4
           # sentences of period prose keyed on the encounter kind.
           event_encounter:
             description: "Encounter on the trail: {{ world.encounter_kind }}."
@@ -852,7 +852,7 @@ phase_templates:
                   encounter_kind: "{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}"
                   last_event_prose: ""
               - when: "world.narration"
-                invoke: host.oracle.ask
+                invoke: host.agent.ask
                 with:
                   prompt_path: "prompts/event_encounter.md"
                   agent: trail_narrator
@@ -948,7 +948,7 @@ phase_templates:
           # Deterministically loses food OR an ox: even rng_last drops
           # 10-40 lbs of food, odd rng_last kills 1 ox. Single move_on
           # intent — no choice to be made.
-          # Phase H: in narrated mode, host.oracle.ask renders 2-4
+          # Phase H: in narrated mode, host.agent.ask renders 2-4
           # sentences of period prose keyed on what was lost.
           event_supply_loss:
             description: "Supplies lost on the trail."
@@ -962,7 +962,7 @@ phase_templates:
                   food_lbs: "{{ world.rng_last % 2 == 0 ? world.food_lbs - (10 + 10 * (world.rng_last % 4)) : world.food_lbs }}"
                   oxen: "{{ world.rng_last % 2 == 0 ? world.oxen : world.oxen - 1 }}"
               - when: "world.narration"
-                invoke: host.oracle.ask
+                invoke: host.agent.ask
                 with:
                   prompt_path: "prompts/event_supply_loss.md"
                   agent: trail_narrator
@@ -1038,7 +1038,7 @@ phase_templates:
         # leg, even if we re-enter the state (e.g. from a failed river
         # crossing). The body is intentionally period-flavoured Markdown
         # — that's the entire point of the trail-diary surface.
-        # ── Phase H: in narrated mode, host.oracle.ask drops 2-4
+        # ── Phase H: in narrated mode, host.agent.ask drops 2-4
         # sentences of atmospheric prose into world.last_landmark_prose.
         # The view: template prefers the prose over the canned hint
         # when set. Both effects run unconditionally aside from the
@@ -1064,7 +1064,7 @@ phase_templates:
                 - Party: {{ world.party_alive }} alive
                 - Health: {{ world.health_avg }}
           - when: "world.narration"
-            invoke: host.oracle.ask
+            invoke: host.agent.ask
             with:
               prompt_path: "prompts/landmark_arrival.md"
               agent: trail_narrator

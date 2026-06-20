@@ -85,7 +85,7 @@ func TestIDEGetDiagnostics_ThroughRegistry(t *testing.T) {
 
 // TestIDEGetDiagnostics_ThroughRegistry_EmitsContextCaptured proves the read
 // verb records the ide.context_captured journal datapoint on the EventSink in
-// ctx (the same sink the orchestrator wires for oracle events). It pins the IDE
+// ctx (the same sink the orchestrator wires for agent events). It pins the IDE
 // provenance — port, workspace, a response digest — and crucially does NOT leak
 // the raw diagnostic text into the trace (selection-privacy lean).
 func TestIDEGetDiagnostics_ThroughRegistry_EmitsContextCaptured(t *testing.T) {
@@ -102,12 +102,12 @@ func TestIDEGetDiagnostics_ThroughRegistry_EmitsContextCaptured(t *testing.T) {
 
 	sink := &memSink{}
 	ctx := host.WithIDELink(context.Background(), link)
-	ctx = host.WithOracleCallCtx(ctx, host.OracleCallCtx{
+	ctx = host.WithAgentCallCtx(ctx, host.AgentCallCtx{
 		SessionID: app.SessionID("ide-test"),
 		Turn:      app.TurnNumber(3),
 		StatePath: app.StatePath("triage"),
 	})
-	ctx = host.WithOracleEventSink(ctx, sink)
+	ctx = host.WithAgentEventSink(ctx, sink)
 
 	if _, err := r.Invoke(ctx, "host.ide.get_diagnostics", nil); err != nil {
 		t.Fatalf("Invoke: %v", err)

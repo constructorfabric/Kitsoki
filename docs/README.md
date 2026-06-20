@@ -20,7 +20,7 @@ work in progress, not the product manual.
 
 How kitsoki works under the hood: control inversion, progressive
 determinism, the package map and turn loop, persistence, and the
-external-world boundaries (hosts, oracle plugins, transports, the
+external-world boundaries (hosts, agent plugins, transports, the
 routing stack). Also the contributor guide. *Audience: architects and
 people changing the kitsoki codebase.*
 

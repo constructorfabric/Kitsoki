@@ -65,4 +65,4 @@ bare reference resolves overlay-first, so the overlay is picked up
 automatically. Drop the flag and the story runs on its generic defaults.
 
 A run that used an overlay records `prompt_overlay` (and which `spec_` blocks
-were overridden vs. left at their default) in the oracle trace.
+were overridden vs. left at their default) in the agent trace.

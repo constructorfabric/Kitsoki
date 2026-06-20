@@ -86,7 +86,7 @@ func unwrapIDEResult(raw json.RawMessage) (payload any, text string, isError boo
 }
 
 // emitIDEContextCaptured records one host.ide.get_* pull on the EventSink in
-// ctx (the same sink oracle events use, injected in dispatchHostCalls). It is
+// ctx (the same sink agent events use, injected in dispatchHostCalls). It is
 // the labeled datapoint behind an editor-informed decision: it pins the IDE
 // provenance (verb, request args, workspace, port) and a sha256-prefix digest
 // of the raw response so the decision's editor input is auditable WITHOUT
@@ -96,7 +96,7 @@ func unwrapIDEResult(raw json.RawMessage) (payload any, text string, isError boo
 // fail the host call. Emitted only by the read verbs; open_file/open_diff are
 // side-effect-only and carry no captured context.
 func emitIDEContextCaptured(ctx context.Context, link IDELink, verb string, request map[string]any, rawResponse json.RawMessage) {
-	sink := EventSinkFromOracleCtx(ctx)
+	sink := EventSinkFromAgentCtx(ctx)
 	if sink == nil {
 		return
 	}
@@ -112,7 +112,7 @@ func emitIDEContextCaptured(ctx context.Context, link IDELink, verb string, requ
 	if err != nil {
 		return
 	}
-	oc := OracleCallCtxFrom(ctx)
+	oc := AgentCallCtxFrom(ctx)
 	_ = sink.Append(store.Event{
 		Turn:      oc.Turn,
 		Ts:        time.Now(),

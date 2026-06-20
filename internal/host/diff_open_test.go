@@ -26,8 +26,8 @@ import (
 
 func TestDiffOpen_IDE_Verdict(t *testing.T) {
 	cases := []struct {
-		name       string
-		envelope   json.RawMessage
+		name        string
+		envelope    json.RawMessage
 		wantVerdict any
 	}{
 		// Structured payload {"verdict": ...} — the headline contract shape.
@@ -80,12 +80,12 @@ func TestDiffOpen_IDE_RecordsGateDecision(t *testing.T) {
 	}
 	sink := &memSink{}
 	ctx := host.WithIDELink(context.Background(), link)
-	ctx = host.WithOracleCallCtx(ctx, host.OracleCallCtx{
+	ctx = host.WithAgentCallCtx(ctx, host.AgentCallCtx{
 		SessionID: app.SessionID("diff-test"),
 		Turn:      app.TurnNumber(4),
 		StatePath: app.StatePath("design_refine"),
 	})
-	ctx = host.WithOracleEventSink(ctx, sink)
+	ctx = host.WithAgentEventSink(ctx, sink)
 
 	if _, err := host.DiffOpenHandler(ctx, map[string]any{
 		"paths": []any{"a.go", "b.go"}, "base": "HEAD", "title": "review",
@@ -135,8 +135,8 @@ func TestDiffOpen_IDE_NoVerdict_NoGateEvent(t *testing.T) {
 	}
 	sink := &memSink{}
 	ctx := host.WithIDELink(context.Background(), link)
-	ctx = host.WithOracleCallCtx(ctx, host.OracleCallCtx{StatePath: app.StatePath("s")})
-	ctx = host.WithOracleEventSink(ctx, sink)
+	ctx = host.WithAgentCallCtx(ctx, host.AgentCallCtx{StatePath: app.StatePath("s")})
+	ctx = host.WithAgentEventSink(ctx, sink)
 
 	res, err := host.DiffOpenHandler(ctx, map[string]any{"path": "/a.go", "new_text": "x"})
 	if err != nil {
@@ -169,8 +169,8 @@ func TestDiffOpen_Difftool_FakeTool(t *testing.T) {
 	t.Setenv("KITSOKI_DIFFTOOL", script+" --review")
 
 	sink := &memSink{}
-	ctx := host.WithOracleCallCtx(context.Background(), host.OracleCallCtx{StatePath: app.StatePath("s")})
-	ctx = host.WithOracleEventSink(ctx, sink)
+	ctx := host.WithAgentCallCtx(context.Background(), host.AgentCallCtx{StatePath: app.StatePath("s")})
+	ctx = host.WithAgentEventSink(ctx, sink)
 
 	// No IDE link in ctx → the difftool branch is taken.
 	res, err := host.DiffOpenHandler(ctx, map[string]any{"path": "/a.go", "new_text": "x"})
