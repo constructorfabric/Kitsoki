@@ -22,8 +22,8 @@ states:
       - heading: "Recommendation"
       - prose: '{{ world.current.recommendation|default:"(loading…)" }}'
       - heading: "Fix result"
-      - kv:
-          when: "world.fix_result.applied != nil"
+      - when: "world.fix_result.applied != nil"
+        kv:
           pairs:
             Applied: '{{ world.fix_result.applied }}'
             Files:   '{{ world.fix_result.files|join:", " }}'

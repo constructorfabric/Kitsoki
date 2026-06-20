@@ -21,8 +21,8 @@ states:
             Group:    '{{ world.current.title|default:"—" }}'
             Surfaces: '{{ world.current.surfaces|join:", "|default:"—" }}'
       - heading: "Verify result"
-      - kv:
-          when: "world.verify_result.cleared != nil"
+      - when: "world.verify_result.cleared != nil"
+        kv:
           pairs:
             Cleared:     '{{ world.verify_result.cleared }}'
             Remaining:   '{{ world.verify_result.remaining }}'

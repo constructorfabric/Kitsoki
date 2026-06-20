@@ -349,9 +349,10 @@ type rawMediaYAML struct {
 // caption shown beneath; Color is an optional CSS-style hex foreground
 // applied to the art via lipgloss (subtitle stays unstyled).
 type rawBannerYAML struct {
-	Text     string `yaml:"text"`
-	Subtitle string `yaml:"subtitle,omitempty"`
-	Color    string `yaml:"color,omitempty"`
+	Text     string  `yaml:"text"`
+	Subtitle string  `yaml:"subtitle,omitempty"`
+	Color    string  `yaml:"color,omitempty"`
+	When     *string `yaml:"when,omitempty"` // see nestedWhenGuard
 }
 
 // rawListYAML decodes the list element body. Items are decoded into a
@@ -360,6 +361,7 @@ type rawBannerYAML struct {
 type rawListYAML struct {
 	Items  []rawListItemYAML `yaml:"items"`
 	Marker string            `yaml:"marker,omitempty"`
+	When   *string           `yaml:"when,omitempty"` // see nestedWhenGuard
 }
 
 // rawListItemYAML accepts either a string or an object. We do this with
@@ -403,6 +405,28 @@ func (r *rawListItemYAML) UnmarshalYAML(data []byte) error {
 // colon-aligned column order — is preserved.
 type rawKVYAML struct {
 	Pairs goyaml.MapSlice `yaml:"pairs"`
+	When  *string         `yaml:"when,omitempty"` // see nestedWhenGuard
+}
+
+// nestedWhenGuard rejects an element-level `when:` guard that was written
+// INSIDE an element's body (a sibling of `pairs:`/`items:`/`text:`) instead
+// of at the element level (a sibling of the `kv:`/`list:`/`banner:` key).
+//
+// The decoder routes the two positions to different fields: a correctly-placed
+// guard lands on rawViewElementYAML.When; a nested one lands on the body
+// struct's When. Before this guard the nested form was silently dropped (the
+// body structs had no `when` field), so the guard never ran and the element
+// always rendered — a subtle footgun that disabled, e.g., the bugfix/code-review
+// checkpoint verdict-row guards until they were lifted to the element level.
+// Failing loudly at load is the fix (stories exist to force-resolve such traps).
+func nestedWhenGuard(kind string, nested *string) error {
+	if nested == nil {
+		return nil
+	}
+	return fmt.Errorf(
+		"%s element: `when:` must be a sibling of `%s:` (element level), not nested inside the %s body — "+
+			"a nested guard is ignored. Dedent the `when:` to align with `%s:`.",
+		kind, kind, kind, kind)
 }
 
 // toElement resolves a rawViewElementYAML into a concrete ViewElement.
@@ -433,6 +457,9 @@ func (r rawViewElementYAML) toElement() (ViewElement, error) {
 	}
 	if r.List != nil {
 		set = append(set, "list")
+		if err := nestedWhenGuard("list", r.List.When); err != nil {
+			return ViewElement{}, err
+		}
 		items := make([]ListItem, len(r.List.Items))
 		for i, raw := range r.List.Items {
 			items[i] = raw.resolved
@@ -446,10 +473,16 @@ func (r rawViewElementYAML) toElement() (ViewElement, error) {
 	}
 	if r.KV != nil {
 		set = append(set, "kv")
+		if err := nestedWhenGuard("kv", r.KV.When); err != nil {
+			return ViewElement{}, err
+		}
 		out = ViewElement{Kind: "kv", Pairs: r.KV.Pairs, When: when}
 	}
 	if r.Banner != nil {
 		set = append(set, "banner")
+		if err := nestedWhenGuard("banner", r.Banner.When); err != nil {
+			return ViewElement{}, err
+		}
 		out = ViewElement{
 			Kind:     "banner",
 			Source:   r.Banner.Text,
