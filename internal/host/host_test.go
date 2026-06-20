@@ -415,6 +415,75 @@ func TestRunHandler_StdoutJSONBinding_MalformedJSON(t *testing.T) {
 	}
 }
 
+// TestRunHandler_StdoutJSONBinding_PrettyPrinted is the regression guard for
+// the silent-binding-loss footgun that stranded git-ops's real (non-mocked)
+// host.run routing: a script that emits a PRETTY-PRINTED JSON envelope (the
+// default `jq -n '{...}'` output spans multiple lines and ends with a bare
+// "}") used to bind nothing, because only stdout's last non-empty line was
+// parsed. The whole-blob fallback now parses the multi-line object. This is
+// exactly the shape git-ops/rooms/idle.yaml's detect_context emits.
+func TestRunHandler_StdoutJSONBinding_PrettyPrinted(t *testing.T) {
+	r := host.NewRegistry()
+	host.RegisterBuiltins(r)
+
+	// jq's default (no -c) pretty-prints; mimic that exactly.
+	cmd := `echo '2026-06-20 INFO  detecting' >&2
+echo '{'
+echo '  "route": "on_branch",'
+echo '  "branch": "feature",'
+echo '  "commits_ahead": 1'
+echo '}'`
+
+	result, err := r.Invoke(context.Background(), "host.run", map[string]any{"cmd": cmd})
+	if err != nil {
+		t.Fatalf("host.run infra error: %v", err)
+	}
+	if result.Error != "" {
+		t.Fatalf("unexpected domain error: %v", result.Error)
+	}
+	parsed, ok := result.Data["stdout_json"].(map[string]any)
+	if !ok {
+		t.Fatalf("pretty-printed JSON must bind to stdout_json; got %T %v",
+			result.Data["stdout_json"], result.Data["stdout_json"])
+	}
+	if parsed["route"] != "on_branch" {
+		t.Fatalf("stdout_json.route: want on_branch, got %v", parsed["route"])
+	}
+	if _, present := result.Data["stdout_json_parse_error"]; present {
+		t.Fatalf("no parse error expected on a valid multi-line envelope; got %v",
+			result.Data["stdout_json_parse_error"])
+	}
+}
+
+// TestRunHandler_StdoutJSONBinding_LogsThenPretty confirms the trailing
+// extraction finds the envelope amid preceding prose: leading log lines on
+// stdout (whether from stderr via CombinedOutput, or a script that logs to
+// stdout) followed by a pretty-printed JSON block bind to that trailing
+// block. This is the whole point of the contract — pluck the JSON envelope
+// out of mixed log+JSON output.
+func TestRunHandler_StdoutJSONBinding_LogsThenPretty(t *testing.T) {
+	r := host.NewRegistry()
+	host.RegisterBuiltins(r)
+
+	cmd := `echo 'work in progress on stdout'
+echo '{'
+echo '  "route": "on_branch"'
+echo '}'`
+
+	result, err := r.Invoke(context.Background(), "host.run", map[string]any{"cmd": cmd})
+	if err != nil {
+		t.Fatalf("host.run infra error: %v", err)
+	}
+	parsed, ok := result.Data["stdout_json"].(map[string]any)
+	if !ok {
+		t.Fatalf("trailing JSON envelope must be extracted from amid prose; got %T %v",
+			result.Data["stdout_json"], result.Data["stdout_json"])
+	}
+	if parsed["route"] != "on_branch" {
+		t.Fatalf("stdout_json.route: want on_branch, got %v", parsed["route"])
+	}
+}
+
 // TestRunHandler_ArgsArgvMode covers the host.run argv form: when an
 // `args:` list is supplied, the command runs with those positional
 // arguments directly via exec — no shell, no word-splitting, no tilde

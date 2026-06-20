@@ -160,19 +160,23 @@ func RunHandler(ctx context.Context, args map[string]any) (Result, error) {
 		},
 	}
 
-	// Best-effort JSON envelope parse off the *last non-empty line* of
-	// stdout.  Subcommands that follow the envelope contract emit logs
-	// to stderr and a single JSON line on stdout; this lets the bound
-	// world slot carry a structured object instead of a raw blob.
-	// Failure here is not an error — `bind: <slot>: stdout_json` is
-	// silently absent so `on_error` stays pinned to real failures.
-	if last := lastNonEmptyLine(stdout); last != "" {
-		var parsed any
-		if jErr := json.Unmarshal([]byte(last), &parsed); jErr == nil {
-			res.Data["stdout_json"] = parsed
-		} else if looksLikeJSON(last) {
-			res.Data["stdout_json_parse_error"] = jErr.Error()
-		}
+	// Best-effort JSON envelope parse. host.run uses CombinedOutput, so a
+	// subcommand's stderr logs land on stdout AHEAD of its JSON envelope;
+	// trailingJSONValue extracts the LAST JSON value from the output,
+	// tolerating both those leading log lines AND an envelope that spans
+	// multiple lines. The latter matters because the default `jq -n '{...}'`
+	// (no -c) pretty-prints, so the envelope's last line is a bare "}".
+	// The previous last-line-only parse bound nothing for pretty-printed
+	// envelopes — silently, since `bind: <slot>: stdout_json` tolerates an
+	// absent value — which stranded git-ops's real (non-mocked) host.run
+	// routing. A parse miss is not an error: it leaves stdout_json absent so
+	// `on_error` stays pinned to real failures. We still surface a
+	// parse-error when the tail clearly INTENDED JSON but won't parse.
+	if v, ok := trailingJSONValue(stdout); ok {
+		res.Data["stdout_json"] = v
+	} else if last := lastNonEmptyLine(stdout); looksLikeJSON(last) {
+		var probe any
+		res.Data["stdout_json_parse_error"] = json.Unmarshal([]byte(last), &probe).Error()
 	}
 
 	if exitCode != 0 {
@@ -208,6 +212,48 @@ func lastNonEmptyLine(s string) string {
 		}
 	}
 	return ""
+}
+
+// trailingJSONValue extracts the last complete JSON value from s and reports
+// whether one was found. It tolerates leading log lines (host.run's
+// CombinedOutput mixes a subcommand's stderr into stdout) AND a JSON envelope
+// that spans multiple lines (pretty-printed `jq` output).
+//
+// Strategy: the last non-empty line is tried first — the single-line envelope
+// fast path. If that doesn't parse, scan backward for a line that OPENS a
+// JSON value (`{` or `[`) and parse from there to the end; the first such
+// suffix that parses is the trailing value. Scanning backward means a nested
+// opener is tried before the real outer one, but a nested suffix is
+// unbalanced and fails to parse, so the outermost complete value wins.
+func trailingJSONValue(s string) (any, bool) {
+	if s == "" {
+		return nil, false
+	}
+	lines := strings.Split(s, "\n")
+	end := len(lines)
+	for end > 0 && strings.TrimSpace(lines[end-1]) == "" {
+		end--
+	}
+	if end == 0 {
+		return nil, false
+	}
+	var v any
+	// Fast path: a complete single-line envelope.
+	if err := json.Unmarshal([]byte(strings.TrimSpace(lines[end-1])), &v); err == nil {
+		return v, true
+	}
+	// Multi-line: find the opener of the trailing value.
+	for start := end - 1; start >= 0; start-- {
+		t := strings.TrimSpace(lines[start])
+		if t == "" || (t[0] != '{' && t[0] != '[') {
+			continue
+		}
+		blob := strings.TrimSpace(strings.Join(lines[start:end], "\n"))
+		if err := json.Unmarshal([]byte(blob), &v); err == nil {
+			return v, true
+		}
+	}
+	return nil, false
 }
 
 // coerceArgs converts a YAML-decoded args list into the []string form
