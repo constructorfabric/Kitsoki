@@ -364,8 +364,20 @@ func TestDogfoodSmoke_TicketSearchFreeTextRoutesToWorkbench(t *testing.T) {
 	c, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
+	// Boot the session the way every real surface does (see
+	// DriveToRest → RunInitialOnEnter). This fires the `core` compound's
+	// on_enter chain, including the kitsoki-dev world_in projection that
+	// sets core__ticket_repo from the instance-level ticket_repo default.
+	// Without it the child keeps its own "" default and every
+	// host.gh.ticket.* call resolves repo via ambient gh (the bug).
+	require.NoError(t, orch.RunInitialOnEnter(c, sid))
+
 	_, err := orch.SubmitDirect(c, sid, "core__go_ticket_search", nil)
 	require.NoError(t, err)
+
+	history, err := s.LoadHistory(sid)
+	require.NoError(t, err)
+	requireDogfoodHostArg(t, history, "host.gh.ticket.search", "repo", "constructorfabric/Kitsoki")
 
 	const msg = "we have a bunch of markdown issues in the repo - file them on bsacrobatix/kitsoki on github and we'll be able to use them here"
 	out, err := orch.Turn(c, sid, msg)
@@ -378,9 +390,29 @@ func TestDogfoodSmoke_TicketSearchFreeTextRoutesToWorkbench(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, msg, journey.World.Vars["core__landing_request"])
 
-	history, err := s.LoadHistory(sid)
+	history, err = s.LoadHistory(sid)
 	require.NoError(t, err)
 	requireDogfoodRoutedBy(t, history, "fallback")
+}
+
+func requireDogfoodHostArg(t *testing.T, history []store.Event, namespace, key string, want any) {
+	t.Helper()
+	for i := len(history) - 1; i >= 0; i-- {
+		if history[i].Kind != store.HostDispatched {
+			continue
+		}
+		var payload struct {
+			Namespace string         `json:"namespace"`
+			Args      map[string]any `json:"args"`
+		}
+		require.NoError(t, json.Unmarshal(history[i].Payload, &payload))
+		if payload.Namespace != namespace {
+			continue
+		}
+		require.Equal(t, want, payload.Args[key])
+		return
+	}
+	t.Fatalf("no HostDispatched event found for %s", namespace)
 }
 
 func requireDogfoodRoutedBy(t *testing.T, history []store.Event, want string) {
