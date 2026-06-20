@@ -1,0 +1,15 @@
+# What ships in the .vsix is just the bundled host + the inlined SPA + icons.
+# esbuild bundles every runtime dep (incl. ws) into dist/extension.js, so the
+# package carries NO node_modules (`vsce package --no-dependencies`). Everything
+# else here is build-time / test-only and is excluded.
+**
+!package.json
+!README.md
+!LICENSE
+!dist/extension.js
+!media/icon.svg
+!media/icon-128.png
+!media/spa/index.html
+
+# Never ship sourcemaps, the build inputs, tests, or the cached test editor.
+dist/**/*.map

@@ -5,6 +5,12 @@
   "version": "0.1.0",
   "private": true,
   "publisher": "kitsoki",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bsacrobatix/Kitsoki.git",
+    "directory": "tools/vscode-kitsoki"
+  },
   "icon": "media/icon-128.png",
   "engines": {
     "vscode": "^1.96.0"
@@ -158,6 +164,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "node esbuild.mjs",
+    "package": "pnpm dlx @vscode/vsce@^3 package --no-dependencies",
     "test": "node --test --import tsx tests/relay.unit.test.ts tests/bridge-relay.integration.test.ts tests/ide-server.unit.test.ts",
     "test:bridge": "node --test --import tsx tests/ide-bridge.e2e.test.ts",
     "playwright": "playwright test",

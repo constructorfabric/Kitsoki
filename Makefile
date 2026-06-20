@@ -34,7 +34,7 @@ BASESTORIES_STAMP := internal/basestories/.embed-stamp
 
 .PHONY: all setup build install uninstall test test-flows starcheck-kitsoki vet fmt tidy clean web web-clean web-dev web-dev-logs embed-stories e2e-docker \
 	fetch-models fetch-llama-server demo-tour demo-tour-fast demo-tour-qa cost-report cost-report-test mining-test \
-	vscode-e2e vscode-e2e-fast vscode-qa vscode-theming-sidebyside
+	vscode-e2e vscode-e2e-fast vscode-qa vscode-theming-sidebyside vscode-package
 
 all: build
 
@@ -480,6 +480,19 @@ site-clean:
 		$(SITE_DIR)/.vitepress/dist-embedded $(SITE_DIR)/.vitepress/cache \
 		$(SITE_DIR)/src/guide $(SITE_DIR)/src/public/media
 	find $(HELPDOCS_ASSETS) -mindepth 1 ! -name .gitkeep -delete 2>/dev/null || true
+
+# vscode-package builds the SPA + extension bundle, then packages an installable
+# .vsix for a real VS Code instance (Extensions: Install from VSIX… or
+# `code --install-extension`). The .vsix carries ONLY the bundled host + inlined
+# SPA + icons (.vscodeignore whitelist); esbuild bundles every runtime dep, so
+# --no-dependencies ships no node_modules. It deliberately does NOT bundle the
+# `kitsoki` binary — point `kitsoki.binaryPath` at one (or have `kitsoki` on PATH).
+# Output: tools/vscode-kitsoki/kitsoki-<version>.vsix.
+vscode-package: web
+	cd $(VSCODE_DIR) && pnpm install --frozen-lockfile --silent
+	cd $(VSCODE_DIR) && pnpm build
+	cd $(VSCODE_DIR) && pnpm dlx @vscode/vsce@^3 package --no-dependencies
+	@echo "[vscode-package] $$(ls -t $(VSCODE_DIR)/*.vsix | head -1)"
 
 # vscode-e2e-fast is the deterministic, no-LLM end-to-end GATE for the VS Code
 # extension: it launches real VS Code 1.96.4, opens the Kitsoki view, asserts the
