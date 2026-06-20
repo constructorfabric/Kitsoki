@@ -16,6 +16,12 @@ states:
 
   conflict:
     description: "Oracle resolves conflicts. Operator escalates when oracle cannot resolve."
+    # Multi-turn sub-flow: the pre-LLM intercept gate must DRIVE this room to
+    # rest (oracle.task → rebase_continue → conflict_resolved → branch_ops),
+    # not snapshot it after one stateless shot. A settle that rests AT conflict
+    # is the resolver's escalation (resolved:false), which triggers safe-abort.
+    # See docs/architecture/prompt-intercept.md §"Multi-turn commands".
+    intercept_drive: rest
     relevant_world: [conflict_files, conflict_verdict, conflict_intent_guidance,
                      conflict_origin, current_branch, build_check_disabled]
     view:
