@@ -170,6 +170,28 @@ a room whose agent declares `external_side_effect: true` (the static and runtime
 postures must agree); and a story may not `set:` the engine-reserved
 `write_mode_scope` world key (it cannot self-grant write mode).
 
+#### `intercept_drive` — multi-turn rooms the intercept gate drives to rest
+
+A room whose entry begins a multi-turn, oracle-in-the-loop sub-flow (e.g. the
+git-ops [`conflict` room](../../stories/git-ops/rooms/conflict.yaml): resolve →
+`rebase_continue` → `conflict_resolved`) declares:
+
+```yaml
+states:
+  conflict:
+    intercept_drive: rest   # the only valid value
+```
+
+This is the structural marker the [pre-LLM intercept
+gate](../architecture/prompt-intercept.md#7-multi-turn-commands) keys on: when a
+bound app declares any such room, the gate escalates a matched command from the
+stateless one-shot to a budgeted, abortable, persisted **synchronous
+drive-to-rest** — and a settle that rests *at* a flagged room signals the sub-flow
+could not complete (escalation), triggering the room's safe-abort. The flag is
+inert outside the intercept path. Load-time invariants (fail-fast): the value must
+be `rest`, and it is only meaningful on a top-level room (the gate drives whole
+rooms, not nested leaves).
+
 ### Compound state
 
 ```yaml

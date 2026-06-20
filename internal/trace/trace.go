@@ -103,6 +103,27 @@ const (
 	EvInterceptMatched = "intercept.matched"
 	EvInterceptPassed  = "intercept.passed"
 
+	// Multi-turn intercept drive (conflict-capable intercept; see
+	// docs/architecture/prompt-intercept.md §"Multi-turn commands"). When a
+	// matched command's flow enters a room flagged intercept_drive: rest, the
+	// gate escalates from the stateless OneShot to a budgeted, persisted,
+	// synchronous drive-to-rest. EvInterceptEscalated opens that record (the
+	// durable pointer the agent's ephemeral block report references and the
+	// live-watch surface keys on); EvInterceptResolved / EvInterceptAborted close
+	// it (the flow settled at a non-flagged resting place, or was safe-aborted
+	// leaving a clean tree). The live, round-by-round feed while the drive runs is
+	// the persisted session's OWN native events (oracle.call.*, transitions) — the
+	// drive needs no bespoke per-round event; `rounds` on the closing event is
+	// derived from that same event log.
+	//
+	// Field schema:
+	//   - intercept.escalated: input, intent, session_id, reason ("multi_turn")
+	//   - intercept.resolved:  session_id, outcome, rounds, final_state
+	//   - intercept.aborted:   session_id, outcome, rounds, final_state
+	EvInterceptEscalated = "intercept.escalated"
+	EvInterceptResolved  = "intercept.resolved"
+	EvInterceptAborted   = "intercept.aborted"
+
 	// Semantic routing (semroute; see
 	// docs/architecture/semantic-routing.md). EvTurnSemanticHit
 	// fires when [semroute.Matcher.Match] returns a single-intent

@@ -858,6 +858,10 @@ func validateDef(def *AppDef, file string) (*AppDef, []error) {
 	// carry).
 	validateWriteMode(file, def, &errs)
 
+	// intercept_drive: multi-turn drive flag (conflict-capable intercept). The
+	// only valid value is "rest"; only meaningful on a top-level room.
+	validateInterceptDrive(file, def, &errs)
+
 	// ── 7a'. static expression compile-check ──────────────────────────────────
 	// Compile (never evaluate) every effect value and guard expression so a
 	// malformed expr-lang expression — e.g. a pongo-only `|default:` filter
@@ -1563,6 +1567,47 @@ func validateWriteMode(file string, def *AppDef, errs *[]error) {
 		}
 	}
 	walk("", def.States)
+}
+
+// InterceptDriveRest is the only valid value of a state's intercept_drive flag:
+// it marks a room whose entry begins a multi-turn sub-flow the pre-LLM intercept
+// gate must drive to rest. See State.InterceptDrive and
+// docs/architecture/prompt-intercept.md §"Multi-turn commands".
+const InterceptDriveRest = "rest"
+
+// validateInterceptDrive enforces the intercept_drive flag's contract: the only
+// valid value is "rest", and the flag is only meaningful on a top-level room
+// (the gate binds to and drives whole rooms, not nested leaves). An invalid
+// value or a nested-state placement is a load error so a typo can't silently
+// disable the multi-turn drive at runtime.
+func validateInterceptDrive(file string, def *AppDef, errs *[]error) {
+	addErr := func(msg string) {
+		*errs = append(*errs, &ValidationError{File: file, Message: msg})
+	}
+	var walk func(prefix string, states map[string]*State, topLevel bool)
+	walk = func(prefix string, states map[string]*State, topLevel bool) {
+		for _, name := range sortedKeys(states) {
+			s := states[name]
+			if s == nil {
+				continue
+			}
+			statePath := joinPath(prefix, name)
+			if s.InterceptDrive != "" {
+				if s.InterceptDrive != InterceptDriveRest {
+					addErr(fmt.Sprintf("state %q: intercept_drive %q is invalid (the only valid value is %q)",
+						statePath, s.InterceptDrive, InterceptDriveRest))
+				}
+				if !topLevel {
+					addErr(fmt.Sprintf("state %q: intercept_drive is only meaningful on a top-level room, not a nested state",
+						statePath))
+				}
+			}
+			if len(s.States) > 0 {
+				walk(statePath, s.States, false)
+			}
+		}
+	}
+	walk("", def.States, true)
 }
 
 // checkReservedScopeSet rejects an effect that `set:`s the engine-reserved

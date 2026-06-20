@@ -286,18 +286,116 @@ intercept:
   escape_prefix: "//"
 ```
 
-Then "rebase this onto main" runs the real `git rebase` in one shot, no LLM. The
-single-git-command intents (`rebase`, `pull`, `undo`) complete in the one-shot;
-the multi-turn ones (`stage`, `commit`, `squash`, `merge_into_main`) route into
-git-ops's real flow — and `commit`/`squash` reach `host.oracle.decide` to author
-the message, so **those are not a pure no-LLM bypass** (the oracle still runs);
-the gate's no-LLM promise holds for the single-command subset. De-risked no-LLM by
+Then "rebase this onto main" runs the real `git rebase`, no main-turn LLM.
+Because git-ops also declares a room flagged `intercept_drive: rest` (the
+`conflict` room), this binding is **multi-turn-capable**: every match is driven on
+a persisted session rather than one-shotted (§7). A clean single command
+(`rebase` with no conflict, `pull`, `undo`) still settles in one drive round with
+the oracle never invoked — the no-LLM promise holds for it; a *conflicting* rebase
+enters the multi-turn resolution loop, where the `conflict_resolver` oracle does
+run (acknowledged, recorded LLM use). De-risked no-LLM by
 [`flows/intercept_hub.yaml`](../../stories/git-ops/flows/intercept_hub.yaml)
 (mocked `host.run`) and
 [`TestClassify_GitOpsInterceptRoom`](../../internal/orchestrator/classify_intercept_room_test.go)
 (matching quality, zero execution).
 
-## 7. See also
+## 7. Multi-turn commands
+
+Some recognized commands are not self-contained one-shots: their real execution
+is a **multi-turn, oracle-in-the-loop loop**. The canonical case is *"rebase, and
+resolve any conflicts."* When the rebase conflicts, git-ops routes to the
+[`conflict` room](../../stories/git-ops/rooms/conflict.yaml), whose `on_enter`
+runs `host.oracle.task` against the `conflict_resolver` agent and — only if the
+verdict is `resolved:true` — drives `rebase_continue` → build-check →
+`conflict_resolved` → `branch_ops`. The stateless `OneShot` (§1.2) **cannot** drive
+this: it stops at the first resting place (`conflict`), and abandoning a
+conflicting rebase **strands the working tree** mid-rebase.
+
+So the gate escalates. A room whose entry begins such a loop is marked
+`intercept_drive: rest`; when the bound app declares any such room
+([`Orchestrator.HasInterceptDriveRoom`](../../internal/orchestrator/intercept_drive.go)),
+the binding is multi-turn-capable and a match is driven **synchronously to rest**
+on a real, persisted session instead of one-shotted:
+
+```
+match ─▶ HasInterceptDriveRoom?
+          │ no  ─▶ OneShot (stateless, ≤5s, no-LLM)                 [§1.2, unchanged]
+          │ yes ─▶ DriveToRest (persisted session, real harness, ≤15m, synchronous)
+                      │   boot hub ─▶ SubmitDirect(intent) ─settle loop─▶ rest
+                      ├─ rests at a NON-flagged room ─▶ RESOLVED (command completed)
+                      ├─ rests AT the flagged room   ─▶ ESCALATION ─┐
+                      ├─ rejected (not allowed)       ─▶ fail open   │
+                      └─ budget / error / panic       ─────────────┤
+                                                                    ▼
+                                       SAFE-ABORT (abort arc, FRESH ctx) ─▶ clean tree
+```
+
+[`Orchestrator.DriveToRest`](../../internal/orchestrator/intercept_drive.go) adds
+no new driving logic — the driver is the existing `settlePostBindEmits` settle
+loop, which `SubmitDirect` already runs to completion in a single call (a resolved
+conflict loop settles `conflict → rebase_continue → conflict_resolved →
+branch_ops` in one turn). What it adds is the gate-level concerns the settle loop
+has no opinion about:
+
+- **Escalation detection.** A settle that rests *at* the flagged room means the
+  sub-flow could not complete (the resolver returned `resolved:false`).
+- **Safe-abort — the cardinal invariant.** Any non-success that may have started
+  work (escalation, budget exhaustion, drive error, panic) fires the room's
+  `abort` arc (`git rebase --abort`) on a **fresh context** (the original budget
+  may be blown), so **the gate never leaves a session it started mid-rebase**. A
+  *rejected* command started nothing, so it skips the abort and fails open.
+- **The gate-level trace record.** `intercept.escalated` (opened) paired with
+  `intercept.resolved` / `intercept.aborted` (closed); see
+  [trace.go](../../internal/trace/trace.go). The live, round-by-round feed while
+  the drive runs is the persisted session's own native events (`oracle.call.*`,
+  transitions).
+
+### 7.1 Synchronous, with feedback — not backgrounded
+
+The drive blocks the hook for its full duration (minutes for a real conflict)
+rather than backgrounding. This is deliberate: a mid-rebase tree is a transient,
+inconsistent state on which no other work can proceed, so "hand off and return
+control" would be false freedom — the user genuinely is waiting. The design effort
+goes into **feedback** so the wait is not a degraded experience versus a normal
+LLM turn:
+
+- **In Claude — a spinner, then a complete report.** A spike against the Claude
+  Code hooks reference settled the mechanism: a blocking `UserPromptSubmit` hook
+  **cannot stream** progress into the transcript (stderr is buffered until exit;
+  `statusMessage` is a static spinner). So the in-Claude account is the final
+  block report
+  ([`composeDriveReport`](../../cmd/kitsoki/intercept_drive.go)) — the command,
+  its disposition (drove to completion / safely aborted), the hop count, and a
+  `kitsoki trace --follow <session>` pointer.
+- **Live, off to the side — the persisted session.** The drive runs against the
+  same on-disk store the web/TUI read, emitting its events in real time, so the
+  play-by-play (the equivalent of watching the LLM's tool calls) is watchable in
+  `kitsoki web` / TUI / `kitsoki trace --follow` *while the hook blocks*.
+
+**Two budgets, both lifted from the 5s fast-path cap.** kitsoki's own
+`interceptDriveBudget` (15m) bounds the drive; and because Claude defaults a
+`UserPromptSubmit` hook to a **30s timeout** and kills the process past it (which
+would strand a tree mid-rebase), `kitsoki hook install` writes a raised `timeout`
+(`1200`s) on the entry. kitsoki's budget sits under the installed Claude timeout
+so it always reaches safe-abort first.
+
+### 7.2 Verification
+
+Deterministic and free, via the real-git dogfood harness: a `git init` conflict
+repo + the real `host.run` registry + the `conflict_resolver` oracle **stubbed**
+(no LLM). [`TestDriveToRest_ResolvesAndReports`](../../internal/orchestrator/intercept_drive_test.go)
+drives a resolving stub through to `branch_ops` (Resolved, clean tree);
+`TestDriveToRest_EscalationSafeAborts` drives a `resolved:false` stub and asserts
+the safe-abort leaves a clean (not mid-rebase) tree — the strand-prevention
+invariant. The cmd-layer routing (match → multi-turn signal; the install timeout)
+is covered by
+[`intercept_drive_test.go`](../../cmd/kitsoki/intercept_drive_test.go). The one
+genuinely LLM-needing test — does the *real* `conflict_resolver` resolve a real
+conflict — stays gated/manual (no automatic real-LLM tests). The story's own
+`rebase_continue` path is exercised end-to-end by
+[`TestGitOps_RebaseConflict_ResolvesAndLandsBranchOps`](../../internal/orchestrator/gitops_rebase_resolve_test.go).
+
+## 8. See also
 
 - [`semantic-routing.md`](semantic-routing.md) — the no-LLM tiers the gate reads;
   §1 for the confidence bands, §3 for the synonym-growth loop the

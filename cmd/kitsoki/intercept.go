@@ -107,8 +107,14 @@ type interceptOutput struct {
 	GateBar float64 `json:"gate_bar"`
 	// Exit is the process exit code this outcome maps to.
 	Exit int `json:"exit"`
-	// Result is the full OneShot outcome (set on INTERCEPT).
+	// Result is the full OneShot outcome (set on a stateless-fast-path INTERCEPT).
 	Result *orchestrator.OneShotResult `json:"result,omitempty"`
+	// MultiTurn is true when the match belongs to a binding whose app declares a
+	// room flagged intercept_drive: rest: the command would be DRIVEN to rest on
+	// a persisted session (Orchestrator.DriveToRest), not one-shotted. The CLI
+	// reports this but does NOT drive — driving needs a real harness, so it is the
+	// Claude hook's job. See docs/architecture/prompt-intercept.md §"Multi-turn".
+	MultiTurn bool `json:"multi_turn,omitempty"`
 }
 
 // interceptEngineInput is the resolved binding + prompt the core engine
@@ -158,8 +164,18 @@ type interceptResult struct {
 	Reason string
 	// Exit is the process exit code this outcome maps to (0/1/2/10).
 	Exit int
-	// OneShot is the full OneShot outcome (set only when the gate executed).
+	// OneShot is the full OneShot outcome (set only when the gate executed the
+	// stateless fast path — i.e. MultiTurn is false).
 	OneShot *orchestrator.OneShotResult
+	// MultiTurn is true when the matched command belongs to a binding whose app
+	// declares a room flagged intercept_drive: rest (conflict-capable intercept):
+	// the gate does NOT run the stateless OneShot but signals the caller to drive
+	// a persisted session to rest instead (Orchestrator.DriveToRest). Intent and
+	// Slots carry what to drive; OneShot stays nil. See
+	// docs/architecture/prompt-intercept.md §"Multi-turn commands".
+	MultiTurn bool
+	// Slots are the resolved verdict slots, carried for the MultiTurn drive path.
+	Slots map[string]any
 }
 
 // runInterceptEngine resolves the rig, classifies the prompt through the no-LLM
@@ -280,7 +296,7 @@ func runInterceptEngine(ctx context.Context, in interceptEngineInput) (intercept
 		return passThrough("missing_slot")
 	}
 
-	// INTERCEPT — execute the verdict directly (no LLM).
+	// INTERCEPT.
 	logger.Debug(trace.EvInterceptMatched,
 		slog.String("input", in.Input),
 		slog.String("intent", verdict.Intent),
@@ -290,6 +306,28 @@ func runInterceptEngine(ctx context.Context, in interceptEngineInput) (intercept
 		slog.Bool("executed", true),
 	)
 
+	// Multi-turn binding (conflict-capable intercept): the bound app declares a
+	// room flagged intercept_drive: rest, so the matched command may enter a
+	// multi-turn, oracle-in-the-loop sub-flow that the stateless OneShot cannot
+	// drive (and abandoning it could strand the tree). Don't OneShot — signal the
+	// caller to drive a persisted session to rest (DriveToRest) under its own
+	// budget. Single-command matches in such a binding settle fast there too; the
+	// no-LLM promise still holds for them (the oracle only runs on a real
+	// conflict). See docs/architecture/prompt-intercept.md §"Multi-turn commands".
+	if orch.HasInterceptDriveRoom() {
+		return interceptResult{
+			Matched:     true,
+			MultiTurn:   true,
+			Intent:      verdict.Intent,
+			Slots:       verdict.Slots,
+			Confidence:  verdict.Confidence,
+			MatchReason: verdict.MatchReason,
+			GateBar:     bar,
+			Exit:        0,
+		}, nil
+	}
+
+	// Stateless fast path — execute the verdict directly (no LLM, no persistence).
 	result, err := orch.OneShot(ctx, orchestrator.OneShotInput{
 		State:  state,
 		World:  worldMap,
@@ -436,12 +474,13 @@ Examples:
 
 			return emitInterceptJSON(cmd, interceptOutput{
 				Matched:     true,
+				MultiTurn:   res.MultiTurn,
 				Intent:      res.Intent,
 				Confidence:  res.Confidence,
 				MatchReason: res.MatchReason,
 				GateBar:     res.GateBar,
 				Exit:        res.Exit,
-				Result:      res.OneShot,
+				Result:      res.OneShot, // nil on the MultiTurn path
 			}, interceptExitForCode(res.Exit))
 		},
 	}

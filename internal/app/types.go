@@ -808,6 +808,19 @@ type State struct {
 	// "meta-amber", "off-path". Unknown names fall back to "default"
 	// at render time.
 	Theme string `yaml:"theme,omitempty"`
+
+	// InterceptDrive marks a room whose entry begins a MULTI-TURN sub-flow
+	// (an oracle-in-the-loop loop such as conflict resolution) that the
+	// pre-LLM intercept gate must DRIVE TO REST rather than snapshot after a
+	// single stateless one-shot. The only valid value is "rest". When any room
+	// reachable through an intercept binding carries this flag, the gate
+	// escalates a matched command from the stateless OneShot fast path to a
+	// budgeted, abortable, persisted synchronous drive (Orchestrator.DriveToRest)
+	// — and a settle that rests AT a flagged room signals the sub-flow could not
+	// complete (escalation), triggering the room's safe-abort. See
+	// docs/architecture/prompt-intercept.md §"Multi-turn commands". Validated at
+	// load time: the value must be "rest". Only meaningful on top-level rooms.
+	InterceptDrive string `yaml:"intercept_drive,omitempty"`
 }
 
 // Transition is one entry in a state's on[intent] list.

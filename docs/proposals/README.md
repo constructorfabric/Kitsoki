@@ -203,14 +203,6 @@ thought.
   per-state decider. Engine core, CLI/flow surface, and docs-review
   migration shipped; pre-bind staging and the bugfix-story migration
   remain (§8).
-- [`conflict-capable-intercept.md`](conflict-capable-intercept.md) — **runtime.**
-  Let the pre-LLM [intercept gate](../architecture/prompt-intercept.md) drive a
-  recognized command whose execution is a *multi-turn, oracle-in-the-loop* flow —
-  the canonical case "rebase, and have the LLM resolve any conflicts" — by
-  escalating from the stateless ≤5s `OneShot` to a budgeted, abortable,
-  background-driven persisted session that never strands the tree mid-rebase. The
-  git-ops exit-code / `host.run` JSON-binding prerequisites **shipped**; the
-  stateful execution path is nothing-implemented-yet.
 - [`idempotent-on-enter.md`](idempotent-on-enter.md) — an opt-in `once:`
   flag on `invoke:` effects so the engine skips an on_enter host call whose
   `bind:` target is already populated — making `/reload` (and re-entry)
