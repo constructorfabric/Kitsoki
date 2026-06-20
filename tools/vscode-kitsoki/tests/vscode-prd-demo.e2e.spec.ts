@@ -3,9 +3,10 @@
  * a real VS Code editor, and a refine shown as a NATIVE DIFF with an in-editor
  * accept/reject verdict. Deterministic, no-LLM.
  *
- * Drives the gears-rust PRD walk through the chat UI (the SAME story + proven
- * core__ drive sequence as the native web tour gears-prd-design.spec.ts), but
- * against a demo flow (stories/gears-rust/flows/prd_to_design_demo.yaml) that
+ * Drives the dev-story hub's PRD walk through the chat UI (kitsoki's flagship
+ * self-targeting story — "kitsoki on kitsoki"): from the landing workbench,
+ * `go_prd` enters the imported prd pipeline (prd__ prefixed intents). Runs
+ * against a demo flow (stories/dev-story/flows/prd_to_design_demo.yaml) that
  * leaves host.ide.* + host.artifacts_dir UNSTUBBED — so the extension's IDE
  * server (connected via CLAUDE_CODE_SSE_PORT) opens REAL files and shows a REAL
  * diff. The bridge mechanics are also proven headlessly by tests/ide-bridge.e2e.test.ts.
@@ -24,7 +25,7 @@ import { revealTurn, type RevealDeps } from './_helpers/conversation';
 
 const EXT_ROOT = path.resolve(__dirname, '..');
 const REPO_ROOT = path.resolve(EXT_ROOT, '..', '..');
-const STORY_DIR = path.join(REPO_ROOT, 'stories', 'gears-rust');
+const STORY_DIR = path.join(REPO_ROOT, 'stories', 'dev-story');
 const FLOW = path.join(STORY_DIR, 'flows', 'prd_to_design_demo.yaml');
 
 const PACE = Number.parseInt(process.env.KITSOKI_VSCODE_PACE ?? '0', 10) || 0;
@@ -70,8 +71,8 @@ test('vscode prd demo — brief/PRD in the editor, refine shows a verdict-gated 
       {
         'kitsoki.flow': FLOW,
         'kitsoki.storiesDir': STORY_DIR,
-        'kitsoki.binaryPath': fs.existsSync(path.join(REPO_ROOT, 'kitsoki'))
-          ? path.join(REPO_ROOT, 'kitsoki')
+        'kitsoki.binaryPath': fs.existsSync(path.join(REPO_ROOT, 'bin', 'kitsoki'))
+          ? path.join(REPO_ROOT, 'bin', 'kitsoki')
           : '',
         'git.enabled': false,
         'git.openRepositoryInParentFolders': 'never',
@@ -107,7 +108,7 @@ test('vscode prd demo — brief/PRD in the editor, refine shows a verdict-gated 
       await win.screenshot({ path: path.join(ARTIFACT_DIR, `${n}-${label}.png`) }).catch(() => undefined);
     };
 
-    // ── Open Chat → pick the gears story → pop out to the full editor panel ───
+    // ── Open Chat → pick the dev-story story → pop out to the full editor panel ─
     await win.waitForSelector('.monaco-workbench', { timeout: 60_000 });
     const icon = win.locator('.activitybar [aria-label*="Kitsoki" i]').first();
     await expect(icon).toBeVisible({ timeout: 30_000 });
@@ -116,7 +117,7 @@ test('vscode prd demo — brief/PRD in the editor, refine shows a verdict-gated 
       timeout: 30_000,
     });
     await runPaletteCommand(win, ['>Kitsoki: Open Chat']);
-    await drivePicker(win, 'gears');
+    await drivePicker(win, 'dev-story');
     await clickViewTitleAction(win, 'Chat', 'Open Chat in Editor');
     await win.locator('.tab.active').filter({ hasText: /Kitsoki/i }).first().waitFor({ timeout: 30_000 }).catch(() => undefined);
 
@@ -141,8 +142,8 @@ test('vscode prd demo — brief/PRD in the editor, refine shows a verdict-gated 
     // opening lines already scrolled off. `revealTurn` reproduces a reader's
     // follow: ease the new input to the top, hold, then ease DOWN through the
     // reply so every line passes on-camera and someone can pause. Same technique
-    // the native web tour uses (gears-prd-design.spec.ts). The ACTIONS below only
-    // perform the type/click; `reveal()` owns the camera + dwell.
+    // the native web tour uses (dev-story-prd-design-video.spec.ts). The ACTIONS
+    // below only perform the type/click; `reveal()` owns the camera + dwell.
     const revealDeps: RevealDeps = {
       scroller: () => chat.locator('[data-testid="chat-transcript"]').first(),
       dwell: (ms) => (ms > 0 ? sleep(ms) : Promise.resolve()),
@@ -157,8 +158,15 @@ test('vscode prd demo — brief/PRD in the editor, refine shows a verdict-gated 
     // Type VISIBLY (char-by-char in record mode) so the viewer sees the operator
     // compose the message; the camera/dwell is handled by reveal().
     const sendText = async (textVal: string) => {
-      const input = chat.locator('[data-testid="composer-input"]').first();
-      await expect(input).toBeVisible({ timeout: 15_000 });
+      // Resolve whichever free-text affordance the current room exposes: a
+      // semantic-routing room (prd.idle discovery, prd.clarifying answers) shows
+      // `composer-input`; a choice/form room with a free-text floor (the dev-story
+      // `landing` workbench) shows `text-floor-input` beneath its quick actions.
+      // Both submit via session.turn (the semantic router / off-ramp) on Enter.
+      const composer = chat.locator('[data-testid="composer-input"]').first();
+      const floor = chat.locator('[data-testid="text-floor-input"]').first();
+      await expect(composer.or(floor)).toBeVisible({ timeout: 15_000 });
+      const input = (await composer.isVisible().catch(() => false)) ? composer : floor;
       await input.click();
       await input.fill('');
       await input.pressSequentially(textVal, { delay: RECORD ? 38 : 0 });
@@ -172,7 +180,7 @@ test('vscode prd demo — brief/PRD in the editor, refine shows a verdict-gated 
       await domClick(btn);
     };
     const submitRefine = async (feedback: string) => {
-      const form = chat.locator('form[data-intent="core__prd__refine"]').first();
+      const form = chat.locator('form[data-intent="prd__refine"]').first();
       await expect(form).toBeVisible({ timeout: 20_000 });
       // The param composer is now a wrapping, auto-growing <textarea> (so a long
       // refine instruction stays fully visible instead of scrolling its start out
@@ -185,19 +193,25 @@ test('vscode prd demo — brief/PRD in the editor, refine shows a verdict-gated 
     };
 
     // Dismiss any onboarding/tour overlay so it never sits over the conversation,
-    // then focus the composer to start driving.
+    // then focus the composer to start driving (the landing workbench exposes the
+    // free-text floor; the prd rooms expose the semantic composer).
     await win.keyboard.press('Escape').catch(() => undefined);
-    await chat.locator('[data-testid="composer-input"]').first().click().catch(() => undefined);
+    await chat
+      .locator('[data-testid="composer-input"], [data-testid="text-floor-input"]')
+      .first()
+      .click()
+      .catch(() => undefined);
 
-    // ── Discovery → drafting (proven gears core__ drive; deterministic, no LLM) ─
-    // Every turn is wrapped in reveal(): the operator's input eases to the top,
-    // holds, then the reply scrolls through — so the whole conversation is
-    // legible and pausable.
-    await wait('core.main');
-    await shot('a-main');
-    await reveal(() => sendText('prd'), () => wait('core.prd.idle'), 'prd-enter');
+    // ── Discovery → drafting (the dev-story landing → prd walk; no LLM) ────────
+    // From the free-form workbench (landing), `prd` routes to go_prd and enters
+    // the imported prd pipeline (prd__ prefixed intents). Every turn is wrapped
+    // in reveal(): the operator's input eases to the top, holds, then the reply
+    // scrolls through — so the whole conversation is legible and pausable.
+    await wait('landing');
+    await shot('a-landing');
+    await reveal(() => sendText('prd'), () => wait('prd.idle'), 'prd-enter');
     await reveal(
-      () => sendText('I want a notes-service gear for the platform'), // discuss
+      () => sendText('I want a notes service for the platform'), // discuss
       // `start` distills the conversation, so the discovery reply must land first.
       () =>
         expect(
@@ -206,22 +220,22 @@ test('vscode prd demo — brief/PRD in the editor, refine shows a verdict-gated 
         ).toBeVisible({ timeout: 30_000 }),
       'prd-pitch',
     );
-    await reveal(() => clickBtn('core__prd__start'), () => wait('core.prd.search'), 'prd-start');
-    await reveal(() => clickBtn('core__prd__confirm'), () => wait('core.prd.clarifying'), 'prd-clarify');
+    await reveal(() => clickBtn('prd__start'), () => wait('prd.search'), 'prd-start');
+    await reveal(() => clickBtn('prd__confirm'), () => wait('prd.clarifying'), 'prd-clarify');
     await reveal(
       () => sendText('platform engineers; the metric is notes-saved-per-session'), // answer
-      () => wait('core.prd.clarifying'),
+      () => wait('prd.clarifying'),
       'prd-answer',
     );
     await reveal(
       () => sendText('submit'), // → brief (the brief opens + grows in the editor)
-      () => wait('core.prd.brief'),
+      () => wait('prd.brief'),
       'prd-brief',
     );
     await dwell(3500); // linger on the brief opening in the editor
     await shot('b-brief');
-    await reveal(() => clickBtn('core__prd__confirm'), () => wait('core.prd.references'), 'prd-refs');
-    await reveal(() => clickBtn('core__prd__confirm'), () => wait('core.prd.drafting'), 'prd-draft');
+    await reveal(() => clickBtn('prd__confirm'), () => wait('prd.references'), 'prd-refs');
+    await reveal(() => clickBtn('prd__confirm'), () => wait('prd.drafting'), 'prd-draft');
 
     // ── The PRD opened in a real editor tab ──────────────────────────────────
     await expect(
@@ -269,7 +283,7 @@ test('vscode prd demo — brief/PRD in the editor, refine shows a verdict-gated 
       'the accepted refine applied v2 — Non-Goals is now in the PRD editor',
     ).toBeVisible({ timeout: 20_000 });
     // Confirm the conversation also acknowledged the accept (the chat moved on).
-    await expect(state(), 'still in drafting, ready for the next move').toHaveText('core.prd.drafting', {
+    await expect(state(), 'still in drafting, ready for the next move').toHaveText('prd.drafting', {
       timeout: 20_000,
     });
     await dwell(5000); // linger on the applied v2 PRD in the editor + the chat

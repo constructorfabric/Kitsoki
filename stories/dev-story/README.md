@@ -335,6 +335,18 @@ section above); this one is kitsoki's self-targeting parallel —
   filenames. This one uses the dev-story **defaults** — slug-named docs in
   kitsoki's own tree and a feature ticket on publish.
 
+- **IDE-driven variant (VS Code extension demo):**
+  [`flows/prd_to_design_demo.yaml`](./flows/prd_to_design_demo.yaml) — the PRD
+  half of the same walk, but deliberately leaving `host.ide.*` and
+  `host.artifacts_dir` **unstubbed** so that under `kitsoki web` inside the
+  kitsoki VS Code extension (IDE link connected) the brief/PRD are written to
+  REAL files and opened in the editor, and a `prd__refine` shows a native
+  side-by-side diff with an in-editor Accept/Reject verdict. Under `kitsoki test
+  flows` (no IDE) those verbs return `connected:false` / write gitignored
+  `.artifacts` files and the refine takes the plain re-draft arc — so it stays a
+  valid no-LLM flow. Driven by
+  [`tools/vscode-kitsoki/tests/vscode-prd-demo.e2e.spec.ts`](../../tools/vscode-kitsoki/tests/vscode-prd-demo.e2e.spec.ts).
+
 - **Tour manifest + catalog:**
   [`features/dev-story-prd-design.yaml`](../../features/dev-story-prd-design.yaml)
   — 11 narrated steps that walk every beat of the loop: discovery chat,
