@@ -107,6 +107,21 @@ export class Relay {
     this.port.base = base;
   }
 
+  /**
+   * Abort every in-flight GET/POST stream and forget them, leaving the relay
+   * USABLE for new envelopes. Use this when the backend has restarted on a new
+   * port: each stream's reconnect loop captured its URL at open time against the
+   * OLD base, so a bare setBase() would leave them hammering the dead port
+   * forever. The webview reboots after this and re-opens its streams against the
+   * new base. Distinct from dispose(), which retires the relay for good.
+   */
+  resetStreams(): void {
+    for (const ctrl of this.eventStreams.values()) ctrl.abort();
+    for (const ctrl of this.postStreams.values()) ctrl.abort();
+    this.eventStreams.clear();
+    this.postStreams.clear();
+  }
+
   handle(env: InboundEnvelope): void {
     if (this.disposed) return;
     switch (env.t) {
@@ -263,10 +278,7 @@ export class Relay {
 
   dispose(): void {
     this.disposed = true;
-    for (const ctrl of this.eventStreams.values()) ctrl.abort();
-    for (const ctrl of this.postStreams.values()) ctrl.abort();
-    this.eventStreams.clear();
-    this.postStreams.clear();
+    this.resetStreams();
   }
 }
 

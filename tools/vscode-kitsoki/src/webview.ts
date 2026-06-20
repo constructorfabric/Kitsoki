@@ -132,34 +132,52 @@ export function mountSpa(
 
   const sub = webview.onDidReceiveMessage((msg: InboundEnvelope) => relay.handle(msg));
 
+  // Point the relay at `base` and (re)boot the SPA against it. Shared by the
+  // initial start and the restart path so a restart can never drift from first
+  // mount. resetStreams() first because a restart lands a NEW port: the relay's
+  // long-lived SSE channels captured the OLD base at open time, so they must be
+  // torn down before the rebooted SPA re-opens them against the new port.
+  const render = async (base: string): Promise<void> => {
+    relay.resetStreams();
+    relay.setBase(base);
+    // Full-SPA chat panel (no surface marker): pin it to the active session's
+    // conversation so the pop-out CONTINUES the chat deterministically — never
+    // landing on the home library because a webview degraded sessionStorage and
+    // suppressed the home screen's single-session auto-nav. A missing/absent
+    // current session falls back to the library (initialRoute stays undefined).
+    let initialRoute: string | undefined;
+    if (!surface) {
+      try {
+        const cur = await backend.rpc<{ session_id: string | null }>('runstatus.session.current');
+        if (cur?.session_id) initialRoute = `/s/${cur.session_id}/chat`;
+      } catch (err) {
+        out.appendLine(`[webview] session.current probe failed (opening library): ${(err as Error).message}`);
+      }
+    }
+    webview.html = renderSpaHtml(webview, extensionUri, surface, initialRoute);
+  };
+
   void backend
     .start()
-    .then(async (base) => {
-      relay.setBase(base);
-      // Full-SPA chat panel (no surface marker): pin it to the active session's
-      // conversation so the pop-out CONTINUES the chat deterministically — never
-      // landing on the home library because a webview degraded sessionStorage and
-      // suppressed the home screen's single-session auto-nav. A missing/absent
-      // current session falls back to the library (initialRoute stays undefined).
-      let initialRoute: string | undefined;
-      if (!surface) {
-        try {
-          const cur = await backend.rpc<{ session_id: string | null }>('runstatus.session.current');
-          if (cur?.session_id) initialRoute = `/s/${cur.session_id}/chat`;
-        } catch (err) {
-          out.appendLine(`[webview] session.current probe failed (opening library): ${(err as Error).message}`);
-        }
-      }
-      webview.html = renderSpaHtml(webview, extensionUri, surface, initialRoute);
-    })
+    .then(render)
     .catch((err: Error) => {
       out.appendLine(`[webview] backend start failed: ${err.message}`);
       webview.html = renderError(err.message);
     });
 
+  // A backend restart hands every mounted webview a new port: re-point the relay
+  // and reboot the SPA so it reconnects there instead of "fetch failed"-ing
+  // against the dead old port.
+  const restartSub = backend.onDidRestart((base) => {
+    void render(base).catch((err: Error) => {
+      out.appendLine(`[webview] re-render after backend restart failed: ${err.message}`);
+    });
+  });
+
   return new vscode.Disposable(() => {
     relay.dispose();
     sub.dispose();
+    restartSub.dispose();
   });
 }
 

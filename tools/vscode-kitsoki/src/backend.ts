@@ -112,6 +112,12 @@ export class Backend {
   private _base = '';
   private starting: Promise<string> | undefined;
 
+  // Fires with the NEW base URL each time the backend is restarted onto a fresh
+  // port. Mounted webviews subscribe so they can re-point their relay and reboot
+  // the SPA — otherwise they keep talking to the dead old port ("fetch failed").
+  private readonly _onDidRestart = new vscode.EventEmitter<string>();
+  readonly onDidRestart = this._onDidRestart.event;
+
   constructor(
     private readonly out: vscode.OutputChannel,
     private readonly cwd: string | undefined,
@@ -140,11 +146,14 @@ export class Backend {
     return this.starting;
   }
 
-  /** Kill the current child and start a fresh one. */
+  /** Kill the current child and start a fresh one (on a new port). */
   async restart(): Promise<string> {
     this.stop();
     this.starting = undefined;
-    return this.start();
+    const base = await this.start();
+    // Let mounted webviews re-point their relay + reboot the SPA at the new port.
+    this._onDidRestart.fire(base);
+    return base;
   }
 
   /**
@@ -257,5 +266,6 @@ export class Backend {
 
   dispose(): void {
     this.stop();
+    this._onDidRestart.dispose();
   }
 }

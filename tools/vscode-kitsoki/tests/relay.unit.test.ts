@@ -166,6 +166,75 @@ test('an error frame in a post stream rejects via post-err', async () => {
   await srv.close();
 });
 
+test('after a backend restart, resetStreams + setBase re-points calls at the new port', async () => {
+  // Old backend: would answer if still addressed. New backend: the only one the
+  // relay must talk to after the restart re-point.
+  const oldHits: string[] = [];
+  const oldSrv = await startServer((req, res) => {
+    oldHits.push(req.url ?? '');
+    res.setHeader('content-type', 'application/json');
+    res.end(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { from: 'old' } }));
+  });
+  const newSrv = await startServer((req, res) => {
+    let raw = '';
+    req.on('data', (c) => (raw += c));
+    req.on('end', () => {
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({ jsonrpc: '2.0', id: JSON.parse(raw).id, result: { from: 'new' } }));
+    });
+  });
+
+  const col = collector();
+  const relay = new Relay({ base: oldSrv.base, post: col.post });
+
+  // Simulate the restart re-point that mountSpa performs on backend.onDidRestart.
+  relay.resetStreams();
+  relay.setBase(newSrv.base);
+
+  relay.handle({ t: 'call', id: 1, method: 'doThing', params: {} });
+  const out = await col.waitFor((e) => e.t === 'call-ok' && e.id === 1);
+  assert.deepEqual((out as Extract<OutboundEnvelope, { t: 'call-ok' }>).result, { from: 'new' });
+  // The dead old port must never be addressed after the re-point.
+  assert.deepEqual(oldHits, []);
+
+  relay.dispose();
+  await oldSrv.close();
+  await newSrv.close();
+});
+
+test('resetStreams aborts an in-flight SSE stream without retiring the relay', async () => {
+  let opens = 0;
+  const srv = await startServer((req, res) => {
+    if (req.url?.startsWith('/rpc/events')) {
+      opens++;
+      res.setHeader('content-type', 'text/event-stream');
+      res.write(`data: ${JSON.stringify({ method: 'tick', params: { i: opens } })}\n\n`);
+      return; // held open
+    }
+    res.statusCode = 404;
+    res.end();
+  });
+  const col = collector();
+  const relay = new Relay({ base: srv.base, post: col.post });
+
+  relay.handle({ t: 'evt-open', id: 1, path: 'rpc/events', query: {} });
+  await col.waitFor((e) => e.t === 'evt-msg' && e.id === 1);
+
+  // Abort in-flight streams (the restart path) — the relay must stay usable.
+  relay.resetStreams();
+
+  // A fresh stream still works on the same (or re-pointed) relay.
+  relay.handle({ t: 'evt-open', id: 2, path: 'rpc/events', query: {} });
+  const msg = await col.waitFor((e) => e.t === 'evt-msg' && e.id === 2);
+  assert.equal(
+    (msg as Extract<OutboundEnvelope, { t: 'evt-msg' }>).data,
+    JSON.stringify({ method: 'tick', params: { i: 2 } }),
+  );
+
+  relay.dispose();
+  await srv.close();
+});
+
 test('evt-open forwards SSE frames as evt-msg and evt-close stops it', async () => {
   let serverRes: http.ServerResponse | undefined;
   const srv = await startServer((req, res) => {
