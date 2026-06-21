@@ -1,0 +1,76 @@
+# plan_apply_staged_livepath — the LIVE-shape regression for the ad-hoc plan
+# apply→verify chain. The one-shot green/red fixtures missed two bugs that only
+# bite under `kitsoki web` (which runs STAGED), so this fixture reproduces that
+# shape deterministically (no LLM):
+#
+#   mode: staged
+#     Bug: in staged mode the synthetic emit chain STOPS at a "decision gate".
+#     The verifying room exposes global nav intents (work/drive/…) so it LOOKS
+#     like a gate — without `decider: llm` (the mix override) on verifying, the
+#     post-bind verify_done/apply_failed emit would NOT auto-fire and the run
+#     would bail to a human, never reaching plan_done. This fixture asserts
+#     plan_done in staged mode, so dropping the `decider: llm` pin fails it.
+#
+#   verify.script authored REPO-RELATIVE ("stories/dev-story/verify/...")
+#     Bug: an LLM-proposed plan may name the verify script repo-root-relative
+#     rather than app-relative; resolvePromptPath then doubles the app-dir prefix
+#     and the read misses. starlark_run.go now falls back to the raw path when
+#     the resolved one doesn't exist. This fixture uses the repo-relative form,
+#     so reverting that fallback fails it (host.starlark.run: read script … no
+#     such file).
+#
+#   expect_host_calls apply-step
+#     Bug: the apply step bound landing_note with once:true, so it was skipped as
+#     cached (the migration never ran). It now binds apply_note. Asserting the
+#     call fired catches a silently-skipped step.
+#
+# All three were exposed by the real-backend dogfood (docs/stories/ad-hoc-plan.md
+# → "Dogfood findings"). No LLM, no network: the verify probe replays from the
+# inspect cassette.
+
+test_kind: flow
+app: ../app.yaml
+mode: staged
+initial_state: landing
+initial_world: {}
+
+starlark_inspect_cassette: ../cassettes/issues_migrated.inspect.yaml
+
+host_handlers:
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary: "Created GitHub issues for each file in issues/."
+        details: "Mapped frontmatter to title/body/labels."
+        plan:
+          goal: "Migrate repo-local issues/ to GitHub issues."
+          step:
+            kind: run
+            description: "Create a GitHub issue per file in issues/, mapping frontmatter."
+            mutating: true
+          verify:
+            mode: script
+            # REPO-RELATIVE on purpose (see header) — exercises the path fallback.
+            script: stories/dev-story/verify/issues_migrated.star
+            inputs: { expected_min: 3 }
+            reason: "Passes iff GitHub lists >= expected_min issues for the repo."
+
+turns:
+  - intent: { name: work, slots: { request: "import the issues folder in the repo to github" } }
+    expect_state: landing
+
+  # accept_plan → applying (apply-step runs) → verifying. In STAGED mode the
+  # verify gate's deterministic post-bind emit must STILL auto-fire (decider: llm
+  # mix override) → plan_done. The apply step must have dispatched.
+  - intent: { name: accept_plan, slots: {} }
+    expect_state: plan_done
+    expect_host_calls:
+      - handler: host.agent.task
+        args: { call: apply-step }
+        times: 1
+    expect_world:
+      verify_ok: true
+      captured: 1
+
+expect_no_errors: true

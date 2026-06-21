@@ -50,6 +50,12 @@ states:
       #    `look` / re-entry shows the result instead of re-dispatching. A
       #    mutating tool call holds for the write-mode grant; headless it stays
       #    read-only. Binds the apply turn's close-out note so its report shows.
+      # NOTE: binds a DISTINCT key (apply_note), NOT landing_note. landing_note
+      # already holds the proposed plan from the work turn, so binding it here
+      # with once: true would see the target already-set and SKIP the dispatch —
+      # the apply step would never run (the migration would never happen). Binding
+      # the separate apply_note re-arms once: per apply attempt and keeps
+      # landing_note.plan intact for the red-path refine card.
       - invoke: host.agent.task
         id: apply-step
         once: true
@@ -66,7 +72,7 @@ states:
               mutating:         "{{ world.accepted_plan.step.mutating }}"
               issue_source:     "{{ world.issue_source }}"
         bind:
-          landing_note: submitted
+          apply_note: submitted
         on_error: landing
 
       # 3. The step landed (bind settled) — run the verify gate. Unconditional

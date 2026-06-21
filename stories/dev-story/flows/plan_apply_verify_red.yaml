@@ -55,6 +55,13 @@ turns:
   # for refine. captured stays 0 — we did not false-pass.
   - intent: { name: accept_plan, slots: {} }
     expect_state: landing
+    # Regression (apply-step-skipped bug): the apply step must dispatch even on
+    # the red path — it binds apply_note (distinct from landing_note) so once:
+    # re-arms. See plan_apply_verify_green.yaml for the rationale.
+    expect_host_calls:
+      - handler: host.agent.task
+        args: { call: apply-step }
+        times: 1
     expect_world:
       verify_ok: false
       captured: 0

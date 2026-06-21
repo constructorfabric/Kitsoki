@@ -21,6 +21,18 @@ states:
     description: "Verifying the plan landed — running the gate."
     relevant_world: [accepted_plan, verify_ok, verify_reason, issue_source, origin_repo, upstream_repo]
 
+    # decider: llm is the "mix override" (internal/machine/machine.go isStagedGate):
+    # the verify verdict is DETERMINISTIC — verify_ok is bound true/false by the
+    # gate, and the post-bind emits (verify_done / apply_failed) read it directly.
+    # The operator already made their decision by ACCEPTING the plan; apply→verify
+    # must then run to completion, not stop again for a human. Without this pin the
+    # globally-available navigation intents (work, drive, …) make this room look
+    # like a decision gate, so in STAGED mode (kitsoki web's default) the synthetic
+    # emit chain would stop here awaiting a human. The pin forces the deterministic
+    # guarded emit to auto-fire even in staged mode (an LLM decider is only a
+    # fallback if NO guard matches — which can't happen once verify_ok is bound).
+    decider: llm
+
     view:
       - banner:
           text:     "VERIFYING"

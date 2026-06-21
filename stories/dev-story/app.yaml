@@ -369,6 +369,11 @@ world:
   verify_reason:       { type: string, default: "" }
   landing_plan_prior:  { type: object, default: {} }
   plan_decision:       { type: string, default: "" }
+  # apply_note: the apply step's close-out note. Bound by applying.yaml's
+  # host.agent.task — DISTINCT from landing_note (which holds the proposed plan)
+  # so the apply step's once: re-arms per attempt instead of being skipped as
+  # cached. (See rooms/applying.yaml.)
+  apply_note:          { type: object, default: {} }
   # issue_source selects WHICH repo the verify gate probes; origin_repo /
   # upstream_repo are the concrete owner/repo each resolves to (configurable per
   # instance — kitsoki-dev pins its fork as origin and constructorfabric/Kitsoki

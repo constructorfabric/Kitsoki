@@ -62,6 +62,16 @@ turns:
   # what binds into verify_reason, proving the actual script ran (not a stub).
   - intent: { name: accept_plan, slots: {} }
     expect_state: plan_done
+    # Regression for the apply-step-skipped bug: the apply step (id: apply-step)
+    # MUST actually dispatch. It binds a DISTINCT key (apply_note), so once: no
+    # longer collides with the work turn's landing_note and skips the migration.
+    # Asserting the call fired — not just the end state — is what catches a
+    # silently-skipped step (the kitsoki-debugging "assert the call, not the verb
+    # result" rule).
+    expect_host_calls:
+      - handler: host.agent.task
+        args: { call: apply-step }
+        times: 1
     expect_world:
       plan_decision: "accepted"
       verify_ok: true

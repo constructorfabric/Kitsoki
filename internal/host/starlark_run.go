@@ -13,6 +13,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	starlarkhost "kitsoki/internal/host/starlark"
 )
@@ -55,9 +56,24 @@ func StarlarkRunHandler(ctx context.Context, args map[string]any) (Result, error
 	// effect's with.script to absolute, so by dispatch the arg is still the
 	// author-relative path — resolve it here so the read succeeds regardless of
 	// the process working directory.
+	rawScript := scriptPath
 	scriptPath = resolvePromptPath(scriptPath)
 
 	src, err := os.ReadFile(scriptPath)
+	if err != nil && !filepath.IsAbs(rawScript) {
+		// Robustness for an ad-hoc plan whose `verify.script` was authored
+		// repo-root-relative (e.g. "stories/dev-story/verify/x.star") rather
+		// than app-relative ("verify/x.star"): resolvePromptPath prepends the
+		// app dir, which doubles the prefix and misses. If the raw path exists
+		// as-is (relative to the process cwd / repo root), use it. Principle of
+		// least surprise: a script that exists on disk should be found whether
+		// the plan named it app- or repo-relative. (The plan's script value is
+		// interpretive — proposed by an LLM — so the runtime must tolerate both.)
+		if _, statErr := os.Stat(rawScript); statErr == nil {
+			scriptPath = rawScript
+			src, err = os.ReadFile(scriptPath)
+		}
+	}
 	if err != nil {
 		// The file not existing is an infra failure: the loader is supposed to
 		// have verified it at load time, so this means the on-disk state changed
