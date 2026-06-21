@@ -126,7 +126,12 @@ func (s *Server) handleMetaStream(w http.ResponseWriter, r *http.Request) {
 	flusher.Flush()
 
 	ch := make(chan host.StreamEvent, 256)
-	ctx := host.WithStreamSink(r.Context(), &chanStreamSink{ch: ch})
+	// Detach execution from the request lifetime — see handleTurnStream for the
+	// full rationale: a dropped SSE connection (operator closed the surface) must
+	// not cancel an in-flight agent send and poison the session with "context
+	// canceled". WithoutCancel keeps request values but severs cancellation; the
+	// streaming loop below still tears down on r.Context().Done().
+	ctx := host.WithStreamSink(context.WithoutCancel(r.Context()), &chanStreamSink{ch: ch})
 
 	type sendOutcome struct {
 		res MetaSendResult
