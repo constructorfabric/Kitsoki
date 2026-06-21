@@ -82,6 +82,13 @@ thought.
   `AskResponse.Transcript` Agent-interface seam (claude / `local_llm` /
   subprocess). Detailed prior-art survey (Langfuse, OTel GenAI, Phoenix et al.,
   Claude Code jsonl, OSS viewers). Nothing implemented yet.
+- [`contextual-room-routing.md`](contextual-room-routing.md) — (runtime)
+  make the final LLM routing tier classify unmatched room input as exactly one
+  of: explicit intent with slots, read-only help, in-room free-form request, or
+  room-scoped meta edit. Adds persistent room chat lanes, route receipts, and
+  one-decision rewind so operators can correct a bad routing choice. Builds on
+  the in-progress ad-hoc structured-plan workbench and existing meta modes.
+  Nothing implemented yet.
 - [`ai-collaboration-proposal.md`](ai-collaboration-proposal.md) —
   one remaining AI-collaborator surface (per-state `loading_view`).
   Three v1 surfaces shipped (`docs/architecture/developer-guide.md` §6);
