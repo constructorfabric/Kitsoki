@@ -19,6 +19,14 @@ import (
 // for. Authors MUST NOT declare an output with this name.
 const ExchangesOutputKey = "__http_exchanges"
 
+// InspectionsOutputKey is the reserved key under which Run reports the body-free
+// fs/probe inspection summaries in Result.Outputs, the inspection-side analogue
+// of ExchangesOutputKey. The host.starlark.run adapter copies it into
+// host.Result.Data so it rides the HostReturned trace event without polluting
+// world unless an author binds it. Authors MUST NOT declare an output with this
+// name.
+const InspectionsOutputKey = "__inspections"
+
 // mainFuncName is the entry point Run calls in every script.
 const mainFuncName = "main"
 
@@ -49,12 +57,14 @@ type Params struct {
 }
 
 // Result is the output of Run. Outputs is the validated return dict of main();
-// Exchanges is the body-free HTTP summary for the trace (also mirrored into
-// Outputs under ExchangesOutputKey by the adapter — Run leaves Outputs clean so
-// the validation against the sidecar is exact).
+// Exchanges is the body-free HTTP summary for the trace and Inspections is the
+// body-free fs/probe summary (both also mirrored into Outputs under their
+// reserved keys by the adapter — Run leaves Outputs clean so the validation
+// against the sidecar is exact).
 type Result struct {
-	Outputs   map[string]any
-	Exchanges []HTTPExchange
+	Outputs     map[string]any
+	Exchanges   []HTTPExchange
+	Inspections []InspectExchange
 }
 
 // DomainError is an EXPECTED, author-facing failure: a bad input type, a
@@ -163,8 +173,9 @@ func Run(ictx context.Context, p Params) (*Result, error) {
 	}
 
 	return &Result{
-		Outputs:   outputs,
-		Exchanges: exchangesFromContext(ictx),
+		Outputs:     outputs,
+		Exchanges:   exchangesFromContext(ictx),
+		Inspections: inspectionsFromContext(ictx),
 	}, nil
 }
 
@@ -187,6 +198,21 @@ func exchangesFromContext(ictx context.Context) []HTTPExchange {
 		return c.Exchanges()
 	case *RecordReplayClient:
 		return c.Exchanges()
+	default:
+		return nil
+	}
+}
+
+// inspectionsFromContext pulls the recorded fs/probe summaries from whichever
+// inspector was injected, mirroring exchangesFromContext. Both the production
+// inspector and the ReplayInspector expose their summaries; this reads them back
+// after the run so the adapter can surface them on the trace.
+func inspectionsFromContext(ictx context.Context) []InspectExchange {
+	switch in := InspectorFromContext(ictx).(type) {
+	case *productionInspector:
+		return in.Inspections()
+	case *ReplayInspector:
+		return in.Inspections()
 	default:
 		return nil
 	}

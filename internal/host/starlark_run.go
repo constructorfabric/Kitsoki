@@ -102,6 +102,21 @@ func StarlarkRunHandler(ctx context.Context, args map[string]any) (Result, error
 		runCtx = starlarkhost.WithHTTP(ctx, starlarkhost.NewRecordingClient())
 	}
 
+	// Inject a production inspector rooted at the run's working dir unless a
+	// caller already installed one (the testrunner installs a replay inspector
+	// for flow fixtures). Mirrors the HTTP default-injection block above; the
+	// safe deny-all default is applied by InspectorFromContext when nothing is
+	// injected. Root at world.workdir when present, else the process cwd.
+	if !starlarkhost.HasInspector(runCtx) {
+		root, _ := worldSnapshot["workdir"].(string)
+		if root == "" {
+			if cwd, cwdErr := os.Getwd(); cwdErr == nil {
+				root = cwd
+			}
+		}
+		runCtx = starlarkhost.WithInspector(runCtx, starlarkhost.NewProductionInspector(root))
+	}
+
 	res, runErr := starlarkhost.Run(runCtx, starlarkhost.Params{
 		Script:  scriptPath,
 		Source:  src,
@@ -117,8 +132,9 @@ func StarlarkRunHandler(ctx context.Context, args map[string]any) (Result, error
 	}
 
 	// Surface the script's declared outputs as Result.Data, plus the reserved
-	// HTTP-summary key so the trace can show what the script called.
-	data := make(map[string]any, len(res.Outputs)+1)
+	// HTTP-summary and inspection-summary keys so the trace can show what the
+	// script called.
+	data := make(map[string]any, len(res.Outputs)+2)
 	for k, v := range res.Outputs {
 		data[k] = v
 	}
@@ -132,6 +148,17 @@ func StarlarkRunHandler(ctx context.Context, args map[string]any) (Result, error
 			}
 		}
 		data[starlarkhost.ExchangesOutputKey] = summaries
+	}
+	if len(res.Inspections) > 0 {
+		summaries := make([]any, len(res.Inspections))
+		for i, ix := range res.Inspections {
+			summaries[i] = map[string]any{
+				"op":     ix.Op,
+				"target": ix.Target,
+				"status": ix.Status,
+			}
+		}
+		data[starlarkhost.InspectionsOutputKey] = summaries
 	}
 
 	return Result{Data: data}, nil

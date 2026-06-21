@@ -258,6 +258,9 @@ func synthesizedRootHosts() []string {
 		"host.agent.converse",
 		"host.chat.resolve",
 		"host.diff.open",
+		// Ad-hoc structured plan verify gate (dev-story rooms/verifying.yaml):
+		// a sandboxed, recordable Starlark script with read-only inspection.
+		"host.starlark.run",
 	}
 }
 

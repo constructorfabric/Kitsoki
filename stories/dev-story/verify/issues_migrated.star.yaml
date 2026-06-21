@@ -1,0 +1,14 @@
+# Sidecar for issues_migrated.star — the authoritative, typed I/O contract.
+#
+# The engine validates the effect's with.inputs against `inputs:` BEFORE the
+# script runs (wrong type / missing required → on_error: arc), and validates the
+# script's return dict against `outputs:` AFTER it runs (every declared output
+# must be returned; no undeclared key may be). The INPUTS / OUTPUTS dicts inside
+# the .star file are documentation only — THIS file is what the engine enforces.
+inputs:
+  expected_min: { type: int,    required: true }   # minimum GitHub issues for the gate to pass
+  repo:         { type: string, required: true }   # owner/repo to probe (resolved from issue_source)
+
+outputs:
+  ok:     { type: bool }     # True iff GitHub lists >= expected_min issues
+  reason: { type: string }   # pass/fail rationale

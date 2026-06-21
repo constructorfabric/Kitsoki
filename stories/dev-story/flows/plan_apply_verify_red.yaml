@@ -1,0 +1,77 @@
+# plan_apply_verify_red — accept a plan → apply → verify FAIL → back to the
+# workbench with the gate's reason in last_error, plan still present for refine
+# (ad-hoc-structured-plan proposal, Task 5 — the red-path / don't-false-pass case).
+#
+# This is the mutation-test anchor: the verify gate is LOAD-BEARING, not
+# decorative. The step ran (stubbed agent), and this fixture runs the REAL verify
+# script (verify/issues_migrated.star) against a cassette whose recorded
+# gh.issue.list probe yields only 1 issue (< 3 expected) — so the script returns
+# {ok: false} for real. The verifying room's post-bind emit fires apply_failed,
+# we return to `landing`, last_error carries the script's own reason, captured is
+# NOT incremented, and the proposed plan stays bound so the operator can refine
+# and re-apply. No LLM, no real `gh` call.
+#
+# MUTATION TEST: break the `verify_ok: ok` bind in rooms/verifying.yaml (the
+# verify-script invoke's bind:) — e.g. bind a literal, or drop the bind — and
+# this fixture FAILS: verify_ok never settles to false, so the apply_failed emit
+# never fires and the room rests in `verifying` (expect_state: landing fails).
+# That proves the gate's verdict is what drives the red branch. The companion
+# plan_mutation_gate.yaml documents the exact break + observed failure.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world: {}
+
+# The verify script's probe replays from the INCOMPLETE cassette (1 issue) so the
+# REAL script computes ok: false. No host.starlark.run stub — the gate runs.
+starlark_inspect_cassette: ../cassettes/issues_migrated_incomplete.inspect.yaml
+
+host_handlers:
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary: "Attempted the issue migration."
+        details: "Held read-only pending a write-mode grant; only 1 issue created."
+        plan:
+          goal: "Migrate repo-local issues/ to GitHub issues."
+          step:
+            kind: run
+            description: "Create a GitHub issue per file in issues/, mapping frontmatter."
+            mutating: true
+          verify:
+            mode: script
+            script: verify/issues_migrated.star
+            inputs: { expected_min: 3 }
+            reason: "Passes iff GitHub lists >= expected_min issues for the repo."
+
+turns:
+  - intent: { name: work, slots: { request: "import the issues folder in the repo to github" } }
+    expect_state: landing
+
+  # Accept & apply — the REAL gate fails (1 < 3), so we bounce back to landing
+  # with the script's own reason surfaced and the plan still present (NOT cleared)
+  # for refine. captured stays 0 — we did not false-pass.
+  - intent: { name: accept_plan, slots: {} }
+    expect_state: landing
+    expect_world:
+      verify_ok: false
+      captured: 0
+      last_error: "Verify failed: Migration incomplete: GitHub lists 1 issue(s) for bsacrobatix/Kitsoki (< 3 expected)."
+      landing_note:
+        summary: "Attempted the issue migration."
+        details: "Held read-only pending a write-mode grant; only 1 issue created."
+        plan:
+          goal: "Migrate repo-local issues/ to GitHub issues."
+          step:
+            kind: run
+            description: "Create a GitHub issue per file in issues/, mapping frontmatter."
+            mutating: true
+          verify:
+            mode: script
+            script: verify/issues_migrated.star
+            inputs: { expected_min: 3 }
+            reason: "Passes iff GitHub lists >= expected_min issues for the repo."
+
+expect_no_errors: true

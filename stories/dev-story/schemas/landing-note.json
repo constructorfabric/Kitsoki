@@ -50,6 +50,40 @@
         }
       },
       "additionalProperties": false
+    },
+    "plan": {
+      "type": "object",
+      "description": "Optional executable plan. Set ONLY when the request is concrete, actionable work the agent can encode as a single run-then-verify step (e.g. 'migrate issues/ to GitHub'). When set, the workbench renders a reviewable plan card with Accept & apply; a free-text adjustment refines it (the work sink re-dispatches the planner with this plan as prior context). Leave unset for pure exploration / Q&A. Shape mirrors schemas/plan.json exactly.",
+      "additionalProperties": false,
+      "required": ["goal", "step", "verify"],
+      "properties": {
+        "goal": {
+          "type": "string",
+          "minLength": 1,
+          "description": "One line: the contract this plan satisfies."
+        },
+        "step": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "description", "mutating"],
+          "properties": {
+            "kind": { "type": "string", "enum": ["run", "agent"] },
+            "description": { "type": "string", "minLength": 1 },
+            "mutating": { "type": "boolean" }
+          }
+        },
+        "verify": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "reason"],
+          "properties": {
+            "mode": { "type": "string", "enum": ["script", "agent", "hybrid"] },
+            "script": { "type": "string" },
+            "inputs": { "type": "object", "additionalProperties": true },
+            "reason": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
     }
   },
   "additionalProperties": true

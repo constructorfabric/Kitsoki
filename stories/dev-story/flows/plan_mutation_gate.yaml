@@ -1,0 +1,81 @@
+# plan_mutation_gate — proves the verify gate is LOAD-BEARING, not decorative
+# (ad-hoc-structured-plan proposal, Task 5 — the mutation test).
+#
+# A red-path flow whose assertions are pinned tightly to the gate's bound verdict
+# so that BREAKING the verify_ok bind makes this fixture fail. It runs the REAL
+# verify script (verify/issues_migrated.star) against the incomplete cassette
+# (1 issue < 3 expected → {ok: false}), then asserts the WHOLE load-bearing
+# chain: the script's verdict binds verify_ok: false, the post-bind emit fires
+# apply_failed, we route back to landing (NOT plan_done), captured stays 0, and
+# the script's own reason is surfaced. Every link reads the bound verify_ok.
+#
+# ── HOW TO RUN THE MUTATION TEST ──────────────────────────────────────────────
+# This fixture is the canary. To prove the gate is load-bearing:
+#
+#   1. Open stories/dev-story/rooms/verifying.yaml.
+#   2. Break the verify-script bind — change the `verify-script` invoke's
+#         bind:
+#           verify_ok:     ok
+#      to a constant that ignores the script, e.g. delete the bind, or hard-set
+#      verify_ok elsewhere. (The documented break: replace the whole bind: block
+#      with `bind: { verify_reason: reason }` so verify_ok is never bound.)
+#   3. Re-run:
+#         kitsoki test flows stories/dev-story/app.yaml \
+#           --flows "stories/dev-story/flows/plan_mutation_gate.yaml"
+#   4. OBSERVE THE FAILURE: verify_ok never settles to false, so neither
+#      post-bind emit (verify_done / apply_failed) fires; the room rests in
+#      `verifying`. The fixture fails on `expect_state: landing` (got verifying)
+#      and on `verify_ok: false` (got "").
+#   5. Restore the bind. The fixture passes again.
+#
+# Observed failure (recorded when this fixture was authored, 2026-06):
+#   FAIL  plan_mutation_gate.yaml
+#     turn 2 → verifying  (expected landing)
+#       expect_state: want landing, got verifying
+#       expect_world.verify_ok: want false, got ""
+# See .context/ad-hoc-plan-mutation-test.md for the full transcript.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world: {}
+
+starlark_inspect_cassette: ../cassettes/issues_migrated_incomplete.inspect.yaml
+
+host_handlers:
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary: "Attempted the issue migration."
+        details: "Only 1 issue created."
+        plan:
+          goal: "Migrate repo-local issues/ to GitHub issues."
+          step:
+            kind: run
+            description: "Create a GitHub issue per file in issues/, mapping frontmatter."
+            mutating: true
+          verify:
+            mode: script
+            script: verify/issues_migrated.star
+            inputs: { expected_min: 3 }
+            reason: "Passes iff GitHub lists >= expected_min issues for the repo."
+
+turns:
+  - intent: { name: work, slots: { request: "import the issues folder in the repo to github" } }
+    expect_state: landing
+
+  # The load-bearing chain, every link pinned to the bound verify_ok:
+  #   - verify_ok binds to the REAL script's false  (break the bind → "" )
+  #   - the post-bind `apply_failed` emit fires      (depends on == false)
+  #   - we route to landing, NOT plan_done           (the verdict picks the branch)
+  #   - captured stays 0                             (no false-pass)
+  - intent: { name: accept_plan, slots: {} }
+    expect_state: landing
+    expect_not_state: plan_done
+    expect_world:
+      verify_ok: false
+      captured: 0
+      last_error: "Verify failed: Migration incomplete: GitHub lists 1 issue(s) for bsacrobatix/Kitsoki (< 3 expected)."
+
+expect_no_errors: true

@@ -102,6 +102,12 @@ hosts:
   # both in its own allow-list (see stories/kitsoki-dev/app.yaml).
   - host.agent.converse
   - host.chat.resolve
+  # ── Ad-hoc structured plan (rooms/landing|applying|verifying.yaml) ─────
+  # The verify gate runs a sandboxed, recordable Starlark script
+  # (host.starlark.run) with the read-only inspection surface (ctx.fs /
+  # ctx.probe). host.agent.decide (above) doubles as the agent/hybrid verify
+  # gate, reusing the gate_reviewer persona + gate_verdict schema.
+  - host.starlark.run
 
 # Persona table (agent-split proposal §3.5).
 #
@@ -133,6 +139,18 @@ agents:
     tools: [Read, Grep, Glob, Edit, Write, Bash]   # full toolbox; gated read-only by the room's write_mode: read_only
     bash_profile: read-only                         # the read-only floor
     external_side_effect: false                     # static posture must agree with write_mode: read_only
+
+  # ── Ad-hoc plan verify gate (rooms/verifying.yaml) ────────────────
+  # The agent / hybrid verify mode reuses cherny-loop's adversarial gate
+  # reviewer verbatim (prompts/gate_review.md + schemas/gate_verdict.json,
+  # both copied into this story). Read-only: it judges whether the accepted
+  # plan's goal is met, it never makes the change.
+  gate_reviewer:
+    system_prompt: "You are an adversarial quality gate. Judge the goal artifact against the stated goal. Default to pass=false unless the goal is clearly, fully met. When you fail it, give a specific, actionable reason the next iteration can act on."
+    model: claude-sonnet-4-6
+    tools: [Read, Grep, Glob]
+    bash_profile: read-only
+    external_side_effect: false
 
   # ── Design-pipeline personas (rooms/design*.yaml) ──────────────
   # One persona per pipeline step so the trace attributes model + token
@@ -327,6 +345,39 @@ world:
   # the prompt needs. See .context/landing-onpath-offpath-bail.md slice C.
   landing_prior_summary: { type: string, default: "" }
   landing_prior_details: { type: string, default: "" }
+
+  # ── Ad-hoc structured plan (rooms/landing|applying|verifying.yaml) ─────
+  # The planner may emit a structured `plan` in its landing-note (schemas/plan.json):
+  # one goal, one run-then-verify step. The operator accepts it (accept_plan /
+  # apply) — freezing accepted_plan and entering `applying` — or refines it by
+  # typing an adjustment (the work sink re-dispatches the planner with the prior
+  # plan as context). `applying` carries the accepted step out; `verifying` runs
+  # the verify gate and binds verify_ok.
+  #
+  # accepted_plan:    the plan frozen at accept (schemas/plan.json shape).
+  # verify_ok:        tri-state "" | true | false — bound by the verify gate; the
+  #                   "" default keeps the post-bind routing emits (which compare
+  #                   == true / == false) from firing pre-bind, deferring them to
+  #                   the post-bind pass (the cherny decision-emit discipline).
+  # verify_reason:    the gate's pass/fail rationale → last_error on a red verify.
+  # landing_plan_prior: the prior plan, preserved across the work-sink clear so a
+  #                   refine re-dispatch builds on it (mirrors landing_prior_*).
+  # plan_decision:    "" | accepted — the recorded PlanDecided signal (world.update).
+  # issue_source:     origin | upstream | combined — which repo the verify probes.
+  accepted_plan:       { type: object, default: {} }
+  verify_ok:           { type: string, default: "" }
+  verify_reason:       { type: string, default: "" }
+  landing_plan_prior:  { type: object, default: {} }
+  plan_decision:       { type: string, default: "" }
+  # issue_source selects WHICH repo the verify gate probes; origin_repo /
+  # upstream_repo are the concrete owner/repo each resolves to (configurable per
+  # instance — kitsoki-dev pins its fork as origin and constructorfabric/Kitsoki
+  # as upstream). combined probes both (v1: the verifying room resolves the
+  # concrete repo and the .star sums/probes; combined falls back to origin_repo
+  # for the single-probe v1 script). Default origin.
+  issue_source:        { type: string, default: "origin" }
+  origin_repo:         { type: string, default: "bsacrobatix/Kitsoki" }
+  upstream_repo:       { type: string, default: "constructorfabric/Kitsoki" }
 
   # ── Ticket search / pickup ────────────────────────────────────────
   ticket_query:        { type: string, default: "" }
@@ -810,6 +861,41 @@ intents:
     description: "Jump onto the named pipeline the workbench agent suggested for this request."
     examples: []
     priority: 50
+
+  # ── Ad-hoc structured plan (rooms/landing|applying|verifying.yaml) ─────
+  # accept_plan / apply freeze the proposed plan and enter `applying`. Both are
+  # BUTTON-ONLY (examples: [] ⇒ the semantic router never binds them from free
+  # text) — a free-text adjustment instead routes to the work sink, re-dispatching
+  # the planner with the prior plan (that is "refine", reusing default_intent: work,
+  # not a new intent). `apply` is a strict alias of accept_plan, only meaningful
+  # when a plan is present (the landing arc guards on the plan being non-empty).
+  accept_plan:
+    title: "Accept & apply this plan"
+    description: "Accept the proposed plan as-is and apply it (run the step, then verify)."
+    examples: []
+    priority: 50
+  apply_plan:
+    title: "Apply the plan"
+    description: "Alias of accept_plan — apply the proposed plan as-is."
+    examples: []
+    priority: 50
+  # Internal routing intents emitted from applying/verifying on_enter once the
+  # step / verify gate binds. Button-only / synthetic — the post-bind guarded
+  # emits fire them (the cherny decision-emit discipline). done routes to the
+  # completion read-out; apply_failed returns to the workbench with the gate's
+  # reason and the plan still present for refine.
+  verify_done:
+    description: "(internal) verify passed — show the completion read-out."
+    examples: []
+    priority: 1
+  apply_failed:
+    description: "(internal) verify failed — return to the workbench to refine."
+    examples: []
+    priority: 1
+  run_verify:
+    description: "(internal) the step landed — run the verify gate."
+    examples: []
+    priority: 1
 
 # Root state — the engineer's-day free-form workbench (rooms/landing.yaml).
 # Replaces the former `main` catalog as the landing. `main` is RETAINED as a

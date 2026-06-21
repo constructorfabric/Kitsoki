@@ -1410,10 +1410,16 @@ type emittedIntent struct {
 // It additionally collects emit_intent: effects into a slice of
 // emittedIntent records; the surrounding Turn / on_enter logic
 // dispatches them after the chain completes.
-func (m *machineImpl) applyEffectsTraced(ctx context.Context, effects []app.Effect, w world.World, env expr.Env) (world.World, []HostInvocation, strings.Builder, []store.Event, []emittedIntent, error) {
+// Returns saySB as *strings.Builder, not a value: a strings.Builder must never
+// be copied after its first write (it self-references its own address; copying
+// then writing panics with "illegal use of non-zero Builder copied by value").
+// Callers append more say text onto the returned builder, so a value return
+// would be a latent panic the moment a transition effect emits a non-empty
+// `say:` and the on_enter / emit-dispatch chain writes more onto it.
+func (m *machineImpl) applyEffectsTraced(ctx context.Context, effects []app.Effect, w world.World, env expr.Env) (world.World, []HostInvocation, *strings.Builder, []store.Event, []emittedIntent, error) {
 	newWorld := cloneWorld(w)
 	var hostCalls []HostInvocation
-	var saySB strings.Builder
+	saySB := &strings.Builder{}
 	var effectEvents []store.Event
 	var emits []emittedIntent
 

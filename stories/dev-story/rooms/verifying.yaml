@@ -1,0 +1,147 @@
+# verifying — the deterministic verify gate for an accepted ad-hoc plan.
+#
+# Reached from `applying` once the step has been carried out (its run_verify
+# emit). This room runs the accepted plan's verify gate and binds a REAL
+# verify_ok, then routes on the verdict — red-after-green for ad-hoc work: prove
+# it's done, don't assume. PASS → the completion read-out (captured++). FAIL →
+# back to the workbench with the gate's reason in last_error and the plan still
+# present, ready to refine and re-apply.
+#
+# The verify gate mirrors cherny-loop's gating room: a deterministic Starlark
+# script (script / hybrid) and/or an adversarial agent reviewer (agent / hybrid).
+# Both bind verify_ok, which is a tri-state ("" pre-bind), so the post-bind
+# routing emits — which compare == true / == false — defer to the post-bind pass
+# (the cherny decision-emit discipline). The script gate runs sandboxed +
+# recordable (host.starlark.run + the read-only inspection surface); a flow test
+# injects a ReplayInspector so no real probe / LLM runs (the no-LLM test rule).
+
+states:
+
+  verifying:
+    description: "Verifying the plan landed — running the gate."
+    relevant_world: [accepted_plan, verify_ok, verify_reason, issue_source, origin_repo, upstream_repo]
+
+    view:
+      - banner:
+          text:     "VERIFYING"
+          subtitle: "running the plan's verify gate"
+          color:    "#0EA5E9"
+      - prose: "{{ world.accepted_plan.verify.reason }}"
+      - prose: "Checking…"
+
+    on_enter:
+      # Script gate — deterministic, sandboxed, recordable. The verify script
+      # gets the plan's typed inputs MERGED with the resolved repo (from
+      # issue_source: origin | upstream | combined → the concrete owner/repo).
+      # combined falls back to origin_repo for the single-probe v1 script.
+      - invoke: host.starlark.run
+        id: verify-script
+        when: "world.accepted_plan.verify.mode == 'script' || world.accepted_plan.verify.mode == 'hybrid'"
+        with:
+          script: "{{ world.accepted_plan.verify.script }}"
+          inputs:
+            expected_min: "{{ world.accepted_plan.verify.inputs.expected_min ?? 1 }}"
+            repo: "{{ world.issue_source == 'upstream' ? world.upstream_repo : world.origin_repo }}"
+        bind:
+          verify_ok:     ok
+          verify_reason: reason
+        on_error: landing
+
+      # Agent gate — adversarial review for goals no script can encode (mode
+      # agent / hybrid). Reuses cherny-loop's gate_reviewer persona + prompt +
+      # schema (copied into this story). Binds verify_ok from the verdict's pass.
+      - invoke: host.agent.decide
+        id: verify-agent
+        when: "world.accepted_plan.verify.mode == 'agent' || world.accepted_plan.verify.mode == 'hybrid'"
+        with:
+          prompt: prompts/gate_review.md
+          schema: schemas/gate_verdict.json
+          agent: gate_reviewer
+          args:
+            goal:          "{{ world.accepted_plan.goal }}"
+            goal_artifact: ""
+            prompt_focus:  "{{ world.accepted_plan.verify.reason }}"
+            script_ok:     "{{ world.verify_ok }}"
+            script_output: "{{ world.verify_reason }}"
+        bind:
+          verify_ok:     submitted.pass
+          verify_reason: submitted.reason
+        on_error: landing
+
+      - say: "Verify → {% if world.verify_ok == true %}PASS ✓{% else %}FAIL ✗{% endif %}"
+
+      # Post-bind guarded emits (the cherny decision-emit discipline). Each reads
+      # verify_ok, which is "" pre-bind — so neither fires until the gate settles,
+      # then exactly one does. PASS → completion; FAIL → back to the workbench.
+      - when: "world.verify_ok == true"
+        emit_intent: verify_done
+      - when: "world.verify_ok == false"
+        emit_intent: apply_failed
+
+    on:
+      # PASS — the plan is proven done. Record the PlanDecided completion and
+      # show the read-out (captured++).
+      verify_done:
+        - target: plan_done
+          effects:
+            - set:
+                captured: "{{ world.captured + 1 }}"
+                last_error: ""
+            - say: "Plan verified — done."
+      # FAIL — return to the workbench. Surface the gate's reason as last_error,
+      # KEEP landing_note.plan present (we do not clear it) so the operator can
+      # refine and re-apply (or bail to cherny-loop to iterate).
+      apply_failed:
+        - target: landing
+          effects:
+            - set:
+                last_error: "Verify failed: {{ world.verify_reason }}"
+            - say: "Verify failed — refine the plan and re-apply, or iterate with cherny-loop."
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "Verifying…"
+
+  # plan_done — the completion read-out. Rests here; `look` re-renders and the
+  # operator returns to the workbench (go_main / go_back) to keep working. The
+  # captured counter (incremented on the PASS branch) is the progressive-
+  # determinism read-out the landing surfaces.
+  plan_done:
+    description: "Plan applied and verified."
+    relevant_world: [accepted_plan, verify_reason, captured]
+
+    view:
+      - banner:
+          text:     "PLAN DONE ✓"
+          subtitle: "applied and verified"
+          color:    "#10B981"
+      - kv:
+          pairs:
+            Goal:     "{{ world.accepted_plan.goal }}"
+            Verified: "{{ world.verify_reason }}"
+            "Captured this session": "{{ world.captured }}"
+      - heading: "Quick actions"
+      - choice:
+          mode: single
+          prompt: ""
+          items:
+            - label:  "back to the workbench"
+              hint:   "keep working"
+              intent: go_main
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+
+    on:
+      go_main:
+        - target: landing
+      go_back:
+        - target: landing
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: landing

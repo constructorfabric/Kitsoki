@@ -1,0 +1,104 @@
+# plan_refine — a free-text adjustment refines the prior plan (ad-hoc-structured-
+# plan proposal, Task 5, the refine path).
+#
+# Refine is NOT a new intent: it re-uses the existing default_intent: work sink.
+# With a prior plan present in landing_note.plan, a free-text utterance ("dry-run
+# first") routes to `work`, whose arc preserves the prior plan into
+# landing_plan_prior (SEPARATE, guarded set — see landing.yaml) alongside
+# summary/details, clears landing_note to re-arm, and re-dispatches the planner.
+# The planner (stubbed) returns a REVISED plan that binds.
+#
+# What this asserts (per the kitsoki-debugging "assert the dispatched prompt, not
+# the verb result" rule): the re-dispatched host.agent.task carries the PRIOR
+# plan as context. The on_enter task renders prior_plan: "{{ world.landing_plan_prior }}"
+# into prompts/landing.md, so proving landing_plan_prior was set to the prior
+# plan (the value that feeds the prompt) BEFORE the dispatch, AND that
+# host.agent.task fired, proves the prompt carried it. The revised plan binding
+# proves the round-trip closed.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  # A prior workbench turn already proposed a plan — the state a refine builds on.
+  landing_request: "import the issues folder in the repo to github"
+  landing_note:
+    summary: "Planned the local issue → GitHub migration."
+    details: "Would create one GitHub issue per file in issues/."
+    plan:
+      goal: "Migrate repo-local issues/ to GitHub issues."
+      step:
+        kind: run
+        description: "Create a GitHub issue per file in issues/, mapping frontmatter."
+        mutating: true
+      verify:
+        mode: script
+        script: verify/issues_migrated.star
+        inputs: { expected_min: 3 }
+        reason: "Passes iff GitHub lists >= expected_min issues for the repo."
+
+host_handlers:
+  # The re-dispatched planner. Stubbed: returns the REVISED plan — the refinement
+  # ("dry-run first") folded in: the step is now a dry run, mutating is false.
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary: "Revised the plan: dry-run first, no mutations."
+        details: "Will preview the GitHub issues that would be created without writing any."
+        plan:
+          goal: "Migrate repo-local issues/ to GitHub issues."
+          step:
+            kind: run
+            description: "Dry-run: preview the GitHub issue that would be created per file in issues/, no writes."
+            mutating: false
+          verify:
+            mode: script
+            script: verify/issues_migrated.star
+            inputs: { expected_min: 3 }
+            reason: "Passes iff the dry-run reports >= expected_min issues would be created."
+
+turns:
+  # The operator types a free-text adjustment. `work` preserves the prior plan
+  # into landing_plan_prior (the value fed to the re-dispatched planner's prompt),
+  # sets the new request, clears landing_note to re-arm, and the on_enter planner
+  # re-dispatches with the prior plan as context and binds the revised plan.
+  - intent: { name: work, slots: { request: "dry-run first, don't write anything yet" } }
+    expect_state: landing
+    # The dispatched planner turn fired (the prompt was rendered with prior_plan
+    # = landing_plan_prior; see expect_world below for the prior-plan continuity).
+    expect_host_calls:
+      - handler: host.agent.task
+    expect_world:
+      landing_request: "dry-run first, don't write anything yet"
+      # PROOF the prompt carried the prior plan: the work arc set landing_plan_prior
+      # to the OLD plan (the on_enter task renders this into the planner prompt as
+      # prior_plan, so the re-dispatch refines it instead of re-proposing fresh).
+      landing_plan_prior:
+        goal: "Migrate repo-local issues/ to GitHub issues."
+        step:
+          kind: run
+          description: "Create a GitHub issue per file in issues/, mapping frontmatter."
+          mutating: true
+        verify:
+          mode: script
+          script: verify/issues_migrated.star
+          inputs: { expected_min: 3 }
+          reason: "Passes iff GitHub lists >= expected_min issues for the repo."
+      # The revised plan binds — the refine round-trip closed.
+      landing_note:
+        summary: "Revised the plan: dry-run first, no mutations."
+        details: "Will preview the GitHub issues that would be created without writing any."
+        plan:
+          goal: "Migrate repo-local issues/ to GitHub issues."
+          step:
+            kind: run
+            description: "Dry-run: preview the GitHub issue that would be created per file in issues/, no writes."
+            mutating: false
+          verify:
+            mode: script
+            script: verify/issues_migrated.star
+            inputs: { expected_min: 3 }
+            reason: "Passes iff the dry-run reports >= expected_min issues would be created."
+
+expect_no_errors: true

@@ -116,6 +116,23 @@ states:
       - prose: "{{ world.landing_note.route.reason }}"
         when: "(world.landing_note.route.intent ?? '') != ''"
 
+      # Proposed plan card. When the planner emitted a structured plan in its
+      # close-out note (schemas/plan.json), render it as a reviewable card —
+      # mirroring the on-path route block above. The Accept & apply button is
+      # folded into the single Quick actions choice below (only one choice:
+      # element is allowed per view); a free-text adjustment refines it (the
+      # work sink re-dispatches the planner with this plan as prior context).
+      - heading: "Proposed plan"
+        when: "len(world.landing_note.plan ?? '') > 0"
+      - kv:
+          pairs:
+            Goal:   "{{ world.landing_note.plan.goal }}"
+            Step:   "{{ world.landing_note.plan.step.description }}"
+            Verify: "{{ world.landing_note.plan.verify.reason }}"
+        when: "len(world.landing_note.plan ?? '') > 0"
+      - prose: "Accept & apply this plan from the quick actions below, or type an adjustment (\"dry-run first\", \"skip closed issues\") to refine it."
+        when: "len(world.landing_note.plan ?? '') > 0"
+
       # The progressive-determinism read-out: how much free-form work has
       # been mined into named structure this session (incremented by the
       # slice-3 apply path; rendered read-only here).
@@ -128,6 +145,13 @@ states:
           mode: single
           prompt: ""
           items:
+            # Accept & apply the proposed plan — top of the menu when a plan is
+            # present. Fires accept_plan, whose arc freezes accepted_plan and
+            # enters `applying`.
+            - label:  "Accept & apply this plan"
+              hint:   "run the step, then verify it landed (or type an adjustment to refine)"
+              intent: accept_plan
+              when:   "len(world.landing_note.plan ?? '') > 0"
             # On-path bail — top of the menu when the agent suggested a path.
             - label:  "→ {{ world.landing_note.route.label }}"
               hint:   "jump onto the suggested pipeline (or ignore and keep working here)"
@@ -218,9 +242,22 @@ states:
               # ("ok go ahead") builds on it instead of starting fresh.
               prior_summary: "{{ world.landing_prior_summary }}"
               prior_details: "{{ world.landing_prior_details }}"
+              # The prior structured plan (empty {} when there was none). The
+              # prompt renders it so a continuation that adjusts the plan
+              # ("dry-run first") REFINES the prior plan instead of re-proposing
+              # from scratch. The default_intent: work sink is the refine path.
+              prior_plan: "{{ world.landing_plan_prior }}"
         bind:
           landing_note: submitted
         on_error: landing
+
+      # 3. PlanProposed signal. When the agent's close-out note carried a
+      #    structured plan, narrate it (surfaces as a machine.say event) so the
+      #    proposed-plan decision is recorded in the trace. Guarded on the plan
+      #    being present so a plain exploration turn stays quiet. Reads
+      #    landing_note (bound by the task above), so it settles post-bind.
+      - when: "len(world.landing_note.plan ?? '') > 0"
+        say: "Plan proposed: {{ world.landing_note.plan.goal }} (verify mode: {{ world.landing_note.plan.verify.mode }}, mutating: {{ world.landing_note.plan.step.mutating }})."
 
     on:
       # Free-form work — the operator describes what they want. Captures the
@@ -232,9 +269,22 @@ states:
         - target: landing
           effects:
             # Preserve the prior note BEFORE clearing landing_note so the
-            # next agent dispatch can continue the thread. All keys in one
-            # set: read the same pre-effect snapshot, so landing_prior_*
-            # capture the OLD note even though landing_note is cleared here.
+            # next agent dispatch can continue the thread. All effects read the
+            # same pre-effect snapshot, so landing_prior_* / landing_plan_prior
+            # capture the OLD note even though landing_note is cleared below.
+            #
+            # Preserve the prior PLAN first, guarded + SEPARATE from the
+            # summary/details set: a free-text adjustment ("dry-run first") then
+            # re-dispatches the planner with the plan it last proposed so it
+            # REFINES it (prompts/landing.md folds landing_plan_prior in). A bare
+            # {{ ...plan }} on a note WITHOUT a plan (the common case) would null
+            # the entire set: block — hence the guard + a separate clear arm.
+            - when: "len(world.landing_note.plan ?? '') > 0"
+              set:
+                landing_plan_prior: "{{ world.landing_note.plan }}"
+            - when: "len(world.landing_note.plan ?? '') == 0"
+              set:
+                landing_plan_prior: {}
             - set:
                 landing_prior_summary: "{{ world.landing_note.summary ?? '' }}"
                 landing_prior_details: "{{ world.landing_note.details ?? '' }}"
@@ -257,6 +307,41 @@ states:
                 ticket_type: "{{ world.landing_note.route.ticket_type ?? world.ticket_type }}"
                 last_error:  ""
             - emit_intent: "{{ world.landing_note.route.intent }}"
+
+      # Accept & apply the proposed plan. Freeze the plan into accepted_plan
+      # (so a later landing_note clear can't disturb the executing plan), emit
+      # the PlanDecided signal (plan_decision + a say), clear last_error, and
+      # enter `applying`. Guarded on a plan being present so a stray button
+      # press without a plan is a guarded no-op. apply_plan is a strict alias.
+      accept_plan:
+        - when: "len(world.landing_note.plan ?? '') > 0"
+          target: applying
+          effects:
+            - set:
+                accepted_plan: "{{ world.landing_note.plan }}"
+                plan_decision: "accepted"
+                last_error:    ""
+            - say: "Plan accepted — applying: {{ world.landing_note.plan.goal }}"
+        - default: true
+          target: .
+          guard_hint: "No plan to apply — describe a concrete task so the agent can propose one."
+          effects:
+            - say: "There's no proposed plan to apply yet."
+      # apply_plan is a strict alias of accept_plan (same guard, same effects).
+      apply_plan:
+        - when: "len(world.landing_note.plan ?? '') > 0"
+          target: applying
+          effects:
+            - set:
+                accepted_plan: "{{ world.landing_note.plan }}"
+                plan_decision: "accepted"
+                last_error:    ""
+            - say: "Plan accepted — applying: {{ world.landing_note.plan.goal }}"
+        - default: true
+          target: .
+          guard_hint: "No plan to apply — describe a concrete task so the agent can propose one."
+          effects:
+            - say: "There's no proposed plan to apply yet."
 
       # ── Re-homed main navigation (verbatim guards) ───────────────────
       go_ticket_search:

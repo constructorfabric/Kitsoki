@@ -10,13 +10,15 @@ import (
 )
 
 // buildCtx assembles the `ctx` value passed to main(ctx). It is a Starlark
-// struct with exactly three attributes — inputs, world, http — and nothing
-// else, which is what keeps the sandbox honest: a script cannot reach any
-// capability that buildCtx does not put here.
+// struct with exactly five attributes — inputs, world, http, fs, probe — and
+// nothing else, which is what keeps the sandbox honest: a script cannot reach
+// any capability that buildCtx does not put here. http is the network boundary;
+// fs and probe are the read-only filesystem + allow-listed-process boundary
+// (see Inspector).
 //
-// ictx is the Go context carrying the injected HTTPClient (resolved lazily per
-// call). inputs are the (already type-validated) effect inputs. worldSnapshot
-// is the read-only world map.
+// ictx is the Go context carrying the injected HTTPClient and Inspector
+// (resolved lazily per call). inputs are the (already type-validated) effect
+// inputs. worldSnapshot is the read-only world map.
 func buildCtx(ictx context.Context, inputs, worldSnapshot map[string]any) (starlark.Value, error) {
 	inputsVal, err := goToStarlark(inputs)
 	if err != nil {
@@ -25,11 +27,14 @@ func buildCtx(ictx context.Context, inputs, worldSnapshot map[string]any) (starl
 
 	worldVal := newWorldProxy(worldSnapshot)
 	httpVal := newHTTPProxy(ictx)
+	inspect := newInspectorProxy(ictx)
 
 	return starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
 		"inputs": inputsVal,
 		"world":  worldVal,
 		"http":   httpVal,
+		"fs":     &fsValue{p: inspect},
+		"probe":  starlark.NewBuiltin("ctx.probe", inspect.probe),
 	}), nil
 }
 

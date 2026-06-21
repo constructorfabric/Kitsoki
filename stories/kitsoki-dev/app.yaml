@@ -110,6 +110,10 @@ hosts:
   # Code-review surface (dev-story's code_review room opens diffs in the best
   # surface). Required under `hosts: declared`.
   - host.diff.open
+  # Ad-hoc structured plan (dev-story rooms/verifying.yaml): the verify gate runs
+  # a sandboxed, recordable Starlark script with the read-only inspection
+  # surface (ctx.fs / ctx.probe). Required under `hosts: declared`.
+  - host.starlark.run
 
 # This instance has no day-level rooms of its own — every visible
 # state comes from the imported dev-story hub. Imports are folded in

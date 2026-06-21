@@ -100,6 +100,18 @@ type FlowFixture struct {
 	// field opts the fixture into the orchestrator-backed runner.
 	StarlarkHTTPCassette string `yaml:"starlark_http_cassette,omitempty"`
 
+	// StarlarkInspectCassette is the path to an inspect cassette (kind:
+	// inspect_cassette) that serves ctx.fs.* and ctx.probe calls made by
+	// host.starlark.run scripts. It is the filesystem/probe sibling of
+	// StarlarkHTTPCassette: the REAL host.starlark.run handler runs — reading the
+	// script + sidecar from disk and validating inputs/outputs — and only its
+	// fs/probe I/O is served from disk. The testrunner injects a
+	// starlark.ReplayInspector via WithInspector; the adapter leaves it in place
+	// because HasInspector(ctx) is then true, so no file is read and no process is
+	// run. Relative paths resolve against the fixture file's directory. Setting
+	// this field opts the fixture into the orchestrator-backed runner.
+	StarlarkInspectCassette string `yaml:"starlark_inspect_cassette,omitempty"`
+
 	// HostBindings rebinds named ifaces to alternative handlers for
 	// this fixture only. Mirrors the production `imports.<alias>.
 	// host_bindings:` block but applies at flow-test scope so a fixture
@@ -737,6 +749,42 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 		real, _ := reg.Get("host.starlark.run")
 		reg.Replace("host.starlark.run", func(ctx context.Context, args map[string]any) (host.Result, error) {
 			return real(starlarkhost.WithHTTP(ctx, httpClient), args)
+		})
+	}
+
+	// Wire starlark_inspect_cassette: when set. This is the Starlark fs/probe
+	// replay seam, the exact sibling of starlark_http_cassette: above. We load
+	// the cassette, build a ReplayInspector, and WRAP the real host.starlark.run
+	// handler so it runs against the injected replay inspector. The adapter checks
+	// starlarkhost.HasInspector(ctx) and skips installing a production inspector
+	// when one is already present, so the ReplayInspector is the one used — no
+	// file is read and no process is run.
+	if fixture.StarlarkInspectCassette != "" {
+		cassettePath := fixture.StarlarkInspectCassette
+		if !filepath.IsAbs(cassettePath) {
+			cassettePath = filepath.Join(filepath.Dir(filePath), cassettePath)
+		}
+		raw, rerr := os.ReadFile(cassettePath)
+		if rerr != nil {
+			_ = st.Close()
+			return nil, fmt.Errorf("buildOrchestratorRig: read starlark inspect cassette: %w", rerr)
+		}
+		var cas starlarkhost.InspectCassette
+		if uerr := yaml.Unmarshal(raw, &cas); uerr != nil {
+			_ = st.Close()
+			return nil, fmt.Errorf("buildOrchestratorRig: parse starlark inspect cassette %q: %w", cassettePath, uerr)
+		}
+		inspector := starlarkhost.NewReplayInspector(&cas)
+
+		// The real host.starlark.run handler must be registered to wrap it. When
+		// host_bindings: is set, builtins are already registered above; otherwise
+		// register it here so reg.Get finds it.
+		if _, ok := reg.Get("host.starlark.run"); !ok {
+			reg.Register("host.starlark.run", host.StarlarkRunHandler)
+		}
+		real, _ := reg.Get("host.starlark.run")
+		reg.Replace("host.starlark.run", func(ctx context.Context, args map[string]any) (host.Result, error) {
+			return real(starlarkhost.WithInspector(ctx, inspector), args)
 		})
 	}
 

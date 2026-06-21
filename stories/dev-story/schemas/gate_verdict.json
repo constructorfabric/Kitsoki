@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "gate_verdict",
+  "description": "The agent gate's adversarial verdict on the goal artifact.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "pass": {
+      "type": "boolean",
+      "description": "True only if the goal is clearly, fully met."
+    },
+    "reason": {
+      "type": "string",
+      "description": "When pass is false: a specific, actionable reason the next iteration can act on. When true: why it passes."
+    },
+    "fixes": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Concrete fixes the next iteration should make (empty when pass is true)."
+    }
+  },
+  "required": ["pass", "reason"]
+}

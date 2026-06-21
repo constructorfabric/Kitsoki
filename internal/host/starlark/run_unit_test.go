@@ -187,12 +187,13 @@ def main(ctx):
 	}
 }
 
-// TestRun_UnknownCtxAttr fails with a clear "has no .fs field" traceback — the
-// narrow-ctx safety net (no fs/env/subprocess surface exists).
+// TestRun_UnknownCtxAttr fails with a clear "has no .env field" traceback — the
+// narrow-ctx safety net (ctx exposes only inputs/world/http/fs/probe; anything
+// else, like an env or arbitrary-subprocess surface, simply does not exist).
 func TestRun_UnknownCtxAttr(t *testing.T) {
 	script := `
 def main(ctx):
-    return {"data": ctx.fs.read("secret")}
+    return {"data": ctx.env.get("SECRET")}
 `
 	_, err := starlarkhost.Run(context.Background(), starlarkhost.Params{Script: "evil.star", Source: []byte(script)})
 	if err == nil {
@@ -202,8 +203,8 @@ def main(ctx):
 	if !ok {
 		t.Fatalf("expected DomainError, got %T: %v", err, err)
 	}
-	if !strings.Contains(msg, "fs") || !strings.Contains(strings.ToLower(msg), "has no") {
-		t.Fatalf("error %q should report ctx has no .fs field", msg)
+	if !strings.Contains(msg, "env") || !strings.Contains(strings.ToLower(msg), "has no") {
+		t.Fatalf("error %q should report ctx has no .env field", msg)
 	}
 }
 

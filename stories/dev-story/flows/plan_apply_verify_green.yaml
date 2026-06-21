@@ -1,0 +1,82 @@
+# plan_apply_verify_green — accept a plan → apply (run the step) → verify PASS →
+# the completion read-out (captured++) (ad-hoc-structured-plan proposal, Task 5,
+# the apply-green path).
+#
+# The happy path of the deterministic executor, end to end with the REAL verify
+# script. The operator accepts the proposed plan (accept_plan freezes
+# accepted_plan and enters `applying`); the apply turn carries out the step
+# (stubbed landing_agent — no claude subprocess); the verifying room runs the
+# verify gate — and this fixture runs the ACTUAL verify/issues_migrated.star
+# (not a host.starlark.run stub): its one allow-listed probe (gh.issue.list) is
+# served from cassettes/issues_migrated.inspect.yaml via a ReplayInspector
+# (starlark_inspect_cassette: below), so the script's json.decode / len / the
+# `n >= expected_min` compare all run for real with no `gh` call, no network, no
+# LLM. The recorded probe yields 3 issues (>= 3 expected) → {ok: true}; the
+# post-bind emit fires verify_done and we land in `plan_done`, captured++.
+#
+# This exercises the genuinely-new engine capability (ctx.probe) on the happy
+# path. The plan_apply_verify_red fixture covers the symmetric FAIL branch (and
+# its mutation note proves the gate is load-bearing).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world: {}
+
+# The verify script's one read-only probe (gh.issue.list) replays from this
+# cassette — the REAL script runs, only its probe is canned. No host.starlark.run
+# stub: host.starlark.run executes the actual verify/issues_migrated.star.
+starlark_inspect_cassette: ../cassettes/issues_migrated.inspect.yaml
+
+host_handlers:
+  # Both the planner turn (landing) and the apply turn (applying) dispatch
+  # host.agent.task; the same stub serves both (the apply turn reports it did
+  # the work). host.starlark.run is NOT stubbed — it runs the real verify script
+  # against the inspect cassette above.
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary: "Created GitHub issues for each file in issues/."
+        details: "Mapped frontmatter to title/body/labels; 3 issues created."
+        plan:
+          goal: "Migrate repo-local issues/ to GitHub issues."
+          step:
+            kind: run
+            description: "Create a GitHub issue per file in issues/, mapping frontmatter."
+            mutating: true
+          verify:
+            mode: script
+            script: verify/issues_migrated.star
+            inputs: { expected_min: 3 }
+            reason: "Passes iff GitHub lists >= expected_min issues for the repo."
+
+turns:
+  # Propose the plan.
+  - intent: { name: work, slots: { request: "import the issues folder in the repo to github" } }
+    expect_state: landing
+
+  # Accept & apply — freezes accepted_plan, enters applying, applying runs the
+  # step then emits run_verify → verifying runs the REAL script gate (probe
+  # replayed → 3 issues → PASS) → plan_done. The script's own reason string is
+  # what binds into verify_reason, proving the actual script ran (not a stub).
+  - intent: { name: accept_plan, slots: {} }
+    expect_state: plan_done
+    expect_world:
+      plan_decision: "accepted"
+      verify_ok: true
+      verify_reason: "Migration verified: GitHub lists 3 issue(s) for bsacrobatix/Kitsoki (>= 3 expected)."
+      captured: 1
+      accepted_plan:
+        goal: "Migrate repo-local issues/ to GitHub issues."
+        step:
+          kind: run
+          description: "Create a GitHub issue per file in issues/, mapping frontmatter."
+          mutating: true
+        verify:
+          mode: script
+          script: verify/issues_migrated.star
+          inputs: { expected_min: 3 }
+          reason: "Passes iff GitHub lists >= expected_min issues for the repo."
+
+expect_no_errors: true
