@@ -34,6 +34,19 @@ states:
     description: "dev-story — the free-form workbench. Describe what you want, or pick a quick action."
     relevant_world: [ticket_id, ticket_title, ticket_type, last_pr_url, status, inbox_unread, workdir, feature_branch, captured, landing_request, landing_note]
 
+    # Free-text sink (docs/architecture/semantic-routing.md §1.5). Prose
+    # the match tiers don't claim — a fresh request OR a continuation like
+    # "ok go ahead" / "do it" — routes deterministically (no LLM) to the
+    # `work` agent, filling its required `request` slot with the whole
+    # utterance. This is what makes the workbench a real thread: the
+    # routeViaDefaultIntent tier runs BEFORE the LLM/off-ramp path, so
+    # affirmations reach the write-capable workbench agent instead of
+    # being grabbed by a navigation example (the `drive: "go"` mis-route)
+    # or deflected to the read-only off-ramp. The off-ramp below remains
+    # declared as the read-only floor for any path this sink doesn't cover.
+    # See .context/landing-onpath-offpath-bail.md slice C.
+    default_intent: work
+
     # Read-only → write-mode opt-in. Completes agent-write-mode-opt-in.md
     # Task 3.1 by opting the landing into the already-landed gate. Valid on
     # this room because it dispatches an agent (the on_enter host.agent.task
@@ -89,6 +102,20 @@ states:
           {% endfor %}
         when: "world.landing_note.next_steps"
 
+      # On-path bail. When the workbench agent concluded the request really
+      # belongs in a named pipeline it set landing_note.route; surface the
+      # reason here and offer a one-click jump as the FIRST quick action
+      # below (only one `choice:` element is allowed per view, so the bail
+      # button is folded into Quick actions rather than its own widget).
+      # Offered, NOT forced — every other quick action and the free-text
+      # floor stay available, so the operator can ignore this and keep
+      # working here. The button fires take_route, whose arc emit_intents
+      # the agent-chosen pipeline intent.
+      - heading: "On-path suggestion"
+        when: "(world.landing_note.route.intent ?? '') != ''"
+      - prose: "{{ world.landing_note.route.reason }}"
+        when: "(world.landing_note.route.intent ?? '') != ''"
+
       # The progressive-determinism read-out: how much free-form work has
       # been mined into named structure this session (incremented by the
       # slice-3 apply path; rendered read-only here).
@@ -101,6 +128,11 @@ states:
           mode: single
           prompt: ""
           items:
+            # On-path bail — top of the menu when the agent suggested a path.
+            - label:  "→ {{ world.landing_note.route.label }}"
+              hint:   "jump onto the suggested pipeline (or ignore and keep working here)"
+              intent: take_route
+              when:   "(world.landing_note.route.intent ?? '') != ''"
             - label:  "tickets"
               hint:   "search and pick a ticket"
               intent: go_ticket_search
@@ -180,6 +212,12 @@ states:
             prompt: prompts/landing.md
             args:
               request: "{{ world.landing_request }}"
+              # Thread continuity — the prior turn's note (empty on the
+              # first request). The prompt frames it as "earlier you
+              # reported X; the operator now says Y" so a continuation
+              # ("ok go ahead") builds on it instead of starting fresh.
+              prior_summary: "{{ world.landing_prior_summary }}"
+              prior_details: "{{ world.landing_prior_details }}"
         bind:
           landing_note: submitted
         on_error: landing
@@ -193,10 +231,32 @@ states:
       work:
         - target: landing
           effects:
+            # Preserve the prior note BEFORE clearing landing_note so the
+            # next agent dispatch can continue the thread. All keys in one
+            # set: read the same pre-effect snapshot, so landing_prior_*
+            # capture the OLD note even though landing_note is cleared here.
             - set:
-                landing_request: "{{ slots.request }}"
-                landing_note:    {}
-                last_error:      ""
+                landing_prior_summary: "{{ world.landing_note.summary ?? '' }}"
+                landing_prior_details: "{{ world.landing_note.details ?? '' }}"
+                landing_request:       "{{ slots.request }}"
+                landing_note:          {}
+                last_error:            ""
+
+      # On-path bail (B). Fired by the "→ on-path" choice item when the
+      # workbench agent set landing_note.route. Projects the suggested
+      # ticket onto world, then emit_intents the agent-chosen pipeline
+      # intent (go_bugfix / drive / go_prd / …). The emit lands on one of
+      # the go_* / drive arcs below, so their existing guards (is a ticket
+      # picked?) and ticket_type routing still apply — no duplicated
+      # routing logic. The Turn loop dispatches transition-arm emits
+      # (machine.go applyEffectsTraced → dispatchEmittedIntents).
+      take_route:
+        - effects:
+            - set:
+                ticket_id:   "{{ world.landing_note.route.ticket_id ?? world.ticket_id }}"
+                ticket_type: "{{ world.landing_note.route.ticket_type ?? world.ticket_type }}"
+                last_error:  ""
+            - emit_intent: "{{ world.landing_note.route.intent }}"
 
       # ── Re-homed main navigation (verbatim guards) ───────────────────
       go_ticket_search:

@@ -1,0 +1,46 @@
+# landing_thread_continuity — the workbench is a thread, not a series of
+# blank one-shots. When the operator sends another request, the prior
+# turn's note is preserved (landing_prior_summary / _details) across the
+# `work` arc's landing_note clear, so the next agent dispatch can build on
+# what it last reported — the fix for "ok go ahead" repeating the message.
+#
+# Regression for .context/landing-onpath-offpath-bail.md slice C (part 2).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  # A note from a previous workbench turn — what the agent last reported.
+  landing_request: "we need to migrate the tickets to github"
+  landing_note:
+    summary: "Migration is ready to run — kitsoki issues migrate is implemented."
+    details: "17 tickets pending; run the dry-run first, then the real migration."
+
+host_handlers:
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary: "Ran the migration dry-run — 17 tickets would be created, no errors."
+        details: "Dry-run output looked clean; ready for the real run on your go-ahead."
+
+turns:
+  # The operator continues the thread. `work` preserves the prior note
+  # into landing_prior_* (so the re-dispatched agent gets it as context),
+  # sets the new request, clears landing_note to re-arm, and the on_enter
+  # landing_agent runs (stubbed) and binds the fresh note.
+  - intent:
+      name: work
+      slots: { request: "ok go ahead" }
+    expect_state: landing
+    expect_world:
+      landing_request: "ok go ahead"
+      # Prior note carried across the clear → fed to the next dispatch.
+      landing_prior_summary: "Migration is ready to run — kitsoki issues migrate is implemented."
+      landing_prior_details: "17 tickets pending; run the dry-run first, then the real migration."
+      # Fresh note bound from the re-dispatched (stubbed) agent.
+      landing_note:
+        summary: "Ran the migration dry-run — 17 tickets would be created, no errors."
+        details: "Dry-run output looked clean; ready for the real run on your go-ahead."
+
+expect_no_errors: true

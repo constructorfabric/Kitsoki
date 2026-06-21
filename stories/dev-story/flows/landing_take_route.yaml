@@ -1,0 +1,111 @@
+# landing_take_route — the on-path bail (off-path → on-path).
+#
+# When the free-form workbench agent concludes a request belongs in a
+# named pipeline it sets `landing_note.route` in its close-out note; the
+# workbench renders a one-click "→ <label>" bail button (fired as
+# `take_route`). This flow proves the bail end-to-end with NO LLM:
+#   - take_route projects route.ticket_id / route.ticket_type onto world
+#   - then emit_intents the agent-chosen pipeline intent (go_bugfix)
+#   - which lands on landing's existing go_bugfix arc → enters the bf
+#     import → bf.idle auto-fires start → bf.reproducing
+#
+# This is the deterministic regression for
+# .context/landing-onpath-offpath-bail.md (slice B). The mis-route it
+# replaces: "ok go ahead" semantically hit `drive` (no ticket) and
+# bounced, re-rendering the same note.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  workdir:        ".worktrees/tkt-200"
+  workspace_id:   "ws-200"
+  base_branch:    "main"
+  feature_branch: "fix/tkt-200"
+  judge_mode:     "human"
+  # The agent's close-out note from the prior free-form turn, with an
+  # on-path route the operator is about to accept with one click.
+  landing_note:
+    summary: "This is a reproducible login crash — belongs in the bugfix pipeline."
+    route:
+      intent:      "go_bugfix"
+      ticket_id:   "TKT-200"
+      ticket_type: "bug"
+      label:       "Fix this as a bugfix ticket"
+      reason:      "Reproducible crash with a clear repro — a bugfix pipeline job."
+
+host_handlers:
+  host.local_files.ticket:
+    data: { ok: true, tickets: "TKT-200: login crash" }
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+  host.inbox.add:
+    data: { ok: true, id: "ib-1" }
+  host.git:
+    data: { ok: true, sha: "abc", diff: "", state: "success", url: "", pr_id: "" }
+  host.git_worktree:
+    data: { ok: true, log: "" }
+  host.local:
+    data: { ok: true, state: "success", log: "" }
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Stub"
+        summary_markdown: "Stub artifact body."
+        bug_verified:     true
+        root_cause:       "stub"
+        fix_description:  "stub fix"
+        affected_files:   []
+        confidence:       0.9
+        reasoning:        "stub"
+        verdict:          "pass"
+        intent:           "accept"
+        reason:           "stub"
+  host.agent.ask:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Stub"
+        summary_markdown: "Stub artifact body."
+        bug_verified:     true
+        root_cause:       "stub"
+        fix_description:  "stub fix"
+        affected_files:   []
+        confidence:       0.9
+        reasoning:        "stub"
+        verdict:          "pass"
+        intent:           "accept"
+        reason:           "stub"
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Stub"
+        summary_markdown: "Stub artifact body."
+        bug_verified:     true
+        root_cause:       "stub"
+        fix_description:  "stub fix"
+        affected_files:   []
+        confidence:       0.9
+        reasoning:        "stub"
+        verdict:          "pass"
+        intent:           "accept"
+        reason:           "stub"
+
+turns:
+  # One click on the "→ Fix this as a bugfix ticket" bail button. The
+  # take_route arc projects the route's ticket onto world, emit_intents
+  # go_bugfix, enters the bf import, and bf.idle auto-fires start →
+  # bf.reproducing. The ticket the agent identified is now driving the
+  # pipeline (bf__ticket_id), all without the operator picking it by hand.
+  - intent: { name: take_route, slots: {} }
+    expect_state: bf.reproducing
+    expect_world:
+      ticket_id:        "TKT-200"
+      ticket_type:      "bug"
+      bf__ticket_id:    "TKT-200"
+      bf__workdir:      ".worktrees/tkt-200"
+      bf__judge_mode:   "human"
+
+expect_no_errors: true

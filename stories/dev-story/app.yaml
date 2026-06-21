@@ -319,6 +319,14 @@ world:
   landing_request:     { type: string, default: "" }
   landing_note:        { type: object, default: {} }
   landing_started:     { type: bool,   default: false }
+  # Thread continuity: the prior turn's note, preserved across the `work`
+  # arc's landing_note clear so the next agent dispatch can build on what
+  # it last reported (so "ok go ahead" continues the thread instead of a
+  # blank one-shot on the literal words). Strings, not the object, because
+  # set: renders an object reference to JSON text — summary/details are all
+  # the prompt needs. See .context/landing-onpath-offpath-bail.md slice C.
+  landing_prior_summary: { type: string, default: "" }
+  landing_prior_details: { type: string, default: "" }
 
   # ── Ticket search / pickup ────────────────────────────────────────
   ticket_query:        { type: string, default: "" }
@@ -581,7 +589,14 @@ intents:
   drive:
     title: "Drive"
     description: "Drive the picked ticket through its pipeline. Routes by ticket_type: bug → bf, feature → impl, epic → cyp."
-    examples: ["drive", "go", "push", "start", "drive it", "run the pipeline", "take it through", "drive the ticket"]
+    # NOTE: bare "go" was removed — its stem {go} is a subset of common
+    # affirmations ("ok go ahead", "let's go"), so the semantic tier
+    # (stem-subset, runs before the default-intent sink) grabbed a
+    # continuation as a pipeline-drive. Affirmations now fall through to
+    # landing's `default_intent: work` (the workbench agent). Explicit
+    # drive verbs ("drive", "drive it", "run the pipeline") still route
+    # here. See .context/landing-onpath-offpath-bail.md slice C.
+    examples: ["drive", "push", "start", "drive it", "run the pipeline", "take it through", "drive the ticket"]
     priority: 60
   go_bugfix:
     title: "Fix Bug"
@@ -783,6 +798,18 @@ intents:
     priority: 45
     slots:
       request: { type: string, required: true, description: "What you want the workbench agent to do." }
+
+  # The on-path bail. Button-only (no examples ⇒ the semantic router never
+  # binds it from free text) — fired by the workbench's "→ on-path" choice
+  # item when the landing_agent set a `route` in its close-out note. The
+  # landing arc projects the route's ticket onto world, then emit_intents
+  # the agent-chosen pipeline intent (rooms/landing.yaml). See the
+  # on-path/off-path bail: .context/landing-onpath-offpath-bail.md.
+  take_route:
+    title: "Take the suggested path"
+    description: "Jump onto the named pipeline the workbench agent suggested for this request."
+    examples: []
+    priority: 50
 
 # Root state — the engineer's-day free-form workbench (rooms/landing.yaml).
 # Replaces the former `main` catalog as the landing. `main` is RETAINED as a

@@ -1,0 +1,43 @@
+# landing_freeform — the workbench's free-text routing contract.
+#
+# Regression for .context/landing-onpath-offpath-bail.md slice C:
+#   - affirmations / continuations ("ok go ahead", "do it") must route to
+#     the `work` agent (landing's default_intent free-text sink), NOT to a
+#     navigation example. The live bug: "ok go ahead" matched drive's bare
+#     "go" example (stem subset) and bounced. "go" was removed from drive
+#     and landing now declares default_intent: work.
+#   - explicit drive verbs still route to `drive`.
+#
+# These resolve in the deterministic tiers (semantic stem-subset / the
+# conf-1.0 default-intent sink), so they need no recording and no LLM.
+
+test_kind: intents
+app: ../app.yaml
+state: landing
+defaults:
+  runs: 1
+  min_pass_rate: 1.0
+
+fixtures:
+  # Continuation → the workbench agent (default_intent: work). The whole
+  # utterance fills the required `request` slot.
+  - id: affirmation-ok-go-ahead
+    intent:
+      name: work
+      slots: { request: "ok go ahead" }
+    inputs:
+      - "ok go ahead"
+
+  - id: affirmation-do-it
+    intent:
+      name: work
+      slots: { request: "do it" }
+    inputs:
+      - "do it"
+
+  # Explicit drive verb still routes to the pipeline-drive intent.
+  - id: explicit-drive-it
+    intent:
+      name: drive
+    inputs:
+      - "drive it"
