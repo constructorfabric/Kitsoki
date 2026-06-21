@@ -3690,9 +3690,6 @@ func (m RootModel) updateMeta(msg tea.Msg) (tea.Model, tea.Cmd) {
 // only when the write succeeds so the agent never sees a stale or
 // missing file path in the preamble.
 func (m RootModel) buildMetaTurnContext() metamode.TurnContext {
-	w := m.orch.CurrentWorld(m.sid)
-	view, _ := m.orch.Machine().RenderState(m.currentState, w)
-
 	tracePath := ""
 	switch {
 	case m.traceFilePath == "":
@@ -3714,23 +3711,10 @@ func (m RootModel) buildMetaTurnContext() metamode.TurnContext {
 		}
 	}
 
-	// Surface the imported-manifest paths so the metamode controller's
-	// file-watch tree includes every sibling story's directory. Without
-	// this, an edit in stories/robbery/ while running stories/oregon-trail/
-	// would not auto-reload. See docs/stories/imports.md.
-	var importedPaths []string
-	if def := m.orch.AppDef(); def != nil {
-		importedPaths = append(importedPaths, def.LoadedManifests...)
-	}
-
-	return metamode.TurnContext{
-		StatePath:             string(m.currentState),
-		AppFile:               m.appPath,
-		RenderedView:          view,
-		World:                 w.Vars,
-		TracePath:             tracePath,
-		ImportedManifestPaths: importedPaths,
-	}
+	// World, the rendered view, and the imported-manifest watch set are
+	// derived from the live orchestrator by the shared builder so this
+	// surface and the `kitsoki web` meta driver produce identical context.
+	return metamode.BuildTurnContext(m.orch, m.sid, m.currentState, m.appPath, tracePath)
 }
 
 // exitMetaMode tears down the overlay and pops back to ModeOnPath.

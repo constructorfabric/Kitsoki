@@ -17,12 +17,14 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"sort"
 
 	"kitsoki/internal/app"
 	"kitsoki/internal/chats"
 	"kitsoki/internal/metamode"
 	"kitsoki/internal/runstatus/server"
+	"kitsoki/internal/store"
 )
 
 // metaDriver adapts a metamode.Controller to server.MetaDriver. chats is the
@@ -51,8 +53,10 @@ func (d *metaDriver) snapshot() metamode.Snapshot {
 }
 
 // turnContext builds the per-turn ambient context. AppFile pins the story tree
-// (for edit detection + commit) and StatePath feeds the agent preamble. World /
-// RenderedView are left empty — optional, and the no-LLM stub doesn't need them.
+// (for edit detection + commit); World / RenderedView / TracePath / imported
+// manifests are derived from the live orchestrator by the shared builder so a
+// web meta turn carries exactly the same context the TUI gives its agents (the
+// agent prompts document all of them and instruct the agent to Read the trace).
 func (d *metaDriver) turnContext() metamode.TurnContext {
 	if d.entry == nil {
 		return metamode.TurnContext{}
@@ -61,7 +65,23 @@ func (d *metaDriver) turnContext() metamode.TurnContext {
 	if snap, err := d.entry.source.Snapshot(); err == nil {
 		state = snap.Session.CurrentState
 	}
-	return metamode.TurnContext{StatePath: state, AppFile: d.entry.StoryPath}
+
+	// The session's trace is streamed to this path by the slog sink wired at
+	// session start (registry.go), so we just hand the agent the pointer —
+	// the same "external trace file" handoff the TUI uses. Stat-guard it so a
+	// missing file never reaches the preamble.
+	tracePath := store.DefaultTracePath(d.entry.Def.App.ID, "web", string(d.entry.sid))
+	if _, err := os.Stat(tracePath); err != nil {
+		tracePath = ""
+	}
+
+	return metamode.BuildTurnContext(
+		d.entry.rt.Orch,
+		d.entry.sid,
+		app.StatePath(state),
+		d.entry.StoryPath,
+		tracePath,
+	)
 }
 
 // enterSession resolves (or resumes) the metamode session for mode. A non-empty
