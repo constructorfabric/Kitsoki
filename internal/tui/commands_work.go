@@ -46,12 +46,18 @@ func renderWorkBlock(m RootModel, args []string) (RootModel, string) {
 	}
 
 	if m.chatStore != nil {
-		drives, err := m.chatStore.ListDrivesBySession(ctx, string(m.sid),
-			[]chats.DriveStatus{chats.DriveStatusPending, chats.DriveStatusDispatching})
+		statuses := []chats.DriveStatus{chats.DriveStatusPending, chats.DriveStatusDispatching}
+		var drives []chats.Drive
+		var err error
+		if allSessions {
+			drives, err = m.chatStore.ListDrivesByOrigin(ctx, statuses)
+		} else {
+			drives, err = m.chatStore.ListDrivesBySession(ctx, string(m.sid), statuses)
+		}
 		if err != nil {
 			errs = append(errs, "drives: "+err.Error())
 		} else {
-			rows = append(rows, workRowsForDrives(drives)...)
+			rows = append(rows, workRowsForDrives(drives, string(m.sid), allSessions)...)
 		}
 
 		ptys, err := m.chatStore.ListPTYForHost(ctx)
@@ -175,18 +181,26 @@ func workRowsForNotifications(notifs []jobs.Notification) []workRow {
 	return out
 }
 
-func workRowsForDrives(drives []chats.Drive) []workRow {
+func workRowsForDrives(drives []chats.Drive, sid string, allSessions bool) []workRow {
 	out := make([]workRow, 0, len(drives))
 	for _, d := range drives {
 		title := d.Payload
 		if title == "" {
 			title = d.DriveID
 		}
+		hint := "chat " + d.ChatID
+		if allSessions {
+			if d.OriginSessionID == sid {
+				hint += ", current session"
+			} else if d.OriginSessionID != "" {
+				hint += ", session " + d.OriginSessionID
+			}
+		}
 		out = append(out, workRow{
 			Kind:   "queued",
 			Status: string(d.Status),
 			Title:  title,
-			Hint:   "chat " + d.ChatID,
+			Hint:   hint,
 			Age:    humanAge(time.Since(d.ReceivedAt)),
 		})
 	}

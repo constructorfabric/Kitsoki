@@ -76,6 +76,18 @@ func TestWorkSlashListsActiveAsyncWork(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	otherQueued, err := cs.Create(ctx, "cloak", "agent", "other-queue", "Other queued review")
+	require.NoError(t, err)
+	_, err = cs.Enqueue(ctx, chats.EnqueueOptions{
+		ChatID:          otherQueued.ID,
+		Transport:       chats.DriveTransportStateMachine,
+		Actor:           "story",
+		Payload:         "continue other queued review",
+		OriginSessionID: "other-session",
+		OriginState:     "foyer",
+	})
+	require.NoError(t, err)
+
 	bg, err := cs.Create(ctx, "cloak", "agent", "scope-bg", "Background Claude")
 	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, `UPDATE chats SET session_id = ? WHERE id = ?`, string(sid), bg.ID)
@@ -105,6 +117,7 @@ func TestWorkSlashListsActiveAsyncWork(t *testing.T) {
 	require.Contains(t, tx, "host.agent.task")
 	require.Contains(t, tx, "queued")
 	require.Contains(t, tx, "continue queued review")
+	require.NotContains(t, tx, "continue other queued review")
 	require.Contains(t, tx, "chat")
 	require.Contains(t, tx, "Background Claude")
 	require.Contains(t, tx, "/sessions attach 1")
@@ -118,9 +131,10 @@ func TestWorkSlashListsActiveAsyncWork(t *testing.T) {
 
 	m = runTurnBlocking(t, m, "/work --all")
 	tx = extractTranscript(t, m)
-	require.Contains(t, tx, "active work (all sessions): 5 item(s)")
+	require.Contains(t, tx, "active work (all sessions): 6 item(s)")
 	require.Contains(t, tx, "Background Claude")
 	require.Contains(t, tx, "current session")
+	require.Contains(t, tx, "continue other queued review")
 	require.Contains(t, tx, "Other session Claude")
 	require.Contains(t, tx, "session other-session")
 	require.Contains(t, tx, "/sessions attach 2")

@@ -502,6 +502,46 @@ func (s *Store) ListDrivesBySession(ctx context.Context, sessionID string, statu
 	return out, rows.Err()
 }
 
+// ListDrivesByOrigin returns every drive that is tied to a kitsoki origin
+// session, optionally narrowed by status. It is the all-session counterpart to
+// ListDrivesBySession for operator work queues that need to show in-progress
+// state-machine chat drives across the local DB.
+//
+// Ordered by origin_session_id ASC, received_at ASC, drive_id ASC. An empty
+// statuses slice returns drives in every status (audit view).
+func (s *Store) ListDrivesByOrigin(ctx context.Context, statuses []DriveStatus) ([]Drive, error) {
+	q := `SELECT drive_id, chat_id, transport, thread, actor, correlation_id,
+	             payload, status, received_at,
+	             dispatched_at, completed_at, result_seq, error_message,
+	             on_complete_json, origin_session_id, origin_state
+	      FROM chat_input_queue
+	      WHERE origin_session_id != ''`
+	args := []any{}
+	if len(statuses) > 0 {
+		q += ` AND status IN (` + placeholders(len(statuses)) + `)`
+		for _, st := range statuses {
+			args = append(args, string(st))
+		}
+	}
+	q += ` ORDER BY origin_session_id ASC, received_at ASC, drive_id ASC`
+
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("chats.ListDrivesByOrigin: %w", err)
+	}
+	defer rows.Close()
+
+	var out []Drive
+	for rows.Next() {
+		d, err := scanDriveRow(rows)
+		if err != nil {
+			return nil, fmt.Errorf("chats.ListDrivesByOrigin: scan: %w", err)
+		}
+		out = append(out, *d)
+	}
+	return out, rows.Err()
+}
+
 func placeholders(n int) string {
 	if n <= 0 {
 		return ""
@@ -526,11 +566,11 @@ func scanDriveRow(rows *sql.Rows) (*Drive, error) {
 
 func scanDriveCommon(scan func(...any) error) (*Drive, error) {
 	var (
-		d                            Drive
-		transportStr, statusStr      string
-		receivedAt                   int64
-		dispatchedAt, completedAt    sql.NullInt64
-		resultSeq                    sql.NullInt64
+		d                         Drive
+		transportStr, statusStr   string
+		receivedAt                int64
+		dispatchedAt, completedAt sql.NullInt64
+		resultSeq                 sql.NullInt64
 	)
 	if err := scan(
 		&d.DriveID, &d.ChatID, &transportStr, &d.Thread, &d.Actor, &d.CorrelationID,
