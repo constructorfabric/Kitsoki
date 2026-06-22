@@ -17,6 +17,17 @@ export interface TraceCursor {
   limit?: number;
 }
 
+/**
+ * Liveness of a session's SSE trace stream, surfaced so the UI can show a
+ * visible "Reconnecting to session…" banner instead of dead air when the
+ * stream drops (the transport reconnects with backoff invisibly otherwise).
+ *
+ *   - "connected"    — the stream is open and delivering frames.
+ *   - "reconnecting" — the stream errored; the transport is backing off and
+ *                      will reopen (and backfill) shortly.
+ */
+export type ConnectionState = "connected" | "reconnecting";
+
 // ── Meta mode (overlay chat) wire types ────────────────────────────────────
 // Mirror internal/runstatus/server/meta.go.
 
@@ -99,8 +110,17 @@ export interface DataSource {
     sessionId: string,
     cursor?: TraceCursor
   ): Promise<{ events: TraceEvent[]; last_turn: number }>;
-  /** Returns an unsubscribe function. */
-  subscribe(sessionId: string, onEvent: (e: TraceEvent) => void): () => void;
+  /**
+   * Subscribe to a session's live trace stream. `onConnectionChange`, when
+   * supplied, is invoked as the stream's liveness changes ("reconnecting" on a
+   * drop, "connected" once frames flow again) so the UI can surface a banner.
+   * Returns an unsubscribe function.
+   */
+  subscribe(
+    sessionId: string,
+    onEvent: (e: TraceEvent) => void,
+    onConnectionChange?: (state: ConnectionState) => void
+  ): () => void;
 
   // ── Active-session discovery ─────────────────────────────────────────────
   // Trace-only and graph-only surfaces have no chat to start a session, so they

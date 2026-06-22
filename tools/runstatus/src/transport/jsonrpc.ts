@@ -99,15 +99,20 @@ export class JsonRpcClient {
     getTrace: (sinceТurn: number) => Promise<{
       events: import("../types.js").TraceEvent[];
       last_turn: number;
-    }>
+    }>,
+    onConnectionChange?: (
+      state: import("../data/source.js").ConnectionState
+    ) => void
   ): () => void {
     let lastTurn = -1;
     let closed = false;
     let unsubStream: (() => void) | null = null;
     let subscriptionId = "";
 
-    // Parse a /rpc/events SSE frame and fan a runstatus.event to onEvent.
+    // Parse a /rpc/events SSE frame and fan a runstatus.event to onEvent. The
+    // first frame after a drop also flips the surfaced state back to "connected".
     const onMessage = (raw: string) => {
+      onConnectionChange?.("connected");
       try {
         const frame = JSON.parse(raw) as JsonRpcNotification;
         if (frame.method === "runstatus.event" && frame.params !== undefined) {
@@ -151,7 +156,13 @@ export class JsonRpcClient {
       unsubStream = this.transport.openEventStream(
         "rpc/events",
         { subscription_id },
-        { onMessage, onReconnect }
+        {
+          onMessage,
+          onReconnect,
+          // The stream errored; the transport will back off + reopen. Surface
+          // "reconnecting" so the view can show a banner instead of dead air.
+          onError: () => onConnectionChange?.("reconnecting"),
+        }
       );
       // Surface the subscription id so teardown can unsubscribe it server-side.
       subscriptionId = subscription_id;

@@ -18,8 +18,22 @@
         {{ storiesError }}
       </div>
       <div v-else-if="storiesLoading" class="home__status">Loading stories…</div>
-      <div v-else-if="stories.length === 0" class="home__status" data-testid="stories-empty">
-        No stories discovered.
+      <div v-else-if="stories.length === 0" class="home__empty" data-testid="stories-empty">
+        <p class="home__empty-title">No stories discovered yet.</p>
+        <p class="home__empty-hint">
+          Stories are the YAML state machines under
+          <code>stories/&lt;name&gt;/</code> in your repo. Add one (or
+          <button class="home__empty-link" type="button" data-testid="empty-rescan" @click="onRescan">rescan</button>
+          if you just did), then start a session here.
+        </p>
+        <button
+          class="home__btn"
+          type="button"
+          data-testid="take-tour-btn"
+          @click="onTakeTour"
+        >
+          Take the tour
+        </button>
       </div>
       <div v-else class="home__cards">
         <div
@@ -175,6 +189,7 @@ import { autoNavDone, markAutoNavDone } from "../lib/auto-nav.js";
 import { LiveSource, type StoryHeader } from "../data/live-source.js";
 import { createDataSource } from "../data/source.js";
 import type { SessionHeader } from "../types.js";
+import { useTourStore } from "../stores/tour.js";
 
 // The home screen drives the session-agnostic lifecycle RPCs directly against
 // the live server. In a static snapshot artifact (file:// trace-review mode)
@@ -365,6 +380,15 @@ async function onNewSession(story: StoryHeader): Promise<void> {
   }
 }
 
+// Getting-started CTA on the stories-empty branch: replay the onboarding tour
+// so a first-time developer has a next step instead of a dead end. Resolved
+// lazily (not at setup) so the store is only required when the empty state is
+// actually present and clicked. `replay` so the tour runs even if previously
+// completed.
+function onTakeTour(): void {
+  useTourStore().start(true);
+}
+
 function storyTitle(story: StoryHeader): string {
   return story.title || story.app_id || relativePath(story.path);
 }
@@ -448,6 +472,42 @@ function errMsg(e: unknown): string {
 
 .home__status--error {
   color: var(--k-error, #f87171);
+}
+
+.home__empty {
+  background: var(--k-bg-widget, #111827);
+  border: 1px solid var(--k-border, #1e293b);
+  border-radius: 0.5rem;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+
+.home__empty-title {
+  font-weight: 600;
+  color: var(--k-fg, #e2e8f0);
+}
+
+.home__empty-hint {
+  color: var(--k-fg-muted, #94a3b8);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.home__empty-hint code {
+  color: var(--k-fg-code, #7dd3fc);
+}
+
+.home__empty-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--k-fg-accent, #60a5fa);
+  cursor: pointer;
+  text-decoration: underline;
 }
 
 .home__cards {

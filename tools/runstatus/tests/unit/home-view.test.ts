@@ -36,6 +36,13 @@ vi.mock("vue-router", () => ({
   RouterLink: { props: ["to"], template: "<a :href=\"to\"><slot /></a>" },
 }));
 
+// Tour store is mocked so the getting-started CTA can be asserted without a real
+// pinia / overlay — the empty state's only job is to call start().
+const tourStart = vi.fn();
+vi.mock("../../src/stores/tour.js", () => ({
+  useTourStore: () => ({ start: tourStart }),
+}));
+
 // Imported after the mocks are registered.
 import HomeView from "../../src/views/HomeView.vue";
 
@@ -75,6 +82,7 @@ describe("HomeView", () => {
     listSessions.mockReset();
     push.mockReset();
     replace.mockReset();
+    tourStart.mockReset();
     // The auto-nav "already done" flag lives in sessionStorage so it survives a
     // hard reload (see HomeView). happy-dom's storage is a global that persists
     // across tests in this file, so clear it to give each test a fresh-tab
@@ -234,6 +242,29 @@ describe("HomeView", () => {
 
     expect(replace).not.toHaveBeenCalled();
     expect(wrapper.find("[data-testid='home-view']").exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("renders a getting-started tour CTA on the empty-stories branch", async () => {
+    listStories.mockResolvedValue([]);
+    const wrapper = mount(HomeView, mountOpts);
+    await flushPromises();
+
+    const empty = wrapper.find("[data-testid='stories-empty']");
+    expect(empty.exists()).toBe(true);
+    // Helpful hint about where stories live, plus the CTA.
+    expect(empty.text()).toContain("stories/");
+    expect(wrapper.find("[data-testid='take-tour-btn']").exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("Take the tour CTA calls the tour store's start()", async () => {
+    listStories.mockResolvedValue([]);
+    const wrapper = mount(HomeView, mountOpts);
+    await flushPromises();
+
+    await wrapper.find("[data-testid='take-tour-btn']").trigger("click");
+    expect(tourStart).toHaveBeenCalledTimes(1);
     wrapper.unmount();
   });
 

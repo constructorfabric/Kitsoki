@@ -828,3 +828,50 @@ describe("run store — chatEntries routing provenance", () => {
     });
   });
 });
+
+describe("useRunStore — SSE connection state", () => {
+  // A DataSource whose subscribe captures the onConnectionChange callback so the
+  // test can simulate the transport's stream-error / reopen liveness signals
+  // without a real EventSource.
+  function captureSource(): {
+    source: DataSource;
+    emit: (state: import("../../src/data/source.js").ConnectionState) => void;
+  } {
+    let onChange:
+      | ((s: import("../../src/data/source.js").ConnectionState) => void)
+      | undefined;
+    const source: DataSource = {
+      getSession: () => Promise.resolve(SNAPSHOT.session),
+      getApp: () => Promise.resolve(SNAPSHOT.app),
+      getMermaid: () => Promise.resolve(SNAPSHOT.mermaid),
+      getTrace: () =>
+        Promise.resolve({ events: SNAPSHOT.events, last_turn: 3 }),
+      listSessions: () => Promise.resolve([SNAPSHOT.session]),
+      subscribe: (_id, _onEvent, onConnectionChange) => {
+        onChange = onConnectionChange;
+        return () => undefined;
+      },
+      ...writeStubs,
+    };
+    return { source, emit: (s) => onChange?.(s) };
+  }
+
+  it("defaults to connected after hydration", async () => {
+    const store = useRunStore();
+    const { source } = captureSource();
+    await store.hydrate(source, "sess-1");
+    expect(store.connectionState).toBe("connected");
+  });
+
+  it("exposes 'reconnecting' when the stream drops, then 'connected' on reopen", async () => {
+    const store = useRunStore();
+    const { source, emit } = captureSource();
+    await store.hydrate(source, "sess-1");
+
+    emit("reconnecting");
+    expect(store.connectionState).toBe("reconnecting");
+
+    emit("connected");
+    expect(store.connectionState).toBe("connected");
+  });
+});

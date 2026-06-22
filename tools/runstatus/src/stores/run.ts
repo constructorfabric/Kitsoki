@@ -9,7 +9,7 @@ import type {
   View,
   HarnessProfileInfo,
 } from "../types.js";
-import type { DataSource } from "../data/source.js";
+import type { DataSource, ConnectionState } from "../data/source.js";
 import type { LiveSource } from "../data/live-source.js";
 import { appendThought, appendTool, type StreamItem } from "../lib/activity.js";
 import { readAgentUsage } from "../components/agent/lib.js";
@@ -77,6 +77,11 @@ export const useRunStore = defineStore("run", () => {
   const selectedEventIndex = ref<number | null>(null);
   const terminal = ref<boolean>(false);
   const loading = ref<boolean>(false);
+  // Liveness of the live trace stream. "reconnecting" while the SSE stream is
+  // dropped (the transport backs off + reopens invisibly); the view binds this
+  // to a "Reconnecting to session…" banner so a stalled stream isn't mistaken
+  // for a slow agent. Stays "connected" for static (snapshot) sources.
+  const connectionState = ref<ConnectionState>("connected");
 
   // ---- harness profiles ----
   // Declared profiles + live selection, loaded from the (optional)
@@ -207,11 +212,17 @@ export const useRunStore = defineStore("run", () => {
       loading.value = false;
     }
 
-    // Subscribe for live updates.
-    _unsubscribe = source.subscribe(sessionId, (e: TraceEvent) => {
-      events.value.push(e);
-      applyStatePath(e);
-    });
+    // Subscribe for live updates; track stream liveness for the banner.
+    _unsubscribe = source.subscribe(
+      sessionId,
+      (e: TraceEvent) => {
+        events.value.push(e);
+        applyStatePath(e);
+      },
+      (state) => {
+        connectionState.value = state;
+      }
+    );
   }
 
   /**
@@ -284,6 +295,7 @@ export const useRunStore = defineStore("run", () => {
     events.value = [];
     currentStatePath.value = "";
     terminal.value = false;
+    connectionState.value = "connected";
     selectedEventIndex.value = null;
     highlightedStatePaths.value = [];
     harnessProfiles.value = [];
@@ -621,6 +633,7 @@ export const useRunStore = defineStore("run", () => {
     selectedEventIndex,
     terminal,
     loading,
+    connectionState,
     highlightedStatePaths,
     highlightTick,
     usageTotals,

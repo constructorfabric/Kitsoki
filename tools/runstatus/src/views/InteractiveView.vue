@@ -75,6 +75,19 @@
         <MetaButton v-if="embed" placement="topbar" />
       </header>
 
+      <!-- Reconnecting banner: the live trace stream dropped and the transport
+           is backing off + reopening. Without this a stalled stream looks
+           identical to a slow agent — dead air. -->
+      <div
+        v-if="store.connectionState === 'reconnecting'"
+        class="iv__reconnecting"
+        data-testid="reconnecting-banner"
+        role="status"
+      >
+        <span class="iv__reconnecting-dot" aria-hidden="true"></span>
+        Reconnecting to session…
+      </div>
+
       <!-- Reload warning: shown when the current state was removed by the edit. -->
       <div
         v-if="reloadWarning"
@@ -586,6 +599,36 @@ function onEventSelect(index: number): void {
   background: #1c1107;
   border-bottom: 1px solid #92400e;
   color: var(--k-warning, #fcd34d);
+}
+
+.iv__reconnecting {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 1rem;
+  font-size: 0.8rem;
+  background: #0b1a24;
+  border-bottom: 1px solid #1e4a63;
+  color: var(--k-info, #7dd3fc);
+}
+
+.iv__reconnecting-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: currentColor;
+  animation: iv-reconnecting-pulse 1s ease-in-out infinite;
+}
+
+@keyframes iv-reconnecting-pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 .iv__main {

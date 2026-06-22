@@ -233,10 +233,14 @@ export class LiveSource implements DataSource {
 
   subscribe(
     sessionId: string,
-    onEvent: (e: TraceEvent) => void
+    onEvent: (e: TraceEvent) => void,
+    onConnectionChange?: (state: import("./source.js").ConnectionState) => void
   ): () => void {
-    return this.client.subscribe(sessionId, onEvent, (sinceТurn) =>
-      this.getTrace(sessionId, { since_turn: sinceТurn })
+    return this.client.subscribe(
+      sessionId,
+      onEvent,
+      (sinceТurn) => this.getTrace(sessionId, { since_turn: sinceТurn }),
+      onConnectionChange
     );
   }
 
