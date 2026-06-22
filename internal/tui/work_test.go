@@ -301,3 +301,44 @@ func TestWorkSlashNoStores(t *testing.T) {
 	tx := extractTranscript(t, m)
 	require.Contains(t, tx, "no job or chat store wired")
 }
+
+func TestWorkSlashListsProposalReviewWorkWithoutStores(t *testing.T) {
+	orch, sid := setupCloak(t)
+	w := orch.InitialWorld()
+	initialView, err := orch.InitialView(w)
+	require.NoError(t, err)
+	m := tea.Model(tuipkg.NewRootModel(orch, sid, "", initialView,
+		tuipkg.WithMineState(tuipkg.MineState{
+			Enabled: true,
+			Queue: []tuipkg.MineProposal{
+				{
+					ID:     "p-structure",
+					Kind:   tuipkg.MineKindStructure,
+					Title:  "Capture render gate",
+					Detail: "Run make render after doc edits",
+					Target: "states.docs",
+				},
+				{
+					ID:     "p-write",
+					Kind:   tuipkg.MineKindWriteMode,
+					Title:  "May I edit README.md?",
+					Target: "README.md",
+				},
+			},
+		}),
+	))
+
+	m = runTurnBlocking(t, m, "/work")
+	tx := extractTranscript(t, m)
+	work := transcriptAfter(t, tx, "active work: 2 item(s)")
+	require.Contains(t, work, "proposal")
+	require.Contains(t, work, "write_mode")
+	require.Contains(t, work, "May I edit README.md?")
+	require.Contains(t, work, "README.md")
+	require.Contains(t, work, "/mine accept p-write")
+	require.Contains(t, work, "/mine dismiss p-write")
+	require.Contains(t, work, "structure")
+	require.Contains(t, work, "Capture render gate")
+	require.Contains(t, work, "Run make render after doc edits")
+	requireBefore(t, work, "May I edit README.md?", "Capture render gate")
+}

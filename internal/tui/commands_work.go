@@ -16,13 +16,15 @@ import (
 // commands_work.go - single-pane TUI "/work": print the active async work
 // queue for this session. "/work --all" broadens jobs, notifications, queued,
 // dispatching, or failed drives, and background Claude PTYs across sessions.
-// This is the terminal counterpart to web runstatus.work.list and studio.work:
-// one compact place to see unread notifications, active background jobs,
-// queued/dispatching/failed chat drives, and backgrounded Claude PTYs without
+// Proposal-review rows stay scoped to this TUI session. This is the terminal
+// counterpart to web runstatus.work.list and studio.work: one compact place to
+// see unread notifications, active background jobs, queued/dispatching/failed
+// chat drives, backgrounded Claude PTYs, and proposal-review work without
 // leaving the current flow.
 func renderWorkBlock(m RootModel, args []string) (RootModel, string) {
 	r := blocks.New(m.transcript.width, m.currentTheme())
-	if m.jobStore == nil && m.chatStore == nil {
+	proposalRows := workRowsForProposals(m.mineState())
+	if m.jobStore == nil && m.chatStore == nil && len(proposalRows) == 0 {
 		return m, r.SlashOutput("(work: no job or chat store wired - pass --db for async work tracking)")
 	}
 	allSessions := workAllSessions(args)
@@ -89,6 +91,7 @@ func renderWorkBlock(m RootModel, args []string) (RootModel, string) {
 			rows = append(rows, ptyRows...)
 		}
 	}
+	rows = append(rows, proposalRows...)
 
 	if len(errs) > 0 {
 		return m, r.SlashOutput("(work: " + strings.Join(errs, "; ") + ")")
@@ -424,6 +427,41 @@ func workRowsForPTYs(ctx context.Context, cs *chats.Store, sid string, ptys []ch
 	return out
 }
 
+func workRowsForProposals(state MineState) []workRow {
+	if !state.Enabled || len(state.Queue) == 0 {
+		return nil
+	}
+	out := make([]workRow, 0, len(state.Queue))
+	now := time.Now()
+	for i, p := range state.Queue {
+		title := p.Title
+		if title == "" {
+			title = p.ID
+		}
+		hintParts := []string{}
+		if p.Target != "" {
+			hintParts = append(hintParts, p.Target)
+		}
+		if p.Detail != "" {
+			hintParts = append(hintParts, p.Detail)
+		}
+		hintParts = append(hintParts,
+			fmt.Sprintf("/mine accept %s", p.ID),
+			fmt.Sprintf("/mine dismiss %s", p.ID),
+		)
+		out = append(out, workRow{
+			Kind:      "proposal",
+			Status:    string(p.Kind),
+			Title:     title,
+			Hint:      strings.Join(hintParts, "; "),
+			Priority:  workProposalPriority(p.Kind),
+			UpdatedAt: now.Add(-time.Duration(i) * time.Nanosecond),
+			ID:        p.ID,
+		})
+	}
+	return out
+}
+
 func sortWorkRows(rows []workRow) {
 	sort.SliceStable(rows, func(i, j int) bool {
 		a, b := rows[i], rows[j]
@@ -492,4 +530,11 @@ func workDrivePriority(status chats.DriveStatus) int {
 	default:
 		return 65
 	}
+}
+
+func workProposalPriority(kind MineProposalKind) int {
+	if kind == MineKindWriteMode {
+		return 97
+	}
+	return 40
 }
