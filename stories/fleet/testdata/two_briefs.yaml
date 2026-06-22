@@ -1,0 +1,20 @@
+# Two-brief decomposition fixture for fleet flows (work-decomposition shape +
+# explicit gate_command per brief — fleet's deterministic contract).
+coverage_note: "Two independent briefs that together exercise the fan-out: both ship cleanly behind the merge-lock."
+briefs:
+  - id: brief-one
+    title: "First brief"
+    goal: "Implement the first slice and get its gate green."
+    gate_command: "go test ./internal/one/"
+    depends_on: []
+    acceptance: ["go test ./internal/one/ passes"]
+    test_plan: "go test ./internal/one/"
+    agent_brief: "Implement the first slice: make go test ./internal/one/ pass. Self-contained brief for the maker."
+  - id: brief-two
+    title: "Second brief"
+    goal: "Implement the second slice and get its gate green."
+    gate_command: "go test ./internal/two/"
+    depends_on: []
+    acceptance: ["go test ./internal/two/ passes"]
+    test_plan: "go test ./internal/two/"
+    agent_brief: "Implement the second slice: make go test ./internal/two/ pass. Self-contained brief for the maker."

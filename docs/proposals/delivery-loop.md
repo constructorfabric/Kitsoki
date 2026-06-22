@@ -101,7 +101,7 @@ representation") + the QA plan live alongside this proposal in
 |---|---|---|---|---|---|---|
 | 1 | git-ops smoothing | story | Operand-as-slot, stop swallowing failures, force/confirm cleanup, one-shot lost-work-safe rebase-onto-moved-main | — | Draft | [`git-ops-smoothing.md`](git-ops-smoothing.md) |
 | 2 | ship-it loop | story | Import cherny-loop + git-ops + new `verify` room; chain configure→maker→integrate→re-verify→cleanup→shipped\|needs-human | 1 | Draft | [`ship-it.md`](ship-it.md) |
-| 3 | fleet fan-out | story | Fan ship-it over a brief list; cap N concurrent; merge-lock serializes integrate/verify | 2 (+ work-decomposition output) | Draft | [`fleet.md`](fleet.md) |
+| 3 | fleet fan-out | story | Fan ship-it over a brief list; cap N concurrent; merge-lock serializes integrate/verify | 2 (+ work-decomposition output) | Shipped (`stories/fleet/`) | [`fleet.md`](fleet.md) |
 | 4 | bugfix convergence | story | Bugfix composes ship-it's `integrate+re-verify+cleanup` tail (stops reinventing a weaker one); RED→GREEN regression-gate (test fails pre-fix, passes post-fix); `direct-ship` vs `open-PR` exit | 2 | **Shipped** | narrative in [`stories/bugfix/README.md`](../../stories/bugfix/README.md) |
 
 ## Sequencing

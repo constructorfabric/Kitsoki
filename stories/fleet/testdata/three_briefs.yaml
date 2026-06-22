@@ -1,0 +1,26 @@
+coverage_note: "Three briefs: the middle one fails its delivery and parks; the others ship — the continue-on-failure invariant."
+briefs:
+  - id: brief-a
+    title: "Brief A"
+    goal: "Ship brief A."
+    gate_command: "go test ./internal/a/"
+    depends_on: []
+    acceptance: ["passes"]
+    test_plan: "go test ./internal/a/"
+    agent_brief: "Implement brief A so go test ./internal/a/ passes. Self-contained brief for the maker."
+  - id: brief-b
+    title: "Brief B (parks)"
+    goal: "Ship brief B (will fail re-verify on main)."
+    gate_command: "go test ./internal/b/"
+    depends_on: []
+    acceptance: ["passes"]
+    test_plan: "go test ./internal/b/"
+    agent_brief: "Implement brief B so go test ./internal/b/ passes. Self-contained brief for the maker."
+  - id: brief-c
+    title: "Brief C"
+    goal: "Ship brief C."
+    gate_command: "go test ./internal/c/"
+    depends_on: []
+    acceptance: ["passes"]
+    test_plan: "go test ./internal/c/"
+    agent_brief: "Implement brief C so go test ./internal/c/ passes. Self-contained brief for the maker."

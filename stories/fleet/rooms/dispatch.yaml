@@ -1,0 +1,45 @@
+# dispatch — deliver one brief via ship-it, lock held.
+#
+# on_enter holds the merge-lock (merge_lock_held: true) so this brief's
+# integrate/verify see a settled main, then enters the ship-it import. The
+# current_brief was picked by the board's recompute; the ship import's world_in
+# projects current_brief.brief / .gate_command / .id into ship-it.
+#
+# ship-it's exits project back to `board` (imports.ship.exits in app.yaml):
+#   @exit:shipped     → board, _ship_disposition=shipped,  merge_lock_held=false
+#   @exit:needs-human → board, _ship_disposition=parked,   merge_lock_held=false
+# The lock is released on BOTH arcs so the next brief proceeds regardless. The
+# board then folds the disposition into the brief's status (continue-on-failure).
+
+states:
+
+  dispatch:
+    description: "Deliver the current brief via ship-it (merge-lock held)."
+    relevant_world: [current_brief, merge_lock_held]
+    view:
+      - prose: "Dispatching brief {{ world.current_brief.id }} (lock held). ship-it: configure → maker → integrate → verify → cleanup."
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "look"
+              intent: look
+    on_enter:
+      # Hold the merge-lock for the span of this brief's delivery, then enter the
+      # ship-it import. The import compound's OnEnter runs the ship world_in
+      # projections in fleet scope.
+      # The imported `ship` compound resets its OWN child world keys to their
+      # schema defaults on every (re-)entry — the engine seeds default-reset
+      # setters onto an import wrapper's OnEnter (see internal/app/imports.go),
+      # so brief N+1 enters a FRESH ship-it instance rather than reusing brief
+      # N's terminal carry state. fleet therefore only manages its OWN loop
+      # state here; the per-brief ship__* reset is the engine's job.
+      - set:
+          merge_lock_held: true
+      - increment: { dispatched_count: 1 }
+      - emit_intent: enter_ship
+    on:
+      enter_ship:
+        - target: ship
+      look:
+        - target: .

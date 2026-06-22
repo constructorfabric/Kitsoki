@@ -112,6 +112,12 @@ exits:
   shipped:     { requires: [shipped_sha] }
   needs-human: { requires: [last_error] }
 
+# Intents a parent (fleet) may lift into its own table when importing ship-it.
+# fleet drives `integrate_existing` to advance a brief's ship-it through its
+# deterministic delivery half to @exit:shipped|needs-human.
+exports:
+  intents: [ship, integrate_existing, look]
+
 root: configure
 
 imports:

@@ -1,0 +1,73 @@
+# GAP 2 gate — import-compound RE-ENTRY reset (RED before the engine fix).
+#
+# Run the imported maker once to its @exit:achieved (projected to done_one),
+# then `again` to RE-ENTER the maker import for a second run. The engine
+# re-seeds the child's prefixed world keys to their schema defaults on every
+# (re-)enter, so the SECOND run is a FRESH cherny instance:
+#   - maker__goal_achieved resets false (was true after run 1),
+#   - maker__iteration resets to 0 then counts to 1 again (was 1),
+#   - maker__baseline_checked resets false → baseline re-proves the gate RED,
+#   - the call ids (gate-0, gate-1, maker-1) repeat because iteration restarts.
+#
+# Before the fix, the re-entered compound kept run 1's terminal world, so the
+# second run no-opped on stale "already achieved, iteration=1" flags rather than
+# re-running its delivery. This is the import-compound "doesn't reset on
+# re-entry" bug (the fleet/slice-3 blocker).
+#
+# Two maker runs means each addressable call fires TWICE across the session.
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.git_worktree: { data: { ok: true, path: ".worktrees/cherny-loop" } }
+  host.run:
+    by_call:
+      gate-0: { data: { ok: false, exit_code: 1, stdout: "--- FAIL: TestAllow_Burst" } }
+      gate-1: { data: { ok: true,  exit_code: 0, stdout: "ok" } }
+  host.agent.task:
+    by_call:
+      maker-1: { data: { submitted: { summary: "fix it" } } }
+  host.artifacts_dir: { data: { ok: true } }
+
+turns:
+  # Run 1: start → launch → maker settles to @exit:achieved → done_one.
+  - intent:
+      name: start
+      slots:
+        brief:        "Get the gate green"
+        gate_command: "go test ./internal/ratelimit/"
+    expect_state: maker.configuring
+  - intent: { name: maker__launch, slots: {} }
+    expect_state: done_one
+    expect_world:
+      runs: 1
+      maker__goal_achieved: true
+      maker__iteration:     1
+  # Run 2: again RE-ENTERS the maker import. A fresh instance re-enters at
+  # configuring with reset world (goal_achieved false, iteration 0,
+  # baseline_checked false).
+  - intent: { name: again, slots: {} }
+    expect_state: maker.configuring
+    expect_world:
+      maker__goal_achieved:   false
+      maker__iteration:       0
+      maker__baseline_checked: false
+      maker__terminal_reason: ""
+  # launch the second run; it must re-prove the gate RED (gate-0 again), run the
+  # maker (maker-1 again), pass the gate (gate-1 again) and settle to done_one
+  # with runs=2 and iteration back to 1 — proving the second run was a real,
+  # fresh delivery, not a stale no-op.
+  - intent: { name: maker__launch, slots: {} }
+    expect_state: done_one
+    expect_world:
+      runs: 2
+      maker__goal_achieved:   true
+      maker__terminal_reason: "achieved"
+      maker__iteration:       1
+  - intent: { name: finish, slots: {} }
+    expect_state: __exit__done
+    expect_world: { status: "done" }
+
+expect_terminal: true
+expect_no_errors: true

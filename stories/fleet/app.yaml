@@ -1,0 +1,141 @@
+# fleet — fan ship-it over a brief list behind a merge-lock.
+#
+# ship-it (slice 2) delivers ONE brief. fleet fans the loop out over N briefs —
+# the decomposition.yaml that work-decomposition.md produces — with a single
+# merge_lock_held flag so integrations serialize (you cannot ff-merge two
+# branches onto main at once without a race, and a moved-main mid-integrate is
+# the lost-work hazard the epic targets). A failed brief parks (needs-human) and
+# the rest continue.
+#
+# Graph (delivery-loop epic slice 3):
+#   load (parse decomposition.yaml → fleet_briefs)
+#     └─ start ─▶ board ◀────────────────────────────┐
+#                  │ pending brief & lock free        │ ship-it @exit
+#                  ▼                                   │
+#               dispatch (lock held)                   │
+#               import ship-it{brief, gate_command}    │
+#                  ├─ @exit:shipped ─────────────────┤ mark shipped, release lock, next
+#                  └─ @exit:needs-human ─────────────┘ park (last_error), release lock, next
+#               board ── all_done (no pending) ─▶ summary ─▶ @exit:done
+#
+# v1 is SEQUENTIAL: the whole ship-it runs under the lock (one brief fully ships
+# before the next starts). True parallel makers are a follow-on (epic OQ #1) —
+# flagged, not invented. The lock is fleet-scoped world state (epic decision #4),
+# not an engine primitive; the brief list is a cyclic graph over fleet_briefs (no
+# new "iterate" primitive).
+
+app:
+  id: fleet
+  version: 0.1.0
+  title: "fleet — fan ship-it over a brief list"
+  author: "Kitsoki"
+  license: "CC0"
+
+hosts:
+  - host.run
+  - host.agent.task
+  - host.agent.decide
+  - host.git_worktree
+  - host.artifacts_dir
+
+world:
+  decomposition_path: { type: string, default: "" }    # the input YAML
+  fleet_state_path:   { type: string, default: "" }     # sidecar JSON the board rewrites (restartable)
+  fleet_briefs:       { type: list,   default: [] }      # [{id, brief, gate_command, status, last_error}]
+  current_brief:      { type: object, default: {} }      # the brief being dispatched
+  merge_lock_held:    { type: bool,   default: false }   # serializes integrate/verify (decision #4)
+  max_concurrent:     { type: int,    default: 1 }        # v1: sequential (OQ #1)
+  has_pending:        { type: bool,   default: false }    # board recompute: any pending brief left
+  board_route:        { type: string, default: "" }       # dispatch | done (the board recompute route)
+  shipped_count:      { type: int,    default: 0 }
+  parked_count:       { type: int,    default: 0 }
+  pending_count:      { type: int,    default: 0 }
+  dispatched_count:   { type: int,    default: 0 }     # board-id counter (briefs dispatched)
+  base_branch:        { type: string, default: "main" }
+  main_worktree_path: { type: string, default: "." }
+  fleet_summary:      { type: string, default: "" }      # final read-out
+  load_error:         { type: string, default: "" }
+  # Set by the ship-it exit projections; consumed by board to mark the brief.
+  _ship_disposition:  { type: string, default: "" }      # shipped | parked
+  _ship_last_error:   { type: string, default: "" }
+
+intents:
+  begin:
+    description: "Load the decomposition and enter the board."
+    examples: ["begin", "load", "open"]
+    priority: 85
+  start:
+    description: "Begin the fan-out over the loaded brief list."
+    examples: ["start", "go", "fan out", "run the fleet"]
+    priority: 85
+  quit:
+    description: "Stop the fan-out."
+    examples: ["quit", "exit", "stop"]
+    priority: 50
+  # Internal routing intents (post-bind guarded emits).
+  dispatch_next:
+    description: "(internal) a pending brief is ready and the lock is free → dispatch."
+    examples: []
+    priority: 1
+  all_done:
+    description: "(internal) no pending briefs left → summary."
+    examples: []
+    priority: 1
+  enter_ship:
+    description: "(internal) lock held → enter the ship-it import."
+    examples: []
+    priority: 1
+  to_summary:
+    description: "(internal) render the fan-out summary → @exit:done."
+    examples: []
+    priority: 1
+  look:
+    description: "Re-render the current room."
+    examples: ["look", "status"]
+    priority: 5
+
+exits:
+  done: { requires: [fleet_summary] }
+
+root: idle
+
+imports:
+  # ship-it — the single-brief delivery loop. Entered at `configure`; fleet
+  # projects the current brief's text + gate_command + a per-brief workspace_id
+  # so each brief runs in its own .worktrees/<id>. ship-it's @exit:shipped sets
+  # shipped_sha; @exit:needs-human sets last_error. Both project back to `board`
+  # (see dispatch.yaml exits) where the brief is marked and the lock released.
+  ship:
+    source: ../ship-it
+    entry: configure
+    world_in:
+      brief:            "{{ world.current_brief.brief }}"
+      gate_command:     "{{ world.current_brief.gate_command }}"
+      base_branch:      "{{ world.base_branch }}"
+      main_worktree_path: "{{ world.main_worktree_path }}"
+      workspace_id:     "{{ world.current_brief.id }}"
+      workspace_branch: "{{ world.current_brief.id }}"
+      # The maker's @exit:achieved handoff; in flows the maker is mocked so fleet
+      # seeds the per-brief worktree path directly (the integrate_existing seam).
+      worktree_path:    ".worktrees/{{ world.current_brief.id }}"
+    intents:
+      import: [integrate_existing, ship]
+    exits:
+      # The exit projections live on the dispatch room (see dispatch.yaml's
+      # `imports.ship.exits` is here so the per-exit `set:` lands in fleet scope):
+      shipped:
+        to: board
+        set:
+          # Mark the brief shipped + release the lock. The board recompute folds
+          # the mark; here we only flag the disposition for the board's script.
+          merge_lock_held: false
+          _ship_disposition: "shipped"
+      needs-human:
+        to: board
+        set:
+          merge_lock_held: false
+          _ship_disposition: "parked"
+          _ship_last_error: "{{ world.last_error }}"
+
+include:
+  - rooms/*.yaml

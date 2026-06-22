@@ -82,22 +82,31 @@ so the deterministic verdict auto-fires in STAGED mode. Green → `cleanup`
 kitsoki test flows stories/ship-it/app.yaml
 ```
 
-### Maker loop under import (flagged runtime limitation)
+### Maker loop under import (resolved engine fix)
 
 Driving cherny-loop's **autonomous** maker→checker loop to `@exit:achieved`
-*through* the import in a single flow turn stalls at the `gating` room: the
-gate invoke on `gating`'s `on_enter` is not settled across the import-compound
-wrapper within one turn (it fires standalone — see
-`stories/cherny-loop/flows/achieved_via_loop.yaml` — but not when cherny is an
-imported sub-story). This is a real engine constraint the story exposes
-(stories/AGENTS.md: expose, don't paper over); it does not affect ship-it's own
-deterministic delivery half, which settles fully in one turn.
+*through* the import once stalled at the `gating` room — it settled standalone
+(`stories/cherny-loop/flows/achieved_via_loop.yaml`) but not when cherny was an
+imported sub-story. The story exposed a real engine bug (stories/AGENTS.md:
+expose, don't paper over), now **fixed in the engine**:
 
-ship-it therefore **mocks the maker handoff** in its delivery-half flows via the
-`integrate_existing` intent (a genuine operator affordance: integrate a branch
-whose work is already done in a worktree), seeding the same `worktree_path` +
-`workspace_branch` the maker's `@exit:achieved` leaves — exactly as the
-[QA plan](../../docs/proposals/notes/delivery-loop/qa-and-demo-plan.md)
-prescribes ("the maker mocked via cassette/stub"). The `maker_exhausted` exit
-projection (`@exit:exhausted → @exit:needs-human`) is loader-validated wiring;
-its end-to-end drive is gated on resolving the gating-under-import settle.
+- the import rewriter did not rewrite an effect's `id:` template, so cherny's
+  gating gate `id: "gate-{{ world.iteration }}"` rendered against the bare
+  `world.iteration` (absent under the import alias). The unrendered call id
+  missed the cassette, `gate_ok` never bound, and the gating emit-chain stalled.
+  Fixed at `internal/app/imports_rewriter.go` (`rewriteEffect` now rewrites
+  `eff.Id`).
+- in **staged** mode the same chain was additionally misclassified as an
+  operator decision gate: `isDecisionGate` built its emit-target set from the
+  bare child emit names while the rewritten `on:` arcs were aliased. Fixed at
+  `internal/machine/machine.go` (`isDecisionGate` now alias-resolves the emit
+  targets).
+
+The `stories/importer-gate` fixture gates both (one-shot + staged) by driving an
+importer of cherny-loop all the way through its loop. ship-it's delivery-half
+flows still **mock the maker handoff** via the `integrate_existing` intent (a
+genuine operator affordance, and the same `worktree_path` + `workspace_branch`
+the maker's `@exit:achieved` leaves) — that mock remains the right shape for the
+deterministic delivery-half flows per the
+[QA plan](../../docs/proposals/notes/delivery-loop/qa-and-demo-plan.md), but the
+maker path now settles end-to-end through the import when driven.

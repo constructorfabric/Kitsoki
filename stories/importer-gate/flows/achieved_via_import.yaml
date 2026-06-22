@@ -1,0 +1,61 @@
+# GAP 1 gate (RED before the engine fix, GREEN after).
+#
+# The imported cherny-loop maker loop converges to GREEN and settles to
+# @exit:done THROUGH THE IMPORT, IN STAGED MODE — mirroring the standalone
+# stories/cherny-loop/flows/achieved_via_loop.yaml. Before the isDecisionGate
+# alias-resolution fix, this STALLED at `maker.gating` (the gate emit chain was
+# misclassified as an operator-only decision gate across the import boundary).
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.git_worktree: { data: { ok: true, path: ".worktrees/cherny-loop" } }
+  host.run:
+    by_call:
+      gate-0: { data: { ok: false, exit_code: 1, stdout: "--- FAIL: TestAllow_Burst" } }
+      gate-1: { data: { ok: true,  exit_code: 0, stdout: "ok  kitsoki/internal/ratelimit  0.012s" } }
+  host.agent.task:
+    by_call:
+      maker-1: { data: { submitted: { summary: "Initialize the bucket with tokens=burst" } } }
+  host.artifacts_dir: { data: { ok: true } }
+
+turns:
+  # Turn 1: enter the maker import. world_in projects brief→goal_text,
+  # gate_command, gate_mode:script into cherny's (prefixed) world.
+  - intent:
+      name: start
+      slots:
+        brief:        "Get `go test ./internal/ratelimit` green"
+        gate_command: "go test ./internal/ratelimit/"
+    expect_state: maker.configuring
+  # Turn 2: launch (aliased maker__launch). The autonomous baseline→iterating→
+  # gating emit-chain must settle THROUGH THE IMPORT to the maker's
+  # @exit:achieved (projected to done_one) — the gate that was RED before the
+  # `id:` template rewrite fix (the unrendered gate-{{ iteration }} call id
+  # missed the cassette, gate_ok never bound, and the chain stalled at gating).
+  - intent: { name: maker__launch, slots: {} }
+    expect_state: done_one
+    expect_world:
+      status: "ran"
+      runs:   1
+      maker__goal_achieved:   true
+      maker__terminal_reason: "achieved"
+      maker__iteration:       1
+    expect_host_calls:
+      - handler: host.run
+        args: { call: gate-0 }
+        times: 1
+      - handler: host.agent.task
+        args: { call: maker-1 }
+        times: 1
+      - handler: host.run
+        args: { call: gate-1 }
+        times: 1
+  # Turn 3: finish → @exit:done.
+  - intent: { name: finish, slots: {} }
+    expect_state: __exit__done
+    expect_world: { status: "done" }
+
+expect_terminal: true
+expect_no_errors: true
