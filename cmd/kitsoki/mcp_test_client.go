@@ -27,6 +27,7 @@ func mcpTestCmd() *cobra.Command {
 		listTools     bool
 		toolName      string
 		toolArgsJSON  string
+		callsJSON     string
 	)
 	cmd := &cobra.Command{
 		Use:   "mcp-test",
@@ -36,7 +37,13 @@ official Go MCP client, list tools, and call one or more tools.
 
 By default this launches the current kitsoki executable with the 'mcp'
 subcommand, then calls studio.ping and studio.handles. Pass --tool with
---tool-args to exercise a specific studio tool during development.`,
+--tool-args to exercise a specific studio tool during development, or --calls
+with a JSON array to run a handle-preserving workflow in one MCP client session.
+
+Examples:
+  kitsoki mcp-test --stories-dir ./stories
+  kitsoki mcp-test --tool story.validate --tool-args '{"dir":"stories/bugfix"}'
+  kitsoki mcp-test --calls '[{"tool":"session.new","args":{"story_path":"testdata/apps/cloak/app.yaml","key":"smoke"}},{"tool":"session.inspect","args":{"handle":"smoke"}}]'`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if timeout <= 0 {
@@ -55,12 +62,30 @@ subcommand, then calls studio.ping and studio.handles. Pass --tool with
 					return fmt.Errorf("mcp-test: --tool-args must be a JSON object: %w", err)
 				}
 			}
+			var calls []studioMCPTestCall
+			if callsJSON != "" {
+				if toolName != "" {
+					return fmt.Errorf("mcp-test: --calls cannot be combined with --tool")
+				}
+				if err := json.Unmarshal([]byte(callsJSON), &calls); err != nil {
+					return fmt.Errorf("mcp-test: --calls must be a JSON array: %w", err)
+				}
+				if len(calls) == 0 {
+					return fmt.Errorf("mcp-test: --calls must include at least one call")
+				}
+				for i, call := range calls {
+					if call.Name == "" {
+						return fmt.Errorf("mcp-test: --calls[%d].tool is required", i)
+					}
+				}
+			}
 			opts := studioMCPTestOptions{
 				ServerCommand: serverCommand,
 				ServerArgs:    studioMCPTestServerArgs(serverArgs, storiesDir, workspace, readOnly),
 				ListTools:     listTools,
 				ToolName:      toolName,
 				ToolArgs:      toolArgs,
+				Calls:         calls,
 			}
 
 			ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
@@ -86,15 +111,23 @@ subcommand, then calls studio.ping and studio.handles. Pass --tool with
 		"single tool to call instead of the default studio.ping + studio.handles calls")
 	cmd.Flags().StringVar(&toolArgsJSON, "tool-args", "",
 		"JSON object arguments for --tool")
+	cmd.Flags().StringVar(&callsJSON, "calls", "",
+		"JSON array of sequential tool calls: [{\"tool\":\"session.new\",\"args\":{...}}, ...]")
 	return cmd
 }
 
 type studioMCPTestOptions struct {
-	ServerCommand string         `json:"server_command,omitempty"`
-	ServerArgs    []string       `json:"server_args,omitempty"`
-	ListTools     bool           `json:"list_tools"`
-	ToolName      string         `json:"tool,omitempty"`
-	ToolArgs      map[string]any `json:"tool_args,omitempty"`
+	ServerCommand string              `json:"server_command,omitempty"`
+	ServerArgs    []string            `json:"server_args,omitempty"`
+	ListTools     bool                `json:"list_tools"`
+	ToolName      string              `json:"tool,omitempty"`
+	ToolArgs      map[string]any      `json:"tool_args,omitempty"`
+	Calls         []studioMCPTestCall `json:"calls,omitempty"`
+}
+
+type studioMCPTestCall struct {
+	Name string         `json:"tool"`
+	Args map[string]any `json:"args,omitempty"`
 }
 
 type studioMCPTestReport struct {
@@ -183,6 +216,17 @@ func runStudioMCPTestSession(ctx context.Context, cs *mcpsdk.ClientSession, opts
 			name string
 			args map[string]any
 		}{{name: opts.ToolName, args: opts.ToolArgs}}
+	} else if len(opts.Calls) > 0 {
+		calls = make([]struct {
+			name string
+			args map[string]any
+		}, 0, len(opts.Calls))
+		for _, call := range opts.Calls {
+			calls = append(calls, struct {
+				name string
+				args map[string]any
+			}{name: call.Name, args: call.Args})
+		}
 	}
 	for _, call := range calls {
 		res, err := cs.CallTool(ctx, &mcpsdk.CallToolParams{

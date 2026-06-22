@@ -74,7 +74,7 @@ func TestMCPTestCmd_Registered(t *testing.T) {
 	for _, c := range root.Commands() {
 		if c.Name() == "mcp-test" {
 			found = true
-			for _, f := range []string{"server-command", "server-arg", "stories-dir", "workspace", "read-only", "timeout", "list-tools", "tool", "tool-args"} {
+			for _, f := range []string{"server-command", "server-arg", "stories-dir", "workspace", "read-only", "timeout", "list-tools", "tool", "tool-args", "calls"} {
 				require.NotNil(t, c.Flags().Lookup(f), "mcp-test must declare --%s", f)
 			}
 			assert.Equal(t, "10s", c.Flags().Lookup("timeout").DefValue)
@@ -131,6 +131,57 @@ func TestRunStudioMCPTestSession_SingleTool(t *testing.T) {
 	assert.True(t, report.OK)
 	require.Len(t, report.ToolRuns, 1)
 	assert.Equal(t, "studio.ping", report.ToolRuns[0].Name)
+}
+
+func TestRunStudioMCPTestSession_SequentialCallsShareSession(t *testing.T) {
+	ctx := context.Background()
+	srv := studio.NewServer(studio.NewStudioSession(nil))
+	cs := connectStudioTestClient(ctx, t, srv)
+
+	report, err := runStudioMCPTestSession(ctx, cs, studioMCPTestOptions{
+		ServerCommand: "kitsoki",
+		ServerArgs:    []string{"mcp"},
+		ListTools:     false,
+		Calls: []studioMCPTestCall{
+			{
+				Name: "session.new",
+				Args: map[string]any{
+					"story_path": "../../testdata/apps/cloak/app.yaml",
+					"key":        "workflow-smoke",
+				},
+			},
+			{
+				Name: "session.submit",
+				Args: map[string]any{
+					"handle": "workflow-smoke",
+					"intent": "go",
+					"slots": map[string]any{
+						"direction": "west",
+					},
+				},
+			},
+			{
+				Name: "session.inspect",
+				Args: map[string]any{
+					"handle": "workflow-smoke",
+				},
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	assert.True(t, report.OK)
+	require.Len(t, report.ToolRuns, 3)
+	assert.Equal(t, "session.new", report.ToolRuns[0].Name)
+	assert.Equal(t, "session.submit", report.ToolRuns[1].Name)
+	assert.Equal(t, "session.inspect", report.ToolRuns[2].Name)
+	assert.False(t, report.ToolRuns[0].IsError)
+	assert.False(t, report.ToolRuns[1].IsError)
+	assert.False(t, report.ToolRuns[2].IsError)
+
+	structured, ok := report.ToolRuns[2].Result["structuredContent"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "cloakroom", structured["state"])
 }
 
 // cobraCommandStub is a presence marker for the registration test (the real
