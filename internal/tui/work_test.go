@@ -134,6 +134,7 @@ func TestWorkSlashListsActiveAsyncWork(t *testing.T) {
 	require.Contains(t, tx, "Review PR #42")
 	require.Contains(t, tx, "github:acme/repo/pr/42")
 	require.Contains(t, tx, "https://github.com/acme/repo/pull/42")
+	require.Contains(t, tx, "/inbox 1")
 	require.NotContains(t, tx, "Other PR #99")
 	require.NotContains(t, tx, "job-other")
 	require.Contains(t, tx, "job")
@@ -170,6 +171,8 @@ func TestWorkSlashListsActiveAsyncWork(t *testing.T) {
 	requireBefore(t, allWork, "Other PR #99", "job-other")
 	requireBefore(t, allWork, "Review PR #42", "job-running")
 	requireBefore(t, allWork, "job-other", "job-running")
+	requireContainsNear(t, allWork, "Review PR #42", "/inbox 1")
+	requireNotContainsNear(t, allWork, "Other PR #99", "/inbox")
 
 	rm, ok = tuipkg.ExtractRootModel(m)
 	require.True(t, ok)
@@ -192,6 +195,29 @@ func requireBefore(t *testing.T, text, before, after string) {
 	require.NotEqual(t, -1, beforeIndex, "expected %q in transcript", before)
 	require.NotEqual(t, -1, afterIndex, "expected %q in transcript", after)
 	require.Less(t, beforeIndex, afterIndex, "expected %q before %q", before, after)
+}
+
+func requireContainsNear(t *testing.T, text, anchor, want string) {
+	t.Helper()
+	line := lineContaining(t, text, anchor)
+	require.Contains(t, line, want)
+}
+
+func requireNotContainsNear(t *testing.T, text, anchor, unwanted string) {
+	t.Helper()
+	line := lineContaining(t, text, anchor)
+	require.NotContains(t, line, unwanted)
+}
+
+func lineContaining(t *testing.T, text, anchor string) string {
+	t.Helper()
+	for _, line := range strings.Split(text, "\n") {
+		if strings.Contains(line, anchor) {
+			return line
+		}
+	}
+	t.Fatalf("expected line containing %q in transcript", anchor)
+	return ""
 }
 
 func TestWorkSlashNoStores(t *testing.T) {

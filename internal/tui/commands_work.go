@@ -179,6 +179,7 @@ func workRowsForJobs(jobRows []jobs.Job, sid app.SessionID, allSessions bool) []
 
 func workRowsForNotifications(notifs []jobs.Notification, sid app.SessionID, allSessions bool) []workRow {
 	out := make([]workRow, 0, len(notifs))
+	inboxIndexes := workInboxIndexes(notifs, sid)
 	for _, n := range notifs {
 		if n.ReadAt != nil {
 			continue
@@ -193,6 +194,12 @@ func workRowsForNotifications(notifs []jobs.Notification, sid app.SessionID, all
 				hint += " "
 			}
 			hint += n.OriginURL
+		}
+		if idx := inboxIndexes[n.ID]; idx > 0 {
+			if hint != "" {
+				hint += "; "
+			}
+			hint += fmt.Sprintf("/inbox %d", idx)
 		}
 		if allSessions {
 			hint += workSessionHint(n.SessionID, sid)
@@ -209,6 +216,19 @@ func workRowsForNotifications(notifs []jobs.Notification, sid app.SessionID, all
 		})
 	}
 	return out
+}
+
+func workInboxIndexes(notifs []jobs.Notification, sid app.SessionID) map[string]int {
+	indexes := make(map[string]int)
+	next := 1
+	for _, n := range notifs {
+		if n.SessionID != sid || n.ReadAt != nil {
+			continue
+		}
+		indexes[n.ID] = next
+		next++
+	}
+	return indexes
 }
 
 func workSessionHint(rowSID, currentSID app.SessionID) string {
