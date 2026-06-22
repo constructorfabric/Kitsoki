@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -328,7 +329,7 @@ func newSessionRuntime(ctx context.Context, storyPath, tracePath string, h harne
 		return nil, &openError{Code: ErrBadRequest, Msg: fmt.Sprintf("session: run initial on_enter: %v", err)}
 	}
 
-	model, err := newComposerModel(orch, sid, rt.jobStore)
+	model, err := newComposerModel(orch, sid, rt.jobStore, rt.chatStore)
 	if err != nil {
 		rt.Close()
 		return nil, &openError{Code: ErrBadRequest, Msg: err.Error()}
@@ -346,7 +347,7 @@ func newSessionRuntime(ctx context.Context, storyPath, tracePath string, h harne
 // journey, renders the initial typed view, and constructs a RootModel with no
 // app path (edit mode disabled) so a drive folds outcomes through the same
 // ApplyTurnOutcome path the live TUI runs.
-func newComposerModel(orch *orchestrator.Orchestrator, sid app.SessionID, jobStore *jobs.JobStore) (tui.RootModel, error) {
+func newComposerModel(orch *orchestrator.Orchestrator, sid app.SessionID, jobStore *jobs.JobStore, chatStore *chats.Store) (tui.RootModel, error) {
 	j, err := orch.LoadJourney(sid)
 	if err != nil {
 		return tui.RootModel{}, fmt.Errorf("session: load journey: %w", err)
@@ -358,6 +359,7 @@ func newComposerModel(orch *orchestrator.Orchestrator, sid app.SessionID, jobSto
 	return tui.NewRootModel(orch, sid, "", initialView,
 		tui.WithInitialTypedView(typedView, env, rr),
 		tui.WithJobStore(jobStore),
+		tui.WithChatStore(chatStore),
 	), nil
 }
 
@@ -376,6 +378,28 @@ func (rt *sessionRuntime) drive(ctx context.Context, input string, cols, rows in
 		rt.modelTurn = out.TurnNumber
 	}
 	return out, tui.ComposeFrame(&rt.model, cols, rows)
+}
+
+// slash routes a TUI slash command through the same RootModel dispatcher the
+// live terminal uses, then returns the recomposed frame. Commands that produce a
+// tea.Cmd are rejected because a headless MCP render cannot safely execute
+// terminal side effects such as tmux attach.
+func (rt *sessionRuntime) slash(command string, cols, rows int) (tui.Frame, error) {
+	command = strings.TrimSpace(command)
+	if command == "" {
+		return tui.Frame{}, fmt.Errorf("session.command: command is required")
+	}
+	if !strings.HasPrefix(command, "/") {
+		return tui.Frame{}, fmt.Errorf("session.command: command must start with /")
+	}
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	next, cmd := rt.model.RunSlashCommand(command)
+	if cmd != nil {
+		return tui.Frame{}, fmt.Errorf("session.command: %q produced an async TUI command and cannot run headlessly", command)
+	}
+	rt.model = next
+	return tui.ComposeFrame(&rt.model, cols, rows), nil
 }
 
 // driveElicit routes free text through the turn loop with an operator prompter

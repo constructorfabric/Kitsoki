@@ -137,12 +137,13 @@ type studioMCPTestOptions struct {
 }
 
 type studioMCPTestCall struct {
-	Name       string            `json:"tool"`
-	Args       map[string]any    `json:"args,omitempty"`
-	Expect     map[string]any    `json:"expect,omitempty"`
-	Save       map[string]string `json:"save,omitempty"`
-	Retries    int               `json:"retries,omitempty"`
-	IntervalMS int               `json:"interval_ms,omitempty"`
+	Name           string            `json:"tool"`
+	Args           map[string]any    `json:"args,omitempty"`
+	Expect         map[string]any    `json:"expect,omitempty"`
+	ExpectContains map[string]string `json:"expect_contains,omitempty"`
+	Save           map[string]string `json:"save,omitempty"`
+	Retries        int               `json:"retries,omitempty"`
+	IntervalMS     int               `json:"interval_ms,omitempty"`
 }
 
 type studioMCPTestReport struct {
@@ -224,43 +225,47 @@ func runStudioMCPTestSession(ctx context.Context, cs *mcpsdk.ClientSession, opts
 	}
 
 	calls := []struct {
-		name       string
-		args       map[string]any
-		expect     map[string]any
-		save       map[string]string
-		retries    int
-		intervalMS int
+		name           string
+		args           map[string]any
+		expect         map[string]any
+		expectContains map[string]string
+		save           map[string]string
+		retries        int
+		intervalMS     int
 	}{
 		{name: "studio.ping"},
 		{name: "studio.handles"},
 	}
 	if opts.ToolName != "" {
 		calls = []struct {
-			name       string
-			args       map[string]any
-			expect     map[string]any
-			save       map[string]string
-			retries    int
-			intervalMS int
+			name           string
+			args           map[string]any
+			expect         map[string]any
+			expectContains map[string]string
+			save           map[string]string
+			retries        int
+			intervalMS     int
 		}{{name: opts.ToolName, args: opts.ToolArgs}}
 	} else if len(opts.Calls) > 0 {
 		calls = make([]struct {
-			name       string
-			args       map[string]any
-			expect     map[string]any
-			save       map[string]string
-			retries    int
-			intervalMS int
+			name           string
+			args           map[string]any
+			expect         map[string]any
+			expectContains map[string]string
+			save           map[string]string
+			retries        int
+			intervalMS     int
 		}, 0, len(opts.Calls))
 		for _, call := range opts.Calls {
 			calls = append(calls, struct {
-				name       string
-				args       map[string]any
-				expect     map[string]any
-				save       map[string]string
-				retries    int
-				intervalMS int
-			}{name: call.Name, args: call.Args, expect: call.Expect, save: call.Save, retries: call.Retries, intervalMS: call.IntervalMS})
+				name           string
+				args           map[string]any
+				expect         map[string]any
+				expectContains map[string]string
+				save           map[string]string
+				retries        int
+				intervalMS     int
+			}{name: call.Name, args: call.Args, expect: call.Expect, expectContains: call.ExpectContains, save: call.Save, retries: call.Retries, intervalMS: call.IntervalMS})
 		}
 	}
 	vars := map[string]string{}
@@ -273,7 +278,11 @@ func runStudioMCPTestSession(ctx context.Context, cs *mcpsdk.ClientSession, opts
 		if err != nil {
 			return report, err
 		}
-		result, isError, attempts, err := runStudioMCPTestCall(ctx, cs, call.name, asStringAnyMap(args), asStringAnyMap(expect), call.retries, call.intervalMS)
+		expectContains, err := expandMCPTestStringMap(call.expectContains, vars)
+		if err != nil {
+			return report, err
+		}
+		result, isError, attempts, err := runStudioMCPTestCall(ctx, cs, call.name, asStringAnyMap(args), asStringAnyMap(expect), expectContains, call.retries, call.intervalMS)
 		if err != nil {
 			return report, err
 		}
@@ -295,7 +304,7 @@ func runStudioMCPTestSession(ctx context.Context, cs *mcpsdk.ClientSession, opts
 	return report, nil
 }
 
-func runStudioMCPTestCall(ctx context.Context, cs *mcpsdk.ClientSession, name string, args map[string]any, expect map[string]any, retries, intervalMS int) (map[string]interface{}, bool, int, error) {
+func runStudioMCPTestCall(ctx context.Context, cs *mcpsdk.ClientSession, name string, args map[string]any, expect map[string]any, expectContains map[string]string, retries, intervalMS int) (map[string]interface{}, bool, int, error) {
 	attempts := 0
 	maxAttempts := retries + 1
 	var lastResult map[string]interface{}
@@ -314,6 +323,9 @@ func runStudioMCPTestCall(ctx context.Context, cs *mcpsdk.ClientSession, name st
 			lastResult, lastErr = decodeMCPToolResult(name, res)
 			if lastErr == nil && len(expect) > 0 {
 				lastErr = assertMCPExpectations(name, lastResult, expect)
+			}
+			if lastErr == nil && len(expectContains) > 0 {
+				lastErr = assertMCPContainsExpectations(name, lastResult, expectContains)
 			}
 			if lastErr == nil {
 				return lastResult, lastIsError, attempts, nil
@@ -358,6 +370,23 @@ func assertMCPExpectations(name string, result map[string]interface{}, expect ma
 		}
 		if !jsonEqual(got, want) {
 			return fmt.Errorf("mcp-test: %s expectation %q: got %v, want %v", name, path, got, want)
+		}
+	}
+	return nil
+}
+
+func assertMCPContainsExpectations(name string, result map[string]interface{}, expect map[string]string) error {
+	for path, want := range expect {
+		got, ok := lookupDotPath(result, path)
+		if !ok {
+			return fmt.Errorf("mcp-test: %s contains expectation %q missing", name, path)
+		}
+		gotString, ok := got.(string)
+		if !ok {
+			return fmt.Errorf("mcp-test: %s contains expectation %q: got %T, want string containing %q", name, path, got, want)
+		}
+		if !strings.Contains(gotString, want) {
+			return fmt.Errorf("mcp-test: %s contains expectation %q: got %q, want containing %q", name, path, gotString, want)
 		}
 	}
 	return nil
@@ -446,6 +475,21 @@ func expandMCPTestString(s string, vars map[string]string) (string, error) {
 	})
 	if missing != "" {
 		return "", fmt.Errorf("mcp-test: unknown saved value %q", missing)
+	}
+	return out, nil
+}
+
+func expandMCPTestStringMap(values map[string]string, vars map[string]string) (map[string]string, error) {
+	if len(values) == 0 {
+		return nil, nil
+	}
+	out := make(map[string]string, len(values))
+	for path, value := range values {
+		expanded, err := expandMCPTestString(value, vars)
+		if err != nil {
+			return nil, err
+		}
+		out[path] = expanded
 	}
 	return out, nil
 }

@@ -312,6 +312,27 @@ func TestRunStudioMCPTestSession_ExpectationFailureFailsRun(t *testing.T) {
 	assert.Contains(t, err.Error(), `studio.ping expectation "structuredContent.version"`)
 }
 
+func TestAssertMCPContainsExpectations(t *testing.T) {
+	result := map[string]interface{}{
+		"structuredContent": map[string]interface{}{
+			"frame": map[string]interface{}{
+				"text": "active work (all sessions): 1 item(s)\nAsync MCP chat",
+			},
+		},
+	}
+
+	err := assertMCPContainsExpectations("session.command", result, map[string]string{
+		"structuredContent.frame.text": "Async MCP chat",
+	})
+	require.NoError(t, err)
+
+	err = assertMCPContainsExpectations("session.command", result, map[string]string{
+		"structuredContent.frame.text": "missing title",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `session.command contains expectation "structuredContent.frame.text"`)
+}
+
 // cobraCommandStub is a presence marker for the registration test (the real
 // *cobra.Command is exercised directly above).
 type cobraCommandStub struct{}

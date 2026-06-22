@@ -498,6 +498,60 @@ func TestSessionInspect_SurfacesChatAsyncWorkOverMCP(t *testing.T) {
 	assert.Equal(t, "test", shown.Messages[0].Metadata["source"])
 }
 
+func TestSessionCommand_RendersTUIWorkOverMCP(t *testing.T) {
+	ctx := context.Background()
+	backing, err := store.OpenMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = backing.Close() })
+	chatStore, err := chats.NewStore(backing.DB())
+	require.NoError(t, err)
+	srv, sess := newReplayServerWithChatStore(t, chatStore)
+	cs := connectInProcess(ctx, t, srv)
+	handle := openCloak(ctx, t, cs)
+	sh, err := sess.ResolveSession(handle)
+	require.NoError(t, err)
+
+	currentChat, err := chatStore.Create(ctx, "cloak", "agent-room", "scope-a", "current queued")
+	require.NoError(t, err)
+	_, err = chatStore.Enqueue(ctx, chats.EnqueueOptions{
+		ChatID:          currentChat.ID,
+		Transport:       chats.DriveTransportStateMachine,
+		Actor:           "story",
+		Payload:         "current queued review",
+		OriginSessionID: string(sh.SID),
+		OriginState:     "foyer",
+	})
+	require.NoError(t, err)
+	otherChat, err := chatStore.Create(ctx, "cloak", "agent-room", "scope-b", "other queued")
+	require.NoError(t, err)
+	_, err = chatStore.Enqueue(ctx, chats.EnqueueOptions{
+		ChatID:          otherChat.ID,
+		Transport:       chats.DriveTransportStateMachine,
+		Actor:           "story",
+		Payload:         "other queued review",
+		OriginSessionID: "other-session",
+		OriginState:     "elsewhere",
+	})
+	require.NoError(t, err)
+
+	res, err := callTool(ctx, cs, "session.command", map[string]any{
+		"handle":  handle,
+		"command": "/work --all",
+		"cols":    120,
+		"rows":    35,
+	})
+	require.NoError(t, err)
+	require.False(t, res.IsError, "session.command: %s", contentText(res))
+	var rendered studio.RenderTUIResult
+	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &rendered))
+	require.True(t, rendered.OK)
+	assert.Contains(t, rendered.Frame.Text, "active work (all sessions): 2 item(s)")
+	assert.Contains(t, rendered.Frame.Text, "current queued review")
+	assert.Contains(t, rendered.Frame.Text, "current session")
+	assert.Contains(t, rendered.Frame.Text, "other queued review")
+	assert.Contains(t, rendered.Frame.Text, "session other-session")
+}
+
 func writeBackgroundJobStory(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()

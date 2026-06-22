@@ -11,6 +11,7 @@ package studio
 //   - session.continue— missing slots for a pending clarify → orch.ContinueTurn.
 //   - session.teleport— inbox notification -> orch.Teleport, marking it read.
 //   - session.inspect — state / world / allowed_intents / last_view / jobs / inbox / last_turns.
+//   - session.command — run a safe TUI slash command and return its frame.
 //   - session.trace   — the session's JSONL trace events.
 //   - render.tui      — the slice-1 Frame {text, ansi, metadata} at any width.
 //   - render.tui_png  — the slice-3 ANSI→PNG rasteriser, as an MCP image block.
@@ -95,6 +96,11 @@ func (srv *Server) registerSessionTools() {
 		Name:        "session.inspect",
 		Description: "Read-only snapshot of a driving handle: {handle} → {state, world, allowed_intents, last_view, last_turns[]}. Never advances the machine.",
 	}, srv.handleSessionInspect)
+
+	mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
+		Name:        "session.command",
+		Description: "Run a TUI slash command against a driving handle and return the rendered frame. {handle, command, cols?, rows?}. Rejects slash commands that require async terminal side effects.",
+	}, srv.handleSessionCommand)
 
 	mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
 		Name:        "session.trace",
@@ -182,6 +188,14 @@ type SessionContinueArgs struct {
 	Slots  map[string]any `json:"slots"`
 	Cols   int            `json:"cols,omitempty"`
 	Rows   int            `json:"rows,omitempty"`
+}
+
+// SessionCommandArgs is the input to session.command.
+type SessionCommandArgs struct {
+	Handle  string `json:"handle"`
+	Command string `json:"command"`
+	Cols    int    `json:"cols,omitempty"`
+	Rows    int    `json:"rows,omitempty"`
 }
 
 // TurnResult is the structured TurnOutcome projection returned alongside the
@@ -619,6 +633,23 @@ func (srv *Server) handleSessionInspect(
 		return buildToolError(ErrBadRequest, err.Error()), nil, nil
 	}
 	return nil, out, nil
+}
+
+func (srv *Server) handleSessionCommand(
+	ctx context.Context,
+	req *mcpsdk.CallToolRequest,
+	args SessionCommandArgs,
+) (*mcpsdk.CallToolResult, any, error) {
+	rt, rerr := srv.resolveRuntime(args.Handle)
+	if rerr != nil {
+		return rerr, nil, nil
+	}
+	cols, rows := geometry(args.Cols, args.Rows)
+	frame, err := rt.slash(args.Command, cols, rows)
+	if err != nil {
+		return buildToolError(ErrBadRequest, err.Error()), nil, nil
+	}
+	return nil, RenderTUIResult{OK: true, Frame: frameResult(frame)}, nil
 }
 
 // SessionTraceArgs is the input to session.trace.

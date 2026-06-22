@@ -131,12 +131,18 @@ deterministic direct path or a read.
 | `session.answer` | `{handle, question_id, answers} → {outcome, frame} \| {awaiting_operator}` | resume a parked operator-ask (see below) |
 | `session.teleport` | `{handle, notification_id} → {outcome, frame}` | jump to an inbox notification's saved target and mark it read |
 | `session.inspect` | `{handle} → {state, world, allowed_intents, last_view, async, jobs[], notifications[], pending_drives[], backgrounded_chats[], last_turns[]}` | `buildInspectOutput` + session JobStore / ChatStore (read-only) |
+| `session.command` | `{handle, command, cols?, rows?} → {frame}` | run a deterministic TUI slash command such as `/work --all` against the handle |
 | `session.trace` | `{handle, since?, until?, limit?} → {events[], last_turn}` | the session's JSONL trace (read-only) |
 | `chat.show` | `{chat_id, since_seq?} → {chat, pty?, messages[]}` | read-only focused context for a selected async chat/subagent |
 
 Every drive/submit/continue returns **both** the structured `TurnOutcome` (mode,
 new state, allowed intents, slots needed) **and** the rendered `Frame` — so the
 agent reasons on metadata and *sees* the screen in one call.
+
+`session.command` exists for TUI-only operator surfaces that are not
+orchestrator turns, especially smoke-testing `/work --all` through MCP. It uses
+the live TUI slash dispatcher and rejects commands that return an asynchronous
+terminal side effect, such as attaching to tmux.
 
 `session.inspect` also carries compact per-handle background-job and inbox projections.
 `async` summarizes running, awaiting-input, terminal, unread, and unread

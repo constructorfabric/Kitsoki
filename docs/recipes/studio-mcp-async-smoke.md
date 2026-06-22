@@ -100,6 +100,7 @@ Useful `mcp-test --calls` fields:
 | `tool` | MCP tool name to call. |
 | `args` | JSON object passed as tool arguments. |
 | `expect` | Dot-path assertions against the MCP `CallToolResult` JSON. Array indexes are supported, for example `structuredContent.notifications.0.id`. |
+| `expect_contains` | Dot-path string assertions where the actual value must contain the expected substring. Useful for rendered frames. |
 | `save` | Captures dot-path values into `${name}` variables for later calls. |
 | `retries` / `interval_ms` | Repeats the tool call until expectations pass, useful for async `session.inspect` polling. |
 
@@ -168,13 +169,25 @@ go run ./cmd/kitsoki mcp-test \
       "expect": {
         "structuredContent.chat.title": "Async MCP chat"
       }
+    },
+    {
+      "tool": "session.command",
+      "args": {
+        "handle": "chat-drive-smoke",
+        "command": "/work --all"
+      },
+      "expect_contains": {
+        "structuredContent.frame.text": "review the queued MCP smoke task"
+      }
     }
   ]'
 ```
 
 This smoke exercises the session-origin stamping that lets `studio.work`,
 TUI `/work`, and the web inbox active-work list all find pending chat drives
-created by ordinary story `host.chat.drive` effects.
+created by ordinary story `host.chat.drive` effects. `session.command` runs the
+real TUI slash dispatcher and returns the rendered frame, so the smoke proves
+the terminal active-work affordance without launching an interactive TUI.
 
 To prove the browser surface too, first stage the embedded runstatus SPA:
 
