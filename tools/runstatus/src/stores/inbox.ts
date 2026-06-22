@@ -139,20 +139,30 @@ export const useInboxStore = defineStore("inbox", () => {
   }
 
   async function syncGitHub(
-    source: LiveSource,
+    source: Pick<LiveSource, "syncGitHubInbox" | "listWork">,
     sessionId: string,
-    repo?: string
+    repo?: string,
+    options: { silent?: boolean } = {}
   ): Promise<void> {
-    githubSyncing.value = true;
-    githubSyncError.value = "";
-    githubSyncLast.value = null;
+    if (!options.silent) {
+      githubSyncing.value = true;
+      githubSyncError.value = "";
+      githubSyncLast.value = null;
+    }
     try {
-      githubSyncLast.value = await source.syncGitHubInbox(sessionId, repo ? { repo } : {});
+      const result = await source.syncGitHubInbox(sessionId, repo ? { repo } : {});
+      if (!options.silent) {
+        githubSyncLast.value = result;
+      }
       await refreshWork(source);
     } catch (err) {
-      githubSyncError.value = err instanceof Error ? err.message : String(err);
+      if (!options.silent) {
+        githubSyncError.value = err instanceof Error ? err.message : String(err);
+      }
     } finally {
-      githubSyncing.value = false;
+      if (!options.silent) {
+        githubSyncing.value = false;
+      }
     }
   }
 

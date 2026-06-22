@@ -261,6 +261,8 @@ import { fmtTokens, fmtCost } from "../components/agent/lib.js";
 import { isEmbedded } from "../lib/embed.js";
 import type { NodeRef } from "../types.js";
 
+const GITHUB_INBOX_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+
 const props = defineProps<{ sessionId: string }>();
 const store = useRunStore();
 const route = useRoute();
@@ -275,6 +277,7 @@ const embed = computed(() => isEmbedded() || route?.query?.embed === "1");
 
 // One DataSource for the lifetime of the view (subscribe + write RPCs).
 let source: DataSource | null = null;
+let githubInboxTimer: ReturnType<typeof setInterval> | null = null;
 
 // True while a turn is in flight; disables the input so the operator can't
 // fire a second overlapping turn against the live session.
@@ -323,6 +326,13 @@ function canListWork(candidate: DataSource | null): candidate is DataSource & Pi
   return typeof (candidate as Partial<Pick<LiveSource, "listWork">> | null)?.listWork === "function";
 }
 
+function canSyncGitHubInbox(
+  candidate: DataSource | null,
+): candidate is DataSource & Pick<LiveSource, "syncGitHubInbox" | "listWork"> {
+  const partial = candidate as Partial<Pick<LiveSource, "syncGitHubInbox" | "listWork">> | null;
+  return typeof partial?.syncGitHubInbox === "function" && typeof partial.listWork === "function";
+}
+
 function onFreshnessReloaded(prevStateExists: boolean): void {
   reloadWarning.value = prevStateExists ? null : "current state removed; staying put";
 }
@@ -340,6 +350,23 @@ async function loadSession(sessionId: string): Promise<void> {
   await store.loadInitialView(source, sessionId);
   await maybeTeleportFromQuery(sessionId);
   await maybeShowChatFromQuery(sessionId);
+  startGitHubInboxPolling(sessionId);
+}
+
+function startGitHubInboxPolling(sessionId: string): void {
+  stopGitHubInboxPolling();
+  if (!canSyncGitHubInbox(source)) return;
+  void inbox.syncGitHub(source, sessionId, undefined, { silent: true });
+  githubInboxTimer = setInterval(() => {
+    if (!canSyncGitHubInbox(source)) return;
+    void inbox.syncGitHub(source, sessionId, undefined, { silent: true });
+  }, GITHUB_INBOX_REFRESH_INTERVAL_MS);
+}
+
+function stopGitHubInboxPolling(): void {
+  if (!githubInboxTimer) return;
+  clearInterval(githubInboxTimer);
+  githubInboxTimer = null;
 }
 
 /**
@@ -488,6 +515,7 @@ watch(
 );
 
 onUnmounted(() => {
+  stopGitHubInboxPolling();
   store.teardown();
   proposals.teardown();
   delete (window as unknown as { __kitsokiSubmitIntent?: unknown }).__kitsokiSubmitIntent;

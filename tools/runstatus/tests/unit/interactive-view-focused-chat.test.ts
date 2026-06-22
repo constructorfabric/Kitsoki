@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import { setActivePinia, createPinia } from "pinia";
 import type { TurnResult } from "../../src/types.js";
@@ -74,6 +74,14 @@ const dataSource = {
       },
     ],
   }),
+  syncGitHubInbox: vi.fn().mockResolvedValue({
+    ok: true,
+    session_id: "s1",
+    fetched: 0,
+    inserted: 0,
+    skipped: 0,
+    items: [],
+  }),
 };
 
 vi.mock("../../src/data/source.js", () => ({
@@ -121,6 +129,7 @@ describe("InteractiveView focused chat context", () => {
     showChat.mockReset();
     dataSource.submit.mockClear();
     dataSource.listWork.mockClear();
+    dataSource.syncGitHubInbox.mockClear();
     showChat.mockResolvedValue({
       ok: true,
       context: {
@@ -155,6 +164,10 @@ describe("InteractiveView focused chat context", () => {
     sessionStorage.clear();
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("loads and renders focused context from the chat query", async () => {
     const wrapper = mount(InteractiveView, mountOpts);
     await flushPromises();
@@ -187,6 +200,7 @@ describe("InteractiveView focused chat context", () => {
       },
     });
     await flushPromises();
+    dataSource.listWork.mockClear();
 
     await wrapper.find('[data-testid="submit-queue"]').trigger("click");
     await flushPromises();
@@ -194,5 +208,21 @@ describe("InteractiveView focused chat context", () => {
     expect(dataSource.submit).toHaveBeenCalledWith("s1", "queue", {});
     expect(dataSource.listWork).toHaveBeenCalledTimes(1);
     wrapper.unmount();
+  });
+
+  it("polls GitHub inbox work while viewing a session and stops on unmount", async () => {
+    vi.useFakeTimers();
+    route.query = {};
+    const wrapper = mount(InteractiveView, mountOpts);
+    await flushPromises();
+
+    expect(dataSource.syncGitHubInbox).toHaveBeenCalledWith("s1", {});
+
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+    expect(dataSource.syncGitHubInbox).toHaveBeenCalledTimes(2);
+
+    wrapper.unmount();
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+    expect(dataSource.syncGitHubInbox).toHaveBeenCalledTimes(2);
   });
 });
