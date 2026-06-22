@@ -16,15 +16,16 @@ import (
 // runstatus.work.list and studio.work: one compact place to see unread
 // notifications, active background jobs, queued chat drives, and backgrounded
 // Claude PTYs without leaving the current flow.
-func renderWorkBlock(m RootModel, _ []string) string {
+func renderWorkBlock(m RootModel, _ []string) (RootModel, string) {
 	r := blocks.New(m.transcript.width, m.currentTheme())
 	if m.jobStore == nil && m.chatStore == nil {
-		return r.SlashOutput("(work: no job or chat store wired - pass --db for async work tracking)")
+		return m, r.SlashOutput("(work: no job or chat store wired - pass --db for async work tracking)")
 	}
 
 	ctx := context.Background()
 	var rows []workRow
 	var errs []string
+	var attachTargets []chats.PtySession
 
 	if m.jobStore != nil {
 		jobRows, err := m.jobStore.ListBySession(ctx, m.sid)
@@ -55,15 +56,18 @@ func renderWorkBlock(m RootModel, _ []string) string {
 		if err != nil {
 			errs = append(errs, "sessions: "+err.Error())
 		} else {
-			rows = append(rows, workRowsForPTYs(ctx, m.chatStore, string(m.sid), ptys)...)
+			var ptyRows []workRow
+			ptyRows, attachTargets = workRowsForPTYs(ctx, m.chatStore, string(m.sid), ptys)
+			rows = append(rows, ptyRows...)
 		}
 	}
 
 	if len(errs) > 0 {
-		return r.SlashOutput("(work: " + strings.Join(errs, "; ") + ")")
+		return m, r.SlashOutput("(work: " + strings.Join(errs, "; ") + ")")
 	}
+	m.sessionList = attachTargets
 	if len(rows) == 0 {
-		return r.SlashOutput("(work: no active async work)")
+		return m, r.SlashOutput("(work: no active async work)")
 	}
 
 	var sb strings.Builder
@@ -81,8 +85,12 @@ func renderWorkBlock(m RootModel, _ []string) string {
 		}
 		sb.WriteByte('\n')
 	}
-	sb.WriteString(r.SlashOutput("  use /inbox <n> for notifications or /sessions attach <n> for background Claude sessions"))
-	return strings.TrimRight(sb.String(), "\n")
+	if len(attachTargets) > 0 {
+		sb.WriteString(r.SlashOutput("  use /inbox <n> for notifications or /sessions attach <n> for chat rows"))
+	} else {
+		sb.WriteString(r.SlashOutput("  use /inbox <n> for notifications; run /sessions list to attach other Claude sessions"))
+	}
+	return m, strings.TrimRight(sb.String(), "\n")
 }
 
 type workRow struct {
@@ -166,8 +174,9 @@ func workRowsForDrives(drives []chats.Drive) []workRow {
 	return out
 }
 
-func workRowsForPTYs(ctx context.Context, cs *chats.Store, sid string, ptys []chats.PtySession) []workRow {
+func workRowsForPTYs(ctx context.Context, cs *chats.Store, sid string, ptys []chats.PtySession) ([]workRow, []chats.PtySession) {
 	out := make([]workRow, 0, len(ptys))
+	attachTargets := make([]chats.PtySession, 0, len(ptys))
 	for _, p := range ptys {
 		if p.Mode != chats.PtyModeBackground {
 			continue
@@ -184,6 +193,12 @@ func workRowsForPTYs(ctx context.Context, cs *chats.Store, sid string, ptys []ch
 		if p.LastIdleAt != nil {
 			hint += ", idle " + humanAge(time.Since(*p.LastIdleAt))
 		}
+		attachTargets = append(attachTargets, p)
+		attachIndex := len(attachTargets)
+		if hint != "" {
+			hint += "; "
+		}
+		hint += fmt.Sprintf("/sessions attach %d", attachIndex)
 		out = append(out, workRow{
 			Kind:   "chat",
 			Status: string(p.Mode),
@@ -192,5 +207,5 @@ func workRowsForPTYs(ctx context.Context, cs *chats.Store, sid string, ptys []ch
 			Age:    humanAge(time.Since(p.UpdatedAt)),
 		})
 	}
-	return out
+	return out, attachTargets
 }

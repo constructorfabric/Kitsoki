@@ -2061,7 +2061,9 @@ func (m RootModel) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "/work":
-		m.transcript.AppendBlock(renderWorkBlock(m, parts[1:]))
+		var block string
+		m, block = renderWorkBlock(m, parts[1:])
+		m.transcript.AppendBlock(block)
 		return m, nil
 
 	case "/meta":

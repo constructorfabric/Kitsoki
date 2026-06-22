@@ -98,7 +98,13 @@ func TestWorkSlashListsActiveAsyncWork(t *testing.T) {
 	require.Contains(t, tx, "continue queued review")
 	require.Contains(t, tx, "chat")
 	require.Contains(t, tx, "Background Claude")
-	require.Contains(t, tx, "/sessions attach")
+	require.Contains(t, tx, "/sessions attach 1")
+
+	rm, ok := tuipkg.ExtractRootModel(m)
+	require.True(t, ok)
+	cached := tuipkg.CachedSessionListForTest(rm)
+	require.Len(t, cached, 1)
+	require.Equal(t, bg.ID, cached[0].ChatID)
 }
 
 func TestWorkSlashNoStores(t *testing.T) {

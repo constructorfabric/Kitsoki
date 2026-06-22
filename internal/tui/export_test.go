@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"kitsoki/internal/app"
+	"kitsoki/internal/chats"
 	"kitsoki/internal/clock"
 	"kitsoki/internal/expr"
 	"kitsoki/internal/intent"
@@ -215,6 +216,13 @@ func SessionsPanelActive(m RootModel) bool { return m.sessionsPanel.IsActive() }
 
 // SessionsPanelView returns the rendered overlay (empty when inactive).
 func SessionsPanelView(m RootModel) string { return m.sessionsPanel.View() }
+
+// CachedSessionListForTest returns the current /sessions attach cache.
+func CachedSessionListForTest(m RootModel) []chats.PtySession {
+	out := make([]chats.PtySession, len(m.sessionList))
+	copy(out, m.sessionList)
+	return out
+}
 
 // MetaSessionChatID returns the chat ID of the currently-active meta
 // session, or "" when no /meta overlay is open. Used by the
