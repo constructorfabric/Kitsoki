@@ -130,11 +130,18 @@ func workRowsForNotifications(notifs []jobs.Notification) []workRow {
 		if title == "" {
 			title = n.ID
 		}
+		hint := n.OriginRef
+		if n.OriginURL != "" {
+			if hint != "" {
+				hint += " "
+			}
+			hint += n.OriginURL
+		}
 		out = append(out, workRow{
 			Kind:   "notification",
 			Status: string(n.Severity),
 			Title:  title,
-			Hint:   n.OriginRef,
+			Hint:   hint,
 			Age:    humanAge(time.Since(n.CreatedAt)),
 		})
 	}

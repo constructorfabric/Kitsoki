@@ -43,6 +43,8 @@
               <span class="work-item__kind">{{ workKind(item) }}</span>
               <span class="work-item__main">
                 <span class="work-item__title">{{ item.title || "(untitled)" }}</span>
+                <span v-if="item.body" class="work-item__body">{{ item.body }}</span>
+                <span v-if="item.origin_url" class="work-item__origin">{{ item.origin_url }}</span>
                 <span class="work-item__meta">
                   <span>{{ item.status || item.kind }}</span>
                   <span v-if="item.updated_at">{{ relativeTime(item.updated_at) }}</span>
@@ -285,6 +287,21 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
   font-size: 0.78rem;
   font-weight: 650;
   overflow-wrap: anywhere;
+}
+.work-item__body,
+.work-item__origin {
+  font-size: 0.7rem;
+  color: var(--k-fg-muted, #94a3b8);
+  overflow-wrap: anywhere;
+}
+.work-item__body {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.work-item__origin {
+  color: var(--k-fg-accent, #60a5fa);
 }
 .work-item__meta {
   display: inline-flex;

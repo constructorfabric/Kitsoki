@@ -60,7 +60,8 @@ func TestWorkSlashListsActiveAsyncWork(t *testing.T) {
 		Title:         "Review PR #42",
 		TeleportState: "foyer",
 		OriginKind:    "external",
-		OriginRef:     "github:pr/42",
+		OriginRef:     "github:acme/repo/pr/42",
+		OriginURL:     "https://github.com/acme/repo/pull/42",
 	}))
 
 	chat, err := cs.Create(ctx, "cloak", "agent", "scope", "Review proposal")
@@ -89,6 +90,8 @@ func TestWorkSlashListsActiveAsyncWork(t *testing.T) {
 	require.Contains(t, tx, "active work: 4 item(s)")
 	require.Contains(t, tx, "notification")
 	require.Contains(t, tx, "Review PR #42")
+	require.Contains(t, tx, "github:acme/repo/pr/42")
+	require.Contains(t, tx, "https://github.com/acme/repo/pull/42")
 	require.Contains(t, tx, "job")
 	require.Contains(t, tx, "host.agent.task")
 	require.Contains(t, tx, "queued")

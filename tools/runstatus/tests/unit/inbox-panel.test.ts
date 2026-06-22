@@ -79,4 +79,51 @@ describe("InboxPanel", () => {
     expect(push).toHaveBeenCalledWith("/s/web-session-1/chat");
     wrapper.unmount();
   });
+
+  it("renders focused context for active GitHub notification work", async () => {
+    const inbox = useInboxStore();
+    inbox.open = true;
+    inbox.workSummary = {
+      items: 1,
+      needs_attention: 1,
+      jobs_running: 0,
+      jobs_awaiting_input: 0,
+      jobs_terminal: 0,
+      notifications_unread: 1,
+      notifications_action_required: 1,
+      pending_drives: 0,
+      backgrounded_chats: 0,
+    };
+    inbox.workItems = [
+      {
+        kind: "notification",
+        priority: 100,
+        session_id: "web-session-1",
+        title: "PR #42 needs review: Review this",
+        body: "Review this\n\nhttps://github.com/acme/repo/pull/42",
+        status: "unread",
+        notification_id: "notif-pr-42",
+        severity: "action_required",
+        teleport_state: "foyer",
+        teleport_slots: { pr_id: "42", pr_title: "Review this", pr_author: "alice" },
+        origin_kind: "external",
+        origin_ref: "github:acme/repo/pr/42",
+        origin_url: "https://github.com/acme/repo/pull/42",
+        reacquire_tool: "notification",
+        reacquire_session_id: "web-session-1",
+      },
+    ];
+
+    const wrapper = mount(InboxPanel, { attachTo: document.body });
+    await flushPromises();
+
+    const rows = document.body.querySelectorAll('[data-testid="work-item"]');
+    expect(rows).toHaveLength(1);
+    expect(document.body.textContent).toContain("PR #42 needs review: Review this");
+    expect(document.body.textContent).toContain("Review this");
+    expect(document.body.textContent).toContain("https://github.com/acme/repo/pull/42");
+    expect(document.body.textContent).toContain("action_required");
+
+    wrapper.unmount();
+  });
 });
