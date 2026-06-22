@@ -110,12 +110,20 @@ deterministic direct path or a read.
 | `session.submit` | `{handle, intent, slots?} → {outcome, frame}` | `SubmitDirect` — pick a menu intent |
 | `session.continue` | `{handle, slots} → {outcome, frame}` | `ContinueTurn` — supply missing slots |
 | `session.answer` | `{handle, question_id, answers} → {outcome, frame} \| {awaiting_operator}` | resume a parked operator-ask (see below) |
-| `session.inspect` | `{handle} → {state, world, allowed_intents, last_view, last_turns[]}` | `buildInspectOutput` (read-only) |
+| `session.inspect` | `{handle} → {state, world, allowed_intents, last_view, jobs[], notifications[], last_turns[]}` | `buildInspectOutput` + session JobStore (read-only) |
 | `session.trace` | `{handle, since?, until?, limit?} → {events[], last_turn}` | the session's JSONL trace (read-only) |
 
 Every drive/submit/continue returns **both** the structured `TurnOutcome` (mode,
 new state, allowed intents, slots needed) **and** the rendered `Frame` — so the
 agent reasons on metadata and *sees* the screen in one call.
+
+`session.inspect` also carries compact background-job and inbox projections.
+`jobs[]` shows the session's job IDs, kinds, statuses, origin states, errors,
+and timestamps; `notifications[]` shows active inbox rows, including
+`action_required` items and teleport job/state fields. This is the structured
+MCP surface for an external agent to rank async work, notice required operator
+input, and reacquire the task without scraping the TUI frame or decoding trace
+events.
 
 ### `render.*` — see (read-only)
 

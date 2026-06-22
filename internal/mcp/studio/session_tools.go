@@ -9,7 +9,7 @@ package studio
 //   - session.drive   — free text → orch.Turn (the ONE interpretive seam).
 //   - session.submit  — a chosen intent + slots → orch.SubmitDirect.
 //   - session.continue— missing slots for a pending clarify → orch.ContinueTurn.
-//   - session.inspect — state / world / allowed_intents / last_view / last_turns.
+//   - session.inspect — state / world / allowed_intents / last_view / jobs / inbox / last_turns.
 //   - session.trace   — the session's JSONL trace events.
 //   - render.tui      — the slice-1 Frame {text, ansi, metadata} at any width.
 //   - render.tui_png  — the slice-3 ANSI→PNG rasteriser, as an MCP image block.
@@ -33,6 +33,7 @@ import (
 
 	"kitsoki/internal/app"
 	"kitsoki/internal/inbox"
+	"kitsoki/internal/jobs"
 	kitsokimcp "kitsoki/internal/mcp"
 	"kitsoki/internal/orchestrator"
 	"kitsoki/internal/store"
@@ -464,12 +465,47 @@ type SessionInspectArgs struct {
 // come from the same orchestrator reads buildInspectOutput uses (LoadJourney +
 // AllowedIntents), so it matches the CLI inspect for that state.
 type InspectResult struct {
-	OK             bool              `json:"ok"`
-	State          string            `json:"state"`
-	World          map[string]any    `json:"world"`
-	AllowedIntents []string          `json:"allowed_intents"`
-	LastView       string            `json:"last_view"`
-	LastTurns      []TurnSummaryItem `json:"last_turns"`
+	OK             bool               `json:"ok"`
+	State          string             `json:"state"`
+	World          map[string]any     `json:"world"`
+	AllowedIntents []string           `json:"allowed_intents"`
+	LastView       string             `json:"last_view"`
+	Jobs           []JobInspectItem   `json:"jobs,omitempty"`
+	Notifications  []InboxInspectItem `json:"notifications,omitempty"`
+	LastTurns      []TurnSummaryItem  `json:"last_turns"`
+}
+
+// JobInspectItem is a compact, structured projection of one background job.
+// It lets MCP clients see running, awaiting-input, and terminal work without
+// scraping the TUI frame or decoding trace internals.
+type JobInspectItem struct {
+	ID                  string         `json:"id"`
+	Kind                string         `json:"kind"`
+	Status              jobs.JobStatus `json:"status"`
+	OriginState         string         `json:"origin_state"`
+	OriginProposalID    string         `json:"origin_proposal_id,omitempty"`
+	Error               string         `json:"error,omitempty"`
+	RetryCount          int            `json:"retry_count,omitempty"`
+	CreatedAtUnixMilli  int64          `json:"created_at_unix_milli"`
+	UpdatedAtUnixMilli  int64          `json:"updated_at_unix_milli"`
+	StartedAtUnixMilli  int64          `json:"started_at_unix_milli,omitempty"`
+	FinishedAtUnixMilli int64          `json:"finished_at_unix_milli,omitempty"`
+}
+
+// InboxInspectItem is a compact projection of one non-dismissed inbox
+// notification for the session, newest first.
+type InboxInspectItem struct {
+	ID                 string                    `json:"id"`
+	Severity           jobs.NotificationSeverity `json:"severity"`
+	Title              string                    `json:"title"`
+	Body               string                    `json:"body,omitempty"`
+	CreatedAtUnixMilli int64                     `json:"created_at_unix_milli"`
+	TeleportState      string                    `json:"teleport_state,omitempty"`
+	TeleportSlots      map[string]any            `json:"teleport_slots,omitempty"`
+	TeleportProposalID string                    `json:"teleport_proposal_id,omitempty"`
+	TeleportJobID      string                    `json:"teleport_job_id,omitempty"`
+	OriginKind         string                    `json:"origin_kind"`
+	OriginRef          string                    `json:"origin_ref"`
 }
 
 // TurnSummaryItem collapses one turn's events into a one-line record (the same
@@ -816,9 +852,8 @@ func resolveTracePath(override string) (string, error) {
 
 // inspect builds the session.inspect snapshot from the live orchestrator —
 // state/world from the journey, the allowed-intent menu from the machine, the
-// current rendered view, and a tail of turn summaries from the trace. It reads
-// the same sources buildInspectOutput (cmd/kitsoki/inspect.go) reads, so the
-// snapshot matches the CLI inspect for that state. Read-only.
+// current rendered view, background jobs, inbox notifications, and a tail of
+// turn summaries from the trace. Read-only.
 func (rt *sessionRuntime) inspect(ctx context.Context, lastTurns int) (InspectResult, error) {
 	j, err := rt.orch.LoadJourney(rt.sid)
 	if err != nil {
@@ -833,14 +868,86 @@ func (rt *sessionRuntime) inspect(ctx context.Context, lastTurns int) (InspectRe
 	if verr != nil {
 		view = fmt.Sprintf("<render error: %v>", verr)
 	}
+	jobs, notifications, asyncErr := rt.inspectAsync(ctx)
+	if asyncErr != nil {
+		return InspectResult{}, asyncErr
+	}
 	return InspectResult{
 		OK:             true,
 		State:          string(j.State),
 		World:          j.World.Vars,
 		AllowedIntents: allowedNames,
 		LastView:       view,
+		Jobs:           jobs,
+		Notifications:  notifications,
 		LastTurns:      summariseTrace(rt.history(), lastTurns),
 	}, nil
+}
+
+func (rt *sessionRuntime) inspectAsync(ctx context.Context) ([]JobInspectItem, []InboxInspectItem, error) {
+	if rt.jobStore == nil {
+		return nil, nil, nil
+	}
+	jobRows, err := rt.jobStore.ListBySession(ctx, rt.sid)
+	if err != nil {
+		return nil, nil, fmt.Errorf("session.inspect: list jobs: %w", err)
+	}
+	notifRows, err := rt.jobStore.ListNotifications(ctx, rt.sid, 0)
+	if err != nil {
+		return nil, nil, fmt.Errorf("session.inspect: list notifications: %w", err)
+	}
+	return inspectJobs(jobRows), inspectNotifications(notifRows), nil
+}
+
+func inspectJobs(in []jobs.Job) []JobInspectItem {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]JobInspectItem, 0, len(in))
+	for _, j := range in {
+		item := JobInspectItem{
+			ID:                 j.ID,
+			Kind:               j.Kind,
+			Status:             j.Status,
+			OriginState:        string(j.OriginState),
+			OriginProposalID:   j.OriginProposalID,
+			Error:              j.Error,
+			RetryCount:         j.RetryCount,
+			CreatedAtUnixMilli: j.CreatedAt.UnixMilli(),
+			UpdatedAtUnixMilli: j.UpdatedAt.UnixMilli(),
+		}
+		if j.StartedAt != nil {
+			item.StartedAtUnixMilli = j.StartedAt.UnixMilli()
+		}
+		if j.FinishedAt != nil {
+			item.FinishedAtUnixMilli = j.FinishedAt.UnixMilli()
+		}
+		out = append(out, item)
+	}
+	return out
+}
+
+func inspectNotifications(in []jobs.Notification) []InboxInspectItem {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]InboxInspectItem, 0, len(in))
+	for _, n := range in {
+		out = append(out, InboxInspectItem{
+			ID:                 n.ID,
+			Severity:           n.Severity,
+			Title:              n.Title,
+			Body:               n.Body,
+			CreatedAtUnixMilli: n.CreatedAt.UnixMilli(),
+			TeleportState:      n.TeleportState,
+			TeleportSlots:      n.TeleportSlots,
+			TeleportProposalID: n.TeleportProposalID,
+			TeleportJobID:      n.TeleportJobID,
+			OriginKind:         n.OriginKind,
+			OriginRef:          n.OriginRef,
+		})
+	}
+	return out
 }
 
 // summariseTrace folds a JSONL history into one summary per turn, returning the

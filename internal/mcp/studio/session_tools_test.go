@@ -30,6 +30,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"kitsoki/internal/harness"
+	"kitsoki/internal/jobs"
 	studio "kitsoki/internal/mcp/studio"
 )
 
@@ -250,17 +251,46 @@ func TestSessionSubmit_BackgroundJobCompletesOverMCP(t *testing.T) {
 	require.Equal(t, "running", submitted.Frame.Metadata.State)
 	require.NotContains(t, submitted.Frame.Text, "mcp-bg-done")
 
+	var inspected studio.InspectResult
 	require.Eventually(t, func() bool {
 		res, err := callTool(ctx, cs, "session.inspect", map[string]any{"handle": ok.Handle})
 		if err != nil || res.IsError {
 			return false
 		}
-		var got studio.InspectResult
-		if err := json.Unmarshal([]byte(contentText(res)), &got); err != nil {
+		if err := json.Unmarshal([]byte(contentText(res)), &inspected); err != nil {
 			return false
 		}
-		return got.World["result"] == "mcp-bg-done"
+		if inspected.World["result"] != "mcp-bg-done" {
+			return false
+		}
+		if len(inspected.Jobs) != 1 || inspected.Jobs[0].Status != jobs.JobDone {
+			return false
+		}
+		severities := map[jobs.NotificationSeverity]bool{}
+		for _, n := range inspected.Notifications {
+			severities[n.Severity] = true
+		}
+		return severities[jobs.SeverityInfo] && severities[jobs.SeveritySuccess]
 	}, 3*time.Second, 25*time.Millisecond)
+	require.Len(t, inspected.Jobs, 1)
+	assert.Equal(t, "host.run", inspected.Jobs[0].Kind)
+	assert.Equal(t, "running", inspected.Jobs[0].OriginState)
+	assert.Equal(t, inspected.Jobs[0].ID, inspected.World["last_job_id"])
+	assert.NotZero(t, inspected.Jobs[0].CreatedAtUnixMilli)
+	assert.NotZero(t, inspected.Jobs[0].FinishedAtUnixMilli)
+
+	require.GreaterOrEqual(t, len(inspected.Notifications), 2)
+	var completion studio.InboxInspectItem
+	for _, n := range inspected.Notifications {
+		if n.Severity == jobs.SeveritySuccess {
+			completion = n
+			break
+		}
+	}
+	require.NotEmpty(t, completion.ID)
+	assert.Equal(t, inspected.Jobs[0].ID, completion.TeleportJobID)
+	assert.Equal(t, "job", completion.OriginKind)
+	assert.NotZero(t, completion.CreatedAtUnixMilli)
 
 	res, err = callTool(ctx, cs, "render.tui", map[string]any{
 		"handle": ok.Handle,
