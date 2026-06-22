@@ -17,14 +17,16 @@ import (
 func (srv *Server) registerChatTools() {
 	mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
 		Name:        "chat.show",
-		Description: "Show a chat's focused context for async reacquisition. {chat_id, since_seq?} -> {chat, pty?, messages[]}. Read-only; requires kitsoki mcp --db.",
+		Description: "Show a chat's focused context for async reacquisition. {chat_id, handle?, session_id?, since_seq?} -> {chat, pty?, messages[]}. Read-only; requires kitsoki mcp --db.",
 	}, srv.handleChatShow)
 }
 
 // ChatShowArgs is the input to chat.show.
 type ChatShowArgs struct {
-	ChatID   string `json:"chat_id"`
-	SinceSeq int    `json:"since_seq,omitempty"`
+	ChatID    string `json:"chat_id"`
+	Handle    string `json:"handle,omitempty"`
+	SessionID string `json:"session_id,omitempty"`
+	SinceSeq  int    `json:"since_seq,omitempty"`
 }
 
 // ChatShowResult is the read-only focused context for one chat thread.

@@ -309,7 +309,11 @@ func workItemsForPendingDrives(sh *SessionHandle, state string, drives []Pending
 			ReceivedAtUnixMicro: d.ReceivedAtUnixMicro,
 			Reacquire: WorkReacquire{
 				Tool: "chat.show",
-				Args: map[string]any{"chat_id": d.ChatID},
+				Args: map[string]any{
+					"chat_id":    d.ChatID,
+					"handle":     sh.Key,
+					"session_id": string(sh.SID),
+				},
 			},
 		})
 	}
@@ -335,7 +339,11 @@ func workItemsForBackgroundedChats(sh *SessionHandle, state string, chats []Back
 			UpdatedAtUnixMicro: ch.UpdatedAtUnixMicro,
 			Reacquire: WorkReacquire{
 				Tool: "chat.show",
-				Args: map[string]any{"chat_id": ch.ChatID},
+				Args: map[string]any{
+					"chat_id":    ch.ChatID,
+					"handle":     sh.Key,
+					"session_id": string(sh.SID),
+				},
 			},
 		})
 	}

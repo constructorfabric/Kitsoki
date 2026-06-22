@@ -10,9 +10,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"kitsoki/internal/chats"
 	"kitsoki/internal/host"
 	"kitsoki/internal/jobs"
 	studio "kitsoki/internal/mcp/studio"
+	"kitsoki/internal/store"
 )
 
 type studioFakeRunner struct {
@@ -244,4 +246,81 @@ func TestStudioWorkShowsRunningJobs(t *testing.T) {
 	assert.Equal(t, "slow-work", runningJob.Handle)
 	assert.Equal(t, "session.inspect", runningJob.Reacquire.Tool)
 	assert.Equal(t, "slow-work", runningJob.Reacquire.Args["handle"])
+}
+
+func TestStudioWorkChatReacquireCarriesSessionContext(t *testing.T) {
+	ctx := context.Background()
+	backing, err := store.OpenMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = backing.Close() })
+	chatStore, err := chats.NewStore(backing.DB())
+	require.NoError(t, err)
+	srv, sess := newReplayServerWithChatStore(t, chatStore)
+	cs := connectInProcess(ctx, t, srv)
+
+	res, err := callTool(ctx, cs, "session.new", map[string]any{
+		"story_path": cloakApp,
+		"harness":    "replay",
+		"cassette":   cloakCassette,
+		"key":        "chat-work",
+		"trace":      t.TempDir() + "/chat-work.jsonl",
+	})
+	require.NoError(t, err)
+	require.False(t, res.IsError, "session.new: %s", contentText(res))
+	sh, err := sess.ResolveSession("chat-work")
+	require.NoError(t, err)
+
+	queuedChat, err := chatStore.Create(ctx, "cloak", "agent-room", "scope-queued", "queued review")
+	require.NoError(t, err)
+	queuedDrive, err := chatStore.Enqueue(ctx, chats.EnqueueOptions{
+		ChatID:          queuedChat.ID,
+		Transport:       chats.DriveTransportStateMachine,
+		Actor:           "story",
+		Payload:         "review queued async work",
+		OriginSessionID: string(sh.SID),
+		OriginState:     "foyer",
+	})
+	require.NoError(t, err)
+
+	backgroundChat, err := chatStore.Create(ctx, "cloak", "agent-room", "scope-bg", "backgrounded review")
+	require.NoError(t, err)
+	_, err = backing.DB().ExecContext(ctx,
+		`UPDATE chats SET session_id = ? WHERE id = ?`,
+		string(sh.SID), backgroundChat.ID)
+	require.NoError(t, err)
+	_, err = chatStore.AttachPTY(ctx, chats.AttachPTYOptions{
+		ChatID:      backgroundChat.ID,
+		TmuxSession: "kitsoki-chat-work",
+	})
+	require.NoError(t, err)
+	_, err = chatStore.DetachPTY(ctx, backgroundChat.ID)
+	require.NoError(t, err)
+
+	res, err = callTool(ctx, cs, "studio.work", nil)
+	require.NoError(t, err)
+	require.False(t, res.IsError, "studio.work: %s", contentText(res))
+	var work studio.WorkResult
+	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &work))
+	assert.Equal(t, 1, work.Summary.PendingDrives)
+	assert.Equal(t, 1, work.Summary.BackgroundedChats)
+
+	byKind := map[string]studio.WorkItem{}
+	for _, item := range work.Items {
+		byKind[item.Kind] = item
+	}
+	pending := byKind["pending_drive"]
+	require.NotEmpty(t, pending.ChatID)
+	assert.Equal(t, queuedDrive.DriveID, pending.DriveID)
+	assert.Equal(t, "chat.show", pending.Reacquire.Tool)
+	assert.Equal(t, queuedChat.ID, pending.Reacquire.Args["chat_id"])
+	assert.Equal(t, "chat-work", pending.Reacquire.Args["handle"])
+	assert.Equal(t, string(sh.SID), pending.Reacquire.Args["session_id"])
+
+	bg := byKind["backgrounded_chat"]
+	require.NotEmpty(t, bg.ChatID)
+	assert.Equal(t, backgroundChat.ID, bg.ChatID)
+	assert.Equal(t, "chat.show", bg.Reacquire.Tool)
+	assert.Equal(t, backgroundChat.ID, bg.Reacquire.Args["chat_id"])
+	assert.Equal(t, "chat-work", bg.Reacquire.Args["handle"])
+	assert.Equal(t, string(sh.SID), bg.Reacquire.Args["session_id"])
 }

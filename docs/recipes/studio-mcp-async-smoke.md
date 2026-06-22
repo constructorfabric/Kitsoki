@@ -156,7 +156,8 @@ go run ./cmd/kitsoki mcp-test \
       "expect": {
         "structuredContent.summary.pending_drives": 1,
         "structuredContent.items.0.kind": "pending_drive",
-        "structuredContent.items.0.reacquire.tool": "chat.show"
+        "structuredContent.items.0.reacquire.tool": "chat.show",
+        "structuredContent.items.0.reacquire.args.handle": "chat-drive-smoke"
       },
       "save": {
         "chat_id": "structuredContent.items.0.chat_id"
@@ -226,7 +227,8 @@ go run ./cmd/kitsoki mcp-test \
     {
       "tool": "studio.work",
       "expect": {
-        "structuredContent.items.0.reacquire.tool": "chat.show"
+        "structuredContent.items.0.reacquire.tool": "chat.show",
+        "structuredContent.items.0.reacquire.args.handle": "web-chat-smoke"
       },
       "save": {
         "chat_id": "structuredContent.items.0.chat_id"
