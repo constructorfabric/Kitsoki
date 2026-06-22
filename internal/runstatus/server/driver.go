@@ -167,7 +167,8 @@ type WorkSummary struct {
 }
 
 // WorkItem is one active row in the operator's work queue. Notification rows
-// can teleport, job rows reacquire the owning session, and chat-backed rows
+// can teleport, job rows jump through their matching notification when one is
+// available or reacquire the owning session otherwise, and chat-backed rows
 // reacquire focused context through runstatus.chat.show.
 type WorkItem struct {
 	Kind               string                    `json:"kind"`

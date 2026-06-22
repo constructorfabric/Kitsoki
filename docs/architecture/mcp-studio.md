@@ -100,6 +100,11 @@ priority: passive `success` / `info` notifications stay visible and
 reacquirable, but rank below active jobs/chats and do not increase
 `summary.needs_attention`.
 
+When a job row has a matching unread job-origin notification, `studio.work`
+returns `reacquire.tool: "session.teleport"` with that notification id so the
+client can jump directly to the saved origin context. Job rows without a
+matching unread notification keep the broader `session.inspect` fallback.
+
 ### `story.*` — author (deterministic, LLM-free)
 
 The agent is the author; these are its compiler, linter, and test runner. Each

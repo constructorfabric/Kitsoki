@@ -84,7 +84,7 @@ export const WEB_INBOX_TOUR_STEPS: readonly TourStep[] = [
     route: "interactive",
     target: "inbox-item",
     title: "The inbox panel",
-    body: "Opening the badge reveals the full inbox panel: prioritized active work first, then notification history. In this run the unread completion notification offers jump and dismiss controls, backed by the same teleport target as the toast.",
+    body: "Opening the badge reveals the full inbox panel: prioritized active work first, then notification history. Notification-backed work, including matching job rows, offers a jump action backed by the same teleport target as the toast.",
     placement: "left",
     kind: "explain",
     advance: "next",
