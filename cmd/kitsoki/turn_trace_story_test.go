@@ -58,7 +58,7 @@ func TestTraceTurn_ReconstructsStoryFromTrace(t *testing.T) {
 	tracePath := filepath.Join(t.TempDir(), "trace.jsonl")
 
 	// Turn 1, WITH --app: records the base story snapshot + the turn.
-	require.NoError(t, runTraceTurn(newTraceTurnCmd(), appPath, tracePath, "go", []string{"direction=west"}))
+	require.NoError(t, runTraceTurn(newTraceTurnCmd(), appPath, tracePath, "go", []string{"direction=west"}, ""))
 
 	// The story files are gone — only the trace remains.
 	require.NoError(t, os.RemoveAll(storyDir))
@@ -66,7 +66,7 @@ func TestTraceTurn_ReconstructsStoryFromTrace(t *testing.T) {
 	// Turn 2, WITHOUT --app: the story is reconstructed from the trace alone.
 	// hang_cloak is valid in cloakroom and transitions (self), so the turn is
 	// accepted and runTraceTurn returns nil.
-	err := runTraceTurn(newTraceTurnCmd(), "", tracePath, "hang_cloak", nil)
+	err := runTraceTurn(newTraceTurnCmd(), "", tracePath, "hang_cloak", nil, "")
 	require.NoError(t, err, "continued turn must reconstruct the story from the trace with no --app and no story files on disk")
 }
 
@@ -78,7 +78,7 @@ func TestTraceTurn_NoAppNoSnapshotIsClearError(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, sink.Close()) // release the flock so runTraceTurn can reopen
 
-	err = runTraceTurn(newTraceTurnCmd(), "", tracePath, "go", []string{"direction=west"})
+	err = runTraceTurn(newTraceTurnCmd(), "", tracePath, "go", []string{"direction=west"}, "")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "reconstruct story from trace")
 }

@@ -121,9 +121,10 @@ func turnCmd() *cobra.Command {
 		intentName string
 
 		// Trace-backed persistent turn flags (new path: --app + --trace)
-		appFlag   string
-		traceFlag string
-		slotPairs []string // --slot k=v, repeatable
+		appFlag     string
+		traceFlag   string
+		slotPairs   []string // --slot k=v, repeatable
+		profileFlag string   // harness profile to activate (overrides default_profile)
 	)
 
 	cmd := &cobra.Command{
@@ -160,7 +161,7 @@ Examples:
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Route to the appropriate mode.
 			if traceFlag != "" || appFlag != "" {
-				return runTraceTurn(cmd, appFlag, traceFlag, intentName, slotPairs)
+				return runTraceTurn(cmd, appFlag, traceFlag, intentName, slotPairs, profileFlag)
 			}
 
 			// Stateless probe: positional app.yaml + --state required.
@@ -283,6 +284,7 @@ Examples:
 	cmd.Flags().StringVar(&appFlag, "app", "", "path to app.yaml (trace-backed turn; omit with --trace to reconstruct the story from the trace itself; use positional arg for stateless probe)")
 	cmd.Flags().StringVar(&traceFlag, "trace", "", "JSONL trace file (trace-backed turn; required with --app)")
 	cmd.Flags().StringArrayVar(&slotPairs, "slot", nil, "slot key=value (repeatable; trace-backed turn)")
+	cmd.Flags().StringVar(&profileFlag, "profile", "", "harness profile to activate for this turn (e.g. codex-native, synthetic-claude; overrides config default_profile)")
 
 	return cmd
 }
@@ -299,7 +301,7 @@ Examples:
 //	1 — intent rejected (machine-semantic: wrong state, guard failed, etc.)
 //	2 — terminal state reached
 //	3 — infrastructure error (missing app file, malformed slot, open failure, …)
-func runTraceTurn(cmd *cobra.Command, appPath, tracePath, intentName string, slotPairs []string) error {
+func runTraceTurn(cmd *cobra.Command, appPath, tracePath, intentName string, slotPairs []string, profileName string) error {
 	if tracePath == "" {
 		return infraError("--trace is required (use --app with --trace)")
 	}
@@ -325,7 +327,7 @@ func runTraceTurn(cmd *cobra.Command, appPath, tracePath, intentName string, slo
 	// Shared trace+story+session bootstrap (also used by `kitsoki drive`).
 	// The direct-intent path never routes free text, so a noRunHarness is
 	// wired in: any harness invocation is a bug and errors loudly.
-	ts, err := setupTraceSession(ctx, appPath, tracePath, &noRunHarness{})
+	ts, err := setupTraceSession(ctx, appPath, tracePath, &noRunHarness{}, WithTraceProfile(profileName))
 	if err != nil {
 		return err
 	}

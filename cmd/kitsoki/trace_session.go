@@ -22,6 +22,7 @@ import (
 	"kitsoki/internal/machine"
 	"kitsoki/internal/orchestrator"
 	"kitsoki/internal/store"
+	"kitsoki/internal/webconfig"
 )
 
 // traceSession bundles the wired orchestrator, its JSONL trace sink, and the
@@ -57,9 +58,32 @@ func (ts *traceSession) Close() {
 //
 // Errors are wrapped with infraError so a driver sees exit code 3 for any
 // setup failure (distinct from a semantic turn rejection).
-func setupTraceSession(ctx context.Context, appPath, tracePath string, h harness.Harness) (*traceSession, error) {
+// traceSessionOpts carries optional configuration for setupTraceSession.
+type traceSessionOpts struct {
+	// profileName, when non-empty, selects a harness profile by name (overriding
+	// the config's default_profile). Empty ⇒ the config's default_profile.
+	profileName string
+}
+
+// TraceSessionOption configures a setupTraceSession call.
+type TraceSessionOption func(*traceSessionOpts)
+
+// WithTraceProfile selects the harness profile the trace session activates. This
+// is how a headless `kitsoki turn` (and the maker loop it drives) picks a
+// backend other than the default — e.g. codex-native or synthetic-claude — so
+// multi-backend dogfooding works without the web header / TUI /provider picker.
+func WithTraceProfile(name string) TraceSessionOption {
+	return func(o *traceSessionOpts) { o.profileName = name }
+}
+
+func setupTraceSession(ctx context.Context, appPath, tracePath string, h harness.Harness, opts ...TraceSessionOption) (*traceSession, error) {
 	if tracePath == "" {
 		return nil, infraError("--trace is required")
+	}
+
+	var tsOpts traceSessionOpts
+	for _, f := range opts {
+		f(&tsOpts)
 	}
 
 	ts := &traceSession{}
@@ -153,12 +177,30 @@ func setupTraceSession(ctx context.Context, appPath, tracePath string, h harness
 	}
 	ts.closers = append(ts.closers, func() { _ = agentReg.Close() })
 
-	orch := orchestrator.New(def, m, s, h,
+	runOpts := []orchestrator.Option{
 		orchestrator.WithHostRegistry(hostReg),
 		orchestrator.WithEventSink(sink),
 		orchestrator.WithEventSinkAuthority(true),
 		orchestrator.WithAgentRegistry(agentReg),
-	)
+	}
+
+	// Wire operator-declared harness profiles (.kitsoki.yaml + .local) so a
+	// headless turn — and the maker loop it drives — can run on a selected
+	// backend (codex-native, synthetic-claude, …) instead of the agent's
+	// hardcoded model. The web path does this at startup (runtime.go); without
+	// it, `kitsoki turn` silently ignored default_profile and pinned the maker to
+	// claude. Best-effort: a missing/invalid config just leaves the static path.
+	if cfg, cfgErr := webconfig.Load(webconfig.DefaultConfigFile); cfgErr == nil {
+		if profiles, defProfile := harnessProfilesFromConfig(cfg); len(profiles) > 0 {
+			selected := tsOpts.profileName
+			if selected == "" {
+				selected = defProfile
+			}
+			runOpts = append(runOpts, orchestrator.WithHarnessProfiles(profiles, selected))
+		}
+	}
+
+	orch := orchestrator.New(def, m, s, h, runOpts...)
 	ts.Orch = orch
 
 	// Create a session in the in-memory store (needed for orchestrator plumbing).
