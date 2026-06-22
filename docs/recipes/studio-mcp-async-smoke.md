@@ -101,6 +101,7 @@ Useful `mcp-test --calls` fields:
 | `args` | JSON object passed as tool arguments. |
 | `expect` | Dot-path assertions against the MCP `CallToolResult` JSON. Array indexes are supported, for example `structuredContent.notifications.0.id`. |
 | `expect_contains` | Dot-path string assertions where the actual value must contain the expected substring. Useful for rendered frames. |
+| `expect_exists` | Dot-path presence assertions. Useful for binary payloads such as MCP image `data` fields where exact bytes are intentionally not stable. |
 | `save` | Captures dot-path values into `${name}` variables for later calls. |
 | `retries` / `interval_ms` | Repeats the tool call until expectations pass, useful for async `session.inspect` polling. |
 
@@ -238,7 +239,14 @@ go run ./cmd/kitsoki mcp-test \
         "query": {
           "chat": "${chat_id}"
         }
-      }
+      },
+      "expect": {
+        "content.1.type": "image",
+        "content.1.mimeType": "image/png"
+      },
+      "expect_exists": [
+        "content.1.data"
+      ]
     }
   ]'
 ```

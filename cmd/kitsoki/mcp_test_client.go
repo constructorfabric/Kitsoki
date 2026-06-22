@@ -141,6 +141,7 @@ type studioMCPTestCall struct {
 	Args           map[string]any    `json:"args,omitempty"`
 	Expect         map[string]any    `json:"expect,omitempty"`
 	ExpectContains map[string]string `json:"expect_contains,omitempty"`
+	ExpectExists   []string          `json:"expect_exists,omitempty"`
 	Save           map[string]string `json:"save,omitempty"`
 	Retries        int               `json:"retries,omitempty"`
 	IntervalMS     int               `json:"interval_ms,omitempty"`
@@ -229,6 +230,7 @@ func runStudioMCPTestSession(ctx context.Context, cs *mcpsdk.ClientSession, opts
 		args           map[string]any
 		expect         map[string]any
 		expectContains map[string]string
+		expectExists   []string
 		save           map[string]string
 		retries        int
 		intervalMS     int
@@ -242,6 +244,7 @@ func runStudioMCPTestSession(ctx context.Context, cs *mcpsdk.ClientSession, opts
 			args           map[string]any
 			expect         map[string]any
 			expectContains map[string]string
+			expectExists   []string
 			save           map[string]string
 			retries        int
 			intervalMS     int
@@ -252,6 +255,7 @@ func runStudioMCPTestSession(ctx context.Context, cs *mcpsdk.ClientSession, opts
 			args           map[string]any
 			expect         map[string]any
 			expectContains map[string]string
+			expectExists   []string
 			save           map[string]string
 			retries        int
 			intervalMS     int
@@ -262,10 +266,11 @@ func runStudioMCPTestSession(ctx context.Context, cs *mcpsdk.ClientSession, opts
 				args           map[string]any
 				expect         map[string]any
 				expectContains map[string]string
+				expectExists   []string
 				save           map[string]string
 				retries        int
 				intervalMS     int
-			}{name: call.Name, args: call.Args, expect: call.Expect, expectContains: call.ExpectContains, save: call.Save, retries: call.Retries, intervalMS: call.IntervalMS})
+			}{name: call.Name, args: call.Args, expect: call.Expect, expectContains: call.ExpectContains, expectExists: call.ExpectExists, save: call.Save, retries: call.Retries, intervalMS: call.IntervalMS})
 		}
 	}
 	vars := map[string]string{}
@@ -282,7 +287,7 @@ func runStudioMCPTestSession(ctx context.Context, cs *mcpsdk.ClientSession, opts
 		if err != nil {
 			return report, err
 		}
-		result, isError, attempts, err := runStudioMCPTestCall(ctx, cs, call.name, asStringAnyMap(args), asStringAnyMap(expect), expectContains, call.retries, call.intervalMS)
+		result, isError, attempts, err := runStudioMCPTestCall(ctx, cs, call.name, asStringAnyMap(args), asStringAnyMap(expect), expectContains, call.expectExists, call.retries, call.intervalMS)
 		if err != nil {
 			return report, err
 		}
@@ -304,7 +309,7 @@ func runStudioMCPTestSession(ctx context.Context, cs *mcpsdk.ClientSession, opts
 	return report, nil
 }
 
-func runStudioMCPTestCall(ctx context.Context, cs *mcpsdk.ClientSession, name string, args map[string]any, expect map[string]any, expectContains map[string]string, retries, intervalMS int) (map[string]interface{}, bool, int, error) {
+func runStudioMCPTestCall(ctx context.Context, cs *mcpsdk.ClientSession, name string, args map[string]any, expect map[string]any, expectContains map[string]string, expectExists []string, retries, intervalMS int) (map[string]interface{}, bool, int, error) {
 	attempts := 0
 	maxAttempts := retries + 1
 	var lastResult map[string]interface{}
@@ -326,6 +331,9 @@ func runStudioMCPTestCall(ctx context.Context, cs *mcpsdk.ClientSession, name st
 			}
 			if lastErr == nil && len(expectContains) > 0 {
 				lastErr = assertMCPContainsExpectations(name, lastResult, expectContains)
+			}
+			if lastErr == nil && len(expectExists) > 0 {
+				lastErr = assertMCPExistsExpectations(name, lastResult, expectExists)
 			}
 			if lastErr == nil {
 				return lastResult, lastIsError, attempts, nil
@@ -387,6 +395,18 @@ func assertMCPContainsExpectations(name string, result map[string]interface{}, e
 		}
 		if !strings.Contains(gotString, want) {
 			return fmt.Errorf("mcp-test: %s contains expectation %q: got %q, want containing %q", name, path, gotString, want)
+		}
+	}
+	return nil
+}
+
+func assertMCPExistsExpectations(name string, result map[string]interface{}, paths []string) error {
+	for _, path := range paths {
+		if path == "" {
+			return fmt.Errorf("mcp-test: %s exists expectation path is empty", name)
+		}
+		if _, ok := lookupDotPath(result, path); !ok {
+			return fmt.Errorf("mcp-test: %s exists expectation %q missing", name, path)
 		}
 	}
 	return nil

@@ -333,6 +333,30 @@ func TestAssertMCPContainsExpectations(t *testing.T) {
 	assert.Contains(t, err.Error(), `session.command contains expectation "structuredContent.frame.text"`)
 }
 
+func TestAssertMCPExistsExpectations(t *testing.T) {
+	result := map[string]interface{}{
+		"content": []interface{}{
+			map[string]interface{}{"type": "text", "text": "render.web: ok"},
+			map[string]interface{}{"type": "image", "mimeType": "image/png", "data": "base64"},
+		},
+	}
+
+	err := assertMCPExistsExpectations("render.web", result, []string{
+		"content.1.data",
+	})
+	require.NoError(t, err)
+
+	err = assertMCPExistsExpectations("render.web", result, []string{
+		"content.2.data",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `render.web exists expectation "content.2.data"`)
+
+	err = assertMCPExistsExpectations("render.web", result, []string{""})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "exists expectation path is empty")
+}
+
 // cobraCommandStub is a presence marker for the registration test (the real
 // *cobra.Command is exercised directly above).
 type cobraCommandStub struct{}
