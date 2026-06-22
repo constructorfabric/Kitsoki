@@ -1472,24 +1472,40 @@ func (m *machineImpl) applyEffectsTraced(ctx context.Context, effects []app.Effe
 		}
 		switch {
 		case len(eff.Set) > 0:
-			for k, v := range eff.Set {
-				resolved, err := resolveEffectValue(v, env, newWorld)
+			// Freeze the env for the whole block so every key in one `set:`
+			// renders against the SAME pre-block world. This makes a single `set:`
+			// map atomic and order-independent (its keys are a Go map → unordered),
+			// while cross-entry order stays progressive: the next effect entry sees
+			// these writes because we commit them before moving on.
+			blockEnv := env
+			blockEnv.World = newWorld.Vars // pre-block snapshot (read-only during render)
+			keys := make([]string, 0, len(eff.Set))
+			for k := range eff.Set {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			resolvedSet := make(map[string]any, len(eff.Set))
+			for _, k := range keys {
+				resolved, err := resolveEffectValue(eff.Set[k], blockEnv, newWorld)
 				if err != nil {
 					return world.World{}, nil, saySB, nil, nil, fmt.Errorf("effect set %q: %w", k, err)
 				}
+				resolvedSet[k] = resolved
+			}
+			for _, k := range keys {
 				before := newWorld.Vars[k]
-				newWorld.Vars[k] = resolved
-				env.World = newWorld.Vars
+				newWorld.Vars[k] = resolvedSet[k]
 				m.logger.DebugContext(ctx, trace.EvMachineEffectApplied,
 					slog.String("type", "set"),
 					slog.String("key", k),
 					slog.Any("before", before),
-					slog.Any("after", resolved),
+					slog.Any("after", resolvedSet[k]),
 				)
 				effectEvents = append(effectEvents, newEvent(store.EffectApplied, map[string]any{
-					"set": map[string]any{k: resolved},
+					"set": map[string]any{k: resolvedSet[k]},
 				}))
 			}
+			env.World = newWorld.Vars // expose this block's commits to the next entry
 
 		case len(eff.Increment) > 0:
 			for k, delta := range eff.Increment {
