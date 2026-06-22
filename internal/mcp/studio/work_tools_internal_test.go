@@ -38,3 +38,27 @@ func TestWorkItemsForNotificationsPreservesExternalContext(t *testing.T) {
 	assert.Equal(t, "session.teleport", got.Reacquire.Tool)
 	assert.Equal(t, "notif-1", got.Reacquire.Args["notification_id"])
 }
+
+func TestWorkItemNeedsAttentionUsesInterventionSemantics(t *testing.T) {
+	assert.True(t, workItemNeedsAttention(WorkItem{
+		Kind:     "notification",
+		Severity: jobs.SeverityActionRequired,
+	}))
+	assert.True(t, workItemNeedsAttention(WorkItem{
+		Kind:   "job",
+		Status: string(jobs.JobAwaitingInput),
+	}))
+	assert.True(t, workItemNeedsAttention(WorkItem{
+		Kind:   "job",
+		Status: string(jobs.JobFailed),
+	}))
+
+	assert.False(t, workItemNeedsAttention(WorkItem{
+		Kind:     "notification",
+		Severity: jobs.SeveritySuccess,
+	}))
+	assert.False(t, workItemNeedsAttention(WorkItem{
+		Kind:   "job",
+		Status: string(jobs.JobRunning),
+	}))
+}

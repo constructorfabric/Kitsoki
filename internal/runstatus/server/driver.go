@@ -375,7 +375,7 @@ func (d OrchestratorDriver) ListWork(ctx context.Context) (SessionWork, error) {
 	})
 	out.Summary.Items = len(out.Items)
 	for _, item := range out.Items {
-		if item.Priority >= 80 {
+		if workItemNeedsAttention(item) {
 			out.Summary.NeedsAttention++
 		}
 	}
@@ -540,6 +540,17 @@ func workNotificationPriority(n jobs.Notification) int {
 		return 84
 	default:
 		return 80
+	}
+}
+
+func workItemNeedsAttention(item WorkItem) bool {
+	switch item.Kind {
+	case "notification":
+		return item.ReadAt == nil && item.Severity == jobs.SeverityActionRequired
+	case "job":
+		return item.Status == string(jobs.JobAwaitingInput) || item.Status == string(jobs.JobFailed)
+	default:
+		return false
 	}
 }
 

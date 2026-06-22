@@ -80,7 +80,7 @@ func (s *Server) listWork(ctx context.Context) (WorkListResult, error) {
 	out.Summary.Items = len(out.Items)
 	out.Summary.NeedsAttention = 0
 	for _, item := range out.Items {
-		if item.Priority >= 80 {
+		if workItemNeedsAttention(item) {
 			out.Summary.NeedsAttention++
 		}
 	}

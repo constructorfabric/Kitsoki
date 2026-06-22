@@ -83,7 +83,7 @@ func TestStudioWorkAggregatesAsyncReacquisitionAcrossHandles(t *testing.T) {
 	assert.Equal(t, 2, work.Summary.Sessions)
 	assert.Equal(t, 1, work.Summary.JobsTerminal)
 	assert.Equal(t, 2, work.Summary.NotificationsUnread)
-	assert.Equal(t, 2, work.Summary.NeedsAttention)
+	assert.Equal(t, 0, work.Summary.NeedsAttention)
 	require.Len(t, work.Sessions, 2)
 	sessionsByHandle := map[string]studio.WorkSessionSummary{}
 	for _, session := range work.Sessions {
@@ -165,6 +165,7 @@ func TestGitHubInboxSyncFeedsStudioWork(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &work))
 	assert.Equal(t, 2, work.Summary.NotificationsUnread)
 	assert.Equal(t, 2, work.Summary.NotificationsActionRequired)
+	assert.Equal(t, 2, work.Summary.NeedsAttention)
 	require.Len(t, work.Items, 2)
 	var prItem *studio.WorkItem
 	for i := range work.Items {

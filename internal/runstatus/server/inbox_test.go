@@ -309,6 +309,7 @@ func TestWorkList_SurfacesGlobalActiveWork(t *testing.T) {
 	assert.Equal(t, 1, work.Summary.PendingDrives)
 	assert.Equal(t, 1, work.Summary.DispatchingDrives)
 	assert.Equal(t, 1, work.Summary.BackgroundedChats)
+	assert.Equal(t, 1, work.Summary.NeedsAttention)
 	assert.Equal(t, 5, work.Summary.Items)
 	require.Len(t, work.Items, 5)
 	assert.Equal(t, "notification", work.Items[0].Kind)
@@ -339,6 +340,27 @@ func TestWorkList_SurfacesGlobalActiveWork(t *testing.T) {
 	assert.Equal(t, bg.ID, work.Items[4].ChatID)
 	assert.Equal(t, "chat.show", work.Items[4].ReacquireTool)
 	assert.Equal(t, f.publicID, work.Items[4].ReacquireSessionID)
+}
+
+func TestWorkList_DoesNotTreatPassiveNotificationsAsAttention(t *testing.T) {
+	f := buildInboxFixture(t)
+	n := &jobs.Notification{
+		SessionID:     f.sid,
+		CreatedAt:     time.Now(),
+		Severity:      jobs.SeveritySuccess,
+		Title:         "Job done",
+		TeleportState: "inbox",
+	}
+	require.NoError(t, f.js.InsertNotification(context.Background(), n))
+
+	var work server.WorkListResult
+	rpcCall(t, f.ts, "runstatus.work.list", nil, &work)
+	assert.Equal(t, 1, work.Summary.NotificationsUnread)
+	assert.Equal(t, 0, work.Summary.NotificationsActionRequired)
+	assert.Equal(t, 0, work.Summary.NeedsAttention)
+	require.Len(t, work.Items, 1)
+	assert.Equal(t, "notification", work.Items[0].Kind)
+	assert.Equal(t, jobs.SeveritySuccess, work.Items[0].Severity)
 }
 
 func TestChatShow_SurfacesFocusedAsyncChatContext(t *testing.T) {

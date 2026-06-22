@@ -162,7 +162,7 @@ func (srv *Server) work(ctx context.Context, args WorkArgs) (WorkResult, error) 
 	}
 	out.Summary.Items = len(out.Items)
 	for _, item := range out.Items {
-		if item.Priority >= 80 {
+		if workItemNeedsAttention(item) {
 			out.Summary.NeedsAttention++
 		}
 	}
@@ -234,6 +234,17 @@ func notificationPriority(n InboxInspectItem) int {
 		return 84
 	default:
 		return 80
+	}
+}
+
+func workItemNeedsAttention(item WorkItem) bool {
+	switch item.Kind {
+	case "notification":
+		return item.ReadAtUnixMilli == 0 && item.Severity == jobs.SeverityActionRequired
+	case "job":
+		return item.Status == string(jobs.JobAwaitingInput) || item.Status == string(jobs.JobFailed)
+	default:
+		return false
 	}
 }
 
