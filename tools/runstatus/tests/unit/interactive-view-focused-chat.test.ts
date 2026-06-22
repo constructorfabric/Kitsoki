@@ -139,7 +139,8 @@ describe("InteractiveView focused chat context", () => {
         id: "chat-1",
         app_id: "demo",
         room: "agent",
-        scope_key: "scope",
+        scope_key: "\u0000session=s1\u0000scope",
+        display_scope_key: "scope",
         title: "Background Claude",
         status: "active",
         created_at_unix_micro: 1,
@@ -175,6 +176,8 @@ describe("InteractiveView focused chat context", () => {
     expect(showChat).toHaveBeenCalledWith("s1", "chat-1");
     expect(wrapper.find('[data-testid="focused-chat"]').text()).toContain("Background Claude");
     expect(wrapper.find('[data-testid="focused-chat"]').text()).toContain("session s1");
+    expect(wrapper.find('[data-testid="focused-chat"]').text()).toContain("scope scope");
+    expect(wrapper.find('[data-testid="focused-chat"]').text()).not.toContain("\u0000session=s1");
     expect(wrapper.find('[data-testid="focused-chat"]').text()).toContain("tmux kit-bg");
     expect(wrapper.find('[data-testid="focused-chat"]').text()).toContain("check the flaky test");
     expect(wrapper.find('[data-testid="focused-chat"]').text()).toContain("the failure is in setup");
@@ -217,6 +220,7 @@ describe("InteractiveView focused chat context", () => {
         app_id: "demo",
         room: "agent",
         scope_key: "scope",
+        display_scope_key: "new-scope",
         title: "Newer focused chat",
         status: "active",
         created_at_unix_micro: 1,
@@ -231,6 +235,7 @@ describe("InteractiveView focused chat context", () => {
 
     expect(wrapper.find('[data-testid="focused-chat"]').text()).toContain("Newer focused chat");
     expect(wrapper.find('[data-testid="focused-chat"]').text()).toContain("session s2");
+    expect(wrapper.find('[data-testid="focused-chat"]').text()).toContain("scope new-scope");
 
     resolveFirst({
       ok: true,

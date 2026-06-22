@@ -1,6 +1,9 @@
 package chats
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // ChatStatus is the lifecycle status of a chat, stored verbatim in the
 // chats.status column. The four values are the only ones the store writes;
@@ -82,4 +85,18 @@ type Message struct {
 	Metadata map[string]any
 	// CreatedAt is when the message was appended.
 	CreatedAt time.Time
+}
+
+// DisplayScopeKey returns the operator-facing scope label for a persisted chat
+// scope key. Session-scoped chat resolution stores an internal sentinel prefix
+// so independent Kitsoki sessions never adopt each other's chats; that prefix
+// is not useful in active-work reacquire surfaces.
+func DisplayScopeKey(scope string) string {
+	const sessionPrefix = "\x00session="
+	if strings.HasPrefix(scope, sessionPrefix) {
+		if idx := strings.LastIndex(scope, "\x00"); idx >= len(sessionPrefix) {
+			return scope[idx+1:]
+		}
+	}
+	return scope
 }

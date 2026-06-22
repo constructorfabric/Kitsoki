@@ -403,6 +403,7 @@ func TestChatShow_SurfacesFocusedAsyncChatContext(t *testing.T) {
 	assert.Equal(t, f.publicID, out.Context.SessionID)
 	assert.Equal(t, chat.ID, out.Chat.ID)
 	assert.Equal(t, "Background Claude", out.Chat.Title)
+	assert.Equal(t, "scope-bg", out.Chat.DisplayScopeKey)
 	assert.Equal(t, string(f.sid), out.Chat.SessionID)
 	require.NotNil(t, out.PTY)
 	assert.Equal(t, "kit-bg", out.PTY.TmuxSession)

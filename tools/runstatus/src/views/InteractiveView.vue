@@ -126,6 +126,7 @@
             <template v-else-if="focusedChat">
               <div class="iv__focused-chat-meta">
                 <span v-if="focusedChat.context?.session_id">session {{ focusedChat.context.session_id }}</span>
+                <span v-if="focusedChatScope">scope {{ focusedChatScope }}</span>
                 <span>chat {{ focusedChat.chat.id }}</span>
                 <span>{{ focusedChat.chat.status }}</span>
                 <span v-if="focusedChat.pty">tmux {{ focusedChat.pty.tmux_session }}</span>
@@ -322,6 +323,11 @@ const focusedChatID = ref("");
 const focusedChatPreview = computed<ChatMessageItem[]>(() =>
   (focusedChat.value?.messages ?? []).slice(-3)
 );
+const focusedChatScope = computed(() => {
+  const chat = focusedChat.value?.chat;
+  if (!chat) return "";
+  return chat.display_scope_key || chat.scope_key || "";
+});
 
 function canListWork(candidate: DataSource | null): candidate is DataSource & Pick<LiveSource, "listWork"> {
   return typeof (candidate as Partial<Pick<LiveSource, "listWork">> | null)?.listWork === "function";

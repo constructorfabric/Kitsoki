@@ -194,6 +194,7 @@ export interface ChatInspectItem {
   app_id: string;
   room: string;
   scope_key: string;
+  display_scope_key?: string;
   title: string;
   status: string;
   claude_session_id?: string;

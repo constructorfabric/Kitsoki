@@ -67,7 +67,7 @@ func renderChatShowBlock(m RootModel, chatID string) string {
 	sb.WriteString(fmt.Sprintf("  title: %s\n", title))
 	sb.WriteString(fmt.Sprintf("  id: %s\n", chat.ID))
 	sb.WriteString(fmt.Sprintf("  status: %s\n", chat.Status))
-	if scope := chatScopeDisplay(chat.ScopeKey); scope != "" {
+	if scope := chats.DisplayScopeKey(chat.ScopeKey); scope != "" {
 		sb.WriteString(fmt.Sprintf("  scope: %s\n", scope))
 	}
 	if chat.SessionID != "" {
@@ -106,14 +106,4 @@ func chatMessagePreview(content string) string {
 		return string(runes[:limit])
 	}
 	return string(runes[:limit-1]) + "..."
-}
-
-func chatScopeDisplay(scope string) string {
-	const sessionPrefix = "\x00session="
-	if strings.HasPrefix(scope, sessionPrefix) {
-		if idx := strings.LastIndex(scope, "\x00"); idx >= len(sessionPrefix) {
-			return scope[idx+1:]
-		}
-	}
-	return scope
 }

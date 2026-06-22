@@ -487,6 +487,7 @@ func TestSessionInspect_SurfacesChatAsyncWorkOverMCP(t *testing.T) {
 	require.True(t, shown.OK)
 	assert.Equal(t, backgroundChat.ID, shown.Chat.ID)
 	assert.Equal(t, "backgrounded work", shown.Chat.Title)
+	assert.Equal(t, "scope-bg", shown.Chat.DisplayScopeKey)
 	assert.Equal(t, sid, shown.Chat.SessionID)
 	require.NotNil(t, shown.PTY)
 	assert.Equal(t, "kitsoki-bg-test", shown.PTY.TmuxSession)

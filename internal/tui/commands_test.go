@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"kitsoki/internal/chats"
 	"kitsoki/internal/jobs"
 )
 
@@ -39,11 +40,11 @@ func TestHelpCommandLists(t *testing.T) {
 
 func TestChatScopeDisplayStripsSessionPrefix(t *testing.T) {
 	t.Parallel()
-	if got := chatScopeDisplay("\x00session=session-1\x00mcp-smoke"); got != "mcp-smoke" {
-		t.Fatalf("chatScopeDisplay session scoped = %q, want mcp-smoke", got)
+	if got := chats.DisplayScopeKey("\x00session=session-1\x00mcp-smoke"); got != "mcp-smoke" {
+		t.Fatalf("DisplayScopeKey session scoped = %q, want mcp-smoke", got)
 	}
-	if got := chatScopeDisplay("plain-scope"); got != "plain-scope" {
-		t.Fatalf("chatScopeDisplay plain = %q, want plain-scope", got)
+	if got := chats.DisplayScopeKey("plain-scope"); got != "plain-scope" {
+		t.Fatalf("DisplayScopeKey plain = %q, want plain-scope", got)
 	}
 }
 

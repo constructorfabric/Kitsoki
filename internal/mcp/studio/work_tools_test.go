@@ -334,4 +334,5 @@ func TestStudioWorkChatReacquireCarriesSessionContext(t *testing.T) {
 	assert.Equal(t, "chat-work", shown.Context.Handle)
 	assert.Equal(t, string(sh.SID), shown.Context.SessionID)
 	assert.Equal(t, queuedChat.ID, shown.Chat.ID)
+	assert.Equal(t, "scope-queued", shown.Chat.DisplayScopeKey)
 }

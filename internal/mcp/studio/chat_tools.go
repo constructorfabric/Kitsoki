@@ -53,6 +53,7 @@ type ChatInspectItem struct {
 	AppID                 string `json:"app_id"`
 	Room                  string `json:"room"`
 	ScopeKey              string `json:"scope_key"`
+	DisplayScopeKey       string `json:"display_scope_key,omitempty"`
 	Title                 string `json:"title"`
 	Status                string `json:"status"`
 	ClaudeSessionID       string `json:"claude_session_id,omitempty"`
@@ -171,6 +172,7 @@ func inspectChat(c *chats.Chat) ChatInspectItem {
 		AppID:                 c.AppID,
 		Room:                  c.Room,
 		ScopeKey:              c.ScopeKey,
+		DisplayScopeKey:       chats.DisplayScopeKey(c.ScopeKey),
 		Title:                 c.Title,
 		Status:                c.Status,
 		ClaudeSessionID:       c.ClaudeSessionID,
