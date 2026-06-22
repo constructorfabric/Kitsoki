@@ -1,0 +1,58 @@
+kind: agent_eval
+app: ../app.yaml
+call: merge_judge
+agent: judge
+
+task:
+  goal: "Classify whether a landed PR can be closed out or needs another pass."
+  boundedness:
+    max_turns: 1
+    tool_policy: none
+    prepared_context: true
+  adherence_bar:
+    min_pass_rate: 0.95
+    max_p95_latency_ms: 8000
+    max_avg_cost_usd: 0.002
+
+matrix:
+  profiles: [claude, codex-native, synthetic-claude, synthetic-codex]
+  models:
+    synthetic-codex: [syn:large:text, syn:small:text]
+    synthetic-claude: [syn:large:text, syn:small:text]
+  effort: [low, medium]
+  repeat: 5
+
+comparator:
+  kind: enum
+  field: intent
+
+examples:
+  - name: merge-landed-cleanly
+    args:
+      pr_id: "145"
+      merge_sha: abc1234
+      pr_url: https://example.invalid/pull/145
+    expect:
+      verdict: pass
+      intent: accept
+      reason: "Merge SHA is present and the PR has a close-out URL."
+      confidence: 0.97
+  - name: missing-merge-sha-blocks-closeout
+    args:
+      pr_id: "146"
+      merge_sha: ""
+      pr_url: https://example.invalid/pull/146
+    expect:
+      verdict: fail
+      intent: refine
+      reason: "The merge SHA is missing, so close-out should wait for another status pass."
+      confidence: 0.91
+
+selection:
+  strategy: cheapest_passing
+  pinned:
+    profile: synthetic-codex
+    model: syn:small:text
+    effort: low
+    evidence: evals/reports/merge_judge/latest.json
+    fallback_profile: claude

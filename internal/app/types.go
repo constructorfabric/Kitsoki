@@ -690,14 +690,15 @@ type VarDef struct {
 //
 //   - Standard schema form: { type: string, default: "" } — the usual authoring
 //     style; decoded field by field.
+//
 //   - Inline default form: any YAML value that does NOT contain a "type",
 //     "default", or "values" key. The whole value is stored as the variable's
 //     Default directly. This lets test app YAMLs seed rich initial world state:
 //
 //     world:
-//       landing_note:
-//         plan:
-//           goal: "Migrate issues."
+//     landing_note:
+//     plan:
+//     goal: "Migrate issues."
 //
 //     is equivalent to: landing_note: { default: { plan: { goal: "..." } } }
 func (v *VarDef) UnmarshalYAML(data []byte) error {
@@ -1052,6 +1053,21 @@ type Effect struct {
 	// docs/architecture/agent-plugin.md). When absent, the dispatcher
 	// resolves the default plugin.
 	AgentPlugin string `yaml:"agent,omitempty"`
+	// Selection records an evidence-backed task-level harness/profile pin for
+	// this agent call site. Runtime consumers must treat missing or stale
+	// evidence conservatively; the eval tooling owns validation and freshness.
+	Selection *AgentSelection `yaml:"selection,omitempty"`
+}
+
+// AgentSelection is the story-authored pinning metadata for one agent call
+// site. It intentionally carries the human-facing harness profile plus the
+// resolved model/effort chosen by an eval report, not provider-specific knobs.
+type AgentSelection struct {
+	Profile         string `yaml:"profile,omitempty"`
+	Model           string `yaml:"model,omitempty"`
+	Effort          string `yaml:"effort,omitempty"`
+	Evidence        string `yaml:"evidence,omitempty"`
+	FallbackProfile string `yaml:"fallback_profile,omitempty"`
 }
 
 // ProposalKind declares a named proposal kind.

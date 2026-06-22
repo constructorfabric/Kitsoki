@@ -118,6 +118,32 @@ states:
   | `ok`         | `true` on success.                                           |
   | `exit_code`  | `0` on success.                                              |
 
+### Evidence-backed task selection
+
+An individual `host.agent.*` invoke may carry `selection:` metadata that pins
+the intended harness profile/model/effort for that bounded task:
+
+```yaml
+- invoke: host.agent.decide
+  id: merge_judge
+  with:
+    agent: judge
+    prompt: prompts/judge_merge.md
+    schema: schemas/judge_verdict.json
+  bind:
+    llm_verdict: submitted
+  selection:
+    profile: synthetic-codex
+    model: syn:small:text
+    effort: low
+    evidence: evals/reports/merge_judge/latest.json
+    fallback_profile: claude
+```
+
+The `selection:` block is evidence metadata first. `kitsoki eval` validates the
+referenced story-local benchmark and report; runtime selection remains
+conservative until strict pin validation and dispatch integration are enabled.
+
 ---
 
 ## 3. Wire types: `AskRequest` / `AskResponse`

@@ -109,6 +109,7 @@ states:
           body:    "PR {{ world.pr_id }} merged at {{ world.merge_sha }}."
       - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
         invoke: host.agent.decide
+        id: merge_judge
         with:
           agent: judge
           prompt: prompts/judge_merge.md
@@ -119,6 +120,12 @@ states:
             pr_url:     "{{ world.pr_url }}"
         bind:
           llm_verdict: submitted
+        selection:
+          profile: synthetic-codex
+          model: syn:small:text
+          effort: low
+          evidence: evals/reports/merge_judge/latest.json
+          fallback_profile: claude
       - when: |
           world.judge_mode != 'human' &&
           world.llm_verdict.confidence >= world.judge_confidence_threshold &&

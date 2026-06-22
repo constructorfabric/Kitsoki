@@ -136,6 +136,7 @@ See docs/ in the repo for the narrative documentation.`,
 	root.AddCommand(agentServeCmd())
 	root.AddCommand(migrateAgentCmd())
 	root.AddCommand(cassetteCmd())
+	root.AddCommand(evalCmd())
 	root.AddCommand(exportStatusCmd())
 	root.AddCommand(statusCmd())
 	root.AddCommand(webCmd())

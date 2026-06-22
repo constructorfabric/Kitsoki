@@ -1,0 +1,30 @@
+{
+  "kind": "agent_eval_report",
+  "eval": "merge_judge",
+  "app": "../app.yaml",
+  "call": "merge_judge",
+  "generated_at": "2026-06-21T00:00:00Z",
+  "dataset_hash": "sha256:stale-fixture",
+  "prompt_hash": "sha256:stale-fixture",
+  "schema_hash": "sha256:stale-fixture",
+  "toolbox_hash": "sha256:stale-fixture",
+  "adherence_bar": {
+    "min_pass_rate": 0.95,
+    "max_p95_latency_ms": 8000,
+    "max_avg_cost_usd": 0.002
+  },
+  "candidates": [
+    {
+      "profile": "synthetic-codex",
+      "backend": "codex",
+      "provider": "synthetic.new",
+      "model": "syn:small:text",
+      "effort": "low",
+      "pass": true,
+      "schema_valid_rate": 1.0,
+      "comparator_pass_rate": 1.0,
+      "contract_conformance_rate": 1.0,
+      "examples_run": 10
+    }
+  ]
+}
