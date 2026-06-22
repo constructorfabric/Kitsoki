@@ -178,6 +178,17 @@ func TestGitHubInboxSyncFeedsStudioWork(t *testing.T) {
 	assert.Equal(t, "https://github.com/acme/repo/pull/42", prItem.OriginURL)
 	assert.Equal(t, map[string]any{"pr_author": "alice", "pr_id": "42", "pr_title": "Review this"}, prItem.TeleportSlots)
 
+	res, err = callTool(ctx, cs, "studio.work", map[string]any{"limit": 1})
+	require.NoError(t, err)
+	require.False(t, res.IsError, "studio.work limited: %s", contentText(res))
+	var limited studio.WorkResult
+	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &limited))
+	assert.Equal(t, 2, limited.Summary.Items)
+	assert.Equal(t, 2, limited.Summary.NeedsAttention)
+	assert.Equal(t, 2, limited.Summary.NotificationsUnread)
+	assert.Equal(t, 2, limited.Summary.NotificationsActionRequired)
+	require.Len(t, limited.Items, 1, "limit only pages returned rows; summary stays global")
+
 	res, err = callTool(ctx, cs, "inbox.sync_github", map[string]any{
 		"handle": "github-sync",
 		"repo":   "acme/repo",

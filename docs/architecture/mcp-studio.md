@@ -107,6 +107,8 @@ default it omits read notifications and quiet terminal jobs; pass
 sorted by intervention priority: passive `success` / `info` notifications stay
 visible and reacquirable, but rank below active jobs/chats/questions and do not
 increase `summary.needs_attention`.
+`limit` pages only `items[]`; `summary.items` and `summary.needs_attention`
+continue to describe the full queue so clients can show accurate global badges.
 
 When a job row has a matching unread job-origin notification, `studio.work`
 returns `reacquire.tool: "session.teleport"` with that notification id so the

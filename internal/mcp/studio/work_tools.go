@@ -165,14 +165,14 @@ func (srv *Server) work(ctx context.Context, args WorkArgs) (WorkResult, error) 
 	if args.Limit == 0 {
 		args.Limit = 50
 	}
-	if args.Limit > 0 && len(out.Items) > args.Limit {
-		out.Items = out.Items[:args.Limit]
-	}
 	out.Summary.Items = len(out.Items)
 	for _, item := range out.Items {
 		if workItemNeedsAttention(item) {
 			out.Summary.NeedsAttention++
 		}
+	}
+	if args.Limit > 0 && len(out.Items) > args.Limit {
+		out.Items = out.Items[:args.Limit]
 	}
 	return out, nil
 }
