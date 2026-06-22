@@ -1,6 +1,10 @@
 # Session Mining Backend Generalization
 
-**Status:** Draft v1. Nothing implemented yet.
+**Status:** Draft v1, partially implemented. The initial canonical corpus
+contract, JSONL source adapters, and kitsoki trace-pattern substrate are in
+`internal/mining/corpus.go` and `internal/mining/kitsokipattern/`; pipeline
+driver integration, ambient miner source registry wiring, and CLI/report
+surfaces remain.
 **Kind:** Epic
 **Date:** 2026-06-22
 
@@ -114,7 +118,7 @@ every later stage consume the same canonical envelope and evidence index.
 | Slice | Kind | Scope | Depends on | Status |
 |---|---|---|---|---|
 | Backend-normal corpus | runtime | `SessionSource` adapters for Claude Code, Codex, kitsoki traces, and imported JSONL; canonical session envelope; evidence index. | — | Draft |
-| Kitsoki trace pattern matching | tracing | Deterministic mining over kitsoki trace events: typed tokens, bounded path windows, SCC loop signatures, route-feedback aggregation, and structural verification. | Backend-normal corpus | [Draft](kitsoki-trace-pattern-matching.md) |
+| Kitsoki trace pattern matching | tracing | Deterministic mining over kitsoki trace events: typed tokens, bounded path windows, SCC loop signatures, route-feedback aggregation, and structural verification. | Backend-normal corpus | [Partial substrate shipped](kitsoki-trace-pattern-matching.md) |
 | Mining drivers | runtime+tooling | Thin drivers for intent mining, example search, scenario authoring, story coverage, and progressive-determinism candidates over the canonical corpus. | Backend-normal corpus | Draft |
 | Ambient miner integration | runtime | Wire typed source configuration, watermarks, no-LLM test seams, and proposal artifacts into `internal/mining`. | Backend-normal corpus, Mining drivers | Draft |
 
