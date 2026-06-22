@@ -92,6 +92,19 @@ states:
               if [ -z "$BASE_SHA" ]; then
                 emit --arg int "$INTEGRATION" '{outcome:"error",integrated_sha:"",last_op_ok:false,last_error:("integration branch "+$int+" not found")}'
               fi
+              # LOST-WORK GUARD: refuse to integrate a branch whose work was never
+              # committed. `git rebase` IGNORES untracked files, so an untracked
+              # story dir (the deliver-story lost-work case) would rebase + merge
+              # an EMPTY shell while the flows — which read on-disk files — pass.
+              # Only meaningful when the branch lives in its own maker worktree;
+              # when WORKTREE fell back to MAIN_WT we can't attribute dirtiness to
+              # this branch, so we skip (the loop always seeds a distinct worktree).
+              if [ "$WORKTREE" != "$MAIN_WT" ]; then
+                DIRTY=$(git -C "$WORKTREE" status --porcelain 2>/dev/null || echo "")
+                if [ -n "$DIRTY" ]; then
+                  emit --arg wt "$WORKTREE" --arg files "$DIRTY" '{outcome:"uncommitted",integrated_sha:"",last_op_ok:false,last_error:("refusing to integrate: the maker worktree "+$wt+" has uncommitted work — it was never committed, so integrating would land an empty or partial shell. Commit it on the branch first:\n"+$files)}'
+                fi
+              fi
               # Rebase the branch onto CURRENT integration HEAD, IN ITS OWN
               # worktree. merge-base is computed against the live INTEGRATION ref
               # (re-read here, so a concurrent moved-main is absorbed).

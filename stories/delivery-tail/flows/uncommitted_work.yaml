@@ -1,0 +1,48 @@
+# uncommitted_work — proves the integrate room REFUSES to land a branch whose
+# work was never committed (the deliver-story lost-work case).
+#
+# `git rebase` ignores untracked files, so an untracked story dir would rebase
+# and merge an EMPTY shell while the flow tests — which read on-disk files —
+# still pass. The integrate room's lost-work guard runs `git status --porcelain`
+# in the maker worktree and, on any uncommitted/untracked work, emits
+# outcome:"uncommitted" → routed to @exit:needs-human with the file list.
+#
+# This flow MOCKS integrate_exec, so it proves the ROUTING contract. The real
+# `git status --porcelain` guard is exercised by the real-bash test
+# stories/delivery-tail/tests/integrate_uncommitted_guard.sh.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: bootstrap
+initial_world:
+  brief:              "Add the deliver story"
+  gate_command:       "go test ./stories/deliver/..."
+  base_branch:        main
+  main_worktree_path: "."
+  workspace_id:       deliver-story
+  workspace_branch:   deliver-story
+  worktree_path:      ".worktrees/deliver-story"
+
+host_handlers:
+  host.run:
+    by_call:
+      integrate_exec:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            outcome:        uncommitted
+            integrated_sha: ""
+            last_op_ok:     false
+            last_error:     "refusing to integrate: the maker worktree .worktrees/deliver-story has uncommitted work — it was never committed, so integrating would land an empty or partial shell. Commit it on the branch first:\n?? stories/deliver/"
+
+turns:
+  - intent: { name: begin, slots: {} }
+    expect_state: __exit__needs-human
+    expect_world:
+      status:            needs-human
+      integrate_outcome: uncommitted
+      integrated_sha:    ""
+      last_error:        "refusing to integrate: the maker worktree .worktrees/deliver-story has uncommitted work — it was never committed, so integrating would land an empty or partial shell. Commit it on the branch first:\n?? stories/deliver/"
+
+expect_terminal: true
