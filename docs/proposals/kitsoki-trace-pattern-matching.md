@@ -1,6 +1,10 @@
 # Kitsoki Trace Pattern Matching
 
-**Status:** Draft v1. Nothing implemented yet.
+**Status:** Draft v1, partially implemented. `internal/mining/kitsokipattern`
+now provides deterministic event-token lenses, bounded-window patterns,
+route-feedback aggregation, SCC-based cycle path signatures, and fixture tests.
+Artifact persistence, external export hooks, richer structural verification, and
+driver/CLI integration remain.
 **Kind:** Tracing
 **Epic:** [Session Mining Backend Generalization](session-mining-backend-generalization.md)
 **Date:** 2026-06-22
@@ -638,24 +642,26 @@ Use external tools behind explicit offline commands only.
 
 ## Tasks
 
-1. Define `kitsoki-patterns.v1` artifacts: event-token JSONL, event index,
+- [x] Define the in-memory `kitsoki-patterns.v1` report shape: event tokens,
+   route feedback, bounded-window patterns, cycle paths, scores, and evidence
+   refs.
+- [x] Implement the kitsoki trace event normalizer with versioned lenses for
+   `route`, `control`, `guard`, `host`, `world`, and `fixture`.
+- [x] Build deterministic initial indexes: token dictionaries via emitted
+   tokens, directly-follows counts, bounded windows, route decision/correction
+   records, and cycle-collapsed path signatures.
+- [x] Add route-feedback aggregation from explicit `turn.route_feedback` events
+   and lower-confidence derived feedback from contextual route overrides.
+- [x] Add deterministic fixtures over synthetic trace snippets; no real LLM
+   calls.
+- [ ] Persist `kitsoki-patterns.v1` artifacts: event-token JSONL, event index,
    `patterns.json`, `route-feedback.json`, `coverage-gaps.json`, and cited
    examples.
-2. Implement the kitsoki trace event normalizer with versioned lenses for
-   `route`, `control`, `guard`, `host`, `world`, and `fixture`.
-3. Build deterministic indexes: token dictionaries, directly-follows counts,
-   transition matrix, route decision/correction tables, bounded windows, and
-   cycle-collapsed path signatures.
-4. Add route-feedback aggregation from explicit `turn.route_feedback` events and
-   lower-confidence derived feedback from override/rewind/rephrase/checkpoint
-   traces.
-5. Add top-k bounded-window and gap-bounded subsequence miners with source refs.
-6. Add structural verification for promoted candidates using small typed pattern
+- [ ] Add top-k gap-bounded subsequence miners with source refs.
+- [ ] Add richer structural verification for promoted candidates using small typed pattern
    graphs, WL-hash bucketing, and exact directed matching.
-7. Emit fixture-candidate and example artifacts without auto-applying changes.
-8. Add deterministic fixtures over committed trace snippets and sidecars; no
-   real LLM calls.
-9. Document the shipped schema and runtime behavior, then trim/delete this
+- [ ] Emit fixture-candidate and example artifacts without auto-applying changes.
+- [ ] Document the shipped schema and runtime behavior, then trim/delete this
    proposal.
 
 ## Non-Goals
