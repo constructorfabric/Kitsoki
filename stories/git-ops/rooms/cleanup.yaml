@@ -4,12 +4,12 @@ states:
 
   cleanup:
     description: "Remove a linked worktree and optionally its branch."
-    relevant_world: [current_branch, working_dir, worktree_path, last_op_outcome]
+    relevant_world: [worktree_branch_name, working_dir, worktree_path, last_op_outcome]
     view:
-      - prose: "Remove the worktree for {{ world.current_branch }}. Choose whether to also delete the branch."
+      - prose: "Remove the worktree for {{ world.worktree_branch_name }}. Choose whether to also delete the branch."
       - kv:
           pairs:
-            Branch:          '{{ world.current_branch|default:"(unknown)" }}'
+            Branch:          '{{ world.worktree_branch_name|default:"(unknown)" }}'
             "Worktree path": '{{ world.worktree_path|default:"(current dir)" }}'
       - prose: "Operation failed: {{ world.last_op_output }}"
         when: "world.last_op_ok == false"
@@ -43,7 +43,7 @@ states:
                   - |
                     set -e
                     export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
-                    BR="{{ world.current_branch }}"
+                    BR="{{ world.worktree_branch_name }}"
                     WT="{{ world.worktree_path }}"
                     [ -z "$WT" ] && WT="{{ world.working_dir }}"
                     git worktree remove "$WT" 2>&1 || true
