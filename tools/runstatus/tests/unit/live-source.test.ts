@@ -108,6 +108,33 @@ describe("LiveSource", () => {
     expect(body.method).toBe("runstatus.sessions.list");
   });
 
+  it("listWork calls runstatus.work.list", async () => {
+    fetchMock.mockResolvedValueOnce(
+      rpcOk({
+        summary: {
+          items: 1,
+          needs_attention: 0,
+          jobs_running: 0,
+          jobs_awaiting_input: 0,
+          jobs_terminal: 0,
+          notifications_unread: 0,
+          notifications_action_required: 0,
+          pending_drives: 1,
+          backgrounded_chats: 0,
+        },
+        sessions: [],
+        items: [{ kind: "pending_drive", priority: 65, session_id: "s1", reacquire_tool: "session" }],
+      })
+    );
+    const src = new LiveSource("/");
+    const work = await src.listWork();
+    expect(work.items[0]!.kind).toBe("pending_drive");
+    const body = JSON.parse(
+      (fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string
+    ) as { method: string };
+    expect(body.method).toBe("runstatus.work.list");
+  });
+
   it("getSession calls runstatus.session.get with session_id", async () => {
     const header = { session_id: "s1", app_id: "app", current_state: "root/a", turn: 1, started_at: "t", terminal: false };
     fetchMock.mockResolvedValueOnce(rpcOk(header));

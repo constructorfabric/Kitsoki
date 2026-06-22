@@ -12,6 +12,7 @@ import type {
   LiveSource,
   Notification,
   NotificationFrame,
+  WorkListResult,
 } from "../../src/data/live-source.js";
 
 function notif(over: Partial<Notification> = {}): Notification {
@@ -48,6 +49,22 @@ function frame(over: Partial<NotificationFrame> = {}): NotificationFrame {
 
 function fakeSource(overrides: Record<string, unknown> = {}): LiveSource {
   return {
+    listWork: vi.fn().mockResolvedValue({
+      summary: {
+        items: 0,
+        needs_attention: 0,
+        jobs_running: 0,
+        jobs_awaiting_input: 0,
+        jobs_terminal: 0,
+        notifications_unread: 0,
+        notifications_action_required: 0,
+        pending_drives: 0,
+        backgrounded_chats: 0,
+      },
+      sessions: [],
+      items: [],
+    } satisfies WorkListResult),
+    subscribeNotifications: vi.fn().mockReturnValue(vi.fn()),
     readNotification: vi.fn().mockResolvedValue({ ok: true }),
     dismissNotification: vi.fn().mockResolvedValue({ ok: true }),
     ...overrides,
@@ -64,6 +81,73 @@ describe("inbox store", () => {
     expect(inbox.notifications[0].ID).toBe("n1");
     expect(inbox.unread).toBe(1);
     expect(inbox.needsAttention).toBe(0);
+  });
+
+  it("init subscribes and refreshes active work", async () => {
+    const inbox = useInboxStore();
+    const src = fakeSource({
+      listWork: vi.fn().mockResolvedValue({
+        summary: {
+          items: 2,
+          needs_attention: 0,
+          jobs_running: 0,
+          jobs_awaiting_input: 0,
+          jobs_terminal: 0,
+          notifications_unread: 0,
+          notifications_action_required: 0,
+          pending_drives: 1,
+          backgrounded_chats: 1,
+        },
+        sessions: [],
+        items: [
+          {
+            kind: "pending_drive",
+            priority: 65,
+            session_id: "web-session-1",
+            title: "continue the task",
+            status: "pending",
+            reacquire_tool: "session",
+            reacquire_session_id: "web-session-1",
+            drive_id: "drive-1",
+            chat_id: "chat-1",
+          },
+          {
+            kind: "backgrounded_chat",
+            priority: 60,
+            session_id: "web-session-1",
+            title: "Background Claude",
+            status: "pty_background",
+            reacquire_tool: "session",
+            reacquire_session_id: "web-session-1",
+            chat_id: "chat-2",
+          },
+        ],
+      } satisfies WorkListResult),
+    });
+
+    inbox.init(src);
+    await Promise.resolve();
+
+    expect(src.subscribeNotifications).toHaveBeenCalledTimes(1);
+    expect(src.listWork).toHaveBeenCalledTimes(1);
+    expect(inbox.activeWorkCount).toBe(2);
+    expect(inbox.workItems.map((item) => item.kind)).toEqual([
+      "pending_drive",
+      "backgrounded_chat",
+    ]);
+  });
+
+  it("opening the panel refreshes active work", async () => {
+    const inbox = useInboxStore();
+    const src = fakeSource();
+    inbox.init(src);
+    await Promise.resolve();
+
+    inbox.toggle();
+    await Promise.resolve();
+
+    expect(inbox.open).toBe(true);
+    expect(src.listWork).toHaveBeenCalledTimes(2);
   });
 
   it("a second frame prepends (newest first) and takes the fresh counts", () => {
