@@ -1,11 +1,14 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
+	"kitsoki/internal/host"
+	inboxmodel "kitsoki/internal/inbox"
 	"kitsoki/internal/jobs"
 	"kitsoki/internal/tui/blocks"
 )
@@ -22,25 +25,72 @@ import (
 // args it prints the unread items; `/inbox <n>` opens (teleports to)
 // the n-th notification. `/inbox all` prints every notification
 // regardless of read state.
-func renderInboxBlock(m RootModel, args []string) string {
+func renderInboxBlock(m RootModel, args []string) (RootModel, string) {
 	r := blocks.New(m.transcript.width, m.currentTheme())
 	if m.jobStore == nil {
-		return r.SlashOutput("(inbox: no job store wired — running in tests or headless)")
+		return m, r.SlashOutput("(inbox: no job store wired — running in tests or headless)")
 	}
 
 	notifications := m.lastNotifications
 
 	if len(args) == 1 {
 		if strings.EqualFold(args[0], "all") {
-			return renderInboxList(r, notifications, false)
+			return m, renderInboxList(r, notifications, false)
 		}
 		if n, err := strconv.Atoi(args[0]); err == nil {
-			return openInboxItem(r, notifications, n)
+			return m, openInboxItem(r, notifications, n)
 		}
+	}
+	if len(args) >= 1 && strings.EqualFold(args[0], "sync-github") {
+		return syncGitHubInbox(m, r, args[1:])
 	}
 
 	// Default: unread only.
-	return renderInboxList(r, notifications, true)
+	return m, renderInboxList(r, notifications, true)
+}
+
+func syncGitHubInbox(m RootModel, r *blocks.Renderer, args []string) (RootModel, string) {
+	repo := ""
+	if len(args) > 0 {
+		repo = strings.TrimSpace(args[0])
+	}
+	ctx := context.Background()
+	items, err := host.ListGitHubInboxItems(ctx, host.GitHubInboxOptions{
+		Repo:          repo,
+		IncludeIssues: true,
+		IncludePRs:    true,
+		Limit:         100,
+	})
+	if err != nil {
+		return m, r.SlashOutput("(inbox sync-github: " + err.Error() + ")")
+	}
+
+	inserted := 0
+	for _, item := range items {
+		n := inboxmodel.NewGitHubNotification(m.sid, repo, "inbox", item)
+		ok, err := m.jobStore.InsertExternalNotificationOnce(ctx, n)
+		if err != nil {
+			return m, r.SlashOutput(fmt.Sprintf("(inbox sync-github: insert %s #%s: %v)", item.Kind, item.Number, err))
+		}
+		if ok {
+			inserted++
+		}
+	}
+
+	ns, err := m.jobStore.ListNotifications(ctx, m.sid, 20)
+	if err != nil {
+		return m, r.SlashOutput("(inbox sync-github: refresh notifications: " + err.Error() + ")")
+	}
+	m.lastNotifications = ns
+	m.inbox, _ = m.inbox.Update(inboxRefreshed{notifications: ns})
+
+	var sb strings.Builder
+	sb.WriteString(r.SlashOutput(fmt.Sprintf("  github sync: fetched %d, inserted %d, skipped %d", len(items), inserted, len(items)-inserted)))
+	if list := renderInboxList(r, ns, true); list != "" {
+		sb.WriteString("\n")
+		sb.WriteString(list)
+	}
+	return m, strings.TrimRight(sb.String(), "\n")
 }
 
 func renderInboxList(r *blocks.Renderer, notifs []jobs.Notification, unreadOnly bool) string {

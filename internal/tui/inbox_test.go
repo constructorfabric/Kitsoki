@@ -3,6 +3,7 @@ package tui_test
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"testing"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"kitsoki/internal/app"
+	"kitsoki/internal/host"
 	"kitsoki/internal/jobs"
 	tuipkg "kitsoki/internal/tui"
 
@@ -204,6 +206,49 @@ func TestInboxPoll_LiveStore(t *testing.T) {
 
 	view := m.View()
 	require.Contains(t, view, "live job done", "notification title should appear after inboxRefreshed")
+}
+
+func TestInboxSlashSyncGitHubImportsNotifications(t *testing.T) {
+	m, sid, js, _, _ := buildWorkTestModel(t)
+	ctx := context.Background()
+	calls := []string{}
+	restore := host.SetExecRunnerForTest(func(_ context.Context, _ string, name string, args ...string) (string, string, int, error) {
+		key := name + " " + strings.Join(args, " ")
+		calls = append(calls, key)
+		switch key {
+		case "gh --version":
+			return "gh version 2.x\n", "", 0, nil
+		case "gh issue list --repo acme/repo --state open --assignee @me --limit 100 --json number,title,assignees,url":
+			return `[{"number":7,"title":"Assigned issue","url":"https://github.com/acme/repo/issues/7","assignees":[{"login":"brad"}]}]`, "", 0, nil
+		case "gh pr list --repo acme/repo --state open --review-requested @me --limit 100 --json number,title,author,url":
+			return `[{"number":42,"title":"Review this","url":"https://github.com/acme/repo/pull/42","author":{"login":"alice"}}]`, "", 0, nil
+		default:
+			return "", "unexpected command: " + key, 1, nil
+		}
+	})
+	defer restore()
+
+	m = runTurnBlocking(t, m, "/inbox sync-github acme/repo")
+	tx := extractTranscript(t, m)
+	require.Contains(t, tx, "github sync: fetched 2, inserted 2, skipped 0")
+	require.Contains(t, tx, "Issue #7 assigned: Assigned issue")
+	require.Contains(t, tx, "PR #42 needs review: Review this")
+
+	ns, err := js.ListNotifications(ctx, sid, 20)
+	require.NoError(t, err)
+	require.Len(t, ns, 2)
+	require.Equal(t, "github:acme/repo/issue/7", ns[0].OriginRef)
+	require.Equal(t, "https://github.com/acme/repo/issues/7", ns[0].OriginURL)
+	require.Equal(t, "github:acme/repo/pr/42", ns[1].OriginRef)
+	require.Equal(t, "https://github.com/acme/repo/pull/42", ns[1].OriginURL)
+	require.Len(t, calls, 3)
+
+	m = runTurnBlocking(t, m, "/inbox sync-github acme/repo")
+	tx = extractTranscript(t, m)
+	require.Contains(t, tx, "github sync: fetched 2, inserted 0, skipped 2")
+	ns, err = js.ListNotifications(ctx, sid, 20)
+	require.NoError(t, err)
+	require.Len(t, ns, 2)
 }
 
 // ─── TestHumanizeDuration ─────────────────────────────────────────────────────

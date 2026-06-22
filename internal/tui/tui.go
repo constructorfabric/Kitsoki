@@ -2056,7 +2056,9 @@ func (m RootModel) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 		// Single-pane redesign: print the inbox inline as a chat
 		// block. The legacy panel toggle is preserved for back-compat
 		// until phase 3 deletes the panel.
-		m.transcript.AppendBlock(renderInboxBlock(m, parts[1:]))
+		var block string
+		m, block = renderInboxBlock(m, parts[1:])
+		m.transcript.AppendBlock(block)
 		m.inbox.ToggleExpanded()
 		return m, nil
 
