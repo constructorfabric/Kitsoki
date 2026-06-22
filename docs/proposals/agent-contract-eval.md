@@ -1,9 +1,11 @@
 # Tracing: Agent task adherence benchmark
 
-**Status:** Draft v3. Nothing implemented yet. Reconciles the manually authored
-proposal with the proposal-pipeline output into one actionable implementation
-plan: concrete pilot, resolved command/pinning/profile decisions, and retained
-benchmark detail.
+**Status:** Partially shipped. The offline eval substrate, `kitsoki eval`
+list/show/run validation commands, `selection:` call-site metadata, the
+`pr-refinement` merge-judge pilot dataset, compact fixture reports, and
+`docs/testing/agent-evals.md` are implemented. Remaining work: strict cassette
+and flow-stub conformance, live benchmark matrix execution, runtime pin
+selection, and full TUI/web benchmark dashboards.
 **Kind:**   tracing
 **Epic:**   — standalone (consumed by `docs/proposals/local-model-agent.md`;
             hosts the conformance check for `docs/proposals/agent-capability-model.md`)
@@ -88,8 +90,10 @@ to every harness profile and backend.
 ## Impact
 
 - **New command surface:** `kitsoki eval run [--live]`, `kitsoki eval list`,
-  and `kitsoki eval show`. Offline conformance extends `kitsoki cassette lint`
-  rather than overloading cassette verification with live benchmark behavior.
+  and `kitsoki eval show`. The offline validation commands have shipped; the
+  `--live` runner remains gated and intentionally makes no provider calls.
+  Offline conformance still needs to extend `kitsoki cassette lint` rather than
+  overloading cassette verification with live benchmark behavior.
 - **Code seams:** call-site resolution near the cassette/flow stub resolver;
   report persistence in the trace/cassette area; TUI/web read-only views over
   reports; runtime selection reads task-level pins conservatively.
@@ -101,8 +105,9 @@ to every harness profile and backend.
 - **Backward compat:** existing stories, cassettes, and flow fixtures load
   unchanged. Offline lint only becomes stricter when the caller passes `--app`
   or enables the new check in a flow suite.
-- **Docs on ship:** `docs/testing/agent-evals.md`, `docs/tracing/cassettes.md`,
-  `docs/architecture/agent-plugin.md`, and TUI/web docs for the benchmark views.
+- **Docs on ship:** `docs/testing/agent-evals.md` has shipped for the offline
+  dataset/report workflow. Remaining docs belong in `docs/tracing/cassettes.md`,
+  `docs/architecture/agent-plugin.md`, and TUI/web docs as those slices land.
 
 ## First Pilot
 
@@ -375,12 +380,12 @@ only for the named call site.
 
 ```
 ## 0. Pilot setup
-- [ ] 0.1 Audit `pr-refinement` merge-judge decide gate: confirm schema,
+- [x] 0.1 Audit `pr-refinement` merge-judge decide gate: confirm schema,
           toolbox/effect class, and cassette exist and are suitable for the
           pilot
-- [ ] 0.2 Author `stories/pr-refinement/evals/merge_judge.yaml` with enum
+- [x] 0.2 Author `stories/pr-refinement/evals/merge_judge.yaml` with enum
           comparator, 2+ examples, and full matrix declaration
-- [ ] 0.3 Commit fixture reports that let TUI/web render unmeasured, passing,
+- [x] 0.3 Commit fixture reports that let TUI/web render unmeasured, passing,
           failing, stale, and pinned states without live LLM calls
 
 ## 1. Offline contract conformance (free)
@@ -392,15 +397,18 @@ only for the named call site.
 - [ ] 1.4 Mutation tests for broken schema and out-of-box tool use
 
 ## 2. Eval dataset + report format
-- [ ] 2.1 Load `kind: agent_eval` files with task boundedness, matrix,
+- [x] 2.1 Load `kind: agent_eval` files with task boundedness, matrix,
           adherence bar, examples, comparator, and selection policy
-- [ ] 2.2 Implement deterministic comparators: exact, field_subset, enum,
+- [x] 2.2 Implement deterministic comparators: exact, field_subset, enum,
           artifact_diff
-- [ ] 2.3 Define report JSON with prompt/schema/dataset/toolbox hashes and
+- [x] 2.3 Define report JSON with prompt/schema/dataset/toolbox hashes and
           cost/latency/fallback fields
+- [x] 2.4 Add `kitsoki eval list`, `kitsoki eval show`, and offline
+          `kitsoki eval run` validation over datasets and reports
 
 ## 3. Live benchmark runner (gated)
-- [ ] 3.1 Run selected profile/model/effort matrix behind `--live`
+- [ ] 3.1 Run selected profile/model/effort matrix behind `--live` (currently
+          gated and not implemented; no provider calls are made)
 - [ ] 3.2 Support repeat runs and pass-rate bands
 - [ ] 3.3 Resolve harness profiles from `harness_profiles` in `.kitsoki.yaml`
           / `.kitsoki.local.yaml`, including native Claude/Codex, local, and
@@ -410,6 +418,7 @@ only for the named call site.
 - [ ] 3.5 Add a bounded `agent.task` worked example after the decide pilot lands
 
 ## 4. Evidence-based pinning
+- [x] 4.0 Add call-site `selection:` metadata to `host.agent.*` invokes
 - [ ] 4.1 Lint selection policy: pin must reference fresh passing evidence when
           strict mode is enabled
 - [ ] 4.2 Runtime call-site selection reads the pin conservatively and records
@@ -422,11 +431,12 @@ only for the named call site.
 - [ ] 5.3 Live-session task badge showing verified profile/model and fallback
 
 ## 6. Document + hand off
-- [ ] 6.1 docs/testing/agent-evals.md: author workflow and benchmark format
+- [x] 6.1 docs/testing/agent-evals.md: author workflow and benchmark format
 - [ ] 6.2 docs/tracing/cassettes.md: offline conformance and report fidelity
 - [ ] 6.3 docs/architecture/agent-plugin.md: profile/model/effort selection
 - [ ] 6.4 Note in local-model-agent.md how it consumes passing benchmark reports
-- [ ] 6.5 Migrate shipped sections out of this proposal; trim/delete it
+- [x] 6.5 Migrate shipped sections out of this proposal; trim it to remaining
+          work
 ```
 
 ## Verification

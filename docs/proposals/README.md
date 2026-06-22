@@ -226,7 +226,11 @@ thought.
   gated live model matrices across Claude, Codex, local, and synthetic profiles,
   evidence-based `profile/model/effort` pinning, and TUI/web surfaces that show
   why a task is using a given model. Produces the measurement
-  `local-model-agent.md` consumes. Nothing implemented yet.
+  `local-model-agent.md` consumes. Offline eval dataset/report loading,
+  `kitsoki eval` list/show/run validation, `selection:` metadata, and the
+  `pr-refinement` merge-judge pilot are implemented; live matrix execution,
+  strict cassette conformance, runtime pin selection, and full TUI/web views
+  remain.
 - `agent-off-ramp.md` — a per-room `agent_off_ramp:` opt-in: when free text
   maps to no declared intent, hand the turn to an agent `converse` answer
   instead of rejecting, with no state/world change. **Shipped**; the proposal

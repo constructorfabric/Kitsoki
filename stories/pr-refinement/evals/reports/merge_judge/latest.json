@@ -1,0 +1,89 @@
+{
+  "kind": "agent_eval_report",
+  "eval": "merge_judge",
+  "app": "../app.yaml",
+  "call": "merge_judge",
+  "generated_at": "2026-06-22T00:00:00Z",
+  "adherence_bar": {
+    "min_pass_rate": 0.95,
+    "max_p95_latency_ms": 8000,
+    "max_avg_cost_usd": 0.002
+  },
+  "candidates": [
+    {
+      "profile": "synthetic-codex",
+      "backend": "codex",
+      "provider": "synthetic.new",
+      "model": "syn:small:text",
+      "effort": "low",
+      "pass": true,
+      "schema_valid_rate": 1.0,
+      "comparator_pass_rate": 1.0,
+      "contract_conformance_rate": 1.0,
+      "p50_latency_ms": 2100,
+      "p95_latency_ms": 3100,
+      "avg_cost_usd": 0.0008,
+      "p95_cost_usd": 0.0011,
+      "retry_rate": 0.0,
+      "fallback_rate": 0.0,
+      "examples_run": 10
+    },
+    {
+      "profile": "claude",
+      "backend": "claude",
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-6",
+      "effort": "medium",
+      "pass": true,
+      "schema_valid_rate": 1.0,
+      "comparator_pass_rate": 1.0,
+      "contract_conformance_rate": 1.0,
+      "p50_latency_ms": 3600,
+      "p95_latency_ms": 5200,
+      "avg_cost_usd": 0.0034,
+      "p95_cost_usd": 0.0042,
+      "retry_rate": 0.0,
+      "fallback_rate": 0.0,
+      "examples_run": 10
+    },
+    {
+      "profile": "synthetic-codex",
+      "backend": "codex",
+      "provider": "synthetic.new",
+      "model": "syn:large:text",
+      "effort": "low",
+      "pass": false,
+      "schema_valid_rate": 1.0,
+      "comparator_pass_rate": 0.9,
+      "contract_conformance_rate": 1.0,
+      "p50_latency_ms": 2500,
+      "p95_latency_ms": 3900,
+      "avg_cost_usd": 0.0016,
+      "p95_cost_usd": 0.0019,
+      "retry_rate": 0.0,
+      "fallback_rate": 0.0,
+      "examples_run": 10
+    }
+  ],
+  "decision": {
+    "strategy": "cheapest_passing",
+    "selected_profile": "synthetic-codex",
+    "selected_model": "syn:small:text",
+    "selected_effort": "low",
+    "evidence": "evals/reports/merge_judge/latest.json",
+    "rejected_summary": "claude passed but exceeded cost target; syn:large:text missed comparator threshold",
+    "pinned_by": "fixture",
+    "pinned_at": "2026-06-22T00:00:00Z",
+    "fallback_profile": "claude"
+  },
+  "failure_samples": [
+    {
+      "example": "missing-merge-sha-blocks-closeout",
+      "profile": "synthetic-codex",
+      "model": "syn:large:text",
+      "reason": "field \"intent\" got accept want refine",
+      "expect": { "intent": "refine" },
+      "actual": { "intent": "accept" }
+    }
+  ]
+}
