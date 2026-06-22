@@ -40,6 +40,7 @@ import (
 	"kitsoki/internal/render"
 	"kitsoki/internal/trace"
 	"kitsoki/internal/tui/blocks"
+	"kitsoki/internal/userfacing"
 	"kitsoki/internal/viz"
 	"kitsoki/internal/world"
 )
@@ -1794,7 +1795,7 @@ func (m RootModel) dispatchInput(input string) (tea.Model, tea.Cmd) {
 	if err != nil {
 		// Drop the placeholder before printing the error.
 		m.transcript.FinalizeLive("")
-		m.transcript.AppendError("", fmt.Sprintf("error: %v", err))
+		m.transcript.AppendError("", fmt.Sprintf("error: %s", userfacing.Error(err)))
 		return m, nil
 	}
 	if hit {
@@ -2388,7 +2389,7 @@ func (m RootModel) handleTurnOutcome(msg turnOutcomeMsg) (tea.Model, tea.Cmd) {
 		// Drop any in-flight routing placeholder; the user already saw
 		// their echo, the error is a complete narrative.
 		m.transcript.FinalizeLive("")
-		m.transcript.AppendError("", fmt.Sprintf("error: %v", msg.err))
+		m.transcript.AppendError("", fmt.Sprintf("error: %s", userfacing.Error(msg.err)))
 		return m, nil
 	}
 
@@ -2675,7 +2676,7 @@ func (m RootModel) handleContinueTurnOutcome(msg continueTurnOutcomeMsg) (tea.Mo
 		// double-Enter from triggering a competing Turn.)
 		m.mode = ModeOnPath
 		m.inFlightCancel = nil
-		m.transcript.AppendError("(slot-fill)", fmt.Sprintf("error: %v", msg.err))
+		m.transcript.AppendError("(slot-fill)", fmt.Sprintf("error: %s", userfacing.Error(msg.err)))
 		return m, nil
 	}
 	out := msg.outcome
@@ -2856,7 +2857,7 @@ func (m RootModel) handleMetaDone() (tea.Model, tea.Cmd) {
 // regret it.
 func (m RootModel) handleMetaDoneDone(msg metaDoneDoneMsg) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
-		m.transcript.AppendError("(meta done)", fmt.Sprintf("error: %v", msg.err))
+		m.transcript.AppendError("(meta done)", fmt.Sprintf("error: %s", userfacing.Error(msg.err)))
 		return m, nil
 	}
 	id := msg.archivedID
@@ -3063,7 +3064,7 @@ func dedupSorted(in []string) []string {
 // resolved one, clears the transcript pane, and stays in ModeMeta.
 func (m RootModel) handleMetaNewDone(msg metaNewDoneMsg) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
-		m.transcript.AppendError("(meta new)", fmt.Sprintf("error: %v", msg.err))
+		m.transcript.AppendError("(meta new)", fmt.Sprintf("error: %s", userfacing.Error(msg.err)))
 		return m, nil
 	}
 	if msg.session == nil {
@@ -3381,7 +3382,7 @@ func (m RootModel) handleMetaSendDone(msg metaSendDoneMsg) (tea.Model, tea.Cmd) 
 				"this chat is currently held by another driver — wait for it to release, or run `kitsoki chat unlock --force <chat-id>` if you know it's stuck")
 			return m, nil
 		}
-		m.transcript.AppendError("(meta)", fmt.Sprintf("error: %v", msg.err))
+		m.transcript.AppendError("(meta)", fmt.Sprintf("error: %s", userfacing.Error(msg.err)))
 		return m, nil
 	}
 	m.metaMode.turns++

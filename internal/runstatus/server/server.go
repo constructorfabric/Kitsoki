@@ -88,6 +88,7 @@ import (
 	"kitsoki/internal/runstatus/harrec"
 	"kitsoki/internal/runstatus/web"
 	"kitsoki/internal/store"
+	"kitsoki/internal/userfacing"
 )
 
 // bugRecorderCapacity is the number of most-recent /rpc request/response pairs
@@ -540,6 +541,11 @@ type rpcResponse struct {
 type rpcError struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
+	// Data carries the full, raw error chain for debugging (logs, dev tools). The
+	// user-facing Message is sanitized via userfacing.Error; Data preserves detail
+	// the SPA can surface behind a "details" affordance without leaking it into the
+	// red banner. Omitted when empty.
+	Data string `json:"data,omitempty"`
 }
 
 // JSON-RPC error codes (subset of the spec plus a generic server error).
@@ -1406,7 +1412,10 @@ func readOnlyErr(method string) *rpcError {
 var errReadOnlySurface = errors.New("unsupported on read-only surface (no session registry)")
 
 func serverErr(err error) *rpcError {
-	return &rpcError{Code: codeServerError, Message: err.Error()}
+	// The user sees a sanitized summary (no temp paths, %w fragments, or
+	// orchestrator internals); the full chain rides along in Data for logs/dev
+	// tools. Without this the red banner showed raw wrapped Go errors verbatim.
+	return &rpcError{Code: codeServerError, Message: userfacing.Error(err), Data: err.Error()}
 }
 
 // traceResult is the runstatus.session.trace response shape.

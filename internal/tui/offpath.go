@@ -7,6 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"kitsoki/internal/app"
+	"kitsoki/internal/userfacing"
 )
 
 // Default off-path triggers used when the app's app.yaml declares no
@@ -208,7 +209,7 @@ func (m RootModel) handleOffPathReply(msg offPathReplyMsg) (tea.Model, tea.Cmd) 
 	// Restore ModeOffPath (not ModeOnPath) — the user is still off the trail.
 	m.mode = ModeOffPath
 	if msg.err != nil {
-		m.transcript.AppendError(msg.question, fmt.Sprintf("off-path: %v", msg.err))
+		m.transcript.AppendError(msg.question, fmt.Sprintf("off-path: %s", userfacing.Error(msg.err)))
 		return m, nil
 	}
 	answer := msg.answer
