@@ -5,7 +5,7 @@ import InboxPanel from "../../src/components/InboxPanel.vue";
 import { useInboxStore } from "../../src/stores/inbox.js";
 
 const push = vi.fn();
-const route = { params: { sessionId: "web-session-1" } };
+const route = { params: { sessionId: "web-session-1" }, query: {} as Record<string, string> };
 vi.mock("vue-router", () => ({
   useRouter: () => ({ push }),
   useRoute: () => route,
@@ -51,6 +51,7 @@ describe("InboxPanel", () => {
     jumpMock.jumpToNotification.mockReset();
     jumpMock.jumpToNotification.mockResolvedValue(undefined);
     route.params.sessionId = "web-session-1";
+    route.query = {};
     document.body.innerHTML = "";
   });
 
@@ -158,6 +159,52 @@ describe("InboxPanel", () => {
 
     expect(inbox.open).toBe(false);
     expect(push).toHaveBeenCalledWith("/s/web-session-1/chat?chat=chat-failed");
+    wrapper.unmount();
+  });
+
+  it("opens and refreshes from the inbox query param", async () => {
+    route.query = { inbox: "1" };
+    listWork.mockResolvedValue({
+      summary: {
+        items: 1,
+        needs_attention: 1,
+        jobs_running: 0,
+        jobs_awaiting_input: 1,
+        jobs_terminal: 0,
+        notifications_unread: 1,
+        notifications_action_required: 1,
+        pending_drives: 0,
+        backgrounded_chats: 0,
+      },
+      sessions: [],
+      items: [
+        {
+          kind: "job",
+          priority: 96,
+          session_id: "web-session-1",
+          title: "host.run",
+          body: "Which environment?",
+          status: "awaiting_input",
+          job_id: "job-awaiting",
+          notification_id: "notif-awaiting",
+          severity: "action_required",
+          reacquire_tool: "notification",
+          reacquire_session_id: "web-session-1",
+        },
+      ],
+    });
+
+    const inbox = useInboxStore();
+    expect(inbox.open).toBe(false);
+
+    const wrapper = mount(InboxPanel, { attachTo: document.body });
+    await flushPromises();
+
+    expect(inbox.open).toBe(true);
+    expect(listWork).toHaveBeenCalled();
+    expect(document.body.querySelector('[data-testid="inbox-panel"]')).not.toBeNull();
+    expect(document.body.textContent).toContain("Active work");
+    expect(document.body.textContent).toContain("Which environment?");
     wrapper.unmount();
   });
 

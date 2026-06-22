@@ -240,6 +240,31 @@ The expected proof at the end is:
 - `world.result == "clarification-done"` proves the paused handler resumed and
   ran `on_complete`.
 
+To capture the browser active-work surface too, first run `make web`, then add
+this `render.web` call after `studio.work` and before `session.teleport`:
+
+```json
+{
+  "tool": "render.web",
+  "args": {
+    "handle": "clarify-smoke",
+    "query": {
+      "inbox": "1"
+    }
+  },
+  "expect": {
+    "content.1.type": "image",
+    "content.1.mimeType": "image/png"
+  },
+  "expect_exists": [
+    "content.1.data"
+  ]
+}
+```
+
+The `?inbox=1` query opens the web inbox panel directly, so the screenshot shows
+the prioritized active-work queue without a synthetic browser click.
+
 ## Chat-backed work smoke
 
 Use this variant to prove the Claude-style subagent queue path: a state-machine

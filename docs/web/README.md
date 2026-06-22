@@ -466,6 +466,11 @@ forge a teleport — `InteractiveView.vue` resolves it on mount via
 `session.teleport`, applies the resulting room, marks the notification read,
 then clears the param (a refresh doesn't re-teleport). The link is shareable.
 
+`#/s/<sessionId>/chat?inbox=1` opens the global inbox panel directly. It is a
+testability and reacquisition affordance: `render.web` and bookmarked live
+sessions can land with the active-work queue visible without synthesizing a
+badge click.
+
 ### v1 scope & limits
 
 - **In-memory sessions.** A tab reconnect re-fetches via `notifications.list`;

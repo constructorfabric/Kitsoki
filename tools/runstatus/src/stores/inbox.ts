@@ -113,6 +113,11 @@ export const useInboxStore = defineStore("inbox", () => {
     if (open.value) void refreshWork();
   }
 
+  function openPanel(): void {
+    open.value = true;
+    void refreshWork();
+  }
+
   function close(): void {
     open.value = false;
   }
@@ -250,6 +255,7 @@ export const useInboxStore = defineStore("inbox", () => {
     teardown,
     onFrame,
     toggle,
+    openPanel,
     close,
     clearToast,
     refreshWork,

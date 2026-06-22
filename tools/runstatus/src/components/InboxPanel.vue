@@ -127,7 +127,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from "vue";
+import { computed, onMounted, onUnmounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { LiveSource } from "../data/live-source.js";
 import type { Notification, WorkItem } from "../data/live-source.js";
@@ -144,6 +144,21 @@ const currentSessionId = computed(() => {
   const raw = route.params.sessionId;
   return typeof raw === "string" ? raw : "";
 });
+
+watch(
+  () => route.query.inbox,
+  (raw) => {
+    if (!opensInbox(raw)) return;
+    inbox.openPanel();
+    void inbox.refreshWork(source);
+  },
+  { immediate: true }
+);
+
+function opensInbox(raw: unknown): boolean {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  return value === "1" || value === "true" || value === "open" || value === "work";
+}
 
 async function onJump(n: Notification): Promise<void> {
   await jumpToNotification(router, source, n);
