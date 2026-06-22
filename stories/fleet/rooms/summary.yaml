@@ -31,5 +31,12 @@ states:
     on:
       to_summary:
         - target: "@exit:done"
+          effects:
+            # fleet_summary is also built in on_enter (so the view renders it
+            # before the auto-advance), but the transition must carry it too so
+            # the import-requires invariant check passes when fleet is imported
+            # by a parent story (e.g. deliver).
+            - set:
+                fleet_summary: '{{ world.shipped_count }} shipped, {{ world.parked_count }} parked.'
       look:
         - target: .
