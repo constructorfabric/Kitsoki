@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"kitsoki/internal/host"
 	inboxmodel "kitsoki/internal/inbox"
 	"kitsoki/internal/jobs"
@@ -25,28 +27,29 @@ import (
 // args it prints the unread items; `/inbox <n>` opens (teleports to)
 // the n-th notification. `/inbox all` prints every notification
 // regardless of read state.
-func renderInboxBlock(m RootModel, args []string) (RootModel, string) {
+func renderInboxBlock(m RootModel, args []string) (RootModel, string, tea.Cmd) {
 	r := blocks.New(m.transcript.width, m.currentTheme())
 	if m.jobStore == nil {
-		return m, r.SlashOutput("(inbox: no job store wired — running in tests or headless)")
+		return m, r.SlashOutput("(inbox: no job store wired — running in tests or headless)"), nil
 	}
 
 	notifications := m.lastNotifications
 
 	if len(args) == 1 {
 		if strings.EqualFold(args[0], "all") {
-			return m, renderInboxList(r, notifications, false)
+			return m, renderInboxList(r, notifications, false), nil
 		}
 		if n, err := strconv.Atoi(args[0]); err == nil {
-			return m, openInboxItem(r, notifications, n)
+			return openInboxItem(m, r, notifications, n)
 		}
 	}
 	if len(args) >= 1 && strings.EqualFold(args[0], "sync-github") {
-		return syncGitHubInbox(m, r, args[1:])
+		next, block := syncGitHubInbox(m, r, args[1:])
+		return next, block, nil
 	}
 
 	// Default: unread only.
-	return m, renderInboxList(r, notifications, true)
+	return m, renderInboxList(r, notifications, true), nil
 }
 
 func syncGitHubInbox(m RootModel, r *blocks.Renderer, args []string) (RootModel, string) {
@@ -129,16 +132,18 @@ func renderInboxList(r *blocks.Renderer, notifs []jobs.Notification, unreadOnly 
 	return strings.TrimRight(sb.String(), "\n")
 }
 
-func openInboxItem(r *blocks.Renderer, notifs []jobs.Notification, n int) string {
-	if n < 1 || n > len(notifs) {
-		return r.SlashOutput("(inbox: index out of range)")
+func openInboxItem(m RootModel, r *blocks.Renderer, notifs []jobs.Notification, n int) (RootModel, string, tea.Cmd) {
+	visible := unreadNotifications(notifs)
+	if n < 1 || n > len(visible) {
+		return m, r.SlashOutput("(inbox: index out of range)"), nil
 	}
-	// Opening sends an inboxItemSelected through the same path the
-	// legacy panel uses — done by the caller via a follow-up cmd. For
-	// now Phase 1 just prints "would open" so we don't double-wire
-	// dispatch; phase 3 splits openInboxItem properly.
-	notif := notifs[n-1]
-	return r.SlashOutput(fmt.Sprintf("(inbox: open %s — teleport handled by the existing inbox panel path for now)", notif.Title))
+	notif := visible[n-1]
+	updated, cmd := m.handleInboxItemSelected(inboxItemSelected{notification: notif})
+	next, ok := updated.(RootModel)
+	if !ok {
+		next = m
+	}
+	return next, r.SlashOutput(fmt.Sprintf("(inbox: opening %s)", notif.Title)), cmd
 }
 
 // newInboxNotifications returns the notifications in fresh that are not
@@ -155,6 +160,16 @@ func newInboxNotifications(prior, fresh []jobs.Notification) []jobs.Notification
 			continue
 		}
 		out = append(out, n)
+	}
+	return out
+}
+
+func unreadNotifications(notifs []jobs.Notification) []jobs.Notification {
+	out := make([]jobs.Notification, 0, len(notifs))
+	for _, n := range notifs {
+		if n.ReadAt == nil {
+			out = append(out, n)
+		}
 	}
 	return out
 }

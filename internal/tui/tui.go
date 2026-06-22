@@ -2057,10 +2057,11 @@ func (m RootModel) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 		// block. The legacy panel toggle is preserved for back-compat
 		// until phase 3 deletes the panel.
 		var block string
-		m, block = renderInboxBlock(m, parts[1:])
+		var cmd tea.Cmd
+		m, block, cmd = renderInboxBlock(m, parts[1:])
 		m.transcript.AppendBlock(block)
 		m.inbox.ToggleExpanded()
-		return m, nil
+		return m, cmd
 
 	case "/work":
 		var block string

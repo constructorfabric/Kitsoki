@@ -237,10 +237,12 @@ func TestInboxSlashSyncGitHubImportsNotifications(t *testing.T) {
 	ns, err := js.ListNotifications(ctx, sid, 20)
 	require.NoError(t, err)
 	require.Len(t, ns, 2)
-	require.Equal(t, "github:acme/repo/issue/7", ns[0].OriginRef)
-	require.Equal(t, "https://github.com/acme/repo/issues/7", ns[0].OriginURL)
-	require.Equal(t, "github:acme/repo/pr/42", ns[1].OriginRef)
-	require.Equal(t, "https://github.com/acme/repo/pull/42", ns[1].OriginURL)
+	byRef := map[string]jobs.Notification{}
+	for _, n := range ns {
+		byRef[n.OriginRef] = n
+	}
+	require.Equal(t, "https://github.com/acme/repo/issues/7", byRef["github:acme/repo/issue/7"].OriginURL)
+	require.Equal(t, "https://github.com/acme/repo/pull/42", byRef["github:acme/repo/pr/42"].OriginURL)
 	require.Len(t, calls, 3)
 
 	m = runTurnBlocking(t, m, "/inbox sync-github acme/repo")
@@ -249,6 +251,50 @@ func TestInboxSlashSyncGitHubImportsNotifications(t *testing.T) {
 	ns, err = js.ListNotifications(ctx, sid, 20)
 	require.NoError(t, err)
 	require.Len(t, ns, 2)
+}
+
+func TestInboxSlashIndexTeleportsToUnreadNotification(t *testing.T) {
+	m, sid, js, _, _ := buildWorkTestModel(t)
+	ctx := context.Background()
+	readAt := time.Now().Add(-time.Minute)
+	require.NoError(t, js.InsertNotification(ctx, &jobs.Notification{
+		SessionID:     sid,
+		CreatedAt:     time.Now().Add(-2 * time.Minute),
+		Severity:      jobs.SeverityInfo,
+		Title:         "already handled",
+		TeleportState: "foyer",
+		ReadAt:        &readAt,
+	}))
+	require.NoError(t, js.InsertNotification(ctx, &jobs.Notification{
+		SessionID:     sid,
+		CreatedAt:     time.Now().Add(-time.Minute),
+		Severity:      jobs.SeverityActionRequired,
+		Title:         "check cloakroom",
+		TeleportState: "cloakroom",
+	}))
+	ns, err := js.ListNotifications(ctx, sid, 20)
+	require.NoError(t, err)
+	m, _ = m.Update(tuipkg.InboxRefreshedMsg(ns))
+
+	m = runTurnBlocking(t, m, "/inbox 1")
+	tx := extractTranscript(t, m)
+	require.Contains(t, tx, "CLOAKROOM")
+
+	rm, ok := tuipkg.ExtractRootModel(m)
+	require.True(t, ok)
+	require.Equal(t, app.StatePath("cloakroom"), rm.CurrentStateForTest())
+
+	after, err := js.ListNotifications(ctx, sid, 20)
+	require.NoError(t, err)
+	var opened jobs.Notification
+	for _, n := range after {
+		if n.Title == "check cloakroom" {
+			opened = n
+			break
+		}
+	}
+	require.NotEmpty(t, opened.ID)
+	require.NotNil(t, opened.ReadAt)
 }
 
 // ─── TestHumanizeDuration ─────────────────────────────────────────────────────
