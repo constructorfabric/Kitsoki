@@ -1,0 +1,43 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: reporting
+initial_world:
+  question: "Compare current harnesses."
+  report_artifact:
+    question: "Compare current harnesses."
+    markdown_path: ".context/model-harness-eval.md"
+    deck_path: ".artifacts/model-harness-eval/index.html"
+    summary_path: ".artifacts/model-harness-eval/summary.json"
+    status: "complete"
+    summary_markdown: "## Existing report\n\nA sufficiently long existing summary body that should be cleared before the refined reporter pass runs again."
+
+host_handlers:
+  host.agent.task:
+    by_call:
+      prepare_reports:
+        data:
+          ok: true
+          submitted:
+            question: "Compare current harnesses."
+            markdown_path: ".context/model-harness-eval.md"
+            deck_path: ".artifacts/model-harness-eval/index.html"
+            summary_path: ".artifacts/model-harness-eval/summary.json"
+            status: "partial"
+            summary_markdown: |
+              ## Refined report
+
+              The refined pass includes readiness gaps first, then the model/harness table. This is a long enough schema-valid body for the artifact contract.
+            limitations: ["Still no live provider benchmark evidence."]
+
+turns:
+  - intent:
+      name: refine
+      slots: { feedback: "put readiness gaps first" }
+    expect_state: reporting
+    expect_world:
+      refine_feedback: "put readiness gaps first"
+    expect_host_calls:
+      - handler: host.agent.task
+        args: { call: "prepare_reports" }
+
+expect_no_errors: true

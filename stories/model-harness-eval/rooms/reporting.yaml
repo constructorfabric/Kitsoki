@@ -1,0 +1,76 @@
+states:
+  reporting:
+    description: "Preparing evaluation report artifacts."
+    relevant_world: [question, output_root, markdown_path, deck_path, summary_path, refine_feedback, report_artifact, status]
+    view:
+      - banner:
+          text: "REPORTING"
+          subtitle: "The reporter is collecting local evidence and rendering artifacts."
+          color: "#2563EB"
+      - kv:
+          pairs:
+            Question: "{{ world.question }}"
+            Markdown: '{{ world.report_artifact.markdown_path|default:world.markdown_path }}'
+            Deck: '{{ world.report_artifact.deck_path|default:world.deck_path }}'
+            Summary: '{{ world.report_artifact.summary_path|default:world.summary_path }}'
+            Status: '{{ world.report_artifact.status|default:"pending" }}'
+      - heading: "Summary"
+      - code: '{{ world.report_artifact.summary_markdown|default:"(pending - reporter has not returned yet)" }}'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "accept"
+              hint: "move to the final artifact view"
+              intent: accept
+            - label: "refine feedback=..."
+              hint: "regenerate with feedback"
+              intent: refine
+              param: { slot: feedback, type: string, placeholder: "what should change?", required: true }
+            - label: "quit"
+              intent: quit
+            - label: "look"
+              intent: look
+    on_enter:
+      - invoke: host.agent.task
+        id: prepare_reports
+        once: true
+        with:
+          agent: reporter
+          working_dir: "{{ world.workdir }}"
+          acceptance:
+            schema: schemas/report_artifact.json
+            max_retries: 2
+          context:
+            prompt: prompts/prepare_reports.md
+            args:
+              question: "{{ world.question }}"
+              refine_feedback: "{{ world.refine_feedback }}"
+              output_root: "{{ world.output_root }}"
+              markdown_path: "{{ world.markdown_path }}"
+              deck_path: "{{ world.deck_path }}"
+              summary_path: "{{ world.summary_path }}"
+        bind:
+          report_artifact: submitted
+        on_error: idle
+      - set: { status: "ready" }
+    on:
+      accept:
+        - target: done
+          effects:
+            - set: { status: "done" }
+            - say: "Report artifacts ready."
+      refine:
+        - target: reporting
+          effects:
+            - set:
+                refine_feedback: "{{ slots.feedback }}"
+                report_artifact: {}
+                status: "running"
+      quit:
+        - target: idle
+          effects:
+            - set: { status: "abandoned" }
+      look:
+        - target: .
+

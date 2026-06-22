@@ -1,0 +1,69 @@
+app:
+  id: model-harness-eval
+  version: 0.1.0
+  title: "Model harness eval reporter"
+  author: "Kitsoki"
+  license: "CC0"
+
+hosts:
+  - host.agent.task
+
+agents:
+  reporter:
+    system_prompt: "You prepare Kitsoki model/harness evaluation reports from local evidence. Given an operator question, run the no-cost evidence collection that is appropriate for this repo, aggregate the evidence with tools/session-mining/eval_pilot_report.py, and return exact artifact paths plus a concise interpretation. Do not call live LLM providers or spend tokens for benchmark collection; if the question asks for live provider comparison, report the missing live-evidence gap and the explicit command/operator approval needed."
+    model: claude-sonnet-4-6
+    tools: [Read, Grep, Glob, Bash]
+    bash_profile:
+      commands: [bash, go, mkdir, python3, sed, find]
+    external_side_effect: false
+
+world:
+  question:        { type: string, default: "" }
+  workdir:         { type: string, default: "." }
+  output_root:     { type: string, default: ".artifacts/model-harness-eval" }
+  markdown_path:   { type: string, default: ".context/model-harness-eval.md" }
+  deck_path:       { type: string, default: ".artifacts/model-harness-eval/index.html" }
+  summary_path:    { type: string, default: ".artifacts/model-harness-eval/summary.json" }
+  refine_feedback: { type: string, default: "" }
+  report_artifact: { type: object, default: {} }
+  status:          { type: string, default: "idle" }
+
+intents:
+  start:
+    description: "Ask the reporter to prepare model/harness evaluation artifacts."
+    examples: ["evaluate the harnesses", "compare the models", "build the report", "run the eval pilot"]
+    priority: 90
+    slots:
+      question: { type: string, required: true }
+  accept:
+    description: "Accept the generated report and move to the done view."
+    examples: ["accept", "looks good", "done", "continue"]
+    priority: 80
+  refine:
+    description: "Regenerate the report with specific feedback."
+    examples: ["refine", "rerun", "try again"]
+    priority: 70
+    slots:
+      feedback: { type: string, required: true }
+  restart:
+    description: "Restart with a new overall question."
+    examples: ["restart", "new question", "start over"]
+    priority: 60
+    slots:
+      question: { type: string, required: false }
+  quit:
+    description: "Abandon the report run."
+    examples: ["quit", "abort", "stop"]
+    priority: 40
+  look:
+    description: "Re-render the current view."
+    examples: ["look", "status", "show me"]
+    priority: 10
+
+exports:
+  intents: [start, accept, refine, restart, quit, look]
+
+root: idle
+
+include:
+  - rooms/*.yaml

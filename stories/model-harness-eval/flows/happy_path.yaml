@@ -1,0 +1,59 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  workdir: "."
+  output_root: ".artifacts/model-harness-eval"
+  markdown_path: ".context/model-harness-eval.md"
+  deck_path: ".artifacts/model-harness-eval/index.html"
+  summary_path: ".artifacts/model-harness-eval/summary.json"
+
+host_handlers:
+  host.agent.task:
+    by_call:
+      prepare_reports:
+        data:
+          ok: true
+          submitted:
+            question: "How do the available model harnesses perform on real cases?"
+            markdown_path: ".context/model-harness-eval.md"
+            deck_path: ".artifacts/model-harness-eval/index.html"
+            summary_path: ".artifacts/model-harness-eval/summary.json"
+            status: "complete"
+            commands_run:
+              - "go run ./cmd/kitsoki test intents stories/oregon-trail/app.yaml --harness static --json .artifacts/model-harness-eval/intent-reports/oregon-trail.json"
+              - "bash tools/session-mining/examples/git-ops/run.sh --keep .artifacts/model-harness-eval/git-ops-coverage"
+              - "python3 tools/session-mining/eval_pilot_report.py --root stories --intent-root .artifacts/model-harness-eval/intent-reports --coverage-root .artifacts/model-harness-eval --markdown .context/model-harness-eval.md --deck .artifacts/model-harness-eval/index.html --summary .artifacts/model-harness-eval/summary.json"
+            evidence:
+              eval_datasets: 1
+              eval_reports: 3
+              intent_suite_reports: 1
+              coverage_jobs: 1
+              readiness_gaps: 12
+            limitations:
+              - "No live provider-backed benchmark matrix was run."
+            summary_markdown: |
+              ## Model harness eval
+
+              Question: How do the available model harnesses perform on real cases?
+
+              The report used accepted local eval evidence, the Oregon Trail static intent suite, and the git-ops transcript coverage flagship. It produced Markdown, deck, and JSON artifacts. Live provider-backed comparisons remain a readiness gap and require explicit operator approval.
+
+turns:
+  - intent:
+      name: start
+      slots:
+        question: "How do the available model harnesses perform on real cases?"
+    expect_state: reporting
+    expect_world:
+      status: "ready"
+    expect_host_calls:
+      - handler: host.agent.task
+        args: { call: "prepare_reports" }
+
+  - intent: { name: accept, slots: {} }
+    expect_state: done
+    expect_world:
+      status: "done"
+
+expect_no_errors: true

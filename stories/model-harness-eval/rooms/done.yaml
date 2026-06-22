@@ -1,0 +1,39 @@
+states:
+  done:
+    description: "Evaluation report artifacts are ready."
+    relevant_world: [question, report_artifact, status]
+    view:
+      - banner:
+          text: "DONE"
+          subtitle: "Markdown, deck, and JSON summary are ready for review."
+          color: "#16A34A"
+      - kv:
+          pairs:
+            Question: "{{ world.question }}"
+            Markdown: '{{ world.report_artifact.markdown_path|default:"(missing)" }}'
+            Deck: '{{ world.report_artifact.deck_path|default:"(missing)" }}'
+            Summary: '{{ world.report_artifact.summary_path|default:"(missing)" }}'
+            Status: '{{ world.report_artifact.status|default:world.status }}'
+      - heading: "Result"
+      - code: '{{ world.report_artifact.summary_markdown|default:"(no summary returned)" }}'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "restart question=..."
+              hint: "ask a different evaluation question"
+              intent: restart
+              param: { slot: question, type: string, placeholder: "new question", required: false }
+            - label: "look"
+              intent: look
+    on:
+      restart:
+        - target: reporting
+          effects:
+            - set:
+                question: "{{ slots.question ?? world.question }}"
+                refine_feedback: ""
+                report_artifact: {}
+                status: "running"
+      look:
+        - target: .

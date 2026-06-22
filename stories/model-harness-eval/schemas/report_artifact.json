@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "report_artifact",
+  "description": "Artifact returned by the model-harness evaluation reporter.",
+  "type": "object",
+  "required": [
+    "question",
+    "markdown_path",
+    "deck_path",
+    "summary_path",
+    "summary_markdown",
+    "status"
+  ],
+  "properties": {
+    "question": { "type": "string", "minLength": 4 },
+    "markdown_path": { "type": "string", "minLength": 4 },
+    "deck_path": { "type": "string", "minLength": 4 },
+    "summary_path": { "type": "string", "minLength": 4 },
+    "status": {
+      "type": "string",
+      "enum": ["complete", "partial", "blocked"]
+    },
+    "summary_markdown": {
+      "type": "string",
+      "minLength": 80,
+      "description": "Concise review summary with headline results, gaps, and next actions."
+    },
+    "commands_run": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "eval_datasets": { "type": "integer", "minimum": 0 },
+        "eval_reports": { "type": "integer", "minimum": 0 },
+        "intent_suite_reports": { "type": "integer", "minimum": 0 },
+        "coverage_jobs": { "type": "integer", "minimum": 0 },
+        "readiness_gaps": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    }
+  },
+  "additionalProperties": true
+}
