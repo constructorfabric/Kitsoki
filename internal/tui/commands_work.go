@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -28,7 +29,6 @@ func renderWorkBlock(m RootModel, args []string) (RootModel, string) {
 	ctx := context.Background()
 	var rows []workRow
 	var errs []string
-	var attachTargets []chats.PtySession
 
 	if m.jobStore != nil {
 		var jobRows []jobs.Job
@@ -77,7 +77,7 @@ func renderWorkBlock(m RootModel, args []string) (RootModel, string) {
 			errs = append(errs, "sessions: "+err.Error())
 		} else {
 			var ptyRows []workRow
-			ptyRows, attachTargets = workRowsForPTYs(ctx, m.chatStore, string(m.sid), ptys, allSessions)
+			ptyRows = workRowsForPTYs(ctx, m.chatStore, string(m.sid), ptys, allSessions)
 			rows = append(rows, ptyRows...)
 		}
 	}
@@ -85,13 +85,15 @@ func renderWorkBlock(m RootModel, args []string) (RootModel, string) {
 	if len(errs) > 0 {
 		return m, r.SlashOutput("(work: " + strings.Join(errs, "; ") + ")")
 	}
-	m.sessionList = attachTargets
 	if len(rows) == 0 {
 		if allSessions {
 			return m, r.SlashOutput("(work: no active async work across sessions)")
 		}
 		return m, r.SlashOutput("(work: no active async work)")
 	}
+	sortWorkRows(rows)
+	attachTargets := assignWorkAttachTargets(rows)
+	m.sessionList = attachTargets
 
 	var sb strings.Builder
 	label := "active work"
@@ -131,11 +133,15 @@ func workAllSessions(args []string) bool {
 }
 
 type workRow struct {
-	Kind   string
-	Status string
-	Title  string
-	Hint   string
-	Age    string
+	Kind         string
+	Status       string
+	Title        string
+	Hint         string
+	Age          string
+	Priority     int
+	UpdatedAt    time.Time
+	ID           string
+	AttachTarget *chats.PtySession
 }
 
 func workRowsForJobs(jobRows []jobs.Job, sid app.SessionID, allSessions bool) []workRow {
@@ -158,11 +164,14 @@ func workRowsForJobs(jobRows []jobs.Job, sid app.SessionID, allSessions bool) []
 			hint += workSessionHint(j.SessionID, sid)
 		}
 		out = append(out, workRow{
-			Kind:   "job",
-			Status: string(j.Status),
-			Title:  title,
-			Hint:   hint,
-			Age:    humanAge(time.Since(j.UpdatedAt)),
+			Kind:      "job",
+			Status:    string(j.Status),
+			Title:     title,
+			Hint:      hint,
+			Age:       humanAge(time.Since(j.UpdatedAt)),
+			Priority:  workJobPriority(j.Status),
+			UpdatedAt: j.UpdatedAt,
+			ID:        j.ID,
 		})
 	}
 	return out
@@ -189,11 +198,14 @@ func workRowsForNotifications(notifs []jobs.Notification, sid app.SessionID, all
 			hint += workSessionHint(n.SessionID, sid)
 		}
 		out = append(out, workRow{
-			Kind:   "notification",
-			Status: string(n.Severity),
-			Title:  title,
-			Hint:   hint,
-			Age:    humanAge(time.Since(n.CreatedAt)),
+			Kind:      "notification",
+			Status:    string(n.Severity),
+			Title:     title,
+			Hint:      hint,
+			Age:       humanAge(time.Since(n.CreatedAt)),
+			Priority:  workNotificationPriority(n.Severity),
+			UpdatedAt: n.CreatedAt,
+			ID:        n.ID,
 		})
 	}
 	return out
@@ -226,19 +238,21 @@ func workRowsForDrives(drives []chats.Drive, sid string, allSessions bool) []wor
 			}
 		}
 		out = append(out, workRow{
-			Kind:   "queued",
-			Status: string(d.Status),
-			Title:  title,
-			Hint:   hint,
-			Age:    humanAge(time.Since(d.ReceivedAt)),
+			Kind:      "queued",
+			Status:    string(d.Status),
+			Title:     title,
+			Hint:      hint,
+			Age:       humanAge(time.Since(d.ReceivedAt)),
+			Priority:  workDrivePriority(d.Status),
+			UpdatedAt: d.ReceivedAt,
+			ID:        d.DriveID,
 		})
 	}
 	return out
 }
 
-func workRowsForPTYs(ctx context.Context, cs *chats.Store, sid string, ptys []chats.PtySession, allSessions bool) ([]workRow, []chats.PtySession) {
+func workRowsForPTYs(ctx context.Context, cs *chats.Store, sid string, ptys []chats.PtySession, allSessions bool) []workRow {
 	out := make([]workRow, 0, len(ptys))
-	attachTargets := make([]chats.PtySession, 0, len(ptys))
 	for _, p := range ptys {
 		if p.Mode != chats.PtyModeBackground {
 			continue
@@ -265,19 +279,84 @@ func workRowsForPTYs(ctx context.Context, cs *chats.Store, sid string, ptys []ch
 				hint += ", session " + chat.SessionID
 			}
 		}
-		attachTargets = append(attachTargets, p)
-		attachIndex := len(attachTargets)
-		if hint != "" {
-			hint += "; "
-		}
-		hint += fmt.Sprintf("/sessions attach %d", attachIndex)
+		attachTarget := p
 		out = append(out, workRow{
-			Kind:   "chat",
-			Status: string(p.Mode),
-			Title:  title,
-			Hint:   hint,
-			Age:    humanAge(time.Since(p.UpdatedAt)),
+			Kind:         "chat",
+			Status:       string(p.Mode),
+			Title:        title,
+			Hint:         hint,
+			Age:          humanAge(time.Since(p.UpdatedAt)),
+			Priority:     60,
+			UpdatedAt:    p.UpdatedAt,
+			ID:           p.ChatID,
+			AttachTarget: &attachTarget,
 		})
 	}
-	return out, attachTargets
+	return out
+}
+
+func sortWorkRows(rows []workRow) {
+	sort.SliceStable(rows, func(i, j int) bool {
+		a, b := rows[i], rows[j]
+		if a.Priority != b.Priority {
+			return a.Priority > b.Priority
+		}
+		if !a.UpdatedAt.Equal(b.UpdatedAt) {
+			return a.UpdatedAt.After(b.UpdatedAt)
+		}
+		if a.Kind != b.Kind {
+			return a.Kind < b.Kind
+		}
+		return a.ID < b.ID
+	})
+}
+
+func assignWorkAttachTargets(rows []workRow) []chats.PtySession {
+	targets := make([]chats.PtySession, 0)
+	for i := range rows {
+		if rows[i].AttachTarget == nil {
+			continue
+		}
+		targets = append(targets, *rows[i].AttachTarget)
+		if rows[i].Hint != "" {
+			rows[i].Hint += "; "
+		}
+		rows[i].Hint += fmt.Sprintf("/sessions attach %d", len(targets))
+	}
+	return targets
+}
+
+func workJobPriority(status jobs.JobStatus) int {
+	switch status {
+	case jobs.JobAwaitingInput:
+		return 96
+	case jobs.JobFailed:
+		return 90
+	case jobs.JobRunning:
+		return 70
+	default:
+		return 25
+	}
+}
+
+func workNotificationPriority(severity jobs.NotificationSeverity) int {
+	switch severity {
+	case jobs.SeverityActionRequired:
+		return 100
+	case jobs.SeverityError:
+		return 92
+	case jobs.SeverityWarn:
+		return 88
+	case jobs.SeveritySuccess:
+		return 84
+	default:
+		return 80
+	}
+}
+
+func workDrivePriority(status chats.DriveStatus) int {
+	if status == chats.DriveStatusDispatching {
+		return 68
+	}
+	return 65
 }

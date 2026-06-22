@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -127,6 +128,7 @@ func TestWorkSlashListsActiveAsyncWork(t *testing.T) {
 
 	m = runTurnBlocking(t, m, "/work")
 	tx := extractTranscript(t, m)
+	currentWork := transcriptAfter(t, tx, "active work: 4 item(s)")
 	require.Contains(t, tx, "active work: 4 item(s)")
 	require.Contains(t, tx, "notification")
 	require.Contains(t, tx, "Review PR #42")
@@ -143,6 +145,9 @@ func TestWorkSlashListsActiveAsyncWork(t *testing.T) {
 	require.Contains(t, tx, "Background Claude")
 	require.Contains(t, tx, "/sessions attach 1")
 	require.NotContains(t, tx, "Other session Claude")
+	requireBefore(t, currentWork, "Review PR #42", "host.agent.task")
+	requireBefore(t, currentWork, "host.agent.task", "continue queued review")
+	requireBefore(t, currentWork, "continue queued review", "Background Claude")
 
 	rm, ok := tuipkg.ExtractRootModel(m)
 	require.True(t, ok)
@@ -152,6 +157,7 @@ func TestWorkSlashListsActiveAsyncWork(t *testing.T) {
 
 	m = runTurnBlocking(t, m, "/work --all")
 	tx = extractTranscript(t, m)
+	allWork := transcriptAfter(t, tx, "active work (all sessions): 8 item(s)")
 	require.Contains(t, tx, "active work (all sessions): 8 item(s)")
 	require.Contains(t, tx, "Other PR #99")
 	require.Contains(t, tx, "job-other")
@@ -161,12 +167,31 @@ func TestWorkSlashListsActiveAsyncWork(t *testing.T) {
 	require.Contains(t, tx, "Other session Claude")
 	require.Contains(t, tx, "session other-session")
 	require.Contains(t, tx, "/sessions attach 2")
+	requireBefore(t, allWork, "Other PR #99", "job-other")
+	requireBefore(t, allWork, "Review PR #42", "job-running")
+	requireBefore(t, allWork, "job-other", "job-running")
 
 	rm, ok = tuipkg.ExtractRootModel(m)
 	require.True(t, ok)
 	cached = tuipkg.CachedSessionListForTest(rm)
 	require.Len(t, cached, 2)
 	require.ElementsMatch(t, []string{bg.ID, other.ID}, []string{cached[0].ChatID, cached[1].ChatID})
+}
+
+func transcriptAfter(t *testing.T, text, marker string) string {
+	t.Helper()
+	idx := strings.LastIndex(text, marker)
+	require.NotEqual(t, -1, idx, "expected %q in transcript", marker)
+	return text[idx:]
+}
+
+func requireBefore(t *testing.T, text, before, after string) {
+	t.Helper()
+	beforeIndex := strings.Index(text, before)
+	afterIndex := strings.Index(text, after)
+	require.NotEqual(t, -1, beforeIndex, "expected %q in transcript", before)
+	require.NotEqual(t, -1, afterIndex, "expected %q in transcript", after)
+	require.Less(t, beforeIndex, afterIndex, "expected %q before %q", before, after)
 }
 
 func TestWorkSlashNoStores(t *testing.T) {
