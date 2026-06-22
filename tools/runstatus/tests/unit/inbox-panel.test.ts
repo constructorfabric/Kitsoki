@@ -3,6 +3,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { setActivePinia, createPinia } from "pinia";
 import InboxPanel from "../../src/components/InboxPanel.vue";
 import { useInboxStore } from "../../src/stores/inbox.js";
+import { useOperatorQuestionStore } from "../../src/stores/operatorQuestions.js";
 
 const push = vi.fn();
 const route = { params: { sessionId: "web-session-1" }, query: {} as Record<string, string> };
@@ -205,6 +206,62 @@ describe("InboxPanel", () => {
     expect(document.body.querySelector('[data-testid="inbox-panel"]')).not.toBeNull();
     expect(document.body.textContent).toContain("Active work");
     expect(document.body.textContent).toContain("Which environment?");
+    wrapper.unmount();
+  });
+
+  it("opens a pending operator question from active work", async () => {
+    const inbox = useInboxStore();
+    const questions = useOperatorQuestionStore();
+    inbox.open = true;
+    inbox.workSummary = {
+      items: 1,
+      needs_attention: 1,
+      jobs_running: 0,
+      jobs_awaiting_input: 0,
+      jobs_terminal: 0,
+      notifications_unread: 0,
+      notifications_action_required: 0,
+      pending_drives: 0,
+      backgrounded_chats: 0,
+      operator_questions: 1,
+    };
+    inbox.workItems = [
+      {
+        kind: "operator_question",
+        priority: 98,
+        session_id: "web-session-1",
+        title: "Env",
+        body: "Which environment?",
+        status: "awaiting_answer",
+        question_id: "q-7",
+        questions: [
+          {
+            question: "Which environment?",
+            header: "Env",
+            options: [{ label: "staging" }, { label: "prod" }],
+          },
+        ],
+        reacquire_tool: "operator_question",
+        reacquire_session_id: "web-session-1",
+      },
+    ];
+
+    const wrapper = mount(InboxPanel, { attachTo: document.body });
+    await flushPromises();
+
+    const row = document.body.querySelector('[data-testid="work-item"]') as HTMLButtonElement;
+    expect(row).not.toBeNull();
+    expect(document.body.textContent).toContain("question");
+    expect(document.body.textContent).toContain("Which environment?");
+    expect(document.body.textContent).toContain("answer");
+
+    row.click();
+    await flushPromises();
+
+    expect(inbox.open).toBe(false);
+    expect(questions.active?.question_id).toBe("q-7");
+    expect(questions.active?.questions[0]?.question).toBe("Which environment?");
+    expect(push).not.toHaveBeenCalled();
     wrapper.unmount();
   });
 

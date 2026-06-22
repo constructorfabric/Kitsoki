@@ -434,18 +434,20 @@ indistinguishable from a TUI one in the trace.
   notification count and active-work item count in the chrome on every screen.
   Attention color appears when either the notification feed or active-work
   summary reports work that needs intervention. Active-work attention is limited
-  to unread `action_required` notifications plus awaiting-input or failed jobs;
-  passive `success` / `info` rows remain listed and jumpable without coloring
-  the badge.
+  to unread `action_required` notifications, unanswered operator questions,
+  awaiting-input or failed jobs, and failed subagent drives; passive `success` /
+  `info` rows remain listed and jumpable without coloring the badge.
 - **`InboxPanel.vue`** — opens on badge click: first the prioritized active-work
   queue from `runstatus.work.list` (notifications, jobs, queued/dispatching
-  drives, failed drives, and backgrounded chats), then notification history.
+  drives, failed drives, backgrounded chats, and unanswered operator questions),
+  then notification history.
   Rows show the next action explicitly: **jump** for notifications and
   notification-backed jobs, **open context** for chat-backed work including
-  failed subagent drives, and **open session** for job rows that have no
-  matching unread notification yet. Awaiting-input job rows show their
-  clarification prompt in the row body unless a linked notification supplies a
-  more specific body.
+  failed subagent drives, **answer** for forwarded operator questions, and
+  **open session** for job rows that have no matching unread notification yet.
+  Awaiting-input job rows show their clarification prompt in the row body unless
+  a linked notification supplies a more specific body. Operator-question rows
+  reopen the same blocking answer modal used by the live question SSE feed.
   Notification history keeps **dismiss** affordances; an origin session that is
   no longer live degrades to a non-jumping, read-only item (teleport returns a
   typed error). The panel's **Sync GitHub** action uses the same idempotent

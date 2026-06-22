@@ -2,7 +2,11 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"sort"
+	"strings"
+
+	kitsokimcp "kitsoki/internal/mcp"
 )
 
 // WorkListResult is the cross-session operator work queue returned by
@@ -26,7 +30,9 @@ func (s *Server) listWork(ctx context.Context) (WorkListResult, error) {
 	out := WorkListResult{
 		Sessions: make([]WorkSessionResult, 0, len(headers)),
 	}
+	sessionIndex := map[string]int{}
 	for _, hdr := range headers {
+		sessionIndex[hdr.SessionID] = len(out.Sessions)
 		entry, ok := s.provider.Get(hdr.SessionID)
 		if !ok || entry.Driver == nil {
 			out.Sessions = append(out.Sessions, WorkSessionResult{
@@ -64,6 +70,17 @@ func (s *Server) listWork(ctx context.Context) (WorkListResult, error) {
 		addWorkSummary(&out.Summary, work.Summary)
 		out.Items = append(out.Items, work.Items...)
 	}
+	for _, q := range s.qreg.snapshot() {
+		if q.SessionID == "" {
+			continue
+		}
+		item := workItemForOperatorQuestion(q)
+		out.Items = append(out.Items, item)
+		out.Summary.OperatorQuestions++
+		if idx, ok := sessionIndex[q.SessionID]; ok {
+			out.Sessions[idx].Work.OperatorQuestions++
+		}
+	}
 	sort.SliceStable(out.Items, func(i, j int) bool {
 		a, b := out.Items[i], out.Items[j]
 		if a.Priority != b.Priority {
@@ -97,4 +114,33 @@ func addWorkSummary(dst *WorkSummary, src WorkSummary) {
 	dst.DispatchingDrives += src.DispatchingDrives
 	dst.FailedDrives += src.FailedDrives
 	dst.BackgroundedChats += src.BackgroundedChats
+	dst.OperatorQuestions += src.OperatorQuestions
+}
+
+func workItemForOperatorQuestion(q pendingQuestion) WorkItem {
+	title := "Agent question"
+	body := ""
+	if len(q.Questions) > 0 {
+		if q.Questions[0].Header != "" {
+			title = q.Questions[0].Header
+		}
+		body = q.Questions[0].Question
+		if len(q.Questions) > 1 {
+			body = strings.TrimSpace(fmt.Sprintf("%s (+%d more)", body, len(q.Questions)-1))
+		}
+	}
+	return WorkItem{
+		Kind:               "operator_question",
+		Priority:           98,
+		SessionID:          q.SessionID,
+		Title:              title,
+		Body:               body,
+		Status:             "awaiting_answer",
+		CreatedAt:          q.CreatedAt,
+		UpdatedAt:          q.CreatedAt,
+		QuestionID:         q.ID,
+		Questions:          append([]kitsokimcp.OperatorAskQuestion(nil), q.Questions...),
+		ReacquireTool:      "operator_question",
+		ReacquireSessionID: q.SessionID,
+	}
 }

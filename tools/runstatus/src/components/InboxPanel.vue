@@ -132,10 +132,12 @@ import { useRoute, useRouter } from "vue-router";
 import { LiveSource } from "../data/live-source.js";
 import type { Notification, WorkItem } from "../data/live-source.js";
 import { useInboxStore } from "../stores/inbox.js";
+import { useOperatorQuestionStore } from "../stores/operatorQuestions.js";
 import { severityGlyph, severityColor, relativeTime } from "../lib/severity.js";
 import { jumpToNotification } from "../lib/inbox-jump.js";
 
 const inbox = useInboxStore();
+const operatorQuestions = useOperatorQuestionStore();
 const router = useRouter();
 const route = useRoute();
 const source = new LiveSource("/");
@@ -174,6 +176,15 @@ function onSyncGitHub(): void {
 }
 
 async function onWorkItem(item: WorkItem): Promise<void> {
+  if (item.kind === "operator_question" && item.question_id && item.questions) {
+    operatorQuestions.onFrame({
+      session_id: item.session_id,
+      question_id: item.question_id,
+      questions: item.questions,
+    });
+    inbox.close();
+    return;
+  }
   if (isNotificationBackedWork(item)) {
     await jumpToNotification(router, source, notificationFromWork(item));
     return;
@@ -208,6 +219,7 @@ function workKey(item: WorkItem): string {
 }
 
 function workKind(item: WorkItem): string {
+  if (item.kind === "operator_question") return "question";
   if (item.kind === "job") return "job";
   if (item.kind === "pending_drive") {
     return item.status === "dispatching" ? "dispatching" : "queued";
@@ -232,6 +244,7 @@ function workContext(item: WorkItem): string {
 }
 
 function workAction(item: WorkItem): string {
+  if (item.kind === "operator_question") return "answer";
   if (isNotificationBackedWork(item)) return "jump";
   if (item.reacquire_tool === "chat.show" || item.chat_id) return "open context";
   return "open session";

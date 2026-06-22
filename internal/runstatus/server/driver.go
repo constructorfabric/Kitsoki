@@ -15,6 +15,7 @@ import (
 	"kitsoki/internal/host"
 	"kitsoki/internal/inbox"
 	"kitsoki/internal/jobs"
+	kitsokimcp "kitsoki/internal/mcp"
 	"kitsoki/internal/orchestrator"
 	"kitsoki/internal/render/elements"
 )
@@ -165,6 +166,7 @@ type WorkSummary struct {
 	DispatchingDrives           int `json:"dispatching_drives"`
 	FailedDrives                int `json:"failed_drives"`
 	BackgroundedChats           int `json:"backgrounded_chats"`
+	OperatorQuestions           int `json:"operator_questions"`
 }
 
 // WorkItem is one active row in the operator's work queue. Notification rows
@@ -172,33 +174,35 @@ type WorkSummary struct {
 // available or reacquire the owning session otherwise, and chat-backed rows
 // reacquire focused context through runstatus.chat.show.
 type WorkItem struct {
-	Kind               string                    `json:"kind"`
-	Priority           int                       `json:"priority"`
-	SessionID          string                    `json:"session_id"`
-	Title              string                    `json:"title,omitempty"`
-	Body               string                    `json:"body,omitempty"`
-	Status             string                    `json:"status,omitempty"`
-	NotificationID     string                    `json:"notification_id,omitempty"`
-	JobID              string                    `json:"job_id,omitempty"`
-	Severity           jobs.NotificationSeverity `json:"severity,omitempty"`
-	CreatedAt          time.Time                 `json:"created_at,omitempty"`
-	UpdatedAt          time.Time                 `json:"updated_at,omitempty"`
-	ReadAt             *time.Time                `json:"read_at,omitempty"`
-	TeleportState      string                    `json:"teleport_state,omitempty"`
-	TeleportSlots      map[string]any            `json:"teleport_slots,omitempty"`
-	TeleportJobID      string                    `json:"teleport_job_id,omitempty"`
-	OriginKind         string                    `json:"origin_kind,omitempty"`
-	OriginRef          string                    `json:"origin_ref,omitempty"`
-	OriginURL          string                    `json:"origin_url,omitempty"`
-	OriginState        string                    `json:"origin_state,omitempty"`
-	ReacquireTool      string                    `json:"reacquire_tool"`
-	ReacquireSessionID string                    `json:"reacquire_session_id,omitempty"`
-	DriveID            string                    `json:"drive_id,omitempty"`
-	ChatID             string                    `json:"chat_id,omitempty"`
-	Actor              string                    `json:"actor,omitempty"`
-	Thread             string                    `json:"thread,omitempty"`
-	TmuxSession        string                    `json:"tmux_session,omitempty"`
-	TmuxHost           string                    `json:"tmux_host,omitempty"`
+	Kind               string                           `json:"kind"`
+	Priority           int                              `json:"priority"`
+	SessionID          string                           `json:"session_id"`
+	Title              string                           `json:"title,omitempty"`
+	Body               string                           `json:"body,omitempty"`
+	Status             string                           `json:"status,omitempty"`
+	NotificationID     string                           `json:"notification_id,omitempty"`
+	JobID              string                           `json:"job_id,omitempty"`
+	Severity           jobs.NotificationSeverity        `json:"severity,omitempty"`
+	CreatedAt          time.Time                        `json:"created_at,omitempty"`
+	UpdatedAt          time.Time                        `json:"updated_at,omitempty"`
+	ReadAt             *time.Time                       `json:"read_at,omitempty"`
+	TeleportState      string                           `json:"teleport_state,omitempty"`
+	TeleportSlots      map[string]any                   `json:"teleport_slots,omitempty"`
+	TeleportJobID      string                           `json:"teleport_job_id,omitempty"`
+	OriginKind         string                           `json:"origin_kind,omitempty"`
+	OriginRef          string                           `json:"origin_ref,omitempty"`
+	OriginURL          string                           `json:"origin_url,omitempty"`
+	OriginState        string                           `json:"origin_state,omitempty"`
+	ReacquireTool      string                           `json:"reacquire_tool"`
+	ReacquireSessionID string                           `json:"reacquire_session_id,omitempty"`
+	DriveID            string                           `json:"drive_id,omitempty"`
+	ChatID             string                           `json:"chat_id,omitempty"`
+	QuestionID         string                           `json:"question_id,omitempty"`
+	Questions          []kitsokimcp.OperatorAskQuestion `json:"questions,omitempty"`
+	Actor              string                           `json:"actor,omitempty"`
+	Thread             string                           `json:"thread,omitempty"`
+	TmuxSession        string                           `json:"tmux_session,omitempty"`
+	TmuxHost           string                           `json:"tmux_host,omitempty"`
 }
 
 // OrchestratorDriver adapts a live *orchestrator.Orchestrator + session id to
@@ -655,6 +659,8 @@ func workItemNeedsAttention(item WorkItem) bool {
 	case "job":
 		return item.Status == string(jobs.JobAwaitingInput) || item.Status == string(jobs.JobFailed)
 	case "failed_drive":
+		return true
+	case "operator_question":
 		return true
 	default:
 		return false

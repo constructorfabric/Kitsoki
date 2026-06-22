@@ -145,6 +145,7 @@ export interface WorkSummary {
   dispatching_drives?: number;
   failed_drives?: number;
   backgrounded_chats: number;
+  operator_questions?: number;
 }
 
 export interface WorkSession {
@@ -178,6 +179,8 @@ export interface WorkItem {
   reacquire_session_id?: string;
   drive_id?: string;
   chat_id?: string;
+  question_id?: string;
+  questions?: OperatorQuestion[];
   actor?: string;
   thread?: string;
   tmux_session?: string;

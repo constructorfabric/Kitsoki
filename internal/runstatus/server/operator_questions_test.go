@@ -9,11 +9,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"kitsoki/internal/host"
+	"kitsoki/internal/runstatus"
 )
 
 func TestQuestionRegistry_AnswerUnblocks(t *testing.T) {
 	reg := newQuestionRegistry()
-	id, ch := reg.register()
+	id, ch := reg.register("s1", nil)
 	require.NotEmpty(t, id)
 
 	go reg.answer(id, map[string]any{"q": "yes"})
@@ -30,7 +31,7 @@ func TestQuestionRegistry_AnswerUnknownReturnsFalse(t *testing.T) {
 	assert.False(t, reg.answer("nope", map[string]any{}))
 
 	// And a cancelled question can't be answered.
-	id, _ := reg.register()
+	id, _ := reg.register("s1", nil)
 	reg.cancel(id)
 	assert.False(t, reg.answer(id, map[string]any{}))
 }
@@ -157,6 +158,89 @@ func TestAnswerQuestionRPC_UnblocksPrompter(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("prompter not unblocked by answer_question RPC")
 	}
+}
+
+func TestWorkList_SurfacesPendingOperatorQuestion(t *testing.T) {
+	s := newServer(&questionWorkProvider{id: "pub-9"}, newConfig(nil))
+	ctx := s.withOperatorPrompter(context.Background(), map[string]any{"session_id": "pub-9"})
+	prompter, ok := host.OperatorPrompterFrom(ctx)
+	require.True(t, ok)
+
+	done := make(chan map[string]any, 1)
+	go func() {
+		a, _ := prompter.Ask(ctx, "sid", []host.OperatorQuestion{{
+			Question: "Which environment?",
+			Header:   "Env",
+			Options:  []host.OperatorOption{{Label: "staging"}, {Label: "prod"}},
+		}})
+		done <- a
+	}()
+
+	var qid string
+	require.Eventually(t, func() bool {
+		out, rerr := s.dispatch(context.Background(), "runstatus.work.list", nil)
+		if rerr != nil {
+			return false
+		}
+		work := out.(WorkListResult)
+		if len(work.Items) != 1 {
+			return false
+		}
+		item := work.Items[0]
+		qid = item.QuestionID
+		assert.Equal(t, 1, work.Summary.OperatorQuestions)
+		assert.Equal(t, 1, work.Summary.NeedsAttention)
+		assert.Equal(t, "operator_question", item.Kind)
+		assert.Equal(t, "operator_question", item.ReacquireTool)
+		assert.Equal(t, "awaiting_answer", item.Status)
+		assert.Equal(t, "pub-9", item.SessionID)
+		assert.Equal(t, "pub-9", item.ReacquireSessionID)
+		assert.Equal(t, "Env", item.Title)
+		assert.Equal(t, "Which environment?", item.Body)
+		require.Len(t, item.Questions, 1)
+		assert.Equal(t, "Which environment?", item.Questions[0].Question)
+		return qid != ""
+	}, time.Second, 5*time.Millisecond)
+
+	out, rerr := s.dispatch(context.Background(), "runstatus.session.answer_question",
+		map[string]any{"question_id": qid, "answers": map[string]any{"Which environment?": "staging"}})
+	require.Nil(t, rerr)
+	assert.Equal(t, map[string]any{"ok": true}, out)
+
+	select {
+	case got := <-done:
+		assert.Equal(t, "staging", got["Which environment?"])
+	case <-time.After(time.Second):
+		t.Fatal("prompter not unblocked by answer_question RPC")
+	}
+
+	out, rerr = s.dispatch(context.Background(), "runstatus.work.list", nil)
+	require.Nil(t, rerr)
+	work := out.(WorkListResult)
+	assert.Equal(t, 0, work.Summary.OperatorQuestions)
+	assert.Empty(t, work.Items)
+}
+
+type questionWorkProvider struct {
+	id string
+}
+
+func (p *questionWorkProvider) Get(string) (Entry, bool) { return Entry{}, true }
+func (p *questionWorkProvider) List() []runstatus.SessionHeader {
+	return []runstatus.SessionHeader{{SessionID: p.id, AppID: "test", CurrentState: "running"}}
+}
+func (p *questionWorkProvider) NewSession(context.Context, string) (string, error) {
+	return "", errReadOnlySurface
+}
+func (p *questionWorkProvider) Reload(context.Context, string) (bool, error) {
+	return false, errReadOnlySurface
+}
+func (p *questionWorkProvider) Staleness(context.Context, string) (bool, string, error) {
+	return false, "", errReadOnlySurface
+}
+func (p *questionWorkProvider) ListStories() []StoryHeader { return nil }
+func (p *questionWorkProvider) Rescan() ([]StoryHeader, error) {
+	return nil, errReadOnlySurface
 }
 
 func TestQuestionsSubscribeUnsubscribeRPC(t *testing.T) {

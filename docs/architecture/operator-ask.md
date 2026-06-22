@@ -104,6 +104,10 @@ matches existing agent-call-blocks-turn behavior and is far simpler.
    `runstatus.session.answer_question {session_id, question_id, answers}`
    that resolves the waiting prompter. The frontend renders
    `OperatorQuestionModal.vue` reusing the typed-view choice widget.
+   Pending questions also project into `runstatus.work.list` as
+   `operator_question` rows, so the global inbox badge/panel can reacquire a
+   missed question and reopen the same modal instead of relying only on the
+   original SSE delivery.
 3. **TUI** — `internal/tui/operator_prompter.go` +
    `operator_question.go`: an `OperatorPrompter` that pushes a bubbletea
    message into the running program and renders an inline

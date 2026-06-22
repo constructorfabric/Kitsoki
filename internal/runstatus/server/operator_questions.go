@@ -192,23 +192,37 @@ func (b *questionBuffer) since(sent int) (frames []questionFrame, newWatermark i
 // register()/cancel() bracket the wait.
 type questionRegistry struct {
 	mu      sync.Mutex
-	pending map[string]chan map[string]any
+	pending map[string]pendingQuestion
 	seq     int
 }
 
+type pendingQuestion struct {
+	ID        string
+	SessionID string
+	Questions []kitsokimcp.OperatorAskQuestion
+	CreatedAt time.Time
+	ch        chan map[string]any
+}
+
 func newQuestionRegistry() *questionRegistry {
-	return &questionRegistry{pending: map[string]chan map[string]any{}}
+	return &questionRegistry{pending: map[string]pendingQuestion{}}
 }
 
 // register allocates a question_id and a buffered (cap-1, so answer() never
 // blocks) answer channel.
-func (r *questionRegistry) register() (id string, ch chan map[string]any) {
+func (r *questionRegistry) register(sessionID string, questions []kitsokimcp.OperatorAskQuestion) (id string, ch chan map[string]any) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.seq++
 	id = "q-" + strconv.Itoa(r.seq)
 	ch = make(chan map[string]any, 1)
-	r.pending[id] = ch
+	r.pending[id] = pendingQuestion{
+		ID:        id,
+		SessionID: sessionID,
+		Questions: append([]kitsokimcp.OperatorAskQuestion(nil), questions...),
+		CreatedAt: time.Now(),
+		ch:        ch,
+	}
 	return id, ch
 }
 
@@ -216,7 +230,7 @@ func (r *questionRegistry) register() (id string, ch chan map[string]any) {
 // Returns false if the id is unknown or already answered/cancelled.
 func (r *questionRegistry) answer(id string, answers map[string]any) bool {
 	r.mu.Lock()
-	ch, ok := r.pending[id]
+	p, ok := r.pending[id]
 	if ok {
 		delete(r.pending, id)
 	}
@@ -224,7 +238,7 @@ func (r *questionRegistry) answer(id string, answers map[string]any) bool {
 	if !ok {
 		return false
 	}
-	ch <- answers
+	p.ch <- answers
 	return true
 }
 
@@ -234,6 +248,18 @@ func (r *questionRegistry) cancel(id string) {
 	r.mu.Lock()
 	delete(r.pending, id)
 	r.mu.Unlock()
+}
+
+func (r *questionRegistry) snapshot() []pendingQuestion {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]pendingQuestion, 0, len(r.pending))
+	for _, p := range r.pending {
+		p.Questions = append([]kitsokimcp.OperatorAskQuestion(nil), p.Questions...)
+		p.ch = nil
+		out = append(out, p)
+	}
+	return out
 }
 
 // webOperatorPrompter is the host.OperatorPrompter for the web surface. One is
@@ -253,13 +279,14 @@ var _ host.OperatorPrompter = (*webOperatorPrompter)(nil)
 // with the public id the prompter was constructed with (the SPA only resolves
 // that one — see the same concern in notificationRelay).
 func (p *webOperatorPrompter) Ask(ctx context.Context, _ string, questions []host.OperatorQuestion) (map[string]any, error) {
-	id, ch := p.reg.register()
+	wireQuestions := hostToWireQuestions(questions)
+	id, ch := p.reg.register(p.sessionID, wireQuestions)
 	defer p.reg.cancel(id)
 
 	p.buf.append(questionFrame{
 		SessionID:  p.sessionID,
 		QuestionID: id,
-		Questions:  hostToWireQuestions(questions),
+		Questions:  wireQuestions,
 	})
 
 	select {
