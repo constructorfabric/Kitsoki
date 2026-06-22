@@ -2060,6 +2060,10 @@ func (m RootModel) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 		m.inbox.ToggleExpanded()
 		return m, nil
 
+	case "/work":
+		m.transcript.AppendBlock(renderWorkBlock(m, parts[1:]))
+		return m, nil
+
 	case "/meta":
 		return m.handleMetaSlash(parts[1:])
 

@@ -34,6 +34,7 @@ func (HelpCommand) Run(m RootModel, _ []string) (string, RootModel, tea.Cmd) {
 			{"/model [<id|n>]", "list the active profile's models; <id|n> switches the model (next turn)"},
 			{"/effort [<level|n>]", "list/switch the active profile's reasoning effort (where the model supports it)"},
 			{"/inbox [<n>]", "list recent notifications; <n> opens one"},
+			{"/work", "list active async work: jobs, notifications, queued drives, background chats"},
 			{"/trace", "print the last turn's routing trace"},
 			{"/viz", "export the state diagram to a DOT file"},
 			{"/input", "restore your prior chat draft (cleared when a choice widget opens)"},
