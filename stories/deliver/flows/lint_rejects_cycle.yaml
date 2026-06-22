@@ -1,0 +1,49 @@
+# lint_rejects_cycle — lint detects a dep cycle → @exit:needs-human, specific last_error.
+#
+# The decomposer returns a manifest where slice-a deps slice-b and slice-b deps
+# slice-a (a cycle). The lint script mock returns route:"fail" with the specific
+# cycle error. deliver routes to @exit:needs-human carrying that exact message.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: configure
+initial_world:
+  base_branch: main
+  main_worktree_path: "."
+
+host_handlers:
+  host.agent.task:
+    by_call:
+      decomposer:
+        data:
+          submitted:
+            briefs:
+              - id: slice-a
+                brief: "Implement slice A so that go test ./... passes."
+                gate_command: "go test ./..."
+                deps: [slice-b]
+              - id: slice-b
+                brief: "Implement slice B so that go test ./... passes."
+                gate_command: "go test ./..."
+                deps: [slice-a]
+  host.run:
+    by_call:
+      lint:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            route: "fail"
+            error: "dependency cycle detected involving 'slice-a'"
+
+turns:
+  - intent:
+      name: start
+      slots:
+        epic_path: "stories/deliver/testdata/fixture_epic.md"
+    expect_state: __exit__needs-human
+    expect_world:
+      last_error: "dependency cycle detected involving 'slice-a'"
+
+expect_terminal: true
+expect_no_errors: true

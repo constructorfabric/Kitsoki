@@ -1,0 +1,102 @@
+# deliver — epic front-door of the delivery loop.
+#
+# Layering: deliver → fleet → ship-it (acyclic; deliver imports fleet which
+# imports ship-it). deliver is the ONLY entry above fleet; fleet must never
+# import deliver.
+#
+# Pipeline:
+#   configure{epic_path}
+#     └─ start ─▶ decompose (LLM: read epic, emit brief manifest YAML)
+#                  └─ on success ─▶ lint (deterministic DAG/uniqueness/completeness)
+#                                    ├─ pass ─▶ fleet (fan ship-it over every brief)
+#                                    │           └─ @exit:done {delivery_summary}
+#                                    └─ fail ─▶ @exit:needs-human {last_error}
+#                  └─ on error  ─▶ @exit:needs-human {last_error}
+#
+# Every failure arc exits @exit:needs-human with a SPECIFIC non-blank last_error.
+# The lint step is fully deterministic (no LLM): ids unique & non-empty, each
+# brief has non-empty brief + gate_command, every dep references an existing id,
+# no dependency cycle, at least one brief.
+
+app:
+  id: deliver
+  version: 0.1.0
+  title: "deliver — epic front-door of the delivery loop"
+  author: "Kitsoki"
+  license: "CC0"
+
+hosts:
+  - host.run
+  - host.agent.task
+  - host.artifacts_dir
+
+world:
+  epic_path:            { type: string, default: "" }   # path to the epic / proposal markdown
+  decomposition_path:   { type: string, default: "" }   # output YAML the decomposer writes
+  base_branch:          { type: string, default: "main" }
+  main_worktree_path:   { type: string, default: "." }
+  delivery_summary:     { type: string, default: "" }   # set by fleet on @exit:done
+  last_error:           { type: string, default: "" }   # set by lint (bind) or engine (on_error)
+  decomposition_briefs: { type: list,   default: [] }   # briefs returned by the decomposer agent
+  lint_route:           { type: string, default: "" }   # "ok" | "fail" — lint script verdict
+
+intents:
+  start:
+    description: "Provide the epic path and begin the delivery pipeline."
+    examples: ["start", "begin", "deliver", "go"]
+    priority: 85
+    slots:
+      epic_path: { type: string, required: false }
+  decomposition_done:
+    description: "(internal) decomposer succeeded → proceed to lint."
+    examples: []
+    priority: 1
+  lint_passed:
+    description: "(internal) lint passed → enter fleet fan-out."
+    examples: []
+    priority: 1
+  lint_failed:
+    description: "(internal) lint failed → needs-human."
+    examples: []
+    priority: 1
+  bail:
+    description: "(internal) error room auto-routes → @exit:needs-human."
+    examples: []
+    priority: 1
+  look:
+    description: "Re-render the current room."
+    examples: ["look", "status"]
+    priority: 5
+
+agents:
+  decomposer:
+    system_prompt: "You are a delivery decomposer. Read the epic or proposal at the given path, break it into independently-shippable briefs each with a deterministic gate command, write the decomposition YAML to the given output path, and submit the structured manifest."
+    model: claude-sonnet-4-6
+    tools: [Read, Glob, Grep, Edit, Write, Bash]
+
+exits:
+  done:        { requires: [delivery_summary] }
+  needs-human: { requires: [last_error] }
+
+root: configure
+
+imports:
+  # fleet — fan ship-it over every brief behind a merge-lock.
+  # Entered at load (skips fleet's idle room; fleet's load on_enter parses
+  # decomposition_path immediately). fleet's @exit:done carries fleet_summary
+  # which we project up to delivery_summary.
+  fleet:
+    source: ../fleet
+    entry: load
+    world_in:
+      decomposition_path: "{{ world.decomposition_path }}"
+      base_branch:        "{{ world.base_branch }}"
+      main_worktree_path: "{{ world.main_worktree_path }}"
+    exits:
+      done:
+        to: "@exit:done"
+        set:
+          delivery_summary: "{{ world.fleet_summary }}"
+
+include:
+  - rooms/*.yaml
