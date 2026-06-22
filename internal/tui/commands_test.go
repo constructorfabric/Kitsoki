@@ -139,6 +139,24 @@ func TestNewInboxNotificationsDetectsAdded(t *testing.T) {
 	}
 }
 
+func TestInboxNotificationHintIncludesBodyAndOriginURL(t *testing.T) {
+	t.Parallel()
+	got := inboxNotificationHint(jobs.Notification{
+		Body:      "Review requested by alice.\n\nhttps://github.com/acme/repo/pull/42",
+		OriginURL: "https://github.com/acme/repo/pull/42",
+	})
+	if got != "Review requested by alice. - https://github.com/acme/repo/pull/42" {
+		t.Fatalf("hint = %q", got)
+	}
+
+	got = inboxNotificationHint(jobs.Notification{
+		OriginURL: "https://github.com/acme/repo/issues/7",
+	})
+	if got != "https://github.com/acme/repo/issues/7" {
+		t.Fatalf("url-only hint = %q", got)
+	}
+}
+
 // TestRenderActionsBlockFromMenu sanity-checks that menu items
 // populated on the model produce a non-empty actions block.
 func TestRenderActionsBlockFromMenu(t *testing.T) {

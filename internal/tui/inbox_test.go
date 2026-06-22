@@ -232,7 +232,9 @@ func TestInboxSlashSyncGitHubImportsNotifications(t *testing.T) {
 	tx := extractTranscript(t, m)
 	require.Contains(t, tx, "github sync: fetched 2, inserted 2, skipped 0")
 	require.Contains(t, tx, "Issue #7 assigned: Assigned issue")
+	require.Contains(t, tx, "https://github.com/acme/repo/issues/7")
 	require.Contains(t, tx, "PR #42 needs review: Review this")
+	require.Contains(t, tx, "https://github.com/acme/repo/pull/42")
 
 	ns, err := js.ListNotifications(ctx, sid, 20)
 	require.NoError(t, err)

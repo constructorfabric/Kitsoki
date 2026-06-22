@@ -128,6 +128,11 @@ func renderInboxList(r *blocks.Renderer, notifs []jobs.Notification, unreadOnly 
 			Age:      age,
 		}))
 		sb.WriteString("\n")
+		if hint := inboxNotificationHint(n); hint != "" {
+			sb.WriteString("     ")
+			sb.WriteString(hint)
+			sb.WriteString("\n")
+		}
 	}
 	return strings.TrimRight(sb.String(), "\n")
 }
@@ -172,6 +177,31 @@ func unreadNotifications(notifs []jobs.Notification) []jobs.Notification {
 		}
 	}
 	return out
+}
+
+func inboxNotificationHint(n jobs.Notification) string {
+	body := strings.TrimSpace(n.Body)
+	if body != "" {
+		lines := strings.Split(body, "\n")
+		for _, line := range lines {
+			if text := strings.TrimSpace(line); text != "" {
+				body = text
+				break
+			}
+		}
+	}
+	if len(body) > 120 {
+		body = strings.TrimSpace(body[:117]) + "..."
+	}
+	url := strings.TrimSpace(n.OriginURL)
+	switch {
+	case body != "" && url != "" && !strings.Contains(body, url):
+		return body + " - " + url
+	case body != "":
+		return body
+	default:
+		return url
+	}
 }
 
 // humanAge returns a short relative time label suitable for the inbox
