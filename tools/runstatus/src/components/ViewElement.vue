@@ -152,7 +152,7 @@ const bannerClass = computed(() => {
 /** Inline accent for a hex-coloured banner: the authored colour tints the
  * border + text and a faint wash of the background, matching the TUI's
  * per-phase coloured banner rule. Empty for named/absent colours. */
-const bannerStyle = computed<Record<string, string>>(() => {
+const bannerStyle = computed<Record<string, string>>((): Record<string, string> => {
   const c = bannerHex.value;
   if (!c) return {};
   return {
