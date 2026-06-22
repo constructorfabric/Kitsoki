@@ -83,6 +83,11 @@ fixtures:
                 "p95_latency_ms": 3000,
                 "avg_cost_usd": 0.001,
                 "examples_run": 10,
+                "example_results": [
+                    {"name": "ok-high", "expect": {"intent": "accept"}, "actual": {"intent": "accept", "confidence": 0.95}},
+                    {"name": "bad-mid", "expect": {"intent": "refine"}, "actual": {"intent": "accept", "confidence": 0.70}},
+                    {"name": "ok-low", "expect": {"intent": "accept"}, "actual": {"intent": "accept", "confidence": 0.60}},
+                ],
             },
             {
                 "profile": "claude",
@@ -201,6 +206,12 @@ fixtures:
         check(abs(syn["pass_rate"] - 0.5) < 0.0001, "pass observation rate aggregated")
         check(abs(syn["comparator_pass_rate"]["median"] - 0.9) < 0.0001, "median comparator is interpolated")
         check(syn["examples_run"] == 20, "examples summed")
+        check(summary["confidence_rows"], "confidence rows extracted")
+        sweep_065 = next(r for r in summary["confidence_sweeps"] if r["profile"] == "synthetic-codex" and abs(r["threshold"] - 0.65) < 0.0001)
+        check(sweep_065["accepted"] == 2, "threshold sweep accepted count")
+        check(sweep_065["false_accepts"] == 1, "threshold sweep false accepts count")
+        sweep_090 = next(r for r in summary["confidence_sweeps"] if r["profile"] == "synthetic-codex" and abs(r["threshold"] - 0.90) < 0.0001)
+        check(sweep_090["accepted"] == 1 and sweep_090["false_accepts"] == 0, "higher threshold reduces false accepts")
         cov = summary["coverage"][0]
         check(cov["measured_profiles"] == ["claude", "synthetic-codex"], "measured profiles collected")
         check(cov["missing_profiles"] == ["codex-native"], "missing profile reported")

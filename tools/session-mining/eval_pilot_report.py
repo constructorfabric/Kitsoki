@@ -262,6 +262,7 @@ def fmt_usd(v):
 def summarize(datasets, reports):
     by_key = {}
     failures = []
+    confidence_rows = []
     report_rows = []
     latest_by_call = {}
 
@@ -287,6 +288,7 @@ def summarize(datasets, reports):
             })
         for candidate in report.get("candidates", []) or []:
             key = candidate_key(call, candidate)
+            confidence_rows.extend(extract_confidence_rows(call, report, candidate))
             row = by_key.setdefault(key, {
                 "call": call,
                 "profile": candidate.get("profile", ""),
@@ -390,7 +392,82 @@ def summarize(datasets, reports):
         "candidates": candidates,
         "decisions": decisions,
         "failures": failures,
+        "confidence_sweeps": summarize_confidence_sweeps(confidence_rows),
+        "confidence_rows": confidence_rows,
     }
+
+
+def extract_confidence_rows(call, report, candidate):
+    rows = []
+    profile = candidate.get("profile", "")
+    model = candidate.get("model", "")
+    effort = candidate.get("effort", "")
+    result_blocks = []
+    for field in ("example_results", "examples", "runs", "samples"):
+        values = candidate.get(field)
+        if isinstance(values, list):
+            result_blocks.extend(values)
+    if not result_blocks:
+        return rows
+    for item in result_blocks:
+        if not isinstance(item, dict):
+            continue
+        actual = item.get("actual") if isinstance(item.get("actual"), dict) else item
+        expect = item.get("expect") if isinstance(item.get("expect"), dict) else {}
+        confidence = actual.get("confidence", item.get("confidence"))
+        try:
+            confidence = float(confidence)
+        except (TypeError, ValueError):
+            continue
+        expected_intent = expect.get("intent") or item.get("expected_intent")
+        actual_intent = actual.get("intent") or item.get("actual_intent")
+        correct = item.get("correct")
+        if correct is None and expected_intent and actual_intent:
+            correct = expected_intent == actual_intent
+        if correct is None:
+            continue
+        rows.append({
+            "call": call,
+            "profile": profile,
+            "model": model,
+            "effort": effort,
+            "report": report.get("_path", ""),
+            "example": item.get("example") or item.get("name") or "",
+            "confidence": confidence,
+            "correct": bool(correct),
+        })
+    return rows
+
+
+def summarize_confidence_sweeps(rows):
+    if not rows:
+        return []
+    by_key = defaultdict(list)
+    for row in rows:
+        by_key[(row["call"], row["profile"], row["model"], row["effort"])].append(row)
+    thresholds = [round(x / 100.0, 2) for x in range(50, 101, 5)]
+    sweeps = []
+    for (call, profile, model, effort), items in sorted(by_key.items()):
+        for threshold in thresholds:
+            accepted = [row for row in items if row["confidence"] >= threshold]
+            false_accepts = [row for row in accepted if not row["correct"]]
+            true_accepts = [row for row in accepted if row["correct"]]
+            rejected = len(items) - len(accepted)
+            sweeps.append({
+                "call": call,
+                "profile": profile,
+                "model": model,
+                "effort": effort,
+                "threshold": threshold,
+                "total": len(items),
+                "accepted": len(accepted),
+                "rejected": rejected,
+                "true_accepts": len(true_accepts),
+                "false_accepts": len(false_accepts),
+                "precision": len(true_accepts) / len(accepted) if accepted else 1.0,
+                "coverage": len(accepted) / len(items) if items else 0.0,
+            })
+    return sweeps
 
 
 def summarize_intent_reports(reports):
@@ -538,7 +615,7 @@ def render_markdown(summary, intent_summaries=None, coverage_summaries=None, rea
             ))
         if best:
             w("")
-            w("Across all loaded evidence, the strongest aggregate candidate by pass observations, comparator score, cost, and latency is `%s/%s` on `%s` with median comparator %s, median p95 latency %s, and median average cost %s." % (
+            w("Across all loaded evidence, the strongest aggregate candidate by acceptance-bar pass rate, comparator score, cost, and latency is `%s/%s` on `%s` with median comparator %s, median p95 latency %s, and median average cost %s." % (
                 best["profile"], best["model"], best["call"],
                 fmt_pct(best["comparator_pass_rate"]["median"]),
                 fmt_ms(best["p95_latency_ms"]["median"]),
@@ -631,9 +708,33 @@ def render_markdown(summary, intent_summaries=None, coverage_summaries=None, rea
                 ", ".join("`%s`" % row["story"] for row in missing),
             ))
             w("")
+    w("## Confidence threshold sweep")
+    w("")
+    sweeps = summary.get("confidence_sweeps") or []
+    if sweeps:
+        w("| call | profile/model | effort | threshold | accepted | true accepts | false accepts | precision | coverage |")
+        w("|---|---|---|--:|--:|--:|--:|--:|--:|")
+        for row in sweeps:
+            w("| `%s` | `%s/%s` | `%s` | %.2f | %d/%d | %d | %d | %s | %s |" % (
+                row["call"],
+                row["profile"],
+                row["model"],
+                row["effort"] or "-",
+                row["threshold"],
+                row["accepted"],
+                row["total"],
+                row["true_accepts"],
+                row["false_accepts"],
+                fmt_pct(row["precision"]),
+                fmt_pct(row["coverage"]),
+            ))
+        w("")
+    else:
+        w("No per-example actual confidence values were present in the loaded `agent_eval_report` files, so this run cannot show how false accepts change as the confidence bar is lowered. Add per-example result rows with `actual.intent`, `actual.confidence`, and expected `intent` to enable this table.")
+        w("")
     w("## Candidate performance")
     w("")
-    w("| call | profile/model | effort | observations | examples | pass obs | effectiveness median/p5/p95 | p95 latency median/p5/p95 | avg cost median/p5/p95 |")
+    w("| call | profile/model | effort | observations | examples run | acceptance-bar pass rate | effectiveness median/p5/p95 | p95 latency median/p5/p95 | avg cost median/p5/p95 |")
     w("|---|---|---|--:|--:|--:|---|---|---|")
     for c in candidates:
         eff = c["comparator_pass_rate"]
@@ -657,6 +758,8 @@ def render_markdown(summary, intent_summaries=None, coverage_summaries=None, rea
             fmt_usd(cost["p5"]),
             fmt_usd(cost["p95"]),
         ))
+    w("")
+    w("`acceptance-bar pass rate` is the share of candidate summary rows that passed the eval's configured bar. It is not the per-example success rate; use `effectiveness median/p5/p95` for comparator success across examples.")
     w("")
     w("## Failure samples")
     w("")
@@ -752,6 +855,19 @@ def render_deck(summary, intent_summaries=None, coverage_summaries=None, readine
             row["grounding_cited"],
             row["corrected"],
         ))
+    sweep_rows = []
+    for row in (summary.get("confidence_sweeps") or [])[:8]:
+        sweep_rows.append("<tr><td>%s</td><td>%s/%s</td><td>%.2f</td><td>%d/%d</td><td>%d</td><td>%s</td><td>%s</td></tr>" % (
+            html.escape(row["call"]),
+            html.escape(row["profile"]),
+            html.escape(row["model"]),
+            row["threshold"],
+            row["accepted"],
+            row["total"],
+            row["false_accepts"],
+            fmt_pct(row["precision"]),
+            fmt_pct(row["coverage"]),
+        ))
     return """<!doctype html>
 <html lang="en">
 <head>
@@ -813,9 +929,17 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 <section>
   <h2>Candidate comparison</h2>
   <table>
-    <thead><tr><th>call</th><th>profile/model</th><th>effort</th><th>obs</th><th>examples</th><th>pass obs</th><th>effectiveness med/p5/p95</th><th>p95 latency med/p5/p95</th><th>avg cost med/p5/p95</th></tr></thead>
+    <thead><tr><th>call</th><th>profile/model</th><th>effort</th><th>obs</th><th>examples run</th><th>bar pass rate</th><th>effectiveness med/p5/p95</th><th>p95 latency med/p5/p95</th><th>avg cost med/p5/p95</th></tr></thead>
     <tbody>%s</tbody>
   </table>
+</section>
+<section>
+  <h2>Confidence threshold sweep</h2>
+  <table>
+    <thead><tr><th>call</th><th>profile/model</th><th>threshold</th><th>accepted</th><th>false accepts</th><th>precision</th><th>coverage</th></tr></thead>
+    <tbody>%s</tbody>
+  </table>
+  <p class="muted">Requires per-example actual confidence in the loaded eval reports.</p>
 </section>
 <section>
   <h2>Coverage gaps drive the next run</h2>
@@ -861,6 +985,7 @@ show(0);
         html_table(intent_rows) or '<tr><td colspan="5">No intent-suite reports loaded.</td></tr>',
         html_table(coverage_rows) or '<tr><td colspan="5">No coverage jobs loaded.</td></tr>',
         html_table(rows),
+        html_table(sweep_rows) or '<tr><td colspan="7">No per-example actual confidence values loaded.</td></tr>',
         html.escape("; ".join(missing) if missing else "All planned profiles have at least one report in the loaded evidence."),
     )
 

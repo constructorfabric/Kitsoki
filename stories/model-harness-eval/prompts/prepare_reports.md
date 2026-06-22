@@ -56,10 +56,22 @@ Selection proposal:
 - Prefer measured eval report data when it exists. Include median, p5, p95, pass
   rate, and cost fields from evidence when available.
 - The Markdown report and HTML deck must include a numeric comparison table with
-  at least: call, profile/model, effort, observations, examples, pass
-  observations, effectiveness median/p5/p95, p95 latency median/p5/p95, and
-  average cost median/p5/p95. Include configured-but-unmeasured candidates as
-  explicit `missing` rows instead of omitting them.
+  at least: call, profile/model, effort, observations, examples run,
+  acceptance-bar pass rate, effectiveness median/p5/p95, p95 latency
+  median/p5/p95, and average cost median/p5/p95. Include
+  configured-but-unmeasured candidates as explicit `missing` rows instead of
+  omitting them.
+- Explain the difference between a candidate failing the acceptance bar and a
+  model having zero successful examples. A row can fail the bar while still
+  showing non-zero comparator effectiveness.
+- Include a confidence-threshold sweep when per-example actual confidence values
+  are available: threshold, accepted count, true accepts, false accepts,
+  precision, and coverage. Use this to recommend whether the confidence bar can
+  be lowered. If current reports only contain aggregate candidate rows, state
+  that the sweep is blocked until reports record per-example actual confidence.
+- Compare story-local eval matrices against configured profile model catalogs.
+  If a configured model such as `haiku` is absent because the eval matrix only
+  listed profiles or provider-specific models, call that out as a coverage gap.
 - When evidence is missing for a configured option, set `evidence_status` to
   `missing` or `inferred` and say exactly what is missing. Do not invent
   measurements.
