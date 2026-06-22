@@ -612,6 +612,7 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 					tui.WithJobStore(jobStore),
 					tui.WithChatStore(rawChatStore),
 					tui.WithJournalWriter(jw),
+					tui.WithTraceHistory(func() (store.History, error) { return s.LoadHistory(sid) }),
 				}, tuiOptions...)
 				if tuiMetaTracePath != "" {
 					tuiOptions = append(tuiOptions, tui.WithExternalTraceFile(tuiMetaTracePath))
@@ -774,6 +775,7 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 				tui.WithChatStore(rawChatStore),
 				tui.WithJournalWriter(jw),
 				tui.WithInitialTypedView(initialTypedView, initialTypedEnv, initialTypedRR),
+				tui.WithTraceHistory(func() (store.History, error) { return s.LoadHistory(sid) }),
 			}
 			if freshMetaTracePath != "" {
 				tuiOptions = append(tuiOptions, tui.WithExternalTraceFile(freshMetaTracePath))

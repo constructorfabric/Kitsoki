@@ -38,6 +38,7 @@ import (
 	"kitsoki/internal/metamode"
 	"kitsoki/internal/orchestrator"
 	"kitsoki/internal/render"
+	"kitsoki/internal/store"
 	"kitsoki/internal/trace"
 	"kitsoki/internal/tui/blocks"
 	"kitsoki/internal/userfacing"
@@ -253,6 +254,12 @@ type RootModel struct {
 	// queue + miner status the footer badge and /mine status read when no
 	// service is wired (or as the post-decision echo cache when one is).
 	mineStateValue MineState
+
+	// traceHistory reads the session event history for read-only surfaces such
+	// as /work. It is optional; production wires the SQLite store history and
+	// studio tests can wire JSONL history. When omitted, trace-backed proposal
+	// rows are simply absent and the miner-service queue remains authoritative.
+	traceHistory func() (store.History, error)
 
 	// lastCtrlC is the time the most recent Ctrl+C was pressed, used to
 	// detect a double-tap quit. Zero means no recent press (or the window
@@ -471,6 +478,13 @@ func WithJobStore(js *jobs.JobStore) RootModelOption {
 // else.
 func WithChatStore(cs *chats.Store) RootModelOption {
 	return func(m *RootModel) { m.chatStore = cs }
+}
+
+// WithTraceHistory wires a read-only event-history source into the RootModel.
+// /work uses it to surface trace-backed mining proposals even when a miner
+// service snapshot is not available.
+func WithTraceHistory(fn func() (store.History, error)) RootModelOption {
+	return func(m *RootModel) { m.traceHistory = fn }
 }
 
 // WithIDEDenyList seeds the kitsoki-side deny list that gates ambient editor

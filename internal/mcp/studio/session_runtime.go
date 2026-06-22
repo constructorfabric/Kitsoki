@@ -335,7 +335,7 @@ func newSessionRuntime(ctx context.Context, storyPath, tracePath string, h harne
 		return nil, &openError{Code: ErrBadRequest, Msg: fmt.Sprintf("session: run initial on_enter: %v", err)}
 	}
 
-	model, err := newComposerModel(orch, sid, rt.jobStore, rt.chatStore)
+	model, err := newComposerModel(orch, sid, rt.jobStore, rt.chatStore, rt.history)
 	if err != nil {
 		rt.Close()
 		return nil, &openError{Code: ErrBadRequest, Msg: err.Error()}
@@ -353,7 +353,7 @@ func newSessionRuntime(ctx context.Context, storyPath, tracePath string, h harne
 // journey, renders the initial typed view, and constructs a RootModel with no
 // app path (edit mode disabled) so a drive folds outcomes through the same
 // ApplyTurnOutcome path the live TUI runs.
-func newComposerModel(orch *orchestrator.Orchestrator, sid app.SessionID, jobStore *jobs.JobStore, chatStore *chats.Store) (tui.RootModel, error) {
+func newComposerModel(orch *orchestrator.Orchestrator, sid app.SessionID, jobStore *jobs.JobStore, chatStore *chats.Store, historyFn func() store.History) (tui.RootModel, error) {
 	j, err := orch.LoadJourney(sid)
 	if err != nil {
 		return tui.RootModel{}, fmt.Errorf("session: load journey: %w", err)
@@ -362,10 +362,15 @@ func newComposerModel(orch *orchestrator.Orchestrator, sid app.SessionID, jobSto
 	if err != nil {
 		return tui.RootModel{}, fmt.Errorf("session: render initial view: %w", err)
 	}
+	var traceHistory func() (store.History, error)
+	if historyFn != nil {
+		traceHistory = func() (store.History, error) { return historyFn(), nil }
+	}
 	return tui.NewRootModel(orch, sid, "", initialView,
 		tui.WithInitialTypedView(typedView, env, rr),
 		tui.WithJobStore(jobStore),
 		tui.WithChatStore(chatStore),
+		tui.WithTraceHistory(traceHistory),
 	), nil
 }
 

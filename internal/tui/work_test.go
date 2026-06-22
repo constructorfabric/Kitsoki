@@ -3,6 +3,7 @@ package tui_test
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -342,4 +343,68 @@ func TestWorkSlashListsProposalReviewWorkWithoutStores(t *testing.T) {
 	require.Contains(t, work, "Capture render gate")
 	require.Contains(t, work, "Run make render after doc edits")
 	requireBefore(t, work, "May I edit README.md?", "Capture render gate")
+}
+
+func TestWorkSlashListsTraceBackedMiningProposalWithoutStores(t *testing.T) {
+	orch, sid := setupCloak(t)
+	w := orch.InitialWorld()
+	initialView, err := orch.InitialView(w)
+	require.NoError(t, err)
+	history := store.History{
+		miningWorkEvent(t, 1, time.Unix(10, 0), store.MiningProposalRaised, store.MiningProposalRaisedPayload{
+			RecipeID:  "recipe-accepted",
+			Kind:      "binding",
+			Target:    "root-instance",
+			Rung:      1,
+			DraftPath: ".artifacts/mining/recipe-accepted",
+		}),
+		miningWorkEvent(t, 2, time.Unix(20, 0), store.MiningProposalRaised, store.MiningProposalRaisedPayload{
+			RecipeID:  "recipe-pending",
+			Kind:      "intent",
+			Target:    "dev-story",
+			Rung:      2,
+			DraftPath: ".artifacts/mining/recipe-pending",
+		}),
+		miningWorkEvent(t, 3, time.Unix(30, 0), store.MiningProposalDecided, store.MiningProposalDecidedPayload{
+			RecipeID:   "recipe-accepted",
+			Verdict:    store.MiningVerdictAccept,
+			By:         store.MiningByHuman,
+			FlowsGreen: true,
+		}),
+	}
+	m := tea.Model(tuipkg.NewRootModel(orch, sid, "", initialView,
+		tuipkg.WithTraceHistory(func() (store.History, error) { return history, nil }),
+	))
+
+	m = runTurnBlocking(t, m, "/work")
+	tx := extractTranscript(t, m)
+	work := transcriptAfter(t, tx, "active work: 1 item(s)")
+	require.Contains(t, work, "proposal")
+	require.Contains(t, work, "intent")
+	require.Contains(t, work, "intent proposal")
+	require.Contains(t, work, "dev-story")
+	require.Contains(t, work, "rung 2")
+	require.Contains(t, work, ".artifacts/mining/recipe-pending")
+	require.NotContains(t, work, "recipe-accepted")
+
+	history = append(history, miningWorkEvent(t, 4, time.Unix(40, 0), store.MiningProposalDecided, store.MiningProposalDecidedPayload{
+		RecipeID: "recipe-pending",
+		Verdict:  store.MiningVerdictReject,
+		By:       store.MiningByHuman,
+	}))
+	m = runTurnBlocking(t, m, "/work")
+	tx = extractTranscript(t, m)
+	require.Contains(t, tx, "(work: no active async work)")
+}
+
+func miningWorkEvent(t *testing.T, turn int64, ts time.Time, kind store.EventKind, payload any) store.Event {
+	t.Helper()
+	raw, err := json.Marshal(payload)
+	require.NoError(t, err)
+	return store.Event{
+		Turn:    app.TurnNumber(turn),
+		Ts:      ts,
+		Kind:    kind,
+		Payload: raw,
+	}
 }

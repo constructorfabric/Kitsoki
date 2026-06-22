@@ -491,5 +491,8 @@ go run ./cmd/kitsoki mcp-test \
 This is a browser-surface proof for seeded web proposal rows. Real trace-backed
 mining proposals are discoverable through MCP `session.inspect.mining_proposals`,
 MCP `studio.work` `mining_proposal` rows, and backend web
-`runstatus.work.list` active-work rows. This query seam still validates the web
-proposal queue specifically, not the trace-backed miner path.
+`runstatus.work.list` active-work rows. TUI `/work` also folds the same
+trace-backed mining proposal rows when session history is wired, and MCP
+`session.command` can render that terminal surface headlessly. This query seam
+still validates the web proposal queue specifically, not the trace-backed miner
+path.

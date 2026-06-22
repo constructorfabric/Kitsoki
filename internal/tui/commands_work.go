@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"kitsoki/internal/app"
 	"kitsoki/internal/chats"
 	"kitsoki/internal/jobs"
+	"kitsoki/internal/store"
 	"kitsoki/internal/tui/blocks"
 )
 
@@ -24,7 +26,12 @@ import (
 func renderWorkBlock(m RootModel, args []string) (RootModel, string) {
 	r := blocks.New(m.transcript.width, m.currentTheme())
 	proposalRows := workRowsForProposals(m.mineState())
-	if m.jobStore == nil && m.chatStore == nil && len(proposalRows) == 0 {
+	traceProposalRows, traceErr := workRowsForTraceMiningProposals(m.traceHistory, workRowIDs(proposalRows))
+	if traceErr != nil {
+		traceProposalRows = nil
+	}
+	proposalRows = append(proposalRows, traceProposalRows...)
+	if m.jobStore == nil && m.chatStore == nil && m.traceHistory == nil && len(proposalRows) == 0 {
 		return m, r.SlashOutput("(work: no job or chat store wired - pass --db for async work tracking)")
 	}
 	allSessions := workAllSessions(args)
@@ -32,6 +39,9 @@ func renderWorkBlock(m RootModel, args []string) (RootModel, string) {
 	ctx := context.Background()
 	var rows []workRow
 	var errs []string
+	if traceErr != nil {
+		errs = append(errs, "trace proposals: "+traceErr.Error())
+	}
 
 	if m.jobStore != nil {
 		var notifs []jobs.Notification
@@ -459,6 +469,113 @@ func workRowsForProposals(state MineState) []workRow {
 			UpdatedAt: now.Add(-time.Duration(i) * time.Nanosecond),
 			ID:        p.ID,
 		})
+	}
+	return out
+}
+
+func workRowIDs(rows []workRow) map[string]bool {
+	if len(rows) == 0 {
+		return nil
+	}
+	out := make(map[string]bool, len(rows))
+	for _, row := range rows {
+		if row.ID != "" {
+			out[row.ID] = true
+		}
+	}
+	return out
+}
+
+func workRowsForTraceMiningProposals(historyFn func() (store.History, error), skip map[string]bool) ([]workRow, error) {
+	if historyFn == nil {
+		return nil, nil
+	}
+	history, err := historyFn()
+	if err != nil {
+		return nil, err
+	}
+	proposals := pendingTraceMiningProposals(history)
+	if len(proposals) == 0 {
+		return nil, nil
+	}
+	out := make([]workRow, 0, len(proposals))
+	for _, p := range proposals {
+		if skip != nil && skip[p.RecipeID] {
+			continue
+		}
+		title := strings.TrimSpace(fmt.Sprintf("%s proposal", p.Kind))
+		if title == "proposal" {
+			title = p.RecipeID
+		}
+		hintParts := []string{}
+		if p.Target != "" {
+			hintParts = append(hintParts, p.Target)
+		}
+		if p.Rung != 0 {
+			hintParts = append(hintParts, fmt.Sprintf("rung %d", p.Rung))
+		}
+		if p.DraftPath != "" {
+			hintParts = append(hintParts, p.DraftPath)
+		}
+		out = append(out, workRow{
+			Kind:      "proposal",
+			Status:    p.Kind,
+			Title:     title,
+			Hint:      strings.Join(hintParts, "; "),
+			Priority:  40,
+			UpdatedAt: p.RaisedAt,
+			ID:        p.RecipeID,
+		})
+	}
+	return out, nil
+}
+
+type traceMiningProposal struct {
+	RecipeID  string
+	Kind      string
+	Target    string
+	Rung      int
+	DraftPath string
+	RaisedAt  time.Time
+}
+
+func pendingTraceMiningProposals(history store.History) []traceMiningProposal {
+	if len(history) == 0 {
+		return nil
+	}
+	byRecipe := make(map[string]traceMiningProposal)
+	var order []string
+	for _, ev := range history {
+		switch ev.Kind {
+		case store.MiningProposalRaised:
+			var payload store.MiningProposalRaisedPayload
+			if err := json.Unmarshal(ev.Payload, &payload); err != nil || payload.RecipeID == "" {
+				continue
+			}
+			if _, exists := byRecipe[payload.RecipeID]; !exists {
+				order = append(order, payload.RecipeID)
+			}
+			byRecipe[payload.RecipeID] = traceMiningProposal{
+				RecipeID:  payload.RecipeID,
+				Kind:      payload.Kind,
+				Target:    payload.Target,
+				Rung:      payload.Rung,
+				DraftPath: payload.DraftPath,
+				RaisedAt:  ev.Ts,
+			}
+		case store.MiningProposalDecided:
+			var payload store.MiningProposalDecidedPayload
+			if err := json.Unmarshal(ev.Payload, &payload); err != nil || payload.RecipeID == "" {
+				continue
+			}
+			delete(byRecipe, payload.RecipeID)
+		}
+	}
+	out := make([]traceMiningProposal, 0, len(byRecipe))
+	for _, recipeID := range order {
+		if item, ok := byRecipe[recipeID]; ok {
+			out = append(out, item)
+		}
 	}
 	return out
 }

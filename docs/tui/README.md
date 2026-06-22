@@ -79,7 +79,7 @@ room-switch commands. Notable families:
 | `/world` | `commands_world.go` | Hierarchical world viewer |
 | `/trace` | `commands_trace.go` | The routing pipeline trace for recent turns |
 | `/inbox [n\|all\|sync-github]` | `commands_inbox.go` | Inline notification list, open item `n`, show all rows, or refresh GitHub issue/PR intake |
-| `/work [--all]` | `commands_work.go` | List active async work, including queued proposal review; `--all` broadens jobs/chats across every session on this host |
+| `/work [--all]` | `commands_work.go` | List active async work, including queued and trace-backed proposal review; `--all` broadens jobs/chats across every session on this host |
 | `/chat show <id>` | `commands_chat.go` | Focused async chat context for queued/dispatching work without attaching to tmux |
 | `/provider [name\|n]` | `commands_harness.go` | List/switch the [harness profile](../architecture/harness-profiles.md) (backend/provider); takes effect next turn |
 | `/model [id\|n]` | `commands_harness.go` | List/switch the active profile's model; takes effect next turn |
@@ -142,7 +142,10 @@ an in-flight LLM call.
   (`operator_question.go`, `ModeOperatorQuestion`) the operator already
   answers, with one accept/refine/dismiss gesture; `/mine accept|refine|dismiss
   <id>` is the scriptable CLI alias for that gesture. The badge appears only
-  when the miner is enabled and the queue is non-empty.
+  when the miner is enabled and the queue is non-empty. `/work` also folds
+  trace-backed `mining.proposal_raised` rows that have no matching
+  `mining.proposal_decided` event, so a resumed or MCP-driven TUI frame can
+  list proposal-review work even before the miner service snapshot is refreshed.
 
 ## Editor awareness: `/ide`
 
