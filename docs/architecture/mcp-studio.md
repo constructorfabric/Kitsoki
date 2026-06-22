@@ -113,6 +113,7 @@ deterministic direct path or a read.
 | `session.teleport` | `{handle, notification_id} → {outcome, frame}` | jump to an inbox notification's saved target and mark it read |
 | `session.inspect` | `{handle} → {state, world, allowed_intents, last_view, async, jobs[], notifications[], pending_drives[], backgrounded_chats[], last_turns[]}` | `buildInspectOutput` + session JobStore / ChatStore (read-only) |
 | `session.trace` | `{handle, since?, until?, limit?} → {events[], last_turn}` | the session's JSONL trace (read-only) |
+| `chat.show` | `{chat_id, since_seq?} → {chat, pty?, messages[]}` | read-only focused context for a selected async chat/subagent |
 
 Every drive/submit/continue returns **both** the structured `TurnOutcome` (mode,
 new state, allowed intents, slots needed) **and** the rendered `Frame` — so the
@@ -129,6 +130,12 @@ tmux-hosted chats left in `pty_background` mode. This is the structured MCP
 surface for an external agent to rank async work, notice required operator
 input, and reacquire or switch to the task through `session.teleport` without
 scraping the TUI frame or decoding trace events.
+
+When the selected async item is chat-backed, `chat.show` drills into the
+focused context: chat metadata, the transcript slice, and any recorded tmux PTY
+state. That gives an MCP client the same "switch attention to this subagent"
+context that `session.inspect.backgrounded_chats[]` points at, without shelling
+out to `kitsoki chat show`.
 
 ### `render.*` — see (read-only)
 

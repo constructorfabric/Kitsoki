@@ -435,6 +435,10 @@ func TestSessionInspect_SurfacesChatAsyncWorkOverMCP(t *testing.T) {
 		`UPDATE chats SET session_id = ? WHERE id = ?`,
 		sid, backgroundChat.ID)
 	require.NoError(t, err)
+	_, err = chatStore.AppendMessage(ctx, backgroundChat.ID, "user", "what is the async status?", nil)
+	require.NoError(t, err)
+	_, err = chatStore.AppendMessage(ctx, backgroundChat.ID, "assistant", "still running in the background", map[string]any{"source": "test"})
+	require.NoError(t, err)
 	_, err = chatStore.AttachPTY(ctx, chats.AttachPTYOptions{
 		ChatID:         backgroundChat.ID,
 		TmuxSession:    "kitsoki-bg-test",
@@ -471,6 +475,27 @@ func TestSessionInspect_SurfacesChatAsyncWorkOverMCP(t *testing.T) {
 	assert.Equal(t, "/tmp/kitsoki-bg-test", bg.WorkspacePath)
 	assert.NotZero(t, bg.UpdatedAtUnixMicro)
 	assert.NotZero(t, bg.LastIdleAtUnixMicro)
+
+	res, err = callTool(ctx, cs, "chat.show", map[string]any{
+		"chat_id":   backgroundChat.ID,
+		"since_seq": 1,
+	})
+	require.NoError(t, err)
+	require.False(t, res.IsError, "chat.show: %s", contentText(res))
+	var shown studio.ChatShowResult
+	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &shown))
+	require.True(t, shown.OK)
+	assert.Equal(t, backgroundChat.ID, shown.Chat.ID)
+	assert.Equal(t, "backgrounded work", shown.Chat.Title)
+	assert.Equal(t, sid, shown.Chat.SessionID)
+	require.NotNil(t, shown.PTY)
+	assert.Equal(t, "kitsoki-bg-test", shown.PTY.TmuxSession)
+	assert.Equal(t, string(chats.PtyModeBackground), shown.PTY.Mode)
+	require.Len(t, shown.Messages, 1)
+	assert.Equal(t, 1, shown.Messages[0].Seq)
+	assert.Equal(t, "assistant", shown.Messages[0].Role)
+	assert.Equal(t, "still running in the background", shown.Messages[0].Content)
+	assert.Equal(t, "test", shown.Messages[0].Metadata["source"])
 }
 
 func writeBackgroundJobStory(t *testing.T) string {

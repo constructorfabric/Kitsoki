@@ -124,6 +124,9 @@ func NewServer(sess *StudioSession, opts ...ServerOption) *Server {
 	// (slice 7).
 	srv.registerSessionTools()
 
+	// chat.* — read-side drill-down for async chat/subagent context.
+	srv.registerChatTools()
+
 	// issue.* — file a GitHub issue with studio-produced evidence bundled in.
 	srv.registerIssueTools()
 
