@@ -55,6 +55,11 @@ Selection proposal:
 - Recommend `fastest`, `cheapest`, `best`, and `selected`.
 - Prefer measured eval report data when it exists. Include median, p5, p95, pass
   rate, and cost fields from evidence when available.
+- The Markdown report and HTML deck must include a numeric comparison table with
+  at least: call, profile/model, effort, observations, examples, pass
+  observations, effectiveness median/p5/p95, p95 latency median/p5/p95, and
+  average cost median/p5/p95. Include configured-but-unmeasured candidates as
+  explicit `missing` rows instead of omitting them.
 - When evidence is missing for a configured option, set `evidence_status` to
   `missing` or `inferred` and say exactly what is missing. Do not invent
   measurements.
@@ -64,7 +69,8 @@ Selection proposal:
   profile, and `claude-native` is the checked-in baseline. Choose the option
   that best satisfies the operator's question, not merely the current default.
 - The Markdown report and HTML deck must include a plain recommendation section:
-  fastest, cheapest, best, selected, why, and the override applied.
+  fastest, cheapest, best, selected, why, the table row that supports each
+  measured recommendation, and the override applied.
 
 Override application:
 

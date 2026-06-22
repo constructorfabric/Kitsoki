@@ -701,13 +701,26 @@ def render_deck(summary, intent_summaries=None, coverage_summaries=None, readine
     decision = (summary.get("decisions") or [None])[0]
     rows = []
     for c in candidates[:8]:
-        rows.append("<tr><td>%s</td><td>%s/%s</td><td>%s</td><td>%s</td><td>%s</td></tr>" % (
+        eff = c["comparator_pass_rate"]
+        lat = c["p95_latency_ms"]
+        cost = c["avg_cost_usd"]
+        rows.append("<tr><td>%s</td><td>%s/%s</td><td>%s</td><td>%d</td><td>%d</td><td>%s</td><td>%s / %s / %s</td><td>%s / %s / %s</td><td>%s / %s / %s</td></tr>" % (
             html.escape(c["call"]),
             html.escape(c["profile"]),
             html.escape(c["model"]),
-            fmt_pct(c["comparator_pass_rate"]["median"]),
-            fmt_ms(c["p95_latency_ms"]["median"]),
-            fmt_usd(c["avg_cost_usd"]["median"]),
+            html.escape(c["effort"] or "-"),
+            c["observations"],
+            c["examples_run"],
+            fmt_pct(c["pass_rate"]),
+            fmt_pct(eff["median"]),
+            fmt_pct(eff["p5"]),
+            fmt_pct(eff["p95"]),
+            fmt_ms(lat["median"]),
+            fmt_ms(lat["p5"]),
+            fmt_ms(lat["p95"]),
+            fmt_usd(cost["median"]),
+            fmt_usd(cost["p5"]),
+            fmt_usd(cost["p95"]),
         ))
     missing = []
     for row in summary["coverage"]:
@@ -750,7 +763,7 @@ def render_deck(summary, intent_summaries=None, coverage_summaries=None, readine
 * { box-sizing: border-box; }
 body { margin:0; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:var(--bg); color:var(--ink); }
 main { width:100vw; height:100vh; overflow:hidden; }
-section { width:100vw; height:100vh; display:none; padding:7vh 8vw; }
+section { width:100vw; height:100vh; display:none; padding:6vh 6vw; }
 section.active { display:flex; flex-direction:column; justify-content:center; gap:24px; }
 h1 { font-size: clamp(44px, 7vw, 86px); line-height:1; margin:0; letter-spacing:0; max-width:980px; }
 h2 { font-size: clamp(34px, 5vw, 64px); line-height:1.05; margin:0; letter-spacing:0; }
@@ -759,8 +772,8 @@ p, li { font-size: clamp(20px, 2.2vw, 30px); line-height:1.35; max-width:1040px;
 .grid { display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap:18px; }
 .metric { border:1px solid var(--line); background:white; border-radius:8px; padding:22px; }
 .metric b { display:block; font-size: clamp(32px, 4vw, 58px); color:var(--accent); }
-table { border-collapse:collapse; width:min(1120px, 100%%); background:white; border:1px solid var(--line); font-size:18px; }
-th, td { text-align:left; padding:12px 14px; border-bottom:1px solid var(--line); vertical-align:top; }
+table { border-collapse:collapse; width:min(1280px, 100%%); background:white; border:1px solid var(--line); font-size:16px; }
+th, td { text-align:left; padding:10px 12px; border-bottom:1px solid var(--line); vertical-align:top; }
 th { color:var(--muted); font-weight:650; }
 code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .pager { position:fixed; right:24px; bottom:20px; color:var(--muted); font-size:14px; }
@@ -800,7 +813,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 <section>
   <h2>Candidate comparison</h2>
   <table>
-    <thead><tr><th>call</th><th>profile/model</th><th>effectiveness</th><th>p95 latency</th><th>avg cost</th></tr></thead>
+    <thead><tr><th>call</th><th>profile/model</th><th>effort</th><th>obs</th><th>examples</th><th>pass obs</th><th>effectiveness med/p5/p95</th><th>p95 latency med/p5/p95</th><th>avg cost med/p5/p95</th></tr></thead>
     <tbody>%s</tbody>
   </table>
 </section>

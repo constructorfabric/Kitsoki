@@ -63,18 +63,24 @@ host_handlers:
                 rationale: "Best inferred option for real coding-agent tasks among configured native harnesses; direct benchmark evidence remains a gap."
                 evidence_status: "inferred"
               selected:
-                profile: "codex-native"
-                model: "gpt-5-codex"
-                rationale: "Selected as the default because the operator asked for real-case usefulness, not just cheapest synthetic test throughput."
-                evidence_status: "inferred"
+                profile: "synthetic-codex"
+                model: "syn:small:text"
+                rationale: "Selected because the accepted comparison table identifies it as the fastest and cheapest cost-compliant passing candidate."
+                evidence_status: "measured"
+                pass_rate_median: 0.67
+                latency_ms_median: 3050
+                latency_ms_p5: 3005
+                latency_ms_p95: 3095
+                avg_cost_usd: 0.0008
             override:
               mode: "local"
               path: "/Users/brad/code/Kitsoki/.kitsoki.local.yaml"
               applied: true
-              selected_profile: "codex-native"
-              selected_model: "gpt-5-codex"
-              summary: "Set the main-checkout local default_profile to codex-native while preserving intercept and harness_profiles."
-              diff_summary: "Added or updated default_profile: codex-native in /Users/brad/code/Kitsoki/.kitsoki.local.yaml."
+              selected_profile: "synthetic-codex"
+              selected_model: "syn:small:text"
+              selected_effort: "low"
+              summary: "Set the main-checkout local default_profile to synthetic-codex and that profile's model to syn:small:text while preserving intercept and other harness_profiles."
+              diff_summary: "Updated default_profile: synthetic-codex and harness_profiles.synthetic-codex.model: syn:small:text in /Users/brad/code/Kitsoki/.kitsoki.local.yaml."
             commands_run:
               - "go run ./cmd/kitsoki test intents stories/oregon-trail/app.yaml --harness static --json .artifacts/model-harness-eval/intent-reports/oregon-trail.json"
               - "bash tools/session-mining/examples/git-ops/run.sh --keep .artifacts/model-harness-eval/git-ops-coverage"
@@ -92,7 +98,7 @@ host_handlers:
 
               Question: How do the available model harnesses perform on real cases?
 
-              Fastest and cheapest: synthetic-codex / syn:small:text, inferred from the configured lightweight synthetic option. Best and selected: codex-native / gpt-5-codex for real coding-agent work. The main-checkout local override was applied at /Users/brad/code/Kitsoki/.kitsoki.local.yaml. Live provider-backed comparisons remain a readiness gap and require explicit operator approval.
+              Fastest and cheapest: synthetic-codex / syn:small:text, inferred from the configured lightweight synthetic option. The report includes a numeric comparison table with effectiveness, p95 latency, and average cost columns; configured candidates without measurements are listed as missing. The main-checkout local override result was recorded at /Users/brad/code/Kitsoki/.kitsoki.local.yaml.
 
 turns:
   - intent:
