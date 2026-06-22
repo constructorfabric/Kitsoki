@@ -2,7 +2,7 @@
 
 **Status:** Draft v1. No slices implemented yet.
 **Kind:**   epic
-**Slices:** 3 (0/3 shipped)
+**Slices:** 4 (0/4 shipped)
 
 <!--
   Authoring note: this epic was itself produced by hand-driving the very
@@ -102,20 +102,31 @@ representation") + the QA plan live alongside this proposal in
 | 1 | git-ops smoothing | story | Operand-as-slot, stop swallowing failures, force/confirm cleanup, one-shot lost-work-safe rebase-onto-moved-main | — | Draft | [`git-ops-smoothing.md`](git-ops-smoothing.md) |
 | 2 | ship-it loop | story | Import cherny-loop + git-ops + new `verify` room; chain configure→maker→integrate→re-verify→cleanup→shipped\|needs-human | 1 | Draft | [`ship-it.md`](ship-it.md) |
 | 3 | fleet fan-out | story | Fan ship-it over a brief list; cap N concurrent; merge-lock serializes integrate/verify | 2 (+ work-decomposition output) | Draft | [`fleet.md`](fleet.md) |
+| 4 | bugfix convergence | story | Bugfix composes ship-it's `integrate+re-verify+cleanup` tail (stops reinventing a weaker one); RED→GREEN regression-gate (test fails pre-fix, passes post-fix); `direct-ship` vs `open-PR` exit | 2 | Draft | [`bugfix-convergence.md`](bugfix-convergence.md) |
 
 ## Sequencing
 
 ```
 #1 git-ops smoothing ──▶ #2 ship-it loop ──▶ #3 fleet fan-out
-   (substrate: safe          (composes #1's        (fans #2 over a
-    integrate/cleanup)         integrate+cleanup     brief list,
-                               + cherny maker)        merge-lock)
+   (substrate: safe          (composes #1's   │    (fans #2 over a
+    integrate/cleanup)         integrate+      │     brief list,
+                               cleanup +       │     merge-lock)
+                               cherny maker)   ▼
+                                          #4 bugfix convergence
+                                          (bugfix reuses #2's tail)
 ```
 
 #1 ships and lands alone (it makes git-ops driveable as the goal demands,
 independent of the loop). #2 is the smallest unit that proves the *single-brief*
 loop end-to-end. #3 is pure orchestration over #2 — it adds no new git or maker
-mechanism, only fan-out + a lock.
+mechanism, only fan-out + a lock. #4 retrofits the *existing* bug-fix pipeline
+onto #2's `integrate`/`re-verify`/`cleanup` tail and fixes its regression-gate
+discipline — it depends only on the ship-it tail (#2), not on fleet.
+
+**Dogfood the dogfood:** slice #4 is **implemented BY ship-it itself** once #2
+lands — its brief ("converge bugfix onto the ship-it tail + RED→GREEN gate")
+runs through `configure → maker → integrate → re-verify → cleanup → shipped`. The
+delivery loop ships its own bug-fix convergence; that is the acceptance test for #2.
 
 ## Shared decisions
 
