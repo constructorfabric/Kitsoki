@@ -47,7 +47,7 @@ def main():
     for b in (doc or {}).get("briefs", []) or []:
         out.append({
             "id": b.get("id", ""),
-            "brief": b.get("agent_brief") or b.get("goal") or b.get("title") or "",
+            "brief": b.get("brief") or b.get("agent_brief") or b.get("goal") or b.get("title") or "",
             "gate_command": b.get("gate_command") or (b.get("test_plan", "") or "").strip(),
             "status": "pending",
             "last_error": "",
