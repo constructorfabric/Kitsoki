@@ -5,7 +5,7 @@
  * while reconciling with the RPC result.
  */
 
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { setActivePinia, createPinia } from "pinia";
 import { useInboxStore } from "../../src/stores/inbox.js";
 import type {
@@ -81,6 +81,10 @@ function fakeSource(overrides: Record<string, unknown> = {}): LiveSource {
 
 describe("inbox store", () => {
   beforeEach(() => setActivePinia(createPinia()));
+  afterEach(() => {
+    useInboxStore().teardown();
+    vi.useRealTimers();
+  });
 
   it("a notification frame prepends the item and sets counts", () => {
     const inbox = useInboxStore();
@@ -187,6 +191,23 @@ describe("inbox store", () => {
     await Promise.resolve();
 
     expect(inbox.open).toBe(true);
+    expect(src.listWork).toHaveBeenCalledTimes(2);
+  });
+
+  it("polls active work while subscribed and stops on teardown", async () => {
+    vi.useFakeTimers();
+    const inbox = useInboxStore();
+    const src = fakeSource();
+
+    inbox.init(src);
+    await Promise.resolve();
+    expect(src.listWork).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(src.listWork).toHaveBeenCalledTimes(2);
+
+    inbox.teardown();
+    await vi.advanceTimersByTimeAsync(15_000);
     expect(src.listWork).toHaveBeenCalledTimes(2);
   });
 

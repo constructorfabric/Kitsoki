@@ -10,6 +10,8 @@ import type {
   GitHubInboxSyncResult,
 } from "../data/live-source.js";
 
+const WORK_REFRESH_INTERVAL_MS = 15_000;
+
 /**
  * The global inbox store. App-global (mounted once in App.vue via the chrome
  * badge + panel + toast), so its state survives router navigation — the inbox
@@ -44,6 +46,7 @@ export const useInboxStore = defineStore("inbox", () => {
 
   let unsubscribe: (() => void) | null = null;
   let liveSource: LiveSource | null = null;
+  let workRefreshTimer: ReturnType<typeof setInterval> | null = null;
 
   // ---- getters ----
   const hasNeedsAttention = computed(() => needsAttention.value > 0);
@@ -64,6 +67,9 @@ export const useInboxStore = defineStore("inbox", () => {
     liveSource = source;
     unsubscribe = source.subscribeNotifications((frame) => onFrame(frame));
     void refreshWork();
+    workRefreshTimer = setInterval(() => {
+      if (!workLoading.value) void refreshWork();
+    }, WORK_REFRESH_INTERVAL_MS);
   }
 
   /** Tear down the feed (e.g. on app unmount / hot reload). */
@@ -71,6 +77,10 @@ export const useInboxStore = defineStore("inbox", () => {
     if (unsubscribe) {
       unsubscribe();
       unsubscribe = null;
+    }
+    if (workRefreshTimer) {
+      clearInterval(workRefreshTimer);
+      workRefreshTimer = null;
     }
     liveSource = null;
   }
