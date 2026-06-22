@@ -21,7 +21,9 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"os"
 	"testing"
+	"time"
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
@@ -217,6 +219,109 @@ func TestSessionNew_ReplayWithoutCassetteAllowsDirectSubmitOnly(t *testing.T) {
 	assert.False(t, driven.OK)
 	assert.Equal(t, "error", driven.Outcome.Mode)
 	assert.Contains(t, driven.Outcome.Error, "noRouteHarness")
+}
+
+func TestSessionSubmit_BackgroundJobCompletesOverMCP(t *testing.T) {
+	ctx := context.Background()
+	srv, _ := newReplayServer(t)
+	cs := connectInProcess(ctx, t, srv)
+	appPath := writeBackgroundJobStory(t)
+
+	res, err := callTool(ctx, cs, "session.new", map[string]any{
+		"story_path": appPath,
+		"harness":    "replay",
+		"trace":      t.TempDir() + "/trace.jsonl",
+	})
+	require.NoError(t, err)
+	require.False(t, res.IsError, "session.new: %s", contentText(res))
+	var ok studio.SessionOpenOK
+	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &ok))
+
+	res, err = callTool(ctx, cs, "session.submit", map[string]any{
+		"handle": ok.Handle,
+		"intent": "enter",
+		"cols":   100,
+		"rows":   30,
+	})
+	require.NoError(t, err)
+	submitted := driveResult(t, res)
+	require.True(t, submitted.OK)
+	require.Equal(t, "running", submitted.Outcome.State)
+	require.Equal(t, "running", submitted.Frame.Metadata.State)
+	require.NotContains(t, submitted.Frame.Text, "mcp-bg-done")
+
+	require.Eventually(t, func() bool {
+		res, err := callTool(ctx, cs, "session.inspect", map[string]any{"handle": ok.Handle})
+		if err != nil || res.IsError {
+			return false
+		}
+		var got studio.InspectResult
+		if err := json.Unmarshal([]byte(contentText(res)), &got); err != nil {
+			return false
+		}
+		return got.World["result"] == "mcp-bg-done"
+	}, 3*time.Second, 25*time.Millisecond)
+
+	res, err = callTool(ctx, cs, "render.tui", map[string]any{
+		"handle": ok.Handle,
+		"cols":   100,
+		"rows":   30,
+	})
+	require.NoError(t, err)
+	require.False(t, res.IsError, "render.tui: %s", contentText(res))
+	var rendered studio.RenderTUIResult
+	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &rendered))
+	assert.Contains(t, rendered.Frame.Text, "mcp-bg-done")
+}
+
+func writeBackgroundJobStory(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	appPath := dir + "/app.yaml"
+	const body = `app:
+  id: studio-background-job-test
+  version: 0.1.0
+  title: "Studio Background Job Test"
+
+hosts:
+  - host.run
+
+world:
+  result: { type: string, default: "" }
+  last_job_id: { type: string, default: "" }
+
+intents:
+  enter:
+    title: "Enter"
+
+root: lobby
+
+states:
+  lobby:
+    view: |
+      Lobby.
+    on:
+      enter:
+        - target: running
+
+  running:
+    view: |
+      Running.
+      Result: {{ world.result }}
+    on_enter:
+      - invoke: host.run
+        with:
+          cmd: "sleep 0.1; printf mcp-bg-done"
+        background: true
+        bind:
+          last_job_id: job_id
+        on_complete:
+          - set:
+              result: "{{ world.last_job_result.stdout }}"
+          - say: "Background complete: {{ world.result }}"
+`
+	require.NoError(t, os.WriteFile(appPath, []byte(body), 0o644))
+	return appPath
 }
 
 // TestSessionNew_LiveIsOptIn confirms harness:live takes the live builder branch

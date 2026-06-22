@@ -12,6 +12,7 @@
 *.test
 coverage.out
 coverage.html
+.cache/
 
 # Go workspace
 /vendor/

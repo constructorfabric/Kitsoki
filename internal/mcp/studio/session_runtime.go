@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -31,6 +32,7 @@ import (
 	"kitsoki/internal/app"
 	"kitsoki/internal/harness"
 	"kitsoki/internal/host"
+	"kitsoki/internal/jobs"
 	"kitsoki/internal/machine"
 	"kitsoki/internal/orchestrator"
 	rsserver "kitsoki/internal/runstatus/server"
@@ -82,12 +84,19 @@ type sessionRuntime struct {
 	sink  *store.JSONLSink
 	sid   app.SessionID
 	model tui.RootModel
+	mu    sync.Mutex
+	// modelTurn is the highest persisted turn folded into model. It prevents
+	// read-only render refreshes from appending duplicate transcript entries.
+	modelTurn app.TurnNumber
 
 	// driver binds the orchestrator + sid to the runstatus Driver API so the
 	// session tools call the exact same Turn/SubmitDirect/ContinueTurn seam the
 	// web surface drives (internal/runstatus/server/driver.go). This is the
 	// "OrchestratorDriver directly" path the proposal names.
 	driver rsserver.Driver
+
+	jobStore  *jobs.JobStore
+	scheduler jobs.Scheduler
 
 	// lastTurnErr is the orchestrator error from the most recent
 	// drive/submit/continue (nil on success). turnResponse surfaces it as
@@ -102,6 +111,21 @@ type sessionRuntime struct {
 	inFlight *suspendBroker
 
 	closers []func()
+}
+
+type studioBackgroundObserver struct {
+	rt  *sessionRuntime
+	sid app.SessionID
+}
+
+func (o *studioBackgroundObserver) OnBackgroundTurn(sid app.SessionID, outcome *orchestrator.TurnOutcome) {
+	if o == nil || o.rt == nil || sid != o.sid || outcome == nil {
+		return
+	}
+	o.rt.mu.Lock()
+	defer o.rt.mu.Unlock()
+	o.rt.model = o.rt.model.ApplyTurnOutcome(outcome, "(background)", nil)
+	o.rt.modelTurn = outcome.TurnNumber
 }
 
 // Close tears down the runtime in reverse construction order (LIFO), mirroring
@@ -198,6 +222,14 @@ func newSessionRuntime(ctx context.Context, storyPath, tracePath string, h harne
 	}
 	rt.closers = append(rt.closers, func() { _ = s.Close() })
 
+	jobStore, err := jobs.NewJobStore(s.DB())
+	if err != nil {
+		rt.Close()
+		return nil, &openError{Code: ErrBadRequest, Msg: fmt.Sprintf("session: open job store: %v", err)}
+	}
+	rt.jobStore = jobStore
+	rt.scheduler = jobs.NewScheduler(jobStore)
+
 	hostReg := host.NewRegistry()
 	host.RegisterBuiltins(hostReg)
 	// Test-only injection seam: a flow/cassette test registers an extra host
@@ -224,6 +256,8 @@ func newSessionRuntime(ctx context.Context, storyPath, tracePath string, h harne
 		orchestrator.WithEventSink(sink),
 		orchestrator.WithEventSinkAuthority(true),
 		orchestrator.WithAgentRegistry(agentReg),
+		orchestrator.WithScheduler(rt.scheduler),
+		orchestrator.WithJobStore(rt.jobStore),
 	}
 	// A non-empty profile map routes agent dispatch (host.agent.*) through the
 	// declared backend; selectedProfile becomes the session's initial selection.
@@ -242,6 +276,9 @@ func newSessionRuntime(ctx context.Context, storyPath, tracePath string, h harne
 	}
 	rt.sid = sid
 	rt.driver = rsserver.OrchestratorDriver{Orch: orch, SID: sid}
+	obs := &studioBackgroundObserver{rt: rt, sid: sid}
+	orch.RegisterObserver(obs)
+	rt.closers = append(rt.closers, func() { orch.UnregisterObserver(obs) })
 
 	if err := orch.RecordEffectiveStory(ctx, sid); err != nil {
 		rt.Close()
@@ -279,12 +316,15 @@ func newSessionRuntime(ctx context.Context, storyPath, tracePath string, h harne
 		return nil, &openError{Code: ErrBadRequest, Msg: fmt.Sprintf("session: run initial on_enter: %v", err)}
 	}
 
-	model, err := newComposerModel(orch, sid)
+	model, err := newComposerModel(orch, sid, rt.jobStore)
 	if err != nil {
 		rt.Close()
 		return nil, &openError{Code: ErrBadRequest, Msg: err.Error()}
 	}
 	rt.model = model
+	if j, jerr := orch.LoadJourney(sid); jerr == nil {
+		rt.modelTurn = j.Turn
+	}
 
 	return rt, nil
 }
@@ -294,7 +334,7 @@ func newSessionRuntime(ctx context.Context, storyPath, tracePath string, h harne
 // journey, renders the initial typed view, and constructs a RootModel with no
 // app path (edit mode disabled) so a drive folds outcomes through the same
 // ApplyTurnOutcome path the live TUI runs.
-func newComposerModel(orch *orchestrator.Orchestrator, sid app.SessionID) (tui.RootModel, error) {
+func newComposerModel(orch *orchestrator.Orchestrator, sid app.SessionID, jobStore *jobs.JobStore) (tui.RootModel, error) {
 	j, err := orch.LoadJourney(sid)
 	if err != nil {
 		return tui.RootModel{}, fmt.Errorf("session: load journey: %w", err)
@@ -305,6 +345,7 @@ func newComposerModel(orch *orchestrator.Orchestrator, sid app.SessionID) (tui.R
 	}
 	return tui.NewRootModel(orch, sid, "", initialView,
 		tui.WithInitialTypedView(typedView, env, rr),
+		tui.WithJobStore(jobStore),
 	), nil
 }
 
@@ -316,7 +357,12 @@ func newComposerModel(orch *orchestrator.Orchestrator, sid app.SessionID) (tui.R
 func (rt *sessionRuntime) drive(ctx context.Context, input string, cols, rows int) (*orchestrator.TurnOutcome, tui.Frame) {
 	out, err := rt.driver.Turn(ctx, input)
 	rt.lastTurnErr = err
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
 	rt.model = rt.model.ApplyTurnOutcome(out, input, err)
+	if out != nil {
+		rt.modelTurn = out.TurnNumber
+	}
 	return out, tui.ComposeFrame(&rt.model, cols, rows)
 }
 
@@ -403,7 +449,12 @@ func (rt *sessionRuntime) resumeSuspendable(ctx context.Context, questionID stri
 func (rt *sessionRuntime) submit(ctx context.Context, intent string, slots map[string]any, cols, rows int) (*orchestrator.TurnOutcome, tui.Frame) {
 	out, err := rt.driver.SubmitDirect(ctx, intent, slots)
 	rt.lastTurnErr = err
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
 	rt.model = rt.model.ApplyTurnOutcome(out, "", err)
+	if out != nil {
+		rt.modelTurn = out.TurnNumber
+	}
 	return out, tui.ComposeFrame(&rt.model, cols, rows)
 }
 
@@ -412,7 +463,12 @@ func (rt *sessionRuntime) submit(ctx context.Context, intent string, slots map[s
 func (rt *sessionRuntime) cont(ctx context.Context, slots map[string]any, cols, rows int) (*orchestrator.TurnOutcome, tui.Frame) {
 	out, err := rt.driver.ContinueTurn(ctx, slots)
 	rt.lastTurnErr = err
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
 	rt.model = rt.model.ApplyTurnOutcome(out, "", err)
+	if out != nil {
+		rt.modelTurn = out.TurnNumber
+	}
 	return out, tui.ComposeFrame(&rt.model, cols, rows)
 }
 
@@ -421,7 +477,40 @@ func (rt *sessionRuntime) cont(ctx context.Context, slots map[string]any, cols, 
 // composer model as-is (the last settled paint), so "look at this" can never
 // mutate state, world, or the trace (principle of least surprise).
 func (rt *sessionRuntime) frame(cols, rows int) tui.Frame {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	rt.refreshFromJourneyLocked()
 	return tui.ComposeFrame(&rt.model, cols, rows)
+}
+
+func (rt *sessionRuntime) refreshFromJourneyLocked() {
+	if rt.orch == nil {
+		return
+	}
+	j, err := rt.orch.LoadJourney(rt.sid)
+	if err != nil {
+		return
+	}
+	if j.Turn <= rt.modelTurn {
+		return
+	}
+	allowed := rt.orch.AllowedIntents(j.State, j.World)
+	allowedNames := make([]string, 0, len(allowed))
+	for _, ai := range allowed {
+		allowedNames = append(allowedNames, ai.Name)
+	}
+	view, err := rt.orch.RenderState(j.State, j.World)
+	if err != nil {
+		return
+	}
+	rt.model = rt.model.ApplyTurnOutcome(&orchestrator.TurnOutcome{
+		Mode:           orchestrator.ModeTransitioned,
+		View:           view,
+		NewState:       j.State,
+		AllowedIntents: allowedNames,
+		TurnNumber:     j.Turn,
+	}, "(refresh)", nil)
+	rt.modelTurn = j.Turn
 }
 
 // history returns the JSONL trace events recorded so far, in append order, for
