@@ -139,10 +139,42 @@ describe("inbox store", () => {
     expect(src.subscribeNotifications).toHaveBeenCalledTimes(1);
     expect(src.listWork).toHaveBeenCalledTimes(1);
     expect(inbox.activeWorkCount).toBe(2);
+    expect(inbox.chromeCount).toBe(2);
     expect(inbox.workItems.map((item) => item.kind)).toEqual([
       "pending_drive",
       "backgrounded_chat",
     ]);
+  });
+
+  it("chrome count and attention include active work", async () => {
+    const inbox = useInboxStore();
+    const src = fakeSource({
+      listWork: vi.fn().mockResolvedValue({
+        summary: {
+          items: 3,
+          needs_attention: 1,
+          jobs_running: 1,
+          jobs_awaiting_input: 1,
+          jobs_terminal: 0,
+          notifications_unread: 0,
+          notifications_action_required: 0,
+          pending_drives: 1,
+          backgrounded_chats: 0,
+        },
+        sessions: [],
+        items: [],
+      } satisfies WorkListResult),
+    });
+
+    inbox.onFrame(frame({ unread: 1, needs_attention: 0 }));
+    expect(inbox.chromeCount).toBe(1);
+    expect(inbox.chromeNeedsAttention).toBe(false);
+
+    await inbox.refreshWork(src);
+
+    expect(inbox.activeWorkCount).toBe(3);
+    expect(inbox.chromeCount).toBe(3);
+    expect(inbox.chromeNeedsAttention).toBe(true);
   });
 
   it("opening the panel refreshes active work", async () => {

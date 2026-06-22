@@ -1,24 +1,26 @@
 <template>
   <!-- Global inbox badge: a fixed launcher in the chrome, alongside the Meta
-       button. Shows the unread count; turns the severity (action_required)
-       color when any item needs attention, mirroring $inbox.needs_attention. -->
+       button. Shows the active-work count, falling back to unread count while
+       work refreshes; turns the severity color when notifications or active
+       work need attention. -->
   <div v-if="!isSnapshot" class="inbox-badge-host">
     <button
       class="inbox-badge"
       data-testid="inbox-badge"
-      :class="{ 'inbox-badge--attention': inbox.hasNeedsAttention }"
-      :data-needs-attention="inbox.hasNeedsAttention ? 'true' : 'false'"
+      :class="{ 'inbox-badge--attention': inbox.chromeNeedsAttention }"
+      :data-needs-attention="inbox.chromeNeedsAttention ? 'true' : 'false'"
       :data-unread="inbox.unread"
-      :title="`Inbox — ${inbox.unread} unread`"
-      :aria-label="`Inbox, ${inbox.unread} unread`"
+      :data-active-work="inbox.activeWorkCount"
+      :title="`Inbox — ${inbox.chromeCount} active`"
+      :aria-label="`Inbox, ${inbox.chromeCount} active`"
       @click="inbox.toggle()"
     >
       <span class="inbox-badge__bell">🔔</span>
       <span
-        v-if="inbox.unread > 0"
+        v-if="inbox.chromeCount > 0"
         class="inbox-badge__count"
         data-testid="inbox-badge-count"
-      >{{ inbox.unread }}</span>
+      >{{ inbox.chromeCount }}</span>
     </button>
   </div>
 </template>

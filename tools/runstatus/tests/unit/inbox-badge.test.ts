@@ -1,0 +1,33 @@
+import { mount } from "@vue/test-utils";
+import { beforeEach, describe, expect, it } from "vitest";
+import { createPinia, setActivePinia } from "pinia";
+import InboxBadge from "../../src/components/InboxBadge.vue";
+import { useInboxStore } from "../../src/stores/inbox.js";
+
+describe("InboxBadge", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+  });
+
+  it("surfaces active work even when there are no unread notifications", () => {
+    const inbox = useInboxStore();
+    inbox.workSummary = {
+      items: 2,
+      needs_attention: 1,
+      jobs_running: 0,
+      jobs_awaiting_input: 1,
+      jobs_terminal: 0,
+      notifications_unread: 0,
+      notifications_action_required: 0,
+      pending_drives: 1,
+      backgrounded_chats: 0,
+    };
+
+    const wrapper = mount(InboxBadge);
+
+    expect(wrapper.get('[data-testid="inbox-badge-count"]').text()).toBe("2");
+    expect(wrapper.get('[data-testid="inbox-badge"]').attributes("data-active-work")).toBe("2");
+    expect(wrapper.get('[data-testid="inbox-badge"]').attributes("data-needs-attention")).toBe("true");
+    expect(wrapper.get('[data-testid="inbox-badge"]').classes()).toContain("inbox-badge--attention");
+  });
+});

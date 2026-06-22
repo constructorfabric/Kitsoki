@@ -48,6 +48,10 @@ export const useInboxStore = defineStore("inbox", () => {
   // ---- getters ----
   const hasNeedsAttention = computed(() => needsAttention.value > 0);
   const activeWorkCount = computed(() => workSummary.value?.items ?? 0);
+  const chromeCount = computed(() => Math.max(unread.value, activeWorkCount.value));
+  const chromeNeedsAttention = computed(
+    () => needsAttention.value > 0 || (workSummary.value?.needs_attention ?? 0) > 0
+  );
 
   // ---- actions ----
 
@@ -213,6 +217,8 @@ export const useInboxStore = defineStore("inbox", () => {
     // getters
     hasNeedsAttention,
     activeWorkCount,
+    chromeCount,
+    chromeNeedsAttention,
     // actions
     init,
     teardown,
