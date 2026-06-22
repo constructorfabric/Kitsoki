@@ -54,7 +54,7 @@ describe("InboxPanel", () => {
     const inbox = useInboxStore();
     inbox.open = true;
     inbox.workSummary = {
-      items: 2,
+      items: 3,
       needs_attention: 0,
       jobs_running: 0,
       jobs_awaiting_input: 0,
@@ -62,6 +62,7 @@ describe("InboxPanel", () => {
       notifications_unread: 0,
       notifications_action_required: 0,
       pending_drives: 1,
+      dispatching_drives: 1,
       backgrounded_chats: 1,
     };
     inbox.workItems = [
@@ -77,6 +78,18 @@ describe("InboxPanel", () => {
         chat_id: "chat-1",
         actor: "claude",
         thread: "thread-1",
+      },
+      {
+        kind: "pending_drive",
+        priority: 68,
+        session_id: "web-session-1",
+        title: "dispatching the agent task",
+        status: "dispatching",
+        reacquire_tool: "chat.show",
+        reacquire_session_id: "web-session-1",
+        drive_id: "drive-2",
+        chat_id: "chat-dispatching",
+        actor: "claude",
       },
       {
         kind: "backgrounded_chat",
@@ -96,22 +109,26 @@ describe("InboxPanel", () => {
     await flushPromises();
 
     const rows = document.body.querySelectorAll('[data-testid="work-item"]');
-    expect(rows).toHaveLength(2);
+    expect(rows).toHaveLength(3);
     expect(document.body.textContent).toContain("queued");
+    expect(document.body.textContent).toContain("dispatching");
     expect(document.body.textContent).toContain("chat");
     expect(document.body.textContent).toContain("continue the agent task");
+    expect(document.body.textContent).toContain("dispatching the agent task");
     expect(document.body.textContent).toContain("Background Claude");
     expect(document.body.textContent).toContain("chat chat-1");
     expect(document.body.textContent).toContain("drive drive-1");
+    expect(document.body.textContent).toContain("chat chat-dispatching");
+    expect(document.body.textContent).toContain("drive drive-2");
     expect(document.body.textContent).toContain("claude");
     expect(document.body.textContent).toContain("thread-1");
     expect(document.body.textContent).toContain("chat chat-2");
     expect(document.body.textContent).toContain("tmux kit-bg");
     expect(document.body.textContent).toContain("devbox");
     expect(document.body.textContent).toContain("open context");
-    expect(inbox.workItems[1]?.reacquire_tool).toBe("chat.show");
+    expect(inbox.workItems[2]?.reacquire_tool).toBe("chat.show");
 
-    (rows[1] as HTMLButtonElement).click();
+    (rows[2] as HTMLButtonElement).click();
     await flushPromises();
 
     expect(inbox.open).toBe(false);

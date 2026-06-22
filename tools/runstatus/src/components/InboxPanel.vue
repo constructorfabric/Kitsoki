@@ -195,7 +195,9 @@ function workKey(item: WorkItem): string {
 
 function workKind(item: WorkItem): string {
   if (item.kind === "job") return "job";
-  if (item.kind === "pending_drive") return "queued";
+  if (item.kind === "pending_drive") {
+    return item.status === "dispatching" ? "dispatching" : "queued";
+  }
   if (item.kind === "backgrounded_chat") return "chat";
   if (item.kind === "notification") return item.severity || "note";
   return item.kind;
