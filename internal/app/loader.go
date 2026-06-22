@@ -306,7 +306,10 @@ func parseAndMerge(b []byte, file, baseDir string) (*AppDef, []error) {
 		var yamlErr *goyaml.SyntaxError
 		ve := &ValidationError{File: file, Message: err.Error()}
 		if errors.As(err, &yamlErr) {
-			_ = yamlErr
+			if yamlErr.Token != nil && yamlErr.Token.Position != nil {
+				ve.Line = yamlErr.Token.Position.Line
+				ve.Column = yamlErr.Token.Position.Column
+			}
 		}
 		return nil, []error{ve}
 	}
@@ -728,12 +731,9 @@ func loadAndValidate(b []byte, file string) (*AppDef, []error) {
 		// Wrap as a ValidationError preserving any line/col info.
 		var yamlErr *goyaml.SyntaxError
 		ve := &ValidationError{File: file, Message: err.Error()}
-		if errors.As(err, &yamlErr) {
-			// goccy/go-yaml's LexError / SyntaxError expose Token field.
-			// The best we can do without exporting internal fields is to
-			// inspect the error message; the token position appears in the
-			// formatted string from goccy when present.
-			_ = yamlErr
+		if errors.As(err, &yamlErr) && yamlErr.Token != nil && yamlErr.Token.Position != nil {
+			ve.Line = yamlErr.Token.Position.Line
+			ve.Column = yamlErr.Token.Position.Column
 		}
 		return nil, []error{ve}
 	}
