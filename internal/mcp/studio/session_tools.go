@@ -521,6 +521,7 @@ type InspectResult struct {
 	Notifications     []InboxInspectItem     `json:"notifications,omitempty"`
 	PendingDrives     []PendingDriveItem     `json:"pending_drives,omitempty"`
 	BackgroundedChats []BackgroundedChatItem `json:"backgrounded_chats,omitempty"`
+	OperatorQuestions []OperatorQuestionItem `json:"operator_questions,omitempty"`
 	LastTurns         []TurnSummaryItem      `json:"last_turns"`
 }
 
@@ -607,6 +608,15 @@ type BackgroundedChatItem struct {
 	LastIdleAtUnixMicro int64  `json:"last_idle_at_unix_micro,omitempty"`
 }
 
+// OperatorQuestionItem is one parked operator-ask fallback question batch for
+// this session. MCP clients can answer it with Reacquire.Tool and Args.
+type OperatorQuestionItem struct {
+	QuestionID         string                           `json:"question_id"`
+	Questions          []kitsokimcp.OperatorAskQuestion `json:"questions"`
+	CreatedAtUnixMicro int64                            `json:"created_at_unix_micro,omitempty"`
+	Reacquire          WorkReacquire                    `json:"reacquire"`
+}
+
 // TurnSummaryItem collapses one turn's events into a one-line record (the same
 // shape `kitsoki inspect` emits).
 type TurnSummaryItem struct {
@@ -633,7 +643,7 @@ func (srv *Server) handleSessionInspect(
 	if lastTurns <= 0 {
 		lastTurns = 5
 	}
-	out, err := rt.inspect(ctx, lastTurns)
+	out, err := rt.inspect(ctx, lastTurns, args.Handle)
 	if err != nil {
 		return buildToolError(ErrBadRequest, err.Error()), nil, nil
 	}
@@ -971,7 +981,7 @@ func resolveTracePath(override string) (string, error) {
 // state/world from the journey, the allowed-intent menu from the machine, the
 // current rendered view, background jobs, inbox notifications, and a tail of
 // turn summaries from the trace. Read-only.
-func (rt *sessionRuntime) inspect(ctx context.Context, lastTurns int) (InspectResult, error) {
+func (rt *sessionRuntime) inspect(ctx context.Context, lastTurns int, handle string) (InspectResult, error) {
 	j, err := rt.orch.LoadJourney(rt.sid)
 	if err != nil {
 		return InspectResult{}, fmt.Errorf("session.inspect: load journey: %w", err)
@@ -989,17 +999,19 @@ func (rt *sessionRuntime) inspect(ctx context.Context, lastTurns int) (InspectRe
 	if asyncErr != nil {
 		return InspectResult{}, asyncErr
 	}
+	operatorQuestions := rt.pendingOperatorQuestions()
 	return InspectResult{
 		OK:                true,
 		State:             string(j.State),
 		World:             j.World.Vars,
 		AllowedIntents:    allowedNames,
 		LastView:          view,
-		Async:             summarizeAsync(jobs, notifications, unreadNotifications, pendingDrives, backgroundedChats, rt.pendingOperatorQuestions()),
+		Async:             summarizeAsync(jobs, notifications, unreadNotifications, pendingDrives, backgroundedChats, operatorQuestions),
 		Jobs:              jobs,
 		Notifications:     notifications,
 		PendingDrives:     pendingDrives,
 		BackgroundedChats: backgroundedChats,
+		OperatorQuestions: inspectOperatorQuestions(handle, operatorQuestions),
 		LastTurns:         summariseTrace(rt.history(), lastTurns),
 	}, nil
 }
@@ -1227,6 +1239,25 @@ func (rt *sessionRuntime) pendingOperatorQuestions() []pendingQuestion {
 		return nil
 	}
 	return rt.inFlight.snapshotPending()
+}
+
+func inspectOperatorQuestions(handle string, questions []pendingQuestion) []OperatorQuestionItem {
+	out := make([]OperatorQuestionItem, 0, len(questions))
+	for _, q := range questions {
+		out = append(out, OperatorQuestionItem{
+			QuestionID:         q.id,
+			Questions:          hostToWireOperatorQuestions(q.questions),
+			CreatedAtUnixMicro: q.createdAt.UnixMicro(),
+			Reacquire: WorkReacquire{
+				Tool: "session.answer",
+				Args: map[string]any{
+					"handle":      handle,
+					"question_id": q.id,
+				},
+			},
+		})
+	}
+	return out
 }
 
 func activeDriveStatuses() []chats.DriveStatus {

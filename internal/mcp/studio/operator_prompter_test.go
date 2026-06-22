@@ -186,7 +186,7 @@ func TestStudioOperatorAsk_FallbackProtocol(t *testing.T) {
 	require.Nil(t, pq2)
 	require.NoError(t, res.err, "the turn completed cleanly")
 
-	ins, err := sh.Runtime.inspect(context.Background(), 5)
+	ins, err := sh.Runtime.inspect(context.Background(), 5, sh.Key)
 	require.NoError(t, err)
 	assert.Equal(t, "Postgres", ins.World["answer"], "the story branched on the operator's answer")
 }
@@ -246,6 +246,13 @@ func TestStudioOperatorAsk_FallbackOverMCP(t *testing.T) {
 	require.False(t, res.IsError, "session.inspect: %s", textOf(res))
 	require.NoError(t, json.Unmarshal([]byte(textOf(res)), &inspect))
 	assert.Equal(t, 1, inspect.Async.OperatorQuestions)
+	require.Len(t, inspect.OperatorQuestions, 1)
+	assert.Equal(t, qid, inspect.OperatorQuestions[0].QuestionID)
+	require.Len(t, inspect.OperatorQuestions[0].Questions, 1)
+	assert.Equal(t, probeQuestion, inspect.OperatorQuestions[0].Questions[0].Question)
+	assert.Equal(t, "session.answer", inspect.OperatorQuestions[0].Reacquire.Tool)
+	assert.Equal(t, "s1", inspect.OperatorQuestions[0].Reacquire.Args["handle"])
+	assert.Equal(t, qid, inspect.OperatorQuestions[0].Reacquire.Args["question_id"])
 
 	// session.answer → settled outcome
 	var ansResp TurnResponse
@@ -386,7 +393,7 @@ func TestStudioOperatorAsk_TimeoutDegrades(t *testing.T) {
 		t.Fatal("parked turn hung: a timed-out operator-ask must degrade, not block forever")
 	}
 
-	ins, err := sh.Runtime.inspect(context.Background(), 5)
+	ins, err := sh.Runtime.inspect(context.Background(), 5, sh.Key)
 	require.NoError(t, err)
 	assert.Contains(t, ins.World["answer"], "degraded", "the story proceeded without the operator")
 }

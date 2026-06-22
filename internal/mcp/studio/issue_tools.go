@@ -285,7 +285,7 @@ func (srv *Server) issueContext(ctx context.Context, args IssueCreateArgs) (stri
 	}
 	var b strings.Builder
 	if args.IncludeInspect {
-		if out, err := rt.inspect(ctx, 5); err == nil {
+		if out, err := rt.inspect(ctx, 5, args.Handle); err == nil {
 			fmt.Fprintf(&b, "\n\n## Context — session `%s` @ `%s`\n", args.Handle, out.State)
 			if len(out.AllowedIntents) > 0 {
 				fmt.Fprintf(&b, "- allowed intents: %s\n", strings.Join(out.AllowedIntents, ", "))

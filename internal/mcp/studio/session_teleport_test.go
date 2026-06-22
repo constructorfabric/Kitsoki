@@ -60,7 +60,7 @@ func TestSessionTeleport_ReacquiresInboxNotification(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 0, counts[jobs.SeverityActionRequired])
 
-	inspected, err := sh.Runtime.inspect(ctx, 1)
+	inspected, err := sh.Runtime.inspect(ctx, 1, sh.Key)
 	require.NoError(t, err)
 	assert.Equal(t, "cloakroom", inspected.State)
 	assert.Equal(t, 0, inspected.Async.NotificationsActionRequired)
