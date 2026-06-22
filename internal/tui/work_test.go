@@ -63,6 +63,25 @@ func TestWorkSlashListsActiveAsyncWork(t *testing.T) {
 		OriginRef:     "github:acme/repo/pr/42",
 		OriginURL:     "https://github.com/acme/repo/pull/42",
 	}))
+	require.NoError(t, js.InsertNotification(ctx, &jobs.Notification{
+		SessionID:     "other-session",
+		CreatedAt:     now.Add(-20 * time.Second),
+		Severity:      jobs.SeverityActionRequired,
+		Title:         "Other PR #99",
+		TeleportState: "foyer",
+		OriginKind:    "external",
+		OriginRef:     "github:acme/repo/pr/99",
+		OriginURL:     "https://github.com/acme/repo/pull/99",
+	}))
+	require.NoError(t, js.UpsertJob(ctx, &jobs.Job{
+		ID:          "job-other",
+		SessionID:   "other-session",
+		Kind:        "host.agent.task",
+		Status:      jobs.JobAwaitingInput,
+		OriginState: "foyer",
+		CreatedAt:   now.Add(-90 * time.Second),
+		UpdatedAt:   now.Add(-10 * time.Second),
+	}))
 
 	chat, err := cs.Create(ctx, "cloak", "agent", "scope", "Review proposal")
 	require.NoError(t, err)
@@ -113,6 +132,8 @@ func TestWorkSlashListsActiveAsyncWork(t *testing.T) {
 	require.Contains(t, tx, "Review PR #42")
 	require.Contains(t, tx, "github:acme/repo/pr/42")
 	require.Contains(t, tx, "https://github.com/acme/repo/pull/42")
+	require.NotContains(t, tx, "Other PR #99")
+	require.NotContains(t, tx, "job-other")
 	require.Contains(t, tx, "job")
 	require.Contains(t, tx, "host.agent.task")
 	require.Contains(t, tx, "queued")
@@ -131,7 +152,9 @@ func TestWorkSlashListsActiveAsyncWork(t *testing.T) {
 
 	m = runTurnBlocking(t, m, "/work --all")
 	tx = extractTranscript(t, m)
-	require.Contains(t, tx, "active work (all sessions): 6 item(s)")
+	require.Contains(t, tx, "active work (all sessions): 8 item(s)")
+	require.Contains(t, tx, "Other PR #99")
+	require.Contains(t, tx, "job-other")
 	require.Contains(t, tx, "Background Claude")
 	require.Contains(t, tx, "current session")
 	require.Contains(t, tx, "continue other queued review")

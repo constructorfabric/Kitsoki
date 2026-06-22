@@ -190,6 +190,112 @@ func TestJobStore_Notifications(t *testing.T) {
 	}
 }
 
+func TestJobStore_ListByStatusAcrossSessions(t *testing.T) {
+	db := openTestDB(t)
+	js, err := jobs.NewJobStore(db)
+	if err != nil {
+		t.Fatalf("NewJobStore: %v", err)
+	}
+	now := time.Now()
+	for _, j := range []*jobs.Job{
+		{
+			ID:        "job-current",
+			SessionID: "sess-1",
+			Kind:      "host.run",
+			Status:    jobs.JobRunning,
+			Payload:   map[string]any{"n": 1},
+			CreatedAt: now.Add(-2 * time.Minute),
+			UpdatedAt: now.Add(-1 * time.Minute),
+		},
+		{
+			ID:        "job-other",
+			SessionID: "sess-2",
+			Kind:      "host.agent.task",
+			Status:    jobs.JobAwaitingInput,
+			Payload:   map[string]any{"n": 2},
+			CreatedAt: now.Add(-3 * time.Minute),
+			UpdatedAt: now,
+		},
+		{
+			ID:        "job-done",
+			SessionID: "sess-3",
+			Kind:      "host.done",
+			Status:    jobs.JobDone,
+			Payload:   map[string]any{"n": 3},
+			CreatedAt: now.Add(-4 * time.Minute),
+			UpdatedAt: now,
+		},
+	} {
+		if err := js.UpsertJob(context.Background(), j); err != nil {
+			t.Fatalf("UpsertJob(%s): %v", j.ID, err)
+		}
+	}
+
+	got, err := js.ListByStatus(context.Background(), []jobs.JobStatus{jobs.JobRunning, jobs.JobAwaitingInput})
+	if err != nil {
+		t.Fatalf("ListByStatus: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("got %d jobs, want 2: %+v", len(got), got)
+	}
+	if got[0].ID != "job-other" || got[0].SessionID != "sess-2" {
+		t.Fatalf("first job = %+v, want job-other with session", got[0])
+	}
+	if got[1].ID != "job-current" || got[1].SessionID != "sess-1" {
+		t.Fatalf("second job = %+v, want job-current with session", got[1])
+	}
+}
+
+func TestJobStore_ListNotificationsAll(t *testing.T) {
+	db := openTestDB(t)
+	js, err := jobs.NewJobStore(db)
+	if err != nil {
+		t.Fatalf("NewJobStore: %v", err)
+	}
+	ctx := context.Background()
+	now := time.Now()
+	current := &jobs.Notification{
+		SessionID: "sess-1",
+		CreatedAt: now.Add(-time.Minute),
+		Severity:  jobs.SeverityInfo,
+		Title:     "Current note",
+	}
+	other := &jobs.Notification{
+		SessionID: "sess-2",
+		CreatedAt: now,
+		Severity:  jobs.SeverityActionRequired,
+		Title:     "Other needs input",
+	}
+	dismissed := &jobs.Notification{
+		SessionID: "sess-3",
+		CreatedAt: now.Add(time.Minute),
+		Severity:  jobs.SeverityWarn,
+		Title:     "Dismissed",
+	}
+	for _, n := range []*jobs.Notification{current, other, dismissed} {
+		if err := js.InsertNotification(ctx, n); err != nil {
+			t.Fatalf("InsertNotification(%s): %v", n.Title, err)
+		}
+	}
+	if err := js.DismissNotification(ctx, dismissed.ID); err != nil {
+		t.Fatalf("DismissNotification: %v", err)
+	}
+
+	got, err := js.ListNotificationsAll(ctx, 0)
+	if err != nil {
+		t.Fatalf("ListNotificationsAll: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("got %d notifications, want 2: %+v", len(got), got)
+	}
+	if got[0].ID != other.ID || got[0].SessionID != "sess-2" {
+		t.Fatalf("first notification = %+v, want other with session", got[0])
+	}
+	if got[1].ID != current.ID || got[1].SessionID != "sess-1" {
+		t.Fatalf("second notification = %+v, want current with session", got[1])
+	}
+}
+
 func TestJobStore_InsertExternalNotificationOnce(t *testing.T) {
 	db := openTestDB(t)
 	js, err := jobs.NewJobStore(db)

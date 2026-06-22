@@ -297,7 +297,39 @@ func (js *JobStore) ListBySession(ctx context.Context, sessionID app.SessionID) 
 	return scanJobs(rows)
 }
 
+// ListByStatus returns jobs across every session that match one of statuses.
+// It is intended for operator-level work queues that need to surface active
+// background work independent of the currently focused session.
+func (js *JobStore) ListByStatus(ctx context.Context, statuses []JobStatus) ([]Job, error) {
+	if len(statuses) == 0 {
+		return nil, fmt.Errorf("jobs.ListByStatus: at least one status is required")
+	}
+	q := `SELECT id, session_id, kind, status, origin_state, origin_proposal_id,
+	             payload, error, retry_count, created_at, updated_at, started_at, finished_at
+	      FROM jobs
+	      WHERE status IN (` + placeholders(len(statuses)) + `)
+	      ORDER BY updated_at DESC, created_at DESC`
+	args := make([]any, 0, len(statuses))
+	for _, st := range statuses {
+		args = append(args, string(st))
+	}
+	rows, err := js.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanJobsWithSession(rows)
+}
+
 func scanJobs(rows *sql.Rows) ([]Job, error) {
+	return scanJobRows(rows, false)
+}
+
+func scanJobsWithSession(rows *sql.Rows) ([]Job, error) {
+	return scanJobRows(rows, true)
+}
+
+func scanJobRows(rows *sql.Rows, includeSession bool) ([]Job, error) {
 	var out []Job
 	for rows.Next() {
 		var (
@@ -311,11 +343,21 @@ func scanJobs(rows *sql.Rows) ([]Job, error) {
 			startedAtMs      sql.NullInt64
 			finishedAtMs     sql.NullInt64
 		)
-		if err := rows.Scan(
-			&j.ID, &j.Kind, &status, (*string)(&j.OriginState), &originProposalID,
-			&payloadJSON, &errStr, &j.RetryCount,
-			&createdAtMs, &updatedAtMs, &startedAtMs, &finishedAtMs,
-		); err != nil {
+		var err error
+		if includeSession {
+			err = rows.Scan(
+				&j.ID, (*string)(&j.SessionID), &j.Kind, &status, (*string)(&j.OriginState), &originProposalID,
+				&payloadJSON, &errStr, &j.RetryCount,
+				&createdAtMs, &updatedAtMs, &startedAtMs, &finishedAtMs,
+			)
+		} else {
+			err = rows.Scan(
+				&j.ID, &j.Kind, &status, (*string)(&j.OriginState), &originProposalID,
+				&payloadJSON, &errStr, &j.RetryCount,
+				&createdAtMs, &updatedAtMs, &startedAtMs, &finishedAtMs,
+			)
+		}
+		if err != nil {
 			return nil, err
 		}
 		j.Status = JobStatus(status)
@@ -502,7 +544,35 @@ func (js *JobStore) ListNotifications(ctx context.Context, sessionID app.Session
 		return nil, err
 	}
 	defer rows.Close()
+	return scanNotificationRows(rows)
+}
 
+// ListNotificationsAll returns non-dismissed notifications for every session.
+// It is the all-session counterpart to ListNotifications for operator work
+// queues. Use limit <= 0 for no limit.
+func (js *JobStore) ListNotificationsAll(ctx context.Context, limit int) ([]Notification, error) {
+	q := `
+		SELECT id, session_id, created_at, read_at, severity, title, body,
+		       teleport_state, teleport_slots, teleport_proposal_id, teleport_job_id,
+		       origin_kind, origin_ref, origin_url
+		FROM notifications
+		WHERE dismissed_at IS NULL
+		ORDER BY created_at DESC`
+	args := []any{}
+	if limit > 0 {
+		q += " LIMIT ?"
+		args = append(args, limit)
+	}
+
+	rows, err := js.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanNotificationRows(rows)
+}
+
+func scanNotificationRows(rows *sql.Rows) ([]Notification, error) {
 	var out []Notification
 	for rows.Next() {
 		var n Notification
@@ -536,6 +606,20 @@ func (js *JobStore) ListNotifications(ctx context.Context, sessionID app.Session
 		out = append(out, n)
 	}
 	return out, rows.Err()
+}
+
+func placeholders(n int) string {
+	if n <= 0 {
+		return ""
+	}
+	out := make([]byte, 0, 2*n-1)
+	for i := 0; i < n; i++ {
+		if i > 0 {
+			out = append(out, ',')
+		}
+		out = append(out, '?')
+	}
+	return string(out)
 }
 
 // GetNotification loads a single notification row by id, regardless of its

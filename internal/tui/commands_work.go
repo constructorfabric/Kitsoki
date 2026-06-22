@@ -6,17 +6,18 @@ import (
 	"strings"
 	"time"
 
+	"kitsoki/internal/app"
 	"kitsoki/internal/chats"
 	"kitsoki/internal/jobs"
 	"kitsoki/internal/tui/blocks"
 )
 
 // commands_work.go - single-pane TUI "/work": print the active async work
-// queue for this session. "/work --all" broadens background Claude PTY rows to
-// every session on this host. This is the terminal counterpart to web
-// runstatus.work.list and studio.work: one compact place to see unread
-// notifications, active background jobs, queued chat drives, and backgrounded
-// Claude PTYs without leaving the current flow.
+// queue for this session. "/work --all" broadens jobs, notifications, queued
+// drives, and background Claude PTYs across sessions. This is the terminal
+// counterpart to web runstatus.work.list and studio.work: one compact place to
+// see unread notifications, active background jobs, queued chat drives, and
+// backgrounded Claude PTYs without leaving the current flow.
 func renderWorkBlock(m RootModel, args []string) (RootModel, string) {
 	r := blocks.New(m.transcript.width, m.currentTheme())
 	if m.jobStore == nil && m.chatStore == nil {
@@ -30,18 +31,29 @@ func renderWorkBlock(m RootModel, args []string) (RootModel, string) {
 	var attachTargets []chats.PtySession
 
 	if m.jobStore != nil {
-		jobRows, err := m.jobStore.ListBySession(ctx, m.sid)
+		var jobRows []jobs.Job
+		var err error
+		if allSessions {
+			jobRows, err = m.jobStore.ListByStatus(ctx, []jobs.JobStatus{jobs.JobRunning, jobs.JobAwaitingInput, jobs.JobFailed})
+		} else {
+			jobRows, err = m.jobStore.ListBySession(ctx, m.sid)
+		}
 		if err != nil {
 			errs = append(errs, "jobs: "+err.Error())
 		} else {
-			rows = append(rows, workRowsForJobs(jobRows)...)
+			rows = append(rows, workRowsForJobs(jobRows, m.sid, allSessions)...)
 		}
 
-		notifs, err := m.jobStore.ListNotifications(ctx, m.sid, 20)
+		var notifs []jobs.Notification
+		if allSessions {
+			notifs, err = m.jobStore.ListNotificationsAll(ctx, 20)
+		} else {
+			notifs, err = m.jobStore.ListNotifications(ctx, m.sid, 20)
+		}
 		if err != nil {
 			errs = append(errs, "notifications: "+err.Error())
 		} else {
-			rows = append(rows, workRowsForNotifications(notifs)...)
+			rows = append(rows, workRowsForNotifications(notifs, m.sid, allSessions)...)
 		}
 	}
 
@@ -126,7 +138,7 @@ type workRow struct {
 	Age    string
 }
 
-func workRowsForJobs(jobRows []jobs.Job) []workRow {
+func workRowsForJobs(jobRows []jobs.Job, sid app.SessionID, allSessions bool) []workRow {
 	out := make([]workRow, 0, len(jobRows))
 	for _, j := range jobRows {
 		switch j.Status {
@@ -142,6 +154,9 @@ func workRowsForJobs(jobRows []jobs.Job) []workRow {
 		if j.OriginState != "" {
 			hint += " from " + string(j.OriginState)
 		}
+		if allSessions {
+			hint += workSessionHint(j.SessionID, sid)
+		}
 		out = append(out, workRow{
 			Kind:   "job",
 			Status: string(j.Status),
@@ -153,7 +168,7 @@ func workRowsForJobs(jobRows []jobs.Job) []workRow {
 	return out
 }
 
-func workRowsForNotifications(notifs []jobs.Notification) []workRow {
+func workRowsForNotifications(notifs []jobs.Notification, sid app.SessionID, allSessions bool) []workRow {
 	out := make([]workRow, 0, len(notifs))
 	for _, n := range notifs {
 		if n.ReadAt != nil {
@@ -170,6 +185,9 @@ func workRowsForNotifications(notifs []jobs.Notification) []workRow {
 			}
 			hint += n.OriginURL
 		}
+		if allSessions {
+			hint += workSessionHint(n.SessionID, sid)
+		}
 		out = append(out, workRow{
 			Kind:   "notification",
 			Status: string(n.Severity),
@@ -179,6 +197,17 @@ func workRowsForNotifications(notifs []jobs.Notification) []workRow {
 		})
 	}
 	return out
+}
+
+func workSessionHint(rowSID, currentSID app.SessionID) string {
+	switch {
+	case rowSID == "":
+		return ""
+	case rowSID == currentSID:
+		return ", current session"
+	default:
+		return ", session " + string(rowSID)
+	}
 }
 
 func workRowsForDrives(drives []chats.Drive, sid string, allSessions bool) []workRow {
