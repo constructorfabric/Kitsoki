@@ -61,6 +61,7 @@ type WorkItem struct {
 	StoryPath           string                    `json:"story_path,omitempty"`
 	State               string                    `json:"state,omitempty"`
 	Title               string                    `json:"title,omitempty"`
+	Body                string                    `json:"body,omitempty"`
 	Status              string                    `json:"status,omitempty"`
 	NotificationID      string                    `json:"notification_id,omitempty"`
 	JobID               string                    `json:"job_id,omitempty"`
@@ -71,7 +72,11 @@ type WorkItem struct {
 	UpdatedAtUnixMilli  int64                     `json:"updated_at_unix_milli,omitempty"`
 	ReadAtUnixMilli     int64                     `json:"read_at_unix_milli,omitempty"`
 	TeleportState       string                    `json:"teleport_state,omitempty"`
+	TeleportSlots       map[string]any            `json:"teleport_slots,omitempty"`
 	TeleportJobID       string                    `json:"teleport_job_id,omitempty"`
+	OriginKind          string                    `json:"origin_kind,omitempty"`
+	OriginRef           string                    `json:"origin_ref,omitempty"`
+	OriginURL           string                    `json:"origin_url,omitempty"`
 	OriginState         string                    `json:"origin_state,omitempty"`
 	Actor               string                    `json:"actor,omitempty"`
 	Thread              string                    `json:"thread,omitempty"`
@@ -189,6 +194,7 @@ func workItemsForNotifications(sh *SessionHandle, state string, notifications []
 			StoryPath:          sh.StoryPath,
 			State:              state,
 			Title:              n.Title,
+			Body:               n.Body,
 			Status:             "unread",
 			NotificationID:     n.ID,
 			Severity:           n.Severity,
@@ -196,7 +202,11 @@ func workItemsForNotifications(sh *SessionHandle, state string, notifications []
 			UpdatedAtUnixMilli: n.CreatedAtUnixMilli,
 			ReadAtUnixMilli:    n.ReadAtUnixMilli,
 			TeleportState:      n.TeleportState,
+			TeleportSlots:      n.TeleportSlots,
 			TeleportJobID:      n.TeleportJobID,
+			OriginKind:         n.OriginKind,
+			OriginRef:          n.OriginRef,
+			OriginURL:          n.OriginURL,
 			Reacquire: WorkReacquire{
 				Tool: "session.teleport",
 				Args: map[string]any{"handle": sh.Key, "notification_id": n.ID},

@@ -194,7 +194,19 @@ func TestInbox_Teleport(t *testing.T) {
 
 func TestWorkList_SurfacesGlobalActiveWork(t *testing.T) {
 	f := buildInboxFixture(t)
-	id := f.postNotification(t, "Background turn ready")
+	n := &jobs.Notification{
+		SessionID:     f.sid,
+		CreatedAt:     time.Now(),
+		Severity:      jobs.SeverityActionRequired,
+		Title:         "PR #42 needs review",
+		Body:          "Review requested by alice.",
+		TeleportState: "inbox",
+		TeleportSlots: map[string]any{"pr_id": "42", "pr_title": "Add tests"},
+		OriginKind:    "external",
+		OriginRef:     "github:acme/repo/pr/42",
+		OriginURL:     "https://github.com/acme/repo/pull/42",
+	}
+	require.NoError(t, f.js.InsertNotification(context.Background(), n))
 	now := time.Now()
 	require.NoError(t, f.js.UpsertJob(context.Background(), &jobs.Job{
 		ID:          "job-running",
@@ -236,10 +248,15 @@ func TestWorkList_SurfacesGlobalActiveWork(t *testing.T) {
 	assert.Equal(t, 4, work.Summary.Items)
 	require.Len(t, work.Items, 4)
 	assert.Equal(t, "notification", work.Items[0].Kind)
-	assert.Equal(t, id, work.Items[0].NotificationID)
+	assert.Equal(t, n.ID, work.Items[0].NotificationID)
 	assert.Equal(t, "notification", work.Items[0].ReacquireTool)
 	assert.Equal(t, f.publicID, work.Items[0].SessionID)
 	assert.Equal(t, f.publicID, work.Items[0].ReacquireSessionID)
+	assert.Equal(t, "Review requested by alice.", work.Items[0].Body)
+	assert.Equal(t, map[string]any{"pr_id": "42", "pr_title": "Add tests"}, work.Items[0].TeleportSlots)
+	assert.Equal(t, "external", work.Items[0].OriginKind)
+	assert.Equal(t, "github:acme/repo/pr/42", work.Items[0].OriginRef)
+	assert.Equal(t, "https://github.com/acme/repo/pull/42", work.Items[0].OriginURL)
 	assert.Equal(t, "job", work.Items[1].Kind)
 	assert.Equal(t, "job-running", work.Items[1].JobID)
 	assert.Equal(t, "session", work.Items[1].ReacquireTool)

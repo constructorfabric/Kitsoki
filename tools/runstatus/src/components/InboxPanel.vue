@@ -140,13 +140,14 @@ function notificationFromWork(item: WorkItem): Notification {
     CreatedAt: item.created_at || new Date().toISOString(),
     Severity: item.severity || "info",
     Title: item.title || "",
-    Body: "",
+    Body: item.body || "",
     TeleportState: item.teleport_state || "",
-    TeleportSlots: null,
+    TeleportSlots: item.teleport_slots || null,
     TeleportProposalID: "",
     TeleportJobID: item.teleport_job_id || "",
-    OriginKind: "work",
-    OriginRef: item.job_id || item.notification_id || "",
+    OriginKind: item.origin_kind || "work",
+    OriginRef: item.origin_ref || item.job_id || item.notification_id || "",
+    OriginURL: item.origin_url || null,
     ReadAt: item.read_at ?? null,
   };
 }

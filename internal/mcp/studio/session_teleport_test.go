@@ -33,6 +33,7 @@ func TestSessionTeleport_ReacquiresInboxNotification(t *testing.T) {
 		TeleportSlots: map[string]any{"source": "test"},
 		OriginKind:    "job",
 		OriginRef:     "job:test",
+		OriginURL:     "https://github.com/acme/repo/pull/42",
 	}
 	require.NoError(t, sh.Runtime.jobStore.InsertNotification(ctx, n))
 
@@ -66,4 +67,5 @@ func TestSessionTeleport_ReacquiresInboxNotification(t *testing.T) {
 	assert.Equal(t, 0, inspected.Async.NotificationsUnread)
 	require.Len(t, inspected.Notifications, 1, "read notifications remain visible until dismissed")
 	assert.Equal(t, n.ID, inspected.Notifications[0].ID)
+	assert.Equal(t, n.OriginURL, inspected.Notifications[0].OriginURL)
 }

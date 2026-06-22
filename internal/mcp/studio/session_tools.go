@@ -557,6 +557,7 @@ type InboxInspectItem struct {
 	TeleportJobID      string                    `json:"teleport_job_id,omitempty"`
 	OriginKind         string                    `json:"origin_kind"`
 	OriginRef          string                    `json:"origin_ref"`
+	OriginURL          string                    `json:"origin_url,omitempty"`
 }
 
 // PendingDriveItem is one pending or dispatching chat-input-queue row owned by
@@ -1054,6 +1055,7 @@ func inspectNotifications(in []jobs.Notification) []InboxInspectItem {
 			TeleportJobID:      n.TeleportJobID,
 			OriginKind:         n.OriginKind,
 			OriginRef:          n.OriginRef,
+			OriginURL:          n.OriginURL,
 		}
 		if n.ReadAt != nil {
 			item.ReadAtUnixMilli = n.ReadAt.UnixMilli()

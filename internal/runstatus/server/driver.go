@@ -121,6 +121,7 @@ type WorkItem struct {
 	Priority           int                       `json:"priority"`
 	SessionID          string                    `json:"session_id"`
 	Title              string                    `json:"title,omitempty"`
+	Body               string                    `json:"body,omitempty"`
 	Status             string                    `json:"status,omitempty"`
 	NotificationID     string                    `json:"notification_id,omitempty"`
 	JobID              string                    `json:"job_id,omitempty"`
@@ -129,7 +130,11 @@ type WorkItem struct {
 	UpdatedAt          time.Time                 `json:"updated_at,omitempty"`
 	ReadAt             *time.Time                `json:"read_at,omitempty"`
 	TeleportState      string                    `json:"teleport_state,omitempty"`
+	TeleportSlots      map[string]any            `json:"teleport_slots,omitempty"`
 	TeleportJobID      string                    `json:"teleport_job_id,omitempty"`
+	OriginKind         string                    `json:"origin_kind,omitempty"`
+	OriginRef          string                    `json:"origin_ref,omitempty"`
+	OriginURL          string                    `json:"origin_url,omitempty"`
 	OriginState        string                    `json:"origin_state,omitempty"`
 	ReacquireTool      string                    `json:"reacquire_tool"`
 	ReacquireSessionID string                    `json:"reacquire_session_id,omitempty"`
@@ -286,6 +291,7 @@ func (d OrchestratorDriver) ListWork(ctx context.Context) (SessionWork, error) {
 				Priority:           workNotificationPriority(n),
 				SessionID:          string(d.SID),
 				Title:              n.Title,
+				Body:               n.Body,
 				Status:             "unread",
 				NotificationID:     n.ID,
 				Severity:           n.Severity,
@@ -293,7 +299,11 @@ func (d OrchestratorDriver) ListWork(ctx context.Context) (SessionWork, error) {
 				UpdatedAt:          n.CreatedAt,
 				ReadAt:             n.ReadAt,
 				TeleportState:      n.TeleportState,
+				TeleportSlots:      n.TeleportSlots,
 				TeleportJobID:      n.TeleportJobID,
+				OriginKind:         n.OriginKind,
+				OriginRef:          n.OriginRef,
+				OriginURL:          n.OriginURL,
 				ReacquireTool:      "notification",
 				ReacquireSessionID: string(d.SID),
 			})

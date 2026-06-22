@@ -157,6 +157,7 @@ export interface WorkItem {
   priority: number;
   session_id: string;
   title?: string;
+  body?: string;
   status?: string;
   notification_id?: string;
   job_id?: string;
@@ -165,7 +166,11 @@ export interface WorkItem {
   updated_at?: string;
   read_at?: string | null;
   teleport_state?: string;
+  teleport_slots?: Record<string, unknown> | null;
   teleport_job_id?: string;
+  origin_kind?: string;
+  origin_ref?: string;
+  origin_url?: string;
   origin_state?: string;
   reacquire_tool: "notification" | "session" | string;
   reacquire_session_id?: string;
