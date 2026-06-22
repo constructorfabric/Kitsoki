@@ -70,6 +70,13 @@ reaches it (`TestServer_NoLiveFallthrough`). A session opts into `live` (or VCR
 so the agent — and the human watching it — knows when an LLM is in the loop. A
 replay miss is a **hard error**, never a silent live fallthrough.
 
+For deterministic host-side integration tests, `kitsoki mcp --flow <fixture>`
+loads the fixture's `host_handlers:` and installs those stubs into every future
+driving session. This mirrors the no-LLM `kitsoki web --flow` posture for host
+calls while still driving the session through real studio MCP stdio tools.
+The MCP flow posture is intentionally narrow today: it supports `host_handlers`
+stubs, not `host_cassette` or Starlark cassette fields.
+
 `story.validate` and `story.test` are deterministic by construction.
 
 ## Tool surface

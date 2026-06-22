@@ -313,11 +313,24 @@ func workJobNotifications(notifications []InboxInspectItem) map[string]InboxInsp
 		if jobID == "" {
 			continue
 		}
-		if _, exists := out[jobID]; !exists {
+		if existing, exists := out[jobID]; !exists || jobNotificationRank(n.Severity) > jobNotificationRank(existing.Severity) {
 			out[jobID] = n
 		}
 	}
 	return out
+}
+
+func jobNotificationRank(severity jobs.NotificationSeverity) int {
+	switch severity {
+	case jobs.SeverityActionRequired:
+		return 4
+	case jobs.SeverityError:
+		return 3
+	case jobs.SeverityWarn:
+		return 2
+	default:
+		return 1
+	}
 }
 
 func isActiveJob(j JobInspectItem) bool {

@@ -436,6 +436,61 @@ func TestWorkList_AwaitingJobShowsClarificationPrompt(t *testing.T) {
 	assert.Equal(t, "Which environment should I use?", work.Items[0].Body)
 }
 
+func TestWorkList_JobReacquirePrefersActionRequiredNotification(t *testing.T) {
+	f := buildInboxFixture(t)
+	now := time.Now()
+	require.NoError(t, f.js.UpsertJob(context.Background(), &jobs.Job{
+		ID:        "job-awaiting",
+		SessionID: f.sid,
+		Kind:      "host.run",
+		Status:    jobs.JobRunning,
+		CreatedAt: now.Add(-time.Minute),
+		UpdatedAt: now,
+	}))
+	require.NoError(t, f.js.RequestClarification(context.Background(), "job-awaiting", jobs.ClarificationSchema{
+		Prompt: "Which environment should I use?",
+		Fields: map[string]string{"answer": "string"},
+	}))
+	info := &jobs.Notification{
+		SessionID:     f.sid,
+		CreatedAt:     now.Add(-30 * time.Second),
+		Severity:      jobs.SeverityInfo,
+		Title:         "Job submitted",
+		TeleportState: "running",
+		TeleportJobID: "job-awaiting",
+		OriginKind:    "job",
+		OriginRef:     "job:job-awaiting",
+	}
+	require.NoError(t, f.js.InsertNotification(context.Background(), info))
+	action := &jobs.Notification{
+		SessionID:     f.sid,
+		CreatedAt:     now.Add(-20 * time.Second),
+		Severity:      jobs.SeverityActionRequired,
+		Title:         "Input required",
+		Body:          "Pick staging or prod.",
+		TeleportState: "running",
+		TeleportJobID: "job-awaiting",
+		OriginKind:    "job",
+		OriginRef:     "job:job-awaiting",
+	}
+	require.NoError(t, f.js.InsertNotification(context.Background(), action))
+
+	var work server.WorkListResult
+	rpcCall(t, f.ts, "runstatus.work.list", nil, &work)
+	require.Len(t, work.Items, 3)
+	var jobItem *server.WorkItem
+	for i := range work.Items {
+		if work.Items[i].Kind == "job" {
+			jobItem = &work.Items[i]
+			break
+		}
+	}
+	require.NotNil(t, jobItem)
+	assert.Equal(t, action.ID, jobItem.NotificationID)
+	assert.Equal(t, "Pick staging or prod.", jobItem.Body)
+	assert.Equal(t, "notification", jobItem.ReacquireTool)
+}
+
 func TestChatShow_SurfacesFocusedAsyncChatContext(t *testing.T) {
 	f := buildInboxFixture(t)
 	chat, err := f.chats.Create(context.Background(), "cloak", "agent", "scope-bg", "Background Claude")

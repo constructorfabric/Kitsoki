@@ -11,13 +11,16 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/goccy/go-yaml"
 	"github.com/spf13/cobra"
 
 	"kitsoki/internal/app"
 	"kitsoki/internal/harness"
+	"kitsoki/internal/host"
 	"kitsoki/internal/kitrepo"
 	studio "kitsoki/internal/mcp/studio"
 	rsserver "kitsoki/internal/runstatus/server"
+	"kitsoki/internal/testrunner"
 	"kitsoki/internal/webconfig"
 	"kitsoki/internal/webshot"
 )
@@ -104,6 +107,7 @@ func mcpCmd() *cobra.Command {
 		dbPath      string
 		harnessType string
 		workspace   string
+		flowPath    string
 		readOnly    bool
 	)
 	cmd := &cobra.Command{
@@ -149,6 +153,27 @@ docs land):
 			}
 			defer chatCleanup()
 			sess.SetChatStore(chatStore)
+			if flowPath != "" {
+				abs, aerr := filepath.Abs(flowPath)
+				if aerr != nil {
+					return fmt.Errorf("resolve --flow path: %w", aerr)
+				}
+				data, rerr := os.ReadFile(abs)
+				if rerr != nil {
+					return fmt.Errorf("read --flow %q: %w", flowPath, rerr)
+				}
+				var fixture testrunner.FlowFixture
+				if uerr := yaml.Unmarshal(data, &fixture); uerr != nil {
+					return fmt.Errorf("parse --flow %q: %w", flowPath, uerr)
+				}
+				if fixture.HostCassette != "" || fixture.StarlarkHTTPCassette != "" || fixture.StarlarkInspectCassette != "" {
+					return fmt.Errorf("mcp --flow currently supports host_handlers stubs only; use a flow without host_cassette or starlark cassettes")
+				}
+				sess.SetHostRegistryConfigurer(func(reg *host.Registry) error {
+					testrunner.RegisterHostStubs(reg, fixture.HostHandlers)
+					return nil
+				})
+			}
 
 			// Seed operator-declared harness profiles (synthetic, codex, …) from
 			// the project webconfig so a session.new(profile:…) can route a live
@@ -207,6 +232,8 @@ docs land):
 		"default harness for driving sessions: replay|live (default replay → no LLM; per-session override on session.new)")
 	cmd.Flags().StringVar(&workspace, "workspace", "",
 		"optional initial authoring workspace (a story dir or app.yaml) bound as the workspace handle on boot")
+	cmd.Flags().StringVar(&flowPath, "flow", "",
+		"deterministic flow fixture whose host_handlers stub host.* calls for every driving session (no LLM)")
 	cmd.Flags().BoolVar(&readOnly, "read-only", false,
 		"omit the story-mutating tool (story.write); read + replay-driving tools stay available (the meta-mode Q&A surface)")
 	return cmd

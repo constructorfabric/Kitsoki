@@ -11,6 +11,7 @@ import (
 	"kitsoki/internal/app"
 	"kitsoki/internal/chats"
 	"kitsoki/internal/harness"
+	"kitsoki/internal/host"
 	"kitsoki/internal/orchestrator"
 	rsserver "kitsoki/internal/runstatus/server"
 )
@@ -51,6 +52,12 @@ func (m HarnessMode) normalize() HarnessMode {
 // ignores it). Returning an error fails the open call fast with a structured
 // tool error rather than half-creating a handle.
 type HarnessBuilder func(mode HarnessMode, recordingPath, storyPath string) (harness.Harness, error)
+
+// HostRegistryConfigurer customizes a driving runtime's host registry after
+// builtins are registered and before the story allow-list is validated. It is
+// the production seam behind `kitsoki mcp --flow`, where flow host_handlers
+// replace selected host.* calls with deterministic no-LLM stubs.
+type HostRegistryConfigurer func(*host.Registry) error
 
 // DefaultHarnessBuilder is the in-package harness seam. Replay mode builds a
 // ReplayHarness from the recording path (no LLM); live mode is left to a
@@ -160,6 +167,7 @@ type StudioSession struct {
 	harnessProfiles map[string]orchestrator.HarnessProfile
 	defaultProfile  string
 	chatStore       *chats.Store
+	configureHosts  HostRegistryConfigurer
 	currentSID      string
 }
 
@@ -181,6 +189,14 @@ func (ss *StudioSession) SetChatStore(store *chats.Store) {
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
 	ss.chatStore = store
+}
+
+// SetHostRegistryConfigurer installs deterministic host registry customization
+// for future driving sessions. Nil clears the customization.
+func (ss *StudioSession) SetHostRegistryConfigurer(configure HostRegistryConfigurer) {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+	ss.configureHosts = configure
 }
 
 // NewStudioSession constructs an empty StudioSession. A nil builder falls back to
@@ -366,7 +382,7 @@ func (ss *StudioSession) OpenDrivingSession(ctx context.Context, p OpenDrivingSe
 
 	// newSessionRuntime takes ownership of h: on a returned error h is already
 	// closed; on success rt.Close tears it down.
-	rt, err := newSessionRuntime(ctx, p.StoryPath, p.TracePath, h, ss.harnessProfiles, selectedProfile, p.InitialWorld, p.ImportResolver, ss.chatStore)
+	rt, err := newSessionRuntime(ctx, p.StoryPath, p.TracePath, h, ss.harnessProfiles, selectedProfile, p.InitialWorld, p.ImportResolver, ss.chatStore, ss.configureHosts)
 	if err != nil {
 		// h was already closed inside newSessionRuntime on error.
 		return nil, err

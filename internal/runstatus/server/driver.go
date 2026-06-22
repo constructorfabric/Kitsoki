@@ -451,11 +451,24 @@ func workJobNotifications(notifs []jobs.Notification) map[string]jobs.Notificati
 		if jobID == "" {
 			continue
 		}
-		if _, exists := out[jobID]; !exists {
+		if existing, exists := out[jobID]; !exists || jobNotificationRank(n.Severity) > jobNotificationRank(existing.Severity) {
 			out[jobID] = n
 		}
 	}
 	return out
+}
+
+func jobNotificationRank(severity jobs.NotificationSeverity) int {
+	switch severity {
+	case jobs.SeverityActionRequired:
+		return 4
+	case jobs.SeverityError:
+		return 3
+	case jobs.SeverityWarn:
+		return 2
+	default:
+		return 1
+	}
 }
 
 // SyncGitHubInbox imports assigned GitHub issues and requested PR reviews into

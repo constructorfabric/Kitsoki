@@ -118,6 +118,128 @@ The expected proof at the end is:
 - a final `session.inspect` reports `notifications_unread == 1`
 - `render.tui` reports the reacquired frame's state as `running`
 
+## Awaiting-input clarification smoke
+
+Use this variant to prove an intervention loop, not just background completion:
+a deterministic `host.run` stub pauses mid-flight with
+`host.RequestClarification`, `studio.work` prioritizes the required input,
+`session.teleport` reacquires the saved context, and `session.submit` answers
+the job so it can finish. The `--flow` flag installs the fixture's
+`host_handlers:` stubs into every studio driving session; no LLM or shell sleep
+is used for the host call.
+
+```sh
+GOCACHE="$PWD/.cache/go-build" \
+go run ./cmd/kitsoki mcp-test \
+  --list-tools=false \
+  --timeout 30s \
+  --server-arg mcp \
+  --server-arg --stories-dir --server-arg ./stories \
+  --server-arg --flow --server-arg testdata/apps/background_jobs/flows/clarification.yaml \
+  --server-arg --db --server-arg .artifacts/mcp-test/clarification-flow.db \
+  --calls '[
+    {
+      "tool": "session.new",
+      "args": {
+        "story_path": "testdata/apps/background_jobs/app.yaml",
+        "key": "clarify-smoke"
+      },
+      "expect": {
+        "structuredContent.state": "lobby"
+      }
+    },
+    {
+      "tool": "session.submit",
+      "args": {
+        "handle": "clarify-smoke",
+        "intent": "enter"
+      },
+      "expect": {
+        "structuredContent.outcome.state": "running"
+      }
+    },
+    {
+      "tool": "session.inspect",
+      "args": {
+        "handle": "clarify-smoke"
+      },
+      "expect": {
+        "structuredContent.async.jobs_total": 1,
+        "structuredContent.async.jobs_awaiting_input": 1,
+        "structuredContent.async.notifications_action_required": 1,
+        "structuredContent.jobs.0.clarification_schema.prompt": "Which environment?"
+      },
+      "save": {
+        "job_id": "structuredContent.jobs.0.id",
+        "notification_id": "structuredContent.notifications.1.id"
+      },
+      "retries": 30,
+      "interval_ms": 100
+    },
+    {
+      "tool": "studio.work",
+      "expect": {
+        "structuredContent.summary.jobs_awaiting_input": 1,
+        "structuredContent.summary.needs_attention": 2,
+        "structuredContent.items.0.body": "Which environment?",
+        "structuredContent.items.1.reacquire.args.notification_id": "${notification_id}"
+      },
+      "retries": 10,
+      "interval_ms": 100
+    },
+    {
+      "tool": "session.teleport",
+      "args": {
+        "handle": "clarify-smoke",
+        "notification_id": "${notification_id}"
+      },
+      "expect": {
+        "structuredContent.outcome.state": "running"
+      }
+    },
+    {
+      "tool": "session.submit",
+      "args": {
+        "handle": "clarify-smoke",
+        "intent": "answer_clarification",
+        "slots": {
+          "job_id": "${job_id}",
+          "answer": "prod"
+        }
+      },
+      "expect": {
+        "structuredContent.outcome.state": "running"
+      }
+    },
+    {
+      "tool": "session.inspect",
+      "args": {
+        "handle": "clarify-smoke"
+      },
+      "expect": {
+        "structuredContent.async.jobs_total": 1,
+        "structuredContent.async.jobs_terminal": 1,
+        "structuredContent.async.jobs_awaiting_input": 0,
+        "structuredContent.world.result": "clarification-done"
+      },
+      "retries": 30,
+      "interval_ms": 100
+    }
+  ]'
+```
+
+The expected proof at the end is:
+
+- `session.inspect.jobs[].clarification_schema.prompt` exposes the question.
+- `studio.work` puts the action-required notification first and the job row
+  second, both with the same prompt body.
+- The job row's `session.teleport` hint points at the action-required
+  notification, not the passive "job submitted" notification.
+- After answering, `jobs_total` is still `1` and `jobs_awaiting_input == 0`, so
+  the answer did not re-launch the background job.
+- `world.result == "clarification-done"` proves the paused handler resumed and
+  ran `on_complete`.
+
 ## Chat-backed work smoke
 
 Use this variant to prove the Claude-style subagent queue path: a state-machine

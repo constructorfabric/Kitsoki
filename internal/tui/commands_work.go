@@ -231,19 +231,34 @@ func clarificationSchema(raw any) *jobs.ClarificationSchema {
 
 func workJobInboxIndexes(notifs []jobs.Notification, sid app.SessionID) map[string]int {
 	indexes := make(map[string]int)
+	selected := make(map[string]jobs.Notification)
 	next := 1
 	for _, n := range notifs {
 		if n.SessionID != sid || n.ReadAt != nil {
 			continue
 		}
 		if jobID := notificationJobID(n); jobID != "" {
-			if _, exists := indexes[jobID]; !exists {
+			if existing, exists := selected[jobID]; !exists || jobNotificationRank(n.Severity) > jobNotificationRank(existing.Severity) {
 				indexes[jobID] = next
+				selected[jobID] = n
 			}
 		}
 		next++
 	}
 	return indexes
+}
+
+func jobNotificationRank(severity jobs.NotificationSeverity) int {
+	switch severity {
+	case jobs.SeverityActionRequired:
+		return 4
+	case jobs.SeverityError:
+		return 3
+	case jobs.SeverityWarn:
+		return 2
+	default:
+		return 1
+	}
 }
 
 func notificationJobID(n jobs.Notification) string {

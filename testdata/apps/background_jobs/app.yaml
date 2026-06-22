@@ -65,6 +65,7 @@ states:
       Result so far: {{ world.result }}
     on_enter:
       - invoke: host.run
+        when: "world.last_job_id == ''"
         with:
           cmd: "sleep 1 && echo done"
         background: true

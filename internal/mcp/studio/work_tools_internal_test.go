@@ -54,7 +54,8 @@ func TestWorkItemsForJobsUseMatchingNotificationTeleport(t *testing.T) {
 		{ID: "job-failed", Kind: "host.agent.task", Status: jobs.JobFailed},
 		{ID: "job-running", Kind: "host.agent.task", Status: jobs.JobRunning},
 	}, []InboxInspectItem{
-		{ID: "notif-awaiting", Body: "Pick staging or prod.", TeleportJobID: "job-awaiting", OriginKind: "job", OriginRef: "job:job-awaiting"},
+		{ID: "notif-awaiting-info", Severity: jobs.SeverityInfo, TeleportJobID: "job-awaiting", OriginKind: "job", OriginRef: "job:job-awaiting"},
+		{ID: "notif-awaiting", Severity: jobs.SeverityActionRequired, Body: "Pick staging or prod.", TeleportJobID: "job-awaiting", OriginKind: "job", OriginRef: "job:job-awaiting"},
 		{ID: "notif-failed", OriginKind: "job", OriginRef: "job:job-failed"},
 	}, false)
 

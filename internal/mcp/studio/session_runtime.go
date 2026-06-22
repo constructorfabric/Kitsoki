@@ -161,7 +161,7 @@ func (rt *sessionRuntime) Close() {
 // backend (synthetic, codex, …) instead of the static default — the same
 // remap `kitsoki turn --profile` applies. An empty map leaves the session on the
 // legacy default-backend path (selectedProfile is then ignored).
-func newSessionRuntime(ctx context.Context, storyPath, tracePath string, h harness.Harness, profiles map[string]orchestrator.HarnessProfile, selectedProfile string, initialWorld map[string]any, resolver app.ImportResolver, chatStore *chats.Store) (*sessionRuntime, error) {
+func newSessionRuntime(ctx context.Context, storyPath, tracePath string, h harness.Harness, profiles map[string]orchestrator.HarnessProfile, selectedProfile string, initialWorld map[string]any, resolver app.ImportResolver, chatStore *chats.Store, configureHosts HostRegistryConfigurer) (*sessionRuntime, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -245,6 +245,12 @@ func newSessionRuntime(ctx context.Context, storyPath, tracePath string, h harne
 	// dispatching a real claude -p sub-agent. Nil in production.
 	if registerExtraHostCaps != nil {
 		registerExtraHostCaps(hostReg)
+	}
+	if configureHosts != nil {
+		if err := configureHosts(hostReg); err != nil {
+			rt.Close()
+			return nil, &openError{Code: ErrBadRequest, Msg: fmt.Sprintf("session: configure host registry: %v", err)}
+		}
 	}
 	if err := hostReg.ValidateAllowList(def.Hosts); err != nil {
 		rt.Close()

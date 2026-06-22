@@ -59,7 +59,7 @@ func TestMCPCmd_Registered(t *testing.T) {
 		if c.Name() == "mcp" {
 			mcp = &cobraCommandStub{}
 			// Verify the documented flags exist.
-			for _, f := range []string{"stories-dir", "db", "harness", "workspace"} {
+			for _, f := range []string{"stories-dir", "db", "harness", "workspace", "flow"} {
 				require.NotNil(t, c.Flags().Lookup(f), "mcp must declare --%s", f)
 			}
 			// No-LLM default: --harness defaults to replay.
