@@ -22,6 +22,7 @@ import (
 	"image/color"
 	"image/png"
 	"testing"
+	"time"
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
@@ -217,6 +218,54 @@ func TestSessionNew_ReplayWithoutCassetteAllowsDirectSubmitOnly(t *testing.T) {
 	assert.False(t, driven.OK)
 	assert.Equal(t, "error", driven.Outcome.Mode)
 	assert.Contains(t, driven.Outcome.Error, "noRouteHarness")
+}
+
+func TestSessionSubmit_StreamsProgressNotifications(t *testing.T) {
+	ctx := context.Background()
+	srv, _ := newReplayServer(t)
+
+	t1, t2 := mcpsdk.NewInMemoryTransports()
+	_, err := srv.Connect(ctx, t1, nil)
+	require.NoError(t, err, "server connect")
+
+	progress := make(chan string, 8)
+	client := mcpsdk.NewClient(&mcpsdk.Implementation{Name: "test-client", Version: "v0.0.1"}, &mcpsdk.ClientOptions{
+		ProgressNotificationHandler: func(_ context.Context, req *mcpsdk.ProgressNotificationClientRequest) {
+			progress <- req.Params.Message
+		},
+	})
+	cs, err := client.Connect(ctx, t2, nil)
+	require.NoError(t, err, "client connect")
+	t.Cleanup(func() { _ = cs.Close() })
+
+	handle := openCloak(ctx, t, cs)
+	res, err := cs.CallTool(ctx, &mcpsdk.CallToolParams{
+		Name: "session.submit",
+		Arguments: map[string]any{
+			"handle": handle,
+			"intent": "go",
+			"slots":  map[string]any{"direction": "west"},
+		},
+		Meta: mcpsdk.Meta{"progressToken": "submit-1"},
+	})
+	require.NoError(t, err)
+	submitted := driveResult(t, res)
+	require.True(t, submitted.OK)
+	require.Equal(t, "cloakroom", submitted.Outcome.State)
+
+	var got []string
+	require.Eventually(t, func() bool {
+		for {
+			select {
+			case msg := <-progress:
+				got = append(got, msg)
+			default:
+				return len(got) >= 2
+			}
+		}
+	}, time.Second, 10*time.Millisecond)
+	assert.Contains(t, got, "session.submit: started for "+handle)
+	assert.Contains(t, got, "session.submit: completed for "+handle+" at cloakroom")
 }
 
 // TestSessionNew_LiveIsOptIn confirms harness:live takes the live builder branch
