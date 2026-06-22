@@ -9,6 +9,7 @@ package studio
 //   - session.drive   — free text → orch.Turn (the ONE interpretive seam).
 //   - session.submit  — a chosen intent + slots → orch.SubmitDirect.
 //   - session.continue— missing slots for a pending clarify → orch.ContinueTurn.
+//   - session.teleport— inbox notification -> orch.Teleport, marking it read.
 //   - session.inspect — state / world / allowed_intents / last_view / jobs / inbox / last_turns.
 //   - session.trace   — the session's JSONL trace events.
 //   - render.tui      — the slice-1 Frame {text, ansi, metadata} at any width.
@@ -84,6 +85,11 @@ func (srv *Server) registerSessionTools() {
 		Name:        "session.answer",
 		Description: "Answer a parked operator-ask (the suspend/resume fallback for clients without MCP elicitation). {handle, question_id, answers} where answers is keyed by each question's text → a chosen option label (string) or labels ([]string). Resumes the turn; returns {outcome, frame} or another awaiting_operator.",
 	}, srv.handleSessionAnswer)
+
+	mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
+		Name:        "session.teleport",
+		Description: "Reacquire an inbox notification by teleporting the session to its saved target. {handle, notification_id, cols?, rows?}. Marks the notification read and returns {outcome, frame}.",
+	}, srv.handleSessionTeleport)
 
 	mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
 		Name:        "session.inspect",
@@ -257,6 +263,14 @@ type SessionAnswerArgs struct {
 	Answers    map[string]any `json:"answers"`
 	Cols       int            `json:"cols,omitempty"`
 	Rows       int            `json:"rows,omitempty"`
+}
+
+// SessionTeleportArgs is the input to session.teleport.
+type SessionTeleportArgs struct {
+	Handle         string `json:"handle"`
+	NotificationID string `json:"notification_id"`
+	Cols           int    `json:"cols,omitempty"`
+	Rows           int    `json:"rows,omitempty"`
 }
 
 // ── session.new / attach ─────────────────────────────────────────────────────
@@ -454,6 +468,23 @@ func (srv *Server) handleSessionContinue(
 	return nil, turnResponse(out, frame, rt.lastTurnErr), nil
 }
 
+func (srv *Server) handleSessionTeleport(
+	ctx context.Context,
+	req *mcpsdk.CallToolRequest,
+	args SessionTeleportArgs,
+) (*mcpsdk.CallToolResult, any, error) {
+	if args.NotificationID == "" {
+		return buildToolError(ErrBadRequest, "session.teleport: notification_id is required"), nil, nil
+	}
+	rt, rerr := srv.resolveRuntime(args.Handle)
+	if rerr != nil {
+		return rerr, nil, nil
+	}
+	cols, rows := geometry(args.Cols, args.Rows)
+	out, frame := rt.teleport(ctx, args.NotificationID, cols, rows)
+	return nil, turnResponse(out, frame, rt.lastTurnErr), nil
+}
+
 // ── inspect / trace ──────────────────────────────────────────────────────────
 
 // SessionInspectArgs is the input to session.inspect.
@@ -487,6 +518,7 @@ type AsyncInspectSummary struct {
 	JobsAwaitingInput           int `json:"jobs_awaiting_input"`
 	JobsTerminal                int `json:"jobs_terminal"`
 	NotificationsTotal          int `json:"notifications_total"`
+	NotificationsUnread         int `json:"notifications_unread"`
 	NotificationsActionRequired int `json:"notifications_action_required"`
 	PendingDrives               int `json:"pending_drives"`
 	DispatchingDrives           int `json:"dispatching_drives"`
@@ -914,7 +946,7 @@ func (rt *sessionRuntime) inspect(ctx context.Context, lastTurns int) (InspectRe
 	if verr != nil {
 		view = fmt.Sprintf("<render error: %v>", verr)
 	}
-	jobs, notifications, pendingDrives, backgroundedChats, asyncErr := rt.inspectAsync(ctx)
+	jobs, notifications, unreadNotifications, pendingDrives, backgroundedChats, asyncErr := rt.inspectAsync(ctx)
 	if asyncErr != nil {
 		return InspectResult{}, asyncErr
 	}
@@ -924,7 +956,7 @@ func (rt *sessionRuntime) inspect(ctx context.Context, lastTurns int) (InspectRe
 		World:             j.World.Vars,
 		AllowedIntents:    allowedNames,
 		LastView:          view,
-		Async:             summarizeAsync(jobs, notifications, pendingDrives, backgroundedChats),
+		Async:             summarizeAsync(jobs, notifications, unreadNotifications, pendingDrives, backgroundedChats),
 		Jobs:              jobs,
 		Notifications:     notifications,
 		PendingDrives:     pendingDrives,
@@ -933,23 +965,28 @@ func (rt *sessionRuntime) inspect(ctx context.Context, lastTurns int) (InspectRe
 	}, nil
 }
 
-func (rt *sessionRuntime) inspectAsync(ctx context.Context) ([]JobInspectItem, []InboxInspectItem, []PendingDriveItem, []BackgroundedChatItem, error) {
+func (rt *sessionRuntime) inspectAsync(ctx context.Context) ([]JobInspectItem, []InboxInspectItem, map[jobs.NotificationSeverity]int, []PendingDriveItem, []BackgroundedChatItem, error) {
 	var (
 		jobItems          []JobInspectItem
 		notificationItems []InboxInspectItem
+		unreadCounts      map[jobs.NotificationSeverity]int
 		pendingDriveItems []PendingDriveItem
 		backgroundedChats []BackgroundedChatItem
 	)
 	if rt.jobStore == nil {
-		return nil, nil, nil, nil, nil
+		return nil, nil, nil, nil, nil, nil
 	}
 	jobRows, err := rt.jobStore.ListBySession(ctx, rt.sid)
 	if err != nil {
-		return nil, nil, nil, nil, fmt.Errorf("session.inspect: list jobs: %w", err)
+		return nil, nil, nil, nil, nil, fmt.Errorf("session.inspect: list jobs: %w", err)
 	}
 	notifRows, err := rt.jobStore.ListNotifications(ctx, rt.sid, 0)
 	if err != nil {
-		return nil, nil, nil, nil, fmt.Errorf("session.inspect: list notifications: %w", err)
+		return nil, nil, nil, nil, nil, fmt.Errorf("session.inspect: list notifications: %w", err)
+	}
+	unreadCounts, err = rt.jobStore.UnreadCount(ctx, rt.sid)
+	if err != nil {
+		return nil, nil, nil, nil, nil, fmt.Errorf("session.inspect: count unread notifications: %w", err)
 	}
 	jobItems = inspectJobs(jobRows)
 	notificationItems = inspectNotifications(notifRows)
@@ -957,17 +994,17 @@ func (rt *sessionRuntime) inspectAsync(ctx context.Context) ([]JobInspectItem, [
 		driveRows, err := rt.chatStore.ListDrivesBySession(ctx, string(rt.sid),
 			[]chats.DriveStatus{chats.DriveStatusPending, chats.DriveStatusDispatching})
 		if err != nil {
-			return nil, nil, nil, nil, fmt.Errorf("session.inspect: list pending drives: %w", err)
+			return nil, nil, nil, nil, nil, fmt.Errorf("session.inspect: list pending drives: %w", err)
 		}
 		pendingDriveItems = inspectPendingDrives(driveRows)
 
 		ptyRows, err := rt.chatStore.ListPTYForHost(ctx)
 		if err != nil {
-			return nil, nil, nil, nil, fmt.Errorf("session.inspect: list backgrounded chats: %w", err)
+			return nil, nil, nil, nil, nil, fmt.Errorf("session.inspect: list backgrounded chats: %w", err)
 		}
 		backgroundedChats = rt.inspectBackgroundedChats(ctx, ptyRows)
 	}
-	return jobItems, notificationItems, pendingDriveItems, backgroundedChats, nil
+	return jobItems, notificationItems, unreadCounts, pendingDriveItems, backgroundedChats, nil
 }
 
 func inspectJobs(in []jobs.Job) []JobInspectItem {
@@ -1076,7 +1113,7 @@ func (rt *sessionRuntime) inspectBackgroundedChats(ctx context.Context, in []cha
 	return out
 }
 
-func summarizeAsync(jobRows []JobInspectItem, notifications []InboxInspectItem, pendingDrives []PendingDriveItem, backgroundedChats []BackgroundedChatItem) AsyncInspectSummary {
+func summarizeAsync(jobRows []JobInspectItem, notifications []InboxInspectItem, unreadNotifications map[jobs.NotificationSeverity]int, pendingDrives []PendingDriveItem, backgroundedChats []BackgroundedChatItem) AsyncInspectSummary {
 	out := AsyncInspectSummary{
 		JobsTotal:          len(jobRows),
 		NotificationsTotal: len(notifications),
@@ -1092,11 +1129,10 @@ func summarizeAsync(jobRows []JobInspectItem, notifications []InboxInspectItem, 
 			out.JobsTerminal++
 		}
 	}
-	for _, n := range notifications {
-		if n.Severity == jobs.SeverityActionRequired {
-			out.NotificationsActionRequired++
-		}
+	for _, count := range unreadNotifications {
+		out.NotificationsUnread += count
 	}
+	out.NotificationsActionRequired = unreadNotifications[jobs.SeverityActionRequired]
 	for _, d := range pendingDrives {
 		switch d.Status {
 		case chats.DriveStatusPending:

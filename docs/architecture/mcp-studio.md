@@ -110,6 +110,7 @@ deterministic direct path or a read.
 | `session.submit` | `{handle, intent, slots?} → {outcome, frame}` | `SubmitDirect` — pick a menu intent |
 | `session.continue` | `{handle, slots} → {outcome, frame}` | `ContinueTurn` — supply missing slots |
 | `session.answer` | `{handle, question_id, answers} → {outcome, frame} \| {awaiting_operator}` | resume a parked operator-ask (see below) |
+| `session.teleport` | `{handle, notification_id} → {outcome, frame}` | jump to an inbox notification's saved target and mark it read |
 | `session.inspect` | `{handle} → {state, world, allowed_intents, last_view, async, jobs[], notifications[], pending_drives[], backgrounded_chats[], last_turns[]}` | `buildInspectOutput` + session JobStore / ChatStore (read-only) |
 | `session.trace` | `{handle, since?, until?, limit?} → {events[], last_turn}` | the session's JSONL trace (read-only) |
 
@@ -118,15 +119,16 @@ new state, allowed intents, slots needed) **and** the rendered `Frame` — so th
 agent reasons on metadata and *sees* the screen in one call.
 
 `session.inspect` also carries compact background-job and inbox projections.
-`async` summarizes running, awaiting-input, terminal, and action-required
-counts; `jobs[]` shows the session's job IDs, kinds, statuses, origin states,
-errors, and timestamps; `notifications[]` shows active inbox rows, including
-`action_required` items and teleport job/state fields. When a chat store is
-wired, `pending_drives[]` shows pending/dispatching chat-input-queue rows owned
-by the session, and `backgrounded_chats[]` shows tmux-hosted chats left in
-`pty_background` mode. This is the structured MCP surface for an external agent
-to rank async work, notice required operator input, and reacquire or switch to
-the task without scraping the TUI frame or decoding trace events.
+`async` summarizes running, awaiting-input, terminal, unread, and unread
+action-required counts; `jobs[]` shows the session's job IDs, kinds, statuses,
+origin states, errors, and timestamps; `notifications[]` shows active inbox
+rows, including `action_required` items and teleport job/state fields. When a
+chat store is wired, `pending_drives[]` shows pending/dispatching
+chat-input-queue rows owned by the session, and `backgrounded_chats[]` shows
+tmux-hosted chats left in `pty_background` mode. This is the structured MCP
+surface for an external agent to rank async work, notice required operator
+input, and reacquire or switch to the task through `session.teleport` without
+scraping the TUI frame or decoding trace events.
 
 ### `render.*` — see (read-only)
 

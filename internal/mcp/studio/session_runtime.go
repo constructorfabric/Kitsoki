@@ -34,6 +34,7 @@ import (
 	"kitsoki/internal/chats"
 	"kitsoki/internal/harness"
 	"kitsoki/internal/host"
+	"kitsoki/internal/inbox"
 	"kitsoki/internal/jobs"
 	"kitsoki/internal/machine"
 	"kitsoki/internal/orchestrator"
@@ -476,6 +477,43 @@ func (rt *sessionRuntime) cont(ctx context.Context, slots map[string]any, cols, 
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 	rt.model = rt.model.ApplyTurnOutcome(out, "", err)
+	if out != nil {
+		rt.modelTurn = out.TurnNumber
+	}
+	return out, tui.ComposeFrame(&rt.model, cols, rows)
+}
+
+// teleport resolves a stored inbox notification to its target and jumps the
+// session there, mirroring the TUI's action-required banner and /jump path.
+func (rt *sessionRuntime) teleport(ctx context.Context, notificationID string, cols, rows int) (*orchestrator.TurnOutcome, tui.Frame) {
+	var out *orchestrator.TurnOutcome
+	var err error
+	if rt.jobStore == nil {
+		err = fmt.Errorf("session.teleport: no job store configured")
+	} else {
+		n, nerr := rt.jobStore.GetNotification(ctx, notificationID)
+		if nerr != nil {
+			err = fmt.Errorf("session.teleport: resolve notification %q: %w", notificationID, nerr)
+		} else if n == nil {
+			err = fmt.Errorf("session.teleport: unknown notification %q", notificationID)
+		} else {
+			target := inbox.FromNotification(*n)
+			if target.State == "" {
+				err = fmt.Errorf("session.teleport: notification %q has no teleport target", notificationID)
+			} else {
+				out, err = rt.orch.Teleport(ctx, rt.sid, target)
+				if err == nil {
+					if markErr := rt.jobStore.MarkNotificationRead(ctx, notificationID); markErr != nil {
+						err = fmt.Errorf("session.teleport: mark notification %q read: %w", notificationID, markErr)
+					}
+				}
+			}
+		}
+	}
+	rt.lastTurnErr = err
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	rt.model = rt.model.ApplyTurnOutcome(out, "(teleport)", err)
 	if out != nil {
 		rt.modelTurn = out.TurnNumber
 	}
