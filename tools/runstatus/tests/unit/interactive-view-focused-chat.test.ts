@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import { setActivePinia, createPinia } from "pinia";
 import type { TurnResult } from "../../src/types.js";
+import { useProposalsStore } from "../../src/stores/proposals.js";
 
 const route = vi.hoisted(() => ({
   path: "/s/s1/chat",
@@ -184,6 +185,31 @@ describe("InteractiveView focused chat context", () => {
 
     await wrapper.find('[data-testid="focused-chat-close"]').trigger("click");
     expect(replace).toHaveBeenCalledWith({ path: "/s/s1/chat", query: {} });
+    wrapper.unmount();
+  });
+
+  it("seeds proposal review rows from the proposal query and clears only that key", async () => {
+    route.query = {
+      inbox: "1",
+      proposal: JSON.stringify({
+        id: "demo-query-proposal",
+        kind: "write_mode",
+        title: "May I edit README.md?",
+        detail: "Proposed doc cleanup",
+      }),
+    };
+
+    const wrapper = mount(InteractiveView, mountOpts);
+    await flushPromises();
+
+    const proposals = useProposalsStore();
+    expect(proposals.queue).toHaveLength(1);
+    expect(proposals.queue[0]?.id).toBe("demo-query-proposal");
+    expect(proposals.queue[0]?.kind).toBe("write_mode");
+    expect(replace).toHaveBeenCalledWith({
+      path: "/s/s1/chat",
+      query: { inbox: "1" },
+    });
     wrapper.unmount();
   });
 

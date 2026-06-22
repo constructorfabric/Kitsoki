@@ -355,6 +355,7 @@ async function loadSession(sessionId: string): Promise<void> {
   // opening agent transcript entry.
   await store.hydrate(source, sessionId);
   await store.loadInitialView(source, sessionId);
+  await maybeSeedProposalsFromQuery();
   await maybeTeleportFromQuery(sessionId);
   await maybeShowChatFromQuery(sessionId);
   startGitHubInboxPolling(sessionId);
@@ -434,6 +435,26 @@ async function maybeShowChatFromQuery(sessionId: string): Promise<void> {
       focusedChatLoading.value = false;
     }
   }
+}
+
+async function maybeSeedProposalsFromQuery(): Promise<void> {
+  if (!route || !router) return;
+  const raw = route.query.proposal;
+  const encoded = Array.isArray(raw) ? raw : raw ? [raw] : [];
+  if (encoded.length === 0) return;
+
+  for (const item of encoded) {
+    if (typeof item !== "string") continue;
+    try {
+      proposals.push(JSON.parse(item) as Proposal);
+    } catch {
+      /* malformed query seed — ignore (deterministic render/demo path only) */
+    }
+  }
+
+  const q = { ...route.query };
+  delete q.proposal;
+  await router.replace({ path: route.path, query: q });
 }
 
 async function clearFocusedChat(): Promise<void> {

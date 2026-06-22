@@ -442,3 +442,47 @@ It requires the local
 Playwright helper dependencies under `tools/runstatus`; story/state screenshots
 without a live handle still belong to `kitsoki web-shot` with an explicit
 no-LLM flow.
+
+To prove the proposal-review browser surface without a real miner, seed the web
+proposal queue through the deterministic session query seam and open the inbox
+panel in the same render:
+
+```sh
+GOCACHE="$PWD/.cache/go-build" \
+go run ./cmd/kitsoki mcp-test \
+  --list-tools=false \
+  --timeout 60s \
+  --server-arg mcp \
+  --server-arg --stories-dir --server-arg ./stories \
+  --server-arg --db --server-arg .artifacts/mcp-test/render-web-proposal.db \
+  --calls '[
+    {
+      "tool": "session.new",
+      "args": {
+        "story_path": "testdata/apps/chat_drive_work/app.yaml",
+        "key": "web-proposal-smoke"
+      }
+    },
+    {
+      "tool": "render.web",
+      "args": {
+        "handle": "web-proposal-smoke",
+        "query": {
+          "inbox": "1",
+          "proposal": "{\"id\":\"demo-mcp-proposal\",\"kind\":\"write_mode\",\"title\":\"May I edit README.md?\",\"detail\":\"Proposed doc cleanup\"}"
+        }
+      },
+      "expect": {
+        "content.1.type": "image",
+        "content.1.mimeType": "image/png"
+      },
+      "expect_exists": [
+        "content.1.data"
+      ]
+    }
+  ]'
+```
+
+This is a browser-surface proof: proposal rows are currently merged into the
+web inbox from the web proposal queue, not returned by backend
+`runstatus.work.list` or MCP `studio.work`.

@@ -441,8 +441,8 @@ indistinguishable from a TUI one in the trace.
   remain listed and jumpable without coloring the badge.
 - **`InboxPanel.vue`** — opens on badge click: first the prioritized active-work
   queue from `runstatus.work.list` (notifications, jobs, queued/dispatching
-  drives, failed drives, backgrounded chats, unanswered operator questions, and
-  queued proposal-review items), then notification history.
+  drives, failed drives, backgrounded chats, and unanswered operator questions),
+  merged with the web proposal queue's review items, then notification history.
   Rows show the next action explicitly: **jump** for notifications and
   notification-backed jobs, **open context** for chat-backed work including
   failed subagent drives, **answer** for forwarded operator questions,
@@ -475,6 +475,11 @@ then clears the param (a refresh doesn't re-teleport). The link is shareable.
 testability and reacquisition affordance: `render.web` and bookmarked live
 sessions can land with the active-work queue visible without synthesizing a
 badge click.
+
+For deterministic demo/render paths, `#/s/<sessionId>/chat?proposal=<json>`
+seeds the web proposal queue from a URL-encoded proposal object, then clears
+only the `proposal` query key. Combine it with `inbox=1` to open the
+active-work panel on a proposal-review row in `render.web` without a real miner.
 
 ### v1 scope & limits
 
