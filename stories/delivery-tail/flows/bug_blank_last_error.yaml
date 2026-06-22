@@ -1,0 +1,78 @@
+# bug_blank_last_error — Captures defect: when integrate_exec aborts before
+# producing JSON (e.g. git checkout fails → set -e fires → no jq output),
+# the machine STALLS at `integrate` with last_error="" instead of routing to
+# @exit:needs-human with a real error description.
+#
+# Root cause (integrate.yaml):
+#   • fail_on_error is NOT set on the invoke (defaults to false).
+#     host.run only sets Result.Error (which triggers on_error:) when
+#     fail_on_error==true AND exit_code!=0.  Without it, a non-zero exit
+#     goes through the normal bind path with whatever Data was returned.
+#
+#   • When the script aborts via set -e (checkout fails, unexpected git error)
+#     before jq runs, stdout contains only partial text — no JSON.
+#     host.run does not detect trailing JSON → stdout_json is ABSENT from Data.
+#
+#   • lookupBindPath(data, "stdout_json.outcome") returns (nil, false)
+#     → the bind is SKIPPED (continue).  integrate_outcome stays at its
+#     default "".  Same for integrated_sha and last_error.
+#
+#   • Post-bind guards:
+#       world.integrate_outcome == 'integrated'           → false (no emit)
+#       world.integrate_outcome != '' && ...              → false (no emit)
+#     Neither fires.  No routing intent → machine stalls at `integrate`.
+#
+#   • The on_error: integrate annotation is MISLEADING: it only fires when
+#     Result.Error != "" (infrastructure failure) — never for exit_code != 0
+#     when fail_on_error is false.
+#
+# Expected (correct behaviour): __exit__needs-human, last_error carries the
+#     real failure message from the aborted script.
+# Actual (buggy behaviour):    state stays at `integrate`, all outcome
+#     fields are blank — the operator sees the initial integrate view with
+#     no outcome, no error, no guidance.
+#
+# Linked bugs:
+#   • Bug 2 (unchecked checkout): a git checkout failure is the most likely
+#     trigger for the set -e abort path this test exercises.
+#   • repro script: .artifacts/bug-dt-integrate-buildcheck/repro.sh (Bug 3)
+
+test_kind: flow
+app: ../app.yaml
+initial_state: bootstrap
+initial_world:
+  brief:              "Fix the rate-limit burst off-by-one"
+  gate_command:       "go test ./internal/ratelimit/"
+  base_branch:        main
+  main_worktree_path: "."
+  workspace_id:       burst-fix
+  workspace_branch:   burst-fix
+  worktree_path:      ".worktrees/burst-fix"
+
+host_handlers:
+  host.run:
+    by_call:
+      # Simulate: git checkout fails → set -e fires → script exits non-zero
+      # before jq runs.  No stdout_json (only partial git error text on stdout).
+      integrate_exec:
+        data:
+          ok: false
+          exit_code: 1
+          stdout: "fatal: unable to checkout 'main': index file open failed: No such file or directory\n"
+          # stdout_json deliberately ABSENT — this is what triggers the stall.
+
+turns:
+  - intent: { name: begin, slots: {} }
+    # BUG: should route to __exit__needs-human with a real last_error.
+    # Actual buggy state: machine stalls at `integrate`, all outcome fields blank.
+    expect_state: integrate
+    expect_world:
+      # All three bind targets stay at their defaults — bind was SKIPPED.
+      integrate_outcome: ""
+      integrated_sha:    ""
+      last_error:        ""
+
+# Machine is NOT in a terminal state — it is stalled.
+# A correct implementation would be: expect_terminal: true with
+# expect_state: __exit__needs-human and a non-empty last_error.
+expect_terminal: false

@@ -1,0 +1,81 @@
+# bug_gate_string_collision — Captures defect: the build-check in integrate.yaml
+# executes gate_command via bash -c "$BUILD_CMD" (double-shell-layer), while
+# verify.yaml's host.run passes the same string as a raw argv element.
+#
+# When gate_command contains double-quotes (e.g. go test -run "TestFoo" ./...)
+# the bash variable assignment BUILD_CMD="{{ world.gate_command }}" strips the
+# inner quotes, producing a DIFFERENT command than verify.yaml executes.
+# Confirmed by repro.sh:
+#   gate_command: go test -run "TestRateLimit" ./internal/ratelimit/
+#   BUILD_CMD in script: go test -run TestRateLimit ./internal/ratelimit/
+#
+# Two concrete failure modes:
+#
+#   Mode A — silently wrong command: the stripped command happens to run
+#     (go test -run TestRateLimit is identical semantics here) but for patterns
+#     with spaces, braces, or regex anchors, the stripped command DIVERGES.
+#     Integrate and verify run different commands — the pipeline's core
+#     "same gate on merged commit" invariant is violated.
+#
+#   Mode B — false build_fail: a gate_command whose inner quotes are load-
+#     bearing (e.g. make test ARGS="--filter=foo") produces a bash syntax
+#     error or a wrong invocation when the quotes are stripped, causing a
+#     build_fail that routes to @exit:needs-human even though the REAL gate
+#     (as run by verify) would have passed.
+#
+# This test documents Mode B: integrate reports build_fail with a quoting
+# error as last_error; the machine exits to needs-human.  The mocked
+# integrate_exec response simulates what the script produces after bash
+# strips quotes from a compound ARGS-style gate_command.
+#
+# Static evidence: .artifacts/bug-dt-integrate-buildcheck/repro.sh (Bug 1).
+# Comparison point: verify.yaml cmd: "{{ world.gate_command }}" via host.run
+#   → exec.CommandContext(ctx, "bash", "-c", cmd) — argv verbatim, no quoting.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: bootstrap
+initial_world:
+  brief:              "Fix the rate-limit burst off-by-one"
+  # gate_command with inner double-quotes: the bash variable assignment in
+  # integrate's script will strip them, producing a different command.
+  gate_command:       'make test ARGS="--filter=ratelimit"'
+  base_branch:        main
+  main_worktree_path: "."
+  workspace_id:       burst-fix
+  workspace_branch:   burst-fix
+  worktree_path:      ".worktrees/burst-fix"
+
+host_handlers:
+  host.run:
+    by_call:
+      # The integrate script runs:
+      #   BUILD_CMD="make test ARGS="--filter=ratelimit""
+      #   → BUILD_CMD = make test ARGS=   (quotes stripped, ARGS value lost)
+      #   → bash -c "make test ARGS=" runs make with empty ARGS
+      # Depending on the Makefile, this either fails (missing filter) or
+      # runs the entire test suite — either way the wrong command ran.
+      # Mock returns the false build_fail this quoting collision produces.
+      integrate_exec:
+        data:
+          ok: false
+          exit_code: 0
+          stdout_json:
+            outcome:        build_fail
+            integrated_sha: ""
+            last_op_ok:     false
+            last_error:     "make: *** [test] Error 1\n(ran 'make test ARGS=' — inner quotes stripped by bash -c variable assignment; real command should be 'make test ARGS=--filter=ratelimit')"
+
+turns:
+  - intent: { name: begin, slots: {} }
+    expect_state: __exit__needs-human
+    expect_world:
+      status:            needs-human
+      integrate_outcome: build_fail
+      # last_error captures the quoting-collision failure, not a real gate red.
+      last_error:        "make: *** [test] Error 1\n(ran 'make test ARGS=' — inner quotes stripped by bash -c variable assignment; real command should be 'make test ARGS=--filter=ratelimit')"
+
+expect_terminal: true
+# expect_no_errors is FALSE: the machine exited but only because the wrong
+# command ran — a correct implementation (passing gate_command as argv or
+# wrapping it safely) would have built successfully and proceeded to verify.
