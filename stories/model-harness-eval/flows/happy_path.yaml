@@ -20,6 +20,8 @@ host_handlers:
             question: "How do the available model harnesses perform on real cases?"
             markdown_path: ".context/model-harness-eval.md"
             deck_path: ".artifacts/model-harness-eval/index.html"
+            slidey_spec_path: "docs/decks/model-harness-eval.json"
+            case_study_path: "docs/case-studies/model-harness-eval.md"
             summary_path: ".artifacts/model-harness-eval/summary.json"
             status: "complete"
             configured_options:

@@ -43,6 +43,13 @@ on prompt incantations to enforce structure.
   cost-report`): the deterministic story cost vs the real raw-agentic
   cost of the same operations, with a per-intent distribution.
 
+- **[routing-model-cost-study.md](routing-model-cost-study.md)** — the
+  model-selection lever after deterministic routing has already done its
+  job. Mines real Kitsoki turns into a routing corpus, compares available
+  Haiku / synthetic-small / GPT-mini-style candidates, and argues for
+  room-by-room cheap-router promotion with explicit hard-negative tests
+  and fallback rather than a global model downgrade.
+
 Future studies (planned, not yet written):
 
 - **PR refinement.** The `pr-refinement` tail: watching CI, resolving

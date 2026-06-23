@@ -9,6 +9,8 @@ initial_world:
     question: "Compare current harnesses."
     markdown_path: ".context/model-harness-eval.md"
     deck_path: ".artifacts/model-harness-eval/index.html"
+    slidey_spec_path: "docs/decks/model-harness-eval.json"
+    case_study_path: "docs/case-studies/model-harness-eval.md"
     summary_path: ".artifacts/model-harness-eval/summary.json"
     status: "complete"
     configured_options:
@@ -40,6 +42,8 @@ host_handlers:
             question: "Compare current harnesses."
             markdown_path: ".context/model-harness-eval.md"
             deck_path: ".artifacts/model-harness-eval/index.html"
+            slidey_spec_path: "docs/decks/model-harness-eval.json"
+            case_study_path: "docs/case-studies/model-harness-eval.md"
             summary_path: ".artifacts/model-harness-eval/summary.json"
             status: "partial"
             configured_options:

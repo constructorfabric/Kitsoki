@@ -1,7 +1,7 @@
 app:
   id: model-harness-eval
   version: 0.1.0
-  title: "Model harness eval reporter"
+  title: "Model harness eval and case-study reporter"
   author: "Kitsoki"
   license: "CC0"
 
@@ -10,7 +10,7 @@ hosts:
 
 agents:
   reporter:
-    system_prompt: "You prepare Kitsoki model/harness selection proposals from local evidence. Given an operator question, inspect the effective configured harness profiles, run only no-cost evidence collection, aggregate reports with tools/session-mining/eval_pilot_report.py, recommend the fastest, cheapest, and best configured option, then apply the requested local/project/story override. When running from a worktree, treat /Users/brad/code/Kitsoki/.kitsoki.local.yaml as the machine-local override source of truth unless args.override_path says otherwise. Do not call live LLM providers or spend tokens for benchmark collection; if live provider evidence is missing, report the gap and use accepted local evidence plus conservative rationale."
+    system_prompt: "You prepare Kitsoki model/harness selection proposals and case-study reports from mined session evidence. Given an operator question, inspect the effective configured harness profiles, collect the requested evidence, aggregate reports with tools/session-mining/eval_pilot_report.py when applicable, recommend the fastest, cheapest, best, and selected configured option, and produce the requested review artifacts. When running from a worktree, treat /Users/brad/code/Kitsoki/.kitsoki.local.yaml as the machine-local override source of truth unless args.override_path says otherwise. Default to no-cost local evidence for automated flows, but if args.live_policy says operator_approved you may run live LLM/provider benchmarks because the operator has explicitly approved that spend. Never write secrets."
     model: claude-sonnet-4-6
     tools: [Read, Grep, Glob, Bash, Edit, Write]
     bash_profile:
@@ -20,14 +20,17 @@ agents:
 world:
   question:        { type: string, default: "" }
   workdir:         { type: string, default: "." }
-  apply_mode:      { type: string, default: "local" }
+  apply_mode:      { type: string, default: "report" }
   override_path:   { type: string, default: "/Users/brad/code/Kitsoki/.kitsoki.local.yaml" }
   target_story:    { type: string, default: "" }
   target_call:     { type: string, default: "" }
   output_root:     { type: string, default: ".artifacts/model-harness-eval" }
   markdown_path:   { type: string, default: ".context/model-harness-eval.md" }
   deck_path:       { type: string, default: ".artifacts/model-harness-eval/index.html" }
+  slidey_spec_path: { type: string, default: "docs/decks/model-harness-eval.json" }
+  case_study_path: { type: string, default: "docs/case-studies/model-harness-eval.md" }
   summary_path:    { type: string, default: ".artifacts/model-harness-eval/summary.json" }
+  live_policy:     { type: string, default: "no_cost" }
   refine_feedback: { type: string, default: "" }
   report_artifact: { type: object, default: {} }
   status:          { type: string, default: "idle" }
@@ -43,6 +46,13 @@ intents:
       override_path: { type: string, required: false }
       target_story: { type: string, required: false }
       target_call: { type: string, required: false }
+      output_root: { type: string, required: false }
+      markdown_path: { type: string, required: false }
+      deck_path: { type: string, required: false }
+      slidey_spec_path: { type: string, required: false }
+      case_study_path: { type: string, required: false }
+      summary_path: { type: string, required: false }
+      live_policy: { type: string, required: false }
   accept:
     description: "Accept the generated report and move to the done view."
     examples: ["accept", "looks good", "done", "continue"]

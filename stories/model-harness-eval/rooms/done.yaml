@@ -15,6 +15,8 @@ states:
             Applied: '{{ world.report_artifact.override.applied|default:false }}'
             Markdown: '{{ world.report_artifact.markdown_path|default:"(missing)" }}'
             Deck: '{{ world.report_artifact.deck_path|default:"(missing)" }}'
+            Slidey spec: '{{ world.report_artifact.slidey_spec_path|default:"(missing)" }}'
+            Case study: '{{ world.report_artifact.case_study_path|default:"(missing)" }}'
             Summary: '{{ world.report_artifact.summary_path|default:"(missing)" }}'
             Status: '{{ world.report_artifact.status|default:world.status }}'
       - heading: "Result"

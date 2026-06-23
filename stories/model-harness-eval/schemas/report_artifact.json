@@ -7,6 +7,8 @@
     "question",
     "markdown_path",
     "deck_path",
+    "slidey_spec_path",
+    "case_study_path",
     "summary_path",
     "configured_options",
     "recommendations",
@@ -18,6 +20,8 @@
     "question": { "type": "string", "minLength": 4 },
     "markdown_path": { "type": "string", "minLength": 4 },
     "deck_path": { "type": "string", "minLength": 4 },
+    "slidey_spec_path": { "type": "string", "minLength": 4 },
+    "case_study_path": { "type": "string", "minLength": 4 },
     "summary_path": { "type": "string", "minLength": 4 },
     "status": {
       "type": "string",
@@ -64,7 +68,7 @@
       "type": "object",
       "required": ["mode", "path", "applied", "summary", "selected_profile", "selected_model"],
       "properties": {
-        "mode": { "type": "string", "enum": ["local", "project", "author"] },
+        "mode": { "type": "string", "enum": ["report", "local", "project", "author"] },
         "path": { "type": "string", "minLength": 1 },
         "applied": { "type": "boolean" },
         "summary": { "type": "string", "minLength": 1 },

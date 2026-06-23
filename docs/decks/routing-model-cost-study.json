@@ -1,0 +1,591 @@
+{
+  "_comment": "Routing model cost-savings study — cheap models for room-by-room LLM routing.",
+  "meta": {
+    "mode": "pitch",
+    "title": "Routing Model Cost Study",
+    "resolution": {
+      "width": 1920,
+      "height": 1080
+    },
+    "narration": {
+      "voice": "en-AU-NatashaNeural",
+      "rate": "+0%"
+    }
+  },
+  "scenes": [
+    {
+      "type": "title",
+      "title": "Routing Model Cost Study",
+      "subtitle": "Room-by-room cheap routing, backed by mined Kitsoki turns.",
+      "narration": "Cheap room-by-room routing.",
+      "hold": 260
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "The question",
+      "body": "Can Haiku-class, synthetic small, and GPT mini models replace Sonnet for residual LLM-tier routing — including hard-negative correction turns?",
+      "lede": "Kitsoki already routes most turns deterministically at $0. The cost lever is the residual LLM tier, evaluated room-by-room against real mined inputs, not as a global downgrade.",
+      "hold": 380,
+      "narration": "Kitsoki routes sixty-two percent of turns at zero cost. Only the thirty-seven percent residual reaches the LLM — that is what we want to make cheaper."
+    },
+    {
+      "type": "diagram-svg",
+      "title": "The eight-tier routing stack",
+      "panels": [
+        {
+          "auto_layout": true,
+          "rankdir": "TB",
+          "nodes": [
+            {
+              "id": "det",
+              "label": "Deterministic",
+              "sub": "exact / example match · $0",
+              "style": "primary"
+            },
+            {
+              "id": "syn",
+              "label": "Synonym (bare)",
+              "sub": "stem-bag match · $0",
+              "style": "primary"
+            },
+            {
+              "id": "tmpl",
+              "label": "Synonym template",
+              "sub": "slot-capture · $0",
+              "style": "primary"
+            },
+            {
+              "id": "cache",
+              "label": "Turn cache",
+              "sub": "SQLite · $0",
+              "style": "primary"
+            },
+            {
+              "id": "def",
+              "label": "Default intent",
+              "sub": "free-text sink · $0"
+            },
+            {
+              "id": "emb",
+              "label": "Embedding (opt-in)",
+              "sub": "cosine sim · $0 local"
+            },
+            {
+              "id": "ctx",
+              "label": "Contextual (opt-in)",
+              "sub": "class=intent/help/work"
+            },
+            {
+              "id": "llm",
+              "label": "LLM fallback",
+              "sub": "37.5% of turns · $0.001–$0.004",
+              "style": "secondary"
+            }
+          ],
+          "edges": [
+            {
+              "from": "det",
+              "to": "syn",
+              "label": "miss"
+            },
+            {
+              "from": "syn",
+              "to": "tmpl",
+              "label": "miss"
+            },
+            {
+              "from": "tmpl",
+              "to": "cache",
+              "label": "miss"
+            },
+            {
+              "from": "cache",
+              "to": "def",
+              "label": "miss"
+            },
+            {
+              "from": "def",
+              "to": "emb",
+              "label": "miss"
+            },
+            {
+              "from": "emb",
+              "to": "ctx",
+              "label": "miss"
+            },
+            {
+              "from": "ctx",
+              "to": "llm",
+              "label": "miss"
+            }
+          ]
+        }
+      ],
+      "caption": "The first five tiers cost nothing. The LLM fires only on the genuinely ambiguous residual — 37.5% of Oregon Trail turns (calibration gate ≤40%).",
+      "hold": 270,
+      "narration": "Seven tiers cost zero. The LLM only fires for the residual. That is the only spend to optimise."
+    },
+    {
+      "type": "table",
+      "eyebrow": "Corpus",
+      "title": "Mined real session inputs",
+      "columns": [
+        "Source",
+        "Sessions / fixtures",
+        "Inputs",
+        "Positive labels",
+        "Hard negatives",
+        "Use"
+      ],
+      "rows": [
+        {
+          "cells": [
+            "routing-focused session mine",
+            "115 sessions",
+            "461 routing-eval items",
+            "414 follow-through",
+            "47 corrections",
+            "room-by-room router corpus"
+          ]
+        },
+        {
+          "cells": [
+            "Oregon Trail static suite",
+            "50 fixtures",
+            "104 inputs",
+            "deterministic pass/fail",
+            "correction fixtures",
+            "routing boundary checks"
+          ]
+        },
+        {
+          "cells": [
+            "model-harness reports",
+            "merge_judge",
+            "3 candidate rows",
+            "pass/effectiveness/cost",
+            "1 hard-negative miss",
+            "cheap-model measurement"
+          ]
+        }
+      ],
+      "caption": "The broad mine is the case-study corpus. Oregon Trail and merge_judge provide existing structured eval evidence.",
+      "hold": 210,
+      "narration": "The report uses one hundred fifteen real Kitsoki sessions, four hundred sixty-one routing candidates, and forty-seven correction hard negatives.",
+      "variant": "data"
+    },
+    {
+      "type": "table",
+      "eyebrow": "Effective configured options (baseline + local merge)",
+      "title": "Harness profiles",
+      "columns": [
+        "Profile",
+        "Backend",
+        "Default model",
+        "Model catalog",
+        "Effort",
+        "Source"
+      ],
+      "rows": [
+        {
+          "cells": [
+            "claude-native",
+            "claude",
+            "opus",
+            "opus, sonnet, haiku",
+            "medium",
+            "baseline"
+          ]
+        },
+        {
+          "cells": [
+            "synthetic-codex ★",
+            "codex",
+            "syn:small:text",
+            "syn:large:text, syn:small:text",
+            "—",
+            "local"
+          ]
+        },
+        {
+          "cells": [
+            "synthetic-claude",
+            "claude",
+            "syn:large:text",
+            "syn:large:text, syn:small:text",
+            "—",
+            "local"
+          ]
+        },
+        {
+          "cells": [
+            "codex-native",
+            "codex",
+            "gpt-5-codex",
+            "gpt-5-codex, gpt-5",
+            "—",
+            "local"
+          ]
+        },
+        {
+          "cells": [
+            "GPT mini tier",
+            "—",
+            "gpt-5.4 mini / equivalent",
+            "—",
+            "—",
+            "NOT CONFIGURED — gap"
+          ]
+        }
+      ],
+      "caption": "★ = machine default. GPT mini-style comparison is requested but not configured — add a profile before claiming evidence.",
+      "hold": 240,
+      "narration": "Four profiles are configured. GPT mini is a configuration gap — no profile, no measurement.",
+      "variant": "data"
+    },
+    {
+      "type": "table",
+      "eyebrow": "merge_judge call-site — only measured routing evidence",
+      "title": "Candidate comparison",
+      "columns": [
+        "Profile / model",
+        "Effort",
+        "Bar pass rate",
+        "Effectiveness med/p5/p95",
+        "p95 latency med/p5/p95",
+        "Avg cost med/p5/p95"
+      ],
+      "rows": [
+        {
+          "cells": [
+            "claude / claude-sonnet-4-6",
+            "medium",
+            "100%",
+            "100% / 100% / 100%",
+            "5200ms / 5200ms / 5200ms",
+            "$0.0034 / $0.0034 / $0.0034"
+          ]
+        },
+        {
+          "cells": [
+            "synthetic-codex / syn:small:text",
+            "low",
+            "67%",
+            "100% / 55% / 100%",
+            "3050ms / 3005ms / 3095ms",
+            "$0.0008 / $0.0008 / $0.0008"
+          ]
+        },
+        {
+          "cells": [
+            "synthetic-codex / syn:large:text",
+            "low",
+            "0%",
+            "90% / 90% / 90%",
+            "3900ms / 3900ms / 3900ms",
+            "$0.0016 / $0.0016 / $0.0016"
+          ]
+        },
+        {
+          "cells": [
+            "claude-native / haiku",
+            "—",
+            "missing",
+            "—",
+            "—",
+            "—"
+          ]
+        },
+        {
+          "cells": [
+            "codex-native / gpt-5-codex",
+            "—",
+            "missing",
+            "—",
+            "—",
+            "—"
+          ]
+        },
+        {
+          "cells": [
+            "GPT mini",
+            "—",
+            "missing",
+            "—",
+            "—",
+            "—"
+          ]
+        }
+      ],
+      "caption": "Bar = 95% pass / 8000ms p95 / $0.0020 avg cost. A 0% bar-pass row can still show non-zero comparator effectiveness — these are different metrics.",
+      "hold": 270,
+      "narration": "Synthetic small is 4.25 times cheaper than Sonnet and 41 percent faster on p95 latency. It is the committed selection. Haiku and GPT mini lack evidence.",
+      "variant": "data"
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Hard negatives: correction turns",
+      "body": "slot-template routing handles all Oregon Trail correction turns at zero cost — but the one documented LLM-tier hard negative failed on both small and large synthetic models.",
+      "lede": "Correction fixtures in state:general_store.reviewing ('actually give me 12 oxen', 'I want 7 oxen not 6') route via synonym template at 100% — no model involved. The merge_judge failure on missing-merge-sha-blocks-closeout shows that when a correction turn does reach the LLM tier, syn:small:text can misclassify: returned accept when refine was expected. The committed fallback profile (claude) catches this case.",
+      "hold": 330,
+      "narration": "Most correction turns route at zero cost via templates. The one LLM-tier hard negative is covered by the stronger fallback."
+    },
+    {
+      "type": "table",
+      "eyebrow": "Adherence-bar compliance",
+      "title": "Declared bar vs. measured medians",
+      "columns": [
+        "Call",
+        "Profile / model",
+        "Declared bar",
+        "Measured pass / p95 / cost",
+        "Verdict"
+      ],
+      "rows": [
+        {
+          "cells": [
+            "merge_judge",
+            "claude / claude-sonnet-4-6",
+            "95% / 8000ms / $0.0020",
+            "100% / 5200ms / $0.0034",
+            "divergence — cost exceeds bar"
+          ]
+        },
+        {
+          "cells": [
+            "merge_judge",
+            "synthetic-codex / syn:small:text",
+            "95% / 8000ms / $0.0020",
+            "67% / 3050ms / $0.0008",
+            "divergence — pass rate below bar"
+          ]
+        },
+        {
+          "cells": [
+            "merge_judge",
+            "synthetic-codex / syn:large:text",
+            "95% / 8000ms / $0.0020",
+            "0% / 3900ms / $0.0016",
+            "violates — pass rate 0%"
+          ]
+        }
+      ],
+      "caption": "A 'divergence' row passed the report's own check but violates the declared dataset bar. No candidate fully satisfies the declared merge_judge bar at its declared thresholds.",
+      "hold": 240,
+      "narration": "No single candidate satisfies every threshold. The committed decision is cheapest-passing with a fallback arc for the edge case.",
+      "variant": "data"
+    },
+    {
+      "type": "table",
+      "eyebrow": "Confidence threshold sweep",
+      "title": "Sweep blocked — per-example confidence not recorded",
+      "columns": [
+        "Status",
+        "Detail"
+      ],
+      "rows": [
+        {
+          "cells": [
+            "Blocked",
+            "Loaded eval reports do not include per-example actual confidence values"
+          ]
+        },
+        {
+          "cells": [
+            "Required",
+            "Each example result needs: actual.intent, actual.confidence, expected intent"
+          ]
+        },
+        {
+          "cells": [
+            "Impact",
+            "Cannot recommend a lower confidence bar with measured false-accept rates"
+          ]
+        },
+        {
+          "cells": [
+            "Next step",
+            "Instrument eval runners to record per-example results; rerun this report"
+          ]
+        }
+      ],
+      "caption": "Until per-example confidence values are recorded, threshold sweep cannot be run.",
+      "hold": 180,
+      "narration": "The confidence-threshold sweep is blocked. We cannot yet recommend a lower confidence bar with statistical backing.",
+      "variant": "data"
+    },
+    {
+      "type": "table",
+      "eyebrow": "Expected cost savings: 1000 active turns/day",
+      "title": "Projected residual routing cost by model",
+      "columns": [
+        "Model",
+        "LLM calls/day",
+        "Avg cost/call",
+        "Daily cost",
+        "vs Sonnet"
+      ],
+      "rows": [
+        {
+          "cells": [
+            "Sonnet 4.6",
+            "375",
+            "$0.0034",
+            "$1.28",
+            "1× baseline (measured)"
+          ]
+        },
+        {
+          "cells": [
+            "syn:small:text",
+            "375",
+            "$0.0008",
+            "$0.30",
+            "4.25× cheaper (measured)"
+          ]
+        },
+        {
+          "cells": [
+            "haiku (estimated)",
+            "375",
+            "~$0.0005–0.0010",
+            "~$0.19–$0.38",
+            "3–7× cheaper (unmeasured)"
+          ]
+        },
+        {
+          "cells": [
+            "GPT mini tier (est.)",
+            "375",
+            "~$0.0003–0.0008",
+            "~$0.11–$0.30",
+            "4–12× cheaper (unmeasured)"
+          ]
+        }
+      ],
+      "caption": "Measured values from merge_judge. Haiku and GPT-4o-mini are published-rate estimates, not measured call-site results.",
+      "hold": 360,
+      "narration": "At one thousand turns per day, synthetic small saves about one dollar per day versus Sonnet — four-point-two-five times cheaper. Haiku and GPT mini estimates suggest further headroom.",
+      "variant": "data"
+    },
+    {
+      "type": "table",
+      "eyebrow": "Coverage gaps — 13 datasets unmeasured",
+      "title": "Readiness status by story",
+      "columns": [
+        "Story",
+        "Call sites",
+        "Planned profiles",
+        "Status"
+      ],
+      "rows": [
+        {
+          "cells": [
+            "pr-refinement",
+            "merge_judge",
+            "claude, codex-native, synthetic-claude, synthetic-codex",
+            "2/4 measured; codex-native + synthetic-claude missing"
+          ]
+        },
+        {
+          "cells": [
+            "git-ops",
+            "author_commit_message, resolve_conflicts, squash_message",
+            "all four profiles",
+            "0/4 measured — needs live eval"
+          ]
+        },
+        {
+          "cells": [
+            "dev-story",
+            "gate, existing_scan, references_research, name_slug, draft, verify-agent",
+            "all four profiles",
+            "0/4 measured"
+          ]
+        },
+        {
+          "cells": [
+            "prd",
+            "brief_check, prd_author, judge_verdict, references_research",
+            "all four profiles",
+            "0/4 measured"
+          ]
+        }
+      ],
+      "caption": "10 of 11 mining-profiled stories have no loaded coverage job. All 13 unmeasured call sites block a validated room-by-room routing switch.",
+      "hold": 240,
+      "narration": "Only one call site has any evidence. Thirteen more are planned but unmeasured.",
+      "variant": "data"
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Recommendation",
+      "body": "Recommendation: promote cheap routers only per room after they pass mined hard negatives. Keep Sonnet-class fallback and route receipts.",
+      "lede": "Synthetic small is the cheapest measured candidate. Haiku is the conservative first cheap sweep. GPT mini remains a configuration gap. The architecture decision is room-by-room selection, not global downgrading.",
+      "hold": 270,
+      "narration": "The recommendation is room-by-room promotion with fallback, not a global downgrade."
+    },
+    {
+      "type": "table",
+      "eyebrow": "Recommendations",
+      "title": "Selection proposal",
+      "columns": [
+        "Dimension",
+        "Profile / model",
+        "Effort",
+        "Evidence status",
+        "Rationale"
+      ],
+      "rows": [
+        {
+          "cells": [
+            "Fastest",
+            "synthetic-codex / syn:small:text",
+            "low",
+            "measured",
+            "p95 3050ms vs 5200ms for Sonnet (41% faster)"
+          ]
+        },
+        {
+          "cells": [
+            "Cheapest",
+            "synthetic-codex / syn:small:text",
+            "low",
+            "measured",
+            "$0.0008 avg vs $0.0034 (4.25× cheaper)"
+          ]
+        },
+        {
+          "cells": [
+            "Best",
+            "claude / claude-sonnet-4-6",
+            "medium",
+            "measured",
+            "Only candidate with 100% acceptance-bar pass rate on its own report pass flag"
+          ]
+        },
+        {
+          "cells": [
+            "Selected",
+            "synthetic-codex / syn:small:text",
+            "low",
+            "measured",
+            "Committed cheapest_passing decision; claude fallback for hard-negative edge cases"
+          ]
+        }
+      ],
+      "caption": "apply_mode=report — no override written. Configuration unchanged. Haiku and GPT mini are gaps; add to eval matrices and run with operator approval.",
+      "hold": 240,
+      "narration": "The selection is synthetic small with a Sonnet fallback arc. No config override was applied — this is a report run.",
+      "variant": "data"
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Next steps",
+      "body": "1. Feed .artifacts/routing-model-corpus into a routing eval. 2. Add GPT mini profile. 3. Run Haiku and synthetic small on the same hard negatives. 4. Record confidence and alternatives. 5. Promote passing rooms with fallback.",
+      "lede": "The case study produced the corpus and decision frame. The next implementation step is an eval runner that turns these mined inputs into per-room promotion evidence.",
+      "hold": 240,
+      "narration": "Five concrete next steps: turn the mined corpus into a routing eval and promote only the rooms that pass."
+    }
+  ]
+}

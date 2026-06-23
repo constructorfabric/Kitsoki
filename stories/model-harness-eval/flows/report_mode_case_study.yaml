@@ -1,0 +1,112 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  workdir: "."
+  apply_mode: "report"
+  output_root: ".artifacts/model-harness-eval/routing-cost"
+  markdown_path: ".context/routing-model-cost-study.md"
+  deck_path: ".artifacts/model-harness-eval/routing-cost/index.html"
+  slidey_spec_path: "docs/decks/routing-model-cost-study.json"
+  case_study_path: "docs/case-studies/routing-model-cost-study.md"
+  summary_path: ".artifacts/model-harness-eval/routing-cost/summary.json"
+  live_policy: "operator_approved"
+
+host_handlers:
+  host.agent.task:
+    by_call:
+      prepare_reports:
+        data:
+          ok: true
+          submitted:
+            question: "Compare Haiku, synthetic small, and GPT mini models for room-by-room routing using mined real inputs; produce a cost-savings case study."
+            markdown_path: ".context/routing-model-cost-study.md"
+            deck_path: ".artifacts/model-harness-eval/routing-cost/index.html"
+            slidey_spec_path: "docs/decks/routing-model-cost-study.json"
+            case_study_path: "docs/case-studies/routing-model-cost-study.md"
+            summary_path: ".artifacts/model-harness-eval/routing-cost/summary.json"
+            status: "complete"
+            configured_options:
+              - profile: "claude-native"
+                backend: "claude"
+                model: "opus"
+                source: "baseline"
+                models: ["opus", "sonnet", "haiku"]
+              - profile: "synthetic-codex"
+                backend: "codex"
+                model: "syn:large:text"
+                source: "local"
+                models: ["syn:large:text", "syn:small:text"]
+              - profile: "codex-native"
+                backend: "codex"
+                model: "gpt-5-codex"
+                source: "local"
+                models: ["gpt-5-codex", "gpt-5"]
+            recommendations:
+              fastest:
+                profile: "synthetic-codex"
+                model: "syn:small:text"
+                rationale: "Small synthetic model is the fastest candidate to test for schema-bounded routing decisions."
+                evidence_status: "inferred"
+              cheapest:
+                profile: "synthetic-codex"
+                model: "syn:small:text"
+                rationale: "Small synthetic model is the cheapest configured routing candidate, pending live corpus validation."
+                evidence_status: "inferred"
+              best:
+                profile: "claude-native"
+                model: "haiku"
+                rationale: "Haiku is the conservative cheap first pass for routing decisions when provider compatibility matters."
+                evidence_status: "inferred"
+              selected:
+                profile: "claude-native"
+                model: "haiku"
+                rationale: "Select Haiku for the first live routing eval sweep, then promote synthetic small or GPT mini per room only after passing the mined corpus."
+                evidence_status: "inferred"
+            override:
+              mode: "report"
+              path: ""
+              applied: false
+              selected_profile: "claude-native"
+              selected_model: "haiku"
+              summary: "Report-only mode produced review artifacts and did not change runtime defaults."
+            evidence:
+              eval_datasets: 0
+              eval_reports: 0
+              intent_suite_reports: 1
+              coverage_jobs: 1
+              readiness_gaps: 3
+              mined_sessions: 115
+              routing_eval_items: 461
+              hard_correction_items: 47
+            commands_run:
+              - "python3 tools/session-mining/prep.py <kitsoki-transcripts> --grep routing --grep model"
+              - "slidey docs/decks/routing-model-cost-study.json --validate"
+            limitations:
+              - "Live candidate routing sweep is allowed by policy but not represented in this deterministic fixture."
+            summary_markdown: |
+              ## Routing model cost study
+
+              The report-only run produced a durable case study and Slidey source from 115 mined Kitsoki sessions, yielding 461 routing-eval inputs and 47 correction hard negatives. No runtime default override was applied.
+
+turns:
+  - intent:
+      name: start
+      slots:
+        question: "Compare Haiku, synthetic small, and GPT mini models for room-by-room routing using mined real inputs; produce a cost-savings case study."
+        apply_mode: "report"
+        output_root: ".artifacts/model-harness-eval/routing-cost"
+        markdown_path: ".context/routing-model-cost-study.md"
+        deck_path: ".artifacts/model-harness-eval/routing-cost/index.html"
+        slidey_spec_path: "docs/decks/routing-model-cost-study.json"
+        case_study_path: "docs/case-studies/routing-model-cost-study.md"
+        summary_path: ".artifacts/model-harness-eval/routing-cost/summary.json"
+        live_policy: "operator_approved"
+    expect_state: reporting
+    expect_world:
+      status: "ready"
+    expect_host_calls:
+      - handler: host.agent.task
+        args: { call: "prepare_reports" }
+
+expect_no_errors: true

@@ -14,8 +14,11 @@ Override request:
 Write or refresh these artifacts:
 
 - Markdown report: `{{ args.markdown_path }}`
-- Slide-style HTML deck: `{{ args.deck_path }}`
+- Slide-style HTML deck or rendered review artifact: `{{ args.deck_path }}`
+- Slidey JSON deck source: `{{ args.slidey_spec_path }}`
+- Durable case study: `{{ args.case_study_path }}`
 - Machine summary JSON: `{{ args.summary_path }}`
+- Live evidence policy: `{{ args.live_policy }}`
 
 Use the reusable offline pilot process in `docs/testing/model-harness-eval-pilot.md`,
 then extend the result into a concrete selection proposal and override.
@@ -46,9 +49,42 @@ Default no-cost evidence collection:
 4. Aggregate all local evidence:
    `python3 tools/session-mining/eval_pilot_report.py --root stories --intent-root {{ args.output_root }}/intent-reports --coverage-root {{ args.output_root }} --markdown {{ args.markdown_path }} --deck {{ args.deck_path }} --summary {{ args.summary_path }}`
 
-Do not call live LLM providers or run a paid live benchmark matrix. If the
-operator's question asks for live provider performance, answer from accepted
-local evidence and list the missing live collection step as a limitation.
+Live evidence policy:
+
+- If `{{ args.live_policy }}` is `no_cost`, do not call live LLM providers or
+  run a paid live benchmark matrix. If the operator's question asks for live
+  provider performance, answer from accepted local evidence and list the
+  missing live collection step as a limitation.
+- If `{{ args.live_policy }}` is `operator_approved`, live LLM/provider
+  evidence is allowed for this run. Keep it bounded: run the smallest
+  benchmark or spot-check matrix that materially answers the question, record
+  the exact commands, write raw live outputs under `{{ args.output_root }}`, and
+  make clear which conclusions are measured vs inferred. Never put live calls in
+  committed flow fixtures or automated tests.
+
+Routing/case-study mode:
+
+- If the question asks about routing, room-by-room model selection, cost
+  savings, or case-study material, mine real session inputs first and make the
+  corpus part of the evidence. Prefer `tools/session-mining/prep.py` over raw
+  transcript reads, keep raw/distilled private outputs under `.artifacts/` or
+  `/tmp`, and record the session count, user-turn count, routing-eval item
+  count, correction/hard-negative count, and where the corpus artifact lives.
+- Build the report around Kitsoki's routing tiers: deterministic, semantic,
+  turn-cache/default-intent, embedding/contextual, and final LLM fallback. The
+  recommendation must be room/call-site scoped, not a global downgrade.
+- Candidate cheap routers should include configured Haiku, synthetic small text,
+  and GPT mini/Codex mini style models when configured or explicitly requested.
+  If a candidate is not currently configured, mark it as a configuration gap
+  instead of inventing measurements.
+- The case study at `{{ args.case_study_path }}` must be narrative docs-quality:
+  problem, mined corpus, method, current architecture, candidate model tiers,
+  what is safe to switch now, what needs live eval, expected cost mechanism,
+  risks, and the next implementation path.
+- The Slidey source at `{{ args.slidey_spec_path }}` must be a real Slidey JSON
+  deck, not a markdown outline. It should be suitable for review/rendering with
+  `slidey {{ args.slidey_spec_path }} --validate` and should summarize the case
+  study with crisp slides, tables, and a final recommendation.
 
 Selection proposal:
 
@@ -86,6 +122,9 @@ Selection proposal:
 
 Override application:
 
+- `report`: do not apply a default-profile override. Write the report, Slidey
+  source, rendered review artifact, case study, and summary JSON only. Set
+  `override.applied` to false and explain that no runtime default was changed.
 - `local`: update `{{ args.override_path }}` so new Kitsoki sessions use the
   selected profile/model/effort by default. Preserve unrelated keys such as
   `intercept:` and existing `harness_profiles:`. Do not write secrets. If the
@@ -105,6 +144,7 @@ numbers. `summary_markdown` should include:
 - the headline recommendation;
 - fastest, cheapest, best, and selected configured options;
 - the override path and whether it was applied;
+- the case-study path and Slidey source path when produced;
 - effectiveness/speed/cost evidence available;
 - intent-suite and transcript-coverage results;
 - missing evidence/readiness gaps;
