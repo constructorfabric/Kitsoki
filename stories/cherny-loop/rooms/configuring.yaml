@@ -76,9 +76,12 @@ states:
                 # Normalize natural synonyms ("command"/"cmd"/"shell"/"test") to the
                 # canonical "script" mode so a reasonable-sounding token can't strand
                 # the loop on a gate_mode none of the rooms recognize.
-                gate_mode:        "{{ slots.gate_mode == nil ? (slots.gate_command != nil && slots.gate_command != '' ? 'script' : (world.gate_command != '' ? world.gate_mode : '')) : (slots.gate_mode == 'command' || slots.gate_mode == 'cmd' || slots.gate_mode == 'shell' || slots.gate_mode == 'test' ? 'script' : slots.gate_mode) }}"
-                gate_command:     "{{ slots.gate_command ?? world.gate_command }}"
-                gate_plan_reason:  "{{ slots.gate_mode != nil || slots.gate_command != nil ? 'configured explicitly by the operator' : '' }}"
+                # Treat gate_command as explicit only when the operator also chose
+                # a gate mode. Free-form router guesses can otherwise lock in a
+                # weak command and skip the planner.
+                gate_mode:        "{{ slots.gate_mode == nil ? (world.gate_command != '' ? world.gate_mode : '') : (slots.gate_mode == 'command' || slots.gate_mode == 'cmd' || slots.gate_mode == 'shell' || slots.gate_mode == 'test' ? 'script' : slots.gate_mode) }}"
+                gate_command:     "{{ slots.gate_mode == nil ? world.gate_command : (slots.gate_command ?? world.gate_command) }}"
+                gate_plan_reason:  "{{ slots.gate_mode != nil ? 'configured explicitly by the operator' : '' }}"
                 gate_prompt_focus: "{{ slots.gate_mode == 'agent' || slots.gate_mode == 'hybrid' ? world.gate_prompt_focus : '' }}"
                 iteration_budget: "{{ int(slots.iteration_budget ?? world.iteration_budget) }}"
                 cost_budget_usd:  "{{ slots.cost_budget ?? world.cost_budget_usd }}"
@@ -86,7 +89,7 @@ states:
                 workspace_id:     "{{ slots.workspace_id ?? world.workspace_id }}"
             - invoke: host.agent.decide
               id: "gate-plan"
-              when: "slots.gate_mode == nil && (slots.gate_command ?? '') == '' && (slots.goal ?? '') != '' && world.gate_command == ''"
+              when: "slots.gate_mode == nil && (slots.goal ?? '') != '' && world.gate_command == ''"
               with:
                 prompt: prompts/gate_plan.md
                 schema: schemas/gate_plan.json

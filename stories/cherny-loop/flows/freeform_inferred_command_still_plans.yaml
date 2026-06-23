@@ -1,0 +1,41 @@
+# freeform_inferred_command_still_plans — protects the ad hoc path where the
+# top-level router guesses a plausible command from free text. The story must
+# not treat that as an explicit operator gate, because a weak inferred command
+# can skip the planner and fail to prove the actual goal.
+test_kind: flow
+app: ../app.yaml
+initial_state: configuring
+
+host_handlers:
+  host.agent.decide:
+    by_call:
+      gate-plan:
+        data:
+          submitted:
+            gate_mode: script
+            gate_command: "go test -coverprofile=.artifacts/coverage.out ./... && go tool cover -func=.artifacts/coverage.out | awk '/^total:/ { sub(/%/, \"\", $3); exit !($3 >= 85) }'"
+            artifact: ""
+            prompt_focus: ""
+            reason: "The goal is a numeric coverage threshold, so the gate must fail unless total coverage is at least 85 percent."
+
+turns:
+  - intent:
+      name: configure
+      slots:
+        goal: "get the repo to 85% test coverage"
+        gate_command: "go test -cover ./..."
+        iteration_budget: 8
+    expect_state: configuring
+    expect_world:
+      goal_text: "get the repo to 85% test coverage"
+      gate_mode: script
+      gate_command: "go test -coverprofile=.artifacts/coverage.out ./... && go tool cover -func=.artifacts/coverage.out | awk '/^total:/ { sub(/%/, \"\", $3); exit !($3 >= 85) }'"
+      gate_plan_reason: "The goal is a numeric coverage threshold, so the gate must fail unless total coverage is at least 85 percent."
+      iteration_budget: 8
+    expect_view_matches: "go test -coverprofile=.*>= 85"
+    expect_host_calls:
+      - handler: host.agent.decide
+        args: { call: gate-plan }
+        times: 1
+
+expect_no_errors: true
