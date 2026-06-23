@@ -36,6 +36,7 @@ hosts:
   - host.run
   - host.git_worktree
   - host.artifacts_dir
+  - host.agent.task   # the imported conflict-resolve agent path
 
 world:
   # ── World-in (parent seeds these) ──────────────────────────────────────────
@@ -64,6 +65,21 @@ world:
   run_exit:           { type: string, default: "" }   # integrate_exec exit code
   run_stdout:         { type: string, default: "" }   # integrate_exec raw stdout (abort tail)
 
+  # ── Conflict-landing path (integrate conflict → resolve → cr) ──────────────
+  # When integrate hits a conflict and resolve_attempts < resolve_budget, the
+  # `resolve` room checkpoints the maker branch, re-rebases with rerere, and
+  # (on a never-seen conflict) hands off to the imported conflict-resolve agent.
+  resolve_budget:     { type: int,    default: 2 }    # max conflict-landing retries
+  resolve_attempts:   { type: int,    default: 0 }    # incremented on each entry to resolve
+  resolve_outcome:    { type: string, default: "" }   # rebased | conflict | error
+  resolve_output:     { type: string, default: "" }   # re-rebase stdout/stderr tail
+  # Checkpoint of the pre-landing branch state (never-lose-work safety net).
+  checkpoint_outcome: { type: string, default: "" }   # saved | error
+  checkpoint_ref:     { type: string, default: "" }   # refs/kitsoki/checkpoints/land-<branch>
+  checkpoint_sha:     { type: string, default: "" }   # stash-create snapshot (restore point)
+  checkpoint_label:   { type: string, default: "" }   # slug
+  checkpoint_dirty:   { type: bool,   default: false } # were there uncommitted changes snapshotted
+
 intents:
   # Entry intent — only used by the bootstrap stub (flow tests). Not reached
   # in production imports (parent enters at `integrate` directly).
@@ -71,7 +87,29 @@ intents:
     description: "Enter the delivery tail (flow test bootstrap only)."
     examples: ["begin", "start"]
     priority: 80
+  # Entry stub for the conflict-landing flow fixtures — transitions INTO `resolve`
+  # so its on_enter chain (checkpoint + re-rebase) fires. Not reached in imports.
+  begin_resolve:
+    description: "Enter the delivery tail at `resolve` (flow test bootstrap only)."
+    examples: []
+    priority: 80
   # Internal routing intents (post-bind guarded emits from the tail rooms).
+  integrate_conflict:
+    description: "(internal) integrate conflict, budget left → resolve (checkpoint + re-rebase)."
+    examples: []
+    priority: 1
+  resolve_rebased:
+    description: "(internal) re-rebase (rerere) cleared the conflict → re-enter integrate."
+    examples: []
+    priority: 1
+  resolve_conflict:
+    description: "(internal) never-seen conflict → conflict-resolve agent (cr import)."
+    examples: []
+    priority: 1
+  resolve_error:
+    description: "(internal) re-rebase errored → needs-human (with checkpoint ref)."
+    examples: []
+    priority: 1
   integrated_ok:
     description: "(internal) integrate succeeded → verify."
     examples: []
@@ -114,6 +152,49 @@ exits:
   needs-human: { requires: [last_error] }
 
 root: bootstrap
+
+# The conflict-resolve agent sub-flow, imported as a peer. `resolve` routes a
+# never-seen conflict here (resolve_conflict → cr); the caller (this story) owns
+# the exit routing. The rebase is LEFT IN PROGRESS by `resolve`, so the import
+# enters at `conflict` (not the standalone `bootstrap` stub) where the agent
+# resolves + the story `git rebase --continue`s (recording the rerere resolution).
+imports:
+  cr:
+    source: ../conflict-resolve
+    entry: conflict
+    world_in:
+      working_dir:          "{{ world.worktree_path }}"
+      current_branch:       "{{ world.workspace_branch }}"
+      integration_branch:   "{{ world.base_branch }}"
+      build_check_cmd:      "{{ world.gate_command }}"
+      build_check_disabled: "{{ world.build_check_disabled }}"
+      # Headless tail: an unresolved conflict escalates rather than waiting for an
+      # operator's guide/abort (no operator is attached on the delivery tail).
+      auto_escalate:        true
+    exits:
+      # The agent landed it: re-enter integrate — the just-recorded rerere
+      # resolution replays and the deterministic merge completes. Clear the
+      # per-attempt outcome markers so integrate re-runs cleanly.
+      resolved:
+        to: integrate
+        set:
+          integrate_outcome: ""
+          run_exit:          ""
+          resolve_outcome:   ""
+      # Agent could not resolve (headless escalation) → needs-human, carrying the
+      # real reason up from the resolver's last_error.
+      escalated:
+        to: "@exit:needs-human"
+        set:
+          status:     "needs-human"
+          last_error: "{{ world.cr__last_error }}"
+      # Operator aborted the rebase (not reached under auto_escalate, but mapped
+      # for completeness) → needs-human.
+      aborted:
+        to: "@exit:needs-human"
+        set:
+          status:     "needs-human"
+          last_error: "conflict resolution aborted while landing {{ world.workspace_branch }} — pre-landing snapshot saved at {{ world.checkpoint_ref }} (restore with: git -C {{ world.worktree_path }} stash apply {{ world.checkpoint_sha }})."
 
 include:
   - rooms/*.yaml

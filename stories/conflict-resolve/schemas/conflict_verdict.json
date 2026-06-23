@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "conflict_verdict",
+  "description": "Verdict from the conflict_resolver agent: was the conflict resolved?",
+  "type": "object",
+  "required": ["resolved", "confidence", "resolution_summary"],
+  "properties": {
+    "resolved": {
+      "type": "boolean",
+      "description": "True if ALL conflict markers have been removed from ALL conflicted files."
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Confidence in the resolution (0–1). Below 0.7 should set resolved=false."
+    },
+    "unresolvable_files": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Files the agent could not resolve. Only non-empty when resolved=false."
+    },
+    "resolution_summary": {
+      "type": "string",
+      "description": "Brief description of how conflicts were resolved, or why resolution failed."
+    },
+    "reason": {
+      "type": ["string", "null"],
+      "description": "Why resolution failed, if resolved=false."
+    }
+  },
+  "additionalProperties": false
+}

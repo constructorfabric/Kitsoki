@@ -29,7 +29,7 @@ states:
     description: "Rebase the maker's branch onto CURRENT main, build-check, merge."
     relevant_world: [workspace_branch, base_branch, main_worktree_path,
                      integrate_outcome, integrated_sha, last_error,
-                     run_exit, run_stdout]
+                     run_exit, run_stdout, resolve_attempts, resolve_budget]
     view:
       - prose: "Maker achieved the goal. Integrating branch {{ world.workspace_branch }} into {{ world.base_branch }}."
       - kv:
@@ -168,7 +168,14 @@ states:
       # Post-bind routing; guards FALSE under default world.
       - when: "world.integrate_outcome == 'integrated'"
         emit_intent: integrated_ok
-      - when: "world.integrate_outcome != '' && world.integrate_outcome != 'integrated'"
+      # A CONFLICT with landing budget left → the resolve room (checkpoint +
+      # re-rebase with rerere, then the conflict-resolve agent). resolve_attempts
+      # is incremented on the arc into `resolve`, so the budget bounds retries.
+      - when: "world.integrate_outcome == 'conflict' && world.resolve_attempts < world.resolve_budget"
+        emit_intent: integrate_conflict
+      # Any other failure (build_fail, error, uncommitted) OR a conflict with the
+      # landing budget exhausted → needs-human.
+      - when: "world.integrate_outcome != '' && world.integrate_outcome != 'integrated' && !(world.integrate_outcome == 'conflict' && world.resolve_attempts < world.resolve_budget)"
         emit_intent: integrate_failed
       # The host RAN (run_exit is set post-bind) but bound NO JSON outcome ⇒ the
       # run produced no parseable result (host.run failure, OOM-kill, jq missing).
@@ -183,6 +190,13 @@ states:
           effects:
             - set:
                 integrated: true
+      # Conflict, budget left → resolve. Increment resolve_attempts on the arc so
+      # the budget bounds the retry loop (resolve → integrate → resolve → …).
+      integrate_conflict:
+        - target: resolve
+          effects:
+            - set:
+                resolve_attempts: "{{ world.resolve_attempts + 1 }}"
       integrate_failed:
         - target: "@exit:needs-human"
           effects:

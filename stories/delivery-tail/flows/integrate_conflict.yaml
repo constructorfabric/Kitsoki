@@ -1,7 +1,9 @@
-# integrate_conflict — integrate hits an unresolvable conflict → @exit:needs-human
-# with the REAL last_error (no swallowed success). Leans on the
-# no-swallowed-failure discipline: a non-zero integrate binds the conflict
-# outcome and routes out, never reporting integrated.
+# integrate_conflict — integrate hits a conflict with NO landing budget
+# (resolve_budget: 0) → @exit:needs-human with the REAL last_error (no swallowed
+# success). Leans on the no-swallowed-failure discipline: a non-zero integrate
+# binds the conflict outcome and routes out, never reporting integrated. With
+# resolve_budget>0 the conflict instead routes to the `resolve` landing path
+# (see resolve_rerere_lands / resolve_agent_lands).
 
 test_kind: flow
 app: ../app.yaml
@@ -14,6 +16,7 @@ initial_world:
   workspace_id:       burst-fix
   workspace_branch:   burst-fix
   worktree_path:      ".worktrees/burst-fix"
+  resolve_budget:     0   # no landing budget → conflict bails straight to needs-human
 
 host_handlers:
   host.run:

@@ -1,0 +1,182 @@
+# resolve — conflict landing: checkpoint → re-rebase (rerere) → agent → retry integrate.
+#
+# Reached when `integrate` hits a conflict (and resolve_attempts < resolve_budget).
+# integrate already `rebase --abort`ed its attempt, so this room owns a fresh
+# rebase. Sequence:
+#
+#   1. CHECKPOINT FIRST (never lose work). Snapshot the maker branch under
+#      refs/kitsoki/checkpoints/land-<branch> via `git stash create` + update-ref
+#      (no working-tree touch, no stash-stack clobber — mirrors git-ops/checkpoint).
+#      The ref/sha are carried into last_error on every bail, so the pre-landing
+#      state is always recoverable.
+#   2. RE-REBASE onto CURRENT base with the rerere replay loop. `rebase --onto
+#      BASE MB BRANCH` drops an orphaned base (a moved/rewritten main); rerere
+#      replays any recorded resolution with no agent. Three outcomes:
+#        rebased  → emit resolve_rebased → re-enter integrate (now clean → merge)
+#        conflict → emit resolve_conflict → cr (conflict-resolve agent); the rebase
+#                   is LEFT IN PROGRESS so the agent room can `git rebase --continue`
+#        error    → emit resolve_error → @exit:needs-human (+ checkpoint ref)
+#
+# On the conflict-resolve agent's @exit:resolved the import re-enters `integrate`,
+# where the just-recorded rerere resolution replays and the merge completes.
+
+states:
+
+  resolve:
+    description: "Checkpoint, re-rebase with rerere, hand never-seen conflicts to the agent."
+    relevant_world: [workspace_branch, base_branch, worktree_path, resolve_attempts,
+                     resolve_budget, resolve_outcome, resolve_output,
+                     checkpoint_outcome, checkpoint_ref, checkpoint_sha, checkpoint_label,
+                     last_error]
+    view:
+      - prose: "Landing {{ world.workspace_branch }} hit a conflict (attempt {{ world.resolve_attempts }}/{{ world.resolve_budget }}). Checkpointing, then resolving."
+      - kv:
+          pairs:
+            Branch:     '{{ world.workspace_branch }} → {{ world.base_branch }}'
+            Checkpoint: '{{ world.checkpoint_ref|default:"(saving…)" }}'
+            Outcome:    '{{ world.resolve_outcome|default:"(rebasing…)" }}'
+      - heading: "Re-rebase errored — needs a human"
+        when: "world.resolve_outcome == 'error'"
+      - prose: "{{ world.resolve_output }}"
+        when: "world.resolve_outcome == 'error'"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "look"
+              intent: look
+    on_enter:
+      # 1. Checkpoint FIRST — once: keyed checkpoint_sha so a re-render / retry
+      #    keeps the ORIGINAL pre-landing snapshot (never overwrite the safety net).
+      - invoke: host.run
+        once: true
+        id: resolve_checkpoint
+        with:
+          cmd: bash
+          args:
+            - "-c"
+            - |
+              set -e
+              export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
+              EMITTED=0
+              emit() { jq -n "$@"; EMITTED=1; exit 0; }
+              trap 'rc=$?; if [ "$EMITTED" != "1" ]; then jq -n --arg rc "$rc" "{checkpoint_outcome:\"error\",checkpoint_ref:\"\",checkpoint_label:\"\",checkpoint_sha:\"\",checkpoint_dirty:false}"; fi; exit 0' EXIT
+              WT="$1"
+              BRANCH="$2"
+              [ -z "$WT" ] && WT="."
+              SLUG=$(printf 'land-%s' "$BRANCH" | tr -c 'A-Za-z0-9._/-' '-' | sed 's#//*#/#g; s#^[/-]*##; s#[/-]*$##')
+              [ -z "$SLUG" ] && SLUG="land"
+              REF="refs/kitsoki/checkpoints/$SLUG"
+              HEAD_SHA=$(git -C "$WT" rev-parse HEAD 2>/dev/null || echo "")
+              [ -z "$HEAD_SHA" ] && emit '{checkpoint_outcome:"error",checkpoint_ref:"",checkpoint_label:"",checkpoint_sha:"",checkpoint_dirty:false}'
+              WIP=$(git -C "$WT" stash create 2>/dev/null || echo "")
+              SNAP="${WIP:-$HEAD_SHA}"
+              git -C "$WT" update-ref "$REF" "$SNAP"
+              git -C "$WT" update-ref "${REF}.base" "$HEAD_SHA"
+              DIRTY=false; [ -n "$WIP" ] && DIRTY=true
+              emit --arg ref "$REF" --arg slug "$SLUG" --arg sha "$SNAP" --argjson dirty "$DIRTY" \
+                '{checkpoint_outcome:"saved",checkpoint_ref:$ref,checkpoint_label:$slug,checkpoint_sha:$sha,checkpoint_dirty:$dirty}'
+            - "kitsoki-land-checkpoint"
+            - "{{ world.worktree_path }}"
+            - "{{ world.workspace_branch }}"
+        bind:
+          checkpoint_outcome: "stdout_json.checkpoint_outcome"
+          checkpoint_ref:     "stdout_json.checkpoint_ref"
+          checkpoint_label:   "stdout_json.checkpoint_label"
+          checkpoint_sha:     "stdout_json.checkpoint_sha"
+          checkpoint_dirty:   "stdout_json.checkpoint_dirty"
+        on_error: resolve
+      # 2. Re-rebase with the rerere replay loop. once: keyed resolve_outcome;
+      #    the try_resolve arc clears resolve_outcome so each attempt re-runs.
+      - invoke: host.run
+        once: true
+        id: resolve_rebase
+        with:
+          cmd: bash
+          args:
+            - "-c"
+            - |
+              set -e
+              export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
+              EMITTED=0
+              emit() { jq -n "$@"; EMITTED=1; exit 0; }
+              trap 'rc=$?; if [ "$EMITTED" != "1" ]; then jq -n --arg rc "$rc" "{resolve_outcome:\"error\",resolve_output:(\"resolve rebase-start aborted (exit \"+\$rc+\")\")}"; fi; exit 0' EXIT
+              INTEGRATION="$1"
+              BRANCH="$2"
+              WT="$3"
+              [ -z "$WT" ] && WT="."
+              BASE_SHA=$(git -C "$WT" rev-parse "$INTEGRATION" 2>/dev/null || echo "")
+              [ -z "$BASE_SHA" ] && emit --arg int "$INTEGRATION" '{resolve_outcome:"error",resolve_output:("integration branch "+$int+" not found")}'
+              MB=$(git -C "$WT" merge-base "$BRANCH" "$INTEGRATION" 2>/dev/null || echo "")
+              rebase_in_progress() {
+                [ -d "$(git -C "$WT" rev-parse --git-path rebase-merge 2>/dev/null)" ] || \
+                [ -d "$(git -C "$WT" rev-parse --git-path rebase-apply 2>/dev/null)" ]
+              }
+              EXIT=0
+              OUTPUT=$(git -C "$WT" rebase --onto "$BASE_SHA" "$MB" "$BRANCH" 2>&1) || EXIT=$?
+              RERERE_DONE=false
+              if [ "$EXIT" -ne 0 ] && rebase_in_progress; then
+                GUARD=0
+                while rebase_in_progress && [ "$GUARD" -lt 100 ]; do
+                  GUARD=$((GUARD + 1))
+                  git -C "$WT" rerere 2>/dev/null || true
+                  for f in $(git -C "$WT" diff --diff-filter=U --name-only 2>/dev/null); do
+                    [ -f "$WT/$f" ] || continue
+                    grep -qE '^(<<<<<<<|>>>>>>>)' "$WT/$f" 2>/dev/null || git -C "$WT" add -- "$f" 2>/dev/null || true
+                  done
+                  if git -C "$WT" diff --diff-filter=U --name-only 2>/dev/null | grep -q .; then
+                    break
+                  fi
+                  GIT_EDITOR=true git -C "$WT" rebase --continue >/dev/null 2>&1 || true
+                done
+                rebase_in_progress || RERERE_DONE=true
+              fi
+              # A never-seen conflict remains → LEAVE the rebase in progress for the
+              # conflict-resolve agent's `git rebase --continue`.
+              if rebase_in_progress; then
+                FILES=$(git -C "$WT" diff --diff-filter=U --name-only 2>/dev/null | tr '\n' ' ')
+                emit --arg files "$FILES" '{resolve_outcome:"conflict",resolve_output:("never-seen conflict in: "+$files)}'
+              fi
+              # Failed for a non-conflict reason and not auto-resolved → error.
+              if [ "$EXIT" -ne 0 ] && [ "$RERERE_DONE" != "true" ]; then
+                emit --arg out "$OUTPUT" '{resolve_outcome:"error",resolve_output:$out}'
+              fi
+              emit --arg out "$OUTPUT" '{resolve_outcome:"rebased",resolve_output:$out}'
+            - "kitsoki-resolve-rebase"
+            - "{{ world.base_branch }}"
+            - "{{ world.workspace_branch }}"
+            - "{{ world.worktree_path }}"
+        bind:
+          resolve_outcome: "stdout_json.resolve_outcome"
+          resolve_output:  "stdout_json.resolve_output"
+        on_error: resolve
+      # Post-bind routing (guards false on the default world).
+      - when: "world.resolve_outcome == 'rebased'"
+        emit_intent: resolve_rebased
+      - when: "world.resolve_outcome == 'conflict'"
+        emit_intent: resolve_conflict
+      - when: "world.resolve_outcome == 'error'"
+        emit_intent: resolve_error
+    on:
+      # rerere (or a clean re-rebase) cleared it — retry the deterministic integrate;
+      # the recorded resolution replays and the merge completes.
+      resolve_rebased:
+        - target: integrate
+          effects:
+            - set:
+                integrate_outcome: ""
+                run_exit:          ""
+                resolve_outcome:   ""
+      # A never-seen conflict — hand to the imported conflict-resolve agent. Its
+      # @exit:resolved re-enters integrate (import exit mapping); @exit:escalated /
+      # @exit:aborted → @exit:needs-human with the checkpoint ref.
+      resolve_conflict:
+        - target: cr
+      resolve_error:
+        - target: "@exit:needs-human"
+          effects:
+            - set:
+                status:     "needs-human"
+                last_error: "could not re-rebase {{ world.workspace_branch }} onto {{ world.base_branch }} for landing: {{ world.resolve_output }} — pre-landing snapshot saved at {{ world.checkpoint_ref }} (restore with: git -C {{ world.worktree_path }} stash apply {{ world.checkpoint_sha }})."
+      look:
+        - target: .

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"sync/atomic"
 
@@ -1501,7 +1502,7 @@ func (m *machineImpl) applyEffectsTraced(ctx context.Context, effects []app.Effe
 			}
 			for _, k := range keys {
 				before := newWorld.Vars[k]
-				newWorld.Vars[k] = resolvedSet[k]
+				newWorld.Vars[k] = m.coerceSetValue(k, resolvedSet[k])
 				m.logger.DebugContext(ctx, trace.EvMachineEffectApplied,
 					slog.String("type", "set"),
 					slog.String("key", k),
@@ -2141,6 +2142,45 @@ func (m *machineImpl) RunEffectsAndState(ctx context.Context, state app.StatePat
 //     `{{ world.jira_query }}` inside a list passes through verbatim and the
 //     handler receives an unexpanded template.
 //   - Other scalars are returned as-is.
+// coerceSetValue coerces a set-effect value to the declared type of world key
+// k. set-effect RHS values are expression strings (a bare YAML `true` in a
+// world_in projection arrives as the string "true"), so a rendered scalar may
+// land as a string even when the world schema declares the key bool/int/float.
+// Without this, a later guard like `&& world.flag` would fail eval with
+// `bool(string)`. Keys not declared in the schema, or values that don't need
+// coercion, pass through unchanged.
+func (m *machineImpl) coerceSetValue(k string, v any) any {
+	if m.appDef == nil {
+		return v
+	}
+	vd, ok := m.appDef.World[k]
+	if !ok {
+		return v
+	}
+	s, isStr := v.(string)
+	if !isStr {
+		return v
+	}
+	switch vd.Type {
+	case "bool":
+		switch s {
+		case "true":
+			return true
+		case "false":
+			return false
+		}
+	case "int":
+		if n, err := strconv.ParseInt(s, 10, 64); err == nil {
+			return n
+		}
+	case "float":
+		if f, err := strconv.ParseFloat(s, 64); err == nil {
+			return f
+		}
+	}
+	return v
+}
+
 func resolveEffectValue(v any, env expr.Env, w world.World) (any, error) {
 	switch val := v.(type) {
 	case string:

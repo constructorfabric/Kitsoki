@@ -1,0 +1,34 @@
+# escalate_headless — agent cannot resolve + auto_escalate (headless tail) → @exit:escalated.
+# Proves the headless path exits with a non-blank last_error instead of waiting
+# for an operator's guide/abort. No LLM: host.run + host.agent.task stubbed.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: bootstrap
+initial_world:
+  current_branch:     "fix/x"
+  integration_branch: "main"
+  working_dir:        "."
+  auto_escalate:      true
+
+host_handlers:
+  host.run:
+    by_call:
+      gather_conflict_files:
+        data: { stdout_json: { conflict_files: "foo.go bar.go", gosum_only: false } }
+  host.agent.task:
+    data:
+      submitted:
+        resolved:           false
+        confidence:         0.3
+        resolution_summary: "Could not reconcile both sides of foo.go safely."
+        unresolvable_files: ["foo.go"]
+        reason:             "semantic conflict in foo.go — both sides rewrote the same function differently"
+
+turns:
+  - intent: { name: begin, slots: {} }
+    expect_state: __exit__escalated
+    expect_world:
+      status: "needs-human"
+
+expect_no_errors: true

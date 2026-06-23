@@ -24,3 +24,7 @@ states:
     on:
       begin:
         - target: integrate
+      # Flow-test entry for the conflict-landing path: transition straight into
+      # `resolve` so its checkpoint + re-rebase on_enter chain fires.
+      begin_resolve:
+        - target: resolve
