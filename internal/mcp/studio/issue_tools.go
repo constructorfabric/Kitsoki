@@ -137,12 +137,21 @@ type IssueCreateArgs struct {
 }
 
 // IssueCreateResult is the issue.create success payload.
+//
+// When the wired filer fails (auth, network, a label/triage wall the
+// unlabelled-retry couldn't clear, …) the issue is NOT lost: the composed
+// markdown is written to the artifacts dir and LocalPath + FilingError are set
+// instead of URL/Number. OK stays true — the finding was captured somewhere a
+// human can recover it — so the agent's self-improvement loop never silently
+// drops a gap. The caller checks LocalPath to know it went to disk, not GitHub.
 type IssueCreateResult struct {
-	OK     bool     `json:"ok"`
-	URL    string   `json:"url"`
-	Number int      `json:"number"`
-	Labels []string `json:"labels"` // the final labels applied (source-autonomous first)
-	Assets []string `json:"assets"` // relative paths of the rendered assets written
+	OK          bool     `json:"ok"`
+	URL         string   `json:"url"`
+	Number      int      `json:"number"`
+	Labels      []string `json:"labels"`                 // the final labels applied (source-autonomous first)
+	Assets      []string `json:"assets"`                 // relative paths of the rendered assets written
+	LocalPath   string   `json:"local_path,omitempty"`   // set when filing fell back to an artifacts-dir file
+	FilingError string   `json:"filing_error,omitempty"` // the GitHub filing error that triggered the fallback
 }
 
 func (srv *Server) handleIssueCreate(
@@ -208,7 +217,21 @@ func (srv *Server) handleIssueCreate(
 		Labels: labels,
 	})
 	if err != nil {
-		return buildToolError(ErrBadRequest, fmt.Sprintf("issue.create: file issue: %v", err)), nil, nil
+		// GitHub filing failed for some reason (auth, network, a triage wall the
+		// filer's unlabelled-retry couldn't clear). Don't lose the finding: write
+		// the composed issue to the artifacts dir so a human can recover and file
+		// it by hand. Only a write failure here is fatal.
+		localPath, werr := srv.writeIssueFallback(args.Title, body, labels, err)
+		if werr != nil {
+			return buildToolError(ErrBadRequest, fmt.Sprintf("issue.create: file issue: %v (and fallback write failed: %v)", err, werr)), nil, nil
+		}
+		return nil, IssueCreateResult{
+			OK:          true,
+			Labels:      labels,
+			Assets:      assetPaths,
+			LocalPath:   localPath,
+			FilingError: err.Error(),
+		}, nil
 	}
 
 	return nil, IssueCreateResult{
@@ -218,6 +241,34 @@ func (srv *Server) handleIssueCreate(
 		Labels: labels,
 		Assets: assetPaths,
 	}, nil
+}
+
+// writeIssueFallback persists a composed issue to the artifacts dir when GitHub
+// filing fails, so an agent-found gap is never silently dropped. It writes a
+// self-contained markdown file (front-matter-ish header with the title, labels,
+// and the filing error, then the composed body) under
+// <artifactsDir>/unfiled/<slug>.md and returns its path.
+func (srv *Server) writeIssueFallback(title, body string, labels []string, filingErr error) (string, error) {
+	dir := filepath.Join(srv.resolveArtifactsDir(), "unfiled")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", fmt.Errorf("mkdir %q: %w", dir, err)
+	}
+	path := filepath.Join(dir, issueSlug(title)+".md")
+	var b strings.Builder
+	b.WriteString("# " + title + "\n\n")
+	b.WriteString("> **Unfiled** — GitHub filing failed; recover this and file by hand.\n")
+	b.WriteString(">\n")
+	b.WriteString("> filing_error: " + filingErr.Error() + "\n")
+	if len(labels) > 0 {
+		b.WriteString("> labels: " + strings.Join(labels, ", ") + "\n")
+	}
+	b.WriteString("\n")
+	b.WriteString(strings.TrimRight(body, "\n"))
+	b.WriteString("\n")
+	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
+		return "", fmt.Errorf("write %q: %w", path, err)
+	}
+	return path, nil
 }
 
 // renderAsset renders one asset spec to bytes + file extension, reusing the

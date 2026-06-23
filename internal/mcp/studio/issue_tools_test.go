@@ -14,6 +14,7 @@ package studio_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"encoding/json"
 	"image/png"
 	"os"
@@ -181,4 +182,39 @@ func TestIssueCreate_TitleRequired(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &te))
 	assert.Equal(t, studio.ErrBadRequest, te.Code)
 	assert.Empty(t, filer.got.Title, "filer never called on a bad request")
+}
+
+// TestIssueCreate_FallbackToArtifactsOnFilingError proves the finding is never
+// lost: when the wired filer fails (the dogfood loop's worst case — a label/auth
+// wall on GitHub), issue.create writes the composed issue to the artifacts dir
+// and returns OK with LocalPath + FilingError set, rather than a hard error.
+func TestIssueCreate_FallbackToArtifactsOnFilingError(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	sess := studio.NewStudioSession(replayBuilder())
+	failing := func(_ context.Context, _ studio.IssueRequest) (studio.IssueResult, error) {
+		return studio.IssueResult{}, errors.New("gh issue create: HTTP 403: Resource not accessible by integration")
+	}
+	srv := studio.NewServer(sess,
+		studio.WithIssueFiler(failing),
+		studio.WithArtifactsDir(dir),
+	)
+	cs := connectInProcess(ctx, t, srv)
+
+	res, err := callTool(ctx, cs, "issue.create", map[string]any{
+		"title": "MCP gap: no standalone gate-runner",
+		"body":  "The studio cannot run go test against a worktree outside a session.",
+	})
+	require.NoError(t, err)
+	out := issueResult(t, res) // must NOT be a tool error — fallback keeps it OK
+	assert.True(t, out.OK)
+	assert.Empty(t, out.URL, "no GitHub URL when filing failed")
+	assert.Contains(t, out.FilingError, "403", "surfaces why GitHub filing failed")
+	require.NotEmpty(t, out.LocalPath, "fallback file path must be returned")
+
+	body, rerr := os.ReadFile(out.LocalPath)
+	require.NoError(t, rerr, "fallback file must exist on disk")
+	assert.Contains(t, string(body), "MCP gap: no standalone gate-runner", "title preserved")
+	assert.Contains(t, string(body), "go test against a worktree", "body preserved")
+	assert.Contains(t, string(body), "Unfiled", "marked for human recovery")
 }
