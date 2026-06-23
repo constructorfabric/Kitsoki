@@ -69,6 +69,14 @@ component: <short tag, e.g. tui, runtime, loader>
 kitsoki_rev: <short SHA at filing>
 trace_ref: ""                       # may be empty for hand-filed seeds
 external: {}                        # external tracker links (Jira id, GH issue)
+repro_command: ""                   # optional: a deterministic command that
+                                    # FAILS (non-zero exit) while the bug is
+                                    # live. The bugfix story's `reproducing`
+                                    # room runs it RED-first (see
+                                    # stories/bugfix/README.md → "repro RED-gate")
+                                    # — non-zero exit = bug reproduces → proceed;
+                                    # zero exit = cannot reproduce → needs-human.
+                                    # Absent/empty ⇒ LLM-only reproduction.
 ---
 ```
 

@@ -139,7 +139,8 @@ host_interfaces:
       get:
         input:  { id: string }
         output: { id: string, title: string, body: string, status: string,
-                  priority: string, assignee: string, url: string, comments: list }
+                  priority: string, assignee: string, url: string, comments: list,
+                  repro_command: string }
       comment:
         input:  { id: string, body: string, thread: string }
         output: { ok: bool, comment_id: string }
@@ -290,6 +291,17 @@ world:
   regression_red_pre_fix: { type: bool,   default: false } # the gate FAILED on the pre-fix snapshot (RED)
   regression_pre_fix_log: { type: string, default: "" }    # the pre-fix gate's output tail (audit)
   regression_gate_checked: { type: bool,  default: false } # the pre-fix gate actually ran (vs skipped)
+
+  # ── Repro RED-gate (reproducing room) ──────────────────────────────────
+  # The bugfix-repro-gate slice: a ticket can carry a `repro_command:`
+  # frontmatter field, projected into world.gate_command at ticket-load. The
+  # `reproducing` room runs it RED-first on the unchanged (pre-fix) worktree
+  # BEFORE the LLM reproducer — non-zero exit (RED, bug reproduces) → proceed
+  # to proposing; zero exit (GREEN, cannot reproduce) → @exit:not-reproducible.
+  # `repro_checked` latches the one-shot run (mirrors regression_gate_checked).
+  # Empty gate_command ⇒ the gate is skipped ⇒ current LLM-only reproducing
+  # behaviour (backward compatible). See docs/stories/bugfix.md.
+  repro_checked:          { type: bool,   default: false } # the pre-fix repro gate ran in reproducing
 
   # ── Lost-work guard (clean-tree invariant) ──────────────────────────────
   # The maker rooms mutate the worktree (implementer writes the fix,
@@ -500,6 +512,13 @@ intents:
     description: "(internal) the regression gate was never RED on the pre-fix snapshot (a characterization test) → needs-human, never shipped."
     examples: []
     priority: 1
+  # ── repro RED-gate routing (reproducing room). Internal guarded emit: the
+  # repro_command was GREEN on the unchanged worktree → the bug cannot be
+  # reproduced → route to @exit:not-reproducible (needs-human). ──────────────
+  not_reproducible:
+    description: "(internal) the repro_command passed (GREEN) on the unchanged worktree → the bug does not currently reproduce → needs-human, never fixed."
+    examples: []
+    priority: 1
 
 # Intents exposed to importing parent stories. Wave 2 (dev-story hub)
 # `intents.import: [start, proceed, accept, refine, restart_from, quit]`
@@ -525,6 +544,10 @@ exits:
     requires: [shipped_sha]
   needs-human:
     description: "direct-ship: an integrate/verify/cleanup failure, or a regression gate that was never RED pre-fix or isn't GREEN on merged main. Carries the real error."
+    requires: [last_error]
+  # ── repro RED-gate exit (reproducing room) ───────────────────────────────
+  not-reproducible:
+    description: "The ticket's repro_command passed (GREEN) on the unchanged worktree — the bug does not currently reproduce. Needs a human to confirm wontfix / cannot-reproduce or supply a sharper repro. Carries the gate's output as last_error."
     requires: [last_error]
 
 # ── The shared ship-it tail (slice 4 — compose, don't reinvent) ──────────

@@ -96,8 +96,57 @@ states:
             - label:  "look"
               hint:   "re-render"
               intent: look
-    relevant_world: [judge_mode, judge_confidence_threshold, ticket_id, ticket_title, thread, workdir, reproduction_artifact, llm_verdict, refine_feedback, cycle]
+    relevant_world: [judge_mode, judge_confidence_threshold, ticket_id, ticket_title, thread, workdir, reproduction_artifact, llm_verdict, refine_feedback, cycle, gate_command, repro_checked, regression_red_pre_fix, regression_pre_fix_log]
     on_enter:
+      # 0. Deterministic RED-gate (bugfix-repro-gate slice). When the ticket
+      #    carried a `repro_command:` (projected into world.gate_command at
+      #    ticket-load), prove the bug actually reproduces on the UNCHANGED
+      #    (pre-fix) worktree BEFORE spending the LLM reproducer / maker budget.
+      #    Structurally the cherny-loop baseline applied to the bugfix pipeline:
+      #    run the command on HEAD and branch on exit code —
+      #      RED  (non-zero exit) → bug reproduces → fall through to the LLM
+      #                             reproducer below → proposing.
+      #      GREEN (zero exit)    → cannot reproduce → @exit:not-reproducible.
+      #    `once`-style latch via repro_checked: the gate runs once per session
+      #    (refine/restart re-runs the LLM reproducer but not the gate — the
+      #    unchanged worktree's repro verdict doesn't change). An empty
+      #    gate_command skips the gate entirely (legacy ticket → LLM-only
+      #    behaviour, unchanged — backward compatible).
+      - when: "world.gate_command != '' && !world.repro_checked"
+        invoke: host.run
+        id: repro_gate_exec
+        with:
+          cmd: bash
+          args:
+            - "-c"
+            - |
+              set -e
+              export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
+              GATE='{{ world.gate_command }}'
+              GATE_EXIT=0
+              GATE_OUT=$( bash -c "$GATE" 2>&1 ) || GATE_EXIT=$?
+              if [ "$GATE_EXIT" -ne 0 ]; then
+                # Non-zero exit — the bug reproduces (RED). Proceed.
+                jq -n --arg log "$GATE_OUT" '{red:true,checked:true,log:$log}'
+              else
+                # Zero exit — the command passed (GREEN). Cannot reproduce.
+                jq -n --arg log "$GATE_OUT" '{red:false,checked:true,log:$log}'
+              fi
+          cwd: "{{ world.workdir }}"
+        bind:
+          regression_red_pre_fix:  "stdout_json.red"
+          repro_checked:           "stdout_json.checked"
+          regression_pre_fix_log:  "stdout_json.log"
+        on_error: idle
+
+      # 0b. GREEN branch: the gate ran and the command PASSED on the unchanged
+      #     worktree — the bug does not currently reproduce. Route to the
+      #     needs-human `not-reproducible` exit BEFORE the LLM reproducer runs
+      #     (the emit transitions away, so the agent step below is skipped).
+      #     Guard reads repro_checked so the bind settles before routing.
+      - when: "world.repro_checked && !world.regression_red_pre_fix"
+        emit_intent: not_reproducible
+
       # 1. Always: produce the reproduction artifact. Schema-validated
       #    payload lands at Result.Data.submitted; bind walks
       #    "submitted" → world.reproduction_artifact.
@@ -252,6 +301,17 @@ states:
                 bugfix_mode:        "full"
                 restart_from_stage: "validate"
                 unsafe_jumps_made:  "{{ world.unsafe_jumps_made + 1 }}"
+
+      # repro RED-gate GREEN branch (bugfix-repro-gate slice). The
+      # deterministic repro_command PASSED on the unchanged worktree, so the
+      # bug does not currently reproduce. Hand off to needs-human with the
+      # gate's captured output as the reason; never spend maker budget.
+      not_reproducible:
+        - target: "@exit:not-reproducible"
+          effects:
+            - set:
+                last_error: "repro_command passed (GREEN) on the unchanged worktree — bug does not currently reproduce.\n{{ world.regression_pre_fix_log }}"
+                status:     "not-reproducible"
 
       quit:
         - target: "@exit:abandoned"

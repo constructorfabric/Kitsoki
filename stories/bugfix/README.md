@@ -32,10 +32,12 @@ import via `entry: idle`.
 | `abandoned` | User or LLM bailed (`quit`). | (none) | Parent stories usually route to a `main` / inbox state. |
 | `shipped` | direct-ship exit: the fix integrated to local main, the regression gate re-verified GREEN on the merged commit, worktree cleaned up. | `shipped_sha` | The self-hosting loop (no PR). |
 | `needs-human` | direct-ship exit: an integrate/verify/cleanup failure, or a regression gate that was never RED pre-fix / isn't GREEN on merged main. | `last_error` | Carries the real error; never a swallowed false success. |
+| `not-reproducible` | the ticket's `repro_command` passed (GREEN) on the unchanged worktree — the bug does not currently reproduce. | `last_error` | Carries the gate output; a human confirms wontfix / cannot-reproduce or supplies a sharper repro. |
 
 Standalone (no parent) load synthesises `__exit__done`,
-`__exit__abandoned`, `__exit__shipped`, and `__exit__needs-human`
-terminals so `kitsoki run` and `kitsoki test flows` both terminate cleanly.
+`__exit__abandoned`, `__exit__shipped`, `__exit__needs-human`, and
+`__exit__not-reproducible` terminals so `kitsoki run` and `kitsoki test flows`
+both terminate cleanly.
 
 ## The exit slot — direct-ship vs open-PR (delivery-loop slice 4)
 
@@ -69,6 +71,38 @@ regression test was **never RED pre-fix** (a *characterization* test, not a
 regression test), or **isn't GREEN on merged main**, routes to
 `@exit:needs-human` — never `@exit:shipped`. Same gate, two evaluation sites:
 RED before the fix, GREEN after.
+
+### The repro RED-gate — prove the bug reproduces before spending maker budget
+
+A ticket can carry a **`repro_command:`** frontmatter field (surfaced by
+`host.local_files.ticket` in both `ticket.search` and `ticket.get` output, and
+declared on the `ticket` host_interface `get` contract). At ticket-load the
+parent projects it into **`world.gate_command`** (`dev-story`'s
+`ticket_search.pick_ticket` binds it from `iface.ticket.get`, then the `bf`
+import's `world_in` carries it across).
+
+The **`reproducing`** room then runs that command **RED-first** on the unchanged
+(pre-fix) worktree *before* the LLM reproducer — structurally the
+[`cherny-loop` baseline](../cherny-loop/rooms/baseline.yaml) applied to the
+ticket-driven pipeline (`reuse`, don't reinvent):
+
+- **RED** (non-zero exit, the bug reproduces) → `regression_red_pre_fix=true`,
+  `repro_checked=true`; the GREEN emit does not fire, the LLM reproducer runs as
+  corroborating evidence, and `accept` advances to `proposing`.
+- **GREEN** (zero exit, the command passes) → the bug does not currently
+  reproduce → a guarded `not_reproducible` emit routes to
+  `@exit:not-reproducible` (needs-human) with the gate output in `last_error`,
+  *before* the LLM reproducer / maker budget is spent.
+
+This makes `reproduction_artifact.bug_verified` an **evidenced** fact rather than
+an LLM assertion. **Backward compatible:** an empty `gate_command` (a legacy
+ticket with no `repro_command`) skips the gate entirely and falls through to the
+current LLM-only reproducing behaviour, unchanged.
+
+| Flow | Proves |
+|---|---|
+| `bugfix_repro_red_then_proceed` | RED gate (non-zero exit) → `reproducing` holds for the LLM reproducer → `accept` → `proposing`. The bug reproduces; maker budget is justified. |
+| `bugfix_repro_green_not_reproducible` | GREEN gate (zero exit) → `not_reproducible` emit → `@exit:not-reproducible`; the LLM reproducer never runs. The don't-spend-on-a-phantom case. |
 
 ### Direct-ship flows (no-LLM)
 
@@ -106,6 +140,7 @@ in `app.yaml`'s `world:` block so the child loads standalone for tests.
 | `workdir` | string | Most `iface.{vcs,ci}.*` calls. | `""` |
 | `base_branch` | string | `iface.vcs.open_pr.base`. | `""` |
 | `feature_branch` | string | `iface.vcs.branch.name`. | `""` |
+| `gate_command` | string | The ticket's `repro_command` (repro RED-gate in `reproducing`; re-used as the regression gate in `testing` + the shared `verify`). Empty ⇒ gates skipped. | `""` |
 | `bugfix_mode` | string | `full` (walk every room) \| `quick` (Wave 2 shortcut). | `full` |
 | `judge_mode` | string | `human` \| `llm` \| `llm_then_human` — see Judge polymorphism below. | `human` |
 | `judge_confidence_threshold` | float | Floor for auto-firing the LLM's verdict (Wave 2 — runtime gap). | `0.8` |

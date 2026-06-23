@@ -543,6 +543,11 @@ func bugSummary(b *BugFile) map[string]any {
 		"severity": b.frontString("severity"),
 		"assignee": b.frontString("assignee"),
 		"url":      b.frontString("url"),
+		// repro_command — optional bug frontmatter carrying a deterministic
+		// reproduction command. The bugfix story's `reproducing` room runs it
+		// RED-first (non-zero exit = bug reproduces). Absent ⇒ "" ⇒ the story
+		// falls through to the LLM-only reproducer (backward compatible).
+		"repro_command": b.frontString("repro_command"),
 	}
 	if b.Kind != "" {
 		out["type"] = b.Kind

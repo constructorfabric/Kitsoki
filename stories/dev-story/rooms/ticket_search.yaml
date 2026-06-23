@@ -206,6 +206,11 @@ states:
                 repo: "{{ world.ticket_repo }}"
               bind:
                 ticket_title: title
+                # The bug's optional `repro_command:` frontmatter. Projected
+                # into the bf import's world.gate_command (bugfix-repro-gate
+                # slice) so the `reproducing` room runs it RED-first. Absent ⇒
+                # "" ⇒ bf falls through to the LLM-only reproducer.
+                gate_command: repro_command
               on_error: idle
       # Hand off to the bugfix sub-story for the picked ticket.
       # bf.idle's on_enter auto-emits `start` when entered with a

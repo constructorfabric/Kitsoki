@@ -407,6 +407,12 @@ world:
   # epics}/ and tags every row with its source kind, so picks land
   # with the right value when the slot is fed in.
   ticket_type:         { type: string, default: "" }
+  # gate_command — the picked ticket's `repro_command:` frontmatter, bound by
+  # ticket_search.pick_ticket from iface.ticket.get and projected into the bf
+  # import's world (world.gate_command) so the bugfix `reproducing` room can
+  # run it RED-first. Empty (no repro_command on the ticket) ⇒ bf falls through
+  # to the LLM-only reproducer. See stories/bugfix (bugfix-repro-gate slice).
+  gate_command:        { type: string, default: "" }
   # The main room calls iface.ticket.list_mine on enter and stashes
   # the result here so the view can render a "tickets in your queue"
   # block without the operator having to type `tickets`.
@@ -1285,6 +1291,9 @@ imports:
       base_branch:     "{{ world.base_branch }}"
       feature_branch:  "{{ world.feature_branch }}"
       bugfix_mode:     "{{ world.bugfix_mode }}"
+      # The picked bug's repro_command (bound by ticket_search.pick_ticket).
+      # bf's `reproducing` room runs it RED-first; empty ⇒ LLM-only reproducer.
+      gate_command:    "{{ world.gate_command }}"
       # dev-story hands bf's @exit:done to the pr-refinement import — the PR
       # tail, not slice 4's direct-ship-to-local-main tail. Pin open-PR.
       bugfix_exit:     "open-PR"
@@ -1327,6 +1336,15 @@ imports:
         to: landing
         set:
           status: "needs-human"
+      # bf's repro RED-gate GREEN branch (bugfix-repro-gate slice): the bug's
+      # repro_command passed on the unchanged worktree, so it does not currently
+      # reproduce. Land back at the workbench carrying the gate output; a human
+      # decides wontfix / cannot-reproduce or supplies a sharper repro.
+      not-reproducible:
+        to: landing
+        set:
+          status:     "not-reproducible"
+          last_error: "{{ world.bf__last_error }}"
       # `change_ticket` on bf.idle fires this. Land in ticket_search
       # so the operator can search/pick; `go_bugfix` re-enters bf with
       # the new ticket_id projected via world_in:.
