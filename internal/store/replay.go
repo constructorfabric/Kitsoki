@@ -122,7 +122,7 @@ func BuildJourney(def *app.AppDef, initialState app.StatePath, initialWorld worl
 		case TurnStarted, UserInputReceived, TurnEnded:
 			// Orchestrator-level bookkeeping. No state/world change.
 
-		case LLMToolCall:
+		case LLMToolCall, AgentStreamEvent:
 			// LLM-layer event; no state/world change.
 
 		case HostInvoked, HostDispatched, HostReturned:

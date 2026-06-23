@@ -150,6 +150,7 @@
                     </template>
                     <template v-else>{{
                       row.agent ? `agent.${row.agent.verb}`
+                      : row.event.msg === "agent.stream" ? agentStreamLabel(row.event)
                       : row.harnessCall ? row.harnessCall.namespace
                       : row.event.msg
                     }}</template>
@@ -314,6 +315,13 @@ const AGENT_START_MSG = "agent.call.start";
 const AGENT_COMPLETE_MSG = "agent.call.complete";
 function agentVerb(e: TraceEvent): string {
   return typeof e.attrs.verb === "string" ? e.attrs.verb : "";
+}
+
+function agentStreamLabel(e: TraceEvent): string {
+  if (typeof e.attrs.tool === "string" && e.attrs.tool) return `agent.tool ${e.attrs.tool}`;
+  if (typeof e.attrs.thinking === "string" && e.attrs.thinking) return "agent.thinking";
+  if (typeof e.attrs.text === "string" && e.attrs.text) return "agent.delta";
+  return "agent.stream";
 }
 
 // Virtualisation is only worth the complexity for very large traces.  The

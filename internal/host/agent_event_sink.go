@@ -485,6 +485,63 @@ func appendAgentErrorEvent(ctx context.Context, ts time.Time, callID string, pay
 	_ = sink.Append(ev)
 }
 
+// appendAgentStreamEvent appends a compact in-flight provider event to the
+// trace so the web timeline moves while the agent is still running. Full raw
+// provider events remain in the transcript sidecar; this event is intentionally
+// small and replay-no-op.
+func appendAgentStreamEvent(ctx context.Context, ts time.Time, callID string, ev StreamEvent) {
+	sink := EventSinkFromAgentCtx(ctx)
+	if sink == nil || callID == "" || ev.IsResult {
+		return
+	}
+	oc := AgentCallCtxFrom(ctx)
+	payload := map[string]any{
+		"type":    ev.Type,
+		"subtype": ev.Subtype,
+	}
+	if ev.Tool != "" {
+		payload["tool"] = ev.Tool
+	}
+	if ev.Preview != "" {
+		payload["preview"] = ev.Preview
+	}
+	if ev.Text != "" {
+		payload["text"] = truncateTraceText(ev.Text, 700)
+	}
+	if ev.Thinking != "" {
+		payload["thinking"] = truncateTraceText(ev.Thinking, 700)
+	}
+	if len(ev.Tools) > 0 {
+		tools := make([]map[string]string, 0, len(ev.Tools))
+		for _, tool := range ev.Tools {
+			tools = append(tools, map[string]string{
+				"name":    tool.Name,
+				"preview": tool.Preview,
+			})
+		}
+		payload["tools"] = tools
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+	_ = sink.Append(store.Event{
+		Turn:      oc.Turn,
+		Ts:        ts,
+		Kind:      store.AgentStreamEvent,
+		StatePath: oc.StatePath,
+		CallID:    callID,
+		Payload:   raw,
+	})
+}
+
+func truncateTraceText(s string, max int) string {
+	if max <= 0 || len(s) <= max {
+		return s
+	}
+	return s[:max] + "..."
+}
+
 // ── Legacy cassette record-mode types (B-5: dead code, kept for compile compat) ─
 
 // AgentCallBody was the body written to KindAgentCall journal entries by the

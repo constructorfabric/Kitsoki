@@ -27,6 +27,11 @@ const (
 	UserInputReceived EventKind = "turn.input"
 	// LLMToolCall is appended when the LLM produces a tool call result.
 	LLMToolCall EventKind = "agent.tool_call"
+	// AgentStreamEvent is appended while an agent call is running to surface
+	// compact thinking/tool/narration breadcrumbs before the terminal
+	// agent.call.complete event lands. Replay treats it as a no-op; the full raw
+	// provider stream remains in the transcript sidecar.
+	AgentStreamEvent EventKind = "agent.stream"
 	// ValidationFailed is appended when Machine.Validate rejects a tool call.
 	ValidationFailed EventKind = "machine.validation_failed"
 	// TransitionApplied is appended after a successful transition fires.

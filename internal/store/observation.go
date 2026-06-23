@@ -54,7 +54,7 @@ func ObservationKind(kind EventKind) Kind {
 		return KindRouting
 
 	// agent-call — LLM/operator calls with prompt/response/cost/latency
-	case AgentCalled, AgentReturned, AgentError, LLMToolCall:
+	case AgentCalled, AgentReturned, AgentError, LLMToolCall, AgentStreamEvent:
 		return KindAgentCall
 
 	// host-call — deterministic side-effecting execution

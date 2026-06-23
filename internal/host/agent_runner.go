@@ -509,31 +509,35 @@ func emitClassified(ctx context.Context, ce classifiedEvent) {
 	}
 	preview := onelinePreview(previewSrc, 120)
 
+	out := StreamEvent{
+		Type:    ce.Type,
+		Subtype: ce.Subtype,
+		Tool:    ce.Tool,
+		Preview: preview,
+		Tools:   ce.Tools,
+		// Full narration prose, untruncated — the transcript word-
+		// wraps it. Cutting it mid-sentence was the truncation bug.
+		Text:      ce.Text,
+		Thinking:  ce.Thinking,
+		SessionID: ce.SessionID,
+		IsResult:  ce.IsResult,
+	}
+	if ce.IsResult {
+		out.CostUSD = ce.Cost
+		if ce.Usage != nil {
+			out.InputTokens = usageInt(ce.Usage, "input_tokens")
+			out.OutputTokens = usageInt(ce.Usage, "output_tokens")
+			out.CacheReadTokens = usageInt(ce.Usage, "cache_read_input_tokens")
+			out.CacheCreationTokens = usageInt(ce.Usage, "cache_creation_input_tokens")
+		}
+	}
+	if out.Text != "" || out.Thinking != "" || out.Tool != "" || len(out.Tools) > 0 {
+		appendAgentStreamEvent(ctx, time.Now(), CallIDFrom(ctx), out)
+	}
+
 	// Tee to the TUI sink, if any. Mirrors the slog attrs below in
 	// structured form so the consumer doesn't have to re-parse strings.
 	if sink := StreamSinkFrom(ctx); sink != nil {
-		out := StreamEvent{
-			Type:    ce.Type,
-			Subtype: ce.Subtype,
-			Tool:    ce.Tool,
-			Preview: preview,
-			Tools:   ce.Tools,
-			// Full narration prose, untruncated — the transcript word-
-			// wraps it. Cutting it mid-sentence was the truncation bug.
-			Text:      ce.Text,
-			Thinking:  ce.Thinking,
-			SessionID: ce.SessionID,
-			IsResult:  ce.IsResult,
-		}
-		if ce.IsResult {
-			out.CostUSD = ce.Cost
-			if ce.Usage != nil {
-				out.InputTokens = usageInt(ce.Usage, "input_tokens")
-				out.OutputTokens = usageInt(ce.Usage, "output_tokens")
-				out.CacheReadTokens = usageInt(ce.Usage, "cache_read_input_tokens")
-				out.CacheCreationTokens = usageInt(ce.Usage, "cache_creation_input_tokens")
-			}
-		}
 		sink.OnStreamEvent(ctx, out)
 	}
 

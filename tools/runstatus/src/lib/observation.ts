@@ -41,6 +41,7 @@ export function observationKind(msg: string): ObservationKind {
     case "agent.call.complete":
     case "agent.call.error":
     case "agent.tool_call":
+    case "agent.stream":
       return "agent-call";
 
     // host-call — deterministic side-effecting execution

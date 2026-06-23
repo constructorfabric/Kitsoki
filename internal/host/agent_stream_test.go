@@ -9,6 +9,7 @@ package host_test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"testing"
 
 	"kitsoki/internal/host"
+	"kitsoki/internal/store"
 )
 
 // captureStreamSink records every StreamEvent it receives. OnStreamEvent
@@ -120,6 +122,67 @@ func TestAgentStream_ThinkingNotTruncated(t *testing.T) {
 	}
 	if !sawCombined {
 		t.Fatal("combined text+tool_use event did not surface both Text and Tool")
+	}
+}
+
+// TestAgentStream_WritesTraceBreadcrumbsBeforeComplete asserts that live
+// provider stream frames are persisted into the trace while the agent call is
+// still in flight, not only rendered to the chat bubble and collapsed into the
+// final AgentReturned event.
+func TestAgentStream_WritesTraceBreadcrumbsBeforeComplete(t *testing.T) {
+	t.Parallel()
+
+	const thought = "Read the nearby code, then explain the likely failure path."
+	sink := &memSink{}
+	stream := &captureStreamSink{}
+	dir := t.TempDir()
+	promptPath := filepath.Join(dir, "p.md")
+	if err := os.WriteFile(promptPath, []byte("go"), 0o644); err != nil {
+		t.Fatalf("write prompt: %v", err)
+	}
+
+	ctx := host.WithStreamSink(agentCtxForTest(sink), stream)
+	ctx = host.WithClaudeRunner(ctx, thinkingRunner(thought, "done"))
+
+	if _, err := host.AgentAskHandler(ctx, map[string]any{"prompt_path": promptPath}); err != nil {
+		t.Fatalf("AgentAskHandler: %v", err)
+	}
+
+	calledIdx, streamIdx, returnedIdx := -1, -1, -1
+	for i, ev := range sink.events {
+		switch ev.Kind {
+		case store.AgentCalled:
+			calledIdx = i
+		case store.AgentStreamEvent:
+			if streamIdx == -1 {
+				streamIdx = i
+			}
+		case store.AgentReturned:
+			returnedIdx = i
+		}
+	}
+	if calledIdx == -1 || streamIdx == -1 || returnedIdx == -1 {
+		t.Fatalf("missing expected trace events: kinds=%v", kinds(sink.events))
+	}
+	if !(calledIdx < streamIdx && streamIdx < returnedIdx) {
+		t.Fatalf("event order = called:%d stream:%d returned:%d, want called < stream < returned", calledIdx, streamIdx, returnedIdx)
+	}
+	if sink.events[calledIdx].CallID == "" {
+		t.Fatal("AgentCalled.CallID is empty")
+	}
+	if sink.events[streamIdx].CallID != sink.events[calledIdx].CallID {
+		t.Fatalf("AgentStreamEvent.CallID = %q, want %q", sink.events[streamIdx].CallID, sink.events[calledIdx].CallID)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(sink.events[streamIdx].Payload, &payload); err != nil {
+		t.Fatalf("unmarshal AgentStreamEvent.Payload: %v", err)
+	}
+	if payload["type"] != "assistant" {
+		t.Errorf("payload.type = %q, want assistant", payload["type"])
+	}
+	if payload["text"] != thought {
+		t.Errorf("payload.text = %q, want %q", payload["text"], thought)
 	}
 }
 

@@ -417,8 +417,19 @@ export const useRunStore = defineStore("run", () => {
     onRouting?: (routing: RoutingInfo, turn?: number) => void
   ): Promise<{ result: TurnResult; streamedText: string; stream: StreamItem[] }> {
     pendingStream.value = [];
+    let traceRefreshInFlight = false;
+    const refreshTrace = () => {
+      if (traceRefreshInFlight) return;
+      traceRefreshInFlight = true;
+      void backfillTurnTrace(live, sessionId, 0).finally(() => {
+        traceRefreshInFlight = false;
+      });
+    };
+    refreshTrace();
+    const traceRefreshTimer = globalThis.setInterval(refreshTrace, 750);
     try {
       const result = await live.turnStream(sessionId, method, params, (ev) => {
+        refreshTrace();
         // In the MAIN chat the reply is the room view carried by the final
         // result, so extended-thinking ("think") and narration ("delta")
         // frames are the same thing to this feed: intermediate reasoning.
@@ -451,8 +462,10 @@ export const useRunStore = defineStore("run", () => {
       const streamedText = stream
         .flatMap((it) => (it.kind === "thinking" ? [it.text] : []))
         .join("\n\n");
+      await backfillTurnTrace(live, sessionId, result.turn_number ?? 0);
       return { result, streamedText, stream };
     } finally {
+      globalThis.clearInterval(traceRefreshTimer);
       pendingStream.value = [];
     }
   }
@@ -483,6 +496,9 @@ export const useRunStore = defineStore("run", () => {
       capturedItems = out.stream;
     } else {
       result = await source.submit(sessionId, intent, slots);
+    }
+    if (typeof result.turn_number === "number") {
+      await backfillTurnTrace(source, sessionId, result.turn_number);
     }
     applyTurnResult(result, capturedStream, capturedItems);
     return result;
