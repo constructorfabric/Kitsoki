@@ -53,6 +53,7 @@ carrier handler when the op name is dispatched from `with:` args.
 | [`host.agent.converse`](#hostagentconverse) | Free-form conversational Claude session with permission_mode control. |
 | [`host.transport.post`](#hosttransportpost) | Post a message to a registered transport (TUI / Jira / Bitbucket). |
 | [`host.workspace_manager.get`](#hostworkspace_managerget) | Load a structured workspace context (repos, issue, PRs). |
+| [`host.git_worktree`](#hostgit_worktree-workspace-interface) | `workspace` provider: per-session `.worktrees/<id>` create/list/get/sync/cleanup. |
 | [`host.jobs.answer_clarification`](#hostjobsanswer_clarification) | Resume a paused background job with the user's answer. |
 | [`host.chat.resolve`](#hostchatresolve) | Get-or-create a persistent chat thread for a `(app, room, scope_key)`. |
 | [`host.chat.list`](#hostchatlist) | List chat threads matching `(app, room, scope_key)`. |
@@ -996,6 +997,54 @@ are validated by the provisional
 Returns the parsed object as `Result.Data`. Bind individual fields
 (`bind: { workspace_root: root_path, … }`) or copy the whole map
 (`bind: { workspace: "" }` on an `any`-typed world key).
+
+---
+
+## host.git_worktree (`workspace` interface)
+
+Git-worktree-backed `workspace` provider
+([`internal/host/git_worktree.go`](../../internal/host/git_worktree.go)). A
+single prefix-fallback handler dispatches `list` / `get` / `create` / `sync` /
+`cleanup_scan` / `cleanup_apply` via the `op` arg. Worktrees live under
+`<repo>/.worktrees/<id>` where the id == the worktree dir basename.
+
+`create` args:
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `name` | string | yes | The new feature branch. |
+| `id` | string | no | On-disk dir basename. Defaults to the slashes-flattened `name` (`fix/foo` → `fix-foo`). Authors that bind `workspace_id` from world state pass it here so `sync` (which keys on the id) finds the dir. |
+| `base` | string | no | Branch the new worktree is rooted at. |
+| `session_id` | string | no | Owning kitsoki session. When set, a successful `git worktree add` writes a `.kitsoki-owner` sentinel into the worktree. |
+
+### Per-session isolation (no shared checkouts)
+
+Two concurrent sessions on the same ticket must never share one on-disk
+worktree: a routine `git checkout -- <file>` in one session silently and
+unrecoverably reverts the other's uncommitted WIP. The host-side
+`.kitsoki-owner` sentinel prevents it:
+
+- The orchestrator projects its per-session SessionID into the story world as
+  `world.session_id` (an ephemeral, replay-safe seed recomputed each
+  `loadJourney`, alongside `world.ide.connected`).
+  [`stories/bugfix`](../../stories/bugfix/rooms/idle.yaml) threads it into
+  `workspace.create` (the worktree dir itself stays ticket-scoped,
+  `bf-<ticket>`, preserving the stable on-disk path contract).
+- `create` consults the `.kitsoki-owner` sentinel before its idempotency
+  short-circuit returns an existing tree. A matching or absent sentinel still
+  short-circuits to `{ok:true}` (so legitimate same-session re-entry after a
+  restart works); a sentinel naming a *different* session fails loudly:
+  `workspace.create: <id> is already checked out by session <owner>; refusing
+  to share …`. So a second session racing the same ticket is refused rather
+  than handed the first's live tree — even if a caller forgets the session
+  dimension in the id.
+
+(Keying the worktree dir per-session so distinct same-ticket sessions get
+*distinct* dirs — coexistence rather than refusal — is a possible future
+enhancement; it is not needed to close the destructive bug, which the sentinel
+already does.)
+
+Regression: [`concurrent_checkout_repro_test.go`](../../internal/host/concurrent_checkout_repro_test.go).
 
 ---
 

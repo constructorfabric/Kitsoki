@@ -96,6 +96,22 @@ states:
       # Step 1: derive workspace identity from ticket_id. Skipped in triage
       # mode — triage is read-only against the current tree, so it needs no
       # worktree (and creating one would be wasted side-effect).
+      #
+      # The worktree dir is ticket-scoped (`.worktrees/bf-<ticket>`), but the
+      # calling session's identity (world.session_id, projected from the
+      # orchestrator's per-session SessionID) is threaded into workspace.create
+      # below so the host-side `.kitsoki-owner` safety net can refuse to hand
+      # one session's live tree to a DIFFERENT session — the destructive
+      # shared-tree bug
+      # (2026-06-03T121409Z-concurrent-dogfood-sessions-share-checkout-destructive-git)
+      # where a `git checkout -- <file>` in one session silently reverted
+      # another session's unrecoverable uncommitted WIP. Two concurrent sessions
+      # racing the same ticket now FAIL LOUDLY (on_error: idle) instead of
+      # silently sharing a checkout; the second session is refused, never handed
+      # the first's tree. (Keeping the dir ticket-scoped preserves the stable
+      # on-disk path contract the dogfood-smoke suite and gitops cleanup rely on;
+      # per-session DISTINCT dirs for same-ticket concurrency is a possible
+      # future enhancement, not needed to close the destructive bug.)
       - when: "world.ticket_id != '' && world.workspace_id == '' && !world.bf_autostart_attempted && world.bugfix_mode != 'triage'"
         set:
           workspace_id:   "bf-{{ world.ticket_id }}"
@@ -113,9 +129,10 @@ states:
       - when: "world.ticket_id != '' && world.feature_branch != '' && world.workdir != '' && !world.bf_autostart_attempted && world.bugfix_mode != 'triage'"
         invoke: iface.workspace.create
         with:
-          id:   "{{ world.workspace_id }}"
-          name: "{{ world.feature_branch }}"
-          base: "{{ world.base_branch }}"
+          id:         "{{ world.workspace_id }}"
+          name:       "{{ world.feature_branch }}"
+          base:       "{{ world.base_branch }}"
+          session_id: "{{ world.session_id }}"
         on_error: idle
 
       # Step 2t (triage mode): no worktree — pin workdir to the current

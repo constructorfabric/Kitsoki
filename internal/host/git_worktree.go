@@ -13,10 +13,40 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 )
+
+// ownerSentinelFile is the basename of the per-worktree sentinel that records
+// which kitsoki session created a worktree. worktreeCreate writes it on a
+// successful `git worktree add` and reads it in the idempotency short-circuit
+// to refuse handing one session's live tree to a different session — the
+// host-side safety net for the destructive shared-checkout bug
+// (2026-06-03T121409Z-concurrent-dogfood-sessions-share-checkout-destructive-git).
+const ownerSentinelFile = ".kitsoki-owner"
+
+// writeOwnerSentinel records sid as the owning session of the worktree at path.
+// Empty sid is a no-op (callers that omit the session dimension leave no
+// sentinel — the short-circuit then treats an absent sentinel as shareable for
+// back-compat). Best-effort: a write failure is non-fatal to create.
+func writeOwnerSentinel(path, sid string) {
+	if strings.TrimSpace(sid) == "" {
+		return
+	}
+	_ = os.WriteFile(filepath.Join(path, ownerSentinelFile), []byte(sid), 0o644)
+}
+
+// readOwnerSentinel returns the session id recorded for the worktree at path,
+// or "" when no sentinel is present (or it is unreadable/empty).
+func readOwnerSentinel(path string) string {
+	b, err := os.ReadFile(filepath.Join(path, ownerSentinelFile))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
+}
 
 // GitWorktreeHandler implements host.git_worktree (prefix-fallback).
 //
@@ -127,6 +157,12 @@ func worktreeCreate(ctx context.Context, repo string, args map[string]any) (Resu
 	if strings.TrimSpace(id) == "" {
 		id = strings.ReplaceAll(name, "/", "-")
 	}
+	// session_id is the calling session's identity (projected into the
+	// story as world.session_id). It is optional — callers that omit it
+	// leave no ownership sentinel and keep the legacy shareable behaviour —
+	// but when present it lets the idempotency short-circuit refuse to hand
+	// one session's live tree to a DIFFERENT session.
+	sessionID := strings.TrimSpace(worktreeStringArg(args, "session_id"))
 	path := filepath.Join(resolvedRepo, ".worktrees", id)
 
 	// Idempotency: if a worktree is already registered at our path
@@ -134,8 +170,22 @@ func worktreeCreate(ctx context.Context, repo string, args map[string]any) (Resu
 	// to bf.idle (e.g. after a process restart that lost
 	// bf_autostart_attempted=true) from failing on a workspace that
 	// already exists from a prior run.
+	//
+	// Safety net: before returning that existing tree as "ok", consult the
+	// `.kitsoki-owner` sentinel. If it names a DIFFERENT session than the
+	// caller, REFUSE — handing session B session A's live working tree is
+	// the destructive shared-checkout bug
+	// (2026-06-03T121409Z-concurrent-dogfood-sessions-share-checkout-destructive-git):
+	// a routine `git checkout -- <file>` in one session silently and
+	// unrecoverably reverts the other's uncommitted WIP. An absent sentinel
+	// (legacy worktree, or a caller that omitted session_id) or a matching
+	// one still short-circuits to success, preserving legitimate same-session
+	// re-entry after a restart.
 	if existing, ok := findWorktreeByPath(ctx, resolvedRepo, path); ok {
 		if existing.Branch == name {
+			if owner := readOwnerSentinel(path); owner != "" && sessionID != "" && owner != sessionID {
+				return Result{Error: fmt.Sprintf("workspace.create: %q is already checked out by session %q; refusing to share — concurrent sessions on the same ticket must use distinct worktrees", id, owner)}, nil
+			}
 			return Result{Data: map[string]any{"ok": true, "path": path}}, nil
 		}
 		return Result{Error: fmt.Sprintf("workspace.create: %q already exists at %s but holds branch %q (wanted %q)", id, path, existing.Branch, name)}, nil
@@ -152,6 +202,7 @@ func worktreeCreate(ctx context.Context, repo string, args map[string]any) (Resu
 		return Result{Error: fmt.Sprintf("workspace.create: exec: %v", err)}, nil
 	}
 	if code == 0 {
+		writeOwnerSentinel(path, sessionID)
 		return Result{Data: map[string]any{"ok": true, "path": path}}, nil
 	}
 
@@ -168,6 +219,7 @@ func worktreeCreate(ctx context.Context, repo string, args map[string]any) (Resu
 			return Result{Error: fmt.Sprintf("workspace.create: exec (reattach): %v", retryErr)}, nil
 		}
 		if retryCode == 0 {
+			writeOwnerSentinel(path, sessionID)
 			return Result{Data: map[string]any{
 				"ok":     true,
 				"path":   path,

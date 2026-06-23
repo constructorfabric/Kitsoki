@@ -351,6 +351,28 @@ func (o *Orchestrator) seedIDEConnected(w world.World) {
 	w.Vars["ide"] = map[string]any{"connected": connected}
 }
 
+// seedSessionID projects the orchestrator's per-session SessionID into the
+// world as `world.session_id` so stories can derive a session-scoped identity
+// (e.g. the bugfix story keys its worktree dir on `bf-{ticket}-{session}` so
+// two concurrent sessions on the same ticket can never share one checkout —
+// the destructive shared-tree bug
+// 2026-06-03T121409Z-concurrent-dogfood-sessions-share-checkout-destructive-git).
+//
+// Like seedIDEConnected, this is deliberately EPHEMERAL liveness rather than a
+// journaled effect: the SessionID is a stable per-session constant, so
+// re-seeding it fresh on every loadJourney is correct and replay-safe (the
+// reconstructed world never needs to carry it). It only fills the key when
+// absent, so a story that explicitly set `session_id` in world keeps its value.
+func (o *Orchestrator) seedSessionID(w world.World, sid app.SessionID) {
+	if w.Vars == nil {
+		return
+	}
+	if existing, ok := w.Vars["session_id"].(string); ok && existing != "" {
+		return
+	}
+	w.Vars["session_id"] = string(sid)
+}
+
 // New creates an Orchestrator.
 func New(def *app.AppDef, m machine.Machine, s store.Store, h harness.Harness, opts ...Option) *Orchestrator {
 	o := &Orchestrator{
@@ -2739,6 +2761,7 @@ func (o *Orchestrator) loadJourney(sid app.SessionID) (*store.JourneyState, erro
 			return nil, fmt.Errorf("build journey (jsonl): %w", err)
 		}
 		o.seedIDEConnected(js.World)
+		o.seedSessionID(js.World, sid)
 		return js, nil
 	}
 
@@ -2776,6 +2799,7 @@ func (o *Orchestrator) loadJourney(sid app.SessionID) (*store.JourneyState, erro
 		js.Turn = snap.Turn
 	}
 	o.seedIDEConnected(js.World)
+	o.seedSessionID(js.World, sid)
 
 	return js, nil
 }
