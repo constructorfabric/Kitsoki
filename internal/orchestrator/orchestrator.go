@@ -2767,6 +2767,14 @@ func (o *Orchestrator) loadJourney(sid app.SessionID) (*store.JourneyState, erro
 	if err != nil {
 		return nil, fmt.Errorf("build journey: %w", err)
 	}
+	// A snapshot at turn N means N turns have already happened. BuildJourney
+	// derives js.Turn solely from the post-snapshot events it is handed, so when
+	// a snapshot has no later events (e.g. RewindRoute re-baselines at turnN and
+	// immediately re-dispatches) it would reset the counter to 0 and the next
+	// turn would collide on (session, turn). Floor it at the snapshot turn.
+	if hasSnap && js.Turn < snap.Turn {
+		js.Turn = snap.Turn
+	}
 	o.seedIDEConnected(js.World)
 
 	return js, nil

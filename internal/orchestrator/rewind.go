@@ -128,11 +128,50 @@ func (o *Orchestrator) RewindRoute(ctx context.Context, sid app.SessionID, decis
 	var outcome *TurnOutcome
 	switch newClass {
 	case ClassIntent:
-		// Intent rewind: we would need the original intent name, which is not
-		// currently recoverable from the TurnStarted payload alone (the intent
-		// name is in the IntentAccepted event). Returning an error surfaces the
-		// gap; lane classes are fully supported.
-		return nil, fmt.Errorf("orchestrator: RewindRoute: class=intent rewind requires IntentAccepted recovery; not yet implemented")
+		// Intent rewind: recover the accepted intent name + slots from turnN.
+		// The accepted intent is recorded on the IntentAccepted event (RunIntent
+		// path, payload {"intent":<name>,"slots":{…}}; helpers.go) and, for the
+		// contextual-router/SubmitDirect dispatch path, on the machine.transition
+		// event (payload {"from","intent","slots","to"}). Prefer IntentAccepted,
+		// fall back to the transition event so both dispatch paths are covered.
+		var intentName string
+		var slots map[string]any
+		for _, ev := range history {
+			if ev.Turn != app.TurnNumber(turnN) {
+				continue
+			}
+			if ev.Kind != store.IntentAccepted && ev.Kind != store.TransitionApplied {
+				continue
+			}
+			var p struct {
+				Intent string         `json:"intent"`
+				Slots  map[string]any `json:"slots"`
+			}
+			if unmarshalErr := json.Unmarshal(ev.Payload, &p); unmarshalErr != nil || p.Intent == "" {
+				continue
+			}
+			intentName = p.Intent
+			slots = p.Slots
+			if ev.Kind == store.IntentAccepted {
+				break // authoritative source — stop scanning
+			}
+		}
+		if intentName == "" {
+			return nil, fmt.Errorf("orchestrator: RewindRoute: no IntentAccepted/transition event at turn %d to recover intent for class=intent rewind (decisionID=%q)", turnN, decisionID)
+		}
+
+		var dispatchErr error
+		outcome, dispatchErr = o.SubmitDirectRouted(ctx, sid, intentName, slots, originalInput,
+			RouteProvenance{Source: "context_route", ContextRouteClass: string(ClassIntent)})
+		if dispatchErr != nil {
+			return nil, fmt.Errorf("orchestrator: RewindRoute: re-dispatch intent %q: %w", intentName, dispatchErr)
+		}
+		outcome.ContextRoute = &ContextRouteReceipt{
+			Class:      string(ClassIntent),
+			Intent:     intentName,
+			Reason:     reason,
+			DecisionID: decisionID,
+		}
 
 	default:
 		// help / room_request / meta_edit — lane dispatch.
@@ -180,7 +219,15 @@ func (o *Orchestrator) RewindRoute(ctx context.Context, sid app.SessionID, decis
 		"new_class":        string(newClass),
 		"reason":           reason,
 	})
+	// The override event is written one turn past the last persisted turn so it
+	// never collides on (session_id, turn, seq). For lane classes nothing was
+	// written after the pre-turn snapshot, so turnN+1 is free. For the intent
+	// class SubmitDirectRouted already wrote a full turn at turnN+1, so we land
+	// the override at the dispatched turn + 1.
 	overrideTurn := app.TurnNumber(turnN) + 1
+	if newClass == ClassIntent && outcome.TurnNumber >= overrideTurn {
+		overrideTurn = outcome.TurnNumber + 1
+	}
 	overriddenEvent := store.Event{
 		Kind:       store.TurnContextRouteOverridden,
 		Turn:       overrideTurn,
