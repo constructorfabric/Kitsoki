@@ -1,9 +1,10 @@
 ---
+# triage-marathon: FIXED 82734e37 — recovery-path schema validation (dogfood live drive + scoped-back review)
 id: 2026-06-03T121407Z-agent-decide-silent-abandon-empty-artifact
 title: "agent.decide with no submit routes to success with an empty artifact instead of failing visibly"
 target: kitsoki
 filed_at: 2026-06-03T12:14:07Z
-status: open
+status: fixed
 severity: P1
 component: runtime
 kitsoki_rev: 153c3d6
