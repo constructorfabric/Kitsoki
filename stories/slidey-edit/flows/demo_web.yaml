@@ -83,13 +83,10 @@ host_handlers:
         data: { ok: true, handle: { id: "slidey-semantic#1", kind: "data", mime: "application/json" }, path: "stories/slidey-edit/baked/deck.semantic.json", kind: "data", mime: "application/json" }
 
 turns:
-  # idle: start → drafting (author).
+  # idle: start → drafting (author) → auto-render → reviewing. Drafting emits
+  # accept itself once the deck spec is bound, flowing straight through rendering
+  # (emits) into reviewing with the baked deck media + seeded annotation.
   - intent: { name: start, slots: {} }
-    expect_state: drafting
-
-  # drafting: accept → rendering → emits → auto-advance into reviewing with the
-  # baked deck media + seeded annotation.
-  - intent: { name: accept, slots: {} }
     expect_state: reviewing
     expect_world:
       deck_handle: "slidey-edit#1"

@@ -57,7 +57,9 @@ turns:
         spec_path: "stories/slidey-edit/baked/deck.json"
         summary: "Spatial-annotation explainer deck (3 scenes)."
         feedback: "Tighten the card copy."
-    expect_state: drafting
+    # Drafting auto-renders once the edit binds a deck spec, so edit_existing
+    # flows straight through drafting → rendering → reviewing in one turn.
+    expect_state: reviewing
     expect_world:
       source_deck:
         spec_path: "stories/slidey-edit/baked/deck.json"
@@ -67,15 +69,11 @@ turns:
         spec_path: "stories/slidey-edit/baked/deck.json"
         summary: "Edited the existing spatial-annotation explainer deck."
         edited: ["1/card_0"]
+      deck_handle: "slidey-edit#1"
+      semantic_handle: "slidey-semantic#1"
     expect_host_calls:
       - handler: host.agent.task
         args: { call: "author_deck" }
-
-  - intent: { name: accept, slots: {} }
-    expect_state: reviewing
-    expect_world:
-      deck_handle: "slidey-edit#1"
-      semantic_handle: "slidey-semantic#1"
 
 expect_terminal: false
 expect_no_errors: true

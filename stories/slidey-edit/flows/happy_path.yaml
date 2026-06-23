@@ -52,18 +52,15 @@ host_handlers:
         data: { ok: true, handle: { id: "slidey-semantic#1", kind: "data", mime: "application/json" }, path: "stories/slidey-edit/baked/deck.semantic.json", kind: "data", mime: "application/json" }
 
 turns:
-  # idle: start → drafting (agent authors the deck).
+  # idle: start → drafting (agent authors the deck) → auto-render → reviewing.
+  # Drafting no longer pauses for accept: it emits accept itself once the deck
+  # spec is bound, flowing straight through rendering to reviewing.
   - intent: { name: start, slots: {} }
-    expect_state: drafting
+    expect_state: reviewing
     expect_world:
       deck:
         spec_path: "stories/slidey-edit/baked/deck.json"
         summary: "Authored a 3-scene spatial-annotation explainer deck."
-
-  # drafting: accept → rendering → (deck render + emits) → auto accept → reviewing.
-  - intent: { name: accept, slots: {} }
-    expect_state: reviewing
-    expect_world:
       deck_handle: "slidey-edit#1"
       semantic_handle: "slidey-semantic#1"
 

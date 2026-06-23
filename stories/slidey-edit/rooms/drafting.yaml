@@ -19,12 +19,10 @@ states:
             Deck:     '{{ world.deck.spec_path|default:"(pending)" }}'
             Summary:  '{{ world.deck.summary|default:"(pending — agent has not returned)" }}'
             Feedback: '{{ world.draft_feedback|default:"(none)" }}'
-      - prose: "An agent is writing or editing the deck JSON under the workspace. Accept to render it."
+      - prose: "An agent is writing or editing the deck JSON under the workspace; it renders automatically when the spec is ready."
       - heading: "Actions"
       - list:
           items:
-            - label: "accept"
-              hint:  "render this deck"
             - label: "quit"
               hint:  "abandon the editor"
             - label: "look"
@@ -47,6 +45,11 @@ states:
         bind:
           deck: submitted
         on_error: idle
+
+      # Auto-advance to render as soon as the agent has bound a deck spec —
+      # no manual accept required.
+      - when: "world.deck.spec_path != ''"
+        emit_intent: accept
     on:
       accept:
         - target: rendering
