@@ -120,6 +120,9 @@ first**, and only escalates to the LLM/operator for hunks it can't:
 
 ## Conflict avoidance for parallel agents
 
+> Design rationale, the strategies surveyed, and what we deferred:
+> [`git-ops-conflict-avoidance.md`](git-ops-conflict-avoidance.md).
+
 Many agents rebasing onto a fast-moving `main` is a conflict generator. Three
 layers keep that from becoming an LLM-resolution tax:
 
@@ -180,6 +183,7 @@ the checkpoint/restore roundtrip against real refs.
 
 ## See also
 
+- [`git-ops-conflict-avoidance.md`](git-ops-conflict-avoidance.md) — design & research behind the rerere / merge-driver / checkpoint layers
 - `stories/git-ops/README.md` — operator entry guide
 - `docs/architecture/hosts.md` §host.run — `cwd:` arg and argv mode
 - `docs/stories/state-machine.md` §staged-gate — why static emit targets matter
