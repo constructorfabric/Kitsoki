@@ -27,6 +27,8 @@ func TestGitWorktree_RegisteredAsBuiltin(t *testing.T) {
 		"host.git_worktree.get",
 		"host.git_worktree.create",
 		"host.git_worktree.sync",
+		"host.git_worktree.cleanup_scan",
+		"host.git_worktree.cleanup_apply",
 	} {
 		if _, ok := r.Get(n); !ok {
 			t.Fatalf("registry: %s missing", n)
@@ -379,5 +381,183 @@ func TestGitWorktree_Sync_Happy(t *testing.T) {
 	}
 	if res.Data["ok"] != true {
 		t.Fatalf("ok: %v", res.Data["ok"])
+	}
+}
+
+func TestGitWorktree_CleanupScan_RecommendsOnlyMergedCleanUnprotectedCandidates(t *testing.T) {
+	porcelain := `worktree /repo
+HEAD aaaaaaaa
+branch refs/heads/main
+
+worktree /repo/.worktrees/merged-clean
+HEAD bbbbbbbb
+branch refs/heads/feature/merged-clean
+
+worktree /repo/.worktrees/dirty
+HEAD cccccccc
+branch refs/heads/feature/dirty
+
+worktree /repo/.worktrees/unmerged
+HEAD dddddddd
+branch refs/heads/feature/unmerged
+
+worktree /repo/.worktrees/main-copy
+HEAD eeeeeeee
+branch refs/heads/main
+
+`
+	fr := newFakeRunner()
+	fr.responses["git worktree list --porcelain"] = fakeResp{stdout: porcelain}
+	fr.responses["git status --porcelain"] = fakeResp{}
+	fr.responses["/repo/.worktrees/dirty|git status --porcelain"] = fakeResp{stdout: " M file.go\n"}
+	fr.responses["git branch --format=%(refname:short)"] = fakeResp{stdout: "main\nfeature/merged-clean\nfeature/dirty\nfeature/unmerged\nfeature/stale\n"}
+	fr.responses["git merge-base --is-ancestor feature/merged-clean main"] = fakeResp{}
+	fr.responses["git merge-base --is-ancestor feature/dirty main"] = fakeResp{}
+	fr.responses["git merge-base --is-ancestor feature/unmerged main"] = fakeResp{code: 1}
+	fr.responses["git merge-base --is-ancestor feature/stale main"] = fakeResp{}
+	fr.responses["git merge-base --is-ancestor main main"] = fakeResp{}
+	restore := host.SetExecRunnerForTest(fr.run)
+	defer restore()
+
+	res, err := host.GitWorktreeHandler(context.Background(), map[string]any{
+		"op":   "cleanup_scan",
+		"repo": "/repo",
+		"base": "main",
+	})
+	if err != nil {
+		t.Fatalf("infra: %v", err)
+	}
+	if res.Error != "" {
+		t.Fatalf("domain: %s", res.Error)
+	}
+	if res.Data["recommended_count"] != 2 {
+		t.Fatalf("recommended_count: %v", res.Data["recommended_count"])
+	}
+	candidates, _ := res.Data["candidates"].([]map[string]any)
+	byBranch := map[string]map[string]any{}
+	for _, c := range candidates {
+		byBranch[c["branch"].(string)] = c
+	}
+	if byBranch["feature/merged-clean"]["recommended"] != true {
+		t.Fatalf("merged clean worktree should be recommended: %#v", byBranch["feature/merged-clean"])
+	}
+	if byBranch["feature/stale"]["recommended"] != true || byBranch["feature/stale"]["kind"] != "branch" {
+		t.Fatalf("merged branch-only candidate should be recommended: %#v", byBranch["feature/stale"])
+	}
+	if byBranch["feature/dirty"]["recommended"] != false {
+		t.Fatalf("dirty worktree should not be recommended: %#v", byBranch["feature/dirty"])
+	}
+	if byBranch["feature/unmerged"]["recommended"] != false {
+		t.Fatalf("unmerged branch should not be recommended: %#v", byBranch["feature/unmerged"])
+	}
+	if byBranch["main"]["recommended"] != false {
+		t.Fatalf("protected main should not be recommended: %#v", byBranch["main"])
+	}
+}
+
+func TestGitWorktree_CleanupScan_RefineExcludesMatchingCandidate(t *testing.T) {
+	porcelain := `worktree /repo
+HEAD aaaaaaaa
+branch refs/heads/main
+
+worktree /repo/.worktrees/merged-clean
+HEAD bbbbbbbb
+branch refs/heads/feature/merged-clean
+
+`
+	fr := newFakeRunner()
+	fr.responses["git worktree list --porcelain"] = fakeResp{stdout: porcelain}
+	fr.responses["git status --porcelain"] = fakeResp{}
+	fr.responses["git branch --format=%(refname:short)"] = fakeResp{stdout: "main\nfeature/merged-clean\n"}
+	fr.responses["git merge-base --is-ancestor feature/merged-clean main"] = fakeResp{}
+	restore := host.SetExecRunnerForTest(fr.run)
+	defer restore()
+
+	res, err := host.GitWorktreeHandler(context.Background(), map[string]any{
+		"op":      "cleanup_scan",
+		"repo":    "/repo",
+		"base":    "main",
+		"exclude": "merged-clean",
+	})
+	if err != nil {
+		t.Fatalf("infra: %v", err)
+	}
+	if res.Error != "" {
+		t.Fatalf("domain: %s", res.Error)
+	}
+	if res.Data["recommended_count"] != 0 {
+		t.Fatalf("recommended_count: %v", res.Data["recommended_count"])
+	}
+	candidates, _ := res.Data["candidates"].([]map[string]any)
+	if candidates[0]["recommended"] != false || candidates[0]["reason"] != "excluded by refinement" {
+		t.Fatalf("expected refined exclusion, got %#v", candidates[0])
+	}
+}
+
+func TestGitWorktree_CleanupApply_RemovesOnlyRecommendedCandidates(t *testing.T) {
+	fr := newFakeRunner()
+	fr.responses["git worktree remove /repo/.worktrees/merged-clean"] = fakeResp{}
+	fr.responses["git branch -d feature/merged-clean"] = fakeResp{}
+	fr.responses["git branch -d feature/stale"] = fakeResp{}
+	restore := host.SetExecRunnerForTest(fr.run)
+	defer restore()
+
+	res, err := host.GitWorktreeHandler(context.Background(), map[string]any{
+		"op":   "cleanup_apply",
+		"repo": "/repo",
+		"candidates": []any{
+			map[string]any{"branch": "feature/merged-clean", "path": "/repo/.worktrees/merged-clean", "recommended": true},
+			map[string]any{"branch": "feature/unmerged", "path": "/repo/.worktrees/unmerged", "recommended": false},
+			map[string]any{"branch": "feature/stale", "path": "", "recommended": true},
+		},
+	})
+	if err != nil {
+		t.Fatalf("infra: %v", err)
+	}
+	if res.Error != "" {
+		t.Fatalf("domain: %s", res.Error)
+	}
+	for _, want := range []string{
+		"git worktree remove /repo/.worktrees/merged-clean",
+		"git branch -d feature/merged-clean",
+		"git branch -d feature/stale",
+	} {
+		var saw bool
+		for _, call := range fr.calls {
+			if call == want {
+				saw = true
+			}
+		}
+		if !saw {
+			t.Fatalf("missing call %q in %v", want, fr.calls)
+		}
+	}
+	for _, call := range fr.calls {
+		if strings.Contains(call, "feature/unmerged") {
+			t.Fatalf("unrecommended candidate should not be deleted: %v", fr.calls)
+		}
+	}
+}
+
+func TestGitWorktree_CleanupApply_AcceptsJSONCandidateList(t *testing.T) {
+	fr := newFakeRunner()
+	fr.responses["git worktree remove /repo/.worktrees/merged-clean"] = fakeResp{}
+	fr.responses["git branch -d feature/merged-clean"] = fakeResp{}
+	restore := host.SetExecRunnerForTest(fr.run)
+	defer restore()
+
+	res, err := host.GitWorktreeHandler(context.Background(), map[string]any{
+		"op":         "cleanup_apply",
+		"repo":       "/repo",
+		"candidates": `[{"branch":"feature/merged-clean","path":"/repo/.worktrees/merged-clean","recommended":true}]`,
+	})
+	if err != nil {
+		t.Fatalf("infra: %v", err)
+	}
+	if res.Error != "" {
+		t.Fatalf("domain: %s", res.Error)
+	}
+	if len(fr.calls) != 2 {
+		t.Fatalf("calls: %v", fr.calls)
 	}
 }

@@ -1,0 +1,114 @@
+# workspace_cleanup_accept — scan recommends only merged/dead items, then accept
+# deletes exactly that recommendation set through the mocked workspace iface.
+test_kind: flow
+app: ../app.yaml
+initial_state: workspace_manager
+initial_world:
+  base_branch: main
+
+host_handlers:
+  host.git_worktree.list:
+    data:
+      workspaces:
+        - { id: repo, path: /repo, branch: main, dirty: false }
+        - { id: old, path: /repo/.worktrees/old, branch: feature/old, dirty: false }
+  host.git_worktree.cleanup_scan:
+    data:
+      ok: true
+      base: main
+      exclude: ""
+      recommended_count: 2
+      candidates:
+        - kind: worktree
+          id: old
+          path: /repo/.worktrees/old
+          branch: feature/old
+          base: main
+          merged: true
+          dirty: false
+          recommended: true
+          reason: branch is merged into main
+          actions: [worktree_remove, branch_delete]
+        - kind: branch
+          id: stale
+          path: ""
+          branch: feature/stale
+          base: main
+          merged: true
+          dirty: false
+          recommended: true
+          reason: branch is merged into main
+          actions: [branch_delete]
+        - kind: worktree
+          id: active
+          path: /repo/.worktrees/active
+          branch: feature/active
+          base: main
+          merged: false
+          dirty: false
+          recommended: false
+          reason: branch is not merged into main
+          actions: [worktree_remove, branch_delete]
+  host.git_worktree.cleanup_apply:
+    data:
+      ok: true
+      deleted:
+        - { branch: feature/old, path: /repo/.worktrees/old }
+        - { branch: feature/stale, path: "" }
+      skipped:
+        - { branch: feature/active, path: /repo/.worktrees/active, reason: not recommended }
+      errors: []
+
+turns:
+  - intent: { name: cleanup_workspaces, slots: {} }
+    expect_state: workspace_cleanup_review
+    expect_host_calls:
+      - handler: host.git_worktree.cleanup_scan
+    expect_world:
+      cleanup_base: main
+      cleanup_recommended: 2
+      cleanup_candidates:
+        - kind: worktree
+          id: old
+          path: /repo/.worktrees/old
+          branch: feature/old
+          base: main
+          merged: true
+          dirty: false
+          recommended: true
+          reason: branch is merged into main
+          actions: [worktree_remove, branch_delete]
+        - kind: branch
+          id: stale
+          path: ""
+          branch: feature/stale
+          base: main
+          merged: true
+          dirty: false
+          recommended: true
+          reason: branch is merged into main
+          actions: [branch_delete]
+        - kind: worktree
+          id: active
+          path: /repo/.worktrees/active
+          branch: feature/active
+          base: main
+          merged: false
+          dirty: false
+          recommended: false
+          reason: branch is not merged into main
+          actions: [worktree_remove, branch_delete]
+
+  - intent: { name: accept, slots: {} }
+    expect_state: workspace_cleanup_done
+    expect_host_calls:
+      - handler: host.git_worktree.cleanup_apply
+    expect_world:
+      cleanup_status: deleted
+      cleanup_deleted:
+        - { branch: feature/old, path: /repo/.worktrees/old }
+        - { branch: feature/stale, path: "" }
+      cleanup_skipped:
+        - { branch: feature/active, path: /repo/.worktrees/active, reason: not recommended }
+
+expect_no_errors: true

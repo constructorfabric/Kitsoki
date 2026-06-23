@@ -27,7 +27,11 @@ type fakeResp struct {
 
 func (f *fakeRunner) run(ctx context.Context, dir, name string, args ...string) (string, string, int, error) {
 	key := name + " " + strings.Join(args, " ")
+	dirKey := dir + "|" + key
 	f.calls = append(f.calls, key)
+	if r, ok := f.responses[dirKey]; ok {
+		return r.stdout, r.stderr, r.code, r.err
+	}
 	if r, ok := f.responses[key]; ok {
 		return r.stdout, r.stderr, r.code, r.err
 	}

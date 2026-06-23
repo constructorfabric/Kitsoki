@@ -314,6 +314,12 @@ host_interfaces:
       sync:
         input:  { id: string }
         output: { ok: bool, log: string }
+      cleanup_scan:
+        input:  { base: string, exclude: string, protected: string }
+        output: { ok: bool, base: string, exclude: string, candidates: list, recommended_count: int }
+      cleanup_apply:
+        input:  { candidates: list }
+        output: { ok: bool, deleted: list, skipped: list, errors: list }
     default: host.git_worktree
 
   transport:
@@ -419,6 +425,15 @@ world:
   workdir:             { type: string, default: "" }
   base_branch:         { type: string, default: "main" }
   feature_branch:      { type: string, default: "" }
+  workspace_list:      { type: list,   default: [] }
+  cleanup_candidates:  { type: list,   default: [] }
+  cleanup_deleted:     { type: list,   default: [] }
+  cleanup_skipped:     { type: list,   default: [] }
+  cleanup_errors:      { type: list,   default: [] }
+  cleanup_recommended: { type: int,    default: 0 }
+  cleanup_filter:      { type: string, default: "" }
+  cleanup_base:        { type: string, default: "main" }
+  cleanup_status:      { type: string, default: "" }
 
   # ── Pipeline control (shared with bf / pr imports) ────────────────
   judge_mode:                  { type: string, default: "human" }
@@ -707,7 +722,7 @@ intents:
   go_workspace_manager:
     title: "Workspaces"
     description: "Open workspace manager."
-    examples: [workspaces, "workspace manager", "list workspaces", "resume", "resume my workspace", "continue where I left off", "pick up where I left off"]
+    examples: [workspaces, "workspace manager", "list workspaces", "cleanup worktrees", "clean up merged branches", "resume", "resume my workspace", "continue where I left off", "pick up where I left off"]
     priority: 30
   go_standup:
     title: "Standup"
@@ -1167,6 +1182,14 @@ intents:
     description: "Summarise today's work for standup."
     examples: [summarize, "summarise day", "what did I do"]
     priority: 70
+
+  cleanup_workspaces:
+    title: "Cleanup Workspaces"
+    description: "Scan for merged worktrees and branches that are safe to delete."
+    examples: ["cleanup worktrees", "clean up workspaces", "delete merged branches", "prune dead worktrees"]
+    priority: 72
+    slots:
+      base: { type: string, required: false, description: "base branch to check merged candidates against" }
 
   proceed:
     title: "Proceed"

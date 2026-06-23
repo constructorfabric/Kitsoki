@@ -16,6 +16,9 @@ states:
             "Current workspace": '{{ world.current_workspace|default:"(none)" }}'
             Workdir:             '{{ world.workdir|default:"(none)" }}'
             "Feature branch":    '{{ world.feature_branch|default:"(none)" }}'
+      - code: |
+          {% if world.workspace_list %}{% for w in world.workspace_list %}{{ forloop.Counter }}. {{ w.id }}  {{ w.branch|default:"(detached)" }}  {{ w.path }}{% if w.dirty %}  dirty{% endif %}
+          {% endfor %}{% else %}(workspace list has not been fetched yet){% endif %}
       - choice:
           mode: single
           prompt: "Actions"
@@ -23,19 +26,39 @@ states:
             - label:  "proceed"
               intent: proceed
               hint:   "fetch the workspace list"
+            - label:  "scan_cleanup"
+              intent: cleanup_workspaces
+              hint:   "recommend merged worktrees and branches for deletion"
+              param:
+                slot:        base
+                type:        string
+                placeholder: "base branch (default main)"
+                required:    false
             - { label: "go_back",  intent: go_back,  hint: "return to the previous room" }
             - { label: "go_main",  intent: go_main,  hint: "back to the engineer's day landing" }
             - { label: "go_inbox", intent: go_inbox, hint: "check the inbox" }
             - { label: "look",     intent: look,     hint: "re-render" }
-    relevant_world: [current_workspace, workdir, feature_branch]
+    relevant_world: [current_workspace, workdir, feature_branch, workspace_list]
     on_enter:
       - invoke: iface.workspace.list
         bind:
-          last_error: log
+          workspace_list: workspaces
         on_error: workspace_manager
     on:
       proceed:
         - target: workspace_manager
+      cleanup_workspaces:
+        - target: workspace_cleanup_review
+          effects:
+            - set:
+                cleanup_base:        "{{ slots.base }}"
+                cleanup_filter:      ""
+                cleanup_status:      ""
+                cleanup_candidates:  []
+                cleanup_deleted:     []
+                cleanup_skipped:     []
+                cleanup_errors:      []
+                cleanup_recommended: 0
       go_back:
         - target: "{{ world.prev_state }}"
       go_main:
@@ -43,5 +66,105 @@ states:
       go_inbox:
         - target: inbox
           push_history: false
+      look:
+        - target: .
+
+  workspace_cleanup_review:
+    description: "Review merged worktree and branch cleanup recommendations."
+    view:
+      - kv:
+          pairs:
+            "Base branch": '{{ world.cleanup_base|default:"main" }}'
+            "Refinement filter": '{{ world.cleanup_filter|default:"(none)" }}'
+            Recommended: "{{ world.cleanup_recommended }}"
+      - code: |
+          {% if world.cleanup_candidates %}{% for c in world.cleanup_candidates %}{% if c.recommended %}[delete]{% else %}[keep]{% endif %} {{ c.kind }} {{ c.branch|default:"(detached)" }}{% if c.path %}  {{ c.path }}{% endif %} — {{ c.reason }}
+          {% endfor %}{% else %}(no worktree or branch candidates found){% endif %}
+      - choice:
+          mode: single
+          prompt: "Cleanup"
+          items:
+            - label: "accept"
+              intent: accept
+              hint: "delete only the recommended candidates"
+              when: "world.cleanup_recommended > 0"
+            - label: "refine"
+              intent: refine
+              hint: "exclude candidates matching this text and re-scan"
+              param:
+                slot:        feedback
+                type:        string
+                placeholder: "branch/id/path text to exclude"
+                required:    true
+            - { label: "go_back", intent: go_back, hint: "return to workspace list" }
+            - { label: "look", intent: look, hint: "re-render" }
+    relevant_world: [cleanup_base, cleanup_filter, cleanup_candidates, cleanup_recommended]
+    on_enter:
+      - invoke: iface.workspace.cleanup_scan
+        with:
+          base:      "{{ world.cleanup_base }}"
+          exclude:   "{{ world.cleanup_filter }}"
+          protected: "main,master,develop,dev,trunk,release"
+        bind:
+          cleanup_base:        base
+          cleanup_filter:      exclude
+          cleanup_candidates:  candidates
+          cleanup_recommended: recommended_count
+        on_error: workspace_manager
+    on:
+      accept:
+        - when: "world.cleanup_recommended <= 0"
+          target: .
+          guard_hint: "No recommended cleanup candidates are available."
+        - target: workspace_cleanup_done
+          effects:
+            - invoke: iface.workspace.cleanup_apply
+              with:
+                candidates: "{{ world.cleanup_candidates }}"
+              bind:
+                cleanup_deleted: deleted
+                cleanup_skipped: skipped
+                cleanup_errors:  errors
+              on_error: workspace_cleanup_review
+            - set:
+                cleanup_status: "deleted"
+      refine:
+        - target: workspace_cleanup_review
+          effects:
+            - set:
+                cleanup_filter:      "{{ slots.feedback }}"
+                cleanup_candidates:  []
+                cleanup_recommended: 0
+      go_back:
+        - target: workspace_manager
+      look:
+        - target: .
+
+  workspace_cleanup_done:
+    description: "Merged worktree and branch cleanup completed."
+    view:
+      - kv:
+          pairs:
+            Status: '{{ world.cleanup_status|default:"done" }}'
+            Deleted: "{{ len(world.cleanup_deleted) }}"
+            Skipped: "{{ len(world.cleanup_skipped) }}"
+      - code: |
+          {% if world.cleanup_deleted %}{% for d in world.cleanup_deleted %}deleted {{ d.branch }}{% if d.path %}  {{ d.path }}{% endif %}
+          {% endfor %}{% else %}(nothing deleted){% endif %}
+          {% if world.cleanup_errors %}{% for e in world.cleanup_errors %}error: {{ e }}
+          {% endfor %}{% endif %}
+      - choice:
+          mode: single
+          prompt: "Next"
+          items:
+            - { label: "go_back", intent: go_back, hint: "return to workspace list" }
+            - { label: "go_main", intent: go_main, hint: "back to landing" }
+            - { label: "look", intent: look, hint: "re-render" }
+    relevant_world: [cleanup_status, cleanup_deleted, cleanup_skipped, cleanup_errors]
+    on:
+      go_back:
+        - target: workspace_manager
+      go_main:
+        - target: landing
       look:
         - target: .

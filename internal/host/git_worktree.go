@@ -11,8 +11,10 @@ package host
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -51,6 +53,10 @@ func GitWorktreeHandler(ctx context.Context, args map[string]any) (Result, error
 		return worktreeCreate(ctx, repo, args)
 	case "sync":
 		return worktreeSync(ctx, repo, args)
+	case "cleanup_scan":
+		return worktreeCleanupScan(ctx, repo, args)
+	case "cleanup_apply":
+		return worktreeCleanupApply(ctx, repo, args)
 	default:
 		return Result{Error: fmt.Sprintf("host.git_worktree: unknown op %q", op)}, nil
 	}
@@ -308,6 +314,239 @@ func worktreeSync(ctx context.Context, repo string, args map[string]any) (Result
 		"ok":  true,
 		"log": pullOut,
 	}}, nil
+}
+
+func worktreeCleanupScan(ctx context.Context, repo string, args map[string]any) (Result, error) {
+	base := strings.TrimSpace(worktreeStringArg(args, "base"))
+	if base == "" {
+		base = "main"
+	}
+	exclude := strings.TrimSpace(worktreeStringArg(args, "exclude"))
+	protected := cleanupProtectedBranches(worktreeStringArg(args, "protected"))
+
+	stdout, stderr, code, err := cliExec(ctx, repo, "git", "worktree", "list", "--porcelain")
+	if err != nil {
+		return Result{Error: fmt.Sprintf("workspace.cleanup_scan: list worktrees: %v", err)}, nil
+	}
+	if code != 0 {
+		return Result{Error: fmt.Sprintf("workspace.cleanup_scan: list worktrees: %s", strings.TrimSpace(stderr))}, nil
+	}
+	worktrees := parseWorktreePorcelain(stdout)
+	attached := map[string]bool{}
+	var primaryPath string
+	if len(worktrees) > 0 {
+		primaryPath = worktrees[0].Path
+	}
+	out := make([]map[string]any, 0, len(worktrees))
+	for _, wt := range worktrees {
+		if wt.Branch != "" {
+			attached[wt.Branch] = true
+		}
+		if wt.Path == primaryPath {
+			continue
+		}
+		wt.Dirty = worktreeDirty(ctx, wt.Path)
+		c := cleanupCandidate(ctx, repo, wt, base, protected, exclude, "worktree")
+		c["actions"] = []string{"worktree_remove", "branch_delete"}
+		out = append(out, c)
+	}
+
+	branchOut, branchErr, branchCode, branchExecErr := cliExec(ctx, repo, "git", "branch", "--format=%(refname:short)")
+	if branchExecErr != nil {
+		return Result{Error: fmt.Sprintf("workspace.cleanup_scan: list branches: %v", branchExecErr)}, nil
+	}
+	if branchCode != 0 {
+		return Result{Error: fmt.Sprintf("workspace.cleanup_scan: list branches: %s", strings.TrimSpace(branchErr))}, nil
+	}
+	for _, branch := range strings.Split(branchOut, "\n") {
+		branch = strings.TrimSpace(strings.TrimPrefix(branch, "* "))
+		if branch == "" || attached[branch] {
+			continue
+		}
+		wt := worktreeInfo{Branch: branch, Path: ""}
+		c := cleanupCandidate(ctx, repo, wt, base, protected, exclude, "branch")
+		c["actions"] = []string{"branch_delete"}
+		out = append(out, c)
+	}
+
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i]["recommended"] != out[j]["recommended"] {
+			return out[i]["recommended"] == true
+		}
+		return fmt.Sprint(out[i]["branch"]) < fmt.Sprint(out[j]["branch"])
+	})
+	recommended := 0
+	for _, c := range out {
+		if c["recommended"] == true {
+			recommended++
+		}
+	}
+	return Result{Data: map[string]any{
+		"ok":                true,
+		"base":              base,
+		"exclude":           exclude,
+		"candidates":        out,
+		"recommended_count": recommended,
+	}}, nil
+}
+
+func worktreeCleanupApply(ctx context.Context, repo string, args map[string]any) (Result, error) {
+	candidates, parseErr := cleanupCandidatesArg(args["candidates"])
+	if parseErr != "" {
+		return Result{Error: "workspace.cleanup_apply: " + parseErr}, nil
+	}
+	if len(candidates) == 0 {
+		return Result{Data: map[string]any{"ok": true, "deleted": []map[string]any{}, "skipped": []map[string]any{}}}, nil
+	}
+	var deleted []map[string]any
+	var skipped []map[string]any
+	var errs []string
+	for _, raw := range candidates {
+		c, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		branch := strings.TrimSpace(fmt.Sprint(c["branch"]))
+		path := strings.TrimSpace(fmt.Sprint(c["path"]))
+		if c["recommended"] != true {
+			skipped = append(skipped, map[string]any{"branch": branch, "path": path, "reason": "not recommended"})
+			continue
+		}
+		if path != "" {
+			_, stderr, code, err := cliExec(ctx, repo, "git", "worktree", "remove", path)
+			if err != nil {
+				errs = append(errs, fmt.Sprintf("%s: worktree remove: %v", branch, err))
+				continue
+			}
+			if code != 0 {
+				errs = append(errs, fmt.Sprintf("%s: worktree remove: %s", branch, strings.TrimSpace(stderr)))
+				continue
+			}
+		}
+		if branch != "" {
+			_, stderr, code, err := cliExec(ctx, repo, "git", "branch", "-d", branch)
+			if err != nil {
+				errs = append(errs, fmt.Sprintf("%s: branch delete: %v", branch, err))
+				continue
+			}
+			if code != 0 {
+				errs = append(errs, fmt.Sprintf("%s: branch delete: %s", branch, strings.TrimSpace(stderr)))
+				continue
+			}
+		}
+		deleted = append(deleted, map[string]any{"branch": branch, "path": path})
+	}
+	data := map[string]any{"ok": len(errs) == 0, "deleted": deleted, "skipped": skipped}
+	if len(errs) > 0 {
+		data["errors"] = errs
+		return Result{Data: data, Error: "workspace.cleanup_apply: " + strings.Join(errs, "; ")}, nil
+	}
+	return Result{Data: data}, nil
+}
+
+func cleanupCandidate(ctx context.Context, repo string, wt worktreeInfo, base string, protected map[string]bool, exclude string, kind string) map[string]any {
+	branch := wt.Branch
+	id := filepath.Base(wt.Path)
+	if wt.Path == "" {
+		id = branch
+	}
+	merged := branchMerged(ctx, repo, branch, base)
+	reason := "branch is merged into " + base
+	recommended := true
+	switch {
+	case branch == "":
+		recommended, reason = false, "detached worktree has no branch"
+	case protected[branch]:
+		recommended, reason = false, "protected branch"
+	case wt.Dirty:
+		recommended, reason = false, "worktree has uncommitted changes"
+	case exclude != "" && cleanupCandidateMatches(wt, exclude):
+		recommended, reason = false, "excluded by refinement"
+	case !merged:
+		recommended, reason = false, "branch is not merged into "+base
+	}
+	return map[string]any{
+		"id":          id,
+		"kind":        kind,
+		"path":        wt.Path,
+		"branch":      branch,
+		"base":        base,
+		"merged":      merged,
+		"dirty":       wt.Dirty,
+		"recommended": recommended,
+		"reason":      reason,
+	}
+}
+
+func cleanupProtectedBranches(extra string) map[string]bool {
+	out := map[string]bool{
+		"main": true, "master": true, "develop": true, "dev": true,
+		"trunk": true, "release": true,
+	}
+	for _, b := range strings.Split(extra, ",") {
+		b = strings.TrimSpace(b)
+		if b != "" {
+			out[b] = true
+		}
+	}
+	return out
+}
+
+func cleanupCandidateMatches(wt worktreeInfo, needle string) bool {
+	needle = strings.ToLower(strings.TrimSpace(needle))
+	if needle == "" {
+		return false
+	}
+	hay := strings.ToLower(filepath.Base(wt.Path) + " " + wt.Path + " " + wt.Branch)
+	return strings.Contains(hay, needle)
+}
+
+func branchMerged(ctx context.Context, repo, branch, base string) bool {
+	if strings.TrimSpace(branch) == "" {
+		return false
+	}
+	_, _, code, err := cliExec(ctx, repo, "git", "merge-base", "--is-ancestor", branch, base)
+	return err == nil && code == 0
+}
+
+func worktreeDirty(ctx context.Context, path string) bool {
+	out, _, code, err := cliExec(ctx, path, "git", "status", "--porcelain")
+	return err == nil && code == 0 && strings.TrimSpace(out) != ""
+}
+
+func worktreeStringArg(args map[string]any, key string) string {
+	if args == nil {
+		return ""
+	}
+	v, _ := args[key].(string)
+	return v
+}
+
+func cleanupCandidatesArg(raw any) ([]any, string) {
+	switch v := raw.(type) {
+	case nil:
+		return nil, ""
+	case []any:
+		return v, ""
+	case []map[string]any:
+		out := make([]any, 0, len(v))
+		for _, c := range v {
+			out = append(out, c)
+		}
+		return out, ""
+	case string:
+		s := strings.TrimSpace(v)
+		if s == "" {
+			return nil, ""
+		}
+		var out []any
+		if err := json.Unmarshal([]byte(s), &out); err != nil {
+			return nil, fmt.Sprintf("candidates must be a list or JSON list: %v", err)
+		}
+		return out, ""
+	default:
+		return nil, fmt.Sprintf("candidates must be a list, got %T", raw)
+	}
 }
 
 // ─── porcelain parser ───────────────────────────────────────────────────────
