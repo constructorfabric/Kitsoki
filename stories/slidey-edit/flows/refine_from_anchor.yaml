@@ -38,7 +38,7 @@ host_handlers:
       render_deck:
         data:
           ok: true
-          path: "stories/slidey-edit/baked/deck.mp4"
+          path: "stories/slidey-edit/baked/deck.html"
           semantic_path: "stories/slidey-edit/baked/deck.semantic.json"
 
   host.starlark.run:
@@ -64,7 +64,7 @@ host_handlers:
   host.artifacts_dir:
     by_call:
       emit_deck:
-        data: { ok: true, handle: { id: "slidey-edit#1", kind: "video", mime: "video/mp4" }, path: "stories/slidey-edit/baked/deck.mp4", kind: "video", mime: "video/mp4" }
+        data: { ok: true, handle: { id: "slidey-edit#1", kind: "slideshow", mime: "text/html" }, path: "stories/slidey-edit/baked/deck.html", kind: "slideshow", mime: "text/html" }
       emit_semantic:
         data: { ok: true, handle: { id: "slidey-semantic#1", kind: "data", mime: "application/json" }, path: "stories/slidey-edit/baked/deck.semantic.json", kind: "data", mime: "application/json" }
 

@@ -9,8 +9,11 @@
 //
 // # host.slidey.render
 //
-// Validates a JSON scene spec with `node <slidey_home>/src/index.js --validate`
-// then renders it to the requested format.  Tool discovery order:
+// Validates a JSON scene spec with `node <slidey_home>/src/index.js <spec> --validate`
+// then renders it to the requested format. mp4/pdf use the bare render
+// invocation (`slidey <spec> <out>`); html uses the `bundle` subcommand
+// (`slidey bundle <spec> <out.html>`) to emit a self-contained interactive
+// single-file deck.  Tool discovery order:
 //  1. $SLIDEY_HOME env var (explicit override).
 //  2. PATH lookup for a `slidey` binary (wrapper script / global install).
 //
@@ -93,7 +96,7 @@ func SlideyRenderHandler(ctx context.Context, args map[string]any) (Result, erro
 	}
 
 	// Step 1 — validate.
-	validateProg, validateArgs := buildArgs("--validate", specPath)
+	validateProg, validateArgs := buildArgs(specPath, "--validate")
 	valStdout, valStderr, valCode, valErr := cliExec(ctx, "", validateProg, validateArgs...)
 	if valErr != nil {
 		return Result{Error: fmt.Sprintf("host.slidey.render: validation exec: %v", valErr)}, nil
@@ -103,8 +106,18 @@ func SlideyRenderHandler(ctx context.Context, args map[string]any) (Result, erro
 		return Result{Error: fmt.Sprintf("host.slidey.render: spec validation failed: %s", combined)}, nil
 	}
 
-	// Step 2 — render.
-	renderProg, renderArgs := buildArgs(specPath, outputPath)
+	// Step 2 — render. The slidey CLI infers the output kind from the output
+	// path's extension EXCEPT for html: a self-contained interactive deck is
+	// produced by the explicit `bundle` subcommand (`slidey bundle <spec>
+	// <out.html>`), not the bare render path (which would treat an `.html`
+	// output as a video target). mp4/pdf use the bare render invocation.
+	var renderProg string
+	var renderArgs []string
+	if format == "html" {
+		renderProg, renderArgs = buildArgs("bundle", specPath, outputPath)
+	} else {
+		renderProg, renderArgs = buildArgs(specPath, outputPath)
+	}
 	stdout, stderr, exitCode, execErr := cliExec(ctx, "", renderProg, renderArgs...)
 	if execErr != nil {
 		return Result{Error: fmt.Sprintf("host.slidey.render: render exec: %v", execErr)}, nil

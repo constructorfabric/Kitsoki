@@ -2,15 +2,15 @@
 # refine from a LOCATION-TIED annotation anchor on the rendered deck.
 #
 # This is the v2+ generalization PoC of spatial-oracle: feedback is no longer
-# rrweb-only. A reviewer annotates the rendered deck (png/mp4 frame) with an
-# AnnotationAnchor — a semantic_element on a named scene element, a drawn
-# region, or a point — and that anchor flows verbatim into a refine pass that
-# edits the EXACT scene the anchor points at.
+# rrweb-only. A reviewer annotates the rendered deck (the html deck's poster
+# frame) with an AnnotationAnchor — a semantic_element on a named scene element,
+# a drawn region, or a point — and that anchor flows verbatim into a refine pass
+# that edits the EXACT scene the anchor points at.
 #
 # Rooms:  idle → drafting → rendering → reviewing → refining → done
 #   idle       deterministic: choose create-new or an existing deck spec to edit
 #   drafting   interpretive:  ONE host.agent.task authors/edits the deck JSON (mocked)
-#   rendering  deterministic: host.slidey.render → mp4 + .semantic.json sidecar; bind the media handle
+#   rendering  deterministic: host.slidey.render → static HTML deck + .semantic.json sidecar; bind the media handle
 #   reviewing  deterministic: media(deck) inline + invite an anchored annotation
 #   refining   interpretive:  ONE host.agent.task consumes {{ args.visual.anchor }} + the operator
 #                             instruction, edits the spec, re-renders, shows before/after
@@ -58,10 +58,19 @@ world:
   draft_feedback:   { type: string, default: "" }
 
   # ── render outputs ──────────────────────────────────────────────────────────
-  deck_handle:      { type: string, default: "" }   # rendered mp4 artifact handle
+  deck_handle:      { type: string, default: "" }   # rendered HTML deck artifact handle
   semantic_handle:  { type: string, default: "" }   # .semantic.json sidecar handle
   deck_path:        { type: string, default: "" }
   semantic_path:    { type: string, default: "" }
+
+  # ── render auto-fix loop ────────────────────────────────────────────────────
+  # On a render failure the deck spec is auto-repaired and re-rendered, up to
+  # render_retry_budget attempts, before falling through to reviewing with the
+  # error surfaced. render_retries resets on any fresh attempt (start / rerender
+  # / refine). render_fix_result is the once: cache for the repair pass.
+  render_retries:      { type: int,    default: 0 }
+  render_retry_budget: { type: int,    default: 2 }
+  render_fix_result:   { type: object, default: {} }
 
   # ── annotation → refine loop ────────────────────────────────────────────────
   # annotation is the operator's location-tied feedback bundle. anchor mirrors
@@ -120,6 +129,14 @@ intents:
     description: "Re-render the current deck without editing it."
     examples: ["rerender", "render again"]
     priority: 60
+
+  # ── internal (emit_intent only — never user-routed) ──────────────────────────
+  render_retry:
+    description: "Internal: re-render after an auto-repair pass (counts against the retry budget)."
+    priority: 1
+  render_giveup:
+    description: "Internal: render auto-fix budget exhausted — return to review with the error."
+    priority: 1
   quit:
     description: "Abandon the editor."
     examples: ["quit", "abort", "bail"]

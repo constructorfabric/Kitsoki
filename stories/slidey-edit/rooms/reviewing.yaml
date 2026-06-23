@@ -30,7 +30,7 @@ states:
       - heading: "Rendered deck"
       - media:
           handle:  "{{ world.deck_handle }}"
-          kind:    video
+          kind:    slideshow
           caption: "{{ world.deck.summary }}"
         when: "world.deck_handle != ''"
       - prose: "⚠️  Render failed — there's no deck to show. The renderer reported:\n\n    {{ world.last_error }}\n\nFix the render, then `rerender` to try again (or `refine` to edit the spec first)."
@@ -95,6 +95,7 @@ states:
                 semantic_handle: ""
                 deck_path:       ""
                 semantic_path:   ""
+                render_retries:  0   # fresh attempt — reset the auto-fix budget
       quit:
         - target: "@exit:abandoned"
           effects:

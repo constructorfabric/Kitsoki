@@ -1,0 +1,77 @@
+# fixing_render — DETERMINISTIC entry, INTERPRETIVE body. Reached only via
+# rendering's `on_error` when host.slidey.render fails. ONE host.agent.task
+# (reviser) repairs the deck spec given the render error, then re-renders.
+#
+# Bounded: each repair pass increments render_retries; once render_retries
+# reaches render_retry_budget we give up and fall through to reviewing with the
+# error surfaced (the reviewing render-failed banner). render_retries is reset
+# to 0 on any fresh attempt (idle.start / reviewing.rerender / refining.rerender)
+# so the cap only bounds a single failure cascade.
+#
+# `once:` keyed on render_fix_result so reload / self-entry don't re-run the
+# repair pass; render_retry clears that cache so the next failure repairs fresh.
+
+states:
+
+  fixing_render:
+    description: "Render failed — auto-repair the deck spec and re-render (bounded retries)."
+    relevant_world: [deck, last_error, render_retries, render_retry_budget, render_fix_result, cycle]
+    view:
+      - heading: "Slidey deck editor · auto-fixing render"
+      - kv:
+          pairs:
+            Retries: "{{ world.render_retries }} / {{ world.render_retry_budget }}"
+            Deck:    '{{ world.deck.spec_path|default:"(pending)" }}'
+            Error:   '{{ world.last_error|default:"(none)" }}'
+      - prose: "The render failed. An agent is repairing the deck spec from the error, then re-rendering. If the retries run out, you'll return to review with the error."
+    on_enter:
+      # Out of budget → give up; return to review with last_error surfaced.
+      - when: "world.render_retries >= world.render_retry_budget"
+        emit_intent: render_giveup
+
+      # Budget remains → repair the deck spec given the render error.
+      - invoke: host.agent.task
+        id: fix_render
+        once: true
+        when: "world.render_retries < world.render_retry_budget"
+        with:
+          agent: reviser
+          working_dir: "{{ world.workspace }}"
+          acceptance:
+            schema: schemas/deck.json
+          context:
+            prompt: prompts/fix_render.md
+            args:
+              workspace:  "{{ world.workspace }}"
+              deck:       "{{ world.deck }}"
+              last_error: "{{ world.last_error }}"
+        bind:
+          render_fix_result: submitted   # once: cache (cleared on render_retry)
+          deck:              submitted    # refresh spec_path/summary from the repair
+        on_error: reviewing
+
+      # Budget remained → re-render the repaired deck (counts against the
+      # budget). Guarded on the entry-snapshot counter (not the just-bound
+      # repair result, which isn't visible to a later on_enter guard) so it
+      # stays mutually exclusive with the give-up branch above. If fix_render
+      # itself errored, its on_error already redirected us to reviewing and
+      # this never runs.
+      - when: "world.render_retries < world.render_retry_budget"
+        emit_intent: render_retry
+    on:
+      render_retry:
+        - target: rendering
+          effects:
+            - set:
+                render_retries:    "{{ world.render_retries + 1 }}"
+                # Clear render binds so rendering re-runs fresh on the fixed spec.
+                deck_handle:       ""
+                semantic_handle:   ""
+                deck_path:         ""
+                semantic_path:     ""
+                # Clear the once: cache so the next failure repairs fresh.
+                render_fix_result: {}
+      render_giveup:
+        - target: reviewing
+      look:
+        - target: .

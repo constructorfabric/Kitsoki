@@ -1,0 +1,55 @@
+# render_autofix — render_deck fails → fixing_render auto-repairs the deck and
+# re-renders, bounded by render_retry_budget, then falls through to reviewing.
+#
+# render_deck is stubbed to ERROR on every call, so the loop runs the full
+# budget (2 repair passes) and gives up: rendering → fixing_render → render_retry
+# → rendering → fixing_render → render_retry → rendering → fixing_render →
+# render_giveup → reviewing. All within the single `accept` turn (the engine
+# chases the on_enter emit_intent chain).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: drafting
+initial_world:
+  workspace: "stories/slidey-edit/baked"
+  deck: { spec_path: "stories/slidey-edit/baked/deck.json", summary: "deck under test" }
+  addressed: { items: [] }
+  refine_budget: 6
+  render_retry_budget: 2
+
+host_handlers:
+  host.slidey.render:
+    by_call:
+      render_deck:
+        error: "host.slidey.render: spec validation failed: bad scene"
+
+  host.agent.task:
+    by_call:
+      fix_render:
+        data:
+          ok: true
+          submitted:
+            spec_path: "stories/slidey-edit/baked/deck.json"
+            summary: "Repaired the malformed scene."
+
+  host.starlark.run:
+    by_call:
+      seed_annotation:
+        data:
+          annotation:
+            anchor:
+              kind: "semantic_element"
+              semantic_element: { plugin: "slidey", ref: "1/card_0", bbox: [140, 518, 535, 114] }
+              label: "Scene 1 · card 0"
+            instruction: "Make the card stand out."
+            frame_handle: ""
+
+turns:
+  # accept → rendering(error) → auto-fix loop exhausts budget → reviewing.
+  - intent: { name: accept, slots: {} }
+    expect_state: reviewing
+    expect_world:
+      deck_handle: ""
+      render_retries: 2
+
+expect_terminal: false

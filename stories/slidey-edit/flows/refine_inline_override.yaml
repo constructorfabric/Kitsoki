@@ -56,12 +56,12 @@ host_handlers:
   host.slidey.render:
     by_call:
       render_deck:
-        data: { ok: true, path: "stories/slidey-edit/baked/deck.mp4", semantic_path: "stories/slidey-edit/baked/deck.semantic.json" }
+        data: { ok: true, path: "stories/slidey-edit/baked/deck.html", semantic_path: "stories/slidey-edit/baked/deck.semantic.json" }
 
   host.artifacts_dir:
     by_call:
       emit_deck:
-        data: { ok: true, handle: { id: "slidey-edit#1", kind: "video", mime: "video/mp4" } }
+        data: { ok: true, handle: { id: "slidey-edit#1", kind: "slideshow", mime: "text/html" } }
       emit_semantic:
         data: { ok: true, handle: { id: "slidey-semantic#1", kind: "data", mime: "application/json" } }
 

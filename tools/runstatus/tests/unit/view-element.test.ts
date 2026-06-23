@@ -276,6 +276,40 @@ describe("ViewElement", () => {
     w.unmount();
   });
 
+  it("media slideshow renders a poster-frame preview + a link to the interactive deck (not the sandboxed iframe)", () => {
+    const w = render({
+      Kind: "media",
+      MediaHandle: "slidey-edit#1",
+      MediaKind: "slideshow",
+    });
+    // Inline preview is the poster still beside the artifact, NOT an iframe.
+    const img = w.find('[data-testid="media-slideshow-poster"]');
+    expect(img.exists()).toBe(true);
+    expect(img.attributes("src")).toBe("/fake-artifact/slidey-edit#1/poster");
+    expect(w.find("iframe.ve-media-iframe").exists()).toBe(false);
+    // A link opens the live interactive deck (the bundle can run scripts there).
+    const open = w.find('[data-testid="media-slideshow-open"]');
+    expect(open.exists()).toBe(true);
+    expect(open.attributes("href")).toBe("/fake-artifact/slidey-edit#1");
+    expect(open.attributes("target")).toBe("_blank");
+    w.unmount();
+  });
+
+  it("opens the annotator on a slideshow deck with the slidey path (poster + overlay)", async () => {
+    dsStub.semanticMap.mockResolvedValue(SIDECAR);
+    const w = renderWithSession({
+      Kind: "media",
+      MediaHandle: "slidey-edit#1",
+      MediaKind: "slideshow",
+    });
+    await w.find('[data-testid="media-annotate"]').trigger("click");
+    await flushPromises();
+    expect(w.find('[data-testid="media-annotate-panel"]').text()).toContain(
+      "slidey"
+    );
+    w.unmount();
+  });
+
   it("media unknown MIME renders a labeled <a> download link", () => {
     const w = render({
       Kind: "media",

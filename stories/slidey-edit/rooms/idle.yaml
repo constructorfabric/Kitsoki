@@ -12,7 +12,7 @@ states:
     relevant_world: [deck, source_deck, cycle]
     view:
       - heading: "Slidey deck editor"
-      - prose: "Nothing's been rendered yet. Start a new deck from scratch, or point at an existing slidey JSON spec to edit. Either way you'll render it to a deck video, then annotate the rendered frame and refine the exact scene you pointed at."
+      - prose: "Nothing's been rendered yet. Start a new deck from scratch, or point at an existing slidey JSON spec to edit. Either way you'll render it to a static HTML deck, then annotate the rendered frame and refine the exact scene you pointed at."
       - kv:
           pairs:
             Sample deck:    '{{ world.deck.spec_path|default:"(none)" }}'
@@ -38,6 +38,7 @@ states:
                 # (the baked default seeds idle's view; start re-authors).
                 deck: {}
                 source_deck: {}
+                render_retries: 0   # fresh deck — reset the auto-fix budget
       edit_existing:
         - target: drafting
           effects:
@@ -49,6 +50,7 @@ states:
                 # deck is the drafting result/cache. Clear it so once: does
                 # not mistake the existing input deck for completed output.
                 deck: {}
+                render_retries: 0   # fresh deck — reset the auto-fix budget
       quit:
         - target: "@exit:abandoned"
           effects:

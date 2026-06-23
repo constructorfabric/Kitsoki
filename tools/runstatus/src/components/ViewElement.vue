@@ -67,6 +67,21 @@ const mediaMime = computed<string>(() => {
   return "video/mp4";
 });
 
+// A `slideshow` media kind is a multi-scene deck (e.g. a slidey deck rendered to
+// a self-contained HTML file) whose pixels aren't an addressable still and whose
+// interactive HTML can't run inside the scripts-disabled sandbox iframe. Inline
+// we preview its poster FRAME (a real rendered still beside the artifact) and
+// link out to the live interactive deck; annotation floats the SemanticOverlay
+// over the same poster (the slidey annotator path).
+const isSlideshow = computed<boolean>(
+  () => (el.value.MediaKind ?? "").toLowerCase() === "slideshow"
+);
+// The poster still beside a slideshow/deck artifact (`/artifact/<id>/poster`),
+// falling back to the artifact URL when the source has no poster convention.
+function posterUrl(handle: string): string {
+  return _ds.artifactPosterUrl ? _ds.artifactPosterUrl(handle) : artifactUrl(handle);
+}
+
 // ── Annotate affordance (unified ArtifactAnnotator) ──────────────────────────
 // A live media element (image / video / html / slideshow — never a pdf) can be
 // annotated: clicking "Annotate" reveals the ArtifactAnnotator inline, which
@@ -372,6 +387,28 @@ const bannerStyle = computed<Record<string, string>>((): Record<string, string> 
         :src="artifactUrl(mediaHandle)"
         :title="mediaCaption || mediaHandle"
       />
+
+      <!-- slideshow → poster-frame preview + a link to the live interactive deck.
+           The deck's interactive HTML can't run in the scripts-disabled sandbox
+           iframe below, so inline we show its rendered poster still (annotation
+           floats the SemanticOverlay over this same frame). MUST precede the
+           text/html branch — a slideshow's mime is text/html. -->
+      <template v-else-if="isSlideshow">
+        <img
+          class="ve-media-image"
+          data-testid="media-slideshow-poster"
+          loading="lazy"
+          :src="posterUrl(mediaHandle)"
+          :alt="mediaCaption || mediaHandle"
+        />
+        <a
+          class="ve-media-review-link"
+          data-testid="media-slideshow-open"
+          :href="artifactUrl(mediaHandle)"
+          target="_blank"
+          rel="noopener"
+        >Open the interactive deck →</a>
+      </template>
 
       <!-- text/html → sandboxed frame (no scripts, no same-origin access) -->
       <iframe

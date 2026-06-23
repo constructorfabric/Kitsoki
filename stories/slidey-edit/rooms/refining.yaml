@@ -75,6 +75,7 @@ states:
                 semantic_handle: ""
                 deck_path:       ""
                 semantic_path:   ""
+                render_retries:  0   # fresh deck — reset the auto-fix budget
                 # Clear the once: bind + the consumed annotation.
                 refine_result:   {}
                 refine_feedback: ""

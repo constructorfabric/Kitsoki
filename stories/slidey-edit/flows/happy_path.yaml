@@ -2,7 +2,7 @@
 #
 # All host calls stubbed (Mode-2, intent-only, no LLM). Agent + render calls
 # stubbed by per-invoke id (memory: agent-stub-by-id). The render stub points at
-# the BAKED pre-rendered deck mp4 + .semantic.json sidecar under baked/, so no
+# the BAKED pre-rendered deck html + .semantic.json sidecar under baked/, so no
 # slidey runs.
 
 test_kind: flow
@@ -29,7 +29,7 @@ host_handlers:
       render_deck:
         data:
           ok: true
-          path: "stories/slidey-edit/baked/deck.mp4"
+          path: "stories/slidey-edit/baked/deck.html"
           semantic_path: "stories/slidey-edit/baked/deck.semantic.json"
 
   host.starlark.run:
@@ -47,7 +47,7 @@ host_handlers:
   host.artifacts_dir:
     by_call:
       emit_deck:
-        data: { ok: true, handle: { id: "slidey-edit#1", kind: "video", mime: "video/mp4" }, path: "stories/slidey-edit/baked/deck.mp4", kind: "video", mime: "video/mp4" }
+        data: { ok: true, handle: { id: "slidey-edit#1", kind: "slideshow", mime: "text/html" }, path: "stories/slidey-edit/baked/deck.html", kind: "slideshow", mime: "text/html" }
       emit_semantic:
         data: { ok: true, handle: { id: "slidey-semantic#1", kind: "data", mime: "application/json" }, path: "stories/slidey-edit/baked/deck.semantic.json", kind: "data", mime: "application/json" }
 

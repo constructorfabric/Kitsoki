@@ -21,8 +21,8 @@ kitsoki run stories/slidey-edit/app.yaml
 
 ```
 idle ──start/edit_existing──▶ drafting ──accept──▶ rendering ──(auto)──▶ reviewing
-                              (agent writes/edits deck)          (slidey → mp4 +        media(deck) + seed
-                                                                  .semantic sidecar)    annotation + checkpoint
+                              (agent writes/edits deck)          (slidey → static HTML  media(deck) + seed
+                                                                  + .semantic sidecar)  annotation + checkpoint
                                                                   │
         ┌─────────────────────────────────────────────────────────┤
         │ accept→done · rerender→rendering · quit→@exit:abandoned   │ refine
@@ -36,8 +36,8 @@ idle ──start/edit_existing──▶ drafting ──accept──▶ rendering
 |---|---|---|
 | `idle` | deterministic | Choose a fresh draft with `start`, or pass an existing slidey JSON spec with `edit_existing spec_path=...`. |
 | `drafting` | interpretive | ONE `host.agent.task` (`drafter`) authors/edits the deck JSON. Existing input lives in `world.source_deck`; `world.deck` is the output/cache. Workspace-jailed, `once:`. |
-| `rendering` | deterministic | `host.slidey.render` → mp4 **+ `.semantic.json` sidecar**; both emitted to `host.artifacts_dir` for stable handles. Auto-advances. |
-| `reviewing` | deterministic | `media(deck_handle)` inline + seeds a baked `semantic_element` annotation. Checkpoint: accept / refine / rerender / quit. |
+| `rendering` | deterministic | `host.slidey.render` (`format: html`, `slidey bundle`) → a self-contained **static HTML deck** **+ `.semantic.json` sidecar**; both emitted to `host.artifacts_dir` for stable handles (deck kind `slideshow`). Auto-advances. |
+| `reviewing` | deterministic | `media(deck_handle)` inline (poster-frame preview + a link to the interactive deck) + seeds a baked `semantic_element` annotation. Checkpoint: accept / refine / rerender / quit. |
 | `refining` | interpretive | ONE `host.agent.task` (`reviser`) consumes the annotation (`{{ args.visual.anchor }}` + the explicit `annotation` arg) and edits the targeted scene, then re-renders the before/after. |
 | `done` | gallery | Final deck media + the annotations addressed per cycle. |
 
@@ -85,12 +85,23 @@ loop without authoring — the *tour needs a baked world* lesson):
 
 - `deck.json` — the deck spec: 3 slidey scenes (`title` → `cards` → `narrative`)
   whose types emit semantic elements. Rendered at 1920×1080.
-- `deck.mp4` — a small (~50 KB) deck video assembled from the REAL rendered
-  frames (the final frame of each scene, held ~2s; 1280×720, ffmpeg-concat).
+- `deck.html` — the REAL self-contained static HTML deck, the output of
+  `slidey bundle baked/deck.json baked/deck.html` (one file, opens straight off
+  disk; no server, no ffmpeg, no narration render). This replaced the old
+  `deck.mp4` — rendering to interactive HTML is far cheaper than a full video
+  render, and the location-tied review works the same way (below). **Not
+  committed** (it inlines the whole slidey SPA, ~4 MB — gitignored via
+  `baked/.gitignore`); regenerate it for a flow/tour run with:
+  `slidey bundle stories/slidey-edit/baked/deck.json stories/slidey-edit/baked/deck.html`.
 - `deck.poster.png` — a REAL rendered frame (scene 1, the "One anchor union"
-  cards row — where the seeded anchor lives), so overlay bboxes align.
+  cards row — where the seeded anchor lives), so overlay bboxes align. The deck
+  is emitted as media kind `slideshow`: the interactive HTML can't run in the
+  review surface's scripts-disabled sandbox iframe, so the inline preview and the
+  annotation overlay both float over this poster still.
 - `deck.semantic.json` — the canonical semantic sidecar, the REAL output of
-  rendering `deck.json` through slidey (real `ref`s + real `bbox`es).
+  rendering `deck.json` through slidey (real `ref`s + real `bbox`es). Paired to
+  the artifact by extension-swap (`deck.html` → `deck.semantic.json`), so the
+  semantic-location mechanism is independent of the rendered format.
 
 The render host calls are **stubbed** in the flows/cassette to point at these
 files; `host.artifacts_dir` runs for real under `kitsoki web --flow` so the

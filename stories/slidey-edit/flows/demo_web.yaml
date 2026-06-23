@@ -1,12 +1,12 @@
 # demo_web — deterministic, no-LLM web/tour entry fixture.
 #
-# Drives the story to `reviewing` carrying the REAL baked deck mp4 + .semantic
+# Drives the story to `reviewing` carrying the REAL baked deck html + .semantic
 # sidecar so the kitsoki-ui-demo / kitsoki tour run can record /review against a
 # genuinely-resolvable artifact handle (the live frame-seam proof — the deck
 # media is real, only the agent/render calls are stubbed).
 #
 # Under `kitsoki web --flow` the host builtins are pre-registered, so
-# host.artifacts_dir is the REAL handler: it copies the baked mp4/semantic into
+# host.artifacts_dir is the REAL handler: it copies the baked html/semantic into
 # the artifacts root and journals the emit, so the bound deck_handle resolves
 # through the JournalArtifactResolver and /review serves real bytes. Pair with
 # cassettes/deck_review.cassette.yaml (the web/tour host cassette).
@@ -49,7 +49,7 @@ host_handlers:
       render_deck:
         data:
           ok: true
-          path: "stories/slidey-edit/baked/deck.mp4"
+          path: "stories/slidey-edit/baked/deck.html"
           semantic_path: "stories/slidey-edit/baked/deck.semantic.json"
 
   host.starlark.run:
@@ -78,7 +78,7 @@ host_handlers:
   host.artifacts_dir:
     by_call:
       emit_deck:
-        data: { ok: true, handle: { id: "slidey-edit#1", kind: "video", mime: "video/mp4" }, path: "stories/slidey-edit/baked/deck.mp4", kind: "video", mime: "video/mp4" }
+        data: { ok: true, handle: { id: "slidey-edit#1", kind: "slideshow", mime: "text/html" }, path: "stories/slidey-edit/baked/deck.html", kind: "slideshow", mime: "text/html" }
       emit_semantic:
         data: { ok: true, handle: { id: "slidey-semantic#1", kind: "data", mime: "application/json" }, path: "stories/slidey-edit/baked/deck.semantic.json", kind: "data", mime: "application/json" }
 

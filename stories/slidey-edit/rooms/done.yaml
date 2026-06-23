@@ -15,7 +15,7 @@ states:
       - heading: "Final deck"
       - media:
           handle:  "{{ world.deck_handle }}"
-          kind:    video
+          kind:    slideshow
           caption: "{{ world.deck.summary }}"
       - prose: "Each refine pass edited the exact scene an annotation anchor pointed at. The deck is final."
       - heading: "Actions"
