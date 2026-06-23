@@ -1,0 +1,166 @@
+# demo-video-loop — an autonomous maker→QA loop that PRODUCES (or refreshes) a
+# tour-driven demo video for a feature, then GATES it with the kitsoki-ui-qa
+# vision review. On QA failure with budget left, it loops back to the maker
+# carrying the QA report as feedback. The loop ends on QA pass (@exit:achieved),
+# budget exhaustion (@exit:exhausted), or abort (@exit:abandoned).
+#
+# This is a specialization of stories/cherny-loop/ (maker → checker →
+# budget-guard). It copies cherny-loop's idioms:
+#   - engine-maintained session_cost_usd + cost_budget_usd cost ceiling,
+#     iteration_budget count ceiling (docs/stories/state-machine.md §6 foldAgentCost)
+#   - the decision-emit discipline: tri-state "" gate vars (video_valid, qa_ok);
+#     guarded emit_intent routing in on_enter so exactly one fires post-bind
+#   - @exit:achieved|exhausted|abandoned each requires: [terminal_reason]
+#
+# Two rooms only (no worktree minting — the worktree is INPUT):
+#   generating (root) — maker authors the demo video AND the qa feature.md +
+#                       scenarios.yaml; a DETERMINISTIC gate validates the video
+#                       (scripts/validate-video.sh — canonical-name + ffprobe
+#                       watch-speed + frames + no ERROR.txt + mtime-this-turn).
+#   qa               — the kitsoki-ui-qa shell gate (qa.sh); exit code IS the gate.
+#
+# Why these two skills are the engine:
+#   - kitsoki-ui-demo produces a deterministic, no-LLM MP4 + per-scene NN-*.png +
+#     <video>.chapters.json. A fast/under-dwelled run is down-named *.fast.mp4 /
+#     *.SHORT-<n>s.mp4 and the canonical <name>.mp4 left ABSENT — so "a valid video
+#     exists at the canonical name" already encodes "watch-speed, >=25s".
+#   - kitsoki-ui-qa: .agents/skills/kitsoki-ui-qa/scripts/qa.sh; exit 0=ship /
+#     1=blocking fail / 2=pipeline error. The story shells out; it does not
+#     re-derive their internals.
+
+app:
+  id: demo-video-loop
+  version: 0.1.0
+  title: "Demo-video loop"
+  author: "Kitsoki"
+  license: "CC0"
+
+# Bare host calls (no iface wrapping). The worktree is INPUT (worktree_path),
+# so we do NOT mint one — no workspace/vcs ifaces, no commit tail. The maker
+# does not commit; the demo artifacts live under repo-root .artifacts/, not the
+# tree.
+#   host.agent.task    — the maker: authors the demo video + qa inputs each turn
+#   host.run            — the deterministic video-validation gate, the qa.sh gate,
+#                         and the diff/proposal/epoch helpers
+#   host.artifacts_dir  — persist each iteration's record (the run trail)
+hosts:
+  - host.agent.task
+  - host.run
+  - host.artifacts_dir
+
+agents:
+  maker:
+    system_prompt: |
+      You are a kitsoki demo-video maker. Given a worktree, a proposal/change
+      summary, and the git diff of what the branch ADDED, you produce (or refresh)
+      a deterministic, no-LLM tour-driven demo video of that feature using the
+      kitsoki-ui-demo skill, AND author the kitsoki-ui-qa inputs (a feature.md
+      that IS the change being demoed, and observable scenarios.yaml). Act on any
+      prior QA feedback first. Record at watch-speed (never WEB_CHAT_PACE=0 for the
+      deliverable). Submit the canonical mp4 path, frames dir, chapters path, and
+      the qa feature/scenarios paths you wrote.
+    model: claude-opus-4-8
+    tools: [Read, Write, Edit, Glob, Grep, Bash]
+    external_side_effect: false
+
+world:
+  # --- Input contract (the world_in: an importer supplies) ---
+  worktree_path:     { type: string, default: "" }            # cwd for maker, validate, qa
+  base_ref:          { type: string, default: "main" }        # parent/base branch to diff against
+  proposal_path:     { type: string, default: "" }            # path (rel to worktree) to the proposal md
+  feature_slug:      { type: string, default: "demo-video" }  # names spec/manifest/video/qa artifacts
+  video_expectation: { type: string, default: "auto" }        # new | update | auto
+  iteration_budget:  { type: int,    default: 5 }             # cycle ceiling
+  cost_budget_usd:   { type: number, default: 0 }             # $ ceiling; 0 = disabled (opt-in)
+
+  # --- Engine / computed world ---
+  iteration:            { type: int,    default: 0 }
+  iteration_start_epoch: { type: string, default: "" }  # stamped each turn; gate requires video mtime >= this
+  added_diff:           { type: string, default: "" }   # ADDED lines of the branch diff (once:)
+  proposal_text:        { type: string, default: "" }   # proposal md contents (once:)
+  maker_summary:        { type: string, default: "" }   # the maker's one-line report
+
+  # Maker deliverables (bound from submit).
+  video_path:        { type: string, default: "" }
+  frames_dir:        { type: string, default: "" }
+  chapters_path:     { type: string, default: "" }
+  feature_md_path:   { type: string, default: "" }
+  scenarios_path:    { type: string, default: "" }
+
+  # Deterministic video-validation gate result. video_valid is intentionally a
+  # tri-state: "" = not yet evaluated this turn; true/false once the gate binds.
+  # The empty default keeps the routing emits (which compare == true / == false)
+  # from firing in the pre-bind pass — the cherny-loop decision-emit discipline.
+  video_valid:           { type: string, default: "" }
+  video_validate_reason: { type: string, default: "" }
+
+  # kitsoki-ui-qa gate result (same tri-state discipline as video_valid).
+  qa_ok:        { type: string, default: "" }
+  qa_exit_code: { type: int,    default: 0 }
+  qa_report:    { type: string, default: "" }
+
+  # Cost: session_cost_usd is the reserved engine-maintained spend var (declared
+  # here so it has a default and is seedable in flow fixtures); the runtime
+  # overwrites it from real agent spend each turn (foldAgentCost,
+  # docs/stories/state-machine.md §6). turn_cost_usd is shown for display.
+  session_cost_usd: { type: number, default: 0 }
+  turn_cost_usd:    { type: number, default: 0 }
+
+  # Error + termination.
+  last_error:      { type: string, default: "" }
+  terminal_reason: { type: string, default: "" }   # achieved | iteration_budget | cost_budget | aborted
+  abandon_reason:  { type: string, default: "" }
+
+intents:
+  # Internal routing intents, emitted from on_enter once a gate result is bound.
+  # Guarded emits (each reads the gate's tri-state) force the engine to settle the
+  # binds before routing — the cherny-loop judge→emit pattern.
+  to_qa:
+    description: "(internal) video valid — run the QA gate."
+    examples: ["to_qa"]
+    priority: 1
+  mark_achieved:
+    description: "(internal) QA passed — goal met."
+    examples: ["mark_achieved"]
+    priority: 1
+  mark_cost_exhausted:
+    description: "(internal) cost ceiling hit."
+    examples: ["mark_cost_exhausted"]
+    priority: 1
+  mark_iter_exhausted:
+    description: "(internal) iteration ceiling hit."
+    examples: ["mark_iter_exhausted"]
+    priority: 1
+  mark_looped:
+    description: "(internal) re-enter the maker after a gate loop-back."
+    examples: ["mark_looped"]
+    priority: 1
+  loop_again:
+    description: "(internal) gate failed, budget remains — loop with feedback."
+    examples: ["loop_again"]
+    priority: 1
+    slots:
+      feedback: { type: string, required: false }
+  retry:
+    description: "Re-run the loop step after a maker failure."
+    examples: ["retry", "again"]
+    priority: 60
+  abort:
+    description: "Abandon the loop."
+    examples: ["abort", "stop", "give up"]
+    priority: 60
+  look:
+    description: "Re-render the current room."
+    examples: ["look", "status"]
+    priority: 5
+
+exits:
+  achieved:  { requires: [terminal_reason] }
+  exhausted: { requires: [terminal_reason] }
+  abandoned: { requires: [terminal_reason] }
+
+# The first real room IS the root — no idle/begin ceremony.
+root: generating
+
+include:
+  - rooms/*.yaml

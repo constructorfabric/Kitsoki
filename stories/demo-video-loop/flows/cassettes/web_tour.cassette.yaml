@@ -1,0 +1,131 @@
+# Host cassette for the demo-video-loop web demo (kitsoki web --host-cassette).
+#
+# Backs every host.* call along the autonomous run with a DISTINCT, realistic
+# response, matched on the call-site id threaded into args.call by each room's
+# templated invoke `id:` (maker-N / validate-N / qa-N). The narrative is a
+# COMPELLING fail-then-pass run over TWO iterations: the maker records a first
+# cut, the deterministic video gate passes it, then the kitsoki-ui-qa vision gate
+# FAILS it (a scenario the video didn't show), the loop carries the qa-report.md
+# back to the maker as feedback, the maker re-records to close that gap, and the
+# second QA run PASSES — the whole point of the loop, shown working.
+#
+# IMPORTANT: the rooms do NOT suffix `stamp-epoch` or `read-qa-report` by
+# iteration (they reuse the SAME call id across both iterations). A cassette
+# episode is consumed once (ep.played) unless it carries `replay: any`
+# (internal/testrunner/cassette.go MatchEpisode), so those two — and the `once:`
+# compute-diff and the host.artifacts_dir write — carry `replay: any` so the
+# SECOND iteration's call still matches. (Smoke-verified against a one-shot web
+# run; see the spec header.)
+kind: host_cassette
+app_id: demo-video-loop
+generated_at: "2026-06-23T00:00:00Z"
+match_on: [handler, call]
+
+episodes:
+  # ── Per-turn helpers (host.run; same call id every iteration → replay: any) ──
+  # compute-diff is `once:` so it fires only on the first iteration, but it costs
+  # nothing to make it re-playable too.
+  - id: compute-diff
+    match: { handler: host.run, call: compute-diff }
+    response:
+      data:
+        ok: true
+        exit_code: 0
+        stdout: |-
+          + // demo-video-loop: a maker→QA loop that produces a demo video then gates it
+          + // with kitsoki-ui-qa, looping on failure until the video PROVES the feature.
+          + func RunDemoVideoLoop(ctx context.Context, in LoopInput) (LoopResult, error) {
+    replay: any
+  - id: stamp-epoch
+    match: { handler: host.run, call: stamp-epoch }
+    response:
+      data:
+        ok: true
+        exit_code: 0
+        stdout: "1750000000"
+    replay: any
+
+  # ── Iteration 1 — maker records a first cut; video gate PASS; QA FAIL ────────
+  - id: maker-1
+    match: { handler: host.agent.task, call: maker-1 }
+    response:
+      data:
+        submitted:
+          summary: "Recorded the demo-video-loop tour at watch-speed; authored the QA feature.md + scenarios.yaml."
+          video_path: ".artifacts/demo-video-loop/demo-video-loop-demo.mp4"
+          frames_dir: ".artifacts/demo-video-loop"
+          chapters_path: ".artifacts/demo-video-loop/demo-video-loop-demo.mp4.chapters.json"
+          feature_md_path: ".context/demo-video-loop/qa-feature.md"
+          scenarios_path: ".context/demo-video-loop/qa-scenarios.yaml"
+  - id: validate-1
+    match: { handler: host.run, call: validate-1 }
+    response:
+      data:
+        ok: true
+        exit_code: 0
+        stdout: "video gate PASS — canonical demo-video-loop-demo.mp4, 41.0s ≥ 25s, 8 frames, no ERROR.txt, written this turn"
+  - id: qa-1
+    match: { handler: host.run, call: qa-1 }
+    response:
+      data:
+        ok: false
+        exit_code: 1
+        stdout: |-
+          QA FAIL: scenario 'verdict-pass' unsupported — no frame shows the kitsoki-ui-qa
+          verdict surface reading overall: pass. overall: fail · 3/4 scenarios · 1 unsupported.
+  - id: read-qa-report
+    match: { handler: host.run, call: read-qa-report }
+    response:
+      data:
+        ok: true
+        exit_code: 0
+        stdout: |-
+          # QA report — demo-video-loop
+
+          **Overall: FAIL** (strict) · 3/4 scenarios · 1 unsupported · adversary: ok (0 downgrades)
+
+          | Scenario | Required | Status | Evidence |
+          |---|---|---|---|
+          | maker-generating | yes | pass | 03-generating.png — GENERATING banner, maker summary |
+          | loop-legible | yes | pass | 05-iteration.png — round-1/round-2 visible in the trace |
+          | verdict-pass | yes | **unsupported** | no frame shows a QA verdict surface reading `overall: pass` |
+          | deliverable | yes | pass | 06-deliverable.png — the MP4 path is referenced |
+
+          **Fix:** the tour never holds on the QA room once it has PASSED. Add a beat that
+          dwells on the `qa` room / `@exit:achieved` surface so a frame captures the
+          passing verdict (exit 0), then re-record.
+    replay: any
+
+  # ── Iteration 2 — maker addresses the QA feedback; video PASS; QA PASS ───────
+  - id: maker-2
+    match: { handler: host.agent.task, call: maker-2 }
+    response:
+      data:
+        submitted:
+          summary: "Addressed QA feedback: added a dwell beat on the passing QA verdict surface, then re-recorded at watch-speed."
+          video_path: ".artifacts/demo-video-loop/demo-video-loop-demo.mp4"
+          frames_dir: ".artifacts/demo-video-loop"
+          chapters_path: ".artifacts/demo-video-loop/demo-video-loop-demo.mp4.chapters.json"
+          feature_md_path: ".context/demo-video-loop/qa-feature.md"
+          scenarios_path: ".context/demo-video-loop/qa-scenarios.yaml"
+  - id: validate-2
+    match: { handler: host.run, call: validate-2 }
+    response:
+      data:
+        ok: true
+        exit_code: 0
+        stdout: "video gate PASS — canonical demo-video-loop-demo.mp4, 41.0s ≥ 25s, 8 frames, no ERROR.txt, written this turn"
+  - id: qa-2
+    match: { handler: host.run, call: qa-2 }
+    response:
+      data:
+        ok: true
+        exit_code: 0
+        stdout: "QA PASS 4/4 — overall: pass · adversary: ok (0 downgrades) · the passing verdict now appears on screen."
+
+  # ── Per-iteration artifact write (host.artifacts_dir; fires every turn) ──────
+  - id: artifact-write
+    match: { handler: host.artifacts_dir }
+    response:
+      data: { ok: true }
+    replay: any

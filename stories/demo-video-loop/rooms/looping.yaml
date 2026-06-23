@@ -1,0 +1,52 @@
+states:
+  # looping — a thin intermediate room that carries a failed-gate loop BACK into
+  # generating for the next maker turn. It exists ONLY because generating both makes
+  # AND gates the video, so a gate-fail-with-budget loop would otherwise self-target
+  # generating — and the engine deliberately does NOT re-fire on_enter on an emit_intent
+  # self-transition (machine.go's "newly entered" gate; the bugfix story's refine arc
+  # relies on that). Routing generating's video-gate loop_again THROUGH looping makes
+  # every hop a real cross-room transition (generating → looping → generating), so each
+  # re-entry fires generating's on_enter (the next maker step) — the cherny-loop
+  # `committing`-room idiom (a thin state so the work runs at the right time).
+  #
+  # on_enter sets the carried feedback as the maker's video_validate_reason, clears the
+  # gate tri-states so the next turn's routing emits defer to their post-bind pass, then
+  # auto-emits mark_looped → generating. No operator input — the loop advances itself.
+  looping:
+    description: "Loop step — carry the gate feedback back to the maker"
+    relevant_world: [iteration, iteration_budget, video_validate_reason]
+    on_enter:
+      - set:
+          video_valid: ""
+          qa_ok: ""
+      - emit_intent: mark_looped
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - banner:
+              text:     "LOOPING"
+              subtitle: "Carrying the gate feedback back to the maker"
+              color:    "#F59E0B"
+          - prose: "Re-entering the maker with the gate's feedback…"
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "abort"
+                  hint:  "abandon the loop"
+                - label: "look"
+    on:
+      mark_looped:
+        - target: generating
+      abort:
+        - target: "@exit:abandoned"
+          effects:
+            - set: { terminal_reason: "aborted", abandon_reason: "operator aborted" }
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "Looping back to the maker — `abort` to stop, or `look`."

@@ -201,6 +201,9 @@ states:
             - label:  "code review"
               hint:   "review a teammate's PR"
               intent: go_code_review_story
+            - label:  "demo video"
+              hint:   "produce/refresh a tour video and gate it with vision QA"
+              intent: make_demo
             - label:  "prd"
               hint:   "author a PRD, then carry it into design"
               intent: go_prd
@@ -525,6 +528,17 @@ states:
 
       go_code_review_story:
         - target: rev
+
+      # Demo-video loop — produce/refresh a tour video for a feature and gate
+      # it with the kitsoki-ui-qa vision review. Enters the demovid import
+      # compound; world_in: (app.yaml imports.demovid) projects the hub's
+      # workdir / base_branch + the demo input keys into the loop. Additive —
+      # placed after the other go_* / drive launch arcs, before the self-loop
+      # navigation, preserving existing arc order.
+      make_demo:
+        - target: demovid
+          effects:
+            - set: { last_error: "" }
 
       # go_main / go_back / look now self-target the workbench floor.
       go_main:

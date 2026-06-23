@@ -1,0 +1,29 @@
+# abort — the operator abandons the loop from generating → @exit:abandoned
+# (terminal_reason aborted). The room is seeded with a non-empty last_error (the
+# realistic case: the maker call failed and on_error: generating surfaced the error,
+# guarding off the autonomous sequence so the operator sees retry/abort). `abort`
+# transitions straight to the abandoned exit — no maker/validate/qa fire this turn.
+test_kind: flow
+app: ../app.yaml
+initial_state: generating
+initial_world:
+  worktree_path: ".worktrees/demo"
+  feature_slug:  "agent-actions"
+  iteration:     1
+  last_error:    "host.agent.task: maker session abandoned without successful submit"
+
+host_handlers:
+  host.run:           { data: { ok: true } }
+  host.agent.task:   { data: { submitted: { summary: "(unused)" } } }
+  host.artifacts_dir: { data: { ok: true } }
+
+turns:
+  - intent: { name: abort, slots: {} }
+    expect_state: __exit__abandoned
+    expect_world:
+      terminal_reason: "aborted"
+      abandon_reason:  "operator aborted"
+    expect_no_host_calls: [host.agent.task, host.artifacts_dir]
+
+expect_terminal: true
+expect_no_errors: true

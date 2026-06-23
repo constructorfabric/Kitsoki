@@ -646,6 +646,29 @@ world:
   pr_id:               { type: string, default: "" }
   pr_author:           { type: string, default: "" }
 
+  # ── Demo-video loop (imported `demovid`, stories/demo-video-loop/) ──
+  # The autonomous maker→QA loop that PRODUCES (or refreshes) a tour-driven
+  # demo video for a feature and gates it with the kitsoki-ui-qa vision
+  # review. Reached from landing via `make_demo`. The loop operates on the
+  # hub's existing worktree (world.workdir → child worktree_path) and diffs
+  # against world.base_branch (→ child base_ref); these keys are reused, not
+  # re-declared. The keys below are NEW — the loop's input contract that has
+  # no dev-story analogue yet (see stories/demo-video-loop/README.md §input
+  # contract). All carry the child's own defaults so a bare `make_demo`
+  # (no slots) enters the loop in its standalone-default posture.
+  #
+  # proposal_path:     path (relative to workdir) to the proposal / change
+  #                    summary md the maker reads to learn WHICH feature to demo.
+  # feature_slug:      names the spec / manifest / video / qa artifacts.
+  # video_expectation: new | update | auto (update if a canonical mp4 exists).
+  # iteration_budget:  cycle ceiling for the loop.
+  # cost_budget_usd:   $ ceiling; 0 = disabled (opt-in).
+  proposal_path:       { type: string, default: "" }
+  feature_slug:        { type: string, default: "demo-video" }
+  video_expectation:   { type: string, default: "auto" }
+  iteration_budget:    { type: int,    default: 5 }
+  cost_budget_usd:     { type: number, default: 0 }
+
 # Intent vocabulary. Day-level rooms only; bf / pr's intents are lifted
 # via `imports.<alias>.intents.import` and re-exported into this table
 # at the bare names (start, proceed, accept, refine, restart_from, quit).
@@ -989,6 +1012,18 @@ intents:
     description: "Hand off to the code-review sub-story (teammate PR review)."
     examples: ["review teammate pr", "code review story", "rev"]
     priority: 33
+
+  # ── Demo-video loop (imported `demovid`) ──────────────────────────
+  # Hands off to the demo-video-loop sub-story: produce (or refresh) a
+  # deterministic, no-LLM tour video of a feature and gate it with the
+  # kitsoki-ui-qa vision review, looping the QA report back to the maker
+  # until it passes or a budget is hit. Reached from landing; seeds the
+  # loop's world_in from the hub's workdir / base_branch + the demo keys.
+  make_demo:
+    title: "Make Demo Video"
+    description: "Produce or refresh a tour-driven demo video for a feature, then gate it with the kitsoki-ui-qa vision review (autonomous maker→QA loop)."
+    examples: ["make a demo video", "record a demo", "demo video", "refresh the demo video", "tour video for this feature"]
+    priority: 34
 
   # Inbox-routed review-request pickup. Selects a "PR awaiting your
   # review" inbox item and projects its payload (pr_id, pr_title,
@@ -1522,6 +1557,55 @@ imports:
   model_eval:
     source: ../model-harness-eval
     entry: idle
+
+  # Demo-video loop — the autonomous maker→QA loop that produces (or
+  # refreshes) a tour-driven demo video for a feature and gates it with the
+  # kitsoki-ui-qa vision review. Reached from landing via `make_demo`. The
+  # loop is self-driving (no operator prodding): its `generating` root
+  # on_enter authors the video + qa inputs and runs the deterministic video
+  # gate, `qa` runs qa.sh; a QA failure with budget left loops the report
+  # back to the maker. See stories/demo-video-loop/README.md.
+  demovid:
+    source: ../demo-video-loop
+    entry: generating
+
+    # Project the hub's worktree + base + the demo input keys into the
+    # loop's private world. worktree_path ← workdir (the hub's working copy;
+    # the same key the bf/impl pipelines use); base_ref ← base_branch (the
+    # parent/base to diff against). The remaining keys are the demo input
+    # contract added to the hub's world: block above.
+    world_in:
+      worktree_path:     "{{ world.workdir }}"
+      base_ref:          "{{ world.base_branch }}"
+      proposal_path:     "{{ world.proposal_path }}"
+      feature_slug:      "{{ world.feature_slug }}"
+      video_expectation: "{{ world.video_expectation }}"
+      iteration_budget:  "{{ world.iteration_budget }}"
+      cost_budget_usd:   "{{ world.cost_budget_usd }}"
+
+    # The loop's vocabulary (to_qa / mark_* / loop_again / retry / abort /
+    # look) is internal-routing + self-driving, and abort/retry/look collide
+    # with parent intents — so nothing lifts to bare. The operator enters via
+    # `make_demo` and the loop runs itself to a terminal.
+    intents:
+      import: []
+
+    # Map ALL THREE child exits → landing with a status: set (the loader
+    # requires every child exit be mapped). The loop terminates on QA pass
+    # (achieved), a budget ceiling (exhausted), or operator abort (abandoned).
+    exits:
+      achieved:
+        to: landing
+        set:
+          status: "demo-achieved"
+      exhausted:
+        to: landing
+        set:
+          status: "demo-exhausted"
+      abandoned:
+        to: landing
+        set:
+          status: "abandoned"
 
 # Day-level rooms live in rooms/*.yaml.
 include:
