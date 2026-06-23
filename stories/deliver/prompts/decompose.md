@@ -17,9 +17,12 @@ completion automatically.
 briefs:
   - id: slice-1          # lowercase, hyphen-separated, globally unique
     brief: |             # scoped task for the maker agent (self-contained)
-      Implement X so that <gate_command> passes.
+      Implement X and add TestX so the gate passes.
       Acceptance: <what passing looks like>.
-    gate_command: "go test ./internal/x/..."   # deterministic shell, exits 0 on pass
+    # RED-at-baseline (see "Gates must be RED first"): the grep guard fails on the
+    # unchanged tree (TestX absent) so the gate is genuinely RED, not vacuously
+    # green like a bare `go test -run TestX` (which exits 0 when no test matches).
+    gate_command: "grep -rq 'func TestX' internal/x/ && go test ./internal/x/ -run TestX"
     deps: []             # ids of briefs that must ship first ([] if none)
   - id: slice-2
     brief: |
@@ -38,6 +41,20 @@ briefs:
 - **Deterministic gates**: `gate_command` must be a non-interactive shell command
   that exits 0 on success and non-zero on failure (e.g. `go test ./...`,
   `pytest tests/`, `make lint`). No LLM, no human judgment.
+- **Gates must be RED first (CRITICAL)**: the delivery loop's maker (cherny-loop)
+  runs your `gate_command` on the UNCHANGED tree BEFORE the maker edits anything,
+  and REFUSES to proceed unless it FAILS (red-before-green: a gate that already
+  passes proves nothing). So every `gate_command` must exit NON-ZERO on the current
+  code. A bare `go test ./pkg -run TestNew` is **INVALID** for a new test — when
+  `TestNew` does not exist yet `go test` prints "no tests to run" and exits 0
+  (vacuously green), so the maker stalls at the baseline. For work that ADDS a test
+  or new behavior, guard the gate so it is red while the new artifact is absent:
+  - new Go test:  `grep -rq 'func TestX' internal/x/ && go test ./internal/x/ -run TestX`
+  - new file/script gate:  `bash stories/x/tests/new_gate.sh` (red by absence until the maker creates it)
+  - new exported symbol:  `grep -rq 'func NewThing' internal/x/ && go build ./...`
+  Pick the cheapest guard that is genuinely red on the unchanged tree and green only
+  once the slice's specific work lands. If a slice changes existing behavior covered
+  by an existing failing test, a plain `go test ./pkg -run TestExisting` is fine.
 - **Deps acyclic**: `deps` must reference IDs of EARLIER briefs only. No cycles.
 - **At least one brief**: the manifest must have at least one entry.
 - **Unique IDs**: each `id` must be unique, non-empty, lowercase alphanumeric
