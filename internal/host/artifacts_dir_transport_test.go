@@ -52,6 +52,45 @@ func TestArtifactsDirTransport_WritesUnderRoot(t *testing.T) {
 	}
 }
 
+// TestArtifactsDirTransport_CopiesAnnotationCompanions proves a media-emit
+// brings its v2 annotation companions — the `<stem>.semantic.json` sidecar and
+// the `<stem>.poster.png` still — into the artifacts root as siblings of the
+// copied media, so runstatus.artifact.semantic and /artifact/<id>/poster (which
+// resolve siblings of the RESOLVED path) keep working after the copy.
+func TestArtifactsDirTransport_CopiesAnnotationCompanions(t *testing.T) {
+	src := t.TempDir()
+	root := t.TempDir()
+	deck := filepath.Join(src, "deck.mp4")
+	if err := os.WriteFile(deck, []byte("mp4-bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(host.SemanticSidecarPath(deck), []byte(`{"plugin":"slidey","schema_version":1,"elements":[{"ref":"0/title"}]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(host.PosterSidecarPath(deck), []byte("png-bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := host.ArtifactsDirTransportHandler(context.Background(), map[string]any{
+		"artifacts_root": root,
+		"thread":         "deck",
+		"src_path":       deck,
+		"kind":           "video",
+	})
+	if err != nil || res.Error != "" {
+		t.Fatalf("emit: %v / %s", err, res.Error)
+	}
+	dest, _ := res.Data["path"].(string)
+	if dest == "" {
+		t.Fatalf("no dest path: %+v", res.Data)
+	}
+	for _, companion := range []string{host.SemanticSidecarPath(dest), host.PosterSidecarPath(dest)} {
+		if _, statErr := os.Stat(companion); statErr != nil {
+			t.Fatalf("companion not copied beside dest: %s (%v)", companion, statErr)
+		}
+	}
+}
+
 func TestArtifactsDirTransport_AppendsSecondCall(t *testing.T) {
 	root := t.TempDir()
 	for i, body := range []string{"first chunk", "second chunk"} {
