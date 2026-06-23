@@ -217,6 +217,25 @@
                     <div v-if="row.agent?.incomplete" class="trace-timeline__incomplete-banner">
                       Agent call started but no completion event was recorded.
                     </div>
+                    <div
+                      v-if="row.agent && row.agent.streamEvents.length > 0"
+                      class="trace-timeline__agent-stream"
+                      data-testid="trace-agent-stream"
+                    >
+                      <div class="trace-timeline__agent-stream-title">
+                        Agent stream
+                        <span class="trace-timeline__agent-stream-count">{{ row.agent.streamEvents.length }}</span>
+                      </div>
+                      <div
+                        v-for="stream in row.agent.streamEvents"
+                        :key="`${stream.time}:${stream.attrs.call_id}:${stream.attrs.type}:${stream.attrs.preview ?? ''}`"
+                        class="trace-timeline__agent-stream-row"
+                        data-testid="trace-agent-stream-row"
+                      >
+                        <span class="trace-timeline__agent-stream-kind">{{ agentStreamLabel(stream) }}</span>
+                        <span class="trace-timeline__agent-stream-text">{{ agentStreamText(stream) }}</span>
+                      </div>
+                    </div>
                     <div v-if="row.harnessCall?.incomplete" class="trace-timeline__incomplete-banner">
                       Host call dispatched but no returned event was recorded.
                     </div>
@@ -313,6 +332,8 @@ type Subsystem = (typeof ALL_SUBSYSTEMS)[number];
 // msg shape (agent.decide.start, …) was a fiction the consumer used to assume.
 const AGENT_START_MSG = "agent.call.start";
 const AGENT_COMPLETE_MSG = "agent.call.complete";
+const AGENT_ERROR_MSG = "agent.call.error";
+const AGENT_STREAM_MSG = "agent.stream";
 function agentVerb(e: TraceEvent): string {
   return typeof e.attrs.verb === "string" ? e.attrs.verb : "";
 }
@@ -322,6 +343,13 @@ function agentStreamLabel(e: TraceEvent): string {
   if (typeof e.attrs.thinking === "string" && e.attrs.thinking) return "agent.thinking";
   if (typeof e.attrs.text === "string" && e.attrs.text) return "agent.delta";
   return "agent.stream";
+}
+
+function agentStreamText(e: TraceEvent): string {
+  if (typeof e.attrs.preview === "string" && e.attrs.preview) return e.attrs.preview;
+  if (typeof e.attrs.thinking === "string" && e.attrs.thinking) return e.attrs.thinking;
+  if (typeof e.attrs.text === "string" && e.attrs.text) return e.attrs.text;
+  return "";
 }
 
 // Virtualisation is only worth the complexity for very large traces.  The
@@ -418,6 +446,7 @@ const hasActiveFilters = computed(() => {
 interface AgentMerge {
   verb: string;
   complete: TraceEvent | null;
+  streamEvents: TraceEvent[];
   durationMs: number | null;
   incomplete: boolean;
   /** The harness profile name selected for this call (from agent.call.start);
@@ -522,12 +551,25 @@ const agentStartCallIds = computed<Set<string>>(() => {
   return s;
 });
 
-const agentCompleteByCallId = computed<Map<string, TraceEvent>>(() => {
+const agentTerminalByCallId = computed<Map<string, TraceEvent>>(() => {
   const m = new Map<string, TraceEvent>();
   for (const e of props.events) {
-    if (e.msg !== AGENT_COMPLETE_MSG) continue;
+    if (e.msg !== AGENT_COMPLETE_MSG && e.msg !== AGENT_ERROR_MSG) continue;
     const cid = e.attrs.call_id;
     if (typeof cid === "string") m.set(cid, e);
+  }
+  return m;
+});
+
+const agentStreamsByCallId = computed<Map<string, TraceEvent[]>>(() => {
+  const m = new Map<string, TraceEvent[]>();
+  for (const e of props.events) {
+    if (e.msg !== AGENT_STREAM_MSG) continue;
+    const cid = e.attrs.call_id;
+    if (typeof cid !== "string" || cid === "") continue;
+    const events = m.get(cid) ?? [];
+    events.push(e);
+    m.set(cid, events);
   }
   return m;
 });
@@ -590,7 +632,8 @@ const harnessCallData = computed<{
 
 const filteredEvents = computed<AnnotatedEvent[]>(() => {
   const startCids = agentStartCallIds.value;
-  const completeMap = agentCompleteByCallId.value;
+  const terminalMap = agentTerminalByCallId.value;
+  const streamMap = agentStreamsByCallId.value;
   const worldStates = worldStateByTurn.value;
   const harnessData = harnessCallData.value;
   const out: AnnotatedEvent[] = [];
@@ -650,9 +693,16 @@ const filteredEvents = computed<AnnotatedEvent[]>(() => {
       event.msg === "machine.state_entered"
     ) continue;
 
-    // Suppress agent.call.complete rows whose paired start exists; the start
-    // row carries the merged duration.
-    if (event.msg === AGENT_COMPLETE_MSG) {
+    // Suppress agent.call.complete/error rows whose paired start exists; the
+    // start row carries the merged terminal event and duration.
+    if (event.msg === AGENT_COMPLETE_MSG || event.msg === AGENT_ERROR_MSG) {
+      const cid = event.attrs.call_id;
+      if (typeof cid === "string" && startCids.has(cid)) continue;
+    }
+
+    // Stream frames are children of their agent call. They are rendered under
+    // the merged agent row instead of as top-level timeline rows.
+    if (event.msg === AGENT_STREAM_MSG) {
       const cid = event.attrs.call_id;
       if (typeof cid === "string" && startCids.has(cid)) continue;
     }
@@ -681,7 +731,8 @@ const filteredEvents = computed<AnnotatedEvent[]>(() => {
     if (event.msg === AGENT_START_MSG) {
       // Verb comes from attrs.verb; fall back to the complete event's verb.
       const cid = typeof event.attrs.call_id === "string" ? event.attrs.call_id : null;
-      const complete = cid ? completeMap.get(cid) ?? null : null;
+      const complete = cid ? terminalMap.get(cid) ?? null : null;
+      const streamEvents = cid ? streamMap.get(cid) ?? [] : [];
       const verb = agentVerb(event) || (complete ? agentVerb(complete) : "");
       const dur = complete && typeof complete.attrs.duration_ms === "number"
         ? (complete.attrs.duration_ms as number)
@@ -698,7 +749,7 @@ const filteredEvents = computed<AnnotatedEvent[]>(() => {
       const profile = typeof event.attrs.profile === "string" ? event.attrs.profile : "";
       const model = typeof merged.attrs.model === "string" ? (merged.attrs.model as string) : "";
       const effort = typeof merged.attrs.effort === "string" ? (merged.attrs.effort as string) : "";
-      agent = { verb, complete, durationMs: dur, incomplete: complete === null, merged, profile, model, effort };
+      agent = { verb, complete, streamEvents, durationMs: dur, incomplete: complete === null, merged, profile, model, effort };
     }
 
     out.push({ index: i, event, subsystem, agent });
@@ -1655,6 +1706,49 @@ watch(
   border-radius: 4px;
   font-size: 0.75rem;
   margin-bottom: 0.5rem;
+}
+
+.trace-timeline__agent-stream {
+  border-left: 2px solid #475569;
+  margin: 0 0 0.55rem 0.15rem;
+  padding: 0.1rem 0 0.1rem 0.65rem;
+}
+
+.trace-timeline__agent-stream-title {
+  color: #cbd5e1;
+  font-size: 0.72rem;
+  font-weight: 700;
+  margin-bottom: 0.35rem;
+  text-transform: uppercase;
+}
+
+.trace-timeline__agent-stream-count {
+  color: #94a3b8;
+  font-family: ui-monospace, monospace;
+  font-weight: 500;
+  margin-left: 0.35rem;
+}
+
+.trace-timeline__agent-stream-row {
+  display: grid;
+  grid-template-columns: minmax(8rem, max-content) minmax(0, 1fr);
+  gap: 0.5rem;
+  align-items: baseline;
+  color: #cbd5e1;
+  font-size: 0.76rem;
+  padding: 0.14rem 0;
+}
+
+.trace-timeline__agent-stream-kind {
+  color: #93c5fd;
+  font-family: ui-monospace, monospace;
+  white-space: nowrap;
+}
+
+.trace-timeline__agent-stream-text {
+  color: #d1d5db;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .trace-timeline__expand-btn {

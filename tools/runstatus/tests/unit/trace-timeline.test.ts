@@ -307,6 +307,73 @@ describe("TraceTimeline — agent start/complete merge", () => {
 
     wrapper.unmount();
   });
+
+  it("collapses a failed call into one row and nests stream frames under it", async () => {
+    const events: TraceEvent[] = [
+      makeEvent({
+        msg: "agent.call.start",
+        turn: 1,
+        time: "2026-01-01T00:00:01Z",
+        attrs: { call_id: "call-failed", verb: "decide", agent: "gate_planner" },
+      }),
+      makeEvent({
+        msg: "agent.stream",
+        turn: 1,
+        time: "2026-01-01T00:00:02Z",
+        attrs: {
+          call_id: "call-failed",
+          type: "assistant",
+          text: "thinking about the gate",
+          preview: "thinking about the gate",
+        },
+      }),
+      makeEvent({
+        msg: "agent.stream",
+        turn: 1,
+        time: "2026-01-01T00:00:03Z",
+        attrs: {
+          call_id: "call-failed",
+          type: "assistant",
+          tool: "Read",
+          preview: "app.yaml",
+        },
+      }),
+      makeEvent({
+        msg: "agent.call.error",
+        turn: 1,
+        time: "2026-01-01T00:00:04Z",
+        attrs: {
+          call_id: "call-failed",
+          duration_ms: 3000,
+          verb: "decide",
+          error: "validator failed",
+        },
+      }),
+    ];
+    const wrapper = mount(TraceTimeline, {
+      props: { events, selectedEventIndex: null },
+      attachTo: document.body,
+    });
+    await flushPromises();
+
+    const rows = wrapper.findAll(".trace-timeline__row");
+    expect(rows.length).toBe(1);
+    expect(rows[0]!.find(".trace-timeline__msg").text()).toBe("agent.decide");
+    expect(wrapper.text()).not.toContain("agent.tool Read");
+    expect(wrapper.findAll('[data-testid="trace-agent-stream-row"]').length).toBe(0);
+
+    await rows[0]!.find(".trace-timeline__expand-btn").trigger("click");
+    await flushPromises();
+
+    const streamRows = wrapper.findAll('[data-testid="trace-agent-stream-row"]');
+    expect(streamRows.length).toBe(2);
+    expect(streamRows[0]!.text()).toContain("agent.delta");
+    expect(streamRows[0]!.text()).toContain("thinking about the gate");
+    expect(streamRows[1]!.text()).toContain("agent.tool Read");
+    expect(streamRows[1]!.text()).toContain("app.yaml");
+
+    wrapper.unmount();
+  });
 });
 
 describe("TraceTimeline — turn.input ordering", () => {
