@@ -167,18 +167,52 @@ var dogfoodArtifact = map[string]any{
 	"reason":  "stub verdict",
 }
 
-// newSmokeOrchestrator builds an orchestrator pinned to the temp-repo
-// kitsoki-dev app with the real host registry (agent stubbed out).
-// Returns the orchestrator, the underlying store (for direct history
-// reads), an open session id, and the count pointer the agent stub
-// increments per call (handy for sanity asserts).
+// newDogfoodRegistry builds a host registry that mirrors REAL dogfood: the
+// FULL builtin set (host.RegisterBuiltins), then Replace the agent verbs with a
+// canned-artifact stub so no automated test ever shells out to a real LLM.
 //
-// The agent stub is registered FIRST and the rest of the builtins are
-// registered piecemeal via registerBuiltinsExceptAgent. host.Registry
-// panics on duplicate Register, so to override the prod agent handler
-// we have to skip its line in RegisterBuiltins. The set is small and
-// the dogfood smoke doesn't need every builtin — just the handlers the
-// kitsoki-dev `hosts:` allow-list (kitsoki-dev/app.yaml:64-73) declares.
+// Using RegisterBuiltins + Replace (not a hand-picked subset) is deliberate and
+// load-bearing: a curated subset silently drifts from kitsoki-dev's declared
+// `hosts:` allow-list, and a handler the subset forgot surfaces only as a
+// confusing "no handler registered" infrastructure failure → on_error bounce at
+// a random room transition (in tests only — real dogfood uses RegisterBuiltins,
+// so the handler IS there). That drift cost a full debug session once. The full
+// set can't drift; Replace overrides exactly what we stub. See
+// Registry.Replace / Registry.ValidateAllowList.
+//
+// Real (non-agent) builtins run against the temp repo: host.git / host.run /
+// host.git_worktree exercise actual git, which is the point of the smoke tests.
+// host.gh.ticket is registered but unused here — kitsoki-dev seeds tickets via
+// local files and the bugfix path never invokes the ticket iface.
+func newDogfoodRegistry(agentCalls *int) *host.Registry {
+	reg := host.NewRegistry()
+	host.RegisterBuiltins(reg)
+	stub := func(ctx context.Context, args map[string]any) (host.Result, error) {
+		*agentCalls++
+		stdoutJSON, _ := json.Marshal(dogfoodArtifact)
+		return host.Result{Data: map[string]any{
+			"submitted": dogfoodArtifact,
+			"stdout":    string(stdoutJSON),
+			"ok":        true,
+		}}, nil
+	}
+	// Stub EVERY agent verb — automated tests must never invoke a real LLM
+	// (CLAUDE.md). Replace overrides the real handler RegisterBuiltins set.
+	for _, verb := range []string{
+		"host.agent.ask", "host.agent.ask_with_mcp", "host.agent.task",
+		"host.agent.decide", "host.agent.extract", "host.agent.converse",
+		"host.agent.search",
+	} {
+		reg.Replace(verb, stub)
+	}
+	return reg
+}
+
+// newSmokeOrchestrator builds an orchestrator pinned to the temp-repo
+// kitsoki-dev app with the real host registry (agent verbs stubbed via
+// newDogfoodRegistry; host.local is the real CI handler). Returns the
+// orchestrator, the underlying store (for direct history reads), an open
+// session id, and the count pointer the agent stub increments per call.
 func newSmokeOrchestrator(t *testing.T, repoRoot string) (*orchestrator.Orchestrator, store.Store, app.SessionID, *int) {
 	t.Helper()
 	appPath := filepath.Join(repoRoot, "stories", "kitsoki-dev", "app.yaml")
@@ -192,36 +226,8 @@ func newSmokeOrchestrator(t *testing.T, repoRoot string) (*orchestrator.Orchestr
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close() })
 
-	reg := host.NewRegistry()
 	agentCalls := 0
-	stub := func(ctx context.Context, args map[string]any) (host.Result, error) {
-		agentCalls++
-		stdoutJSON, _ := json.Marshal(dogfoodArtifact)
-		return host.Result{Data: map[string]any{
-			"submitted": dogfoodArtifact,
-			"stdout":    string(stdoutJSON),
-			"ok":        true,
-		}}, nil
-	}
-	reg.Register("host.agent.ask_with_mcp", stub)
-	// agent-split Phase 8 verbs used by bugfix/pr-refinement/dev-story.
-	reg.Register("host.agent.task", stub)
-	reg.Register("host.agent.ask", stub)
-	reg.Register("host.agent.decide", stub)
-
-	// Register the prod handlers kitsoki-dev declares in its hosts
-	// allow-list, MINUS the agent verbs (already stubbed above).
-	reg.Register("host.local_files.ticket", host.LocalFilesTicketHandler)
-	reg.Register("host.git", host.GitVCSHandler)
-	reg.Register("host.local", host.LocalCIHandler)
-	reg.Register("host.git_worktree", host.GitWorktreeHandler)
-	// host.run: the testing room's pre-fix regression gate and the done
-	// room's lost-work clean-tree check both shell out via host.run. Real
-	// handler against the temp repo — git status reports a clean worktree
-	// (the agent stub writes no files), so done's guard proceeds to bf.done.
-	reg.Register("host.run", host.RunHandler)
-	reg.Register("host.append_to_file", host.AppendFileTransportHandler)
-	reg.Register("host.inbox.add", host.InboxAddHandler)
+	reg := newDogfoodRegistry(&agentCalls)
 
 	orch := orchestrator.New(def, m, s, noopHarness{}, orchestrator.WithHostRegistry(reg))
 
@@ -1237,23 +1243,13 @@ func newSmokeOrchestratorWithCIStub(t *testing.T, repoRoot string) (*orchestrato
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close() })
 
-	reg := host.NewRegistry()
 	agentCalls := 0
-	agentStub2 := func(ctx context.Context, args map[string]any) (host.Result, error) {
-		agentCalls++
-		stdoutJSON, _ := json.Marshal(dogfoodArtifact)
-		return host.Result{Data: map[string]any{
-			"submitted": dogfoodArtifact,
-			"stdout":    string(stdoutJSON),
-			"ok":        true,
-		}}, nil
-	}
-	reg.Register("host.agent.ask_with_mcp", agentStub2)
-	// agent-split Phase 8 verbs used by bugfix rooms.
-	reg.Register("host.agent.task", agentStub2)
-	reg.Register("host.agent.ask", agentStub2)
-	reg.Register("host.agent.decide", agentStub2)
-	reg.Register("host.local", func(ctx context.Context, args map[string]any) (host.Result, error) {
+	// Full builtin set + agent stubs (see newDogfoodRegistry), then Replace
+	// host.local with a CI stub so go test/build don't run for real against the
+	// temp repo. host.run stays the REAL handler (the testing regression gate +
+	// done lost-work clean-tree check exercise actual git).
+	reg := newDogfoodRegistry(&agentCalls)
+	reg.Replace("host.local", func(ctx context.Context, args map[string]any) (host.Result, error) {
 		op, _ := args["op"].(string)
 		switch op {
 		case "run_tests":
@@ -1269,20 +1265,6 @@ func newSmokeOrchestratorWithCIStub(t *testing.T, repoRoot string) (*orchestrato
 			return host.Result{Data: map[string]any{"ok": true}}, nil
 		}
 	})
-
-	reg.Register("host.local_files.ticket", host.LocalFilesTicketHandler)
-	reg.Register("host.git", host.GitVCSHandler)
-	reg.Register("host.git_worktree", host.GitWorktreeHandler)
-	// host.run (real handler): the testing room's regression gate and the done
-	// room's lost-work clean-tree check shell out via host.run. kitsoki-dev
-	// declares it in its hosts allow-list; without it here those checks return
-	// "no handler registered" — an infrastructure failure that the done check's
-	// degrade-to-clean (no on_error) would silently swallow, leaving the guard
-	// dead. Registering the real handler against the temp repo lets the guard
-	// actually run git status. (TestDogfoodSmoke_DoneRefusesUncommittedWork.)
-	reg.Register("host.run", host.RunHandler)
-	reg.Register("host.append_to_file", host.AppendFileTransportHandler)
-	reg.Register("host.inbox.add", host.InboxAddHandler)
 
 	orch := orchestrator.New(def, m, s, noopHarness{}, orchestrator.WithHostRegistry(reg))
 	sid, err := orch.NewSession(context.Background())
