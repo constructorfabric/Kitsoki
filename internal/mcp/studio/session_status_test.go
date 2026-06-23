@@ -10,6 +10,10 @@ package studio_test
 //   - TestSessionStatus_IsListed: session.status appears in ListTools.
 //   - TestSessionInspect_OmitWorld: omit_world:true drops world from inspect.
 //   - TestSessionInspect_MaxValueLen: max_value_len:N truncates each world value.
+//   - TestSessionDrive_OmitWorld: omit_world:true on an advancing call drops the
+//     frame's world_digest from the wire result.
+//   - TestSessionDrive_DefaultDropsEmptyDigestKeys: the safe default prunes
+//     empty-valued digest keys from an advancing turn.
 //   - TestSessionTrace_TruncatePayload: truncate_payload:N caps event payloads.
 //   - TestSessionTrace_Kinds: kinds filter returns only matching event kinds.
 
@@ -209,6 +213,63 @@ func TestSessionInspect_MaxValueLen(t *testing.T) {
 				assert.LessOrEqual(t, len([]rune(withoutEllipsis)), maxLen,
 					"prefix of truncated world[%q] must be ≤ %d runes", k, maxLen)
 			}
+		}
+	}
+}
+
+// ─── advancing-turn world_digest projections ─────────────────────────────────
+
+// TestSessionDrive_OmitWorld confirms omit_world:true on an ADVANCING call
+// (session.drive) drops the frame's world_digest from the wire result. This is
+// the cap-relief escape hatch for deep-import rooms whose full digest blows the
+// MCP tool-result cap.
+func TestSessionDrive_OmitWorld(t *testing.T) {
+	ctx := context.Background()
+	srv, _ := newReplayServer(t)
+	cs := connectInProcess(ctx, t, srv)
+	handle := openCloak(ctx, t, cs)
+
+	// Baseline drive carries a (bounded) world_digest.
+	baseRes, err := callTool(ctx, cs, "session.drive", map[string]any{
+		"handle": handle, "input": "go west",
+	})
+	require.NoError(t, err)
+	base := driveResult(t, baseRes)
+	require.Equal(t, "cloakroom", base.Outcome.State)
+	assert.NotNil(t, base.Frame.Metadata.WorldDigest, "default drive carries the digest")
+
+	// Drive again with omit_world: the digest must be gone from the wire JSON.
+	omitRes, err := callTool(ctx, cs, "session.drive", map[string]any{
+		"handle": handle, "input": "hang the cloak", "omit_world": true,
+	})
+	require.NoError(t, err)
+	require.False(t, omitRes.IsError, "drive omit_world: %s", contentText(omitRes))
+	omit := driveResult(t, omitRes)
+	assert.Nil(t, omit.Frame.Metadata.WorldDigest, "omit_world:true must drop the frame digest")
+	assert.NotContains(t, contentText(omitRes), `"world_digest"`,
+		"omit_world must remove 'world_digest' from the advancing-turn JSON")
+}
+
+// TestSessionDrive_DefaultDropsEmptyDigestKeys confirms the safe default (no
+// flag) prunes empty-valued world_digest keys from an advancing turn — the
+// least-surprise default that keeps deep-import digests under the cap.
+func TestSessionDrive_DefaultDropsEmptyDigestKeys(t *testing.T) {
+	ctx := context.Background()
+	srv, _ := newReplayServer(t)
+	cs := connectInProcess(ctx, t, srv)
+	handle := openCloak(ctx, t, cs)
+
+	res, err := callTool(ctx, cs, "session.drive", map[string]any{
+		"handle": handle, "input": "go west",
+	})
+	require.NoError(t, err)
+	driven := driveResult(t, res)
+	require.Equal(t, "cloakroom", driven.Outcome.State)
+
+	// No surviving key may have an empty-string value.
+	for k, v := range driven.Frame.Metadata.WorldDigest {
+		if s, ok := v.(string); ok {
+			assert.NotEqual(t, "", s, "default projection must drop empty-valued key %q", k)
 		}
 	}
 }
