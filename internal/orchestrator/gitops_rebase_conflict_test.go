@@ -96,6 +96,84 @@ func setupConflictRepo(t *testing.T) string {
 	return repoRoot
 }
 
+// setupRerereConflictRepo builds the same guaranteed-conflict repo as
+// setupConflictRepo, but ALSO primes git's rerere cache with a recorded
+// resolution for that exact conflict (on a throwaway copy of `feature`, so the
+// real `feature` branch is left in its untouched pre-rebase state). When git-ops
+// later rebases `feature` onto `main`, rerere replays the recorded resolution and
+// the rebase completes with no conflict-room/LLM involvement. Returns the repo
+// root, checked out on `feature`.
+func setupRerereConflictRepo(t *testing.T) string {
+	t.Helper()
+	repoRoot := t.TempDir()
+
+	env := append(os.Environ(),
+		"GIT_TERMINAL_PROMPT=0",
+		"GIT_AUTHOR_NAME=Rerere Test", "GIT_AUTHOR_EMAIL=rerere@test.invalid",
+		"GIT_COMMITTER_NAME=Rerere Test", "GIT_COMMITTER_EMAIL=rerere@test.invalid",
+	)
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir, cmd.Env = repoRoot, env
+		out, err := cmd.CombinedOutput()
+		require.NoError(t, err, "git %v failed: %s", args, string(out))
+	}
+	// gitTolerant runs a git command whose non-zero exit is expected (the priming
+	// rebase intentionally conflicts; the priming --continue is the resolution).
+	gitTolerant := func(extraEnv string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repoRoot
+		cmd.Env = env
+		if extraEnv != "" {
+			cmd.Env = append(cmd.Env, extraEnv)
+		}
+		_ = cmd.Run()
+	}
+	writeFile := func(name, body string) {
+		t.Helper()
+		require.NoError(t, os.WriteFile(filepath.Join(repoRoot, name), []byte(body), 0o644))
+	}
+
+	git("init", "--quiet", "--initial-branch=main")
+	git("config", "user.email", "rerere@test.invalid")
+	git("config", "user.name", "Rerere Test")
+	// Enable rerere so the prime RECORDS the resolution and the git-ops rebase
+	// REPLAYS it. autoupdate stages the replayed file automatically.
+	git("config", "rerere.enabled", "true")
+	git("config", "rerere.autoupdate", "true")
+
+	writeFile("file.txt", "base line\n")
+	git("add", "-A")
+	git("commit", "--quiet", "-m", "base")
+
+	git("checkout", "--quiet", "-b", "feature")
+	writeFile("file.txt", "feature change\n")
+	git("add", "-A")
+	git("commit", "--quiet", "-m", "feature edit")
+
+	git("checkout", "--quiet", "main")
+	writeFile("file.txt", "main change\n")
+	git("add", "-A")
+	git("commit", "--quiet", "-m", "main edit")
+
+	// PRIME the rerere cache on a throwaway copy of feature. The rebase conflicts
+	// on file.txt (expected); resolve it, stage it, and let `rebase --continue`
+	// commit — rerere auto-records the resolution keyed on the conflict pre-image.
+	git("checkout", "--quiet", "-b", "feature_prime", "feature")
+	gitTolerant("", "rebase", "main") // conflicts; rerere records the pre-image
+	writeFile("file.txt", "resolved line\n")
+	git("add", "file.txt")
+	gitTolerant("GIT_EDITOR=true", "rebase", "--continue") // records the resolution
+
+	// Back to the real feature branch, untouched & pre-rebase — exactly the state
+	// a user is in when they ask git-ops to "rebase onto main". The conflict it
+	// will hit is byte-identical to the primed one, so rerere replays it.
+	git("checkout", "--quiet", "feature")
+	return repoRoot
+}
+
 // escalatingConflictResolver is the host.agent.task stub for the conflict
 // room. It returns resolved:false so the conflict room SETTLES at `conflict`
 // (the escalation view) rather than emitting rebase_continue and driving the
@@ -186,6 +264,78 @@ func TestGitOps_RebaseConflict_RoutesToConflictRoom(t *testing.T) {
 		"conflict_origin must be 'rebase' after a conflicting rebase")
 	require.Equal(t, false, j1.World.Vars["rebase_done"],
 		"rebase_done must be false after a conflicting rebase")
+}
+
+// TestGitOps_RebaseConflict_RerereAutoResolves proves the no-LLM lever: when a
+// rebase conflict has a resolution already recorded in the rerere cache, the
+// rebase room replays it and drives the rebase to completion, landing at
+// branch_ops WITHOUT ever entering the conflict room.
+//
+// The host.agent.task stub escalates (resolved:false) → conflict room rests at
+// `conflict`. So if rerere did NOT auto-resolve and the story fell through to the
+// agent, this test would land at `conflict` and fail. A green run proves the
+// conflict was resolved deterministically, no agent/LLM touched.
+func TestGitOps_RebaseConflict_RerereAutoResolves(t *testing.T) {
+	cwd, err := os.Getwd()
+	require.NoError(t, err)
+	appPath := filepath.Join(cwd, "..", "..", "stories", "git-ops", "app.yaml")
+
+	def, err := app.Load(appPath)
+	require.NoError(t, err, "load git-ops/app.yaml")
+	m, err := machine.New(def)
+	require.NoError(t, err)
+	s, err := store.OpenMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	reg := host.NewRegistry()
+	reg.Register("host.run", host.RunHandler)
+	// If rerere fails to auto-resolve, the story reaches the agent — which here
+	// escalates and rests at `conflict`, failing the branch_ops assertion below.
+	reg.Register("host.agent.task", escalatingConflictResolver)
+	reg.Register("host.agent.decide", escalatingConflictResolver)
+
+	orch := orchestrator.New(def, m, s, noopHarness{}, orchestrator.WithHostRegistry(reg))
+
+	repoRoot := setupRerereConflictRepo(t)
+	t.Chdir(repoRoot)
+
+	ctx := context.Background()
+	sid, err := orch.NewSession(ctx)
+	require.NoError(t, err)
+
+	{
+		c, cancel := context.WithTimeout(ctx, 30*time.Second)
+		require.NoError(t, orch.RunInitialOnEnter(c, sid))
+		cancel()
+	}
+	j0, err := orch.LoadJourney(sid)
+	require.NoError(t, err)
+	require.Equal(t, app.StatePath("branch_ops"), j0.State,
+		"idle should route the feature branch to branch_ops; got %q", j0.State)
+
+	c, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	out, err := orch.SubmitDirect(c, sid, "rebase", nil)
+	require.NoError(t, err, "rebase intent must complete")
+	require.NotNil(t, out)
+	require.Equal(t, app.StatePath("branch_ops"), out.NewState,
+		"a rebase whose conflict is in the rerere cache must auto-resolve to branch_ops, "+
+			"never the conflict room; got %q (view: %q)", out.NewState, out.View)
+
+	// World provenance: the rebase recorded success, not a conflict.
+	j1, err := orch.LoadJourney(sid)
+	require.NoError(t, err)
+	require.Equal(t, true, j1.World.Vars["rebase_done"],
+		"rebase_done must be true after a rerere auto-resolved rebase")
+	require.Equal(t, "", j1.World.Vars["conflict_origin"],
+		"conflict_origin must be empty after a rerere auto-resolved rebase")
+
+	// The working tree must hold the recorded resolution and be clean (rebase done).
+	body, err := os.ReadFile(filepath.Join(repoRoot, "file.txt"))
+	require.NoError(t, err)
+	require.Equal(t, "resolved line\n", string(body),
+		"file.txt must carry the rerere-recorded resolution")
 }
 
 // TestGitOps_NoSwallowedExitAfterTrueGuard is a static guard against the

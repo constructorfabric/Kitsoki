@@ -1,0 +1,82 @@
+# checkpoint_restore — the safe step-retry arc: save a checkpoint from the
+# branch hub, return, then restore it. host.run is stubbed (the real git ref
+# plumbing is covered by the real-repo Go test
+# TestGitOps_CheckpointRestore_Roundtrip); this fixture locks the ROUTING and
+# world-binding contract.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: branch_ops
+initial_world:
+  integration_branch: main
+  current_branch:     feat/x
+  on_integration:     false
+  working_dir:        "."
+
+host_handlers:
+  host.run:
+    by_call:
+      refresh_branch:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            branch:             feat/x
+            main_worktree_path: "."
+            worktree_list:      { raw: "" }
+            commits_ahead:      1
+            commits_behind:     0
+            has_uncommitted:    false
+            no_common_ancestor: false
+      checkpoint_save:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            checkpoint_outcome: saved
+            checkpoint_ref:     "refs/kitsoki/checkpoints/before-risky"
+            checkpoint_label:   "before-risky"
+            checkpoint_sha:     "cafe1234"
+            checkpoint_dirty:   true
+            last_error:         ""
+      checkpoint_list:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            raw: "before-risky "
+      restore_exec:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            restore_outcome:  restored
+            restore_label:    "before-risky"
+            checkpoint_sha:   "cafe1234"
+            checkpoint_dirty: true
+            last_error:       ""
+      restore_list:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            raw: "before-risky auto-pre-restore "
+
+turns:
+  - intent: { name: checkpoint, slots: { label: "before-risky" } }
+    expect_state: checkpoint
+    expect_world:
+      checkpoint_outcome: saved
+      checkpoint_label:   "before-risky"
+      checkpoint_dirty:   true
+  - intent: { name: back, slots: {} }
+    expect_state: branch_ops
+  - intent: { name: restore, slots: { label: "before-risky" } }
+    expect_state: restore
+    expect_world:
+      restore_outcome: restored
+      restore_label:   "before-risky"
+  - intent: { name: back, slots: {} }
+    expect_state: branch_ops
+
+expect_no_errors: true

@@ -277,6 +277,47 @@ install_git_hooks() {
 	log "linked $n git hook(s) into $dst"
 }
 
+# --- git config (conflict-avoidance for parallel agents) -------------------
+# Embed the repo's "excellent git workflow" config into this clone's
+# .git/config. These can't live in a committed file (git refuses to read
+# repo-tracked config for safety), so `make setup` is the embedding point.
+# Everything here is local to the clone and idempotent.
+#
+#   rerere            — record a conflict resolution once, auto-replay it every
+#                       later time the same hunk recurs. THE core no-LLM lever:
+#                       N agents rebasing past the same upstream commit hit the
+#                       same conflict; the first resolution (human or agent) makes
+#                       all the rest free. The git-ops conflict room runs
+#                       `git rerere` before its LLM resolver (see conflict.yaml).
+#   rerere.autoupdate — stage the replayed resolution automatically.
+#   merge.conflictStyle=zdiff3 — show the common base + both sides in conflict
+#                       markers; far better input for the rare case an agent IS
+#                       needed (and for humans).
+#   rebase.autostash  — never lose a dirty tree to a rebase; stash + pop around it.
+configure_git() {
+	local root train
+	root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+	git -C "$root" rev-parse --git-dir >/dev/null 2>&1 || {
+		warn "not a git repo; skipping git config"; return; }
+	git -C "$root" config rerere.enabled true
+	git -C "$root" config rerere.autoupdate true
+	git -C "$root" config merge.conflictStyle zdiff3
+	git -C "$root" config rebase.autostash true
+	# Seed the rerere cache from already-merged history so known conflict
+	# resolutions are available before any agent hits them (best-effort; the
+	# contrib script ships with git but its path varies by platform).
+	for train in \
+		/usr/share/doc/git/contrib/rerere-train.sh \
+		/usr/local/share/git-core/contrib/rerere-train.sh \
+		"$(git --exec-path 2>/dev/null)/../../share/git-core/contrib/rerere-train.sh"; do
+		[ -r "$train" ] || continue
+		log "seeding git rerere cache from recent merge history"
+		( cd "$root" && bash "$train" --overwrite 'HEAD~200..HEAD' ) >/dev/null 2>&1 || true
+		break
+	done
+	log "configured git (rerere + autoupdate, zdiff3, rebase.autostash)"
+}
+
 # --- main ------------------------------------------------------------------
 main() {
 	detect_os
@@ -291,6 +332,7 @@ main() {
 	install_skills
 	install_agents
 	install_git_hooks
+	configure_git
 
 	log "setup complete"
 	echo

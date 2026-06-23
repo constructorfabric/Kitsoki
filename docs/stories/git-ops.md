@@ -75,6 +75,8 @@ deterministic effects.
 | `worktree_list` | Audit and classify existing worktrees |
 | `cleanup` | Remove worktree + branch after merge |
 | `undo` | Undo last commit (--mixed/--soft/--hard) |
+| `checkpoint` | Save a restorable snapshot (HEAD + dirty tree) under `refs/kitsoki/checkpoints/` |
+| `restore` | Reset the branch back to a saved checkpoint (auto-saves current state first) |
 | `done` | Terminal |
 
 ## merge_into_main guard sequence
@@ -96,19 +98,58 @@ Post-merge build gate: runs `world.build_check_cmd` (skipped when
 
 ## Conflict resolution flow
 
+When a rebase stops on a conflict the story tries to resolve it **deterministically
+first**, and only escalates to the LLM/operator for hunks it can't:
+
+0. **rerere auto-resolution (no LLM)** — `rebase_exec` itself loops `git rerere`
+   (replay any recorded resolution) + stage marker-free files + `git rebase
+   --continue` until the rebase finishes or a never-seen conflict remains. If the
+   whole rebase replays from cache it lands at `branch_ops` and the `conflict`
+   room is never entered. See [Conflict avoidance](#conflict-avoidance-for-parallel-agents).
 1. `gather_conflict_files` — `git diff --diff-filter=U` to list conflicted files.
    go.sum special case: `git checkout --theirs go.sum && go mod tidy`.
 2. `host.agent.task` (agent: `conflict_resolver`, tools: [Read, Edit]) — removes
    all conflict markers. Default strategy: take target-branch version, re-apply
    source additive changes.
 3. `git diff --check` (`acceptance.post_cmd`) rejects leftover markers.
-4. Story runs `git rebase --continue --no-edit`.
+4. Story runs `git rebase --continue --no-edit`. With `rerere.enabled` this also
+   **records** the agent's resolution, so the next branch to hit the same conflict
+   gets it auto-replayed at step 0 — free.
 5. `build_check_cmd` validates semantic correctness. Failure routes to escalation
    (operator provides guidance → retry agent round).
 
+## Conflict avoidance for parallel agents
+
+Many agents rebasing onto a fast-moving `main` is a conflict generator. Three
+layers keep that from becoming an LLM-resolution tax:
+
+1. **`git rerere` (reuse recorded resolution)** — the core no-LLM lever. A conflict
+   resolved once (by a human or the `conflict` room's agent) is recorded and
+   replayed deterministically for every later branch that hits the same hunk. The
+   `rebase` room drives the replay-and-continue loop (step 0 above); `make setup`
+   (`scripts/setup.sh` → `configure_git`) sets `rerere.enabled`,
+   `rerere.autoupdate`, `merge.conflictStyle=zdiff3`, and `rebase.autostash` in the
+   clone, and seeds the cache from recent merge history. Proven end-to-end by
+   `TestGitOps_RebaseConflict_RerereAutoResolves`.
+2. **`.gitattributes` merge drivers** — resolve additive, order-independent hotspot
+   files before they ever reach the conflict path. `go.sum` is `merge=union` (keep
+   both sides' module checksums; a later `go mod tidy` prunes) — the same fix the
+   `conflict` room's go.sum special case applies, but at merge-driver time.
+   (Per-path drivers apply to **local** merges/rebases only; GitHub's web merge
+   ignores `.gitattributes` — which is fine, git-ops merges locally.)
+3. **Checkpoints (safe step-retry)** — `checkpoint`/`restore` let a workflow "go
+   back to a step and try again." `checkpoint` parks committed HEAD **and** the
+   dirty tracked tree under `refs/kitsoki/checkpoints/<slug>` via `git stash create`
+   (a commit object — it does **not** push onto the single stash stack, so parallel
+   agents on a shared worktree don't clobber each other). `restore` resets back to
+   it, auto-saving the pre-restore state to `auto-pre-restore` first so a restore is
+   itself reversible. Limitation: `git stash create` captures tracked modifications
+   only — `git add` new files before checkpointing. Proven by
+   `TestGitOps_CheckpointRestore_Roundtrip`.
+
 ## Flow fixtures
 
-All 26 fixtures are intent-only with no LLM calls. `host.run` calls are stubbed
+All flow fixtures are intent-only with no LLM calls. `host.run` calls are stubbed
 via `by_call:` keyed on `id:`. `host.agent.task` and `host.agent.decide` use
 global `data:` stubs.
 
@@ -117,8 +158,16 @@ Key invariants verified:
 - `merge_from_worktree`: merge proceeds with `cwd=main_worktree_path` (no checkout)
 - `stale_rebase_check`: stale `rebase_base_sha` blocks merge even when `rebase_done=true`
 - `conflict_build_reject`: build failure post-rebase-continue does not set `rebase_done=true`
+- `checkpoint_restore`: the checkpoint→back→restore arc routes and binds correctly
 - `staging_classify_suspicious`: suspicious files require explicit confirmation before `add_all`
 - Natural-language routing: bare imperatives ("commit", "doit", "sync with main") route correctly
+
+Because flow fixtures stub `host.run` (the embedded bash never executes), the
+git-plumbing-sensitive behaviors are covered by **real-repo** Go tests in
+`internal/orchestrator/gitops_rebase_conflict_test.go` and
+`gitops_checkpoint_test.go`: a real rebase conflict routing to the `conflict`
+room, a rerere-cached conflict auto-resolving to `branch_ops` with no agent, and
+the checkpoint/restore roundtrip against real refs.
 
 ## Non-goals (v1)
 

@@ -52,6 +52,12 @@ states:
             - label: "undo"
               hint:  "undo the last commit"
               intent: undo
+            - label: "checkpoint label=…"
+              hint:  "save a restorable snapshot before trying something risky"
+              intent: checkpoint
+            - label: "restore label=…"
+              hint:  "roll back to a saved checkpoint"
+              intent: restore
             - label: "retry"
               hint:  "retry the post-merge build check"
               intent: retry
@@ -164,6 +170,19 @@ states:
                 squash_mode: false
       undo:
         - target: undo
+      checkpoint:
+        - target: checkpoint
+          effects:
+            - set:
+                checkpoint_label:   "{{ slots.label }}"
+                checkpoint_outcome: ""
+                checkpoint_sha:     ""
+      restore:
+        - target: restore
+          effects:
+            - set:
+                restore_label:   "{{ slots.label }}"
+                restore_outcome: ""
       retry:
         - when: "world.last_op_outcome == 'post_merge_test_fail'"
           target: merge_into_main

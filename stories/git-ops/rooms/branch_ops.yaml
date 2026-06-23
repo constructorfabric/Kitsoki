@@ -57,6 +57,12 @@ states:
             - label: "cleanup"
               hint:  "remove worktree and branch"
               intent: cleanup
+            - label: "checkpoint label=…"
+              hint:  "save a restorable snapshot before trying something risky"
+              intent: checkpoint
+            - label: "restore label=…"
+              hint:  "roll back to a saved checkpoint"
+              intent: restore
             - label: "quit"
               hint:  "exit git-ops"
               intent: quit
@@ -137,6 +143,19 @@ states:
         - target: worktree_list
       cleanup:
         - target: cleanup
+      checkpoint:
+        - target: checkpoint
+          effects:
+            - set:
+                checkpoint_label:   "{{ slots.label }}"
+                checkpoint_outcome: ""
+                checkpoint_sha:     ""
+      restore:
+        - target: restore
+          effects:
+            - set:
+                restore_label:   "{{ slots.label }}"
+                restore_outcome: ""
       integrate:
         - target: integrate
           effects:

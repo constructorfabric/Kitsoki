@@ -2,7 +2,14 @@
 #
 # Pre-rebase: auto-create backup tag if >1 commit ahead.
 # On ok: record merge-base SHA, set rebase_done=true → branch_ops.
-# On conflict: → conflict room.
+# On conflict: try rerere auto-resolution first; only escalate to the conflict
+#   room for hunks rerere can't replay (see "rerere auto-resolution" below).
+#
+# rerere (reuse recorded resolution) is THE no-LLM lever for parallel rebases:
+# N feature branches rebasing past the same upstream commit hit the SAME conflict,
+# so the first resolution (human or the conflict room's agent) is recorded once
+# and replayed deterministically for every later branch — no operator, no LLM.
+# Enabled + autoupdated by `make setup` (scripts/setup.sh → configure_git).
 
 states:
 
@@ -56,6 +63,41 @@ states:
               # failing assignment is the left side of a || list.
               EXIT=0
               OUTPUT=$(git rebase "$INTEGRATION" --no-autostash 2>&1) || EXIT=$?
+              # ── rerere auto-resolution ──────────────────────────────────────
+              # When the rebase stops on a conflict, replay any previously-recorded
+              # resolutions (git rerere) and drive the rebase to completion WITHOUT
+              # the operator/LLM. The conflict room is reserved for hunks rerere has
+              # never seen. Loop: a multi-commit rebase can stop once per commit.
+              rebase_in_progress() {
+                [ -d "$(git rev-parse --git-path rebase-merge 2>/dev/null)" ] || \
+                [ -d "$(git rev-parse --git-path rebase-apply 2>/dev/null)" ]
+              }
+              if [ "$EXIT" -ne 0 ] && rebase_in_progress; then
+                GUARD=0
+                while rebase_in_progress && [ "$GUARD" -lt 100 ]; do
+                  GUARD=$((GUARD + 1))
+                  git rerere 2>/dev/null || true
+                  # rerere.autoupdate stages cleanly-replayed files; without it
+                  # rerere only fixes the working tree, so stage any unmerged file
+                  # that no longer carries conflict markers (<<<<<<< / >>>>>>>
+                  # bracket every real conflict; a resolved file has neither).
+                  for f in $(git diff --diff-filter=U --name-only 2>/dev/null); do
+                    [ -f "$f" ] || continue
+                    grep -qE '^(<<<<<<<|>>>>>>>)' "$f" 2>/dev/null || git add -- "$f" 2>/dev/null || true
+                  done
+                  # A conflict rerere could NOT resolve remains → escalate.
+                  if git diff --diff-filter=U --name-only 2>/dev/null | grep -q .; then
+                    break
+                  fi
+                  # Every conflict at this stop is resolved → continue (non-interactive).
+                  GIT_EDITOR=true git rebase --continue >/dev/null 2>&1 || true
+                done
+                # Fully replayed iff the rebase is no longer in progress.
+                if ! rebase_in_progress; then
+                  EXIT=0
+                  OUTPUT="conflicts auto-resolved from rerere cache"
+                fi
+              fi
               MERGE_BASE=$(git merge-base HEAD "$INTEGRATION" 2>/dev/null || echo "")
               if [ $EXIT -eq 0 ]; then
                 jq -n --arg tag "$TAG" --arg out "$OUTPUT" --arg mb "$MERGE_BASE" \

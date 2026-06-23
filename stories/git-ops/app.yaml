@@ -95,6 +95,19 @@ world:
   # run_exit being non-empty so it can't fire on the pre-bind default world.
   run_exit:                 { type: string, default: "" }
   run_stdout:               { type: string, default: "" }
+  # checkpoint / restore arc (safe step-retry — see rooms/checkpoint.yaml).
+  # A checkpoint parks committed HEAD + dirty tracked tree under
+  # refs/kitsoki/checkpoints/<slug> WITHOUT touching the working tree or the
+  # stash stack (git stash create). restore resets back to it, auto-saving the
+  # current state first so a restore is itself reversible.
+  checkpoint_label:         { type: string, default: "" }
+  checkpoint_ref:           { type: string, default: "" }
+  checkpoint_sha:           { type: string, default: "" }
+  checkpoint_dirty:         { type: bool,   default: false }
+  checkpoint_outcome:       { type: string, default: "" }
+  checkpoint_list:          { type: object, default: {} }
+  restore_label:            { type: string, default: "" }
+  restore_outcome:          { type: string, default: "" }
 
 intents:
   # ── Routing (internal; emitted by on_enter) ─────────────────────────
@@ -318,6 +331,22 @@ intents:
     slots:
       branch: { type: string, required: false }
       force:  { type: string, required: false }
+
+  checkpoint:
+    description: "Save a restorable checkpoint of the current branch state (HEAD + dirty tree) under refs/kitsoki/checkpoints."
+    examples: ["checkpoint", "save a checkpoint", "snapshot this", "save my state",
+               "checkpoint before I try this", "mark a safe point"]
+    priority: 70
+    slots:
+      label: { type: string, required: false }
+
+  restore:
+    description: "Restore the branch to a previously saved checkpoint (auto-saves current state first so it's reversible)."
+    examples: ["restore", "restore checkpoint", "go back to the checkpoint",
+               "roll back to my snapshot", "reset to the safe point", "undo to checkpoint"]
+    priority: 70
+    slots:
+      label: { type: string, required: false }
 
   prune:
     description: "Run git worktree prune to clear stale refs."
