@@ -409,26 +409,43 @@ func (rw *childRewriter) rewriteAny(v any) any {
 // world_in projections at parent scope) are left alone.
 var worldIdentRE = regexp.MustCompile(`\bworld\.([A-Za-z_][A-Za-z0-9_]*)`)
 
+// helperIntentArgRE matches view-helper calls whose sole argument is a
+// quoted intent name, e.g. available('foo') or blocked_reason("bar").
+// Capture groups: 1=helper name, 2=quote char, 3=intent name.
+var helperIntentArgRE = regexp.MustCompile(
+	`\b(available|blocked|blocked_reason|intent_status)\((['"])([A-Za-z_][A-Za-z0-9_]*)['"]\)`)
+
 // rewriteExpr returns s with every `world.<X>` occurrence rewritten to
-// `world.<alias>__<X>` when X is a child world key. Non-string-bearing
-// inputs (empty) pass through. Works on bare expressions and on
-// template-bearing strings ({{ … }}) alike — the regex doesn't care
-// about delimiters.
+// `world.<alias>__<X>` when X is a child world key, and with every
+// view-helper intent-name argument (available/blocked/blocked_reason/intent_status)
+// rewritten via rewriteIntentRef. Non-string-bearing inputs (empty) pass
+// through. Works on bare expressions and on template-bearing strings
+// ({{ … }}) alike — the regexes don't care about delimiters.
 func (rw *childRewriter) rewriteExpr(s string) string {
 	if rw == nil || s == "" {
 		return s
 	}
-	if len(rw.childWorldKey) == 0 {
-		return s
+	if len(rw.childWorldKey) > 0 {
+		s = worldIdentRE.ReplaceAllStringFunc(s, func(match string) string {
+			// match looks like "world.X" — split at the dot.
+			key := strings.TrimPrefix(match, "world.")
+			if _, ok := rw.childWorldKey[key]; ok {
+				return "world." + rw.alias + "__" + key
+			}
+			return match
+		})
 	}
-	return worldIdentRE.ReplaceAllStringFunc(s, func(match string) string {
-		// match looks like "world.X" — split at the dot.
-		key := strings.TrimPrefix(match, "world.")
-		if _, ok := rw.childWorldKey[key]; ok {
-			return "world." + rw.alias + "__" + key
-		}
-		return match
-	})
+	if len(rw.childIntent) > 0 || len(rw.parentExportedIntents) > 0 {
+		s = helperIntentArgRE.ReplaceAllStringFunc(s, func(match string) string {
+			sub := helperIntentArgRE.FindStringSubmatch(match)
+			rewritten := rw.rewriteIntentRef(sub[3])
+			if rewritten == sub[3] {
+				return match
+			}
+			return sub[1] + "(" + sub[2] + rewritten + sub[2] + ")"
+		})
+	}
+	return s
 }
 
 // rewriteView applies rewriteExpr to every author-supplied template
