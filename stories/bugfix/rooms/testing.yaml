@@ -272,6 +272,12 @@ states:
                 # Re-enter implementing for a fresh re-apply: clear its
                 # once: bind so the implementer agent runs again.
                 implement_artifact: {}
+                # Also clear the testing room's own once:-guarded review
+                # bind so that, on the return implementing → testing trip,
+                # the on_enter test_author re-dispatches and produces a
+                # fresh verdict against the maker's updated tree instead of
+                # replaying the stale failed/blocked one.
+                implement_review_artifact: {}
 
         # ── direct-ship (slice 4) — passed AND bugfix_exit=direct-ship ──────
         # The RED→GREEN regression gate's RED half is enforced HERE: the fix is

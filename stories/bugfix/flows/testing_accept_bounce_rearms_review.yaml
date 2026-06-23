@@ -1,0 +1,109 @@
+# testing_accept_bounce_rearms_review — REGRESSION for
+# 2026-06-23T120645Z-testing-accept-bounce-stale-review-artifact.
+#
+# Bug: the testing room's `accept` failed/blocked → implementing arm clears
+# `implement_artifact: {}` (re-arms the implementer) but NOT
+# `implement_review_artifact`. test_author's on_enter invoke is `once:` keyed
+# on implement_review_artifact, so on the return trip implementing → testing
+# the re-review is SKIPPED and the room re-renders the prior cycle's STALE
+# `failed` verdict — even though the maker has since made the tree green.
+# Operator livelocks testing ↔ implementing forever.
+#
+# How this flow proves it (no LLM — host.agent.task is a stub):
+#   * Enter testing with a STALE `failed` review preset (prior cycle).
+#   * The host.agent.task stub returns a FRESH `passed` review ("the maker
+#     fixed it") with a distinctive marker title.
+#   * Turn 1 `accept`: failed verdict ⇒ bounce to implementing. Post-fix the
+#     bounce arm CLEARS implement_review_artifact ({}), re-arming test_author's
+#     once: key. On the BUGGY tree the stale `failed` verdict survives instead,
+#     so this assertion is RED before the fix and GREEN after.
+#   * Turn 2 `accept` (implementing → testing): on re-entry test_author re-runs
+#     against the now-green tree and binds the FRESH `passed` review.
+#
+# EXPECTED (post-fix): turn 1 leaves implement_review_artifact == {} and turn 2's
+# final implement_review_artifact == the FRESH passed review
+# (FRESH-REVIEW-AFTER-BOUNCE). With the bug present, the bounce never clears the
+# bind, so test_author's once: guard is still satisfied by the stale artifact, it
+# is SKIPPED, and status stays "failed" — both assertions FAIL (RED),
+# reproducing the livelock root cause.
+#
+# judge_mode=human so no judge/emit_intent fires; workdir="" so the pre-fix
+# regression gate (host.run) and the lost-work commit (iface.vcs.commit) are
+# guard-skipped — this flow isolates the once:-rearm seam only.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: testing
+initial_world:
+  ticket_id:           "TKT-BOUNCE"
+  ticket_title:        "accept bounce stale review"
+  thread:              "TKT-BOUNCE"
+  judge_mode:          "human"
+  workdir:             ""
+  implementing_budget: 5
+  implementing_cycle:  0
+  # The STALE verdict from the prior cycle. test_author's once: guard keys on
+  # this; preset ⇒ on the first testing entry the agent is (correctly) skipped.
+  implement_review_artifact:
+    summary_title:    "STALE failed review (prior cycle)"
+    summary_markdown: "The prior cycle's test run failed. This verdict is now stale — the maker has since repaired the tree, but this artifact must be re-armed for a fresh review on re-entry. Padding to satisfy the 200-char schema minimum for summary_markdown so the artifact round-trips cleanly through the stub."
+    status:           "failed"
+    tests_added:      []
+    tests_run:        { passed: 0, failed: 1, log: "FAIL (stale)" }
+
+host_handlers:
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+  host.inbox.add:
+    data: { ok: true, id: "ib-1" }
+  host.git_worktree:
+    data: { ok: true, log: "" }
+  host.git:
+    data: { ok: true, sha: "abc", diff: "" }
+  host.local:
+    data: { ok: true, log: "PASS", passed: 1, failed: 0 }
+  host.run:
+    data: { ok: true, stdout_json: { red: true, checked: true, log: "" } }
+  # The FRESH review the maker's green tree deserves. If the bounce arm
+  # re-armed implement_review_artifact, test_author would re-run on re-entry
+  # and bind THIS (passed). With the bug, it is skipped and never consumed on
+  # the return trip — the stale `failed` survives.
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "FRESH-REVIEW-AFTER-BOUNCE"
+        summary_markdown: "Re-ran the suite against the repaired tree: all green. This is the fresh review that MUST replace the stale failed verdict once the maker fixes the implementation. Padding to satisfy the 200-char schema minimum for summary_markdown so the artifact validates and round-trips."
+        status:           "passed"
+        tests_added:      ["internal/foo/foo_test.go"]
+        tests_run:        { passed: 7, failed: 0, log: "ok" }
+
+turns:
+  # Turn 1: stale `failed` verdict ⇒ accept bounces to implementing. The bounce
+  # arm clears implement_artifact but (the bug) NOT implement_review_artifact.
+  - intent: { name: accept, slots: {} }
+    expect_state: implementing
+    expect_world:
+      # Post-fix the bounce arm clears implement_review_artifact ({}), re-arming
+      # test_author's once: key for the return trip. On the BUGGY tree the stale
+      # prior-cycle `failed` verdict survives instead, so this is RED before the
+      # fix and GREEN after. (expect_world compares the named key by deep equality.)
+      implement_review_artifact: {}
+
+  # Turn 2: implementing → testing. On re-entry test_author SHOULD re-review the
+  # now-green tree. EXPECTED post-fix: fresh passed verdict.
+  - intent: { name: accept, slots: {} }
+    expect_state: testing
+    expect_world:
+      # On re-entry test_author re-runs (once: key re-armed) and binds the FRESH
+      # passed review against the now-green tree. Full nested-map equality, so
+      # every field of the stub's submitted artifact is named. RED on the buggy
+      # tree (stale `failed` survives); GREEN after the fix.
+      implement_review_artifact:
+        summary_title:    "FRESH-REVIEW-AFTER-BOUNCE"
+        summary_markdown: "Re-ran the suite against the repaired tree: all green. This is the fresh review that MUST replace the stale failed verdict once the maker fixes the implementation. Padding to satisfy the 200-char schema minimum for summary_markdown so the artifact validates and round-trips."
+        status:           "passed"
+        tests_added:      ["internal/foo/foo_test.go"]
+        tests_run:        { passed: 7, failed: 0, log: "ok" }
+
+expect_no_errors: true
