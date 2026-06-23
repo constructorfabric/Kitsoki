@@ -30,6 +30,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -70,17 +71,17 @@ func (srv *Server) registerSessionTools() {
 
 	mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
 		Name:        "session.drive",
-		Description: "Submit FREE TEXT to a driving handle; it is routed through the orchestrator turn loop (the one interpretive seam). {handle, input, cols?, rows?, omit_world?, max_value_len?}. Returns {outcome, frame} — the structured turn result AND the rendered screen. By default the frame's world_digest drops empty keys and truncates each value to 512 chars to stay under the tool-result cap; omit_world:true drops the digest entirely, max_value_len:N overrides the truncation.",
+		Description: "Submit FREE TEXT to a driving handle; it is routed through the orchestrator turn loop (the one interpretive seam). {handle, input, cols?, rows?}. Returns {outcome, frame} — the structured turn result AND the rendered screen. The frame does NOT carry world; read it on demand with session.world (lists keys; returns one value) or session.inspect (full snapshot). This keeps the transition result small in deep-import rooms.",
 	}, srv.handleSessionDrive)
 
 	mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
 		Name:        "session.submit",
-		Description: "Submit a chosen intent (a menu pick) directly, with no routing. {handle, intent, slots?, cols?, rows?, omit_world?, max_value_len?}. Returns {outcome, frame}. The frame's world_digest is bounded by default (empty keys dropped, values truncated to 512 chars); omit_world:true drops it, max_value_len:N overrides the truncation.",
+		Description: "Submit a chosen intent (a menu pick) directly, with no routing. {handle, intent, slots?, cols?, rows?}. Returns {outcome, frame}. The frame does NOT carry world — read it with session.world (one value or the key list) or session.inspect (full snapshot).",
 	}, srv.handleSessionSubmit)
 
 	mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
 		Name:        "session.continue",
-		Description: "Supply missing slots for a pending clarification. {handle, slots, cols?, rows?, omit_world?, max_value_len?}. Returns {outcome, frame}. The frame's world_digest is bounded by default (empty keys dropped, values truncated to 512 chars); omit_world:true drops it, max_value_len:N overrides the truncation.",
+		Description: "Supply missing slots for a pending clarification. {handle, slots, cols?, rows?}. Returns {outcome, frame}. The frame does NOT carry world — read it with session.world (one value or the key list) or session.inspect (full snapshot).",
 	}, srv.handleSessionContinue)
 
 	mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
@@ -100,8 +101,13 @@ func (srv *Server) registerSessionTools() {
 
 	mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
 		Name:        "session.inspect",
-		Description: "Read-only snapshot of a driving handle: {handle, omit_world?, max_value_len?} → {state, world, allowed_intents, last_view, async, jobs[], notifications[], pending_drives[], backgrounded_chats[], operator_questions[], mining_proposals[], last_turns[]}. Never advances the machine. omit_world:true drops the world map entirely; max_value_len:N truncates each world value to N chars (with '…' marker).",
+		Description: "Read-only snapshot of a driving handle: {handle, omit_world?, max_value_len?} → {state, world, allowed_intents, last_view, async, jobs[], notifications[], pending_drives[], backgrounded_chats[], operator_questions[], mining_proposals[], last_turns[]}. Never advances the machine. omit_world:true drops the world map entirely; max_value_len:N truncates each world value to N chars (with '…' marker). For one value (not the whole map) prefer session.world.",
 	}, srv.handleSessionInspect)
+
+	mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
+		Name:        "session.world",
+		Description: "Read world WITHOUT dumping the whole map — the targeted alternative to session.inspect for deep-import rooms where the flat world is hundreds of keys. {handle, key?, max_value_len?}: with key → {ok, key, value, found} (the raw typed value, untruncated unless max_value_len is set); without key → {ok, keys:[…]} (sorted key NAMES only, no values) so you can discover what to fetch cheaply. READ-ONLY: never advances the machine.",
+	}, srv.handleSessionWorld)
 
 	mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
 		Name:        "session.command",
@@ -177,11 +183,6 @@ type SessionDriveArgs struct {
 	Input  string `json:"input"`
 	Cols   int    `json:"cols,omitempty"`
 	Rows   int    `json:"rows,omitempty"`
-	// OmitWorld drops the frame's world_digest entirely (mirrors session.inspect).
-	OmitWorld bool `json:"omit_world,omitempty"`
-	// MaxValueLen truncates each world_digest value to N chars. Zero falls back
-	// to the server-side default truncation (see defaultDigestValueLen).
-	MaxValueLen int `json:"max_value_len,omitempty"`
 }
 
 // SessionSubmitArgs is the input to session.submit.
@@ -191,11 +192,6 @@ type SessionSubmitArgs struct {
 	Slots  map[string]any `json:"slots,omitempty"`
 	Cols   int            `json:"cols,omitempty"`
 	Rows   int            `json:"rows,omitempty"`
-	// OmitWorld drops the frame's world_digest entirely (mirrors session.inspect).
-	OmitWorld bool `json:"omit_world,omitempty"`
-	// MaxValueLen truncates each world_digest value to N chars. Zero falls back
-	// to the server-side default truncation (see defaultDigestValueLen).
-	MaxValueLen int `json:"max_value_len,omitempty"`
 }
 
 // SessionContinueArgs is the input to session.continue.
@@ -204,66 +200,6 @@ type SessionContinueArgs struct {
 	Slots  map[string]any `json:"slots"`
 	Cols   int            `json:"cols,omitempty"`
 	Rows   int            `json:"rows,omitempty"`
-	// OmitWorld drops the frame's world_digest entirely (mirrors session.inspect).
-	OmitWorld bool `json:"omit_world,omitempty"`
-	// MaxValueLen truncates each world_digest value to N chars. Zero falls back
-	// to the server-side default truncation (see defaultDigestValueLen).
-	MaxValueLen int `json:"max_value_len,omitempty"`
-}
-
-// digestProjection bounds the world_digest carried on an advancing turn's frame
-// metadata. The advancing calls (drive/submit/continue/teleport/answer) embed
-// the full flat world_digest, which in deep-import rooms can be hundreds of
-// alias-prefixed keys and tens of thousands of chars — enough to blow the MCP
-// tool-result cap so the state-transition result spills to a file. This
-// projection applies the caller's omit_world / max_value_len request and, as a
-// least-surprise safe default (omit==false, maxLen==0), drops empty-valued keys
-// and truncates every value to defaultDigestValueLen so a normal advancing turn
-// stays well under the cap even without any flag.
-type digestProjection struct {
-	omit   bool
-	maxLen int
-}
-
-// defaultDigestValueLen is the per-value truncation applied to an advancing
-// turn's world_digest when the caller passes neither omit_world nor an explicit
-// max_value_len. Long string values (rendered diffs, prompts, logs) dominate the
-// payload; capping them keeps the digest readable while preserving every key and
-// the head of every value. session.inspect (with no flag) is unaffected and
-// still returns the full untruncated world.
-const defaultDigestValueLen = 512
-
-// projectWorldDigest returns a bounded copy of an advancing turn's world_digest.
-// nil when omit is set. Otherwise empty-valued keys are dropped and each
-// remaining value is truncated to maxLen (or defaultDigestValueLen when maxLen
-// is zero). Returns the input unchanged only when it is already nil/empty.
-func projectWorldDigest(digest map[string]any, p digestProjection) map[string]any {
-	if p.omit {
-		return nil
-	}
-	if len(digest) == 0 {
-		return digest
-	}
-	maxLen := p.maxLen
-	if maxLen <= 0 {
-		maxLen = defaultDigestValueLen
-	}
-	pruned := make(map[string]any, len(digest))
-	for k, v := range digest {
-		// Drop empty-valued keys: they inflate the alias-prefixed key count in
-		// deep-import rooms without carrying information.
-		if v == nil {
-			continue
-		}
-		if s, ok := v.(string); ok && s == "" {
-			continue
-		}
-		pruned[k] = v
-	}
-	if len(pruned) == 0 {
-		return pruned
-	}
-	return truncateWorldValues(pruned, maxLen)
 }
 
 // SessionCommandArgs is the input to session.command.
@@ -462,7 +398,6 @@ func (srv *Server) handleSessionDrive(
 		return rerr, nil, nil
 	}
 	cols, rows := geometry(args.Cols, args.Rows)
-	dp := digestProjection{omit: args.OmitWorld, maxLen: args.MaxValueLen}
 
 	// Make the driving MCP client the OPERATOR: install a host.OperatorPrompter
 	// so a dispatched sub-agent's mcp__operator__ask is auto-attached and
@@ -473,7 +408,7 @@ func (srv *Server) handleSessionDrive(
 		prompter := newStudioOperatorPrompter(&elicitTransport{ss: ss})
 		out, frame := rt.driveElicit(ctx, args.Input, cols, rows, prompter)
 		progress.Done(ctx, args.Handle, turnOutcomeState(out))
-		return nil, turnResponse(out, frame, rt.lastTurnErr, dp), nil
+		return nil, turnResponse(out, frame, rt.lastTurnErr), nil
 	}
 
 	res, pq, turnDone, err := rt.driveSuspendable(ctx, args.Input, cols, rows)
@@ -486,7 +421,7 @@ func (srv *Server) handleSessionDrive(
 		return nil, awaitingResponse(pq), nil
 	}
 	progress.Done(ctx, args.Handle, turnOutcomeState(res.outcome))
-	return nil, turnResponse(res.outcome, res.frame, res.err, dp), nil
+	return nil, turnResponse(res.outcome, res.frame, res.err), nil
 }
 
 // serverSessionOf extracts the studio's ServerSession (the connection to the
@@ -535,7 +470,7 @@ func (srv *Server) handleSessionAnswer(
 		return nil, awaitingResponse(pq), nil
 	}
 	progress.Done(ctx, args.Handle, turnOutcomeState(res.outcome))
-	return nil, turnResponse(res.outcome, res.frame, res.err, digestProjection{}), nil
+	return nil, turnResponse(res.outcome, res.frame, res.err), nil
 }
 
 // awaitingResponse projects a parked question into the awaiting_operator wire
@@ -563,10 +498,9 @@ func (srv *Server) handleSessionSubmit(
 		return rerr, nil, nil
 	}
 	cols, rows := geometry(args.Cols, args.Rows)
-	dp := digestProjection{omit: args.OmitWorld, maxLen: args.MaxValueLen}
 	out, frame := rt.submit(ctx, args.Intent, args.Slots, cols, rows)
 	progress.Done(ctx, args.Handle, turnOutcomeState(out))
-	return nil, turnResponse(out, frame, rt.lastTurnErr, dp), nil
+	return nil, turnResponse(out, frame, rt.lastTurnErr), nil
 }
 
 func (srv *Server) handleSessionContinue(
@@ -584,10 +518,9 @@ func (srv *Server) handleSessionContinue(
 		return rerr, nil, nil
 	}
 	cols, rows := geometry(args.Cols, args.Rows)
-	dp := digestProjection{omit: args.OmitWorld, maxLen: args.MaxValueLen}
 	out, frame := rt.cont(ctx, args.Slots, cols, rows)
 	progress.Done(ctx, args.Handle, turnOutcomeState(out))
-	return nil, turnResponse(out, frame, rt.lastTurnErr, dp), nil
+	return nil, turnResponse(out, frame, rt.lastTurnErr), nil
 }
 
 func (srv *Server) handleSessionTeleport(
@@ -604,7 +537,7 @@ func (srv *Server) handleSessionTeleport(
 	}
 	cols, rows := geometry(args.Cols, args.Rows)
 	out, frame := rt.teleport(ctx, args.NotificationID, cols, rows)
-	return nil, turnResponse(out, frame, rt.lastTurnErr, digestProjection{}), nil
+	return nil, turnResponse(out, frame, rt.lastTurnErr), nil
 }
 
 // ── inspect / trace ──────────────────────────────────────────────────────────
@@ -817,6 +750,67 @@ func (srv *Server) handleSessionInspect(
 		out.World = truncateWorldValues(out.World, args.MaxValueLen)
 	}
 	return nil, out, nil
+}
+
+// SessionWorldArgs is the input to session.world.
+type SessionWorldArgs struct {
+	Handle string `json:"handle"`
+	// Key selects a single world value. Empty → list the key names instead.
+	Key string `json:"key,omitempty"`
+	// MaxValueLen truncates the returned value to N chars (with '…'); 0 = full.
+	// Ignored when Key is empty (the key list carries no values).
+	MaxValueLen int `json:"max_value_len,omitempty"`
+}
+
+// SessionWorldValue is the session.world result when a key is requested: the
+// single value, plus whether the key existed (Found=false ⇒ Value is null).
+type SessionWorldValue struct {
+	OK    bool   `json:"ok"`
+	Key   string `json:"key"`
+	Value any    `json:"value"`
+	Found bool   `json:"found"`
+}
+
+// SessionWorldKeys is the session.world result when no key is requested: the
+// sorted key names only (no values), so a caller can discover the world surface
+// cheaply before fetching specific values.
+type SessionWorldKeys struct {
+	OK   bool     `json:"ok"`
+	Keys []string `json:"keys"`
+}
+
+// handleSessionWorld reads world without dumping the whole map. With a key it
+// returns that single value; without one it returns the sorted key names. This
+// is the targeted read that lets the advancing turns (and frames) carry no world
+// at all — the caller pulls only what it needs.
+func (srv *Server) handleSessionWorld(
+	ctx context.Context,
+	req *mcpsdk.CallToolRequest,
+	args SessionWorldArgs,
+) (*mcpsdk.CallToolResult, any, error) {
+	rt, rerr := srv.resolveRuntime(args.Handle)
+	if rerr != nil {
+		return rerr, nil, nil
+	}
+	world, err := rt.worldVars()
+	if err != nil {
+		return buildToolError(ErrBadRequest, err.Error()), nil, nil
+	}
+	if args.Key == "" {
+		keys := make([]string, 0, len(world))
+		for k := range world {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		return nil, SessionWorldKeys{OK: true, Keys: keys}, nil
+	}
+	value, found := world[args.Key]
+	if found && args.MaxValueLen > 0 {
+		// Reuse the inspect truncation so a single huge value (a rendered diff)
+		// can still be bounded on request.
+		value = truncateWorldValues(map[string]any{args.Key: value}, args.MaxValueLen)[args.Key]
+	}
+	return nil, SessionWorldValue{OK: true, Key: args.Key, Value: value, Found: found}, nil
 }
 
 func (srv *Server) handleSessionCommand(
@@ -1114,7 +1108,7 @@ func turnOutcomeState(out *orchestrator.TurnOutcome) string {
 // shape. turnErr carries an orchestrator-side failure (e.g. a replay miss) so it
 // surfaces as outcome.error / mode="error" alongside the frame, never as a
 // transport error.
-func turnResponse(out *orchestrator.TurnOutcome, frame tui.Frame, turnErr error, dp digestProjection) TurnResponse {
+func turnResponse(out *orchestrator.TurnOutcome, frame tui.Frame, turnErr error) TurnResponse {
 	tr := TurnResult{}
 	if turnErr != nil {
 		tr.Mode = "error"
@@ -1144,21 +1138,19 @@ func turnResponse(out *orchestrator.TurnOutcome, frame tui.Frame, turnErr error,
 			tr.Error = turnErr.Error()
 		}
 	}
-	return TurnResponse{OK: turnErr == nil, Outcome: tr, Frame: frameResultProjected(frame, dp)}
+	return TurnResponse{OK: turnErr == nil, Outcome: tr, Frame: frameResult(frame)}
 }
 
-// frameResult projects a tui.Frame onto the wire shape with the full world_digest.
-// Used by the read-only render paths (render.tui, session.command) whose results
-// are not the cap-sensitive state-transition payloads.
+// frameResult projects a tui.Frame onto the wire shape. The frame NEVER carries
+// the world_digest: in deep-import rooms the flat digest is hundreds of
+// alias-prefixed keys and tens of thousands of chars, enough to blow the MCP
+// tool-result cap and spill the state-transition result to a file (the exact
+// dogfood failure). World is read on demand instead — `session.world {handle}`
+// lists the keys and `session.world {handle, key}` returns one value — so a
+// turn/render result stays small and the caller fetches only what it needs.
+// session.inspect remains the full-snapshot read (with its omit_world /
+// max_value_len controls) for when the whole map is genuinely wanted.
 func frameResult(f tui.Frame) FrameResult {
-	return frameResultProjected(f, digestProjection{})
-}
-
-// frameResultProjected projects a tui.Frame onto the wire shape, bounding the
-// world_digest per dp (see projectWorldDigest). frameResult passes the zero
-// projection, which truncates long values to defaultDigestValueLen — the
-// least-surprise safe default that keeps advancing-turn payloads under the cap.
-func frameResultProjected(f tui.Frame, dp digestProjection) FrameResult {
 	return FrameResult{
 		Text:   f.Text,
 		ANSI:   f.ANSI,
@@ -1168,7 +1160,7 @@ func frameResultProjected(f tui.Frame, dp digestProjection) FrameResult {
 			State:          f.Metadata.State,
 			Mode:           f.Metadata.Mode,
 			AllowedIntents: f.Metadata.AllowedIntents,
-			WorldDigest:    projectWorldDigest(f.Metadata.WorldDigest, dp),
+			// WorldDigest deliberately omitted — see the doc comment.
 		},
 	}
 }

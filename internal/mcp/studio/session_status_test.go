@@ -10,16 +10,18 @@ package studio_test
 //   - TestSessionStatus_IsListed: session.status appears in ListTools.
 //   - TestSessionInspect_OmitWorld: omit_world:true drops world from inspect.
 //   - TestSessionInspect_MaxValueLen: max_value_len:N truncates each world value.
-//   - TestSessionDrive_OmitWorld: omit_world:true on an advancing call drops the
-//     frame's world_digest from the wire result.
-//   - TestSessionDrive_DefaultDropsEmptyDigestKeys: the safe default prunes
-//     empty-valued digest keys from an advancing turn.
+//   - TestSessionDrive_FrameNeverCarriesWorld: an advancing call never embeds
+//     world in its frame.
+//   - TestSessionWorld_ListKeysThenGetValue / _MissingKey: the targeted
+//     session.world read (key list, single value, not-found) that replaces the
+//     dropped frame digest.
 //   - TestSessionTrace_TruncatePayload: truncate_payload:N caps event payloads.
 //   - TestSessionTrace_Kinds: kinds filter returns only matching event kinds.
 
 import (
 	"context"
 	"encoding/json"
+	"sort"
 	"strings"
 	"testing"
 
@@ -217,43 +219,14 @@ func TestSessionInspect_MaxValueLen(t *testing.T) {
 	}
 }
 
-// ─── advancing-turn world_digest projections ─────────────────────────────────
+// ─── advancing turns carry no world; session.world reads it on demand ─────────
 
-// TestSessionDrive_OmitWorld confirms omit_world:true on an ADVANCING call
-// (session.drive) drops the frame's world_digest from the wire result. This is
-// the cap-relief escape hatch for deep-import rooms whose full digest blows the
-// MCP tool-result cap.
-func TestSessionDrive_OmitWorld(t *testing.T) {
-	ctx := context.Background()
-	srv, _ := newReplayServer(t)
-	cs := connectInProcess(ctx, t, srv)
-	handle := openCloak(ctx, t, cs)
-
-	// Baseline drive carries a (bounded) world_digest.
-	baseRes, err := callTool(ctx, cs, "session.drive", map[string]any{
-		"handle": handle, "input": "go west",
-	})
-	require.NoError(t, err)
-	base := driveResult(t, baseRes)
-	require.Equal(t, "cloakroom", base.Outcome.State)
-	assert.NotNil(t, base.Frame.Metadata.WorldDigest, "default drive carries the digest")
-
-	// Drive again with omit_world: the digest must be gone from the wire JSON.
-	omitRes, err := callTool(ctx, cs, "session.drive", map[string]any{
-		"handle": handle, "input": "hang the cloak", "omit_world": true,
-	})
-	require.NoError(t, err)
-	require.False(t, omitRes.IsError, "drive omit_world: %s", contentText(omitRes))
-	omit := driveResult(t, omitRes)
-	assert.Nil(t, omit.Frame.Metadata.WorldDigest, "omit_world:true must drop the frame digest")
-	assert.NotContains(t, contentText(omitRes), `"world_digest"`,
-		"omit_world must remove 'world_digest' from the advancing-turn JSON")
-}
-
-// TestSessionDrive_DefaultDropsEmptyDigestKeys confirms the safe default (no
-// flag) prunes empty-valued world_digest keys from an advancing turn — the
-// least-surprise default that keeps deep-import digests under the cap.
-func TestSessionDrive_DefaultDropsEmptyDigestKeys(t *testing.T) {
+// TestSessionDrive_FrameNeverCarriesWorld confirms an advancing call
+// (session.drive) NEVER embeds the world in its frame — the cap-relief design:
+// in deep-import rooms the flat world is hundreds of keys / tens of thousands of
+// chars and would blow the tool-result cap. The transition result stays small;
+// the caller reads world separately via session.world / session.inspect.
+func TestSessionDrive_FrameNeverCarriesWorld(t *testing.T) {
 	ctx := context.Background()
 	srv, _ := newReplayServer(t)
 	cs := connectInProcess(ctx, t, srv)
@@ -265,13 +238,62 @@ func TestSessionDrive_DefaultDropsEmptyDigestKeys(t *testing.T) {
 	require.NoError(t, err)
 	driven := driveResult(t, res)
 	require.Equal(t, "cloakroom", driven.Outcome.State)
+	assert.Nil(t, driven.Frame.Metadata.WorldDigest, "advancing frame must not carry world")
+	assert.NotContains(t, contentText(res), `"world_digest"`,
+		"'world_digest' must not appear in the advancing-turn JSON")
+}
 
-	// No surviving key may have an empty-string value.
-	for k, v := range driven.Frame.Metadata.WorldDigest {
-		if s, ok := v.(string); ok {
-			assert.NotEqual(t, "", s, "default projection must drop empty-valued key %q", k)
-		}
-	}
+// TestSessionWorld_ListKeysThenGetValue exercises the targeted read: no key →
+// the sorted key-name list (no values); with a key → that single typed value
+// and found=true. This is what replaces the dropped frame digest.
+func TestSessionWorld_ListKeysThenGetValue(t *testing.T) {
+	ctx := context.Background()
+	srv, _ := newReplayServer(t)
+	cs := connectInProcess(ctx, t, srv)
+	handle := openCloak(ctx, t, cs)
+
+	// Advance so world has settled state.
+	_, err := callTool(ctx, cs, "session.drive", map[string]any{"handle": handle, "input": "go west"})
+	require.NoError(t, err)
+
+	// No key → key NAMES only, sorted, no values on the wire.
+	listRes, err := callTool(ctx, cs, "session.world", map[string]any{"handle": handle})
+	require.NoError(t, err)
+	require.False(t, listRes.IsError, "session.world list: %s", contentText(listRes))
+	var keys studio.SessionWorldKeys
+	require.NoError(t, json.Unmarshal([]byte(contentText(listRes)), &keys))
+	require.True(t, keys.OK)
+	require.NotEmpty(t, keys.Keys, "world should expose some keys")
+	require.True(t, sort.StringsAreSorted(keys.Keys), "keys must be sorted")
+
+	// Fetch the first key's value → found=true, value present.
+	getRes, err := callTool(ctx, cs, "session.world", map[string]any{"handle": handle, "key": keys.Keys[0]})
+	require.NoError(t, err)
+	var val studio.SessionWorldValue
+	require.NoError(t, json.Unmarshal([]byte(contentText(getRes)), &val))
+	assert.True(t, val.OK)
+	assert.True(t, val.Found, "an advertised key must be found")
+	assert.Equal(t, keys.Keys[0], val.Key)
+}
+
+// TestSessionWorld_MissingKey returns found=false (not an error) for an unknown
+// key, so a caller can probe without branching on transport errors.
+func TestSessionWorld_MissingKey(t *testing.T) {
+	ctx := context.Background()
+	srv, _ := newReplayServer(t)
+	cs := connectInProcess(ctx, t, srv)
+	handle := openCloak(ctx, t, cs)
+
+	res, err := callTool(ctx, cs, "session.world", map[string]any{
+		"handle": handle, "key": "no_such_key_xyz",
+	})
+	require.NoError(t, err)
+	require.False(t, res.IsError)
+	var val studio.SessionWorldValue
+	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &val))
+	assert.True(t, val.OK)
+	assert.False(t, val.Found, "unknown key → found=false")
+	assert.Nil(t, val.Value)
 }
 
 // ─── session.trace projections ────────────────────────────────────────────────

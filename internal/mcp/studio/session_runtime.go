@@ -567,6 +567,20 @@ func (rt *sessionRuntime) frame(cols, rows int) tui.Frame {
 	return tui.ComposeFrame(&rt.model, cols, rows)
 }
 
+// worldVars returns the handle's current flat world map (the same j.World.Vars
+// session.inspect exposes), for the targeted session.world read. It loads the
+// journey fresh so it reflects the last settled turn; it never mutates anything.
+func (rt *sessionRuntime) worldVars() (map[string]any, error) {
+	if rt.orch == nil {
+		return nil, fmt.Errorf("session.world: runtime has no orchestrator")
+	}
+	j, err := rt.orch.LoadJourney(rt.sid)
+	if err != nil {
+		return nil, fmt.Errorf("session.world: load journey: %w", err)
+	}
+	return j.World.Vars, nil
+}
+
 func (rt *sessionRuntime) refreshFromJourneyLocked() {
 	if rt.orch == nil {
 		return
