@@ -115,19 +115,16 @@ host_interfaces:
 agents:
   maker:
     system_prompt: "You are an engineer iterating toward a stated goal. Read the goal and the previous attempt's gate-failure feedback, make the smallest correct change that moves toward passing the gate, and report a one-line summary of what you changed."
-    model: claude-opus-4-8
     tools: [Read, Grep, Glob, Edit, Write, Bash]
     bash_profile: read-only
     external_side_effect: false
 
   gate_reviewer:
     system_prompt: "You are an adversarial quality gate. Judge the goal artifact against the stated goal. Default to pass=false unless the goal is clearly, fully met. When you fail it, give a specific, actionable reason the next iteration can act on."
-    model: claude-opus-4-8
     tools: [Read, Grep, Glob]
 
   gate_planner:
     system_prompt: "You choose the cheapest reliable gate for an ad hoc engineering goal. Prefer script gates when the goal names an existing command or an objective command can be written; use agent gates for subjective review; use hybrid when deterministic evidence covers most of the goal but a focused review remains."
-    model: claude-opus-4-8
     tools: [Read, Grep, Glob]
 
 world:
