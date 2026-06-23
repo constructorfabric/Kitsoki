@@ -1,0 +1,98 @@
+# demo_web — deterministic, no-LLM web/tour entry fixture.
+#
+# Drives the story to `reviewing` carrying the REAL baked deck mp4 + .semantic
+# sidecar so the kitsoki-ui-demo / kitsoki tour run can record /review against a
+# genuinely-resolvable artifact handle (the live frame-seam proof — the deck
+# media is real, only the agent/render calls are stubbed).
+#
+# Under `kitsoki web --flow` the host builtins are pre-registered, so
+# host.artifacts_dir is the REAL handler: it copies the baked mp4/semantic into
+# the artifacts root and journals the emit, so the bound deck_handle resolves
+# through the JournalArtifactResolver and /review serves real bytes. Pair with
+# cassettes/deck_review.cassette.yaml (the web/tour host cassette).
+#
+# NOTE: the web posture starts each session at the app root (`idle`), not this
+# fixture's initial_state — initial_state/initial_world/turns only drive
+# `kitsoki test flows`. The recording spec walks idle→reviewing via real intents.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  workspace: "stories/slidey-edit/baked"
+  deck: { spec_path: "stories/slidey-edit/baked/deck.json", summary: "Spatial-annotation explainer deck (3 scenes)." }
+  addressed: { items: [] }
+  refine_budget: 6
+
+host_handlers:
+  host.agent.task:
+    by_call:
+      author_deck:
+        data:
+          ok: true
+          submitted: { spec_path: "stories/slidey-edit/baked/deck.json", summary: "Authored a 3-scene spatial-annotation explainer deck." }
+      # The refine pass edits the scene element the annotation anchor points at,
+      # then re-renders. Without this stub the refine task binds no `edited`, so
+      # refining's `emit_intent: rerender` never fires and the loop stalls — the
+      # web/tour walk must close back to reviewing (mirrors refine_from_anchor).
+      refine_deck:
+        data:
+          ok: true
+          submitted:
+            spec_path: "stories/slidey-edit/baked/deck.json"
+            summary: "Emphasized the semantic_element card (scene 1, card 0) and added an example line."
+            edited: ["1/card_0"]
+
+  # Render points at the REAL baked files (repo-relative to the server cwd).
+  host.slidey.render:
+    by_call:
+      render_deck:
+        data:
+          ok: true
+          path: "stories/slidey-edit/baked/deck.mp4"
+          semantic_path: "stories/slidey-edit/baked/deck.semantic.json"
+
+  host.starlark.run:
+    by_call:
+      seed_annotation:
+        data:
+          annotation:
+            anchor:
+              kind: "semantic_element"
+              semantic_element: { plugin: "slidey", ref: "1/card_0", bbox: [140, 518, 535, 114] }
+              label: "Scene 1 · card 0"
+            instruction: "Make the semantic_element card stand out and add a one-line example beneath it."
+            frame_handle: "slidey-edit#1"
+      # refining → rerender appends the addressed-anchor record (starlark can't
+      # append to a list inline). Required so the rerender transition completes
+      # and routes back through rendering → reviewing.
+      accumulate_addressed:
+        data:
+          addressed:
+            items:
+              - deck_handle: "slidey-edit#1"
+                anchor_label: "Scene 1 · card 0"
+                instruction: "Make the semantic_element card stand out and add a one-line example beneath it."
+                edited: ["1/card_0"]
+
+  host.artifacts_dir:
+    by_call:
+      emit_deck:
+        data: { ok: true, handle: { id: "slidey-edit#1", kind: "video", mime: "video/mp4" }, path: "stories/slidey-edit/baked/deck.mp4", kind: "video", mime: "video/mp4" }
+      emit_semantic:
+        data: { ok: true, handle: { id: "slidey-semantic#1", kind: "data", mime: "application/json" }, path: "stories/slidey-edit/baked/deck.semantic.json", kind: "data", mime: "application/json" }
+
+turns:
+  # idle: start → drafting (author).
+  - intent: { name: start, slots: {} }
+    expect_state: drafting
+
+  # drafting: accept → rendering → emits → auto-advance into reviewing with the
+  # baked deck media + seeded annotation.
+  - intent: { name: accept, slots: {} }
+    expect_state: reviewing
+    expect_world:
+      deck_handle: "slidey-edit#1"
+
+expect_terminal: false
+expect_no_errors: true

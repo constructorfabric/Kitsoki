@@ -627,6 +627,11 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 				// post-construction via prompter.Attach(p) below.
 				operatorPrompter := tui.NewTUIOperatorPrompter()
 				tuiOptions = append(tuiOptions, tui.WithOperatorPrompter(operatorPrompter))
+				// Allocate the spatial prompter up-front so a request for a spatial
+				// ambient surfaces an OSC 8 link to a transient `/point` window;
+				// bind it post-construction via prompter.Attach(p) below.
+				spatialPrompter := tui.NewTUISpatialPrompter()
+				tuiOptions = append(tuiOptions, tui.WithSpatialPrompter(spatialPrompter))
 				rootModel := tui.NewRootModel(orch, sid, appPath, effectiveInitialView, tuiOptions...)
 				// Single-pane redesign: no alt-screen + no mouse capture.
 				// Output prints into the terminal's normal scrollback so
@@ -649,6 +654,8 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 				defer metaSink.Detach()
 				operatorPrompter.Attach(p)
 				defer operatorPrompter.Detach()
+				spatialPrompter.Attach(p)
+				defer spatialPrompter.Detach()
 				roomEnterSink.Attach(p)
 				defer roomEnterSink.Detach()
 				detach := tui.AttachOrchestratorObserver(orch, p, sid)
@@ -793,6 +800,11 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 			// via prompter.Attach(p) below.
 			operatorPrompter := tui.NewTUIOperatorPrompter()
 			tuiOptions = append(tuiOptions, tui.WithOperatorPrompter(operatorPrompter))
+			// Allocate the spatial prompter up-front so a request for a spatial
+			// ambient surfaces an OSC 8 link to a transient `/point` window; bind
+			// it post-construction via prompter.Attach(p) below.
+			spatialPrompter := tui.NewTUISpatialPrompter()
+			tuiOptions = append(tuiOptions, tui.WithSpatialPrompter(spatialPrompter))
 			rootModel := tui.NewRootModel(orch, sid, appPath, initialView, tuiOptions...)
 			// Single-pane redesign: no alt-screen + no mouse capture.
 			// Output prints to normal scrollback so the terminal's
@@ -811,6 +823,8 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 			defer metaSink.Detach()
 			operatorPrompter.Attach(p)
 			defer operatorPrompter.Detach()
+			spatialPrompter.Attach(p)
+			defer spatialPrompter.Detach()
 			roomEnterSink.Attach(p)
 			defer roomEnterSink.Detach()
 			// Bridge orchestrator background-turn notifications into

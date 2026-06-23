@@ -46,6 +46,22 @@ const stillElement = computed<ViewElementT | null>(() => {
   };
 });
 
+// The resolved element ("pointing at:") rendered as a typed kv element — the
+// chip the proposal layout shows (selector + role + truncated text). Reusing
+// ViewElement's kv branch keeps it data-driven (no hand-rolled HTML strings).
+const elementChip = computed<ViewElementT | null>(() => {
+  const el = props.flag?.element;
+  if (!el) return null;
+  return {
+    Kind: "kv",
+    Pairs: [
+      { Key: "element", Value: el.selector },
+      { Key: "role", Value: el.role },
+      ...(el.text ? [{ Key: "text", Value: el.text }] : []),
+    ],
+  };
+});
+
 const chatInput = ref("");
 function onSendChat() {
   const text = chatInput.value.trim();
@@ -109,6 +125,17 @@ function onSendRefine() {
       <div class="fd-still" data-testid="fd-still">
         <ViewElement v-if="stillElement" :element="stillElement" />
         <p v-else class="fd-still-pending">Capturing still…</p>
+      </div>
+
+      <!-- Resolved element ("pointing at:") — a typed kv chip. Present only
+           once the operator clicked a point on the frame (epic decision 5). -->
+      <div
+        v-if="elementChip"
+        class="fd-element"
+        data-testid="fd-element"
+      >
+        <span class="fd-element-label">pointing at:</span>
+        <ViewElement :element="elementChip" />
       </div>
 
       <!-- Resolved source_ref + IDE deep-link. -->
@@ -221,6 +248,16 @@ function onSendRefine() {
   color: var(--k-fg-muted, #6b7280);
   font-size: 13px;
   margin: 0;
+}
+.fd-element {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25em;
+  font-size: 13px;
+}
+.fd-element-label {
+  color: #6b7280;
+  font-size: 12px;
 }
 .fd-source {
   display: flex;

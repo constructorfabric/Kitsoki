@@ -1,0 +1,40 @@
+# idle — the deck-to-edit is baked in world.deck; `start` drafts it.
+#
+# A real session would pick or create a deck here; the baked world points at
+# the pre-rendered explainer deck so `kitsoki tour`/web drives straight in.
+
+states:
+
+  idle:
+    description: "Slidey deck editor. Start to draft the deck, then render and review."
+    relevant_world: [deck, cycle]
+    view:
+      - heading: "Slidey deck editor"
+      - kv:
+          pairs:
+            Deck:    '{{ world.deck.spec_path|default:"(none)" }}'
+            Summary: '{{ world.deck.summary|default:"(pending)" }}'
+      - prose: "Draft the deck, render it to a deck video, then annotate the rendered frame and refine the exact scene you pointed at."
+      - heading: "Actions"
+      - list:
+          items:
+            - label: "start"
+              hint:  "draft the deck and advance to render"
+            - label: "quit"
+              hint:  "abandon the editor"
+            - label: "look"
+    on:
+      start:
+        - target: drafting
+          effects:
+            - set:
+                draft_feedback: "{{ slots.feedback ?? '' }}"
+                # Clear the deck so drafting's once: author pass runs fresh
+                # (the baked default seeds idle's view; start re-authors).
+                deck: {}
+      quit:
+        - target: "@exit:abandoned"
+          effects:
+            - set: { abandon_reason: "abandoned_at_idle" }
+      look:
+        - target: .

@@ -8,8 +8,35 @@ import type {
 } from "../types.js";
 import type { TranscriptData } from "./transcript.js";
 import type { StreamItem } from "../lib/activity.js";
+import type { ResolvedElement } from "../lib/resolveElement.js";
+import type { AnnotationAnchor } from "../lib/annotationAnchor.js";
+import type { SemanticSidecar } from "../lib/semanticPlugins.js";
 import { SnapshotSource } from "./snapshot-source.js";
 import { LiveSource } from "./live-source.js";
+
+/**
+ * VisualBundle — the spatial-capture ambient attached to an off-path question
+ * (docs/tui/spatial-capture.md). It rides on
+ * `runstatus.session.offpath`'s optional `visual` param, which slice 1 lifts
+ * server-side into host.WithVisualAmbient so the converse oracle answers with
+ * the frame, the pixel, and the element in context. Every field is optional:
+ * the bundle is forward-compatible (a future static-image upload carries only
+ * `frame_handle` + `point`, no `element`).
+ */
+export interface VisualBundle {
+  /** Artifact handle of the captured still the operator pointed at. */
+  frame_handle?: string;
+  /** The originating media artifact handle (the video/image the frame came from). */
+  media_handle?: string;
+  /** The click position within the frame, in frame pixels. */
+  point?: { x: number; y: number };
+  /** The DOM element resolved under the point (lib/resolveElement). */
+  element?: ResolvedElement;
+  /** Frame timestamp within the source video, if any. */
+  t_ms?: number;
+  /** The route the capture happened on (e.g. "/review/<sid>"). */
+  route?: string;
+}
 
 export interface TraceCursor {
   since_turn?: number;
@@ -99,6 +126,13 @@ export interface FeedbackNote {
   time_range?: { start_ms: number; end_ms?: number };
   frame_handle?: string;
   instruction: string;
+  /**
+   * The unified annotation anchor (v2: png/mp4/rrweb/html/slidey). When present
+   * it supersedes the flat time_range/frame_handle fields — those stay populated
+   * for back-compat with a server that has not yet read `anchor`. The backend
+   * slice lifts it into the agent ambient (lib/annotationAnchor).
+   */
+  anchor?: AnnotationAnchor;
 }
 
 export interface DataSource {
@@ -159,8 +193,23 @@ export interface DataSource {
     sessionId: string,
     slots: Record<string, unknown>
   ): Promise<TurnResult>;
-  /** Read-only off-path question against the default agent. */
-  offpath(sessionId: string, input: string): Promise<{ answer: string }>;
+  /**
+   * Read-only off-path question against the default agent. An optional
+   * `visual` bundle (spatial-capture) attaches the frame + point + resolved
+   * element so the agent answers in screen context; slice 1 lifts it into
+   * host.WithVisualAmbient server-side.
+   *
+   * `anchor` is the v2 unified annotation attachment (png/mp4/rrweb/html/slidey
+   * — lib/annotationAnchor). When supplied it rides alongside `visual` (the
+   * back-compat projection) so a server that reads either gets context; the
+   * backend slice lifts the richer `anchor` into the agent ambient.
+   */
+  offpath(
+    sessionId: string,
+    input: string,
+    visual?: VisualBundle,
+    anchor?: AnnotationAnchor
+  ): Promise<{ answer: string }>;
 
   /**
    * Rewind one contextual-routing (CRR) decision: reverse the route identified
@@ -239,13 +288,58 @@ export interface DataSource {
    * server-side `/artifact/<handle>` path; in snapshot mode returns a
    * relative sidecar path `./artifacts/<handle>` (the handle is the
    * filename under the snapshot's sibling `artifacts/` directory).
+   *
+   * maxDim, when set, requests a downscaled still no larger than maxDim pixels
+   * on its longest edge — a hint for a heavy frame rendered as a message
+   * thumbnail (docs/tracing/trace-format.md, full-res on
+   * click-to-zoom). Live mode rides it as a `?max=<n>` query hint; a server that
+   * does not (yet) downscale serves the full-res file unchanged.
    */
-  artifactUrl(handle: string): string;
+  artifactUrl(handle: string, maxDim?: number): string;
+
+  /**
+   * Resolve a URL for a media handle's sibling poster still (`<stem>.poster.png`
+   * beside the media) — the fixed-frame backdrop the annotator's `slidey` path
+   * floats its SemanticOverlay over (a slideshow/video has no addressable still).
+   * Live mode returns `/artifact/<handle>/poster` (the server serves the sibling
+   * by the SAME handle); snapshot mode returns the sibling path under
+   * `artifacts/`. Optional: a source without a poster convention omits it, and
+   * the annotator falls back to `artifactUrl(handle)`.
+   */
+  artifactPosterUrl?(handle: string): string;
 
   // ── Video feedback mode (/review) ──────────────────────────────────────────
 
   /** Read a video's chapter sidecar (empty array when none). */
   videoChapters(sessionId: string, video: string): Promise<Chapter[]>;
+  /**
+   * Read the recorded rrweb session events that back a reviewed video, or `[]`
+   * when the media is a plain capture with no reconstructed-DOM sidecar. When
+   * present, the review surface renders the rrweb Replayer (real reconstructed
+   * UI) under the spatial picker instead of the opaque `<video>` element, so a
+   * click resolves a REAL app control against the reconstructed DOM (epic shared
+   * decision 2 — "rrweb's reconstructed DOM is the pixel↔element bridge"); the
+   * intrinsic recording viewport rides alongside as the iframe's pixel space.
+   * Optional: a source without recorded sessions (snapshot/artifact) omits it.
+   */
+  videoEvents?(
+    sessionId: string,
+    video: string
+  ): Promise<{ events: import("./session-capture.js").RrwebEvent[]; width: number; height: number }>;
+  /**
+   * Read an artifact's `<name>.semantic.json` sidecar — the producer-declared
+   * clickable-element envelope (lib/semanticPlugins, mirroring host.SemanticSidecar).
+   * LiveSource hits a server endpoint; SnapshotSource reads
+   * ./artifacts/<name>.semantic.json. Resolves null when the artifact has no
+   * sidecar (the annotator then falls back to the dom_node picker). The caller
+   * adapts the envelope into an overlay SemanticMap with the media's natural size
+   * (toSemanticMap). Optional: a source without artifacts omits it.
+   */
+  semanticMap?(
+    sessionId: string,
+    handle: string
+  ): Promise<SemanticSidecar | null>;
+
   /** Grab a still at t_ms; returns the recorded still's artifact handle. */
   videoFrame(
     sessionId: string,

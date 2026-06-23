@@ -319,6 +319,23 @@ func handleMediaEmit(ctx context.Context, args map[string]any, thread, srcPath s
 		}
 	}
 
+	// Co-locate the annotation companions (v2): the producer-agnostic semantic
+	// sidecar (<stem>.semantic.json — the SemanticOverlay's clickable-element
+	// map) and a poster still (<stem>.poster.png — the backdrop the slidey
+	// annotator floats markers over for a non-HTML deck). Both are resolved as
+	// SIBLINGS of the RESOLVED artifact path by runstatus.artifact.semantic and
+	// /artifact/<id>/poster, so a media file emitted into the artifacts root must
+	// bring them along or they never resolve. Best-effort and kind-agnostic: a
+	// media with no companion emits byte-identically (mirrors the chapters copy).
+	for _, sib := range []struct{ src, dst string }{
+		{SemanticSidecarPath(srcPath), SemanticSidecarPath(absDestPath)},
+		{PosterSidecarPath(srcPath), PosterSidecarPath(absDestPath)},
+	} {
+		if info, serr := os.Stat(sib.src); serr == nil && info.Mode().IsRegular() {
+			_ = copyFile(sib.src, sib.dst)
+		}
+	}
+
 	// Stat the destination to get the final size.
 	destInfo, err := os.Stat(absDestPath)
 	if err != nil {

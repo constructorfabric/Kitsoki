@@ -1,0 +1,55 @@
+# drafting — ONE host.agent.task authors/edits the deck JSON spec (mocked in
+# flows/cassette). Workspace-jailed. `once:` keyed on the bound deck so reload /
+# self-entry don't re-run the author pass.
+#
+# accept → rendering. The task binds the deck object (spec_path + summary); the
+# baked world already carries one, so a no-op author still advances cleanly.
+
+states:
+
+  drafting:
+    description: "Drafting the deck (interpretive — an agent writes the spec)."
+    relevant_world: [deck, draft_feedback, cycle]
+    view:
+      - heading: "Slidey deck editor · drafting"
+      - kv:
+          pairs:
+            Deck:     '{{ world.deck.spec_path|default:"(pending)" }}'
+            Summary:  '{{ world.deck.summary|default:"(pending — agent has not returned)" }}'
+            Feedback: '{{ world.draft_feedback|default:"(none)" }}'
+      - prose: "An agent is writing the deck JSON under the workspace. Accept to render it."
+      - heading: "Actions"
+      - list:
+          items:
+            - label: "accept"
+              hint:  "render this deck"
+            - label: "quit"
+              hint:  "abandon the editor"
+            - label: "look"
+    on_enter:
+      - invoke: host.agent.task
+        id: author_deck
+        once: true
+        with:
+          agent: drafter
+          working_dir: "{{ world.workspace }}"
+          acceptance:
+            schema: schemas/deck.json
+          context:
+            prompt: prompts/author_deck.md
+            args:
+              workspace:      "{{ world.workspace }}"
+              deck:           "{{ world.deck }}"
+              draft_feedback: "{{ world.draft_feedback }}"
+        bind:
+          deck: submitted
+        on_error: idle
+    on:
+      accept:
+        - target: rendering
+      quit:
+        - target: "@exit:abandoned"
+          effects:
+            - set: { abandon_reason: "abandoned_at_drafting" }
+      look:
+        - target: .

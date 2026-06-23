@@ -1,0 +1,28 @@
+# done — gallery of the final deck + the annotations that were addressed.
+
+states:
+
+  done:
+    description: "The deck is finished. Final render + the annotations addressed."
+    relevant_world: [deck, deck_handle, addressed, cycle]
+    view:
+      - heading: "Slidey deck editor · done"
+      - kv:
+          pairs:
+            Deck:      '{{ world.deck.spec_path }}'
+            Cycles:    "{{ world.cycle }}"
+            Addressed: '{{ world.addressed.items|length }}'
+      - heading: "Final deck"
+      - media:
+          handle:  "{{ world.deck_handle }}"
+          kind:    video
+          caption: "{{ world.deck.summary }}"
+      - prose: "Each refine pass edited the exact scene an annotation anchor pointed at. The deck is final."
+      - heading: "Actions"
+      - list:
+          items:
+            - label: "look"
+              hint:  "re-render the gallery"
+    on:
+      look:
+        - target: .

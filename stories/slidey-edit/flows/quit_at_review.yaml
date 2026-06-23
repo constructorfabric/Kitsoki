@@ -1,0 +1,28 @@
+# quit_at_review — abandon from reviewing → @exit:abandoned (standalone terminal).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: reviewing
+initial_world:
+  workspace: "stories/slidey-edit/baked"
+  deck: { spec_path: "stories/slidey-edit/baked/deck.json", summary: "deck" }
+  deck_handle: "slidey-edit#1"
+  addressed: { items: [] }
+
+host_handlers:
+  host.starlark.run:
+    by_call:
+      seed_annotation:
+        data:
+          annotation:
+            anchor: { kind: "semantic_element", semantic_element: { plugin: "slidey", ref: "1/card_0", bbox: [140, 518, 535, 114] }, label: "Scene 1 · card 0" }
+            instruction: "tweak"
+            frame_handle: "slidey-edit#1"
+
+turns:
+  - intent: { name: quit, slots: {} }
+    expect_world:
+      abandon_reason: "abandoned_at_reviewing"
+
+expect_terminal: true
+expect_no_errors: true

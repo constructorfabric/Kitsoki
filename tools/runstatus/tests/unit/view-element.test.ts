@@ -1,18 +1,68 @@
-import { describe, it, expect, vi } from "vitest";
-import { mount } from "@vue/test-utils";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { mount, flushPromises } from "@vue/test-utils";
 
 import ViewElement from "../../src/components/ViewElement.vue";
 import type { ViewElement as VE } from "../../src/types.js";
+import type { SemanticSidecar } from "../../src/lib/semanticPlugins.js";
+import type { AnnotationAnchor } from "../../src/lib/annotationAnchor.js";
 
-// Mock createDataSource so ViewElement.vue's module-init call returns a stub
-// that resolves artifact handles to predictable fake URLs without a real server.
+// A shared mutable stub the createDataSource mock returns. Tests override
+// semanticMap / capture offpath calls per-case. artifactUrl / artifactPosterUrl
+// resolve to predictable fake URLs without a real server.
+const dsStub = {
+  artifactUrl: (handle: string) => `/fake-artifact/${handle}`,
+  artifactPosterUrl: (handle: string) => `/fake-artifact/${handle}/poster`,
+  semanticMap: vi.fn<
+    (sessionId: string, handle: string) => Promise<SemanticSidecar | null>
+  >(),
+  offpath: vi.fn<
+    (
+      sessionId: string,
+      input: string,
+      visual?: unknown,
+      anchor?: AnnotationAnchor
+    ) => Promise<{ answer: string }>
+  >(),
+};
+
 vi.mock("../../src/data/source.js", () => ({
-  createDataSource: () => ({
-    artifactUrl: (handle: string) => `/fake-artifact/${handle}`,
-  }),
+  createDataSource: () => dsStub,
 }));
 
+// A mutable route the useRoute() mock returns. Default to no sessionId (the
+// off-session / snapshot posture); renderWithSession sets one for the
+// annotate-affordance cases. ViewElement only reads route.params.sessionId.
+const route: { params: Record<string, string> } = { params: {} };
+vi.mock("vue-router", () => ({
+  useRoute: () => route,
+}));
+
+beforeEach(() => {
+  route.params = {};
+  dsStub.semanticMap.mockReset();
+  dsStub.semanticMap.mockResolvedValue(null);
+  dsStub.offpath.mockReset();
+  dsStub.offpath.mockResolvedValue({ answer: "ok" });
+});
+
 function render(element: VE) {
+  return mount(ViewElement, { props: { element } });
+}
+
+// A sidecar fixture mirroring the slidey deck (refs + bboxes in natural pixels).
+const SIDECAR: SemanticSidecar = {
+  plugin: "slidey",
+  schema_version: 1,
+  elements: [
+    { ref: "1/card_0", label: "Scene 1 · card 0", bbox: [140, 518, 535, 114] },
+    { ref: "1/title", label: "Scene 1 · title", bbox: [200, 100, 400, 60] },
+  ],
+};
+
+// Mount ViewElement under a live session id (so useRoute() yields a sessionId —
+// the Annotate affordance is gated on one).
+function renderWithSession(element: VE, sessionId = "sess-1") {
+  route.params = { sessionId };
   return mount(ViewElement, { props: { element } });
 }
 
@@ -261,6 +311,112 @@ describe("ViewElement", () => {
     expect(w.find(".ve-media").exists()).toBe(true);
     expect(w.find("img").exists()).toBe(false);
     expect(w.find("video").exists()).toBe(false);
+    w.unmount();
+  });
+
+  // ── Annotate affordance (unified ArtifactAnnotator) ─────────────────────────
+
+  it("offers no Annotate affordance off-session (no sessionId)", () => {
+    const w = render({ Kind: "media", Handle: "clip.mp4", Mime: "video/mp4" });
+    expect(w.find('[data-testid="media-annotate"]').exists()).toBe(false);
+    w.unmount();
+  });
+
+  it("offers Annotate on a live video but NOT on a pdf", () => {
+    const v = renderWithSession({
+      Kind: "media",
+      Handle: "clip.mp4",
+      Mime: "video/mp4",
+    });
+    expect(v.find('[data-testid="media-annotate"]').exists()).toBe(true);
+    v.unmount();
+
+    const pdf = renderWithSession({
+      Kind: "media",
+      Handle: "report.pdf",
+      Mime: "application/pdf",
+    });
+    expect(pdf.find('[data-testid="media-annotate"]').exists()).toBe(false);
+    pdf.unmount();
+  });
+
+  it("opens the annotator with the MIME-mapped kind when no sidecar exists", async () => {
+    dsStub.semanticMap.mockResolvedValue(null);
+    const w = renderWithSession({
+      Kind: "media",
+      Handle: "clip.mp4",
+      Mime: "video/mp4",
+    });
+    await w.find('[data-testid="media-annotate"]').trigger("click");
+    await flushPromises();
+    const panel = w.find('[data-testid="media-annotate-panel"]');
+    expect(panel.exists()).toBe(true);
+    // Probed the sidecar once; no sidecar ⇒ mp4 path (video <video>, not slidey).
+    expect(dsStub.semanticMap).toHaveBeenCalledWith("sess-1", "clip.mp4");
+    expect(w.find('[data-testid="aa-mp4"]').exists()).toBe(true);
+    expect(w.find('[data-testid="aa-slidey"]').exists()).toBe(false);
+    w.unmount();
+  });
+
+  it("promotes a sidecar-bearing mp4 deck to the slidey path with a poster backdrop + overlay markers", async () => {
+    dsStub.semanticMap.mockResolvedValue(SIDECAR);
+    const w = renderWithSession({
+      Kind: "media",
+      MediaHandle: "slidey-edit#1",
+      MediaKind: "video",
+      MediaCaption: "deck",
+    });
+    await w.find('[data-testid="media-annotate"]').trigger("click");
+    await flushPromises();
+    // Sidecar present ⇒ slidey path even though the base artifact is an mp4.
+    expect(w.find('[data-testid="aa-slidey"]').exists()).toBe(true);
+    // The backdrop is the sibling POSTER still (not the mp4), at the poster URL.
+    const poster = w.find('[data-testid="aa-slidey-poster"]');
+    expect(poster.exists()).toBe(true);
+    expect(poster.attributes("src")).toBe("/fake-artifact/slidey-edit#1/poster");
+    // The SemanticOverlay renders a positioned marker per sidecar element.
+    expect(w.find('[data-testid="semantic-overlay"]').exists()).toBe(true);
+    expect(w.find('[data-testid="so-marker-1/card_0"]').exists()).toBe(true);
+    expect(w.find('[data-testid="so-marker-1/title"]').exists()).toBe(true);
+    w.unmount();
+  });
+
+  it("dispatches an emitted anchor as an anchored off-path note", async () => {
+    dsStub.semanticMap.mockResolvedValue(SIDECAR);
+    const w = renderWithSession({
+      Kind: "media",
+      MediaHandle: "slidey-edit#1",
+      MediaKind: "video",
+    });
+    await w.find('[data-testid="media-annotate"]').trigger("click");
+    await flushPromises();
+    // Click a marker → SemanticOverlay emits → ArtifactAnnotator emits anchor →
+    // ViewElement dispatches it via ds.offpath with the serialized anchor.
+    await w.find('[data-testid="so-marker-1/card_0"]').trigger("click");
+    await flushPromises();
+    expect(dsStub.offpath).toHaveBeenCalledTimes(1);
+    const [sid, , , anchor] = dsStub.offpath.mock.calls[0];
+    expect(sid).toBe("sess-1");
+    expect(anchor?.target?.kind).toBe("semantic_element");
+    expect((anchor?.target as { ref: string }).ref).toBe("1/card_0");
+    expect(anchor?.media_handle).toBe("slidey-edit#1");
+    // Confirmation surfaces in the panel.
+    expect(w.find(".ve-media-annotate-ok").exists()).toBe(true);
+    w.unmount();
+  });
+
+  it("closes the annotator panel via Close", async () => {
+    const w = renderWithSession({
+      Kind: "media",
+      Handle: "shot.png",
+      Mime: "image/png",
+    });
+    await w.find('[data-testid="media-annotate"]').trigger("click");
+    await flushPromises();
+    expect(w.find('[data-testid="media-annotate-panel"]').exists()).toBe(true);
+    await w.find('[data-testid="media-annotate-close"]').trigger("click");
+    expect(w.find('[data-testid="media-annotate-panel"]').exists()).toBe(false);
+    expect(w.find('[data-testid="media-annotate"]').exists()).toBe(true);
     w.unmount();
   });
 });

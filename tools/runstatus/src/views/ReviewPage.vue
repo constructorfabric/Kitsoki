@@ -18,12 +18,18 @@
 import { ref, computed, onMounted, reactive } from "vue";
 import { useRoute } from "vue-router";
 import { createDataSource } from "../data/source.js";
-import type { Chapter } from "../data/source.js";
+import type { Chapter, VisualBundle } from "../data/source.js";
 import type { Flag } from "../lib/flags.js";
+import type { ResolvedElement } from "../lib/resolveElement.js";
+import type { AnnotationAnchor } from "../lib/annotationAnchor.js";
+import { normalizeAnchor } from "../lib/annotationAnchor.js";
 import { dominantChapter } from "../lib/flags.js";
+import type { RrwebEvent } from "../data/session-capture.js";
 import ChapterTimeline from "../components/ChapterTimeline.vue";
 import FlagList from "../components/FlagList.vue";
 import FlagDetail from "../components/FlagDetail.vue";
+import SpatialPicker from "../components/SpatialPicker.vue";
+import ReplayFrame from "../components/ReplayFrame.vue";
 
 const props = defineProps<{ sessionId: string }>();
 
@@ -53,6 +59,30 @@ const selectedFlag = computed(
 // metadata once it loads (chapters may carry zero-width windows — slice-1
 // deviation 2 — in which case ChapterTimeline spaces markers evenly).
 const playerDurationMs = ref(0);
+
+// Spatial picker over the player frame (docs/tui/spatial-capture.md). The
+// frame's natural size feeds the rendered→frame-pixel map; default to a 16:9
+// box until the video reports its intrinsic size. In the LIVE-video path the
+// resolver runs against the LIVE document (one resolver, two roots); when the
+// reviewed media carries recorded rrweb events we instead render a ReplayFrame
+// (the reconstructed-DOM root — epic shared decision 2), so a click resolves a
+// REAL app control rather than the opaque <video>.
+const frameNatural = ref({ width: 1280, height: 720 });
+const pickerRoot = computed<Document | null>(() =>
+  typeof document !== "undefined" ? document : null
+);
+
+// Recorded rrweb session backing this review, when present. `events` ≥ 2
+// (Meta + FullSnapshot) means the media is a reconstructed session: render the
+// ReplayFrame picker over it. `width`/`height` are the recording's INTRINSIC
+// viewport — the replay iframe's own pixel space, which the picker maps clicks
+// into (NOT the scaled render size).
+const replay = ref<{ events: RrwebEvent[]; width: number; height: number } | null>(
+  null
+);
+const hasReplay = computed(
+  () => !!replay.value && replay.value.events.length >= 2
+);
 const totalMs = computed(() => {
   const fromChapters = chapters.value.reduce(
     (m, c) => Math.max(m, c.end_ms),
@@ -74,6 +104,23 @@ onMounted(async () => {
     chapters.value = [];
     loadError.value = e instanceof Error ? e.message : String(e);
   }
+  // Optional reconstructed-DOM replay: if the source exposes recorded rrweb
+  // events for this media, render the ReplayFrame picker over the real UI
+  // instead of the opaque <video>. A source without it (snapshot/artifact) omits
+  // the method; any failure silently keeps the video path (never blocks review).
+  if (ds.videoEvents) {
+    try {
+      const r = await ds.videoEvents(props.sessionId, video.value);
+      if (r.events.length >= 2) {
+        replay.value = r;
+        if (r.width > 0 && r.height > 0) {
+          frameNatural.value = { width: r.width, height: r.height };
+        }
+      }
+    } catch {
+      /* no replay sidecar — keep the live-video path */
+    }
+  }
 });
 
 function videoUrl(): string {
@@ -84,6 +131,28 @@ function onLoadedMetadata() {
   if (player.value && !Number.isNaN(player.value.duration)) {
     playerDurationMs.value = Math.round(player.value.duration * 1000);
   }
+  if (player.value?.videoWidth && player.value?.videoHeight) {
+    frameNatural.value = {
+      width: player.value.videoWidth,
+      height: player.value.videoHeight,
+    };
+  }
+}
+
+/**
+ * The operator clicked/dragged the frame: stash the point + resolved element on
+ * the selected flag (epic decision 5 — the flag BECOMES the spatial
+ * attachment). The flag's next chat question carries this as the visual bundle.
+ */
+function onPick(bundle: {
+  point: { x: number; y: number };
+  box?: { x: number; y: number; width: number; height: number };
+  element?: ResolvedElement;
+}) {
+  const f = selectedFlag.value;
+  if (!f) return;
+  f.point = bundle.point;
+  f.element = bundle.element;
 }
 
 function onSeek(tMs: number) {
@@ -132,6 +201,51 @@ function onSelectFlag(id: number) {
   selectedId.value = id;
 }
 
+/**
+ * visualFor builds the off-path `visual` bundle for a flag, or undefined when
+ * the flag carries neither a captured still nor a picked point/element (then
+ * the question is a plain off-path turn, unchanged from before). The bundle
+ * rides on session.offpath; slice 1 lifts it into host.WithVisualAmbient.
+ */
+function visualFor(f: Flag): VisualBundle | undefined {
+  if (!f.frame_handle && !f.point && !f.element) return undefined;
+  return {
+    ...(f.frame_handle ? { frame_handle: f.frame_handle } : {}),
+    ...(video.value ? { media_handle: video.value } : {}),
+    ...(f.point ? { point: f.point } : {}),
+    ...(f.element ? { element: f.element } : {}),
+    t_ms: f.start_ms,
+    route: `/review/${props.sessionId}`,
+  };
+}
+
+/**
+ * anchorFor builds the v2 unified AnnotationAnchor for a flag (the generalization
+ * of visualFor). The reviewed media is rrweb-backed when `hasReplay`, else a
+ * plain mp4; the picked point/element normalizes into a dom_node (or region)
+ * target via normalizeAnchor, and the flag's time window rides as the still's
+ * t_ms through the back-compat projection. Undefined when the flag carries no
+ * spatial pick (then the question is a plain off-path turn).
+ */
+function anchorFor(f: Flag): AnnotationAnchor | undefined {
+  if (!f.point && !f.element && !f.frame_handle) return undefined;
+  const meta = {
+    media_handle: video.value || undefined,
+    media_kind: (hasReplay.value ? "rrweb" : "mp4") as "rrweb" | "mp4",
+    frame_handle: f.frame_handle ?? undefined,
+    route: `/review/${props.sessionId}`,
+  };
+  // A picked point/element normalizes into the discriminated target; a flag with
+  // only a captured still (no pick) anchors at the time window instead.
+  if (f.point || f.element) {
+    return normalizeAnchor(
+      { point: f.point ?? { x: 0, y: 0 }, element: f.element },
+      meta
+    );
+  }
+  return { ...meta, target: { kind: "time_range", start_ms: f.start_ms } };
+}
+
 function onUpdateInstruction(value: string) {
   if (selectedFlag.value) selectedFlag.value.instruction = value;
 }
@@ -142,7 +256,14 @@ async function onSendChat(input: string) {
   chats[f.id].push({ role: "user", text: input });
   chatBusy.value = true;
   try {
-    const { answer } = await ds.offpath(props.sessionId, input);
+    // Pass both the back-compat visual bundle and the v2 unified anchor; the
+    // server lifts whichever it reads into the agent ambient.
+    const { answer } = await ds.offpath(
+      props.sessionId,
+      input,
+      visualFor(f),
+      anchorFor(f)
+    );
     chats[f.id].push({ role: "assistant", text: answer });
   } catch (e) {
     chats[f.id].push({
@@ -164,6 +285,9 @@ async function dispatchFlag(f: Flag) {
         : { start_ms: f.start_ms },
     frame_handle: f.frame_handle ?? undefined,
     instruction: f.instruction.trim(),
+    // The v2 unified anchor ties this feedback to its exact location; the
+    // back-compat time_range/frame_handle stay populated above.
+    anchor: anchorFor(f),
   });
   f.sent = true;
 }
@@ -194,16 +318,43 @@ async function onSendAll() {
     <div class="rp-cols">
       <!-- Left: player + timeline + flags -->
       <section class="rp-left">
-        <video
-          v-if="video"
-          ref="player"
-          class="rp-player"
-          data-testid="rp-player"
-          controls
-          preload="metadata"
-          :src="videoUrl()"
-          @loadedmetadata="onLoadedMetadata"
-        />
+        <div v-if="video" class="rp-frame" data-testid="rp-frame">
+          <!-- Reconstructed-DOM path: when the reviewed media carries recorded
+               rrweb events, render the rrweb Replayer (REAL UI) under the picker
+               so a click resolves a real app control against the reconstructed
+               DOM (epic shared decision 2). The picker lives inside ReplayFrame,
+               rooted at the replay iframe's contentDocument. -->
+          <ReplayFrame
+            v-if="hasReplay && selectedFlag"
+            :events="replay!.events"
+            :natural-width="frameNatural.width"
+            :natural-height="frameNatural.height"
+            @pick="onPick"
+          />
+          <!-- Live-video path (unchanged): the opaque <video> + a transparent
+               picker that drops pointer-events to hit-test the page behind it. -->
+          <template v-else>
+            <video
+              ref="player"
+              class="rp-player"
+              data-testid="rp-player"
+              controls
+              preload="metadata"
+              :src="videoUrl()"
+              @loadedmetadata="onLoadedMetadata"
+            />
+            <!-- Spatial picker: live only once a flag is selected (it stashes the
+                 point/element on that flag). pointer-events live so it captures
+                 clicks; it drops them momentarily to hit-test the page behind. -->
+            <SpatialPicker
+              v-if="selectedFlag"
+              :natural-width="frameNatural.width"
+              :natural-height="frameNatural.height"
+              :root="pickerRoot"
+              @pick="onPick"
+            />
+          </template>
+        </div>
         <ChapterTimeline
           :chapters="chapters"
           :total-ms="totalMs"
@@ -278,7 +429,11 @@ async function onSendAll() {
   flex-direction: column;
   gap: 0.9em;
 }
+.rp-frame {
+  position: relative;
+}
 .rp-player {
+  display: block;
   width: 100%;
   border-radius: 8px;
   background: #000;

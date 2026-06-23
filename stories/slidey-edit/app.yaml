@@ -1,0 +1,123 @@
+# slidey-edit — author/edit a slidey deck, render it, review the media, then
+# refine from a LOCATION-TIED annotation anchor on the rendered deck.
+#
+# This is the v2+ generalization PoC of spatial-oracle: feedback is no longer
+# rrweb-only. A reviewer annotates the rendered deck (png/mp4 frame) with an
+# AnnotationAnchor — a semantic_element on a named scene element, a drawn
+# region, or a point — and that anchor flows verbatim into a refine pass that
+# edits the EXACT scene the anchor points at.
+#
+# Rooms:  idle → drafting → rendering → reviewing → refining → done
+#   idle       deterministic: bake/confirm the deck spec to edit
+#   drafting   interpretive:  ONE host.agent.task authors/edits the deck JSON (mocked)
+#   rendering  deterministic: host.slidey.render → mp4 + .semantic.json sidecar; bind the media handle
+#   reviewing  deterministic: media(deck) inline + invite an anchored annotation
+#   refining   interpretive:  ONE host.agent.task consumes {{ args.visual.anchor }} + the operator
+#                             instruction, edits the spec, re-renders, shows before/after
+#   done       gallery of the final deck + the anchors that were addressed
+#
+# Deterministic + NO-LLM: flows/*.yaml stub every host call by invoke id; the
+# tour/web cassette (cassettes/deck_review.cassette.yaml) matches by handler.
+# Rendering/reviewing reference a BAKED pre-rendered deck under baked/ so the
+# media resolves without invoking slidey live.
+
+app:
+  id: slidey-edit
+  version: 0.1.0
+  title: "Slidey deck editor — annotate then refine"
+  author: "Kitsoki"
+  license: "CC0"
+
+hosts:
+  - host.agent.task
+  - host.slidey.render
+  - host.artifacts_dir
+  - host.starlark.run
+
+agents:
+  drafter:
+    system_prompt: "You author a slidey deck JSON spec (scenes with id, type, heading, narration, and named elements). Only write under the given workspace directory. Keep the deck tight; one idea per scene."
+    model: claude-sonnet-4-6
+    tools: [Read, Write, Edit, Glob, Grep]
+    external_side_effect: false
+  reviser:
+    system_prompt: "You edit the slidey deck behind a LOCATION-TIED annotation. The operator pointed at a specific place on the rendered deck — a named scene element, a region, or a point — and left an instruction. Resolve the anchor to the scene/element it targets and apply the instruction there. Comply with the directive; never silently drop it. Only write under the given workspace directory."
+    model: claude-sonnet-4-6
+    tools: [Read, Write, Edit, Glob, Grep]
+    external_side_effect: false
+
+world:
+  # ── session / config ───────────────────────────────────────────────────────
+  workspace:        { type: string, default: "stories/slidey-edit/baked" }
+
+  # ── deck source ─────────────────────────────────────────────────────────────
+  # spec_path is baked at the pre-rendered deck so `kitsoki tour`/web can drive
+  # the loop without authoring (tour-needs-baked-world lesson).
+  deck:             { type: object, default: { spec_path: "stories/slidey-edit/baked/deck.json", summary: "Spatial-annotation explainer deck (3 scenes)." } }
+  draft_feedback:   { type: string, default: "" }
+
+  # ── render outputs ──────────────────────────────────────────────────────────
+  deck_handle:      { type: string, default: "" }   # rendered mp4 artifact handle
+  semantic_handle:  { type: string, default: "" }   # .semantic.json sidecar handle
+  deck_path:        { type: string, default: "" }
+  semantic_path:    { type: string, default: "" }
+
+  # ── annotation → refine loop ────────────────────────────────────────────────
+  # annotation is the operator's location-tied feedback bundle. anchor mirrors
+  # the AnnotationAnchor union the surface attaches as args.visual.anchor.
+  annotation:       { type: object, default: {} }   # {anchor:{...}, instruction, frame_handle}
+  refine_feedback:  { type: string, default: "" }   # inline instruction override (no anchor change)
+  refine_result:    { type: object, default: {} }   # {edited:[...], summary}
+  addressed:        { type: object, default: { items: [] } }  # {items:[{anchor_label, instruction, deck_handle}]}
+  cycle:            { type: int,    default: 0 }
+  refine_budget:    { type: int,    default: 6 }
+
+  # ── misc ────────────────────────────────────────────────────────────────────
+  abandon_reason:   { type: string, default: "" }
+  last_error:       { type: string, default: "" }
+
+intents:
+  # ── idle ────────────────────────────────────────────────────────────────────
+  start:
+    description: "Draft (or re-draft) the deck and advance to render."
+    examples: ["start", "draft the deck", "begin"]
+    priority: 80
+    slots:
+      feedback: { type: string, required: false }
+
+  # ── drafting / refining checkpoints ─────────────────────────────────────────
+  accept:
+    description: "Accept and advance."
+    examples: ["accept", "continue", "lgtm", "looks right"]
+    priority: 85
+
+  # ── reviewing checkpoint ────────────────────────────────────────────────────
+  refine:
+    description: "Refine the deck from a location-tied annotation on the rendered frame."
+    examples: ["refine", "refine feedback=tighten the callout", "fix what I pointed at"]
+    priority: 70
+    slots:
+      feedback: { type: string, required: false }
+  rerender:
+    description: "Re-render the current deck without editing it."
+    examples: ["rerender", "render again"]
+    priority: 60
+  quit:
+    description: "Abandon the editor."
+    examples: ["quit", "abort", "bail"]
+    priority: 50
+
+  # ── shared ──────────────────────────────────────────────────────────────────
+  look:
+    description: "Re-render the current view."
+    examples: ["look", "refresh", "?"]
+    priority: 10
+
+exits:
+  done:       { requires: [deck_handle] }
+  abandoned:  {}
+
+root: idle
+
+include:
+  - rooms/*.yaml

@@ -81,6 +81,7 @@ export class TurnCancelledError extends Error {
 }
 import { JsonRpcClient } from "../transport/jsonrpc.js";
 import type { LastRpcError } from "../transport/jsonrpc.js";
+import { serializeAnchor } from "../lib/annotationAnchor.js";
 import { createTransport } from "../transport/transport.js";
 import type { RpcTransport } from "../transport/transport.js";
 
@@ -521,11 +522,44 @@ export class LiveSource implements DataSource {
     });
   }
 
-  offpath(sessionId: string, input: string): Promise<{ answer: string }> {
+  offpath(
+    sessionId: string,
+    input: string,
+    visual?: import("./source.js").VisualBundle,
+    anchor?: import("../lib/annotationAnchor.js").AnnotationAnchor
+  ): Promise<{ answer: string }> {
     return this.client.post<{ answer: string }>("runstatus.session.offpath", {
       session_id: sessionId,
       input,
+      // The optional spatial bundle (slice 1 lifts it server-side into
+      // host.WithVisualAmbient). The server's element.bbox is a [x,y,w,h]
+      // array; flatten the resolver's {x,y,width,height} into it here so the
+      // wire shape matches host.VisualAmbient exactly.
+      ...(visual ? { visual: visualParams(visual) } : {}),
+      // The v2 unified annotation anchor rides alongside (the backend slice
+      // lifts the richer discriminated target into the agent ambient). The
+      // component anchor is projected to the on-wire AnchorWire shape
+      // host.AnchorFromParams decodes (kind + sibling-named target, bbox/path as
+      // positional arrays) — UI-only fields are dropped here.
+      ...(serializeAnchorParam(anchor) ? { anchor: serializeAnchorParam(anchor) } : {}),
     });
+  }
+
+  /**
+   * Read an artifact's semantic sidecar via runstatus.artifact.semantic. The
+   * server resolves `<name>.semantic.json` next to the media and returns the
+   * generic element map, or `{ elements: [] }` / a 404-shaped null when there is
+   * no sidecar — the annotator then falls back to the dom_node picker.
+   */
+  async semanticMap(
+    sessionId: string,
+    handle: string
+  ): Promise<import("../lib/semanticPlugins.js").SemanticSidecar | null> {
+    const res = await this.client.post<
+      import("../lib/semanticPlugins.js").SemanticSidecar | null
+    >("runstatus.artifact.semantic", { session_id: sessionId, handle });
+    if (!res || !res.elements || res.elements.length === 0) return null;
+    return res;
   }
 
   /**
@@ -754,11 +788,23 @@ export class LiveSource implements DataSource {
    * exposes `GET /artifact/<handle>` which validates path traversal and serves
    * the file via http.ServeContent (ETag, Range, Content-Type).
    */
-  artifactUrl(handle: string): string {
+  artifactUrl(handle: string, maxDim?: number): string {
     // Handles are content-addressed (e.g. "mockup-video#6e2b0759") and the '#'
     // is a URL fragment delimiter — left raw it truncates the path and the
     // server 404s. Encode the handle so '#' rides as %23 into the path segment.
-    return `/artifact/${encodeURIComponent(handle)}`;
+    const base = `/artifact/${encodeURIComponent(handle)}`;
+    // A downscale hint for a heavy frame rendered as a message thumbnail. The
+    // server may honour it; if not, it serves full-res (the file is the same
+    // URL minus the query, so caching is per-variant).
+    return maxDim && maxDim > 0 ? `${base}?max=${maxDim}` : base;
+  }
+
+  /** The media handle's sibling poster still: `/artifact/<handle>/poster` — the
+   *  server serves `<stem>.poster.png` beside the media keyed by the same handle.
+   *  The handle is encoded as one path segment (so '#' rides as %23); the
+   *  `/poster` suffix is appended after it. */
+  artifactPosterUrl(handle: string): string {
+    return `/artifact/${encodeURIComponent(handle)}/poster`;
   }
 
   // ── Video feedback mode (/review) ──────────────────────────────────────────
@@ -771,6 +817,26 @@ export class LiveSource implements DataSource {
       chapters: import("./source.js").Chapter[];
     }>("runstatus.video.chapters", { session_id: sessionId, video });
     return res.chapters ?? [];
+  }
+
+  async videoEvents(
+    sessionId: string,
+    video: string
+  ): Promise<{
+    events: import("./session-capture.js").RrwebEvent[];
+    width: number;
+    height: number;
+  }> {
+    const res = await this.client.post<{
+      events?: import("./session-capture.js").RrwebEvent[];
+      width?: number;
+      height?: number;
+    }>("runstatus.video.events", { session_id: sessionId, video });
+    return {
+      events: res.events ?? [],
+      width: res.width ?? 0,
+      height: res.height ?? 0,
+    };
   }
 
   videoFrame(
@@ -789,9 +855,15 @@ export class LiveSource implements DataSource {
     sessionId: string,
     note: import("./source.js").FeedbackNote
   ): Promise<{ ok: boolean }> {
+    // The note's component-facing `anchor` is projected to the on-wire shape
+    // (kind + sibling-named target) so the server decodes it the same way as the
+    // offpath `anchor` param; the back-compat time_range/frame_handle stay.
+    const { anchor, ...rest } = note;
+    const wire = serializeAnchorParam(anchor);
     return this.client.post("runstatus.feedback.add", {
       session_id: sessionId,
-      ...note,
+      ...rest,
+      ...(wire ? { anchor: wire } : {}),
     });
   }
 
@@ -1257,3 +1329,47 @@ export interface BugReportResult {
 
 // Re-export for components that import AnnotationEntry from this module.
 export type { AnnotationEntry };
+
+/**
+ * visualParams maps a VisualBundle into the exact wire shape the server's
+ * `runstatus.session.offpath` `visual` param expects (mirrors host.VisualAmbient
+ * JSON tags). The only impedance is the bbox: the resolver records it as
+ * {x,y,width,height} (readable in the chip + tests), but host.VisualAmbient's
+ * `element.bbox` is a positional `[x, y, w, h]` array — flatten it here. Fields
+ * the bundle omits are simply absent; the server decodes missing fields to zero
+ * and `WithVisualAmbient` is a no-op when nothing meaningful was attached.
+ */
+function visualParams(
+  v: import("./source.js").VisualBundle
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (v.frame_handle) out.frame_handle = v.frame_handle;
+  if (v.media_handle) out.media_handle = v.media_handle;
+  if (v.route) out.route = v.route;
+  if (typeof v.t_ms === "number") out.t_ms = v.t_ms;
+  if (v.point) out.point = { x: v.point.x, y: v.point.y };
+  if (v.element) {
+    const { selector, role, text, bbox } = v.element;
+    out.element = {
+      selector,
+      role,
+      text,
+      bbox: [bbox.x, bbox.y, bbox.width, bbox.height],
+    };
+  }
+  return out;
+}
+
+/**
+ * serializeAnchorParam projects the component AnnotationAnchor into the on-wire
+ * AnchorWire object host.AnchorFromParams decodes (kind + sibling-named target).
+ * Returns undefined when there is no anchor or no target (the server then
+ * synthesizes one from the flat visual fields). UI-only fields (point, label,
+ * id) are dropped by serializeAnchor.
+ */
+function serializeAnchorParam(
+  anchor?: import("../lib/annotationAnchor.js").AnnotationAnchor
+): import("../lib/annotationAnchor.js").AnchorWire | undefined {
+  if (!anchor) return undefined;
+  return serializeAnchor(anchor) ?? undefined;
+}

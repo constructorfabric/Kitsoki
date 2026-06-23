@@ -270,6 +270,12 @@ ways, chosen by terminal capability so neither silently fails:
 We do **not** build an in-TUI markdown pager — we hand the file to the
 operator's existing reader and stop.
 
+The same OSC 8 mechanism powers the **spatial handoff**: when an oracle wants
+the operator to point at a frame, the terminal prints a clickable link to a
+transient chrome-less pointing window and blocks the turn until the operator
+points and sends. See [`spatial-handoff.md`](spatial-handoff.md) (the web
+capture surface it hands off to is [`spatial-capture.md`](spatial-capture.md)).
+
 ## TUI as a transport
 
 The TUI is one **transport adapter** among several. Phase templates

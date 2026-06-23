@@ -57,6 +57,14 @@ var minimalPNG = []byte{
 //
 // Returns the httptest.Server and the handle ID recorded in the journal.
 func buildJournalArtifactServer(t *testing.T, content []byte, mime string) (ts *httptest.Server, handle string) {
+	return buildJournalArtifactServerPoster(t, content, mime, nil)
+}
+
+// buildJournalArtifactServerPoster is buildJournalArtifactServer plus an optional
+// sibling `<stem>.poster.png` still written beside the media (the annotator's
+// slidey backdrop). When posterContent is nil no poster is written, so a
+// `/artifact/<id>/poster` request 404s.
+func buildJournalArtifactServerPoster(t *testing.T, content []byte, mime string, posterContent []byte) (ts *httptest.Server, handle string) {
 	t.Helper()
 
 	const sessionID = "sess-journal-art"
@@ -66,6 +74,10 @@ func buildJournalArtifactServer(t *testing.T, content []byte, mime string) (ts *
 	handle = "test_image#ab12cd34"
 	fpath := filepath.Join(dir, "test_image.png")
 	require.NoError(t, os.WriteFile(fpath, content, 0o644))
+	if posterContent != nil {
+		// The sibling poster: same stem, `.poster.png` (host.PosterSidecarPath).
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "test_image.poster.png"), posterContent, 0o644))
+	}
 
 	// ── 2. Write artifact.emitted to an in-memory journal ────────────────────
 	ms := journal.NewMemStore()
@@ -145,6 +157,41 @@ func TestArtifactIntegration_UnknownHandleReturns404(t *testing.T) {
 	ts, _ := buildJournalArtifactServer(t, minimalPNG, "image/png")
 
 	resp, err := http.Get(ts.URL + "/artifact/no_such_handle%23deadbeef")
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+}
+
+// TestArtifactIntegration_PosterServesSibling proves GET /artifact/<id>/poster
+// serves the sibling `<stem>.poster.png` beside the media (the annotator's
+// slidey backdrop) keyed by the SAME media handle — as image/png, exact bytes.
+func TestArtifactIntegration_PosterServesSibling(t *testing.T) {
+	t.Parallel()
+
+	// A distinct poster body so the test can tell it apart from the media bytes.
+	poster := append([]byte(nil), minimalPNG...)
+	poster[len(poster)-1] ^= 0xff
+	ts, handle := buildJournalArtifactServerPoster(t, minimalPNG, "video/mp4", poster)
+
+	resp, err := http.Get(ts.URL + "/artifact/" + urlEncodeHandle(handle) + "/poster")
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, "image/png", resp.Header.Get("Content-Type"))
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Equal(t, poster, body, "poster route must serve the sibling .poster.png bytes")
+}
+
+// TestArtifactIntegration_PosterMissingReturns404 proves a poster request for a
+// media with no sibling poster 404s (the annotator then has no still backdrop).
+func TestArtifactIntegration_PosterMissingReturns404(t *testing.T) {
+	t.Parallel()
+
+	ts, handle := buildJournalArtifactServer(t, minimalPNG, "video/mp4") // no poster
+	resp, err := http.Get(ts.URL + "/artifact/" + urlEncodeHandle(handle) + "/poster")
 	require.NoError(t, err)
 	defer func() { _ = resp.Body.Close() }()
 

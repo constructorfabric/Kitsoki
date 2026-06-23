@@ -1,0 +1,54 @@
+# deck_review — no-LLM host cassette for `kitsoki web --flow` / `kitsoki tour`.
+#
+# Where flows/*.yaml drive `kitsoki test flows` (intent-only, stubbed by invoke
+# id), this cassette supplies the SAME no-LLM posture for the WEB/TOUR surface,
+# matched by handler. The render points at the BAKED pre-rendered deck mp4 +
+# .semantic.json sidecar under baked/, so no slidey runs; host.artifacts_dir is
+# left to the real builtin (pre-registered under --flow) so the bound deck_handle
+# resolves through the JournalArtifactResolver and /review serves real bytes.
+#
+# Pair with flows/demo_web.yaml as the web entry fixture.
+kind: host_cassette
+app_id: slidey-edit
+app_version: "0.1.0"
+record_mode: none
+match_on:
+  - handler
+episodes:
+  - id: author_deck_any
+    match: { handler: host.agent.task }
+    response:
+      data:
+        ok: true
+        submitted:
+          spec_path: "stories/slidey-edit/baked/deck.json"
+          summary: "Authored a 3-scene spatial-annotation explainer deck."
+          edited: ["1/card_0"]
+    replay: any
+
+  - id: render_deck_any
+    match: { handler: host.slidey.render }
+    response:
+      data:
+        ok: true
+        path: "stories/slidey-edit/baked/deck.mp4"
+        semantic_path: "stories/slidey-edit/baked/deck.semantic.json"
+    replay: any
+
+  - id: seed_annotation_any
+    match: { handler: host.starlark.run }
+    response:
+      data:
+        annotation:
+          anchor:
+            kind: "semantic_element"
+            semantic_element:
+              plugin: "slidey"
+              ref: "1/card_0"
+              bbox: [140, 518, 535, 114]
+            label: "Scene 1 · card 0"
+          instruction: "Make the semantic_element card stand out and add a one-line example beneath it."
+          frame_handle: "slidey-edit#1"
+        addressed:
+          items: []
+    replay: any

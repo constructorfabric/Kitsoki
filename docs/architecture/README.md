@@ -62,6 +62,12 @@ these surfaces.
   headless-broken built-in `AskUserQuestion` tool; the DI
   `OperatorPrompter` seam, interactivity gating, the wire schema, and the
   trace events.
+- **[`artifact-annotation.md`](artifact-annotation.md)** — viewing and
+  annotating a room artifact (png / mp4 / rrweb / html / slidey deck) with
+  location-tied feedback: the discriminated `AnnotationAnchor` union, the
+  producer-agnostic semantic-sidecar plugin contract, the `ArtifactAnnotator`
+  surface, and the companion-serving RPC/route. Generalises
+  [`visual-ambient.md`](visual-ambient.md).
 - **[`system-prompt.md`](system-prompt.md)** — the layered, cache-friendly
   system prompt (kitsoki → project → task) composed for every claude
   invocation, the replace-vs-append model, and the per-verb dynamic-sections

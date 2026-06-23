@@ -1,0 +1,104 @@
+# refine_from_anchor — the LOCATION-TIED loop: a baked semantic_element anchor
+# on the rendered deck flows into the refine pass, which edits the exact scene
+# element the anchor points at, then re-renders the before/after.
+#
+# Posture mirrors happy_path (all host calls stubbed by invoke id). The reviewing
+# room seeds a default annotation (semantic_element ref "1/card_0" — scene 1's
+# "semantic_element" card); `refine` carries it into refining, whose task edits
+# that element. Asserts (a) the anchor reached the refine task and (b) the
+# addressed record captured the anchor label.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: drafting
+initial_world:
+  workspace: "stories/slidey-edit/baked"
+  deck: { spec_path: "stories/slidey-edit/baked/deck.json", summary: "Spatial-annotation explainer deck (3 scenes)." }
+  addressed: { items: [] }
+  cycle: 0
+  refine_budget: 6
+
+host_handlers:
+  host.agent.task:
+    by_call:
+      author_deck:
+        data:
+          ok: true
+          submitted: { spec_path: "stories/slidey-edit/baked/deck.json", summary: "deck" }
+      refine_deck:
+        data:
+          ok: true
+          submitted:
+            spec_path: "stories/slidey-edit/baked/deck.json"
+            summary: "Emphasized the semantic_element card (scene 1, card 0) and added an example line."
+            edited: ["1/card_0"]
+
+  host.slidey.render:
+    by_call:
+      render_deck:
+        data:
+          ok: true
+          path: "stories/slidey-edit/baked/deck.mp4"
+          semantic_path: "stories/slidey-edit/baked/deck.semantic.json"
+
+  host.starlark.run:
+    by_call:
+      seed_annotation:
+        data:
+          annotation:
+            anchor:
+              kind: "semantic_element"
+              semantic_element: { plugin: "slidey", ref: "1/card_0", bbox: [140, 518, 535, 114] }
+              label: "Scene 1 · card 0"
+            instruction: "Make the semantic_element card stand out and add a one-line example beneath it."
+            frame_handle: "slidey-edit#1"
+      accumulate_addressed:
+        data:
+          addressed:
+            items:
+              - deck_handle: "slidey-edit#1"
+                anchor_label: "Scene 1 · card 0"
+                instruction: "Make the semantic_element card stand out and add a one-line example beneath it."
+                edited: ["1/card_0"]
+
+  host.artifacts_dir:
+    by_call:
+      emit_deck:
+        data: { ok: true, handle: { id: "slidey-edit#1", kind: "video", mime: "video/mp4" }, path: "stories/slidey-edit/baked/deck.mp4", kind: "video", mime: "video/mp4" }
+      emit_semantic:
+        data: { ok: true, handle: { id: "slidey-semantic#1", kind: "data", mime: "application/json" }, path: "stories/slidey-edit/baked/deck.semantic.json", kind: "data", mime: "application/json" }
+
+turns:
+  # drafting: accept → rendering → emits → auto-advance into reviewing, whose
+  # on_enter seeds the baked semantic_element annotation.
+  - intent: { name: accept, slots: {} }
+    expect_state: reviewing
+    expect_world:
+      deck_handle: "slidey-edit#1"
+      annotation:
+        anchor:
+          kind: "semantic_element"
+          semantic_element: { plugin: "slidey", ref: "1/card_0", bbox: [140, 518, 535, 114] }
+          label: "Scene 1 · card 0"
+        instruction: "Make the semantic_element card stand out and add a one-line example beneath it."
+        frame_handle: "slidey-edit#1"
+
+  # refine (no inline feedback) → refining → task edits the anchored scene
+  # element → re-render → reviewing. The anchor reached the refine task, and the
+  # addressed record captured it.
+  - intent: { name: refine, slots: {} }
+    expect_state: reviewing
+    expect_world:
+      cycle: 1
+      deck_handle: "slidey-edit#1"
+      addressed:
+        items:
+          - deck_handle: "slidey-edit#1"
+            anchor_label: "Scene 1 · card 0"
+            instruction: "Make the semantic_element card stand out and add a one-line example beneath it."
+            edited: ["1/card_0"]
+    expect_host_calls:
+      - handler: host.agent.task
+        args: { call: "refine_deck" }
+
+expect_no_errors: true

@@ -3,7 +3,9 @@ import { computed, ref } from "vue";
 import { useRoute } from "vue-router";
 import type { ViewElement } from "../types.js";
 import { createDataSource } from "../data/source.js";
+import type { AnnotationAnchor, MediaKind } from "../lib/annotationAnchor.js";
 import MarkdownModal from "./MarkdownModal.vue";
+import ArtifactAnnotator from "./ArtifactAnnotator.vue";
 
 // Current route — used only to recover the active sessionId so a rendered video
 // can link to its /review feedback surface (the room view renders inline in
@@ -64,6 +66,110 @@ const mediaMime = computed<string>(() => {
   // which player branch renders; /artifact/{id} sets the real Content-Type.
   return "video/mp4";
 });
+
+// ── Annotate affordance (unified ArtifactAnnotator) ──────────────────────────
+// A live media element (image / video / html / slideshow — never a pdf) can be
+// annotated: clicking "Annotate" reveals the ArtifactAnnotator inline, which
+// renders the right substrate for the media kind and emits one AnnotationAnchor.
+// The anchor is dispatched as an anchored off-path note (ds.offpath) — the same
+// path ReviewPage uses — so it actually leaves the client. Off-session
+// (snapshot / artifact mode) there is no sessionId to anchor against, so the
+// affordance is hidden.
+
+/** The engine's MediaKind ("video"|"image"|"html"|"slideshow"|"pdf") maps onto
+ *  the annotator's MediaKind union. pdf is intentionally absent — a pdf is not
+ *  annotatable, so `mediaAnnotatable` gates it out before this is consulted. The
+ *  slideshow→slidey mapping is the DEFAULT; a media element whose base artifact
+ *  is an mp4 but which HAS a semantic sidecar is promoted to "slidey" at
+ *  annotate-open time (see openAnnotate) so the deck gets the SemanticOverlay. */
+const ENGINE_MEDIA_KIND: Record<string, MediaKind> = {
+  video: "mp4",
+  image: "png",
+  html: "html",
+  slideshow: "slidey",
+};
+
+/** The annotator MediaKind from the MIME family, when the engine kind is absent
+ *  or unmapped. Mirrors the template's MIME dispatch. */
+function kindFromMime(mime: string): MediaKind {
+  if (mime.startsWith("video/")) return "mp4";
+  if (mime.startsWith("image/")) return "png";
+  if (mime === "text/html") return "html";
+  return "mp4";
+}
+
+/** Whether this media element offers the Annotate affordance: a resolvable
+ *  handle, a live session to anchor against, and an annotatable kind (anything
+ *  but a pdf — there is no annotation substrate for a pdf). */
+const mediaAnnotatable = computed<boolean>(() => {
+  if (!mediaHandle.value || !_sessionId.value) return false;
+  const engineKind = (el.value.MediaKind ?? "").toLowerCase();
+  if (engineKind === "pdf" || mediaMime.value === "application/pdf") return false;
+  return true;
+});
+
+const annotateOpen = ref(false);
+/** The MediaKind the annotator renders with once opened (slidey-promoted when a
+ *  semantic sidecar exists for this handle). Null until openAnnotate resolves. */
+const annotateKind = ref<MediaKind | null>(null);
+const annotateBusy = ref(false);
+const annotateSent = ref<string | null>(null);
+const annotateError = ref<string | null>(null);
+
+/** Open the annotator. Probe the semantic sidecar ONCE: a non-null map means the
+ *  media (even an mp4 deck) carries producer-declared elements, so render with
+ *  the slidey path (poster backdrop + SemanticOverlay) regardless of the base
+ *  artifact's MIME. Otherwise use the engine-kind / MIME-mapped kind. */
+async function openAnnotate(): Promise<void> {
+  annotateError.value = null;
+  annotateSent.value = null;
+  const engineKind = (el.value.MediaKind ?? "").toLowerCase();
+  let kind: MediaKind =
+    ENGINE_MEDIA_KIND[engineKind] ?? kindFromMime(mediaMime.value);
+  try {
+    if (_ds.semanticMap) {
+      const env = await _ds.semanticMap(_sessionId.value, mediaHandle.value);
+      if (env && env.elements.length > 0) kind = "slidey";
+    }
+  } catch {
+    /* no sidecar / probe failed — keep the MIME-mapped kind */
+  }
+  annotateKind.value = kind;
+  annotateOpen.value = true;
+}
+
+function closeAnnotate(): void {
+  annotateOpen.value = false;
+  annotateKind.value = null;
+  annotateError.value = null;
+}
+
+/** The annotator emitted an anchor — dispatch it as an anchored off-path note so
+ *  it leaves the client (serializeAnchor projects it to the wire shape inside
+ *  ds.offpath). A short confirmation is shown; the panel stays open for a
+ *  follow-up pick. */
+async function onAnchor(anchor: AnnotationAnchor): Promise<void> {
+  annotateBusy.value = true;
+  annotateError.value = null;
+  annotateSent.value = null;
+  try {
+    const label =
+      anchor.target?.kind === "semantic_element"
+        ? anchor.target.label || anchor.target.ref
+        : (anchor.target?.kind ?? "annotation");
+    await _ds.offpath(
+      _sessionId.value,
+      `Annotated ${label} on ${mediaHandle.value}.`,
+      undefined,
+      anchor
+    );
+    annotateSent.value = label;
+  } catch (e) {
+    annotateError.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    annotateBusy.value = false;
+  }
+}
 
 /**
  * Split a block of prose into paragraphs on blank lines. We deliberately do NOT
@@ -284,6 +390,48 @@ const bannerStyle = computed<Record<string, string>>((): Record<string, string> 
         :download="mediaHandle"
       >{{ mediaCaption || mediaHandle }}</a>
     </template>
+
+    <!-- Annotate affordance: reveal the unified ArtifactAnnotator inline. The
+         media kind is probed at open (a sidecar-bearing mp4 deck → slidey path
+         with the SemanticOverlay over a poster); the emitted anchor dispatches
+         as an anchored off-path note. Hidden off-session / for pdfs. -->
+    <div v-if="mediaAnnotatable" class="ve-media-annotate">
+      <button
+        v-if="!annotateOpen"
+        type="button"
+        class="ve-media-annotate-trigger"
+        data-testid="media-annotate"
+        @click="openAnnotate"
+      >Annotate</button>
+
+      <div v-else class="ve-media-annotate-panel" data-testid="media-annotate-panel">
+        <div class="ve-media-annotate-head">
+          <span class="ve-media-annotate-title">Annotate · {{ annotateKind }}</span>
+          <button
+            type="button"
+            class="ve-media-annotate-close"
+            data-testid="media-annotate-close"
+            @click="closeAnnotate"
+          >Close</button>
+        </div>
+        <ArtifactAnnotator
+          v-if="annotateKind"
+          :ds="_ds"
+          :session-id="_sessionId"
+          :media-handle="mediaHandle"
+          :media-kind="annotateKind"
+          :poster-handle="mediaHandle"
+          @anchor="onAnchor"
+        />
+        <p v-if="annotateBusy" class="ve-media-annotate-status">Sending annotation…</p>
+        <p v-else-if="annotateSent" class="ve-media-annotate-status ve-media-annotate-ok">
+          Annotation sent: {{ annotateSent }}
+        </p>
+        <p v-if="annotateError" class="ve-media-annotate-status ve-media-annotate-err">
+          {{ annotateError }}
+        </p>
+      </div>
+    </div>
 
     <!-- caption / label rendered below any media element when present -->
     <p v-if="mediaCaption" class="ve-media-caption">{{ mediaCaption }}</p>
@@ -528,6 +676,67 @@ const bannerStyle = computed<Record<string, string>>((): Record<string, string> 
   font-size: 14px;
   color: var(--k-fg-muted, #6b7280);
   margin-top: 0.4em;
+}
+
+.ve-media-annotate {
+  margin-top: 0.5em;
+}
+
+.ve-media-annotate-trigger {
+  background: var(--k-button-bg, #1d4ed8);
+  color: var(--k-button-fg, #fff);
+  border: none;
+  border-radius: 6px;
+  padding: 0.35em 0.85em;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.ve-media-annotate-trigger:hover {
+  background: var(--k-button-hover-bg, #1a43bd);
+}
+
+.ve-media-annotate-panel {
+  margin-top: 0.5em;
+  padding: 0.6em;
+  border: 1px solid var(--k-paper-border, #d8dbe2);
+  border-radius: 8px;
+  background: var(--k-paper-bg, #f6f7f9);
+}
+
+.ve-media-annotate-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5em;
+}
+
+.ve-media-annotate-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--k-fg-muted, #4a5160);
+}
+
+.ve-media-annotate-close {
+  background: transparent;
+  border: 1px solid var(--k-paper-border, #d8dbe2);
+  color: var(--k-fg-muted, #6b7280);
+  border-radius: 5px;
+  padding: 0.2em 0.6em;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ve-media-annotate-status {
+  margin: 0.5em 0 0;
+  font-size: 13px;
+  color: var(--k-fg-muted, #6b7280);
+}
+.ve-media-annotate-ok {
+  color: var(--k-success, #1b7a3e);
+}
+.ve-media-annotate-err {
+  color: var(--k-error, #b42318);
 }
 
 .ve-media-caption {

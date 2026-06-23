@@ -1,0 +1,97 @@
+# reviewing — play the rendered deck inline + invite a LOCATION-TIED annotation;
+# checkpoint.
+#
+# The reviewer opens the deck in the annotation surface, points at a place on
+# the frame (a named scene element, a drawn region, or a point), and leaves an
+# instruction. The surface attaches an AnnotationAnchor as args.visual.anchor;
+# here the bundle lands in world.annotation. The baked world seeds a default
+# semantic_element annotation so `kitsoki tour`/web can drive `refine` without a
+# slot-bearing intent (tour-needs-baked-world lesson) — an inline `refine
+# feedback="…"` overrides the instruction.
+#
+# Checkpoint:
+#   accept  (requires deck_handle) → done
+#   refine  (baked or inline annotation)  → refining
+#   rerender → rendering (clears the render binds)
+#   quit    → @exit:abandoned
+
+states:
+
+  reviewing:
+    description: "Review the rendered deck; annotate a spot and refine, or accept."
+    relevant_world: [deck, deck_handle, semantic_handle, annotation, addressed, cycle]
+    view:
+      - heading: "Slidey deck editor · reviewing"
+      - kv:
+          pairs:
+            Summary:  '{{ world.deck.summary|default:"—" }}'
+            Cycle:    "{{ world.cycle }}"
+            Pointed:  '{{ world.annotation.anchor.label|default:"(nothing pointed at yet)" }}'
+      - heading: "Rendered deck"
+      - media:
+          handle:  "{{ world.deck_handle }}"
+          kind:    video
+          caption: "{{ world.deck.summary }}"
+      - prose: "Use **Open in review** on the deck above to point at a scene element, draw a region, or drop a point, leave an instruction, and dispatch it — then `refine` here to edit the exact scene you pointed at."
+      - heading: "Actions"
+      - list:
+          items:
+            - label: "accept"
+              hint:  "this deck is good — finish"
+            - label: "refine feedback=…"
+              hint:  "edit the scene behind the annotation (baked anchor, or your inline note)"
+            - label: "rerender"
+              hint:  "re-render the current deck unchanged"
+            - label: "quit"
+              hint:  "abandon the editor"
+            - label: "look"
+              hint:  "re-render the view"
+    on_enter:
+      # Seed a default annotation when none is attached yet, so the refine loop
+      # is drivable from a baked anchor (tour/web with no live point). A live
+      # surface that attaches args.visual.anchor overrides this on dispatch.
+      # `once:` keyed on annotation so reload/self-entry don't re-seed over a
+      # live bundle.
+      - invoke: host.starlark.run
+        id: seed_annotation
+        once: true
+        with:
+          script: scripts/seed_annotation.star
+          inputs:
+            spec_path: "{{ world.deck.spec_path }}"
+            frame_handle: "{{ world.deck_handle }}"
+        bind:
+          annotation: annotation
+        on_error: reviewing
+    on:
+      accept:
+        - when: "world.deck_handle == ''"
+          target: .
+          effects:
+            - say: "No deck to accept yet — render first."
+        - target: done
+      refine:
+        - when: "world.cycle >= world.refine_budget"
+          target: .
+          effects:
+            - say: "Refine budget exhausted ({{ world.refine_budget }} cycles) — accept, rerender, or quit."
+        - target: refining
+          effects:
+            # An inline feedback note overrides the baked annotation's instruction;
+            # the anchor (where the operator pointed) is unchanged.
+            - set:
+                refine_feedback: "{{ slots.feedback ?? '' }}"
+      rerender:
+        - target: rendering
+          effects:
+            - set:
+                deck_handle:     ""
+                semantic_handle: ""
+                deck_path:       ""
+                semantic_path:   ""
+      quit:
+        - target: "@exit:abandoned"
+          effects:
+            - set: { abandon_reason: "abandoned_at_reviewing" }
+      look:
+        - target: .

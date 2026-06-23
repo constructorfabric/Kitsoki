@@ -203,6 +203,16 @@ type RootModel struct {
 	// is told to proceed on its own.
 	operatorPrompter *TUIOperatorPrompter
 
+	// spatialPrompter, when non-nil, is injected into each turn ctx so a
+	// dispatched oracle that requests a spatial ambient (host.SpatialPrompterFrom)
+	// surfaces an OSC 8 link to a transient chrome-less `/point` window and
+	// blocks the turn until the operator submits a visual bundle. Allocated
+	// up-front (NewTUISpatialPrompter) and bound to the tea.Program
+	// post-construction via Attach() — mirrors operatorPrompter's lifecycle. Nil
+	// leaves the headless posture: no spatial ambient is requested, the turn runs
+	// text-only.
+	spatialPrompter *TUISpatialPrompter
+
 	// metaStreamPending holds a pure-narration ("thinking") assistant
 	// message that has streamed in but not yet been committed to the
 	// transcript. A text-only assistant message is ambiguous while the
@@ -588,6 +598,17 @@ func WithMetaStreamSink(sink *MetaStreamSink) RootModelOption {
 // to proceed on its own.
 func WithOperatorPrompter(prompter *TUIOperatorPrompter) RootModelOption {
 	return func(m *RootModel) { m.operatorPrompter = prompter }
+}
+
+// WithSpatialPrompter wires a *TUISpatialPrompter into the RootModel so a
+// dispatched oracle that requests a spatial ambient surfaces an OSC 8 link to a
+// transient chrome-less `/point` window and blocks the turn for the operator's
+// visual bundle. Like WithOperatorPrompter the prompter is unbound at
+// construction; the caller binds it to the *tea.Program post-construction via
+// prompter.Attach(prog). When omitted (or nil) no spatial ambient is requested
+// and the turn runs text-only (the headless posture).
+func WithSpatialPrompter(prompter *TUISpatialPrompter) RootModelOption {
+	return func(m *RootModel) { m.spatialPrompter = prompter }
 }
 
 // WithRoutingObserver wires a *RoutingObserver into the RootModel. The
@@ -1067,6 +1088,12 @@ func (m RootModel) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case minePassDoneMsg:
 		return m.handleMinePassDone(msg)
+
+	case spatialPointMsg:
+		return m.handleSpatialPoint(msg)
+
+	case spatialClearMsg:
+		return m.handleSpatialClear(msg)
 
 	case offPathReplyMsg:
 		return m.handleOffPathReply(msg)
@@ -1911,6 +1938,13 @@ func startAsyncTurn(
 	// prompter, leaving the headless tool-denied posture.
 	if m.operatorPrompter != nil {
 		ctx = host.WithOperatorPrompter(ctx, m.operatorPrompter)
+	}
+	// Wire the spatial prompter so a dispatched oracle that requests a spatial
+	// ambient surfaces an OSC 8 link to a transient `/point` window and blocks
+	// the turn for the operator's visual bundle. Nil-safe: WithSpatialPrompter
+	// no-ops on a nil prompter, leaving the text-only headless posture.
+	if m.spatialPrompter != nil {
+		ctx = host.WithSpatialPrompter(ctx, m.spatialPrompter)
 	}
 	m.inFlightCancel = cancel
 	m.mode = ModeAwaitingLLM
@@ -4689,6 +4723,9 @@ func ideFooterChip(m RootModel) string {
 // when evaluation errors — the footer is decorative, not load-bearing,
 // so we never bubble template errors up to the user.
 func footerStoryLine(m RootModel) string {
+	if m.orch == nil {
+		return ""
+	}
 	def := m.orch.AppDef()
 	if def == nil {
 		return ""

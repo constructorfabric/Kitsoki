@@ -92,6 +92,10 @@ func AgentConverseHandler(ctx context.Context, args map[string]any) (Result, err
 	// chat message) exactly like the typed text. A no-op when no selection rode
 	// the turn. Applied before any dispatch branch so all paths carry it.
 	question = appendIDEAmbient(ctx, question)
+	// Always-on screen context: append the operator's pointed-at element/frame
+	// (a web/tui surface attached it via WithVisualAmbient) beside the editor
+	// selection. A no-op when no surface attached a bundle. See visual_ambient.go.
+	question = appendVisualAmbient(ctx, question)
 
 	// B-7: If an agent plugin registry is wired in context, route through
 	// host.Dispatch. For converse the prompt is the question.
@@ -152,12 +156,31 @@ func AgentConverseHandler(ctx context.Context, args map[string]any) (Result, err
 		}, nil
 	}
 
-	// Wave 3-agent: write AgentCalled to the JSONL sink at dispatch time.
-	appendAgentCalledEvent(ctx, callStart, callID, question, AgentCalledPayload{
+	// Record the operator's screen-context bundle (slice 1's VisualAmbient) as
+	// the call's `input.visual` — the auditable INPUT to the decision (frame by
+	// handle, point, resolved element + bbox). Reject up front a frame_handle
+	// that does not resolve to a recorded artifact (no dangling frame reference).
+	visualBlock, hasVisual, visualErr := recordedVisualInput(ctx)
+	if visualErr != nil {
+		return Result{
+			Error: fmt.Sprintf("host.agent.converse: %v", visualErr),
+			Data:  map[string]any{"session_id": sessionID},
+		}, nil
+	}
+	calledPayload := AgentCalledPayload{
 		Verb:  "converse",
 		Agent: agentNameFromArgs(args),
 		Model: agent.Model,
-	})
+	}
+	if hasVisual {
+		calledPayload.Input = marshalInput(map[string]any{
+			"messages": []map[string]any{{"role": "user", "content": question}},
+			"visual":   visualBlock,
+		})
+	}
+
+	// Wave 3-agent: write AgentCalled to the JSONL sink at dispatch time.
+	appendAgentCalledEvent(ctx, callStart, callID, question, calledPayload)
 
 	cliArgs := []string{
 		"-p",
@@ -312,12 +335,27 @@ func doConverseChatTurn(ctx context.Context, cs ChatStore, chatID, question, wor
 	// into the agent-action-transcript sidecar keyed by this call (live path).
 	ctx = WithCallID(ctx, callID)
 
-	// Wave 3-agent: write AgentCalled to the JSONL sink at dispatch time.
-	appendAgentCalledEvent(ctx, callStart, callID, question, AgentCalledPayload{
+	// Record the operator's screen-context bundle as the call's `input.visual`
+	// (see the non-chat path). Reject a dangling frame_handle before any
+	// transcript row is written so a failed-validation turn leaves no orphan.
+	visualBlock, hasVisual, visualErr := recordedVisualInput(ctx)
+	if visualErr != nil {
+		return Result{Error: fmt.Sprintf("host.agent.converse: %v", visualErr)}, nil
+	}
+	calledPayload := AgentCalledPayload{
 		Verb:  "converse",
 		Agent: "",
 		Model: model,
-	})
+	}
+	if hasVisual {
+		calledPayload.Input = marshalInput(map[string]any{
+			"messages": []map[string]any{{"role": "user", "content": question}},
+			"visual":   visualBlock,
+		})
+	}
+
+	// Wave 3-agent: write AgentCalled to the JSONL sink at dispatch time.
+	appendAgentCalledEvent(ctx, callStart, callID, question, calledPayload)
 
 	chat, err := cs.Get(ctx, chatID)
 	if err != nil {

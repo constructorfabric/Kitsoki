@@ -15,6 +15,7 @@ import type {
   MetaMessage,
 } from "./source.js";
 import type { TranscriptData, TranscriptEvent } from "./transcript.js";
+import { semanticSidecarName } from "../lib/semanticPlugins.js";
 
 /**
  * DataSource backed by an embedded Snapshot blob (artifact / offline mode).
@@ -136,8 +137,37 @@ export class SnapshotSource implements DataSource {
     return this.readOnly("continueTurn");
   }
 
-  offpath(_sessionId: string, _input: string): Promise<{ answer: string }> {
+  offpath(
+    _sessionId: string,
+    _input: string,
+    _visual?: import("./source.js").VisualBundle,
+    _anchor?: import("../lib/annotationAnchor.js").AnnotationAnchor
+  ): Promise<{ answer: string }> {
     return this.readOnly("offpath");
+  }
+
+  /**
+   * Read the artifact's semantic sidecar from the static export: a snapshot
+   * ships its artifacts under `./artifacts/<handle>`, so the sidecar is at
+   * `./artifacts/<name>.semantic.json` (the handle's basename + `.semantic.json`).
+   * Resolves null when there is no sidecar (a plain image/video) so the
+   * annotator falls back to the dom_node picker. Never throws — a missing
+   * sidecar is the common, non-error case offline.
+   */
+  async semanticMap(
+    _sessionId: string,
+    handle: string
+  ): Promise<import("../lib/semanticPlugins.js").SemanticSidecar | null> {
+    const sidecar = `./artifacts/${semanticSidecarName(handle)}`;
+    try {
+      const res = await fetch(sidecar);
+      if (!res.ok) return null;
+      const env = (await res.json()) as import("../lib/semanticPlugins.js").SemanticSidecar;
+      if (!env || !env.elements || env.elements.length === 0) return null;
+      return env;
+    } catch {
+      return null;
+    }
   }
 
   // ── Meta mode ────────────────────────────────────────────────────────────
@@ -226,8 +256,19 @@ export class SnapshotSource implements DataSource {
    * HTML artifact is expected to live alongside an `artifacts/` directory
    * containing the media files keyed by handle (filename).
    */
-  artifactUrl(handle: string): string {
+  artifactUrl(handle: string, _maxDim?: number): string {
+    // A static snapshot ships its artifacts verbatim under artifacts/<handle>;
+    // there is no server to downscale, so the maxDim hint is ignored.
     return `./artifacts/${handle}`;
+  }
+
+  /** The sibling poster still for a media handle: `<stem>.poster.png` under
+   *  artifacts/. A content-addressed handle (`deck#abc` / `deck.mp4`) maps to
+   *  `deck.poster.png`, mirroring host.PosterSidecarPath. */
+  artifactPosterUrl(handle: string): string {
+    const base = handle.split("/").pop() ?? handle;
+    const stem = base.split("#")[0].replace(/\.[^.]+$/, "");
+    return `./artifacts/${stem}.poster.png`;
   }
 
   // ── Video feedback mode (/review) ──────────────────────────────────────────

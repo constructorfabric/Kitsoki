@@ -1,0 +1,33 @@
+# refine_budget_exhaust — at the refine budget, `refine` is refused (stays in
+# reviewing with a say:), so the loop can't spin forever.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: reviewing
+initial_world:
+  workspace: "stories/slidey-edit/baked"
+  deck: { spec_path: "stories/slidey-edit/baked/deck.json", summary: "deck" }
+  deck_handle: "slidey-edit#1"
+  semantic_handle: "slidey-semantic#1"
+  addressed: { items: [] }
+  cycle: 6
+  refine_budget: 6
+
+host_handlers:
+  host.starlark.run:
+    by_call:
+      seed_annotation:
+        data:
+          annotation:
+            anchor: { kind: "semantic_element", semantic_element: { plugin: "slidey", ref: "1/card_0", bbox: [140, 518, 535, 114] }, label: "Scene 1 · card 0" }
+            instruction: "tweak"
+            frame_handle: "slidey-edit#1"
+
+turns:
+  # refine at budget → refused, stays in reviewing, no cycle bump.
+  - intent: { name: refine, slots: {} }
+    expect_state: reviewing
+    expect_world:
+      cycle: 6
+
+expect_no_errors: true

@@ -1,0 +1,85 @@
+# refine_inline_override — an inline `refine feedback="…"` overrides the baked
+# annotation's instruction while keeping the anchor (where the operator pointed).
+# Demonstrates that location (anchor) and instruction are separable: the same
+# scene element is targeted, with a different directive.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: reviewing
+initial_world:
+  workspace: "stories/slidey-edit/baked"
+  deck: { spec_path: "stories/slidey-edit/baked/deck.json", summary: "deck" }
+  deck_handle: "slidey-edit#1"
+  semantic_handle: "slidey-semantic#1"
+  # The annotation the reviewing on_enter seeds (or a live surface attaches).
+  # Set here because a flow that starts AT initial_state=reviewing does not fire
+  # that room's on_enter.
+  annotation:
+    anchor:
+      kind: "semantic_element"
+      semantic_element: { plugin: "slidey", ref: "1/card_0", bbox: [140, 518, 535, 114] }
+      label: "Scene 1 · card 0"
+    instruction: "Make the semantic_element card stand out and add a one-line example beneath it."
+    frame_handle: "slidey-edit#1"
+  addressed: { items: [] }
+  cycle: 0
+  refine_budget: 6
+
+host_handlers:
+  host.starlark.run:
+    by_call:
+      seed_annotation:
+        data:
+          annotation:
+            anchor:
+              kind: "semantic_element"
+              semantic_element: { plugin: "slidey", ref: "1/card_0", bbox: [140, 518, 535, 114] }
+              label: "Scene 1 · card 0"
+            instruction: "Make the semantic_element card stand out and add a one-line example beneath it."
+            frame_handle: "slidey-edit#1"
+      accumulate_addressed:
+        data:
+          addressed:
+            items:
+              - deck_handle: "slidey-edit#1"
+                anchor_label: "Scene 1 · card 0"
+                instruction: "Shrink the card and move it under the title."
+                edited: ["1/card_0"]
+
+  host.agent.task:
+    by_call:
+      refine_deck:
+        data:
+          ok: true
+          submitted: { spec_path: "stories/slidey-edit/baked/deck.json", summary: "Resized + repositioned the semantic_element card.", edited: ["1/card_0"] }
+
+  host.slidey.render:
+    by_call:
+      render_deck:
+        data: { ok: true, path: "stories/slidey-edit/baked/deck.mp4", semantic_path: "stories/slidey-edit/baked/deck.semantic.json" }
+
+  host.artifacts_dir:
+    by_call:
+      emit_deck:
+        data: { ok: true, handle: { id: "slidey-edit#1", kind: "video", mime: "video/mp4" } }
+      emit_semantic:
+        data: { ok: true, handle: { id: "slidey-semantic#1", kind: "data", mime: "application/json" } }
+
+turns:
+  # refine with an inline instruction → refining (anchor kept, instruction
+  # overridden) → re-render → reviewing. refine_feedback carried the override.
+  - intent: { name: refine, slots: { feedback: "Shrink the card and move it under the title." } }
+    expect_state: reviewing
+    expect_world:
+      cycle: 1
+      addressed:
+        items:
+          - deck_handle: "slidey-edit#1"
+            anchor_label: "Scene 1 · card 0"
+            instruction: "Shrink the card and move it under the title."
+            edited: ["1/card_0"]
+    expect_host_calls:
+      - handler: host.agent.task
+        args: { call: "refine_deck" }
+
+expect_no_errors: true

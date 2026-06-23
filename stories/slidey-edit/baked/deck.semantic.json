@@ -1,0 +1,126 @@
+{
+  "plugin": "slidey",
+  "schema_version": 1,
+  "elements": [
+    {
+      "ref": "0/eyebrow",
+      "label": "Scene 0 · eyebrow",
+      "selector": "[data-slidey-el='0/eyebrow']",
+      "t_ms": 0,
+      "bbox": [
+        788,
+        426,
+        345,
+        30
+      ]
+    },
+    {
+      "ref": "0/title",
+      "label": "Scene 0 · title",
+      "selector": "[data-slidey-el='0/title']",
+      "t_ms": 0,
+      "bbox": [
+        664,
+        507,
+        592,
+        84
+      ]
+    },
+    {
+      "ref": "0/subtitle",
+      "label": "Scene 0 · subtitle",
+      "selector": "[data-slidey-el='0/subtitle']",
+      "t_ms": 0,
+      "bbox": [
+        711,
+        615,
+        498,
+        39
+      ]
+    },
+    {
+      "ref": "1/title",
+      "label": "Scene 1 · title",
+      "selector": "[data-slidey-el='1/title']",
+      "t_ms": 3000,
+      "bbox": [
+        739,
+        449,
+        442,
+        45
+      ]
+    },
+    {
+      "ref": "1/card_0",
+      "label": "Scene 1 · card 0",
+      "selector": "[data-slidey-el='1/card_0']",
+      "t_ms": 3000,
+      "bbox": [
+        140,
+        518,
+        535,
+        114
+      ]
+    },
+    {
+      "ref": "1/card_1",
+      "label": "Scene 1 · card 1",
+      "selector": "[data-slidey-el='1/card_1']",
+      "t_ms": 3000,
+      "bbox": [
+        693,
+        518,
+        535,
+        114
+      ]
+    },
+    {
+      "ref": "1/card_2",
+      "label": "Scene 1 · card 2",
+      "selector": "[data-slidey-el='1/card_2']",
+      "t_ms": 3000,
+      "bbox": [
+        1245,
+        518,
+        535,
+        114
+      ]
+    },
+    {
+      "ref": "2/eyebrow",
+      "label": "Scene 2 · eyebrow",
+      "selector": "[data-slidey-el='2/eyebrow']",
+      "t_ms": 14800,
+      "bbox": [
+        635,
+        356,
+        650,
+        54
+      ]
+    },
+    {
+      "ref": "2/body",
+      "label": "Scene 2 · body",
+      "selector": "[data-slidey-el='2/body']",
+      "t_ms": 14800,
+      "bbox": [
+        210,
+        485,
+        1500,
+        155
+      ]
+    },
+    {
+      "ref": "2/lede",
+      "label": "Scene 2 · lede",
+      "selector": "[data-slidey-el='2/lede']",
+      "t_ms": 14800,
+      "bbox": [
+        783,
+        676,
+        354,
+        48
+      ]
+    }
+  ]
+}

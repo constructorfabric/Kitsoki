@@ -1,0 +1,83 @@
+# refining — ONE host.agent.task edits the scene the annotation anchor points
+# at. The location-tied bundle (anchor + instruction) is the whole point of the
+# v2 generalization: a semantic_element / region / point anchor resolves to a
+# scene element, and the agent edits THAT element per the instruction.
+#
+# The anchor flows in two ways, mirroring the visual-ambient seam:
+#   - as args.visual.anchor (the live surface bundle), and
+#   - as the explicit annotation arg (the baked/world bundle) the prompt reads.
+# refine_feedback (inline) overrides the instruction; the anchor is unchanged.
+#
+# Then it records this iteration (deck_handle + the anchor addressed), clears
+# the render binds, bumps the cycle, and routes back to rendering for a fresh
+# render (the before/after). This is a transition (not on_enter) so the side
+# effects run once per refine pass.
+
+states:
+
+  refining:
+    description: "Refining the scene behind the annotation anchor."
+    relevant_world: [annotation, refine_feedback, refine_result, deck, addressed, cycle, deck_handle]
+    view:
+      - heading: "Slidey deck editor · refining"
+      - kv:
+          pairs:
+            Pointed:     '{{ world.annotation.anchor.label|default:"(none)" }}'
+            Instruction: '{{ world.refine_feedback|default:world.annotation.instruction|default:"(none)" }}'
+            Cycle:       "{{ world.cycle }}"
+            Edited:      '{{ world.refine_result.edited|length }}'
+      - prose: "Editing the scene the annotation points at, then re-rendering the before/after."
+    on_enter:
+      - invoke: host.agent.task
+        id: refine_deck
+        once: true
+        with:
+          agent: reviser
+          working_dir: "{{ world.workspace }}"
+          acceptance:
+            schema: schemas/deck.json
+          context:
+            prompt: prompts/refine_deck.md
+            args:
+              workspace:       "{{ world.workspace }}"
+              deck:            "{{ world.deck }}"
+              annotation:      "{{ world.annotation }}"
+              refine_feedback: "{{ world.refine_feedback }}"
+        bind:
+          refine_result: submitted
+        on_error: reviewing
+
+      # Record the addressed anchor and re-render. emit_intent fires once the
+      # task has bound (refine_result present).
+      - when: "world.refine_result.edited != nil"
+        emit_intent: rerender
+    on:
+      rerender:
+        - target: rendering
+          effects:
+            # Append the iteration record (the deck reviewed + the anchor
+            # addressed this pass). expr-lang can't append to a list, so the
+            # record is built in starlark (ui-fix pattern).
+            - invoke: host.starlark.run
+              id: accumulate_addressed
+              with:
+                script: scripts/accumulate_addressed.star
+                inputs:
+                  deck_handle:  "world.deck_handle"
+                  anchor_label: 'world.annotation?.anchor?.label ?? "(unanchored)"'
+                  instruction:  'world.refine_feedback != "" ? world.refine_feedback : (world.annotation?.instruction ?? "")'
+              bind:
+                addressed: addressed
+            - set:
+                cycle: "{{ world.cycle + 1 }}"
+                # Clear render binds so rendering re-runs fresh (the after).
+                deck_handle:     ""
+                semantic_handle: ""
+                deck_path:       ""
+                semantic_path:   ""
+                # Clear the once: bind + the consumed annotation.
+                refine_result:   {}
+                refine_feedback: ""
+                annotation:      {}
+      look:
+        - target: .

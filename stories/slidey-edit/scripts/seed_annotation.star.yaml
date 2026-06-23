@@ -1,0 +1,6 @@
+inputs:
+  spec_path:    { type: string, required: false }
+  frame_handle: { type: string, required: false }
+
+outputs:
+  annotation: { type: object }

@@ -114,6 +114,7 @@ func AgentAskHandler(ctx context.Context, args map[string]any) (Result, error) {
 			templateArgs = args
 		}
 		templateArgs = mergeIDEAmbient(ctx, templateArgs)
+		templateArgs = mergeVisualAmbient(ctx, templateArgs)
 		r, tmplErr := renderPromptBytes(ctx, string(raw), templateArgs)
 		if tmplErr != nil {
 			return Result{Error: fmt.Sprintf("host.agent.ask: render prompt %q: %v", resolved, tmplErr)}, nil
@@ -134,6 +135,7 @@ func AgentAskHandler(ctx context.Context, args map[string]any) (Result, error) {
 					templateArgs = args
 				}
 				templateArgs = mergeIDEAmbient(ctx, templateArgs)
+				templateArgs = mergeVisualAmbient(ctx, templateArgs)
 				r, tmplErr := renderPromptBytes(ctx, string(raw), templateArgs)
 				if tmplErr != nil {
 					return Result{Error: fmt.Sprintf("host.agent.ask: render prompt %q: %v", resolved, tmplErr)}, nil
@@ -155,6 +157,9 @@ func AgentAskHandler(ctx context.Context, args map[string]any) (Result, error) {
 	// no-op when no selection rode the turn. Done before plugin dispatch so both
 	// the Dispatch and subprocess paths carry it.
 	rendered = appendIDEAmbient(ctx, rendered)
+	// Always-on screen context: append the operator's pointed-at element/frame
+	// beside the editor selection. A no-op when no surface attached a bundle.
+	rendered = appendVisualAmbient(ctx, rendered)
 
 	// B-7: If an agent plugin registry is wired in context, route through
 	// host.Dispatch (the Agent plugin interface) instead of the subprocess.
@@ -293,11 +298,21 @@ func AgentAskHandler(ctx context.Context, args map[string]any) (Result, error) {
 		provRef = strings.TrimSpace(inlinePrompt)
 	}
 	promptOverlay, specDefaulted, specOverridden := promptTraceProvenance(ctx, provRef)
+	// Record the operator's screen-context bundle (slice 1's VisualAmbient) as
+	// the call's `input.visual` — the auditable INPUT to the decision, frame by
+	// handle, never inlined bytes. Reject a frame_handle that does not resolve to
+	// a recorded artifact (no dangling frame reference).
+	askInput := map[string]any{}
+	if visualBlock, hasVisual, visualErr := recordedVisualInput(ctx); visualErr != nil {
+		return Result{Error: fmt.Sprintf("host.agent.ask: %v", visualErr)}, nil
+	} else if hasVisual {
+		askInput["visual"] = visualBlock
+	}
 	appendAgentCalledEvent(ctx, callStart, callID, rendered, AgentCalledPayload{
 		Verb:           "ask",
 		Agent:          agentNameFromArgs(args),
 		Model:          agent.Model,
-		Input:          marshalInput(map[string]any{}),
+		Input:          marshalInput(askInput),
 		PromptOverlay:  promptOverlay,
 		SpecDefaulted:  specDefaulted,
 		SpecOverridden: specOverridden,

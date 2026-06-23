@@ -1,0 +1,36 @@
+{
+  "_comment": "slidey-edit PoC deck — a tiny, deterministic 3-scene 'Spatial Annotation' explainer rendered through slidey. Scene types (title / cards / narrative) all emit semantic elements (see slidey src/semantic.js), so the .semantic.json sidecar carries real refs + bboxes the annotation overlay seeds from.",
+  "meta": {
+    "title": "Spatial Annotation",
+    "resolution": { "width": 1920, "height": 1080 },
+    "theme": "rose-pine-moon",
+    "narration": { "voice": "en-AU-NatashaNeural", "rate": "+0%" }
+  },
+  "scenes": [
+    {
+      "type": "title",
+      "eyebrow": "Unified Annotation",
+      "title": "Spatial Annotation",
+      "subtitle": "Point at the deck, not the prose",
+      "narration": "Annotation now works on any rendered artifact — png, mp4, rrweb, html, and slidey decks."
+    },
+    {
+      "type": "cards",
+      "variant": "grid",
+      "title": "One anchor union",
+      "narration": "A single annotation anchor union ties operator feedback to an exact place in the artifact.",
+      "cards": [
+        { "label": "semantic_element", "sub": "a named element in the deck", "style": "primary" },
+        { "label": "region", "sub": "a drawn box on the frame", "style": "secondary" },
+        { "label": "point", "sub": "a single click", "style": "default" }
+      ]
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Annotate then refine",
+      "body": "The anchored note flows into a refine pass that edits the exact scene element it points at.",
+      "lede": "Feedback is location-tied.",
+      "narration": "The anchored note flows into a refine pass that edits the exact scene element it points at."
+    }
+  ]
+}
