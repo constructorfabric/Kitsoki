@@ -147,6 +147,39 @@ func TestBuildTransitionSchema(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "kitsoki primitive shorthands map to json schema types",
+			appDef: &app.AppDef{
+				App: app.AppMeta{ID: "x"},
+				Intents: map[string]app.Intent{
+					"buy": {
+						Slots: map[string]app.Slot{
+							"count": {Type: "int", Examples: []string{"6"}},
+							"price": {Type: "float", Examples: []string{"1.5"}},
+							"ready": {Type: "bool", Examples: []string{"true"}},
+						},
+					},
+				},
+			},
+			allowedIntents: []string{"buy"},
+			want: want{
+				intentEnum:  []string{"buy"},
+				expectSlots: []string{"count", "price", "ready"},
+				assertSlotProp: func(t *testing.T, slotProps map[string]any) {
+					count := slotProps["count"].(map[string]any)
+					assert.Equal(t, "integer", count["type"])
+					assert.Equal(t, []any{float64(6)}, count["examples"])
+
+					price := slotProps["price"].(map[string]any)
+					assert.Equal(t, "number", price["type"])
+					assert.Equal(t, []any{1.5}, price["examples"])
+
+					ready := slotProps["ready"].(map[string]any)
+					assert.Equal(t, "boolean", ready["type"])
+					assert.Equal(t, []any{true}, ready["examples"])
+				},
+			},
+		},
 	}
 
 	for _, tc := range tests {

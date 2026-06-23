@@ -1,10 +1,7 @@
-# Case study: room-by-room routing model benchmarks
+# Case study: using live intent benchmarks to improve room routing
 
-This is the corrected benchmark report for cheaper room-level routing models in
-Kitsoki. The earlier versions were wrong: they treated mined corpus counts,
-static replay, and blocked provider attempts as if they were live model results.
-
-This version uses real `kitsoki test intents` fixture runs against the same room:
+This case study documents a real room-local routing benchmark loop in Kitsoki.
+The target was the Oregon Trail general store review state:
 
 ```sh
 stories/oregon-trail/intents/refine_purchase.yaml
@@ -14,77 +11,87 @@ runs per input: 1
 threshold: 80%
 ```
 
-Current answer: **no tested cheap model is promotable for this room yet.** Haiku,
-Opus, Synthetic small, and Codex default all fail the authored slot-contract
-threshold.
+The useful result was not just model comparison. The benchmark found a harness
+contract bug, gave a tight fix target, and then proved that cheaper routers can
+pass this room once the schema and slot guidance are correct.
 
-## Benchmark Results
+## Executive summary
 
-| candidate | command path | pass rate | elapsed | avg latency | measured cost | verdict |
+Before the fix, the live benchmark looked catastrophic: Haiku passed 2/7,
+Opus passed 2/7, and Synthetic small passed 1/7.
+
+After the fix:
+
+- Claude Haiku passed 7/7.
+- Synthetic small (`syn:small:text`) passed 7/7 through the
+  `synthetic-claude` live profile.
+- Claude Opus still did not pass this room in two post-fix attempts; it hit
+  5/7 both times, with transient 529s and a stable over-conservative slot
+  choice for `add 50 more bullets`.
+
+This is the cost-saving mechanism Kitsoki should use: benchmark each room
+against its validated intent-call fixture, then promote the cheapest passing
+router for that room only. For `general_store.reviewing`, the measured result
+supports Haiku or Synthetic small as room-local candidates, with fallback kept
+available.
+
+## What the harness exposed
+
+The initial failures were mostly not wrong intent labels. The models usually
+selected `refine_purchase`, but they returned string slot values such as
+`{"oxen":"12"}` when the fixture expected numeric values such as
+`{"oxen":12}`.
+
+The root cause was in the LLM-facing transition schema. Kitsoki stories use
+slot shorthand types such as `type: int`, but the schema generator only mapped
+JSON Schema names such as `integer`. As a result, every `int` slot was exposed
+to the model as a string. The benchmark failure was real, but it was measuring a
+bad contract.
+
+The fix:
+
+- Map Kitsoki shorthand slot types to JSON Schema primitive types:
+  `int -> integer`, `float -> number`, `bool -> boolean`.
+- Convert numeric and boolean slot examples to JSON values in the generated
+  schema, so examples match the declared type.
+- Tighten `refine_purchase` slot descriptions so vague comparative changes
+  like `less food` go to `feedback`, while numeric replacement slots are used
+  only when the user provides explicit numbers.
+
+## Before and after
+
+| candidate | command path | before | after | elapsed after | measured cost after | verdict |
 |---|---|---:|---:|---:|---:|---|
-| Claude Haiku | `--harness claude --claude-model haiku` | 2/7, 28.6% | 141.053s | 20.150s | $0.250849 | fail |
-| Claude Opus | `--harness claude --claude-model opus` | 2/7, 28.6% | 102.057s | 14.580s | $1.897333 | fail |
-| Synthetic small | `--harness live --profile synthetic-claude --claude-model syn:small:text` | 1/7, 14.3% | 39.792s | 5.685s | not emitted by SDK report | fail |
-| Codex default | `--harness claude --agent codex` | 1/7, 14.3% | 58.676s | 8.382s | $0 reported by Codex CLI | fail |
+| Claude Haiku | `--harness claude --claude-model haiku` | 2/7 | 7/7 | 134.501s | $0.243895 | pass |
+| Synthetic small | `--harness live --profile synthetic-claude --claude-model syn:small:text` | 1/7 | 7/7 | 30.043s | not emitted by SDK report | pass |
+| Claude Opus | `--harness claude --claude-model opus` | 2/7 | 5/7 | 300.645s | $1.684418 | fail |
+| Codex default | `--harness claude --agent codex` | 1/7 | not rerun | n/a | n/a | fail before fix |
 
 Artifacts:
 
 - `.artifacts/routing-model-live-bench/claude-haiku-refine-purchase.json`
-- `.artifacts/routing-model-live-bench/claude-opus-refine-purchase.json`
+- `.artifacts/routing-model-live-bench/claude-haiku-refine-purchase-after-schema-fix.json`
+- `.artifacts/routing-model-live-bench/claude-haiku-refine-purchase-after-routing-fix.json`
 - `.artifacts/routing-model-live-bench/synthetic-live-small-refine-purchase.json`
+- `.artifacts/routing-model-live-bench/synthetic-live-small-refine-purchase-after-routing-fix.json`
+- `.artifacts/routing-model-live-bench/claude-opus-refine-purchase.json`
+- `.artifacts/routing-model-live-bench/claude-opus-refine-purchase-after-routing-fix.json`
+- `.artifacts/routing-model-live-bench/claude-opus-refine-purchase-after-routing-fix-rerun.json`
 - `.artifacts/routing-model-live-bench/codex-default-refine-purchase.json`
 
 These are single-run fixtures, so they are not statistically stable. They are
-enough to reject promotion for this room because every candidate is far below
-the 80% threshold.
+enough to prove the harness can find and verify routing improvements, and enough
+to reject Opus for this specific room under the current contract.
 
-## What Failed
+## Provider notes
 
-The dominant failure is not intent-name selection. The models usually picked
-`refine_purchase`. They failed the room because the slots did not match the
-fixture contract.
-
-| input | expected behavior | common actual behavior |
-|---|---|---|
-| `actually give me 12 oxen` | precise correction payload | `refine_purchase` with partial slots such as `{oxen:"12", feedback:""}` |
-| `actually give me 12 draaft animalz` | typo-tolerant correction | partial structured slots or incorrect feedback |
-| `I want 7 oxen not 6` | preserve correction semantics | partial `{oxen:"7"}` |
-| `add 50 more bullets` | preserve additive correction | partial `{bullets:"50"}` |
-| `actually 250 lbs of food` | precise food correction | partial `{food:"250"}` |
-| `refine` | generic feedback/refine | usually passes |
-| `less food` | vague feedback-style correction | passes on Haiku/Opus; fails on Synthetic/Codex in the latest run |
-
-This is the important routing lesson: Kitsoki routing benchmarks must score the
-validated intent call, including slots. A label-only classifier would overstate
-quality here.
-
-## Fixes Made To Make This Real
-
-The benchmark required code changes because the repo did not actually have a
-working live intent fixture runner for this use case.
-
-- `kitsoki test intents` now supports model-backed runs via `--harness claude`.
-- It accepts `--agent claude|codex|copilot`.
-- It accepts `--profile <name>` from `.kitsoki.yaml` / `.kitsoki.local.yaml`.
-- `--harness live` can use profile env such as `ANTHROPIC_BASE_URL` and
-  `ANTHROPIC_AUTH_TOKEN`, which is how `synthetic-claude` runs.
-- Live fixture runs now pass the room's allowed intents and initial world into
-  `TurnInput`.
-- JSON reports now include harness/profile metadata, elapsed time, actual
-  intent, actual slots, first error, and Claude/Codex usage/cost where the
-  backend reports it.
-- `machine.validateSlots` no longer panics when a model returns nil slots.
-
-## Provider Notes
-
-Claude native works when run outside the sandbox. The sandboxed process saw
-`claude auth status` as logged out, but the escalated process sees the active
-Max subscription and can run both Haiku and Opus.
+Claude native runs require the process that can see the user's Claude
+subscription. In this environment that meant running outside the sandbox; the
+sandboxed process saw `claude auth status` as logged out, while the escalated
+process could run both Haiku and Opus.
 
 Synthetic small must use the Synthetic profile through the live
-Anthropic-compatible SDK path. Running `syn:small:text` through Codex/ChatGPT is
-the wrong path and is rejected by that account integration. The corrected
-Synthetic run used:
+Anthropic-compatible SDK path:
 
 ```sh
 go run ./cmd/kitsoki test intents stories/oregon-trail/app.yaml \
@@ -93,28 +100,38 @@ go run ./cmd/kitsoki test intents stories/oregon-trail/app.yaml \
   --claude-model syn:small:text \
   --runs 1 \
   --intents stories/oregon-trail/intents/refine_purchase.yaml \
-  --json .artifacts/routing-model-live-bench/synthetic-live-small-refine-purchase.json
+  --json .artifacts/routing-model-live-bench/synthetic-live-small-refine-purchase-after-routing-fix.json
 ```
 
-GPT mini was not included in the final routing matrix because the installed
+Running `syn:small:text` through Codex/ChatGPT is the wrong provider path. The
+successful run used the configured `synthetic-claude` profile.
+
+GPT mini was not included in the final after-fix matrix because the installed
 Codex CLI rejected explicit `gpt-5-mini` under the current ChatGPT account path.
 That is a provider/account limitation, not evidence about GPT mini quality.
 
 ## Decision
 
-Do not promote a cheap router for `general_store.reviewing`.
+Use the intent benchmark harness as the promotion gate for room-by-room routing.
+For this room, the current measured candidates are:
 
-The cost-saving mechanism is still the right mechanism: deterministic tiers
-first, then the cheapest passing room-local model, then fallback. This room does
-not yet have a passing cheap model, and Opus did not pass either. The next
-engineering work is prompt/schema/fixture refinement, not model promotion.
+- Promote candidate: Claude Haiku, subject to a multi-run confirmation pass.
+- Promote candidate: Synthetic small, subject to cost capture and multi-run
+  confirmation.
+- Do not promote: Claude Opus for this room; it was slower, more expensive, and
+  less reliable in the post-fix runs.
 
-## Next Benchmark Steps
+The important rule is that promotion should use validated intent-call results,
+not label-only classification. Label-only scoring would have hidden the original
+schema bug.
 
-1. Run at least 3-5 repetitions per input for the same matrix.
-2. Add cost calculation for the Synthetic SDK path from response usage and
-   catalog pricing.
-3. Add a label-only diagnostic alongside the validated-call score to separate
+## Next benchmark steps
+
+1. Add per-fixture filtering to `kitsoki test intents` so transient provider
+   failures can be rerun without paying for the full room slice.
+2. Run at least 3-5 repetitions per input for Haiku and Synthetic small.
+3. Add Synthetic SDK cost calculation from response usage and catalog pricing.
+4. Add a label-only diagnostic alongside validated-call scoring to distinguish
    intent confusion from slot-shape failures.
-4. Test an easier room where slot contracts are not the dominant failure mode.
-5. Promote only rooms that pass the authored threshold with hard negatives.
+5. Expand the corpus across more rooms and promote only the cheapest model that
+   passes each room's authored threshold with hard negatives.

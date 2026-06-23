@@ -3,6 +3,8 @@ package harness
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"kitsoki/internal/app"
 )
@@ -78,8 +80,9 @@ func BuildTransitionSchema(appDef *app.AppDef, allowedIntents []string) ([]byte,
 
 // buildSlotProperty renders one slot's JSON-Schema property.
 func buildSlotProperty(slot app.Slot) map[string]any {
+	typ := mapSlotType(slot.Type)
 	prop := map[string]any{
-		"type": mapSlotType(slot.Type),
+		"type": typ,
 	}
 	if slot.Description != "" {
 		prop["description"] = slot.Description
@@ -87,7 +90,7 @@ func buildSlotProperty(slot app.Slot) map[string]any {
 	if len(slot.Examples) > 0 {
 		examples := make([]any, len(slot.Examples))
 		for i, ex := range slot.Examples {
-			examples[i] = ex
+			examples[i] = schemaExampleValue(typ, ex)
 		}
 		prop["examples"] = examples
 	}
@@ -109,16 +112,34 @@ func buildSlotProperty(slot app.Slot) map[string]any {
 // like "enum") falls back to "string", which is the right default for the
 // LLM-facing extraction surface.
 func mapSlotType(t string) string {
-	switch t {
+	switch strings.TrimSpace(strings.ToLower(t)) {
 	case "string":
 		return "string"
-	case "number":
+	case "number", "float":
 		return "number"
-	case "integer":
+	case "integer", "int":
 		return "integer"
-	case "boolean":
+	case "boolean", "bool":
 		return "boolean"
 	default:
 		return "string"
 	}
+}
+
+func schemaExampleValue(schemaType, example string) any {
+	switch schemaType {
+	case "integer":
+		if n, err := strconv.Atoi(strings.TrimSpace(example)); err == nil {
+			return n
+		}
+	case "number":
+		if n, err := strconv.ParseFloat(strings.TrimSpace(example), 64); err == nil {
+			return n
+		}
+	case "boolean":
+		if b, err := strconv.ParseBool(strings.TrimSpace(example)); err == nil {
+			return b
+		}
+	}
+	return example
 }

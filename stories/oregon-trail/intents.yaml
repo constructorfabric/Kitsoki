@@ -268,8 +268,8 @@ intents:
         type: string
         required: false
         default: ""
-        description: "Optional free-form note (logged for diagnostics; narrated-mode redraft will use it as a prompt hint in the future)."
-        examples: ["I want 7 oxen not 6", "cheaper"]
+        description: "Optional free-form note for vague or comparative changes. Use this instead of numeric item slots when the user says things like less food, more food, cheaper, or lighter but gives no explicit replacement number."
+        examples: ["less food", "more bullets", "cheaper"]
         format_hint: "A short instruction for Matt."
         prompt: "What do you want to change?"
       items:
@@ -282,56 +282,56 @@ intents:
       total_cost:
         type: int
         required: false
-        description: "Replacement total cost."
+        description: "Replacement total cost. Only set when the user gives an explicit dollar amount."
         examples: ["200", "420"]
         format_hint: "Integer dollar amount."
         prompt: "Total cost?"
       oxen:
         type: int
         required: false
-        description: "Replacement oxen count."
+        description: "Replacement oxen count. Only set when the user gives an explicit number."
         examples: ["6", "8"]
         format_hint: "Integer; omit to leave the current value unchanged."
         prompt: "Oxen?"
       food:
         type: int
         required: false
-        description: "Replacement food (lbs)."
+        description: "Replacement food in pounds. Only set when the user gives an explicit number; for vague requests like less food, use feedback only."
         examples: ["1500", "2000"]
         format_hint: "Integer pounds; omit to leave unchanged."
         prompt: "Food (lbs)?"
       bullets:
         type: int
         required: false
-        description: "Replacement bullet count."
+        description: "Replacement bullet count. Only set when the user gives an explicit number."
         examples: ["50", "100"]
         format_hint: "Integer rounds; omit to leave unchanged."
         prompt: "Bullets?"
       clothing:
         type: int
         required: false
-        description: "Replacement clothing-set count."
+        description: "Replacement clothing-set count. Only set when the user gives an explicit number."
         examples: ["3", "5"]
         format_hint: "Integer sets; omit to leave unchanged."
         prompt: "Clothing sets?"
       wheels:
         type: int
         required: false
-        description: "Replacement spare-wheel count."
+        description: "Replacement spare-wheel count. Only set when the user gives an explicit number."
         examples: ["2", "4"]
         format_hint: "Integer; omit to leave unchanged."
         prompt: "Spare wheels?"
       axles:
         type: int
         required: false
-        description: "Replacement spare-axle count."
+        description: "Replacement spare-axle count. Only set when the user gives an explicit number."
         examples: ["2", "3"]
         format_hint: "Integer; omit to leave unchanged."
         prompt: "Spare axles?"
       tongues:
         type: int
         required: false
-        description: "Replacement spare-tongue count."
+        description: "Replacement spare-tongue count. Only set when the user gives an explicit number."
         examples: ["1", "2"]
         format_hint: "Integer; omit to leave unchanged."
         prompt: "Spare tongues?"
