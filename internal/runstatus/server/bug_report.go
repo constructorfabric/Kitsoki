@@ -3,10 +3,10 @@
 // A web operator who hits a surprising state clicks "Report a bug". The SPA
 // posts a title (+ optional body/severity/repro and a base64 screenshot) to
 // /rpc. This handler snapshots the server's HAR ring buffer (the last N /rpc
-// request/response pairs recorded at the choke point in handleRPC), scrubs it
-// with the LLM-free harscrub anonymizer, files a markdown bug under
-// <root>/issues/bugs/<id>.md via the shared bugfile core, and writes the
-// scrubbed HAR (+ optional screenshot) into a sibling <id>.artifacts/ dir.
+// request/response pairs recorded at the choke point in handleRPC) and scrubs it
+// with the LLM-free harscrub anonymizer. Local filing writes
+// <root>/issues/bugs/<id>.md plus a sibling <id>.artifacts/ dir; GitHub filing
+// creates the issue and writes developer-only evidence under .artifacts/.
 //
 // Root resolution (least-surprising, deterministic):
 //
@@ -123,9 +123,9 @@ func (s *Server) bugReport(params map[string]any) (any, *rpcError) {
 
 	png := decodeScreenshot(stringParam(params, "screenshot_png_b64"))
 
-	// GitHub mode (kitsoki web --ticket-repo): file a real GitHub issue with the
-	// evidence uploaded as release assets, instead of a local issues/bugs/<id>.md
-	// file. The github-issues-tracker cutover (slice #2).
+	// GitHub mode (kitsoki web --ticket-repo): file a real GitHub issue and save
+	// evidence under .artifacts for developer-local review, instead of writing a
+	// local issues/bugs/<id>.md file.
 	if s.ticketRepo != "" {
 		return s.fileBugToGitHub(params, title, body, severity, traceRef, repro, harJSON, png, rrwebJSON, consoleJSON)
 	}
@@ -186,33 +186,47 @@ func (s *Server) bugReport(params map[string]any) (any, *rpcError) {
 }
 
 // fileBugToGitHub files the bug as a real GitHub issue on s.ticketRepo: it
-// writes the (already-scrubbed) evidence to a temp dir under a unique per-bug
-// prefix, hands the paths to host.GitHubFileBug (which uploads them as release
-// assets and creates the labelled issue with the ```kitsoki metadata block),
-// and returns the issue url. No local file is written in this mode.
+// writes the (already-scrubbed) evidence to .artifacts for developer-local
+// review, hands those paths to host.GitHubFileBug, and returns the issue url. No
+// local issues/bugs/*.md file is written in this mode.
 func (s *Server) fileBugToGitHub(params map[string]any, title, body, severity, traceRef string, repro []string, harJSON, png, rrwebJSON, consoleJSON []byte) (any, *rpcError) {
-	tmp, err := os.MkdirTemp("", "kitsoki-ghbug-")
+	prefix := "bug-" + time.Now().UTC().Format("20060102T150405.000000000Z")
+	artifactsRoot, displayRoot, err := s.githubBugArtifactsRoot()
 	if err != nil {
-		return nil, serverErr(fmt.Errorf("github bug: temp dir: %w", err))
+		return nil, serverErr(fmt.Errorf("github bug: artifacts dir: %w", err))
 	}
-	defer os.RemoveAll(tmp)
+	artifactsDir := filepath.Join(artifactsRoot, prefix)
+	if err := os.MkdirAll(artifactsDir, 0o755); err != nil {
+		return nil, serverErr(fmt.Errorf("github bug: mkdir artifacts: %w", err))
+	}
 
-	prefix := "bug-" + time.Now().UTC().Format("20060102T150405Z")
 	var ev []host.EvidenceFile
-	add := func(base string, data []byte, image bool, label string) {
+	add := func(base string, data []byte, image bool, label string) error {
 		if len(data) == 0 {
-			return
+			return nil
 		}
-		name := prefix + "-" + base
-		p := filepath.Join(tmp, name)
-		if os.WriteFile(p, data, 0o644) == nil {
-			ev = append(ev, host.EvidenceFile{Name: name, Path: p, Image: image, Label: label})
+		p := filepath.Join(artifactsDir, base)
+		if err := os.WriteFile(p, data, 0o644); err != nil {
+			return err
+		}
+		ev = append(ev, host.EvidenceFile{Name: base, Path: filepath.ToSlash(filepath.Join(displayRoot, prefix, base)), Image: image, Label: label})
+		return nil
+	}
+	for _, artifact := range []struct {
+		base  string
+		data  []byte
+		image bool
+		label string
+	}{
+		{base: "screenshot.png", data: png, image: true, label: "Screenshot"},
+		{base: "har.json", data: harJSON, label: "HAR capture (scrubbed)"},
+		{base: "rrweb.json", data: rrwebJSON, label: "Session replay (rrweb)"},
+		{base: "console.json", data: consoleJSON, label: "Console log"},
+	} {
+		if err := add(artifact.base, artifact.data, artifact.image, artifact.label); err != nil {
+			return nil, serverErr(fmt.Errorf("github bug: write artifact %s: %w", artifact.base, err))
 		}
 	}
-	add("screenshot.png", png, true, "Screenshot")
-	add("har.json", harJSON, false, "HAR capture (scrubbed)")
-	add("rrweb.json", rrwebJSON, false, "Session replay (rrweb)")
-	add("console.json", consoleJSON, false, "Console log")
 
 	full := body
 	if len(repro) > 0 {
@@ -240,6 +254,18 @@ func (s *Server) fileBugToGitHub(params map[string]any, title, body, severity, t
 		return nil, serverErr(fmt.Errorf("file bug to github (%s): %w", s.ticketRepo, ferr))
 	}
 	return map[string]any{"id": res.Number, "url": res.URL, "github": true}, nil
+}
+
+func (s *Server) githubBugArtifactsRoot() (absRoot, displayRoot string, err error) {
+	root := s.bugRoot
+	if strings.TrimSpace(root) == "" {
+		root, err = os.Getwd()
+		if err != nil {
+			return "", "", err
+		}
+	}
+	absRoot = filepath.Join(root, ".artifacts", "bug-reports")
+	return absRoot, filepath.ToSlash(filepath.Join(".artifacts", "bug-reports")), nil
 }
 
 // gitShortRev returns the short HEAD sha of the repo containing dir (best-effort;

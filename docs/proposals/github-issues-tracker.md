@@ -76,7 +76,7 @@ Once every slice ships:
 | # | Slice | Kind | Scope (one line) | Depends on | Status | Where |
 |---|---|---|---|---|---|---|
 | 1 | gh issue **create** + constructorfabric pin | runtime | Add `create` op to `host.gh.ticket`; establish the `constructorfabric/Kitsoki` repo pin | — | **Shipped** | [hosts.md → host.gh.ticket](../architecture/hosts.md#hostghticket--github-issues-backed-tracker) |
-| 2 | Bug filing → GitHub | runtime | `runstatus.bug.report` (web) + `kitsoki bug create --github` (CLI) create issues; evidence uploaded as release assets | 1 | **Shipped** | [hosts.md](../architecture/hosts.md#filing-a-bug-with-evidence), [bugs.md](../stories/bugs.md) |
+| 2 | Bug filing → GitHub | runtime | `runstatus.bug.report` (web) + `kitsoki bug create --github` (CLI) create issues; web evidence is saved under `.artifacts/bug-reports/` for developer-local review | 1 | **Shipped** | [hosts.md](../architecture/hosts.md#filing-a-bug-with-evidence), [bugs.md](../stories/bugs.md) |
 | 3 | Feature filing → GitHub | story | The design pipeline's publish step mints a GitHub issue instead of `issues/features/<id>.md` | 1 | **Shipped** | [dev-story README](../../stories/dev-story/README.md) |
 | 4 | Migrate + deprecate `issues/` | runtime | One-shot `kitsoki issues migrate`; freeze `issues/`; rebind `kitsoki-dev` to `host.gh.ticket` | 1 | **Tooling shipped; cutover deferred** | [`issues-migration-to-github.md`](issues-migration-to-github.md) |
 

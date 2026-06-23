@@ -15,7 +15,7 @@ bespoke file format). See the migration epic that retired it:
 | Was | Now |
 |---|---|
 | `kitsoki bug create` → `issues/bugs/<id>.md` | `kitsoki bug create --github <owner/repo>` → a GitHub issue |
-| Web **Report bug** modal → local file + `<id>.artifacts/` | `kitsoki web --ticket-repo <owner/repo>` → a GitHub issue with the evidence uploaded as `bug-evidence` release assets |
+| Web **Report bug** modal → local file + `<id>.artifacts/` | `kitsoki web --ticket-repo <owner/repo>` → a GitHub issue with evidence saved under `.artifacts/bug-reports/` for developer-local review |
 | Design pipeline publish → `issues/features/<id>.md` | a GitHub feature issue (labels `target:kitsoki` + `comp:proposal`) |
 | `stories/kitsoki-dev` reads `host.local_files.ticket` | binds `host.gh.ticket`, pinned at `constructorfabric/Kitsoki` |
 

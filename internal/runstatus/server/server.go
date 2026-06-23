@@ -197,8 +197,8 @@ type Server struct {
 
 	// ticketRepo, when set (WithTicketRepo / `kitsoki web --ticket-repo`), routes
 	// runstatus.bug.report to a GitHub issue on that owner/repo (via
-	// host.GitHubFileBug — evidence uploaded as release assets) INSTEAD of a local
-	// issues/bugs/<id>.md file. The github-issues-tracker cutover (slice #2).
+	// host.GitHubFileBug — evidence saved under .artifacts for developer-local
+	// review) INSTEAD of a local issues/bugs/<id>.md file.
 	ticketRepo string
 
 	// captureStore holds scrubbed HAR snapshots between runstatus.bug.preview
@@ -268,9 +268,9 @@ func WithBugRoot(dir string) Option {
 }
 
 // WithTicketRepo routes runstatus.bug.report to a GitHub issue on the given
-// owner/repo (evidence uploaded as release assets) instead of a local
-// issues/bugs/<id>.md file. Wired by `kitsoki web --ticket-repo`. Empty (the
-// default) keeps the local-file behaviour.
+// owner/repo with evidence saved under .artifacts for developer-local review,
+// instead of a local issues/bugs/<id>.md file. Wired by `kitsoki web
+// --ticket-repo`. Empty (the default) keeps the local-file behaviour.
 func WithTicketRepo(repo string) Option {
 	return func(c *serverConfig) { c.ticketRepo = strings.TrimSpace(repo) }
 }

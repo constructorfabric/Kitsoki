@@ -150,8 +150,8 @@ thought.
   kitsoki's own bug + feature tracker from the in-repo `issues/*.md` pile to
   **GitHub Issues** on `constructorfabric/Kitsoki` (canonical even from a
   personal fork). **Slices #1–#3 shipped** (the `create` op + conventions, bug
-  filing via CLI + the web Report-bug modal with evidence as release assets, and
-  the design-pipeline feature publish) — their detail now lives in
+  filing via CLI + the web Report-bug modal with developer-local `.artifacts/`
+  evidence, and the design-pipeline feature publish) — their detail now lives in
   [`hosts.md → host.gh.ticket`](../architecture/hosts.md#hostghticket--github-issues-backed-tracker)
   and the child proposals are deleted. **Slice #4's tooling is shipped**
   (`kitsoki issues migrate` + the `issues/` freeze); only the **cutover** remains

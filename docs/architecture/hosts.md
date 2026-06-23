@@ -1773,14 +1773,15 @@ filed_by: brad
 `host.GitHubFileBug` (`github_bug.go`) is the orchestration the filing paths
 share. `gh`/a PAT cannot attach binaries to an issue (that needs an authenticated
 web session), so captured evidence (screenshot / HAR / rrweb / console) is
-uploaded as assets on a per-repo **`bug-evidence` release** and the issue body
-inlines the screenshot + links the rest at their stable release-download URLs.
+saved under `.artifacts/bug-reports/<id>/` for developer-local review and the
+issue body references those paths. The evidence is not uploaded to GitHub.
 Three paths reach it:
 
 - **Web** — `kitsoki web --ticket-repo <owner/repo>` routes the Report-bug RPC
-  (`runstatus.bug.report`) to a GitHub issue with the evidence uploaded, instead
-  of a local `issues/bugs/<id>.md` + `<id>.artifacts/` folder. The capture /
-  scrub / review-modal flow is unchanged ([web-ui](../tui/web-ui.md)).
+  (`runstatus.bug.report`) to a GitHub issue with evidence saved under
+  `.artifacts/bug-reports/`, instead of a local `issues/bugs/<id>.md` +
+  `<id>.artifacts/` folder. The capture / scrub / review-modal flow is unchanged
+  ([web-ui](../tui/web-ui.md)).
 - **CLI** — `kitsoki bug create --github <owner/repo>` files a text-only issue
   (the CLI captures no evidence) and prints the URL.
 - **Design pipeline** — publishing a design mints a GitHub **feature** issue

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"kitsoki/internal/host"
 	"kitsoki/internal/runstatus/harrec"
 	"kitsoki/internal/runstatus/harscrub"
 )
@@ -57,11 +59,11 @@ func TestBugReport_WritesBugAndScrubbedHAR(t *testing.T) {
 
 	pngBytes := []byte("\x89PNG\r\n\x1a\nFAKE")
 	params := map[string]any{
-		"title":               "Foyer button does nothing",
-		"body":                "Clicked the foyer button and nothing happened.",
-		"severity":            "med",
-		"repro_steps":         []any{"open foyer", "click button"},
-		"screenshot_png_b64":  base64.StdEncoding.EncodeToString(pngBytes),
+		"title":              "Foyer button does nothing",
+		"body":               "Clicked the foyer button and nothing happened.",
+		"severity":           "med",
+		"repro_steps":        []any{"open foyer", "click button"},
+		"screenshot_png_b64": base64.StdEncoding.EncodeToString(pngBytes),
 	}
 
 	res, rerr := s.bugReport(params)
@@ -160,12 +162,12 @@ func TestBugReport_CaptureIDPath_WithEvidence(t *testing.T) {
 	rrweb := `[{"type":2,"data":{"href":"` + home + `/app"}}]`
 
 	params := map[string]any{
-		"title":         "Review-before-file flow",
-		"capture_id":    capID,
-		"description":   "Operator saw a stuck spinner after clicking Drive.",
-		"console_logs":  consoleLogs,
-		"error_info":    errorInfo,
-		"rrweb_events":  rrweb,
+		"title":        "Review-before-file flow",
+		"capture_id":   capID,
+		"description":  "Operator saw a stuck spinner after clicking Drive.",
+		"console_logs": consoleLogs,
+		"error_info":   errorInfo,
+		"rrweb_events": rrweb,
 	}
 	res, rerr := s.bugReport(params)
 	if rerr != nil {
@@ -227,5 +229,83 @@ func TestBugReport_NoScreenshot_SkipsFile(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(artifactsDir, "har.json")); err != nil {
 		t.Fatalf("har.json should still exist: %v", err)
+	}
+}
+
+func TestBugReport_GitHubModeSavesDeveloperLocalArtifacts(t *testing.T) {
+	root := t.TempDir()
+	s := &Server{recorder: bugTestRecorder(), bugRoot: root, ticketRepo: "o/r"}
+
+	s.recorder.Record(
+		"POST", "/rpc",
+		map[string]string{"Authorization": "Bearer super-secret-token"},
+		[]byte(`{"jsonrpc":"2.0","method":"runstatus.session.get","params":{"session_id":"abc"}}`),
+		200, map[string]string{"Content-Type": "application/json"},
+		[]byte(`{"jsonrpc":"2.0","result":{"id":"abc"}}`),
+		time.Now().UTC(), 1.0,
+	)
+
+	var issueArgv string
+	runner := func(ctx context.Context, dir, name string, args ...string) (string, string, int, error) {
+		j := strings.Join(args, " ")
+		switch {
+		case len(args) > 0 && args[0] == "--version":
+			return "gh version 2.x\n", "", 0, nil
+		case strings.HasPrefix(j, "release"):
+			t.Fatalf("github bug evidence must not call gh release: %s", j)
+		case strings.HasPrefix(j, "issue create"):
+			issueArgv = j
+			return "https://github.com/o/r/issues/77\n", "", 0, nil
+		}
+		return "", "unexpected: " + j, 1, nil
+	}
+	restore := host.SetExecRunnerForTest(runner)
+	defer restore()
+
+	pngBytes := []byte("\x89PNG\r\n\x1a\nFAKE")
+	res, rerr := s.bugReport(map[string]any{
+		"title":              "GitHub evidence stays local",
+		"description":        "Captured from the browser.",
+		"screenshot_png_b64": base64.StdEncoding.EncodeToString(pngBytes),
+	})
+	if rerr != nil {
+		t.Fatalf("bugReport error: %+v", rerr)
+	}
+	m := res.(map[string]any)
+	if got := m["url"]; got != "https://github.com/o/r/issues/77" {
+		t.Fatalf("unexpected github url: %+v", m)
+	}
+
+	artifactsRoot := filepath.Join(root, ".artifacts", "bug-reports")
+	entries, err := os.ReadDir(artifactsRoot)
+	if err != nil {
+		t.Fatalf("read artifacts root: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected one artifact dir, got %d", len(entries))
+	}
+	artifactDir := filepath.Join(artifactsRoot, entries[0].Name())
+	for _, f := range []string{"har.json", "screenshot.png"} {
+		if _, err := os.Stat(filepath.Join(artifactDir, f)); err != nil {
+			t.Fatalf("expected artifact %s: %v", f, err)
+		}
+	}
+	harData, err := os.ReadFile(filepath.Join(artifactDir, "har.json"))
+	if err != nil {
+		t.Fatalf("read har.json: %v", err)
+	}
+	if strings.Contains(string(harData), "super-secret-token") {
+		t.Fatalf("har.json leaks Authorization token: %s", harData)
+	}
+
+	for _, want := range []string{
+		"## Artifacts",
+		"These files are not uploaded to GitHub.",
+		".artifacts/bug-reports/" + entries[0].Name() + "/har.json",
+		".artifacts/bug-reports/" + entries[0].Name() + "/screenshot.png",
+	} {
+		if !strings.Contains(issueArgv, want) {
+			t.Fatalf("issue create argv missing %q: %s", want, issueArgv)
+		}
 	}
 }
