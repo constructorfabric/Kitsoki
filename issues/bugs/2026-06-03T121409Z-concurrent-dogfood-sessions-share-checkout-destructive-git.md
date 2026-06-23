@@ -1,9 +1,10 @@
 ---
+# triage-marathon: FIXED 67ac5fb1 — .kitsoki-owner sentinel refuses cross-session worktree sharing (live dogfood drive + human verify)
 id: 2026-06-03T121409Z-concurrent-dogfood-sessions-share-checkout-destructive-git
 title: "Concurrent dogfood sessions share one checkout, causing destructive git churn and unrecoverable WIP loss"
 target: kitsoki
 filed_at: 2026-06-03T12:14:09Z
-status: open
+status: fixed
 severity: P1
 component: runtime
 kitsoki_rev: 153c3d6

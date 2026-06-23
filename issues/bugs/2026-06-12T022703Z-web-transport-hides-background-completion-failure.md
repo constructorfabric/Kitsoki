@@ -1,9 +1,10 @@
 ---
+# triage-marathon: FIXED 45276b88 — run.ts refetches currentView on background_completion SSE turn (live dogfood drive)
 id: 2026-06-12T022703Z-web-transport-hides-background-completion-failure
 title: "Web transport doesn't surface a background_completion turn's failure (last_error / say), so a failed background job looks hung"
 target: kitsoki
 filed_at: 2026-06-12T02:27:03Z
-status: open
+status: fixed
 severity: P2
 component: web
 kitsoki_rev: 0c9a0ff

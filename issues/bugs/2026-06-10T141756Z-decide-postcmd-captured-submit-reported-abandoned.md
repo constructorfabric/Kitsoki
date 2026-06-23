@@ -1,9 +1,10 @@
 ---
+# triage-marathon: FIXED ea2ca55a — honor post_cmd_cwd + infra-vs-semantic split + terminal msg (live dogfood drive)
 id:        2026-06-10T141756Z-decide-postcmd-captured-submit-reported-abandoned
 title:     "host.agent.decide with validator.post_cmd reports 'abandoned without successful submit' when the schema-valid payload WAS captured"
 target:    kitsoki
 filed_at:  2026-06-10T14:17:56Z
-status:    open
+status: fixed
 severity:  P1
 component: runtime
 kitsoki_rev: "39f2948"
