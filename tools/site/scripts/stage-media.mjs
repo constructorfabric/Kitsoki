@@ -41,6 +41,7 @@ let videos = 0;
 const missing = [];
 for (const f of index.features) {
   if (!f.demo) continue;
+  if (f.demo.external) continue;
   const srcDir = path.join(repoRoot, f.demo.artifactDir);
   const out = path.join(mediaDir, f.id);
 

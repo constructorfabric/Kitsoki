@@ -110,14 +110,19 @@ test("mockup-video /review feedback-mode feature-spotlight (no-LLM, REAL render,
     // ── Off-camera setup (behind the curtain): reach the review room ─────────
     mark("home");
     await page.goto(`${server.base}/#/`);
-    await expect(page.getByTestId("home-view")).toBeVisible({ timeout: 15000 });
-    const card = page
-      .locator("[data-testid='story-card']")
-      .filter({ hasText: /mockup.?video/i })
-      .first();
-    await card.getByTestId("new-session-btn").click();
-    await page.waitForURL(/#\/s\/[0-9a-f-]{36}\/chat$/, { timeout: 15000 });
+    await page
+      .waitForURL(/#\/s\/[0-9a-f-]{36}\/chat$/, { timeout: 3000 })
+      .catch(async () => {
+        await expect(page.getByTestId("home-view")).toBeVisible({ timeout: 15000 });
+        const card = page
+          .locator("[data-testid='story-card']")
+          .filter({ hasText: /mockup.?video/i })
+          .first();
+        await card.getByTestId("new-session-btn").click();
+        await page.waitForURL(/#\/s\/[0-9a-f-]{36}\/chat$/, { timeout: 15000 });
+      });
     sid = page.url().match(/\/s\/([0-9a-f-]{36})\/chat$/)?.[1] ?? "";
+    if (!sid) throw new Error(`could not resolve session id from ${page.url()}`);
     mark(`session ${sid}`);
 
     // intake → ready (distil stub) → brief-gate auto-ok → authoring.

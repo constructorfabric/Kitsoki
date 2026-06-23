@@ -5,11 +5,13 @@ title: PRD → Design via conversational clarification
 tagline: Self-targeting dev-story — author kitsoki's own PRD and design by talking them through, with multi-round clarification and brief refinement.
 summary: "The dev-story hub authoring kitsoki's OWN PRD and design: discover via multi-round clarification, publish the PRD to docs/prd/, carry it into design intake seeded from the PRD, refine the brief conversationally, publish the design to docs/proposals/, and auto-mint a feature ticket at issues/features/. No engine or story change, only the dev-story defaults. The canonical conversation-driven-development golden example — kitsoki on kitsoki."
 demo:
+  external: true
   # The intended record path is the binary-native `kitsoki tour` renderer
-  # (slice 2 of the kitsoki-as-dependency epic). Until that ships, `spec` points
-  # at a STUB Playwright spec (TBD body, skipped) authored only to satisfy the
-  # features:check bijection + the schema's tour⇒demo rule. `story` + `flow` are
-  # real (validated to exist) so the future renderer / spec can target them.
+  # (slice 2 of the kitsoki-as-dependency epic). The current binary renderer can
+  # advance the imported PRD state, but the chat surface does not remount into
+  # the imported PRD room reliably enough for Pages CI. Keep this out of the
+  # record/stage loop until that renderer gap is fixed; the stub spec remains to
+  # satisfy the features:check bijection + the schema's tour=>demo rule.
   spec: tests/playwright/dev-story-prd-design-video.spec.ts
   artifactDir: dev-story-prd-design
   videoBase: dev-story-prd-design
@@ -68,8 +70,8 @@ tour:
       # pre-step setup — type the verb, then the pitch, revealing each turn at a
       # readable pace. Bare prd__ states (dev-story is the root app).
       drive:
-        - { type: wait-state, state: main }
-        - { type: type-and-send, text: prd }
+        - { type: wait-state, state: landing }
+        - { type: click-intent, intent: go_prd }
         - { type: wait-state, state: prd.idle }
         - { type: reveal-turn }
         - { type: type-and-send, text: I want a kitsoki tour subcommand to render demo videos from the binary }
@@ -86,7 +88,7 @@ tour:
       waitForTarget: chat-transcript
       dwellMs: 6000
       drive:
-        - { type: click-intent, intent: prd__start }
+        - { type: type-and-send, text: ready }
         - { type: wait-state, state: prd.search }
         - { type: reveal-turn }
     - id: ds-prd-clarify
@@ -100,7 +102,7 @@ tour:
       waitForTarget: chat-transcript
       dwellMs: 6500
       drive:
-        - { type: click-intent, intent: prd__confirm }
+        - { type: type-and-send, text: confirm }
         - { type: wait-state, state: prd.clarifying }
         - { type: reveal-turn }
         - { type: type-and-send, text: kitsoki maintainers; the metric is demos-rendered-without-Playwright }
@@ -109,7 +111,7 @@ tour:
         - { type: type-and-send, text: submit }
         - { type: wait-state, state: prd.brief }
         - { type: reveal-turn }
-        - { type: click-intent, intent: prd__clarify }
+        - { type: type-and-send, text: clarify }
         - { type: wait-state, state: prd.clarifying }
         - { type: reveal-turn }
         - { type: type-and-send, text: "Must run headless in CI; ffmpeg + headless Chrome only, no Node" }
@@ -129,10 +131,10 @@ tour:
         - { type: type-and-send, text: submit }
         - { type: wait-state, state: prd.brief }
         - { type: reveal-turn }
-        - { type: click-intent, intent: prd__confirm }
+        - { type: type-and-send, text: confirm }
         - { type: wait-state, state: prd.references }
         - { type: reveal-turn }
-        - { type: click-intent, intent: prd__confirm }
+        - { type: type-and-send, text: confirm }
         - { type: wait-state, state: prd.drafting }
         - { type: reveal-turn }
     - id: ds-prd-published
@@ -146,7 +148,7 @@ tour:
       waitForTarget: chat-transcript
       dwellMs: 6500
       drive:
-        - { type: click-intent, intent: prd__accept }
+        - { type: type-and-send, text: accept }
         - { type: wait-state, state: prd_published }
         - { type: reveal-turn }
     - id: ds-design-intake
@@ -210,5 +212,5 @@ tour:
       dwellMs: 5500
       drive:
         - { type: click-intent, intent: go_main }
-        - { type: wait-state, state: main }
+        - { type: wait-state, state: landing }
         - { type: reveal-turn }

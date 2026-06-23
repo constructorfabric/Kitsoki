@@ -58,13 +58,13 @@ export const DEV_STORY_BUGFIX_TOUR_STEPS: readonly TourStep[] = [
   {
     id: "ds-triage-open",
     route: "any",
-    target: "composer-input",
+    target: "intent-btn-go_ticket_search",
     title: "Into bug triage",
     body: "The engineer's day starts in triage. The slotless go_ticket_search intent steps from the main room into ticket_search — the bug triage queue. Let's go there now.",
     placement: "top",
     kind: "explain",
     advance: "next",
-    waitForTarget: "composer-input",
+    waitForTarget: "intent-btn-go_ticket_search",
     dwellMs: 4500,
   },
   {

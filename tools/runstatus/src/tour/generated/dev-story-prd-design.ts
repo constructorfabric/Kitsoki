@@ -57,7 +57,7 @@ export const DEV_STORY_PRD_DESIGN_TOUR_STEPS: readonly TourStep[] = [
     advance: "next",
     waitForTarget: "chat-transcript",
     dwellMs: 6000,
-    drive: [{"type":"wait-state","state":"main"},{"type":"type-and-send","text":"prd"},{"type":"wait-state","state":"prd.idle"},{"type":"reveal-turn"},{"type":"type-and-send","text":"I want a kitsoki tour subcommand to render demo videos from the binary"},{"type":"wait-state","state":"prd.idle"},{"type":"reveal-turn"}],
+    drive: [{"type":"wait-state","state":"landing"},{"type":"click-intent","intent":"go_prd"},{"type":"wait-state","state":"prd.idle"},{"type":"reveal-turn"},{"type":"type-and-send","text":"I want a kitsoki tour subcommand to render demo videos from the binary"},{"type":"wait-state","state":"prd.idle"},{"type":"reveal-turn"}],
   },
   {
     id: "ds-prd-search",
@@ -70,7 +70,7 @@ export const DEV_STORY_PRD_DESIGN_TOUR_STEPS: readonly TourStep[] = [
     advance: "next",
     waitForTarget: "chat-transcript",
     dwellMs: 6000,
-    drive: [{"type":"click-intent","intent":"prd__start"},{"type":"wait-state","state":"prd.search"},{"type":"reveal-turn"}],
+    drive: [{"type":"type-and-send","text":"ready"},{"type":"wait-state","state":"prd.search"},{"type":"reveal-turn"}],
   },
   {
     id: "ds-prd-clarify",
@@ -83,7 +83,7 @@ export const DEV_STORY_PRD_DESIGN_TOUR_STEPS: readonly TourStep[] = [
     advance: "next",
     waitForTarget: "chat-transcript",
     dwellMs: 6500,
-    drive: [{"type":"click-intent","intent":"prd__confirm"},{"type":"wait-state","state":"prd.clarifying"},{"type":"reveal-turn"},{"type":"type-and-send","text":"kitsoki maintainers; the metric is demos-rendered-without-Playwright"},{"type":"wait-state","state":"prd.clarifying"},{"type":"reveal-turn"},{"type":"type-and-send","text":"submit"},{"type":"wait-state","state":"prd.brief"},{"type":"reveal-turn"},{"type":"click-intent","intent":"prd__clarify"},{"type":"wait-state","state":"prd.clarifying"},{"type":"reveal-turn"},{"type":"type-and-send","text":"Must run headless in CI; ffmpeg + headless Chrome only, no Node"},{"type":"wait-state","state":"prd.clarifying"},{"type":"reveal-turn"}],
+    drive: [{"type":"type-and-send","text":"confirm"},{"type":"wait-state","state":"prd.clarifying"},{"type":"reveal-turn"},{"type":"type-and-send","text":"kitsoki maintainers; the metric is demos-rendered-without-Playwright"},{"type":"wait-state","state":"prd.clarifying"},{"type":"reveal-turn"},{"type":"type-and-send","text":"submit"},{"type":"wait-state","state":"prd.brief"},{"type":"reveal-turn"},{"type":"type-and-send","text":"clarify"},{"type":"wait-state","state":"prd.clarifying"},{"type":"reveal-turn"},{"type":"type-and-send","text":"Must run headless in CI; ffmpeg + headless Chrome only, no Node"},{"type":"wait-state","state":"prd.clarifying"},{"type":"reveal-turn"}],
   },
   {
     id: "ds-prd-draft",
@@ -96,7 +96,7 @@ export const DEV_STORY_PRD_DESIGN_TOUR_STEPS: readonly TourStep[] = [
     advance: "next",
     waitForTarget: "chat-transcript",
     dwellMs: 6000,
-    drive: [{"type":"type-and-send","text":"submit"},{"type":"wait-state","state":"prd.brief"},{"type":"reveal-turn"},{"type":"click-intent","intent":"prd__confirm"},{"type":"wait-state","state":"prd.references"},{"type":"reveal-turn"},{"type":"click-intent","intent":"prd__confirm"},{"type":"wait-state","state":"prd.drafting"},{"type":"reveal-turn"}],
+    drive: [{"type":"type-and-send","text":"submit"},{"type":"wait-state","state":"prd.brief"},{"type":"reveal-turn"},{"type":"type-and-send","text":"confirm"},{"type":"wait-state","state":"prd.references"},{"type":"reveal-turn"},{"type":"type-and-send","text":"confirm"},{"type":"wait-state","state":"prd.drafting"},{"type":"reveal-turn"}],
   },
   {
     id: "ds-prd-published",
@@ -109,7 +109,7 @@ export const DEV_STORY_PRD_DESIGN_TOUR_STEPS: readonly TourStep[] = [
     advance: "next",
     waitForTarget: "chat-transcript",
     dwellMs: 6500,
-    drive: [{"type":"click-intent","intent":"prd__accept"},{"type":"wait-state","state":"prd_published"},{"type":"reveal-turn"}],
+    drive: [{"type":"type-and-send","text":"accept"},{"type":"wait-state","state":"prd_published"},{"type":"reveal-turn"}],
   },
   {
     id: "ds-design-intake",
@@ -159,6 +159,6 @@ export const DEV_STORY_PRD_DESIGN_TOUR_STEPS: readonly TourStep[] = [
     kind: "explain",
     advance: "next",
     dwellMs: 5500,
-    drive: [{"type":"click-intent","intent":"go_main"},{"type":"wait-state","state":"main"},{"type":"reveal-turn"}],
+    drive: [{"type":"click-intent","intent":"go_main"},{"type":"wait-state","state":"landing"},{"type":"reveal-turn"}],
   },
 ];

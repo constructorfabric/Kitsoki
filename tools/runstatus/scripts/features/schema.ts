@@ -51,6 +51,8 @@ export const TourStepSchema = z.strictObject({
 });
 
 export const DemoSchema = z.strictObject({
+  /** Recording backend. Playwright is the default; binary uses `kitsoki tour`. */
+  renderer: z.enum(["playwright", "binary"]).optional(),
   /** Playwright spec path, relative to tools/runstatus. Optional ONLY for a
    *  product-tour, whose video is stitched from its sections, not recorded by a
    *  spec (enforced in FeatureSchema's superRefine). */
@@ -166,8 +168,8 @@ export const FeatureSchema = FeatureObjectSchema.superRefine((f, ctx) => {
     if (f.sections && f.kind !== "product-tour") {
       ctx.addIssue({ code: "custom", message: `feature "${f.id}" declares sections but kind is not product-tour` });
     }
-    if (f.demo && !f.demo.spec && !f.sections) {
-      ctx.addIssue({ code: "custom", message: `feature "${f.id}" demo needs a spec (only a sectioned product-tour stitches without one)` });
+    if (f.demo && !f.demo.spec && !f.sections && f.demo.renderer !== "binary") {
+      ctx.addIssue({ code: "custom", message: `feature "${f.id}" demo needs a spec unless renderer is binary (only a sectioned product-tour stitches without one)` });
     }
     const secIds = new Set<string>();
     for (const s of f.sections ?? []) {

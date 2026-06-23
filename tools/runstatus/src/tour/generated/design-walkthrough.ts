@@ -58,13 +58,13 @@ export const DESIGN_WALKTHROUGH_TOUR_STEPS: readonly TourStep[] = [
   {
     id: "pw-idea-input",
     route: "interactive",
-    target: "composer-input",
+    target: "text-floor-input",
     title: "Entering the idea",
     body: "We type the idea into the chat composer: a tamagotchi-style virtual pet widget for the session UI. Submitting mints a slug and kicks off the scout search for overlapping work.",
     placement: "top",
     kind: "explain",
     advance: "next",
-    waitForTarget: "composer-input",
+    waitForTarget: "text-floor-input",
     dwellMs: 5500,
   },
   {

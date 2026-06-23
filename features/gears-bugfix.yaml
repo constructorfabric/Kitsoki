@@ -12,6 +12,7 @@ related:
   - dev-story-bugfix
   - dev-story-prd-design
 demo:
+  renderer: binary
   # Binary-native render: `kitsoki tour --feature gears-bugfix`. The spec is a
   # skipped stub that satisfies the features:check spec<->feature bijection.
   spec: tests/playwright/gears-bugfix-video.spec.ts

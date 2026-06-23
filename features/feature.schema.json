@@ -64,6 +64,13 @@
     "demo": {
       "type": "object",
       "properties": {
+        "renderer": {
+          "type": "string",
+          "enum": [
+            "playwright",
+            "binary"
+          ]
+        },
         "spec": {
           "type": "string",
           "minLength": 1

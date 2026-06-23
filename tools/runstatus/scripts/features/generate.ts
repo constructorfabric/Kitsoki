@@ -233,6 +233,7 @@ function buildDemoIndex(d: NonNullable<Feature["demo"]>) {
   return {
     spec: d.spec ? path.join("tools/runstatus", d.spec) : null,
     specName: d.spec ? specName(d.spec) : null,
+    renderer: d.renderer ?? "playwright",
     artifactDir: dir,
     video: primary.video,
     chapters: primary.chapters,

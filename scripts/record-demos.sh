@@ -36,6 +36,10 @@ command -v jq >/dev/null 2>&1 || { echo "record-demos: jq is required" >&2; exit
 
 if command -v sha256sum >/dev/null 2>&1; then SHA="sha256sum"; else SHA="shasum -a 256"; fi
 
+if jq -e '.features[] | select(.id == "mockup-video" or .id == "review") | select(.demo != null and .demo.external == false)' "$INDEX" >/dev/null; then
+	"$ROOT/scripts/prepare-review-render.sh"
+fi
+
 # stamp <files...> — one hash over the given files' contents (missing skipped).
 stamp() {
 	for f in "$@"; do
@@ -47,14 +51,18 @@ recorded=0
 skipped=0
 declare -a FAILED
 
-while IFS=$'\t' read -r id profile specName artifactDir video yaml spec flow cassette story; do
+while IFS=$'\t' read -r id profile renderer specName artifactDir video yaml spec flow cassette story; do
 	# Stamp inputs: catalog entry, spec, story inputs, binary. The profile picks
 	# the camera env (KITSOKI_DEMO_PROFILE) + a per-profile stamp file so each
 	# variant re-records independently; desktop keeps the original .stamp name and
 	# empty video suffix, so it is byte-for-byte a no-op vs. the pre-matrix path.
 	story_app=""
 	[ -n "$story" ] && story_app="$story/app.yaml"
-	s=$(stamp "$yaml" "$spec" "$flow" "$cassette" "$story_app" "$BIN")
+	review_render_script=""
+	if [ "$id" = "mockup-video" ] || [ "$id" = "review" ]; then
+		review_render_script="scripts/prepare-review-render.sh"
+	fi
+	s=$(stamp "$yaml" "$spec" "$flow" "$cassette" "$story_app" "$review_render_script" "$BIN")
 	stamp_suffix=""
 	[ "$profile" != "desktop" ] && stamp_suffix="--$profile"
 	stamp_file="$artifactDir/.stamp$stamp_suffix"
@@ -68,7 +76,12 @@ while IFS=$'\t' read -r id profile specName artifactDir video yaml spec flow cas
 	echo "record-demos: recording $label ($specName)…"
 	ok=0
 	for attempt in 1 2; do
-		if (cd "$RUNSTATUS_DIR" && KITSOKI_DEMO_PROFILE="$profile" WEB_CHAT_PACE=1 pnpm exec playwright test "$specName" --project=chromium); then
+		if [ "$renderer" = "binary" ]; then
+			if KITSOKI_DEMO_PROFILE="$profile" WEB_CHAT_PACE=1 "$BIN" tour --feature "$id" --out "$artifactDir"; then
+				ok=1
+				break
+			fi
+		elif (cd "$RUNSTATUS_DIR" && KITSOKI_DEMO_PROFILE="$profile" WEB_CHAT_PACE=1 pnpm exec playwright test "$spec" --project=chromium); then
 			ok=1
 			break
 		fi
@@ -84,17 +97,22 @@ while IFS=$'\t' read -r id profile specName artifactDir video yaml spec flow cas
 	fi
 done < <(jq -r '
 	.features[]
-	| select(.demo != null and .demo.external == false and .demo.spec != null)
+	| select(.demo != null and .demo.external == false and (.demo.spec != null or .demo.renderer == "binary"))
 	| . as $f
 	| ($f.demo.profiles // ["desktop"])[] as $p
-	| [ $f.id, $p, $f.demo.specName, $f.demo.artifactDir,
+	| [ $f.id, $p, ($f.demo.renderer // "playwright"), ($f.demo.specName // $f.id), $f.demo.artifactDir,
 	    $f.demo.variants[$p].video,
 	    "features/\($f.id).yaml", $f.demo.spec,
 	    ($f.demo.flow // ""), ($f.demo.hostCassette // ""), ($f.demo.story // "") ]
 	| @tsv' "$INDEX")
 
-echo "record-demos: $recorded recorded, $skipped fresh (skipped), ${#FAILED[@]} failed"
-if [ "${#FAILED[@]}" -gt 0 ]; then
+fail_count=0
+for _failed in "${FAILED[@]+"${FAILED[@]}"}"; do
+	fail_count=$((fail_count + 1))
+done
+
+echo "record-demos: $recorded recorded, $skipped fresh (skipped), $fail_count failed"
+if [ "$fail_count" -gt 0 ]; then
 	printf 'record-demos: FAILED: %s\n' "${FAILED[*]}" >&2
 	exit 1
 fi

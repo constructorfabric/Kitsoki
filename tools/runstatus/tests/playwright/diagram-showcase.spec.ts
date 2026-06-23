@@ -163,15 +163,18 @@ test("state-diagram four-view showcase (dev-story, no-LLM)", async () => {
       // design_search off-camera so the diagram populates with a real
       // traveled leg + current station + road ahead, then stage the panel.
       if (step.id === "dsg-metro-overview") {
-        await waitForState(page, "main", 15000);
+        const cur = (await page.getByTestId("current-state").textContent())?.trim() ?? "";
+        if (cur === "landing" || cur === "main") {
+          await server.rpc("runstatus.session.submit", {
+            session_id: sid,
+            intent: "go_idea",
+            slots: { message: "work on a proposal" },
+          });
+        }
+        await waitForState(page, "design", 15000);
         await server.rpc("runstatus.session.patch_world", {
           session_id: sid,
           patch: { judge_mode: "human" },
-        });
-        await server.rpc("runstatus.session.submit", {
-          session_id: sid,
-          intent: "go_idea",
-          slots: { message: "work on a proposal" },
         });
         await server.rpc("runstatus.session.submit", {
           session_id: sid,

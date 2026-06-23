@@ -56,6 +56,14 @@ const ARTIFACT_DIR = path.join(repoRoot, ".artifacts", "design-walkthrough");
 const VIDEO_DIR = path.join(ARTIFACT_DIR, "video");
 
 let server: WebServer;
+
+async function textInput(page: Page) {
+  return page.getByTestId("composer-input").or(page.getByTestId("text-floor-input")).first();
+}
+
+async function sendButton(page: Page) {
+  return page.getByTestId("composer-send").or(page.getByTestId("text-floor-send")).first();
+}
 test.beforeAll(async () => {
   prepareVideoDir(VIDEO_DIR);
   server = await startWebServer({ addr: ADDR, flow: FLOW, storiesDir: STORY_DIR });
@@ -120,22 +128,29 @@ test("design pipeline walkthrough — tamagotchi pets", async () => {
       // Each hook submits an intent (or types the idea) and waits for the next
       // room, mirroring how the golden opens drawers before drawer steps.
       if (step.id === "pw-intake") {
-        // The fresh run boots into "main"; navigate it into design intake.
-        await waitForState(page, "main", 15000);
-        await submit("go_idea", { message: "" });
+        // The flow starts directly in design intake. Older versions booted via
+        // main/landing and needed go_idea; keep this tolerant while the catalog
+        // remains reusable against both shapes.
+        const cur = (await page.getByTestId("current-state").textContent())?.trim() ?? "";
+        if (cur === "landing" || cur === "main") {
+          await submit("go_idea", { message: "" });
+        }
         await waitForState(page, "design", 12000);
         await dwell(page, SETTLE_MS);
       }
       if (step.id === "pw-idea-input") {
         // Type the idea on-camera into the composer (the spotlighted surface).
-        const composer = page.getByTestId("composer-input").first();
+        const composer = await textInput(page);
+        await expect(composer).toBeVisible({ timeout: 15000 });
         await composer.click();
         await composer.fill("I want to add tamagotchi-style virtual pets to the session UI");
         await dwell(page, SETTLE_MS);
       }
       if (step.id === "pw-search") {
         // Submit the idea → scout search completes → design_search room.
-        await page.getByTestId("composer-send").first().click();
+        const send = await sendButton(page);
+        await expect(send).toBeVisible({ timeout: 15000 });
+        await send.click();
         await waitForState(page, "design_search", 20000);
         await dwell(page, SETTLE_MS);
       }
