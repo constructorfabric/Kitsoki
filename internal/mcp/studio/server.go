@@ -140,6 +140,10 @@ func NewServer(sess *StudioSession, opts ...ServerOption) *Server {
 	// issue.* — file a GitHub issue with studio-produced evidence bundled in.
 	srv.registerIssueTools()
 
+	// host.* — the standalone gate-runner: run a command against a worktree
+	// (e.g. go test) outside any live session, to gate on the real deliverable.
+	srv.registerHostTools()
+
 	return srv
 }
 

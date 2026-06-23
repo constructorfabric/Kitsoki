@@ -1,27 +1,23 @@
 package studio
 
-// session_live_no_profile_repro_test.go — RED-gate reproduction for
+// session_live_no_profile_repro_test.go — regression guard for
 // "session_new {harness:live} with no profile silently uses synthetic backend".
 //
-// BUG: when the MCP server boots with a default harness profile that is a
-// synthetic/fake backend (e.g. "synthetic-codex" pointing at an emulated API
-// endpoint), calling session_new with harness:live but no profile= argument
-// silently resolves to that synthetic default.  The session_new response
-// carries mode:"live" with no indication of the resolved profile, so the
-// caller (the maker agent) believes a real LLM is backing the session —
-// until agent rooms return empty output and acceptance fails 5 turns later.
+// BUG (now fixed): when the MCP server boots with a default harness profile that
+// is a synthetic/fake backend (e.g. "synthetic-codex" pointing at an emulated
+// API endpoint), calling session_new with harness:live but no profile= argument
+// silently resolved to that synthetic default.  The session_new response carried
+// mode:"live" with no indication of the resolved profile, so the caller (the
+// maker agent) believed a real LLM was backing the session — until agent rooms
+// returned empty output and acceptance failed 5 turns later.
 //
-// Expected (one of):
-//   - session_new {harness:live, profile:""} with a synthetic default profile
-//     returns a hard error: "no real LLM backend selected; pass a profile".
-//   - OR the resolved profile is surfaced in the session_new response so the
-//     caller can see it fell back to synthetic.
+// FIXED by d8194886 ("fail loud on harness:live with no profile when backends
+// declared"): OpenDrivingSession now returns a hard error when mode==live,
+// profile=="", and backends ARE declared — BEFORE the silent default-profile
+// fallback. The legacy single-default path (no profiles declared) is untouched.
+// This file was the RED-gate; it is now GREEN and guards against regression.
 //
-// This test is a RED-gate: it currently fails because neither safeguard is in
-// place. Once the fix lands (error or response surfacing), change these
-// assertions to prove the fix.
-//
-// Issue: issues/bugs/2026-06-23T092411Z-mcp-live-harness-no-profile-uses-synthetic.md
+// Issue: issues/bugs/2026-06-23T092411Z-mcp-live-harness-no-profile-uses-synthetic.md (RESOLVED)
 
 import (
 	"context"

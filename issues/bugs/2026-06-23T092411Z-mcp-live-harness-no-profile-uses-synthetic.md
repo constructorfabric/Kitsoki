@@ -3,7 +3,7 @@ id: 2026-06-23T092411Z-mcp-live-harness-no-profile-uses-synthetic
 title: "session_new {harness:live} with no profile silently resolves to a fake synthetic backend (empty output → acceptance failure)"
 target: kitsoki
 filed_at: 2026-06-23T09:24:11Z
-status: open
+status: fixed
 severity: P2
 component: mcp
 kitsoki_rev: 154630be
@@ -55,3 +55,14 @@ Surfaced during the live imports-rewriter delivery. See also
 `docs/architecture/operator-ask.md` for the headless-agent conventions; this is
 the analogous "fail loud, don't silently degrade" gap on the backend-resolution
 path.
+
+## Resolution
+
+Fixed by d8194886 (option A — fail loud). `OpenDrivingSession`
+(`internal/mcp/studio/handles.go`) now returns a hard `BAD_REQUEST` error when
+`mode==live && profile=="" && len(harnessProfiles)>0`, BEFORE the silent
+default-profile fallback — naming the boot default and telling the caller to
+pass a real profile. The legacy single-default path (no profiles declared) is
+untouched, and replay/default sessions are unaffected. Regression guard:
+`session_live_no_profile_repro_test.go` (`TestSessionLiveNoProfile_SilentlySyntheticDefault`
++ `TestSessionLiveExplicitProfile_NotAffectedByFix`).
