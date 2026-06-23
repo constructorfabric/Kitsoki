@@ -61,11 +61,16 @@ states:
       # Commit the change so subsequent rooms (test / review) see it
       # in the workspace. iface.vcs.commit binds the sha but we don't
       # need it here — the test room re-binds the diff via iface.vcs.diff.
+      # `stage_all: true` runs `git add -A` so files the agent CREATED
+      # that aren't enumerated in affected_files (a new test, a helper)
+      # are captured too — a named `files:` list misses untracked work,
+      # which is the lost-work split. stage_all takes precedence; the
+      # handoff room's clean-tree guard is the backstop.
       - invoke: iface.vcs.commit
         with:
-          workdir: "{{ world.workdir }}"
-          message: "{{ world.code_artifact.summary_title }}"
-          files:   "{{ world.code_artifact.affected_files }}"
+          workdir:   "{{ world.workdir }}"
+          message:   "{{ world.code_artifact.summary_title }}"
+          stage_all: true
         on_error: idle
     on:
       proceed:

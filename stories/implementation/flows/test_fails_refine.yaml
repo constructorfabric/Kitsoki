@@ -98,14 +98,19 @@ turns:
   - intent: { name: proceed, slots: {} }
     expect_state: test_awaiting_reply
 
-  # User accepts the test result (operator vouches the underlying issue
-  # is fixed even though the stub still returns failure).
+  # Status-aware accept (lost-work guard, secondary port): the stub's
+  # test_artifact.status is still "failed", so accept now BOUNCES back to
+  # write_code_executing with the failure feedback instead of advancing to
+  # review. This is the corrected behaviour — a failed test run can no
+  # longer be broadcast as success by an unconditional accept. The accept
+  # arc sets refine_feedback from the artifact's summary and bumps cycle.
   - intent: { name: accept, slots: {} }
-    expect_state: review_executing
-  - intent: { name: proceed, slots: {} }
-    expect_state: review_awaiting_reply
+    expect_state: write_code_executing
+    expect_world:
+      cycle:           1
+      refine_feedback: "Adds the /healthz route + a handler that returns 200."
 
-  # Bail at review to keep the flow narrow.
+  # Bail to keep the flow narrow.
   - intent: { name: quit, slots: {} }
     expect_state: __exit__abandoned
 

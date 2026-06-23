@@ -33,15 +33,75 @@ states:
             - { label: "proceed", intent: proceed, hint: "alias for open" }
             - { label: "quit",    intent: quit,    hint: "abandon the pipeline" }
             - { label: "look",    intent: look,    hint: "re-render" }
-    relevant_world: [ticket_id, ticket_title, pr_title, pr_body, workdir]
+    relevant_world: [ticket_id, ticket_title, pr_title, pr_body, workdir, worktree_dirty]
+    on_enter:
+      # ── Lost-work guard: the pr-refinement clean-tree invariant ────────
+      # Re-read the maker worktree's git status before handing off. The
+      # open/proceed arcs below refuse to enter the pr import (which opens
+      # the PR and merges) if anything is uncommitted/untracked — the
+      # pr-refinement analogue of the direct-ship integrate room's guard
+      # (delivery-tail/rooms/integrate.yaml). Without this, a room that
+      # mutated the worktree without committing (the write_code/test
+      # lost-work split) would merge a broken/partial committed tip while
+      # the dirty working tree looked green. Guarded on a worktree existing
+      # so narrative-only walks (no isolated worktree) skip it.
+      - when: "world.workdir != ''"
+        invoke: host.run
+        id: done_clean_tree_check
+        with:
+          cmd: bash
+          args:
+            - "-c"
+            - |
+              export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
+              WT="{{ world.workdir }}"
+              # `git -C` targets the worktree; NO cwd: is set so a missing/odd
+              # worktree dir can't make exec fail to start (which would bounce
+              # via on_error). A worktree that doesn't exist → git errors →
+              # 2>/dev/null → DIRTY="" → reported clean (nothing to lose).
+              DIRTY=$(git -C "$WT" status --porcelain 2>/dev/null || echo "")
+              if [ -n "$DIRTY" ]; then
+                jq -n --arg files "$DIRTY" '{dirty:true,files:$files}'
+              else
+                jq -n '{dirty:false,files:""}'
+              fi
+        bind:
+          worktree_dirty:       "stdout_json.dirty"
+          worktree_dirty_files: "stdout_json.files"
+        # NO on_error: this check is a non-critical backstop whose only output
+        # is binding worktree_dirty for the open/proceed guards below. If
+        # git/host.run can't run, worktree_dirty stays at its default (false)
+        # and the handoff proceeds — degrade to "assume clean" rather than
+        # bounce the whole room to idle. The PRIMARY lost-work fix is the
+        # write_code/test stage_all commits; this guard only hardens the
+        # pr-refinement handoff when git IS readable.
     on:
       # Dispatch into the `pr` import compound. The compound's entry
       # state is pr.open_pr (per imports.pr.entry: open_pr). open_pr's
       # on_enter fires iface.vcs.open_pr and the pr-refinement loop
       # runs to merge or abandon, which projects back via the imports.
       open:
+        # LOST-WORK GUARD: refuse to hand off if the maker worktree has
+        # uncommitted/untracked work. The committed tip is what pr-refinement
+        # opens + merges — shipping it with the real change or a new test
+        # stranded in the working tree is the exact bug this guards against.
+        # implementation has no @exit:needs-human, so route to @exit:abandoned
+        # (the safest existing escape) carrying last_error rather than
+        # silently merging a partial tip.
+        - when: "world.worktree_dirty"
+          target: "@exit:abandoned"
+          effects:
+            - set:
+                last_error: "refusing to hand off: the maker worktree has uncommitted work — it was never committed, so the committed tip is broken or partial while the working tree looks green. Commit it on the branch first:\n{{ world.worktree_dirty_files }}"
+                status:     "abandoned"
         - target: pr
       proceed:
+        - when: "world.worktree_dirty"
+          target: "@exit:abandoned"
+          effects:
+            - set:
+                last_error: "refusing to hand off: the maker worktree has uncommitted work — it was never committed, so the committed tip is broken or partial while the working tree looks green. Commit it on the branch first:\n{{ world.worktree_dirty_files }}"
+                status:     "abandoned"
         - target: pr
       quit:
         - target: "@exit:abandoned"

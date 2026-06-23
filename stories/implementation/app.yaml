@@ -49,6 +49,9 @@ app:
 hosts:
   - host.inbox.add
   - host.agent.decide
+  # host.run — the handoff room's lost-work clean-tree check shells out to
+  # `git status --porcelain` before the pr-refinement handoff.
+  - host.run
 
 # Five host_interfaces — same provider-neutral surfaces as bugfix; one
 # fewer (no separate workspace because implementation doesn't create
@@ -86,7 +89,12 @@ host_interfaces:
         input:  { workdir: string }
         output: { diff: string, files: list }
       commit:
-        input:  { workdir: string, message: string, files: list }
+        # stage_all: when true the handler runs `git add -A` first, so NEW
+        # untracked files (e.g. a test the agent wrote) AND deletions are
+        # captured — `files:` and the `-a` fallback both miss untracked.
+        # The write_code + test rooms set this so a mutation can never be
+        # stranded uncommitted (the lost-work split). See git_vcs.go.
+        input:  { workdir: string, message: string, files: list, stage_all: bool }
         output: { ok: bool, sha: string }
       push:
         input:  { workdir: string, remote: string }
@@ -210,6 +218,21 @@ world:
 
   # ── Story-level "done" sink for standalone runs ──────────────────
   status:           { type: string, default: "open" }   # open | done | merged | abandoned
+
+  # ── Lost-work guard (clean-tree invariant) ───────────────────────
+  # The maker rooms mutate the worktree (write_code applies the change,
+  # test may repair files in place). Every such edit MUST land in a
+  # commit before the handoff — `git rebase`/`merge` move only committed
+  # content, so an uncommitted/untracked file would ship an empty or
+  # partial shell while the working tree (which the gates read) looks
+  # green. The `handoff` room re-reads `git status --porcelain` and
+  # routes a dirty tree away from the pr-refinement merge — the
+  # pr-refinement analogue of the direct-ship integrate room's guard
+  # (delivery-tail/rooms/integrate.yaml). implementation has no
+  # @exit:needs-human, so the dirty arc routes to @exit:abandoned with
+  # last_error set (the safest existing escape).
+  worktree_dirty:        { type: bool,   default: false }  # handoff's git-status check found uncommitted/untracked work
+  worktree_dirty_files:  { type: string, default: "" }     # the porcelain listing (carried into last_error)
 
 # Intent vocabulary.
 intents:

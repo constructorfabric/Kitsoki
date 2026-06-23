@@ -33,6 +33,11 @@ host_handlers:
     data: { ok: true, message_id: "msg-1" }
   host.inbox.add:
     data: { ok: true, id: "ib-1" }
+  # handoff room's lost-work clean-tree check (host.run done_clean_tree_check):
+  # report a clean worktree so the open/proceed arcs enter the pr import. A
+  # dirty tree would route to @exit:abandoned — see flows/handoff_refuses_dirty_tree.yaml.
+  host.run:
+    data: { ok: true, exit_code: 0, stdout_json: { dirty: false, files: "" } }
   host.git_worktree:
     data: { ok: true, log: "synced" }
   host.git:

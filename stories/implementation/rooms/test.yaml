@@ -64,6 +64,28 @@ states:
         bind:
           test_artifact: submitted
         on_error: idle
+
+      # ── Commit the test phase's work (lost-work guard) ─────────────────
+      # The test agent (above) may write new tests or repair files directly
+      # in the maker worktree, but NOTHING downstream commits them —
+      # write_code only committed its own change, and the gates run against
+      # the live (dirty) worktree, so a test or in-place repair that lives
+      # only in the working tree passes CI yet never reaches the committed
+      # tip. That is the lost-work split: a broken/partial HEAD shipped while
+      # the real work sat uncommitted. `stage_all: true` runs `git add -A`
+      # so new untracked test files AND in-place repairs both land. NOT
+      # `once:` — a refine pass re-runs the test phase and must re-commit its
+      # new edits; an unchanged tree is a graceful no-op (git_vcs.go treats
+      # "nothing to commit" as success). Guarded on a worktree existing so
+      # narrative-only walks (no isolated worktree) skip it. The `handoff`
+      # room's clean-tree guard is the backstop.
+      - when: "world.workdir != ''"
+        invoke: iface.vcs.commit
+        with:
+          workdir:   "{{ world.workdir }}"
+          message:   "test: {{ world.ticket_id }} — tests + fix repairs from test phase"
+          stage_all: true
+        on_error: idle
     on:
       proceed:
         - target: test_awaiting_reply
@@ -156,7 +178,26 @@ states:
         slots:
           feedback: "{{ world.llm_verdict.reason }}"
     on:
+      # accept routes by test_artifact.status (the schema enum
+      # passed/failed/blocked). A failed/blocked verdict must NOT advance to
+      # review — it bounces back to write_code with the failing-test feedback
+      # (mirrors bugfix testing's status-aware accept). Without this branch
+      # accept advanced UNCONDITIONALLY, broadcasting a failed test run as
+      # success. A passed verdict (or an artifact with no status — narrative
+      # walks / older fixtures) advances to review.
       accept:
+        # failed / blocked — fix needs another pass; bounce to write_code.
+        - when: |
+            world.test_artifact.status == 'failed' ||
+            world.test_artifact.status == 'blocked'
+          target: write_code_executing
+          effects:
+            - set:
+                refine_feedback: "{{ world.test_artifact.summary_markdown }}"
+                cycle:           "{{ world.cycle + 1 }}"
+                # Clear the once: cache so the code artifact regenerates.
+                code_artifact:   {}
+        # passed (or unset) — advance to review.
         - target: review_executing
           effects:
             - set:

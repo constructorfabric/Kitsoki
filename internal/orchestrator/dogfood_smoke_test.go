@@ -998,6 +998,129 @@ func TestDogfoodSmoke_FullImplementationPipeline(t *testing.T) {
 	step("review → handoff", "core__impl__accept", "core.impl.handoff")
 }
 
+// TestDogfoodSmoke_ImplHandoffRefusesUncommittedWork is the impl analogue of
+// TestDogfoodSmoke_DoneRefusesUncommittedWork: the END-TO-END proof of the
+// lost-work guard ported into the implementation pipeline, against a REAL git
+// worktree with the REAL host.run handler (no stub for the clean-tree check).
+// It reproduces the exact incident shape: a maker room left work in the
+// worktree that no room committed, so the committed tip is broken/partial while
+// the working tree looks green.
+//
+// Flow: drive impl to handoff (worktree clean — the write_code + test stage_all
+// commits swept it), THEN write an UNTRACKED file into the maker worktree
+// (simulating a test/fix the maker wrote but never committed), THEN `open`.
+// handoff.on_enter ran the REAL `git status --porcelain` and bound
+// worktree_dirty=true; the open guard then routes impl → @exit:abandoned (which
+// dev-story maps to core.landing with status=abandoned), NOT into the pr import
+// (core.impl.pr.*) which would open + merge the partial tip.
+//
+// This closes the gap the flow fixture can't: it stubs the dirty result, so it
+// proves the guard ROUTES correctly but not that host.run DETECTS dirt in the
+// live folded-story path.
+func TestDogfoodSmoke_ImplHandoffRefusesUncommittedWork(t *testing.T) {
+	repoRoot, _ := setupDogfoodRepo(t)
+	ticketID := "2026-05-17T111838Z-integration-smoke-bug-picked-up-by-dogfood"
+	orch, _, sid, _ := newSmokeOrchestratorWithCIStub(t, repoRoot)
+
+	ctx := context.Background()
+	step := func(label, intent string, want app.StatePath) {
+		t.Helper()
+		c, cancel := context.WithTimeout(ctx, 15*time.Second)
+		defer cancel()
+		out, err := orch.SubmitDirect(c, sid, intent, nil)
+		require.NoError(t, err, "%s: SubmitDirect(%s)", label, intent)
+		require.NotNil(t, out, "%s: nil out", label)
+		require.Equal(t, want, out.NewState,
+			"%s: %s should land at %q; got %q (view: %q)",
+			label, intent, want, out.NewState, out.View)
+	}
+
+	{
+		c, cancel := context.WithTimeout(ctx, 10*time.Second)
+		require.NoError(t, orch.RunInitialOnEnter(c, sid))
+		cancel()
+	}
+	seed := seedDogfoodWorld(ticketID)
+	seed["core__ticket_type"] = "feature"
+	{
+		c, cancel := context.WithTimeout(ctx, 10*time.Second)
+		_, err := orch.Teleport(c, sid, inbox.TeleportTarget{
+			State: app.StatePath("core.landing"),
+			Slots: seed,
+		})
+		require.NoError(t, err)
+		cancel()
+	}
+
+	// Drive to handoff (worktree is clean here — the stage_all commits in
+	// write_code + test swept the stubbed maker work).
+	step("kickoff", "core__go_implementation", "core.impl.idle")
+	step("idle → review_task", "core__impl__start", "core.impl.review_task_executing")
+	step("review_task → wait", "core__impl__proceed", "core.impl.review_task_awaiting_reply")
+	step("review_task → write", "core__impl__accept", "core.impl.write_code_executing")
+	step("write → wait", "core__impl__proceed", "core.impl.write_code_awaiting_reply")
+	step("write → test", "core__impl__accept", "core.impl.test_executing")
+	step("test → wait", "core__impl__proceed", "core.impl.test_awaiting_reply")
+	step("test → review", "core__impl__accept", "core.impl.review_executing")
+	step("review → wait", "core__impl__proceed", "core.impl.review_awaiting_reply")
+
+	// CRUX: the guard's on-enter check is guarded on world.workdir != ''. If
+	// the dogfood path never projects workdir, the guard is silently dead.
+	// Assert it IS set before relying on the injection below. world.workdir is
+	// a repo-relative path (host.run executes in the repo-root cwd, so
+	// `git -C .worktrees/...` resolves); the absolute path is for file I/O here.
+	journey, err := orch.LoadJourney(sid)
+	require.NoError(t, err)
+	workdirRel, _ := journey.World.Vars["core__impl__workdir"].(string)
+	require.NotEmpty(t, workdirRel,
+		"world.workdir must be the maker worktree for the clean-tree guard to fire; "+
+			"if empty the guard is dead in the dogfood path")
+	workdirAbs := workdirRel
+	if !filepath.IsAbs(workdirAbs) {
+		workdirAbs = filepath.Join(repoRoot, workdirRel)
+	}
+
+	// Inject lost work: an UNTRACKED file no room committed. This is the
+	// incident — the working tree looks green to CI but the commit is partial.
+	require.NoError(t, os.WriteFile(
+		filepath.Join(workdirAbs, "uncommitted_lostwork_test.go"),
+		[]byte("package app\n// the maker wrote this test but never committed it\n"),
+		0o644,
+	), "must be able to write the uncommitted file into the maker worktree")
+
+	// accept into handoff: handoff.on_enter runs the REAL git status check
+	// (real host.run, real git) and binds worktree_dirty=true.
+	step("review → handoff", "core__impl__accept", "core.impl.handoff")
+	{
+		journey, err := orch.LoadJourney(sid)
+		require.NoError(t, err)
+		require.Equal(t, true, journey.World.Vars["core__impl__worktree_dirty"],
+			"handoff.on_enter's real git status check must detect the uncommitted file")
+		require.Equal(t, "?? uncommitted_lostwork_test.go", journey.World.Vars["core__impl__worktree_dirty_files"],
+			"the porcelain listing of the lost work must be captured for the operator")
+	}
+
+	// proceed at handoff: the guard fires → impl @exit:abandoned → dev-story
+	// lands at core.landing (NOT core.impl.pr.* which is the @exit:done handoff).
+	// (proceed is the exported handoff arc; it carries the same dirty guard as
+	// open.)
+	{
+		c, cancel := context.WithTimeout(ctx, 15*time.Second)
+		out, err := orch.SubmitDirect(c, sid, "core__impl__proceed", nil)
+		cancel()
+		require.NoError(t, err)
+		require.NotNil(t, out)
+		require.Equal(t, app.StatePath("core.landing"), out.NewState,
+			"a dirty worktree must route impl to abandoned (→ core.landing), "+
+				"NOT ship via the pr import; got %q", out.NewState)
+
+		journey, err := orch.LoadJourney(sid)
+		require.NoError(t, err)
+		require.Equal(t, "abandoned", journey.World.Vars["core__status"],
+			"the abandoned exit projection must set status=abandoned")
+	}
+}
+
 // TestDogfoodSmoke_ImplIdleProvisionsWorktree is the regression guard
 // for the "impl pipeline runs against an empty workdir" bug: until this
 // fix, stories/implementation/rooms/idle.yaml had NO on_enter — it

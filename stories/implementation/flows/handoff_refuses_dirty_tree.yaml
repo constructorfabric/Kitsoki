@@ -1,0 +1,84 @@
+# handoff_refuses_dirty_tree — the pr-refinement lost-work guard.
+#
+# RED→GREEN: this flow is the regression proof for the lost-work split where
+# write_code or test mutated the maker worktree without committing, so the
+# committed tip handed to pr-refinement (open_pr + merge) shipped a
+# broken/partial change while the dirty working tree looked green. On PRE-fix
+# code the `handoff` room had no clean-tree check, so a dirty worktree entered
+# the pr import and merged — this fixture FAILS (RED). On fixed code
+# `handoff`'s on_enter re-reads `git status --porcelain`; a non-empty result
+# binds worktree_dirty=true and the open/proceed arcs route to @exit:abandoned
+# carrying last_error — this fixture PASSES (GREEN).
+#
+# implementation has no @exit:needs-human (unlike bugfix's done room), so the
+# dirty arc routes to @exit:abandoned (the safest existing escape) with
+# last_error set, rather than silently merging a partial tip.
+#
+# Mirror image: happy_human / happy_llm_then_human prove the clean-tree case
+# enters pr.open_pr and reaches @exit:done. Together they pin both arcs.
+#
+# We seed into review_awaiting_reply and `accept` so the transition INTO
+# handoff fires its on_enter (seeding directly into handoff would skip
+# on_enter, leaving the clean-tree check un-run).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: review_awaiting_reply
+initial_world:
+  ticket_id:      "TKT-DIRTY-1"
+  ticket_title:   "Maker left work uncommitted"
+  thread:         "TKT-DIRTY-1"
+  workspace_id:   "ws-tkt-dirty-1"
+  workdir:        ".worktrees/wd-dirty"
+  base_branch:    "main"
+  feature_branch: "task/tkt-dirty-1"
+  judge_mode:     "human"
+  code_artifact:
+    summary_title:    "Maker change"
+    summary_markdown: "the change body"
+  review_artifact:
+    summary_title:    "Review"
+    summary_markdown: "looks good on the working tree"
+    status:           "passed"
+
+host_handlers:
+  host.append_to_file: { data: { ok: true } }
+  host.inbox.add:      { data: { ok: true } }
+  # Safety-net agent stub (judge_mode=human, so the judge `when:` is false;
+  # guards any unexpected fallthrough to the real claude binary).
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "stub"
+        summary_markdown: "stub artifact body, long enough to satisfy schema."
+        verdict:    "pass"
+        intent:     "accept"
+        reason:     "stub"
+  # The lost-work clean-tree check reports a DIRTY worktree: an untracked test
+  # the maker wrote but never committed. This is the exact incident shape.
+  host.run:
+    data:
+      ok: true
+      exit_code: 0
+      stdout_json:
+        dirty: true
+        files: "?? internal/server/healthz_test.go\n M internal/server/healthz.go"
+
+turns:
+  # accept from review → handoff. handoff.on_enter runs the clean-tree check
+  # and binds worktree_dirty=true from the (dirty) host.run stub.
+  - intent: { name: accept, slots: {} }
+    expect_state: handoff
+    expect_world:
+      worktree_dirty: true
+
+  # open from handoff: worktree_dirty is true, so the guard arc fires FIRST →
+  # @exit:abandoned, NOT the pr import.
+  - intent: { name: open, slots: {} }
+    expect_state: __exit__abandoned
+    expect_world:
+      status: "abandoned"
+
+expect_terminal: true
+expect_no_errors: true
