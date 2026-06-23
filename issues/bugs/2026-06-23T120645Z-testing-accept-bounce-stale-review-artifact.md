@@ -3,7 +3,8 @@ id: 2026-06-23T120645Z-testing-accept-bounce-stale-review-artifact
 title: "bugfix testing room: accept→implementing bounce never re-arms its own review artifact → stale failed verdict loops forever against a green tree"
 target: story
 filed_at: 2026-06-23T12:06:45Z
-status: open
+status: fixed
+fixed_rev: 631da61e
 severity: P1
 component: bugfix
 kitsoki_rev: e3eb9b89
