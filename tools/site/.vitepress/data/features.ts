@@ -14,12 +14,15 @@ import { fileURLToPath } from "url";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore — plain-node module shared with scripts/stage-docs.mjs
 import { expandManifest } from "../../scripts/manifest.mjs";
+import type { LocaleCode } from "./i18n.js";
+import { prefixed } from "./i18n.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const siteDir = path.resolve(__dirname, "../..");
 export const repoRoot = path.resolve(siteDir, "../..");
 const genIndex = path.join(siteDir, ".vitepress", "gen", "features-index.json");
 const mediaRoot = path.join(siteDir, "src", "public", "media");
+const i18nRoot = path.join(siteDir, "i18n");
 
 export interface FeatureMedia {
   videoUrl: string | null;
@@ -71,10 +74,24 @@ function docLink(repoPath: string, docMap: Map<string, string>, repoUrl: string,
   return { text, href: `${repoUrl}/blob/${branch}/${repoPath}` };
 }
 
-let cache: SiteFeature[] | null = null;
+type FeatureTranslation = Partial<
+  Pick<SiteFeature, "title" | "tagline" | "summary" | "narrative"> & {
+    steps: Array<Partial<Pick<SiteFeatureStep, "title" | "body">> & { id: string }>;
+  }
+>;
 
-export function loadFeatures(): SiteFeature[] {
-  if (cache) return cache;
+const cache = new Map<LocaleCode, SiteFeature[]>();
+
+function readFeatureTranslation(locale: LocaleCode, id: string): FeatureTranslation {
+  if (locale === "en") return {};
+  const file = path.join(i18nRoot, locale, "features", `${id}.json`);
+  if (!fs.existsSync(file)) return {};
+  return JSON.parse(fs.readFileSync(file, "utf8")) as FeatureTranslation;
+}
+
+export function loadFeatures(locale: LocaleCode = "en"): SiteFeature[] {
+  const cached = cache.get(locale);
+  if (cached) return cached;
   if (!fs.existsSync(genIndex)) {
     throw new Error(
       `${path.relative(repoRoot, genIndex)} missing — run: make site-data (emits the feature catalog contract)`,
@@ -90,7 +107,9 @@ export function loadFeatures(): SiteFeature[] {
 
   const titles = new Map(index.features.map((f) => [f.id as string, f.title as string]));
 
-  cache = index.features.map((f): SiteFeature => {
+  const localized = index.features.map((f): SiteFeature => {
+    const t = readFeatureTranslation(locale, f.id);
+    const stepTranslations = new Map((t.steps ?? []).map((s) => [s.id, s]));
     const staged = path.join(mediaRoot, f.id);
     const hasVideo = fs.existsSync(path.join(staged, "demo.mp4"));
     const hasPoster = fs.existsSync(path.join(staged, "poster.png"));
@@ -100,10 +119,11 @@ export function loadFeatures(): SiteFeature[] {
 
     const steps: SiteFeatureStep[] = (f.tour?.steps ?? []).map((s: Record<string, string>) => {
       const shot = shots.find((n) => n.endsWith(`-${s.id}.png`));
+      const st = stepTranslations.get(s.id);
       return {
         id: s.id,
-        title: s.title,
-        body: s.body,
+        title: st?.title ?? s.title,
+        body: st?.body ?? s.body,
         shotUrl: shot ? `/media/${f.id}/steps/${shot}` : null,
       };
     });
@@ -111,15 +131,15 @@ export function loadFeatures(): SiteFeature[] {
     return {
       id: f.id,
       kind: f.kind,
-      title: f.title,
-      tagline: f.tagline,
-      summary: f.summary,
-      narrative: f.narrative,
+      title: t.title ?? f.title,
+      tagline: t.tagline ?? f.tagline,
+      summary: t.summary ?? f.summary,
+      narrative: t.narrative ?? f.narrative,
       promo: f.promo,
       docLinks: (f.docs ?? []).map((d: string) => docLink(d, docMap, repoUrl, branch)),
       related: (f.related ?? []).map((id: string) => ({
         text: titles.get(id) ?? id,
-        href: `/features/${id}.html`,
+        href: `${prefixed(locale, `/features/${id}.html`)}`,
       })),
       media: {
         videoUrl: hasVideo ? `/media/${f.id}/demo.mp4` : null,
@@ -131,27 +151,41 @@ export function loadFeatures(): SiteFeature[] {
       demoSpec: f.demo?.spec ?? null,
     };
   });
-  return cache;
+  cache.set(locale, localized);
+  return localized;
 }
 
-const KIND_TITLES: Record<string, string> = {
-  feature: "Features",
-  "product-tour": "Product tours",
-  "story-demo": "Story demos",
+const KIND_TITLES: Record<LocaleCode, Record<string, string>> = {
+  en: {
+    feature: "Features",
+    "product-tour": "Product tours",
+    "story-demo": "Story demos",
+  },
+  th: {
+    feature: "ฟีเจอร์",
+    "product-tour": "ทัวร์ผลิตภัณฑ์",
+    "story-demo": "เดโม story",
+  },
+  ja: {
+    feature: "機能",
+    "product-tour": "製品ツアー",
+    "story-demo": "Story デモ",
+  },
 };
 
 /** Sidebar for /features/: grouped by kind, promo order first then title. */
-export function featuresSidebar() {
-  const feats = loadFeatures();
+export function featuresSidebar(locale: LocaleCode = "en") {
+  const feats = loadFeatures(locale);
   const groups: Array<{ text: string; items: Array<{ text: string; link: string }> }> = [];
   for (const kind of ["feature", "product-tour", "story-demo"] as const) {
     const items = feats
       .filter((f) => f.kind === kind)
       .sort((a, b) => (a.promo?.order ?? 999) - (b.promo?.order ?? 999) || a.title.localeCompare(b.title))
-      .map((f) => ({ text: f.title, link: `/features/${f.id}` }));
-    if (items.length > 0) groups.push({ text: KIND_TITLES[kind], items });
+      .map((f) => ({ text: f.title, link: prefixed(locale, `/features/${f.id}`) }));
+    if (items.length > 0) groups.push({ text: KIND_TITLES[locale][kind], items });
   }
-  return [{ text: "All features", link: "/features/" }, ...groups];
+  const allFeatures = locale === "th" ? "ฟีเจอร์ทั้งหมด" : locale === "ja" ? "すべての機能" : "All features";
+  return [{ text: allFeatures, link: prefixed(locale, "/features/") }, ...groups];
 }
 
 /** Sidebar for /guide/: the docs-manifest sections, titled by first heading. */

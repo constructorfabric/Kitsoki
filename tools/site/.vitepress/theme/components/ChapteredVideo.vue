@@ -48,9 +48,12 @@ const props = defineProps<{
 
 const { theme } = useData();
 const embedded = computed(() => theme.value.siteVariant === "embedded");
+const text = computed(() => theme.value.siteText?.labels ?? {});
 const showVideo = computed(() => !embedded.value && props.media.videoAvailable);
 const watchOnlineUrl = computed(() =>
-  props.featureId ? `${theme.value.sitePublicUrl}/features/${props.featureId}.html` : theme.value.sitePublicUrl,
+  props.featureId
+    ? `${theme.value.sitePublicUrl}${theme.value.siteLocale === "en" ? "" : `/${theme.value.siteLocale}`}/features/${props.featureId}.html`
+    : theme.value.sitePublicUrl,
 );
 
 const videoEl = ref<HTMLVideoElement | null>(null);
@@ -123,22 +126,22 @@ defineExpose({ seekToStep, hasChapters: () => chapters.value.length > 0 });
         v-if="media.posterUrl"
         class="kv__poster"
         :src="withBase(media.posterUrl)"
-        :alt="`${title} — demo poster frame`"
+        :alt="`${title} — ${text.demoPosterAlt ?? 'demo poster frame'}`"
         loading="lazy"
       />
       <div v-else class="kv__poster kv__poster--empty" aria-hidden="true">▶</div>
       <p class="kv__badge">
         <template v-if="embedded">
-          <a :href="watchOnlineUrl" target="_blank" rel="noopener">Watch this demo online →</a>
+          <a :href="watchOnlineUrl" target="_blank" rel="noopener">{{ text.watchOnline ?? "Watch this demo online" }} →</a>
         </template>
         <template v-else>
-          demo video not rendered in this build
+          {{ text.demoMissing ?? "demo video not rendered in this build" }}
           <code v-if="featureId">make demo-feature FEATURE={{ featureId }}</code>
         </template>
       </p>
     </div>
 
-    <nav v-if="showVideo && groups" class="kv__chapters kv__chapters--grouped" aria-label="Video chapters">
+    <nav v-if="showVideo && groups" class="kv__chapters kv__chapters--grouped" :aria-label="text.videoChapters ?? 'Video chapters'">
       <div v-for="g in groups" :key="g.key" class="kv__group">
         <button
           class="kv__group-head"
@@ -163,7 +166,7 @@ defineExpose({ seekToStep, hasChapters: () => chapters.value.length > 0 });
       </div>
     </nav>
 
-    <nav v-else-if="showVideo && chapters.length" class="kv__chapters" aria-label="Video chapters">
+    <nav v-else-if="showVideo && chapters.length" class="kv__chapters" :aria-label="text.videoChapters ?? 'Video chapters'">
       <button
         v-for="c in chapters"
         :key="c.id"

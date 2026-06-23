@@ -5,8 +5,8 @@
  * plus the deeper-docs / related-features links. Receives the page's $params
  * (from src/features/[id].paths.ts) verbatim.
  */
-import { ref } from "vue";
-import { withBase } from "vitepress";
+import { computed, ref } from "vue";
+import { useData, withBase } from "vitepress";
 import ChapteredVideo from "./ChapteredVideo.vue";
 import TourStepCards from "./TourStepCards.vue";
 
@@ -28,6 +28,8 @@ const props = defineProps<{
 }>();
 
 const player = ref<InstanceType<typeof ChapteredVideo> | null>(null);
+const { theme } = useData();
+const text = computed(() => theme.value.siteText?.labels ?? {});
 
 function href(l: Link): string {
   return l.href.startsWith("/") ? withBase(l.href) : l.href;
@@ -41,13 +43,13 @@ function href(l: Link): string {
     <ChapteredVideo ref="player" :media="feature.media" :title="feature.title" :feature-id="feature.id" />
 
     <template v-if="feature.steps.length">
-      <h2 id="step-by-step">Step by step</h2>
+      <h2 id="step-by-step">{{ text.stepByStep ?? "Step by step" }}</h2>
       <TourStepCards :steps="feature.steps" @seek="(id) => player?.seekToStep(id)" />
     </template>
 
     <aside v-if="feature.docLinks.length || feature.related.length" class="kdemo__links">
       <div v-if="feature.docLinks.length">
-        <h3>Deeper docs</h3>
+        <h3>{{ text.deeperDocs ?? "Deeper docs" }}</h3>
         <ul>
           <li v-for="l in feature.docLinks" :key="l.href">
             <a :href="href(l)">{{ l.text }}</a>
@@ -55,7 +57,7 @@ function href(l: Link): string {
         </ul>
       </div>
       <div v-if="feature.related.length">
-        <h3>Related features</h3>
+        <h3>{{ text.relatedFeatures ?? "Related features" }}</h3>
         <ul>
           <li v-for="l in feature.related" :key="l.href">
             <a :href="href(l)">{{ l.text }}</a>

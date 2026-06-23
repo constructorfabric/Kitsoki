@@ -1,0 +1,5 @@
+{% block status %}{{ world.locale|default:"(no locale)" }}  ·  {{ world.target_kind|default:"(no target)" }}  ·  cycle {{ world.cycle }}{% endblock %}
+{% block heading %}{{ state.description }}{% endblock %}
+{% block body %}{% endblock %}
+{% block choices %}{% endblock %}
+{% block footer %}{% endblock %}

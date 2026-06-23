@@ -1,0 +1,45 @@
+states:
+  done:
+    description: "Localization pass complete."
+    relevant_world: [locale, target_kind, target_id, output_path, status, validation_ok]
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Status: "{{ world.status|default:'done' }}"
+                Locale: "{{ world.locale|default:'(none)' }}"
+                Target: "{% if world.target_kind %}{{ world.target_kind }}/{{ world.target_id }}{% else %}(none){% endif %}"
+                Output: "{{ world.output_path|default:'(none)' }}"
+                Validation: "{% if world.validation_ok %}pass{% else %}(not accepted from validation){% endif %}"
+          - prose: "Run another `start` command to continue localization."
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "start"
+                  hint: "localize another target"
+                - label: "look"
+    on:
+      start:
+        - target: translating
+          effects:
+            - set:
+                locale: "{{ slots.locale }}"
+                target_kind: "{{ slots.target_kind }}"
+                target_id: "{{ slots.target_id }}"
+                notes: "{{ slots.notes ?? '' }}"
+                source_path: "{{ slots.target_kind == 'feature' ? 'features/' + slots.target_id + '.yaml' : 'tools/site/src/' + slots.target_id + '.md' }}"
+                output_path: "{{ slots.target_kind == 'feature' ? 'tools/site/i18n/' + slots.locale + '/features/' + slots.target_id + '.json' : 'tools/site/src/' + slots.locale + '/' + slots.target_id + '.md' }}"
+                translation_artifact: {}
+                validation_ok: false
+                validation_log: ""
+                refine_feedback: ""
+                status: "running"
+                cycle: 0
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .

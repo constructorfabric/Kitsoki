@@ -88,6 +88,12 @@ pure no-LLM post-processing.
   skills, …) can never leak; links escaping the allowlist are rewritten to
   GitHub URLs; dead links fail the build; `scripts/check-leaks.mjs` re-checks
   the dist.
+- **Localization** publishes English at `/`, Thai at `/th/`, and Japanese at
+  `/ja/`. Static locale pages live under `tools/site/src/<locale>/`; generated
+  feature pages read optional JSON overlays from `tools/site/i18n/<locale>/`.
+  Missing fields fall back to English, so translation can move feature by
+  feature. Use `stories/product-site-localization/` to draft or refresh those
+  overlays, then accept only after the deterministic site build passes.
 - Missing media never fails a build — pages degrade to poster + placeholder,
   so docs-only iteration works with an empty `.artifacts/`.
 

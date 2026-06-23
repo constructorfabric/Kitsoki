@@ -5,6 +5,7 @@
  * feature catalog). Clicking a card emits `seek` so the page can jump the demo
  * video to that step's chapter.
  */
+import { computed } from "vue";
 import { withBase, useData } from "vitepress";
 
 interface Step {
@@ -19,12 +20,13 @@ const emit = defineEmits<{ seek: [stepId: string] }>();
 
 const { theme } = useData();
 const embedded = theme.value.siteVariant === "embedded";
+const text = computed(() => theme.value.siteText?.labels ?? {});
 </script>
 
 <template>
   <ol class="ksteps">
     <li v-for="(s, i) in steps" :key="s.id" class="ksteps__card">
-      <button class="ksteps__head" type="button" :title="`Jump the video to this step`" @click="emit('seek', s.id)">
+      <button class="ksteps__head" type="button" :title="text.jumpToStep ?? 'Jump the video to this step'" @click="emit('seek', s.id)">
         <span class="ksteps__num">{{ i + 1 }}</span>
         <span class="ksteps__title">{{ s.title }}</span>
       </button>

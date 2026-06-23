@@ -28,6 +28,7 @@ interface GridFeature {
 }
 
 const { theme } = useData();
+const text = computed(() => theme.value.siteText?.labels ?? {});
 
 const cards = computed(() => {
   let feats = (theme.value.features as GridFeature[]).filter((f) => props.kinds.includes(f.kind));
@@ -51,7 +52,7 @@ const cards = computed(() => {
         v-if="f.media.posterUrl"
         class="kgrid__poster"
         :src="withBase(f.media.posterUrl)"
-        :alt="`${f.title} — demo poster`"
+        :alt="`${f.title} — ${text.demoPosterAlt ?? 'demo poster'}`"
         loading="lazy"
       />
       <div v-else class="kgrid__poster kgrid__poster--empty" aria-hidden="true">▶</div>

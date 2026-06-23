@@ -1,0 +1,36 @@
+states:
+  error:
+    description: "Localization task failed."
+    relevant_world: [last_error, locale, target_kind, target_id]
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "The localization pass failed before it could be reviewed."
+          - code: '{{ world.last_error|default:"(no error detail)" }}'
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "refine"
+                  hint: "retry with corrective feedback"
+                - label: "quit"
+                - label: "look"
+    on:
+      refine:
+        - target: translating
+          effects:
+            - set:
+                refine_feedback: "{{ slots.feedback }}"
+                translation_artifact: {}
+                validation_ok: false
+                validation_log: ""
+      quit:
+        - target: done
+          effects:
+            - set: { status: "abandoned" }
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .

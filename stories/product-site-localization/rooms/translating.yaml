@@ -1,0 +1,86 @@
+states:
+  translating:
+    description: "Translating product-site copy."
+    relevant_world: [locale, target_kind, target_id, source_path, output_path, translation_artifact, validation_ok, validation_log, refine_feedback]
+    on_enter:
+      - invoke: host.agent.task
+        id: translate_site_copy
+        once: true
+        with:
+          agent: translator
+          working_dir: "."
+          acceptance:
+            schema: schemas/translation_artifact.json
+          context:
+            prompt: prompts/translate_site_copy.md
+            args:
+              locale: "{{ world.locale }}"
+              target_kind: "{{ world.target_kind }}"
+              target_id: "{{ world.target_id }}"
+              source_path: "{{ world.source_path }}"
+              output_path: "{{ world.output_path }}"
+              notes: "{{ world.notes }}"
+              refine_feedback: "{{ world.refine_feedback }}"
+        bind:
+          translation_artifact: submitted
+        on_error: error
+      - invoke: host.run
+        id: validate_site
+        with:
+          cmd: "make site"
+          cwd: "."
+          fail_on_error: false
+        bind:
+          validation_ok: ok
+          validation_log: stdout
+        on_error: error
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Locale: "{{ world.locale }}"
+                Target: "{{ world.target_kind }}/{{ world.target_id }}"
+                Output: "{{ world.output_path }}"
+                Validation: "{% if world.validation_ok %}pass{% else %}pending or failed{% endif %}"
+          - heading: "Translation artifact"
+          - code: '{{ world.translation_artifact.summary|default:"(pending — translator has not returned yet)" }}'
+          - heading: "Validation"
+          - code: '{{ world.validation_log|default:"(pending — `make site` has not returned yet)" }}'
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "accept"
+                  hint: "finish when validation and copy are acceptable"
+                - label: "refine"
+                  hint: "revise the translation with feedback"
+                - label: "quit"
+                  hint: "abandon this pass"
+                - label: "look"
+    on:
+      accept:
+        - target: done
+          effects:
+            - set: { status: "localized" }
+      refine:
+        - target: translating
+          effects:
+            - set:
+                refine_feedback: "{{ slots.feedback }}"
+                translation_artifact: {}
+                validation_ok: false
+                validation_log: ""
+                cycle: "{{ world.cycle + 1 }}"
+      quit:
+        - target: done
+          effects:
+            - set: { status: "abandoned" }
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "Review the artifact, then `accept` or `refine feedback=...`."

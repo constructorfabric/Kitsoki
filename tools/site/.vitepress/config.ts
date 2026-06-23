@@ -14,6 +14,8 @@ import * as path from "path";
 import { fileURLToPath } from "url";
 import { defineConfig } from "vitepress";
 import { loadFeatures, featuresSidebar, guideSidebar } from "./data/features.js";
+import type { LocaleCode } from "./data/i18n.js";
+import { locales, prefixed } from "./data/i18n.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -21,7 +23,34 @@ const variant = process.env.SITE_VARIANT === "embedded" ? "embedded" : "full";
 const base = process.env.SITE_BASE ?? "/";
 const publicUrl = process.env.SITE_PUBLIC_URL ?? "https://bsacrobatix.github.io/Kitsoki";
 
-const features = loadFeatures();
+function localizedThemeConfig(locale: LocaleCode) {
+  const info = locales[locale];
+  return {
+    nav: [
+      { text: info.text.nav.features, link: prefixed(locale, "/features/") },
+      { text: info.text.nav.guide, link: "/guide/getting-started" },
+    ],
+    sidebar: {
+      [prefixed(locale, "/features/")]: featuresSidebar(locale),
+      ...(locale === "en" ? { "/guide/": guideSidebar() } : {}),
+    },
+    socialLinks: [{ icon: "github", link: "https://github.com/bsacrobatix/Kitsoki" }],
+    search: { provider: "local" },
+    outline: { level: [2, 3] },
+    siteVariant: variant,
+    sitePublicUrl: publicUrl,
+    siteLocale: locale,
+    siteText: info.text,
+    features: loadFeatures(locale).map((f) => ({
+      id: f.id,
+      kind: f.kind,
+      title: f.title,
+      tagline: f.tagline,
+      promo: f.promo,
+      media: f.media,
+    })),
+  };
+}
 
 export default defineConfig({
   title: "kitsoki",
@@ -31,6 +60,30 @@ export default defineConfig({
   srcDir: "./src",
   outDir: path.resolve(__dirname, variant === "embedded" ? "dist-embedded" : "dist"),
   cleanUrls: false,
+  lang: locales.en.lang,
+
+  locales: {
+    root: {
+      label: locales.en.label,
+      lang: locales.en.lang,
+      title: locales.en.title,
+      description: locales.en.description,
+    },
+    th: {
+      label: locales.th.label,
+      lang: locales.th.lang,
+      title: locales.th.title,
+      description: locales.th.description,
+      themeConfig: localizedThemeConfig("th"),
+    },
+    ja: {
+      label: locales.ja.label,
+      lang: locales.ja.lang,
+      title: locales.ja.title,
+      description: locales.ja.description,
+      themeConfig: localizedThemeConfig("ja"),
+    },
+  },
 
   markdown: {
     // kitsoki prompt templates use ```pongo fences (Pongo2 = Django/Twig-style).
@@ -61,31 +114,5 @@ export default defineConfig({
     },
   },
 
-  themeConfig: {
-    nav: [
-      { text: "Features", link: "/features/" },
-      { text: "Guide", link: "/guide/getting-started" },
-    ],
-    sidebar: {
-      "/guide/": guideSidebar(),
-      "/features/": featuresSidebar(),
-    },
-    socialLinks: [{ icon: "github", link: "https://github.com/bsacrobatix/Kitsoki" }],
-    search: { provider: "local" },
-    outline: { level: [2, 3] },
-
-    // Site-specific (read via useData().theme by the custom components):
-    // the lightweight feature list for grids/hero, the build variant, and the
-    // public site URL the embedded variant links out to for videos.
-    siteVariant: variant,
-    sitePublicUrl: publicUrl,
-    features: features.map((f) => ({
-      id: f.id,
-      kind: f.kind,
-      title: f.title,
-      tagline: f.tagline,
-      promo: f.promo,
-      media: f.media,
-    })),
-  },
+  themeConfig: localizedThemeConfig("en"),
 });
