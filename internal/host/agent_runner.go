@@ -471,6 +471,9 @@ func runClaudeStreamJSON(ctx context.Context, bin string, cliArgs []string, stdi
 	if strings.TrimSpace(reply) == "" {
 		reply = assembledText.String()
 	}
+	if cr.ExitCode != 0 && strings.TrimSpace(rawLines.String()) != "" {
+		reply = rawLines.String()
+	}
 	if strings.TrimSpace(reply) == "" && !sawAnyJSON {
 		reply = rawLines.String()
 	}

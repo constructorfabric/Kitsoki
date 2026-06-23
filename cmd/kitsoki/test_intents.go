@@ -8,7 +8,11 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"kitsoki/internal/app"
+	"kitsoki/internal/harness"
+	"kitsoki/internal/host"
 	"kitsoki/internal/testrunner"
+	"kitsoki/internal/webconfig"
 )
 
 // testIntentsCmd implements `kitsoki test intents`.
@@ -34,6 +38,10 @@ func testIntentsCmd() *cobra.Command {
 		regressionThreshold float64
 		jsonOut             string
 		harnessType         string
+		claudeModel         string
+		agentBackend        string
+		profileName         string
+		configPath          string
 		recordingPath       string // for static harness seeding
 	)
 
@@ -44,13 +52,21 @@ func testIntentsCmd() *cobra.Command {
 phrasings to the correct intents in each state.
 
 By default this uses a StaticHarness seeded from the recording file so no
-LLM calls are made and the run is deterministic. To use the live LLM
-harness, set ANTHROPIC_API_KEY and --harness live.
+LLM calls are made and the run is deterministic. To use a real routing model,
+pass --harness claude or --harness live explicitly.
 
 Default harness:
-  static  when ANTHROPIC_API_KEY is not set
-  live    when ANTHROPIC_API_KEY is set
-Override with --harness <live|static>.
+  static  unless --harness is provided
+Override with --harness <static|claude|live>.
+
+Harness modes:
+  static  deterministic recording lookup; no LLM calls
+  claude  claude/codex/copilot CLI routing harness; use --claude-model and --agent
+  live    direct Anthropic SDK routing harness
+
+Use --profile <name> to benchmark an operator-declared harness profile from
+.kitsoki.yaml/.kitsoki.local.yaml. The profile supplies backend, model, and
+provider environment such as synthetic.new credentials.
 
 Default intents glob: <app-dir>/intents/*.yaml
 Default recording (for --harness static): <app-dir>/recording.yaml
@@ -70,11 +86,7 @@ Exit codes:
 
 			// Resolve harness type.
 			if harnessType == "" {
-				if os.Getenv("ANTHROPIC_API_KEY") != "" {
-					harnessType = "live"
-				} else {
-					harnessType = "static"
-				}
+				harnessType = "static"
 			}
 
 			// Resolve recording path for static harness.
@@ -82,21 +94,54 @@ Exit codes:
 				recordingPath = filepath.Join(filepath.Dir(appPath), "recording.yaml")
 			}
 
-			// Build harness.
-			var sh *testrunner.StaticHarness
+			var activeProfile host.ActiveProfile
+			if profileName != "" {
+				if configPath == "" {
+					configPath = webconfig.DefaultConfigFile
+				}
+				cfg, err := webconfig.Load(configPath)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "kitsoki test intents: load --config %s: %v\n", configPath, err)
+					os.Exit(2)
+				}
+				profiles, _ := harnessProfilesFromConfig(cfg)
+				profile, ok := profiles[profileName]
+				if !ok {
+					fmt.Fprintf(os.Stderr, "kitsoki test intents: unknown --profile %q\n", profileName)
+					os.Exit(2)
+				}
+				if profile.Backend != "" {
+					agentBackend = profile.Backend
+				}
+				if profile.Model != "" && claudeModel == "" {
+					claudeModel = profile.Model
+				}
+				activeProfile = host.ActiveProfile{
+					Name: profileName,
+					Provider: host.Provider{
+						Model:  profile.Model,
+						Effort: profile.Effort,
+						Env:    profile.Env,
+					},
+				}
+			}
+
+			var liveHarnessFactory func(*app.AppDef) (harness.Harness, error)
+			var h harness.Harness
 			switch harnessType {
 			case "static":
 				var err error
-				sh, err = testrunner.NewStaticHarnessFromRecording(recordingPath)
+				h, err = testrunner.NewStaticHarnessFromRecording(recordingPath)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "kitsoki test intents: %v\n", err)
 					os.Exit(2)
 				}
-			case "live":
-				fmt.Fprintf(os.Stderr, "kitsoki test intents: live harness not implemented in PoC; use --harness static\n")
-				os.Exit(2)
+			case "claude", "live":
+				liveHarnessFactory = func(def *app.AppDef) (harness.Harness, error) {
+					return buildHarnessWithActiveProfile(harnessType, claudeModel, agentBackend, recordingPath, "", def, activeProfile)
+				}
 			default:
-				fmt.Fprintf(os.Stderr, "kitsoki test intents: unknown harness %q (use live|static)\n", harnessType)
+				fmt.Fprintf(os.Stderr, "kitsoki test intents: unknown harness %q (use static|claude|live)\n", harnessType)
 				os.Exit(2)
 			}
 
@@ -112,7 +157,11 @@ Exit codes:
 				RegressionThreshold: regressionThreshold,
 				JSONOut:             jsonOut,
 				HarnessType:         harnessType,
-				StaticHarnessImpl:   sh,
+				HarnessModel:        claudeModel,
+				AgentBackend:        agentBackend,
+				ProfileName:         profileName,
+				StaticHarnessImpl:   h,
+				LiveHarnessFactory:  liveHarnessFactory,
 				// Recording-miss inputs are skipped (not failed) when using the static harness.
 				// This is correct behaviour: the recording only covers canonical phrasings, not
 				// every colloquial phrasing in the Mode 1 fixtures (which require a live LLM).
@@ -157,7 +206,15 @@ Exit codes:
 	cmd.Flags().StringVar(&jsonOut, "json", "",
 		"write JSON report to this file")
 	cmd.Flags().StringVar(&harnessType, "harness", "",
-		"harness type: live|static (default: static if no ANTHROPIC_API_KEY, else live)")
+		"harness type: static|claude|live (default: static)")
+	cmd.Flags().StringVar(&claudeModel, "claude-model", "",
+		fmt.Sprintf("model passed to the claude/codex/copilot CLI harness (default: %s)", harness.DefaultClaudeModel))
+	cmd.Flags().StringVar(&agentBackend, "agent", "",
+		"coding-agent CLI backend for --harness claude: claude|copilot|codex (default: claude, or $KITSOKI_AGENT)")
+	cmd.Flags().StringVar(&profileName, "profile", "",
+		"harness profile from .kitsoki.yaml/.kitsoki.local.yaml; supplies backend, model, and provider env")
+	cmd.Flags().StringVar(&configPath, "config", webconfig.DefaultConfigFile,
+		"config file used with --profile")
 	cmd.Flags().StringVar(&recordingPath, "recording", "",
 		"recording YAML to seed the static harness (default: <app-dir>/recording.yaml)")
 

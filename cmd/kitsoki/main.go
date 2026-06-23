@@ -897,8 +897,15 @@ func resolveAgentBackend(flag string) string {
 // If harnessType is empty, autoSelectHarness() is called to pick one.
 // claudeModel is the model name for the ClaudeCLIHarness; pass "" to use the default.
 func buildHarness(harnessType, claudeModel, agentBackend, recordingPath, recordPath string, def *app.AppDef) (harness.Harness, error) {
+	return buildHarnessWithActiveProfile(harnessType, claudeModel, agentBackend, recordingPath, recordPath, def, host.ActiveProfile{})
+}
+
+func buildHarnessWithActiveProfile(harnessType, claudeModel, agentBackend, recordingPath, recordPath string, def *app.AppDef, activeProfile host.ActiveProfile) (harness.Harness, error) {
 	if harnessType == "" {
 		harnessType = autoSelectHarness()
+	}
+	withProfile := func(ctx context.Context) context.Context {
+		return host.WithActiveProfile(ctx, activeProfile)
 	}
 
 	switch harnessType {
@@ -918,7 +925,7 @@ func buildHarness(harnessType, claudeModel, agentBackend, recordingPath, recordP
 				return nil, fmt.Errorf("--agent copilot: %w", host.ErrAgentUnavailable)
 			}
 			copilotExec := func(ctx context.Context, bin string, args []string, stdin, workingDir string) (string, error) {
-				return host.RunClaudeOneShotForHarness(host.WithAgentBackendNamed(ctx, "copilot"), bin, args, stdin, workingDir)
+				return host.RunClaudeOneShotForHarness(host.WithAgentBackendNamed(withProfile(ctx), "copilot"), bin, args, stdin, workingDir)
 			}
 			return harness.NewClaudeCLI(def, harness.ClaudeCLIConfig{
 				Model:         claudeModel,
@@ -936,7 +943,7 @@ func buildHarness(harnessType, claudeModel, agentBackend, recordingPath, recordP
 				return nil, fmt.Errorf("--agent codex: %w", host.ErrAgentUnavailable)
 			}
 			codexExec := func(ctx context.Context, bin string, args []string, stdin, workingDir string) (string, error) {
-				return host.RunClaudeOneShotForHarness(host.WithAgentBackendNamed(ctx, "codex"), bin, args, stdin, workingDir)
+				return host.RunClaudeOneShotForHarness(host.WithAgentBackendNamed(withProfile(ctx), "codex"), bin, args, stdin, workingDir)
 			}
 			return harness.NewClaudeCLI(def, harness.ClaudeCLIConfig{
 				Model:         claudeModel,
@@ -945,7 +952,10 @@ func buildHarness(harnessType, claudeModel, agentBackend, recordingPath, recordP
 				ValidatorTool: host.CodexValidatorToolName("kitsoki-validator"),
 			})
 		}
-		return harness.NewClaudeCLI(def, harness.ClaudeCLIConfig{Model: claudeModel, Exec: host.RunClaudeOneShotForHarness})
+		claudeExec := func(ctx context.Context, bin string, args []string, stdin, workingDir string) (string, error) {
+			return host.RunClaudeOneShotForHarness(withProfile(ctx), bin, args, stdin, workingDir)
+		}
+		return harness.NewClaudeCLI(def, harness.ClaudeCLIConfig{Model: claudeModel, Exec: claudeExec})
 
 	case "replay":
 		if recordingPath == "" {
