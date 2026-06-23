@@ -1,0 +1,81 @@
+{
+  "meta": {
+    "title": "Kitsoki — a developer's arc on the slidey repo",
+    "resolution": {
+      "width": 1920,
+      "height": 1080
+    },
+    "theme": "rose-pine-moon",
+    "narration": {
+      "voice": "en-AU-NatashaNeural"
+    },
+    "mode": "pitch"
+  },
+  "scenes": [
+    {
+      "type": "title",
+      "eyebrow": "Kitsoki · dev story",
+      "title": "Fix a bug, refine a feature, open the PR",
+      "subtitle": "a developer's arc, end to end, on the slidey repo",
+      "narration": "A developer's arc on the slidey repository — fix a bug, refine a feature by pointing right at it, and open the pull request — with kitsoki driving every step, and every frame a deterministic replay."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "1 · The bug",
+      "lede": "A bug lands — triage says one-shot.",
+      "body": "A new bug is opened against slidey: grid-card decks with more than six cards drift their narration. The bug-fix room triages it as a one-shot, unsupervised fix. The developer says go, and kitsoki reproduces it, proposes a root-cause fix, implements it in an isolated worktree, runs the real test suite, self-reviews, and validates — closing out PR-ready.",
+      "narration": "A bug is opened against slidey: grid-card decks drift their narration past six cards. Triage calls it a one-shot fix. The developer says go, and kitsoki reproduces, fixes, tests, reviews, and validates it."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "1 · Developer · bug fix",
+      "title": "Bug → reproduce → fix → validate",
+      "rrweb": "clips/slidey-bugfix.rrweb.json",
+      "chapters": "auto",
+      "caption": "The bug-fix pipeline on a real slidey bug",
+      "narration": "Every room is a deterministic state-machine beat: reproduce, propose, implement in a worktree, run the real test suite, self-review, and validate."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "2 · The refine",
+      "lede": "A demo video arrives — refine by pointing at it.",
+      "body": "As feature work completes, a demo deck is produced and lands for review. Instead of describing a change in prose, the developer points at an exact element on the rendered frame — a semantic anchor — and that anchor flows into a refine pass that edits precisely the scene that was pointed at. The before and after re-render in place.",
+      "narration": "A demo deck arrives for review. The developer points at an exact element on the rendered frame, and that anchor flows into a refine pass that edits precisely what was pointed at — before and after re-rendered in place."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "2 · Developer · spatial refine",
+      "title": "Annotate the frame → anchored refine",
+      "rrweb": "clips/feature-refine.rrweb.json",
+      "chapters": "auto",
+      "caption": "Location-tied review → an anchored refine pass",
+      "narration": "Location-tied feedback: point at the element, and the refine edits exactly that scene — no ambiguity about what to change."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "3 · The ship",
+      "lede": "Fix validated — open the pull request.",
+      "body": "The fix is validated and PR-ready. The developer opens the pull request — title, body, and branch carried straight from the bug-fix summary — and kitsoki monitors CI to green and lands the merge. The story closes where it started: the slidey repo, one pull request richer, every step on the record.",
+      "narration": "The fix is validated and PR-ready. The developer opens the pull request — title, body, and branch carried from the summary — and kitsoki monitors CI to green and lands the merge."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "3 · Developer · ship",
+      "title": "Summary → open PR → merge",
+      "rrweb": "clips/open-pr.rrweb.json",
+      "chapters": "auto",
+      "caption": "Open the PR, watch CI, land the merge",
+      "narration": "The pull request opens with the fix's evidence, CI goes green, and the merge lands — the whole hand-off captured on the trace."
+    },
+    {
+      "type": "cta",
+      "narration": "And the whole film is a no-LLM, byte-deterministic replay: the runtime is a state machine, and the model is just a traceable callee.",
+      "wordmark": "Kitsoki",
+      "tagline": "Every frame is a deterministic, no-LLM replay",
+      "url": "the runtime is a state machine; the model is a traceable callee"
+    }
+  ]
+}

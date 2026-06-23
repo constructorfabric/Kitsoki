@@ -1,0 +1,36 @@
+scenarios:
+  - id: bugfix-phase
+    title: "Bug-fix pipeline tour plays and shows reproduce → fix → validate"
+    required: true
+    steps:
+      - "A scene titled 'Bug → reproduce → fix → validate' (eyebrow 'DEVELOPER · BUG FIX') is shown with an embedded kitsoki tour video."
+      - "The embedded tour shows the real kitsoki UI (trace rows / chat / state for the bug-fix pipeline on the slidey-bugfix story), not a blank or frozen home screen."
+      - "A tour popover narrates a bug-fix step (e.g. 'Fix a real bug in slidey', reproduce/propose/implement/test/review/validate)."
+
+  - id: refine-phase
+    title: "Spatial refine tour shows the annotated frame and anchored refine"
+    required: true
+    steps:
+      - "A scene titled 'Annotate the frame → anchored refine' (eyebrow about spatial refine) is shown with an embedded kitsoki tour video."
+      - "The tour shows the rendered deck poster with an annotation overlay (a boxed/marked element on the frame), demonstrating location-tied review."
+
+  - id: pr-phase
+    title: "Open-PR tour shows a pull request opened, CI, and merge"
+    required: true
+    steps:
+      - "A scene titled 'Summary → open PR → merge' (eyebrow 'DEVELOPER · SHIP') is shown with an embedded kitsoki tour video."
+      - "The tour shows a pull request being opened on the slidey repo (a PR id/url and the open_pr state), CI, and a merge."
+
+  - id: arc-coherent
+    title: "The deck is a coherent developer arc"
+    required: true
+    steps:
+      - "A title slide 'Fix a bug, refine a feature, open the PR' opens the deck."
+      - "Three narrated phase slides each precede their tour video (bug, refine, ship)."
+      - "A closing cta slide states every frame is a deterministic, no-LLM replay."
+
+  - id: tours-not-frozen
+    title: "Each embedded tour autoplays content (not stuck on frame 0)"
+    required: true
+    steps:
+      - "At least one embedded tour is captured mid-playback (playhead past 0, kitsoki UI advanced beyond the initial home/library view), proving the tours autoplay rather than sitting frozen."
