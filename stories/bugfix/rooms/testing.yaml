@@ -118,9 +118,18 @@ states:
       # routes it to @exit:needs-human (it must never reach @exit:shipped).
       #
       # `once: true` keyed off regression_gate_checked so a refine/restart
-      # re-arm re-runs it; guarded on a non-empty gate_command + worktree so
+      # re-arm re-runs it; guarded on a non-empty gate_command + workdir so
       # narrative-only dogfood walks (no isolated worktree) degrade gracefully.
-      - when: "world.gate_command != '' && world.worktree_path != '' && !world.regression_gate_checked"
+      #
+      # NOTE: guard + WT read world.workdir, NOT world.worktree_path. The maker
+      # worktree lives in world.workdir at on_enter time; worktree_path is only
+      # populated later by the accept → tail arc (worktree_path: world.workdir),
+      # which runs strictly AFTER on_enter. Guarding on worktree_path here meant
+      # the gate was silently SKIPPED on every direct-ship run (regression_red_pre_fix
+      # stayed false), dead-ending the accept arc at @exit:needs-human. Guard +
+      # body now read workdir so the RED gate actually fires. Regression-guarded
+      # by flows/bugfix_regression_gate_fires_on_workdir.yaml.
+      - when: "world.gate_command != '' && world.workdir != '' && !world.regression_gate_checked"
         invoke: host.run
         id: regression_gate_exec
         with:
@@ -130,7 +139,7 @@ states:
             - |
               set -e
               export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
-              WT="{{ world.worktree_path }}"
+              WT="{{ world.workdir }}"
               GATE='{{ world.gate_command }}'
               # The pre-fix snapshot: the commit before the fix tip.
               PREFIX_SHA=$(git -C "$WT" rev-parse 'HEAD~1' 2>/dev/null || echo "")

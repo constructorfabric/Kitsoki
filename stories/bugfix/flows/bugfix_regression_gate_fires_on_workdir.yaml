@@ -1,0 +1,112 @@
+# bugfix_regression_gate_fires_on_workdir — proves the RED gate fires when only
+# workdir is set (the real on_enter state at testing room entry).
+#
+# WHY this is RED→GREEN: on PRE-FIX code the guard requires worktree_path != '',
+# but worktree_path is empty here → gate is skipped → regression_red_pre_fix
+# stays false → accept routes to __exit__needs-human → fixture FAILS (RED).
+# On FIXED code the guard requires workdir != '', workdir is set → gate fires →
+# red:true → accept enters the tail → __exit__shipped → fixture PASSES (GREEN).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  ticket_id:        "TKT-GATE-1"
+  ticket_title:     "Off-by-one in the rate-limit burst"
+  thread:           "TKT-GATE-1"
+  workspace_id:     "wd-fix"
+  workdir:          ".worktrees/wd-fix"
+  # worktree_path intentionally NOT set — this is the real on_enter state.
+  # On pre-fix code the gate guard checks worktree_path != '' → skipped.
+  # On fixed code the guard checks workdir != '' → fires.
+  feature_branch:   "wd-fix"
+  base_branch:      "main"
+  bugfix_mode:      "full"
+  judge_mode:       "human"
+  bf_autostart_attempted: true        # park idle; the flow drives `start`
+  bugfix_exit:      "direct-ship"
+  gate_command:     "kitsoki test flows stories/bugfix/app.yaml"
+
+host_handlers:
+  host.append_to_file: { data: { ok: true } }
+  host.inbox.add:      { data: { ok: true } }
+  host.git_worktree:   { data: { ok: true, log: "", path: ".worktrees/wd-fix" } }
+  host.git:            { data: { ok: true, sha: "abc", diff: "" } }
+  host.local:          { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Regression test added; fix applied"
+        summary_markdown: "TestAllow_Burst fails pre-fix, passes post-fix; fix in burst accounting."
+        status:           "passed"
+        outcome:          "pass"
+        bug_verified:     true
+        applied:          true
+        files_changed:    ["internal/ratelimit/bucket.go", "internal/ratelimit/bucket_test.go"]
+  host.agent.ask:
+    data:
+      ok: true
+      submitted: { summary_title: "Fix proposal", summary_markdown: "Decrement once.", fix_description: "x", root_cause: "y", affected_files: ["internal/ratelimit/bucket.go"] }
+  host.agent.decide:
+    data: { ok: true, submitted: { summary_title: "ok", summary_markdown: "ok", outcome: "pass", status: "passed", verdict: "accept", intent: "accept", confidence: 0.9 } }
+  host.run:
+    by_call:
+      # testing's PRE-FIX regression gate — RED (gate fires because workdir is set).
+      regression_gate_exec:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            red:     true
+            checked: true
+            log:     "pre-fix gate failed as expected"
+      # the ship-it tail: integrate
+      integrate_exec:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            outcome:        integrated
+            integrated_sha: "e4f5a6b"
+            last_op_ok:     true
+            last_error:     ""
+      # the tail's verify: GREEN on the merged commit
+      verify-rerun: { data: { ok: true, exit_code: 0, stdout: "ok  internal/ratelimit  0.012s" } }
+      # the tail's cleanup
+      cleanup_exec:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            outcome:    cleaned
+            last_op_ok: true
+            last_error: ""
+
+turns:
+  - intent: { name: start,  slots: {} }
+    expect_state: reproducing
+  - intent: { name: accept, slots: {} }
+    expect_state: proposing
+  - intent: { name: accept, slots: {} }
+    expect_state: implementing
+  - intent: { name: accept, slots: {} }
+    expect_state: testing
+    # testing's on_enter fired: the regression gate ran on pre-fix snapshot and
+    # bound RED (gate fired because workdir is set, not worktree_path).
+    expect_world:
+      regression_red_pre_fix:  true
+      regression_gate_checked: true
+  # accept from testing: gate was RED pre-fix → enter the ship-it tail.
+  - intent: { name: accept, slots: {} }
+    expect_state: __exit__shipped
+    expect_world:
+      status:                  shipped
+      regression_red_pre_fix:  true
+      shipped_sha:             "e4f5a6b"
+      tail__integrate_outcome: integrated
+      tail__verify_ok:         true
+      tail__cleanup_outcome:   cleaned
+
+expect_terminal: true
+expect_no_errors: true
