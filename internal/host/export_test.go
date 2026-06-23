@@ -99,8 +99,8 @@ type ValidatorOptions struct {
 }
 
 // RunDecideSandboxValidatorExport exposes runDecideSandboxValidator for tests.
-// Returns (rejection, contractErr) matching the internal signature.
-func RunDecideSandboxValidatorExport(ctx context.Context, outputPath string, opts *ValidatorOptions) (rejection, contractErr string) {
+// Returns (rejection, contractErr, infraErr) matching the internal signature.
+func RunDecideSandboxValidatorExport(ctx context.Context, outputPath string, opts *ValidatorOptions) (rejection, contractErr, infraErr string) {
 	if opts == nil {
 		return runDecideSandboxValidator(ctx, outputPath, nil)
 	}

@@ -725,10 +725,19 @@ func runDecideWithValidatorRetryLoop(ctx context.Context, p decideLoopParams) Re
 		case mcpOutcomeSuccess:
 			// Schema passed. If a sandboxed post_cmd is configured, run it now.
 			if p.SandboxValidatorOpts != nil && strings.TrimSpace(p.SandboxValidatorOpts.PostCmd) != "" {
-				rejection, contractErr := runDecideSandboxValidator(ctx, p.ValidatorOutputPath, p.SandboxValidatorOpts)
+				rejection, contractErr, infraErr := runDecideSandboxValidator(ctx, p.ValidatorOutputPath, p.SandboxValidatorOpts)
 				if contractErr != "" {
 					// M12: mutation/network attempt detected.
 					return buildDecideResult(lastStdout, lastExitCode, lastStderr, p.ValidatorOutputPath, sessionID, contractErr)
+				}
+				if infraErr != "" {
+					// The verifier could not start / never ran its check. This is
+					// NOT a retryable semantic rejection — nudging the model cannot
+					// fix a missing interpreter or dropped import root. Return a hard
+					// Result.Error immediately. The schema-valid captured payload is
+					// still surfaced via buildDecideResult so downstream sees it.
+					return buildDecideResult(lastStdout, lastExitCode, lastStderr, p.ValidatorOutputPath, sessionID,
+						fmt.Sprintf("post_cmd validator failed to start: %s", infraErr))
 				}
 				if rejection != "" {
 					// Semantic rejection — nudge and retry.
@@ -761,7 +770,18 @@ func runDecideWithValidatorRetryLoop(ctx context.Context, p decideLoopParams) Re
 	attempts, _, lastErr := kitsokimcp.ReadStateFile(p.ValidatorStatePath)
 	msg := lastErr
 	if strings.TrimSpace(msg) == "" {
-		msg = fmt.Sprintf("validator: session abandoned without successful submit after %d outer iteration(s), %d attempt(s)", maxOuter, attempts)
+		if strings.TrimSpace(sandboxLastRejection) != "" {
+			// The model DID submit and a schema-valid payload WAS captured; the
+			// post_cmd gate kept semantically rejecting it until the outer budget
+			// ran out. Report the actual cause (the verifier's last rejection)
+			// instead of the misleading "abandoned without successful submit",
+			// which describes a missing submit that never happened here.
+			// buildDecideResult still surfaces the captured payload at
+			// validatorOutputPath as `submitted`.
+			msg = fmt.Sprintf("post_cmd validator rejected after %d outer iteration(s): %s", maxOuter, strings.TrimSpace(sandboxLastRejection))
+		} else {
+			msg = fmt.Sprintf("validator: session abandoned without successful submit after %d outer iteration(s), %d attempt(s)", maxOuter, attempts)
+		}
 	}
 	return buildDecideResult(lastStdout, lastExitCode, lastStderr, p.ValidatorOutputPath, sessionID, msg)
 }
@@ -769,48 +789,85 @@ func runDecideWithValidatorRetryLoop(ctx context.Context, p decideLoopParams) Re
 // runDecideSandboxValidator reads the captured payload from outputPath and
 // runs the configured post_cmd via RunValidatorSandboxed.
 //
-// Returns:
-//   - ("", "")                   — sandbox accepted (zero exit, no contract violation)
-//   - (rejectionMsg, "")         — sandbox rejected (non-zero exit); caller nudges LLM
-//   - ("", contractErrMsg)       — sandbox detected mutation/network: M12 sentinel
-func runDecideSandboxValidator(ctx context.Context, validatorOutputPath string, opts *validatorOptions) (rejection, contractErr string) {
+// Returns three independent channels so the retry loop can tell a retryable
+// semantic verdict apart from a non-retryable failure:
+//   - ("", "", "")                 — sandbox accepted (zero exit, no violation)
+//   - (rejectionMsg, "", "")       — sandbox rejected (semantic non-zero exit); caller nudges LLM
+//   - ("", contractErrMsg, "")     — sandbox detected mutation/network: M12 sentinel (hard error)
+//   - ("", "", infraErrMsg)        — verifier could not start / never ran its check (hard error)
+//
+// The infra channel is the fix for the "captured submit reported abandoned" bug:
+// an un-runnable verifier (argv0 missing, import root dropped, sandbox setup
+// failed) is NOT a semantic verdict — nudging the model cannot fix it. Folding
+// it into `rejection` made the loop retry to exhaustion and discard the already
+// schema-valid captured payload. Keeping it separate lets the caller return a
+// hard Result.Error immediately.
+func runDecideSandboxValidator(ctx context.Context, validatorOutputPath string, opts *validatorOptions) (rejection, contractErr, infraErr string) {
 	if opts == nil || strings.TrimSpace(opts.PostCmd) == "" {
-		return "", ""
+		return "", "", ""
 	}
 
 	// Read the submitted payload so the validator can inspect it.
 	payload, err := kitsokimcp.ReadCapturedPayload(validatorOutputPath)
 	if err != nil || len(payload) == 0 {
 		// No payload captured yet — schema-only submission hasn't landed.
-		return "validator: no schema-validated payload captured yet", ""
+		return "validator: no schema-validated payload captured yet", "", ""
 	}
 
 	parts := strings.Fields(opts.PostCmd)
 	if len(parts) == 0 {
-		return "validator: post_cmd is empty", ""
+		return "validator: post_cmd is empty", "", ""
 	}
 	argv := append([]string(nil), parts[1:]...)
 	for _, kv := range opts.PostCmdArgs {
 		argv = append(argv, "--"+kv.Key, kv.Value)
 	}
 
+	// Resolve the declared working directory so a verifier importable only from
+	// its project root (e.g. `python3 -m bugfix` under tools/loopy) can find its
+	// module. Mirrors the legacy ask_with_mcp path (agent_ask_with_mcp.go:215);
+	// the decide path lost this in the agent-split. The write-sandbox profile
+	// stays scoped to the scratch dir, so the verifier may READ this root but
+	// still cannot write outside scratch.
+	var cwd string
+	if strings.TrimSpace(opts.PostCmdCwd) != "" {
+		cwd = resolvePromptPathCtx(ctx, opts.PostCmdCwd)
+	}
+
 	vr, runErr := RunValidatorSandboxed(ctx, ValidatorSandboxOptions{
 		Cmd:   parts[0],
 		Args:  argv,
 		Stdin: string(payload),
+		Cwd:   cwd,
 	})
 	if runErr != nil {
-		// Infrastructure error — surface as a semantic rejection so the loop can retry.
-		return fmt.Sprintf("validator sandbox: infrastructure error: %v", runErr), ""
+		// Infrastructure error — the subprocess could not start or the sandbox
+		// failed to set up. Surface on the dedicated infra channel (non-retryable).
+		return "", "", fmt.Sprintf("validator sandbox: infrastructure error: %v", runErr)
 	}
 
 	if vr.ExitCode == 0 {
-		return "", ""
+		return "", "", ""
 	}
 
 	// M12: detect contract violation (attempted write/network outside /tmp).
 	if isSandboxContractViolation(vr) {
-		return "", errValidatorExceededContract
+		return "", errValidatorExceededContract, ""
+	}
+
+	// A non-zero exit whose output matches an exec-failure pattern means the
+	// verifier never actually ran its check — the sandbox wrapper reports the
+	// failure (e.g. `execvp() ... No such file or directory` from sandbox-exec,
+	// or `No module named <argv0>` from python). Classify as infra, not a verdict.
+	if isSandboxExecFailure(vr) {
+		reason := strings.TrimSpace(vr.Stderr)
+		if reason == "" {
+			reason = strings.TrimSpace(vr.Stdout)
+		}
+		if reason == "" {
+			reason = fmt.Sprintf("verifier exited %d without running", vr.ExitCode)
+		}
+		return "", "", reason
 	}
 
 	// Normal semantic rejection — return the captured stderr as the nudge.
@@ -821,7 +878,28 @@ func runDecideSandboxValidator(ctx context.Context, validatorOutputPath string, 
 	if reason == "" {
 		reason = fmt.Sprintf("validator exited with code %d", vr.ExitCode)
 	}
-	return reason, ""
+	return reason, "", ""
+}
+
+// isSandboxExecFailure reports whether a non-zero sandbox result reflects the
+// verifier failing to start/exec rather than running its check and emitting a
+// genuine verdict. These strings come from the loader/interpreter (execvp,
+// missing module, command-not-found), so a match means "could not run", which
+// must route to the infra channel, not the retryable rejection channel.
+func isSandboxExecFailure(vr ValidatorResult) bool {
+	combined := strings.ToLower(vr.Stderr + "\n" + vr.Stdout)
+	for _, signal := range []string{
+		"execvp(",
+		"no such file or directory",
+		"no module named",
+		"command not found",
+		"executable file not found",
+	} {
+		if strings.Contains(combined, signal) {
+			return true
+		}
+	}
+	return false
 }
 
 // buildDecideResult assembles a Result from a decide run outcome.

@@ -52,6 +52,13 @@ type ValidatorSandboxOptions struct {
 	// ScratchDir is the writable working directory for the subprocess. When
 	// empty, a fresh TempDir is created and cleaned up after the run.
 	ScratchDir string
+	// Cwd, when non-empty, is the working directory the subprocess runs in
+	// (cmd.Dir). When empty the subprocess runs in ScratchDir. This lets a
+	// verifier READ its import root (e.g. tools/loopy, so `python3 -m bugfix`
+	// resolves) while the macOS/Linux write-sandbox profile stays scoped to
+	// ScratchDir — the process may read Cwd but still cannot write outside
+	// scratch.
+	Cwd string
 	// UnsafeNoSandbox, when true, skips sandbox setup and runs the subprocess
 	// directly. Required on Windows (no sandbox support in Phase 1). The
 	// loader emits a warn-line when this is absent on Windows apps.
@@ -168,7 +175,7 @@ func tryLinuxUnshare(ctx context.Context, opts ValidatorSandboxOptions, scratchD
 	// -n: new network namespace (no network access for the subprocess tree)
 	cmdArgs := append([]string{"-rn", opts.Cmd}, opts.Args...)
 	cmd := exec.CommandContext(ctx, unshare, cmdArgs...)
-	cmd.Dir = scratchDir
+	cmd.Dir = sandboxCwd(opts, scratchDir)
 	cmd.Env = buildSandboxEnv(opts.Env, scratchDir)
 	if opts.Stdin != "" {
 		cmd.Stdin = strings.NewReader(opts.Stdin)
@@ -221,7 +228,7 @@ func runMacOSSandbox(ctx context.Context, opts ValidatorSandboxOptions, scratchD
 
 	execArgs := append([]string{"-f", profileFile.Name(), opts.Cmd}, opts.Args...)
 	cmd := exec.CommandContext(ctx, sandboxExec, execArgs...)
-	cmd.Dir = scratchDir
+	cmd.Dir = sandboxCwd(opts, scratchDir)
 	cmd.Env = buildSandboxEnv(opts.Env, scratchDir)
 	if opts.Stdin != "" {
 		cmd.Stdin = strings.NewReader(opts.Stdin)
@@ -233,7 +240,7 @@ func runMacOSSandbox(ctx context.Context, opts ValidatorSandboxOptions, scratchD
 // but no OS-level isolation. Used on Windows and as a fallback.
 func runUnsandboxed(ctx context.Context, opts ValidatorSandboxOptions, scratchDir string) (ValidatorResult, error) {
 	cmd := exec.CommandContext(ctx, opts.Cmd, opts.Args...)
-	cmd.Dir = scratchDir
+	cmd.Dir = sandboxCwd(opts, scratchDir)
 	cmd.Env = buildSandboxEnv(opts.Env, scratchDir)
 	if opts.Stdin != "" {
 		cmd.Stdin = strings.NewReader(opts.Stdin)
@@ -263,6 +270,18 @@ func runAndCapture(ctx context.Context, cmd *exec.Cmd) (ValidatorResult, error) 
 		return ValidatorResult{}, fmt.Errorf("validator_sandbox: exec: %w", runErr)
 	}
 	return res, nil
+}
+
+// sandboxCwd selects the subprocess working directory: opts.Cwd when the caller
+// declared one (e.g. the verifier's import root, tools/loopy), falling back to
+// scratchDir otherwise. The write-sandbox profile remains scoped to scratchDir
+// regardless, so a process pointed at a read-only Cwd may READ that tree but
+// still cannot WRITE outside scratch.
+func sandboxCwd(opts ValidatorSandboxOptions, scratchDir string) string {
+	if strings.TrimSpace(opts.Cwd) != "" {
+		return opts.Cwd
+	}
+	return scratchDir
 }
 
 // buildSandboxEnv constructs the subprocess environment: start from a minimal
