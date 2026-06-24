@@ -257,6 +257,15 @@
       "narration": "Building this is harder than it looks. Agents drift. State machines can't parse text."
     },
     {
+      "type": "narrative",
+      "eyebrow": "Cat Wrangling",
+      "lede": "Orchestrating agents without structure is exactly this.",
+      "body": "Each one follows a different interpretation. One invents extra steps. Another skips the gate. Kitsoki ends the wrangling: the runtime owns the plan, agents get bounded jobs, and every path can be tested from day one.",
+      "image": "assets/cat-wrangling.png",
+      "hold": 195,
+      "narration": "Orchestrating agents without structure is cat wrangling. Kitsoki ends the wrangling by keeping the runtime in charge."
+    },
+    {
       "type": "diagram-svg",
       "title": "Control inversion",
       "panels": [
