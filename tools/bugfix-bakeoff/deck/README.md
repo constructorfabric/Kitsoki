@@ -27,10 +27,10 @@ the exact bake path documented in
 
 ```bash
 # validate
-python3 -m json.tool tools/bugfix-bakeoff/deck/deck.json > /dev/null
+python3 -m json.tool docs/decks/bugfix-bakeoff.slidey.json > /dev/null
 
 # bake to a single self-contained HTML file (no server, opens off disk)
-slidey bundle tools/bugfix-bakeoff/deck/deck.json tools/bugfix-bakeoff/deck/deck.html
+slidey bundle docs/decks/bugfix-bakeoff.slidey.json docs/decks/bugfix-bakeoff.slidey.html
 ```
 
 The baked `deck.html` inlines the whole slidey SPA (several MB) and should

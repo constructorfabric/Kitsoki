@@ -195,7 +195,9 @@ where a single prompt happened to land a correct fix unaided.
   committed-work-aware compliance + format-agnostic cost), aggregation
   (`aggregate.py`), the result contract
   ([`results/SCHEMA.md`](../../tools/bugfix-bakeoff/results/SCHEMA.md)), the
-  narrative deck scaffold ([`deck/`](../../tools/bugfix-bakeoff/deck/)), and
+  narrative slidey deck
+  ([`docs/decks/bugfix-bakeoff.slidey.json`](../decks/bugfix-bakeoff.slidey.json)
+  — bake to a self-contained `.slidey.html` with `slidey bundle`), and
   a README runbook. Cost machinery is reused from
   [`tools/session-mining/`](../../tools/session-mining/).
 - **The two reusable skills.** This run distilled into two general skills:
