@@ -122,9 +122,39 @@ authentication.`,
 			// would force a nil harness and reject every free-text turn, so we do
 			// NOT build one in that case; the cassette rides runtimeBase.HostCassette.
 			liveHarness := harnessType == "replay" || harnessType == "recording" || harnessType == "live" || harnessType == "claude"
-			var liveCassette string
+			var (
+				liveCassette string
+				seedFixture  *testrunner.FlowFixture
+			)
 
-			if flowPath != "" {
+			if flowPath != "" && liveHarness {
+				// --flow WITH a live harness (e.g. --harness replay --recording):
+				// the flow is NOT the nil-harness driver here — the recording
+				// routes free text and the host cassette backs host.* calls. We
+				// parse the flow ONLY for its initial_state / initial_world to seed
+				// the session onto its mid-graph start, leaving the live harness in
+				// place. host_handlers are ignored (the cassette owns host.*).
+				abs, aerr := filepath.Abs(flowPath)
+				if aerr != nil {
+					return fmt.Errorf("resolve --flow path: %w", aerr)
+				}
+				data, rerr := os.ReadFile(abs)
+				if rerr != nil {
+					return fmt.Errorf("read --flow %q: %w", flowPath, rerr)
+				}
+				var f testrunner.FlowFixture
+				if uerr := yaml.Unmarshal(data, &f); uerr != nil {
+					return fmt.Errorf("parse --flow %q: %w", flowPath, uerr)
+				}
+				seedFixture = &f
+				if hostCassette != "" {
+					if abs2, aerr2 := filepath.Abs(hostCassette); aerr2 == nil {
+						liveCassette = abs2
+					} else {
+						liveCassette = hostCassette
+					}
+				}
+			} else if flowPath != "" {
 				abs, aerr := filepath.Abs(flowPath)
 				if aerr != nil {
 					return fmt.Errorf("resolve --flow path: %w", aerr)
@@ -210,6 +240,7 @@ authentication.`,
 				RecordPath:        recordPath,
 				Flow:              fixture,
 				FlowFilePath:      flowFilePath,
+				SeedFixture:       seedFixture,
 				HostCassette:      liveCassette,
 				DefaultActor:      actor,
 				Mining:            cfg.Mining,

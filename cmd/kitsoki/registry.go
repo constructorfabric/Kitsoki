@@ -235,7 +235,13 @@ func (r *SessionRegistry) NewSession(ctx context.Context, storyPath string) (str
 	// present so default (no-flow) web sessions still start at the app root.
 	// Returns the effective initial state so the LiveSession + the first frame
 	// reflect the seed (it is orch.InitialState() when no seed applied).
-	initialState, err := seedFlowInitialState(orch, rt.Store, sid, r.base.Flow)
+	seedFixture := r.base.Flow
+	if seedFixture == nil {
+		// Live-harness replay posture: no flow fixture, but a seed-only fixture
+		// may still teleport the session onto a mid-graph start state + world.
+		seedFixture = r.base.SeedFixture
+	}
+	initialState, err := seedFlowInitialState(orch, rt.Store, sid, seedFixture)
 	if err != nil {
 		return "", fmt.Errorf("seed flow initial state: %w", err)
 	}
@@ -812,7 +818,16 @@ func (r *SessionRegistry) agentRegistryLocked() agents.Registry {
 // the stub injects while emitting streaming events. Set it to 60-100 for demo
 // recordings; leave unset (or 0) for fast tests.
 func (r *SessionRegistry) agentForMeta() metamode.AgentCaller {
-	if r.base.Flow != nil {
+	// Deterministic posture ⇒ the no-LLM meta stub. This covers the nil-harness
+	// flow posture (Flow != nil) AND the live-harness replay/recording posture
+	// backed by a host cassette (--harness replay --recording --host-cassette):
+	// in both, a story room's on_enter coding-agent task (e.g. dev-story's
+	// landing_agent) must NOT spend a live LLM. Without this, replay tours that
+	// pass through such a room dispatch a real agent backend mid-capture.
+	deterministic := r.base.Flow != nil ||
+		(r.base.HostCassette != "" &&
+			(r.base.HarnessType == "replay" || r.base.HarnessType == "recording"))
+	if deterministic {
 		var opts []metamode.StubOption
 		if v := os.Getenv("KITSOKI_META_STREAM_DELAY_MS"); v != "" {
 			if ms, err := strconv.Atoi(v); err == nil && ms > 0 {

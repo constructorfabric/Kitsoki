@@ -197,18 +197,43 @@ func (s *sqliteStore) appendEventsCtx(ctx context.Context, session app.SessionID
 }
 
 // appendEventsTx inserts events rows and updates last_turn within an existing
-// transaction. Seq values are overwritten with monotonic indices starting at 0.
-// All events must share the same Turn value; the turn is taken from events[0].Turn.
+// transaction. Seq values are overwritten with monotonic indices that CONTINUE
+// past any rows already persisted for this turn (MAX(seq)+1, or 0 when the turn
+// is empty) — so a second append sharing a turn does not collide on the
+// (session_id, turn, seq) PK. All events must share the same Turn value; the
+// turn is taken from events[0].Turn.
 func appendEventsTx(ctx context.Context, tx *sql.Tx, session app.SessionID, events []Event) error {
 	turn := events[0].Turn
 	now := time.Now().UnixMicro()
 
-	// Insert all events, assigning monotonic seq starting at 0.
+	// Seq base: continue past any events already persisted for this turn rather
+	// than always resetting to 0. The events PK is (session_id, turn, seq), so
+	// two appends that share a turn — e.g. a flow seed's synthetic turn-0
+	// TransitionApplied/EffectApplied batch (cmd/kitsoki.seedFlowInitialState)
+	// followed by the orchestrator's turn-0 RunInitialOnEnter on_enter batch —
+	// would otherwise both start at seq 0 and collide. The common single-append
+	// -per-turn path is unaffected: MAX(seq) over an empty turn is NULL, so the
+	// base stays 0.
+	var seqBase int
+	{
+		var maxSeq sql.NullInt64
+		if err := tx.QueryRowContext(ctx,
+			`SELECT MAX(seq) FROM events WHERE session_id = ? AND turn = ?`,
+			string(session), int64(turn),
+		).Scan(&maxSeq); err != nil {
+			return fmt.Errorf("store.appendEventsTx: max seq for turn %d: %w", turn, err)
+		}
+		if maxSeq.Valid {
+			seqBase = int(maxSeq.Int64) + 1
+		}
+	}
+
+	// Insert all events, assigning monotonic seq starting at seqBase.
 	for i := range events {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		events[i].Seq = i
+		events[i].Seq = seqBase + i
 
 		payload := events[i].Payload
 		if payload == nil {

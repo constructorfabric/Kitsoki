@@ -217,6 +217,17 @@ type runtimeBase struct {
 	Flow         *testrunner.FlowFixture
 	FlowFilePath string
 
+	// SeedFixture supplies ONLY initial_state / initial_world to seed a freshly
+	// created session, WITHOUT forcing the nil-harness flow posture. It exists
+	// for the live-harness replay posture (--harness replay --recording, where
+	// free-text routing stays live but specific host.* calls and the start state
+	// must be deterministic): the recording routes free text, a --host-cassette
+	// backs host.* calls, and this fixture teleports the session onto the
+	// mid-graph starting state (e.g. core.prd_published) the tour begins at.
+	// Its host_handlers are ignored — the host cassette owns host.* responses.
+	// Mutually exclusive with Flow in practice (Flow already seeds itself).
+	SeedFixture *testrunner.FlowFixture
+
 	// HostCassette layers a host cassette over the LIVE (harness) posture: when
 	// a real harness is built (e.g. --harness replay drives free-text routing
 	// deterministically) but specific host.* calls must still be stubbed (the
