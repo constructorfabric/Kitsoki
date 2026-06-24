@@ -49,6 +49,20 @@ states:
                 draft_feedback: ""   # the verb-laden text was a deck selector, not edit direction
                 deck: {}
                 render_retries: 0
+        # An existing deck is already loaded (operator ran edit_existing / an
+        # "edit <deck>" instruction earlier). Plain `start` should render that
+        # existing spec directly so review/feedback can begin — NOT re-author it
+        # from scratch through the drafter. Promote source_deck → deck and skip
+        # drafting straight to rendering.
+        - when: "(world.source_deck.spec_path ?? '') != ''"
+          target: rendering
+          effects:
+            - set:
+                deck:
+                  spec_path: "{{ world.source_deck.spec_path }}"
+                  summary:   "{{ world.source_deck.summary }}"
+                draft_feedback: ""
+                render_retries: 0   # fresh render — reset the auto-fix budget
         - target: drafting
           effects:
             - set:
