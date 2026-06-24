@@ -129,8 +129,106 @@ annotate→refine tour as the phase-5 rrweb clip now while bugfix is broken.
 - [ ] pm-idea (1), architect-design (2), decomposition (3) — BLOCKED on parallel
   session's stories/bugfix + stories/delivery-tail (../cr conflict-resolve) breakage.
 
-## Next
-- QA the dev-story-arc deck (kitsoki-ui-qa) — the completed-portion proof.
+## MILESTONE 3: dev-story-arc deck PASSED kitsoki-ui-qa (5/5) — committed cf2df55f
+- kitsoki-ui-qa gate: **✅ PASS, 5/5 scenarios, 0 visual/annotation issues** (8
+  advisory blank-scan = legit centered-content letterbox gutters). Report:
+  `.artifacts/slidey-hybrid/qa/qa-report.md`.
+- Two real bugs found+fixed by QA along the way:
+  1. slidey `VideoScene` froze tour embeds on frame 0 → **autoplay fix, slidey main 0bc6f92**.
+  2. cta scene rendered blank — my deck-authoring error: cta uses
+     `wordmark`/`tagline`/`url` (+ `meta.mode: pitch`), not title/subtitle. Fixed in all decks.
+- Deck specs committed (cf2df55f): dev-story-arc.json (the validated 3-phase
+  developer arc) + dev-story-hybrid.json (full 6-phase, phases 1-3 pending unblock).
+
+## DELIVERABLE STATE
+- ✅ `dev-story-arc.html` — self-contained, autoplaying, QA-passed 3-phase deck
+  (fix a bug → refine a feature → open the PR) on the slidey repo.
+- 3 slidey main commits: faeffcf (rrweb inline), 19c8798 (real bug fix), 0bc6f92 (autoplay).
+- ⛔ Full 6-phase deck blocked: phases 1-3 (PM/architect/decomposition) need the
+  parallel session's stories/bugfix + delivery-tail (../cr conflict-resolve) to load.
+  Authoring for phases 1-2 already done (stories/slidey-dev); captures resume on unblock.
+
+## Unblock attempt (d7f9db88): committed-layer fixed; untracked pollution remains
+- Fixed the committed triaged-exit bugs (triaging-set + importer mappings) →
+  committed `d7f9db88`. The block narrowed to ONLY the parallel session's
+  UNTRACKED `stories/delivery-tail/rooms/resolve.yaml` (+ resolve_* flows +
+  `stories/conflict-resolve/`) which reference `../cr`. Committed delivery-tail is
+  clean — the loader reads untracked rooms/*.yaml from disk, so their WIP pollutes
+  every bf importer. NOT mine to touch (active WIP). Phases 1-3 unblock the moment
+  they integrate or remove those untracked files.
+
+## UNBLOCKED (4ff63d6): conflict-resolve integrated → phases 1-3 achievable
+- Agent wired the orphaned conflict-resolve feature into delivery-tail (world keys,
+  intents, `cr` import, integrate→resolve budget route) + found/fixed a real
+  machine.go set-effect bool-coercion bug. Committed `4ff63d6`.
+- Verified fresh-source: slidey-dev 3/3 PASS, delivery-tail 11/11, bugfix 58/58,
+  conflict-resolve 2/2, ship-it 1/1, slidey-bugfix 1/1. Tree loads.
+- ⚠️ In-session MCP story_test runs a STALE binary (pre-machine.go-fix) — validate
+  via `go run ./cmd/kitsoki test flows` OR after `make build`/MCP reload.
+- Rebuilt bin/kitsoki (picks up the fix) for the phase 1-3 captures.
+
+## Resuming phases 1-3
+- slice-3 capture specs ALREADY authored (slidey-pm-idea / slidey-architect-design
+  -rrweb-capture.spec.ts + stories/slidey-dev + features/slidey-dev-prd-design.yaml).
+  Run them → clips/pm-idea.rrweb.json, clips/architect-design.rrweb.json.
+- phase-3 decomposition clip still to author+capture → clips/decomposition.rrweb.json.
+- Then assemble full dev-story-hybrid.html (6 phases) + kitsoki-ui-qa.
+
+## Phases 1-3 blocked by TWO real runtime gaps (diagnosed, to FIX not work around)
+Flows are valid no-LLM (slidey-dev 3/3 via `go run test flows`), but the rrweb WEB
+tour path diverges from `test flows`:
+1. **`kitsoki web` ignores flow `initial_state`/`initial_world`** — web NewSession
+   always starts at app root (`cmd/kitsoki/registry.go:244-246` orch.NewSession +
+   InitialState); only `record`/`test flows` apply the fixture seed (`record.go:378`).
+   → tours can't start at a seeded mid-pipeline state (architect `core.prd_published`,
+   deliver seeded `epic_path`). Contained fix, unblocks phases 2-3.
+2. **Global `core__work` (prio 45, slot request) intercepts conversational free-text**
+   in `core.prd.idle` before the room's `default_intent: discuss` (prio 40) → PM idea
+   utterance binds `work` → bounces to `core.landing`. default_intent is a
+   deterministic tier AFTER semroute; in nil-harness web there's no interpreter to
+   defer the content-bearing slot-bearing match to. Blocks phase 1 (conversational
+   intake is the POINT — can't avoid free-text).
+Why slidey-bugfix works: root: bf (boots into bf.idle), button-driven (no free-text,
+no seed, no teleport). slidey-dev: root: core (→ landing) + conversational intake.
+
+## Runtime fixes DONE → phases 1-3 capturable
+- GAP 1 **FIXED** `5ed2ebd1`: `kitsoki web --flow` now honors flow `initial_state`/
+  `initial_world` (seedFlowInitialState in registry.go, mirrors testrunner). Phases
+  2-3 can seed a mid-pipeline start (architect core.prd_published, deliver epic_path).
+- GAP 2 was a MISDIAGNOSIS by the clip agent — does NOT reproduce on main. Conversational
+  free-text correctly sinks to default_intent:discuss (protected by 3952199f slot-bearing
+  deferral). Pinned with regression test `85ff4917`. Phase 1 conversational intake WORKS;
+  the prior clip drive just had a bug (likely a command-like utterance). Drive a genuinely
+  conversational idea + assert it stays in/advances core.prd.idle (not bounce to landing).
+- Binary rebuilt with both. In-session MCP stale (reload to pick up) — captures use bin/kitsoki.
+
+## ROOT CAUSE for phases 1-3 (the real one): free-text needs the REPLAY harness
+- After GAP1 fix + GAP2 (non-issue), the pm-idea WEB tour STILL stalls right after
+  new-session (3 bootstrap frames, never reaches the idea utterance/PRD intake).
+- Why: phases 1-3 are CONVERSATIONAL — the operator types a free-text idea, and the
+  room routes it to `core__prd__discuss` needing the `message` slot EXTRACTED from
+  free text. `--flow` (nil harness) cannot extract a slot from typed free text
+  (only explicit-intent submission works — which is why `test flows` passes 3/3 but
+  the live web tour can't). The button-driven phases (bugfix/refine/PR) work BECAUSE
+  they drive choice-selector intents, no free text.
+- The ESTABLISHED pattern for no-LLM free-text demos (memory: demo-free-text-needs-
+  replay-harness): `kitsoki web --harness replay --recording <rec> --host-cassette`.
+  Every clip agent used `--flow` — wrong harness for conversational phases.
+- To produce phases 1-3 this way needs a RECORDING per phase (a real-LLM session
+  recorded once, OR a hand-authored recording) for the replay harness. Distinct,
+  non-trivial workstream (recordings + replay-harness capture specs).
+
+## DELIVERED (this goal): QA-passed 3-phase developer-arc deck + 7 real fixes
+- dev-story-arc.html (fix bug → refine → PR), kitsoki-ui-qa 5/5 PASS.
+- slidey main: faeffcf (rrweb inline), 19c8798 (grid-cards bug), 0bc6f92 (autoplay).
+- kitsoki: 1523c732/aeddb833/e57bb175 (3 phase instances), d7f9db88 (triaged-exit),
+  4ff63d6 (conflict-resolve integ + machine.go coercion), 5ed2ebd1 (web flow-seed),
+  85ff4917 (routing regression test), cf2df55f (deck+QA).
+
+## Next: decide — invest in replay-harness recordings for phases 1-3, or finalize arc.
+- When ../cr breakage clears: verify importer triaged-exit fixes green; run the
+  authored slidey-pm-idea / slidey-architect-design captures; build phase-3
+  decomposition clip; assemble + QA the full dev-story-hybrid.html.
 - Resume blocked phase 1-3 captures when the ../cr tree breakage clears, then assemble
   the full 6-phase dev-story-hybrid.json + QA.
 - Unblock phases 1-3 when parallel session integrates conflict-resolve (../cr); then
