@@ -75,7 +75,6 @@ turns:
         summary: "Edited the existing spatial-annotation explainer deck."
         edited: ["1/card_0"]
       deck_handle: "slidey-edit#1"
-      semantic_handle: "slidey-semantic#1"
     expect_host_calls:
       - handler: host.agent.task
         args: { call: "author_deck" }

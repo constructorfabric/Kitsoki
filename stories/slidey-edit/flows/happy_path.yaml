@@ -62,7 +62,6 @@ turns:
         spec_path: "stories/slidey-edit/baked/deck.json"
         summary: "Authored a 3-scene spatial-annotation explainer deck."
       deck_handle: "slidey-edit#1"
-      semantic_handle: "slidey-semantic#1"
 
   # reviewing: accept → done.
   - intent: { name: accept, slots: {} }

@@ -1,10 +1,9 @@
 # rendering — DETERMINISTIC (no LLM). host.slidey.render bundles the deck JSON
-# to a self-contained static HTML deck AND emits the .semantic.json sidecar (the
-# named-element → region map slice 3 produces; slice 4 overlays). Both are
-# emitted to artifacts_dir for stable handles the media view / annotation
-# surface resolve. (The annotation surface floats its SemanticOverlay over the
-# poster still beside the deck, so the location-tied mechanism is independent of
-# the rendered format — html or mp4.)
+# to a self-contained static HTML deck AND may emit a .semantic.json sidecar (the
+# named-element → region map slice 3 produces; slice 4 overlays). The deck is
+# emitted to artifacts_dir; host.artifacts_dir co-locates any semantic/poster
+# companions beside it so the media view / annotation surface can resolve them
+# from deck_handle.
 #
 # `once: true` per invoke (keyed on the relevant bind). A rerender / refine pass
 # clears deck_handle (+ the path binds) so the render re-runs fresh.
@@ -13,14 +12,14 @@ states:
 
   rendering:
     description: "Rendering the deck to a static HTML deck + semantic sidecar (deterministic)."
-    relevant_world: [deck, deck_handle, semantic_handle, deck_path, semantic_path, cycle]
+    relevant_world: [deck, deck_handle, deck_path, semantic_path, cycle]
     view:
       - heading: "Slidey deck editor · rendering"
       - kv:
           pairs:
             Deck:     '{{ world.deck.spec_path|default:"(pending)" }}'
             HTML:     '{{ world.deck_handle|default:"(rendering…)" }}'
-            Semantic: '{{ world.semantic_handle|default:"(rendering…)" }}'
+            Semantic: '{{ world.semantic_path|default:"(optional)" }}'
             Cycle:    "{{ world.cycle }}"
       - prose: "Rendering is deterministic — it produces the static HTML deck plus a semantic sidecar, then routes to review."
     on_enter:
@@ -54,19 +53,6 @@ states:
           label:    "{{ world.deck.summary }} (cycle {{ world.cycle }})"
         bind:
           deck_handle: handle.id
-        on_error: reviewing
-
-      # Emit the semantic sidecar → semantic_handle (the annotation surface reads it).
-      - invoke: host.artifacts_dir
-        id: emit_semantic
-        once: true
-        with:
-          thread:   "slidey-edit"
-          src_path: "{{ world.semantic_path }}"
-          kind:     data
-          label:    "semantic sidecar"
-        bind:
-          semantic_handle: handle.id
         on_error: reviewing
 
       - when: "world.deck_handle != ''"

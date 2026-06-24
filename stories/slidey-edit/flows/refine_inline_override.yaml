@@ -10,7 +10,6 @@ initial_world:
   workspace: "stories/slidey-edit/baked"
   deck: { spec_path: "stories/slidey-edit/baked/deck.json", summary: "deck" }
   deck_handle: "slidey-edit#1"
-  semantic_handle: "slidey-semantic#1"
   # The annotation the reviewing on_enter seeds (or a live surface attaches).
   # Set here because a flow that starts AT initial_state=reviewing does not fire
   # that room's on_enter.

@@ -68,19 +68,12 @@ const mediaMime = computed<string>(() => {
 });
 
 // A `slideshow` media kind is a multi-scene deck (e.g. a slidey deck rendered to
-// a self-contained HTML file) whose pixels aren't an addressable still and whose
-// interactive HTML can't run inside the scripts-disabled sandbox iframe. Inline
-// we preview its poster FRAME (a real rendered still beside the artifact) and
-// link out to the live interactive deck; annotation floats the SemanticOverlay
-// over the same poster (the slidey annotator path).
+// a self-contained HTML file). Inline display embeds the static HTML deck; when
+// annotation is opened and a semantic sidecar exists, the annotator switches to
+// the slidey poster+overlay substrate.
 const isSlideshow = computed<boolean>(
   () => (el.value.MediaKind ?? "").toLowerCase() === "slideshow"
 );
-// The poster still beside a slideshow/deck artifact (`/artifact/<id>/poster`),
-// falling back to the artifact URL when the source has no poster convention.
-function posterUrl(handle: string): string {
-  return _ds.artifactPosterUrl ? _ds.artifactPosterUrl(handle) : artifactUrl(handle);
-}
 
 // ── Annotate affordance (unified ArtifactAnnotator) ──────────────────────────
 // A live media element (image / video / html / slideshow — never a pdf) can be
@@ -93,15 +86,14 @@ function posterUrl(handle: string): string {
 
 /** The engine's MediaKind ("video"|"image"|"html"|"slideshow"|"pdf") maps onto
  *  the annotator's MediaKind union. pdf is intentionally absent — a pdf is not
- *  annotatable, so `mediaAnnotatable` gates it out before this is consulted. The
- *  slideshow→slidey mapping is the DEFAULT; a media element whose base artifact
- *  is an mp4 but which HAS a semantic sidecar is promoted to "slidey" at
- *  annotate-open time (see openAnnotate) so the deck gets the SemanticOverlay. */
+ *  annotatable, so `mediaAnnotatable` gates it out before this is consulted. A
+ *  sidecar-bearing artifact is promoted to "slidey" at annotate-open time (see
+ *  openAnnotate) so the deck gets the SemanticOverlay. */
 const ENGINE_MEDIA_KIND: Record<string, MediaKind> = {
   video: "mp4",
   image: "png",
   html: "html",
-  slideshow: "slidey",
+  slideshow: "html",
 };
 
 /** The annotator MediaKind from the MIME family, when the engine kind is absent
@@ -388,18 +380,17 @@ const bannerStyle = computed<Record<string, string>>((): Record<string, string> 
         :title="mediaCaption || mediaHandle"
       />
 
-      <!-- slideshow → poster-frame preview + a link to the live interactive deck.
-           The deck's interactive HTML can't run in the scripts-disabled sandbox
-           iframe below, so inline we show its rendered poster still (annotation
-           floats the SemanticOverlay over this same frame). MUST precede the
-           text/html branch — a slideshow's mime is text/html. -->
+      <!-- slideshow → embedded self-contained HTML deck + a direct-open link.
+           The iframe stays sandboxed to an opaque origin but allows scripts so
+           the static Slidey bundle can boot. MUST precede the text/html branch
+           because a slideshow's MIME is text/html. -->
       <template v-else-if="isSlideshow">
-        <img
-          class="ve-media-image"
-          data-testid="media-slideshow-poster"
-          loading="lazy"
-          :src="posterUrl(mediaHandle)"
-          :alt="mediaCaption || mediaHandle"
+        <iframe
+          class="ve-media-iframe"
+          data-testid="media-slideshow-frame"
+          sandbox="allow-scripts"
+          :src="artifactUrl(mediaHandle)"
+          :title="mediaCaption || mediaHandle"
         />
         <a
           class="ve-media-review-link"
@@ -410,11 +401,11 @@ const bannerStyle = computed<Record<string, string>>((): Record<string, string> 
         >Open the interactive deck →</a>
       </template>
 
-      <!-- text/html → sandboxed frame (no scripts, no same-origin access) -->
+      <!-- text/html → sandboxed frame with scripts, no same-origin access -->
       <iframe
         v-else-if="mediaMime === 'text/html'"
         class="ve-media-iframe"
-        sandbox=""
+        sandbox="allow-scripts"
         :src="artifactUrl(mediaHandle)"
         :title="mediaCaption || mediaHandle"
       />

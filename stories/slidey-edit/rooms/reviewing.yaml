@@ -19,7 +19,7 @@ states:
 
   reviewing:
     description: "Review the rendered deck; annotate a spot and refine, or accept."
-    relevant_world: [deck, deck_handle, semantic_handle, annotation, addressed, cycle]
+    relevant_world: [deck, deck_handle, annotation, addressed, cycle]
     view:
       - heading: "Slidey deck editor · reviewing"
       - kv:

@@ -271,22 +271,20 @@ describe("ViewElement", () => {
     const frame = w.find("iframe.ve-media-iframe");
     expect(frame.exists()).toBe(true);
     expect(frame.attributes("src")).toBe("/fake-artifact/preview.html");
-    // sandbox attribute must be present (value may be "" or "true" in happy-dom)
-    expect(frame.attributes("sandbox")).toBeDefined();
+    expect(frame.attributes("sandbox")).toBe("allow-scripts");
     w.unmount();
   });
 
-  it("media slideshow renders a poster-frame preview + a link to the interactive deck (not the sandboxed iframe)", () => {
+  it("media slideshow embeds the static HTML deck + links to the interactive deck", () => {
     const w = render({
       Kind: "media",
       MediaHandle: "slidey-edit#1",
       MediaKind: "slideshow",
     });
-    // Inline preview is the poster still beside the artifact, NOT an iframe.
-    const img = w.find('[data-testid="media-slideshow-poster"]');
-    expect(img.exists()).toBe(true);
-    expect(img.attributes("src")).toBe("/fake-artifact/slidey-edit#1/poster");
-    expect(w.find("iframe.ve-media-iframe").exists()).toBe(false);
+    const frame = w.find('[data-testid="media-slideshow-frame"]');
+    expect(frame.exists()).toBe(true);
+    expect(frame.attributes("src")).toBe("/fake-artifact/slidey-edit#1");
+    expect(frame.attributes("sandbox")).toBe("allow-scripts");
     // A link opens the live interactive deck (the bundle can run scripts there).
     const open = w.find('[data-testid="media-slideshow-open"]');
     expect(open.exists()).toBe(true);

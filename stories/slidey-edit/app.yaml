@@ -62,7 +62,7 @@ world:
 
   # ── render outputs ──────────────────────────────────────────────────────────
   deck_handle:      { type: string, default: "" }   # rendered HTML deck artifact handle
-  semantic_handle:  { type: string, default: "" }   # .semantic.json sidecar handle
+  semantic_handle:  { type: string, default: "" }   # legacy; semantic sidecar now resolves beside deck_handle
   deck_path:        { type: string, default: "" }
   semantic_path:    { type: string, default: "" }
 
