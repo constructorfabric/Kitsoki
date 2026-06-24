@@ -49,6 +49,9 @@ agents:
 world:
   # ── session / config ───────────────────────────────────────────────────────
   workspace:        { type: string, default: "stories/slidey-edit/baked" }
+  # The project keeps all deck specs in one folder. A bare deck name on
+  # edit_existing (e.g. "kitsoki-pitch") resolves to <decks_dir>/<name>.json.
+  decks_dir:        { type: string, default: "docs/decks" }
 
   # ── deck source ─────────────────────────────────────────────────────────────
   # spec_path is baked at the pre-rendered deck so `kitsoki tour`/web can drive
@@ -95,14 +98,14 @@ intents:
     slots:
       feedback: { type: string, required: false }
   edit_existing:
-    description: "Edit an existing slidey deck JSON spec and advance to render."
-    examples: ["edit_existing spec_path=docs/decks/overview.slidey.json", "edit existing deck", "revise docs/decks/overview.json"]
+    description: "Edit an existing slidey deck — by bare deck name (resolved under decks_dir) or by full spec path — and advance to render."
+    examples: ["edit kitsoki-pitch", "edit_existing spec_path=kitsoki-pitch", "edit the onboarding deck", "revise docs/decks/overview.json"]
     priority: 82
     slots:
       spec_path:
         type: string
         required: true
-        description: "Path to the existing slidey JSON spec."
+        description: "Deck name (e.g. 'kitsoki-pitch', resolved to <decks_dir>/<name>.json) or a full path to a slidey JSON spec."
       summary:
         type: string
         required: false

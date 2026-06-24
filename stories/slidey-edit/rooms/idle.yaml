@@ -44,7 +44,9 @@ states:
           effects:
             - set:
                 source_deck:
-                  spec_path: "{{ slots.spec_path }}"
+                  # A bare name (no .json suffix) resolves under decks_dir;
+                  # a full path / filename is used verbatim.
+                  spec_path: "{{ hasSuffix(slots.spec_path, '.json') ? slots.spec_path : world.decks_dir + '/' + slots.spec_path + '.json' }}"
                   summary: "{{ slots.summary ?? 'Existing slidey deck' }}"
                 draft_feedback: "{{ slots.feedback ?? '' }}"
                 # deck is the drafting result/cache. Clear it so once: does
