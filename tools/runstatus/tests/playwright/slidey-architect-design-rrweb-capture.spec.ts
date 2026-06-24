@@ -201,7 +201,37 @@ async function waitForComposerSettled(page: Page, timeoutMs = 5000): Promise<voi
   diag(`waitForComposerSettled: timed out (last key="${lastKey}")`);
 }
 
+// waitForTurnSettled blocks until no turn is in flight. The InteractiveView
+// renders `thinking-bubble` exactly while `pending` is true (its runTurn
+// guard), and — critically — runTurn is a NO-OP if a prior turn is still
+// pending: __kitsokiSendText / __kitsokiSubmitIntent silently drop the action
+// and resolve instantly. So the previous turn (e.g. the refine `discuss` that
+// re-runs the design_refiner via host.agent.task) must FULLY land before the
+// next intent (`ready`) is issued, or `ready` is dropped and the session never
+// leaves design_refine. A `wait-state` on the room we're already in is
+// trivially-true and does NOT prove the turn settled — this does. We require
+// the bubble to be absent for two consecutive polls so a between-turns flicker
+// doesn't read as settled.
+async function waitForTurnSettled(page: Page, timeoutMs = 20000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  let clearStreak = 0;
+  while (Date.now() < deadline) {
+    const thinking = await page.evaluate(
+      () => !!document.querySelector('[data-testid="thinking-bubble"]'),
+    );
+    if (!thinking) {
+      clearStreak++;
+      if (clearStreak >= 2) return;
+    } else {
+      clearStreak = 0;
+    }
+    await page.waitForTimeout(150);
+  }
+  diag("waitForTurnSettled: timed out (thinking-bubble never cleared)");
+}
+
 async function typeAndSend(page: Page, text: string): Promise<void> {
+  await waitForTurnSettled(page);
   await waitForComposerSettled(page);
   const ok = await page.evaluate(async (t) => {
     const fn = (window as unknown as { __kitsokiSendText?: (s: string) => Promise<void> }).__kitsokiSendText;
@@ -213,6 +243,7 @@ async function typeAndSend(page: Page, text: string): Promise<void> {
 }
 
 async function clickIntent(page: Page, intent: string): Promise<void> {
+  await waitForTurnSettled(page);
   const ok = await page.evaluate(async (name) => {
     const fn = (window as unknown as {
       __kitsokiSubmitIntent?: (n: string, s?: Record<string, unknown>) => Promise<void>;
