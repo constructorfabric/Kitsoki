@@ -5,6 +5,9 @@ hero:
   name: kitsoki
   text: Deterministic LLM workflows
   tagline: A conversational workflow engine — your workflow is an auditable YAML state machine, and the LLM acts only at narrow, identified, traceable decision points.
+  image:
+    src: /branding/mesa-sun.svg
+    alt: kitsoki mesa sun
   actions:
     - theme: brand
       text: Get started

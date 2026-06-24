@@ -26,6 +26,11 @@ const publicUrl = process.env.SITE_PUBLIC_URL ?? "https://bsacrobatix.github.io/
 function localizedThemeConfig(locale: LocaleCode) {
   const info = locales[locale];
   return {
+    logo: {
+      light: "/branding/mesa-sun.svg",
+      dark: "/branding/mesa-sun-light.svg",
+      alt: "kitsoki mesa sun",
+    },
     nav: [
       { text: info.text.nav.features, link: prefixed(locale, "/features/") },
       { text: info.text.nav.guide, link: "/guide/getting-started" },
@@ -57,6 +62,9 @@ export default defineConfig({
   description:
     "A conversational workflow engine: deterministic YAML state machines with the LLM confined to narrow, traceable decision points.",
   base,
+  head: [
+    ["link", { rel: "icon", type: "image/svg+xml", href: `${base}branding/mesa-sun-simple.svg` }],
+  ],
   srcDir: "./src",
   outDir: path.resolve(__dirname, variant === "embedded" ? "dist-embedded" : "dist"),
   cleanUrls: false,
