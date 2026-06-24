@@ -107,4 +107,42 @@ describe("InteractiveView — embed (VS Code) layout", () => {
 
     wrapper.unmount();
   });
+
+  it("collapses and expands the browser trace column", async () => {
+    setEmbeddedOverride(false);
+    const wrapper = mount(InteractiveView, mountOpts);
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="trace-timeline"]').exists()).toBe(true);
+
+    await wrapper.find('[data-testid="trace-column-toggle"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="trace-timeline"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="trace-diagram"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="chat-section"]').exists()).toBe(true);
+
+    await wrapper.find('[data-testid="trace-column-toggle"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="trace-timeline"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="trace-diagram"]').exists()).toBe(true);
+
+    wrapper.unmount();
+  });
+
+  it("resizes the browser trace column and trace rows from keyboard splitters", async () => {
+    setEmbeddedOverride(false);
+    const wrapper = mount(InteractiveView, mountOpts);
+    await flushPromises();
+
+    await wrapper.find('[data-testid="trace-column-resizer"]').trigger("keydown", { key: "ArrowLeft" });
+    await wrapper.find('[data-testid="trace-row-resizer"]').trigger("keydown", { key: "ArrowDown" });
+    await flushPromises();
+
+    expect(wrapper.find('[aria-label="Trace"]').attributes("style")).toContain("58%");
+    expect(wrapper.find('[data-testid="trace-diagram"]').attributes("style")).toContain("49%");
+
+    wrapper.unmount();
+  });
 });

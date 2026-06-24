@@ -71,6 +71,17 @@
           :on-reload-error="onFreshnessError"
           data-testid="story-freshness-widget"
         />
+        <button
+          v-if="!embed"
+          type="button"
+          class="iv__trace-toggle"
+          data-testid="trace-column-toggle"
+          :aria-expanded="!traceCollapsed"
+          :title="traceCollapsed ? 'Show trace column' : 'Hide trace column'"
+          @click="toggleTraceColumn"
+        >
+          {{ traceCollapsed ? 'Show trace' : 'Hide trace' }}
+        </button>
         <router-link :to="`/s/${sessionId}`" class="iv__observe-link" data-testid="observe-link">Observe ↗</router-link>
         <MetaButton v-if="embed" placement="topbar" />
       </header>
@@ -98,13 +109,18 @@
       </div>
 
       <!-- Main row: chat (left) | trace (right).
-           Browser: chat 46% | diagram+timeline 54%.
+           Browser: chat | resizable/collapsible diagram+timeline trace column.
            Embed (VS Code): chat ONLY — trace + graph live in their own dockable
            windows (the "Kitsoki Surfaces" panels), so the chat panel never repeats
            them. -->
-      <div class="iv__main" :class="{ 'iv__main--embed': embed }">
+      <div class="iv__main" :class="{ 'iv__main--embed': embed, 'iv__main--trace-collapsed': traceCollapsed }">
         <!-- LEFT: conversation -->
-        <section class="iv__chat" aria-label="Conversation" data-testid="chat-section">
+        <section
+          class="iv__chat"
+          aria-label="Conversation"
+          data-testid="chat-section"
+          :style="chatColumnStyle"
+        >
           <div
             v-if="focusedChat || focusedChatLoading || focusedChatError"
             class="iv__focused-chat"
@@ -192,9 +208,40 @@
         </section>
 
         <!-- RIGHT (browser): live trace (diagram over timeline) -->
-        <section v-if="!embed" class="iv__trace" aria-label="Trace">
-          <div class="iv__panel iv__panel--diagram" data-testid="trace-diagram">
-            <div class="iv__panel-header">State Diagram</div>
+        <button
+          v-if="!embed && !traceCollapsed"
+          type="button"
+          class="iv__resize-handle iv__resize-handle--column"
+          data-testid="trace-column-resizer"
+          role="separator"
+          aria-label="Resize chat and trace columns"
+          aria-orientation="vertical"
+          :aria-valuenow="Math.round(traceWidthPercent)"
+          aria-valuemin="24"
+          aria-valuemax="75"
+          @pointerdown="startColumnResize"
+          @keydown="onColumnResizeKeydown"
+        ></button>
+        <section
+          v-if="!embed && !traceCollapsed"
+          class="iv__trace"
+          aria-label="Trace"
+          :style="traceColumnStyle"
+        >
+          <div
+            class="iv__panel iv__panel--diagram"
+            data-testid="trace-diagram"
+            :style="diagramPanelStyle"
+          >
+            <div class="iv__panel-header">
+              <span>State Diagram</span>
+              <button
+                type="button"
+                class="iv__panel-action"
+                title="Hide trace column"
+                @click="toggleTraceColumn"
+              >hide</button>
+            </div>
             <StateDiagram
               v-if="store.mermaid"
               :mermaid-source="store.mermaid.source"
@@ -210,7 +257,24 @@
             />
             <div v-else class="iv__empty">No diagram.</div>
           </div>
-          <div class="iv__panel iv__panel--timeline" data-testid="trace-timeline">
+          <button
+            type="button"
+            class="iv__resize-handle iv__resize-handle--row"
+            data-testid="trace-row-resizer"
+            role="separator"
+            aria-label="Resize state diagram and trace rows"
+            aria-orientation="horizontal"
+            :aria-valuenow="Math.round(diagramHeightPercent)"
+            aria-valuemin="18"
+            aria-valuemax="82"
+            @pointerdown="startRowResize"
+            @keydown="onRowResizeKeydown"
+          ></button>
+          <div
+            class="iv__panel iv__panel--timeline"
+            data-testid="trace-timeline"
+            :style="timelinePanelStyle"
+          >
             <div class="iv__panel-header">
               <span>Trace</span>
               <button
@@ -263,6 +327,12 @@ import { isEmbedded } from "../lib/embed.js";
 import type { NodeRef } from "../types.js";
 
 const GITHUB_INBOX_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+const TRACE_WIDTH_DEFAULT = 54;
+const TRACE_WIDTH_MIN = 24;
+const TRACE_WIDTH_MAX = 75;
+const DIAGRAM_HEIGHT_DEFAULT = 45;
+const DIAGRAM_HEIGHT_MIN = 18;
+const DIAGRAM_HEIGHT_MAX = 82;
 
 const props = defineProps<{ sessionId: string }>();
 const store = useRunStore();
@@ -288,8 +358,24 @@ const pending = ref(false);
 // from firing a second cancel and gives the operator immediate feedback.
 const cancelling = ref(false);
 const error = ref<string | null>(null);
+const traceCollapsed = ref(false);
+const traceWidthPercent = ref(TRACE_WIDTH_DEFAULT);
+const diagramHeightPercent = ref(DIAGRAM_HEIGHT_DEFAULT);
 
 const appId = computed(() => store.appDef?.id ?? store.appDef?.name ?? "kitsoki");
+const chatColumnStyle = computed(() => {
+  if (embed.value || traceCollapsed.value) return {};
+  return { flex: `1 1 ${100 - traceWidthPercent.value}%` };
+});
+const traceColumnStyle = computed(() => ({
+  flex: `0 0 ${traceWidthPercent.value}%`,
+}));
+const diagramPanelStyle = computed(() => ({
+  flex: `0 0 ${diagramHeightPercent.value}%`,
+}));
+const timelinePanelStyle = computed(() => ({
+  flex: `1 1 ${100 - diagramHeightPercent.value}%`,
+}));
 
 // ── Harness picker (mirrors RunView) ─────────────────────────────────────────
 const activeProfileObj = computed(() => store.harnessProfiles.find((p) => p.active));
@@ -338,6 +424,99 @@ function canSyncGitHubInbox(
 ): candidate is DataSource & Pick<LiveSource, "syncGitHubInbox" | "listWork"> {
   const partial = candidate as Partial<Pick<LiveSource, "syncGitHubInbox" | "listWork">> | null;
   return typeof partial?.syncGitHubInbox === "function" && typeof partial.listWork === "function";
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function toggleTraceColumn(): void {
+  traceCollapsed.value = !traceCollapsed.value;
+}
+
+function resizeColumnFromClientX(clientX: number): void {
+  const main = document.querySelector<HTMLElement>(".iv__main");
+  if (!main) return;
+  const rect = main.getBoundingClientRect();
+  if (rect.width <= 0) return;
+  const next = ((rect.right - clientX) / rect.width) * 100;
+  traceWidthPercent.value = clamp(next, TRACE_WIDTH_MIN, TRACE_WIDTH_MAX);
+}
+
+function resizeRowFromClientY(clientY: number): void {
+  const trace = document.querySelector<HTMLElement>(".iv__trace");
+  if (!trace) return;
+  const rect = trace.getBoundingClientRect();
+  if (rect.height <= 0) return;
+  const next = ((clientY - rect.top) / rect.height) * 100;
+  diagramHeightPercent.value = clamp(next, DIAGRAM_HEIGHT_MIN, DIAGRAM_HEIGHT_MAX);
+}
+
+function stopResizeListeners(): void {
+  document.removeEventListener("pointermove", onColumnResizeMove);
+  document.removeEventListener("pointerup", stopResizeListeners);
+  document.removeEventListener("pointercancel", stopResizeListeners);
+  document.removeEventListener("pointermove", onRowResizeMove);
+}
+
+function onColumnResizeMove(e: PointerEvent): void {
+  resizeColumnFromClientX(e.clientX);
+}
+
+function onRowResizeMove(e: PointerEvent): void {
+  resizeRowFromClientY(e.clientY);
+}
+
+function startColumnResize(e: PointerEvent): void {
+  e.preventDefault();
+  (e.currentTarget as HTMLElement | null)?.setPointerCapture?.(e.pointerId);
+  resizeColumnFromClientX(e.clientX);
+  document.addEventListener("pointermove", onColumnResizeMove);
+  document.addEventListener("pointerup", stopResizeListeners, { once: true });
+  document.addEventListener("pointercancel", stopResizeListeners, { once: true });
+}
+
+function startRowResize(e: PointerEvent): void {
+  e.preventDefault();
+  (e.currentTarget as HTMLElement | null)?.setPointerCapture?.(e.pointerId);
+  resizeRowFromClientY(e.clientY);
+  document.addEventListener("pointermove", onRowResizeMove);
+  document.addEventListener("pointerup", stopResizeListeners, { once: true });
+  document.addEventListener("pointercancel", stopResizeListeners, { once: true });
+}
+
+function onColumnResizeKeydown(e: KeyboardEvent): void {
+  const step = e.shiftKey ? 10 : 4;
+  if (e.key === "ArrowLeft") {
+    traceWidthPercent.value = clamp(traceWidthPercent.value + step, TRACE_WIDTH_MIN, TRACE_WIDTH_MAX);
+    e.preventDefault();
+  } else if (e.key === "ArrowRight") {
+    traceWidthPercent.value = clamp(traceWidthPercent.value - step, TRACE_WIDTH_MIN, TRACE_WIDTH_MAX);
+    e.preventDefault();
+  } else if (e.key === "Home") {
+    traceWidthPercent.value = TRACE_WIDTH_MAX;
+    e.preventDefault();
+  } else if (e.key === "End") {
+    traceWidthPercent.value = TRACE_WIDTH_MIN;
+    e.preventDefault();
+  }
+}
+
+function onRowResizeKeydown(e: KeyboardEvent): void {
+  const step = e.shiftKey ? 10 : 4;
+  if (e.key === "ArrowUp") {
+    diagramHeightPercent.value = clamp(diagramHeightPercent.value - step, DIAGRAM_HEIGHT_MIN, DIAGRAM_HEIGHT_MAX);
+    e.preventDefault();
+  } else if (e.key === "ArrowDown") {
+    diagramHeightPercent.value = clamp(diagramHeightPercent.value + step, DIAGRAM_HEIGHT_MIN, DIAGRAM_HEIGHT_MAX);
+    e.preventDefault();
+  } else if (e.key === "Home") {
+    diagramHeightPercent.value = DIAGRAM_HEIGHT_MIN;
+    e.preventDefault();
+  } else if (e.key === "End") {
+    diagramHeightPercent.value = DIAGRAM_HEIGHT_MAX;
+    e.preventDefault();
+  }
 }
 
 function onFreshnessReloaded(prevStateExists: boolean): void {
@@ -551,6 +730,7 @@ watch(
 );
 
 onUnmounted(() => {
+  stopResizeListeners();
   stopGitHubInboxPolling();
   store.teardown();
   proposals.teardown();
@@ -765,6 +945,26 @@ function onEventSelect(index: number): void {
   text-decoration: underline;
 }
 
+.iv__trace-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #111c33;
+  color: #cbd5e1;
+  border: 1px solid #2b3a55;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-family: inherit;
+  padding: 0.18rem 0.5rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.iv__trace-toggle:hover {
+  background: #172544;
+  border-color: #3b82f6;
+}
+
 /* ---- Main row ---- */
 .iv__reload-warning {
   flex-shrink: 0;
@@ -810,6 +1010,10 @@ function onEventSelect(index: number): void {
   flex: 1;
   min-height: 0;
   gap: 0;
+}
+
+.iv__main--trace-collapsed .iv__chat {
+  border-right: 0;
 }
 
 /* LEFT: chat column */
@@ -935,11 +1139,60 @@ function onEventSelect(index: number): void {
 .iv__trace {
   display: flex;
   flex-direction: column;
-  flex: 1 1 54%;
   min-width: 0;
   min-height: 0;
   padding: 0.5rem;
-  gap: 0.5rem;
+  gap: 0;
+}
+
+.iv__resize-handle {
+  flex: 0 0 auto;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: col-resize;
+  position: relative;
+  touch-action: none;
+}
+
+.iv__resize-handle::before {
+  content: "";
+  position: absolute;
+  background: var(--k-border, #1e293b);
+}
+
+.iv__resize-handle:hover::before,
+.iv__resize-handle:focus-visible::before {
+  background: var(--k-fg-accent, #60a5fa);
+}
+
+.iv__resize-handle:focus-visible {
+  outline: 1px solid var(--k-fg-accent, #60a5fa);
+  outline-offset: -1px;
+}
+
+.iv__resize-handle--column {
+  width: 0.55rem;
+  cursor: col-resize;
+}
+
+.iv__resize-handle--column::before {
+  top: 0;
+  bottom: 0;
+  left: calc(50% - 1px);
+  width: 1px;
+}
+
+.iv__resize-handle--row {
+  height: 0.55rem;
+  cursor: row-resize;
+}
+
+.iv__resize-handle--row::before {
+  left: 0;
+  right: 0;
+  top: calc(50% - 1px);
+  height: 1px;
 }
 
 .iv__panel {
@@ -951,7 +1204,7 @@ function onEventSelect(index: number): void {
 }
 
 .iv__panel--diagram {
-  flex: 1 1 45%;
+  flex: 0 0 45%;
 }
 
 .iv__panel--timeline {
@@ -969,6 +1222,24 @@ function onEventSelect(index: number): void {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+}
+
+.iv__panel-action {
+  margin-left: auto;
+  background: transparent;
+  border: 0;
+  color: var(--k-fg-muted, #94a3b8);
+  cursor: pointer;
+  font-size: 0.7rem;
+  font-family: inherit;
+  padding: 0;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.iv__panel-action:hover {
+  color: var(--k-fg, #e2e8f0);
+  text-decoration: underline;
 }
 
 .iv__clear-highlight {
